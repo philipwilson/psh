@@ -6,7 +6,7 @@ Python Shell (psh) is a POSIX-compliant shell written entirely in Python, design
 
 **Current Version**: 0.192.0 | **Tests**: 3,450 total | **POSIX Compliance**: ~98%
 
-*All source code and documentation (except this note) has been written by Claude Code using Sonnet 4 and Opus 4 models.*
+*All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
 ## Quick Start
 
