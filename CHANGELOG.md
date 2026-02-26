@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.192.1 (2026-02-26) - Fix terminal resize (SIGWINCH) display corruption
+- Fixed `redraw_line()` in line editor corrupting previously-output command
+  results on terminal resize. The old code compared the cursor's current row
+  (via DSR) against a stale saved row from before the resize; after terminal
+  reflow the saved position was meaningless, causing `ESC[J` (clear to end
+  of screen) to wipe out legitimate output.
+- New approach computes cursor displacement using the **new** terminal width,
+  matching the terminal's own reflow, so only the prompt+input area is
+  redrawn. Prior command output is left untouched.
+
 ## 0.192.0 (2026-02-19) - Add 5 missing redirection operators (<>, >|, &>, &>>, |&)
 - **3 new token types**: `REDIRECT_READWRITE` (`<>`), `REDIRECT_CLOBBER`
   (`>|`), and `PIPE_AND` (`|&`). `&>` and `&>>` reuse `REDIRECT_OUT`

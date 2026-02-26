@@ -881,33 +881,27 @@ class LineEditor:
 
         Used after terminal resize (SIGWINCH) to fix display corruption.
 
-        Uses DSR (``ESC[6n``) to query the cursor's actual row, then
-        compares with the saved prompt row to detect displacement caused
-        by terminal scrollback reflow during the resize.  Falls back to
-        a content-span calculation when DSR is unavailable.
+        After a resize the terminal has already reflowed all content at the
+        new width, so saved absolute row positions are stale.  Instead we
+        compute how many rows the prompt+input spans at the **new** width
+        (which matches the reflow) and move up by that amount from wherever
+        the cursor currently sits.  This avoids clearing previously-output
+        command results that the terminal correctly reflowed.
         """
         prompt_len = self._visible_length(self.current_prompt)
-        old_width = getattr(self, '_term_width', 80)
 
         try:
             new_width = shutil.get_terminal_size().columns
         except (OSError, ValueError):
             new_width = 80
 
-        # How many rows below the prompt start is the cursor?
-        cursor_row = (prompt_len + self.cursor_pos) // old_width if old_width > 0 else 0
-
-        # Determine how far up to move.  If we recorded the prompt's
-        # absolute row at draw time we can detect cursor displacement
-        # (e.g. terminal shrank and scrollback pushed the cursor down).
-        rows_up = cursor_row  # fallback when DSR is unavailable
-        actual_row = -1
-        prompt_draw_row = getattr(self, '_prompt_draw_row', -1)
-        if prompt_draw_row >= 0:
-            actual_row = self._query_cursor_row()
-            if actual_row >= 0:
-                target = max(0, prompt_draw_row)
-                rows_up = actual_row - target
+        # After reflow the terminal has repositioned the cursor at the
+        # correct content offset.  The number of rows from the prompt
+        # start to the cursor matches the new width layout.
+        if new_width > 0:
+            rows_up = (prompt_len + self.cursor_pos) // new_width
+        else:
+            rows_up = 0
 
         if rows_up > 0:
             sys.stdout.write(f'\033[{rows_up}A')
@@ -939,9 +933,11 @@ class LineEditor:
             if target_col > 0:
                 sys.stdout.write(f'\033[{target_col}C')
 
-        # Update saved state for the next resize
+        # Update prompt draw row for the next resize
+        actual_row = self._query_cursor_row()
         if actual_row >= 0:
-            self._prompt_draw_row = max(0, actual_row - rows_up)
+            cur_row_in_content = (prompt_len + self.cursor_pos) // new_width if new_width > 0 else 0
+            self._prompt_draw_row = max(0, actual_row - cur_row_in_content)
 
         self._term_width = new_width
         sys.stdout.flush()
