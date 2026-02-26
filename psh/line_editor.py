@@ -124,13 +124,15 @@ class LineEditor:
         return chars[0] if chars else ''
 
     def read_line(self, prompt: str = "", sigwinch_fd: int = -1,
-                   sigwinch_drain: Optional[Callable[[], bool]] = None) -> Optional[str]:
+                   sigwinch_drain: Optional[Callable[[], bool]] = None,
+                   on_resize: Optional[Callable[[], None]] = None) -> Optional[str]:
         """Read a line with editing and key binding support.
 
         Args:
             prompt: The prompt string to display
             sigwinch_fd: File descriptor for SIGWINCH notifications (-1 to disable)
             sigwinch_drain: Callback to drain SIGWINCH notifications (returns True if any)
+            on_resize: Optional callback invoked after a terminal resize redraw
         """
         # Print prompt
         sys.stdout.write(prompt)
@@ -190,6 +192,8 @@ class LineEditor:
                             if sigwinch_drain:
                                 sigwinch_drain()
                             self.redraw_line()
+                            if on_resize:
+                                on_resize()
                             # Don't continue - also check if stdin is readable
                             if stdin_fd not in readable:
                                 continue

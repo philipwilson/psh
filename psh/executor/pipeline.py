@@ -130,6 +130,11 @@ class PipelineExecutor:
         # Build command string for job tracking
         command_string = self._pipeline_to_string(node)
 
+        # Set terminal title to show running pipeline
+        if not is_background and self.state.options.get('interactive'):
+            from ..interactive.title import command_title, set_terminal_title
+            set_terminal_title(command_title(command_string, self.shell))
+
         # Variables to track pgid
         pgid = None
         pids = []

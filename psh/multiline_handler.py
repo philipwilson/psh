@@ -4,7 +4,7 @@ This module provides multi-line command support for the interactive shell,
 allowing users to naturally type control structures across multiple lines.
 """
 
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from .lexer import tokenize
 from .line_editor import LineEditor
@@ -26,7 +26,7 @@ class MultiLineInputHandler:
         self.prompt_expander = PromptExpander(shell)
         self.context_stack: List[str] = []  # Track nested construct contexts
 
-    def read_command(self) -> Optional[str]:
+    def read_command(self, on_resize: Optional[Callable[[], None]] = None) -> Optional[str]:
         """Read a complete command, possibly spanning multiple lines."""
         self.buffer = []
 
@@ -42,7 +42,8 @@ class MultiLineInputHandler:
             prompt = self._get_prompt()
 
             # Read one line
-            line = self.line_editor.read_line(prompt, sigwinch_fd, sigwinch_drain)
+            line = self.line_editor.read_line(prompt, sigwinch_fd, sigwinch_drain,
+                                              on_resize=on_resize)
             if line is None:  # EOF
                 if self.buffer:
                     print("\npsh: syntax error: unexpected end of file")

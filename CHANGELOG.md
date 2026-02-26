@@ -4,6 +4,18 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.192.2 (2026-02-26) - Terminal window title updates
+- New `psh/interactive/title.py` with `set_terminal_title()`, `idle_title()`,
+  and `command_title()` functions using OSC 0 escape sequences.
+- Idle title (`dirname — psh — cols×rows`) set before each prompt in the
+  REPL loop, covering startup, post-cd, and post-command.
+- Running-command title (`dirname — cmd — cols×rows`) set before external
+  command fork and multi-command pipeline fork.
+- Terminal resize (SIGWINCH) updates title dimensions via `on_resize`
+  callback threaded through `MultiLineInputHandler` → `LineEditor`.
+- All title writes guarded by `isatty()`, `TERM != dumb`, and interactive
+  mode checks to avoid interference with scripts and test harnesses.
+
 ## 0.192.1 (2026-02-26) - Fix terminal resize (SIGWINCH) display corruption
 - Fixed `redraw_line()` in line editor corrupting previously-output command
   results on terminal resize. The old code compared the cursor's current row

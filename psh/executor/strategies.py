@@ -329,6 +329,11 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                 print(f"psh: {full_args[0]}: {e}", file=sys.stderr)
                 os._exit(127)
 
+        # Set terminal title to show running command
+        if not background and not context.in_pipeline and shell.state.options.get('interactive'):
+            from ..interactive.title import command_title, set_terminal_title
+            set_terminal_title(command_title(cmd_name, shell))
+
         # Save current terminal foreground process group
         # Skip terminal control when running under pytest to avoid SIGTTOU issues
         original_pgid = None

@@ -4,6 +4,7 @@ import sys
 from ..line_editor import LineEditor
 from ..multiline_handler import MultiLineInputHandler
 from .base import InteractiveComponent
+from .title import idle_title, set_terminal_title
 
 
 class REPLLoop(InteractiveComponent):
@@ -54,8 +55,12 @@ class REPLLoop(InteractiveComponent):
                 # Check for stopped jobs (from Ctrl-Z)
                 self.job_manager.notify_stopped_jobs()
 
+                # Set terminal title to idle state before each prompt
+                set_terminal_title(idle_title(self.shell))
+
                 # Read command (possibly multi-line)
-                command = self.multi_line_handler.read_command()
+                on_resize = lambda: set_terminal_title(idle_title(self.shell))
+                command = self.multi_line_handler.read_command(on_resize=on_resize)
 
                 if command is None:  # EOF (Ctrl-D)
                     print()  # New line before exit
