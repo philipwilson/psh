@@ -1,10 +1,6 @@
-# CLAUDE.md
-
-This guide helps AI assistants work effectively with the Python Shell (psh) codebase.
-
 ## Project Overview
 
-Python Shell (psh) is an educational Unix shell implementation designed to teach shell internals through clean, readable Python code. It features:
+Python Shell (psh) is an educational Unix shell implementation designed to teach shell internals through clean, readable Python code.
 - Hand-written recursive descent parser for clarity
 - Component-based architecture with clear separation of concerns
 - Comprehensive test suite 
@@ -63,117 +59,15 @@ python -m psh --validate script.sh        # Validate without executing
 
 ## Test Organization
 
-PSH uses a modern, well-organized test suite:
-
 ### Main Test Suite (`tests/`)
 - **Location**: `/tests/`
-- **Count**: ~3,450 tests
-- **Status**: Modern, well-organized structure (migrated 2025)
 - **Organization**:
   - `unit/` - Unit tests (builtins, expansion, lexer, parser)
   - `integration/` - Integration tests (pipelines, control flow, functions)
   - `system/` - System tests (interactive, initialization, scripts)
-  - `performance/` - Performance benchmarks and stress tests
   - `conformance/` - POSIX/bash compatibility tests
 - **Command**: `python -m pytest tests/`
 
-### Legacy Test Suite (`tests_archived/`)
-- **Location**: `/tests_archived/`
-- **Status**: Archived legacy tests (pre-2025 migration)
-- **Use**: Historical reference only
-- **Note**: Superseded by modern test structure
-
-### Conformance Testing Framework
-- **Location**: `/tests/conformance/`
-- **Purpose**: Measure POSIX compliance and bash compatibility
-- **Features**:
-  - Compares PSH output with bash for identical commands
-  - Categorizes differences (identical, documented, extensions, bugs)
-  - Generates detailed compliance reports
-  - Current metrics: 93.1% POSIX compliance, 72.7% bash compatibility
-
-### Test Selection Guidelines
-- **Development work**: Use `/tests/` organized by category
-- **Unit testing**: Use `tests/unit/` for component-specific tests
-- **Integration testing**: Use `tests/integration/` for feature interaction tests
-- **Compatibility verification**: Use `tests/conformance/`
-- **Performance analysis**: Use `tests/performance/`
-
-### Testing the Combinator Parser
-
-The combinator parser (`psh/parser/combinators/`) is an experimental alternative
-to the production recursive descent parser.  The existing test suite can be
-re-run against it to measure coverage and find regressions.
-
-**How parser selection works at test time**
-
-Set the `PSH_TEST_PARSER` environment variable to `combinator`.  The `Shell`
-constructor reads this variable and switches the active parser for all
-commands executed during the test run.  No test code changes are needed.
-
-**Running the full suite with the combinator parser**
-
-```bash
-# Via the smart test runner (recommended)
-python run_tests.py --combinator > tmp/combinator-results.txt 2>&1
-tail -15 tmp/combinator-results.txt
-
-# Via pytest directly (must exclude subshell tests manually)
-PSH_TEST_PARSER=combinator python -m pytest tests/ \
-  --ignore=tests/integration/subshells/ \
-  --ignore=tests/integration/functions/test_function_advanced.py \
-  --ignore=tests/integration/variables/test_variable_assignment.py \
-  -q --tb=line > tmp/combinator-results.txt 2>&1
-tail -5 tmp/combinator-results.txt
-```
-
-**Running a specific test or file with the combinator parser**
-
-```bash
-PSH_TEST_PARSER=combinator python -m pytest tests/integration/control_flow/test_case_statements.py -xvs
-PSH_TEST_PARSER=combinator python -m pytest -k "test_for_loop" -xvs
-```
-
-**Combinator-specific unit tests**
-
-Direct unit tests for the combinator modules live in
-`tests/unit/parser/combinators/`.  These test parser internals (token matching,
-AST construction) without going through the shell:
-
-```bash
-python -m pytest tests/unit/parser/combinators/ -v
-```
-
-**Comparing before/after a change**
-
-When fixing combinator bugs, capture failure lists before and after to verify
-no regressions:
-
-```bash
-# Before: save baseline failures
-PSH_TEST_PARSER=combinator python -m pytest tests/ \
-  --ignore=tests/integration/subshells/ -q --tb=line 2>&1 \
-  | grep "^FAILED" | sort > tmp/before-failures.txt
-
-# ... make changes ...
-
-# After: save new failures and diff
-PSH_TEST_PARSER=combinator python -m pytest tests/ \
-  --ignore=tests/integration/subshells/ -q --tb=line 2>&1 \
-  | grep "^FAILED" | sort > tmp/after-failures.txt
-
-comm -23 tmp/before-failures.txt tmp/after-failures.txt  # Fixed tests
-comm -13 tmp/before-failures.txt tmp/after-failures.txt  # New regressions (should be empty)
-```
-
-**Always verify the recursive descent parser is unaffected**
-
-After changing combinator code, confirm the production parser still passes:
-
-```bash
-python -m pytest tests/behavioral/test_golden_behavior.py -q --tb=line
-python -m pytest tests/unit/parser/ -q --tb=line
-```
 
 **Interactive testing**
 
@@ -182,24 +76,7 @@ You can switch parsers inside a running psh session:
 ```bash
 python -m psh --parser combinator         # Start with combinator
 python -m psh --parser rd                 # Start with recursive descent (default)
-# Or switch at runtime:
-parser-select combinator                  # Inside psh REPL
-parser-select rd                          # Switch back
 ```
-
-**Known exclusions in combinator mode**
-
-The test runner ignores these directories because the combinator parser does
-not yet handle the features they exercise (subshell FD inheritance, advanced
-function scoping, complex variable assignment):
-
-- `tests/integration/subshells/`
-- `tests/integration/functions/test_function_advanced.py`
-- `tests/integration/variables/test_variable_assignment.py`
-
-**Current combinator parser test status**: 0 remaining failures out of ~3,350
-tests (as of v0.171.0).  See `docs/guides/combinator_parser_remaining_failures.md`
-for history.
 
 **Lint**
 
@@ -217,19 +94,8 @@ ruff check psh/parser/combinators/
    - `README.md` — the `**Current Version**:` line
    - `ARCHITECTURE.md` — the `**Current Version**:` line
    - `ARCHITECTURE.llm` — the `Version:` line
-   - `CLAUDE.md` — the `**Version**:` line in "Current Development Status"
-3. If the change affects any of the following, update the relevant docs:
-   - **Test count or file count** → `README.md` "Project Statistics" section and
-     `CLAUDE.md` test count
-   - **New features or user-visible behavior** → `docs/user_guide/*`
-   - **Architectural changes** (new subsystems, changed execution flow, new
-     component managers) → `ARCHITECTURE.md` and `ARCHITECTURE.llm`
-   - **Recent Development** milestones → `README.md` "Recent Development" section
-     (keep the 10 most notable entries)
-   - **Development status** summary → `CLAUDE.md` "Current Development Status"
-     "Recent Work" section
-4. Commit changes in the git repo
-5. Tag the commit with the new version
+
+3. Commit changes in the git repo and tag the commit with the new version
 
 ### Architecture documentation files and what they contain
 
@@ -242,7 +108,6 @@ These files have version-stamped metadata that must stay in sync:
 | `README.md` | User-facing overview | Version, test count, LOC, file count, recent development |
 | `ARCHITECTURE.md` | Detailed architecture guide | Version |
 | `ARCHITECTURE.llm` | LLM-optimized architecture | Version |
-| `CLAUDE.md` | AI assistant working guide | Version, test count, recent work summary |
 
 ### Known Test Issues
 
@@ -256,42 +121,10 @@ These files have version-stamped metadata that must stay in sync:
    - Status: All functionality works correctly; this is purely a test infrastructure issue
    - Documentation: See `tests/integration/subshells/README.md` for detailed explanation
 
-2. **Interactive Test Limitations**:
-   - Interactive tests in `tests/system/interactive/` are currently skipped
-   - Use pexpect but have process management issues
-   - Marked with `pytest.mark.skip` until pexpect issues resolved
-
-3. **Pytest Collection Best Practices**:
+2. **Pytest Collection Best Practices**:
    - Don't name source files starting with `test_`
    - Don't name classes starting with `Test` unless they're actual test classes
-   - These will confuse pytest's test collection
-
-4. **Legacy Test Issues (Resolved)**:
-   - Previous test isolation problems were resolved in 2025 migration
-   - Legacy tests archived in `tests_archived/` for historical reference
-
-### Common Tasks
-
-**Add a new builtin:**
-1. Create file in `psh/builtins/` (e.g., `mycommand.py`)
-2. Inherit from `Builtin` class and implement `execute()` method
-3. Add `@builtin` decorator to auto-register
-4. Add tests in `tests/unit/builtins/` for new features (recommended)
-5. Add conformance tests in `tests/conformance/` if POSIX/bash relevant
-
-**Add a shell option (set -x, etc):**
-1. Add to short_to_long mapping in `psh/builtins/environment.py` SetBuiltin
-2. Add to `psh/core/state.py` options dictionary with default value
-3. Implement behavior in relevant component (e.g., executor for xtrace)
-4. Add tests in `tests/unit/builtins/` (recommended)
-
-**Modify parser:**
-1. Add tokens to `psh/token_types.py` if needed
-2. Update `psh/lexer/` package for new tokens (modular_lexer.py for main logic, constants.py for new token constants)
-3. Add AST nodes to `psh/ast_nodes.py`
-4. Update the appropriate module in `psh/parser/recursive_descent/parsers/`
-5. Implement visitor methods in `psh/executor/core.py` (or the relevant specialized executor)
-
+ 
 ## Architecture Quick Reference
 
 ### Subsystem Documentation
@@ -366,27 +199,6 @@ Input → Line Continuation → Tokenization → Parsing → AST → Expansion �
 ## Development Guidelines
 
 ### Testing
-
-**Running Tests Efficiently**
-
-When running the full test suite or any large test run, always redirect output to a file so you can inspect results without re-running:
-
-```bash
-# Good: save output, then inspect
-python run_tests.py > tmp/test-results.txt 2>&1; tail -15 tmp/test-results.txt
-grep FAILED tmp/test-results.txt          # List failures
-grep -B 5 "AssertionError" tmp/test-results.txt  # See assertion details
-
-# Bad: piping to tail loses output, forcing a second run to find failures
-python run_tests.py 2>&1 | tail -15
-# ...then having to re-run to grep for FAILED
-```
-
-The same applies to `pytest` runs — redirect to a file first, then inspect:
-
-```bash
-python -m pytest tests/unit/ > tmp/unit-results.txt 2>&1; tail -20 tmp/unit-results.txt
-```
 
 **Test Writing Guidelines**
 
@@ -464,29 +276,7 @@ def test_posix_compliance():
 - Always verify exit codes
 - Use appropriate test markers (@pytest.mark.serial, @pytest.mark.isolated)
 
-See `docs/test_pattern_guide.md` for comprehensive examples and patterns.
-
-### Code Patterns
-```python
-# Builtin implementation
-@builtin
-class MyBuiltin(Builtin):
-    name = "mybuiltin"
-    
-    def execute(self, args: List[str], shell: 'Shell') -> int:
-        # Validate args
-        if len(args) < 2:
-            self.error("not enough arguments", shell)
-            return 1
-        # Do work
-        return 0
-
-# Visitor implementation  
-class MyVisitor(ASTVisitor[T]):
-    def visit_SimpleCommand(self, node: SimpleCommand) -> T:
-        # Process node
-        return result
-```
+See `docs/test_pattern_guide.md` for examples and patterns.
 
 ### Error Handling
 - Use `self.error()` in builtins for consistent error messages
@@ -497,108 +287,6 @@ class MyVisitor(ASTVisitor[T]):
 
 **Version**: 0.192.0 (see CHANGELOG.md for detailed history)
 
-**Recent Work**:
-- **Add 5 Missing Redirection Operators (v0.192.0)**:
-  - Added 3 new token types: `REDIRECT_READWRITE` (`<>`),
-    `REDIRECT_CLOBBER` (`>|`), `PIPE_AND` (`|&`). `&>` and `&>>` reuse
-    existing types with `combined_redirect` flag on `Token`
-  - Added `combined: bool` to `Redirect` AST, `pipe_stderr: List[bool]`
-    to `Pipeline` AST
-  - Updated both parsers (recursive descent and combinator) to handle
-    new redirect types and `|&` pipe separator
-  - Added `_redirect_readwrite()`, `_redirect_clobber()`,
-    `_redirect_combined()` to `FileRedirector`; updated all 4 dispatch
-    methods; `PipelineExecutor` handles `|&` via `os.dup2(1, 2)`
-  - 21 new tests (9 lexer unit, 12 integration); parser parity tests
-    updated (removed `skip_combinator` for `&>`)
-  - `<>` and `>|` are POSIX-defined; `&>`, `&>>`, `|&` are bash/zsh
-- **Clean Up TokenType Enum (v0.191.0)**:
-  - Removed 21 dead token types: 11 assignment operators, 3 glob tokens,
-    4 test operators, 3 special construct markers (enum 80 → 59 entries)
-  - Added `fd: Optional[int]` field to `Token`; lexer now emits
-    fd-prefixed redirects (e.g. `2>`) as single tokens with fd metadata
-    instead of WORD + redirect operator
-  - Added `_try_fd_prefixed_redirect()` to `OperatorRecognizer`
-  - Removed `_is_fd_prefixed_redirect()` / `_parse_fd_prefixed_redirect()`
-    from both parsers; parsers now read `token.fd` directly
-  - Token formatter shows `fd=N` suffix in `--debug-tokens` output
-- **Fix Lexer Token Type Issues (v0.190.0)**:
-  - Removed `REDIRECT_ERR`/`REDIRECT_ERR_APPEND` token types; `2>` now
-    tokenizes as `REDIRECT_OUT '>' fd=2` (single token with fd metadata)
-  - Fixed `}` to use `command_position` check instead of "followed by
-    delimiter" heuristic — `}` in brace expansions is now correctly `WORD`
-  - Added case pattern context tracking (`case_depth`, `in_case_pattern`)
-    so `[` in case patterns is collected as glob word, not `LBRACKET`
-  - Removed parser workarounds: `_parse_err_redirect()`, combinator
-    RBRACE hack, LBRACKET reconstruction in case patterns
-- **Interactive Public API Cleanup (v0.187.0)**:
-  - Rewrote `__init__.py`: added module docstring, `load_rc_file` and
-    `is_safe_rc_file` imports; trimmed `__all__` from 7 to 2 items
-  - Removed vestigial `execute()` abstractmethod from `InteractiveComponent`
-    ABC and all 5 subclass implementations
-  - Fixed 2 bypass imports in `shell.py` to use package-level imports
-  - Fixed dead `shell.signal_manager` access in `repl_loop.py` and
-    `multiline_handler.py` (restores SIGCHLD/SIGWINCH handling)
-  - Updated `interactive/CLAUDE.md`: replaced stale pseudocode, added
-    `rc_loader.py` to key files
-- **Move create_parser to parser package (v0.186.0)**:
-  - Moved `create_parser()` from `psh/utils/parser_factory.py` to
-    `psh/parser/__init__.py`; deleted `parser_factory.py`
-  - Changed signature to take explicit `active_parser` and `trace_parsing`
-    arguments instead of the whole `shell` object
-  - Updated parser `__all__` (5 → 6 items), utils `__all__` (10 → 9 items)
-- **Core Public API Cleanup (v0.185.0)**:
-  - Rewrote `__init__.py`: added module docstring, 7 new imports
-    (`ExpansionError`, `OptionHandler`, `TrapManager`, `is_valid_assignment`,
-    `extract_assignments`, `is_exported`); updated `__all__` from 11 to 18
-  - Fixed 43 bypass imports across 16 files (exceptions, variables, options,
-    trap_manager, assignment_utils, state) to use package-level imports
-  - Removed stale `scope.py` row from `core/CLAUDE.md`
-- **Builtins Public API Cleanup (v0.184.0)**:
-  - Populated `__init__.py` with `FunctionReturn` and `PARSERS` imports;
-    updated `__all__` from 3 to 5 items; added module-level docstring
-  - Fixed 7 bypass imports across 6 files (`core.py`, `function.py`,
-    `command.py`, `strategies.py` x2, `pipeline.py`, `__main__.py`) to
-    use package-level imports
-  - Corrected 6 command-to-file mapping errors in `builtins/CLAUDE.md`
-- **Utils Public API Cleanup (v0.183.0)**:
-  - Populated `__init__.py` with `__all__` (11 items), imports, and docstring;
-    all public symbols now importable from `psh.utils` directly
-  - Deleted ~103 lines of dead code from `signal_utils.py`: `block_signals()`,
-    `restore_default_signals()` context managers, and
-    `SignalNotifier.has_notifications()` (zero callers each)
-  - Fixed 4 bypass imports in `signal_manager.py`, `function_support.py`,
-    `source_processor.py`, `debug_control.py` to use package-level imports
-- **Executor Public API Cleanup (v0.182.0)**:
-  - Trimmed `__all__` from 13 to 5 items; removed 10 items
-    (`PipelineContext`, `PipelineExecutor`, `CommandExecutor`,
-    `ControlFlowExecutor`, `ArrayOperationExecutor`,
-    `FunctionOperationExecutor`, `SubshellExecutor`,
-    `ExecutionStrategy`, `BuiltinExecutionStrategy`,
-    `FunctionExecutionStrategy`) that remain importable as convenience imports
-  - Added 2 missing items: `apply_child_signal_policy` and
-    `TestExpressionEvaluator` (both have production callers)
-  - Fixed 5 bypass imports in 4 files (`command_builtin.py`, `shell.py`,
-    `command_sub.py`, `process_sub.py`) to use package-level imports
-  - Fixed `__init__.py` docstring: removed non-existent modules
-    (`arithmetic`, `utils`); added `strategies`, `process_launcher`,
-    `child_policy`, `test_evaluator`
-  - Added 6 per-type redirect helpers (`_redirect_input_from_file`,
-    `_redirect_heredoc`, `_redirect_herestring`, `_redirect_output_to_file`,
-    `_redirect_dup_fd`, `_redirect_close_fd`)
-  - Rewrote `apply_redirections`, `apply_permanent_redirections`,
-    `setup_child_redirections`, `setup_builtin_redirections` to use helpers
-- **Parser Public API Cleanup (v0.178.0)**:
-  - Trimmed `__all__` from 17 to 5 items; demoted Tier 2 to convenience
-    imports; removed Tier 3 from package-level `__all__`; deleted
-    `factory.py` (6 functions); trimmed `context_factory.py` from 8 to 1
-    function; deleted `parse_strict_posix`/`parse_permissive`; fixed
-    bypass imports in `parse_tree.py` and `parser_factory.py`
-- **Lexer Public API Cleanup (v0.177.0)**:
-  - Trimmed `__all__` from 27 to 5 items; demoted Tier 2 to convenience
-    imports; removed Tier 3 from package-level imports; replaced
-    `isinstance(token, RichToken)` with `token.parts`; deleted stale
-    `__version__`; added API reference doc
 ## Debugging Tips
 
 1. **Import Errors**: Clear `__pycache__` directories if you see module import issues
@@ -606,20 +294,10 @@ class MyVisitor(ASTVisitor[T]):
 3. **Parser Issues**: Use `--debug-ast` and `--debug-tokens` to see parsing details
 4. **Expansion Issues**: Use `--debug-expansion` to trace variable/command expansion
 
-## Resources
-
-- **Architecture**: See ARCHITECTURE.llm for detailed component guide
-- **POSIX Compliance**: See docs/posix/posix_compliance_summary.md
-- **Version History**: See CHANGELOG.md for detailed changelog
-- **Test Patterns**: See tests/test_shell_options.py for good examples
-
 ## Important Notes
 
 - Use `tmp/` subdirectory for temporary files, not system `/tmp`
-- The visitor executor is now the default (legacy executor was removed)
-- All source code has been written by Claude using Sonnet 4 and Opus 4 models
 - Educational focus means clarity over performance in implementation choices
 
 ## Development Principles
-
 - If we assert that a feature of psh is POSIX or bash conformant in the user's guide (docs/user_guide/*) then we must have a test in conformance_tests which proves it.
