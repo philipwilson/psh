@@ -101,6 +101,35 @@ class LineEditor:
             self._char_buf = list(response) + self._char_buf
         return -1
 
+    def _drain_stale_cpr(self):
+        """Discard any cursor position report responses pending on stdin.
+
+        CPR responses (``ESC[row;colR``) can queue up if DSR queries were
+        sent while the terminal was in the background.  If not drained
+        they appear as junk text after the prompt.
+        """
+        if self._stdin_fd < 0:
+            return
+        while True:
+            try:
+                ready, _, _ = select.select([self._stdin_fd], [], [], 0)
+                if not ready:
+                    break
+                data = os.read(self._stdin_fd, 256)
+                if not data:
+                    break
+                text = data.decode('ascii', errors='replace')
+                # Strip any complete or partial CPR responses.
+                # Full: ESC [ digits ; digits R
+                # Partial (prefix already consumed): digits ; digits R
+                cleaned = re.sub(r'(\x1b\[)?\d+;\d+R', '', text)
+                if cleaned:
+                    # Non-CPR data was mixed in — put it back
+                    self._char_buf.extend(cleaned)
+                    break
+            except OSError:
+                break
+
     def _read_char(self) -> str:
         """Read one character from stdin via the raw file descriptor.
 
@@ -160,6 +189,7 @@ class LineEditor:
         stdin_fd = sys.stdin.fileno()
         self._stdin_fd = stdin_fd
         self._char_buf = []
+        self._drain_stale_cpr()
         watch_fds = [stdin_fd]
         if sigwinch_fd >= 0:
             watch_fds.append(sigwinch_fd)
@@ -346,9 +376,15 @@ class LineEditor:
         return None
 
     def _handle_arrow_sequence(self) -> Optional[str]:
-        """Handle arrow key sequences."""
+        """Handle CSI (ESC [) sequences including arrow keys.
+
+        Reads the full CSI sequence so that unrecognised sequences
+        (including cursor position reports ``ESC[row;colR``) are
+        silently consumed rather than leaking into the input buffer.
+        """
         seq = self._read_char()
 
+        # Simple single-character CSI sequences (arrow keys, Home, End)
         if seq == 'A':  # Up arrow
             return 'previous_history'
         elif seq == 'B':  # Down arrow
@@ -361,6 +397,35 @@ class LineEditor:
             return 'move_beginning_of_line'
         elif seq == 'F':  # End
             return 'move_end_of_line'
+
+        # Parameterised CSI sequence (e.g. ESC[3~, ESC[1;5C, ESC[4;50R).
+        # Read parameter bytes (digits, semicolons) then the final byte
+        # (ASCII 0x40–0x7E) so the whole sequence is consumed.
+        if seq and (seq.isdigit() or seq == ';'):
+            params = [seq]
+            while True:
+                ch = self._read_char()
+                if not ch:
+                    break
+                params.append(ch)
+                # Final byte of a CSI sequence is in the range @ .. ~
+                if '\x40' <= ch <= '\x7e':
+                    break
+
+            final = params[-1] if params else ''
+
+            # Map some common parameterised sequences
+            param_str = ''.join(params[:-1])
+            if final == '~':
+                if param_str == '3':  # Delete key (ESC[3~)
+                    return 'delete_char'
+                elif param_str == '1':  # Home (ESC[1~)
+                    return 'move_beginning_of_line'
+                elif param_str == '4':  # End (ESC[4~)
+                    return 'move_end_of_line'
+
+            # CPR responses (ESC[row;colR) and other unrecognised
+            # sequences are silently discarded.
 
         return None
 
