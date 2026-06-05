@@ -10,6 +10,50 @@ from typing import Dict, Optional, Set, Tuple
 from .constants import DOUBLE_QUOTE_ESCAPES
 
 
+class QuoteState:
+    """Tracks single/double-quote and backslash-escape state during a forward
+    left-to-right scan of shell text.
+
+    Feed each character in order to ``consume()``; it updates the state and
+    reports whether that character is "active" — i.e. outside quotes and not
+    itself a quote toggle or an escape (lead or escaped) character — so the
+    caller can apply its own structural logic (delimiters, terminators, bracket
+    counting) only to active characters while still copying every character.
+
+    By default a backslash inside single quotes is a literal (shell semantics);
+    pass ``backslash_literal_in_single=False`` to treat ``\\`` as an escape
+    everywhere.
+    """
+
+    __slots__ = ('in_single', 'in_double', '_escaped', '_bsl_literal_single')
+
+    def __init__(self, backslash_literal_in_single: bool = True):
+        self.in_single = False
+        self.in_double = False
+        self._escaped = False
+        self._bsl_literal_single = backslash_literal_in_single
+
+    @property
+    def in_quotes(self) -> bool:
+        return self.in_single or self.in_double
+
+    def consume(self, char: str) -> bool:
+        """Advance the state by one character; return True if it is active."""
+        if self._escaped:
+            self._escaped = False
+            return False
+        if char == '\\' and not (self._bsl_literal_single and self.in_single):
+            self._escaped = True
+            return False
+        if char == "'" and not self.in_double:
+            self.in_single = not self.in_single
+            return False
+        if char == '"' and not self.in_single:
+            self.in_double = not self.in_double
+            return False
+        return not self.in_quotes
+
+
 def read_until_char(
     input_text: str,
     start_pos: int,
