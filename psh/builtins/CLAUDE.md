@@ -27,7 +27,8 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 **I/O Operations**
 | File | Commands |
 |------|----------|
-| `io.py` | `echo`, `printf`, `pwd` |
+| `io.py` | `echo`, `printf`, `pwd` (plus shared `process_escapes()` helper) |
+| `print_builtin.py` | `print` (zsh-compatible) |
 | `read_builtin.py` | `read` |
 
 **Navigation & Directory**

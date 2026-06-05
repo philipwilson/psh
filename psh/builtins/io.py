@@ -12,6 +12,88 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+def process_escapes(text: str) -> Tuple[str, bool]:
+    """Process backslash escape sequences in ``text``.
+
+    Returns ``(processed_text, terminate)`` where ``terminate`` is True when a
+    ``\\c`` sequence was found (output should stop and no trailing newline is
+    added). Shared by the ``echo`` and ``print`` builtins so there is a single
+    escape-handling implementation.
+    """
+    # Check for \c first (terminates output)
+    if '\\c' in text:
+        text = text[:text.index('\\c')]
+        return text, True
+
+    # First, protect double backslashes by replacing them temporarily
+    # Use a placeholder that won't appear in normal text
+    text = text.replace('\\\\', '\x01BACKSLASH\x01')
+
+    # Process escape sequences
+    replacements = [
+        ('\\n', '\n'),
+        ('\\t', '\t'),
+        ('\\r', '\r'),
+        ('\\b', '\b'),
+        ('\\f', '\f'),
+        ('\\a', '\a'),
+        ('\\v', '\v'),
+        ('\\e', '\x1b'),  # Escape character
+        ('\\E', '\x1b'),  # Escape character (alternative)
+    ]
+
+    # Apply simple replacements
+    for old, new in replacements:
+        text = text.replace(old, new)
+
+    # Handle hex sequences \xhh
+    def replace_hex(match):
+        hex_str = match.group(1)
+        try:
+            return chr(int(hex_str, 16))
+        except ValueError:
+            return match.group(0)
+    text = re.sub(r'\\x([0-9a-fA-F]{1,2})', replace_hex, text)
+
+    # Handle unicode sequences \uhhhh
+    def replace_unicode4(match):
+        hex_str = match.group(1)
+        try:
+            return chr(int(hex_str, 16))
+        except ValueError:
+            return match.group(0)
+    text = re.sub(r'\\u([0-9a-fA-F]{4})', replace_unicode4, text)
+
+    # Handle unicode sequences \Uhhhhhhhh
+    def replace_unicode8(match):
+        hex_str = match.group(1)
+        try:
+            return chr(int(hex_str, 16))
+        except ValueError:
+            return match.group(0)
+    text = re.sub(r'\\U([0-9a-fA-F]{8})', replace_unicode8, text)
+
+    # Handle octal sequences \nnn
+    def replace_octal(match):
+        octal_str = match.group(1)
+        try:
+            value = int(octal_str, 8)
+            if value <= 255:  # Octal values should be in byte range
+                return chr(value)
+            else:
+                return match.group(0)
+        except ValueError:
+            return match.group(0)
+    # Match \0nnn format (with explicit 0) - up to 3 octal digits after \0
+    # or \nnn where n starts with 0-3 (for values 0-255 in octal)
+    text = re.sub(r'\\(0[0-7]{1,3}|[0-3][0-7]{2})', replace_octal, text)
+
+    # Finally restore protected backslashes
+    text = text.replace('\x01BACKSLASH\x01', '\\')
+
+    return text, False
+
+
 @builtin
 class EchoBuiltin(Builtin):
     """Echo arguments to stdout."""
@@ -76,79 +158,7 @@ class EchoBuiltin(Builtin):
 
     def _process_escapes(self, text: str) -> Tuple[str, bool]:
         """Process escape sequences. Returns (processed_text, terminate_output)."""
-        # Check for \c first (terminates output)
-        if '\\c' in text:
-            text = text[:text.index('\\c')]
-            return text, True
-
-        # First, protect double backslashes by replacing them temporarily
-        # Use a placeholder that won't appear in normal text
-        text = text.replace('\\\\', '\x01BACKSLASH\x01')
-
-        # Process escape sequences
-        # Use a function to handle replacements to avoid conflicts
-        replacements = [
-            ('\\n', '\n'),
-            ('\\t', '\t'),
-            ('\\r', '\r'),
-            ('\\b', '\b'),
-            ('\\f', '\f'),
-            ('\\a', '\a'),
-            ('\\v', '\v'),
-            ('\\e', '\x1b'),  # Escape character
-            ('\\E', '\x1b'),  # Escape character (alternative)
-        ]
-
-        # Apply simple replacements
-        for old, new in replacements:
-            text = text.replace(old, new)
-
-        # Handle hex sequences \xhh
-        def replace_hex(match):
-            hex_str = match.group(1)
-            try:
-                return chr(int(hex_str, 16))
-            except ValueError:
-                return match.group(0)
-        text = re.sub(r'\\x([0-9a-fA-F]{1,2})', replace_hex, text)
-
-        # Handle unicode sequences \uhhhh
-        def replace_unicode4(match):
-            hex_str = match.group(1)
-            try:
-                return chr(int(hex_str, 16))
-            except ValueError:
-                return match.group(0)
-        text = re.sub(r'\\u([0-9a-fA-F]{4})', replace_unicode4, text)
-
-        # Handle unicode sequences \Uhhhhhhhh
-        def replace_unicode8(match):
-            hex_str = match.group(1)
-            try:
-                return chr(int(hex_str, 16))
-            except ValueError:
-                return match.group(0)
-        text = re.sub(r'\\U([0-9a-fA-F]{8})', replace_unicode8, text)
-
-        # Handle octal sequences \nnn
-        def replace_octal(match):
-            octal_str = match.group(1)
-            try:
-                value = int(octal_str, 8)
-                if value <= 255:  # Octal values should be in byte range
-                    return chr(value)
-                else:
-                    return match.group(0)
-            except ValueError:
-                return match.group(0)
-        # Match \0nnn format (with explicit 0) - up to 3 octal digits after \0
-        # or \nnn where n starts with 0-3 (for values 0-255 in octal)
-        text = re.sub(r'\\(0[0-7]{1,3}|[0-3][0-7]{2})', replace_octal, text)
-
-        # Finally restore protected backslashes
-        text = text.replace('\x01BACKSLASH\x01', '\\')
-
-        return text, False
+        return process_escapes(text)
 
     def _write_output(self, text: str, suppress_newline: bool, shell: 'Shell'):
         """Write output to appropriate file descriptor."""

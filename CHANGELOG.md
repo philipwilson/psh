@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.193.0 (2026-06-05) - Add zsh-compatible `print` builtin
+- New `psh/builtins/print_builtin.py` implementing a zsh-style `print` command.
+  Unlike `echo`, `print` interprets backslash escapes by default (`-r` for raw).
+- Supported flags: `-n`, `-r`, `-R`, `-e`, `-l`, `-N`, `-s` (history), `-u fd`,
+  `-f format` (printf-style), `-m` (pattern filter), `-o`/`-O`/`-i` (sort),
+  `-P` (prompt expansion), plus `--` / `-` option terminators.
+- Unsupported zsh flags (`-z -c -C -D -x -X -a -p`) are reported as errors.
+- Escape processing extracted to a shared `process_escapes()` helper in
+  `psh/builtins/io.py`, now used by both `echo` and `print` (single
+  implementation).
+- Tests: unit (`tests/unit/builtins/test_print_builtin.py`), integration for
+  redirection/pipelines/fds (`tests/integration/builtins/test_print_integration.py`),
+  and a zsh-comparison suite (`tests/system/test_print_vs_zsh.py`, skipped when
+  zsh is absent) — the compatibility guard, since the conformance framework
+  only compares against bash, which has no `print`.
+- Note: existing scripts invoking an external `print` command will now resolve
+  to the builtin.
+
 ## 0.192.2 (2026-02-26) - Terminal window title updates
 - New `psh/interactive/title.py` with `set_terminal_title()`, `idle_title()`,
   and `command_title()` functions using OSC 0 escape sequences.

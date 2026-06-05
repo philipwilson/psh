@@ -639,6 +639,68 @@ psh$ printf "%*.*f\n" 10 2 3.14159
       3.14
 ```
 
+### print - Display Text (zsh-compatible)
+
+The `print` builtin is a **zsh-style extension** (it is not part of POSIX and
+has no bash equivalent). Unlike `echo`, `print` interprets backslash escape
+sequences **by default**; use `-r` to print arguments raw.
+
+```bash
+# Arguments are joined with spaces; escapes are interpreted by default
+psh$ print 'a\tb'
+a	b
+
+# Raw output (no escape interpretation)
+psh$ print -r 'a\tb'
+a\tb
+
+# One argument per line, and no trailing newline
+psh$ print -l a b c
+a
+b
+c
+psh$ print -n done
+
+# printf-style formatting
+psh$ print -f '%s=%d\n' a 1 b 2
+a=1
+b=2
+
+# Keep only arguments matching a pattern (first arg is the pattern)
+psh$ print -m 'f*' foo far bar
+foo far
+
+# Sort arguments (ascending / descending / case-insensitive)
+psh$ print -o c b a
+a b c
+psh$ print -i -o B a C
+a B C
+
+# Write to a specific file descriptor (e.g. stderr)
+psh$ print -u2 "a warning"
+```
+
+Supported options:
+
+| Option | Effect |
+|--------|--------|
+| `-n` | Do not add the trailing newline |
+| `-r` | Raw: do not interpret escape sequences |
+| `-R` | BSD `echo` emulation (raw); only `-e`/`-n` recognised afterwards |
+| `-e` | (Re)enable escape interpretation |
+| `-l` | Separate arguments with newlines instead of spaces |
+| `-N` | Use a NUL byte as separator and terminator |
+| `-s` | Append the arguments to the history list instead of printing |
+| `-u fd` | Write to file descriptor `fd` (e.g. `-u2`) |
+| `-f fmt` | Format arguments using a printf-style format string |
+| `-m` | Treat the first argument as a pattern; print only matching args |
+| `-o` / `-O` | Sort arguments ascending / descending |
+| `-i` | With `-o`/`-O`, sort case-insensitively |
+| `-P` | Perform prompt expansion (psh prompt escapes, e.g. `\h`, `\u`) |
+
+The following zsh `print` options are **not supported** and produce an error:
+`-z`, `-c`, `-C`, `-D`, `-x`, `-X`, `-a`, `-p`.
+
 ### read - Read User Input
 
 Read input into variables with various options:

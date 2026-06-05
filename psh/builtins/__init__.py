@@ -20,6 +20,7 @@ Modules:
     parser_control  - parser control commands
     parser_experiment - parser-select; PARSERS dict
     positional      - shift, getopts
+    print_builtin   - print (zsh-compatible)
     read_builtin    - read
     registry        - BuiltinRegistry and @builtin decorator
     shell_options   - shopt
@@ -50,6 +51,7 @@ from . import (
     parser_control,
     parser_experiment,
     positional,
+    print_builtin,
     read_builtin,
     shell_options,
     shell_state,
