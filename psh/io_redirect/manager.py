@@ -88,7 +88,7 @@ class IOManager:
                 stderr_backup = sys.stderr
                 is_append = redirect.type.endswith('>>')
                 mode = 'a' if is_append else 'w'
-                if not is_append and self.state.options.get('noclobber', False) and os.path.exists(target):
+                if not is_append and self.file_redirector._noclobber_blocks(target):
                     raise OSError(f"cannot overwrite existing file: {target}")
                 f = open(target, mode)
                 sys.stdout = f
@@ -215,7 +215,7 @@ class IOManager:
             try:
                 if redirect.combined:
                     # &> or &>> — redirect both stdout and stderr in child
-                    if not redirect.type.endswith('>>') and self.state.options.get('noclobber', False) and os.path.exists(target):
+                    if not redirect.type.endswith('>>') and self.file_redirector._noclobber_blocks(target):
                         os.write(2, f"psh: cannot overwrite existing file: {target}\n".encode('utf-8'))
                         os._exit(1)
                     self.file_redirector._redirect_combined(target, redirect)
@@ -231,17 +231,14 @@ class IOManager:
                     self.file_redirector._redirect_clobber(target, redirect)
                 elif redirect.type in ('>', '>>'):
                     # Child-process noclobber must exit, not raise
-                    if redirect.type == '>' and self.state.options.get('noclobber', False) and os.path.exists(target):
+                    if redirect.type == '>' and self.file_redirector._noclobber_blocks(target):
                         os.write(2, f"psh: cannot overwrite existing file: {target}\n".encode('utf-8'))
                         os._exit(1)
                     self.file_redirector._redirect_output_to_file(target, redirect, check_noclobber=False)
                 elif redirect.type == '>&':
                     # Child-process fd dup: must exit on error, not raise
                     if redirect.fd is not None and redirect.dup_fd is not None:
-                        try:
-                            import fcntl
-                            fcntl.fcntl(redirect.dup_fd, fcntl.F_GETFD)
-                        except OSError:
+                        if not self.file_redirector._dup_fd_valid(redirect.dup_fd):
                             os.write(2, f"psh: {redirect.dup_fd}: Bad file descriptor\n".encode('utf-8'))
                             os._exit(1)
                         os.dup2(redirect.dup_fd, redirect.fd)
@@ -252,10 +249,7 @@ class IOManager:
                             pass
                 elif redirect.type == '<&':
                     if redirect.fd is not None and redirect.dup_fd is not None:
-                        try:
-                            import fcntl
-                            fcntl.fcntl(redirect.dup_fd, fcntl.F_GETFD)
-                        except OSError:
+                        if not self.file_redirector._dup_fd_valid(redirect.dup_fd):
                             os.write(2, f"psh: {redirect.dup_fd}: Bad file descriptor\n".encode('utf-8'))
                             os._exit(1)
                         os.dup2(redirect.dup_fd, redirect.fd)
