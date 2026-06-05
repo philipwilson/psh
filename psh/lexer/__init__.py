@@ -46,7 +46,7 @@ def tokenize(input_string: str, strict: bool = True, shell_options: dict = None)
     Returns:
         List of tokens representing the parsed command
     """
-    from ..brace_expansion import BraceExpander, BraceExpansionError
+    from ..brace_expansion import TokenBraceExpander
     from ..token_transformer import TokenTransformer
 
     # Create appropriate lexer config based on strict mode
@@ -59,22 +59,19 @@ def tokenize(input_string: str, strict: bool = True, shell_options: dict = None)
     if shell_options and shell_options.get('extglob', False):
         config.enable_extglob = True
 
-    try:
-        # Expand braces first
-        expander = BraceExpander()
-        expanded_string = expander.expand_line(input_string)
-    except BraceExpansionError:
-        # If brace expansion fails, use original string
-        lexer = ModularLexer(input_string, config=config)
-        tokens = lexer.tokenize()
-    else:
-        # Run modular lexer on expanded string
-        lexer = ModularLexer(expanded_string, config=config)
-        tokens = lexer.tokenize()
+    # Tokenize the raw input. Brace expansion happens AFTER tokenization (on the
+    # token stream), so generated characters are never re-lexed and quote/
+    # command-position context is available.
+    lexer = ModularLexer(input_string, config=config)
+    tokens = lexer.tokenize()
 
-    # Normalize keywords before running additional transformations
+    # Normalize keywords first so the brace expander can see command-prefix
+    # boundaries (separators, do/then, etc.) when deciding assignment words.
     normalizer = KeywordNormalizer()
     tokens = normalizer.normalize(tokens)
+
+    # Brace expansion on the token stream.
+    tokens = TokenBraceExpander().expand(tokens)
 
     # Apply token transformations
     transformer = TokenTransformer()

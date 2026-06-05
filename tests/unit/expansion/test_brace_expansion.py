@@ -247,13 +247,12 @@ class TestBraceExpansionEscaping:
         # The quoted part should not expand
         assert "a,b" in captured.out and "c" in captured.out
 
-    @pytest.mark.xfail(reason="Pre-tokenization brace expansion inserts spaces; # becomes comment")
     def test_special_chars_in_expansion(self, shell, capsys):
         """Test special characters in expansion.
 
-        PSH does brace expansion as string preprocessing before tokenization,
-        so {$,#,@} becomes 'echo $ # @' and '#' is treated as a comment.
-        Bash handles this at the word level, avoiding the issue.
+        Brace expansion now happens at the token level (not as string
+        preprocessing), so {$,#,@} expands word-wise and '#' is not turned
+        into a comment.
         """
         shell.run_command('echo {$,#,@}')
         captured = capsys.readouterr()
