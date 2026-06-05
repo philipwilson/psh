@@ -58,7 +58,8 @@ class VariableExpander:
                 if result is not None:
                     return result
 
-            # Check for advanced parameter expansion
+            # All parameter-expansion operators (colon and non-colon) go
+            # through the single application path in expand_parameter_direct.
             try:
                 operator, var_name, operand = self.param_expansion.parse_expansion('${' + var_content + '}')
                 if operator:
@@ -66,46 +67,14 @@ class VariableExpander:
             except (ValueError, AttributeError):
                 pass
 
-            # Handle ${var:-default} syntax
-            if ':-' in var_content:
-                var_name, default = var_content.split(':-', 1)
-                value = self._get_var_or_positional(var_name)
-                if not value:
-                    return self._expand_tilde_in_operand(self.expand_string_variables(default))
-                return value
-            elif ':=' in var_content:
-                var_name, default = var_content.split(':=', 1)
-                value = self._get_var_or_positional(var_name)
-                if not value:
-                    expanded_default = self._expand_tilde_in_operand(self.expand_string_variables(default))
-                    if not var_name.isdigit():
-                        self._set_var_or_array_element(var_name, expanded_default)
-                    return expanded_default
-                return value
-            elif ':?' in var_content:
-                var_name, message = var_content.split(':?', 1)
-                value = self._get_var_or_positional(var_name)
-                if not value:
-                    expanded_message = self.expand_string_variables(message) if message else "parameter null or not set"
-                    print(f"psh: {var_name}: {expanded_message}", file=sys.stderr)
-                    self.state.last_exit_code = 127
-                    from ..core import ExpansionError
-                    raise ExpansionError(f"{var_name}: {expanded_message}", exit_code=127)
-                return value
-            elif ':+' in var_content:
-                var_name, alternative = var_content.split(':+', 1)
-                value = self._get_var_or_positional(var_name)
-                if value:
-                    return self._expand_tilde_in_operand(self.expand_string_variables(alternative))
-                return ''
-            else:
-                var_name = var_content
-                if self.state.options.get('nounset', False):
-                    from ..core import OptionHandler, UnboundVariableError
-                    try:
-                        OptionHandler.check_unset_variable(self.state, var_name)
-                    except UnboundVariableError:
-                        raise UnboundVariableError(f"psh: ${{{var_name}}}: unbound variable")
+            # No operator: a plain ${var}. Honor nounset.
+            var_name = var_content
+            if self.state.options.get('nounset', False):
+                from ..core import OptionHandler, UnboundVariableError
+                try:
+                    OptionHandler.check_unset_variable(self.state, var_name)
+                except UnboundVariableError:
+                    raise UnboundVariableError(f"psh: ${{{var_name}}}: unbound variable")
         else:
             var_name = var_expr
 

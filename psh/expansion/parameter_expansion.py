@@ -114,14 +114,16 @@ class ParameterExpansion:
                 # No replacement found, treat as pattern only
                 return operator, var_name, ''.join(pattern_parts) + '/'
             elif char == ':' and i > 0:
-                # Check if it's ${var:-default} or ${var:+alt} (handled elsewhere) vs ${var:offset}
-                if i + 1 < len(content) and content[i + 1] in '-+=?':
-                    # This is ${var:-default}, ${var:+alt}, ${var:=default}, or ${var:?msg}, skip to avoid conflict
+                before = content[:i]
+                # Don't treat a ':' inside an array subscript as an operator
+                # (slices like ${arr[@]:1:2} are handled before this point).
+                if before.count('[') > before.count(']'):
                     continue
-                # ${var:offset} or ${var:offset:length}
-                var_name = content[:i]
-                rest = content[i + 1:]
-                return ':', var_name, rest
+                # Colon operators: ${var:-w}, ${var:=w}, ${var:?w}, ${var:+w}.
+                if i + 1 < len(content) and content[i + 1] in '-+=?':
+                    return content[i:i + 2], before, content[i + 2:]
+                # Otherwise substring: ${var:offset} or ${var:offset:length}.
+                return ':', before, content[i + 1:]
             elif char in '-=+?' and i > 0 and content[i - 1] != ':':
                 # Non-colon operators ${var-w}, ${var=w}, ${var+w}, ${var?w}
                 # (unset test; colon variants are excluded above and handled
