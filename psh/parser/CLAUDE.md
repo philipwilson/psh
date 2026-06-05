@@ -70,13 +70,9 @@ try it interactively.
 | `heredoc_processor.py` | Post-parse heredoc content population |
 | `parser.py` | `ParserCombinatorShellParser` integration class |
 
-### Validation (`validation/`)
-
-| File | Purpose |
-|------|---------|
-| `validation_pipeline.py` | AST validation after parsing |
-| `semantic_analyzer.py` | Semantic analysis |
-| `validation_rules.py` | Specific validation rules |
+> Note: AST validation/linting/security analysis is performed by the visitor
+> validators in `psh/visitor/` (e.g. `EnhancedValidatorVisitor`), not by the
+> parser. There is no parser-side validation subsystem.
 
 ## Core Patterns
 

@@ -15,7 +15,6 @@ from psh.ast_nodes import CaseConditional, SelectLoop
 from psh.lexer import tokenize
 from psh.parser import Parser, ParserConfig
 from psh.parser.recursive_descent.helpers import ParseError
-from psh.parser.validation.validation_rules import ValidationReport
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -281,130 +280,6 @@ class TestParseWithHeredocs:
         # Should not raise
         ast = parser.parse_with_heredocs(heredoc_map)
         assert ast is not None
-
-
-# ===========================================================================
-# Commit 7: Fix config validation enum comparison
-# ===========================================================================
-
-# ===========================================================================
-# Codex Review Finding 2: Validation false positives
-# ===========================================================================
-
-class TestValidationFalsePositives:
-    """Tests for validation rules that previously produced false positives."""
-
-    def test_validate_fd_dup_no_false_positive(self):
-        """fd-dup redirect (2>&1) should not be flagged as missing target."""
-        from psh.ast_nodes import Redirect
-        from psh.parser.validation.validation_rules import (
-            ValidationContext,
-            ValidRedirectRule,
-        )
-        rule = ValidRedirectRule()
-        ctx = ValidationContext()
-        # fd-dup redirect: target is None but dup_fd is set
-        node = Redirect(type='>&', target=None, fd=2, dup_fd=1)
-        issues = rule.validate(node, ctx)
-        assert not issues, f"Unexpected issues: {issues}"
-
-    def test_validate_case_no_false_positive(self):
-        """case x in a) echo a;; esac should not be flagged as empty."""
-        from psh.parser.validation.validation_rules import (
-            NoEmptyBodyRule,
-            ValidationContext,
-        )
-        rule = NoEmptyBodyRule()
-        ctx = ValidationContext()
-        ast = parse('case x in a) echo a;; esac')
-        cases = _find_nodes(ast, CaseConditional)
-        assert len(cases) == 1
-        issues = rule.validate(cases[0], ctx)
-        assert not issues, f"Unexpected issues: {issues}"
-
-    def test_validate_varname_no_false_positive(self):
-        """Variable name 'var1' should not be flagged as invalid."""
-        from psh.ast_nodes import ArrayInitialization, SimpleCommand
-        from psh.parser.validation.validation_rules import (
-            ValidationContext,
-            ValidVariableNameRule,
-        )
-        rule = ValidVariableNameRule()
-        ctx = ValidationContext()
-        # Simulate a SimpleCommand with an array assignment named 'var1'
-        assignment = ArrayInitialization(name='var1', elements=['hello'])
-        node = SimpleCommand(
-            args=['var1=hello'],
-            words=[],
-            array_assignments=[assignment],
-        )
-        issues = rule.validate(node, ctx)
-        assert not issues, f"Unexpected issues: {issues}"
-
-
-# ===========================================================================
-# Codex Review Finding 7: Stale AST field refs in validation traversal
-# ===========================================================================
-
-class TestValidationTraversal:
-    """Tests that validation traversal uses correct AST field names."""
-
-    def test_validation_traversal_for_loop(self):
-        """Validation of for loop should not raise AttributeError."""
-        from psh.parser.validation.validation_pipeline import ValidationPipeline
-        ast = parse('for x in a b c; do echo $x; done')
-        pipeline = ValidationPipeline()
-        # Should not raise AttributeError for 'values' (field is 'items')
-        report = pipeline.validate(ast)
-        assert not report.has_errors()
-
-    def test_validation_traversal_case(self):
-        """Validation of case statement should not raise AttributeError."""
-        from psh.parser.validation.validation_pipeline import ValidationPipeline
-        ast = parse('case x in a) echo a;; esac')
-        pipeline = ValidationPipeline()
-        # Should not raise AttributeError for 'word'/'cases' (fields are 'expr'/'items')
-        report = pipeline.validate(ast)
-        assert not report.has_errors()
-
-    def test_validation_traversal_and_or_list(self):
-        """Validation of and-or list should not raise AttributeError."""
-        from psh.parser.validation.semantic_analyzer import SemanticAnalyzer
-        ast = parse('true && false || echo done')
-        analyzer = SemanticAnalyzer()
-        # Should not raise AttributeError for 'pipeline' (field is 'pipelines')
-        errors, warnings = analyzer.analyze(ast)
-        # No semantic errors expected for this valid construct
-        assert not errors
-
-
-# ===========================================================================
-# Codex Review Finding 3: Config field name disconnect
-# ===========================================================================
-
-class TestConfigValidationField:
-    """Tests that ParserConfig.enable_validation triggers validation."""
-
-    def test_config_enable_validation_triggers(self):
-        """ParserConfig(enable_validation=True) should produce a validation report."""
-        tokens = tokenize('for x in a b; do echo $x; done')
-        config = ParserConfig(enable_validation=True)
-        parser = Parser(tokens, source_text='for x in a b; do echo $x; done',
-                        config=config)
-        ast, report = parser.parse_and_validate()
-        assert ast is not None
-        # With validation enabled, the report should have been populated
-        # (may or may not have issues, but the pipeline ran)
-        assert isinstance(report, ValidationReport)
-
-    def test_config_validation_off_by_default(self):
-        """Default config should return empty report from parse_and_validate()."""
-        tokens = tokenize('echo hello')
-        parser = Parser(tokens, source_text='echo hello')
-        ast, report = parser.parse_and_validate()
-        assert ast is not None
-        # Validation not enabled, so report should be empty
-        assert not report.issues
 
 
 # ===========================================================================

@@ -21,7 +21,6 @@ from ...ast_nodes import (
 )
 from ...token_types import Token, TokenType
 from ..config import ErrorHandlingMode, ParserConfig
-from ..validation import Issue, SemanticAnalyzer, Severity, ValidationPipeline, ValidationReport
 from .base_context import ContextBaseParser
 from .context import ParserContext
 from .helpers import ParseError, TokenGroups
@@ -170,65 +169,6 @@ class Parser(ContextBaseParser):
     @current.setter
     def current(self, value: int):
         self.ctx.current = value
-
-    # === AST Validation ===
-
-    def parse_and_validate(self) -> Tuple[Optional[Union[CommandList, TopLevel]], ValidationReport]:
-        """Parse and validate AST, returning both AST and validation report."""
-        # Parse first
-        ast = None
-        try:
-            ast = self.parse()
-        except ParseError as e:
-            # If parsing fails, return the error in the validation report
-            report = ValidationReport()
-            report.add_issue(Issue(
-                message=str(e.message),
-                position=getattr(e.error_context, 'position', 0),
-                severity=Severity.ERROR,
-                rule_name="parse"
-            ))
-            return None, report
-
-        # If AST was created and validation is enabled, validate it
-        if ast and self.config.enable_validation:
-            return ast, self.validate_ast(ast)
-
-        # Return AST with empty validation report
-        return ast, ValidationReport()
-
-    def validate_ast(self, ast: Union[CommandList, TopLevel]) -> ValidationReport:
-        """Validate an AST and return validation report."""
-        if not ast:
-            return ValidationReport()
-
-        # Combine semantic analysis and validation rules
-        report = ValidationReport()
-
-        # Semantic analysis
-        if self.config.enable_semantic_analysis:
-            analyzer = SemanticAnalyzer()
-            errors, warnings = analyzer.analyze(ast)
-            report.add_errors(errors)
-            report.add_warnings(warnings)
-
-        # Validation rules
-        if self.config.enable_validation_rules:
-            pipeline = ValidationPipeline()
-            rule_report = pipeline.validate(ast)
-            report.add_issues(rule_report.issues)
-
-        return report
-
-    def enable_validation(self, enable_semantic: bool = True, enable_rules: bool = True):
-        """Enable AST validation features."""
-        self.config.enable_validation = True
-        self.config.enable_semantic_analysis = enable_semantic
-        self.config.enable_validation_rules = enable_rules
-
-    def disable_validation(self):
-        """Disable AST validation features."""
-        self.config.enable_validation = False
 
     # === Top-Level Parsing ===
 
