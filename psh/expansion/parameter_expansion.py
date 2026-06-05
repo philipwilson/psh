@@ -122,6 +122,17 @@ class ParameterExpansion:
                 var_name = content[:i]
                 rest = content[i + 1:]
                 return ':', var_name, rest
+            elif char in '-=+?' and i > 0 and content[i - 1] != ':':
+                # Non-colon operators ${var-w}, ${var=w}, ${var+w}, ${var?w}
+                # (unset test; colon variants are excluded above and handled
+                # separately). Skip inside an unclosed bracket expression (an
+                # array subscript or a case-mod pattern like [a-m]).
+                before = content[:i]
+                if before.count('[') > before.count(']'):
+                    continue
+                if before.endswith(']') and '[' in before:
+                    continue
+                return char, before, content[i + 1:]
 
         # Check for case modification ${var^pattern}, ${var^^pattern}, etc
         # This is checked after substitution to avoid conflicts with commas in patterns

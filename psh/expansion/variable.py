@@ -8,6 +8,10 @@ from .parameter_expansion import ParameterExpansion
 if TYPE_CHECKING:
     from ..shell import Shell
 
+# Sentinel for distinguishing an unset variable from one set to the empty
+# string (used by the non-colon parameter operators ${x-}, ${x+}, ...).
+_UNSET = object()
+
 
 class VariableExpander:
     """Handles variable and parameter expansion."""
@@ -283,9 +287,7 @@ class VariableExpander:
                 elements = var.value.all_elements()
                 if index_expr == '@':
                     return ' '.join(elements)
-                ifs = self.state.get_variable('IFS', ' \t\n')
-                separator = ifs[0] if ifs else ' '
-                return separator.join(elements)
+                return self._ifs_star_separator().join(elements)
             elif var and var.value:
                 return str(var.value)
             return ''
@@ -338,9 +340,7 @@ class VariableExpander:
         elif var_name == '@':
             return ' '.join(self.state.positional_params)
         elif var_name == '*':
-            ifs = self.state.get_variable('IFS', ' \t\n')
-            separator = ifs[0] if ifs else ' '
-            return separator.join(self.state.positional_params)
+            return self._ifs_star_separator().join(self.state.positional_params)
         elif var_name.isdigit():
             index = int(var_name) - 1
             if 0 <= index < len(self.state.positional_params):
@@ -501,9 +501,7 @@ class VariableExpander:
                 if index_expr == '@':
                     return ' '.join(results)
                 else:
-                    ifs = self.state.get_variable('IFS', ' \t\n')
-                    separator = ifs[0] if ifs else ' '
-                    return separator.join(results)
+                    return self._ifs_star_separator().join(results)
 
             # Handle regular indexed/associative array access
             elif var and isinstance(var.value, IndexedArray):
@@ -526,7 +524,8 @@ class VariableExpander:
             # Use _get_var_or_positional to handle special variables (#, ?, $, etc.)
             value = self._get_var_or_positional(var_name)
 
-        return self._apply_operator(operator, value, operand, var_name=var_name)
+        is_set = self._param_is_set(var_name) if operator in ('-', '=', '+', '?') else True
+        return self._apply_operator(operator, value, operand, var_name=var_name, is_set=is_set)
 
     def _expand_tilde_in_operand(self, text: str) -> str:
         """Apply tilde expansion to parameter expansion operand values."""
@@ -534,12 +533,87 @@ class VariableExpander:
             return self.shell.expansion_manager.tilde_expander.expand(text)
         return text
 
+    def _ifs_star_separator(self) -> str:
+        """Separator for joining $* / ${arr[*]}.
+
+        bash distinguishes unset IFS (join with a space) from a null IFS
+        (``IFS=``, join with no separator); only the first char is used
+        otherwise.
+        """
+        ifs = self.state.get_variable('IFS', None)
+        if ifs is None:
+            return ' '
+        return ifs[0] if ifs else ''
+
+    def _param_is_set(self, var_name: str) -> bool:
+        """Whether a parameter is set (distinct from set-but-empty).
+
+        Used by the non-colon operators ${x-w}/${x=w}/${x+w}/${x?w}, which
+        test only for "unset" (the colon variants test "unset or null").
+        """
+        if var_name == '':
+            return False
+        if var_name in ('?', '$', '!', '#', '-', '0'):
+            return True
+        if var_name in ('@', '*'):
+            return len(self.state.positional_params) > 0
+        if var_name.isdigit():
+            return 0 <= int(var_name) - 1 < len(self.state.positional_params)
+        if '[' in var_name and var_name.endswith(']'):
+            from ..core import AssociativeArray, IndexedArray
+            bracket = var_name.find('[')
+            name = var_name[:bracket]
+            index_expr = var_name[bracket + 1:-1]
+            var = self.state.scope_manager.get_variable_object(name)
+            if var is None:
+                return False
+            if isinstance(var.value, IndexedArray):
+                try:
+                    from ..arithmetic import evaluate_arithmetic
+                    index = evaluate_arithmetic(self.expand_array_index(index_expr), self.shell)
+                except Exception:
+                    index = 0
+                return var.value.get(index) is not None
+            if isinstance(var.value, AssociativeArray):
+                return var.value.get(self.expand_array_index(index_expr)) is not None
+            return False
+        return self.state.get_variable(var_name, _UNSET) is not _UNSET
+
     def _apply_operator(self, operator: str, value: str, operand: str,
-                        var_name: str = '') -> str:
-        """Apply a parameter expansion operator to a resolved value."""
+                        var_name: str = '', is_set: bool = True) -> str:
+        """Apply a parameter expansion operator to a resolved value.
+
+        ``is_set`` distinguishes unset from set-but-empty and is only consulted
+        by the non-colon operators (``-``, ``=``, ``+``, ``?``).
+        """
         if operator == ':-':
             if not value:
                 return self._expand_tilde_in_operand(self.expand_string_variables(operand))
+            return value
+        elif operator == '-':
+            # Unset -> operand; set (even if empty) -> value.
+            if not is_set:
+                return self._expand_tilde_in_operand(self.expand_string_variables(operand))
+            return value
+        elif operator == '=':
+            if not is_set:
+                expanded_default = self._expand_tilde_in_operand(self.expand_string_variables(operand))
+                if var_name and not var_name.isdigit():
+                    self._set_var_or_array_element(var_name, expanded_default)
+                return expanded_default
+            return value
+        elif operator == '+':
+            # Set (even if empty) -> operand; unset -> empty.
+            if is_set:
+                return self._expand_tilde_in_operand(self.expand_string_variables(operand))
+            return ''
+        elif operator == '?':
+            if not is_set:
+                expanded_message = self.expand_string_variables(operand) if operand else "parameter not set"
+                print(f"psh: {var_name}: {expanded_message}", file=sys.stderr)
+                self.state.last_exit_code = 127
+                from ..core import ExpansionError
+                raise ExpansionError(f"{var_name}: {expanded_message}", exit_code=127)
             return value
         elif operator == ':=':
             if not value:
@@ -911,5 +985,6 @@ class VariableExpander:
                 pattern_parts.append(operand[i])
                 i += 1
 
-        # No separator found
-        return None, None
+        # No separator found: the whole operand is the pattern and the
+        # replacement is empty (deletion), matching bash's ${x//pat}.
+        return ''.join(pattern_parts), ''

@@ -62,6 +62,42 @@ class TestPOSIXParameterExpansion(ConformanceTest):
         self.assert_identical_behavior('x="hello world"; echo ${#x}')
         self.assert_identical_behavior('x=; echo ${#x}')
 
+    def test_noncolon_default_value(self):
+        """${parameter-word}: only unset uses the default (null does not)."""
+        self.assert_identical_behavior('x=hello; echo "[${x-default}]"')
+        self.assert_identical_behavior('x=; echo "[${x-default}]"')      # null -> empty
+        self.assert_identical_behavior('unset x; echo "[${x-default}]"')  # unset -> default
+
+    def test_noncolon_alternative_value(self):
+        """${parameter+word}: set (even if null) yields the word."""
+        self.assert_identical_behavior('x=hello; echo "[${x+alt}]"')
+        self.assert_identical_behavior('x=; echo "[${x+alt}]"')          # null -> alt
+        self.assert_identical_behavior('unset x; echo "[${x+alt}]"')      # unset -> empty
+
+    def test_noncolon_assign_default(self):
+        """${parameter=word}: assign only when unset."""
+        self.assert_identical_behavior('unset x; echo "[${x=val}]"; echo "[$x]"')
+        self.assert_identical_behavior('x=; echo "[${x=val}]"; echo "[$x]"')  # null stays null
+
+    def test_noncolon_error_exit_code(self):
+        """${parameter?word}: unset errors with exit 127, set does not."""
+        psh = self.framework.run_in_psh('unset x; echo "${x?boom}"; echo after')
+        bash = self.framework.run_in_bash('unset x; echo "${x?boom}"; echo after')
+        assert psh.exit_code == 127
+        assert bash.exit_code == 127
+        # Set variable: no error.
+        self.assert_identical_behavior('x=v; echo "${x?boom}"')
+
+    def test_pattern_deletion_omitted_replacement(self):
+        """${x//pat} and ${x/pat} with no replacement delete matches."""
+        self.assert_identical_behavior('x=hello; echo "${x//l}"')
+        self.assert_identical_behavior('x=hello; echo "${x/l}"')
+
+    def test_null_vs_unset_ifs_star_join(self):
+        """A null IFS concatenates $*/${arr[*]}; unset IFS joins with space."""
+        self.assert_identical_behavior('IFS=; set -- a b c; echo "$*"')
+        self.assert_identical_behavior('unset IFS; set -- a b c; echo "$*"')
+
     def test_prefix_removal_expansion(self):
         """Test ${parameter#word} and ${parameter##word} expansion."""
         self.assert_identical_behavior('x=hello.txt; echo ${x#*.}')
