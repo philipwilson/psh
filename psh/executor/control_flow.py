@@ -550,25 +550,20 @@ class ControlFlowExecutor:
                 # Quoted: no glob expansion
                 return [item]
             else:
-                # Unquoted: try glob expansion
-                matches = glob.glob(item)
-                return sorted(matches) if matches else [item]
+                # Unquoted: glob via the canonical path (honors nullglob,
+                # [^...], POSIX classes, globstar, etc.).
+                return self.shell.expansion_manager._glob_words([item])
 
     def _word_split_and_glob(self, text: str) -> List[str]:
-        """Perform word splitting and glob expansion on text."""
+        """Perform word splitting and glob expansion on text.
+
+        Delegates globbing to the canonical ExpansionManager path so the
+        for/select loop matches simple-command behavior: empty fields from
+        non-whitespace IFS are preserved, and nullglob is honored.
+        """
         ifs = self.state.get_variable('IFS', ' \t\n')
         words = self.shell.expansion_manager.word_splitter.split(text, ifs)
-
-        # Glob expansion on each word
-        result = []
-        for word in words:
-            if word:
-                matches = glob.glob(word)
-                if matches:
-                    result.extend(sorted(matches))
-                else:
-                    result.append(word)
-        return result
+        return self.shell.expansion_manager._glob_words(words)
 
     def _match_case_pattern(self, string: str, pattern: str) -> bool:
         """Match a string against a case pattern with extglob support."""
@@ -576,7 +571,8 @@ class ControlFlowExecutor:
             from ..expansion.extglob import contains_extglob, match_extglob
             if contains_extglob(pattern):
                 return match_extglob(pattern, string)
-        return fnmatch.fnmatch(string, pattern)
+        from ..expansion.glob import normalize_bracket_expressions
+        return fnmatch.fnmatch(string, normalize_bracket_expressions(pattern))
 
     def _convert_case_pattern_for_fnmatch(self, pattern: str) -> str:
         """Convert bash-style case pattern escapes to fnmatch format.

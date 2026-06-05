@@ -256,6 +256,16 @@ class TestBashGlobbing(ConformanceTest):
         assert 'a.txt' in result.bash_result.stdout
         assert 'b.txt' in result.bash_result.stdout
 
+    def test_nullglob_for_loop(self):
+        """nullglob: a non-matching glob in a for-loop yields no iterations."""
+        self.assert_identical_behavior(
+            'shopt -s nullglob; for f in zzz_nomatch*; do echo "iter=$f"; done; echo done'
+        )
+        # Without nullglob, the literal pattern is used.
+        self.assert_identical_behavior(
+            'for f in zzz_nomatch*; do echo "iter=$f"; done'
+        )
+
     def test_extended_globbing(self):
         """Test bash extended globbing.
 
@@ -378,6 +388,51 @@ class TestBashRedirection(ConformanceTest):
         bash_result = self.framework.run_in_bash(command)
         assert psh_result.exit_code != 0
         assert bash_result.exit_code != 0
+
+
+class TestBashGlobBrackets(ConformanceTest):
+    """Glob bracket features: [^...], POSIX classes, nocaseglob, globstar.
+
+    Multi-match patterns use LC_ALL=C so sort order is byte-collation in both
+    shells (the default-locale ordering difference is a separate, documented
+    low-severity item).
+    """
+
+    C = {"LC_ALL": "C"}
+
+    def _in_tmp(self, body: str) -> str:
+        # Run in a fresh temp dir with a known set of files.
+        setup = (
+            'd=$(mktemp -d); cd "$d"; '
+            'touch file1 file2 fileX Foo.TXT bar.txt Baz123; '
+            'mkdir -p sub; touch sub/x.txt; '
+        )
+        return setup + body
+
+    def test_bracket_negation_caret(self):
+        self.assert_identical_behavior(self._in_tmp('echo file[^0-9]'), env=self.C)
+
+    def test_bracket_negation_in_case(self):
+        self.assert_identical_behavior(
+            'case fileX in file[^0-9]) echo match;; *) echo no;; esac'
+        )
+
+    def test_posix_character_classes(self):
+        self.assert_identical_behavior(self._in_tmp('echo *[[:upper:]]*'), env=self.C)
+        self.assert_identical_behavior(self._in_tmp('echo [[:alpha:]]*'), env=self.C)
+
+    def test_posix_class_in_double_bracket(self):
+        self.assert_identical_behavior('[[ Baz123 == *[[:digit:]]* ]] && echo yes || echo no')
+
+    def test_nocaseglob(self):
+        self.assert_identical_behavior(
+            self._in_tmp('shopt -s nocaseglob; echo f*'), env=self.C
+        )
+
+    def test_globstar(self):
+        self.assert_identical_behavior(
+            self._in_tmp('shopt -s globstar; echo **/*.txt'), env=self.C
+        )
 
 
 class TestBashFunctions(ConformanceTest):

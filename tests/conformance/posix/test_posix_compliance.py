@@ -451,6 +451,22 @@ class TestPOSIXShellParameters(ConformanceTest):
         self.assert_identical_behavior('echo $#')  # Should be 0
         self.assert_identical_behavior('set a b c; echo $# $1 $2 $3')
 
+    def test_unquoted_empty_expansion_no_field(self):
+        """An unquoted empty/unset expansion contributes zero fields."""
+        self.assert_identical_behavior('set -- $emptyvar; echo "count=$#"')
+        self.assert_identical_behavior('set -- $emptyvar foo; echo "count=$# first=[$1]"')
+        # Quoted empty is still a (single, empty) field.
+        self.assert_identical_behavior('set -- "$emptyvar"; echo "count=$#"')
+
+    def test_for_loop_empty_fields_nonws_ifs(self):
+        """For-loop word splitting preserves empty fields (non-whitespace IFS)."""
+        self.assert_identical_behavior(
+            'IFS=:; v="a::b"; for x in $v; do echo "[$x]"; done'
+        )
+        self.assert_identical_behavior(
+            'IFS=:; v=":a:b"; for x in $v; do echo "[$x]"; done'
+        )
+
     def test_special_parameters(self):
         """Test special parameters."""
         # Process ID will differ between PSH and bash processes
