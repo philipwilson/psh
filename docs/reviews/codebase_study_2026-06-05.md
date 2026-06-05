@@ -1,5 +1,19 @@
 # PSH Codebase Study (2026-06-05)
 
+> **Resolution status (updated 2026-06-05, through v0.197.0).** Most of this
+> study has since been acted on:
+> - **Phase 1 correctness:** all 23 confirmed bugs fixed (v0.193.0–v0.196.0).
+> - **Phase 2 architecture:** the two biggest duplication hazards collapsed —
+>   parameter-expansion dual application paths (v0.196.0) and brace expansion
+>   relocated off the raw line (v0.196.0); the dormant parser-validation
+>   subsystem removed (v0.197.0, ~1300 LOC); redirect-dispatch predicates
+>   de-duplicated; and the flagged exception-boundary "swallowing" sites fixed.
+> - **Phase 3 coverage:** the `read` fd fix retired the global `-s` test flag
+>   (v0.195.0).
+>
+> Remaining open Phase 2 items include the 3× lexer quote scanners and the
+> larger visitor-analysis overlap. See each phase report for per-finding status.
+
 Repository: `/Users/pwilson/src/psh`
 Scope (per request): **correctness/POSIX-bash conformance**, **architecture & code
 quality**, **test coverage & quality**. Performance and docs are secondary.

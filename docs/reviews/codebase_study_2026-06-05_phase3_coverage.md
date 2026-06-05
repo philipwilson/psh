@@ -1,5 +1,12 @@
 # PSH Codebase Study (2026-06-05) — Phase 3: Test Coverage & Quality
 
+> **Resolution status (through v0.197.0).** The headline item — the subshell
+> `-s` workaround — is resolved: the `read` builtin now reads the real
+> redirected fd instead of `sys.stdin`, so the full suite passes under normal
+> pytest capture and the global `-s` requirement is retired (v0.195.0; `-s`
+> notes removed from README/CLAUDE.md). The runtime-coverage gaps and most
+> skip/xfail triage items below remain open candidates for future test work.
+
 This report synthesizes Phase 3 findings on PSH's test coverage and test-suite quality. It ranks coverage gaps by runtime criticality, triages skipped/xfailed tests into keep/rotting/stale buckets, reassesses the long-standing subshell `-s` workaround, and identifies conformance claims made in the user guide that have no backing conformance test. A prioritized list of recommended test additions closes the report.
 
 ---

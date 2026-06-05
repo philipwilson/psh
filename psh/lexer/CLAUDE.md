@@ -6,14 +6,19 @@ This document provides guidance for working with the PSH lexer subsystem.
 
 The lexer transforms shell command strings into token streams using a **modular recognizer pattern**. The main entry point is `tokenize()` in `__init__.py`, which orchestrates:
 
-1. Brace expansion (preprocessing)
-2. Tokenization via `ModularLexer`
-3. Keyword normalization
+1. Tokenization via `ModularLexer`
+2. Keyword normalization
+3. Brace expansion over the token stream (`TokenBraceExpander`)
 4. Token transformation
 
 ```
-Input String → BraceExpander → ModularLexer → KeywordNormalizer → TokenTransformer → Tokens
+Input String → ModularLexer → KeywordNormalizer → TokenBraceExpander → TokenTransformer → Tokens
 ```
+
+Note: brace expansion runs **after** tokenization (on the token stream), not as
+raw-text preprocessing — so generated characters are never re-lexed and quote /
+command-position context is available. See `psh/brace_expansion.py`
+(`TokenBraceExpander`).
 
 ## Key Files
 

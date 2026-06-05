@@ -92,7 +92,7 @@ class ExpansionEvaluator:
 The `expand_arguments()` method processes expansions in this order:
 
 ```
-1. Brace Expansion      {a,b,c}         → Handled by tokenizer
+1. Brace Expansion      {a,b,c}         → TokenBraceExpander (token stream, post-lex)
 2. Tilde Expansion      ~, ~user        → TildeExpander
 3. Variable Expansion   $VAR, ${VAR}    → VariableExpander
 4. Command Substitution $(cmd), `cmd`   → CommandSubstitution

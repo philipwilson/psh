@@ -168,7 +168,9 @@ methods (`apply_redirections`, `apply_permanent_redirections`,
 | `_redirect_dup_fd(redirect)` | `>&`/`<&` — validate + dup2 or close |
 | `_redirect_close_fd(redirect)` | `>&-`/`<&-` — close fd |
 | `_expand_redirect_target(redirect)` | Variable + tilde expansion for `<`/`>`/`>>`/`<>`/`>|`/combined |
-| `_check_noclobber(target)` | Raises OSError if noclobber prevents write |
+| `_noclobber_blocks(target)` | Predicate: noclobber set AND target exists (shared by all dispatchers; response differs: raise vs `os._exit`) |
+| `_check_noclobber(target)` | Raises OSError if `_noclobber_blocks(target)` |
+| `_dup_fd_valid(dup_fd)` | Predicate: `dup_fd` is an open fd (for `>&`/`<&` validation) |
 
 Also: `_dup2_preserve_target(opened_fd, target_fd)` is a module-level
 function (not a method) that wraps `os.dup2()` + `os.close()` safely.

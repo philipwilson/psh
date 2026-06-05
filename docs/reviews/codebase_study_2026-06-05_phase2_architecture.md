@@ -1,5 +1,23 @@
 # PSH Codebase Study (2026-06-05) — Phase 2: Architecture & Code Quality
 
+> **Resolution status (through v0.197.0).** Acted on so far:
+> - **Dual parameter-expansion engines** — application paths collapsed to one
+>   `_apply_operator` (v0.196.0).
+> - **Brace expansion** — relocated from raw-line preprocessing to a
+>   token-stream `TokenBraceExpander`; the ~200-line line-level mini-parser was
+>   removed (v0.196.0).
+> - **Dormant parser-validation subsystem (~1300 LOC)** — removed (v0.197.0).
+> - **Broad/silent exception handling** — the flagged lexer-registry,
+>   expansion array-index, and scripting top-level "swallow" sites now surface
+>   defects (v0.196.0).
+> - **Redirect-dispatch duplication** — the noclobber and dup-fd predicates
+>   were extracted to shared helpers (the four dispatch methods were left
+>   intentionally separate — they are genuinely different operations).
+>
+> Still open (candidates for future work): the 3× lexer array/quote scanners,
+> the overlapping visitor-analysis checks, the test-only pipeline path in
+> production, and the remaining private-API-leak / dead-code items below.
+
 This report synthesizes per-subsystem audits of the PSH codebase into (1) cross-cutting
 themes that aggregate findings of the same kind across subsystems, (2) per-subsystem health
 summaries and findings, and (3) a prioritized triage table of the top findings. It also

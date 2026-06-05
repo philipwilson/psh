@@ -1,5 +1,21 @@
 # PSH Codebase Study (2026-06-05) — Phase 1: Correctness & Conformance
 
+> **Status: RESOLVED (through v0.196.0).** All 23 confirmed bugs in this report
+> are fixed, each with conformance and/or unit tests:
+> - #4/#5/#17/#18/#28/#29 arithmetic — v0.194.0
+> - #25/#30/#31 substring offset/length — v0.194.0
+> - #16/#27 ANSI-C `$'...'` escapes — v0.194.0
+> - #13/#14/#21/#24 globbing, #1/#2/#23 word-splitting — v0.194.0
+> - #8/#9/#10/#15 parameter operators & IFS — v0.194.0
+> - #32 here-string `<<<` — v0.194.0; #19 `{[ab]}` lexing — v0.196.0
+> - #33/#34 fd≥3 redirection — v0.196.0
+> - #11/#12/#20 brace expansion (assignment RHS / metachar range / quoted item)
+>   — v0.196.0 (brace-expansion relocation)
+>
+> The one documented limitation: `$x{1,2}` (an expansion fused with a brace) is
+> left unexpanded, since bash's textual pre-expansion re-forms variable names
+> in a way that doesn't map to the token model.
+
 ## Scope and conformance baseline
 
 The curated conformance framework reports a strong baseline:
