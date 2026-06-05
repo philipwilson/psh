@@ -153,6 +153,23 @@ class TestPOSIXArithmeticExpansion(ConformanceTest):
         self.assert_identical_behavior('x=2#101; echo $((x))')    # base#n
         self.assert_identical_behavior('x=0x1F; echo $((x + 1))')
 
+    def test_arithmetic_power_wraps_64bit(self):
+        """Large exponents wrap to signed 64-bit instead of erroring."""
+        self.assert_identical_behavior('echo $((2 ** 64))')
+        self.assert_identical_behavior('echo $((2 ** 100))')
+        self.assert_identical_behavior('echo $(((-2) ** 3))')
+
+    def test_arithmetic_quoted_operand(self):
+        """Double-quoted operands inside $(( )) are tolerated like bash."""
+        self.assert_identical_behavior('echo $(( "5" ))')
+        self.assert_identical_behavior('echo $(( "2" + "3" ))')
+
+    def test_arithmetic_array_subscript(self):
+        """Array subscripts are usable inside arithmetic."""
+        self.assert_identical_behavior('a=(10 20 30); echo $(( a[1] ))')
+        self.assert_identical_behavior('a=(10 20 30); i=2; echo $(( a[i] + a[0] ))')
+        self.assert_identical_behavior('a=(10 20 30); (( a[1] += 5 )); echo "${a[1]}"')
+
     def test_arithmetic_comparison(self):
         """Test arithmetic comparison operators."""
         self.assert_identical_behavior('echo $((5 > 3))')
