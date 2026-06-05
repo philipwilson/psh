@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.196.0 (2026-06-05) - Expansion de-duplication + remaining correctness bugs
+- **Parameter expansion** — collapsed the dual application paths: the string
+  path no longer carries its own copy of `${x:-w}`/`${x:=w}`/`${x:?w}`/`${x:+w}`;
+  both the AST and string paths now flow through one `_apply_operator`.
+- **Redirection to fd >= 3** — builtins no longer clobber stdout on `N>file`
+  (#33); external commands no longer crash with EBADF on an unopened high fd
+  (#34), via a `_save_fd()` helper that closes (rather than dup-restores) fds
+  that weren't open.
+- **Lexer** — `{[ab]}` is no longer split into `{` + `[ab]}` (#19); the `{`
+  brace-group heuristic now excludes `[`/`]`.
+- **Brace expansion relocated to the token stream** — replaced the
+  pre-tokenization mini-parser (expand raw line + re-lex) with a
+  `TokenBraceExpander` over tokens. Fixes assignment-RHS expansion (`a={x,y}`
+  stays literal, #11), ranges generating metacharacters (`{Z..a}`, #12), and
+  quoted brace items (`{"[",x}`, quote-aware, #20); also fixed a latent `{{...}}`
+  lexer bug and matched bash's empty-item dropping. Removed ~200 lines of the
+  old line-level parser.
+- **Exception boundaries** — stopped swallowing defects in the lexer recognizer
+  registry, expansion array-index evaluation, and the scripting top-level
+  handler (transparent-failure safety fixes).
+
 ## 0.195.0 (2026-06-05) - `read` uses the real fd; retire the global `-s` test flag
 - The `read` builtin chose between `os.read(fd)` and `sys.stdin` by probing
   `sys.stdin.fileno()`. Under a forked subshell with a redirected stdin (and
