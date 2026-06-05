@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.194.0 (2026-06-05) - Correctness fixes from the codebase study (Phase 1)
+Eighteen confirmed bash-divergence bugs found by the 2026-06-05 codebase study
+(`docs/reviews/codebase_study_2026-06-05_phase1_correctness.md`), fixed in eight
+batches. Each fix has conformance and/or unit tests.
+
+- **Arithmetic** — variable values are recursively evaluated as arithmetic
+  expressions, so `a="2*3"; $((a))` is 6 and base-prefixed values (`0x10`,
+  `010`, `2#101`) are honored (#4, #5). `2 ** N` wraps to signed 64-bit instead
+  of erroring (#18). Double-quoted operands inside `$(( ))` are tolerated (#28).
+  Array subscripts work inside arithmetic, read and assignment (#17). The octal
+  "value too great for base" error token no longer gains a spurious leading
+  zero (#29).
+- **Substring expansion** — offset and length are arithmetic expressions
+  (`${x:(-3):2}`, `${x:1+1:2}`) (#25); a too-negative offset yields empty (#30);
+  an out-of-range negative length errors with a non-zero status (#31).
+- **Here-strings** — `<<<` is no longer misparsed as an unclosed heredoc, so a
+  bareword here-string (`cat <<< hello`) no longer discards the command line (#32).
+- **ANSI-C `$'...'`** — octal escapes accept 1–3 digits without a leading zero
+  (`$'\101'` is `A`) (#16); `\u`/`\U` accept 1–4 / 1–8 hex digits (#27).
+- **Globbing** — `[^...]` negation, POSIX classes `[[:alpha:]]`, `nocaseglob`,
+  and `globstar` now work (a shared bracket-normalization helper is also applied
+  to `case`/`[[ ]]` matching) (#13, #14, #21, #24).
+- **Word splitting** — an unquoted empty/unset expansion contributes zero fields
+  (#1); the for/select loop preserves empty fields from a non-whitespace IFS and
+  honors `nullglob` by delegating to the canonical expansion path (#2, #23).
+- **Parameter expansion** — the unset-only operators `${x-w}`, `${x=w}`,
+  `${x+w}`, `${x?w}` are implemented (#9, #10); `${x//pat}` with an omitted
+  replacement deletes matches (#8); a null `IFS=` concatenates `$*`/`${arr[*]}`
+  while unset IFS joins with a space (#15).
+
 ## 0.193.0 (2026-06-05) - Add zsh-compatible `print` builtin
 - New `psh/builtins/print_builtin.py` implementing a zsh-style `print` command.
   Unlike `echo`, `print` interprets backslash escapes by default (`-r` for raw).
