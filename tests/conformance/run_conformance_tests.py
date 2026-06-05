@@ -101,6 +101,16 @@ class ConformanceTestRunner:
                 TestBashRedirection,
                 TestDocumentedDifferences,
             )
+            # Only the passing edge classes feed the conformance % here; the
+            # known-gap xfails (TestEdgeKnownGaps) are tracked via pytest so a
+            # documented gap doesn't read as a compatibility regression.
+            from test_edge_cases import (
+                TestEdgeArithmetic,
+                TestEdgeBraceExpansion,
+                TestEdgeGlobbing,
+                TestEdgeParameterExpansion,
+                TestEdgeQuotingWordSplitting,
+            )
 
             bash_test_classes = [
                 TestBashBuiltins,
@@ -118,7 +128,12 @@ class ConformanceTestRunner:
                 TestBashFunctions,
                 TestBashAliases,
                 TestBashMiscellaneous,
-                TestDocumentedDifferences
+                TestDocumentedDifferences,
+                TestEdgeQuotingWordSplitting,
+                TestEdgeArithmetic,
+                TestEdgeParameterExpansion,
+                TestEdgeGlobbing,
+                TestEdgeBraceExpansion,
             ]
 
             bash_results = self._run_test_classes(bash_test_classes, "Bash")
