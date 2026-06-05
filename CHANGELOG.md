@@ -4,6 +4,15 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.197.0 (2026-06-05) - Remove dormant parser-side validation subsystem
+- Removed the `psh/parser/validation/` package (~1300 LOC: SemanticAnalyzer,
+  ValidationPipeline, validation rules, symbol table, warnings) along with the
+  dead `Parser.parse_and_validate`/`validate_ast`/`enable_validation` methods and
+  the `ParserConfig` validation flags. The subsystem had no production callers —
+  normal parsing uses `parse()`, and `--validate` uses the visitor validators in
+  `psh/visitor/` (`EnhancedValidatorVisitor`). Net -1969 lines, no behavior
+  change.
+
 ## 0.196.0 (2026-06-05) - Expansion de-duplication + remaining correctness bugs
 - **Parameter expansion** — collapsed the dual application paths: the string
   path no longer carries its own copy of `${x:-w}`/`${x:=w}`/`${x:?w}`/`${x:+w}`;
