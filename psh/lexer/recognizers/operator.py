@@ -304,10 +304,16 @@ class OperatorRecognizer(ContextualRecognizer):
                         # } is a reserved word (RBRACE) only at command position
                         if candidate == '}' and not context.command_position:
                             continue
-                        # { uses the "followed by delimiter" heuristic
+                        # { is a brace-group token only when followed by
+                        # whitespace or a command operator. Unlike the general
+                        # delimiter check, '[' and ']' do NOT count here, so
+                        # {[ab]} stays a single word (e.g. a glob) instead of
+                        # being split into LBRACE + '[ab]}'.
                         if candidate == '{':
-                            if next_pos < len(input_text) and not self._is_shell_token_delimiter(input_text[next_pos]):
-                                continue
+                            if next_pos < len(input_text):
+                                nxt = input_text[next_pos]
+                                if not (nxt.isspace() or nxt in '|&;()<>\n'):
+                                    continue
 
                     # Check configuration to see if this operator is enabled
                     if not self._is_operator_enabled(candidate):
