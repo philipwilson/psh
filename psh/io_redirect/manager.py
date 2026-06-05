@@ -115,27 +115,35 @@ class IOManager:
                 sys.stdin = io.StringIO(content)
             elif redirect.type == '>|':
                 target_fd = redirect.fd if redirect.fd is not None else 1
-                if target_fd == 2:
+                if target_fd == 1:
+                    stdout_backup = sys.stdout
+                    sys.stdout = open(target, 'w')
+                elif target_fd == 2:
                     stderr_backup = sys.stderr
                     sys.stderr = open(target, 'w')
                 else:
-                    stdout_backup = sys.stdout
-                    sys.stdout = open(target, 'w')
+                    # fd >= 3: operate on the real descriptor, not sys.stdout.
+                    saved_fds = self.file_redirector.apply_redirections([redirect])
+                    self._saved_fds_list.extend(saved_fds)
             elif redirect.type in ('>', '>>'):
                 target_fd = redirect.fd if redirect.fd is not None else 1
                 mode = 'w' if redirect.type == '>' else 'a'
                 if redirect.type == '>':
                     self.file_redirector._check_noclobber(target)
-                if target_fd == 2:
-                    stderr_backup = sys.stderr
-                    sys.stderr = open(target, mode)
-                else:
+                if target_fd == 1:
                     stdout_backup = sys.stdout
                     sys.stdout = open(target, mode)
                     if self.state.options.get('debug-exec'):
                         action = "Redirected stdout" if redirect.type == '>' else "Redirected stdout (append)"
                         print(f"DEBUG IOManager: {action} to file '{target}'", file=sys.stderr)
                         print(f"DEBUG IOManager: sys.stdout is now {sys.stdout}", file=sys.stderr)
+                elif target_fd == 2:
+                    stderr_backup = sys.stderr
+                    sys.stderr = open(target, mode)
+                else:
+                    # fd >= 3: operate on the real descriptor, not sys.stdout.
+                    saved_fds = self.file_redirector.apply_redirections([redirect])
+                    self._saved_fds_list.extend(saved_fds)
             elif redirect.type == '>&':
                 # Handle fd duplication like 2>&1, >&2, etc.
                 if redirect.fd == 2 and redirect.dup_fd == 1:
