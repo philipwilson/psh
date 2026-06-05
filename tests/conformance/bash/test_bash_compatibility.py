@@ -24,6 +24,18 @@ class TestBashBuiltins(ConformanceTest):
         self.assert_identical_behavior('echo -n hello')
         self.assert_identical_behavior('echo -e "hello\\nworld"')
 
+    def test_ansi_c_octal_escapes(self):
+        r"""ANSI-C $'...' octal escapes (\nnn, 1-3 digits)."""
+        self.assert_identical_behavior(r"echo $'\101\102\103'")  # ABC
+        self.assert_identical_behavior(r"echo $'\7\41'")
+        self.assert_identical_behavior(r"echo $'\0101'")          # \b then 1
+
+    def test_ansi_c_short_unicode_escapes(self):
+        r"""ANSI-C $'...' accepts 1-4 digits after \u and 1-8 after \U."""
+        self.assert_identical_behavior(r"echo $'\u41'")
+        self.assert_identical_behavior(r"echo $'\U41'")
+        self.assert_identical_behavior(r"echo $'A'")
+
     def test_printf_builtin(self):
         """Test printf builtin compatibility."""
         self.assert_identical_behavior('printf "hello\\n"')
