@@ -344,6 +344,16 @@ class TestBashRedirection(ConformanceTest):
         self.check_behavior('cat << EOF\nhello\nEOF')
         # Both should handle here documents
 
+    def test_here_strings(self):
+        """Here-strings (<<<) including bareword operands."""
+        self.assert_identical_behavior('cat <<< hello')
+        self.assert_identical_behavior('cat <<<hello')
+        self.assert_identical_behavior('cat <<< "hello world"')
+        self.assert_identical_behavior('cat <<< 123')
+        self.assert_identical_behavior('x=hi; cat <<< $x')
+        # A bareword here-string must not swallow surrounding commands.
+        self.assert_identical_behavior('echo before; cat <<< hello; echo after')
+
     def test_advanced_redirection(self):
         """Test bash advanced redirection."""
         self.assert_identical_behavior(

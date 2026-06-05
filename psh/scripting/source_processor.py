@@ -391,7 +391,9 @@ class SourceProcessor(ScriptComponent):
 
         # Find all heredoc start markers (<<EOF, <<-EOF, << EOF, etc.)
         # But exclude << inside arithmetic expressions, command substitutions, etc.
-        heredoc_pattern = r'<<(-?)\s*([\'"]?)(\\\s*)?(\w+)\2'
+        # Match heredoc starts (<<EOF, <<-EOF, << EOF) but NOT here-strings
+        # (<<<word): the look-around rejects a third '<' on either side.
+        heredoc_pattern = r'(?<!<)<<(?!<)(-?)\s*([\'"]?)(\\\s*)?(\w+)\2'
 
         lines = command.split('\n')
         heredoc_delimiters = []
@@ -435,7 +437,9 @@ class SourceProcessor(ScriptComponent):
 
         # Use the same logic as _has_unclosed_heredoc to find heredoc markers
         # AND check which ones are already closed by content in the buffer.
-        heredoc_pattern = r'<<(-?)\s*([\'"]?)(\\\s*)?(\w+)\2'
+        # Match heredoc starts (<<EOF, <<-EOF, << EOF) but NOT here-strings
+        # (<<<word): the look-around rejects a third '<' on either side.
+        heredoc_pattern = r'(?<!<)<<(?!<)(-?)\s*([\'"]?)(\\\s*)?(\w+)\2'
         lines = command_buffer.split('\n')
         heredoc_delimiters = []
 
