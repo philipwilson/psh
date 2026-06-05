@@ -71,6 +71,32 @@ class TestEmptyItemParity:
         assert _out(captured_shell, 'set -- {,}; echo $#') == "0\n"
 
 
+class TestQuotedBraceItems:
+    """#20: quoted items in a brace expression (split across adjacent tokens)."""
+
+    def test_quoted_bracket(self, captured_shell):
+        assert _out(captured_shell, 'echo {"[",x}') == "[ x\n"
+
+    def test_quoted_glob_stays_literal(self, captured_shell):
+        # The quoted * must NOT be globbed.
+        assert _out(captured_shell, 'echo {"*",x}') == "* x\n"
+
+    def test_single_quoted_items(self, captured_shell):
+        assert _out(captured_shell, "echo {'a','b'}") == "a b\n"
+
+    def test_mixed_quoted_unquoted(self, captured_shell):
+        assert _out(captured_shell, 'echo {x,"y"}') == "x y\n"
+
+    def test_prefix_postfix_with_quoted_item(self, captured_shell):
+        assert _out(captured_shell, 'echo pre{"a",b}post') == "preapost prebpost\n"
+
+    def test_quoted_space_item_stays_one_word(self, captured_shell):
+        # The space inside the quoted item must be preserved (one argument).
+        captured_shell.clear_output()
+        assert captured_shell.run_command('printf "<%s>" {"a b",x}') == 0
+        assert captured_shell.get_stdout() == "<a b><x>"
+
+
 class TestBraceParity:
     def test_basic_list(self, captured_shell):
         assert _out(captured_shell, 'echo {a,b,c}') == "a b c\n"
