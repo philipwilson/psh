@@ -389,6 +389,23 @@ class TestBashRedirection(ConformanceTest):
         assert psh_result.exit_code != 0
         assert bash_result.exit_code != 0
 
+    def test_high_fd_redirection(self):
+        """A command-level redirect to fd>=3 leaves stdout alone and the file
+        empty (the command doesn't write to that fd)."""
+        # Builtin: stdout still gets 'hi', the fd-3 file is empty.
+        self.assert_identical_behavior(
+            'd=$(mktemp -d); cd "$d"; echo hi 3>f; printf "[%s]" "$(cat f)"'
+        )
+        # External command with a high fd must not crash before running.
+        self.assert_identical_behavior(
+            'd=$(mktemp -d); cd "$d"; /bin/echo hi 7>f; printf "[%s]" "$(cat f)"'
+        )
+        # Explicitly writing to a high fd (open fd 3 first, then point stdout
+        # at it) lands the output in the file.
+        self.assert_identical_behavior(
+            'd=$(mktemp -d); cd "$d"; echo content 3>f >&3; printf "[%s]" "$(cat f)"'
+        )
+
 
 class TestBashGlobBrackets(ConformanceTest):
     """Glob bracket features: [^...], POSIX classes, nocaseglob, globstar.

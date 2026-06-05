@@ -133,6 +133,18 @@ class FileRedirector:
             except OSError:
                 pass
 
+    def _save_fd(self, fd: int):
+        """Dup `fd` so it can be restored later.
+
+        Returns the duplicate, or None if `fd` is not currently open (e.g. a
+        high fd like `7>file`, where there is no original to restore — the fd
+        should simply be closed again on restore).
+        """
+        try:
+            return os.dup(fd)
+        except OSError:
+            return None
+
     def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int]]:
         """Apply redirections and return list of (fd, saved_fd) for restoration."""
         saved_fds = []
@@ -157,7 +169,7 @@ class FileRedirector:
                 self._redirect_input_from_file(target)
             elif redirect.type == '<>':
                 target_fd = redirect.fd if redirect.fd is not None else 0
-                saved_fds.append((target_fd, os.dup(target_fd)))
+                saved_fds.append((target_fd, self._save_fd(target_fd)))
                 self._redirect_readwrite(target, redirect)
             elif redirect.type in ('<<', '<<-'):
                 saved_fds.append((0, os.dup(0)))
@@ -167,11 +179,11 @@ class FileRedirector:
                 self._redirect_herestring(redirect)
             elif redirect.type == '>|':
                 target_fd = redirect.fd if redirect.fd is not None else 1
-                saved_fds.append((target_fd, os.dup(target_fd)))
+                saved_fds.append((target_fd, self._save_fd(target_fd)))
                 self._redirect_clobber(target, redirect)
             elif redirect.type in ('>', '>>'):
                 target_fd = redirect.fd if redirect.fd is not None else 1
-                saved_fds.append((target_fd, os.dup(target_fd)))
+                saved_fds.append((target_fd, self._save_fd(target_fd)))
                 self._redirect_output_to_file(target, redirect)
             elif redirect.type in ('>&', '<&'):
                 # Validate dup_fd BEFORE os.dup(redirect.fd), because os.dup
@@ -183,11 +195,11 @@ class FileRedirector:
                     except OSError:
                         raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
                 if redirect.fd is not None and (redirect.dup_fd is not None or redirect.target == '-'):
-                    saved_fds.append((redirect.fd, os.dup(redirect.fd)))
+                    saved_fds.append((redirect.fd, self._save_fd(redirect.fd)))
                 self._redirect_dup_fd(redirect)
             elif redirect.type in ('>&-', '<&-'):
                 if redirect.fd is not None:
-                    saved_fds.append((redirect.fd, os.dup(redirect.fd)))
+                    saved_fds.append((redirect.fd, self._save_fd(redirect.fd)))
                 self._redirect_close_fd(redirect)
 
         return saved_fds
@@ -195,8 +207,16 @@ class FileRedirector:
     def restore_redirections(self, saved_fds: List[Tuple[int, int]]):
         """Restore file descriptors from saved list."""
         for fd, saved_fd in saved_fds:
-            os.dup2(saved_fd, fd)
-            os.close(saved_fd)
+            if saved_fd is None:
+                # The fd wasn't open before we redirected it (e.g. 7>file);
+                # close what we opened instead of restoring an original.
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            else:
+                os.dup2(saved_fd, fd)
+                os.close(saved_fd)
 
         # Restore Python file objects
         if self._saved_stdout is not None:
