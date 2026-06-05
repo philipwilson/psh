@@ -27,9 +27,25 @@ class FileRedirector:
         self._saved_stderr = None
         self._saved_stdin = None
 
+    def _noclobber_blocks(self, target) -> bool:
+        """True when noclobber is set and the target already exists.
+
+        Shared predicate for every redirect path; the response differs (raise in
+        the parent, os._exit in a forked child), but the condition is one place.
+        """
+        return self.state.options.get('noclobber', False) and os.path.exists(target)
+
+    def _dup_fd_valid(self, dup_fd: int) -> bool:
+        """True when dup_fd is currently an open file descriptor (for >&/<&)."""
+        try:
+            fcntl.fcntl(dup_fd, fcntl.F_GETFD)
+            return True
+        except OSError:
+            return False
+
     def _check_noclobber(self, target):
         """Raise OSError if noclobber is set and target exists."""
-        if self.state.options.get('noclobber', False) and os.path.exists(target):
+        if self._noclobber_blocks(target):
             raise OSError(f"cannot overwrite existing file: {target}")
 
     def _expand_redirect_target(self, redirect):
@@ -86,9 +102,7 @@ class FileRedirector:
     def _redirect_dup_fd(self, redirect):
         """Handle >&/<& fd duplication. Validates source fd."""
         if redirect.fd is not None and redirect.dup_fd is not None:
-            try:
-                fcntl.fcntl(redirect.dup_fd, fcntl.F_GETFD)
-            except OSError:
+            if not self._dup_fd_valid(redirect.dup_fd):
                 raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
             os.dup2(redirect.dup_fd, redirect.fd)
         elif redirect.fd is not None and redirect.target == '-':
@@ -118,7 +132,7 @@ class FileRedirector:
         if is_append:
             flags |= os.O_APPEND
         else:
-            if self.state.options.get('noclobber', False) and os.path.exists(target):
+            if self._noclobber_blocks(target):
                 raise OSError(f"cannot overwrite existing file: {target}")
             flags |= os.O_TRUNC
         fd = os.open(target, flags, 0o644)
@@ -189,11 +203,9 @@ class FileRedirector:
                 # Validate dup_fd BEFORE os.dup(redirect.fd), because os.dup
                 # may allocate dup_fd's number as the saved copy, making a
                 # closed fd appear valid.
-                if redirect.fd is not None and redirect.dup_fd is not None:
-                    try:
-                        fcntl.fcntl(redirect.dup_fd, fcntl.F_GETFD)
-                    except OSError:
-                        raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
+                if (redirect.fd is not None and redirect.dup_fd is not None
+                        and not self._dup_fd_valid(redirect.dup_fd)):
+                    raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
                 if redirect.fd is not None and (redirect.dup_fd is not None or redirect.target == '-'):
                     saved_fds.append((redirect.fd, self._save_fd(redirect.fd)))
                 self._redirect_dup_fd(redirect)
