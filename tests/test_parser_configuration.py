@@ -151,7 +151,6 @@ class TestConfigurationIntegration:
         config = ParserConfig(
             parsing_mode=ParsingMode.EDUCATIONAL,
             trace_parsing=True,
-            enable_validation=True,
             show_error_suggestions=True
         )
         parser = Parser(tokens, config=config)
