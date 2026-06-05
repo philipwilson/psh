@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.195.0 (2026-06-05) - `read` uses the real fd; retire the global `-s` test flag
+- The `read` builtin chose between `os.read(fd)` and `sys.stdin` by probing
+  `sys.stdin.fileno()`. Under a forked subshell with a redirected stdin (and
+  under pytest capture) that picked `sys.stdin` instead of the real, redirected
+  fd 0, so `( ... read ... ) < file` read the wrong source. `read` now prefers
+  the real OS descriptor whenever it is valid, falling back to `sys.stdin` only
+  for a genuine in-process `StringIO` stdin (new `_should_use_sys_stdin()` helper
+  consolidates the previously-duplicated decision across the three read paths).
+- Consequence: the full test suite now passes under normal pytest capture — the
+  long-standing `-s` requirement for subshell tests is gone. Updated the stale
+  `-s` notes in `README.md`, `CLAUDE.md`, `psh/executor/CLAUDE.md`, and
+  `tests/integration/subshells/README.md`. `run_tests.py` still works unchanged.
+- Tests: `tests/integration/redirection/test_read_forked_fd.py` (runs without
+  `-s` to prove the fix).
+
 ## 0.194.0 (2026-06-05) - Correctness fixes from the codebase study (Phase 1)
 Eighteen confirmed bash-divergence bugs found by the 2026-06-05 codebase study
 (`docs/reviews/codebase_study_2026-06-05_phase1_correctness.md`), fixed in eight

@@ -4,9 +4,8 @@ Python Shell (psh) is an educational Unix shell implementation designed to teach
 - Hand-written recursive descent parser for clarity
 - Component-based architecture with clear separation of concerns
 - Comprehensive test suite 
-- Near-complete POSIX compliance (~93% measured by conformance tests)
+- POSIX compliance (within reason)
 - Visitor pattern for AST operations
-- Comprehensive conformance testing framework for POSIX/bash compatibility
 
 ## Quick Start Commands
 
@@ -25,8 +24,8 @@ python run_tests.py --parallel 8           # Parallel with 8 workers
 python run_tests.py --all-nocapture        # Simple mode - run all with -s
 
 # Run tests manually (for specific scenarios)
-python -m pytest tests/                    # Most tests (note: subshell tests will fail)
-python -m pytest tests/integration/subshells/ -s  # Subshell tests (MUST use -s)
+python -m pytest tests/                    # All tests (subshell tests pass without -s as of v0.195.0)
+python -m pytest tests/integration/subshells/      # Subshell tests (no -s needed)
 python -m pytest tests/test_foo.py -v     # Specific test file
 python -m pytest tests/unit/builtins/ -v  # Specific test category
 python -m pytest -k "test_name" -xvs      # Specific test with output
@@ -111,15 +110,15 @@ These files have version-stamped metadata that must stay in sync:
 
 ### Known Test Issues
 
-1. **Subshell Tests Require Special Handling** (IMPORTANT):
-   - Tests in `tests/integration/subshells/` MUST be run with pytest's `-s` flag
-   - Reason: Pytest's output capture interferes with file descriptor operations in forked child processes
-   - When PSH forks for a subshell and redirects to a file, the child inherits pytest's capture objects instead of real file descriptors
-   - **Solution**: Use the provided test runner (`python run_tests.py`) which handles this automatically
-   - **Manual workaround**: `python -m pytest tests/integration/subshells/ -s`
-   - Affected tests: ~43 subshell tests + some function/variable tests
-   - Status: All functionality works correctly; this is purely a test infrastructure issue
-   - Documentation: See `tests/integration/subshells/README.md` for detailed explanation
+1. **Subshell Tests — `-s` no longer required** (fixed in v0.195.0):
+   - Subshell tests previously needed pytest's `-s` flag. This is no longer the case:
+     the full suite passes under normal capture (`python -m pytest tests/`).
+   - Root cause (now fixed): the `read` builtin chose `sys.stdin` over the real
+     redirected file descriptor. Forked children write stdout via `os.write(1)`
+     and now read stdin via `os.read(fd)` after `os.dup2`, so fd-level
+     redirections work fine under pytest's `sys.stdout`/`sys.stdin` replacement.
+   - `run_tests.py` still works (it harmlessly passes `-s` for the subshell group).
+   - Documentation: See `tests/integration/subshells/README.md`.
 
 2. **Pytest Collection Best Practices**:
    - Don't name source files starting with `test_`
@@ -216,8 +215,8 @@ Choose the right fixture based on test type:
    - Testing job control
    - Testing subshells
    - File system operations
-   - **IMPORTANT**: Tests with subshells + file redirections MUST be run with `-s` flag
-   - Use the test runner (`python run_tests.py`) to handle this automatically
+   - Note: subshell + file-redirection tests run fine under normal capture as of
+     v0.195.0; the `-s` flag is no longer required.
 
 3. **System Tests** (use `subprocess`):
    - Testing full shell behavior

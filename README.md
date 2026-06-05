@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.194.0 | **Tests**: 3,626 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.195.0 | **Tests**: 3,629 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -265,11 +265,11 @@ python run_tests.py --all-nocapture
 ### Running Tests Manually
 
 ```bash
-# Most tests - run normally
+# All tests - run normally (subshell tests no longer need -s, as of v0.195.0)
 python -m pytest tests/
 
-# Subshell tests - MUST use -s flag
-python -m pytest tests/integration/subshells/ -s
+# Subshell tests
+python -m pytest tests/integration/subshells/
 
 # Specific categories
 python -m pytest tests/unit/           # Unit tests
@@ -283,7 +283,7 @@ python -m pytest tests/performance/
 python -m pytest tests/ --cov=psh --cov-report=html
 ```
 
-**Important:** Some tests (subshells, functions with subshells) require pytest's output capture to be disabled (`-s` flag) due to file descriptor handling in forked processes. The `run_tests.py` script handles this automatically.
+**Note:** As of v0.195.0 the full suite passes under normal pytest capture; the `-s` flag is no longer required for subshell tests (a `read` builtin fix made it read the real redirected file descriptor). `run_tests.py` still works and remains the recommended runner.
 
 **Current Test Statistics:**
 - ✅ 2,808 passing tests

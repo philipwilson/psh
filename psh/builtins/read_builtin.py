@@ -370,35 +370,34 @@ class ReadBuiltin(Builtin):
 
         return options, var_names
 
-    def _read_normal(self, fd: int, delimiter: str) -> Optional[str]:
-        """Read normally from file descriptor until delimiter."""
-        # Check if we should use sys.stdin (for StringIO/test scenarios)
-        # or os.read (for real file descriptors/pipes)
-        use_sys_stdin = False
+    def _should_use_sys_stdin(self, fd: int) -> bool:
+        """Decide whether to read from ``sys.stdin`` or the real OS descriptor.
 
-        # Check if we can actually get a file descriptor from sys.stdin
+        The real descriptor is authoritative whenever it is valid — this covers
+        redirections in forked subshells (``( ... ) < file``), pipes, and files,
+        where ``fd`` was set up with ``os.dup2`` even though ``sys.stdin`` is a
+        Python-level object pytest may have swapped out. ``sys.stdin`` is used
+        only for a genuine in-process replacement (e.g. a ``StringIO`` test
+        stdin with no real ``fileno``). pytest's ``DontReadFromInput`` capture
+        object is explicitly treated as "use the real fd" so that redirected
+        reads work under capture without the ``-s`` flag.
+        """
+        if 'DontReadFromInput' in sys.stdin.__class__.__name__:
+            return False
         try:
             sys.stdin.fileno()
-            has_real_fileno = True
         except (AttributeError, io.UnsupportedOperation):
-            has_real_fileno = False
+            return True  # StringIO-backed / non-fd stdin
+        # Real stdin object: prefer the fd if it is a valid OS descriptor.
+        try:
+            os.fstat(fd)
+            return False
+        except (OSError, AttributeError, ValueError):
+            return True
 
-        if not has_real_fileno:
-            use_sys_stdin = True
-        else:
-            # Check if we're in pytest capture mode
-            # When pytest captures, sys.stdin has special __class__
-            stdin_class_name = sys.stdin.__class__.__name__
-            if 'DontReadFromInput' in stdin_class_name:
-                # This is pytest's capture object, use os.read to bypass it
-                use_sys_stdin = False
-            else:
-                # Normal case - check if fd is valid
-                try:
-                    os.fstat(fd)
-                    use_sys_stdin = False
-                except (OSError, AttributeError):
-                    use_sys_stdin = True
+    def _read_normal(self, fd: int, delimiter: str) -> Optional[str]:
+        """Read normally from file descriptor until delimiter."""
+        use_sys_stdin = self._should_use_sys_stdin(fd)
 
         if delimiter == '\n':
             if use_sys_stdin:
@@ -486,22 +485,7 @@ class ReadBuiltin(Builtin):
         else:
             # Non-TTY or no special handling needed
             if max_chars is not None:
-                # Determine if we should use sys.stdin or os.read
-                try:
-                    sys.stdin.fileno()
-                    has_real_fileno = True
-                except (AttributeError, io.UnsupportedOperation):
-                    has_real_fileno = False
-
-                use_sys_stdin = not has_real_fileno
-                if has_real_fileno:
-                    stdin_class_name = sys.stdin.__class__.__name__
-                    if 'DontReadFromInput' not in stdin_class_name:
-                        try:
-                            os.fstat(fd)
-                            use_sys_stdin = False
-                        except (OSError, AttributeError):
-                            use_sys_stdin = True
+                use_sys_stdin = self._should_use_sys_stdin(fd)
 
                 # Read up to max_chars
                 limit = max_chars
@@ -586,38 +570,15 @@ class ReadBuiltin(Builtin):
                     sys.stdout.flush()
         else:
             # Simple case or non-TTY: just wait for line with timeout
-            # Determine if we should use sys.stdin or os.read
-            try:
-                sys.stdin.fileno()
-                has_real_fileno = True
-            except (AttributeError, io.UnsupportedOperation):
-                has_real_fileno = False
-
-            use_sys_stdin = not has_real_fileno
-            if has_real_fileno:
-                stdin_class_name = sys.stdin.__class__.__name__
-                if 'DontReadFromInput' in stdin_class_name:
-                    # pytest capture mode - use os.read
-                    use_sys_stdin = False
-                    try:
-                        os.fstat(fd)
-                        ready, _, _ = select.select([fd], [], [], timeout)
-                    except (OSError, AttributeError):
-                        # Can't select on fd
-                        ready = []
-                else:
-                    # Normal terminal or real stdin
-                    try:
-                        os.fstat(fd)
-                        ready, _, _ = select.select([fd], [], [], timeout)
-                        use_sys_stdin = False
-                    except (OSError, AttributeError):
-                        # Try with sys.stdin
-                        ready, _, _ = select.select([sys.stdin], [], [], timeout)
-                        use_sys_stdin = True
-            else:
-                # StringIO doesn't support select, just read immediately
+            use_sys_stdin = self._should_use_sys_stdin(fd)
+            if use_sys_stdin:
+                # StringIO-backed stdin doesn't support select; read immediately.
                 ready = [sys.stdin]
+            else:
+                try:
+                    ready, _, _ = select.select([fd], [], [], timeout)
+                except (OSError, AttributeError, ValueError):
+                    ready = []
 
             if not ready:
                 return None
