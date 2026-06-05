@@ -126,14 +126,15 @@ class TestParser:
                 self.parser.advance()
                 self.parser.skip_newlines()
 
-                # Special handling for regex patterns
+                # Special handling for regex patterns: the RHS is a single regex
+                # word that may contain (, ), |, ?, etc., which the lexer split
+                # into operator tokens. Reconstruct it from the adjacent run.
                 if operator == '=~':
                     self.parser.ctx.enter_scope('regex_rhs')
-
-                right, right_quote_type = self._parse_test_operand()
-
-                if operator == '=~':
+                    right, right_quote_type = self._parse_regex_operand()
                     self.parser.ctx.exit_scope()
+                else:
+                    right, right_quote_type = self._parse_test_operand()
 
                 return BinaryTestExpression(
                     left=left,
@@ -225,6 +226,41 @@ class TestParser:
             return ''.join(result_parts), quote_type
         else:
             return ''.join(result_parts), None
+
+    def _parse_regex_operand(self) -> tuple[str, Optional[str]]:
+        """Collect the right-hand operand of `=~` as a raw regex.
+
+        A regex is a single (whitespace-delimited) word, but it may contain
+        characters the lexer tokenizes as operators — `(`, `)`, `|`, `?`, `[`,
+        `]`, etc. Reconstruct it from the maximal run of adjacent tokens,
+        stopping at unquoted whitespace (non-adjacent token) or a boundary
+        (`]]`, `&&`, `||`). Variables keep their `$name` form for later
+        expansion. Always returned unquoted (treated as a pattern).
+        """
+        if not self.parser.match_any(TokenGroups.WORD_LIKE) and \
+                self.parser.peek().type in (TokenType.DOUBLE_RBRACKET,
+                                            TokenType.AND_AND, TokenType.OR_OR):
+            raise self.parser.error("Expected regex after =~")
+
+        parts = []
+        first = True
+        stop = (TokenType.DOUBLE_RBRACKET, TokenType.AND_AND,
+                TokenType.OR_OR, TokenType.EOF, TokenType.NEWLINE)
+        while self.parser.current < len(self.parser.tokens):
+            tok = self.parser.peek()
+            if tok.type in stop:
+                break
+            # After the first token, only keep going while glued (no whitespace).
+            if not first and not getattr(tok, 'adjacent_to_previous', False):
+                break
+            self.parser.advance()
+            if tok.type == TokenType.VARIABLE:
+                parts.append(f"${tok.value}")
+            else:
+                parts.append(tok.value)
+            first = False
+
+        return ''.join(parts), None
 
     def _is_unary_test_operator(self, value: str) -> bool:
         """Check if a word is a unary test operator."""

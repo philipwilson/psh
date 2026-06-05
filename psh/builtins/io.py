@@ -391,8 +391,8 @@ class PrintfBuiltin(Builtin):
                     spec['precision'] += format_str[i]
                     i += 1
 
-        # Parse type specifier (POSIX: diouxXeEfFgGaAcspn%)
-        if i < len(format_str) and format_str[i] in 'diouxXeEfFgGaAcspn%':
+        # Parse type specifier (POSIX diouxXeEfFgGaAcspn% plus bash b/q)
+        if i < len(format_str) and format_str[i] in 'diouxXeEfFgGaAcspnbq%':
             spec['type'] = format_str[i]
             i += 1
             spec['original'] = format_str[start:i]
@@ -409,6 +409,14 @@ class PrintfBuiltin(Builtin):
 
         if fmt_type == 's':
             return self._format_string(arg_value, spec)
+        elif fmt_type == 'b':
+            # bash %b: interpret backslash escapes in the argument, then format
+            # as a string (width/precision apply to the expanded value).
+            expanded, _terminate = process_escapes(arg_value)
+            return self._format_string(expanded, spec)
+        elif fmt_type == 'q':
+            # bash %q: emit the argument quoted so it can be reused as input.
+            return self._format_string(self._shell_quote(arg_value), spec)
         elif fmt_type in 'diouxX':
             return self._format_integer(arg_value, spec)
         elif fmt_type in 'eEfFgGaA':
@@ -428,6 +436,36 @@ class PrintfBuiltin(Builtin):
         else:
             # POSIX: missing arguments are treated as empty string or 0
             return ''
+
+    # Characters that never need quoting in %q output.
+    _Q_SAFE = set(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        "%+,-./:=@_"
+    )
+
+    def _shell_quote(self, value: str) -> str:
+        """Quote a string so it can be reused as shell input (printf %q).
+
+        Mirrors bash: an empty string becomes ``''``; a string containing any
+        control character is wrapped whole in the ANSI-C ``$'...'`` form;
+        otherwise special characters are individually backslash-escaped.
+        """
+        if value == '':
+            return "''"
+        if any(ord(c) < 32 or ord(c) == 127 for c in value):
+            named = {'\t': '\\t', '\n': '\\n', '\r': '\\r',
+                     '\\': '\\\\', "'": "\\'"}
+            body = []
+            for ch in value:
+                code = ord(ch)
+                if ch in named:
+                    body.append(named[ch])
+                elif code < 32 or code == 127:
+                    body.append(f"\\x{code:02x}")
+                else:
+                    body.append(ch)
+            return "$'" + ''.join(body) + "'"
+        return ''.join(ch if ch in self._Q_SAFE else '\\' + ch for ch in value)
 
     def _format_string(self, value: str, spec: dict) -> str:
         """Format string according to spec."""
@@ -692,6 +730,8 @@ class PrintfBuiltin(Builtin):
         %a, %A    Hexadecimal floating point (lowercase/uppercase)
         %c        Single character
         %s        String
+        %b        String with backslash escapes interpreted
+        %q        String quoted for reuse as shell input
         %%        Literal percent sign
 
     Flags:

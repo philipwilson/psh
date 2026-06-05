@@ -31,6 +31,19 @@ class TestExpressionEvaluator:
         self.expansion_manager = shell.expansion_manager
         self.state = shell.state
 
+    def _set_bash_rematch(self, match) -> None:
+        """Set BASH_REMATCH from an `re` match (full match + capture groups)."""
+        from ..core import IndexedArray, VarAttributes
+
+        arr = IndexedArray()
+        if match is not None:
+            arr.set(0, match.group(0))
+            for i, group in enumerate(match.groups(), start=1):
+                arr.set(i, group if group is not None else '')
+        self.state.scope_manager.set_variable(
+            'BASH_REMATCH', arr, attributes=VarAttributes.ARRAY,
+        )
+
     def evaluate(self, expr: TestExpression) -> bool:
         """Evaluate a test expression to boolean."""
         if isinstance(expr, BinaryTestExpression):
@@ -82,12 +95,15 @@ class TestExpressionEvaluator:
         elif expr.operator == '>':
             return left > right
         elif expr.operator == '=~':
-            # Regex matching
+            # Regex matching; populate BASH_REMATCH with the full match and
+            # capture groups (cleared to an empty array on no match), like bash.
             try:
                 pattern = re.compile(right)
-                return bool(pattern.search(left))
             except re.error as e:
                 raise ValueError(f"invalid regex: {e}")
+            match = pattern.search(left)
+            self._set_bash_rematch(match)
+            return bool(match)
         elif expr.operator == '-eq':
             return to_int(left) == to_int(right)
         elif expr.operator == '-ne':

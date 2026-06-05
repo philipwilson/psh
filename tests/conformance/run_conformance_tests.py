@@ -109,7 +109,9 @@ class ConformanceTestRunner:
                 TestEdgeBraceExpansion,
                 TestEdgeGlobbing,
                 TestEdgeParameterExpansion,
+                TestEdgePrintf,
                 TestEdgeQuotingWordSplitting,
+                TestEdgeRegex,
             )
 
             bash_test_classes = [
@@ -134,6 +136,8 @@ class ConformanceTestRunner:
                 TestEdgeParameterExpansion,
                 TestEdgeGlobbing,
                 TestEdgeBraceExpansion,
+                TestEdgePrintf,
+                TestEdgeRegex,
             ]
 
             bash_results = self._run_test_classes(bash_test_classes, "Bash")
