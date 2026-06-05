@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.198.0 (2026-06-05) - De-duplicate redirect-dispatch and lexer quote scanners
+- **Redirect dispatch** — extracted the noclobber predicate (inlined at 5 sites)
+  and the `>&`/`<&` dup-fd validity check (4 sites) to shared `FileRedirector`
+  helpers (`_noclobber_blocks`, `_dup_fd_valid`). The four dispatch methods keep
+  their distinct behavior (parent fd-save / exec stream-rebind / child
+  `os._exit` / builtin Python-stream) but share the predicates.
+- **Lexer quote scanners** — the three forward array-assignment scanners in the
+  literal recognizer (`_collect_array_assignment`, `_collect_assignment_value`,
+  `_is_potential_array_assignment_start`) now share a `QuoteState` primitive
+  (`pure_helpers`) instead of each reimplementing the single/double-quote +
+  backslash-escape state machine.
+- Both changes are behavior-preserving (verified against bash). Docs/study
+  reports synced to reflect the de-duplication work.
+
 ## 0.197.0 (2026-06-05) - Remove dormant parser-side validation subsystem
 - Removed the `psh/parser/validation/` package (~1300 LOC: SemanticAnalyzer,
   ValidationPipeline, validation rules, symbol table, warnings) along with the
