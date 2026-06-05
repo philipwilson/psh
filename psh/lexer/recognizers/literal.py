@@ -85,7 +85,11 @@ class LiteralRecognizer(ContextualRecognizer):
                 # } at non-command position is always a word character
                 if char == '}' and not context.command_position:
                     return True
-                if next_pos >= len(input_text) or input_text[next_pos] in ' \t\n\r;|&(){}<>':
+                # A brace is "standalone" (operator) only when followed by
+                # whitespace, a command operator, or EOF. When followed by
+                # another brace (e.g. {{1..3},...} nesting) or word chars, it is
+                # part of a word — note '{'/'}' are NOT in this set.
+                if next_pos >= len(input_text) or input_text[next_pos] in ' \t\n\r;|&()<>':
                     return False  # Standalone brace — let operator handle it
                 return True  # Attached to word chars — part of word
             return False
