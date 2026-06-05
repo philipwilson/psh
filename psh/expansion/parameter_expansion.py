@@ -253,10 +253,11 @@ class ParameterExpansion:
         """Extract substring with offset and optional length."""
         # Handle negative offset
         if offset < 0:
-            # Negative offset counts from end
+            # Negative offset counts from end. If it is still negative after
+            # adjusting, bash yields the empty string (not the whole value).
             offset = len(value) + offset
             if offset < 0:
-                offset = 0
+                return ''
 
         # Handle out of bounds
         if offset >= len(value):
@@ -268,10 +269,12 @@ class ParameterExpansion:
         else:
             # Handle negative length
             if length < 0:
-                # Negative length means "all but last N chars"
+                # Negative length means "up to N chars from the end". If the
+                # endpoint falls before the offset, bash treats it as an error
+                # (e.g. `${x:0:-5}` on a short string).
                 end = len(value) + length
-                if end <= offset:
-                    return ''
+                if end < offset:
+                    raise ValueError(f"{length}: substring expression < 0")
                 return value[offset:end]
             else:
                 # Normal positive length

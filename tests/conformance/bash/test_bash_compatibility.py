@@ -120,6 +120,25 @@ class TestBashParameterExpansion(ConformanceTest):
         self.assert_identical_behavior('x=hello; echo ${x:1:3}')
         self.assert_identical_behavior('x=hello; echo ${x:2}')
 
+    def test_substring_arithmetic_offsets(self):
+        """Offset/length are arithmetic expressions (parens, +, variables)."""
+        self.assert_identical_behavior('x=0123456789; echo "${x:(-3):2}"')
+        self.assert_identical_behavior('x=0123456789; echo "${x:1+1:2}"')
+        self.assert_identical_behavior('x=0123456789; echo "${x: -3:2}"')
+        self.assert_identical_behavior('x=0123456789; n=2; echo "${x:n:3}"')
+
+    def test_substring_out_of_range_offset(self):
+        """A too-negative offset yields empty, not the whole string."""
+        self.assert_identical_behavior('x=abc; echo "[${x: -10}]"')
+
+    def test_substring_negative_length_bounds(self):
+        """Negative length within range trims from the end like bash."""
+        self.assert_identical_behavior('x=abc; echo "[${x:0:-1}]"')
+        self.assert_identical_behavior('x=abcdef; echo "[${x:1:-2}]"')
+        # The out-of-range error case (${x:0:-5}) differs only by the shell-name
+        # stderr prefix, so it is verified for exit code + message in
+        # tests/unit/expansion/test_substring_offset_length.py instead.
+
     def test_pattern_substitution(self):
         """Test bash pattern substitution."""
         self.assert_identical_behavior('x=hello; echo ${x/l/L}')

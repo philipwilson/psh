@@ -599,23 +599,33 @@ class VariableExpander:
                 print(f"psh: ${{var/%}}: missing replacement string", file=sys.stderr)
                 return value
         elif operator == ':':
-            # Substring extraction
+            # Substring extraction. Offset and length are arithmetic
+            # expressions (bash), so support ${x:1+1:2}, ${x:(-3):2}, etc.
+            from ..arithmetic import ArithmeticError, evaluate_arithmetic
+            from ..core import ExpansionError
+
             if ':' in operand:
                 offset_str, length_str = operand.split(':', 1)
-                try:
-                    offset = int(offset_str)
-                    length = int(length_str)
-                    return self.param_expansion.extract_substring(value, offset, length)
-                except ValueError:
-                    print(f"psh: ${{var:{operand}}}: invalid offset or length", file=sys.stderr)
-                    return ''
             else:
-                try:
-                    offset = int(operand)
-                    return self.param_expansion.extract_substring(value, offset)
-                except ValueError:
-                    print(f"psh: ${{var:{operand}}}: invalid offset", file=sys.stderr)
-                    return ''
+                offset_str, length_str = operand, None
+
+            try:
+                offset = evaluate_arithmetic(offset_str, self.shell) if offset_str.strip() else 0
+                length = (evaluate_arithmetic(length_str, self.shell)
+                          if length_str is not None and length_str.strip() else
+                          (0 if length_str is not None else None))
+            except (ValueError, ArithmeticError):
+                print(f"psh: ${{var:{operand}}}: invalid offset or length", file=sys.stderr)
+                return ''
+
+            try:
+                return self.param_expansion.extract_substring(value, offset, length)
+            except ValueError as e:
+                # Out-of-range negative length: bash reports an error and a
+                # non-zero exit status.
+                print(f"psh: {e}", file=sys.stderr)
+                self.state.last_exit_code = 1
+                raise ExpansionError(str(e), exit_code=1)
         elif operator == '!*':
             names = self.param_expansion.match_variable_names(operand, quoted=False)
             return ' '.join(names)
