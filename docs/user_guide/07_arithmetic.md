@@ -478,12 +478,16 @@ psh$ num="  42  "
 psh$ echo $((num * 2))
 84
 
-# Variable indirection
+# Variable indirection (recursively resolved, like bash)
 psh$ a=5
 psh$ b=a
-psh$ echo $((b))      # PSH treats "a" as non-numeric (0)
-0
-# Note: bash would recursively resolve b -> a -> 5
+psh$ echo $((b))      # b -> a -> 5
+5
+
+# Expression-valued variables are evaluated recursively too
+psh$ a="2*3"
+psh$ echo $((a))
+6
 
 # Command substitution in arithmetic
 psh$ echo $(( $(echo 5) + $(echo 3) ))

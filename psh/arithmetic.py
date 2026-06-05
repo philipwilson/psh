@@ -1,9 +1,15 @@
 """Arithmetic expression evaluator for shell arithmetic expansion $((...))"""
 
 import builtins
+import re
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List, Optional, Union
+
+# A plain (optionally signed) decimal integer with no leading-zero octal
+# ambiguity. Values matching this are safe to parse with int(); anything else
+# (0x.., 0.., base#n, "2*3", ...) is evaluated as an arithmetic sub-expression.
+_PLAIN_DECIMAL_RE = re.compile(r'[+-]?(?:0|[1-9][0-9]*)$')
 
 
 class ArithTokenType(Enum):
@@ -745,9 +751,11 @@ class ArithmeticEvaluator:
     def get_variable(self, name: str) -> int:
         """Get variable value, converting to integer.
 
-        If the value is a valid identifier name, resolve it recursively
-        (matching bash behaviour where ``a=b; b=42; echo $((a))`` prints 42).
-        A depth limit prevents infinite loops from circular references.
+        Matches bash, which recursively evaluates a variable's value as an
+        arithmetic expression: ``a=b; b=42; $((a))`` is 42, ``a="2*3"; $((a))``
+        is 6, and base-prefixed values (``0x10``, ``010``, ``2#101``) are
+        honoured. A cycle guard / recursion limit prevents infinite loops from
+        circular references.
         """
         seen: set = set()
         var = name
@@ -756,18 +764,26 @@ class ArithmeticEvaluator:
 
             if not value:
                 return 0
+            value = value.strip()
+            if not value:
+                return 0
 
-            try:
+            # Fast path: a plain signed decimal (no leading-zero octal trap).
+            if _PLAIN_DECIMAL_RE.match(value):
                 return int(value)
-            except ValueError:
-                # If it looks like a variable name, resolve recursively
-                if value.isidentifier() and not value.startswith('_' * 2):
-                    if value in seen:
-                        return 0  # circular reference
-                    seen.add(var)
-                    var = value
-                else:
-                    return 0
+
+            # Bare identifier: follow the reference chain with a cycle guard.
+            if value.isidentifier() and not value.startswith('_' * 2):
+                if value in seen:
+                    return 0  # circular reference
+                seen.add(var)
+                var = value
+                continue
+
+            # Otherwise evaluate the value as an arithmetic sub-expression.
+            # Handles 0x.., 0.. (octal), base#n, and full expressions such as
+            # "2*3" or "a+1". Recursion is bounded by evaluate_arithmetic.
+            return evaluate_arithmetic(value, self.shell)
 
     def set_variable(self, name: str, value: int) -> None:
         """Set variable value"""

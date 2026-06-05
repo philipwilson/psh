@@ -137,6 +137,22 @@ class TestPOSIXArithmeticExpansion(ConformanceTest):
         self.assert_identical_behavior('x=10; y=3; echo $((x * y))')
         self.assert_identical_behavior('x=0; echo $((x || 1))')
 
+    def test_arithmetic_variable_recursive_evaluation(self):
+        """A variable's value is recursively evaluated as an arithmetic expr."""
+        # Expression-valued variables (bash recursively evaluates them).
+        self.assert_identical_behavior('a="2*3"; echo $((a))')
+        self.assert_identical_behavior('a="2+3"; echo $((a + 1))')
+        self.assert_identical_behavior('a="2*3"; b=a; echo $((b))')
+        # Indirection through a bare identifier.
+        self.assert_identical_behavior('a=b; b=42; echo $((a))')
+
+    def test_arithmetic_variable_numeric_bases(self):
+        """Base-prefixed values stored in variables are parsed like bash."""
+        self.assert_identical_behavior('x=0x10; echo $((x))')
+        self.assert_identical_behavior('x=010; echo $((x))')      # octal
+        self.assert_identical_behavior('x=2#101; echo $((x))')    # base#n
+        self.assert_identical_behavior('x=0x1F; echo $((x + 1))')
+
     def test_arithmetic_comparison(self):
         """Test arithmetic comparison operators."""
         self.assert_identical_behavior('echo $((5 > 3))')
