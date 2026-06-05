@@ -135,7 +135,8 @@ class TestExpressionEvaluator:
             from ..expansion.extglob import contains_extglob, match_extglob
             if contains_extglob(pattern):
                 return match_extglob(pattern, string)
-        return fnmatch.fnmatch(string, pattern)
+        from ..expansion.glob import normalize_bracket_expressions
+        return fnmatch.fnmatch(string, normalize_bracket_expressions(pattern))
 
     def _evaluate_unary_test(self, expr: UnaryTestExpression) -> bool:
         """Evaluate unary test expression."""

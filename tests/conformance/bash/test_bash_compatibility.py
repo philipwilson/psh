@@ -24,6 +24,18 @@ class TestBashBuiltins(ConformanceTest):
         self.assert_identical_behavior('echo -n hello')
         self.assert_identical_behavior('echo -e "hello\\nworld"')
 
+    def test_ansi_c_octal_escapes(self):
+        r"""ANSI-C $'...' octal escapes (\nnn, 1-3 digits)."""
+        self.assert_identical_behavior(r"echo $'\101\102\103'")  # ABC
+        self.assert_identical_behavior(r"echo $'\7\41'")
+        self.assert_identical_behavior(r"echo $'\0101'")          # \b then 1
+
+    def test_ansi_c_short_unicode_escapes(self):
+        r"""ANSI-C $'...' accepts 1-4 digits after \u and 1-8 after \U."""
+        self.assert_identical_behavior(r"echo $'\u41'")
+        self.assert_identical_behavior(r"echo $'\U41'")
+        self.assert_identical_behavior(r"echo $'A'")
+
     def test_printf_builtin(self):
         """Test printf builtin compatibility."""
         self.assert_identical_behavior('printf "hello\\n"')
@@ -119,6 +131,25 @@ class TestBashParameterExpansion(ConformanceTest):
         """Test bash substring expansion."""
         self.assert_identical_behavior('x=hello; echo ${x:1:3}')
         self.assert_identical_behavior('x=hello; echo ${x:2}')
+
+    def test_substring_arithmetic_offsets(self):
+        """Offset/length are arithmetic expressions (parens, +, variables)."""
+        self.assert_identical_behavior('x=0123456789; echo "${x:(-3):2}"')
+        self.assert_identical_behavior('x=0123456789; echo "${x:1+1:2}"')
+        self.assert_identical_behavior('x=0123456789; echo "${x: -3:2}"')
+        self.assert_identical_behavior('x=0123456789; n=2; echo "${x:n:3}"')
+
+    def test_substring_out_of_range_offset(self):
+        """A too-negative offset yields empty, not the whole string."""
+        self.assert_identical_behavior('x=abc; echo "[${x: -10}]"')
+
+    def test_substring_negative_length_bounds(self):
+        """Negative length within range trims from the end like bash."""
+        self.assert_identical_behavior('x=abc; echo "[${x:0:-1}]"')
+        self.assert_identical_behavior('x=abcdef; echo "[${x:1:-2}]"')
+        # The out-of-range error case (${x:0:-5}) differs only by the shell-name
+        # stderr prefix, so it is verified for exit code + message in
+        # tests/unit/expansion/test_substring_offset_length.py instead.
 
     def test_pattern_substitution(self):
         """Test bash pattern substitution."""
@@ -225,6 +256,16 @@ class TestBashGlobbing(ConformanceTest):
         assert 'a.txt' in result.bash_result.stdout
         assert 'b.txt' in result.bash_result.stdout
 
+    def test_nullglob_for_loop(self):
+        """nullglob: a non-matching glob in a for-loop yields no iterations."""
+        self.assert_identical_behavior(
+            'shopt -s nullglob; for f in zzz_nomatch*; do echo "iter=$f"; done; echo done'
+        )
+        # Without nullglob, the literal pattern is used.
+        self.assert_identical_behavior(
+            'for f in zzz_nomatch*; do echo "iter=$f"; done'
+        )
+
     def test_extended_globbing(self):
         """Test bash extended globbing.
 
@@ -325,6 +366,16 @@ class TestBashRedirection(ConformanceTest):
         self.check_behavior('cat << EOF\nhello\nEOF')
         # Both should handle here documents
 
+    def test_here_strings(self):
+        """Here-strings (<<<) including bareword operands."""
+        self.assert_identical_behavior('cat <<< hello')
+        self.assert_identical_behavior('cat <<<hello')
+        self.assert_identical_behavior('cat <<< "hello world"')
+        self.assert_identical_behavior('cat <<< 123')
+        self.assert_identical_behavior('x=hi; cat <<< $x')
+        # A bareword here-string must not swallow surrounding commands.
+        self.assert_identical_behavior('echo before; cat <<< hello; echo after')
+
     def test_advanced_redirection(self):
         """Test bash advanced redirection."""
         self.assert_identical_behavior(
@@ -337,6 +388,51 @@ class TestBashRedirection(ConformanceTest):
         bash_result = self.framework.run_in_bash(command)
         assert psh_result.exit_code != 0
         assert bash_result.exit_code != 0
+
+
+class TestBashGlobBrackets(ConformanceTest):
+    """Glob bracket features: [^...], POSIX classes, nocaseglob, globstar.
+
+    Multi-match patterns use LC_ALL=C so sort order is byte-collation in both
+    shells (the default-locale ordering difference is a separate, documented
+    low-severity item).
+    """
+
+    C = {"LC_ALL": "C"}
+
+    def _in_tmp(self, body: str) -> str:
+        # Run in a fresh temp dir with a known set of files.
+        setup = (
+            'd=$(mktemp -d); cd "$d"; '
+            'touch file1 file2 fileX Foo.TXT bar.txt Baz123; '
+            'mkdir -p sub; touch sub/x.txt; '
+        )
+        return setup + body
+
+    def test_bracket_negation_caret(self):
+        self.assert_identical_behavior(self._in_tmp('echo file[^0-9]'), env=self.C)
+
+    def test_bracket_negation_in_case(self):
+        self.assert_identical_behavior(
+            'case fileX in file[^0-9]) echo match;; *) echo no;; esac'
+        )
+
+    def test_posix_character_classes(self):
+        self.assert_identical_behavior(self._in_tmp('echo *[[:upper:]]*'), env=self.C)
+        self.assert_identical_behavior(self._in_tmp('echo [[:alpha:]]*'), env=self.C)
+
+    def test_posix_class_in_double_bracket(self):
+        self.assert_identical_behavior('[[ Baz123 == *[[:digit:]]* ]] && echo yes || echo no')
+
+    def test_nocaseglob(self):
+        self.assert_identical_behavior(
+            self._in_tmp('shopt -s nocaseglob; echo f*'), env=self.C
+        )
+
+    def test_globstar(self):
+        self.assert_identical_behavior(
+            self._in_tmp('shopt -s globstar; echo **/*.txt'), env=self.C
+        )
 
 
 class TestBashFunctions(ConformanceTest):

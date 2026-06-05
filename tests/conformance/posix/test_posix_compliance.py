@@ -62,6 +62,42 @@ class TestPOSIXParameterExpansion(ConformanceTest):
         self.assert_identical_behavior('x="hello world"; echo ${#x}')
         self.assert_identical_behavior('x=; echo ${#x}')
 
+    def test_noncolon_default_value(self):
+        """${parameter-word}: only unset uses the default (null does not)."""
+        self.assert_identical_behavior('x=hello; echo "[${x-default}]"')
+        self.assert_identical_behavior('x=; echo "[${x-default}]"')      # null -> empty
+        self.assert_identical_behavior('unset x; echo "[${x-default}]"')  # unset -> default
+
+    def test_noncolon_alternative_value(self):
+        """${parameter+word}: set (even if null) yields the word."""
+        self.assert_identical_behavior('x=hello; echo "[${x+alt}]"')
+        self.assert_identical_behavior('x=; echo "[${x+alt}]"')          # null -> alt
+        self.assert_identical_behavior('unset x; echo "[${x+alt}]"')      # unset -> empty
+
+    def test_noncolon_assign_default(self):
+        """${parameter=word}: assign only when unset."""
+        self.assert_identical_behavior('unset x; echo "[${x=val}]"; echo "[$x]"')
+        self.assert_identical_behavior('x=; echo "[${x=val}]"; echo "[$x]"')  # null stays null
+
+    def test_noncolon_error_exit_code(self):
+        """${parameter?word}: unset errors with exit 127, set does not."""
+        psh = self.framework.run_in_psh('unset x; echo "${x?boom}"; echo after')
+        bash = self.framework.run_in_bash('unset x; echo "${x?boom}"; echo after')
+        assert psh.exit_code == 127
+        assert bash.exit_code == 127
+        # Set variable: no error.
+        self.assert_identical_behavior('x=v; echo "${x?boom}"')
+
+    def test_pattern_deletion_omitted_replacement(self):
+        """${x//pat} and ${x/pat} with no replacement delete matches."""
+        self.assert_identical_behavior('x=hello; echo "${x//l}"')
+        self.assert_identical_behavior('x=hello; echo "${x/l}"')
+
+    def test_null_vs_unset_ifs_star_join(self):
+        """A null IFS concatenates $*/${arr[*]}; unset IFS joins with space."""
+        self.assert_identical_behavior('IFS=; set -- a b c; echo "$*"')
+        self.assert_identical_behavior('unset IFS; set -- a b c; echo "$*"')
+
     def test_prefix_removal_expansion(self):
         """Test ${parameter#word} and ${parameter##word} expansion."""
         self.assert_identical_behavior('x=hello.txt; echo ${x#*.}')
@@ -136,6 +172,39 @@ class TestPOSIXArithmeticExpansion(ConformanceTest):
         self.assert_identical_behavior('x=5; echo $((x + 3))')
         self.assert_identical_behavior('x=10; y=3; echo $((x * y))')
         self.assert_identical_behavior('x=0; echo $((x || 1))')
+
+    def test_arithmetic_variable_recursive_evaluation(self):
+        """A variable's value is recursively evaluated as an arithmetic expr."""
+        # Expression-valued variables (bash recursively evaluates them).
+        self.assert_identical_behavior('a="2*3"; echo $((a))')
+        self.assert_identical_behavior('a="2+3"; echo $((a + 1))')
+        self.assert_identical_behavior('a="2*3"; b=a; echo $((b))')
+        # Indirection through a bare identifier.
+        self.assert_identical_behavior('a=b; b=42; echo $((a))')
+
+    def test_arithmetic_variable_numeric_bases(self):
+        """Base-prefixed values stored in variables are parsed like bash."""
+        self.assert_identical_behavior('x=0x10; echo $((x))')
+        self.assert_identical_behavior('x=010; echo $((x))')      # octal
+        self.assert_identical_behavior('x=2#101; echo $((x))')    # base#n
+        self.assert_identical_behavior('x=0x1F; echo $((x + 1))')
+
+    def test_arithmetic_power_wraps_64bit(self):
+        """Large exponents wrap to signed 64-bit instead of erroring."""
+        self.assert_identical_behavior('echo $((2 ** 64))')
+        self.assert_identical_behavior('echo $((2 ** 100))')
+        self.assert_identical_behavior('echo $(((-2) ** 3))')
+
+    def test_arithmetic_quoted_operand(self):
+        """Double-quoted operands inside $(( )) are tolerated like bash."""
+        self.assert_identical_behavior('echo $(( "5" ))')
+        self.assert_identical_behavior('echo $(( "2" + "3" ))')
+
+    def test_arithmetic_array_subscript(self):
+        """Array subscripts are usable inside arithmetic."""
+        self.assert_identical_behavior('a=(10 20 30); echo $(( a[1] ))')
+        self.assert_identical_behavior('a=(10 20 30); i=2; echo $(( a[i] + a[0] ))')
+        self.assert_identical_behavior('a=(10 20 30); (( a[1] += 5 )); echo "${a[1]}"')
 
     def test_arithmetic_comparison(self):
         """Test arithmetic comparison operators."""
@@ -417,6 +486,22 @@ class TestPOSIXShellParameters(ConformanceTest):
         # Note: These tests run in -c mode, so $0 is the shell
         self.assert_identical_behavior('echo $#')  # Should be 0
         self.assert_identical_behavior('set a b c; echo $# $1 $2 $3')
+
+    def test_unquoted_empty_expansion_no_field(self):
+        """An unquoted empty/unset expansion contributes zero fields."""
+        self.assert_identical_behavior('set -- $emptyvar; echo "count=$#"')
+        self.assert_identical_behavior('set -- $emptyvar foo; echo "count=$# first=[$1]"')
+        # Quoted empty is still a (single, empty) field.
+        self.assert_identical_behavior('set -- "$emptyvar"; echo "count=$#"')
+
+    def test_for_loop_empty_fields_nonws_ifs(self):
+        """For-loop word splitting preserves empty fields (non-whitespace IFS)."""
+        self.assert_identical_behavior(
+            'IFS=:; v="a::b"; for x in $v; do echo "[$x]"; done'
+        )
+        self.assert_identical_behavior(
+            'IFS=:; v=":a:b"; for x in $v; do echo "[$x]"; done'
+        )
 
     def test_special_parameters(self):
         """Test special parameters."""

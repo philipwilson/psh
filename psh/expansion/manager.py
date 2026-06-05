@@ -215,7 +215,9 @@ class ExpansionManager:
             elif len(words) == 1:
                 result = words[0]
             else:
-                return ''
+                # A purely unquoted expansion that splits to nothing (e.g.
+                # `set -- $unset`) contributes zero fields, not one empty one.
+                return []
 
         # Check for extglob patterns in unquoted text
         if not has_unquoted_glob and not all_parts_quoted and self.state.options.get('extglob', False):

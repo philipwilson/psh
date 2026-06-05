@@ -1,9 +1,15 @@
 """Arithmetic expression evaluator for shell arithmetic expansion $((...))"""
 
 import builtins
+import re
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List, Optional, Union
+
+# A plain (optionally signed) decimal integer with no leading-zero octal
+# ambiguity. Values matching this are safe to parse with int(); anything else
+# (0x.., 0.., base#n, "2*3", ...) is evaluated as an arithmetic sub-expression.
+_PLAIN_DECIMAL_RE = re.compile(r'[+-]?(?:0|[1-9][0-9]*)$')
 
 
 class ArithTokenType(Enum):
@@ -65,6 +71,8 @@ class ArithTokenType(Enum):
     # Delimiters
     LPAREN = auto()
     RPAREN = auto()
+    LBRACKET = auto()
+    RBRACKET = auto()
 
     # End of input
     EOF = auto()
@@ -190,8 +198,10 @@ class ArithTokenizer:
                 while self.current_char() and self.current_char().isdigit():
                     octal_digits += self.current_char()
                     self.advance()
+                # octal_digits already includes the leading '0'; don't prepend
+                # another one (bash reports e.g. "08", not "008").
                 raise SyntaxError(
-                    f"0{octal_digits}: value too great for base (error token is \"0{octal_digits}\")"
+                    f"{octal_digits}: value too great for base (error token is \"{octal_digits}\")"
                 )
             return int(octal_digits, 8) if octal_digits else 0
 
@@ -413,6 +423,19 @@ class ArithTokenizer:
                 self.tokens.append(ArithToken(ArithTokenType.RPAREN, ')', start_pos))
                 self.advance()
 
+            elif char == '[':
+                self.tokens.append(ArithToken(ArithTokenType.LBRACKET, '[', start_pos))
+                self.advance()
+
+            elif char == ']':
+                self.tokens.append(ArithToken(ArithTokenType.RBRACKET, ']', start_pos))
+                self.advance()
+
+            elif char == '"':
+                # bash tolerates double-quoted operands inside $(( )): the quotes
+                # are stripped and the inner content tokenized normally.
+                self.advance()
+
             else:
                 raise SyntaxError(f"Unexpected character '{char}' at position {start_pos}")
 
@@ -485,8 +508,35 @@ class PostIncrementNode(ArithNode):
     is_increment: bool
 
 
+@dataclass
+class ArrayElementNode(ArithNode):
+    """Array element reference (arr[index])"""
+    name: str
+    index: ArithNode
+
+
+@dataclass
+class ArrayAssignmentNode(ArithNode):
+    """Assignment to an array element (arr[index] = value, arr[index] += value)"""
+    name: str
+    index: ArithNode
+    op: ArithTokenType
+    value: ArithNode
+
+
 class ArithParser:
     """Recursive descent parser for arithmetic expressions"""
+
+    # Simple and compound assignment operators (used for scalars and array
+    # elements alike).
+    _ASSIGNMENT_OPS = (
+        ArithTokenType.ASSIGN, ArithTokenType.PLUS_ASSIGN,
+        ArithTokenType.MINUS_ASSIGN, ArithTokenType.MULTIPLY_ASSIGN,
+        ArithTokenType.DIVIDE_ASSIGN, ArithTokenType.MODULO_ASSIGN,
+        ArithTokenType.LSHIFT_ASSIGN, ArithTokenType.RSHIFT_ASSIGN,
+        ArithTokenType.BIT_AND_ASSIGN, ArithTokenType.BIT_OR_ASSIGN,
+        ArithTokenType.BIT_XOR_ASSIGN,
+    )
 
     def __init__(self, tokens: List[ArithToken]):
         self.tokens = tokens
@@ -713,13 +763,19 @@ class ArithParser:
             var_token = self.advance()
             var_name = var_token.value
 
+            # Array subscript: arr[index] (read or assignment target)
+            if self.match(ArithTokenType.LBRACKET):
+                self.advance()
+                index = self.parse_comma()  # Allow full expressions in the index
+                self.expect(ArithTokenType.RBRACKET)
+                if self.match(*self._ASSIGNMENT_OPS):
+                    op = self.advance().type
+                    value = self.parse_ternary()
+                    return ArrayAssignmentNode(var_name, index, op, value)
+                return ArrayElementNode(var_name, index)
+
             # Check for assignment operators
-            if self.match(ArithTokenType.ASSIGN, ArithTokenType.PLUS_ASSIGN,
-                         ArithTokenType.MINUS_ASSIGN, ArithTokenType.MULTIPLY_ASSIGN,
-                         ArithTokenType.DIVIDE_ASSIGN, ArithTokenType.MODULO_ASSIGN,
-                         ArithTokenType.LSHIFT_ASSIGN, ArithTokenType.RSHIFT_ASSIGN,
-                         ArithTokenType.BIT_AND_ASSIGN, ArithTokenType.BIT_OR_ASSIGN,
-                         ArithTokenType.BIT_XOR_ASSIGN):
+            if self.match(*self._ASSIGNMENT_OPS):
                 op = self.advance().type
                 value = self.parse_ternary()  # Assignment is right-associative
                 return AssignmentNode(var_name, op, value)
@@ -745,9 +801,11 @@ class ArithmeticEvaluator:
     def get_variable(self, name: str) -> int:
         """Get variable value, converting to integer.
 
-        If the value is a valid identifier name, resolve it recursively
-        (matching bash behaviour where ``a=b; b=42; echo $((a))`` prints 42).
-        A depth limit prevents infinite loops from circular references.
+        Matches bash, which recursively evaluates a variable's value as an
+        arithmetic expression: ``a=b; b=42; $((a))`` is 42, ``a="2*3"; $((a))``
+        is 6, and base-prefixed values (``0x10``, ``010``, ``2#101``) are
+        honoured. A cycle guard / recursion limit prevents infinite loops from
+        circular references.
         """
         seen: set = set()
         var = name
@@ -756,18 +814,26 @@ class ArithmeticEvaluator:
 
             if not value:
                 return 0
+            value = value.strip()
+            if not value:
+                return 0
 
-            try:
+            # Fast path: a plain signed decimal (no leading-zero octal trap).
+            if _PLAIN_DECIMAL_RE.match(value):
                 return int(value)
-            except ValueError:
-                # If it looks like a variable name, resolve recursively
-                if value.isidentifier() and not value.startswith('_' * 2):
-                    if value in seen:
-                        return 0  # circular reference
-                    seen.add(var)
-                    var = value
-                else:
-                    return 0
+
+            # Bare identifier: follow the reference chain with a cycle guard.
+            if value.isidentifier() and not value.startswith('_' * 2):
+                if value in seen:
+                    return 0  # circular reference
+                seen.add(var)
+                var = value
+                continue
+
+            # Otherwise evaluate the value as an arithmetic sub-expression.
+            # Handles 0x.., 0.. (octal), base#n, and full expressions such as
+            # "2*3" or "a+1". Recursion is bounded by evaluate_arithmetic.
+            return evaluate_arithmetic(value, self.shell)
 
     def set_variable(self, name: str, value: int) -> None:
         """Set variable value"""
@@ -775,6 +841,63 @@ class ArithmeticEvaluator:
         # When in a function and assigning to a local variable,
         # this should update the local, not create a new global
         self.shell.state.set_variable(name, str(value))
+
+    def _string_to_int(self, value: Optional[str]) -> int:
+        """Convert a stored string value to an integer like get_variable()."""
+        value = (value or '').strip()
+        if not value:
+            return 0
+        if _PLAIN_DECIMAL_RE.match(value):
+            return int(value)
+        return evaluate_arithmetic(value, self.shell)
+
+    def get_array_element(self, name: str, index: int) -> int:
+        """Read an array element (or scalar via index 0) as an integer."""
+        from .core import AssociativeArray, IndexedArray
+        var = self.shell.state.scope_manager.get_variable_object(name)
+        if var is None:
+            return 0
+        value = var.value
+        if isinstance(value, IndexedArray):
+            return self._string_to_int(value.get(index))
+        if isinstance(value, AssociativeArray):
+            return self._string_to_int(value.get(str(index)))
+        # Scalar variable: index 0 refers to the value, any other index is unset.
+        return self._string_to_int(str(value)) if index == 0 else 0
+
+    def set_array_element(self, name: str, index: int, value: int) -> None:
+        """Assign to an array element, creating the array if necessary."""
+        from .core import IndexedArray, VarAttributes
+        from .core import AssociativeArray
+        var = self.shell.state.scope_manager.get_variable_object(name)
+        if var is not None and isinstance(var.value, IndexedArray):
+            var.value.set(index, str(value))
+        elif var is not None and isinstance(var.value, AssociativeArray):
+            var.value.set(str(index), str(value))
+        else:
+            # No array yet (and not a plain scalar we should clobber as scalar):
+            # create an indexed array, matching `arr[i]=` assignment semantics.
+            arr = IndexedArray()
+            arr.set(index, str(value))
+            self.shell.state.scope_manager.set_variable(
+                name, arr, attributes=VarAttributes.ARRAY,
+            )
+
+    def _eval_array_assignment(self, node: 'ArrayAssignmentNode') -> int:
+        index = self.evaluate(node.index)
+        value = self.evaluate(node.value)
+
+        if node.op == ArithTokenType.ASSIGN:
+            self.set_array_element(node.name, index, value)
+            return value
+
+        base_op = self._COMPOUND_TO_BASE.get(node.op)
+        if base_op is None:
+            raise ValueError(f"Unknown assignment operator: {node.op}")
+        current = self.get_array_element(node.name, index)
+        result = self._apply_binary_op(base_op, current, value)
+        self.set_array_element(node.name, index, result)
+        return result
 
     # Maps compound assignment tokens to the base binary operator so that
     # compound assignments reuse _apply_binary_op() without duplication.
@@ -809,6 +932,10 @@ class ArithmeticEvaluator:
             return self._eval_pre_increment(node)
         if isinstance(node, PostIncrementNode):
             return self._eval_post_increment(node)
+        if isinstance(node, ArrayElementNode):
+            return self.get_array_element(node.name, self.evaluate(node.index))
+        if isinstance(node, ArrayAssignmentNode):
+            return self._eval_array_assignment(node)
         raise ValueError(f"Unknown node type: {type(node)}")
 
     # -- Node-type evaluators ------------------------------------------------
@@ -903,9 +1030,10 @@ class ArithmeticEvaluator:
         if op == ArithTokenType.POWER:
             if right < 0:
                 raise ShellArithmeticError("exponent less than 0")
-            if right > 63:
-                raise ShellArithmeticError("exponent too large")
-            return _to_signed64(left ** right)
+            # Result wraps to signed 64-bit (bash: 2 ** 64 -> 0). Use modular
+            # exponentiation so large exponents don't build a huge intermediate.
+            base = left & 0xFFFFFFFFFFFFFFFF
+            return _to_signed64(pow(base, right, 1 << 64))
 
         # Comparison operators (result is always 0 or 1).
         if op == ArithTokenType.LT:

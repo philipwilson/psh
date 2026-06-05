@@ -4,87 +4,52 @@ This directory contains comprehensive integration tests for PSH subshell functio
 
 ## Running the Tests
 
-Due to pytest's output capture mechanism interfering with file descriptor operations in forked child processes, these tests require special handling:
-
-### Recommended: Run with capture disabled
+As of **v0.195.0** these tests run under normal pytest capture — the `-s` flag
+is **no longer required**:
 
 ```bash
-# Run all subshell tests (recommended)
-python -m pytest tests/integration/subshells/ -s
+# Run all subshell tests
+python -m pytest tests/integration/subshells/
 
-# Run specific test file
-python -m pytest tests/integration/subshells/test_subshell_basics.py -s
-
-# Run individual test
-python -m pytest tests/integration/subshells/test_subshell_basics.py::test_subshell_basic_execution -s
+# Run a specific file or test
+python -m pytest tests/integration/subshells/test_subshell_basics.py
+python -m pytest tests/integration/subshells/test_subshell_basics.py::test_subshell_basic_execution
 ```
 
-The `-s` flag disables pytest's output capture, allowing file redirections in forked subshells to work correctly.
-
-### Test Status
-
-**With `-s` flag (capture disabled):**
-- `test_subshell_basics.py`: 12 passed, 2 xfailed, 1 xpassed ✅
-- `test_subshell_implementation.py`: 28 passed, 1 skipped, 3 xfailed ✅
-- `test_subshell_terminal_control.py`: 3 passed ✅
-
-**Without `-s` flag:**
-- Many tests fail with empty output files due to pytest capture interference
+`run_tests.py` remains the recommended runner; it still passes `-s` for this
+group, which is now harmless rather than necessary.
 
 ## Technical Details
 
-### The Issue
+### Why the `-s` flag used to be required
 
-When pytest captures output (default behavior), it replaces `sys.stdout` and `sys.stderr` with capture objects. When PSH forks a child process for a subshell and tries to redirect output to a file, the forked process inherits these capture objects rather than real file descriptors. This causes file redirections to fail - output goes to pytest's capture instead of the target file.
+The historical explanation — "pytest replaces `sys.stdout`/`sys.stdin`, and
+forked children inherit the capture objects instead of real file descriptors" —
+was **mostly incorrect**. Forked children operate at the *file-descriptor*
+level: after a redirection is applied with `os.dup2` on the real fd, the
+builtins write stdout via `os.write(1)` and so file redirection works regardless
+of pytest's `sys.stdout` replacement.
 
-### Solutions Attempted
+The single genuine failure was the `read` builtin. It decided between
+`os.read(fd)` and `sys.stdin.readline()` by probing `sys.stdin.fileno()`; under
+capture (pytest's `DontReadFromInput`) that probe failed and `read` fell back to
+`sys.stdin` instead of the real, redirected fd 0 — so `( ... read ... ) < file`
+read the wrong source (and tripped pytest's "reading from stdin while output is
+captured" guard).
 
-1. ✅ **Fixed fixture usage**: Changed from `shell_with_temp_dir` to `isolated_shell_with_temp_dir`
-   - This ensures tests run in the correct working directory
-   - Properly isolates each test's file system operations
+### The fix
 
-2. ❌ **Using `sys.__stdout__`**: Attempted to use underlying streams
-   - Didn't solve the capture interference issue
+`read` now prefers the real OS descriptor whenever it is valid (see
+`ReadBuiltin._should_use_sys_stdin` in `psh/builtins/read_builtin.py`), falling
+back to `sys.stdin` only for a genuine in-process `StringIO` replacement. With
+that, the whole subshell suite passes under default capture.
 
-3. ❌ **Using `capfd.disabled()`**: Attempted to programmatically disable capture
-   - Context management complexities, didn't resolve the issue
-
-4. ✅ **Using `-s` flag**: Simplest and most reliable solution
-   - Disables pytest's capture entirely
-   - All tests pass consistently
-
-### Why Individual Tests Pass
-
-When running a single test in isolation, pytest's capture mechanism behaves differently - there's less contention for file descriptors and output streams. The isolation reduces (but doesn't eliminate) the interference.
+Regression coverage lives in
+`tests/integration/redirection/test_read_forked_fd.py` (deliberately run without
+`-s`).
 
 ## Test Organization
 
 - **test_subshell_basics.py**: Basic subshell functionality (execution, variables, I/O)
 - **test_subshell_implementation.py**: Comprehensive implementation tests (isolation, inheritance, compatibility)
 - **test_subshell_terminal_control.py**: Terminal control and job control integration
-
-## Verifying Fixes
-
-To verify that subshell functionality works correctly:
-
-```bash
-# Manual testing (always works)
-python -m psh -c '(echo "hello from subshell") > output.txt && cat output.txt'
-
-# Individual test (usually works)
-python -m pytest tests/integration/subshells/test_subshell_basics.py::test_subshell_basic_execution -xvs
-
-# Full suite with proper capture handling (always works)
-python -m pytest tests/integration/subshells/ -s
-```
-
-## Future Improvements
-
-Potential solutions for running without `-s` flag:
-
-1. Rewrite tests to use subprocess spawning instead of fixture-based Shell instances
-2. Implement custom pytest plugin to handle fork-based tests
-3. Use lower-level file descriptor manipulation in fixtures
-4. Mark tests with custom decorator that auto-disables capture
-
-For now, using `-s` flag is the recommended and supported approach.

@@ -319,26 +319,18 @@ def handle_ansi_c_escape(input_text: str, pos: int) -> Tuple[str, int]:
         else:
             return '\\x', pos + 2
 
-    # Octal escape: \0NNN (bash style with leading 0)
-    if next_char == '0':
+    # Octal escape: \NNN — 1 to 3 octal digits (bash style; a leading 0 is
+    # just the first digit, so \101 -> 'A' and \0101 -> octal 010 + '1').
+    if next_char in '01234567':
         octal_str = ""
-        new_pos = pos + 2
-        # Read up to 3 octal digits
+        new_pos = pos + 1  # start at the first octal digit (next_char)
         for i in range(3):
             if new_pos < len(input_text) and input_text[new_pos] in '01234567':
                 octal_str += input_text[new_pos]
                 new_pos += 1
             else:
                 break
-
-        if octal_str:
-            try:
-                return chr(int(octal_str, 8)), new_pos
-            except ValueError:
-                return '\\0' + octal_str, new_pos
-        else:
-            # Just \0 means null character
-            return '\0', pos + 2
+        return chr(int(octal_str, 8) & 0xFF), new_pos
 
     # Unicode escape: \uHHHH
     if next_char == 'u':
@@ -352,13 +344,14 @@ def handle_ansi_c_escape(input_text: str, pos: int) -> Tuple[str, int]:
             else:
                 break
 
-        if len(hex_str) == 4:
+        # bash accepts 1 to 4 hex digits after \u.
+        if hex_str:
             try:
                 return chr(int(hex_str, 16)), new_pos
             except ValueError:
                 return '\\u' + hex_str, new_pos
         else:
-            return '\\u' + hex_str, new_pos
+            return '\\u', new_pos
 
     # Unicode escape: \UHHHHHHHH (8 digits)
     if next_char == 'U':
@@ -372,13 +365,14 @@ def handle_ansi_c_escape(input_text: str, pos: int) -> Tuple[str, int]:
             else:
                 break
 
-        if len(hex_str) == 8:
+        # bash accepts 1 to 8 hex digits after \U.
+        if hex_str:
             try:
                 return chr(int(hex_str, 16)), new_pos
             except ValueError:
                 return '\\U' + hex_str, new_pos
         else:
-            return '\\U' + hex_str, new_pos
+            return '\\U', new_pos
 
     # For other characters, keep the backslash
     return '\\' + next_char, pos + 2

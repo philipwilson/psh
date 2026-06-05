@@ -122,6 +122,17 @@ class ParameterExpansion:
                 var_name = content[:i]
                 rest = content[i + 1:]
                 return ':', var_name, rest
+            elif char in '-=+?' and i > 0 and content[i - 1] != ':':
+                # Non-colon operators ${var-w}, ${var=w}, ${var+w}, ${var?w}
+                # (unset test; colon variants are excluded above and handled
+                # separately). Skip inside an unclosed bracket expression (an
+                # array subscript or a case-mod pattern like [a-m]).
+                before = content[:i]
+                if before.count('[') > before.count(']'):
+                    continue
+                if before.endswith(']') and '[' in before:
+                    continue
+                return char, before, content[i + 1:]
 
         # Check for case modification ${var^pattern}, ${var^^pattern}, etc
         # This is checked after substitution to avoid conflicts with commas in patterns
@@ -253,10 +264,11 @@ class ParameterExpansion:
         """Extract substring with offset and optional length."""
         # Handle negative offset
         if offset < 0:
-            # Negative offset counts from end
+            # Negative offset counts from end. If it is still negative after
+            # adjusting, bash yields the empty string (not the whole value).
             offset = len(value) + offset
             if offset < 0:
-                offset = 0
+                return ''
 
         # Handle out of bounds
         if offset >= len(value):
@@ -268,10 +280,12 @@ class ParameterExpansion:
         else:
             # Handle negative length
             if length < 0:
-                # Negative length means "all but last N chars"
+                # Negative length means "up to N chars from the end". If the
+                # endpoint falls before the offset, bash treats it as an error
+                # (e.g. `${x:0:-5}` on a short string).
                 end = len(value) + length
-                if end <= offset:
-                    return ''
+                if end < offset:
+                    raise ValueError(f"{length}: substring expression < 0")
                 return value[offset:end]
             else:
                 # Normal positive length

@@ -115,22 +115,33 @@ class WordBuilder:
         # We find the operator that matches at the earliest position.
         # When two operators match at the same position, prefer the longer one
         # (e.g. ':-' over ':' at the same index, '//' over '/' at the same index).
-        operators = [':-', ':=', ':?', ':+', '##', '%%', '/#', '/%', '//', '#', '%', '/', ':']
+        operators = [':-', ':=', ':?', ':+', '##', '%%', '/#', '/%', '//',
+                     '#', '%', '/', ':', '-', '=', '+', '?']
 
         best_idx = len(inner)
         best_op = None
         for op in operators:
             idx = inner.find(op)
             if idx > 0:  # Must have a variable name before operator
+                before = inner[:idx]
                 # For ':' (substring operator), only match if the parameter
                 # part is a clean variable name (no ':' already in it).
                 # This prevents re-matching inside operands like '0:-1'.
-                if op == ':' and ':' in inner[:idx]:
+                if op == ':' and ':' in before:
+                    continue
+                # A non-colon single-char op preceded by ':' is part of a colon
+                # operator (':-', ':=', ':+', ':?'), not a standalone one.
+                if op in ('-', '=', '+', '?') and before.endswith(':'):
+                    continue
+                # Don't match operators inside an unclosed bracket expression
+                # — an array subscript ${arr[-1]} / ${arr[i+1]} or a case-mod
+                # pattern like ${arr[@]^^[a-m]}.
+                if before.count('[') > before.count(']'):
                     continue
                 # Don't match operators after array subscript closing ']'.
                 # ${arr[@]:2:3} is array slicing, handled by variable expansion,
                 # not by the parameter expansion operator system.
-                if inner[:idx].endswith(']') and '[' in inner[:idx]:
+                if before.endswith(']') and '[' in before:
                     continue
                 if idx < best_idx or (idx == best_idx and best_op and len(op) > len(best_op)):
                     best_idx = idx

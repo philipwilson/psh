@@ -258,7 +258,7 @@ python -m psh --debug-exec -c "echo hello | cat"
 
 ## Common Pitfalls
 
-1. **Fork in Tests**: Tests using subshells must run with `-s` flag due to pytest's output capture interfering with file descriptors in forked children.
+1. **Fork in Tests**: Subshell tests run fine under normal pytest capture (no `-s` needed, as of v0.195.0). Forked children operate at the fd level — stdout via `os.write(1)` and stdin via `os.read(fd)` after `os.dup2` — so pytest's `sys.stdout`/`sys.stdin` replacement doesn't interfere.
 
 2. **Signal Safety**: Don't call non-async-signal-safe functions after `fork()` before `exec()`.
 

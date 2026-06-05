@@ -81,12 +81,25 @@ class TestAnsiCQuoting:
         assert captured.out == "\t"  # \x9 is tab
 
     def test_octal_escapes(self, shell, capsys):
-        """Test octal escape sequences."""
-        # \0NNN format (bash style with leading 0)
-        result = shell.run_command("echo $'\\0101\\0102\\0103'")
+        """Test octal escape sequences (\\nnn, 1-3 digits, like bash)."""
+        # \NNN format (no leading zero required): \101 = 'A'
+        result = shell.run_command("echo $'\\101\\102\\103'")
         assert result == 0
         captured = capsys.readouterr()
         assert captured.out == "ABC\n"
+
+        # A leading zero is just the first octal digit; only 3 digits are
+        # consumed, so \0101 == octal 010 (backspace) followed by '1'.
+        result = shell.run_command("echo $'\\0101'")
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out == "\b1\n"
+
+        # Short octal escape.
+        result = shell.run_command("echo $'\\7'")
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out == "\a\n"
 
         # Test null character
         # Since null is hard to test directly, verify it's different from other chars
@@ -102,6 +115,15 @@ class TestAnsiCQuoting:
         assert result == 0
         captured = capsys.readouterr()
         assert captured.out == "ABC\n"
+
+        # bash accepts 1-4 digits after \u and 1-8 after \U.
+        result = shell.run_command("echo $'\\u41'")
+        assert result == 0
+        assert capsys.readouterr().out == "A\n"
+
+        result = shell.run_command("echo $'\\U41'")
+        assert result == 0
+        assert capsys.readouterr().out == "A\n"
 
         # Test emoji
         result = shell.run_command("echo $'\\u263A'")
@@ -169,12 +191,6 @@ class TestAnsiCQuoting:
         assert result == 0
         captured = capsys.readouterr()
         assert captured.out == "\\x\n"
-
-        # Invalid unicode escape (not enough digits)
-        result = shell.run_command("echo $'\\u41'")
-        assert result == 0
-        captured = capsys.readouterr()
-        assert captured.out == "\\u41\n"
 
         # Unknown escape sequence
         result = shell.run_command("echo $'\\q'")
