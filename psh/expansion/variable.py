@@ -141,7 +141,7 @@ class VariableExpander:
                 from ..arithmetic import ArithmeticError, evaluate_arithmetic
                 try:
                     index = evaluate_arithmetic(expanded_index, self.shell)
-                except (ArithmeticError, Exception):
+                except ArithmeticError:
                     index = 0
                 element = var.value.get(index)
                 return str(len(element)) if element else '0'
@@ -299,7 +299,7 @@ class VariableExpander:
                 from ..arithmetic import ArithmeticError, evaluate_arithmetic
                 try:
                     index = evaluate_arithmetic(expanded_index, self.shell)
-                except (ArithmeticError, Exception):
+                except ArithmeticError:
                     index = 0
                 result = var.value.get(index)
                 return result if result is not None else ''
@@ -510,7 +510,7 @@ class VariableExpander:
                     from ..arithmetic import ArithmeticError, evaluate_arithmetic
                     try:
                         index = evaluate_arithmetic(expanded_index, self.shell)
-                    except (ArithmeticError, Exception):
+                    except ArithmeticError:
                         index = 0
                     value = var.value.get(index) or ''
                 except (ValueError, TypeError):

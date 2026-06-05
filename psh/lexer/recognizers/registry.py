@@ -86,8 +86,13 @@ class RecognizerRegistry:
                         token, new_pos = result
                         return token, new_pos, recognizer
             except Exception as e:
-                logger.debug("Error in recognizer %s: %s", recognizer.name, e)
-                continue
+                # Recognizers are contracted to return None when they cannot
+                # handle the input, not to raise. A raised exception therefore
+                # signals a defect — surface it with context instead of silently
+                # skipping the recognizer and mis-tokenizing.
+                raise RuntimeError(
+                    f"recognizer {recognizer.name!r} failed at position {pos}: {e}"
+                ) from e
 
         return None
 

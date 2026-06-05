@@ -353,20 +353,18 @@ class SourceProcessor(ScriptComponent):
             if isinstance(ast, TopLevel):
                 return self.shell.execute_toplevel(ast)
             else:
+                from ..core import LoopBreak, LoopContinue
                 try:
                     # Heredoc content is now pre-populated during parsing
                     exit_code = self.shell.execute_command_list(ast)
                     return exit_code
-                except Exception as e:
-                    # Import the exceptions properly
-                    from ..core import LoopBreak, LoopContinue
-                    if isinstance(e, (LoopBreak, LoopContinue)):
-                        # Break/continue outside of loops is an error
-                        stmt_name = "break" if isinstance(e, LoopBreak) else "continue"
-                        print(f"{stmt_name}: only meaningful in a `for' or `while' loop",
-                              file=sys.stderr)
-                        return 1
-                    raise
+                except (LoopBreak, LoopContinue) as e:
+                    # Break/continue outside of any loop is an error. Catch only
+                    # these — any other exception propagates to its own handler.
+                    stmt_name = "break" if isinstance(e, LoopBreak) else "continue"
+                    print(f"{stmt_name}: only meaningful in a `for' or `while' loop",
+                          file=sys.stderr)
+                    return 1
         except ParseError as e:
             # Check if error already has context, otherwise add location
             if e.error_context and e.error_context.source_line:
@@ -379,8 +377,13 @@ class SourceProcessor(ScriptComponent):
             self.state.last_exit_code = 2  # Bash uses exit code 2 for syntax errors
             return 2
         except Exception as e:
-            # Enhanced error message with location
+            # Last-resort guard so an internal defect doesn't kill an
+            # interactive session. Surface the full traceback under --debug-exec
+            # so the bug is not hidden behind the generic message.
             location = f"{input_source.get_name()}:{start_line}" if start_line > 0 else "command"
+            if self.state.options.get('debug-exec'):
+                import traceback
+                traceback.print_exc(file=sys.stderr)
             print(f"psh: {location}: unexpected error: {e}", file=sys.stderr)
             self.state.last_exit_code = 1
             return 1
