@@ -52,4 +52,14 @@ class TestDupFdValid:
         assert fr._dup_fd_valid(r) is False
 
     def test_invalid_for_unopened_high_fd(self, fr):
-        assert fr._dup_fd_valid(99) is False
+        # Probe upward for a genuinely-closed fd rather than hardcoding a number:
+        # under pytest-xdist a worker keeps its execnet channel on a high fd, so a
+        # fixed fd like 99 may actually be open and the assertion would flake.
+        fd = 50
+        while True:
+            try:
+                os.fstat(fd)  # open -> keep looking
+                fd += 1
+            except OSError:
+                break         # closed
+        assert fr._dup_fd_valid(fd) is False

@@ -103,22 +103,25 @@ def temp_dir():
 
 @pytest.fixture
 def shell_with_temp_dir(shell, temp_dir):
-    """Shell instance with a temporary working directory.
+    """Shell instance operating in an isolated temporary working directory.
 
-    This fixture provides a shell instance that operates in a temporary
-    directory without changing the global Python working directory.
-    This ensures thread safety for parallel test execution.
+    Changes BOTH the process cwd and the shell's PWD to a per-test temp dir so
+    that redirections (``> file``) and relative file reads land there instead of
+    the shared working directory. The previous version only set ``PWD`` and left
+    ``> file`` writing to the real cwd — which collided across xdist workers
+    (fixed-name files like ``output.txt``) and caused flaky parallel failures.
     """
-    # Store original PWD
-    original_pwd = shell.state.variables.get('PWD', os.getcwd())
+    original_cwd = os.getcwd()
+    original_pwd = shell.state.variables.get('PWD', original_cwd)
 
-    # Set shell's working directory without changing global cwd
+    os.chdir(temp_dir)
     shell.state.variables['PWD'] = temp_dir
 
-    yield shell
-
-    # Restore original PWD
-    shell.state.variables['PWD'] = original_pwd
+    try:
+        yield shell
+    finally:
+        os.chdir(original_cwd)
+        shell.state.variables['PWD'] = original_pwd
 
 
 @pytest.fixture
