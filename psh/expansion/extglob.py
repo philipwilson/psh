@@ -108,8 +108,30 @@ def extglob_to_regex(pattern: str, anchored: bool = True,
     return regex
 
 
-def _convert_pattern(pattern: str, for_pathname: bool) -> str:
-    """Recursively convert a shell pattern to regex."""
+def glob_to_regex_body(pattern: str, for_pathname: bool = False,
+                       extglob: bool = True) -> str:
+    """Convert a shell glob pattern to an *unanchored* regex body.
+
+    The public entry point for the shared glob→regex conversion. Callers that
+    need anchoring add ``^``/``$`` themselves (see ``extglob_to_regex`` and
+    ``PatternMatcher.shell_pattern_to_regex``).
+    """
+    return _convert_pattern(pattern, for_pathname, extglob)
+
+
+def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True) -> str:
+    """Recursively convert a shell pattern to regex.
+
+    Args:
+        pattern: Shell pattern.
+        for_pathname: If True, ``*`` and ``?`` do not match ``/``.
+        extglob: If True, interpret ``?(``/``*(``/``+(``/``@(``/``!(`` as extglob
+            operators. Set False for plain-glob conversion (e.g. parameter
+            expansion when extglob is off), where those prefixes are literal.
+
+    This is the single source of truth for shell-glob → regex conversion,
+    shared by extglob matching and parameter-expansion pattern operators.
+    """
     result = []
     i = 0
     dot = '[^/]' if for_pathname else '.'
@@ -125,13 +147,13 @@ def _convert_pattern(pattern: str, for_pathname: bool) -> str:
             continue
 
         # Extglob operator
-        if ch in _EXTGLOB_PREFIXES and i + 1 < len(pattern) and pattern[i + 1] == '(':
+        if extglob and ch in _EXTGLOB_PREFIXES and i + 1 < len(pattern) and pattern[i + 1] == '(':
             close = _find_matching_paren(pattern, i + 1)
             if close is not None:
                 inner = pattern[i + 2:close]
                 alternatives = _split_pattern_list(inner)
                 # Recursively convert each alternative
-                alt_regexes = [_convert_pattern(alt, for_pathname) for alt in alternatives]
+                alt_regexes = [_convert_pattern(alt, for_pathname, extglob) for alt in alternatives]
                 alt_group = '|'.join(alt_regexes)
 
                 if ch == '?':

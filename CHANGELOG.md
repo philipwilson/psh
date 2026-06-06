@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.203.0 (2026-06-06) - Unify glob→regex conversion; fix leading `]` in classes
+- **Glob→regex conversion unified (Phase 2 study §1.3, Tier C)** — the
+  parameter-expansion pattern operators (`#`/`##`/`%`/`%%`/`/`/`//`) and the
+  extglob matcher carried two char-by-char glob→regex converters. They now share
+  one implementation: `psh/expansion/extglob.py` exposes `glob_to_regex_body()`
+  (the recursive converter gained an `extglob` toggle so it also handles plain
+  globs), and `PatternMatcher.shell_pattern_to_regex` delegates to it while
+  keeping its own anchoring contract. ~48 fewer lines in `parameter_expansion.py`.
+- **Leading `]` in a character class (bug fix)** — a class beginning with `]`
+  (e.g. `[]]`, `[]ab]`) is a literal-member class in POSIX; the former inline
+  converter produced an invalid empty class and pattern operators raised
+  "unterminated character set". Now handled correctly (verified against bash).
+  6 regression tests added.
+
 ## 0.202.0 (2026-06-06) - Unify heredoc detection; fix `<<-` indented delimiter
 - **Heredoc detection unified (Phase 2 study §1.3, Tier C #11)** — the
   script/`-c`/stdin path and the interactive multiline path carried two diverged
