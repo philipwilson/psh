@@ -127,9 +127,6 @@ class ShellState:
         self.supports_job_control: bool = False
         self.is_terminal: bool = False
 
-        # Special mode for specific eval tests that need output capture
-        self._eval_test_mode = False
-
         # PS4 prompt for xtrace
         self.scope_manager.set_variable('PS4', '+ ')
 
@@ -150,19 +147,6 @@ class ShellState:
 
         # Detect terminal capabilities after initialization
         self._detect_terminal_capabilities()
-
-    @property
-    def eval_test_mode(self) -> bool:
-        """Whether we're in special eval test mode for output capture."""
-        return self._eval_test_mode
-
-    def enable_eval_test_mode(self):
-        """Enable special eval test mode for output capture."""
-        self._eval_test_mode = True
-
-    def disable_eval_test_mode(self):
-        """Disable special eval test mode."""
-        self._eval_test_mode = False
 
     @property
     def stdout(self):

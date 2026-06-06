@@ -103,16 +103,11 @@ class PipelineExecutor:
     def _execute_pipeline(self, node: 'Pipeline', context: 'ExecutionContext',
                          visitor: 'ASTVisitor[int]') -> int:
         """Execute pipeline without NOT handling."""
-        # In eval test mode, try to execute simple pipelines without forking to enable output capture
-        if (hasattr(self.state, 'eval_test_mode') and self.state.eval_test_mode and
-            self._is_simple_builtin_pipeline(node)):
-            return self._execute_simple_pipeline_in_test_mode(node, context, visitor)
-        else:
-            return self._execute_pipeline_with_forking(node, context, visitor)
+        return self._execute_pipeline_with_forking(node, context, visitor)
 
     def _execute_pipeline_with_forking(self, node: 'Pipeline', context: 'ExecutionContext',
                                      visitor: 'ASTVisitor[int]') -> int:
-        """Execute pipeline with forking (original implementation)."""
+        """Execute pipeline with forking."""
         if len(node.commands) == 1:
             # Single command, no pipeline needed
             return visitor.visit(node.commands[0])
@@ -309,167 +304,6 @@ class PipelineExecutor:
             self.job_manager.remove_job(job.job_id)
 
         return exit_status
-
-    def _is_simple_builtin_pipeline(self, node: 'Pipeline') -> bool:
-        """Check if this is a simple pipeline that can be executed without forking in test mode."""
-        from ..ast_nodes import SimpleCommand
-
-        # Must be a pipeline with exactly 2 commands
-        if len(node.commands) != 2:
-            return False
-
-        # Both commands must be SimpleCommands
-        for cmd in node.commands:
-            if not isinstance(cmd, SimpleCommand):
-                return False
-
-        # For test mode, we can handle simple cases even with external commands
-        # This is safe because we're only doing it in test environments
-        return True
-
-    def _is_builtin_command(self, cmd_name: str) -> bool:
-        """Check if a command is a PSH builtin."""
-        from ..builtins import registry
-        return cmd_name in registry
-
-    def _execute_simple_pipeline_in_test_mode(self, node: 'Pipeline', context: 'ExecutionContext',
-                                           visitor: 'ASTVisitor[int]') -> int:
-        """Execute simple pipeline without forking for test output capture."""
-        from ..ast_nodes import SimpleCommand
-
-        # This is a simplified pipeline execution for test mode only
-        # It uses subprocess.run with pipes to simulate shell pipeline behavior
-
-        first_cmd = node.commands[0]
-        second_cmd = node.commands[1]
-
-        # Check if we can handle this with StringIO (both are builtins)
-        if (isinstance(first_cmd, SimpleCommand) and isinstance(second_cmd, SimpleCommand) and
-            first_cmd.args and second_cmd.args):
-
-            first_cmd_name = str(first_cmd.args[0])
-            second_cmd_name = str(second_cmd.args[0])
-
-            if (self._is_builtin_command(first_cmd_name) and
-                self._is_builtin_command(second_cmd_name)):
-                return self._execute_builtin_to_builtin_pipeline(first_cmd, second_cmd, visitor)
-            else:
-                return self._execute_mixed_pipeline_in_test_mode(first_cmd, second_cmd, context, visitor)
-
-        # Fallback to mixed mode
-        return self._execute_mixed_pipeline_in_test_mode(first_cmd, second_cmd, context, visitor)
-
-    def _execute_builtin_to_builtin_pipeline(self, first_cmd, second_cmd, visitor):
-        """Execute builtin-to-builtin pipeline using StringIO."""
-        import io
-
-        # Save current stdout/stdin
-        original_stdout = self.shell.stdout
-        original_stdin = self.shell.stdin
-
-        # Create a StringIO buffer to capture output from first command
-        pipe_buffer = io.StringIO()
-
-        try:
-            # Redirect first command's output to buffer
-            self.shell.stdout = pipe_buffer
-
-            # Execute first command
-            exit_code1 = visitor.visit(first_cmd)
-
-            # Get the output from first command
-            pipe_output = pipe_buffer.getvalue()
-
-            # Restore original stdout for second command
-            self.shell.stdout = original_stdout
-
-            # Create a StringIO input for second command to read from
-            pipe_input = io.StringIO(pipe_output)
-
-            # Redirect second command's input from pipe
-            self.shell.stdin = pipe_input
-
-            # Execute second command
-            exit_code2 = visitor.visit(second_cmd)
-
-            # Pipeline exit status is that of the last command (unless pipefail is set)
-            if self.state.options.get('pipefail'):
-                return exit_code1 if exit_code1 != 0 else exit_code2
-            else:
-                return exit_code2
-
-        finally:
-            # Restore original stdout/stdin
-            self.shell.stdout = original_stdout
-            self.shell.stdin = original_stdin
-
-    def _execute_mixed_pipeline_in_test_mode(self, first_cmd, second_cmd, context, visitor):
-        """Execute pipeline with potential external commands using subprocess."""
-        import subprocess
-
-        from ..ast_nodes import SimpleCommand
-
-        # For mixed pipelines in test mode, use subprocess to maintain output capture
-        if isinstance(first_cmd, SimpleCommand) and isinstance(second_cmd, SimpleCommand):
-            first_args = [str(arg) for arg in first_cmd.args]
-            second_args = [str(arg) for arg in second_cmd.args]
-
-            try:
-                # Run the pipeline using subprocess
-                # First command
-                proc1 = subprocess.Popen(
-                    first_args,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    env=self.shell.env
-                )
-
-                # Second command
-                proc2 = subprocess.Popen(
-                    second_args,
-                    stdin=proc1.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    env=self.shell.env
-                )
-
-                # Close first process stdout to allow proc1 to receive SIGPIPE
-                proc1.stdout.close()
-
-                # Wait for completion and get output
-                stdout, stderr = proc2.communicate()
-                proc1.wait()
-
-                # Write output to shell's stdout (which should be captured by pytest)
-                if stdout:
-                    self.shell.stdout.write(stdout)
-                    self.shell.stdout.flush()
-
-                if stderr:
-                    self.shell.stderr.write(stderr)
-                    self.shell.stderr.flush()
-
-                # Return exit status of last command
-                return proc2.returncode
-
-            except FileNotFoundError:
-                # If command not found, try executing as builtins
-                return self._execute_builtin_to_builtin_pipeline(first_cmd, second_cmd, visitor)
-            except (OSError, subprocess.SubprocessError):
-                # Fallback to original forking method with a real Pipeline node
-                from ..ast_nodes import Pipeline
-                fallback_node = Pipeline(
-                    commands=[first_cmd, second_cmd],
-                    negated=False,
-                )
-                return self._execute_pipeline_with_forking(
-                    fallback_node, context, visitor
-                )
-
-        # Fallback for non-SimpleCommand cases
-        return visitor.visit(first_cmd)
 
     def _setup_pipeline_redirections(self, index: int, pipeline_ctx: PipelineContext,
                                      pipe_stderr: Optional[List[bool]] = None):

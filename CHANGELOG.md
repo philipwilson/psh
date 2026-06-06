@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.208.0 (2026-06-06) - Remove the test-only pipeline path (eval_test_mode)
+- **Dropped `eval_test_mode`** (study triage #1) — the pipeline executor carried
+  an entire alternate, no-fork execution path (`_execute_simple_pipeline_in_test_mode`
+  and helpers, ~161 lines) gated on `state.eval_test_mode`, plus matching branches
+  in `echo`/`printf`/`pwd` (`io.py`) and `print`. That flag was enabled by exactly
+  one test and never in production, so the path was test-only code embedded in the
+  production executor (and its behavior diverged from the real forking path).
+- The one dependent test (`test_eval_pipe`) now uses `capfd`, capturing the real
+  forking pipeline at the file-descriptor level. The flag, the no-fork pipeline
+  cluster, the `io.py`/`print_builtin.py` branches, and the `state.py`
+  property/methods are removed. Production behavior is unchanged (it never set the
+  flag); net ~187 fewer lines.
+- (The narrow `is_pytest` terminal-control guard in the forking path is a
+  separate, legitimate no-controlling-terminal guard and was left in place.)
+
 ## 0.207.0 (2026-06-06) - Route builtin output through shell.stdout
 - **Builtins no longer use bare `print()`** (study triage #2) — `parser-config`/
   `parser-mode`, `debug`/`debug-ast`, `kill -l`, `jobs`/`fg`/`bg`/`wait`,
