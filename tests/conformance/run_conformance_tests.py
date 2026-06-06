@@ -17,7 +17,7 @@ from pathlib import Path
 # Add current directory to path for imports
 sys.path.insert(0, os.path.dirname(__file__))
 
-from framework import ConformanceResult
+from conformance_framework import ConformanceResult
 
 
 class ConformanceTestRunner:
@@ -174,7 +174,7 @@ class ConformanceTestRunner:
 
                     print(f"    ✗ {method_name}: {e}")
                     # Create error result
-                    from framework import CommandResult, ComparisonResult
+                    from conformance_framework import CommandResult, ComparisonResult
                     error_result = ComparisonResult(
                         command=f"{test_class.__name__}.{method_name}",
                         psh_result=CommandResult("", str(e), 1, 0.0, "psh", "test_error"),
