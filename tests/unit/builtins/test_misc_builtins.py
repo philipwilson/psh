@@ -165,16 +165,15 @@ class TestEvalBuiltin:
         captured = capsys.readouterr()
         assert "$HOME" in captured.out
 
-    def test_eval_pipe(self, shell, capsys):
-        """Test eval with pipeline."""
-        # Enable eval test mode for this specific test
-        shell.state.enable_eval_test_mode()
-        try:
-            shell.run_command('eval "echo hello | tr a-z A-Z"')
-            captured = capsys.readouterr()
-            assert captured.out.strip() == "HELLO"
-        finally:
-            shell.state.disable_eval_test_mode()
+    def test_eval_pipe(self, shell, capfd):
+        """Test eval with pipeline.
+
+        Uses capfd (fd-level capture) so the real forking pipeline path — whose
+        output goes to file descriptor 1 — is exercised and captured.
+        """
+        shell.run_command('eval "echo hello | tr a-z A-Z"')
+        captured = capfd.readouterr()
+        assert captured.out.strip() == "HELLO"
 
     def test_eval_redirection(self, shell, capsys):
         """Test eval with redirection."""

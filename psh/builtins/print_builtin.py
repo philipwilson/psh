@@ -233,16 +233,15 @@ class PrintBuiltin(Builtin):
     def _write(self, text: str, fd: int, shell: 'Shell') -> None:
         """Write ``text`` to the requested file descriptor."""
         is_forked_child = getattr(shell.state, '_in_forked_child', False)
-        is_eval_test_mode = getattr(shell.state, 'eval_test_mode', False)
 
-        # fd 1 in the parent (non-test) process should go through shell.stdout so
+        # fd 1 in the parent process should go through shell.stdout so
         # redirections and capture work; same for fd 2 and shell.stderr.
-        if fd == 1 and not (is_forked_child and not is_eval_test_mode):
+        if fd == 1 and not is_forked_child:
             stream = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
             stream.write(text)
             stream.flush()
             return
-        if fd == 2 and not (is_forked_child and not is_eval_test_mode):
+        if fd == 2 and not is_forked_child:
             stream = shell.stderr if hasattr(shell, 'stderr') else sys.stderr
             stream.write(text)
             stream.flush()
