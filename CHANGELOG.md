@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.209.0 (2026-06-06) - Fix formatter output for subshells, brace groups, [[ ]]
+- **Formatters no longer emit `# Unknown node` for real node types** (study
+  triage #6). Two formatters were affected:
+  - `FormatterVisitor` (behind `psh --format`) had no `visit_SubshellGroup` /
+    `visit_BraceGroup`, so subshells and brace groups fell through to
+    `generic_visit` and produced a `# Unknown node: ...` comment instead of
+    shell. Added both (shared `_format_group` helper) → `( ... )` / `{ ... }`.
+  - `ShellFormatter` (used by `type` / `declare -f`) was missing `SubshellGroup`,
+    `BraceGroup`, and `EnhancedTestStatement`; added them plus a recursive
+    `_format_test_expression` for `[[ ]]` (unary/binary/negated/compound).
+- Output is valid shell and round-trip stable (format → parse → format is
+  idempotent). Added 33 tests across both formatters, which previously had no
+  direct coverage.
+
 ## 0.208.0 (2026-06-06) - Remove the test-only pipeline path (eval_test_mode)
 - **Dropped `eval_test_mode`** (study triage #1) — the pipeline executor carried
   an entire alternate, no-fork execution path (`_execute_simple_pipeline_in_test_mode`
