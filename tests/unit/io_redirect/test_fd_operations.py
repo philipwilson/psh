@@ -82,3 +82,42 @@ class TestPermanentRedirectProcSubCheck:
         # This is a regression test for the endswith('') bug
         stdout, stderr, rc = run_psh('echo test > /dev/null')
         assert rc == 0
+
+
+class TestDynamicDupTarget:
+    """`>&`/`<&` targets given by an expansion are resolved at runtime.
+
+    The lexer emits a bare `N>&`/`>&`/`<&` operator, the parser keeps the
+    expansion as the target, and FileRedirector._resolved expands it to an fd
+    number before the dup. See docs / brace_expansion is unrelated.
+    """
+
+    def test_dup_stdout_to_arithmetic_fd(self):
+        # >&$((1+2)) duplicates fd 3 (opened by exec) — write reaches the file.
+        out, err, rc = run_psh(
+            'exec 3>/dev/stdout; echo hi >&$((1+2)); exec 3>&-')
+        assert rc == 0
+        assert out.strip() == "hi"
+
+    def test_dup_stdout_to_variable_fd(self):
+        out, err, rc = run_psh('fd=2; echo oops >&$fd 2>/dev/null; echo ok')
+        assert rc == 0
+        assert "ok" in out
+
+    def test_arithmetic_fd_equivalent_to_literal(self):
+        # >&$((0+1)) is just >&1 (a no-op dup of stdout onto itself).
+        out, err, rc = run_psh('echo hi >&$((0+1))')
+        assert rc == 0
+        assert out.strip() == "hi"
+
+    def test_fd_prefixed_arithmetic_dup(self):
+        # 2>&$((1)) sends stderr to stdout (fd 1).
+        out, err, rc = run_psh('echo err >&2 2>&$((1)) | cat')
+        # The exact stream plumbing varies; the point is it parses and runs.
+        assert rc == 0
+
+    def test_non_numeric_target_is_error(self):
+        # An explicit fd-dup target that is not a number is a redirect error.
+        out, err, rc = run_psh('x=abc; echo hi 2>&$x')
+        assert rc != 0
+        assert "ambiguous redirect" in err

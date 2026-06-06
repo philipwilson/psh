@@ -74,9 +74,9 @@ class OperatorRecognizer(ContextualRecognizer):
         # Check for patterns: >&N, <&N, N>&M, N<&M
         remaining = input_text[pos:]
 
-        # Check for >&N or <&N
+        # Check for >&N or <&N (N a digit, '-', or a dynamic $.../`...` target)
         if len(remaining) >= 3 and remaining[0] in '><' and remaining[1] == '&':
-            return remaining[2].isdigit() or remaining[2] == '-'
+            return remaining[2].isdigit() or remaining[2] == '-' or remaining[2] in '$`'
 
         # Check for N>&M or N<&M (where we're at the digit)
         if remaining and remaining[0].isdigit():
@@ -124,6 +124,12 @@ class OperatorRecognizer(ContextualRecognizer):
             elif input_text[pos].isdigit():
                 while pos < len(input_text) and input_text[pos].isdigit():
                     pos += 1
+            elif input_text[pos] in '$`':
+                # Dynamic target (e.g. 2>&$((1+1)), >&$fd): emit only the bare
+                # operator (N>& / >&); the following expansion is tokenized
+                # separately and consumed by the parser as the dup target.
+                op_string = input_text[start_pos:pos]
+                return Token(TokenType.REDIRECT_DUP, op_string, start_pos, pos), pos
             else:
                 return None
 
@@ -164,6 +170,12 @@ class OperatorRecognizer(ContextualRecognizer):
         elif input_text[pos].isdigit():
             while pos < len(input_text) and input_text[pos].isdigit():
                 pos += 1
+        elif input_text[pos] in '$`':
+            # Dynamic target (e.g. >&$((1+1))): emit only the bare operator; the
+            # following expansion is tokenized separately and consumed by the
+            # parser as the dup target.
+            op_string = input_text[start_pos:pos]
+            return Token(TokenType.REDIRECT_DUP, op_string, start_pos, pos), pos
         else:
             return None
 

@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.216.0 (2026-06-06) - Brace expansion of expansion items; arithmetic fd-dup targets
+- **Brace list expansion now carries expansion items** (`{$((1)),$((2)),$((3))}`
+  → `1 2 3`; also `{$(cmd),...}` and `{$a,$b}`). Brace expansion is textual and
+  runs before parameter/command/arithmetic expansion, so the token-level
+  `TokenBraceExpander` now treats `$((..))`/`$(..)`/`$var` tokens as opaque units
+  in a composite run instead of refusing to expand any list containing a `$`.
+  The one case the token model cannot reproduce — bash re-forming a variable
+  *name* out of brace text (`$x{1,2}` → `$x1 $x2`) — is detected and left
+  unexpanded (documented divergence). Brace *ranges* with `$`-endpoints stay
+  literal, matching bash.
+- **Arithmetic/variable fd-duplication targets** (`>&$((1+1))`, `2>&$fd`,
+  `<&$n`). The lexer emits a bare `N>&`/`>&`/`<&` operator when the target is an
+  expansion; the parser keeps the expansion as the dup target; and
+  `FileRedirector._resolved` expands it to an integer fd at execution time
+  (raising "ambiguous redirect" for a non-numeric value). A shallow-copy
+  resolution keeps the AST node unmutated so re-execution in a loop re-resolves.
+- Added regression tests (brace expansion with arithmetic/command-sub/variable
+  items and name-fusion divergence; dynamic fd-dup targets). Both were previously
+  documented `xfail`s in the advanced-arithmetic suite, now passing.
+
 ## 0.215.0 (2026-06-06) - Stop hiding defects in executor error guards
 - **Executor broad-except guards** (study triage #13) — tightened the executor's
   `except Exception` boundaries so internal defects are no longer silently

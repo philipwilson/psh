@@ -280,15 +280,14 @@ class BraceExpander:
         - A comma at the top level (not inside nested braces)
         - A '..' sequence (for range expansion)
 
-        BUT NOT if the content contains variables that should be expanded first.
+        Note: brace expansion is purely textual and runs *before* parameter,
+        command, and arithmetic expansion, so a list whose items contain
+        $var / $(...) / $((...)) must still expand (bash: `echo {$a,$b}` ->
+        the two words `$a` `$b`, expanded afterwards). Ranges with $-endpoints
+        are not expandable (their bounds aren't integers/chars at brace time);
+        those are left literal by _expand_sequence returning None.
         """
         if not content:
-            return False
-
-        # Check if content contains variables that should be expanded first
-        # Only prevent brace expansion for actual variable/command substitution patterns
-        # Single '$' in a list like {$,#,@} should not prevent expansion
-        if self._contains_expandable_dollar(content):
             return False
 
         # Check for sequence (Phase 2 - recognize but don't expand yet)
@@ -696,51 +695,55 @@ class TokenBraceExpander:
                     return self._make_word_tokens(tok, expansions)
             return list(run)
 
-        # Composite run (adjacent quoted/unquoted tokens forming one word):
-        # only unquoted braces are structural, so handle quote-awareness.
-        # Only literal WORD/STRING runs are handled here. A run containing an
-        # expansion ($x{1,2}, $(c){a,b}) relies on bash's textual pre-expansion
-        # (it re-forms names like $x1) which does not map to the token model, so
-        # such runs are left unexpanded.
-        if all(t.type in (TokenType.WORD, TokenType.STRING) for t in run):
-            composite = self._expand_composite(run)
-            if composite is not None:
-                return composite
+        # Composite run (adjacent tokens forming one word). Only unquoted braces
+        # are structural. Expansion tokens ($((..)), $(..), $var) are carried
+        # through as opaque units so brace *list* items that are expansions still
+        # expand (bash: `{$((1)),$((2))}` -> `1 2`). The one case the token model
+        # cannot reproduce is bash re-forming a variable *name* out of brace text
+        # (`$x{1,2}` -> `$x1 $x2`); _expand_composite bails on that, leaving the
+        # run unexpanded as before.
+        composite = self._expand_composite(run)
+        if composite is not None:
+            return composite
         return list(run)
 
     def _expand_composite(self, run):
-        """Expand braces across a composite run, honouring per-char quoting.
+        """Expand braces across a composite run of tokens.
 
-        Each character is tagged with its quote type; quoted characters are
-        encoded as unique placeholders so the (reused) string expander only
-        treats UNQUOTED braces/commas as structural. Placeholders are decoded
-        afterwards to rebuild the quote context of each result word. Returns the
-        new token list, or None if nothing expanded.
+        Encoding (so the reused string expander only treats UNQUOTED braces and
+        commas as structural):
+          - unquoted WORD chars  -> kept literal (their { , } .. are structural);
+          - quoted chars         -> one private-use placeholder each, preserving
+                                     quote type;
+          - any other token      -> one private-use placeholder for the WHOLE
+            (e.g. $((..)), $(..), $var)  token (opaque; never structural).
+        Placeholders are decoded afterwards to rebuild each result word. Returns
+        the new token list, or None if nothing expanded / the result cannot be
+        represented faithfully (see the name-fusion guard below).
         """
         from .token_types import TokenType
 
-        # 1. Flatten the run into (char, quote_type) pairs.
-        chars = []
-        for tok in run:
-            qt = tok.quote_type
-            for ch in (tok.value or ''):
-                chars.append((ch, qt))
-
-        # 2. Encode: quoted chars become unique private-use placeholders.
-        placeholder_map = {}
+        # 1. Encode the run into a string of literal chars + placeholders.
+        char_map = {}   # placeholder -> (char, quote_type)
+        tok_map = {}    # placeholder -> whole token
         encoded = []
         next_pu = 0xE000
-        for ch, qt in chars:
-            if qt is None:
-                encoded.append(ch)
+        for tok in run:
+            if tok.type == TokenType.WORD and tok.quote_type is None:
+                encoded.append(tok.value or '')
+            elif tok.type in (TokenType.WORD, TokenType.STRING):
+                qt = tok.quote_type
+                for ch in (tok.value or ''):
+                    pu = chr(next_pu); next_pu += 1
+                    char_map[pu] = (ch, qt)
+                    encoded.append(pu)
             else:
-                pu = chr(next_pu)
-                next_pu += 1
-                placeholder_map[pu] = (ch, qt)
+                pu = chr(next_pu); next_pu += 1
+                tok_map[pu] = tok
                 encoded.append(pu)
         encoded_str = ''.join(encoded)
 
-        # 3. Expand using the shared core (sees only unquoted braces/commas).
+        # 2. Expand using the shared core (sees only unquoted braces/commas).
         try:
             results = self._core._expand_braces(encoded_str)
         except BraceExpansionError:
@@ -748,43 +751,70 @@ class TokenBraceExpander:
         if len(results) == 1 and results[0] == encoded_str:
             return None  # nothing structural to expand
 
-        # 4. Decode each result back into (char, quote_type) and emit tokens.
+        # 3. Name-fusion guard: bash would re-form `$x` + adjacent unquoted name
+        #    char into the parameter `$x<char>`; the token model keeps `$x` a
+        #    separate VARIABLE token, so it cannot reproduce that. If any result
+        #    places a VARIABLE token immediately before an unquoted name char,
+        #    leave the whole run unexpanded (preserving prior behaviour).
+        for result in results:
+            for k, c in enumerate(result):
+                tok = tok_map.get(c)
+                if tok is not None and tok.type == TokenType.VARIABLE:
+                    nxt = result[k + 1] if k + 1 < len(result) else ''
+                    if nxt and nxt not in char_map and nxt not in tok_map \
+                            and (nxt.isalnum() or nxt == '_'):
+                        return None
+
+        # 4. Decode each result and emit tokens.
         out = []
         first_word = True
         for result in results:
-            decoded = [placeholder_map.get(c, (c, None)) for c in result]
-            if not decoded:
+            if not result:
                 continue  # bash drops fully-empty results
             leading_adjacent = (
                 getattr(run[0], 'adjacent_to_previous', False)
                 if first_word else False
             )
-            out.extend(self._emit_word(decoded, run[0], leading_adjacent))
+            out.extend(self._emit_word(result, char_map, tok_map, run[0],
+                                       leading_adjacent))
             first_word = False
         return out
 
-    def _emit_word(self, decoded, template, leading_adjacent):
-        """Turn a decoded (char, quote_type) sequence into token(s).
+    def _emit_word(self, result, char_map, tok_map, template, leading_adjacent):
+        """Turn one expanded result (literal chars + placeholders) into tokens.
 
         Consecutive characters of the same quote type form one token (WORD when
-        unquoted, STRING when quoted). Multiple groups become adjacent tokens so
-        the parser merges them back into one composite word.
+        unquoted, STRING when quoted); opaque-token placeholders are emitted as
+        copies of their original token. All tokens of one result word are marked
+        adjacent so the parser merges them back into a single composite word.
         """
         from .token_types import TokenType
         from .lexer.token_parts import TokenPart
 
-        groups = []  # list of [text, quote_type]
-        for ch, qt in decoded:
-            if groups and groups[-1][1] == qt:
-                groups[-1][0] += ch
+        # Build segments: ('chars', text, quote_type) or ('tok', token).
+        segments = []
+        for c in result:
+            if c in tok_map:
+                segments.append(('tok', tok_map[c]))
+                continue
+            ch, qt = char_map.get(c, (c, None))
+            if segments and segments[-1][0] == 'chars' and segments[-1][2] == qt:
+                segments[-1] = ('chars', segments[-1][1] + ch, qt)
             else:
-                groups.append([ch, qt])
+                segments.append(('chars', ch, qt))
 
         toks = []
-        for idx, (text, qt) in enumerate(groups):
+        for idx, seg in enumerate(segments):
+            adjacent = leading_adjacent if idx == 0 else True
+            if seg[0] == 'tok':
+                tok = copy.copy(seg[1])
+                tok.adjacent_to_previous = adjacent
+                toks.append(tok)
+                continue
+            _, text, qt = seg
             tok = copy.copy(template)
             tok.value = text
-            tok.adjacent_to_previous = leading_adjacent if idx == 0 else True
+            tok.adjacent_to_previous = adjacent
             if qt is None:
                 tok.type = TokenType.WORD
                 tok.quote_type = None

@@ -69,6 +69,7 @@ class IOManager:
         stdin_fd_backup = None
 
         for redirect in command.redirects:
+            redirect = self.file_redirector._resolved(redirect)
             target = self.file_redirector._expand_redirect_target(redirect)
 
             # Handle process substitution as redirect target
@@ -203,6 +204,11 @@ class IOManager:
     def setup_child_redirections(self, command: Command):
         """Set up redirections in child process (after fork) using dup2."""
         for redirect in command.redirects:
+            try:
+                redirect = self.file_redirector._resolved(redirect)
+            except OSError as e:
+                os.write(2, f"psh: {e}\n".encode('utf-8'))
+                os._exit(1)
             target = self.file_redirector._expand_redirect_target(redirect)
 
             # Handle process substitution as redirect target
