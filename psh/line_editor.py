@@ -259,9 +259,8 @@ class LineEditor:
                         line = ''.join(self.buffer)
                         if line.strip():
                             # Don't add history expansion commands to history
-                            import re
-                            history_pattern = r'(?:^|\s)!(?:!|[0-9]+|-[0-9]+|[a-zA-Z][a-zA-Z0-9]*|\?[^?]*\?)(?:\s|$)'
-                            if not re.search(history_pattern, line):
+                            from .history_expansion import contains_history_reference
+                            if not contains_history_reference(line):
                                 self.history.append(line)
                         return line
                     elif result == 'eof':

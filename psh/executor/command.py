@@ -453,11 +453,13 @@ class CommandExecutor:
         return ''.join(result_parts)
 
     def _print_xtrace(self, cmd_name: str, args: List[str]):
-        """Print command trace if xtrace is enabled."""
-        ps4 = self.state.get_variable('PS4', '+ ')
-        trace_line = ps4 + ' '.join([cmd_name] + args) + '\n'
-        self.state.stderr.write(trace_line)
-        self.state.stderr.flush()
+        """Print command trace if xtrace is enabled.
+
+        Delegates to OptionHandler.print_xtrace so the PS4/format/flush policy
+        lives in one place in core rather than being reimplemented here.
+        """
+        from ..core import OptionHandler
+        OptionHandler.print_xtrace(self.state, [cmd_name] + args)
 
     def _execute_with_strategy(self, cmd_name: str, args: List[str],
                               node: 'SimpleCommand', context: 'ExecutionContext',

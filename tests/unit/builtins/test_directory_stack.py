@@ -664,6 +664,33 @@ class TestDirectoryStackIntegration:
                 os.rmdir(test_dir)
 
 
+class TestFormatDirectoryForDisplay:
+    """The shared ~ abbreviation helper (pushd/popd/dirs)."""
+
+    def test_home_itself_becomes_tilde(self):
+        from psh.builtins.directory_stack import format_directory_for_display
+        home = os.path.expanduser('~')
+        assert format_directory_for_display(home) == '~'
+
+    def test_subdir_of_home_abbreviated(self):
+        from psh.builtins.directory_stack import format_directory_for_display
+        home = os.path.expanduser('~')
+        assert format_directory_for_display(home + os.sep + 'proj') == '~' + os.sep + 'proj'
+
+    def test_sibling_of_home_not_mangled(self):
+        # Regression: the old pushd/popd copies used startswith(home), which
+        # turned a sibling like /home/userfoo into ~foo.
+        from psh.builtins.directory_stack import format_directory_for_display
+        home = os.path.expanduser('~')
+        sibling = home + 'foo'
+        assert format_directory_for_display(sibling) == sibling
+
+    def test_no_tilde_returns_path_verbatim(self):
+        from psh.builtins.directory_stack import format_directory_for_display
+        home = os.path.expanduser('~')
+        assert format_directory_for_display(home, no_tilde=True) == home
+
+
 class TestDirectoryStackEdgeCases:
     """Test edge cases and error conditions."""
 

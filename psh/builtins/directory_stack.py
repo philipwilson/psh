@@ -11,6 +11,24 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+def format_directory_for_display(directory: str, no_tilde: bool = False) -> str:
+    """Render a stack entry for display, abbreviating $HOME as ``~``.
+
+    Shared by pushd/popd/dirs. Uses ``home + os.sep`` for the prefix test so a
+    sibling like ``/home/userfoo`` is not mangled into ``~foo`` (the earlier
+    pushd/popd copies used a bare ``startswith(home)`` and had that bug).
+    """
+    if no_tilde:
+        return directory
+
+    home = os.path.expanduser('~')
+    if directory == home:
+        return '~'
+    elif directory.startswith(home + os.sep):
+        return '~' + directory[len(home):]
+    return directory
+
+
 class DirectoryStack:
     """Manages the directory stack for pushd/popd/dirs commands."""
 
@@ -218,15 +236,8 @@ class PushdBuiltin(Builtin):
 
     def _print_stack(self, stack: DirectoryStack, shell: 'Shell'):
         """Print current directory stack."""
-        output = ' '.join(self._format_directory(d) for d in stack.stack)
+        output = ' '.join(format_directory_for_display(d) for d in stack.stack)
         print(output, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
-
-    def _format_directory(self, directory: str) -> str:
-        """Format directory for display (with ~ expansion if in home)."""
-        home = os.path.expanduser('~')
-        if directory.startswith(home):
-            return '~' + directory[len(home):]
-        return directory
 
     @property
     def help(self) -> str:
@@ -352,15 +363,8 @@ class PopdBuiltin(Builtin):
 
     def _print_stack(self, stack: DirectoryStack, shell: 'Shell'):
         """Print current directory stack."""
-        output = ' '.join(self._format_directory(d) for d in stack.stack)
+        output = ' '.join(format_directory_for_display(d) for d in stack.stack)
         print(output, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
-
-    def _format_directory(self, directory: str) -> str:
-        """Format directory for display (with ~ expansion if in home)."""
-        home = os.path.expanduser('~')
-        if directory.startswith(home):
-            return '~' + directory[len(home):]
-        return directory
 
     @property
     def help(self) -> str:
@@ -458,35 +462,22 @@ class DirsBuiltin(Builtin):
                 self.error(f"directory stack index out of range: {show_index}", shell)
                 return 1
 
-            formatted = self._format_directory(directory, no_tilde)
+            formatted = format_directory_for_display(directory, no_tilde)
             print(formatted, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
             return 0
 
         # Display stack
         if vertical_format:
             for i, directory in enumerate(stack.stack):
-                formatted = self._format_directory(directory, no_tilde)
+                formatted = format_directory_for_display(directory, no_tilde)
                 print(f" {i}\t{formatted}", file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
         else:
             # Horizontal format
-            directories = [self._format_directory(d, no_tilde) for d in stack.stack]
+            directories = [format_directory_for_display(d, no_tilde) for d in stack.stack]
             output = ' '.join(directories)
             print(output, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
 
         return 0
-
-    def _format_directory(self, directory: str, no_tilde: bool = False) -> str:
-        """Format directory for display."""
-        if no_tilde:
-            return directory
-
-        # Apply tilde expansion
-        home = os.path.expanduser('~')
-        if directory == home:
-            return '~'
-        elif directory.startswith(home + os.sep):
-            return '~' + directory[len(home):]
-        return directory
 
     @property
     def help(self) -> str:

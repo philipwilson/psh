@@ -301,14 +301,7 @@ class PipelineExecutor:
             exit_status = self.job_manager.wait_for_job(job)
 
         # Restore terminal control and clean up foreground job state (H4)
-        if original_pgid is not None:
-            # Terminal control was transferred — restore it to the shell
-            self.job_manager.restore_shell_foreground()
-        else:
-            # Terminal control was NOT transferred — just clean up state
-            self.job_manager.set_foreground_job(None)
-            if self.job_manager.shell_state is not None and hasattr(self.job_manager.shell_state, 'foreground_pgid'):
-                self.job_manager.shell_state.foreground_pgid = None
+        self.job_manager.finish_foreground_job(original_pgid is not None)
 
         # Remove completed job
         from ..job_control import JobState

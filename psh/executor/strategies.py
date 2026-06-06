@@ -412,14 +412,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             exit_status = shell.job_manager.wait_for_job(job)
 
             # Restore terminal control and clean up foreground job state (H4)
-            if original_pgid is not None:
-                # Terminal control was transferred — restore it to the shell
-                shell.job_manager.restore_shell_foreground()
-            else:
-                # Terminal control was NOT transferred (e.g., pytest) — just clean up state
-                shell.job_manager.set_foreground_job(None)
-                if shell.job_manager.shell_state is not None and hasattr(shell.job_manager.shell_state, 'foreground_pgid'):
-                    shell.job_manager.shell_state.foreground_pgid = None
+            shell.job_manager.finish_foreground_job(original_pgid is not None)
 
             # Clean up
             from ..job_control import JobState

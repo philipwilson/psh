@@ -12,6 +12,24 @@ class ParserConfigBuiltin(Builtin):
 
     name = "parser-config"
 
+    # Map user-facing parser feature names to the underlying shell option.
+    _FEATURE_MAP = {
+        'arithmetic': 'no_arithmetic',
+        'arrays': 'no_arrays',
+        'functions': 'no_functions',
+        'aliases': 'no_aliases',
+        'brace_expand': 'braceexpand',
+        'brace_expansion': 'braceexpand',
+        'history_expand': 'histexpand',
+        'history_expansion': 'histexpand',
+        'process_subst': 'process_substitution',
+        'process_substitution': 'process_substitution',
+    }
+
+    # Options whose truthiness means "enabled"; the rest are ``no_*`` options
+    # whose truthiness means "disabled" (so enabling them sets False).
+    _POSITIVE_OPTIONS = ('braceexpand', 'histexpand', 'process_substitution')
+
     @property
     def synopsis(self) -> str:
         return "parser-config [COMMAND] [ARG]"
@@ -152,77 +170,35 @@ class ParserConfigBuiltin(Builtin):
 
         return 0
 
-    def _enable_feature(self, feature: str, shell) -> int:
-        """Enable a parser feature."""
+    def _set_feature(self, feature: str, shell, *, enable: bool) -> int:
+        """Enable or disable a parser feature (shared by the two public ops).
+
+        ``_POSITIVE_OPTIONS`` are stored truthy-means-enabled; the remaining
+        ``no_*`` options are stored truthy-means-disabled, so enabling them
+        sets the option False.
+        """
         feature = feature.lower().replace('-', '_')
 
-        # Map feature names to shell options
-        feature_map = {
-            'arithmetic': 'no_arithmetic',
-            'arrays': 'no_arrays',
-            'functions': 'no_functions',
-            'aliases': 'no_aliases',
-            'brace_expand': 'braceexpand',
-            'brace_expansion': 'braceexpand',
-            'history_expand': 'histexpand',
-            'history_expansion': 'histexpand',
-            'process_subst': 'process_substitution',
-            'process_substitution': 'process_substitution'
-        }
-
-        if feature in feature_map:
-            option_name = feature_map[feature]
-
-            # Handle positive options (enable by setting True)
-            if option_name in ('braceexpand', 'histexpand', 'process_substitution'):
-                shell.state.options[option_name] = True
-                print(f"Parser feature '{feature}' enabled")
-            # Handle negative options (enable by removing/setting False)
-            else:
-                shell.state.options[option_name] = False
-                print(f"Parser feature '{feature}' enabled")
-        else:
+        if feature not in self._FEATURE_MAP:
             self.error(f"unknown feature: {feature}", shell)
             self.error("Valid features: arithmetic, arrays, functions, aliases, brace-expand, history-expand", shell)
             return 1
 
+        option_name = self._FEATURE_MAP[feature]
+        positive = option_name in self._POSITIVE_OPTIONS
+        # Positive option: stored value == desired enabled state.
+        # Negative (no_*) option: stored value == inverse of enabled state.
+        shell.state.options[option_name] = enable if positive else not enable
+        print(f"Parser feature '{feature}' {'enabled' if enable else 'disabled'}")
         return 0
+
+    def _enable_feature(self, feature: str, shell) -> int:
+        """Enable a parser feature."""
+        return self._set_feature(feature, shell, enable=True)
 
     def _disable_feature(self, feature: str, shell) -> int:
         """Disable a parser feature."""
-        feature = feature.lower().replace('-', '_')
-
-        # Map feature names to shell options
-        feature_map = {
-            'arithmetic': 'no_arithmetic',
-            'arrays': 'no_arrays',
-            'functions': 'no_functions',
-            'aliases': 'no_aliases',
-            'brace_expand': 'braceexpand',
-            'brace_expansion': 'braceexpand',
-            'history_expand': 'histexpand',
-            'history_expansion': 'histexpand',
-            'process_subst': 'process_substitution',
-            'process_substitution': 'process_substitution'
-        }
-
-        if feature in feature_map:
-            option_name = feature_map[feature]
-
-            # Handle positive options (disable by setting False)
-            if option_name in ('braceexpand', 'histexpand', 'process_substitution'):
-                shell.state.options[option_name] = False
-                print(f"Parser feature '{feature}' disabled")
-            # Handle negative options (disable by setting True)
-            else:
-                shell.state.options[option_name] = True
-                print(f"Parser feature '{feature}' disabled")
-        else:
-            self.error(f"unknown feature: {feature}", shell)
-            self.error("Valid features: arithmetic, arrays, functions, aliases, brace-expand, history-expand", shell)
-            return 1
-
-        return 0
+        return self._set_feature(feature, shell, enable=False)
 
 
 @builtin
