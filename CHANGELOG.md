@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.213.0 (2026-06-06) - Remove dead OptionHandler policy methods
+- **Trimmed `OptionHandler`** (study triage #16) — two of its four methods were
+  dead with zero callers because the executor implements those policies itself:
+  `should_exit_on_error` (errexit is enforced structurally at the statement-list
+  level) and `get_pipeline_exit_code` (pipefail is computed inline in the
+  pipeline executor). Removed both; kept the two live methods,
+  `check_unset_variable` (nounset) and `print_xtrace` (set -x, used via the
+  executor since v0.205.0). All four option behaviors (nounset/xtrace/errexit/
+  pipefail) verified unchanged.
+
 ## 0.212.0 (2026-06-06) - Trim dead ExecutionContext factories and fields
 - **Removed dead `ExecutionContext` machinery** (study triage #17) — about half
   the module was unused: factory methods `subshell_context`, `loop_context_enter`,
