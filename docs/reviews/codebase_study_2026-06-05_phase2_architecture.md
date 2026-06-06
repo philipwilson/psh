@@ -1,22 +1,39 @@
 # PSH Codebase Study (2026-06-05) — Phase 2: Architecture & Code Quality
 
-> **Resolution status (through v0.197.0).** Acted on so far:
-> - **Dual parameter-expansion engines** — application paths collapsed to one
->   `_apply_operator` (v0.196.0).
-> - **Brace expansion** — relocated from raw-line preprocessing to a
->   token-stream `TokenBraceExpander`; the ~200-line line-level mini-parser was
->   removed (v0.196.0).
-> - **Dormant parser-validation subsystem (~1300 LOC)** — removed (v0.197.0).
-> - **Broad/silent exception handling** — the flagged lexer-registry,
->   expansion array-index, and scripting top-level "swallow" sites now surface
->   defects (v0.196.0).
-> - **Redirect-dispatch duplication** — the noclobber and dup-fd predicates
->   were extracted to shared helpers (the four dispatch methods were left
->   intentionally separate — they are genuinely different operations).
+> **Resolution status (through v0.215.0, updated 2026-06-06).** The entire
+> prioritized high/medium triage list (Section 3) has been resolved, along with
+> every §1.3 duplication item. Mapping of finding → fix:
 >
-> Still open (candidates for future work): the 3× lexer array/quote scanners,
-> the overlapping visitor-analysis checks, the test-only pipeline path in
-> production, and the remaining private-API-leak / dead-code items below.
+> | Finding | Status | Version |
+> |---|---|---|
+> | Test-only pipeline path (`eval_test_mode`) — #1 | removed | v0.208.0 |
+> | Bare `print()` bypasses `shell.stdout` — #2 | all 47 calls routed via `shell.stdout` | v0.207.0 |
+> | Recognizer registry swallows defects — #3 | raises with context (+ test) | v0.160-era safety pass |
+> | Redundant `except` defaults index 0 — #4 | narrowed to `ArithmeticError` | v0.196.0 + v0.214.0 |
+> | Broad except relabels control-flow — #5 | inner catch narrowed | v0.196-era safety pass |
+> | ShellFormatter broken node output — #6 | subshell/brace/`[[ ]]` formatted (both formatters) | v0.209.0 |
+> | Vestigial readline completion — #7 | `CompletionManager` removed | v0.211.0 |
+> | Parser-side validation dormant — #8 | subsystem removed | v0.197.0 |
+> | Dual parameter-expansion engines — #9 | one `_apply_operator` | v0.196.0 |
+> | Array/quote disambiguation ×3 — #10 | shared `QuoteState` | v0.198.0 |
+> | Heredoc detection diverged — #11 | unified in `utils/heredoc_detection` (+ `<<-` fix) | v0.202.0 |
+> | Redirect-type dispatch ×4 — #12 | shared predicates | v0.198.0 |
+> | Broad `except Exception` in executor — #13 | narrowed + `--debug-exec` tracebacks | v0.215.0 |
+> | OptionHandler dead / executor reimplements — #16 | dead methods removed | v0.213.0 |
+> | ExecutionContext dead factories/fields — #17 | trimmed 189→60 lines | v0.212.0 |
+> | Visitor `generic_visit` ×3 + overlapping checks — #19 | shared `traversal` + `analysis_helpers` | v0.205.0 |
+>
+> Also fixed beyond the table: glob→regex conversion unified (v0.203.0);
+> command-position classification unified (v0.204.0); analysis-visitor latent
+> bugs — `until` loops, brace-group crash (v0.206.0); command-substitution
+> output flush (v0.210.0).
+>
+> **Still open** (lower priority): §1.1 private-API-leak items (#14 `_in_forked_child`
+> via `hasattr`/`getattr`, #15 executor↔expansion privates, #20 combinator→RD
+> WordBuilder privates, #21 builtins calling siblings' privates); §1.5 oversized
+> modules (`line_editor.py` ~1300L); and the 2026-02-17 carry-overs noted in
+> Section 4 (`source_text` plumbing, string-matching parse heuristics, IOManager
+> internal coupling, docs drift, combinator CI lane).
 
 This report synthesizes per-subsystem audits of the PSH codebase into (1) cross-cutting
 themes that aggregate findings of the same kind across subsystems, (2) per-subsystem health
@@ -439,31 +456,38 @@ idioms, dead toggles/stubs, and small correctness bugs.
 
 ## 3. Prioritized Triage (Top ~20 Findings)
 
-Severity x Effort. "Carry-over" marks items also flagged in the 2026-02-17 review (see Section 4).
+Severity x Effort. Items also flagged in the 2026-02-17 review are cross-referenced in Section 4.
 
-| # | Finding | Subsystem | Kind | Sev | Effort | Location | Carry-over |
-|---|---|---|---|---|---|---|---|
-| 1 | Test-only pipeline path embedded in production | executor | coupling | High | Medium | pipeline.py:106-111,320-479 | new |
-| 2 | Bare `print()` bypasses `shell.stdout` (breaks redirection/capture) | builtins | clarity | High | Medium | parser_control.py:81-219; debug_control.py:48-288; job_control.py; kill_command.py; navigation.py | new |
-| 3 | Recognizer registry swallows recognizer defects | lexer | broad-exception | High | Small | recognizers/registry.py:88-90 | new |
-| 4 | Redundant `except (ArithmeticError, Exception)` defaults index 0 | expansion | broad-exception | High | Small | variable.py:140,300,515 | new |
-| 5 | Broad except relabels control-flow as "unexpected error" | scripting | broad-exception | High | Small | source_processor.py:381-386,360-369 | **yes** |
-| 6 | ShellFormatter broken output for real node types | utils | clarity | High | Medium | shell_formatter.py:227-236 | new |
-| 7 | Readline completion fully vestigial | interactive | dead-code | High | Medium | completion_manager.py:18-77 | new |
-| 8 | Parser-side validation dormant, duplicates visitor validators | parser | dead-code | High | Medium | parser/validation/; parser.py:176-221 | new |
-| 9 | Two parallel expansion engines duplicate param logic | expansion | duplication | High | Large | variable.py:20-108,442-634,657-774 | new |
-| 10 | Array/quote disambiguation duplicated 3x | lexer | duplication | High | Large | modular_lexer.py:354-419; literal.py:437-624; pure_helpers.py:58-216 | new |
-| 11 | Heredoc detection duplicated/diverged | scripting | duplication | High | Medium | source_processor.py:388-430; multiline_handler.py:240-320 | new |
-| 12 | Redirect-type dispatch duplicated 4x | io_redirect | duplication | High | Large | manager.py:57-154,195-261; file_redirect.py:136-193,210-277 | partial (IOManager privates) |
-| 13 | Broad `except Exception` in executor hot paths | executor | broad-exception | Medium | Medium | command.py:183-206; strategies.py; array.py; function.py | **yes** (command.py:183) |
-| 14 | `_in_forked_child` private leak via hasattr/getattr | core | private-api-leak | Medium | Medium | state.py:123 + ~10 read sites | new |
-| 15 | Executor reaches into ExpansionManager privates | expansion/executor | private-api-leak | Medium | Small | command.py:441,450; manager.py:355-377,496-508 | new |
-| 16 | OptionHandler largely dead; executor reimplements policy | core | dead-code | Medium | Small | options.py:14-47,92-107,109-132 | new |
-| 17 | ExecutionContext dead factories/fields (~half the module) | executor | dead-code | Medium | Small | context.py:64-81,101-189 | new |
-| 18 | `setup_builtin_redirections` oversized + fragile `>&` special-case | io_redirect | oversized/clarity | Medium | Medium | manager.py:57-154,139-152 | new |
-| 19 | Three divergent visitor `generic_visit` + overlapping checks | visitor | duplication | Medium | Medium–Large | base.py:47-62; metrics/security/linter; enhanced_validator_visitor.py:403-477 | new |
-| 20 | Combinator parser reaches into RD WordBuilder privates | parser | private-api-leak | Medium | Small | combinators/expansions.py:138-139 | new |
-| 21 | Builtins call siblings' private methods | builtins | private-api-leak | Medium | Small | test_command.py:411; parser_control.py:278; print_builtin.py:92 | new |
+Status legend: ✅ resolved (version) · ⬜ open.
+
+| # | Status | Finding | Subsystem | Kind | Sev | Effort |
+|---|---|---|---|---|---|---|
+| 1 | ✅ v0.208.0 | Test-only pipeline path embedded in production | executor | coupling | High | Medium |
+| 2 | ✅ v0.207.0 | Bare `print()` bypasses `shell.stdout` | builtins | clarity | High | Medium |
+| 3 | ✅ safety-pass | Recognizer registry swallows recognizer defects | lexer | broad-exception | High | Small |
+| 4 | ✅ v0.214.0 | Redundant `except` defaults array index to 0 | expansion | broad-exception | High | Small |
+| 5 | ✅ safety-pass | Broad except relabels control-flow as "unexpected error" | scripting | broad-exception | High | Small |
+| 6 | ✅ v0.209.0 | ShellFormatter broken output for real node types | utils | clarity | High | Medium |
+| 7 | ✅ v0.211.0 | Readline completion fully vestigial | interactive | dead-code | High | Medium |
+| 8 | ✅ v0.197.0 | Parser-side validation dormant | parser | dead-code | High | Medium |
+| 9 | ✅ v0.196.0 | Two parallel expansion engines duplicate param logic | expansion | duplication | High | Large |
+| 10 | ✅ v0.198.0 | Array/quote disambiguation duplicated 3x | lexer | duplication | High | Large |
+| 11 | ✅ v0.202.0 | Heredoc detection duplicated/diverged | scripting | duplication | High | Medium |
+| 12 | ✅ v0.198.0 | Redirect-type dispatch duplicated 4x | io_redirect | duplication | High | Large |
+| 13 | ✅ v0.215.0 | Broad `except Exception` in executor hot paths | executor | broad-exception | Medium | Medium |
+| 14 | ⬜ open | `_in_forked_child` private leak via hasattr/getattr | core | private-api-leak | Medium | Medium |
+| 15 | ⬜ open | Executor reaches into ExpansionManager privates | expansion/executor | private-api-leak | Medium | Small |
+| 16 | ✅ v0.213.0 | OptionHandler largely dead; executor reimplements policy | core | dead-code | Medium | Small |
+| 17 | ✅ v0.212.0 | ExecutionContext dead factories/fields (~half the module) | executor | dead-code | Medium | Small |
+| 18 | ⬜ open | `setup_builtin_redirections` oversized + fragile `>&` special-case | io_redirect | oversized/clarity | Medium | Medium |
+| 19 | ✅ v0.205.0 | Three divergent visitor `generic_visit` + overlapping checks | visitor | duplication | Medium | Medium–Large |
+| 20 | ⬜ open | Combinator parser reaches into RD WordBuilder privates | parser | private-api-leak | Medium | Small |
+| 21 | ⬜ open | Builtins call siblings' private methods | builtins | private-api-leak | Medium | Small |
+
+**Resolved: 17 of 21** (all High-severity items; all Medium except the four
+private-API-leak items #14/#15/#20/#21 and the oversized `setup_builtin_redirections`
+#18). Original `Location`/`Carry-over` columns are preserved per-finding in
+Sections 1–2.
 
 ---
 

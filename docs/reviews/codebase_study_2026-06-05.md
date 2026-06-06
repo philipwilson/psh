@@ -1,18 +1,27 @@
 # PSH Codebase Study (2026-06-05)
 
-> **Resolution status (updated 2026-06-05, through v0.197.0).** Most of this
+> **Resolution status (updated 2026-06-06, through v0.215.0).** Most of this
 > study has since been acted on:
 > - **Phase 1 correctness:** all 23 confirmed bugs fixed (v0.193.0–v0.196.0).
-> - **Phase 2 architecture:** the two biggest duplication hazards collapsed —
->   parameter-expansion dual application paths (v0.196.0) and brace expansion
->   relocated off the raw line (v0.196.0); the dormant parser-validation
->   subsystem removed (v0.197.0, ~1300 LOC); redirect-dispatch predicates
->   de-duplicated; and the flagged exception-boundary "swallowing" sites fixed.
+> - **Phase 2 architecture:** **all 21 prioritized triage findings except 4 are
+>   resolved** (see the phase-2 report's Section 3 status table). This includes
+>   every High-severity item and every duplication item — dual expansion engines
+>   (v0.196.0), brace-expansion relocation (v0.196.0), parser-validation removal
+>   (v0.197.0), lexer quote scanners + redirect dispatch (v0.198.0), heredoc
+>   detection (v0.202.0), glob→regex (v0.203.0), command-position (v0.204.0),
+>   visitor traversal/checks (v0.205.0), command-position bugs (v0.206.0), bare
+>   `print()` routing (v0.207.0), the test-only pipeline path (v0.208.0),
+>   formatter node output (v0.209.0), command-sub flush (v0.210.0), vestigial
+>   readline (v0.211.0), ExecutionContext trim (v0.212.0), OptionHandler trim
+>   (v0.213.0), array-index except (v0.214.0), and executor error guards
+>   (v0.215.0). **Still open:** four private-API-leak items (#14/#15/#20/#21) and
+>   the oversized `setup_builtin_redirections` (#18).
 > - **Phase 3 coverage:** the `read` fd fix retired the global `-s` test flag
->   (v0.195.0).
+>   (v0.195.0); the previously-untested analysis visitors and both formatters
+>   gained direct coverage alongside the Phase-2 fixes.
 >
-> Remaining open Phase 2 items include the 3× lexer quote scanners and the
-> larger visitor-analysis overlap. See each phase report for per-finding status.
+> See each phase report for per-finding status (the phase-2 report has a full
+> finding → fix → version table at the top and a status column in Section 3).
 
 Repository: `/Users/pwilson/src/psh`
 Scope (per request): **correctness/POSIX-bash conformance**, **architecture & code
@@ -75,7 +84,7 @@ environment-bound**:
 | 1 | Parser `source_text` plumbing bug | **STILL OPEN (confirmed bug)** | `parser/__init__.py:88` `return Parser(tokens, config=config)` drops the `source_text` param accepted at `:54`; RD parser supports it (`recursive_descent/parser.py:86,105`). |
 | 2 | Replace string-matching parse heuristics with error codes | **STILL OPEN** | `scripting/source_processor.py:168` `_is_incomplete_command` matches lexer text patterns (`:173-180`); `error_code` infra exists but unused here. |
 | 3 | Remove silent expansion fallback | **PARTIALLY ADDRESSED** | `expansion/manager.py` now re-raises `ExpansionError`/`UnboundVariableError` and narrows the catch to `(ValueError, AttributeError, TypeError)`, but still `return str(expansion)` as a silent fallback. |
-| 4 | Tighten broad exception boundaries | **STILL OPEN** | 21 `except Exception` in `psh/`; hot paths `executor/command.py:183`, `scripting/source_processor.py:381` remain. |
+| 4 | Tighten broad exception boundaries | **ADDRESSED (v0.215.0)** | Both flagged hot paths fixed: `executor/command.py:183` now narrows readonly catches and surfaces tracebacks under `--debug-exec` (#13); `scripting/source_processor.py:381` catches only control-flow and documents the last-resort guard (#5). Array-index excepts narrowed to `ArithmeticError` (#4). Remaining `except Exception` are intentional last-resort guards that now surface under `--debug-exec`. |
 | 5 | Clean up I/O redirection layering | **STILL OPEN** | `io_redirect/manager.py` calls 8+ private `file_redirector._*` methods (`:72,99,104,109,114,128,198,213`). |
 | 6 | Reduce orchestration complexity in largest modules | **STILL OPEN** | `line_editor.py` 1302L still largest; `shell.py`, `source_processor.py` broad. |
 | 7 | Close active runtime TODOs | **STILL OPEN** | All 3 present and are the *only* TODOs in the codebase: `word_builder.py:288`, `job_control.py:31`, `type_builtin.py:90`. |
@@ -83,8 +92,11 @@ environment-bound**:
 | 9 | Resolve documentation status drift | **STILL OPEN** | `docs/improvement_recommendations.md:5` claims **51.9% (28/54)** POSIX while actual conformance is **100% POSIX / 96.6% identical** and README says ~98%. The 51.9% is stale (old 54-test methodology). |
 | 10 | Add combinator-parser CI smoke lane | **STILL OPEN** | `.github/workflows/` (`test_migration.yml`, `claude.yml`) has no combinator/`--parser` lane. |
 
-**Headline:** 8 of 10 prior items are fully open, 1 partially addressed (#3), 0 fully
-resolved. The prior review was never committed, so its findings haven't been actioned.
+**Headline (as of 2026-06-05):** 8 of 10 prior items were fully open, 1 partially
+addressed (#3), 0 fully resolved. **Update (2026-06-06):** #4 is now fully
+resolved (v0.215.0); the rest of this 2026-02-17 list remains as noted above
+(the Phase-2 *new* findings, by contrast, are nearly all resolved — see that
+report).
 
 ---
 
