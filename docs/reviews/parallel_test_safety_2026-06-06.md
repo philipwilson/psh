@@ -1,6 +1,18 @@
 # Parallel Test Safety — Root Cause & Remediation (2026-06-06)
 
-/ Status: investigation complete; remediation in progress. /
+/ Status: root cause fixed; `run_tests.py --parallel` is reliable. /
+
+**Update.** Workstreams 1 (fd isolation) and 2 (serial phase) are implemented:
+- `test_exec_builtin`'s permanent-redirection tests now run in a subprocess.
+- Process/signal/job-control and in-process forked-fd tests (incl. the
+  `integration/redirection` dir) are marked `serial`; `run_tests.py --parallel`
+  runs `-m "not serial"` under xdist, then `-m serial` without xdist.
+
+Result: the parallel phase is crash-free and repeatable (3263 passed, 0
+INTERNALERROR over 4/4 runs); `run_tests.py --parallel` is green end-to-end
+(~75s vs ~210s serial); serial mode unchanged (3435 passed). No file-collision
+failures were observed once the redirection dir was serialized. A bare
+`pytest -n auto` should pass `-m "not serial"`.
 
 ## TL;DR
 

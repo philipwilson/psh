@@ -201,25 +201,48 @@ Examples:
         print("  - Phase 2: Subshell tests with capture disabled (-s, serial)")
         print("=" * 80)
 
-        # Phase 1: Run non-subshell tests normally (parallelizable)
-        cmd = base_cmd + [
-            'tests/',
+        # Shared ignores: the subshell / -s tests run in their own phases below.
+        non_subshell_ignores = [
             '--ignore=tests/integration/subshells/',
             '--ignore=tests/integration/functions/test_function_advanced.py',
             '--ignore=tests/integration/variables/test_variable_assignment.py',
         ]
+
+        # Phase 1: Regular tests. When parallel, exclude `serial`-marked tests
+        # (process/signal/job-control and in-process forked-fd tests that can't
+        # run concurrently under xdist); they run in Phase 1b. In serial mode
+        # they run here inline.
+        cmd = base_cmd + ['tests/'] + non_subshell_ignores
+        phase1_markers = []
+        if args.parallel:
+            phase1_markers.append('not serial')
+        if args.quick:
+            phase1_markers.append('not slow')
+        if phase1_markers:
+            cmd.extend(['-m', ' and '.join(phase1_markers)])
         if args.parallel:
             cmd.extend(['-n', args.parallel])
-        if args.quick:
-            cmd.extend(['-m', 'not slow'])
 
         desc = "Phase 1: Regular tests"
         if args.parallel:
-            desc += f" (parallel, {args.parallel} workers)"
+            desc += f" (parallel, {args.parallel} workers, -m 'not serial')"
         else:
             desc += " (with capture)"
         exit_code = run_command(cmd, desc, env=env, parallel=bool(args.parallel))
         exit_codes.append(exit_code)
+
+        # Phase 1b: serial-marked tests (process/signal/forked-fd). Only needed
+        # in parallel mode — they were excluded from Phase 1. Run without xdist.
+        if args.parallel:
+            cmd = base_cmd + ['tests/'] + non_subshell_ignores
+            serial_markers = ['serial']
+            if args.quick:
+                serial_markers.append('not slow')
+            cmd.extend(['-m', ' and '.join(serial_markers)])
+            exit_code = run_command(
+                cmd, "Phase 1b: serial tests (process/signal/forked-fd, no xdist)",
+                env=env)
+            exit_codes.append(exit_code)
 
         if not args.no_subshells:
             # Phase 2: Run subshell tests with -s

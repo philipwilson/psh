@@ -387,9 +387,33 @@ def pytest_collection_modifyitems(config, items):
         "test_permission_denied_redirection",
     ]
 
+    # Whole files that are unsafe to run *concurrently* under pytest-xdist and
+    # must run in a serial pass (see docs/reviews/parallel_test_safety_2026-06-06.md):
+    #   - process/signal/job-control tests spawn/kill/wait on processes and send
+    #     signals that destabilise sibling workers;
+    #   - in-process forked-fd tests (read from a redirected/forked fd, here-string
+    #     reads) manipulate the runner's fds, which under xdist are the execnet
+    #     worker channel — they intentionally exercise the in-process path so they
+    #     cannot simply be run in a subprocess.
+    # `run_tests.py --parallel` excludes `-m serial` from the xdist phase and runs
+    # them serially afterward; a bare `pytest -n auto` should use `-m "not serial"`.
+    serial_path_markers = (
+        "job_control",            # integration/job_control/* + test_job_control_builtins
+        "test_disown",
+        "test_signal_builtins",
+        "test_pty",
+        # The redirection suite forks for heredocs / here-strings / process
+        # substitution and manipulates fds; concurrently these clobber the xdist
+        # worker channel (each file can pass alone, but the dir flakes). Serial.
+        "integration/redirection",
+    )
+
     # Mark tests that need special handling
 
     for item in items:
+        if any(marker in str(item.fspath) for marker in serial_path_markers):
+            item.add_marker(pytest.mark.serial)
+
         # Add markers based on test file location
         if "unit/" in str(item.fspath):
             item.add_marker(pytest.mark.unit)
@@ -423,22 +447,14 @@ def pytest_runtest_setup(item):
         if not item.config.getoption("--run-interactive", default=False):
             pytest.skip("Interactive tests skipped (use --run-interactive to run)")
 
-    # Clean up any lingering PSH processes before each test
-    # This helps with isolation when running tests in parallel
-    import subprocess
-    try:
-        subprocess.run(['pkill', '-f', f'python.*psh.*{os.getpid()}'],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except:
-        pass
-
-    # Handle serial tests in parallel execution
-    if item.get_closest_marker("serial"):
-        if hasattr(item.config, "workerinput"):
-            # In parallel mode, only run on worker gw0
-            worker_id = item.config.workerinput.get("workerid", "master")
-            if worker_id != "gw0" and worker_id != "master":
-                pytest.skip(f"Serial test skipped on worker {worker_id}")
+    # Note: per-test process cleanup is handled by the `shell` fixture teardown
+    # (`_cleanup_shell`). No pre-test global `pkill` here — a pattern broad enough
+    # to catch leaked psh processes also matches sibling xdist workers and crashes
+    # them. `serial`-marked tests are kept out of the xdist phase by
+    # `run_tests.py --parallel` (`-m "not serial"`) and run in a separate serial
+    # pass; a bare `pytest -n auto` should pass `-m "not serial"`. (The old
+    # gw0-only skip was removed: under xdist each test runs on exactly one worker,
+    # so skipping serial tests on non-gw0 workers silently dropped them.)
 
 
 def pytest_addoption(parser):
