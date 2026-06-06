@@ -304,7 +304,7 @@ class SourceProcessor(ScriptComponent):
                 from ..parser import create_parser
                 parser = create_parser(
                     tokens,
-                    active_parser=self.shell._active_parser,
+                    active_parser=self.shell.active_parser,
                     trace_parsing=self.state.options.get('debug-parser', False),
                     source_text=command_string,
                 )
@@ -343,7 +343,7 @@ class SourceProcessor(ScriptComponent):
             if add_to_history and command_string.strip():
                 from ..history_expansion import contains_history_reference
                 if not contains_history_reference(command_string):
-                    self.shell.interactive_manager.history_manager.add_to_history(command_string.strip())
+                    self.shell.add_history(command_string.strip())
 
             # Increment command number for successful parse
             self.state.command_number += 1

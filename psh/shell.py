@@ -257,6 +257,27 @@ class Shell:
 
         return 0
 
+    @property
+    def active_parser(self) -> str:
+        """Name of the active parser implementation.
+
+        Either 'recursive_descent' (default) or 'combinator'. Public accessor so
+        callers do not reach into the private `_active_parser` field.
+        """
+        return self._active_parser
+
+    @active_parser.setter
+    def active_parser(self, name: str) -> None:
+        self._active_parser = name
+
+    def add_history(self, command: str) -> None:
+        """Record a command in the interactive history.
+
+        Public entry point so callers do not walk
+        interactive_manager.history_manager.add_to_history directly.
+        """
+        self.interactive_manager.history_manager.add_to_history(command)
+
     def run_command(self, command_string: str, add_to_history=True):
         """Execute a command string using the unified input system."""
         from .input_sources import StringInput

@@ -161,7 +161,7 @@ def main():
             print(f"psh: unknown parser: {parser_type}", file=sys.stderr)
             print("Available parsers: recursive_descent (rd), combinator (pc)", file=sys.stderr)
             sys.exit(2)
-        shell._active_parser = target
+        shell.active_parser = target
 
     if len(sys.argv) > 1:
         if sys.argv[1] == "-c" and len(sys.argv) > 2:

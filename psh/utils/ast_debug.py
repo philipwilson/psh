@@ -16,7 +16,7 @@ def print_ast_debug(ast, ast_format, shell) -> None:
         format_type = shell.state.scope_manager.get_variable('PSH_AST_FORMAT') or 'tree'
 
     # Include parser name in debug header
-    parser_name = shell._active_parser
+    parser_name = shell.active_parser
     print(f"=== AST Debug Output ({parser_name}) ===", file=sys.stderr)
 
     try:

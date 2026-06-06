@@ -98,7 +98,7 @@ class PrintBuiltin(Builtin):
         if opts['history']:
             command = ' '.join(rest)
             try:
-                shell.interactive_manager.history_manager.add_to_history(command)
+                shell.add_history(command)
             except AttributeError:
                 shell.state.history.append(command)
             return 0
