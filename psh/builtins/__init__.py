@@ -22,6 +22,7 @@ Modules:
     positional      - shift, getopts
     print_builtin   - print (zsh-compatible)
     read_builtin    - read
+    mapfile_builtin - mapfile, readarray
     registry        - BuiltinRegistry and @builtin decorator
     shell_options   - shopt
     shell_state     - history, version, local
@@ -46,6 +47,7 @@ from . import (
     io,
     job_control,
     kill_command,
+    mapfile_builtin,
     navigation,
     parse_tree,
     parser_control,
