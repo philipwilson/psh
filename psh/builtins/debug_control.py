@@ -45,7 +45,7 @@ class DebugASTBuiltin(Builtin):
             shell.state.options['debug-ast'] = not current
             status = "enabled" if not current else "disabled"
             format_name = shell.state.scope_manager.get_variable('PSH_AST_FORMAT') or 'tree'
-            print(f"AST debugging {status} (format: {format_name})")
+            print(f"AST debugging {status} (format: {format_name})", file=shell.stdout)
             return 0
 
         elif len(args) == 2:
@@ -54,19 +54,19 @@ class DebugASTBuiltin(Builtin):
             if arg in ('on', 'enable', 'true', '1'):
                 shell.state.options['debug-ast'] = True
                 format_name = shell.state.scope_manager.get_variable('PSH_AST_FORMAT') or 'tree'
-                print(f"AST debugging enabled (format: {format_name})")
+                print(f"AST debugging enabled (format: {format_name})", file=shell.stdout)
                 return 0
 
             elif arg in ('off', 'disable', 'false', '0'):
                 shell.state.options['debug-ast'] = False
-                print("AST debugging disabled")
+                print("AST debugging disabled", file=shell.stdout)
                 return 0
 
             elif arg in ('tree', 'pretty', 'compact', 'dot', 'sexp'):
                 # Format specified - enable debug and set format
                 shell.state.options['debug-ast'] = True
                 shell.state.scope_manager.set_variable('PSH_AST_FORMAT', arg)
-                print(f"AST debugging enabled (format: {arg})")
+                print(f"AST debugging enabled (format: {arg})", file=shell.stdout)
                 return 0
 
             else:
@@ -90,10 +90,10 @@ class DebugASTBuiltin(Builtin):
             if action in ('on', 'enable', 'true', '1'):
                 shell.state.options['debug-ast'] = True
                 shell.state.scope_manager.set_variable('PSH_AST_FORMAT', format_arg)
-                print(f"AST debugging enabled (format: {format_arg})")
+                print(f"AST debugging enabled (format: {format_arg})", file=shell.stdout)
             else:
                 shell.state.options['debug-ast'] = False
-                print("AST debugging disabled")
+                print("AST debugging disabled", file=shell.stdout)
 
             return 0
 
@@ -137,7 +137,7 @@ class DebugBuiltin(Builtin):
         """Execute the debug builtin."""
         if len(args) == 1:
             # Show all debug options
-            print("Debug Options:")
+            print("Debug Options:", file=shell.stdout)
             debug_options = {
                 'ast': 'debug-ast',
                 'tokens': 'debug-tokens',
@@ -149,12 +149,12 @@ class DebugBuiltin(Builtin):
 
             for name, option_key in debug_options.items():
                 status = "on" if shell.state.options.get(option_key, False) else "off"
-                print(f"  {name:<12} {status}")
+                print(f"  {name:<12} {status}", file=shell.stdout)
 
             # Show AST format if AST debugging is on
             if shell.state.options.get('debug-ast', False):
                 format_name = shell.state.scope_manager.get_variable('PSH_AST_FORMAT') or 'tree'
-                print(f"  ast-format   {format_name}")
+                print(f"  ast-format   {format_name}", file=shell.stdout)
 
             return 0
 
@@ -179,7 +179,7 @@ class DebugBuiltin(Builtin):
             current = shell.state.options.get(option_key, False)
             shell.state.options[option_key] = not current
             status = "enabled" if not current else "disabled"
-            print(f"Debug {option} {status}")
+            print(f"Debug {option} {status}", file=shell.stdout)
 
             # Special handling for debug-scopes
             if option == 'scopes':
@@ -207,7 +207,7 @@ class DebugBuiltin(Builtin):
 
             if action in ('on', 'enable', 'true', '1'):
                 shell.state.options[option_map[option]] = True
-                print(f"Debug {option} enabled")
+                print(f"Debug {option} enabled", file=shell.stdout)
 
                 # Special handling for debug-scopes
                 if option == 'scopes':
@@ -215,7 +215,7 @@ class DebugBuiltin(Builtin):
 
             elif action in ('off', 'disable', 'false', '0'):
                 shell.state.options[option_map[option]] = False
-                print(f"Debug {option} disabled")
+                print(f"Debug {option} disabled", file=shell.stdout)
 
                 # Special handling for debug-scopes
                 if option == 'scopes':
@@ -267,7 +267,7 @@ class SignalsBuiltin(Builtin):
             if arg in ('-v', '--verbose'):
                 verbose = True
             elif arg in ('-h', '--help'):
-                print(self.__doc__)
+                print(self.__doc__, file=shell.stdout)
                 return 0
             else:
                 self.error(f"unknown option: {arg}", shell)
@@ -285,6 +285,6 @@ class SignalsBuiltin(Builtin):
 
         # Generate and print report
         report = registry.report(verbose=verbose)
-        print(report)
+        print(report, file=shell.stdout)
 
         return 0

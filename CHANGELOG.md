@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.207.0 (2026-06-06) - Route builtin output through shell.stdout
+- **Builtins no longer use bare `print()`** (study triage #2) — `parser-config`/
+  `parser-mode`, `debug`/`debug-ast`, `kill -l`, `jobs`/`fg`/`bg`/`wait`,
+  `cd -`, and `parse-tree`/`show-ast` wrote output with bare `print()`, sending
+  it to `sys.stdout` instead of `shell.stdout`. That leaked output past
+  in-process capture / redirection (e.g. builtin-to-builtin pipelines in test
+  mode, which capture the first command via `shell.stdout`). All 47 such calls
+  across the six affected builtins now pass `file=shell.stdout`; `kill -l` gained
+  `shell` threading so its lister can reach the stream.
+- Behavior-preserving for fd-level cases (`>`, external pipelines) where
+  `shell.stdout` already aliases `sys.stdout`. (Separately noted, not fixed here:
+  command substitution loses buffered builtin output across `os._exit` — a flush
+  issue independent of stream routing.)
+- Added `tests/unit/builtins/test_builtin_stdout_routing.py` (6 tests) asserting
+  output lands on `shell.stdout` and does not leak to `sys.stdout`.
+
 ## 0.206.0 (2026-06-06) - Fix two analysis-visitor bugs (until loops, brace groups)
 - **`until` loops now counted in metrics** — `MetricsVisitor` had `visit_WhileLoop`
   but no `visit_UntilLoop`, so `until` loops were not counted in `total_loops`
