@@ -233,3 +233,40 @@ def test_positional_parameter_operators(shell, capsys):
     # Test assignment to positional parameter (should fail in bash)
     # PSH might allow this, but bash doesn't
     # shell.run_command('echo ${3:=third}')  # Would be an error in bash
+
+
+class TestPatternBracketClasses:
+    """Bracket-class behavior in pattern-operator removal/substitution.
+
+    Pins the shared glob->regex conversion (psh/expansion/extglob.py
+    glob_to_regex_body), which the parameter-expansion operators now reuse.
+    A leading ']' in a class is a literal member (POSIX); the former inline
+    converter produced an invalid empty class and raised "unterminated
+    character set".
+    """
+
+    def test_leading_bracket_class_prefix_no_match(self, shell, capsys):
+        shell.run_command('x="a]b"; echo "${x#[]]}"')
+        assert capsys.readouterr().out.strip() == "a]b"
+
+    def test_leading_bracket_class_prefix_match(self, shell, capsys):
+        shell.run_command('x="]ab"; echo "${x#[]]}"')
+        assert capsys.readouterr().out.strip() == "ab"
+
+    def test_leading_bracket_in_substitution(self, shell, capsys):
+        shell.run_command('x="]ab"; echo "${x//[]ab]/X}"')
+        assert capsys.readouterr().out.strip() == "XXX"
+
+    def test_range_class(self, shell, capsys):
+        shell.run_command('x="a-z"; echo "${x//[a-z]/X}"')
+        assert capsys.readouterr().out.strip() == "X-X"
+
+    def test_negated_class(self, shell, capsys):
+        shell.run_command('x="a!b"; echo "${x//[!a]/X}"')
+        assert capsys.readouterr().out.strip() == "aXX"
+
+    def test_plain_prefix_suffix_substitution(self, shell, capsys):
+        shell.run_command(
+            'x="path/to/file"; echo "${x##*/}" "${x%/*}" "${x//\\//-}"'
+        )
+        assert capsys.readouterr().out.strip() == "file path/to path-to-file"

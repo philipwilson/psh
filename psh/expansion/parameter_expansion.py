@@ -366,57 +366,15 @@ class PatternMatcher:
             from_start: If anchored, whether to anchor at start (True) or end (False)
             extglob_enabled: If True and pattern contains extglob, use extglob converter
         """
-        if extglob_enabled:
-            from .extglob import contains_extglob, extglob_to_regex
-            if contains_extglob(pattern):
-                return extglob_to_regex(pattern, anchored=anchored,
-                                        from_start=from_start)
-        regex_parts = []
-        i = 0
+        from .extglob import contains_extglob, extglob_to_regex, glob_to_regex_body
+        if extglob_enabled and contains_extglob(pattern):
+            return extglob_to_regex(pattern, anchored=anchored,
+                                    from_start=from_start)
 
-        while i < len(pattern):
-            char = pattern[i]
-
-            if char == '*':
-                # Match any characters
-                regex_parts.append('.*')
-            elif char == '?':
-                # Match single character
-                regex_parts.append('.')
-            elif char == '[':
-                # Character class
-                j = i + 1
-                # Find closing ]
-                while j < len(pattern) and pattern[j] != ']':
-                    j += 1
-                if j < len(pattern):
-                    # Valid character class
-                    class_content = pattern[i+1:j]
-                    # Handle negation (shell uses ! for negation, regex uses ^)
-                    if class_content.startswith('!'):
-                        # Don't escape the character class content - it's already regex-compatible
-                        regex_parts.append(f'[^{class_content[1:]}]')
-                    elif class_content.startswith('^'):
-                        # Also support regex-style negation for compatibility
-                        regex_parts.append(f'[^{class_content[1:]}]')
-                    else:
-                        # Don't escape the character class content
-                        regex_parts.append(f'[{class_content}]')
-                    i = j
-                else:
-                    # No closing ], treat as literal
-                    regex_parts.append(re.escape(char))
-            elif char == '\\' and i + 1 < len(pattern):
-                # Escaped character
-                regex_parts.append(re.escape(pattern[i + 1]))
-                i += 1
-            else:
-                # Regular character
-                regex_parts.append(re.escape(char))
-
-            i += 1
-
-        regex = ''.join(regex_parts)
+        # Plain glob: reuse the shared converter (extglob operators are literal
+        # here). This also handles a leading ']' in a class (e.g. [], [!]]),
+        # which the former inline loop produced an invalid empty class for.
+        regex = glob_to_regex_body(pattern, for_pathname=False, extglob=False)
 
         if anchored:
             if from_start:
