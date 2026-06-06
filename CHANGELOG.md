@@ -4,6 +4,18 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.212.0 (2026-06-06) - Trim dead ExecutionContext factories and fields
+- **Removed dead `ExecutionContext` machinery** (study triage #17) — about half
+  the module was unused: factory methods `subshell_context`, `loop_context_enter`,
+  `function_context_enter`, `with_pipeline_context`, `with_background_job`, and
+  `should_use_print`, plus fields `in_subshell`, `pipeline_context` (write-only),
+  `background_job`, `suppress_function_lookup`, and `exec_mode`. Kept the four
+  live fields (`in_pipeline`, `in_forked_child`, `loop_depth`, `current_function`)
+  and four live methods (`fork_context`, `pipeline_context_enter`, `in_loop`,
+  `in_function`). `loop_depth`/`current_function` are mutated in place, which is
+  why the matching `*_context_enter` factories were dead. context.py 189 -> 60
+  lines; behavior unchanged (covered by the existing executor suite).
+
 ## 0.211.0 (2026-06-06) - Remove the vestigial readline CompletionManager
 - **Dropped `CompletionManager`** (study triage #7) — the readline-based tab
   completion manager was dead: `setup_readline()` registered a readline completer,
