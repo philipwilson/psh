@@ -168,6 +168,17 @@ class IndexedArray:
         """Get all defined indices in sorted order."""
         return sorted(self._elements.keys())
 
+    def next_index(self) -> int:
+        """Index one past the highest set index (0 for an empty array).
+
+        This is where bash appends with ``arr+=(x)`` / ``arr[next]=x``.
+        """
+        return self._max_index + 1
+
+    def __contains__(self, index: int) -> bool:
+        """True if *index* has a value set (supports ``index in arr``)."""
+        return index in self._elements
+
     def length(self) -> int:
         """Number of elements in the array."""
         return len(self._elements)
@@ -222,6 +233,10 @@ class AssociativeArray:
         """Get all key-value pairs in insertion order for bash compatibility."""
         # Return items in insertion order (Python 3.7+ dict behavior matches bash)
         return list(self._elements.items())
+
+    def __contains__(self, key: str) -> bool:
+        """True if *key* is set (supports ``key in arr``)."""
+        return str(key) in self._elements
 
     def length(self) -> int:
         """Number of elements in the array."""

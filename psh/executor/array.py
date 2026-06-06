@@ -51,7 +51,7 @@ class ArrayOperationExecutor:
             if var_obj and isinstance(var_obj.value, IndexedArray):
                 array = var_obj.value
                 # Find next index for appending
-                start_index = max(array._elements.keys()) + 1 if array._elements else 0
+                start_index = array.next_index()
             else:
                 array = IndexedArray()
                 start_index = 0

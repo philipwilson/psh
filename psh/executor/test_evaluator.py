@@ -209,11 +209,11 @@ class TestExpressionEvaluator:
 
             from ..core import AssociativeArray, IndexedArray
             if isinstance(var_obj.value, AssociativeArray):
-                return key in var_obj.value._elements
+                return key in var_obj.value
             elif isinstance(var_obj.value, IndexedArray):
                 try:
                     index = int(key)
-                    return index in var_obj.value._elements
+                    return index in var_obj.value
                 except ValueError:
                     return False
             else:

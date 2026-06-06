@@ -336,10 +336,10 @@ class DeclareBuiltin(Builtin):
                         self.error(f"{arg}: cannot convert indexed to associative array", shell)
                         # Convert indexed array content to associative array
                         new_assoc = AssociativeArray()
-                        if hasattr(existing.value, '_elements'):
+                        if isinstance(existing.value, IndexedArray):
                             # Copy indexed array elements as string keys
-                            for index, value in existing.value._elements.items():
-                                new_assoc.set(str(index), value)
+                            for index in existing.value.indices():
+                                new_assoc.set(str(index), existing.value.get(index))
                         # Completely replace the variable with new associative array
                         # Remove old attributes and set only the new ones
                         shell.state.scope_manager.unset_variable(arg)
