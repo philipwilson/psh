@@ -285,8 +285,9 @@ class VariableExpander:
                 return self.state.positional_params[index]
             return ''
 
-        # Regular variables
-        result = self.state.get_variable(var_name, '')
+        # Regular variables. Route through _get_var_or_positional so a nameref
+        # to an array element (declare -n e=arr[1]) reads the element value.
+        result = self._get_var_or_positional(var_name)
 
         if self.state.options.get('nounset', False):
             from ..core import OptionHandler, UnboundVariableError
@@ -299,6 +300,9 @@ class VariableExpander:
 
     def _get_var_or_positional(self, var_name: str) -> str:
         """Get value of a variable or positional parameter."""
+        # Follow a nameref to its target name; an array-element target (arr[1])
+        # then flows into the array branch below.
+        var_name = self.state.scope_manager.resolve_nameref_name(var_name)
         if var_name.isdigit():
             index = int(var_name) - 1
             if 0 <= index < len(self.state.positional_params):
@@ -391,6 +395,10 @@ class VariableExpander:
         # Indirect / nameref-name expansion: ${!name}
         if operator == '!' and var_name and not operand:
             return self._expand_indirect(var_name)
+
+        # Follow a nameref to its target name so ${ref...} operators apply to
+        # the target (including an array-element target like arr[1]).
+        var_name = self.state.scope_manager.resolve_nameref_name(var_name)
 
         # Resolve the variable value
         if var_name in ('', '#') and operator == '#' and not operand:

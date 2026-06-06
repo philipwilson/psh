@@ -98,6 +98,43 @@ class TestIndirectExpansion:
         assert captured_shell.get_stdout().strip() == "[]"
 
 
+class TestNamerefArrayElementTargets:
+    """Phase 2: a nameref whose target is an array element (declare -n e=arr[1])."""
+
+    def test_read_indexed_element(self, captured_shell):
+        captured_shell.run_command('arr=(p q r); declare -n e=arr[1]; echo "$e"')
+        assert captured_shell.get_stdout().strip() == "q"
+
+    def test_read_braced(self, captured_shell):
+        captured_shell.run_command('arr=(p q r); declare -n e=arr[2]; echo "${e}"')
+        assert captured_shell.get_stdout().strip() == "r"
+
+    def test_write_indexed_element(self, captured_shell):
+        captured_shell.run_command('arr=(p q r); declare -n e=arr[1]; e=Q; echo "${arr[@]}"')
+        assert captured_shell.get_stdout().strip() == "p Q r"
+
+    def test_read_assoc_element(self, captured_shell):
+        captured_shell.run_command('declare -A m=([k]=v); declare -n e=m[k]; echo "$e"')
+        assert captured_shell.get_stdout().strip() == "v"
+
+    def test_write_assoc_element(self, captured_shell):
+        captured_shell.run_command('declare -A m=([k]=old); declare -n e=m[k]; e=new; echo "${m[k]}"')
+        assert captured_shell.get_stdout().strip() == "new"
+
+    def test_operator_through_element(self, captured_shell):
+        captured_shell.run_command('arr=(hi yo); declare -n e=arr[0]; echo "${e^^}"')
+        assert captured_shell.get_stdout().strip() == "HI"
+
+    def test_bang_ref_gives_subscripted_name(self, captured_shell):
+        captured_shell.run_command('arr=(p q); declare -n e=arr[1]; echo "${!e}"')
+        assert captured_shell.get_stdout().strip() == "arr[1]"
+
+    def test_local_n_to_element(self, captured_shell):
+        captured_shell.run_command(
+            'f(){ local -n el=$1; el=Z; }; a=(x y); f "a[0]"; echo "${a[0]}"')
+        assert captured_shell.get_stdout().strip() == "Z"
+
+
 class TestNamerefBashParity:
     @pytest.mark.parametrize("script", [
         'declare -n r=x; x=5; echo "$r"',
@@ -109,6 +146,9 @@ class TestNamerefBashParity:
         'x=1; declare -n r=x; unset r; echo "[${x-gone}]"',
         'declare -n r=x; declare -p r',
         'f(){ local -n n=$1; n=42; }; v=0; f v; echo "$v"',
+        'arr=(p q r); declare -n e=arr[1]; echo "$e"',
+        'arr=(p q r); declare -n e=arr[1]; e=Q; echo "${arr[@]}"',
+        'declare -A m=([k]=v); declare -n e=m[k]; echo "$e"',
     ])
     def test_matches_bash(self, script):
         psh = _run(script)

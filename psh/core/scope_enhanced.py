@@ -156,6 +156,12 @@ class EnhancedScopeManager:
         # value IS the target name and must be stored on `name` directly.
         if not (attributes & VarAttributes.NAMEREF):
             name = self.resolve_nameref_name(name)
+            # A nameref whose target is an array element (e.g. arr[1]) resolves
+            # to a subscripted name; route that through the array-element setter.
+            if ('[' in name and name.endswith(']') and self._shell is not None
+                    and not isinstance(value, (IndexedArray, AssociativeArray))):
+                self._shell.expansion_manager.variable_expander._set_var_or_array_element(name, value)
+                return
 
         # Check if variable exists
         existing = self.get_variable_object(name)
