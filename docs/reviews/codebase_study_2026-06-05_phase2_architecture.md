@@ -1,8 +1,9 @@
 # PSH Codebase Study (2026-06-05) — Phase 2: Architecture & Code Quality
 
-> **Resolution status (through v0.215.0, updated 2026-06-06).** The entire
-> prioritized high/medium triage list (Section 3) has been resolved, along with
-> every §1.3 duplication item. Mapping of finding → fix:
+> **Resolution status (triage fixes through v0.215.0; reviewed against v0.221.0,
+> updated 2026-06-06).** The entire prioritized high/medium triage list
+> (Section 3) has been resolved, along with every §1.3 duplication item. Mapping
+> of finding → fix:
 >
 > | Finding | Status | Version |
 > |---|---|---|
@@ -31,9 +32,23 @@
 > **Still open** (lower priority): §1.1 private-API-leak items (#14 `_in_forked_child`
 > via `hasattr`/`getattr`, #15 executor↔expansion privates, #20 combinator→RD
 > WordBuilder privates, #21 builtins calling siblings' privates); §1.5 oversized
-> modules (`line_editor.py` ~1300L); and the 2026-02-17 carry-overs noted in
+> modules (`line_editor.py` ~1300L); §2.6/#18 oversized `setup_builtin_redirections`
+> with its `>&` special-case; and the 2026-02-17 carry-overs noted in
 > Section 4 (`source_text` plumbing, string-matching parse heuristics, IOManager
-> internal coupling, docs drift, combinator CI lane).
+> internal coupling, docs drift, combinator CI lane). Re-verified present at
+> v0.221.0 (the line numbers in Sections 1–2 predate the v0.216.0–v0.221.0 work
+> below and may be off by a few lines).
+>
+> **Work since v0.215.0 (v0.216.0–v0.221.0) is feature additions, not triage
+> items** — none of the still-open findings were resolved by it: brace expansion
+> of expansion items + arithmetic fd-dup targets (0.216.0), `${var@OP}` transforms
+> (0.217.0), `mapfile`/`readarray` (0.218.0), `let` (0.219.0), and namerefs +
+> `${!var}` indirect expansion (0.220.0 scalar, 0.221.0 array-element). One new
+> coupling was introduced and then removed in the same pass: namerefs Phase 2
+> initially had `scope_enhanced.py` reach into a private
+> `VariableExpander._set_var_or_array_element`; that helper was promoted to the
+> public `ExpansionManager.set_var_or_array_element()` (so §1.1/§1.7 gained no new
+> instance).
 
 This report synthesizes per-subsystem audits of the PSH codebase into (1) cross-cutting
 themes that aggregate findings of the same kind across subsystems, (2) per-subsystem health

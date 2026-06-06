@@ -338,11 +338,14 @@ class VariableExpander:
         else:
             return self.state.get_variable(var_name, '')
 
-    def _set_var_or_array_element(self, var_name: str, value: str):
-        """Set a variable or array element.
+    def set_var_or_array_element(self, var_name: str, value: str):
+        """Set a variable or array element (public).
 
         Handles both plain variables (``var_name="foo"``) and array
-        subscript syntax (``arr[5]="foo"``).
+        subscript syntax (``arr[5]="foo"``). Exposed as public API so other
+        layers (e.g. the scope manager resolving a nameref whose target is an
+        array element) can route subscripted writes here without reaching into
+        a private method.
         """
         if '[' in var_name and var_name.endswith(']'):
             bracket_pos = var_name.find('[')
@@ -646,7 +649,7 @@ class VariableExpander:
             if not is_set:
                 expanded_default = self._expand_tilde_in_operand(self.expand_string_variables(operand))
                 if var_name and not var_name.isdigit():
-                    self._set_var_or_array_element(var_name, expanded_default)
+                    self.set_var_or_array_element(var_name, expanded_default)
                 return expanded_default
             return value
         elif operator == '+':
@@ -666,7 +669,7 @@ class VariableExpander:
             if not value:
                 expanded_default = self._expand_tilde_in_operand(self.expand_string_variables(operand))
                 if var_name and not var_name.isdigit():
-                    self._set_var_or_array_element(var_name, expanded_default)
+                    self.set_var_or_array_element(var_name, expanded_default)
                 return expanded_default
             return value
         elif operator == ':?':

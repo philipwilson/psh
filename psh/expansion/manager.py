@@ -531,6 +531,15 @@ class ExpansionManager:
         """Expand a variable expression."""
         return self.variable_expander.expand_variable(var_expr)
 
+    def set_var_or_array_element(self, name: str, value) -> None:
+        """Assign to a plain variable or an ``arr[index]`` element.
+
+        Public entry point used by the scope manager to route a nameref whose
+        target is an array element (declare -n e=arr[1]) to the array-aware
+        setter.
+        """
+        self.variable_expander.set_var_or_array_element(name, value)
+
     def expand_tilde(self, path: str) -> str:
         """Expand tilde in a path."""
         return self.tilde_expander.expand(path)
