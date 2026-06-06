@@ -12,7 +12,12 @@ Utility modules supporting shell infrastructure:
 
 from .ast_debug import print_ast_debug
 from .file_tests import file_newer_than, file_older_than, files_same
-from .heredoc_detection import contains_heredoc
+from .heredoc_detection import (
+    HEREDOC_MARKER_RE,
+    contains_heredoc,
+    has_unclosed_heredoc,
+    is_inside_expansion,
+)
 from .shell_formatter import ShellFormatter
 from .signal_utils import SignalNotifier, get_signal_registry
 from .token_formatter import TokenFormatter
@@ -22,6 +27,9 @@ __all__ = [
     'get_signal_registry',
     'ShellFormatter',
     'contains_heredoc',
+    'has_unclosed_heredoc',
+    'is_inside_expansion',
+    'HEREDOC_MARKER_RE',
     'print_ast_debug',
     'TokenFormatter',
     'file_newer_than',

@@ -4,6 +4,8 @@ Here document (heredoc) integration tests.
 Tests for heredoc (<<) and here string (<<<) redirection functionality.
 """
 
+import subprocess
+import sys
 
 
 def test_tokenize_heredoc():
@@ -175,6 +177,26 @@ EOF
     )
     assert result.returncode == 0
     assert result.stdout == "Indented line\nDouble indented\nNot indented\n"
+
+
+def test_heredoc_strip_tabs_indented_delimiter():
+    """`<<-` strips leading tabs from the closing delimiter, not just content.
+
+    In bash, `cat <<-EOF ... \\tEOF` closes on the tab-indented `EOF` and prints
+    the (tab-stripped) body. Regression test for a bug where psh emitted nothing
+    because the lexer heredoc collector compared the delimiter line without
+    stripping its leading tabs.
+    """
+    script = "cat <<-EOF\n\tindented\n\tEOF\n"
+    psh = subprocess.run(
+        [sys.executable, '-m', 'psh', '-c', script],
+        capture_output=True, text=True,
+    )
+    bash = subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+
+    assert psh.returncode == 0
+    assert bash.stdout == "indented\n"   # documents the correct behavior
+    assert psh.stdout == bash.stdout
 
 
 def test_heredoc_empty():
