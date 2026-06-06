@@ -78,7 +78,11 @@ class SpecialBuiltinExecutionStrategy(ExecutionStrategy):
             if isinstance(e, FunctionReturn):
                 # FunctionReturn must propagate to be caught by function execution
                 raise
-            # Handle other exceptions
+            # Last-resort guard: surface the traceback under --debug-exec so a
+            # builtin defect isn't hidden behind the generic message.
+            if shell.state.options.get('debug-exec'):
+                import traceback
+                traceback.print_exc(file=shell.stderr)
             print(f"psh: {cmd_name}: {e}", file=shell.stderr)
             return 1
 
@@ -135,6 +139,10 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
             if isinstance(e, FunctionReturn):
                 # FunctionReturn must propagate to be caught by function execution
                 raise
+            # Last-resort guard: surface the traceback under --debug-exec.
+            if shell.state.options.get('debug-exec'):
+                import traceback
+                traceback.print_exc(file=sys.stderr)
             print(f"psh: {cmd_name}: {e}", file=sys.stderr)
             return 1
 
