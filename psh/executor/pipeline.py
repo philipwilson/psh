@@ -136,7 +136,6 @@ class PipelineExecutor:
 
         # Create new context for pipeline execution
         pipeline_context = context.pipeline_context_enter()
-        pipeline_context = pipeline_context.with_pipeline_context(pipeline_ctx)
 
         # Save original terminal process group for restoration
         # Skip terminal control when running under pytest to avoid SIGTTOU issues
