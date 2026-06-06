@@ -4,7 +4,7 @@ While PSH implements many shell features compatible with Bash, there are importa
 
 ## 17.1 Supported Features Overview
 
-PSH v0.218.0 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
+PSH v0.219.0 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
 
 ### Shell Options
 
@@ -221,9 +221,18 @@ mapfile -t -s 1 -n 2 first_two < data.txt
 
 The `-C callback` / `-c quantum` options are not supported.
 
+### let
+
+```bash
+# Evaluate arithmetic expressions (equivalent to ((...)) per argument):
+let x=5+3              # x=8
+let "a = 2" "b = a+1" # b=3; side effects apply (++x, x+=2, etc.)
+let "count > 0"       # exit 0 if the last expression is non-zero, else 1
+```
+
 ## 17.2 Unimplemented Features
 
-The following Bash features are not available in PSH v0.218.0.
+The following Bash features are not available in PSH v0.219.0.
 
 ### Name References and Indirect Expansion
 
@@ -298,11 +307,10 @@ compgen -W "words" -- prefix    # Command not found
 
 ```bash
 # These Bash builtins are not available:
-let "x = 5 + 3"             # Use (( )) or $(( )) instead
 caller                       # Call-stack introspection - not a builtin
 ```
 
-(`mapfile` / `readarray` **are** supported — see 17.1.)
+(`let`, `mapfile`, and `readarray` **are** supported — see 17.1.)
 
 ### Read Builtin Limitations
 
@@ -507,7 +515,7 @@ parser-select rd
 
 ```bash
 # PSH sets PSH_VERSION (not BASH_VERSION):
-echo $PSH_VERSION    # Shows: 0.218.0
+echo $PSH_VERSION    # Shows: 0.219.0
 
 # Detect PSH:
 if [ -n "$PSH_VERSION" ]; then
@@ -591,7 +599,7 @@ fi
 | Indirect expansion ${!var} | Yes | No | Scalar lookup unsupported; ${!arr[@]} works |
 | Parameter transforms ${var@Q/U/u/L/E/P/A/a} | Yes | Yes | Scalar, array, and positional |
 | Assoc key/value transforms ${var@K} / ${var@k} | Yes | No | Not implemented |
-| let builtin | Yes | No | Use (( )) instead |
+| let builtin | Yes | Yes | Equivalent to ((...)) per argument |
 | mapfile/readarray | Yes | Yes | -d/-n/-O/-s/-t/-u (no -C/-c) |
 | caller builtin | Yes | No | Not implemented |
 | BASH_SOURCE / BASH_LINENO | Yes | No | Not populated |
@@ -676,7 +684,6 @@ Most Bash scripts work without modification. Check for these issues:
 ```bash
 # 1. Check for unsupported builtins / features
 grep -E 'coproc|complete |compgen |caller' script.sh
-grep -E '\blet\b' script.sh
 grep -E 'read .*-u' script.sh                 # read -u (fd) is unsupported
 
 # 2. Check for namerefs and the unsupported @K/@k transforms
@@ -690,17 +697,13 @@ grep -E '!!|![0-9]' script.sh                 # history expansion
 # 4. Check for combined -euo pattern
 grep 'set -euo' script.sh
 # Replace with: set -eu -o pipefail
-
-# 5. Check for let command
-grep '\blet\b' script.sh
-# Replace: let "x=5+3" -> ((x=5+3))
 ```
 
 ### Script Compatibility Checklist
 
 ```bash
 #!/usr/bin/env psh
-# PSH v0.218.0 Compatibility Checklist
+# PSH v0.219.0 Compatibility Checklist
 
 # Fully supported:
 # - Variables, arrays, associative arrays
@@ -727,6 +730,7 @@ grep '\blet\b' script.sh
 # - pushd, popd, dirs
 # - history builtin (interactive)
 # - mapfile / readarray (-d/-n/-O/-s/-t/-u)
+# - let (arithmetic evaluation)
 
 # Not supported:
 # - Namerefs (declare -n / local -n) and ${!var} indirect expansion
@@ -737,7 +741,6 @@ grep '\blet\b' script.sh
 # - History expansion designators (!!, !n, !string)
 # - Coprocesses (coproc)
 # - Programmable completion (complete, compgen)
-# - let builtin (use (( )) instead)
 # - caller builtin
 # - read -u (read from a specific fd)
 # - wait -n
@@ -768,11 +771,11 @@ This means:
 
 ## Summary
 
-PSH v0.218.0 provides near-complete Bash compatibility for everyday shell programming:
+PSH v0.219.0 provides near-complete Bash compatibility for everyday shell programming:
 
 1. **Comprehensive Feature Support**: Arrays, associative arrays, trap, wait, disown, all control structures, all expansions, extended globs, `=~` with BASH_REMATCH
 2. **Full Shell Options**: errexit, nounset, xtrace, pipefail, noclobber, allexport, and many more
-3. **Remaining Gaps**: namerefs (`declare -n`), `${var@K}`/`@k` associative transforms, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `let`/`caller`, `wait -n`, the `time` keyword, `read -u`
+3. **Remaining Gaps**: namerefs (`declare -n`), `${var@K}`/`@k` associative transforms, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `caller`, `wait -n`, the `time` keyword, `read -u`
 4. **Educational Tools**: Debug flags, script analysis, multiple parser implementations
 5. **High Compatibility**: Most Bash scripts run without modification
 
@@ -781,7 +784,7 @@ Key differences to remember:
 - Namerefs (`declare -n`/`local -n`) and `${!var}` indirect expansion are not supported (`${!arr[@]}` indices/keys do work)
 - The `${var@Q/U/u/L/E/P/A/a}` transform operators are supported; only `${var@K}`/`${var@k}` (associative key/value display) are not
 - DEBUG/ERR/RETURN traps and history expansion (`!!`, `!n`) are not implemented
-- `let` and `caller` are not available (`mapfile`/`readarray` are supported)
+- `caller` is not available (`let`, `mapfile`, `readarray` are supported)
 - Use `$PSH_VERSION` instead of `$BASH_VERSION` to detect PSH
 - Deep recursion may hit Python stack limits
 
