@@ -333,6 +333,21 @@ class JobManager:
         # Restore terminal control to shell (H5)
         self.transfer_terminal_control(shell_pgid, "JobManager:restore")
 
+    def finish_foreground_job(self, terminal_transferred: bool):
+        """Tear down foreground-job state after a foreground job completes.
+
+        When terminal control was handed to the job, restore it to the shell
+        (which also clears the foreground bookkeeping). Otherwise (e.g. under
+        pytest, where control was never transferred) just clear the
+        bookkeeping. Shared by the pipeline and external-command paths.
+        """
+        if terminal_transferred:
+            self.restore_shell_foreground()
+        else:
+            self.set_foreground_job(None)
+            if self.shell_state is not None and hasattr(self.shell_state, 'foreground_pgid'):
+                self.shell_state.foreground_pgid = None
+
     def wait_for_job(self, job: Job, collect_all_statuses: bool = False) -> int:
         """Wait for a job to complete or stop.
 

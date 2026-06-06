@@ -4,8 +4,23 @@ This module implements bash-compatible history expansion, processing history
 references like !!, !n, !-n, and !string before commands are tokenized.
 """
 
+import re
 import sys
 from typing import List, Optional
+
+# A line containing one of these history references (!!, !n, !-n, !word,
+# !?word?) must be passed straight to execution rather than parse-tested for
+# completeness or recorded verbatim in history. This single source of truth is
+# shared by the multiline/line-editor completeness checks and the
+# source-processor history filtering (previously copied inline at four sites).
+HISTORY_REFERENCE_RE = re.compile(
+    r'(?:^|\s)!(?:!|[0-9]+|-[0-9]+|[a-zA-Z][a-zA-Z0-9]*|\?[^?]*\?)(?:\s|$)'
+)
+
+
+def contains_history_reference(text: str) -> bool:
+    """Return True if *text* contains a history reference (``!!``, ``!n``, …)."""
+    return HISTORY_REFERENCE_RE.search(text) is not None
 
 
 class HistoryExpander:

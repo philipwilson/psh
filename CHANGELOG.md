@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.201.0 (2026-06-06) - De-duplicate divergent reimplementations (Tier A + B)
+- Consolidated same-logic copies flagged in the Phase 2 architecture study
+  (§1.3). Behavior-preserving except for one bug fix noted below.
+- **History-reference detection** — one `HISTORY_REFERENCE_RE` +
+  `contains_history_reference()` in `history_expansion.py` replaces four
+  byte-identical inline regex copies (source_processor ×2, multiline_handler,
+  line_editor).
+- **`parser-config` feature map** — extracted `_FEATURE_MAP` / `_POSITIVE_OPTIONS`
+  class constants and a shared `_set_feature()`, collapsing two duplicated
+  10-entry maps and their near-identical enable/disable bodies.
+- **Foreground-job teardown** — new `JobManager.finish_foreground_job()` replaces
+  the duplicated terminal-restore if/else in `pipeline.py` and `strategies.py`.
+- **dirs/pushd/popd `~` display (bug fix)** — the three `_format_directory`
+  copies are unified into one `format_directory_for_display()`. The two naive
+  pushd/popd copies used `startswith(home)`, which mangled a sibling like
+  `/home/userfoo` into `~foo`; the unified helper uses `home + os.sep`. Added
+  regression tests.
+- **xtrace** — executor `_print_xtrace` now delegates to
+  `OptionHandler.print_xtrace`, making core the single source of truth (and
+  reviving the previously-dead canonical method).
+
 ## 0.200.0 (2026-06-06) - Positional/array slicing and EXIT-trap edge cases
 - **`${@:off:len}` / `${*:off:len}` / `${arr[@]:off:len}` slicing** — these now
   select elements with bash semantics instead of doing substring on the joined
