@@ -1,6 +1,6 @@
 # PSH Codebase Study (2026-06-05) — Phase 2: Architecture & Code Quality
 
-> **Resolution status (triage fixes through v0.215.0; reviewed against v0.221.0,
+> **Resolution status (triage fixes through v0.215.0; reviewed against v0.227.0,
 > updated 2026-06-06).** The entire prioritized high/medium triage list
 > (Section 3) has been resolved, along with every §1.3 duplication item. Mapping
 > of finding → fix:
@@ -29,15 +29,24 @@
 > bugs — `until` loops, brace-group crash (v0.206.0); command-substitution
 > output flush (v0.210.0).
 >
-> **Still open** (lower priority): §1.1 private-API-leak items (#14 `_in_forked_child`
-> via `hasattr`/`getattr`, #15 executor↔expansion privates, #20 combinator→RD
-> WordBuilder privates, #21 builtins calling siblings' privates); §1.5 oversized
-> modules (`line_editor.py` ~1300L); §2.6/#18 oversized `setup_builtin_redirections`
-> with its `>&` special-case; and the 2026-02-17 carry-overs noted in
-> Section 4 (`source_text` plumbing, string-matching parse heuristics, IOManager
-> internal coupling, docs drift, combinator CI lane). Re-verified present at
-> v0.221.0 (the line numbers in Sections 1–2 predate the v0.216.0–v0.221.0 work
-> below and may be off by a few lines).
+> **Triage table complete.** The five items that were still open at v0.221.0 —
+> the §1.1 private-API-leak items (#14 `_in_forked_child`, #15 executor↔expansion
+> privates, #20 combinator→RD WordBuilder privates, #21 builtins calling
+> siblings' privates) and the oversized `setup_builtin_redirections` (#18) — were
+> resolved in v0.223.0–v0.227.0 by promoting the shared operations to public API
+> (`ShellState.in_forked_child`, `ExpansionManager.expand_expansion` /
+> `process_dquote_escapes` / `set_var_or_array_element`,
+> `WordBuilder.has_decomposable_parts` / `token_part_to_word_part`,
+> `TestBuiltin.evaluate_test`/`evaluate_unary`, `ParserConfigBuiltin.set_mode`,
+> `PrintfBuiltin.process_format_string_posix`) and extracting a shared
+> builtin-output-file helper.
+>
+> **Still open** (lower priority, not in the prioritized triage table): §1.5
+> oversized `line_editor.py` (~1300L); and the 2026-02-17 carry-overs noted in
+> Section 4 (`source_text` plumbing, string-matching parse heuristics, docs
+> drift, combinator CI lane). The §1.1/§1.2/§1.3/§1.4 themes still list smaller
+> Low-severity instances beyond the triaged top-21. Line numbers in Sections 1–2
+> predate the v0.216.0–v0.227.0 work and may be off by a few lines.
 >
 > **Work since v0.215.0 (v0.216.0–v0.221.0) is feature additions, not triage
 > items** — none of the still-open findings were resolved by it: brace expansion
@@ -490,19 +499,20 @@ Status legend: ✅ resolved (version) · ⬜ open.
 | 11 | ✅ v0.202.0 | Heredoc detection duplicated/diverged | scripting | duplication | High | Medium |
 | 12 | ✅ v0.198.0 | Redirect-type dispatch duplicated 4x | io_redirect | duplication | High | Large |
 | 13 | ✅ v0.215.0 | Broad `except Exception` in executor hot paths | executor | broad-exception | Medium | Medium |
-| 14 | ⬜ open | `_in_forked_child` private leak via hasattr/getattr | core | private-api-leak | Medium | Medium |
-| 15 | ⬜ open | Executor reaches into ExpansionManager privates | expansion/executor | private-api-leak | Medium | Small |
+| 14 | ✅ v0.223.0 | `_in_forked_child` private leak via hasattr/getattr | core | private-api-leak | Medium | Medium |
+| 15 | ✅ v0.224.0 | Executor reaches into ExpansionManager privates | expansion/executor | private-api-leak | Medium | Small |
 | 16 | ✅ v0.213.0 | OptionHandler largely dead; executor reimplements policy | core | dead-code | Medium | Small |
 | 17 | ✅ v0.212.0 | ExecutionContext dead factories/fields (~half the module) | executor | dead-code | Medium | Small |
-| 18 | ⬜ open | `setup_builtin_redirections` oversized + fragile `>&` special-case | io_redirect | oversized/clarity | Medium | Medium |
+| 18 | ✅ v0.225.0 | `setup_builtin_redirections` oversized + fragile `>&` special-case | io_redirect | oversized/clarity | Medium | Medium |
 | 19 | ✅ v0.205.0 | Three divergent visitor `generic_visit` + overlapping checks | visitor | duplication | Medium | Medium–Large |
-| 20 | ⬜ open | Combinator parser reaches into RD WordBuilder privates | parser | private-api-leak | Medium | Small |
-| 21 | ⬜ open | Builtins call siblings' private methods | builtins | private-api-leak | Medium | Small |
+| 20 | ✅ v0.226.0 | Combinator parser reaches into RD WordBuilder privates | parser | private-api-leak | Medium | Small |
+| 21 | ✅ v0.227.0 | Builtins call siblings' private methods | builtins | private-api-leak | Medium | Small |
 
-**Resolved: 17 of 21** (all High-severity items; all Medium except the four
-private-API-leak items #14/#15/#20/#21 and the oversized `setup_builtin_redirections`
-#18). Original `Location`/`Carry-over` columns are preserved per-finding in
-Sections 1–2.
+**Resolved: 21 of 21** — the entire prioritized triage table is now closed. The
+final five (private-API-leak items #14/#15/#20/#21 and the oversized
+`setup_builtin_redirections` #18) landed in v0.223.0–v0.227.0. Original
+`Location`/`Carry-over` columns are preserved per-finding in Sections 1–2 (their
+line numbers predate the v0.216.0–v0.227.0 work and may be slightly off).
 
 ---
 
