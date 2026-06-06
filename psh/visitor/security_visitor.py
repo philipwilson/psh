@@ -138,15 +138,6 @@ class SecurityVisitor(ASTVisitor[None]):
                         node
                     ))
 
-        # Check for curl/wget piped to sh
-        if cmd in ['curl', 'wget'] and self._is_piped_to_shell(node):
-            self.issues.append(SecurityIssue(
-                'HIGH',
-                'REMOTE_CODE_EXECUTION',
-                f"{cmd} piped to shell: Executing remote code without verification",
-                node
-            ))
-
         # Also check redirects on the command
         for redirect in node.redirects:
             self.visit_Redirect(redirect)
@@ -268,12 +259,6 @@ class SecurityVisitor(ASTVisitor[None]):
             return True
         elif perm == '777' or perm == '0777':
             return True
-        return False
-
-    def _is_piped_to_shell(self, node: SimpleCommand) -> bool:
-        """Check if command is part of a pipeline to a shell."""
-        # This is a simplified check - would need parent context
-        # In real implementation, would check parent Pipeline node
         return False
 
     def get_report(self) -> Dict[str, any]:

@@ -130,7 +130,6 @@ class ValidatorConfig:
     # Undefined variable checking
     warn_undefined_in_conditionals: bool = True
     ignore_undefined_with_defaults: bool = True
-    ignore_undefined_in_arithmetic: bool = False
 
     # Command checking
     check_typos: bool = True
@@ -174,9 +173,6 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         # Dangerous commands for security checks
         self.dangerous_commands = DANGEROUS_COMMANDS
 
-        # Track whether we're in certain contexts
-        self._in_arithmetic_context = False
-        self._in_test_context = False
         self._current_function = None
 
     # Override parent visit methods to add enhanced checks
@@ -416,10 +412,6 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
 
             # Check unquoted variables
             if has_unquoted_expansion(word, arg):
-                # Skip if in arithmetic context
-                if self._in_arithmetic_context:
-                    continue
-
                 # Skip numeric comparisons
                 if i > 0 and node.args[i-1] in NUMERIC_COMPARISON_OPERATORS:
                     continue
@@ -576,10 +568,6 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
 
     def _should_warn_undefined(self, var_name: str, context: str, node: ASTNode) -> bool:
         """Determine if we should warn about an undefined variable."""
-        # Don't warn in arithmetic contexts if configured
-        if self._in_arithmetic_context and self.config.ignore_undefined_in_arithmetic:
-            return False
-
         # Don't warn if it has a default and we're configured to ignore
         if self.config.ignore_undefined_with_defaults and self._has_parameter_default(context):
             return False
