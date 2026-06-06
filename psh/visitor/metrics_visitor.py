@@ -28,6 +28,7 @@ from ..ast_nodes import (
     SimpleCommand,
     StatementList,
     TopLevel,
+    UntilLoop,
     WhileLoop,
 )
 from .base import ASTVisitor
@@ -293,6 +294,23 @@ class MetricsVisitor(ASTVisitor[None]):
         """Visit while loop."""
         self.metrics.total_loops += 1
         self.metrics.loop_types['while'] += 1
+        self.metrics.cyclomatic_complexity += 1
+
+        self.current_nesting_depth += 1
+        self.metrics.max_nesting_depth = max(
+            self.metrics.max_nesting_depth,
+            self.current_nesting_depth
+        )
+
+        self.visit(node.condition)
+        self.visit(node.body)
+
+        self.current_nesting_depth -= 1
+
+    def visit_UntilLoop(self, node: UntilLoop) -> None:
+        """Visit until loop (mirrors while: a loop with a condition + body)."""
+        self.metrics.total_loops += 1
+        self.metrics.loop_types['until'] += 1
         self.metrics.cyclomatic_complexity += 1
 
         self.current_nesting_depth += 1

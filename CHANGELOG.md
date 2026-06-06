@@ -4,6 +4,18 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.206.0 (2026-06-06) - Fix two analysis-visitor bugs (until loops, brace groups)
+- **`until` loops now counted in metrics** — `MetricsVisitor` had `visit_WhileLoop`
+  but no `visit_UntilLoop`, so `until` loops were not counted in `total_loops`
+  (or `loop_types`). Added `visit_UntilLoop` mirroring `visit_WhileLoop`; an
+  `until` loop now counts identically to a `while` loop.
+- **Brace group in a pipeline no longer crashes analysis** — `--metrics` /
+  `--security` on e.g. `{ echo a; } | tee log` raised `'StatementList' object is
+  not iterable`. This was resolved by the v0.205.0 traversal unification; this
+  release adds regression tests pinning it (metrics/security no longer crash and
+  the group's inner commands are counted).
+- Both fixes covered by new tests in `tests/unit/visitor/test_analysis_visitors.py`.
+
 ## 0.205.0 (2026-06-06) - Unify analysis-visitor traversal and shared checks
 - **Visitor traversal unified (Phase 2 study §1.3, #19)** — the metrics,
   security, and linter visitors each had their own `generic_visit`. Two walked

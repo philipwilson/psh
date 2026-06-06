@@ -284,7 +284,7 @@ See `docs/test_pattern_guide.md` for examples and patterns.
 
 ## Current Development Status
 
-**Version**: 0.205.0 (see CHANGELOG.md for detailed history)
+**Version**: 0.206.0 (see CHANGELOG.md for detailed history)
 
 ## Debugging Tips
 
