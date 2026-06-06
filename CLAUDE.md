@@ -19,16 +19,22 @@ python run_tests.py > tmp/test-results.txt 2>&1; tail -15 tmp/test-results.txt
 #   grep -A 10 "FAILURES" tmp/test-results.txt
 
 python run_tests.py --quick                # Fast tests only
-python run_tests.py --parallel             # Parallel mode (~10x faster)
+python run_tests.py --parallel             # Parallel mode (pytest-xdist; ~4x faster, ~23s vs ~87s)
 python run_tests.py --parallel 8           # Parallel with 8 workers
 python run_tests.py --all-nocapture        # Simple mode - run all with -s
 
 # Run tests manually (for specific scenarios)
-python -m pytest tests/                    # All tests (subshell tests pass without -s as of v0.195.0)
+python -m pytest tests/                    # All tests, serially (subshell tests pass without -s as of v0.195.0)
 python -m pytest tests/integration/subshells/      # Subshell tests (no -s needed)
 python -m pytest tests/test_foo.py -v     # Specific test file
 python -m pytest tests/unit/builtins/ -v  # Specific test category
 python -m pytest -k "test_name" -xvs      # Specific test with output
+
+# Manual parallel runs MUST exclude serial-marked tests, or xdist workers crash
+# (process/signal/job-control + permanent-fd tests; see "Known Test Issues").
+# run_tests.py --parallel handles this split automatically — prefer it.
+python -m pytest tests/ -n auto -m "not serial"    # Parallel phase (safe)
+python -m pytest tests/ -m serial                  # Serial phase (no -n)
 
 # Run conformance tests (POSIX/bash compatibility)
 cd tests/conformance
@@ -123,7 +129,30 @@ These files have version-stamped metadata that must stay in sync:
 2. **Pytest Collection Best Practices**:
    - Don't name source files starting with `test_`
    - Don't name classes starting with `Test` unless they're actual test classes
- 
+
+3. **Parallel runs and the `serial` marker** (see `docs/reviews/parallel_test_safety_2026-06-06.md`):
+   - The suite runs safely under `pytest-xdist`, but some tests **cannot** run
+     concurrently and are auto-marked `serial` by `tests/conftest.py`:
+     - **Permanent/process-level fd redirection** run *in-process* (e.g. `exec >file`,
+       `exec 3>&1`) rewrites the worker's own fds — under xdist those carry the
+       execnet channel, so the whole parallel session aborts with
+       `INTERNALERROR> OSError: cannot send (already closed?)`. **Write these tests
+       in a subprocess instead** (see Testing guidelines below); they don't need
+       the marker if isolated.
+     - **Process/signal/job-control** tests (`job_control`, `test_disown`,
+       `test_signal_builtins`, `test_pty`, `integration/redirection`) send signals /
+       wait on processes and must not run alongside siblings.
+   - `run_tests.py --parallel` runs `-m "not serial"` under xdist, then `-m serial`
+     without `-n`. A **bare** `pytest -n auto` will crash — always add `-m "not serial"`.
+   - Mark a new xdist-unsafe test with `@pytest.mark.serial` (or place it under one
+     of the path prefixes above, which conftest marks automatically).
+
+4. **Background-job tests don't need to clean up their own jobs**:
+   - The `shell`-family fixtures' teardown (`_cleanup_shell`) **SIGKILLs** any
+     still-running background jobs and reaps them. Tests may freely start
+     `sleep 30 &` without an explicit `kill`. (Teardown used to *wait* for these
+     jobs, which made the serial phase ~12× slower — fixed 2026-06-06.)
+
 ## Architecture Quick Reference
 
 ### Subsystem Documentation
@@ -230,6 +259,22 @@ Choose the right fixture based on test type:
 3. PREFER subprocess.run for external command testing
 4. AVOID mixing capture methods in the same test
 
+**Parallel-safety rules** (so tests survive `pytest -n auto`; see
+`docs/reviews/parallel_test_safety_2026-06-06.md`):
+1. **Permanent fd redirection → subprocess, never in-process.** A test that
+   changes the shell's fds *permanently* (`exec >file`, `exec 2>&1`, `exec 3>&1`,
+   fd open/close/dup that outlives one command) MUST run psh in a subprocess
+   (`subprocess.run([sys.executable, '-m', 'psh', '-c', script], ...)`). In-process,
+   it rewrites the test runner's own fds — which under xdist are the worker channel,
+   aborting the whole run. Per-command redirections (`echo x > f`, `cmd 2>&1 | …`)
+   are fine in-process (psh saves/restores fds around each command).
+2. **Creating files? Use `isolated_shell_with_temp_dir`** (real `os.chdir` into a
+   per-test temp dir). `shell_with_temp_dir` now `os.chdir`s too, but prefer the
+   isolated fixture. A test that writes a fixed-name file (`output.txt`) to the
+   shared cwd will collide across workers.
+3. **Process/signal/job-control tests** are auto-marked `serial` by path (see
+   Known Test Issues). Mark any other xdist-unsafe test `@pytest.mark.serial`.
+
 **Example Patterns**:
 
 ```python
@@ -261,6 +306,17 @@ def test_posix_compliance():
                          capture_output=True, text=True)
     
     assert psh.stdout == bash.stdout
+
+# Permanent fd redirection (exec) — MUST be a subprocess, never in-process.
+# An in-process `exec >file` would clobber the test runner's own fds.
+def test_exec_redirection(temp_dir):
+    import os, subprocess, sys
+    result = subprocess.run(
+        [sys.executable, '-m', 'psh', '-c', 'exec > out.txt; echo hi'],
+        cwd=temp_dir, capture_output=True, text=True)
+    assert result.returncode == 0
+    with open(os.path.join(temp_dir, "out.txt")) as f:
+        assert "hi" in f.read()
 ```
 
 **For conformance tests**:
