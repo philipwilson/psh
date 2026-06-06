@@ -1,17 +1,24 @@
-"""Advanced arithmetic expansion integration tests - NOT YET WORKING.
+"""Advanced arithmetic expansion integration tests.
 
-This module contains tests for advanced arithmetic expansion integration features
-that are not yet fully implemented in the parser combinator. These tests serve
-as a roadmap for future development and should be revisited as features mature.
+Originally a skipped "roadmap" module ("NOT YET WORKING"), but most of these
+features are now implemented. As of the 2026-06-06 audit the class-level skip
+was removed and each case verified against bash:
 
-THESE TESTS WILL FAIL - They are preserved for future implementation reference.
+  - Passing now (enabled): arithmetic in parameter-expansion substring
+    offset/length, pattern removal, process substitution, case patterns,
+    deeply-nested command/arithmetic substitution, and deep arithmetic nesting.
+  - Genuine remaining gaps (xfail): brace *list* expansion with arithmetic
+    items, arithmetic in fd-duplication targets, and graceful recovery from an
+    arithmetic error inside an array index.
+  - One case had a wrong expectation: bash does NOT expand a brace *range*
+    whose endpoints are `$((...))` (brace expansion precedes arithmetic), so
+    the expected output is the literal `{5..8}`, which psh already matches.
 """
 import pytest
 
 
-@pytest.mark.skip(reason="Advanced parameter expansion not fully implemented yet")
 class TestArithmeticIntegrationAdvanced:
-    """Advanced arithmetic integration tests - for future implementation."""
+    """Advanced arithmetic integration tests (verified against bash)."""
 
     # Parameter expansion with arithmetic (NOT WORKING YET)
 
@@ -76,11 +83,14 @@ class TestArithmeticIntegrationAdvanced:
 
     # Brace expansion with arithmetic (NOT WORKING YET)
 
+    @pytest.mark.xfail(reason="brace list expansion with $((...)) items not "
+                              "supported; psh emits {1,2,3}, bash emits 1 2 3",
+                       strict=True)
     def test_arithmetic_with_brace_expansion(self, shell, capsys):
         """Test arithmetic with brace expansion.
 
-        FAILS: Brace expansion not fully integrated with arithmetic.
-        Expected: Should expand {$((expr1)),$((expr2)),$((expr3))}.
+        Genuine gap: bash expands `{$((1)),$((2)),$((3))}` to `1 2 3` (brace
+        list split, then arithmetic), but psh leaves `{1,2,3}`.
         """
         # Test echo {$((1)),$((2)),$((3))}
         result = shell.run_command('echo {$((1)),$((2)),$((3))}')
@@ -89,10 +99,12 @@ class TestArithmeticIntegrationAdvanced:
         assert captured.out.strip() == "1 2 3"
 
     def test_arithmetic_in_brace_expansion_ranges(self, shell, capsys):
-        """Test arithmetic in brace expansion ranges.
+        """Brace *range* endpoints are not arithmetic-expanded (matches bash).
 
-        FAILS: Brace expansion ranges with arithmetic not supported.
-        Expected: Should support {$((start))..$((end))} syntax.
+        Brace expansion runs before arithmetic, so `{$((start))..$((end))}` has
+        non-integer endpoints at brace-expansion time and is left intact; the
+        arithmetic then yields the literal `{5..8}`. bash behaves identically —
+        the original "5 6 7 8" expectation was incorrect.
         """
         shell.run_command('start=5')
         shell.run_command('end=8')
@@ -101,15 +113,17 @@ class TestArithmeticIntegrationAdvanced:
         result = shell.run_command('echo {$((start))..$((end))}')
         assert result == 0
         captured = capsys.readouterr()
-        assert captured.out.strip() == "5 6 7 8"
+        assert captured.out.strip() == "{5..8}"
 
     # Complex redirection with arithmetic (PARTIALLY WORKING)
 
+    @pytest.mark.xfail(reason="arithmetic in fd-duplication target (>&$((...))) "
+                              "is not parsed; psh raises a parse error",
+                       strict=True)
     def test_arithmetic_in_file_descriptor_redirection(self, shell, capsys):
         """Test arithmetic in file descriptor specifications.
 
-        PARTIALLY WORKING: Basic FD arithmetic works, complex cases may not.
-        Expected: Should support dynamic FD numbers from arithmetic.
+        Genuine gap: `>&$((1+1))` is rejected with a parse error.
         """
         # Test echo "hello" >&$((1+1))  (redirect to fd 2)
         # This is complex and may cause issues
@@ -166,8 +180,8 @@ class TestArithmeticIntegrationAdvanced:
     def test_arithmetic_error_recovery_in_complex_context(self, shell, capsys):
         """Test error recovery with arithmetic in complex nested contexts.
 
-        NEEDS WORK: Error handling in deeply nested contexts needs improvement.
-        Expected: Should gracefully handle errors without corrupting parser state.
+        A division-by-zero inside an array index is handled without corrupting
+        parser state: execution continues past the failing line.
         """
         # Test complex expression with intentional error
         result = shell.run_command('''
