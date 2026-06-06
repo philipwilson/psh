@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.199.0 (2026-06-06) - printf %q/%b, BASH_REMATCH, and edge-case conformance suite
+- **printf %b** — interprets backslash escapes in the argument; **printf %q** —
+  quotes the argument for reuse as shell input (`''` for empty, whole-string
+  `$'...'` for control chars, backslash-escaping otherwise).
+- **BASH_REMATCH** — `[[ str =~ re ]]` now populates `BASH_REMATCH` (full match
+  and capture groups, cleared on no match). The `=~` RHS gained a regex-operand
+  parser that reconstructs patterns containing `(`, `)`, `|`, `?`, `[`, `]` from
+  the token stream (previously a parse error).
+- **Edge-case conformance suite** — added ~50 edge tests (quoting/word-splitting,
+  arithmetic, parameter expansion, globbing, brace, printf, regex); bash
+  compatibility now 185/187 over 348 comparisons. A handful of remaining
+  divergences are tracked as xfail (EXIT trap in -c mode, `${@:offset:length}`
+  positional slice, negative array-slice offset).
+
 ## 0.198.0 (2026-06-05) - De-duplicate redirect-dispatch and lexer quote scanners
 - **Redirect dispatch** — extracted the noclobber predicate (inlined at 5 sites)
   and the `>&`/`<&` dup-fd validity check (4 sites) to shared `FileRedirector`
