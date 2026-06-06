@@ -167,6 +167,14 @@ class WordBuilder:
         if inner.startswith('#'):
             return ParameterExpansion(inner[1:], '#', None)
 
+        # Indirect / nameref-name expansion ${!name} for a plain identifier.
+        # (The ${!prefix*}, ${!prefix@}, and ${!arr[@]} forms contain *, @, or
+        # [ and are handled separately; they are excluded here.)
+        if inner.startswith('!') and len(inner) > 1:
+            ind = inner[1:]
+            if not ind.endswith(('*', '@')) and all(c.isalnum() or c == '_' for c in ind):
+                return ParameterExpansion(ind, '!', None)
+
         # No operator, just a variable
         return ParameterExpansion(inner, None, None)
 

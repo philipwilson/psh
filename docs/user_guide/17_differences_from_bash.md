@@ -4,7 +4,7 @@ While PSH implements many shell features compatible with Bash, there are importa
 
 ## 17.1 Supported Features Overview
 
-PSH v0.219.0 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
+PSH v0.220.0 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
 
 ### Shell Options
 
@@ -230,27 +230,50 @@ let "a = 2" "b = a+1" # b=3; side effects apply (++x, x+=2, etc.)
 let "count > 0"       # exit 0 if the last expression is non-zero, else 1
 ```
 
-## 17.2 Unimplemented Features
-
-The following Bash features are not available in PSH v0.219.0.
-
 ### Name References and Indirect Expansion
 
 ```bash
-# Namerefs - the -n attribute is rejected:
-declare -n ref=target    # Error: invalid option: -n
-local -n ref=$1          # Error: invalid option: -n
+# Namerefs (declare -n / local -n): a variable that refers to another by name.
+x=5
+declare -n r=x
+echo "$r"             # 5      (read-through)
+r=9; echo "$x"        # 9      (write-through; creates the target if unset)
+declare -n a=b b=c    # chains resolve transitively
+echo "${!r}"          # x      (for a nameref, ${!r} is the target NAME)
 
-# Scalar indirect expansion - not supported (expands to empty):
+# Pass-by-reference into functions:
+inc() { local -n n=$1; n=$((n + 1)); }
+count=5; inc count; echo "$count"   # 6
+
+# unset follows the nameref; unset -n removes the nameref itself:
+unset r               # unsets the target (x)
+unset -n r            # unsets the nameref, leaving the target
+
+# Classic indirect expansion (when the name is NOT a nameref):
 name=HOME
-echo "${!name}"          # (empty)  -- bash prints $HOME's value
+echo "${!name}"       # value of $HOME
 ```
 
-Namerefs and scalar indirect expansion (`${!var}`) are the highest-impact
-remaining gap; there is currently no built-in indirection mechanism. Note that
-the *other* `${!...}` forms — `${!arr[@]}` / `${!arr[*]}` (array indices/keys)
-— **do** work; only `${!scalarname}` value lookup and `${!prefix*}` name
-matching are unsupported.
+Not yet supported: namerefs whose target is an *array element*
+(`declare -n e=arr[1]`) — see 17.2.
+
+## 17.2 Unimplemented Features
+
+The following Bash features are not available in PSH v0.220.0.
+
+### Nameref Targets That Are Array Elements
+
+Scalar namerefs and indirect expansion are supported (see 17.1). The remaining
+gap is a nameref whose *target is an array element*:
+
+```bash
+arr=(p q r)
+declare -n e=arr[1]   # target is an array element - not yet supported
+echo "$e"             # bash: q
+```
+
+`${!prefix*}` / `${!prefix@}` variable-name prefix matching is also still
+unsupported (it currently lists all variables).
 
 ### Associative Key/Value Transforms (${var@K}, ${var@k})
 
@@ -515,7 +538,7 @@ parser-select rd
 
 ```bash
 # PSH sets PSH_VERSION (not BASH_VERSION):
-echo $PSH_VERSION    # Shows: 0.219.0
+echo $PSH_VERSION    # Shows: 0.220.0
 
 # Detect PSH:
 if [ -n "$PSH_VERSION" ]; then
@@ -595,8 +618,8 @@ fi
 | History expansion (!!, !n) | Yes | No | Designators not implemented |
 | Coprocesses | Yes | No | Not implemented |
 | Programmable completion | Yes | No | Basic tab completion only |
-| Namerefs (declare -n / local -n) | Yes | No | Not implemented |
-| Indirect expansion ${!var} | Yes | No | Scalar lookup unsupported; ${!arr[@]} works |
+| Namerefs (declare -n / local -n) | Yes | Yes | Scalar targets; array-element targets not yet |
+| Indirect expansion ${!var} | Yes | Yes | Scalar; ${!arr[@]} indices work; ${!prefix*} does not |
 | Parameter transforms ${var@Q/U/u/L/E/P/A/a} | Yes | Yes | Scalar, array, and positional |
 | Assoc key/value transforms ${var@K} / ${var@k} | Yes | No | Not implemented |
 | let builtin | Yes | Yes | Equivalent to ((...)) per argument |
@@ -686,9 +709,9 @@ Most Bash scripts work without modification. Check for these issues:
 grep -E 'coproc|complete |compgen |caller' script.sh
 grep -E 'read .*-u' script.sh                 # read -u (fd) is unsupported
 
-# 2. Check for namerefs and the unsupported @K/@k transforms
-grep -E 'declare -n|local -n' script.sh       # namerefs - not supported
+# 2. Check for the unsupported @K/@k transforms and array-element namerefs
 grep -E '@[Kk]\}' script.sh                   # ${m[@]@K} / @k - not supported
+grep -E 'declare -n [A-Za-z_]+=[A-Za-z_]+\[' script.sh   # nameref to arr[i]
 
 # 3. Check for DEBUG/ERR/RETURN traps and history expansion
 grep -E 'trap .*(DEBUG|ERR|RETURN)' script.sh
@@ -703,7 +726,7 @@ grep 'set -euo' script.sh
 
 ```bash
 #!/usr/bin/env psh
-# PSH v0.219.0 Compatibility Checklist
+# PSH v0.220.0 Compatibility Checklist
 
 # Fully supported:
 # - Variables, arrays, associative arrays
@@ -731,10 +754,11 @@ grep 'set -euo' script.sh
 # - history builtin (interactive)
 # - mapfile / readarray (-d/-n/-O/-s/-t/-u)
 # - let (arithmetic evaluation)
+# - namerefs (declare -n / local -n) with scalar targets; ${!var} indirect
 
 # Not supported:
-# - Namerefs (declare -n / local -n) and ${!var} indirect expansion
-#   (${!arr[@]} array indices/keys DO work)
+# - Namerefs whose target is an array element (declare -n e=arr[1])
+# - ${!prefix*} / ${!prefix@} variable-name prefix matching
 # - Associative transforms ${var@K} / ${var@k}
 #   (${var@Q/U/u/L/E/P/A/a} ARE supported)
 # - DEBUG / ERR / RETURN traps
@@ -771,17 +795,17 @@ This means:
 
 ## Summary
 
-PSH v0.219.0 provides near-complete Bash compatibility for everyday shell programming:
+PSH v0.220.0 provides near-complete Bash compatibility for everyday shell programming:
 
 1. **Comprehensive Feature Support**: Arrays, associative arrays, trap, wait, disown, all control structures, all expansions, extended globs, `=~` with BASH_REMATCH
 2. **Full Shell Options**: errexit, nounset, xtrace, pipefail, noclobber, allexport, and many more
-3. **Remaining Gaps**: namerefs (`declare -n`), `${var@K}`/`@k` associative transforms, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `caller`, `wait -n`, the `time` keyword, `read -u`
+3. **Remaining Gaps**: array-element nameref targets, `${var@K}`/`@k` associative transforms, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `caller`, `wait -n`, the `time` keyword, `read -u`
 4. **Educational Tools**: Debug flags, script analysis, multiple parser implementations
 5. **High Compatibility**: Most Bash scripts run without modification
 
 Key differences to remember:
 - Use `set -eu -o pipefail` instead of `set -euo pipefail`
-- Namerefs (`declare -n`/`local -n`) and `${!var}` indirect expansion are not supported (`${!arr[@]}` indices/keys do work)
+- Namerefs (`declare -n`/`local -n`) and `${!var}` indirect expansion work for scalar targets; a nameref to an array element (`declare -n e=arr[1]`) is not yet supported
 - The `${var@Q/U/u/L/E/P/A/a}` transform operators are supported; only `${var@K}`/`${var@k}` (associative key/value display) are not
 - DEBUG/ERR/RETURN traps and history expansion (`!!`, `!n`) are not implemented
 - `caller` is not available (`let`, `mapfile`, `readarray` are supported)

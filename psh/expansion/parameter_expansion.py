@@ -56,6 +56,11 @@ class ParameterExpansion:
                 return '!*', content[1:-1], ''
             elif content.endswith('@'):
                 return '!@', content[1:-1], ''
+            # ${!name}: indirect / nameref-name expansion for a plain identifier
+            # (the ${!arr[@]} indices form contains '[' and is handled elsewhere).
+            ind = content[1:]
+            if ind and all(c.isalnum() or c == '_' for c in ind):
+                return '!', ind, ''
 
         # Transformation operators ${param@OP}: '@' + one transform letter at the
         # end (e.g. x@Q, arr[@]@Q, @@Q). The trailing-position requirement keeps

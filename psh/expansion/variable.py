@@ -388,6 +388,10 @@ class VariableExpander:
             var_name: The variable name (may include array subscript like 'arr[0]')
             operand: The pattern/replacement/offset operand
         """
+        # Indirect / nameref-name expansion: ${!name}
+        if operator == '!' and var_name and not operand:
+            return self._expand_indirect(var_name)
+
         # Resolve the variable value
         if var_name in ('', '#') and operator == '#' and not operand:
             # Special case: ${#} is number of positional params
@@ -496,6 +500,24 @@ class VariableExpander:
                         or (len(operator) == 2 and operator[0] == '@'))
         is_set = self._param_is_set(var_name) if needs_is_set else True
         return self._apply_operator(operator, value, operand, var_name=var_name, is_set=is_set)
+
+    def _expand_indirect(self, name: str) -> str:
+        """Expand ${!name}.
+
+        If *name* is a nameref, yield its target *name* (bash treats namerefs
+        specially here). Otherwise treat the value of *name* as the name of
+        another variable and yield that variable's value (classic indirect
+        expansion). Resolution of the final lookup follows namerefs.
+        """
+        var = self.state.scope_manager.get_variable_object(name)  # raw, no deref
+        if var is None:
+            return ''
+        if var.is_nameref:
+            return str(var.value) if var.value else ''
+        indirect_name = var.as_string()
+        if not indirect_name:
+            return ''
+        return self.state.get_variable(indirect_name, '') or ''
 
     def _expand_tilde_in_operand(self, text: str) -> str:
         """Apply tilde expansion to parameter expansion operand values."""
