@@ -11,6 +11,7 @@ from .line_editor import LineEditor
 from .parser import ParseError, parse
 from .prompt import PromptExpander
 from .token_types import TokenType
+from .utils import has_unclosed_heredoc
 
 
 class MultiLineInputHandler:
@@ -237,86 +238,8 @@ class MultiLineInputHandler:
         return False
 
     def _has_unclosed_heredoc(self, command: str) -> bool:
-        """Check if command has an unclosed heredoc."""
-        import re
-
-        # First check if << only appears inside arithmetic expressions
-        if '<<' in command and '((' in command:
-            # Find all arithmetic expression boundaries
-            arith_start = []
-            arith_end = []
-            i = 0
-            while i < len(command) - 1:
-                if command[i:i+2] == '((':
-                    arith_start.append(i)
-                    i += 2
-                elif command[i:i+2] == '))':
-                    arith_end.append(i + 2)
-                    i += 2
-                else:
-                    i += 1
-
-            # Find all << positions
-            heredoc_positions = []
-            i = 0
-            while i < len(command) - 1:
-                if command[i:i+2] == '<<':
-                    heredoc_positions.append(i)
-                    i += 2
-                else:
-                    i += 1
-
-            # Check if all << are inside arithmetic expressions
-            if heredoc_positions and arith_start and arith_end:
-                all_inside_arithmetic = True
-                for pos in heredoc_positions:
-                    inside = False
-                    # Check if this << is inside any arithmetic expression
-                    for j in range(min(len(arith_start), len(arith_end))):
-                        if arith_start[j] < pos < arith_end[j]:
-                            inside = True
-                            break
-                    if not inside:
-                        all_inside_arithmetic = False
-                        break
-
-                # If all << are inside arithmetic expressions, no heredoc
-                if all_inside_arithmetic:
-                    return False
-
-        # Find all heredoc start markers (<<EOF, <<-EOF, << EOF, etc.)
-        # Also handle escaped delimiters like << \EOF
-        heredoc_pattern = r'<<(-?)\s*([\'"]?)(\\\s*)?(\w+)\2'
-
-        lines = command.split('\n')
-        heredoc_delimiters = []
-
-        for line in lines:
-            # Skip if line is inside a heredoc
-            if any(d for d in heredoc_delimiters if not d['closed']):
-                # Check if this line closes a heredoc
-                for delimiter in heredoc_delimiters:
-                    if not delimiter['closed']:
-                        # For <<- style, strip leading tabs
-                        check_line = line.lstrip('\t') if delimiter['strip_tabs'] else line
-                        if check_line.rstrip() == delimiter['word']:
-                            delimiter['closed'] = True
-                            break
-            else:
-                # Look for new heredoc markers
-                for match in re.finditer(heredoc_pattern, line):
-                    strip_tabs = bool(match.group(1))  # '-' present
-                    has_backslash = bool(match.group(3))  # Escaped delimiter
-                    word = match.group(4)
-                    heredoc_delimiters.append({
-                        'word': word,
-                        'strip_tabs': strip_tabs,
-                        'closed': False,
-                        'escaped': has_backslash
-                    })
-
-        # Check if any heredocs remain unclosed
-        return any(d for d in heredoc_delimiters if not d['closed'])
+        """Check if command has an unclosed heredoc (shared detector)."""
+        return has_unclosed_heredoc(command)
 
     def _has_unclosed_expansion(self, text: str) -> bool:
         """Check if text contains unclosed expansions."""

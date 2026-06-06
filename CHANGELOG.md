@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.202.0 (2026-06-06) - Unify heredoc detection; fix `<<-` indented delimiter
+- **Heredoc detection unified (Phase 2 study §1.3, Tier C #11)** — the
+  script/`-c`/stdin path and the interactive multiline path carried two diverged
+  copies of `_has_unclosed_heredoc`/`_is_inside_expansion` with *different* bugs:
+  the interactive copy matched `<<` inside a `<<<` here-string (hanging waiting
+  for a delimiter), and the script copy treated `<< 2` in bare `(( x << 2 ))`
+  arithmetic as a heredoc (masked only by its caller's `contains_heredoc`
+  guard). Both now use one authoritative implementation in
+  `psh/utils/heredoc_detection.py` (`has_unclosed_heredoc`, `is_inside_expansion`)
+  that rejects here-strings, excludes `<<` inside `$((`/bare `((`/`$(`/backticks,
+  and handles `<<-` tab stripping and multiple/mixed heredocs. 20 new unit tests;
+  net ~64 fewer lines.
+- **`<<-` indented closing delimiter (bug fix)** — `<<-` now strips leading tabs
+  from the *delimiter* line as well as the content (bash behavior). Previously a
+  tab-indented delimiter (e.g. `\tEOF`) was never matched, so the heredoc body
+  was silently lost. Fix in `psh/lexer/heredoc_collector.py`; regression test
+  added.
+
 ## 0.201.0 (2026-06-06) - De-duplicate divergent reimplementations (Tier A + B)
 - Consolidated same-logic copies flagged in the Phase 2 architecture study
   (§1.3). Behavior-preserving except for one bug fix noted below.

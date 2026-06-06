@@ -5,7 +5,12 @@ from typing import Optional
 from ..ast_nodes import TopLevel
 from ..lexer import LexerError, tokenize
 from ..parser import ParseError
-from ..utils import contains_heredoc
+from ..utils import (
+    HEREDOC_MARKER_RE,
+    contains_heredoc,
+    has_unclosed_heredoc,
+    is_inside_expansion,
+)
 from .base import ScriptComponent
 
 
@@ -387,60 +392,13 @@ class SourceProcessor(ScriptComponent):
             return 1
 
     def _has_unclosed_heredoc(self, command: str) -> bool:
-        """Check if command has an unclosed heredoc."""
-        import re
-
-        # Find all heredoc start markers (<<EOF, <<-EOF, << EOF, etc.)
-        # But exclude << inside arithmetic expressions, command substitutions, etc.
-        # Match heredoc starts (<<EOF, <<-EOF, << EOF) but NOT here-strings
-        # (<<<word): the look-around rejects a third '<' on either side.
-        heredoc_pattern = r'(?<!<)<<(?!<)(-?)\s*([\'"]?)(\\\s*)?(\w+)\2'
-
-        lines = command.split('\n')
-        heredoc_delimiters = []
-
-        for line in lines:
-            # Skip if line is inside a heredoc
-            if any(d for d in heredoc_delimiters if not d['closed']):
-                # Check if this line closes a heredoc
-                for delimiter in heredoc_delimiters:
-                    if not delimiter['closed']:
-                        # For <<- style, strip leading tabs
-                        check_line = line.lstrip('\t') if delimiter['strip_tabs'] else line
-                        if check_line.rstrip() == delimiter['word']:
-                            delimiter['closed'] = True
-                            break
-            else:
-                # Look for new heredoc markers, but exclude ones inside expansions
-                potential_matches = list(re.finditer(heredoc_pattern, line))
-                for match in potential_matches:
-                    # Check if this << is inside an arithmetic expression or command substitution
-                    start_pos = match.start()
-                    if self._is_inside_expansion(line, start_pos):
-                        continue  # Skip this match
-
-                    strip_tabs = bool(match.group(1))  # '-' present
-                    has_backslash = bool(match.group(3))  # Escaped delimiter
-                    word = match.group(4)
-                    heredoc_delimiters.append({
-                        'word': word,
-                        'strip_tabs': strip_tabs,
-                        'closed': False,
-                        'escaped': has_backslash
-                    })
-
-        # Check if any heredocs remain unclosed
-        return any(d for d in heredoc_delimiters if not d['closed'])
+        """Check if command has an unclosed heredoc (shared detector)."""
+        return has_unclosed_heredoc(command)
 
     def _collect_heredoc_content(self, command_buffer: str, input_source) -> Optional[str]:
         """Collect heredoc content from input source until all delimiters are satisfied."""
-        import re
-
-        # Use the same logic as _has_unclosed_heredoc to find heredoc markers
-        # AND check which ones are already closed by content in the buffer.
-        # Match heredoc starts (<<EOF, <<-EOF, << EOF) but NOT here-strings
-        # (<<<word): the look-around rejects a third '<' on either side.
-        heredoc_pattern = r'(?<!<)<<(?!<)(-?)\s*([\'"]?)(\\\s*)?(\w+)\2'
+        # Find heredoc markers already present in the buffer and which of them
+        # are closed, using the shared marker regex / expansion exclusion.
         lines = command_buffer.split('\n')
         heredoc_delimiters = []
 
@@ -456,9 +414,8 @@ class SourceProcessor(ScriptComponent):
                             break
             else:
                 # Look for new heredoc markers
-                for match in re.finditer(heredoc_pattern, line):
-                    start_pos = match.start()
-                    if self._is_inside_expansion(line, start_pos):
+                for match in HEREDOC_MARKER_RE.finditer(line):
+                    if is_inside_expansion(line, match.start()):
                         continue
                     strip_tabs = bool(match.group(1))
                     quoted = bool(match.group(2))
@@ -503,71 +460,4 @@ class SourceProcessor(ScriptComponent):
                         break
 
         return result_buffer
-
-    def _is_inside_expansion(self, line: str, position: int) -> bool:
-        """Check if the position is inside an arithmetic expression or command substitution."""
-        # Check for arithmetic expressions $((..))
-        arith_start = -1
-        paren_depth = 0
-        i = 0
-        while i < len(line):
-            if i + 2 < len(line) and line[i:i+3] == '$((':
-                if i <= position:
-                    arith_start = i
-                    paren_depth = 2
-                    i += 3
-                    continue
-                else:
-                    break
-            elif line[i] == '(' and arith_start >= 0:
-                paren_depth += 1
-            elif line[i] == ')' and arith_start >= 0:
-                paren_depth -= 1
-                if paren_depth == 0:
-                    # End of arithmetic expression
-                    if arith_start <= position <= i:
-                        return True
-                    arith_start = -1
-            i += 1
-
-        # Check for command substitution $(..)
-        cmd_sub_start = -1
-        paren_depth = 0
-        i = 0
-        while i < len(line):
-            if i + 1 < len(line) and line[i:i+2] == '$(':
-                if i <= position:
-                    cmd_sub_start = i
-                    paren_depth = 1
-                    i += 2
-                    continue
-                else:
-                    break
-            elif line[i] == '(' and cmd_sub_start >= 0:
-                paren_depth += 1
-            elif line[i] == ')' and cmd_sub_start >= 0:
-                paren_depth -= 1
-                if paren_depth == 0:
-                    # End of command substitution
-                    if cmd_sub_start <= position <= i:
-                        return True
-                    cmd_sub_start = -1
-            i += 1
-
-        # Check for backtick command substitution
-        backtick_start = -1
-        i = 0
-        while i < len(line):
-            if line[i] == '`':
-                if backtick_start == -1:
-                    if i <= position:
-                        backtick_start = i
-                else:
-                    # End of backtick substitution
-                    if backtick_start <= position <= i:
-                        return True
-                    backtick_start = -1
-            i += 1
-
-        return False
 
