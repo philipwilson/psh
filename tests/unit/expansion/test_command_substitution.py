@@ -224,3 +224,39 @@ def test_substitution_with_external_command(shell, capsys):
     shell.run_command('echo $(echo hello | cat)')
     captured = capsys.readouterr()
     assert captured.out.strip() == 'hello'
+
+
+class TestCommandSubBuiltinOutputCapture:
+    """Builtins that write via the Python stream (not os.write) must still be
+    captured in $(...).
+
+    The command-substitution child exits with os._exit(), which does not flush
+    Python buffers; without an explicit flush a stream-writing builtin's output
+    was lost. Tested in a real subprocess (real fd 1) because under pytest's
+    in-process capture the forked child's sys.stdout is the replaced capture
+    object, not the pipe.
+    """
+
+    def _capture(self, script):
+        import subprocess
+        import sys
+        return subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', script],
+            capture_output=True, text=True,
+        ).stdout
+
+    def test_stream_writing_builtin_captured(self):
+        out = self._capture('x=$(parser-mode); echo "[$x]"')
+        assert out.strip() == "[Parser mode: bash]"
+
+    def test_builtin_pipeline_in_substitution_captured(self):
+        out = self._capture('echo "cfg: $(parser-config | head -1)"')
+        assert out.strip() == "cfg: Parser Configuration:"
+
+    def test_echo_substitution_still_works(self):
+        out = self._capture('x=$(echo hi); echo "[$x]"')
+        assert out.strip() == "[hi]"
+
+    def test_printf_substitution_preserves_newlines(self):
+        out = self._capture('x=$(printf "a\\nb"); echo "[$x]"')
+        assert out.strip() == "[a\nb]"

@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.210.0 (2026-06-06) - Flush buffered output in command-substitution children
+- **`$(...)` now captures stream-writing builtins** — the command-substitution
+  child exits with `os._exit()`, which does not flush Python-level buffers. So a
+  builtin that writes to the Python stream rather than `os.write` (e.g.
+  `parser-mode`, `parser-config`, `debug`) produced empty output inside
+  `$(...)`, while `echo` (fd-level) worked. Added a buffer flush before
+  `os._exit` in `expansion/command_sub.py`, mirroring the ProcessLauncher
+  child-exit flush. Only command substitution was affected — pipelines,
+  subshells, and background jobs already flush.
+- Added subprocess-based regression tests (the forked child's `sys.stdout` under
+  pytest in-process capture is not the pipe, so the real fd-1 path must be
+  exercised via a subprocess).
+
 ## 0.209.0 (2026-06-06) - Fix formatter output for subshells, brace groups, [[ ]]
 - **Formatters no longer emit `# Unknown node` for real node types** (study
   triage #6). Two formatters were affected:

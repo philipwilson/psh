@@ -84,6 +84,17 @@ class CommandSubstitution:
                     # Command substitution runs in a subshell, so exit should not affect parent
                     exit_code = e.code if e.code is not None else 0
 
+                # os._exit() does NOT flush Python-level buffers, so output a
+                # builtin wrote to the stream (rather than via os.write) would be
+                # lost. Flush before exiting so the pipe sees it. Mirrors
+                # ProcessLauncher's child-exit flush.
+                for stream in (temp_shell.stdout, temp_shell.stderr,
+                               sys.stdout, sys.stderr):
+                    try:
+                        stream.flush()
+                    except (OSError, ValueError, AttributeError):
+                        pass
+
                 os._exit(exit_code)
             except Exception:
                 # Exit with error
