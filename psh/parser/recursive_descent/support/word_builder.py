@@ -179,7 +179,7 @@ class WordBuilder:
         return ParameterExpansion(inner, None, None)
 
     @staticmethod
-    def _token_part_to_word_part(tp) -> WordPart:
+    def token_part_to_word_part(tp) -> WordPart:
         """Convert a lexer TokenPart into a Word AST WordPart node.
 
         Uses the TokenPart's expansion metadata to create either a
@@ -242,8 +242,11 @@ class WordBuilder:
             return VariableExpansion(tp.value)
 
     @staticmethod
-    def _has_decomposable_parts(token: Token) -> bool:
+    def has_decomposable_parts(token: Token) -> bool:
         """Check if a token has TokenPart metadata suitable for decomposition.
+
+        Public (with token_part_to_word_part) so the combinator parser can build
+        the same Word AST without reaching into private helpers.
 
         Returns True when the token is a RichToken (or at least has a
         non-empty ``parts`` list) whose parts contain expansion information
@@ -262,9 +265,9 @@ class WordBuilder:
         is_quoted = quote_type is not None
 
         # Check if token has decomposable parts from the lexer (RichToken)
-        if WordBuilder._has_decomposable_parts(token) and quote_type == '"':
+        if WordBuilder.has_decomposable_parts(token) and quote_type == '"':
             # Decompose double-quoted string using lexer's TokenPart data
-            word_parts = [WordBuilder._token_part_to_word_part(tp)
+            word_parts = [WordBuilder.token_part_to_word_part(tp)
                           for tp in token.parts]
             return Word(parts=word_parts, quote_type='"')
 
@@ -292,10 +295,10 @@ class WordBuilder:
             qt = getattr(token, 'quote_type', None)
 
             # Check if this STRING token has decomposable parts
-            if WordBuilder._has_decomposable_parts(token) and qt == '"':
+            if WordBuilder.has_decomposable_parts(token) and qt == '"':
                 # Flatten decomposed parts into composite
                 for tp in token.parts:
-                    parts.append(WordBuilder._token_part_to_word_part(tp))
+                    parts.append(WordBuilder.token_part_to_word_part(tp))
             elif token.type in EXPANSION_TYPES:
                 is_quoted = qt is not None
                 expansion = WordBuilder.parse_expansion_token(token)
