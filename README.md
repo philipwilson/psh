@@ -31,7 +31,7 @@ psh --format script.sh
 
 - 🔍 **CLI Analysis Tools**: Built-in script formatting, metrics, security analysis, and linting
 - 📚 **Educational Focus**: Clean, readable codebase designed for learning shell internals
-- 🧪 **Comprehensive Testing**: 3,450 tests ensuring reliability and robustness
+- 🧪 **Comprehensive Testing**: 3,840 tests ensuring reliability and robustness
 - 🏗️ **Modern Architecture**: Component-based design with unified lexer and visitor pattern integration
 - 🎓 **Dual Parser Implementation**: Both recursive descent and functional parser combinator with near-complete feature parity
 - 📋 **POSIX Compliant**: ~98% compliance with robust bash compatibility
@@ -235,7 +235,7 @@ PSH uniquely includes two complete parser implementations:
 
 ### Project Statistics
 - **Lines of Code**: ~99,000 across 348 Python files
-- **Test Coverage**: 3,450 tests in 153 test files
+- **Test Coverage**: 3,840 tests in 179 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 9 analysis and transformation visitors
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -286,9 +286,9 @@ python -m pytest tests/ --cov=psh --cov-report=html
 **Note:** As of v0.195.0 the full suite passes under normal pytest capture; the `-s` flag is no longer required for subshell tests (a `read` builtin fix made it read the real redirected file descriptor). `run_tests.py` still works and remains the recommended runner.
 
 **Current Test Statistics:**
-- ✅ 2,808 passing tests
-- ⏭️ 173 skipped tests (platform-specific or interactive)
-- ⚠️ 36 xfailed (expected failures for unimplemented features)
+- ✅ 3,528 passing tests
+- ⏭️ 308 skipped tests (platform-specific or interactive)
+- ⚠️ 4 xfailed (expected failures for unimplemented features)
 - 📊 High coverage across all components
 
 ## POSIX Compliance
@@ -331,6 +331,16 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.215.0**: Stop hiding defects in executor error guards; narrow exception handling (v0.214.0)
+- **v0.210.0**: Flush buffered output in command-substitution children
+- **v0.207.0**: Route builtin output through `shell.stdout` (no more bare `print()`)
+- **v0.206.0**: Fix two analysis-visitor bugs (until loops, brace groups)
+- **v0.201.0–v0.205.0**: De-duplicate divergent reimplementations — unified glob→regex, heredoc detection, command-position classification, and analysis-visitor traversal
+- **v0.200.0**: Positional/array slicing (`${@:off:len}`, `${arr[@]: -2}`) and EXIT-trap edge cases
+- **v0.199.0**: `printf %q`/`%b`, `BASH_REMATCH`, and an edge-case conformance suite
+- **v0.194.0–v0.196.0**: Correctness fixes from the codebase study; expansion de-duplication
+- **v0.195.0**: `read` uses the real fd — retire the global `-s` test flag; parallel-safe test suite (~9× faster via pytest-xdist)
+- **v0.193.0**: Add zsh-compatible `print` builtin
 - **v0.192.0**: Add 5 missing redirection operators (`<>`, `>|`, `&>`, `&>>`, `|&`)
 - **v0.191.0**: Clean up TokenType enum (80 → 59 entries), fd-prefixed redirects as single tokens
 - **v0.161.0**: Fix 7,132 ruff lint issues in test tree, expand CI lint gate to cover `psh/` and `tests/`
