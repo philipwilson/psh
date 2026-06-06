@@ -342,3 +342,54 @@ class TestBraceExpansionEdgeCases:
             capture_output=True, text=True
         )
         assert result.stdout.strip() == "100"
+
+
+class TestBraceExpansionWithExpansions:
+    """Brace *list* items may contain $((..)), $(..), or $var.
+
+    Brace expansion is textual and runs before parameter/command/arithmetic
+    expansion, so the items are split first and expanded afterwards. The
+    expansions are carried through the token-level brace expander as opaque
+    units (see TokenBraceExpander._expand_composite).
+    """
+
+    def test_list_of_arithmetic_items(self, shell, capsys):
+        shell.run_command('echo {$((1)),$((2)),$((3))}')
+        assert capsys.readouterr().out.strip() == "1 2 3"
+
+    def test_list_of_command_subs(self, shell, capsys):
+        shell.run_command('echo {$(echo p),$(echo q)}')
+        assert capsys.readouterr().out.strip() == "p q"
+
+    def test_list_of_variable_items(self, shell, capsys):
+        shell.run_command('a=X; b=Y; echo {$a,$b}')
+        assert capsys.readouterr().out.strip() == "X Y"
+
+    def test_arithmetic_items_with_prefix_suffix(self, shell, capsys):
+        shell.run_command('echo pre{$((1)),$((2))}post')
+        assert capsys.readouterr().out.strip() == "pre1post pre2post"
+
+    def test_arithmetic_items_cross_product(self, shell, capsys):
+        shell.run_command('echo {$((1)),$((2))}{x,y}')
+        assert capsys.readouterr().out.strip() == "1x 1y 2x 2y"
+
+    def test_mixed_literal_and_arithmetic_items(self, shell, capsys):
+        shell.run_command('echo {$((1)),b}')
+        assert capsys.readouterr().out.strip() == "1 b"
+
+    def test_quoted_braces_not_expanded(self, shell, capsys):
+        shell.run_command('echo "{$((1)),$((2))}"')
+        # Quoted: braces are literal; only the arithmetic expands.
+        assert capsys.readouterr().out.strip() == "{1,2}"
+
+    def test_range_with_variable_endpoints_stays_literal(self, shell, capsys):
+        # Brace expansion precedes arithmetic, so $-endpoints are not integers
+        # at brace time; bash leaves this literal too.
+        shell.run_command('s=1; e=3; echo {$s..$e}')
+        assert capsys.readouterr().out.strip() == "{1..3}"
+
+    def test_variable_name_fusion_left_unexpanded(self, shell, capsys):
+        # `$x{1,2}` would require re-forming the names $x1/$x2, which the token
+        # model cannot do, so the run is left unexpanded (documented divergence).
+        shell.run_command('x=foo; echo $x{1,2}')
+        assert capsys.readouterr().out.strip() == "foo{1,2}"

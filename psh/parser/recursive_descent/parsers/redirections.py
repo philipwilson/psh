@@ -13,6 +13,9 @@ from ..helpers import TokenGroups
 
 # Pre-compiled regex for fd duplication (e.g. "2>&1", ">&-")
 _FD_DUP_RE = re.compile(r'^(\d*)([><])&(-|\d+)$')
+# Bare dup operator whose target is a separate (dynamic) token, e.g. ">&$fd",
+# "2>&$((n+1))" — the lexer emits just "N>&"/">&"/"<&" here.
+_FD_DUP_BARE_RE = re.compile(r'^(\d*)([><])&$')
 
 
 class RedirectionParser:
@@ -121,22 +124,33 @@ class RedirectionParser:
 
     def _parse_dup_redirect(self, token: Token) -> Redirect:
         """Parse file descriptor duplication redirect."""
-        # Handle two-token forms: ">&" "2" or "<&" "0"
-        if token.value in ('>&', '<&'):
-            direction = '>' if token.value == '>&' else '<'
+        # Bare operator forms whose target is a separate token: ">& 2", "<& 0",
+        # and the dynamic forms ">&$fd", "2>&$((n+1))". The lexer emits the
+        # operator (with any fd prefix) as one token and the target separately.
+        bare = _FD_DUP_BARE_RE.match(token.value)
+        if bare:
+            source_fd_str, direction = bare.groups()
             default_fd = 1 if direction == '>' else 0
+            fd = int(source_fd_str) if source_fd_str else default_fd
 
-            if not self.parser.match(TokenType.WORD):
+            if not self.parser.match_any(TokenGroups.WORD_LIKE):
                 raise self.parser.error(f"Expected file descriptor after {token.value}")
 
-            target_token = self.parser.advance()
-            dup_part = target_token.value
+            # Parse the target as a Word so $fd / $((expr)) / $(cmd) are captured
+            # and resolved at execution time.
+            word = self.parser.commands.parse_argument_as_word()
+            dup_part = ''.join(str(p) for p in word.parts)
 
             if dup_part == '-':
-                return Redirect(type=token.value, target='-', fd=default_fd)
-            else:
-                dup_fd = int(dup_part) if dup_part.isdigit() else None
-                return Redirect(type=direction + '&', target=dup_part, fd=default_fd, dup_fd=dup_fd)
+                return Redirect(type=direction + '&-', target=None, fd=fd)
+            if dup_part.isdigit():
+                # Static numeric fd — resolve now (e.g. ">& 2").
+                return Redirect(type=direction + '&', target=dup_part,
+                                fd=fd, dup_fd=int(dup_part))
+            # Dynamic target: keep the (expandable) string; dup_fd resolved at
+            # execution time by FileRedirector._resolve_dup_fd.
+            return Redirect(type=direction + '&', target=dup_part,
+                            fd=fd, dup_fd=None)
 
         # Handle single-token forms containing >&  or <&  (e.g., "2>&1", "3<&0", "3>&-", "3<&-")
         match = _FD_DUP_RE.match(token.value)

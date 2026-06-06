@@ -83,14 +83,12 @@ class TestArithmeticIntegrationAdvanced:
 
     # Brace expansion with arithmetic (NOT WORKING YET)
 
-    @pytest.mark.xfail(reason="brace list expansion with $((...)) items not "
-                              "supported; psh emits {1,2,3}, bash emits 1 2 3",
-                       strict=True)
     def test_arithmetic_with_brace_expansion(self, shell, capsys):
         """Test arithmetic with brace expansion.
 
-        Genuine gap: bash expands `{$((1)),$((2)),$((3))}` to `1 2 3` (brace
-        list split, then arithmetic), but psh leaves `{1,2,3}`.
+        bash expands `{$((1)),$((2)),$((3))}` to `1 2 3` (brace list split, then
+        arithmetic); psh now does too (token-level brace expansion carries the
+        $((...)) items through as opaque units).
         """
         # Test echo {$((1)),$((2)),$((3))}
         result = shell.run_command('echo {$((1)),$((2)),$((3))}')
@@ -117,13 +115,12 @@ class TestArithmeticIntegrationAdvanced:
 
     # Complex redirection with arithmetic (PARTIALLY WORKING)
 
-    @pytest.mark.xfail(reason="arithmetic in fd-duplication target (>&$((...))) "
-                              "is not parsed; psh raises a parse error",
-                       strict=True)
     def test_arithmetic_in_file_descriptor_redirection(self, shell, capsys):
         """Test arithmetic in file descriptor specifications.
 
-        Genuine gap: `>&$((1+1))` is rejected with a parse error.
+        `>&$((1+1))` now resolves the dup target at runtime (the lexer emits a
+        bare `>&` operator, the parser keeps the expansion as the target, and
+        FileRedirector._resolved expands it to an fd number).
         """
         # Test echo "hello" >&$((1+1))  (redirect to fd 2)
         # This is complex and may cause issues

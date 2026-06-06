@@ -1,4 +1,5 @@
 """File redirection implementation."""
+import copy
 import fcntl
 import os
 from typing import TYPE_CHECKING, List, Tuple
@@ -99,6 +100,34 @@ class FileRedirector:
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
+    def _resolved(self, redirect):
+        """Resolve a dynamic fd-dup target (e.g. ``>&$fd``, ``2>&$((n+1))``).
+
+        For ``>&``/``<&`` redirects whose source fd is given by an expansion,
+        the parser leaves ``dup_fd=None`` and stores the (expandable) target
+        string. Expand it now, parse it as an integer, and return a shallow
+        copy carrying the resolved ``dup_fd`` so every existing dispatch path
+        (which reads ``redirect.dup_fd``) works unchanged. The original AST node
+        is not mutated, so re-execution (e.g. in a loop) re-resolves each time.
+
+        Non-dup, static (``2>&1``), or close (``>&-``) redirects are returned
+        unchanged. Raises OSError for a non-numeric target (bash: "ambiguous
+        redirect").
+        """
+        if redirect.type not in ('>&', '<&'):
+            return redirect
+        if redirect.dup_fd is not None or not redirect.target or redirect.target == '-':
+            return redirect
+        expanded = self.shell.expansion_manager.expand_string_variables(
+            redirect.target).strip()
+        try:
+            fd = int(expanded)
+        except ValueError:
+            raise OSError(f"{expanded}: ambiguous redirect")
+        resolved = copy.copy(redirect)
+        resolved.dup_fd = fd
+        return resolved
+
     def _redirect_dup_fd(self, redirect):
         """Handle >&/<& fd duplication. Validates source fd."""
         if redirect.fd is not None and redirect.dup_fd is not None:
@@ -169,6 +198,7 @@ class FileRedirector:
         self._saved_stdin = self.state.stdin
 
         for redirect in redirects:
+            redirect = self._resolved(redirect)
             target = self._expand_redirect_target(redirect)
             if target and target.startswith(('<(', '>(')) and target.endswith(')'):
                 target = self._handle_process_sub_redirect(target, redirect)
@@ -244,6 +274,7 @@ class FileRedirector:
         import sys
 
         for redirect in redirects:
+            redirect = self._resolved(redirect)
             target = self._expand_redirect_target(redirect)
             if target and target.startswith(('<(', '>(')) and target.endswith(')'):
                 target = self._handle_process_sub_redirect(target, redirect)
