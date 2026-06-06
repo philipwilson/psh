@@ -11,6 +11,21 @@ Tests cover:
 - Complex glob patterns
 """
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_cwd(tmp_path, monkeypatch):
+    """Run every glob test in its own temp dir.
+
+    These tests `touch`/`rm` files and glob `*` in the working directory. With
+    the bare `shell` fixture that was the shared cwd (the repo root), which both
+    littered the working tree and raced across xdist workers (e.g.
+    test_hidden_files_not_matched flaking on `echo *`). psh globs by live
+    os.getcwd(), so chdir-ing into a unique tmp_path isolates each test;
+    monkeypatch.chdir restores the cwd on teardown.
+    """
+    monkeypatch.chdir(tmp_path)
 
 
 class TestBasicGlobbing:
