@@ -284,13 +284,12 @@ class TestSubshellRedirection:
             stderr_content = f.read().strip()
         assert stderr_content == "stderr"
 
-    @pytest.mark.skip(reason="Background subshells not fully implemented")
     def test_background_execution(self, isolated_shell_with_temp_dir):
         """Test background execution of subshells."""
         shell = isolated_shell_with_temp_dir
 
         script = '''
-        (sleep 1; echo "background done") &
+        (sleep 0.2; echo "background done") &
         echo "foreground" > foreground.txt
         wait
         '''

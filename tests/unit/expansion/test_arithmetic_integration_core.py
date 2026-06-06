@@ -180,35 +180,31 @@ class TestArithmeticIntegrationCore:
 
     # Here document integration
 
-    def test_arithmetic_in_here_document_context(self, shell, capsys):
-        """Test arithmetic within here documents."""
-        # Test here document with arithmetic expansion - use multiline approach
-        result = shell.run_command('''cat <<EOF
-The result is: $((5 * 6))
-EOF''')
-        assert result == 0
-        captured = capsys.readouterr()
-        output = captured.out.strip()
+    def test_arithmetic_in_here_document_context(self):
+        """Test arithmetic within here documents.
 
-        if "The result is: 30" in output:
-            assert "The result is: 30" in output
-        else:
-            # Here document expansion might not be fully supported
-            pytest.skip(f"Here document arithmetic expansion not supported - got: '{repr(output)}'")
+        Run in a subprocess: the heredoc feeds external `cat`, whose forked
+        raw-fd output capsys cannot capture in-process.
+        """
+        import subprocess
+        import sys
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', 'cat <<EOF\nThe result is: $((5 * 6))\nEOF'],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert "The result is: 30" in result.stdout
 
-    def test_arithmetic_in_here_string(self, shell, capsys):
-        """Test arithmetic in here strings."""
-        # Test cat <<<$((2**3))
-        result = shell.run_command('cat <<<$((2**3)) 2>/dev/null || echo "not supported"')
-        assert result in [0, 1, 2]
-        captured = capsys.readouterr()
-        output = captured.out.strip()
-
-        if output == "8":
-            assert output == "8"
-        else:
-            # Here strings might not be fully supported
-            pytest.skip(f"Here string arithmetic expansion not supported - got: '{output}'")
+    def test_arithmetic_in_here_string(self):
+        """Test arithmetic in here strings (subprocess: external `cat`)."""
+        import subprocess
+        import sys
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', 'cat <<<$((2**3))'],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "8"
 
     # Multi-level integration tests
 

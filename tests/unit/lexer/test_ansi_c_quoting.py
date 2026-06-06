@@ -227,14 +227,22 @@ class TestAnsiCQuoting:
         captured = capsys.readouterr()
         assert captured.out == "a\tb\nc\nd\n"
 
-    @pytest.mark.skip(reason="External command output not capturable in pytest - test works in real usage")
-    def test_in_here_string(self, shell):
-        """Test ANSI-C quotes in here strings."""
-        # This test works in real usage but can't be captured in pytest because
-        # external commands (cat) fork and use raw file descriptors
-        result = shell.run_command("cat <<< $'line1\\nline2'")
-        assert result == 0
-        # Output would be "line1\nline2\n" but can't be captured here
+    def test_in_here_string(self):
+        """Test ANSI-C quotes in here strings.
+
+        Run in a subprocess: the here string feeds an external command (`cat`)
+        that forks and writes via raw file descriptors, so capsys cannot capture
+        it in-process. The subprocess captures the real fd output.
+        """
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', "cat <<< $'line1\\nline2'"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout == "line1\nline2\n"
 
     def test_in_case_patterns(self, shell, capsys):
         """Test ANSI-C quotes in case patterns."""
