@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.200.0 (2026-06-06) - Positional/array slicing and EXIT-trap edge cases
+- **`${@:off:len}` / `${*:off:len}` / `${arr[@]:off:len}` slicing** — these now
+  select elements with bash semantics instead of doing substring on the joined
+  string (the old behavior only happened to match for `${@:n}` without a length).
+  A shared `_slice_sequence()` helper applies arithmetic offset/length, treats a
+  negative offset as counting from the end, and reports a negative length as an
+  error (`@`/`*`/array slices, unlike scalar substrings, disallow from-the-end
+  lengths). Positional slices index as `[$0, $1, …]` so `${@:0}` includes `$0`.
+  Both the AST and string expansion paths route through the one helper.
+- **Parser: `${arr[@]:1:-1}` no longer mis-parses** — the `:-` inside a slice
+  operand was being matched as the use-default operator. Any operator following a
+  closed array subscript is now left to the string-path parser, which resolves
+  the subscript before applying the operator (also covers `${arr[0]:-def}`,
+  `${arr[i+1]:-x}`, case-mod patterns, etc.).
+- **EXIT trap now runs for `-c`, piped stdin, and interactive Ctrl-D** — it
+  previously fired only via an explicit `exit` builtin or at the end of a script
+  file. `execute_exit_trap()` is now idempotent so it fires exactly once across
+  all exit paths.
+- **Tests** — the four tracked edge xfails (EXIT trap, positional slice length,
+  variable offset, negative array offset) are fixed and promoted to passing
+  conformance cases, plus regression coverage for slice/default disambiguation
+  and trap single-firing. Bash conformance: 197/199 (99.0%).
+
 ## 0.199.0 (2026-06-06) - printf %q/%b, BASH_REMATCH, and edge-case conformance suite
 - **printf %b** — interprets backslash escapes in the argument; **printf %q** —
   quotes the argument for reuse as shell input (`''` for empty, whole-string
