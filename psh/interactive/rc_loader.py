@@ -23,17 +23,14 @@ def load_rc_file(shell: 'Shell') -> None:
             return
 
         try:
-            # Store current $0
-            old_script_name = shell.variables.get('0', shell.script_name)
-            shell.variables['0'] = rc_file
-
-            # Source the file without adding to history
+            # Source the file without adding to history.
+            # (We deliberately do NOT touch $0: an rc file runs in the shell's
+            # own context. A previous attempt assigned shell.variables['0'],
+            # which is a no-op — state.variables is a snapshot dict — so it
+            # never had any effect.)
             from ..input_sources import FileInput
             with FileInput(rc_file) as input_source:
                 shell.script_manager.execute_from_source(input_source, add_to_history=False)
-
-            # Restore $0
-            shell.variables['0'] = old_script_name
 
         except Exception as e:
             # Print warning but continue shell startup
