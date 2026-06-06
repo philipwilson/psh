@@ -4,7 +4,7 @@ While PSH implements many shell features compatible with Bash, there are importa
 
 ## 17.1 Supported Features Overview
 
-PSH v0.216.0 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
+PSH v0.217.0 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
 
 ### Shell Options
 
@@ -83,6 +83,31 @@ echo "${BASH_REMATCH[0]}"   # hello123 (whole match)
 echo "${BASH_REMATCH[1]}"   # hello    (group 1)
 echo "${BASH_REMATCH[2]}"   # 123      (group 2)
 ```
+
+### Parameter Transformation Operators (${var@OP})
+
+```bash
+x="a b"
+echo "${x@Q}"        # 'a b'        - quote for reuse as shell input
+echo "${x@U}"        # A B          - uppercase all
+echo "${x@u}"        # A b          - uppercase first character
+echo "${x@L}"        # a b          - lowercase all
+y='a\tb'
+echo "${y@E}"        # a<TAB>b      - expand ANSI-C backslash escapes
+p='\u@\h'
+echo "${p@P}"        # user@host    - prompt-string expansion
+echo "${x@A}"        # x='a b'      - assignment/declare form
+declare -i n=5
+echo "${n@a}"        # i            - attribute-flag letters
+
+# Per-element across arrays and positional parameters:
+arr=(one "two three")
+echo "${arr[@]@Q}"   # 'one' 'two three'
+echo "${arr[@]@A}"   # declare -a arr=([0]="one" [1]="two three")
+```
+
+The associative key/value operators `@K` and `@k` are not yet supported
+(see 17.2).
 
 ### Arrays and Associative Arrays
 
@@ -184,7 +209,7 @@ echo "data" | tee >(grep pattern > matches.txt)
 
 ## 17.2 Unimplemented Features
 
-The following Bash features are not available in PSH v0.216.0.
+The following Bash features are not available in PSH v0.217.0.
 
 ### Name References and Indirect Expansion
 
@@ -204,22 +229,17 @@ the *other* `${!...}` forms — `${!arr[@]}` / `${!arr[*]}` (array indices/keys)
 — **do** work; only `${!scalarname}` value lookup and `${!prefix*}` name
 matching are unsupported.
 
-### Parameter Transformation Operators (${var@OP})
+### Associative Key/Value Transforms (${var@K}, ${var@k})
 
 ```bash
-# NOT supported - the @-operators all expand to empty
-echo "${var@Q}"   # quote for reuse as input        -> (empty)
-echo "${var@U}"   # uppercase                        -> (empty)
-echo "${var@L}"   # lowercase                        -> (empty)
-echo "${var@P}"   # prompt-string expansion          -> (empty)
-echo "${var@A}"   # assignment-statement form        -> (empty)
-echo "${var@a}"   # attribute flags                  -> (empty)
-echo "${var@K}"   # key/value pairs                  -> (empty)
+# NOT supported - the associative key/value display operators:
+declare -A m=([k]=v)
+echo "${m[@]@K}"   # quoted key/value pairs   -> (empty)
+echo "${m[@]@k}"   # bare key/value pairs     -> (empty)
 ```
 
-Case modification via `${var^^}` / `${var,,}` / `${var^}` / `${var,}` **is**
-supported; only the `@`-operator family is missing. (Workaround for `@Q`:
-`printf '%q'`.)
+The other transformation operators (`@Q @U @u @L @E @P @A @a`) **are**
+supported — see 17.1.
 
 ### Coprocesses
 
@@ -473,7 +493,7 @@ parser-select rd
 
 ```bash
 # PSH sets PSH_VERSION (not BASH_VERSION):
-echo $PSH_VERSION    # Shows: 0.216.0
+echo $PSH_VERSION    # Shows: 0.217.0
 
 # Detect PSH:
 if [ -n "$PSH_VERSION" ]; then
@@ -555,7 +575,8 @@ fi
 | Programmable completion | Yes | No | Basic tab completion only |
 | Namerefs (declare -n / local -n) | Yes | No | Not implemented |
 | Indirect expansion ${!var} | Yes | No | Scalar lookup unsupported; ${!arr[@]} works |
-| Parameter transforms ${var@Q/U/L/P/A/a/K} | Yes | No | Case mod ${var^^}/${var,,} works |
+| Parameter transforms ${var@Q/U/u/L/E/P/A/a} | Yes | Yes | Scalar, array, and positional |
+| Assoc key/value transforms ${var@K} / ${var@k} | Yes | No | Not implemented |
 | let builtin | Yes | No | Use (( )) instead |
 | mapfile/readarray | Yes | No | Use while read loop instead |
 | caller builtin | Yes | No | Not implemented |
@@ -644,9 +665,9 @@ grep -E 'coproc|complete |compgen |mapfile|readarray|caller' script.sh
 grep -E '\blet\b' script.sh
 grep -E 'read .*-u' script.sh                 # read -u (fd) is unsupported
 
-# 2. Check for namerefs and @-transform operators
+# 2. Check for namerefs and the unsupported @K/@k transforms
 grep -E 'declare -n|local -n' script.sh       # namerefs - not supported
-grep -E '\$\{[A-Za-z_][A-Za-z0-9_]*@[QULPAaK]' script.sh   # ${var@Q} etc.
+grep -E '@[Kk]\}' script.sh                   # ${m[@]@K} / @k - not supported
 
 # 3. Check for DEBUG/ERR/RETURN traps and history expansion
 grep -E 'trap .*(DEBUG|ERR|RETURN)' script.sh
@@ -665,7 +686,7 @@ grep '\blet\b' script.sh
 
 ```bash
 #!/usr/bin/env psh
-# PSH v0.216.0 Compatibility Checklist
+# PSH v0.217.0 Compatibility Checklist
 
 # Fully supported:
 # - Variables, arrays, associative arrays
@@ -675,7 +696,8 @@ grep '\blet\b' script.sh
 # - Command substitution $() and backticks
 # - Process substitution <() and >()
 # - All I/O redirection forms (incl. arithmetic fd targets, e.g. >&$((n)))
-# - Parameter expansion (most bash forms; case mod ${var^^}/${var,,})
+# - Parameter expansion (most bash forms; case mod ${var^^}/${var,,};
+#   transforms ${var@Q/U/u/L/E/P/A/a})
 # - Arithmetic expansion and commands
 # - Brace expansion, incl. expansion items {$((1)),$((2))} and ranges
 # - Extended glob patterns (shopt -s extglob, enabled beforehand)
@@ -694,7 +716,8 @@ grep '\blet\b' script.sh
 # Not supported:
 # - Namerefs (declare -n / local -n) and ${!var} indirect expansion
 #   (${!arr[@]} array indices/keys DO work)
-# - Parameter transforms ${var@Q/U/L/P/A/a/K}
+# - Associative transforms ${var@K} / ${var@k}
+#   (${var@Q/U/u/L/E/P/A/a} ARE supported)
 # - DEBUG / ERR / RETURN traps
 # - History expansion designators (!!, !n, !string)
 # - Coprocesses (coproc)
@@ -730,18 +753,18 @@ This means:
 
 ## Summary
 
-PSH v0.216.0 provides near-complete Bash compatibility for everyday shell programming:
+PSH v0.217.0 provides near-complete Bash compatibility for everyday shell programming:
 
 1. **Comprehensive Feature Support**: Arrays, associative arrays, trap, wait, disown, all control structures, all expansions, extended globs, `=~` with BASH_REMATCH
 2. **Full Shell Options**: errexit, nounset, xtrace, pipefail, noclobber, allexport, and many more
-3. **Remaining Gaps**: namerefs (`declare -n`), `${var@Q}`-style transforms, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `let`/`mapfile`/`readarray`/`caller`, `wait -n`, the `time` keyword, `read -u`
+3. **Remaining Gaps**: namerefs (`declare -n`), `${var@K}`/`@k` associative transforms, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `let`/`mapfile`/`readarray`/`caller`, `wait -n`, the `time` keyword, `read -u`
 4. **Educational Tools**: Debug flags, script analysis, multiple parser implementations
 5. **High Compatibility**: Most Bash scripts run without modification
 
 Key differences to remember:
 - Use `set -eu -o pipefail` instead of `set -euo pipefail`
 - Namerefs (`declare -n`/`local -n`) and `${!var}` indirect expansion are not supported (`${!arr[@]}` indices/keys do work)
-- The `${var@Q/U/L/P/A/a/K}` transform operators are not supported (case mod `${var^^}`/`${var,,}` is)
+- The `${var@Q/U/u/L/E/P/A/a}` transform operators are supported; only `${var@K}`/`${var@k}` (associative key/value display) are not
 - DEBUG/ERR/RETURN traps and history expansion (`!!`, `!n`) are not implemented
 - `let`, `mapfile`, `readarray`, and `caller` are not available
 - Use `$PSH_VERSION` instead of `$BASH_VERSION` to detect PSH

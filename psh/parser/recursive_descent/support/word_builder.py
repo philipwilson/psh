@@ -111,6 +111,13 @@ class WordBuilder:
         else:
             inner = value
 
+        # Transformation operators ${param@OP}: a single '@' followed by one
+        # transform letter at the very end (e.g. ${x@Q}, ${arr[@]@Q}, ${@@Q}).
+        # The trailing-position check distinguishes the transform '@' from the
+        # array-subscript '@' in ${arr[@]} (which is followed by ']').
+        if len(inner) >= 2 and inner[-2] == '@' and inner[-1] in 'QEPAUuLakK':
+            return ParameterExpansion(inner[:-2], '@' + inner[-1], '')
+
         # Check for operators.
         # We find the operator that matches at the earliest position.
         # When two operators match at the same position, prefer the longer one
