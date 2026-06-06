@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.204.0 (2026-06-06) - Unify command-position classification across lexer passes
+- **Command-position tracking unified (Phase 2 study §1.3, Tier C)** — the lexer
+  (which tracks command position during tokenization, on `WORD`-valued keywords)
+  and the keyword normalizer (which tracks it afterward, on typed keywords) are
+  two distinct passes, but both classify which tokens return to command
+  position. That classification now lives once in `psh/lexer/command_position.py`
+  (`STATEMENT_SEPARATORS`, `CASE_TERMINATORS`, `RESET_TO_COMMAND_POSITION`,
+  `COMMAND_GROUP_OPENERS`); both passes reference it.
+- **Dead code removed** — the lexer's command-position set listed reserved-word
+  token *types* (`IF`/`WHILE`/`THEN`/…) it can never receive (keywords are still
+  `WORD` tokens during tokenization; it relies on a value-based check). These
+  were removed. Behavior-preserving: token streams verified identical across a
+  control-structure/case/function/`[[`/heredoc corpus.
+
 ## 0.203.0 (2026-06-06) - Unify glob→regex conversion; fix leading `]` in classes
 - **Glob→regex conversion unified (Phase 2 study §1.3, Tier C)** — the
   parameter-expansion pattern operators (`#`/`##`/`%`/`%%`/`/`/`//`) and the

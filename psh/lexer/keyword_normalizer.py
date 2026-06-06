@@ -3,6 +3,11 @@
 from typing import List, Optional
 
 from ..token_types import Token, TokenType
+from .command_position import (
+    CASE_TERMINATORS,
+    RESET_TO_COMMAND_POSITION,
+    STATEMENT_SEPARATORS as _BASE_SEPARATORS,
+)
 from .constants import KEYWORDS
 from .keyword_defs import KEYWORD_TYPE_MAP
 
@@ -12,26 +17,11 @@ class KeywordNormalizer:
 
     CONTROL_KEYWORDS = {'if', 'for', 'select', 'while', 'until', 'case', 'function'}
 
-    STATEMENT_SEPARATORS = {
-        TokenType.SEMICOLON,
-        TokenType.NEWLINE,
-        TokenType.AND_AND,
-        TokenType.OR_OR,
-        TokenType.PIPE,
-        TokenType.DOUBLE_SEMICOLON,
-        TokenType.SEMICOLON_AMP,
-        TokenType.AMP_SEMICOLON,
-    }
+    # Operators that return us to command position: the basic separators plus
+    # case-item terminators (which the normalizer treats as separators).
+    STATEMENT_SEPARATORS = _BASE_SEPARATORS | CASE_TERMINATORS
 
-    RESET_TO_COMMAND_POSITION = {
-        TokenType.THEN,
-        TokenType.DO,
-        TokenType.ELSE,
-        TokenType.ELIF,
-        TokenType.FI,
-        TokenType.DONE,
-        TokenType.ESAC,
-    }
+    RESET_TO_COMMAND_POSITION = RESET_TO_COMMAND_POSITION
 
     def normalize(self, tokens: List[Token]) -> List[Token]:
         """Normalize reserved keywords in token list."""

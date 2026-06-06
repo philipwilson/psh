@@ -3,6 +3,7 @@
 from typing import List, Optional
 
 from ..token_types import Token, TokenType
+from .command_position import COMMAND_GROUP_OPENERS, STATEMENT_SEPARATORS
 from .expansion_parser import ExpansionContext, ExpansionParser
 from .position import LexerConfig, LexerState, Position, PositionTracker
 from .quote_parser import QuoteParsingContext, UnifiedQuoteParser
@@ -207,13 +208,11 @@ class ModularLexer:
 
     def _update_command_position_context(self, token_type: TokenType, token_value: str = '') -> None:
         """Update command position tracking based on token type and value."""
-        command_starting_tokens = {
-            TokenType.SEMICOLON, TokenType.AND_AND, TokenType.OR_OR,
-            TokenType.PIPE, TokenType.LPAREN, TokenType.NEWLINE,
-            TokenType.IF, TokenType.WHILE, TokenType.UNTIL, TokenType.FOR, TokenType.CASE,
-            TokenType.THEN, TokenType.DO, TokenType.ELSE, TokenType.ELIF,
-            TokenType.LBRACE
-        }
+        # Shared separator set plus structural openers. Reserved-word keywords
+        # are still WORD tokens at this stage, so they are handled by the
+        # value-based check against _COMMAND_POSITION_KEYWORDS below (the lexer
+        # never sees keyword token TYPES here).
+        command_starting_tokens = STATEMENT_SEPARATORS | COMMAND_GROUP_OPENERS
 
         neutral_tokens = {
             TokenType.REDIRECT_IN, TokenType.REDIRECT_OUT,
