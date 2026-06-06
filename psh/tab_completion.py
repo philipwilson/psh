@@ -3,8 +3,7 @@
 
 Provides TerminalManager (raw mode handling) and CompletionEngine
 (path completion logic).  Both are consumed by the production
-LineEditor in psh/line_editor.py and by CompletionManager in
-psh/interactive/completion_manager.py.
+LineEditor in psh/line_editor.py.
 """
 
 import os

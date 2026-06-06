@@ -26,7 +26,6 @@ Loop       Manager    Manager   Manager   Manager
 |------|---------|
 | `repl_loop.py` | `REPLLoop` - main Read-Eval-Print Loop |
 | `history_manager.py` | `HistoryManager` - command history |
-| `completion_manager.py` | `CompletionManager` - tab completion |
 | `prompt_manager.py` | `PromptManager` - prompt generation |
 | `signal_manager.py` | `SignalManager` - signal handling, SIGCHLD |
 | `rc_loader.py` | `load_rc_file` / `is_safe_rc_file` - startup RC loading |

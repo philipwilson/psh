@@ -24,7 +24,6 @@ class InteractiveManager:
         self.state = shell.state
 
         # Initialize interactive components
-        from .completion_manager import CompletionManager
         from .history_manager import HistoryManager
         from .prompt_manager import PromptManager
         from .repl_loop import REPLLoop
@@ -32,14 +31,12 @@ class InteractiveManager:
 
         self.history_manager = HistoryManager(shell)
         self.prompt_manager = PromptManager(shell)
-        self.completion_manager = CompletionManager(shell)
         self.signal_manager = SignalManager(shell)
         self.repl_loop = REPLLoop(shell)
 
         # Cross-component dependencies
         self.repl_loop.history_manager = self.history_manager
         self.repl_loop.prompt_manager = self.prompt_manager
-        self.repl_loop.completion_manager = self.completion_manager
 
         # Skip signal setup when running under pytest to avoid affecting subprocess tests
         # UNLESS we're specifically testing signal handling
@@ -61,10 +58,6 @@ class InteractiveManager:
     def run_interactive_loop(self):
         """Run the interactive shell loop."""
         return self.repl_loop.run()
-
-    def setup_readline(self):
-        """Configure readline for the shell."""
-        self.completion_manager.setup_readline()
 
     def load_history(self):
         """Load command history from file."""

@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.211.0 (2026-06-06) - Remove the vestigial readline CompletionManager
+- **Dropped `CompletionManager`** (study triage #7) — the readline-based tab
+  completion manager was dead: `setup_readline()` registered a readline completer,
+  but psh reads interactive input through its own `LineEditor` (raw mode) with its
+  own `CompletionEngine`, so the readline completer was never invoked and the
+  `complete_*` / `get_completions` methods had no callers. Removed the class
+  (`completion_manager.py`) and all wiring (`base.py`, `repl_loop.py`,
+  `interactive/__init__.py`, docs). Tab completion is unaffected — it lives in
+  `LineEditor`/`CompletionEngine`. ~142 fewer lines.
+
 ## 0.210.0 (2026-06-06) - Flush buffered output in command-substitution children
 - **`$(...)` now captures stream-writing builtins** — the command-substitution
   child exits with `os._exit()`, which does not flush Python-level buffers. So a
