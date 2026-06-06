@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.225.0 (2026-06-06) - Slim builtin-redirection setup (study #18)
+- Refactor `IOManager.setup_builtin_redirections`: extract the triplicated
+  "output fd -> file" branch (`>`, `>>`, `>|`) into a shared
+  `_redirect_builtin_output_file` helper (swap sys.stdout/stderr for fd 1/2,
+  delegate fd>=3 to FileRedirector), and document why the `>&` 2>&1 / 1>&2 cases
+  swap Python stream objects while other dups go to the fd level. Addresses the
+  oversized/duplicated `setup_builtin_redirections` finding (#18). No behaviour
+  change. (The unrelated pre-existing `builtin >&2 2>file` "lost sys.stderr"
+  quirk is untouched.)
+
 ## 0.224.0 (2026-06-06) - Public expansion helpers (study #15)
 - Promote `ExpansionManager._expand_expansion` and `_process_dquote_escapes` to
   public `expand_expansion` / `process_dquote_escapes`. The executor's
