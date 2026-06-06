@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.236.0 | **Tests**: 3,970 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.237.0 | **Tests**: 3,979 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -31,7 +31,7 @@ psh --format script.sh
 
 - 🔍 **CLI Analysis Tools**: Built-in script formatting, metrics, security analysis, and linting
 - 📚 **Educational Focus**: Clean, readable codebase designed for learning shell internals
-- 🧪 **Comprehensive Testing**: 3,970 tests ensuring reliability and robustness
+- 🧪 **Comprehensive Testing**: 3,979 tests ensuring reliability and robustness
 - 🏗️ **Modern Architecture**: Component-based design with unified lexer and visitor pattern integration
 - 🎓 **Dual Parser Implementation**: Both recursive descent and functional parser combinator with near-complete feature parity
 - 📋 **POSIX Compliant**: ~98% compliance with robust bash compatibility
@@ -235,7 +235,7 @@ PSH uniquely includes two complete parser implementations:
 
 ### Project Statistics
 - **Lines of Code**: ~99,000 across 348 Python files
-- **Test Coverage**: 3,970 tests in 183 test files
+- **Test Coverage**: 3,979 tests in 184 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 9 analysis and transformation visitors
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -286,7 +286,7 @@ python -m pytest tests/ --cov=psh --cov-report=html
 **Note:** As of v0.195.0 the full suite passes under normal pytest capture; the `-s` flag is no longer required for subshell tests (a `read` builtin fix made it read the real redirected file descriptor). `run_tests.py` still works and remains the recommended runner.
 
 **Current Test Statistics:**
-- ✅ 3,676 passing tests
+- ✅ 3,685 passing tests
 - ⏭️ 291 skipped tests (platform-specific or interactive)
 - ⚠️ 3 xfailed (expected failures for unimplemented features)
 - 📊 High coverage across all components
@@ -331,6 +331,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.237.0**: Extract pure `convert_multiline_to_single` out of `LineEditor` into `line_editor_helpers`
 - **v0.236.0**: Shell.active_parser / add_history public API (§1.1 E)
 - **v0.235.0**: rc_loader: drop ineffective state-dict mutation (§1.1 C)
 - **v0.234.0**: TrapManager.get_handler() accessor (§1.1 B)

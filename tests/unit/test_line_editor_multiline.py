@@ -104,7 +104,8 @@ class TestMultiLineHistory:
         editor = LineEditor(history=[multiline_cmd])
 
         # Convert and set line
-        single_line = editor._convert_multiline_to_single(multiline_cmd)
+        from psh.line_editor_helpers import convert_multiline_to_single
+        single_line = convert_multiline_to_single(multiline_cmd)
         editor._replace_line(single_line)
 
         # Cursor should be at end of buffer

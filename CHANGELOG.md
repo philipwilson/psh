@@ -4,6 +4,14 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.237.0 (2026-06-07) - Extract pure multiline helper from LineEditor (§1.5)
+- Move the 93-line, state-free `LineEditor._convert_multiline_to_single` to a
+  standalone pure function `psh/line_editor_helpers.convert_multiline_to_single`
+  (callers and the existing test updated; new focused unit tests added). Trims
+  `line_editor.py` 1301->1209 lines and isolates testable pure logic. The rest of
+  LineEditor is left cohesive by design (heavy shared editor state). No behaviour
+  change.
+
 ## 0.236.0 (2026-06-06) - Shell.active_parser property + Shell.add_history() (§1.1 E)
 - Add a public `Shell.active_parser` property (get/set) and `Shell.add_history()` method, and route all external callers through them instead of reaching into the private `_active_parser` field or walking `interactive_manager.history_manager.add_to_history`: source_processor, ast_debug, parser_experiment (`parser-select`), __main__, and print -s. Phase 2 study §1.1. No behaviour change.
 
