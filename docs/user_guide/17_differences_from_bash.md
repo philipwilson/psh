@@ -4,7 +4,7 @@ While PSH implements many shell features compatible with Bash, there are importa
 
 ## 17.1 Supported Features Overview
 
-PSH v0.187.1 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
+PSH v0.216.0 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
 
 ### Shell Options
 
@@ -54,10 +54,34 @@ shopt -s dotglob     # Include hidden files in glob expansion
 shopt -s nullglob    # Non-matching globs expand to nothing
 shopt -s globstar    # Enable ** recursive globbing
 shopt -s nocaseglob  # Case-insensitive globbing
+shopt -s extglob     # Enable extended glob patterns: ?(p) *(p) +(p) @(p) !(p)
+```
 
-# The extglob option can be set but extended glob patterns
-# are not yet parsed (see 17.2 below)
-shopt -s extglob     # Can be set, but patterns like +(x) don't parse
+### Extended Glob Patterns (extglob)
+
+Extended glob patterns are supported once `extglob` is enabled, in globbing,
+`[[ ]]`, and `case`:
+
+```bash
+shopt -s extglob
+ls !(*.txt)          # Everything except .txt files
+[[ abc == @(abc|xyz) ]] && echo match
+case "$x" in +(a)) echo "one or more a" ;; esac
+```
+
+As in Bash, `extglob` must be enabled *before* the line that uses an extended
+pattern is parsed. In a single `-c` string the whole line is parsed at once, so
+`shopt -s extglob; ls !(*.txt)` will not work — enable it on an earlier line
+(for example in your rc file or a preceding command).
+
+### Regex Matching and BASH_REMATCH
+
+```bash
+# The =~ operator matches and populates BASH_REMATCH with capture groups:
+[[ "hello123" =~ ([a-z]+)([0-9]+) ]]
+echo "${BASH_REMATCH[0]}"   # hello123 (whole match)
+echo "${BASH_REMATCH[1]}"   # hello    (group 1)
+echo "${BASH_REMATCH[2]}"   # 123      (group 2)
 ```
 
 ### Arrays and Associative Arrays
@@ -106,6 +130,9 @@ trap -p INT            # Show specific trap
 trap - EXIT INT
 ```
 
+PSH handles standard signals and the `EXIT` pseudo-signal. The Bash-specific
+pseudo-signals **`DEBUG`, `ERR`, and `RETURN` are not supported** (see 17.2).
+
 ### Select Statement
 
 ```bash
@@ -119,16 +146,15 @@ select option in "Option 1" "Option 2" "Quit"; do
 done
 ```
 
-### History Expansion
+### Command History
 
 ```bash
-# In interactive mode:
-!!        # Previous command
-!n        # Command n from history
-!-n       # n commands ago
-!string   # Most recent command starting with string
-!?string? # Most recent command containing string
+# The `history` builtin lists previous commands in interactive mode:
+history          # Show command history
+history 10       # Show last 10 commands
 ```
+
+History *expansion* (`!!`, `!n`, `!string`) is **not** implemented — see 17.2.
 
 ### Job Control
 
@@ -158,27 +184,58 @@ echo "data" | tee >(grep pattern > matches.txt)
 
 ## 17.2 Unimplemented Features
 
-The following Bash features are not available in PSH v0.187.1.
+The following Bash features are not available in PSH v0.216.0.
+
+### Name References and Indirect Expansion
+
+```bash
+# Namerefs - the -n attribute is rejected:
+declare -n ref=target    # Error: invalid option: -n
+local -n ref=$1          # Error: invalid option: -n
+
+# Scalar indirect expansion - not supported (expands to empty):
+name=HOME
+echo "${!name}"          # (empty)  -- bash prints $HOME's value
+```
+
+Namerefs and scalar indirect expansion (`${!var}`) are the highest-impact
+remaining gap; there is currently no built-in indirection mechanism. Note that
+the *other* `${!...}` forms — `${!arr[@]}` / `${!arr[*]}` (array indices/keys)
+— **do** work; only `${!scalarname}` value lookup and `${!prefix*}` name
+matching are unsupported.
+
+### Parameter Transformation Operators (${var@OP})
+
+```bash
+# NOT supported - the @-operators all expand to empty
+echo "${var@Q}"   # quote for reuse as input        -> (empty)
+echo "${var@U}"   # uppercase                        -> (empty)
+echo "${var@L}"   # lowercase                        -> (empty)
+echo "${var@P}"   # prompt-string expansion          -> (empty)
+echo "${var@A}"   # assignment-statement form        -> (empty)
+echo "${var@a}"   # attribute flags                  -> (empty)
+echo "${var@K}"   # key/value pairs                  -> (empty)
+```
+
+Case modification via `${var^^}` / `${var,,}` / `${var^}` / `${var,}` **is**
+supported; only the `@`-operator family is missing. (Workaround for `@Q`:
+`printf '%q'`.)
 
 ### Coprocesses
 
 ```bash
 # NOT implemented
-coproc { command; }           # Parse error
-coproc NAME { command; }      # Parse error
+coproc { command; }           # Command not found
+coproc NAME { command; }      # Command not found
 ```
 
-### Extended Glob Patterns
+### DEBUG, ERR, and RETURN Traps
 
 ```bash
-# The shopt -s extglob option can be SET, but the extended
-# glob patterns themselves are not parsed by PSH:
-shopt -s extglob     # Succeeds (no error)
-ls !(*.txt)          # Parse error - not supported
-ls +(pattern)        # Parse error - not supported
-ls ?(pattern)        # Parse error - not supported
-ls *(pattern)        # Parse error - not supported
-ls @(pattern)        # Parse error - not supported
+# Standard signals and EXIT work; these Bash pseudo-signals do not:
+trap 'echo dbg' DEBUG    # Does not fire
+trap 'echo err' ERR      # Does not fire
+trap 'echo ret' RETURN   # Error: invalid signal specification
 ```
 
 ### Programmable Completion
@@ -192,15 +249,15 @@ compgen -W "words" -- prefix    # Command not found
 # IS available in interactive mode
 ```
 
-### BASH_REMATCH Capture Groups
+### History Expansion
 
 ```bash
-# The =~ regex operator works for matching:
-[[ "hello" =~ hel ]] && echo "matched"   # Works
+# The interactive history-expansion designators are not implemented:
+!!         # event not found
+!n         # event not found
+!string    # event not found
 
-# But BASH_REMATCH is NOT populated with capture groups:
-[[ "hello123" =~ ([a-z]+)([0-9]+) ]]
-echo ${BASH_REMATCH[1]}   # Empty (not captured)
+# The `history` builtin (listing past commands) does work.
 ```
 
 ### Missing Builtins
@@ -208,27 +265,24 @@ echo ${BASH_REMATCH[1]}   # Empty (not captured)
 ```bash
 # These Bash builtins are not available:
 let "x = 5 + 3"             # Use (( )) or $(( )) instead
-mapfile lines < file.txt     # Use while read loop instead
+mapfile lines < file.txt     # Use a `while read` loop instead
 readarray lines < file.txt   # Same as mapfile
-
-# hash is not a builtin (falls through to external command)
-type hash   # Shows external /usr/bin/hash
+caller                       # Call-stack introspection - not a builtin
 ```
 
 ### Read Builtin Limitations
 
 ```bash
-# The read builtin supports:
-read var                # Basic reading
+# The read builtin supports -r, -d, -p, and also -t, -n, -s:
 read -r var             # Raw mode (no backslash processing)
 read -d ':' var         # Custom delimiter
 read -p "prompt: " var  # Prompt (interactive only)
-
-# These read options are not supported:
-read -u 3 var           # Read from specific file descriptor
-read -n 4 var           # Read exact number of characters
 read -t 5 var           # Timeout
+read -n 4 var           # Read exact number of characters
 read -s var             # Silent mode (passwords)
+
+# Only the file-descriptor option is unsupported:
+read -u 3 var           # Error: invalid option (read from a specific fd)
 ```
 
 ### Other Missing Features
@@ -238,14 +292,17 @@ read -s var             # Silent mode (passwords)
 wait -n                 # Not supported
 
 # time keyword (external /usr/bin/time works)
-time echo hello         # Uses external time, not shell keyword
+time echo hello         # Uses external time, not the shell keyword
+                        # (so it cannot time pipelines or builtins)
 
-# BASH_SOURCE, BASH_LINENO, FUNCNAME arrays
-echo ${BASH_SOURCE[0]}  # Not available
-echo ${FUNCNAME[0]}     # Not available
+# Call-stack introspection arrays
+echo ${BASH_SOURCE[0]}  # Not available (empty)
+echo ${BASH_LINENO[0]}  # Not available (empty)
+echo ${FUNCNAME[0]}     # Current function name works...
+echo ${FUNCNAME[1]}     # ...but the rest of the call stack is not populated
 
 # Variable name prefix matching is incomplete
-echo ${!PATH*}          # Lists all variables, not just PATH-prefixed
+echo ${!PATH*}          # Lists ALL variables, not just PATH-prefixed ones
 ```
 
 ## 17.3 Behavioral Differences
@@ -416,7 +473,7 @@ parser-select rd
 
 ```bash
 # PSH sets PSH_VERSION (not BASH_VERSION):
-echo $PSH_VERSION    # Shows: 0.187.1
+echo $PSH_VERSION    # Shows: 0.216.0
 
 # Detect PSH:
 if [ -n "$PSH_VERSION" ]; then
@@ -477,27 +534,36 @@ fi
 | set -o noglob | Yes | Yes | Full support |
 | set -o verbose | Yes | Yes | Full support |
 | **Signal Handling** |
-| trap command | Yes | Yes | Full support |
+| trap command | Yes | Yes | Standard signals + EXIT |
 | Signal handling | Yes | Yes | All standard signals |
+| DEBUG/ERR/RETURN traps | Yes | No | Bash pseudo-signals not supported |
 | **Advanced Features** |
-| History expansion | Yes | Yes | Full support |
 | Here documents | Yes | Yes | Full support |
 | Here strings | Yes | Yes | Full support |
 | Enhanced test [[ ]] | Yes | Yes | Full support |
-| Regex matching =~ | Yes | Partial | Matching works, BASH_REMATCH not populated |
+| Regex matching =~ | Yes | Yes | BASH_REMATCH capture groups populated |
 | eval builtin | Yes | Yes | Full support |
 | getopts builtin | Yes | Yes | Full support |
-| printf builtin | Yes | Yes | Full support |
+| printf builtin | Yes | Yes | Full support (incl. %q) |
 | pushd/popd/dirs | Yes | Yes | Full support |
-| shopt options | Yes | Partial | dotglob, nullglob, globstar, nocaseglob |
+| shopt options | Yes | Partial | dotglob, nullglob, globstar, nocaseglob, extglob |
+| Extended glob patterns | Yes | Yes | ?() *() +() @() !() (enable extglob before the line) |
+| read options | Yes | Partial | -r -d -p -t -n -s supported; -u not |
+| command history (`history`) | Yes | Yes | Listing past commands (interactive) |
+| History expansion (!!, !n) | Yes | No | Designators not implemented |
 | Coprocesses | Yes | No | Not implemented |
-| Extended glob patterns | Yes | No | shopt can be set but patterns don't parse |
 | Programmable completion | Yes | No | Basic tab completion only |
+| Namerefs (declare -n / local -n) | Yes | No | Not implemented |
+| Indirect expansion ${!var} | Yes | No | Scalar lookup unsupported; ${!arr[@]} works |
+| Parameter transforms ${var@Q/U/L/P/A/a/K} | Yes | No | Case mod ${var^^}/${var,,} works |
 | let builtin | Yes | No | Use (( )) instead |
 | mapfile/readarray | Yes | No | Use while read loop instead |
-| BASH_REMATCH | Yes | No | =~ matches but groups not captured |
+| caller builtin | Yes | No | Not implemented |
+| BASH_SOURCE / BASH_LINENO | Yes | No | Not populated |
+| FUNCNAME | Yes | Partial | [0] only; full call stack not populated |
 | wait -n | Yes | No | Not implemented |
-| read -n / -t / -s / -u | Yes | No | Only -r, -d, -p supported |
+| time keyword | Yes | No | External /usr/bin/time only |
+| ${!prefix*} name matching | Yes | No | Lists all variables (bug) |
 | **PSH-Specific** |
 | --debug-ast | No | Yes | Multiple output formats |
 | --debug-tokens | No | Yes | PSH only |
@@ -528,14 +594,15 @@ fi
 result=$((a + b))
 
 # For PSH+Bash portability, these features are safe:
-# - [[ ]] enhanced test (but avoid =~ with capture groups)
+# - [[ ]] enhanced test, including =~ with BASH_REMATCH capture groups
 # - (( )) arithmetic commands
 # - Arrays and associative arrays
 # - Process substitution <() and >()
-# - Parameter expansion (all forms)
-# - Brace expansion
+# - Parameter expansion (all forms, incl. ${var^^}/${var,,} case mod)
+# - Brace expansion (including expansion items like {$((1)),$((2))})
+# - Extended glob patterns (with shopt -s extglob enabled beforehand)
 # - Here documents and here strings
-# - trap command
+# - trap command (standard signals + EXIT; avoid DEBUG/ERR/RETURN)
 # - All control structures
 ```
 
@@ -572,22 +639,22 @@ set -eu -o pipefail          # Mixed form
 Most Bash scripts work without modification. Check for these issues:
 
 ```bash
-# 1. Check for unsupported features
-grep -E 'coproc|complete |compgen |mapfile|readarray' script.sh
+# 1. Check for unsupported builtins / features
+grep -E 'coproc|complete |compgen |mapfile|readarray|caller' script.sh
 grep -E '\blet\b' script.sh
-grep -E 'read.*-[ntsu]' script.sh
+grep -E 'read .*-u' script.sh                 # read -u (fd) is unsupported
 
-# 2. Check for combined -euo pattern
+# 2. Check for namerefs and @-transform operators
+grep -E 'declare -n|local -n' script.sh       # namerefs - not supported
+grep -E '\$\{[A-Za-z_][A-Za-z0-9_]*@[QULPAaK]' script.sh   # ${var@Q} etc.
+
+# 3. Check for DEBUG/ERR/RETURN traps and history expansion
+grep -E 'trap .*(DEBUG|ERR|RETURN)' script.sh
+grep -E '!!|![0-9]' script.sh                 # history expansion
+
+# 4. Check for combined -euo pattern
 grep 'set -euo' script.sh
 # Replace with: set -eu -o pipefail
-
-# 3. Check for BASH_REMATCH usage
-grep 'BASH_REMATCH' script.sh
-# Replace with alternative parsing
-
-# 4. Check for extended glob patterns
-grep -E '!\(|@\(|\+\(|\?\(|\*\(' script.sh
-# Replace with standard globs or find/grep
 
 # 5. Check for let command
 grep '\blet\b' script.sh
@@ -598,7 +665,7 @@ grep '\blet\b' script.sh
 
 ```bash
 #!/usr/bin/env psh
-# PSH v0.187.1 Compatibility Checklist
+# PSH v0.216.0 Compatibility Checklist
 
 # Fully supported:
 # - Variables, arrays, associative arrays
@@ -607,29 +674,38 @@ grep '\blet\b' script.sh
 # - Functions with local variables
 # - Command substitution $() and backticks
 # - Process substitution <() and >()
-# - All I/O redirection forms
-# - Parameter expansion (all bash forms)
+# - All I/O redirection forms (incl. arithmetic fd targets, e.g. >&$((n)))
+# - Parameter expansion (most bash forms; case mod ${var^^}/${var,,})
 # - Arithmetic expansion and commands
+# - Brace expansion, incl. expansion items {$((1)),$((2))} and ranges
+# - Extended glob patterns (shopt -s extglob, enabled beforehand)
+# - Regex matching =~ with BASH_REMATCH capture groups
 # - Job control (jobs, fg, bg, wait, disown)
 # - Shell options (errexit, nounset, xtrace, pipefail, etc.)
-# - History expansion (interactive mode)
-# - eval, trap, getopts, printf
+# - eval, trap (standard signals + EXIT), getopts, printf (incl. %q)
+# - read -r/-d/-p/-t/-n/-s
 # - Subshells with variable isolation
 # - Control structures in pipelines
-# - Brace expansion, tilde expansion
 # - Here documents and here strings
-# - shopt: dotglob, nullglob, globstar, nocaseglob
+# - shopt: dotglob, nullglob, globstar, nocaseglob, extglob
 # - pushd, popd, dirs
+# - history builtin (interactive)
 
 # Not supported:
+# - Namerefs (declare -n / local -n) and ${!var} indirect expansion
+#   (${!arr[@]} array indices/keys DO work)
+# - Parameter transforms ${var@Q/U/L/P/A/a/K}
+# - DEBUG / ERR / RETURN traps
+# - History expansion designators (!!, !n, !string)
 # - Coprocesses (coproc)
-# - Extended glob patterns (syntax not parsed)
 # - Programmable completion (complete, compgen)
 # - let builtin (use (( )) instead)
-# - mapfile/readarray
-# - BASH_REMATCH capture groups
-# - read -n, -t, -s, -u options
+# - mapfile/readarray; caller
+# - read -u (read from a specific fd)
 # - wait -n
+# - time keyword (external /usr/bin/time only)
+# - BASH_SOURCE/BASH_LINENO; FUNCNAME beyond [0]
+# - ${!prefix*} variable-name prefix matching
 # - Very deep recursion (Python stack limits)
 ```
 
@@ -654,19 +730,20 @@ This means:
 
 ## Summary
 
-PSH v0.187.1 provides near-complete Bash compatibility for everyday shell programming:
+PSH v0.216.0 provides near-complete Bash compatibility for everyday shell programming:
 
-1. **Comprehensive Feature Support**: Arrays, associative arrays, trap, wait, disown, all control structures, all expansions
+1. **Comprehensive Feature Support**: Arrays, associative arrays, trap, wait, disown, all control structures, all expansions, extended globs, `=~` with BASH_REMATCH
 2. **Full Shell Options**: errexit, nounset, xtrace, pipefail, noclobber, allexport, and many more
-3. **Minimal Remaining Gaps**: Coprocesses, extended glob patterns, programmable completion, and a few read options
+3. **Remaining Gaps**: namerefs (`declare -n`), `${var@Q}`-style transforms, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `let`/`mapfile`/`readarray`/`caller`, `wait -n`, the `time` keyword, `read -u`
 4. **Educational Tools**: Debug flags, script analysis, multiple parser implementations
 5. **High Compatibility**: Most Bash scripts run without modification
 
 Key differences to remember:
 - Use `set -eu -o pipefail` instead of `set -euo pipefail`
-- BASH_REMATCH capture groups are not populated
-- Extended glob patterns are not parsed even when extglob is set
-- `let`, `mapfile`, and `readarray` are not available
+- Namerefs (`declare -n`/`local -n`) and `${!var}` indirect expansion are not supported (`${!arr[@]}` indices/keys do work)
+- The `${var@Q/U/L/P/A/a/K}` transform operators are not supported (case mod `${var^^}`/`${var,,}` is)
+- DEBUG/ERR/RETURN traps and history expansion (`!!`, `!n`) are not implemented
+- `let`, `mapfile`, `readarray`, and `caller` are not available
 - Use `$PSH_VERSION` instead of `$BASH_VERSION` to detect PSH
 - Deep recursion may hit Python stack limits
 
