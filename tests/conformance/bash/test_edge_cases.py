@@ -153,6 +153,59 @@ class TestEdgeBraceExpansion(ConformanceTest):
         self.assert_identical_behavior('echo {a,b}{1..2}')
 
 
+class TestEdgePrintf(ConformanceTest):
+    def test_percent_q_space(self):
+        self.assert_identical_behavior('printf "%q\\n" "a b"')
+
+    def test_percent_q_special(self):
+        self.assert_identical_behavior('printf "%q\\n" "a*b?c;d"')
+
+    def test_percent_q_empty(self):
+        self.assert_identical_behavior('printf "[%q]\\n" ""')
+
+    def test_percent_q_safe_passthrough(self):
+        self.assert_identical_behavior('printf "%q\\n" abc123_./')
+
+    def test_percent_q_control_char(self):
+        self.assert_identical_behavior('printf "%q\\n" "$(printf "a\\tb")"')
+
+    def test_percent_b_escapes(self):
+        self.assert_identical_behavior('printf "%b\\n" "a\\tb"')
+
+    def test_percent_b_cycle(self):
+        self.assert_identical_behavior('printf "%b\\n" "a\\tb" "c\\td"')
+
+    def test_percent_b_plain(self):
+        self.assert_identical_behavior('printf "%b\\n" hello')
+
+
+class TestEdgeRegex(ConformanceTest):
+    def test_capture_groups(self):
+        self.assert_identical_behavior(
+            '[[ abc123 =~ ([a-z]+)([0-9]+) ]] && echo "${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"'
+        )
+
+    def test_full_match(self):
+        self.assert_identical_behavior('[[ foobar =~ o+ ]] && echo "[${BASH_REMATCH[0]}]"')
+
+    def test_group_count(self):
+        self.assert_identical_behavior('[[ a1b2 =~ ([a-z])([0-9]) ]]; echo "${#BASH_REMATCH[@]}"')
+
+    def test_alternation(self):
+        self.assert_identical_behavior('[[ cat =~ ^(cat|dog)$ ]] && echo "${BASH_REMATCH[1]}"')
+
+    def test_anchors(self):
+        self.assert_identical_behavior('[[ foobar =~ ^foo ]] && echo anchored')
+
+    def test_variable_regex(self):
+        self.assert_identical_behavior('re="([0-9]+)"; [[ x42 =~ $re ]] && echo "${BASH_REMATCH[1]}"')
+
+    def test_no_match_clears_rematch(self):
+        self.assert_identical_behavior(
+            '[[ abc =~ ([0-9]+) ]]; echo "n=${#BASH_REMATCH[@]} v=[${BASH_REMATCH[0]}]"'
+        )
+
+
 class TestEdgeKnownGaps(ConformanceTest):
     """Edge cases where psh currently diverges from bash.
 
@@ -160,20 +213,6 @@ class TestEdgeKnownGaps(ConformanceTest):
     XPASS once implemented (then drop the marker). Found by edge-case probing
     on 2026-06-05.
     """
-
-    @pytest.mark.xfail(reason="printf %q (shell-quote) not implemented")
-    def test_printf_percent_q(self):
-        self.assert_identical_behavior('printf "%q\\n" "a b"')
-
-    @pytest.mark.xfail(reason="printf %b (interpret escapes in arg) not implemented")
-    def test_printf_percent_b(self):
-        self.assert_identical_behavior('printf "%b\\n" "a\\tb"')
-
-    @pytest.mark.xfail(reason="[[ =~ ]] does not populate BASH_REMATCH")
-    def test_bash_rematch(self):
-        self.assert_identical_behavior(
-            '[[ abc123 =~ ([a-z]+)([0-9]+) ]] && echo "${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"'
-        )
 
     @pytest.mark.xfail(reason="EXIT trap not run for `sh -c` / one-shot scripts")
     def test_exit_trap_runs(self):
