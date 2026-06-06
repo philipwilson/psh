@@ -23,8 +23,10 @@ from ..ast_nodes import (
     TopLevel,
     WhileLoop,
 )
+from .analysis_helpers import has_unquoted_expansion
 from .base import ASTVisitor
 from .constants import DANGEROUS_COMMANDS, SENSITIVE_COMMANDS
+from .traversal import visit_children
 
 
 class SecurityIssue:
@@ -107,8 +109,7 @@ class SecurityVisitor(ASTVisitor[None]):
             if len(words) > 1:
                 for i, (arg, word) in enumerate(zip(node.args[1:], words[1:])):
                     # Variable expansion or unquoted word with $
-                    if (word.is_variable_expansion or
-                            (not word.is_quoted and '$' in arg)):
+                    if word.is_variable_expansion or has_unquoted_expansion(word, arg):
                         self.issues.append(SecurityIssue(
                             'HIGH',
                             'UNQUOTED_EXPANSION',
@@ -318,15 +319,5 @@ class SecurityVisitor(ASTVisitor[None]):
         return "\n".join(lines)
 
     def generic_visit(self, node: ASTNode) -> None:
-        """Default visit for unhandled nodes."""
-        # Try to traverse child nodes generically
-        # Check for common patterns
-        if hasattr(node, 'items'):
-            for item in node.items:
-                self.visit(item)
-        elif hasattr(node, 'statements'):
-            for stmt in node.statements:
-                self.visit(stmt)
-        elif hasattr(node, 'body'):
-            self.visit(node.body)
-        # For nodes we don't understand, we can skip them
+        """Descend into child nodes for unhandled node types."""
+        visit_children(self, node)

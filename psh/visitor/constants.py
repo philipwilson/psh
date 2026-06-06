@@ -1,5 +1,16 @@
 """Shared constants for AST visitor implementations."""
 
+# test/[ ] operator operand classification, shared by the analysis visitors so
+# the "an operand after this operator need not be quoted / is compared a certain
+# way" knowledge lives in one place.
+NUMERIC_COMPARISON_OPERATORS = frozenset({'-eq', '-ne', '-lt', '-le', '-gt', '-ge'})
+STRING_COMPARISON_OPERATORS = frozenset({'=', '!='})
+FILE_TEST_OPERATORS = frozenset({'-f', '-d', '-e', '-s', '-r', '-w', '-x'})
+# Operators after which an operand is the value being tested.
+TEST_OPERATORS = (
+    FILE_TEST_OPERATORS | STRING_COMPARISON_OPERATORS | NUMERIC_COMPARISON_OPERATORS
+)
+
 # Commands considered dangerous — union of all three visitors' lists
 DANGEROUS_COMMANDS = {
     'eval': 'Dynamic code execution - high risk of injection',

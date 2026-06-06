@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.205.0 (2026-06-06) - Unify analysis-visitor traversal and shared checks
+- **Visitor traversal unified (Phase 2 study §1.3, #19)** — the metrics,
+  security, and linter visitors each had their own `generic_visit`. Two walked
+  only one of `items`/`statements`/`body` (silently skipping children of any
+  other shape); the third did a dataclass-field walk. All three now use one
+  shared traversal in `psh/visitor/traversal.py` (`iter_child_nodes` /
+  `visit_children`).
+- **Latent bug fixed** — because the metrics/security traversal under-walked,
+  nodes without a dedicated visitor (e.g. `until` loops) had children skipped:
+  `until [ -e f ]; do …` did not count the `[ -e f ]` condition command. The
+  shared traversal is a strict superset of the old coverage (findings/counts can
+  only become more complete, never lost); `until`-loop conditions are now
+  traversed like `while`-loop conditions. (Two unrelated pre-existing analysis
+  bugs remain noted but unfixed: `until` not counted in `total_loops`, and
+  `--metrics`/`--security` crashing on brace-group pipelines.)
+- **Shared check vocabulary (B-light)** — the unquoted-expansion predicate
+  (`has_unquoted_expansion`, in new `analysis_helpers.py`) and the test-operator
+  classifications (`NUMERIC_COMPARISON_OPERATORS`, `TEST_OPERATORS`, in
+  `constants.py`) replace inline copies across the security/validator/linter
+  visitors. Each visitor keeps its own policy (contexts, severities, messages);
+  only the shared predicate/data is centralized.
+- **Coverage** — added 11 tests for the previously-untested analysis visitors
+  (traversal, metrics, security).
+
 ## 0.204.0 (2026-06-06) - Unify command-position classification across lexer passes
 - **Command-position tracking unified (Phase 2 study §1.3, Tier C)** — the lexer
   (which tracks command position during tokenization, on `WORD`-valued keywords)
