@@ -10,10 +10,6 @@ from .base import ScriptComponent
 class ShebangHandler(ScriptComponent):
     """Handles shebang parsing and execution."""
 
-    def execute(self, script_path: str, script_args: List[str]) -> int:
-        """Execute script using its shebang interpreter."""
-        return self.execute_with_shebang(script_path, script_args)
-
     def parse_shebang(self, script_path: str) -> Tuple[bool, Optional[str], List[str]]:
         """
         Parse shebang line from script file.

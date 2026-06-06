@@ -17,10 +17,6 @@ from .base import ScriptComponent
 class SourceProcessor(ScriptComponent):
     """Processes input from various sources (files, strings, stdin)."""
 
-    def execute(self, input_source, add_to_history: bool = True) -> int:
-        """Execute from an input source."""
-        return self.execute_from_source(input_source, add_to_history)
-
     def execute_from_source(self, input_source, add_to_history: bool = True) -> int:
         """Execute commands from an input source with enhanced processing."""
         exit_code = 0

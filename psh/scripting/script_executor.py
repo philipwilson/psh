@@ -9,10 +9,6 @@ from .base import ScriptComponent
 class ScriptExecutor(ScriptComponent):
     """Executes script files."""
 
-    def execute(self, script_path: str, script_args: List[str] = None) -> int:
-        """Execute a script file."""
-        return self.run_script(script_path, script_args)
-
     def run_script(self, script_path: str, script_args: List[str] = None) -> int:
         """Execute a script file with optional arguments."""
         if script_args is None:

@@ -8,10 +8,6 @@ from .base import ScriptComponent
 class ScriptValidator(ScriptComponent):
     """Validates script files before execution."""
 
-    def execute(self, script_path: str) -> int:
-        """Validate script file. Returns 0 if valid, error code otherwise."""
-        return self.validate_script_file(script_path)
-
     def validate_script_file(self, script_path: str) -> int:
         """
         Validate script file and return appropriate exit code.

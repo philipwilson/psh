@@ -1,5 +1,5 @@
 """Base classes for script handling components."""
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
@@ -7,17 +7,16 @@ if TYPE_CHECKING:
 
 
 class ScriptComponent(ABC):
-    """Base class for script handling components."""
+    """Base class for script handling components.
+
+    Each concrete component exposes its own domain method (run_script,
+    execute_with_shebang, execute_from_source, validate_script_file); there is
+    no shared polymorphic entry point.
+    """
 
     def __init__(self, shell: 'Shell'):
         self.shell = shell
         self.state = shell.state
-        self.expansion_manager = shell.expansion_manager
-
-    @abstractmethod
-    def execute(self, *args, **kwargs) -> int:
-        """Execute the script component functionality."""
-        pass
 
 
 class ScriptManager:
