@@ -12,7 +12,7 @@ import pytest
 
 # Add parent directory to path for framework import
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from framework import ConformanceTest
+from conformance_framework import ConformanceTest
 
 
 class TestBashBuiltins(ConformanceTest):
@@ -634,7 +634,7 @@ def generate_bash_compatibility_report():
         all_results.extend(test_instance.results)
 
     # Categorize results
-    from framework import ConformanceResult
+    from conformance_framework import ConformanceResult
 
     categories = {
         "identical": 0,
