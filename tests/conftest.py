@@ -6,6 +6,7 @@ avoiding conflicts with the main test suite's conftest.py.
 """
 
 import os
+import signal
 import sys
 from io import StringIO
 from pathlib import Path
@@ -33,15 +34,43 @@ def _reap_children():
             break
 
 
+def _kill_job(job):
+    """SIGKILL a still-running job's process group (and pids); return its pids.
+
+    Tests routinely start long-lived background jobs (``sleep 30 &``) purely to
+    exercise job control and never expect them to finish. Teardown must *kill*
+    them, not ``wait_for_job`` on them — waiting blocks for the full sleep
+    duration and was the dominant cost of the serial test phase
+    (see docs/reviews/parallel_test_safety_2026-06-06.md).
+    """
+    if job.pgid:
+        try:
+            os.killpg(job.pgid, signal.SIGKILL)
+        except OSError:
+            pass
+    pids = [proc.pid for proc in job.processes]
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    return pids
+
+
 def _cleanup_shell(shell_instance):
-    """Wait for background jobs and reap zombies after a test."""
+    """Kill leftover background jobs and reap zombies after a test."""
+    killed_pids = []
     for job in list(shell_instance.job_manager.jobs.values()):
         if job.state == JobState.RUNNING:
-            try:
-                shell_instance.job_manager.wait_for_job(job)
-            except (OSError, Exception):
-                pass
+            killed_pids.extend(_kill_job(job))
     shell_instance.job_manager.jobs.clear()
+    # Blocking-reap the pids we just killed (returns in ms once SIGKILL lands)
+    # so zombies don't accumulate across the suite.
+    for pid in killed_pids:
+        try:
+            os.waitpid(pid, 0)
+        except OSError:
+            pass
     _reap_children()
     # Close signal notifier pipe FDs to prevent FD exhaustion across tests
     if hasattr(shell_instance, 'interactive_manager'):

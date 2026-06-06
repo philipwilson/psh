@@ -17,12 +17,28 @@
 
 Result: the parallel phase is **crash-free and flake-free across 8/8 runs** (0
 INTERNALERROR, 0 failed, 3263 passed, ~16s); `run_tests.py --parallel` is green
-end-to-end (~75s vs ~210s serial); serial mode unchanged (3435 passed). A bare
-`pytest -n auto` should pass `-m "not serial"`.
+end-to-end; serial mode unchanged (3435 passed). A bare `pytest -n auto` should
+pass `-m "not serial"`.
 
-**Remaining (optional):** the serial Phase 1b (~59s) is dominated by
-`disown`/`job_control` tests that actually `sleep`; reducing those sleeps would
-shrink the bottleneck. Not required for correctness.
+**Phase 1b teardown fix (2026-06-06).** The serial Phase 1b had collapsed to
+~59s, dominated almost entirely by **fixture teardown**, not test bodies:
+`test_disown_by_pid` teardown alone was 30s, two signal-integration teardowns
+10s each. Root cause: `_cleanup_shell` (tests/conftest.py) called
+`job_manager.wait_for_job()` on every still-RUNNING job — but job-control tests
+deliberately start long-lived `sleep 30 &` jobs they never expect to finish, so
+teardown blocked for the full sleep duration. Fix: teardown now **SIGKILLs**
+leftover running jobs (process group, then pids) and blocking-reaps the killed
+pids, instead of waiting. This is suite-wide (every `shell` fixture), so it sped
+up both modes:
+
+| Phase / mode | Before | After |
+|---|---|---|
+| Serial Phase 1b only | ~59s | ~5s |
+| `run_tests.py --parallel` (end-to-end) | ~75s | ~23s |
+| `run_tests.py` (full serial) | ~210s | ~87s |
+
+No behavior change to the tests themselves (172 passed / 22 skipped in Phase 1b,
+3263 passed in the xdist phase, both unchanged).
 
 ## TL;DR
 
