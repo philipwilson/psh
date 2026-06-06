@@ -15,14 +15,14 @@ class TestApplyChildSignalPolicy:
         """Create mock signal_manager and state."""
         signal_manager = MagicMock()
         state = MagicMock()
-        state._in_forked_child = False
+        state.in_forked_child = False
         return signal_manager, state
 
     def test_sets_in_forked_child_flag(self):
-        """Policy sets state._in_forked_child = True."""
+        """Policy sets state.in_forked_child = True."""
         signal_manager, state = self._make_mocks()
         apply_child_signal_policy(signal_manager, state)
-        assert state._in_forked_child is True
+        assert state.in_forked_child is True
 
     def test_calls_reset_child_signals_once(self):
         """Policy calls signal_manager.reset_child_signals() exactly once."""
@@ -83,7 +83,7 @@ class TestApplyChildSignalPolicy:
         def track_reset():
             call_order.append('reset_signals')
 
-        type(state)._in_forked_child = property(
+        type(state).in_forked_child = property(
             fget=lambda s: False,
             fset=lambda s, v: call_order.append('set_flag')
         )

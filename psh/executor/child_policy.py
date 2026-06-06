@@ -24,12 +24,12 @@ def apply_child_signal_policy(signal_manager, state, is_shell_process=False):
 
     Args:
         signal_manager: The SignalManager instance (provides reset_child_signals)
-        state: The ShellState instance (sets _in_forked_child flag)
+        state: The ShellState instance (sets in_forked_child flag)
         is_shell_process: True for subshells, brace groups, command/process
             substitution children that run shell commands (never exec an
             external binary). False for leaf processes that will exec.
     """
-    state._in_forked_child = True
+    state.in_forked_child = True
 
     # Temporarily ignore SIGTTOU to avoid being stopped during setup
     signal.signal(signal.SIGTTOU, signal.SIG_IGN)

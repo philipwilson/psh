@@ -188,7 +188,7 @@ All forked child processes apply the unified signal policy via
 `apply_child_signal_policy()` in `child_policy.py`. This is the single
 source of truth for child signal setup:
 
-1. Set `state._in_forked_child = True`
+1. Set `state.in_forked_child = True`
 2. Temporarily ignore SIGTTOU (prevents STOP during setup)
 3. Reset all signals to SIG_DFL via `signal_manager.reset_child_signals()`
 4. If `is_shell_process=True`: re-ignore SIGTTOU

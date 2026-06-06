@@ -4,6 +4,12 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.223.0 (2026-06-06) - First-class in_forked_child state (study #14)
+- Promote the private `ShellState._in_forked_child` to the public, always-present
+  `ShellState.in_forked_child`. Readers across builtins/executor/expansion now
+  access it directly instead of via defensive `hasattr`/`getattr`, removing the
+  private-API leak tracked as Phase 2 study finding #14. No behaviour change.
+
 ## 0.222.0 (2026-06-06) - Promote array-element setter to public API
 - Internal cleanup (no behaviour change): the nameref array-element write path
   added in 0.221.0 reached into a private `VariableExpander._set_var_or_array_element`

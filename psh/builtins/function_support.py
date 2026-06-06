@@ -405,7 +405,7 @@ class DeclareBuiltin(Builtin):
 
         # Use pipeline-aware output (like echo builtin)
         import os
-        if hasattr(shell.state, '_in_forked_child') and shell.state._in_forked_child:
+        if shell.state.in_forked_child:
             # In child process (pipeline), write directly to fd 1
             output_bytes = (declaration_str + '\n').encode('utf-8', errors='replace')
             os.write(1, output_bytes)

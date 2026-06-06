@@ -232,7 +232,7 @@ class PrintBuiltin(Builtin):
 
     def _write(self, text: str, fd: int, shell: 'Shell') -> None:
         """Write ``text`` to the requested file descriptor."""
-        is_forked_child = getattr(shell.state, '_in_forked_child', False)
+        is_forked_child = shell.state.in_forked_child
 
         # fd 1 in the parent process should go through shell.stdout so
         # redirections and capture work; same for fd 2 and shell.stderr.

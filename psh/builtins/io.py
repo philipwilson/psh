@@ -168,14 +168,14 @@ class EchoBuiltin(Builtin):
 
         # DEBUG: Log output method
         if shell.state.options.get('debug-exec'):
-            print(f"DEBUG EchoBuiltin: _in_forked_child={getattr(shell.state, '_in_forked_child', False)}", file=sys.stderr)
+            print(f"DEBUG EchoBuiltin: in_forked_child={shell.state.in_forked_child}", file=sys.stderr)
             print(f"DEBUG EchoBuiltin: shell.stdout={getattr(shell, 'stdout', 'N/A')}", file=sys.stderr)
             print(f"DEBUG EchoBuiltin: shell.state.stdout={getattr(shell.state, 'stdout', 'N/A')}", file=sys.stderr)
             print(f"DEBUG EchoBuiltin: sys.stdout={sys.stdout}", file=sys.stderr)
             print(f"DEBUG EchoBuiltin: Writing text: {repr(text[:50])}", file=sys.stderr)
 
         # Check if we're in a child process (forked for pipeline/background)
-        is_forked_child = hasattr(shell.state, '_in_forked_child') and shell.state._in_forked_child
+        is_forked_child = shell.state.in_forked_child
 
         if is_forked_child:
             # In a forked child, write directly to fd 1 (the pipe/redirect target)
@@ -332,7 +332,7 @@ class PrintfBuiltin(Builtin):
     def _write_output(self, text: str, shell: 'Shell'):
         """Write output to appropriate file descriptor."""
         # Check if we're in a child process (forked for pipeline/background)
-        is_forked_child = hasattr(shell.state, '_in_forked_child') and shell.state._in_forked_child
+        is_forked_child = shell.state.in_forked_child
 
         if is_forked_child:
             # In a forked child, write directly to fd 1 (the pipe/redirect target)
@@ -790,7 +790,7 @@ class PwdBuiltin(Builtin):
         try:
             cwd = os.getcwd()
             # Check if we're in a child process (forked for pipeline/background)
-            is_forked_child = hasattr(shell.state, '_in_forked_child') and shell.state._in_forked_child
+            is_forked_child = shell.state.in_forked_child
 
             if is_forked_child:
                 # In a forked child, write directly to fd 1 (the pipe/redirect target)
