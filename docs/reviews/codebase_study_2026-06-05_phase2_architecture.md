@@ -209,6 +209,27 @@ cannot tell which is authoritative and a fix to one silently leaves the others w
 Large amounts of unused or never-triggered machinery mislead readers into thinking features
 exist or paths run when they do not.
 
+> **Resolution (v0.197.0–v0.232.0).** Removed: parser-side validation subsystem
+> (#8, v0.197.0); readline completion/history (#7, v0.211.0); ExecutionContext
+> dead factories/fields (#17, v0.212.0); OptionHandler dead methods (#16,
+> v0.213.0); HeredocHandler + `IOManager._saved_fds` (v0.228.0);
+> `ShellState._original_signal_handlers`, `SignalManager._interactive_mode` /
+> `get_sigchld_fd`, the unreachable `CommandList` branch (v0.229.0); the scripting
+> `ScriptComponent.execute` abstraction + four forwarders + unused
+> `expansion_manager` (v0.230.0); the never-enabled validator
+> arithmetic-suppression toggle/config + the `_is_piped_to_shell` curl|sh stub
+> (v0.231.0); and the unused `QuoteParsingContext.parse_quote_at_position` /
+> `get_quote_rules` (v0.232.0).
+>
+> **Verified NOT removable (kept):** the near-dead string-based array helpers were
+> already consolidated by the dual-engine work (v0.196.0) and are now live; the
+> `SignalRegistry` diagnostic API, the `ParserProfiler`, and the speculative
+> `LexerConfig` knobs are exercised by dedicated tests / tested `create_*_config`
+> presets, so they are tested-but-dormant rather than cruft; `LexerErrorHandler`
+> has a package-API existence test; the ParserContext heredoc trackers are
+> actively used by the RD parser (a §1.3 dedup concern, not dead code).
+> `SecurityIssue.node` was kept as a plausible result-object field.
+
 - **Parser-side validation subsystem (~1311 LOC) dormant**, duplicating the visitor validators
   production actually uses: `psh/parser/validation/` (all files);
   `psh/parser/recursive_descent/parser.py:176-221`; `psh/parser/config.py:55-57`.
