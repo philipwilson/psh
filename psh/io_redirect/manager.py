@@ -115,38 +115,22 @@ class IOManager:
                 content = self.file_redirector._redirect_herestring(redirect)
                 sys.stdin = io.StringIO(content)
             elif redirect.type == '>|':
-                target_fd = redirect.fd if redirect.fd is not None else 1
-                if target_fd == 1:
-                    stdout_backup = sys.stdout
-                    sys.stdout = open(target, 'w')
-                elif target_fd == 2:
-                    stderr_backup = sys.stderr
-                    sys.stderr = open(target, 'w')
-                else:
-                    # fd >= 3: operate on the real descriptor, not sys.stdout.
-                    saved_fds = self.file_redirector.apply_redirections([redirect])
-                    self._saved_fds_list.extend(saved_fds)
+                sb, eb = self._redirect_builtin_output_file(target, 'w', redirect,
+                                                            check_noclobber=False)
+                if sb is not None: stdout_backup = sb
+                if eb is not None: stderr_backup = eb
             elif redirect.type in ('>', '>>'):
-                target_fd = redirect.fd if redirect.fd is not None else 1
                 mode = 'w' if redirect.type == '>' else 'a'
-                if redirect.type == '>':
-                    self.file_redirector._check_noclobber(target)
-                if target_fd == 1:
-                    stdout_backup = sys.stdout
-                    sys.stdout = open(target, mode)
-                    if self.state.options.get('debug-exec'):
-                        action = "Redirected stdout" if redirect.type == '>' else "Redirected stdout (append)"
-                        print(f"DEBUG IOManager: {action} to file '{target}'", file=sys.stderr)
-                        print(f"DEBUG IOManager: sys.stdout is now {sys.stdout}", file=sys.stderr)
-                elif target_fd == 2:
-                    stderr_backup = sys.stderr
-                    sys.stderr = open(target, mode)
-                else:
-                    # fd >= 3: operate on the real descriptor, not sys.stdout.
-                    saved_fds = self.file_redirector.apply_redirections([redirect])
-                    self._saved_fds_list.extend(saved_fds)
+                sb, eb = self._redirect_builtin_output_file(
+                    target, mode, redirect, check_noclobber=(redirect.type == '>'))
+                if sb is not None: stdout_backup = sb
+                if eb is not None: stderr_backup = eb
             elif redirect.type == '>&':
-                # Handle fd duplication like 2>&1, >&2, etc.
+                # Duplicate an output fd. For the common 2>&1 / 1>&2 cases swap
+                # the Python stream objects so a builtin's writes (which go to
+                # sys.stdout/sys.stderr, not raw fds) interleave correctly and
+                # honour redirect ordering. Any other dup (fd>=3, n>&m) is rare
+                # for a builtin and handled at the fd level by FileRedirector.
                 if redirect.fd == 2 and redirect.dup_fd == 1:
                     stderr_backup = sys.stderr
                     sys.stderr = sys.stdout
@@ -161,6 +145,35 @@ class IOManager:
                 self._saved_fds_list.extend(saved_fds)
 
         return stdin_backup, stdout_backup, stderr_backup, stdin_fd_backup
+
+    def _redirect_builtin_output_file(self, target, mode, redirect,
+                                      check_noclobber):
+        """Point an output fd at a file for a builtin (`>`, `>>`, `>|`).
+
+        For fd 1/2 the Python stream object is swapped (builtins write to
+        sys.stdout/sys.stderr, not raw fds); for fd>=3 the write is done at the
+        descriptor level via FileRedirector. Returns
+        ``(stdout_backup, stderr_backup)`` with at most one set.
+        """
+        if check_noclobber:
+            self.file_redirector._check_noclobber(target)
+        target_fd = redirect.fd if redirect.fd is not None else 1
+        if target_fd == 1:
+            backup = sys.stdout
+            sys.stdout = open(target, mode)
+            if self.state.options.get('debug-exec'):
+                print(f"DEBUG IOManager: redirected stdout to '{target}' "
+                      f"(mode {mode!r}); sys.stdout is now {sys.stdout}",
+                      file=sys.stderr)
+            return backup, None
+        if target_fd == 2:
+            backup = sys.stderr
+            sys.stderr = open(target, mode)
+            return None, backup
+        # fd >= 3: operate on the real descriptor, not sys.stdout.
+        saved_fds = self.file_redirector.apply_redirections([redirect])
+        self._saved_fds_list.extend(saved_fds)
+        return None, None
 
     def restore_builtin_redirections(self, stdin_backup, stdout_backup, stderr_backup, stdin_fd_backup=None):
         """Restore original stdin/stdout/stderr after built-in execution"""
