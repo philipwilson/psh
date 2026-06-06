@@ -18,7 +18,13 @@ from ..ast_nodes import (
     SimpleCommand,
     TopLevel,
 )
-from .constants import COMMON_TYPOS, DANGEROUS_COMMANDS, SHELL_BUILTINS
+from .analysis_helpers import has_unquoted_expansion
+from .constants import (
+    COMMON_TYPOS,
+    DANGEROUS_COMMANDS,
+    NUMERIC_COMPARISON_OPERATORS,
+    SHELL_BUILTINS,
+)
 from .validator_visitor import ValidatorVisitor
 
 
@@ -409,13 +415,13 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                 continue
 
             # Check unquoted variables
-            if not word.is_quoted and '$' in arg:
+            if has_unquoted_expansion(word, arg):
                 # Skip if in arithmetic context
                 if self._in_arithmetic_context:
                     continue
 
                 # Skip numeric comparisons
-                if i > 0 and node.args[i-1] in ['-eq', '-ne', '-lt', '-le', '-gt', '-ge']:
+                if i > 0 and node.args[i-1] in NUMERIC_COMPARISON_OPERATORS:
                     continue
 
                 # Skip if it looks like an assignment

@@ -11,7 +11,8 @@ from typing import List, Optional, Set
 
 from ..ast_nodes import ASTNode, FunctionDef, IfConditional, Pipeline, SimpleCommand, TopLevel
 from .base import ASTVisitor
-from .constants import COMMON_COMMANDS, SHELL_BUILTINS
+from .constants import COMMON_COMMANDS, SHELL_BUILTINS, TEST_OPERATORS
+from .traversal import visit_children
 
 
 class LintLevel(Enum):
@@ -355,9 +356,7 @@ class LinterVisitor(ASTVisitor[None]):
             for i, arg in enumerate(args):
                 if arg.startswith('$') and ' ' not in arg:
                     # Check if it's in a context where it should be quoted
-                    if i > 0 and args[i-1] in ['-f', '-d', '-e', '-s', '-r', '-w', '-x',
-                                                '=', '!=', '-eq', '-ne', '-lt', '-le',
-                                                '-gt', '-ge']:
+                    if i > 0 and args[i-1] in TEST_OPERATORS:
                         self.add_issue(
                             LintLevel.WARNING,
                             f"Unquoted variable '{arg}' in test command",
@@ -392,15 +391,5 @@ class LinterVisitor(ASTVisitor[None]):
                     )
 
     def generic_visit(self, node: ASTNode) -> None:
-        """Visit all child nodes by default."""
-        import dataclasses
-        if not dataclasses.is_dataclass(node):
-            return
-        for f in dataclasses.fields(node):
-            attr = getattr(node, f.name, None)
-            if isinstance(attr, ASTNode):
-                self.visit(attr)
-            elif isinstance(attr, list):
-                for item in attr:
-                    if isinstance(item, ASTNode):
-                        self.visit(item)
+        """Descend into child nodes for unhandled node types."""
+        visit_children(self, node)

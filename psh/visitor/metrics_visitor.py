@@ -32,6 +32,7 @@ from ..ast_nodes import (
 )
 from .base import ASTVisitor
 from .constants import SHELL_BUILTINS
+from .traversal import visit_children
 
 
 class CodeMetrics:
@@ -561,13 +562,5 @@ Top Commands:
         return '\n'.join(lines) if lines else "  (none)"
 
     def generic_visit(self, node: ASTNode) -> None:
-        """Default visit for unhandled nodes."""
-        # Try to traverse child nodes generically
-        if hasattr(node, 'items'):
-            for item in node.items:
-                self.visit(item)
-        elif hasattr(node, 'statements'):
-            for stmt in node.statements:
-                self.visit(stmt)
-        elif hasattr(node, 'body'):
-            self.visit(node.body)
+        """Descend into child nodes for unhandled node types."""
+        visit_children(self, node)
