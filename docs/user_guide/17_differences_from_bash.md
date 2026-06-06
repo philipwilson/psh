@@ -4,7 +4,7 @@ While PSH implements many shell features compatible with Bash, there are importa
 
 ## 17.1 Supported Features Overview
 
-PSH v0.220.0 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
+PSH v0.221.0 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
 
 ### Shell Options
 
@@ -254,26 +254,27 @@ name=HOME
 echo "${!name}"       # value of $HOME
 ```
 
-Not yet supported: namerefs whose target is an *array element*
-(`declare -n e=arr[1]`) — see 17.2.
-
-## 17.2 Unimplemented Features
-
-The following Bash features are not available in PSH v0.220.0.
-
-### Nameref Targets That Are Array Elements
-
-Scalar namerefs and indirect expansion are supported (see 17.1). The remaining
-gap is a nameref whose *target is an array element*:
+Namerefs may also target an array element:
 
 ```bash
 arr=(p q r)
-declare -n e=arr[1]   # target is an array element - not yet supported
-echo "$e"             # bash: q
+declare -n e=arr[1]
+echo "$e"             # q
+e=Q; echo "${arr[@]}" # p Q r
 ```
 
-`${!prefix*}` / `${!prefix@}` variable-name prefix matching is also still
-unsupported (it currently lists all variables).
+## 17.2 Unimplemented Features
+
+The following Bash features are not available in PSH v0.221.0.
+
+### Variable-Name Prefix Matching (${!prefix*})
+
+```bash
+# ${!prefix*} / ${!prefix@} list variable names sharing a prefix - not
+# supported (psh currently lists all variables):
+PATH_A=1 PATH_B=2
+echo "${!PATH_*}"     # bash: PATH_A PATH_B
+```
 
 ### Associative Key/Value Transforms (${var@K}, ${var@k})
 
@@ -538,7 +539,7 @@ parser-select rd
 
 ```bash
 # PSH sets PSH_VERSION (not BASH_VERSION):
-echo $PSH_VERSION    # Shows: 0.220.0
+echo $PSH_VERSION    # Shows: 0.221.0
 
 # Detect PSH:
 if [ -n "$PSH_VERSION" ]; then
@@ -618,7 +619,7 @@ fi
 | History expansion (!!, !n) | Yes | No | Designators not implemented |
 | Coprocesses | Yes | No | Not implemented |
 | Programmable completion | Yes | No | Basic tab completion only |
-| Namerefs (declare -n / local -n) | Yes | Yes | Scalar targets; array-element targets not yet |
+| Namerefs (declare -n / local -n) | Yes | Yes | Scalar and array-element targets; chains; local -n |
 | Indirect expansion ${!var} | Yes | Yes | Scalar; ${!arr[@]} indices work; ${!prefix*} does not |
 | Parameter transforms ${var@Q/U/u/L/E/P/A/a} | Yes | Yes | Scalar, array, and positional |
 | Assoc key/value transforms ${var@K} / ${var@k} | Yes | No | Not implemented |
@@ -709,9 +710,8 @@ Most Bash scripts work without modification. Check for these issues:
 grep -E 'coproc|complete |compgen |caller' script.sh
 grep -E 'read .*-u' script.sh                 # read -u (fd) is unsupported
 
-# 2. Check for the unsupported @K/@k transforms and array-element namerefs
+# 2. Check for the unsupported @K/@k transforms
 grep -E '@[Kk]\}' script.sh                   # ${m[@]@K} / @k - not supported
-grep -E 'declare -n [A-Za-z_]+=[A-Za-z_]+\[' script.sh   # nameref to arr[i]
 
 # 3. Check for DEBUG/ERR/RETURN traps and history expansion
 grep -E 'trap .*(DEBUG|ERR|RETURN)' script.sh
@@ -726,7 +726,7 @@ grep 'set -euo' script.sh
 
 ```bash
 #!/usr/bin/env psh
-# PSH v0.220.0 Compatibility Checklist
+# PSH v0.221.0 Compatibility Checklist
 
 # Fully supported:
 # - Variables, arrays, associative arrays
@@ -754,10 +754,9 @@ grep 'set -euo' script.sh
 # - history builtin (interactive)
 # - mapfile / readarray (-d/-n/-O/-s/-t/-u)
 # - let (arithmetic evaluation)
-# - namerefs (declare -n / local -n) with scalar targets; ${!var} indirect
+# - namerefs (declare -n / local -n), scalar & array-element targets; ${!var}
 
 # Not supported:
-# - Namerefs whose target is an array element (declare -n e=arr[1])
 # - ${!prefix*} / ${!prefix@} variable-name prefix matching
 # - Associative transforms ${var@K} / ${var@k}
 #   (${var@Q/U/u/L/E/P/A/a} ARE supported)
@@ -795,17 +794,17 @@ This means:
 
 ## Summary
 
-PSH v0.220.0 provides near-complete Bash compatibility for everyday shell programming:
+PSH v0.221.0 provides near-complete Bash compatibility for everyday shell programming:
 
 1. **Comprehensive Feature Support**: Arrays, associative arrays, trap, wait, disown, all control structures, all expansions, extended globs, `=~` with BASH_REMATCH
 2. **Full Shell Options**: errexit, nounset, xtrace, pipefail, noclobber, allexport, and many more
-3. **Remaining Gaps**: array-element nameref targets, `${var@K}`/`@k` associative transforms, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `caller`, `wait -n`, the `time` keyword, `read -u`
+3. **Remaining Gaps**: `${var@K}`/`@k` associative transforms, `${!prefix*}` name matching, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `caller`, `wait -n`, the `time` keyword, `read -u`
 4. **Educational Tools**: Debug flags, script analysis, multiple parser implementations
 5. **High Compatibility**: Most Bash scripts run without modification
 
 Key differences to remember:
 - Use `set -eu -o pipefail` instead of `set -euo pipefail`
-- Namerefs (`declare -n`/`local -n`) and `${!var}` indirect expansion work for scalar targets; a nameref to an array element (`declare -n e=arr[1]`) is not yet supported
+- Namerefs (`declare -n`/`local -n`) support scalar and array-element targets, chains, and `local -n` pass-by-reference; `${!var}` indirect expansion works too
 - The `${var@Q/U/u/L/E/P/A/a}` transform operators are supported; only `${var@K}`/`${var@k}` (associative key/value display) are not
 - DEBUG/ERR/RETURN traps and history expansion (`!!`, `!n`) are not implemented
 - `caller` is not available (`let`, `mapfile`, `readarray` are supported)

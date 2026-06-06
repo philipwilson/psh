@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.221.0 (2026-06-06) - Namerefs Phase 2: array-element targets
+- **Namerefs whose target is an array element** now work, e.g.
+  `arr=(p q r); declare -n e=arr[1]`:
+  - read-through (`$e` → `q`, `${e^^}`, `${#e}`) and write-through
+    (`e=Q` sets `arr[1]`); associative-array elements too (`declare -n e=m[k]`);
+    `local -n el="a[0]"` pass-by-reference into a function.
+  - `${!e}` yields the subscripted target name (`arr[1]`).
+  - Implemented by resolving the nameref *name* at the expansion read helpers
+    (so a subscripted target flows into the existing array-element branch) and by
+    delegating subscripted writes from `set_variable` to the array-element setter.
+  - Minor documented difference: bash's `${#e}` returns 0 for a
+    nameref-to-element (a bash quirk); psh returns the element value's length.
+
 ## 0.220.0 (2026-06-06) - Name references (declare -n / local -n), Phase 1
 - **Namerefs** with scalar targets, matching bash:
   - `declare -n ref=target` / `local -n ref=$1` create a name reference.
