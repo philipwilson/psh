@@ -509,3 +509,13 @@ def pytest_addoption(parser):
         default=False,
         help="Run with strict test isolation (slower but more reliable)"
     )
+    # Must live in the ROOT conftest: pytest only honours pytest_addoption from
+    # the rootdir conftest (a copy in tests/behavioral/conftest.py was silently
+    # ignored on full-suite runs, so the golden bash-comparison tests could never
+    # be enabled). Run with: pytest tests/behavioral --compare-bash
+    parser.addoption(
+        "--compare-bash",
+        action="store_true",
+        default=False,
+        help="Also run each golden test against bash and compare output",
+    )

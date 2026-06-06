@@ -1,12 +1,8 @@
-"""Fixtures for behavioral golden tests."""
+"""Fixtures for behavioral golden tests.
 
-
-
-def pytest_addoption(parser):
-    """Add --compare-bash option for conformance verification."""
-    parser.addoption(
-        "--compare-bash",
-        action="store_true",
-        default=False,
-        help="Also run each golden test against bash and compare output",
-    )
+Note: the ``--compare-bash`` option is registered in the *root* conftest
+(``tests/conftest.py``), not here. pytest only honours ``pytest_addoption``
+from the rootdir conftest, so a copy here was silently ignored on full-suite
+runs (``pytest tests/``) and the golden bash-comparison tests could never be
+enabled. Run them with: ``pytest tests/behavioral --compare-bash``.
+"""

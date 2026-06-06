@@ -8,6 +8,7 @@ against psh. Optionally, results can be compared against bash with
 the --compare-bash flag.
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +17,20 @@ import pytest
 import yaml
 
 CASES_FILE = Path(__file__).parent / "golden_cases.yaml"
+
+
+def _deterministic_env(env=None):
+    """Pin a C locale so glob collation etc. is reproducible across machines.
+
+    psh sorts glob results by ASCII codepoint; bash honours LC_COLLATE, so in a
+    UTF-8 locale `echo *` diverges purely on sort order (a dictionary vs. ASCII
+    difference, not a real behavioural one). Forcing LC_ALL=C makes both agree
+    and keeps the comparison meaningful regardless of the developer's locale.
+    """
+    base = dict(os.environ if env is None else env)
+    base["LC_ALL"] = "C"
+    base["LANG"] = "C"
+    return base
 
 
 def _load_cases():
@@ -39,7 +54,7 @@ def _run_psh(command: str, *, env=None, timeout=10):
         capture_output=True,
         text=True,
         timeout=timeout,
-        env=env,
+        env=_deterministic_env(env),
     )
     return result.stdout, result.stderr, result.returncode
 
@@ -51,7 +66,7 @@ def _run_bash(command: str, *, env=None, timeout=10):
         capture_output=True,
         text=True,
         timeout=timeout,
-        env=env,
+        env=_deterministic_env(env),
     )
     return result.stdout, result.stderr, result.returncode
 

@@ -139,6 +139,13 @@ Examples:
     )
 
     parser.add_argument(
+        '--compare-bash',
+        action='store_true',
+        help='Additionally run the golden behavioral cases against bash and '
+             'compare output (requires bash on PATH). Adds a comparison phase.'
+    )
+
+    parser.add_argument(
         'pytest_args',
         nargs='*',
         help='Additional arguments to pass to pytest'
@@ -262,6 +269,18 @@ Examples:
             ]
 
             exit_code = run_command(cmd, "Phase 3: Other tests needing -s", env=env)
+            exit_codes.append(exit_code)
+
+        # Phase 4 (opt-in): golden behavioral cases compared against bash.
+        # Gated behind --compare-bash because it requires bash on PATH; the
+        # comparison itself is locale-pinned (LC_ALL=C) so it is deterministic.
+        if args.compare_bash:
+            cmd = base_cmd + [
+                'tests/behavioral/test_golden_behavior.py',
+                '--compare-bash',
+            ]
+            exit_code = run_command(
+                cmd, "Phase 4: Golden behavioral comparison vs bash", env=env)
             exit_codes.append(exit_code)
 
     # Summary
