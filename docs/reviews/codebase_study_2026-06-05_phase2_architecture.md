@@ -84,6 +84,30 @@ sibling component's underscore-prefixed methods or internal storage, so the depe
 component cannot be refactored without silent breakage, and the real public contract is
 obscured.
 
+> **Resolution (v0.223.0–v0.236.0).** All listed instances have been promoted to
+> public API or otherwise removed:
+> - `_in_forked_child` → public `ShellState.in_forked_child` (#14, v0.223.0).
+> - executor → `ExpansionManager.expand_expansion` / `process_dquote_escapes`
+>   (#15, v0.224.0).
+> - combinator → `WordBuilder.has_decomposable_parts` /
+>   `token_part_to_word_part` (#20, v0.226.0).
+> - cross-builtin privates → `TestBuiltin.evaluate_test`/`evaluate_unary`,
+>   `ParserConfigBuiltin.set_mode`, `PrintfBuiltin.process_format_string_posix`
+>   (#21, v0.227.0); the executor's TestBuiltin reach uses `evaluate_unary` too.
+> - core array internals → `IndexedArray.next_index()`/`__contains__`,
+>   `AssociativeArray.__contains__` (v0.233.0).
+> - SignalManager → `TrapManager.get_handler()` (v0.234.0).
+> - rc_loader's direct `shell.variables['0']` write was a no-op (snapshot dict)
+>   and was removed (v0.235.0).
+> - scripting/ast_debug/parser-select/__main__/print-s → `Shell.active_parser`
+>   property and `Shell.add_history()` (v0.236.0).
+> - the lexer `self.parser._create_literal_part` cross-reach went away with the
+>   dead `parse_quote_at_position` removal (v0.232.0).
+>
+> Remaining (intentional, not leaks): `SecurityIssue.node` (kept as a result
+> field) and a single `interactive_manager.history_manager.save_to_file()` call
+> on exit (distinct from the routed `add_to_history`).
+
 - Builtins call sibling builtins' private methods:
   - `psh/builtins/test_command.py:411-412` — `TestBuiltin()._evaluate_test`
   - `psh/builtins/parser_control.py:278-279` — `ParserConfigBuiltin()._set_mode`
