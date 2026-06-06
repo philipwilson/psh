@@ -308,12 +308,6 @@ class ExecutorVisitor(ASTVisitor[int]):
     def generic_visit(self, node: ASTNode) -> int:
         """Fallback for unimplemented node types."""
         node_name = type(node).__name__
-
-        # Try to handle some common unimplemented nodes
-        if node_name == "CommandList":
-            # CommandList is likely an alias for StatementList
-            return self.visit_StatementList(node)
-
         print(f"ExecutorVisitor: Unimplemented node type: {node_name}",
               file=sys.stderr)
         return 1

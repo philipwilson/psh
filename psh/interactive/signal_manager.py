@@ -14,7 +14,6 @@ class SignalManager(InteractiveComponent):
     def __init__(self, shell):
         super().__init__(shell)
         self._original_handlers: Dict[int, Callable] = {}
-        self._interactive_mode = not shell.state.is_script_mode
 
         # Self-pipe for safe SIGCHLD handling
         self._sigchld_notifier = SignalNotifier()
@@ -203,16 +202,6 @@ class SignalManager(InteractiveComponent):
                     break
         finally:
             self._in_sigchld_processing = False
-
-    def get_sigchld_fd(self) -> int:
-        """Get file descriptor for SIGCHLD notifications.
-
-        Can be used with select() to wait for child events in event loops.
-
-        Returns:
-            Read file descriptor for SIGCHLD notifications
-        """
-        return self._sigchld_notifier.get_fd()
 
     def _handle_sigwinch(self, signum, frame):
         """Handle terminal resize signal - async-signal-safe.

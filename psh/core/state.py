@@ -144,10 +144,6 @@ class ShellState:
         # Maps signal names (e.g., 'INT', 'TERM', 'EXIT') to trap command strings
         self.trap_handlers = {}
 
-        # Original signal handlers for restoration
-        # Used when traps are removed to restore original behavior
-        self._original_signal_handlers = {}
-
         # Detect terminal capabilities after initialization
         self._detect_terminal_capabilities()
 
