@@ -315,43 +315,6 @@ class QuoteParsingContext:
         self.config = config
         self.parser = UnifiedQuoteParser()
 
-    def parse_quote_at_position(
-        self,
-        pos: int,
-        quote_char: str
-    ) -> Tuple[List[TokenPart], int, bool]:
-        """
-        Parse a quoted string starting at the given position.
-
-        Args:
-            pos: Position of the opening quote
-            quote_char: The quote character found
-
-        Returns:
-            Tuple of (token_parts, position_after_quote, found_closing)
-        """
-        rules = QUOTE_RULES.get(quote_char)
-        if not rules:
-            # Unknown quote type - treat as literal
-            return [self.parser._create_literal_part(quote_char, pos, pos + 1, None)], pos + 1, True
-
-        # Check if quote type is enabled in configuration
-        if self.config:
-            if quote_char == '"' and not self.config.enable_double_quotes:
-                return [self.parser._create_literal_part(quote_char, pos, pos + 1, None)], pos + 1, True
-            elif quote_char == "'" and not self.config.enable_single_quotes:
-                return [self.parser._create_literal_part(quote_char, pos, pos + 1, None)], pos + 1, True
-            elif quote_char == '`' and not self.config.enable_backtick_quotes:
-                return [self.parser._create_literal_part(quote_char, pos, pos + 1, None)], pos + 1, True
-
-        # Parse the quoted string
-        return self.parser.parse_quoted_string(
-            self.input_text,
-            pos + 1,  # Skip opening quote
-            rules,
-            self.position_tracker
-        )
-
     def is_quote_character(self, char: str) -> bool:
         """Check if character is a supported quote character."""
         if not self.config:
@@ -366,9 +329,5 @@ class QuoteParsingContext:
             return self.config.enable_backtick_quotes
 
         return False
-
-    def get_quote_rules(self, quote_char: str) -> Optional[QuoteRules]:
-        """Get quote rules for a character."""
-        return QUOTE_RULES.get(quote_char)
 
 

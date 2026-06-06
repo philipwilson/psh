@@ -340,7 +340,7 @@ See `docs/test_pattern_guide.md` for examples and patterns.
 
 ## Current Development Status
 
-**Version**: 0.231.0 (see CHANGELOG.md for detailed history)
+**Version**: 0.232.0 (see CHANGELOG.md for detailed history)
 
 ## Debugging Tips
 
