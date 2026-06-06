@@ -11,7 +11,12 @@ This module handles the execution of simple commands, including:
 import sys
 from typing import TYPE_CHECKING, List, Tuple
 
-from ..core import extract_assignments, is_exported, is_valid_assignment
+from ..core import (
+    ReadonlyVariableError,
+    extract_assignments,
+    is_exported,
+    is_valid_assignment,
+)
 from .strategies import (
     AliasExecutionStrategy,
     BuiltinExecutionStrategy,
@@ -183,7 +188,7 @@ class CommandExecutor:
         except Exception as e:
             # Import these here to avoid circular imports
             from ..builtins import FunctionReturn
-            from ..core import ExpansionError, LoopBreak, LoopContinue, ReadonlyVariableError
+            from ..core import ExpansionError, LoopBreak, LoopContinue
 
             # Re-raise control flow exceptions
             if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue, SystemExit)):
@@ -202,6 +207,12 @@ class CommandExecutor:
                     sys.exit(expansion_exit_code)
                 return expansion_exit_code
 
+            # Last-resort guard: anything else is likely an internal defect.
+            # Keep the shell alive but surface the traceback under --debug-exec
+            # so the bug isn't hidden behind the generic message.
+            if self.state.options.get('debug-exec'):
+                import traceback
+                traceback.print_exc(file=sys.stderr)
             print(f"psh: {e}", file=sys.stderr)
             return 1
 
@@ -316,7 +327,7 @@ class CommandExecutor:
                 # Values are already expanded in execute()
                 try:
                     self.state.set_variable(var, value)
-                except Exception:
+                except ReadonlyVariableError:
                     print(f"psh: {var}: readonly variable", file=self.state.stderr)
                     return 1
 
@@ -345,9 +356,8 @@ class CommandExecutor:
                 self.state.set_variable(var, value)
                 # Also set in shell.env for external commands
                 self.shell.env[var] = value
-            except Exception:
-                from ..core import ReadonlyVariableError
-                raise ReadonlyVariableError(var)
+            except ReadonlyVariableError:
+                raise
 
         return saved_vars
 

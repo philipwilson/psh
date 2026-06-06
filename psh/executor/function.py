@@ -111,6 +111,11 @@ class FunctionOperationExecutor:
             # Let unbound variable errors propagate
             raise
         except Exception as e:
+            # Last-resort guard: surface the traceback under --debug-exec so a
+            # defect inside the function body isn't hidden.
+            if self.shell.state.options.get('debug-exec'):
+                import traceback
+                traceback.print_exc(file=sys.stderr)
             print(f"psh: {name}: {e}", file=sys.stderr)
             return 1
         finally:

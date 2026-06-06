@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.215.0 (2026-06-06) - Stop hiding defects in executor error guards
+- **Executor broad-except guards** (study triage #13) — tightened the executor's
+  `except Exception` boundaries so internal defects are no longer silently
+  reported as `psh: <msg>` (exit 1):
+  - The two `set_variable` guards in `command.py` (standalone and command-prefix
+    assignments) now catch only `ReadonlyVariableError` instead of any exception.
+  - The genuine last-resort guards (simple-command boundary, both builtin-exec
+    strategies, function-body boundary) keep the broad catch for REPL resilience
+    but now print the traceback under `--debug-exec`, matching the
+    ProcessLauncher and source-processor guards. Control-flow exceptions still
+    propagate.
+- Added regression tests (readonly assignment paths; an injected builtin defect
+  is reported without a traceback by default and with one under `--debug-exec`).
+  This was the last of the study's high/medium triage items.
+
 ## 0.214.0 (2026-06-06) - Narrow array-index exception handling
 - **Stop swallowing defects in array subscripts** (study triage #4) — the
   remaining four array-index sites in `expansion/variable.py` (subscript
