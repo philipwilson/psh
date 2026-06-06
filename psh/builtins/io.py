@@ -246,14 +246,14 @@ class PrintfBuiltin(Builtin):
 
         try:
             # Process format string with POSIX-compliant behavior
-            output = self._process_format_string_posix(format_str, arguments)
+            output = self.process_format_string_posix(format_str, arguments)
             self._write_output(output, shell)
             return 0
         except (ValueError, TypeError, KeyError) as e:
             self.error(f"printf: {str(e)}", shell)
             return 1
 
-    def _process_format_string_posix(self, format_str: str, arguments: list) -> str:
+    def process_format_string_posix(self, format_str: str, arguments: list) -> str:
         """Process format string with POSIX-compliant behavior including argument cycling."""
         if not arguments:
             # No arguments - just process escape sequences in format string

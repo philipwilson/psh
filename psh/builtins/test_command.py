@@ -69,9 +69,9 @@ class TestBuiltin(Builtin):
         """Execute the test builtin."""
         # Remove 'test' from args
         test_args = args[1:]
-        return self._evaluate_test(test_args, shell)
+        return self.evaluate_test(test_args, shell)
 
-    def _evaluate_test(self, args: List[str], shell: 'Shell') -> int:
+    def evaluate_test(self, args: List[str], shell: 'Shell') -> int:
         """Evaluate test expression."""
         if not args:
             return 1  # False
@@ -109,7 +109,7 @@ class TestBuiltin(Builtin):
         if len(args) == 2:
             # Unary operators
             op, arg = args
-            return self._evaluate_unary(op, arg, shell)
+            return self.evaluate_unary(op, arg, shell)
 
         if len(args) == 3:
             # Binary operators
@@ -182,7 +182,7 @@ class TestBuiltin(Builtin):
         self.error("missing ')'", shell)
         return 2
 
-    def _evaluate_unary(self, op: str, arg: str, shell: 'Shell') -> int:
+    def evaluate_unary(self, op: str, arg: str, shell: 'Shell') -> int:
         """Evaluate unary operators."""
         if op == '-z':
             # True if string is empty
@@ -409,4 +409,4 @@ class BracketBuiltin(Builtin):
         # Remove [ and ], then evaluate as test
         test_args = args[1:-1]
         test_builtin = TestBuiltin()
-        return test_builtin._evaluate_test(test_args, shell)
+        return test_builtin.evaluate_test(test_args, shell)

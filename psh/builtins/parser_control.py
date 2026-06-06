@@ -75,11 +75,11 @@ class ParserConfigBuiltin(Builtin):
             if len(args) < 3:
                 self.error("mode requires an argument", shell)
                 return 2
-            return self._set_mode(args[2], shell)
+            return self.set_mode(args[2], shell)
         elif command == "strict":
-            return self._set_mode("posix", shell)
+            return self.set_mode("posix", shell)
         elif command == "permissive":
-            return self._set_mode("permissive", shell)
+            return self.set_mode("permissive", shell)
         elif command == "enable":
             if len(args) < 3:
                 self.error("enable requires a feature name", shell)
@@ -126,7 +126,7 @@ class ParserConfigBuiltin(Builtin):
 
         return 0
 
-    def _set_mode(self, mode: str, shell) -> int:
+    def set_mode(self, mode: str, shell) -> int:
         """Set parsing mode."""
         mode = mode.lower()
 
@@ -252,4 +252,4 @@ class ParserModeBuiltin(Builtin):
 
         # Delegate to parser-config builtin
         config_builtin = ParserConfigBuiltin()
-        return config_builtin._set_mode(mode, shell)
+        return config_builtin.set_mode(mode, shell)

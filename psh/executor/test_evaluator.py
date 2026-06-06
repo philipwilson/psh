@@ -49,7 +49,7 @@ class TestExpressionEvaluator:
         if isinstance(expr, BinaryTestExpression):
             return self._evaluate_binary_test(expr)
         elif isinstance(expr, UnaryTestExpression):
-            return self._evaluate_unary_test(expr)
+            return self.evaluate_unary_test(expr)
         elif isinstance(expr, CompoundTestExpression):
             return self._evaluate_compound_test(expr)
         elif isinstance(expr, NegatedTestExpression):
@@ -154,7 +154,7 @@ class TestExpressionEvaluator:
         from ..expansion.glob import normalize_bracket_expressions
         return fnmatch.fnmatch(string, normalize_bracket_expressions(pattern))
 
-    def _evaluate_unary_test(self, expr: UnaryTestExpression) -> bool:
+    def evaluate_unary_test(self, expr: UnaryTestExpression) -> bool:
         """Evaluate unary test expression."""
         # Handle -v operator specially since it needs shell state
         if expr.operator == '-v':
@@ -169,8 +169,8 @@ class TestExpressionEvaluator:
         test_cmd = TestBuiltin()
 
         # Reuse the existing unary operator implementation
-        # Note: _evaluate_unary returns 0 for true, 1 for false (shell convention)
-        result = test_cmd._evaluate_unary(expr.operator, operand, self.shell)
+        # Note: evaluate_unary returns 0 for true, 1 for false (shell convention)
+        result = test_cmd.evaluate_unary(expr.operator, operand, self.shell)
         return result == 0
 
     def _evaluate_compound_test(self, expr: CompoundTestExpression) -> bool:
