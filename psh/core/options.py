@@ -9,42 +9,12 @@ if TYPE_CHECKING:
 
 
 class OptionHandler:
-    """Handle shell option behaviors."""
+    """Handle shell option behaviors.
 
-    @staticmethod
-    def should_exit_on_error(state: 'ShellState', in_conditional: bool = False,
-                           in_pipeline: bool = False, is_negated: bool = False) -> bool:
-        """
-        Check if shell should exit on command failure.
-
-        Args:
-            state: Shell state
-            in_conditional: True if command is in if/while/&&/|| context
-            in_pipeline: True if command is part of a pipeline (not the last)
-            is_negated: True if command is negated with !
-
-        Returns:
-            True if shell should exit due to errexit
-        """
-        if not state.options.get('errexit', False):
-            return False
-
-        # Don't exit in conditional contexts
-        if in_conditional:
-            return False
-
-        # Don't exit for negated commands
-        if is_negated:
-            return False
-
-        # Don't exit for non-final pipeline commands (unless pipefail is set)
-        if in_pipeline and not state.options.get('pipefail', False):
-            return False
-
-        # Don't exit if in a function and a return statement was used
-        # (This is handled by the LoopReturn exception mechanism)
-
-        return True
+    errexit (set -e) and pipefail policy live in the executor (errexit is
+    enforced structurally at statement-list level; pipefail is computed inline
+    in the pipeline executor), so they are not duplicated here.
+    """
 
     @staticmethod
     def check_unset_variable(state: 'ShellState', var_name: str,
@@ -105,28 +75,3 @@ class OptionHandler:
         trace_line = ps4 + ' '.join(str(part) for part in command_parts)
         print(trace_line, file=state.stderr)
         state.stderr.flush()  # Ensure trace appears before command output
-
-    @staticmethod
-    def get_pipeline_exit_code(state: 'ShellState', exit_codes: list) -> int:
-        """
-        Get the exit code for a pipeline based on pipefail option.
-
-        Args:
-            state: Shell state
-            exit_codes: List of exit codes from pipeline commands
-
-        Returns:
-            Exit code for the pipeline
-        """
-        if not exit_codes:
-            return 0
-
-        if state.options.get('pipefail', False):
-            # Return rightmost non-zero exit status, or 0 if all succeeded
-            for code in reversed(exit_codes):
-                if code != 0:
-                    return code
-            return 0
-        else:
-            # Default: return status of last command
-            return exit_codes[-1]
