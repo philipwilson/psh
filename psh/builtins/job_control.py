@@ -38,11 +38,11 @@ class JobsBuiltin(Builtin):
             for job_id in sorted(shell.job_manager.jobs.keys()):
                 job = shell.job_manager.jobs[job_id]
                 for proc in job.processes:
-                    print(proc.pid)
+                    print(proc.pid, file=shell.stdout)
         else:
             # Use list_jobs() method from JobManager
             for line in shell.job_manager.list_jobs():
-                print(line)
+                print(line, file=shell.stdout)
         return 0
 
 
@@ -74,7 +74,7 @@ class FgBuiltin(Builtin):
                 return 1
 
         # Print the command being resumed
-        print(job.command)
+        print(job.command, file=shell.stdout)
 
         # Give it terminal control FIRST before sending SIGCONT (H5)
         shell.job_manager.set_foreground_job(job)
@@ -148,7 +148,7 @@ class BgBuiltin(Builtin):
 
             # Send SIGCONT to resume
             os.killpg(job.pgid, signal.SIGCONT)
-            print(f"[{job.job_id}]+ {job.command} &")
+            print(f"[{job.job_id}]+ {job.command} &", file=shell.stdout)
         return 0
 
 

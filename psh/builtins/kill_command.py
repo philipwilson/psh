@@ -110,7 +110,7 @@ class KillBuiltin(Builtin):
         signal_num, targets, list_signals = self._parse_args(args[1:])
 
         if list_signals:
-            return self._list_signals(targets)
+            return self._list_signals(targets, shell)
 
         if not targets:
             print("kill: no process specified", file=sys.stderr)
@@ -257,7 +257,7 @@ class KillBuiltin(Builtin):
         # Return 0 if at least one signal was sent successfully
         return 0 if success_count > 0 else 1
 
-    def _list_signals(self, exit_statuses: List[str]) -> int:
+    def _list_signals(self, exit_statuses: List[str], shell: 'Shell') -> int:
         """List signal names, optionally for specific exit statuses."""
         if not exit_statuses:
             # List all signals
@@ -271,7 +271,7 @@ class KillBuiltin(Builtin):
             # Print in columns
             for i in range(0, len(signal_names), 4):
                 row = signal_names[i:i+4]
-                print('\t'.join(f"{name:<15}" for name in row))
+                print('\t'.join(f"{name:<15}" for name in row), file=shell.stdout)
 
             return 0
 
@@ -283,11 +283,11 @@ class KillBuiltin(Builtin):
                     # Exit status from signal = 128 + signal_number
                     signal_num = exit_status - 128
                     if signal_num in SIGNAL_NUMBERS:
-                        print(f"SIG{SIGNAL_NUMBERS[signal_num]}")
+                        print(f"SIG{SIGNAL_NUMBERS[signal_num]}", file=shell.stdout)
                     else:
-                        print(f"{signal_num}")
+                        print(f"{signal_num}", file=shell.stdout)
                 else:
-                    print(f"Exit status {exit_status} not from signal")
+                    print(f"Exit status {exit_status} not from signal", file=shell.stdout)
             except ValueError:
                 print(f"kill: {exit_str}: invalid exit status", file=sys.stderr)
                 return 1

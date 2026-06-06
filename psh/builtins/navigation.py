@@ -93,7 +93,7 @@ class CdBuiltin(Builtin):
 
             # If found via CDPATH, print the full path (bash behavior)
             if found_in_cdpath:
-                print(logical_new_dir)
+                print(logical_new_dir, file=shell.stdout)
 
             # Update PWD and OLDPWD environment variables and shell variables
             shell.env['OLDPWD'] = current_dir
@@ -108,7 +108,7 @@ class CdBuiltin(Builtin):
 
             # Print new directory for cd - command
             if print_new_dir:
-                print(logical_new_dir)
+                print(logical_new_dir, file=shell.stdout)
 
             return 0
         except FileNotFoundError:
