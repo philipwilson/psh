@@ -76,17 +76,50 @@ class TestMetrics:
         assert m.total_commands == 2  # [ ... ]  and  sleep
         assert m.total_loops == 1
 
-    def test_until_loop_condition_is_traversed(self):
-        # Regression: UntilLoop has no dedicated visitor, so it reaches
-        # generic_visit. The former under-traversing generic_visit skipped the
-        # loop condition; the shared traversal now visits it, so the condition's
-        # `[ -e f ]` command is counted (matching while-loop behavior).
+    def test_until_loop_counted_and_condition_traversed(self):
+        # Regression for two fixes: until loops are now counted in total_loops
+        # (a dedicated visit_UntilLoop was added, mirroring while), and their
+        # condition is traversed so its `[ -e f ]` command is counted.
         m = _metrics("until [ -e f ]; do sleep 1; done")
-        assert m.total_commands == 2
+        assert m.total_loops == 1
+        assert m.loop_types['until'] == 1
+        assert m.total_commands == 2  # [ ... ]  and  sleep
+
+    def test_until_and_while_counted_equivalently(self):
+        until = _metrics("until false; do :; done")
+        while_ = _metrics("while true; do :; done")
+        assert until.total_loops == while_.total_loops == 1
 
     def test_conditional_counts(self):
         m = _metrics("if [ -f x ]; then echo y; fi")
         assert m.total_conditionals == 1
+
+
+class TestBraceGroupPipeline:
+    """Regression: analysis visitors used to crash on a brace group in a
+    pipeline ('StatementList' object is not iterable) because the under-walking
+    generic_visit mishandled the group body. The shared traversal fixed it.
+    """
+
+    SCRIPTS = [
+        "{ echo a; } | tee log",
+        "{ echo a; echo b; } | tee log 2>&1",
+        "{ ls; } | { grep x; } | wc -l",
+        "( echo a; echo b ) | cat",
+    ]
+
+    def test_metrics_does_not_crash(self):
+        for src in self.SCRIPTS:
+            _metrics(src)  # must not raise
+
+    def test_security_does_not_crash(self):
+        for src in self.SCRIPTS:
+            _security_types(src)  # must not raise
+
+    def test_brace_group_inner_commands_counted(self):
+        # The two echoes inside the group plus the downstream tee.
+        m = _metrics("{ echo a; echo b; } | tee log")
+        assert m.total_commands == 3
 
 
 class TestSecurity:
