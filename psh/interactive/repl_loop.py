@@ -14,16 +14,13 @@ class REPLLoop(InteractiveComponent):
         super().__init__(shell)
         self.history_manager = None
         self.prompt_manager = None
-        self.completion_manager = None
         self.line_editor = None
         self.multi_line_handler = None
 
     def setup(self):
         """Set up the REPL environment."""
-        # Set up readline and tab completion
-        self.completion_manager.setup_readline()
-
-        # Set up line editor with current edit mode
+        # Set up line editor with current edit mode (tab completion is handled
+        # by the LineEditor's own CompletionEngine, not readline)
         self.line_editor = LineEditor(
             self.state.history,
             edit_mode=self.state.edit_mode
