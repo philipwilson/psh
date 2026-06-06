@@ -117,8 +117,8 @@ class SignalManager(InteractiveComponent):
 
         # Check if there's a user-defined trap for this signal
         if signal_name and hasattr(self.shell, 'trap_manager'):
-            if signal_name in self.shell.trap_manager.state.trap_handlers:
-                action = self.shell.trap_manager.state.trap_handlers[signal_name]
+            action = self.shell.trap_manager.get_handler(signal_name)
+            if action is not None:
                 if action == '':
                     # Signal is ignored
                     return

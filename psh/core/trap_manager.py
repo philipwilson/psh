@@ -1,6 +1,6 @@
 """Trap management for PSH shell."""
 import signal
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -133,6 +133,15 @@ class TrapManager:
     def remove_trap(self, signals: List[str]) -> int:
         """Remove trap handlers (same as set_trap with action '-')."""
         return self.set_trap('-', signals)
+
+    def get_handler(self, signal_spec: str) -> Optional[str]:
+        """Return the trap action set for a signal.
+
+        Returns None if no trap is set; the empty string means the signal is
+        ignored; otherwise the command string to run. Public accessor so callers
+        need not reach into ``state.trap_handlers``.
+        """
+        return self.state.trap_handlers.get(signal_spec)
 
     def execute_trap(self, signal_name: str):
         """Execute trap handler for given signal.
