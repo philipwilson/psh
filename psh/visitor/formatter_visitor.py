@@ -38,6 +38,7 @@ from ..ast_nodes import (
     # Control structures
     WhileLoop,
 )
+from ..ast_nodes import BraceGroup, SubshellGroup
 from .base import ASTVisitor
 
 
@@ -393,6 +394,27 @@ class FormatterVisitor(ASTVisitor[str]):
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> str:
         """Format an arithmetic command."""
         return f"{self._indent()}(({node.expression}))"
+
+    def visit_SubshellGroup(self, node: SubshellGroup) -> str:
+        """Format a subshell group ``( ... )``."""
+        return self._format_group(node, '(', ')')
+
+    def visit_BraceGroup(self, node: BraceGroup) -> str:
+        """Format a brace group ``{ ...; }``."""
+        return self._format_group(node, '{', '}')
+
+    def _format_group(self, node, opener: str, closer: str) -> str:
+        """Shared multi-line formatting for subshell / brace groups."""
+        lines = [self._indent() + opener]
+        self._increase_indent()
+        lines.append(self.visit(node.statements))
+        self._decrease_indent()
+        lines.append(self._indent() + closer)
+        if node.redirects:
+            lines[-1] += ' ' + ' '.join(self.visit(r) for r in node.redirects)
+        if node.background:
+            lines[-1] += ' &'
+        return '\n'.join(lines)
 
     # Test expressions
 

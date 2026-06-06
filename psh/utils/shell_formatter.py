@@ -3,18 +3,25 @@
 from ..ast_nodes import (
     AndOrList,
     ArithmeticEvaluation,
+    BinaryTestExpression,
+    BraceGroup,
     BreakStatement,
     CaseConditional,
     CommandList,
+    CompoundTestExpression,
     ContinueStatement,
     CStyleForLoop,
+    EnhancedTestStatement,
     ForLoop,
     FunctionDef,
     IfConditional,
+    NegatedTestExpression,
     Pipeline,
     SelectLoop,
     SimpleCommand,
+    SubshellGroup,
     TopLevel,
+    UnaryTestExpression,
     UntilLoop,
     WhileLoop,
 )
@@ -224,6 +231,29 @@ class ShellFormatter:
                 return f"continue {node.levels}"
             return "continue"
 
+        elif isinstance(node, SubshellGroup):
+            result = f"( {ShellFormatter.format(node.statements, indent_level)} )"
+            for redirect in node.redirects:
+                result += ' ' + ShellFormatter._format_redirect(redirect)
+            if node.background:
+                result += ' &'
+            return result
+
+        elif isinstance(node, BraceGroup):
+            # POSIX brace group: needs a terminator before the closing brace.
+            result = f"{{ {ShellFormatter.format(node.statements, indent_level)}; }}"
+            for redirect in node.redirects:
+                result += ' ' + ShellFormatter._format_redirect(redirect)
+            if node.background:
+                result += ' &'
+            return result
+
+        elif isinstance(node, EnhancedTestStatement):
+            result = f"[[ {ShellFormatter._format_test_expression(node.expression)} ]]"
+            for redirect in node.redirects:
+                result += ' ' + ShellFormatter._format_redirect(redirect)
+            return result
+
         else:
             # For compound commands when used as a body
             if hasattr(node, 'body') and isinstance(node.body, CommandList):
@@ -234,6 +264,22 @@ class ShellFormatter:
 
             # Fallback
             return f"# Unknown node type: {type(node).__name__}"
+
+    @staticmethod
+    def _format_test_expression(expr) -> str:
+        """Format a [[ ]] test expression tree back into shell syntax."""
+        if isinstance(expr, UnaryTestExpression):
+            return f"{expr.operator} {expr.operand}"
+        elif isinstance(expr, BinaryTestExpression):
+            return f"{expr.left} {expr.operator} {expr.right}"
+        elif isinstance(expr, NegatedTestExpression):
+            return f"! {ShellFormatter._format_test_expression(expr.expression)}"
+        elif isinstance(expr, CompoundTestExpression):
+            left = ShellFormatter._format_test_expression(expr.left)
+            right = ShellFormatter._format_test_expression(expr.right)
+            return f"{left} {expr.operator} {right}"
+        # Fallback: a plain operand or unknown expression node
+        return str(getattr(expr, 'value', expr))
 
     @staticmethod
     def _format_redirect(redirect):
