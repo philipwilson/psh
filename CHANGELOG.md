@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.222.0 (2026-06-06) - Promote array-element setter to public API
+- Internal cleanup (no behaviour change): the nameref array-element write path
+  added in 0.221.0 reached into a private `VariableExpander._set_var_or_array_element`
+  from the scope manager. That helper is now the public
+  `VariableExpander.set_var_or_array_element()` / `ExpansionManager.set_var_or_array_element()`,
+  so the scope manager routes subscripted nameref writes through public API
+  instead of a private method (avoids adding a new instance of the private-API /
+  layering smells tracked in the Phase 2 architecture study).
+- Refreshed `docs/reviews/codebase_study_2026-06-05_phase2_architecture.md` to
+  reflect review against v0.221.0.
+
 ## 0.221.0 (2026-06-06) - Namerefs Phase 2: array-element targets
 - **Namerefs whose target is an array element** now work, e.g.
   `arr=(p q r); declare -n e=arr[1]`:
