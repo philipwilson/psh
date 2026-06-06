@@ -92,8 +92,9 @@ class TypeBuiltin(Builtin):
                 if not show_all:
                     continue
 
-            # Check builtins (unless -P is specified)
-            if not force_path and name in shell.builtin_registry.names():
+            # Check builtins (unless -P is specified). Use has() so aliased
+            # builtin names (e.g. `readarray` for mapfile) are recognised too.
+            if not force_path and shell.builtin_registry.has(name):
                 if type_only:
                     print("builtin", file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
                 elif path_only:

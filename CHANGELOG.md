@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.218.0 (2026-06-06) - mapfile / readarray builtin
+- **`mapfile` (alias `readarray`)** reads lines from input into an indexed
+  array, matching bash:
+  - `-t` strip the trailing delimiter; `-d delim` use a custom delimiter
+    (first char; empty = NUL); `-n count` read at most COUNT lines;
+    `-O origin` assign from index ORIGIN without clearing the array;
+    `-s count` skip leading lines; `-u fd` read from a file descriptor.
+  - Default array is `MAPFILE`; clustered flags (`-tn2`) work; an unset/extra
+    second argument is ignored (bash-compatible); the `-C`/`-c` callback
+    options are not supported.
+- `type` now recognises aliased builtin names (so `type readarray` reports a
+  shell builtin), via `BuiltinRegistry.has()` instead of the primary-name list.
+- Added `tests/unit/builtins/test_mapfile.py` (26 tests, incl. bash parity).
+  Refreshed the differences-from-bash chapter.
+
 ## 0.217.0 (2026-06-06) - Parameter transformation operators ${var@OP}
 - **`${var@OP}` transformation operators** implemented for scalars, arrays, and
   positional parameters, matching bash:
