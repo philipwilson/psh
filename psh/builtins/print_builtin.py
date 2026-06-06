@@ -90,7 +90,7 @@ class PrintBuiltin(Builtin):
         # -f: printf-style formatting takes over output entirely.
         if opts['format'] is not None:
             printf = PrintfBuiltin()
-            output = printf._process_format_string_posix(opts['format'], rest)
+            output = printf.process_format_string_posix(opts['format'], rest)
             self._write(output, opts['fd'], shell)
             return 0
 

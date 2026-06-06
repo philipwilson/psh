@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.227.0 (2026-06-06) - Public cross-builtin helpers (study #21)
+- Promote the builtin methods reached across components to public API:
+  `TestBuiltin.evaluate_test` / `evaluate_unary` (used by `[` and the executor's
+  test evaluator), `ParserConfigBuiltin.set_mode` (used by `parser-select`), and
+  `PrintfBuiltin.process_format_string_posix` (used by `print`). Removes the
+  builtins-call-siblings'-privates leak tracked as Phase 2 study finding #21.
+  No behaviour change.
+- This closes the last of the five private-API-leak items from the Phase 2
+  architecture study (#14, #15, #18, #20, #21 now all resolved).
+
 ## 0.226.0 (2026-06-06) - Public WordBuilder decomposition API (study #20)
 - Promote `WordBuilder._has_decomposable_parts` and `_token_part_to_word_part`
   to public `has_decomposable_parts` / `token_part_to_word_part`. The combinator
