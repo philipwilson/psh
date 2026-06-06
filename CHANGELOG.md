@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.217.0 (2026-06-06) - Parameter transformation operators ${var@OP}
+- **`${var@OP}` transformation operators** implemented for scalars, arrays, and
+  positional parameters, matching bash:
+  - `@Q` quote for reuse as input (single-quote form; `$'...'` for control
+    chars; unset → empty)
+  - `@U` / `@u` / `@L` uppercase-all / uppercase-first / lowercase-all
+  - `@E` expand ANSI-C backslash escapes (`\n`, `\t`, `\xHH`, …)
+  - `@P` prompt-string expansion (`\u`, `\h`, …)
+  - `@A` assignment/`declare` form (`x='a b'`, `declare -i n='5'`,
+    `declare -a a=([0]="x" [1]="y z")`)
+  - `@a` attribute-flag letters (e.g. `airx`)
+  - `${arr[@]@OP}` applies per element; `${arr[@]@A}` emits a full `declare`
+    statement; `${@@Q}` quotes each positional parameter.
+- Parsed in both the recursive-descent Word AST path (`WordBuilder`) and the
+  string path (`parameter_expansion.parse_expansion`); the trailing-position
+  check keeps the array-subscript `@` in `${arr[@]}` from being mistaken for a
+  transform.
+- Not implemented: `@K` / `@k` (associative key/value display).
+- Added `tests/unit/expansion/test_parameter_transform.py` (31 tests, incl. a
+  bash-parity parametrization). Refreshed the differences-from-bash chapter.
+
 ## 0.216.0 (2026-06-06) - Brace expansion of expansion items; arithmetic fd-dup targets
 - **Brace list expansion now carries expansion items** (`{$((1)),$((2)),$((3))}`
   → `1 2 3`; also `{$(cmd),...}` and `{$a,$b}`). Brace expansion is textual and

@@ -399,6 +399,10 @@ class VariableExpander:
             if operator == ':':
                 return self._ifs_star_separator().join(
                     self._slice_sequence(self._positional_slice_elements(), operand))
+            if len(operator) == 2 and operator[0] == '@':
+                return self._ifs_star_separator().join(
+                    self._apply_transform(operator[1], p, var_name)
+                    for p in self.state.positional_params)
             value = ' '.join(self.state.positional_params)
         elif var_name == '@':
             if operator == '#':
@@ -406,6 +410,10 @@ class VariableExpander:
             if operator == ':':
                 return ' '.join(
                     self._slice_sequence(self._positional_slice_elements(), operand))
+            if len(operator) == 2 and operator[0] == '@':
+                return ' '.join(
+                    self._apply_transform(operator[1], p, var_name)
+                    for p in self.state.positional_params)
             value = ' '.join(self.state.positional_params)
         elif var_name.isdigit():
             index = int(var_name) - 1
@@ -445,10 +453,18 @@ class VariableExpander:
                         return ' '.join(sliced)
                     return self._ifs_star_separator().join(sliced)
 
+                # Whole-array transform: ${arr[@]@A} -> a `declare` statement.
+                if operator == '@A':
+                    return self._array_assignment_form(array_name, var)
+
+                # Per-element transforms (@Q/@U/@u/@L/@E/@P/@a) apply to each
+                # element; the @-operators need the array *name* (not the
+                # subscripted form) so e.g. ${arr[@]@a} reports the array flag.
+                op_var = array_name if (len(operator) == 2 and operator[0] == '@') else var_name
                 results = []
                 for element in elements:
                     results.append(self._apply_operator(operator, element, operand,
-                                                        var_name=var_name))
+                                                        var_name=op_var))
 
                 if index_expr == '@':
                     return ' '.join(results)
@@ -476,7 +492,9 @@ class VariableExpander:
             # Use _get_var_or_positional to handle special variables (#, ?, $, etc.)
             value = self._get_var_or_positional(var_name)
 
-        is_set = self._param_is_set(var_name) if operator in ('-', '=', '+', '?') else True
+        needs_is_set = (operator in ('-', '=', '+', '?')
+                        or (len(operator) == 2 and operator[0] == '@'))
+        is_set = self._param_is_set(var_name) if needs_is_set else True
         return self._apply_operator(operator, value, operand, var_name=var_name, is_set=is_set)
 
     def _expand_tilde_in_operand(self, text: str) -> str:
@@ -713,8 +731,140 @@ class VariableExpander:
             return self.param_expansion.lowercase_first(value, operand)
         elif operator == ',,':
             return self.param_expansion.lowercase_all(value, operand)
+        elif len(operator) == 2 and operator[0] == '@':
+            # An unset parameter transforms to nothing (bash: ${unset@Q} -> '').
+            if not is_set:
+                return ''
+            return self._apply_transform(operator[1], value, var_name)
         # Unknown operator, return value unchanged
         return value
+
+    # Attribute-flag order used by ${var@a} (matches bash, e.g. -airx -> "airx").
+    _ATTR_FLAG_ORDER = (
+        ('ARRAY', 'a'), ('ASSOC_ARRAY', 'A'), ('INTEGER', 'i'),
+        ('LOWERCASE', 'l'), ('UPPERCASE', 'u'), ('NAMEREF', 'n'),
+        ('READONLY', 'r'), ('TRACE', 't'), ('EXPORT', 'x'),
+    )
+
+    def _apply_transform(self, op: str, value: str, var_name: str) -> str:
+        """Apply a ${var@OP} transformation operator to a resolved value.
+
+        Per-element operators (Q/U/u/L/E/P/a) are also invoked once per element
+        for ``${arr[@]@OP}`` by the array branch of expand_parameter_direct.
+        """
+        if op == 'U':
+            return value.upper()
+        if op == 'L':
+            return value.lower()
+        if op == 'u':
+            return value[:1].upper() + value[1:]
+        if op == 'Q':
+            return self._shell_quote(value)
+        if op == 'E':
+            return self._ansi_c_expand(value)
+        if op == 'P':
+            from ..prompt import PromptExpander
+            return PromptExpander(self.shell).expand_prompt(value)
+        if op == 'a':
+            return self._var_attr_flags(var_name)
+        if op == 'A':
+            flags = self._var_attr_flags(var_name)
+            assign = f"{var_name}={self._shell_quote(value)}"
+            return f"declare -{flags} {assign}" if flags else assign
+        # K/k (associative key/value display) are not implemented.
+        return value
+
+    @staticmethod
+    def _shell_quote(s: str) -> str:
+        """Quote a string so it can be reused as shell input (bash ${var@Q}).
+
+        Empty -> ''. Strings with control characters use the $'...' ANSI-C
+        form; otherwise a single-quoted form with embedded quotes escaped as
+        '\\''.
+        """
+        if s == '':
+            return "''"
+        if any(ord(c) < 32 or ord(c) == 127 for c in s):
+            out = []
+            simple = {'\n': '\\n', '\t': '\\t', '\r': '\\r', '\\': '\\\\',
+                      "'": "\\'", '\a': '\\a', '\b': '\\b', '\f': '\\f',
+                      '\v': '\\v'}
+            for c in s:
+                if c in simple:
+                    out.append(simple[c])
+                elif ord(c) < 32 or ord(c) == 127:
+                    out.append('\\%03o' % ord(c))
+                else:
+                    out.append(c)
+            return "$'" + ''.join(out) + "'"
+        return "'" + s.replace("'", "'\\''") + "'"
+
+    @staticmethod
+    def _ansi_c_expand(s: str) -> str:
+        """Expand backslash escapes as in $'...' (bash ${var@E})."""
+        simple = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', "'": "'",
+                  '"': '"', 'a': '\a', 'b': '\b', 'f': '\f', 'v': '\v',
+                  'e': '\x1b', 'E': '\x1b', '0': '\0'}
+        out = []
+        i = 0
+        while i < len(s):
+            if s[i] == '\\' and i + 1 < len(s):
+                nxt = s[i + 1]
+                if nxt in simple:
+                    out.append(simple[nxt])
+                    i += 2
+                    continue
+                if nxt == 'x':
+                    j = i + 2
+                    hexd = ''
+                    while j < len(s) and len(hexd) < 2 and s[j] in '0123456789abcdefABCDEF':
+                        hexd += s[j]
+                        j += 1
+                    if hexd:
+                        out.append(chr(int(hexd, 16)))
+                        i = j
+                        continue
+                out.append(s[i])
+                i += 1
+            else:
+                out.append(s[i])
+                i += 1
+        return ''.join(out)
+
+    def _var_attr_flags(self, var_name: str) -> str:
+        """Return the attribute-flag letters for ${var@a} (e.g. 'rx', '')."""
+        from ..core.variables import VarAttributes
+        var = self.state.scope_manager.get_variable_object(var_name)
+        if var is None:
+            return ''
+        flags = []
+        for attr_name, letter in self._ATTR_FLAG_ORDER:
+            if var.attributes & getattr(VarAttributes, attr_name):
+                flags.append(letter)
+        return ''.join(flags)
+
+    def _array_assignment_form(self, array_name: str, var) -> str:
+        """Build the ${arr[@]@A} declare statement (values double-quoted)."""
+        from ..core import AssociativeArray, IndexedArray
+        flags = self._var_attr_flags(array_name)
+
+        def dq(s: str) -> str:
+            s = (s.replace('\\', '\\\\').replace('"', '\\"')
+                 .replace('$', '\\$').replace('`', '\\`'))
+            return f'"{s}"'
+
+        if var and isinstance(var.value, AssociativeArray):
+            # bash emits a trailing space before ')' for associative arrays.
+            items = ' '.join(f'[{k}]={dq(v)}' for k, v in var.value.items())
+            body = f'{items} ' if items else ''
+            return f"declare -{flags} {array_name}=({body})"
+        elif var and isinstance(var.value, IndexedArray):
+            body = ' '.join(f'[{i}]={dq(var.value.get(i))}' for i in var.value.indices())
+        else:
+            # Not actually an array — fall back to the scalar assignment form.
+            assign = f"{array_name}={self._shell_quote(str(var.value) if var else '')}"
+            return f"declare -{flags} {assign}" if flags else assign
+        return f"declare -{flags} {array_name}=({body})"
 
     def expand_array_index(self, index_expr: str) -> str:
         """Expand variables in array index expressions.

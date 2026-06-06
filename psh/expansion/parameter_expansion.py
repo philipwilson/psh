@@ -57,6 +57,12 @@ class ParameterExpansion:
             elif content.endswith('@'):
                 return '!@', content[1:-1], ''
 
+        # Transformation operators ${param@OP}: '@' + one transform letter at the
+        # end (e.g. x@Q, arr[@]@Q, @@Q). The trailing-position requirement keeps
+        # the array-subscript '@' in ${arr[@]} (followed by ']') from matching.
+        if len(content) >= 2 and content[-2] == '@' and content[-1] in 'QEPAUuLakK':
+            return '@' + content[-1], content[:-2], ''
+
         # Check for pattern removal and substitution first (before case modification)
         # This is important because substitution patterns can contain commas
         for i, char in enumerate(content):
