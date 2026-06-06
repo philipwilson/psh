@@ -1,18 +1,28 @@
 # Parallel Test Safety — Root Cause & Remediation (2026-06-06)
 
-/ Status: root cause fixed; `run_tests.py --parallel` is reliable. /
+/ Status: COMPLETE — all three workstreams landed; `run_tests.py --parallel` is reliable. /
 
-**Update.** Workstreams 1 (fd isolation) and 2 (serial phase) are implemented:
-- `test_exec_builtin`'s permanent-redirection tests now run in a subprocess.
-- Process/signal/job-control and in-process forked-fd tests (incl. the
-  `integration/redirection` dir) are marked `serial`; `run_tests.py --parallel`
-  runs `-m "not serial"` under xdist, then `-m serial` without xdist.
+**Update.** All three workstreams are implemented:
+1. **fd isolation** — `test_exec_builtin`'s permanent-redirection tests run in a
+   subprocess.
+2. **serial phase** — process/signal/job-control and in-process forked-fd tests
+   (incl. the `integration/redirection` dir) are marked `serial`;
+   `run_tests.py --parallel` runs `-m "not serial"` under xdist, then `-m serial`
+   without xdist.
+3. **cwd isolation** — `shell_with_temp_dir` now `os.chdir`s into the per-test
+   temp dir (previously it only set `PWD`, so `> file` wrote to the shared cwd
+   and fixed-name files like `output.txt` collided across workers). Also fixed a
+   hardcoded-high-fd test that flaked because xdist keeps its channel on a high
+   fd.
 
-Result: the parallel phase is crash-free and repeatable (3263 passed, 0
-INTERNALERROR over 4/4 runs); `run_tests.py --parallel` is green end-to-end
-(~75s vs ~210s serial); serial mode unchanged (3435 passed). No file-collision
-failures were observed once the redirection dir was serialized. A bare
+Result: the parallel phase is **crash-free and flake-free across 8/8 runs** (0
+INTERNALERROR, 0 failed, 3263 passed, ~16s); `run_tests.py --parallel` is green
+end-to-end (~75s vs ~210s serial); serial mode unchanged (3435 passed). A bare
 `pytest -n auto` should pass `-m "not serial"`.
+
+**Remaining (optional):** the serial Phase 1b (~59s) is dominated by
+`disown`/`job_control` tests that actually `sleep`; reducing those sleeps would
+shrink the bottleneck. Not required for correctness.
 
 ## TL;DR
 
