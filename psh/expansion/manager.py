@@ -142,7 +142,7 @@ class ExpansionManager:
                     # LiteralPart is purely literal text.  But backslash
                     # escapes (\$, \\, \", \`) still need processing.
                     if '\\' in text:
-                        text = self._process_dquote_escapes(text)
+                        text = self.process_dquote_escapes(text)
                     result_parts.append(text)
                 else:
                     all_parts_quoted = False
@@ -182,7 +182,7 @@ class ExpansionManager:
                         word, part, result_parts, in_double_quote=False)
                     return result
 
-                expanded = self._expand_expansion(part.expansion)
+                expanded = self.expand_expansion(part.expansion)
                 if part.quoted:
                     # Quoted expansion: no word splitting, no globbing on result
                     result_parts.append(expanded)
@@ -250,7 +250,7 @@ class ExpansionManager:
                 # But backslash escapes (\$, \\, \", \`) still need processing.
                 text = part.text
                 if '\\' in text:
-                    text = self._process_dquote_escapes(text)
+                    text = self.process_dquote_escapes(text)
                 result_parts.append(text)
             elif isinstance(part, ExpansionPart):
                 exp = part.expansion
@@ -263,7 +263,7 @@ class ExpansionManager:
                         word, part, result_parts, in_double_quote=True)
                     return result
 
-                expanded = self._expand_expansion(exp)
+                expanded = self.expand_expansion(exp)
                 result_parts.append(expanded)
 
         return ''.join(result_parts)
@@ -339,13 +339,13 @@ class ExpansionManager:
                 t = p.text
                 if in_double_quote or (p.quoted and p.quote_char == '"'):
                     if '\\' in t:
-                        t = self._process_dquote_escapes(t)
+                        t = self.process_dquote_escapes(t)
                 elif not p.quoted:
                     if '\\' in t:
                         t, _ = self._process_unquoted_escapes(t)
                 current_seed += t
             elif isinstance(p, ExpansionPart):
-                current_seed += self._expand_expansion(p.expansion)
+                current_seed += self.expand_expansion(p.expansion)
 
         # Finalize: the current seed becomes the last word
         result_words.append(current_seed)
@@ -355,7 +355,7 @@ class ExpansionManager:
         return result_words
 
     @staticmethod
-    def _process_dquote_escapes(text: str) -> str:
+    def process_dquote_escapes(text: str) -> str:
         """Process backslash escapes in double-quoted literal text.
 
         In double quotes, only ``\\$``, ``\\\\``, ``\\"``, and ``\\``` are
@@ -495,8 +495,12 @@ class ExpansionManager:
                     return True
         return False
 
-    def _expand_expansion(self, expansion) -> str:
-        """Evaluate an expansion AST node."""
+    def expand_expansion(self, expansion) -> str:
+        """Evaluate a single expansion AST node to a string (public API).
+
+        Used by the executor when building an assignment value from Word parts;
+        kept public so callers need not reach into a private method.
+        """
         from ..core import UnboundVariableError
         # Use ExpansionEvaluator for clean evaluation
         try:

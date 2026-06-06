@@ -4,6 +4,12 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.224.0 (2026-06-06) - Public expansion helpers (study #15)
+- Promote `ExpansionManager._expand_expansion` and `_process_dquote_escapes` to
+  public `expand_expansion` / `process_dquote_escapes`. The executor's
+  assignment-value builder now uses the public API instead of reaching into
+  private methods (Phase 2 study finding #15). No behaviour change.
+
 ## 0.223.0 (2026-06-06) - First-class in_forked_child state (study #14)
 - Promote the private `ShellState._in_forked_child` to the public, always-present
   `ShellState.in_forked_child`. Readers across builtins/executor/expansion now

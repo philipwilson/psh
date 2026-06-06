@@ -448,7 +448,7 @@ class CommandExecutor:
                     # Process backslash escapes (\$, \\, \", \`)
                     text = part.text
                     if '\\' in text:
-                        text = self.expansion_manager._process_dquote_escapes(text)
+                        text = self.expansion_manager.process_dquote_escapes(text)
                     result_parts.append(text)
                 else:
                     # Unquoted literal
@@ -457,7 +457,7 @@ class CommandExecutor:
                         text = self.expansion_manager.expand_tilde(text)
                     result_parts.append(text)
             elif isinstance(part, ExpansionPart):
-                expanded = self.expansion_manager._expand_expansion(part.expansion)
+                expanded = self.expansion_manager.expand_expansion(part.expansion)
                 result_parts.append(expanded)
 
         return ''.join(result_parts)
