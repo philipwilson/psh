@@ -66,11 +66,13 @@ class DeclareBuiltin(Builtin):
             'global': False,         # -g
             'integer': False,        # -i
             'lowercase': False,      # -l
+            'nameref': False,        # -n
             'print': False,          # -p
             'readonly': False,       # -r
             'trace': False,          # -t
             'uppercase': False,      # -u
             'export': False,         # -x
+            'remove_nameref': False, # +n
             'remove_export': False,  # +x
             'remove_readonly': False,# +r
             'remove_integer': False, # +i
@@ -107,6 +109,8 @@ class DeclareBuiltin(Builtin):
                     elif flag == 'l':
                         options['lowercase'] = True
                         options['last_case_attr'] = 'lowercase'
+                    elif flag == 'n':
+                        options['nameref'] = True
                     elif flag == 'p':
                         options['print'] = True
                     elif flag == 'r':
@@ -126,6 +130,8 @@ class DeclareBuiltin(Builtin):
                 for flag in arg[1:]:
                     if flag == 'x':
                         options['remove_export'] = True
+                    elif flag == 'n':
+                        options['remove_nameref'] = True
                     elif flag == 'r':
                         options['remove_readonly'] = True
                     elif flag == 'i':
@@ -219,9 +225,13 @@ class DeclareBuiltin(Builtin):
             attributes |= VarAttributes.ASSOC_ARRAY
         if options['trace']:
             attributes |= VarAttributes.TRACE
+        if options['nameref']:
+            attributes |= VarAttributes.NAMEREF
 
         # Handle attribute removal
         remove_attrs = VarAttributes.NONE
+        if options['remove_nameref']:
+            remove_attrs |= VarAttributes.NAMEREF
         if options['remove_export']:
             remove_attrs |= VarAttributes.EXPORT
         if options['remove_readonly']:
@@ -271,6 +281,15 @@ class DeclareBuiltin(Builtin):
                 if not self._is_valid_identifier(name):
                     self.error(f"`{arg}': not a valid identifier", shell)
                     return 1
+
+                # Name reference: store the target name as the value with the
+                # NAMEREF attribute (set_variable writes it raw to `name`).
+                if options['nameref']:
+                    if name == value:
+                        self.error("nameref variable self references not allowed", shell)
+                        return 1
+                    self._set_variable_with_attributes(shell, name, value, attributes, options['global'])
+                    continue
 
                 # Handle array initialization syntax
                 if options['array'] and value.startswith('(') and value.endswith(')'):

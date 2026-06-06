@@ -136,12 +136,23 @@ class LocalBuiltin(Builtin):
             attributes |= VarAttributes.ARRAY
         if options['assoc_array']:
             attributes |= VarAttributes.ASSOC_ARRAY
+        if options['nameref']:
+            attributes |= VarAttributes.NAMEREF
 
         # Process each argument
         for arg in positional:
             if '=' in arg:
                 # Variable with assignment: local var=value
                 var_name, var_value = arg.split('=', 1)
+
+                # Name reference: store the target name verbatim (no expansion,
+                # no array parsing) with the NAMEREF attribute.
+                if options['nameref']:
+                    if var_name == var_value:
+                        self.error("nameref variable self references not allowed", shell)
+                        return 1
+                    shell.state.scope_manager.create_local(var_name, var_value, attributes)
+                    continue
 
                 # Check if this is an array assignment: var=(value1 value2 ...)
                 if var_value.startswith('(') and var_value.endswith(')'):
@@ -221,6 +232,7 @@ class LocalBuiltin(Builtin):
             'assoc_array': False,    # -A
             'integer': False,        # -i
             'lowercase': False,      # -l
+            'nameref': False,        # -n
             'readonly': False,       # -r
             'uppercase': False,      # -u
             'export': False,         # -x
@@ -244,6 +256,8 @@ class LocalBuiltin(Builtin):
                         options['integer'] = True
                     elif flag == 'l':
                         options['lowercase'] = True
+                    elif flag == 'n':
+                        options['nameref'] = True
                     elif flag == 'r':
                         options['readonly'] = True
                     elif flag == 'u':

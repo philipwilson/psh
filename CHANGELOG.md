@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.220.0 (2026-06-06) - Name references (declare -n / local -n), Phase 1
+- **Namerefs** with scalar targets, matching bash:
+  - `declare -n ref=target` / `local -n ref=$1` create a name reference.
+  - Read-through (`$ref` → target's value) and write-through (`ref=v` sets the
+    target, creating it if unset); nameref chains resolve transitively.
+  - `local -n` provides pass-by-reference into functions.
+  - `unset ref` unsets the *target*; `unset -n ref` unsets the nameref.
+  - `${!ref}` yields the target *name*; `declare -p ref` prints `declare -n ref="target"`.
+  - Self-references (`declare -n r=r`) are rejected; cycles are guarded.
+  - Deferred target: `declare -n r; r=x` sets r's target to x.
+- **`${!var}` indirect expansion** (scalar) is now implemented as part of this:
+  for a non-nameref, `${!var}` yields the value of the variable named by `$var`.
+- Resolution hooks live at the scope-manager read/write chokepoints
+  (`get_variable`/`set_variable` via a new `resolve_nameref_name`), with
+  introspection paths (`declare -p`, `${var@a}`, `unset -n`) using raw lookup.
+- Not yet supported (Phase 2): namerefs whose target is an array element
+  (`declare -n e=arr[1]`).
+- Added `tests/unit/core/test_nameref.py` (27 tests, incl. bash parity); the
+  previously-xfail `test_declare_nameref_attribute` now passes. Refreshed the
+  differences-from-bash chapter.
+
 ## 0.219.0 (2026-06-06) - let builtin
 - **`let arg [arg ...]`** evaluates arithmetic expressions, equivalent to
   `((arg))` for each argument. Side effects apply (`let x=5+3`, `let ++x`,

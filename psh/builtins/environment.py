@@ -512,9 +512,22 @@ class UnsetBuiltin(Builtin):
                         exit_code = 1
             return exit_code
         else:
-            # Remove variables
+            # Remove variables. `-n` unsets the nameref itself; otherwise a
+            # nameref name is resolved to its target before unsetting (bash).
+            nameref_mode = False
+            names = []
+            for arg in args[1:]:
+                if arg == '-n':
+                    nameref_mode = True
+                elif arg == '-v':
+                    pass  # explicit "variable" flag (the default)
+                else:
+                    names.append(arg)
+
             exit_code = 0
-            for var in args[1:]:
+            for var in names:
+                if not nameref_mode and '[' not in var:
+                    var = shell.state.scope_manager.resolve_nameref_name(var)
                 # Check if this is an array element syntax
                 if '[' in var and var.endswith(']'):
                     # Array element unset: arr[index]

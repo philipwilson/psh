@@ -75,14 +75,51 @@ class EnhancedScopeManager:
             raise RuntimeError("Cannot pop global scope")
 
     def get_variable(self, name: str, default: Optional[str] = None) -> Optional[str]:
-        """Get variable value as string, or default if not found."""
-        var = self.get_variable_object(name)
+        """Get variable value as string, following namerefs, or default."""
+        var = self._lookup_resolved(name)
         if var:
             return var.as_string()
         return default
 
+    def _lookup_resolved(self, name: str) -> Optional[Variable]:
+        """Look up a variable, following a nameref chain to its target.
+
+        A nameref stores its target *name* as its value. Returns the final
+        non-nameref Variable, or the nameref itself when its target is empty or
+        the chain is cyclic (so reading a target-less nameref yields nothing).
+        """
+        var = self.get_variable_object(name)
+        seen = set()
+        while var is not None and var.is_nameref:
+            target = str(var.value) if var.value else ''
+            if not target or target in seen:
+                return var  # empty / cyclic target — read the nameref's own value
+            seen.add(target)
+            var = self.get_variable_object(target)
+        return var
+
+    def resolve_nameref_name(self, name: str) -> str:
+        """Follow a nameref chain and return the final target *name*.
+
+        Used by the write/unset paths. A plain or unset name resolves to
+        itself; a nameref with an empty or cyclic target also resolves to its
+        own name (so e.g. ``declare -n r; r=x`` sets r's target rather than
+        writing through to nothing).
+        """
+        seen = set()
+        current = name
+        while True:
+            var = self.get_variable_object(current)
+            if var is None or not var.is_nameref:
+                return current
+            target = str(var.value) if var.value else ''
+            if not target or target in seen:
+                return current
+            seen.add(current)
+            current = target
+
     def get_variable_object(self, name: str) -> Optional[Variable]:
-        """Get the full Variable object through scope chain."""
+        """Get the full Variable object through scope chain (no nameref deref)."""
         # Check for special variables first
         special_var = self._get_special_variable(name)
         if special_var is not None:
@@ -114,6 +151,12 @@ class EnhancedScopeManager:
             local: If True, set in current scope. If False and in function,
                    check if variable exists in current scope first
         """
+        # Redirect writes through a nameref to its target, EXCEPT when we are
+        # defining the nameref itself (NAMEREF in the new attributes), where the
+        # value IS the target name and must be stored on `name` directly.
+        if not (attributes & VarAttributes.NAMEREF):
+            name = self.resolve_nameref_name(name)
+
         # Check if variable exists
         existing = self.get_variable_object(name)
         if existing and existing.is_readonly:
