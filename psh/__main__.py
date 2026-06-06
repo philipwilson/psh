@@ -181,6 +181,7 @@ def main():
             input_source = StringInput(command, "-c")
             exit_code = shell.script_manager.source_processor.execute_from_source(
                 input_source, add_to_history=False)
+            shell.trap_manager.execute_exit_trap()
             sys.exit(exit_code)
         elif sys.argv[1] in ("--version", "-V"):
             # Show version
@@ -263,6 +264,7 @@ def main():
                 input_source = StringInput(script_content, "<stdin>")
                 exit_code = shell.script_manager.source_processor.execute_from_source(
                     input_source, add_to_history=False)
+                shell.trap_manager.execute_exit_trap()
                 sys.exit(exit_code)
             sys.exit(0)
         else:
@@ -273,6 +275,7 @@ def main():
                 input_source = StringInput(script_content, "<stdin>")
                 exit_code = shell.script_manager.source_processor.execute_from_source(
                     input_source, add_to_history=False)
+                shell.trap_manager.execute_exit_trap()
                 sys.exit(exit_code)
             sys.exit(0)
 

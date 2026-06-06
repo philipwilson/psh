@@ -220,8 +220,16 @@ class TrapManager:
         return '\n'.join(output_lines)
 
     def execute_exit_trap(self):
-        """Execute EXIT trap if set."""
+        """Execute EXIT trap if set.
+
+        Idempotent: the EXIT trap fires at most once per shell, no matter
+        how many exit paths reach here (explicit ``exit`` builtin, end of a
+        ``-c`` string, end of a script, end of piped stdin).
+        """
+        if getattr(self, '_exit_trap_executed', False):
+            return
         if 'EXIT' in self.state.trap_handlers:
+            self._exit_trap_executed = True
             self.execute_trap('EXIT')
 
     def execute_debug_trap(self):

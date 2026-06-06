@@ -184,41 +184,10 @@ class VariableExpander:
 
         if var and isinstance(var.value, IndexedArray):
             try:
-                from ..arithmetic import evaluate_arithmetic
-
-                start_str = self.expand_string_variables(slice_params[0])
-                start = evaluate_arithmetic(start_str, self.shell)
-
-                all_indices = var.value.indices()
-                if not all_indices:
-                    return ''
-
-                if start < 0:
-                    start = len(all_indices) + start
-                    if start < 0:
-                        start = 0
-
-                if len(slice_params) > 1:
-                    length_str = self.expand_string_variables(slice_params[1])
-                    length = evaluate_arithmetic(length_str, self.shell)
-
-                    result_elements = []
-                    count = 0
-                    for i, idx in enumerate(all_indices):
-                        if i >= start and count < length:
-                            elem = var.value.get(idx)
-                            if elem is not None:
-                                result_elements.append(elem)
-                                count += 1
-                else:
-                    result_elements = []
-                    for i, idx in enumerate(all_indices):
-                        if i >= start:
-                            elem = var.value.get(idx)
-                            if elem is not None:
-                                result_elements.append(elem)
-
-                return ' '.join(result_elements)
+                sliced = self._slice_sequence(var.value.all_elements(), slice_part[1:])
+                if index_expr == '@':
+                    return ' '.join(sliced)
+                return self._ifs_star_separator().join(sliced)
             except (ValueError, TypeError):
                 return ''
         elif var and var.value:
@@ -427,10 +396,16 @@ class VariableExpander:
         elif var_name == '*':
             if operator == '#':
                 return str(len(self.state.positional_params))
+            if operator == ':':
+                return self._ifs_star_separator().join(
+                    self._slice_sequence(self._positional_slice_elements(), operand))
             value = ' '.join(self.state.positional_params)
         elif var_name == '@':
             if operator == '#':
                 return str(len(self.state.positional_params))
+            if operator == ':':
+                return ' '.join(
+                    self._slice_sequence(self._positional_slice_elements(), operand))
             value = ' '.join(self.state.positional_params)
         elif var_name.isdigit():
             index = int(var_name) - 1
@@ -461,6 +436,14 @@ class VariableExpander:
                     elements = [str(var.value)]
                 else:
                     elements = []
+
+                # ${arr[@]:offset:length} — array slice (select elements),
+                # distinct from per-element substring.
+                if operator == ':':
+                    sliced = self._slice_sequence(elements, operand)
+                    if index_expr == '@':
+                        return ' '.join(sliced)
+                    return self._ifs_star_separator().join(sliced)
 
                 results = []
                 for element in elements:
@@ -501,6 +484,53 @@ class VariableExpander:
         if text.startswith('~'):
             return self.shell.expansion_manager.tilde_expander.expand(text)
         return text
+
+    def _positional_slice_elements(self) -> list:
+        """Element sequence for ``${@:off:len}`` / ``${*:off:len}`` slicing.
+
+        bash indexes positional slices as ``[$0, $1, $2, ...]``: ``${@:0}``
+        includes ``$0`` and a negative offset is taken relative to one past
+        the last positional parameter.  Prepending ``$0`` makes plain Python
+        list slicing match those semantics.
+        """
+        return [self.state.get_special_variable('0')] + list(self.state.positional_params)
+
+    def _slice_sequence(self, elements: list, operand: str) -> list:
+        """Slice a list of words for ``${seq[@]:offset:length}`` expansions.
+
+        Offset and length are arithmetic expressions.  A negative offset
+        counts from the end; a negative length is an error (matching bash,
+        which only allows from-the-end lengths for scalar substrings, not
+        for ``@``/``*``/array slices).
+        """
+        from ..arithmetic import ArithmeticError, evaluate_arithmetic
+        from ..core import ExpansionError
+
+        if ':' in operand:
+            offset_str, length_str = operand.split(':', 1)
+        else:
+            offset_str, length_str = operand, None
+
+        try:
+            offset = evaluate_arithmetic(offset_str, self.shell) if offset_str.strip() else 0
+            length = (evaluate_arithmetic(length_str, self.shell)
+                      if length_str is not None and length_str.strip() else None)
+        except (ValueError, ArithmeticError):
+            print(f"psh: ${{seq:{operand}}}: invalid offset or length", file=sys.stderr)
+            return []
+
+        n = len(elements)
+        start = n + offset if offset < 0 else offset
+        if start < 0:
+            start = 0
+
+        if length is None:
+            return elements[start:]
+        if length < 0:
+            print(f"psh: {length}: substring expression < 0", file=sys.stderr)
+            self.state.last_exit_code = 1
+            raise ExpansionError(f"{length}: substring expression < 0", exit_code=1)
+        return elements[start:start + length]
 
     def _ifs_star_separator(self) -> str:
         """Separator for joining $* / ${arr[*]}.

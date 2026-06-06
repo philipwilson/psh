@@ -91,5 +91,7 @@ class REPLLoop(InteractiveComponent):
                 print(f"psh: {e}", file=sys.stderr)
                 self.state.last_exit_code = 1
 
-        # Save history on exit
+        # Run the EXIT trap (e.g. on Ctrl-D), then save history on exit.
+        if hasattr(self.shell, 'trap_manager'):
+            self.shell.trap_manager.execute_exit_trap()
         self.history_manager.save_to_file()

@@ -14,8 +14,6 @@ marked xfail; they will XPASS (and should be un-marked) once implemented.
 import os
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from framework import ConformanceTest
 
@@ -45,6 +43,23 @@ class TestEdgeQuotingWordSplitting(ConformanceTest):
 
     def test_at_slice_from_offset(self):
         self.assert_identical_behavior('set -- a b c d; echo "${@:2}"')
+
+    def test_at_slice_with_length(self):
+        self.assert_identical_behavior('set -- a b c d; echo "${@:2:2}"')
+
+    def test_at_slice_variable_offset(self):
+        self.assert_identical_behavior('set -- a b c d; n=3; echo "${@:n}"')
+
+    def test_at_slice_negative_offset(self):
+        self.assert_identical_behavior('set -- a b c d; echo "${@: -2}"')
+
+    def test_at_slice_offset_zero_includes_dollar_zero(self):
+        # ${@:0} includes $0; only the count/structure is checked, not $0's
+        # value (which differs between shells), so compare the element count.
+        self.assert_identical_behavior('set -- a b c d; set -- ${@:0}; echo "$#"')
+
+    def test_star_slice_custom_ifs(self):
+        self.assert_identical_behavior('set -- a b c d; IFS=,; echo "${*:2:2}"')
 
 
 class TestEdgeArithmetic(ConformanceTest):
@@ -112,6 +127,20 @@ class TestEdgeParameterExpansion(ConformanceTest):
 
     def test_array_slice(self):
         self.assert_identical_behavior('arr=(a b c d); echo "${arr[@]:1:2}"')
+
+    def test_array_slice_negative_offset(self):
+        self.assert_identical_behavior('arr=(a b c d); echo "${arr[@]: -2}"')
+
+    def test_array_star_slice_custom_ifs(self):
+        self.assert_identical_behavior('arr=(a b c d); IFS=,; echo "${arr[*]:1:2}"')
+
+    def test_array_element_default_with_subscript(self):
+        # Regression: ${arr[0]:-def} must still parse as default-value, not a
+        # slice, even though the parameter carries an array subscript.
+        self.assert_identical_behavior('arr=("" b); echo "${arr[0]:-def}"')
+
+    def test_array_element_substring(self):
+        self.assert_identical_behavior('arr=(hello world); echo "${arr[0]:1:3}"')
 
 
 class TestEdgeGlobbing(ConformanceTest):
@@ -206,26 +235,14 @@ class TestEdgeRegex(ConformanceTest):
         )
 
 
-class TestEdgeKnownGaps(ConformanceTest):
-    """Edge cases where psh currently diverges from bash.
+class TestEdgeTraps(ConformanceTest):
+    """EXIT trap behavior across non-interactive entry points."""
 
-    Marked xfail so the suite stays green while tracking the gap; each will
-    XPASS once implemented (then drop the marker). Found by edge-case probing
-    on 2026-06-05.
-    """
-
-    @pytest.mark.xfail(reason="EXIT trap not run for `sh -c` / one-shot scripts")
-    def test_exit_trap_runs(self):
+    def test_exit_trap_runs_in_c_mode(self):
         self.assert_identical_behavior('trap "echo bye" EXIT; echo hi')
 
-    @pytest.mark.xfail(reason="${@:offset:length} positional slice length is off")
-    def test_positional_slice_with_length(self):
-        self.assert_identical_behavior('set -- a b c d; echo "${@:2:2}"')
+    def test_exit_trap_runs_once_with_explicit_exit(self):
+        self.assert_identical_behavior('trap "echo bye" EXIT; echo hi; exit 3')
 
-    @pytest.mark.xfail(reason="${@:n} positional slice with a variable offset is off")
-    def test_positional_slice_variable_offset(self):
-        self.assert_identical_behavior('set -- a b c d; n=3; echo "${@:n}"')
-
-    @pytest.mark.xfail(reason="${arr[@]: -n} negative array slice offset not handled")
-    def test_array_negative_slice(self):
-        self.assert_identical_behavior('arr=(a b c d); echo "${arr[@]: -2}"')
+    def test_exit_trap_preserves_exit_code(self):
+        self.assert_identical_behavior('trap "echo bye" EXIT; false')

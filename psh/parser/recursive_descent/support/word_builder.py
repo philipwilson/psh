@@ -138,10 +138,14 @@ class WordBuilder:
                 # pattern like ${arr[@]^^[a-m]}.
                 if before.count('[') > before.count(']'):
                     continue
-                # Don't match operators after array subscript closing ']'.
-                # ${arr[@]:2:3} is array slicing, handled by variable expansion,
-                # not by the parameter expansion operator system.
-                if before.endswith(']') and '[' in before:
+                # Don't match operators once a closed array subscript precedes
+                # the operator position. ${arr[@]:2:3} (slice), ${arr[0]:-def}
+                # (element default), ${arr[@]:1:-1} (negative length) etc. are
+                # all routed through the string-path parser (parse_expansion),
+                # which resolves the subscript before applying the operator.
+                # Checking only ']'-suffix missed operators buried in the
+                # operand, e.g. the ':-' inside ${arr[@]:1:-1}.
+                if '[' in before and ']' in before and before.index('[') < before.rindex(']'):
                     continue
                 if idx < best_idx or (idx == best_idx and best_op and len(op) > len(best_op)):
                     best_idx = idx
