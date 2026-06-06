@@ -4,6 +4,15 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.219.0 (2026-06-06) - let builtin
+- **`let arg [arg ...]`** evaluates arithmetic expressions, equivalent to
+  `((arg))` for each argument. Side effects apply (`let x=5+3`, `let ++x`,
+  `let "x+=2"`). Exit status is 0 when the last expression is non-zero, 1 when
+  it is zero or on an invalid expression; no arguments → "expression expected"
+  (exit 1). Reuses the shared arithmetic evaluator.
+- Added `tests/unit/builtins/test_let.py` (22 tests, incl. bash parity).
+  Refreshed the differences-from-bash chapter.
+
 ## 0.218.0 (2026-06-06) - mapfile / readarray builtin
 - **`mapfile` (alias `readarray`)** reads lines from input into an indexed
   array, matching bash:
