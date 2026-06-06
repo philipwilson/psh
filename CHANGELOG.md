@@ -4,6 +4,12 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.226.0 (2026-06-06) - Public WordBuilder decomposition API (study #20)
+- Promote `WordBuilder._has_decomposable_parts` and `_token_part_to_word_part`
+  to public `has_decomposable_parts` / `token_part_to_word_part`. The combinator
+  parser now builds the shared Word AST via public API instead of reaching into
+  recursive-descent privates (Phase 2 study finding #20). No behaviour change.
+
 ## 0.225.0 (2026-06-06) - Slim builtin-redirection setup (study #18)
 - Refactor `IOManager.setup_builtin_redirections`: extract the triplicated
   "output fd -> file" branch (`>`, `>>`, `>|`) into a shared

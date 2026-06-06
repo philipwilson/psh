@@ -135,8 +135,8 @@ class ExpansionParsers:
         is_quoted = qt is not None and qt != 'mixed'
 
         # Check for decomposable parts from the lexer (RichToken with expansions)
-        if WordBuilder._has_decomposable_parts(token):
-            word_parts = [WordBuilder._token_part_to_word_part(tp)
+        if WordBuilder.has_decomposable_parts(token):
+            word_parts = [WordBuilder.token_part_to_word_part(tp)
                           for tp in token.parts]
             return Word(parts=word_parts, quote_type=qt)
 
