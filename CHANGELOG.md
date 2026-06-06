@@ -4,6 +4,9 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.228.0 (2026-06-06) - Remove dead HeredocHandler + _saved_fds (io_redirect)
+- Remove the never-called `HeredocHandler` class (`io_redirect/heredoc.py`) and its import/instantiation in IOManager — heredoc content is handled by `FileRedirector._redirect_heredoc`. Also drop the unused `IOManager._saved_fds` attribute. Dead-code cleanup from Phase 2 study §1.4. No behaviour change.
+
 ## 0.227.0 (2026-06-06) - Public cross-builtin helpers (study #21)
 - Promote the builtin methods reached across components to public API:
   `TestBuiltin.evaluate_test` / `evaluate_unary` (used by `[` and the executor's

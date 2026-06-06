@@ -23,7 +23,6 @@ The package exports only `IOManager` via `__init__.py`.
 |------|---------|
 | `manager.py` | `IOManager` - central orchestrator for all I/O operations |
 | `file_redirect.py` | `FileRedirector` - file-based redirections (`<`, `>`, `>>`, etc.) |
-| `heredoc.py` | `HeredocHandler` - here document processing (`<<`, `<<-`) |
 | `process_sub.py` | `ProcessSubstitutionHandler` - process substitution (`<()`, `>()`) |
 
 ## Core Patterns
@@ -36,7 +35,6 @@ All I/O operations go through `IOManager`:
 class IOManager:
     def __init__(self, shell):
         self.file_redirector = FileRedirector(shell)
-        self.heredoc_handler = HeredocHandler(shell)
         self.process_sub_handler = ProcessSubstitutionHandler(shell)
 ```
 

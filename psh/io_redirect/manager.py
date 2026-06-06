@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, List, Tuple
 
 from ..ast_nodes import Command, Redirect
 from .file_redirect import FileRedirector
-from .heredoc import HeredocHandler
 from .process_sub import ProcessSubstitutionHandler
 
 if TYPE_CHECKING:
@@ -20,13 +19,11 @@ class IOManager:
         self.shell = shell
         self.state = shell.state
 
-        # Initialize sub-handlers
+        # Initialize sub-handlers (heredoc content is handled by FileRedirector)
         self.file_redirector = FileRedirector(shell)
-        self.heredoc_handler = HeredocHandler(shell)
         self.process_sub_handler = ProcessSubstitutionHandler(shell)
 
         # Track saved file descriptors for restoration
-        self._saved_fds = []
         self._saved_fds_list = []
 
 
