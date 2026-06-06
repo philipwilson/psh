@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.214.0 (2026-06-06) - Narrow array-index exception handling
+- **Stop swallowing defects in array subscripts** (study triage #4) — the
+  remaining four array-index sites in `expansion/variable.py` (subscript
+  read/set, new-array creation, and `_param_is_set`) caught a bare
+  `except Exception` around `evaluate_arithmetic`, defaulting the index to 0 and
+  masking any non-arithmetic defect. Narrowed all four to `except ArithmeticError`,
+  matching the sites already fixed in the v0.x safety pass. Invalid *arithmetic*
+  subscripts are still handled gracefully (→ index 0); genuine defects now
+  propagate. Added 5 regression tests.
+- Study triage #5 (broad except relabeling control-flow as "unexpected error" in
+  `scripting/source_processor.py`) was verified already resolved — `break`/
+  `continue` outside a loop and `return` outside a function produce their proper
+  messages, and the inner handler catches only `LoopBreak`/`LoopContinue`.
+
 ## 0.213.0 (2026-06-06) - Remove dead OptionHandler policy methods
 - **Trimmed `OptionHandler`** (study triage #16) — two of its four methods were
   dead with zero callers because the executor implements those policies itself:

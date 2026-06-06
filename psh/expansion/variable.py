@@ -319,9 +319,9 @@ class VariableExpander:
             if var and isinstance(var.value, IndexedArray):
                 expanded_index = self.expand_array_index(index_expr)
                 try:
-                    from ..arithmetic import evaluate_arithmetic
+                    from ..arithmetic import ArithmeticError, evaluate_arithmetic
                     index = evaluate_arithmetic(expanded_index, self.shell)
-                except Exception:
+                except ArithmeticError:
                     index = 0
                 result = var.value.get(index)
                 return result if result is not None else ''
@@ -351,9 +351,9 @@ class VariableExpander:
             if var and isinstance(var.value, IndexedArray):
                 expanded_index = self.expand_array_index(index_expr)
                 try:
-                    from ..arithmetic import evaluate_arithmetic
+                    from ..arithmetic import ArithmeticError, evaluate_arithmetic
                     index = evaluate_arithmetic(expanded_index, self.shell)
-                except Exception:
+                except ArithmeticError:
                     index = 0
                 var.value.set(index, value)
             elif var and isinstance(var.value, AssociativeArray):
@@ -364,9 +364,9 @@ class VariableExpander:
                 arr = IndexedArray()
                 expanded_index = self.expand_array_index(index_expr)
                 try:
-                    from ..arithmetic import evaluate_arithmetic
+                    from ..arithmetic import ArithmeticError, evaluate_arithmetic
                     idx = evaluate_arithmetic(expanded_index, self.shell)
-                except Exception:
+                except ArithmeticError:
                     idx = 0
                 arr.set(idx, value)
                 from ..core import VarAttributes
@@ -568,9 +568,9 @@ class VariableExpander:
                 return False
             if isinstance(var.value, IndexedArray):
                 try:
-                    from ..arithmetic import evaluate_arithmetic
+                    from ..arithmetic import ArithmeticError, evaluate_arithmetic
                     index = evaluate_arithmetic(self.expand_array_index(index_expr), self.shell)
-                except Exception:
+                except ArithmeticError:
                     index = 0
                 return var.value.get(index) is not None
             if isinstance(var.value, AssociativeArray):
