@@ -119,8 +119,11 @@ class ShellState:
         # Function call stack
         self.function_stack = []
 
-        # Process state
-        self._in_forked_child = False
+        # Process state. True only inside a forked child (pipeline member,
+        # subshell, command-substitution child, etc.); leaf builtins consult it
+        # to decide between fd-level writes (os.write) and shell.stdout. A real
+        # first-class attribute so callers read it directly, not via hasattr.
+        self.in_forked_child = False
 
         # Terminal capabilities (set by _detect_terminal_capabilities)
         self.terminal_fd: Optional[int] = None

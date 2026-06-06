@@ -143,7 +143,7 @@ class EnvBuiltin(Builtin):
 
     def _print_environment(self, env_map: Dict[str, str], shell: 'Shell') -> None:
         """Print environment mapping in a way that works in forked children."""
-        if hasattr(shell.state, '_in_forked_child') and shell.state._in_forked_child:
+        if shell.state.in_forked_child:
             for key, value in sorted(env_map.items()):
                 os.write(1, f"{key}={value}\n".encode('utf-8', errors='replace'))
             return
@@ -209,7 +209,7 @@ class ExportBuiltin(Builtin):
             for key, value in sorted(shell.env.items()):
                 output_line = f'declare -x {key}="{value}"\n'
                 # Check if we're in a child process (forked for pipeline/background)
-                if hasattr(shell.state, '_in_forked_child') and shell.state._in_forked_child:
+                if shell.state.in_forked_child:
                     # In child process, write directly to fd 1
                     os.write(1, output_line.encode('utf-8', errors='replace'))
                 else:
@@ -445,7 +445,7 @@ class SetBuiltin(Builtin):
             options_to_show = [opt for opt in standard_options if opt in shell.state.options]
 
         # Check if we're in a child process (forked for pipeline/background)
-        if hasattr(shell.state, '_in_forked_child') and shell.state._in_forked_child:
+        if shell.state.in_forked_child:
             # In child process, write directly to fd 1
             output_lines = []
 

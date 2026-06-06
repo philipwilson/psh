@@ -124,7 +124,7 @@ class Shell:
             'is_script_mode', 'debug_ast', 'debug_tokens', 'norc', 'rcfile',
             'last_exit_code', 'last_bg_pid', 'foreground_pgid', 'command_number',
             'history', 'history_file', 'max_history_size', 'history_index',
-            'current_line', 'edit_mode', 'function_stack', '_in_forked_child',
+            'current_line', 'edit_mode', 'function_stack', 'in_forked_child',
             'stdout', 'stderr', 'stdin'
         ]
 

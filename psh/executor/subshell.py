@@ -152,7 +152,7 @@ class SubshellExecutor:
 
                 # Mark as forked child so builtins use os.write() which respects dup2()
                 # This is critical for output redirection to work correctly in subshells
-                subshell.state._in_forked_child = True
+                subshell.state.in_forked_child = True
             finally:
                 # Clean up the environment variable
                 if 'PSH_IN_FORKED_CHILD' in os.environ:

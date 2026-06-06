@@ -75,7 +75,7 @@ class CommandSubstitution:
                     parent_shell=self.shell,
                     norc=True
                 )
-                temp_shell.state._in_forked_child = True
+                temp_shell.state.in_forked_child = True
 
                 # Execute the command
                 try:

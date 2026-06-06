@@ -509,7 +509,7 @@ class CommandExecutor:
                 # redirections must be applied via os.dup2() (with_redirections)
                 # rather than Python-level sys.stdout replacement
                 # (setup_builtin_redirections).
-                is_forked = getattr(self.state, '_in_forked_child', False)
+                is_forked = self.state.in_forked_child
                 if isinstance(strategy, (SpecialBuiltinExecutionStrategy, BuiltinExecutionStrategy)) and not context.in_pipeline and not is_forked:
                     exit_code = self._execute_builtin_with_redirections(
                         cmd_name, args, node, context, strategy
