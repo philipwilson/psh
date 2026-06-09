@@ -11,7 +11,7 @@ as the single lexer implementation.
 from typing import List
 
 from ..token_types import Token
-from .constants import DOUBLE_QUOTE_ESCAPES, KEYWORDS, OPERATORS_BY_LENGTH, SPECIAL_VARIABLES, WORD_TERMINATORS
+from .constants import DOUBLE_QUOTE_ESCAPES, KEYWORDS, SPECIAL_VARIABLES, WORD_TERMINATORS
 from .keyword_normalizer import KeywordNormalizer
 
 # Core lexer components

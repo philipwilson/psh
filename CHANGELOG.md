@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.257.0 (2026-06-09) - Lexer dead-code purge (review Tier 2, phase 1b)
+- Remove ~680 lines of lexer fiction flagged by the architecture review:
+  - The dead OPERATORS_BY_LENGTH table in constants.py — it had drifted from
+    the live table (OperatorRecognizer.OPERATORS) and psh/lexer/CLAUDE.md
+    told contributors to edit it; the doc now points at the real table.
+  - LexerErrorHandler + RecoverableLexerError (type-hinted a nonexistent
+    StateMachineLexer; never instantiated) and the LexerState enum (every
+    member except NORMAL unused; the state field itself was never consulted).
+  - 28 never-read LexerConfig fields (error-recovery, performance, debugging,
+    zsh/sh compatibility, memory management) plus the unused
+    create_performance_config/create_debug_config/create_posix_config presets
+    and to_dict/from_dict. Re-judged from the earlier "keep tested
+    infrastructure" decision: unread configuration misleads readers about how
+    the lexer works. create_interactive_config/create_batch_config remain as
+    the public entry points and are documented as currently identical.
+  - QUOTE_RULES escape maps replaced by an honest processes_escapes boolean:
+    the '"' map declared C-style escapes (\n → newline) that are wrong per
+    bash AND were never read (only tested for truthiness before delegating to
+    pure_helpers.handle_escape_sequence, which is bash-correct).
+  - Seven unused LexerContext fields (state, paren_depth, quote_stack,
+    heredoc_delimiters, brace_depth, token_start_offset, current_token_parts,
+    after_regex_match) and ~16 unused methods incl. the lossy copy();
+    CLAUDE.md's LexerContext listing now matches reality and explains why
+    quote state is not cross-token state.
+  - Four unused pure_helpers functions (read_until_char, find_word_boundary,
+    scan_whitespace, find_operator_match) and their tests.
+- No behaviour change (full suite + conformance green).
+
 ## 0.256.0 (2026-06-09) - Parser dead-machinery purge (review Tier 2, phase 1a)
 - Remove ~850 lines of parser machinery that production never read, all
   flagged by the 2026-06-09 architecture review:

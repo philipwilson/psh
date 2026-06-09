@@ -68,26 +68,25 @@ class RecognizerRegistry:
 # - Literals: 70 (fallback for words)
 ```
 
-### 2. LexerContext State Machine
+### 2. LexerContext State
 
-`LexerContext` tracks all parsing state:
+`LexerContext` tracks the cross-token state the recognizers consult:
 
 ```python
 @dataclass
 class LexerContext:
-    state: LexerState = LexerState.NORMAL
-    bracket_depth: int = 0        # [[ ]] nesting
-    paren_depth: int = 0          # ( ) nesting
+    bracket_depth: int = 0         # [[ ]] nesting
     command_position: bool = True  # At command position?
-    after_regex_match: bool = False
-    quote_stack: List[str] = []
-    heredoc_delimiters: List[str] = []
-    brace_depth: int = 0          # ${...} nesting
-    arithmetic_depth: int = 0     # $((...)) nesting
-    token_start_offset: int = 0
-    current_token_parts: List[Any] = []
+    arithmetic_depth: int = 0      # $((...)) nesting
     posix_mode: bool = False
+    case_depth: int = 0            # case..esac nesting
+    case_expecting_in: bool = False
+    in_case_pattern: bool = False
 ```
+
+Quote state is NOT tracked here: quotes are consumed whole by
+`UnifiedQuoteParser` within a single token, so no cross-token quote
+state exists.
 
 ### 3. Token Recognition Flow
 
@@ -105,12 +104,13 @@ def _tokenize_next(self):
 
 ### Adding a New Operator
 
-1. Add to `OPERATORS_BY_LENGTH` in `constants.py`:
+1. Add to `OperatorRecognizer.OPERATORS` in `recognizers/operator.py`
+   (the single live operator table; matching is longest-first):
 ```python
-OPERATORS_BY_LENGTH = {
-    3: {'&&=': TokenType.AND_ASSIGN, ...},  # Add here
-    2: {'&&': TokenType.AND_AND, ...},
-    1: {'&': TokenType.AMPERSAND, ...},
+OPERATORS = {
+    '&&': TokenType.AND_AND,
+    '&': TokenType.AMPERSAND,
+    # Add here
 }
 ```
 
@@ -153,8 +153,11 @@ class MyRecognizer(TokenRecognizer):
 
 - Single quotes: No expansion, literal content
 - Double quotes: Variable expansion, command substitution, escape sequences
+  (`\$`, `\\`, `\"`, `` \` `` only — other backslashes stay literal)
 - ANSI-C quotes (`$'...'`): Escape sequences like `\n`, `\t`
-- Quote state tracked in `LexerContext.quote_stack`
+- Quotes are consumed whole by `UnifiedQuoteParser` (`QUOTE_RULES` defines
+  per-context behavior; escape semantics live in
+  `pure_helpers.handle_escape_sequence`)
 
 ### Expansion Parsing
 

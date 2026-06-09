@@ -54,51 +54,6 @@ class QuoteState:
         return not self.in_quotes
 
 
-def read_until_char(
-    input_text: str,
-    start_pos: int,
-    target: str,
-    escape: bool = False,
-    escape_chars: Optional[Set[str]] = None
-) -> Tuple[str, int]:
-    """
-    Read characters until target is found.
-
-    Args:
-        input_text: The input string to read from
-        start_pos: Starting position in the string
-        target: Character to read until
-        escape: Whether to handle escape sequences
-        escape_chars: Characters that can be escaped
-
-    Returns:
-        Tuple of (content_read, new_position)
-    """
-    if escape_chars is None:
-        escape_chars = {'"', '\\', '`', '$'}
-    content = ""
-    pos = start_pos
-
-    while pos < len(input_text) and input_text[pos] != target:
-        if escape and input_text[pos] == '\\' and pos + 1 < len(input_text):
-            # Handle escape sequence
-            next_char = input_text[pos + 1]
-            if next_char in escape_chars:
-                pos += 1  # Skip backslash
-                if pos < len(input_text):
-                    content += input_text[pos]
-                    pos += 1
-            else:
-                # Not an escaped character, include the backslash
-                content += input_text[pos]
-                pos += 1
-        else:
-            content += input_text[pos]
-            pos += 1
-
-    return content, pos
-
-
 def find_closing_delimiter(
     input_text: str,
     start_pos: int,
@@ -422,44 +377,6 @@ def handle_ansi_c_escape(input_text: str, pos: int) -> Tuple[str, int]:
     return '\\' + next_char, pos + 2
 
 
-def find_word_boundary(
-    input_text: str,
-    start_pos: int,
-    terminators: Set[str],
-    handle_escapes: bool = True
-) -> int:
-    """
-    Find the end of a word given terminator characters.
-
-    Args:
-        input_text: The input string
-        start_pos: Starting position
-        terminators: Set of characters that terminate words
-        handle_escapes: Whether to handle escape sequences
-
-    Returns:
-        Position of the first terminator or end of string
-    """
-    pos = start_pos
-
-    while pos < len(input_text):
-        char = input_text[pos]
-
-        # Handle escape sequences
-        if handle_escapes and char == '\\' and pos + 1 < len(input_text):
-            # Skip escaped character
-            pos += 2
-            continue
-
-        # Check for terminators
-        if char in terminators:
-            break
-
-        pos += 1
-
-    return pos
-
-
 def extract_variable_name(
     input_text: str,
     start_pos: int,
@@ -536,40 +453,6 @@ def is_comment_start(
     return prev_char in ' \t\n;|&<>(){}[]'
 
 
-def scan_whitespace(
-    input_text: str,
-    start_pos: int,
-    unicode_aware: bool = True
-) -> int:
-    """
-    Scan past whitespace characters.
-
-    Args:
-        input_text: The input string
-        start_pos: Starting position
-        unicode_aware: Whether to recognize Unicode whitespace
-
-    Returns:
-        Position after whitespace
-    """
-    pos = start_pos
-
-    while pos < len(input_text):
-        char = input_text[pos]
-        if unicode_aware:
-            # Use Unicode-aware whitespace detection
-            from .unicode_support import is_whitespace
-            if not is_whitespace(char, not unicode_aware):  # posix_mode = not unicode_aware
-                break
-        else:
-            # Basic ASCII whitespace
-            if char not in ' \t\n\r\f\v':
-                break
-        pos += 1
-
-    return pos
-
-
 def extract_quoted_content(
     input_text: str,
     start_pos: int,
@@ -611,33 +494,6 @@ def extract_quoted_content(
 
     # Reached end without finding closing quote
     return content, pos, False
-
-
-def find_operator_match(
-    input_text: str,
-    pos: int,
-    operators_by_length: Dict[int, Dict[str, object]]
-) -> Optional[Tuple[str, object, int]]:
-    """
-    Find the longest matching operator at the given position.
-
-    Args:
-        input_text: The input string
-        pos: Position to check
-        operators_by_length: Dictionary mapping length to operator dictionaries
-
-    Returns:
-        Tuple of (operator, token_type, new_position) or None if no match
-    """
-    # Check operators from longest to shortest
-    for length in sorted(operators_by_length.keys(), reverse=True):
-        if pos + length <= len(input_text):
-            candidate = input_text[pos:pos + length]
-            if candidate in operators_by_length[length]:
-                token_type = operators_by_length[length][candidate]
-                return candidate, token_type, pos + length
-
-    return None
 
 
 def validate_brace_expansion(
