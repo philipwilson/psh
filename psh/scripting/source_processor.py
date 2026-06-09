@@ -233,27 +233,22 @@ class SourceProcessor(ScriptComponent):
                     return 1
                 command_string = expanded_command
 
-            tokens = tokenize(command_string, shell_options=self.state.options)
+            # Note: Alias expansion happens during execution for proper precedence
 
-            # Debug: Print tokens if requested
-            if self.state.debug_tokens:
-                print("=== Token Debug Output ===", file=sys.stderr)
-                from ..utils.token_formatter import TokenFormatter
-                print(TokenFormatter.format(tokens), file=sys.stderr)
-                print("========================", file=sys.stderr)
-
-            # Note: Alias expansion now happens during execution phase for proper precedence
-
-            # Check if command contains heredocs and parse accordingly
+            # Check if command contains heredocs and tokenize accordingly
+            # (exactly one tokenization either way).
             if contains_heredoc(command_string):
-                # Use the new lexer with heredoc support
+                # Use the lexer with heredoc support
                 from ..lexer import tokenize_with_heredocs
                 tokens, heredoc_map = tokenize_with_heredocs(command_string, strict=self.state.options.get('posix', False),
                                                               shell_options=self.state.options)
+                self._debug_print_tokens(tokens)
                 # Parse with heredoc map
                 from ..parser import parse_with_heredocs
                 ast = parse_with_heredocs(tokens, heredoc_map)
             else:
+                tokens = tokenize(command_string, shell_options=self.state.options)
+                self._debug_print_tokens(tokens)
                 # Parse with source text for better error messages and shell configuration
                 from ..parser import create_parser
                 parser = create_parser(
@@ -348,6 +343,14 @@ class SourceProcessor(ScriptComponent):
             print(f"psh: {location}: unexpected error: {e}", file=sys.stderr)
             self.state.last_exit_code = 1
             return 1
+
+    def _debug_print_tokens(self, tokens) -> None:
+        """Print the token stream when --debug-tokens is enabled."""
+        if self.state.debug_tokens:
+            print("=== Token Debug Output ===", file=sys.stderr)
+            from ..utils.token_formatter import TokenFormatter
+            print(TokenFormatter.format(tokens), file=sys.stderr)
+            print("========================", file=sys.stderr)
 
     def _has_unclosed_heredoc(self, command: str) -> bool:
         """Check if command has an unclosed heredoc (shared detector)."""

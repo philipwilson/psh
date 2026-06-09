@@ -82,6 +82,35 @@ def is_inside_expansion(line: str, position: int) -> bool:
     return False
 
 
+def _quote_flags(line: str, quote):
+    """Per-character in-quote flags for `line`, starting in `quote` state.
+
+    Returns (flags, final_quote). The carried quote state lets the caller
+    track strings that span multiple command lines.
+    """
+    flags = []
+    i, n = 0, len(line)
+    while i < n:
+        c = line[i]
+        if c == '\\' and quote != "'" and i + 1 < n:
+            inside = quote is not None
+            flags.append(inside)
+            flags.append(inside)
+            i += 2
+            continue
+        if quote:
+            flags.append(True)
+            if c == quote:
+                quote = None
+        elif c in ('"', "'"):
+            quote = c
+            flags.append(True)
+        else:
+            flags.append(False)
+        i += 1
+    return flags, quote
+
+
 def has_unclosed_heredoc(command: str) -> bool:
     """True if *command* opens a heredoc whose delimiter has not yet appeared.
 
@@ -95,6 +124,7 @@ def has_unclosed_heredoc(command: str) -> bool:
         return False
 
     delimiters = []
+    quote_state = None  # quote carried across COMMAND lines (multi-line strings)
     for line in command.split('\n'):
         if any(not d['closed'] for d in delimiters):
             # Inside an open heredoc: does this line close one?
@@ -105,9 +135,12 @@ def has_unclosed_heredoc(command: str) -> bool:
                         d['closed'] = True
                         break
         else:
+            flags, quote_state = _quote_flags(line, quote_state)
             for match in HEREDOC_MARKER_RE.finditer(line):
                 if is_inside_expansion(line, match.start()):
                     continue
+                if match.start() < len(flags) and flags[match.start()]:
+                    continue  # quoted "<<WORD" is not a heredoc
                 delimiters.append({
                     'word': match.group(4),
                     'strip_tabs': bool(match.group(1)),

@@ -531,6 +531,18 @@ class VariableExpander:
             return ''
         return self.state.get_variable(indirect_name, '') or ''
 
+    def _expand_operand(self, operand: str) -> str:
+        """Expand a conditional-operator operand (${x:-OPERAND}).
+
+        One surrounding level of quotes is removed (bash): single quotes
+        keep the text literal, double quotes expand without tilde.
+        """
+        if len(operand) >= 2 and operand[0] == "'" and operand[-1] == "'":
+            return operand[1:-1]
+        if len(operand) >= 2 and operand[0] == '"' and operand[-1] == '"':
+            return self.expand_string_variables(operand[1:-1])
+        return self._expand_tilde_in_operand(self.expand_string_variables(operand))
+
     def _expand_tilde_in_operand(self, text: str) -> str:
         """Apply tilde expansion to parameter expansion operand values."""
         if text.startswith('~'):
@@ -639,16 +651,16 @@ class VariableExpander:
         """
         if operator == ':-':
             if not value:
-                return self._expand_tilde_in_operand(self.expand_string_variables(operand))
+                return self._expand_operand(operand)
             return value
         elif operator == '-':
             # Unset -> operand; set (even if empty) -> value.
             if not is_set:
-                return self._expand_tilde_in_operand(self.expand_string_variables(operand))
+                return self._expand_operand(operand)
             return value
         elif operator == '=':
             if not is_set:
-                expanded_default = self._expand_tilde_in_operand(self.expand_string_variables(operand))
+                expanded_default = self._expand_operand(operand)
                 if var_name and not var_name.isdigit():
                     self.set_var_or_array_element(var_name, expanded_default)
                 return expanded_default
@@ -656,7 +668,7 @@ class VariableExpander:
         elif operator == '+':
             # Set (even if empty) -> operand; unset -> empty.
             if is_set:
-                return self._expand_tilde_in_operand(self.expand_string_variables(operand))
+                return self._expand_operand(operand)
             return ''
         elif operator == '?':
             if not is_set:
@@ -668,7 +680,7 @@ class VariableExpander:
             return value
         elif operator == ':=':
             if not value:
-                expanded_default = self._expand_tilde_in_operand(self.expand_string_variables(operand))
+                expanded_default = self._expand_operand(operand)
                 if var_name and not var_name.isdigit():
                     self.set_var_or_array_element(var_name, expanded_default)
                 return expanded_default
@@ -683,7 +695,7 @@ class VariableExpander:
             return value
         elif operator == ':+':
             if value:
-                return self._expand_tilde_in_operand(self.expand_string_variables(operand))
+                return self._expand_operand(operand)
             return ''
         elif operator == '#' and not operand:
             return self.param_expansion.get_length(value)
@@ -1202,13 +1214,11 @@ class VariableExpander:
         if operator in (':-', '-'):
             if base:
                 return base
-            return [self._expand_tilde_in_operand(
-                self.expand_string_variables(operand or ''))]
+            return [self._expand_operand(operand or '')]
         if operator in (':+', '+'):
             if not base:
                 return []
-            return [self._expand_tilde_in_operand(
-                self.expand_string_variables(operand or ''))]
+            return [self._expand_operand(operand or '')]
         if operator in (':=', '=', ':?', '?'):
             # Assignment/error semantics on @-subscripts: keep the fields
             # when non-empty, else fall back to the scalar path.

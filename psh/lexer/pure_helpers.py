@@ -510,24 +510,56 @@ def validate_brace_expansion(
     Returns:
         Tuple of (content, position_after_close_brace, found_closing_brace)
     """
-    content = ""
     pos = start_pos
+    n = len(input_text)
     brace_depth = 1
 
-    while pos < len(input_text) and brace_depth > 0:
+    while pos < n:
         char = input_text[pos]
 
+        if char == '\\' and pos + 1 < n:
+            pos += 2
+            continue
+        if char == "'":
+            # Single-quoted segment: a } inside it does not close (POSIX)
+            end = input_text.find("'", pos + 1)
+            if end == -1:
+                break
+            pos = end + 1
+            continue
+        if char == '"':
+            # Double-quoted segment (with escape handling)
+            pos += 1
+            while pos < n and input_text[pos] != '"':
+                if input_text[pos] == '\\' and pos + 1 < n:
+                    pos += 2
+                else:
+                    pos += 1
+            pos += 1
+            continue
+        if input_text.startswith('$(', pos):
+            # Command/arithmetic substitution: skip balanced parens
+            paren_depth = 0
+            while pos < n:
+                if input_text[pos] == '(':
+                    paren_depth += 1
+                elif input_text[pos] == ')':
+                    paren_depth -= 1
+                    if paren_depth == 0:
+                        pos += 1
+                        break
+                pos += 1
+            continue
         if char == '{':
             brace_depth += 1
         elif char == '}':
             brace_depth -= 1
             if brace_depth == 0:
-                return content, pos + 1, True
+                return input_text[start_pos:pos], pos + 1, True
 
-        content += char
         pos += 1
 
-    return content, pos, False
+    return input_text[start_pos:min(pos, n)], min(pos, n), False
 
 
 def is_inside_expansion(

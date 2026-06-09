@@ -1,8 +1,11 @@
 """
-Enhanced lexer with heredoc support.
+Lexer driver with heredoc support.
 
-This module provides a lexer that can handle heredoc collection,
-building on top of the existing modular lexer.
+Separates heredoc BODY lines from command text, then tokenizes the joined
+command text in ONE ModularLexer pass — so cross-line lexer state (open
+quotes, case/bracket depth, command position) survives. Earlier versions
+re-lexed each physical line with a fresh lexer, which broke any multi-line
+construct sharing a command with a heredoc.
 """
 
 from typing import Dict, List, Tuple
@@ -13,169 +16,107 @@ from .modular_lexer import ModularLexer
 
 
 class HeredocLexer:
-    """
-    Lexer with heredoc collection support.
-
-    This lexer wraps the standard lexer and adds multi-line heredoc
-    collection capabilities.
-    """
+    """Lexer with heredoc collection support."""
 
     def __init__(self, source: str, config=None):
-        """
-        Initialize the heredoc lexer.
-
-        Args:
-            source: The source code to tokenize
-            config: Optional lexer configuration
-        """
         self.source = source
-        self.lines = source.splitlines(keepends=True)
         self.config = config
         self.heredoc_collector = HeredocCollector()
-        self._current_line = 0
-        self._tokens_buffer = []
-        self._heredoc_mode = False
-        self._collected_heredocs = {}
-
-    def tokenize(self) -> List[Token]:
-        """
-        Tokenize the source code with heredoc support.
-
-        Returns:
-            List of tokens with heredoc content collected
-        """
-        tokens = []
-
-        while self._current_line < len(self.lines):
-            line = self.lines[self._current_line]
-
-            # Check if we need to start collecting heredocs after the current line
-            pending_before = self.heredoc_collector.has_pending_heredocs()
-
-            if pending_before:
-                # We're collecting heredoc content
-                completed = self.heredoc_collector.collect_line(line.rstrip('\n'))
-
-                # Update collected heredocs
-                for key, _ in completed:
-                    content = self.heredoc_collector.get_content(key)
-                    if content is not None:
-                        self._collected_heredocs[key] = {
-                            'content': content,
-                            'quoted': self.heredoc_collector.get_heredoc_info(key)['quoted']
-                        }
-
-                self._current_line += 1
-            else:
-                # Normal tokenization
-                line_tokens = self._tokenize_line(line)
-
-                # Add tokens
-                tokens.extend(line_tokens)
-
-                # Add newline token if the line had a newline
-                if line.endswith('\n'):
-                    # Calculate position based on line length
-                    pos = sum(len(self.lines[i]) for i in range(self._current_line))
-                    tokens.append(Token(TokenType.NEWLINE, '\n', position=pos))
-
-                # Check for heredoc operators AFTER we've added the tokens
-                # This ensures heredocs start collecting on the NEXT line
-                self._process_heredoc_operators(line_tokens, self._current_line)
-
-                self._current_line += 1
-
-        # Add EOF token
-        final_pos = sum(len(line) for line in self.lines)
-        tokens.append(Token(TokenType.EOF, '', position=final_pos))
-
-        # Check for incomplete heredocs
-        incomplete = self.heredoc_collector.get_incomplete_heredocs()
-        if incomplete:
-            # Create error token for incomplete heredoc
-            # Note: We could raise an exception here, but for now we'll just
-            # let the parser handle the incomplete heredoc
-            pass
-
-        return tokens
-
-    def _tokenize_line(self, line: str) -> List[Token]:
-        """Tokenize a single line using the standard lexer."""
-        # Remove newline for tokenization
-        line_content = line.rstrip('\n')
-
-        # Use the standard lexer for this line
-        lexer = ModularLexer(line_content, config=self.config)
-        line_tokens = lexer.tokenize()
-
-        # Filter out EOF tokens from line tokenization
-        return [t for t in line_tokens if t.type != TokenType.EOF]
-
-    def _process_heredoc_operators(self, tokens: List[Token], line_num: int):
-        """Process tokens looking for heredoc operators and their delimiters."""
-        i = 0
-        while i < len(tokens):
-            token = tokens[i]
-
-            if token.type in (TokenType.HEREDOC, TokenType.HEREDOC_STRIP):
-                # Found heredoc operator, look for delimiter
-                strip_tabs = token.type == TokenType.HEREDOC_STRIP
-
-                # Next token should be the delimiter
-                delimiter_idx = i + 1
-
-                if delimiter_idx < len(tokens):
-                    delimiter_token = tokens[delimiter_idx]
-                    delimiter = delimiter_token.value
-                    quoted = delimiter_token.type == TokenType.STRING
-
-                    # STRING tokens already have quotes removed by the lexer
-
-                    # Register heredoc for collection
-                    key = self.heredoc_collector.register_heredoc(
-                        delimiter=delimiter,
-                        strip_tabs=strip_tabs,
-                        quoted=quoted,
-                        line=line_num,
-                        col=token.column if hasattr(token, 'column') else 0
-                    )
-
-                    # Store the key in the token for later reference
-                    token.heredoc_key = key
-
-            i += 1
-
-    def get_heredoc_map(self) -> Dict[str, Dict[str, any]]:
-        """
-        Get the collected heredoc content map.
-
-        Returns:
-            Dictionary mapping heredoc keys to their content and metadata
-        """
-        return self._collected_heredocs.copy()
 
     def tokenize_with_heredocs(self) -> Tuple[List[Token], Dict[str, Dict[str, any]]]:
-        """
-        Tokenize and return both tokens and heredoc map.
+        """Tokenize and return (tokens, heredoc_map).
 
-        Returns:
-            Tuple of (tokens, heredoc_map)
+        Algorithm:
+        1. Classify each physical line as command text or heredoc body.
+           Heredoc operators are found by tokenizing the ACCUMULATED command
+           text (so quoted ``"<<EOF"`` is never a heredoc). While that text
+           is mid-construct (e.g. an unclosed multi-line string), following
+           lines are command continuation, like bash — bodies only start
+           once the command tokenizes.
+        2. Tokenize the joined command text once, with full cross-line state.
         """
-        tokens = self.tokenize()
-        heredoc_map = self.get_heredoc_map()
+        command_lines: List[str] = []
+        registered = 0  # heredoc operators accounted for so far
+
+        for raw_line in self.source.splitlines():
+            if self.heredoc_collector.has_pending_heredocs():
+                self.heredoc_collector.collect_line(raw_line)
+                continue
+
+            command_lines.append(raw_line)
+            text = '\n'.join(command_lines)
+            try:
+                toks = ModularLexer(text, config=self.config).tokenize()
+            except SyntaxError:
+                # The accumulated command text is mid-construct (an unclosed
+                # quote/expansion spans lines). Like bash, the next line is
+                # command CONTINUATION — heredoc bodies only begin once the
+                # command itself tokenizes completely.
+                continue
+            registered = self._register_from_tokens(toks, registered)
+
+        command_text = '\n'.join(command_lines)
+        if self.source.endswith('\n'):
+            command_text += '\n'
+
+        # The single full-state tokenization of the command text.
+        tokens = ModularLexer(command_text, config=self.config).tokenize()
+        self._mark_heredoc_tokens(tokens)
+
+        heredoc_map: Dict[str, Dict[str, any]] = {}
+        for key, info in self.heredoc_collector.collected.items():
+            if info['complete']:
+                heredoc_map[key] = {
+                    'content': self.heredoc_collector.get_content(key),
+                    'quoted': info['quoted'],
+                }
         return tokens, heredoc_map
+
+    # Backwards-compatible two-step API
+    def tokenize(self) -> List[Token]:
+        tokens, heredoc_map = self.tokenize_with_heredocs()
+        self._collected = heredoc_map
+        return tokens
+
+    def get_heredoc_map(self) -> Dict[str, Dict[str, any]]:
+        return getattr(self, '_collected', {}).copy()
+
+    # === Heredoc operator discovery ===
+
+    def _register_from_tokens(self, toks: List[Token], registered: int) -> int:
+        """Register heredocs for operator tokens beyond ``registered``."""
+        seen = 0
+        for i, token in enumerate(toks):
+            if token.type in (TokenType.HEREDOC, TokenType.HEREDOC_STRIP):
+                seen += 1
+                if seen <= registered:
+                    continue
+                if i + 1 < len(toks):
+                    delim_tok = toks[i + 1]
+                    self.heredoc_collector.register_heredoc(
+                        delimiter=delim_tok.value,
+                        strip_tabs=(token.type == TokenType.HEREDOC_STRIP),
+                        quoted=(delim_tok.type == TokenType.STRING),
+                        line=0, col=0,
+                    )
+        return max(seen, registered)
+
+    def _mark_heredoc_tokens(self, tokens: List[Token]) -> None:
+        """Attach collector keys to heredoc operator tokens, in order.
+
+        KeywordNormalizer uses the presence of ``heredoc_key`` to know that
+        body lines are NOT in the token stream.
+        """
+        keys = list(self.heredoc_collector.collected.keys())
+        idx = 0
+        for token in tokens:
+            if token.type in (TokenType.HEREDOC, TokenType.HEREDOC_STRIP):
+                if idx < len(keys):
+                    token.heredoc_key = keys[idx]
+                    idx += 1
 
 
 def tokenize_with_heredocs(source: str, config=None) -> Tuple[List[Token], Dict[str, Dict[str, any]]]:
-    """
-    Convenience function to tokenize source with heredoc support.
-
-    Args:
-        source: The source code to tokenize
-        config: Optional lexer configuration
-
-    Returns:
-        Tuple of (tokens, heredoc_map)
-    """
+    """Convenience function to tokenize source with heredoc support."""
     lexer = HeredocLexer(source, config=config)
     return lexer.tokenize_with_heredocs()
