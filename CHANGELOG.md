@@ -4,6 +4,12 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.244.0 (2026-06-09) - trap -- handling (review Tier 0 #7)
+- `trap -- 'action' SIGNAL` works: a leading `--` ends option processing per
+  POSIX instead of being taken as the action ("invalid signal
+  specification"). Bare `trap --` lists traps like bare `trap` (bash).
+- New tests in tests/unit/builtins/test_signal_builtins.py (4 cases).
+
 ## 0.243.0 (2026-06-09) - export option parsing and validation (review Tier 0 #6)
 - `export` now parses options: `-p` prints exports (optionally filtered by
   name) instead of creating a variable literally named `-p`; `-n` removes the
