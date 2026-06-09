@@ -81,6 +81,11 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 |------|----------|
 | `signal_handling.py` | `trap` |
 
+**System**
+| File | Commands |
+|------|----------|
+| `system_builtins.py` | `umask`, `times` |
+
 **Help & Debug**
 | File | Commands |
 |------|----------|

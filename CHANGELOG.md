@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.260.0 (2026-06-09) - umask and times builtins (review Tier 2, phase 3a)
+- New POSIX-required builtins in psh/builtins/system_builtins.py, built on
+  the v0.259.0 base helpers:
+  - umask: display (plain/-S symbolic/-p reusable), octal set, and symbolic
+    set (u+rwx,g-w,o=,a=rx — clauses operate on the allowed-permission
+    complement per POSIX), with bash's error messages and exit codes.
+    Previously /usr/bin/umask ran as an external command on macOS, so
+    `umask 077` silently did nothing — files were still created 644.
+  - times: shell and children user/system CPU times in bash's
+    NmN.NNNs format.
+- New tests in tests/unit/builtins/test_system_builtins.py (11 cases incl.
+  verifying the mask actually applies to created files).
+
 ## 0.259.0 (2026-06-09) - Builtin infrastructure (review Tier 2, phase 2)
 - New shared helpers on the Builtin base class:
   - write()/write_line(): one implementation of the forked-child fd-level
