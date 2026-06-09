@@ -100,4 +100,31 @@ class StatementParser:
             pipeline = self.parser.commands.parse_pipeline()
             and_or_list.pipelines.append(pipeline)
 
+        # POSIX: a trailing '&' backgrounds the whole and-or list
+        if self.parser.match(TokenType.AMPERSAND):
+            self.parser.advance()
+            if self.parser.match(TokenType.AND_AND, TokenType.OR_OR):
+                raise self.parser.error(
+                    f"syntax error near unexpected token '{self.parser.peek().value}'")
+            self._apply_background(and_or_list)
+
         return and_or_list
+
+    @staticmethod
+    def _apply_background(and_or_list: AndOrList) -> None:
+        """Mark a parsed and-or list as background.
+
+        Single simple-command and single-pipeline cases keep the legacy
+        per-command flag (the executor's direct job-control paths);
+        everything else backgrounds the whole list via a subshell.
+        """
+        from ....ast_nodes import BraceGroup, SimpleCommand, SubshellGroup
+        if len(and_or_list.pipelines) == 1:
+            commands = and_or_list.pipelines[0].commands
+            if commands and isinstance(commands[-1], SimpleCommand):
+                commands[-1].background = True
+                return
+            if len(commands) == 1 and isinstance(commands[0], (SubshellGroup, BraceGroup)):
+                commands[0].background = True
+                return
+        and_or_list.background = True

@@ -112,10 +112,8 @@ class CommandParser:
         # Parse all arguments and redirections
         self._parse_command_elements(command)
 
-        # Check for background execution
-        if self.parser.consume_if(TokenType.AMPERSAND):
-            command.background = True
-
+        # NOTE: '&' is parsed at the and-or-list level (POSIX grammar), not
+        # here — `a && b &` backgrounds the whole list.
         return command
 
     def _validate_command_start(self) -> None:
@@ -281,10 +279,12 @@ class CommandParser:
         command = self.parse_pipeline_component()
         pipeline.commands.append(command)
 
-        # Parse additional piped commands (| or |&)
+        # Parse additional piped commands (| or |&). POSIX allows a
+        # linebreak after the pipe operator.
         while self.parser.match(TokenType.PIPE, TokenType.PIPE_AND):
             is_pipe_stderr = self.parser.peek().type == TokenType.PIPE_AND
             self.parser.advance()
+            self.parser.skip_newlines()
             pipeline.pipe_stderr.append(is_pipe_stderr)
             command = self.parse_pipeline_component()
             pipeline.commands.append(command)

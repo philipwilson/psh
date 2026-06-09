@@ -293,6 +293,7 @@ class Pipeline(ASTNode):
 class AndOrList(Statement):
     pipelines: List[Pipeline] = field(default_factory=list)
     operators: List[str] = field(default_factory=list)  # '&&' or '||' between pipelines
+    background: bool = False  # trailing '&' backgrounds the whole list (POSIX)
 
 
 @dataclass

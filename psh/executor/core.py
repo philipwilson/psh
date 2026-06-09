@@ -188,6 +188,9 @@ class ExecutorVisitor(ASTVisitor[int]):
         if not node.pipelines:
             return 0
 
+        if getattr(node, 'background', False):
+            return self._execute_background_list(node)
+
         last = len(node.pipelines) - 1
 
         def run_pipeline(idx: int) -> int:
@@ -226,6 +229,17 @@ class ExecutorVisitor(ASTVisitor[int]):
             self.state.last_exit_code = exit_status
 
         return exit_status
+
+    def _execute_background_list(self, node: AndOrList) -> int:
+        """Run a whole and-or list (or a backgrounded compound command) in
+        a background subshell: `a && b &`, `while ...; done &` (POSIX)."""
+        from ..ast_nodes import CommandList
+        foreground_copy = AndOrList()
+        foreground_copy.pipelines = node.pipelines
+        foreground_copy.operators = node.operators
+        statements = CommandList()
+        statements.statements.append(foreground_copy)
+        return self.subshell_executor._execute_background_subshell(statements, [])
 
     def visit_Pipeline(self, node: Pipeline) -> int:
         """Execute a pipeline of commands."""

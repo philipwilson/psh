@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.264.0 (2026-06-10) - POSIX & grammar + structural EOF detection (review Tier 2, phase 5)
+- `&` is parsed at the and-or-list level per the POSIX grammar:
+  `a && b &` backgrounds the WHOLE list (previously the list ran
+  synchronously with only its tail backgrounded), and control structures
+  can be backgrounded (`while ...; done &`, `if ...; fi &` were parse
+  errors). `echo a & && b` is now a syntax error like bash. Single
+  simple-command and single-pipeline cases keep the existing direct
+  job-control paths; everything else runs in a background subshell
+  (AndOrList.background + ExecutorVisitor._execute_background_list).
+- POSIX linebreak-after-pipe: `echo hi |` followed by a newline continues
+  onto the next line.
+- ParseError carries a structural `at_eof` flag (the parse failed at end
+  of input, so more lines could complete it). Script line-continuation
+  (source_processor) and interactive multi-line detection
+  (multiline_handler) key off it, replacing ~70 fragile error-message
+  patterns between them — which also fixes scripts with lines ending in
+  `&&`/`||`.
+- New tests in tests/unit/parser/test_background_lists.py (12 cases pinned
+  to bash 5.2).
+
 ## 0.263.0 (2026-06-09) - DEBUG/ERR traps + deferred signal traps (review Tier 2, phase 4)
 - DEBUG and ERR traps now FIRE. They were stored, documented in `trap`
   help, and silently never dispatched (execute_debug_trap/execute_err_trap

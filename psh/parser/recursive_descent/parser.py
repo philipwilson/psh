@@ -283,6 +283,18 @@ class Parser(ContextBaseParser):
             if self.match(TokenType.PIPE, TokenType.PIPE_AND):
                 # Parse as pipeline with control structure as first component
                 return self.commands.parse_pipeline_with_initial_component(control_struct)
+            elif self.match(TokenType.AMPERSAND):
+                # control structure backgrounded: while ...; done &
+                self.advance()
+                if self.match(TokenType.AND_AND, TokenType.OR_OR):
+                    raise self.error(
+                        f"syntax error near unexpected token '{self.peek().value}'")
+                pipeline = Pipeline()
+                pipeline.commands.append(control_struct)
+                and_or_list = AndOrList()
+                and_or_list.pipelines.append(pipeline)
+                and_or_list.background = True
+                return and_or_list
             elif self.match(TokenType.AND_AND, TokenType.OR_OR):
                 # Create pipeline with control structure and wrap in and_or_list
                 pipeline = Pipeline()
