@@ -469,11 +469,20 @@ rules in CLAUDE.md).
 > #11 → v0.248.0 (also: nounset violations abort non-interactive shells with
 > 127 — part of Tier 1 item 3 — and out-of-range positionals are checked).
 >
-> Still open from Tier 1: external-command redirections applied twice
-> (item 2), errexit condition-context policy + subshell option/`$?`
-> inheritance + readonly fatality (item 3), multi-field `"${arr[@]}"`
-> (item 4), `exec` failure exit / `return` from sourced files / large
-> heredocs (item 5).
+> **TIER 1 STATUS (2026-06-09): ALL RESOLVED** (v0.249.0–v0.255.0):
+> item 5 → v0.249.0 (`exec` failure exits 127/126), v0.250.0 (`return` in
+> sourced files; also `return abc` semantics), v0.251.0 (large heredocs via
+> temp file); item 2 → v0.252.0 (external redirections applied once, in the
+> child — fixes `2>&1 >f` ordering and double command-substitution);
+> item 3 → v0.253.0 (context-aware errexit with POSIX exemptions crossing
+> functions/groups/eval/subshell forks, subshell option/`$?` inheritance,
+> readonly fatality, pure-assignment `$?` semantics, first errexit
+> conformance tests); item 4 → v0.254.0 (multi-field `"${arr[@]}"` incl.
+> slices/per-element operators/transforms, zero-field empty `"$@"`,
+> unquoted boundary preservation, printf zero-args POSIX fix — the
+> duplicate for-loop array path remains until for-items carry Word AST);
+> plus the adjacent process-substitution quote-preservation HIGH →
+> v0.255.0.
 1. **`import sys` shadow crash** — delete the two function-local imports
    (`executor/core.py:115,154`). Fixes the `break N` crash.
 2. **`local` double-expansion injection** — remove the re-expansion in LocalBuiltin
