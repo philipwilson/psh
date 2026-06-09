@@ -204,39 +204,111 @@ class ExportBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Export variables to environment."""
-        if len(args) == 1:
-            # No arguments, print all exported variables in declare -x format
-            for key, value in sorted(shell.env.items()):
-                output_line = f'declare -x {key}="{value}"\n'
-                # Check if we're in a child process (forked for pipeline/background)
-                if shell.state.in_forked_child:
-                    # In child process, write directly to fd 1
-                    os.write(1, output_line.encode('utf-8', errors='replace'))
-                else:
-                    # In parent process, use shell.stdout to respect redirections
-                    print(f'declare -x {key}="{value}"',
-                          file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+        # Parse options: -p (print), -n (unexport), -- (end of options)
+        print_mode = False
+        unexport = False
+        i = 1
+        while i < len(args):
+            arg = args[i]
+            if arg == '--':
+                i += 1
+                break
+            if arg.startswith('-') and len(arg) > 1:
+                for ch in arg[1:]:
+                    if ch == 'p':
+                        print_mode = True
+                    elif ch == 'n':
+                        unexport = True
+                    else:
+                        self.error(f"-{ch}: invalid option", shell)
+                        return 2
+                i += 1
+            else:
+                break
+        names = args[i:]
+
+        if not names:
+            # `export` / `export -p`: print all exported variables
+            self._print_exports(shell)
+            return 0
+
+        status = 0
+        for arg in names:
+            if '=' in arg:
+                key, value = arg.split('=', 1)
+            else:
+                key, value = arg, None
+
+            # bash: invalid names are reported (rc 1) but the remaining
+            # arguments are still processed.
+            if not self._is_valid_identifier(key):
+                self.error(f"`{arg}': not a valid identifier", shell)
+                status = 1
+                continue
+
+            if print_mode:
+                if key in shell.env:
+                    self._emit(shell, f'declare -x {key}="{shell.env[key]}"')
+                continue
+
+            if unexport:
+                # export -n NAME[=value]: optionally assign, remove export attr
+                if value is not None:
+                    shell.state.set_variable(key, value)
+                self._remove_export(key, shell)
+            elif value is not None:
+                shell.state.export_variable(key, value)
+            else:
+                # Export existing variable
+                existing = shell.state.get_variable(key)
+                if existing is not None:
+                    shell.state.export_variable(key, existing)
+        return status
+
+    def _is_valid_identifier(self, name: str) -> bool:
+        """Check if a name is a valid shell identifier."""
+        if not name:
+            return False
+        if not (name[0].isalpha() or name[0] == '_'):
+            return False
+        return all(c.isalnum() or c == '_' for c in name[1:])
+
+    def _emit(self, shell: 'Shell', line: str) -> None:
+        """Write a line to stdout, honoring forked-child fd semantics."""
+        if shell.state.in_forked_child:
+            # In child process, write directly to fd 1
+            os.write(1, (line + '\n').encode('utf-8', errors='replace'))
         else:
-            for arg in args[1:]:
-                if '=' in arg:
-                    # Variable assignment
-                    key, value = arg.split('=', 1)
-                    shell.state.export_variable(key, value)
-                else:
-                    # Export existing variable
-                    value = shell.state.get_variable(arg)
-                    if value is not None:
-                        shell.state.export_variable(arg, value)
-        return 0
+            # In parent process, use shell.stdout to respect redirections
+            print(line, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+
+    def _print_exports(self, shell: 'Shell') -> None:
+        """Print all exported variables in declare -x format."""
+        for key, value in sorted(shell.env.items()):
+            self._emit(shell, f'declare -x {key}="{value}"')
+
+    def _remove_export(self, name: str, shell: 'Shell') -> None:
+        """Remove the export attribute from a variable (export -n)."""
+        from ..core.variables import VarAttributes
+        var = shell.state.scope_manager.get_variable_object(name)
+        if var is not None and var.is_exported:
+            var.attributes &= ~VarAttributes.EXPORT
+        shell.state.env.pop(name, None)
+        os.environ.pop(name, None)
+        shell.state.scope_manager.sync_exports_to_environment(shell.state.env)
 
     @property
     def help(self) -> str:
-        return """export: export [name[=value] ...]
+        return """export: export [-n] [-p] [name[=value] ...]
 
     Export variables to the environment.
-    With no arguments, print all exported variables.
+    With no arguments or -p, print all exported variables.
     With name=value, set the variable and export it.
-    With just name, export an existing shell variable."""
+    With just name, export an existing shell variable.
+
+    Options:
+      -n    Remove the export attribute from each name
+      -p    Print exported variables in declare -x format"""
 
 
 @builtin

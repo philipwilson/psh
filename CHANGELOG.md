@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.243.0 (2026-06-09) - export option parsing and validation (review Tier 0 #6)
+- `export` now parses options: `-p` prints exports (optionally filtered by
+  name) instead of creating a variable literally named `-p`; `-n` removes the
+  export attribute (keeping the variable, with optional assignment); `--`
+  ends option processing; unknown options exit 2.
+- Invalid identifiers are rejected with rc 1 (`export 1bad=x`), and like
+  bash the remaining arguments are still processed.
+- New tests in tests/unit/builtins/test_export_builtin.py (12 cases pinned
+  to bash 5.2 behaviour).
+
 ## 0.242.0 (2026-06-09) - set builtin option parsing (review Tier 0 #5)
 - `set` no longer returns after the first `-o`/`+o`: `set -o errexit -o
   pipefail` and mixed forms like `set -o pipefail -x foo bar` now apply every
