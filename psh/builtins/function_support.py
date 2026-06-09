@@ -32,7 +32,7 @@ class DeclareBuiltin(Builtin):
         # Parse options
         options, positional = self._parse_options(args[1:], shell)
         if options is None:
-            return 1  # Error already printed
+            return 2  # invalid option (bash usage-error status)
 
         # Validate exclusive options
         if options['array'] and options['assoc_array']:
@@ -303,7 +303,7 @@ class DeclareBuiltin(Builtin):
                 elif options['assoc_array'] and value.startswith('(') and value.endswith(')'):
                     # Parse associative array initialization
                     array = AssociativeArray()
-                    assoc_values = self._parse_assoc_array_init(value)
+                    assoc_values = self._parse_assoc_array_init(value, shell)
                     for key, val in assoc_values:
                         array.set(key, val)
                     self._set_variable_with_attributes(shell, name, array, attributes, options['global'])
@@ -403,16 +403,7 @@ class DeclareBuiltin(Builtin):
         # Build the declaration string
         declaration_str = self._format_declaration(var)
 
-        # Use pipeline-aware output (like echo builtin)
-        import os
-        if shell.state.in_forked_child:
-            # In child process (pipeline), write directly to fd 1
-            output_bytes = (declaration_str + '\n').encode('utf-8', errors='replace')
-            os.write(1, output_bytes)
-        else:
-            # In parent process, use shell.stdout to respect redirections
-            stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
-            print(declaration_str, file=stdout)
+        self.write_line(declaration_str, shell)
 
     def _print_declaration(self, var: Variable, file):
         """Print variable declaration in reusable format."""
@@ -486,39 +477,10 @@ class DeclareBuiltin(Builtin):
         from .array_init import parse_array_elements
         return parse_array_elements(value, shell)
 
-    def _parse_assoc_array_init(self, value: str) -> List[tuple[str, str]]:
+    def _parse_assoc_array_init(self, value: str, shell: 'Shell') -> List[tuple[str, str]]:
         """Parse associative array initialization: ([key]=val [key2]=val2)"""
-        # Remove parentheses
-        content = value[1:-1].strip()
-        if not content:
-            return []
-
-        # Use shell-like splitting so quoted keys/values with spaces are preserved.
-        try:
-            parts = shlex.split(content, posix=True)
-        except ValueError:
-            # Fall back to conservative splitting on malformed quoting.
-            parts = content.split()
-
-        result = []
-        for part in parts:
-            parsed = self._parse_assoc_array_entry(part)
-            if parsed is not None:
-                result.append(parsed)
-        return result
-
-    def _parse_assoc_array_entry(self, token: str) -> Optional[tuple[str, str]]:
-        """Parse one associative array entry token in the form [key]=value."""
-        if not token.startswith('['):
-            return None
-
-        sep_idx = token.find(']=', 1)
-        if sep_idx == -1:
-            return None
-
-        key = token[1:sep_idx]
-        value = token[sep_idx + 2:]
-        return key, value
+        from .array_init import parse_assoc_array_entries
+        return parse_assoc_array_entries(value, shell)
 
     def _matches_filter(self, var: Variable, options: dict) -> bool:
         """Check if variable matches filter criteria."""
@@ -678,7 +640,7 @@ class ReadonlyBuiltin(Builtin):
         # Parse options
         options, names = self._parse_readonly_options(args[1:], shell)
         if options is None:
-            return 1
+            return 2  # invalid option (bash usage-error status)
 
         if options['functions']:
             return self._handle_readonly_functions(names, shell)

@@ -166,29 +166,11 @@ class EchoBuiltin(Builtin):
         if not suppress_newline:
             text += '\n'
 
-        # DEBUG: Log output method
         if shell.state.options.get('debug-exec'):
             print(f"DEBUG EchoBuiltin: in_forked_child={shell.state.in_forked_child}", file=sys.stderr)
-            print(f"DEBUG EchoBuiltin: shell.stdout={getattr(shell, 'stdout', 'N/A')}", file=sys.stderr)
-            print(f"DEBUG EchoBuiltin: shell.state.stdout={getattr(shell.state, 'stdout', 'N/A')}", file=sys.stderr)
-            print(f"DEBUG EchoBuiltin: sys.stdout={sys.stdout}", file=sys.stderr)
             print(f"DEBUG EchoBuiltin: Writing text: {repr(text[:50])}", file=sys.stderr)
 
-        # Check if we're in a child process (forked for pipeline/background)
-        is_forked_child = shell.state.in_forked_child
-
-        if is_forked_child:
-            # In a forked child, write directly to fd 1 (the pipe/redirect target)
-            output_bytes = text.encode('utf-8', errors='replace')
-            os.write(1, output_bytes)
-        else:
-            # In the parent, use shell.stdout to respect redirections/capture
-            output = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
-            # DEBUG: Log actual output stream
-            if shell.state.options.get('debug-exec'):
-                print(f"DEBUG EchoBuiltin: Using output stream: {output}", file=sys.stderr)
-            output.write(text)
-            output.flush()
+        self.write(text, shell)
 
     @property
     def help(self) -> str:
@@ -330,19 +312,8 @@ class PrintfBuiltin(Builtin):
         return ''.join(result)
 
     def _write_output(self, text: str, shell: 'Shell'):
-        """Write output to appropriate file descriptor."""
-        # Check if we're in a child process (forked for pipeline/background)
-        is_forked_child = shell.state.in_forked_child
-
-        if is_forked_child:
-            # In a forked child, write directly to fd 1 (the pipe/redirect target)
-            output_bytes = text.encode('utf-8', errors='replace')
-            os.write(1, output_bytes)
-        else:
-            # In the parent, use shell.stdout to respect redirections/capture
-            output = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
-            output.write(text)
-            output.flush()
+        """Write output to the appropriate destination (see Builtin.write)."""
+        self.write(text, shell)
 
     def _parse_format_specifier_enhanced(self, format_str: str, start: int) -> tuple:
         """Parse a POSIX-compliant format specifier starting at '%'.
@@ -789,15 +760,7 @@ class PwdBuiltin(Builtin):
         """Print the current working directory."""
         try:
             cwd = os.getcwd()
-            # Check if we're in a child process (forked for pipeline/background)
-            is_forked_child = shell.state.in_forked_child
-
-            if is_forked_child:
-                # In a forked child, write directly to fd 1 (the pipe/redirect target)
-                os.write(1, (cwd + '\n').encode())
-            else:
-                # In the parent, use shell.stdout to respect redirections/capture
-                print(cwd, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+            self.write_line(cwd, shell)
             return 0
         except OSError as e:
             self.error(str(e), shell)

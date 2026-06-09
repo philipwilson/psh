@@ -113,7 +113,7 @@ class LocalBuiltin(Builtin):
         # Parse options and arguments
         options, positional = self._parse_options(args[1:], shell)
         if options is None:
-            return 1  # Error already printed
+            return 2  # invalid option (bash usage-error status)
 
         # If no arguments, just return success (bash behavior)
         if not positional:
@@ -251,23 +251,8 @@ class LocalBuiltin(Builtin):
 
     def _parse_assoc_array_init(self, value: str, shell: 'Shell') -> List[tuple]:
         """Parse associative array initialization: ([key]=val [key2]=val2)"""
-        # Remove parentheses
-        content = value[1:-1].strip()
-        if not content:
-            return []
-
-        # Simple parsing for now
-        result = []
-        parts = content.split()
-        for part in parts:
-            if '=' in part and part.startswith('['):
-                key_part, val = part.split('=', 1)
-                key = key_part[1:-1]  # Remove [ and ]
-                # Remove quotes if present
-                if val.startswith('"') and val.endswith('"'):
-                    val = val[1:-1]
-                result.append((key, val))
-        return result
+        from .array_init import parse_assoc_array_entries
+        return parse_assoc_array_entries(value, shell)
 
     def _apply_attributes(self, value: str, attributes, shell: 'Shell') -> str:
         """Apply attribute transformations to value."""

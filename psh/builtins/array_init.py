@@ -19,6 +19,76 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+def _expand_initializer_text(text: str, shell: 'Shell') -> str:
+    """Strip one level of quotes and expand per bash quoting rules.
+
+    Single-quoted text stays literal; double-quoted or unquoted text is
+    expanded (no word splitting — used where the token boundary is fixed,
+    e.g. associative-array keys and values).
+    """
+    if len(text) >= 2 and text[0] == "'" and text[-1] == "'":
+        return text[1:-1]
+    if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
+        text = text[1:-1]
+    if '$' in text:
+        text = shell.expansion_manager.expand_string_variables(text)
+    return text
+
+
+def _split_assoc_tokens(content: str) -> List[str]:
+    """Split ``[k]="v 1" [j]=w`` on whitespace outside quotes.
+
+    shlex cannot be used here: its non-POSIX mode does not group quotes
+    that start mid-token (after ``]=``), and its POSIX mode strips the
+    quotes we need to distinguish literal from expandable text.
+    """
+    tokens: List[str] = []
+    cur = ''
+    quote = None
+    for c in content:
+        if quote:
+            cur += c
+            if c == quote:
+                quote = None
+        elif c in ('"', "'"):
+            quote = c
+            cur += c
+        elif c.isspace():
+            if cur:
+                tokens.append(cur)
+                cur = ''
+        else:
+            cur += c
+    if cur:
+        tokens.append(cur)
+    return tokens
+
+
+def parse_assoc_array_entries(value: str, shell: 'Shell'):
+    """Parse an associative-array initializer ``([k]=v ["a b"]="v 2")``.
+
+    Returns (key, value) pairs. Keys and values follow the same quoting
+    rules as indexed elements: single quotes literal, double quotes /
+    unquoted expanded; keys may be dynamic ([$k]=v).
+    """
+    content = value[1:-1].strip()
+    if not content:
+        return []
+    parts = _split_assoc_tokens(content)
+
+    result = []
+    for part in parts:
+        if not part.startswith('['):
+            continue
+        sep = part.find(']=', 1)
+        if sep == -1:
+            continue
+        key = _expand_initializer_text(part[1:sep], shell)
+        val = _expand_initializer_text(part[sep + 2:], shell)
+        result.append((key, val))
+    return result
+
+
 def parse_array_elements(value: str, shell: 'Shell') -> List[str]:
     """Parse the elements of an indexed array initializer.
 
