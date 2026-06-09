@@ -375,8 +375,10 @@ class TestComplexParameterExpansion:
         assert captured.out.strip() == "hello default2 default3"
 
     def test_expansion_with_quotes(self, shell, capsys):
-        """Test parameter expansion with quotes."""
+        """Nested quotes in an operand are removed, like bash (v0.265.0):
+        bash -c 'VAR="hello world"; echo "${VAR:+"$VAR exists"}"'
+        prints `hello world exists` without quotes."""
         shell.run_command('VAR="hello world"')
-        shell.run_command('echo "${VAR:+\"$VAR exists\"}"')
+        shell.run_command('echo "${VAR:+"$VAR exists"}"')
         captured = capsys.readouterr()
-        assert captured.out.strip() == '"hello world exists"'
+        assert captured.out.strip() == 'hello world exists'

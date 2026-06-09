@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.265.0 (2026-06-10) - Heredoc lexing redesign + lexer correctness (review Tier 2, phase 6)
+- HeredocLexer rewritten: lines are classified (command text vs heredoc
+  body) and the joined command text is tokenized in ONE ModularLexer pass,
+  so cross-line lexer state survives. The old design re-lexed each physical
+  line with a fresh lexer, breaking any multi-line construct sharing a
+  command with a heredoc — `cat <<EOF && echo "two\n...words"` died with
+  "Unclosed quote"; it now matches bash exactly (incl. bash's rule that
+  mid-construct lines are command continuation, so the body region follows
+  the COMPLETED command). Heredoc operators are found from tokens, so a
+  quoted "<<EOF" is never a heredoc.
+- source_processor no longer tokenizes heredoc-containing commands twice.
+- The textual unclosed-heredoc detector (line buffering) is quote-aware
+  with quote state carried ACROSS command lines: `echo "<<EOF" ok` no
+  longer buffers forever waiting for a delimiter.
+- validate_brace_expansion is quote- and $()-aware: `echo ${x:-"}"}`,
+  `${x:-'}'}` and `${x:-$(echo "}")}` no longer die with "Unclosed quote"
+  (POSIX 2.6.2).
+- Conditional-operator operands remove one level of quotes like bash:
+  `${u:-"quoted def"}` prints `quoted def`, not `"quoted def"`; single
+  quotes keep operands literal; applies to scalar and array-field paths.
+  One test expectation that encoded the old quote-retaining behaviour was
+  updated to the bash-verified output.
+- First unit tests for the heredoc modules (previously 0% coverage):
+  tests/unit/lexer/test_heredoc_lexer.py (11 cases).
+
 ## 0.264.0 (2026-06-10) - POSIX & grammar + structural EOF detection (review Tier 2, phase 5)
 - `&` is parsed at the and-or-list level per the POSIX grammar:
   `a && b &` backgrounds the WHOLE list (previously the list ran
