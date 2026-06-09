@@ -97,6 +97,9 @@ class TestExpressionEvaluator:
         elif expr.operator == '=~':
             # Regex matching; populate BASH_REMATCH with the full match and
             # capture groups (cleared to an empty array on no match), like bash.
+            # A quoted right-hand side is matched LITERALLY (bash).
+            if getattr(expr, 'right_quote_type', None):
+                right = re.escape(right)
             try:
                 pattern = re.compile(right)
             except re.error as e:

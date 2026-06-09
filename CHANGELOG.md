@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.262.0 (2026-06-09) - Scripting idioms (review Tier 2, phase 3c)
+- Scalar `+=` append assignment: `x+=b` appends (previously "command not
+  found"); integer (-i) variables add arithmetically (declare -i n=1;
+  n+=2 -> 3); works for pure assignments, command-prefix assignments
+  (temporary), and `export NAME+=value`; readonly `+=` aborts like any
+  readonly assignment. The golden case that encoded the old failure was
+  updated to bash's behaviour.
+- `printf -v var format args` stores the result in var (array elements
+  supported) instead of printing; `printf '%(datefmt)T'` formats an epoch
+  argument with strftime (missing/-1 = now).
+- A quoted right-hand side of `[[ =~ ]]` is matched LITERALLY, like bash:
+  `[[ abc =~ "a.c" ]]` no longer matches. Unquoted and variable patterns
+  remain regexes; BASH_REMATCH unchanged.
+- New `builtin` builtin: runs a shell builtin bypassing function lookup,
+  so wrapper functions (cd() { builtin cd "$@"; ... }) work instead of
+  recursing to "command not found".
+- New tests in tests/integration/test_scripting_idioms.py (24 cases).
+
 ## 0.261.0 (2026-06-09) - Special variables (review Tier 2, phase 3b)
 - PIPESTATUS: every foreground pipeline records its members' exit statuses
   (the waiter now always collects them, not only under pipefail); a single

@@ -507,10 +507,9 @@
 
 - name: plus_equals_append
   command: 'x=hello; x+=world; echo $x'
-  stdout: "hello\n"
-  stderr: "command not found"
+  stdout: "helloworld\n"
+  stderr: ""
   exit_code: 0
-  psh_only: true  # psh doesn't support += assignment yet
 
 # =============================================================================
 # COMMAND SUBSTITUTION

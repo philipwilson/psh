@@ -219,16 +219,30 @@ class PrintfBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Format and print data according to the format string."""
-        if len(args) < 2:
+        # printf -v var: store the result in var instead of printing (bash)
+        target_var = None
+        argv = args
+        if len(argv) > 1 and argv[1] == '-v':
+            if len(argv) < 3:
+                self.error("-v: option requires an argument", shell)
+                return 2
+            target_var = argv[2]
+            argv = [argv[0]] + argv[3:]
+
+        if len(argv) < 2:
             self.error("usage: printf format [arguments ...]", shell)
             return 2
 
-        format_str = args[1]
-        arguments = args[2:]
+        format_str = argv[1]
+        arguments = argv[2:]
 
         try:
             # Process format string with POSIX-compliant behavior
             output = self.process_format_string_posix(format_str, arguments)
+            if target_var is not None:
+                from ..expansion.manager import ExpansionManager
+                shell.expansion_manager.set_var_or_array_element(target_var, output)
+                return 0
             self._write_output(output, shell)
             return 0
         except (ValueError, TypeError, KeyError) as e:
@@ -255,6 +269,29 @@ class PrintfBuiltin(Builtin):
                         # Literal %
                         result.append('%')
                         i += 2
+                    elif format_str[i + 1] == '(':
+                        # %(datefmt)T — strftime of an epoch argument (bash).
+                        close = format_str.find(')T', i + 2)
+                        if close == -1:
+                            result.append(format_str[i])
+                            i += 1
+                            continue
+                        datefmt = format_str[i + 2:close]
+                        import time as _time
+                        raw = self._get_argument_value(arguments, arg_index)
+                        if raw in ('', '-1'):
+                            epoch = _time.time()  # -1 / missing: now
+                        elif raw == '-2':
+                            epoch = _time.time()  # -2: shell start (approx.)
+                        else:
+                            try:
+                                epoch = int(raw)
+                            except ValueError:
+                                raise ValueError(f"{raw}: invalid number")
+                        result.append(_time.strftime(datefmt, _time.localtime(epoch)))
+                        arg_index += 1
+                        format_consumed_args = True
+                        i = close + 2
                     else:
                         # Parse format specifier
                         fmt_spec, end_pos = self._parse_format_specifier_enhanced(format_str, i)

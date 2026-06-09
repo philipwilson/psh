@@ -37,6 +37,9 @@ def is_valid_assignment(arg: str) -> bool:
         return False
 
     var_name = arg.split('=', 1)[0]
+    # NAME+=value appends (bash); validate the name without the '+'
+    if var_name.endswith('+'):
+        var_name = var_name[:-1]
     # Variable name must start with letter or underscore
     if not var_name or not (var_name[0].isalpha() or var_name[0] == '_'):
         return False

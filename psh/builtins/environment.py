@@ -230,6 +230,10 @@ class ExportBuiltin(Builtin):
         for arg in names:
             if '=' in arg:
                 key, value = arg.split('=', 1)
+                if key.endswith('+'):
+                    # export NAME+=value appends (bash)
+                    key = key[:-1]
+                    value = (shell.state.get_variable(key) or '') + value
             else:
                 key, value = arg, None
 

@@ -149,3 +149,43 @@ class CommandBuiltin(Builtin):
 
     Exit Status:
     Returns exit status of COMMAND, or failure if COMMAND is not found."""
+
+
+@builtin
+class BuiltinBuiltin(Builtin):
+    """Run a shell builtin, bypassing function lookup."""
+
+    @property
+    def name(self) -> str:
+        return "builtin"
+
+    @property
+    def synopsis(self) -> str:
+        return "builtin [shell-builtin [arg ...]]"
+
+    @property
+    def description(self) -> str:
+        return "Execute a shell builtin, bypassing functions with the same name"
+
+    def execute(self, args: List[str], shell: 'Shell') -> int:
+        if len(args) < 2:
+            return 0  # bash: bare `builtin` succeeds
+
+        name = args[1]
+        target = shell.builtin_registry.get(name)
+        if target is None:
+            self.error(f"{name}: not a shell builtin", shell)
+            return 1
+        # Run with the builtin's own name as argv[0]
+        return target.execute(args[1:], shell)
+
+    @property
+    def help(self) -> str:
+        return """builtin: builtin [shell-builtin [arg ...]]
+
+    Execute SHELL-BUILTIN with the given arguments, without performing
+    function lookup. Lets a function with the same name as a builtin
+    call the builtin (e.g. a cd wrapper calling `builtin cd`).
+
+    Exit Status:
+    The exit status of SHELL-BUILTIN, or 1 if it is not a shell builtin."""
