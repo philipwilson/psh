@@ -55,11 +55,12 @@ class ExecutorVisitor:
 Commands are dispatched through execution strategies in priority order:
 
 ```python
-# In command.py
-EXECUTION_ORDER = [
+# In command.py — POSIX lookup order:
+# special builtins > functions > builtins > aliases > external
+strategies = [
     SpecialBuiltinExecutionStrategy(),  # : break continue eval exec exit export ...
-    BuiltinExecutionStrategy(),          # cd echo pwd test [ ...
     FunctionExecutionStrategy(),         # User-defined functions
+    BuiltinExecutionStrategy(),          # cd echo pwd test [ ...
     AliasExecutionStrategy(),            # Aliases
     ExternalExecutionStrategy()          # External programs
 ]

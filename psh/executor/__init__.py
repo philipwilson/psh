@@ -17,7 +17,7 @@ The package is organized into focused modules:
 - strategies: Execution strategies (builtin, function, alias, external)
 - process_launcher: Unified process creation with job control
 - child_policy: Child process signal setup
-- test_evaluator: [[ ]] test expression evaluation
+- enhanced_test_evaluator: [[ ]] test expression evaluation
 """
 
 from .array import ArrayOperationExecutor
@@ -35,7 +35,7 @@ from .strategies import (
     FunctionExecutionStrategy,
 )
 from .subshell import SubshellExecutor
-from .test_evaluator import TestExpressionEvaluator
+from .enhanced_test_evaluator import TestExpressionEvaluator
 
 __all__ = [
     'ExecutorVisitor',

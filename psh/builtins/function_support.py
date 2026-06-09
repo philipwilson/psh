@@ -520,30 +520,6 @@ class DeclareBuiltin(Builtin):
         value = token[sep_idx + 2:]
         return key, value
 
-    def _apply_attributes(self, value: Any, attributes: VarAttributes, shell: 'Shell') -> Any:
-        """Apply attribute transformations to value."""
-        if isinstance(value, (IndexedArray, AssociativeArray)):
-            return value  # Arrays aren't transformed
-
-        str_value = str(value)
-
-        if attributes & VarAttributes.UPPERCASE:
-            return str_value.upper()
-        elif attributes & VarAttributes.LOWERCASE:
-            return str_value.lower()
-        elif attributes & VarAttributes.INTEGER:
-            # Evaluate arithmetic expression
-            try:
-                from ..arithmetic import evaluate_arithmetic
-                result = evaluate_arithmetic(str_value, shell)
-                return str(result)
-            except (ValueError, ArithmeticError):
-                try:
-                    return str(int(str_value))
-                except (ValueError, TypeError):
-                    return "0"
-        return str_value
-
     def _matches_filter(self, var: Variable, options: dict) -> bool:
         """Check if variable matches filter criteria."""
         from ..core import VarAttributes

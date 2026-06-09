@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.258.0 (2026-06-09) - Executor/builtins/vi scraps purge (review Tier 2, phase 1c)
+- Remove dead ProcessLauncher.launch_job (zero callers; contained a fragile
+  command_str.split() re-parse) and the dead DeclareBuiltin._apply_attributes
+  (the scope manager applies attribute transforms).
+- trap_manager: remove the unreachable empty-action branch and replace the
+  install-and-restore signal probing of numbers 1-31 with
+  signal.valid_signals().
+- Rename psh/executor/test_evaluator.py -> enhanced_test_evaluator.py
+  (source files must not start with test_, per the project's own pytest
+  collection rules).
+- vi editing: the keymap now matches actual behavior. Removed ~30 bindings
+  (registers, motions d/c/y/p/r, visual mode, search, '.') that
+  _execute_action never dispatched — silent no-ops since they were added —
+  plus the orphaned state behind them (vi_pending_motion, vi_registers,
+  vi_last_change, vi_mark_start, kill_ring_pos, EditMode.VI_VISUAL). The
+  ViKeyBindings docstring documents the implemented subset.
+- vi undo/redo are now REAL: 'u' and Ctrl-R dispatch to the existing
+  (previously unreachable) undo()/redo() implementations; key_handler.mode
+  is synced on mode switches so control-key normal-mode bindings resolve
+  correctly; undo() treats the live buffer as the implicit stack top so the
+  most recent edit is not skipped. New tests include a guard asserting every
+  bound action is dispatched, so phantom bindings cannot reappear.
+- psh/executor/CLAUDE.md strategy-order snippet corrected to the code's
+  actual POSIX order (special builtins > functions > builtins).
+
 ## 0.257.0 (2026-06-09) - Lexer dead-code purge (review Tier 2, phase 1b)
 - Remove ~680 lines of lexer fiction flagged by the architecture review:
   - The dead OPERATORS_BY_LENGTH table in constants.py — it had drifted from
