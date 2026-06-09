@@ -805,9 +805,9 @@ class ReturnBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the return builtin."""
-        if not shell.function_stack:
+        if not shell.function_stack and shell.state.source_depth == 0:
             print("return: can only `return' from a function or sourced script", file=sys.stderr)
-            return 1
+            return 2  # bash usage-error status
 
         # Get return value
         if len(args) > 1:
@@ -816,8 +816,10 @@ class ReturnBuiltin(Builtin):
                 # Wrap return value to 0-255 range like bash does
                 exit_code = exit_code % 256
             except ValueError:
+                # bash: the error still returns from the function/sourced
+                # file, with the usage-error status 2.
                 print(f"return: {args[1]}: numeric argument required", file=sys.stderr)
-                return 1
+                raise FunctionReturn(2)
         else:
             # With no arguments, return the current value of $?
             exit_code = shell.state.last_exit_code

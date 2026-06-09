@@ -66,15 +66,23 @@ class SourceBuiltin(Builtin):
         shell.script_name = script_path
         # Keep current script mode (sourcing inherits mode)
 
+        shell.state.source_depth += 1
         try:
             from ..input_sources import FileInput
-            with FileInput(script_path) as input_source:
-                # Execute with no history since it's sourced
-                return shell.script_manager.source_processor.execute_from_source(input_source, add_to_history=False)
+            from .function_support import FunctionReturn
+            try:
+                with FileInput(script_path) as input_source:
+                    # Execute with no history since it's sourced
+                    return shell.script_manager.source_processor.execute_from_source(input_source, add_to_history=False)
+            except FunctionReturn as ret:
+                # `return N` inside the sourced file: stop executing the file
+                # and make N the exit status of `source` itself (bash).
+                return ret.exit_code
         except OSError as e:
             print(f"source: {script_path}: {e}", file=sys.stderr)
             return 1
         finally:
+            shell.state.source_depth -= 1
             # Restore previous state
             shell.positional_params = old_positional
             shell.script_name = old_script_name
