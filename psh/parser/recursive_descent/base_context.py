@@ -46,40 +46,6 @@ class ContextBaseParser:
             return self.advance()
         return None
 
-    # === Context State Management ===
-
-    def enter_scope(self, scope: str):
-        """Enter a parsing scope."""
-        self.ctx.enter_scope(scope)
-
-    def exit_scope(self) -> Optional[str]:
-        """Exit current parsing scope."""
-        return self.ctx.exit_scope()
-
-    def enter_rule(self, rule_name: str):
-        """Enter a parse rule (for debugging/profiling)."""
-        self.ctx.enter_rule(rule_name)
-
-    def exit_rule(self, rule_name: str):
-        """Exit a parse rule (for debugging/profiling)."""
-        self.ctx.exit_rule(rule_name)
-
-    def in_scope(self, scope: str) -> bool:
-        """Check if currently in a specific scope."""
-        return self.ctx.in_scope(scope)
-
-    def in_loop(self) -> bool:
-        """Check if currently parsing inside a loop."""
-        return self.ctx.in_loop()
-
-    def in_function(self) -> bool:
-        """Check if currently parsing inside a function."""
-        return self.ctx.in_function()
-
-    def in_conditional(self) -> bool:
-        """Check if currently parsing inside a conditional."""
-        return self.ctx.in_conditional()
-
     # === Error Handling ===
 
     def error(self, message: str, token: Optional[Token] = None) -> ParseError:

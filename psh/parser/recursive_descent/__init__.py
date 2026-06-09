@@ -5,14 +5,13 @@ organized into modular components for better maintainability.
 """
 
 from .base_context import ContextBaseParser
-from .context import HeredocInfo, ParserContext, ParserProfiler
+from .context import ParserContext
 from .helpers import ErrorContext, ParseError, TokenGroups
 from .parser import Parser
 
 __all__ = [
     'Parser',
     'ParserContext',
-    'ParserProfiler',
     'ParseError',
     'ErrorContext',
 ]

@@ -4,6 +4,40 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.256.0 (2026-06-09) - Parser dead-machinery purge (review Tier 2, phase 1a)
+- Remove ~850 lines of parser machinery that production never read, all
+  flagged by the 2026-06-09 architecture review:
+  - The ParserContext state flags (in_test_expr, in_arithmetic,
+    in_case_pattern, in_function_body, in_command_substitution,
+    in_process_substitution) and the save/restore context manager that
+    existed only to restore them — written by four sub-parsers, read by
+    nothing. psh/parser/CLAUDE.md documented the pattern as a core
+    convention; it now documents that grammar context lives in the
+    recursive call structure, not in flags.
+  - The execution_context AST field (STATEMENT/PIPELINE) and the ~25
+    _parse_X_neutral / parse_X_statement / parse_X_command wrapper
+    triplets that existed solely to set it. Each construct now has one
+    parse_X_statement method; ExecutionContext was removed from
+    ast_nodes (the executor's ExecutionContext is unrelated and intact).
+  - ParserProfiler (~105 lines) and the enter_rule/exit_rule/parse_stack
+    rule-tracking hooks: re-judged from the earlier "keep tested
+    infrastructure" decision (v0.231.0 era) because the hooks were never
+    called during production parsing, so the profiler could not measure
+    anything real and its tests tested fiction.
+  - The phantom `debug-parser` option / ParserConfig.trace_parsing chain:
+    it claimed to enable parser tracing but the tracing hook was never
+    invoked. Removed end-to-end (set -o entry, debug builtin, parser-mode
+    educational no longer claims "with debugging").
+  - scope_stack/loop_depth/function_depth/conditional_depth counters,
+    the ctx heredoc trackers + HeredocInfo, get_state_summary/reset_state,
+    and the duplicate Parser.parse_with_heredocs method (production uses
+    the module-level function, which the regression tests now target).
+- tests/unit/parser/test_parser_context.py rewritten to cover the
+  context's real responsibilities; three tests retargeted from removed
+  APIs to their live equivalents. No behaviour change (full suite +
+  conformance green; control-structure/pipeline smoke battery vs bash
+  unchanged).
+
 ## 0.255.0 (2026-06-09) - Process substitutions preserve sibling quoting (review Tier 1 E)
 - When any argument was a process substitution, ALL of the command's words
   were rebuilt from plain strings, discarding quote context — a quoted "*"

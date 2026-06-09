@@ -402,14 +402,7 @@ class EnhancedTestStatement(Statement):
 # UNIFIED CONTROL STRUCTURE TYPES (Phase 3 Refactoring)
 # =============================================================================
 # These unified types can serve as both Statement and Command depending on
-# their execution context. They will eventually replace the dual Statement/Command
-# types above.
-
-
-class ExecutionContext(Enum):
-    """Execution context for control structures."""
-    STATEMENT = "statement"  # Execute in current shell process
-    PIPELINE = "pipeline"    # Execute in subshell for pipeline
+# They will eventually replace the dual Statement/Command types above.
 
 
 class UnifiedControlStructure(Statement, CompoundCommand):
@@ -423,7 +416,6 @@ class WhileLoop(UnifiedControlStructure):
     condition: StatementList  # The command list that determines continue/stop
     body: StatementList       # Commands to execute repeatedly while condition is true
     redirects: List[Redirect] = field(default_factory=list)
-    execution_context: ExecutionContext = ExecutionContext.STATEMENT
     background: bool = False  # Only used in pipeline context
 
 
@@ -433,7 +425,6 @@ class UntilLoop(UnifiedControlStructure):
     condition: StatementList  # The command list that determines loop termination
     body: StatementList       # Commands to execute repeatedly until condition is true
     redirects: List[Redirect] = field(default_factory=list)
-    execution_context: ExecutionContext = ExecutionContext.STATEMENT
     background: bool = False
 
 
@@ -444,7 +435,6 @@ class ForLoop(UnifiedControlStructure):
     items: List[str]        # List of items to iterate over
     body: StatementList     # Commands to execute for each iteration
     redirects: List[Redirect] = field(default_factory=list)
-    execution_context: ExecutionContext = ExecutionContext.STATEMENT
     background: bool = False  # Only used in pipeline context
     item_quote_types: List[Optional[str]] = field(default_factory=list)  # Quote types for items
 
@@ -457,7 +447,6 @@ class CStyleForLoop(UnifiedControlStructure):
     condition_expr: Optional[str] = None
     update_expr: Optional[str] = None
     redirects: List[Redirect] = field(default_factory=list)
-    execution_context: ExecutionContext = ExecutionContext.STATEMENT
     background: bool = False
 
 
@@ -469,7 +458,6 @@ class IfConditional(UnifiedControlStructure):
     elif_parts: List[Tuple[StatementList, StatementList]] = field(default_factory=list)
     else_part: Optional[StatementList] = None
     redirects: List[Redirect] = field(default_factory=list)
-    execution_context: ExecutionContext = ExecutionContext.STATEMENT
     background: bool = False
 
 
@@ -479,7 +467,6 @@ class CaseConditional(UnifiedControlStructure):
     expr: str
     items: List[CaseItem] = field(default_factory=list)
     redirects: List[Redirect] = field(default_factory=list)
-    execution_context: ExecutionContext = ExecutionContext.STATEMENT
     background: bool = False
 
 
@@ -490,7 +477,6 @@ class SelectLoop(UnifiedControlStructure):
     items: List[str]
     body: StatementList
     redirects: List[Redirect] = field(default_factory=list)
-    execution_context: ExecutionContext = ExecutionContext.STATEMENT
     background: bool = False
     item_quote_types: List[Optional[str]] = field(default_factory=list)  # Quote types for items
 
@@ -500,6 +486,5 @@ class ArithmeticEvaluation(UnifiedControlStructure):
     """Unified arithmetic command."""
     expression: str
     redirects: List[Redirect] = field(default_factory=list)
-    execution_context: ExecutionContext = ExecutionContext.STATEMENT
     background: bool = False
 

@@ -7,7 +7,7 @@ context-aware parsing, semantic analysis, and enhanced error recovery.
 """
 
 from .config import ErrorHandlingMode, ParserConfig, ParsingMode
-from .recursive_descent.context import ParserContext, ParserProfiler
+from .recursive_descent.context import ParserContext
 from .recursive_descent.helpers import ErrorContext, ParseError
 
 # Import from final locations
@@ -51,7 +51,7 @@ def parse_with_heredocs(tokens, heredoc_map):
     return utils_parse_with_heredocs(tokens, heredoc_map)
 
 
-def create_parser(tokens, active_parser='rd', trace_parsing=False, source_text=None):
+def create_parser(tokens, active_parser='rd', source_text=None):
     """Create a parser configured for the selected implementation.
 
     Chooses between the recursive descent parser and the combinator parser
@@ -61,13 +61,12 @@ def create_parser(tokens, active_parser='rd', trace_parsing=False, source_text=N
         tokens: List of tokens to parse.
         active_parser: ``'rd'`` for recursive descent (default),
             ``'combinator'`` for the combinator parser.
-        trace_parsing: Enable parser tracing output.
         source_text: Optional source text for error reporting.
 
     Returns:
         Object with a ``.parse()`` method that returns an AST.
     """
-    config = ParserConfig(trace_parsing=trace_parsing)
+    config = ParserConfig()
 
     if active_parser == 'combinator':
         from .combinators.parser import ParserCombinatorShellParser

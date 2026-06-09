@@ -150,7 +150,6 @@ class TestConfigurationIntegration:
         tokens = tokenize("if true; then echo hello; fi")
         config = ParserConfig(
             parsing_mode=ParsingMode.EDUCATIONAL,
-            trace_parsing=True,
             show_error_suggestions=True
         )
         parser = Parser(tokens, config=config)

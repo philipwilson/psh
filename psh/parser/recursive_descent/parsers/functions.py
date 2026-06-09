@@ -70,10 +70,7 @@ class FunctionParser:
             self.parser.advance()
             self.parser.skip_newlines()
 
-            # Set function body context before parsing command list
-            with self.parser.ctx:
-                self.parser.ctx.in_function_body = True
-                statements = self.parser.statements.parse_command_list_until(TokenType.RBRACE)
+            statements = self.parser.statements.parse_command_list_until(TokenType.RBRACE)
 
             self.parser.expect(TokenType.RBRACE)
             return statements
@@ -85,7 +82,7 @@ class FunctionParser:
         elif self.parser.match(TokenType.IF, TokenType.WHILE, TokenType.UNTIL, TokenType.FOR, TokenType.CASE,
                               TokenType.SELECT, TokenType.DOUBLE_LPAREN, TokenType.DOUBLE_LBRACKET):
             # Control structure
-            stmt = self.parser.control_structures._parse_control_structure()
+            stmt = self.parser.control_structures.parse_control_structure()
             # Wrap in command list
             cmd_list = CommandList()
             cmd_list.statements.append(stmt)

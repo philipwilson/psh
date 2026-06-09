@@ -107,21 +107,6 @@ All 8 sub-parsers follow the same implicit contract:
 - **Token position**: Use `self.parser.current` (the property on
   `Parser`), not `self.parser.ctx.current` directly. Both work, but the
   property is the intended public interface.
-- **Context manager**: Use `with self.parser.ctx:` **only** when the
-  method needs to change a parsing state flag. The context manager
-  saves all flags on entry and restores them on exit. Sub-parsers that
-  don't change flags correctly omit it.
-
-  | Sub-parser | Method | Flag changed |
-  |---|---|---|
-  | ArithmeticParser | `_parse_arithmetic_neutral` | `in_arithmetic` |
-  | TestParser | `parse_enhanced_test_statement` | `in_test_expr` |
-  | ControlStructureParser | `parse_case_item` | `in_case_pattern` |
-  | FunctionParser | `parse_compound_command` | `in_function_body` |
-
-  CommandParser, StatementParser, RedirectionParser, and ArrayParser
-  never change flags and never use the context manager.
-
 - **Optional consumption**: Prefer `self.parser.consume_if(TokenType.X)`
   over the inline `if self.parser.match(X): self.parser.advance()`
   pattern.
@@ -130,43 +115,28 @@ All 8 sub-parsers follow the same implicit contract:
 
 ### 3. ParserContext State Management
 
-`ParserContext` tracks all parsing state:
+`ParserContext` holds the parser's shared state — the token stream and
+position, configuration, error collection, and source text for error
+messages. (It deliberately does NOT track grammar context: the recursive
+call structure *is* the context in a recursive-descent parser.)
 
 ```python
 class ParserContext:
     tokens: List[Token]      # Token stream
     current: int             # Current position
 
-    # Parsing state flags
-    in_function_body: bool
-    in_arithmetic: bool
-    in_test_expr: bool
-    in_case_pattern: bool
-    in_command_substitution: bool
-
-    # Scope tracking
-    scope_stack: List[str]   # ["function", "loop", ...]
-
     # Error handling
     config: ParserConfig
     errors: List[ParseError]
+    error_recovery_mode: bool
+    fatal_error: Optional[ParseError]
+
+    # Source context (for error messages)
+    source_text: Optional[str]
+    source_lines: Optional[List[str]]
 ```
 
-### 4. Context Manager for State Preservation
-
-Use `with self.parser.ctx:` to save/restore parsing state flags (see
-the sub-parser contract above for when this is appropriate):
-
-```python
-# In control_structures.py
-def parse_case_item(self):
-    with self.parser.ctx:  # Saves state
-        self.parser.ctx.in_case_pattern = True
-        pattern_str = self._parse_case_pattern()
-    # in_case_pattern automatically restored
-```
-
-### 5. TokenGroups for Matching
+### 4. TokenGroups for Matching
 
 Predefined token sets for common checks:
 
@@ -306,9 +276,7 @@ python -m psh --debug-ast -c "if true; then echo yes; fi"
 
 3. **Heredoc State**: Heredocs require special handling; they're collected after the statement.
 
-4. **Context Preservation**: Use `with parser.context:` when entering nested parsing contexts.
-
-5. **Error Position**: Always include token position in error messages for debugging.
+4. **Error Position**: Always include token position in error messages for debugging.
 
 ## Debug Options
 

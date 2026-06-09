@@ -16,8 +16,7 @@ from ....ast_nodes import (
     Command,
     ContinueStatement,
     CStyleForLoop,
-    ExecutionContext,
-    ForLoop,
+        ForLoop,
     IfConditional,
     LiteralPart,
     Pipeline,
@@ -295,9 +294,6 @@ class CommandParser:
 
     def parse_pipeline_with_initial_component(self, initial_component: Command) -> Statement:
         """Parse a pipeline starting with an already-parsed component."""
-        # Set the initial component to pipeline context
-        initial_component.execution_context = ExecutionContext.PIPELINE
-
         # Create pipeline and add initial component
         pipeline = Pipeline()
         pipeline.commands.append(initial_component)
@@ -341,19 +337,19 @@ class CommandParser:
         """Parse a single component of a pipeline (simple or compound command)."""
         # Try parsing as control structure first
         if self.parser.match(TokenType.WHILE):
-            return self.parse_while_command()
+            return self.parser.control_structures.parse_while_statement()
         elif self.parser.match(TokenType.UNTIL):
-            return self.parse_until_command()
+            return self.parser.control_structures.parse_until_statement()
         elif self.parser.match(TokenType.FOR):
-            return self.parse_for_command()
+            return self.parser.control_structures.parse_for_statement()
         elif self.parser.match(TokenType.IF):
-            return self.parse_if_command()
+            return self.parser.control_structures.parse_if_statement()
         elif self.parser.match(TokenType.CASE):
-            return self.parse_case_command()
+            return self.parser.control_structures.parse_case_statement()
         elif self.parser.match(TokenType.SELECT):
-            return self.parse_select_command()
+            return self.parser.control_structures.parse_select_statement()
         elif self.parser.match(TokenType.DOUBLE_LPAREN):
-            return self.parse_arithmetic_compound_command()
+            return self.parser.arithmetic.parse_arithmetic_command()
         elif self.parser.match(TokenType.DOUBLE_LBRACKET):
             return self.parser.tests.parse_enhanced_test_statement()
         elif self.parser.match(TokenType.BREAK):
@@ -420,50 +416,6 @@ class CommandParser:
                 return WordBuilder.build_word_from_token(token, quote_type)
             else:
                 raise self.parser.error("Expected word-like token")
-
-    # Command variant parsers for use in pipelines
-
-    def parse_while_command(self) -> WhileLoop:
-        """Parse while loop as a command for use in pipelines."""
-        result = self.parser.control_structures._parse_while_neutral()
-        result.execution_context = ExecutionContext.PIPELINE
-        return result
-
-    def parse_until_command(self) -> UntilLoop:
-        """Parse until loop as a command for use in pipelines."""
-        result = self.parser.control_structures._parse_until_neutral()
-        result.execution_context = ExecutionContext.PIPELINE
-        return result
-
-    def parse_for_command(self) -> Union[ForLoop, CStyleForLoop]:
-        """Parse for loop as a command for use in pipelines."""
-        result = self.parser.control_structures._parse_for_neutral()
-        result.execution_context = ExecutionContext.PIPELINE
-        return result
-
-    def parse_if_command(self) -> IfConditional:
-        """Parse if command for use in pipelines."""
-        result = self.parser.control_structures._parse_if_neutral()
-        result.execution_context = ExecutionContext.PIPELINE
-        return result
-
-    def parse_case_command(self) -> CaseConditional:
-        """Parse case command for use in pipelines."""
-        result = self.parser.control_structures._parse_case_neutral()
-        result.execution_context = ExecutionContext.PIPELINE
-        return result
-
-    def parse_select_command(self) -> SelectLoop:
-        """Parse select command for use in pipelines."""
-        result = self.parser.control_structures._parse_select_neutral()
-        result.execution_context = ExecutionContext.PIPELINE
-        return result
-
-    def parse_arithmetic_compound_command(self) -> ArithmeticEvaluation:
-        """Parse arithmetic command for use in pipelines."""
-        result = self.parser.arithmetic._parse_arithmetic_neutral()
-        result.execution_context = ExecutionContext.PIPELINE
-        return result
 
     def parse_break_statement(self) -> BreakStatement:
         """Parse break statement for use in pipelines."""

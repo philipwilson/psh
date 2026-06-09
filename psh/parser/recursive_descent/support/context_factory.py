@@ -32,7 +32,6 @@ def create_context(tokens: List[Token],
         tokens=normalized_tokens,
         config=config,
         source_text=source_text,
-        trace_enabled=config.trace_parsing,
         **kwargs
     )
 

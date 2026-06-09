@@ -27,20 +27,17 @@ class TestParser:
 
     def parse_enhanced_test_statement(self) -> EnhancedTestStatement:
         """Parse [[ ... ]] enhanced test statement."""
-        with self.parser.ctx:
-            self.parser.ctx.in_test_expr = True
+        self.parser.expect(TokenType.DOUBLE_LBRACKET)
+        self.parser.skip_newlines()
 
-            self.parser.expect(TokenType.DOUBLE_LBRACKET)
-            self.parser.skip_newlines()
+        expression = self.parse_test_expression()
 
-            expression = self.parse_test_expression()
+        self.parser.skip_newlines()
+        self.parser.expect(TokenType.DOUBLE_RBRACKET)
 
-            self.parser.skip_newlines()
-            self.parser.expect(TokenType.DOUBLE_RBRACKET)
+        redirects = self.parser.redirections.parse_redirects()
 
-            redirects = self.parser.redirections.parse_redirects()
-
-            return EnhancedTestStatement(expression, redirects)
+        return EnhancedTestStatement(expression, redirects)
 
     def parse_test_expression(self) -> TestExpression:
         """Parse a test expression with proper precedence."""
@@ -130,9 +127,7 @@ class TestParser:
                 # word that may contain (, ), |, ?, etc., which the lexer split
                 # into operator tokens. Reconstruct it from the adjacent run.
                 if operator == '=~':
-                    self.parser.ctx.enter_scope('regex_rhs')
                     right, right_quote_type = self._parse_regex_operand()
-                    self.parser.ctx.exit_scope()
                 else:
                     right, right_quote_type = self._parse_test_operand()
 
