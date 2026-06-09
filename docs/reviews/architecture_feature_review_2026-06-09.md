@@ -531,6 +531,27 @@ rules in CLAUDE.md).
    heredoc >64KB via temp file.
 
 ### Tier 2 — medium projects
+
+> **TIER 2 STATUS (2026-06-10): ALL RESOLVED** (v0.256.0–v0.265.0):
+> item 5 (dead-code purge, run first by request) → v0.256.0 (parser
+> machinery, ~850 lines incl. the execution_context triplets and the
+> phantom debug-parser chain), v0.257.0 (lexer fiction, ~680 lines incl.
+> the dead operator table and lying QUOTE_RULES/LexerConfig), v0.258.0
+> (executor/builtins scraps; vi keymap now matches behavior with undo/redo
+> wired for real);
+> item 6 (builtin infrastructure) → v0.259.0 (Builtin.write/parse_flags,
+> one assoc-array parser, usage errors rc 2);
+> item 3 (missing builtins/variables) → v0.260.0 (umask/times), v0.261.0
+> (PIPESTATUS, PPID, UID/EUID, EPOCH vars, c in $-), v0.262.0 (scalar +=,
+> printf -v / %(fmt)T, quoted-regex literal in =~, builtin builtin);
+> item 4 (DEBUG/ERR traps) → v0.263.0 (both fire with bash semantics;
+> signal traps deferred to command boundaries);
+> item 1 (& grammar) → v0.264.0 (list-level &, backgroundable control
+> structures, newline after |, structural ParseError.at_eof replacing
+> ~70 message patterns);
+> item 2 (heredoc redesign) → v0.265.0 (single-pass lexing with cross-line
+> state, quote-aware detection, plus the unscheduled
+> validate_brace_expansion and operand-quoting HIGH/MED fixes).
 1. **`&` at the list level** per POSIX grammar (incl. control structures, reject `& &&`)
    + `skip_newlines()` after `|`; structural `ParseError.at_eof` flag to replace the
    ~40-pattern string matching in `source_processor.py:168-249`.
