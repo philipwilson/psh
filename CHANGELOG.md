@@ -4,6 +4,14 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.245.0 (2026-06-09) - Brace expansion on heredoc lines (review Tier 0 #8)
+- tokenize_with_heredocs() omitted the TokenBraceExpander pass that
+  tokenize() performs, so any command line containing a heredoc silently
+  lost brace expansion (`cat <<EOF; echo {a,b}` printed `{a,b}`; bash: `a b`).
+  Heredoc bodies remain literal, as in bash.
+- First unit tests touching the heredoc lexer path
+  (tests/unit/lexer/test_heredoc_brace_expansion.py, 6 cases).
+
 ## 0.244.0 (2026-06-09) - trap -- handling (review Tier 0 #7)
 - `trap -- 'action' SIGNAL` works: a leading `--` ends option processing per
   POSIX instead of being taken as the action ("invalid signal

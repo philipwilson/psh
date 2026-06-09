@@ -95,6 +95,7 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options
     Returns:
         Tuple of (tokens, heredoc_map) where heredoc_map contains collected heredoc content
     """
+    from ..brace_expansion import TokenBraceExpander
     from .heredoc_lexer import HeredocLexer
 
     # Create appropriate lexer config based on strict mode
@@ -114,6 +115,11 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options
     # Normalize keywords before transformations
     normalizer = KeywordNormalizer()
     tokens = normalizer.normalize(tokens)
+
+    # Brace expansion on the token stream — same pass as tokenize();
+    # omitting it silently disabled brace expansion on any command line
+    # containing a heredoc.
+    tokens = TokenBraceExpander().expand(tokens)
 
     # Apply token transformations
     from ..token_transformer import TokenTransformer
