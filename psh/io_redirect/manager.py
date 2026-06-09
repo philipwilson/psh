@@ -25,6 +25,9 @@ class IOManager:
 
         # Track saved file descriptors for restoration
         self._saved_fds_list = []
+        # File objects opened by setup_builtin_redirections; restore closes
+        # exactly these (never whatever happens to be in sys.stdout/stderr)
+        self._opened_streams = []
 
 
     @contextmanager
@@ -64,82 +67,111 @@ class IOManager:
         stderr_backup = None
         stdin_backup = None
         stdin_fd_backup = None
+        self._opened_streams = []
 
-        for redirect in command.redirects:
-            redirect = self.file_redirector._resolved(redirect)
-            target = self.file_redirector._expand_redirect_target(redirect)
+        try:
+            for redirect in command.redirects:
+                redirect = self.file_redirector._resolved(redirect)
+                target = self.file_redirector._expand_redirect_target(redirect)
 
-            # Handle process substitution as redirect target
-            if target and target.startswith(('<(', '>(')) and target.endswith(')'):
-                from .process_sub import create_process_substitution
+                # Handle process substitution as redirect target
+                if target and target.startswith(('<(', '>(')) and target.endswith(')'):
+                    from .process_sub import create_process_substitution
 
-                direction = 'in' if target.startswith('<(') else 'out'
-                cmd_str = target[2:-1]
-                parent_fd, fd_path, pid = create_process_substitution(cmd_str, direction, self.shell)
-                self.process_sub_handler.active_fds.append(parent_fd)
-                self.process_sub_handler.active_pids.append(pid)
-                target = fd_path
+                    direction = 'in' if target.startswith('<(') else 'out'
+                    cmd_str = target[2:-1]
+                    parent_fd, fd_path, pid = create_process_substitution(cmd_str, direction, self.shell)
+                    self.process_sub_handler.active_fds.append(parent_fd)
+                    self.process_sub_handler.active_pids.append(pid)
+                    target = fd_path
 
-            if redirect.combined:
-                # &> or &>> — redirect both stdout and stderr
-                stdout_backup = sys.stdout
-                stderr_backup = sys.stderr
-                is_append = redirect.type.endswith('>>')
-                mode = 'a' if is_append else 'w'
-                if not is_append and self.file_redirector._noclobber_blocks(target):
-                    raise OSError(f"cannot overwrite existing file: {target}")
-                f = open(target, mode)
-                sys.stdout = f
-                sys.stderr = f
-            elif redirect.type == '<':
-                stdin_backup = sys.stdin
-                stdin_fd_backup = os.dup(0)
-                self.file_redirector._redirect_input_from_file(target)
-                sys.stdin = open(target, 'r')
-            elif redirect.type == '<>':
-                stdin_backup = sys.stdin
-                stdin_fd_backup = os.dup(0)
-                self.file_redirector._redirect_readwrite(target, redirect)
-                sys.stdin = open(target, 'r+')
-            elif redirect.type in ('<<', '<<-'):
-                stdin_backup = sys.stdin
-                stdin_fd_backup = os.dup(0)
-                content = self.file_redirector._redirect_heredoc(redirect)
-                sys.stdin = io.StringIO(content)
-            elif redirect.type == '<<<':
-                stdin_backup = sys.stdin
-                stdin_fd_backup = os.dup(0)
-                content = self.file_redirector._redirect_herestring(redirect)
-                sys.stdin = io.StringIO(content)
-            elif redirect.type == '>|':
-                sb, eb = self._redirect_builtin_output_file(target, 'w', redirect,
-                                                            check_noclobber=False)
-                if sb is not None: stdout_backup = sb
-                if eb is not None: stderr_backup = eb
-            elif redirect.type in ('>', '>>'):
-                mode = 'w' if redirect.type == '>' else 'a'
-                sb, eb = self._redirect_builtin_output_file(
-                    target, mode, redirect, check_noclobber=(redirect.type == '>'))
-                if sb is not None: stdout_backup = sb
-                if eb is not None: stderr_backup = eb
-            elif redirect.type == '>&':
-                # Duplicate an output fd. For the common 2>&1 / 1>&2 cases swap
-                # the Python stream objects so a builtin's writes (which go to
-                # sys.stdout/sys.stderr, not raw fds) interleave correctly and
-                # honour redirect ordering. Any other dup (fd>=3, n>&m) is rare
-                # for a builtin and handled at the fd level by FileRedirector.
-                if redirect.fd == 2 and redirect.dup_fd == 1:
-                    stderr_backup = sys.stderr
-                    sys.stderr = sys.stdout
-                elif redirect.fd == 1 and redirect.dup_fd == 2:
-                    stdout_backup = sys.stdout
-                    sys.stdout = sys.stderr
-                else:
+                # Backups record the stream that was current BEFORE the first
+                # redirect touched it (same fd redirected twice must restore
+                # the original, not the intermediate file).
+                if redirect.combined:
+                    # &> or &>> — redirect both stdout and stderr
+                    if stdout_backup is None:
+                        stdout_backup = sys.stdout
+                    if stderr_backup is None:
+                        stderr_backup = sys.stderr
+                    is_append = redirect.type.endswith('>>')
+                    mode = 'a' if is_append else 'w'
+                    if not is_append and self.file_redirector._noclobber_blocks(target):
+                        raise OSError(f"cannot overwrite existing file: {target}")
+                    f = open(target, mode)
+                    self._opened_streams.append(f)
+                    sys.stdout = f
+                    sys.stderr = f
+                elif redirect.type == '<':
+                    if stdin_backup is None:
+                        stdin_backup = sys.stdin
+                        stdin_fd_backup = os.dup(0)
+                    self.file_redirector._redirect_input_from_file(target)
+                    f = open(target, 'r')
+                    self._opened_streams.append(f)
+                    sys.stdin = f
+                elif redirect.type == '<>':
+                    if stdin_backup is None:
+                        stdin_backup = sys.stdin
+                        stdin_fd_backup = os.dup(0)
+                    self.file_redirector._redirect_readwrite(target, redirect)
+                    f = open(target, 'r+')
+                    self._opened_streams.append(f)
+                    sys.stdin = f
+                elif redirect.type in ('<<', '<<-'):
+                    if stdin_backup is None:
+                        stdin_backup = sys.stdin
+                        stdin_fd_backup = os.dup(0)
+                    content = self.file_redirector._redirect_heredoc(redirect)
+                    sys.stdin = io.StringIO(content)
+                elif redirect.type == '<<<':
+                    if stdin_backup is None:
+                        stdin_backup = sys.stdin
+                        stdin_fd_backup = os.dup(0)
+                    content = self.file_redirector._redirect_herestring(redirect)
+                    sys.stdin = io.StringIO(content)
+                elif redirect.type == '>|':
+                    sb, eb = self._redirect_builtin_output_file(target, 'w', redirect,
+                                                                check_noclobber=False)
+                    if sb is not None and stdout_backup is None:
+                        stdout_backup = sb
+                    if eb is not None and stderr_backup is None:
+                        stderr_backup = eb
+                elif redirect.type in ('>', '>>'):
+                    mode = 'w' if redirect.type == '>' else 'a'
+                    sb, eb = self._redirect_builtin_output_file(
+                        target, mode, redirect, check_noclobber=(redirect.type == '>'))
+                    if sb is not None and stdout_backup is None:
+                        stdout_backup = sb
+                    if eb is not None and stderr_backup is None:
+                        stderr_backup = eb
+                elif redirect.type == '>&':
+                    # Duplicate an output fd. For the common 2>&1 / 1>&2 cases swap
+                    # the Python stream objects so a builtin's writes (which go to
+                    # sys.stdout/sys.stderr, not raw fds) interleave correctly and
+                    # honour redirect ordering. Any other dup (fd>=3, n>&m) is rare
+                    # for a builtin and handled at the fd level by FileRedirector.
+                    if redirect.fd == 2 and redirect.dup_fd == 1:
+                        if stderr_backup is None:
+                            stderr_backup = sys.stderr
+                        sys.stderr = sys.stdout
+                    elif redirect.fd == 1 and redirect.dup_fd == 2:
+                        if stdout_backup is None:
+                            stdout_backup = sys.stdout
+                        sys.stdout = sys.stderr
+                    else:
+                        saved_fds = self.file_redirector.apply_redirections([redirect])
+                        self._saved_fds_list.extend(saved_fds)
+                elif redirect.type in ('<&', '>&-', '<&-'):
                     saved_fds = self.file_redirector.apply_redirections([redirect])
                     self._saved_fds_list.extend(saved_fds)
-            elif redirect.type in ('<&', '>&-', '<&-'):
-                saved_fds = self.file_redirector.apply_redirections([redirect])
-                self._saved_fds_list.extend(saved_fds)
+        except Exception:
+            # A redirect failed part-way through (e.g. `echo hi >a >/bad/x`):
+            # roll back everything already applied so the shell's streams and
+            # fds are not left hijacked.
+            self.restore_builtin_redirections(
+                stdin_backup, stdout_backup, stderr_backup, stdin_fd_backup)
+            raise
 
         return stdin_backup, stdout_backup, stderr_backup, stdin_fd_backup
 
@@ -157,7 +189,9 @@ class IOManager:
         target_fd = redirect.fd if redirect.fd is not None else 1
         if target_fd == 1:
             backup = sys.stdout
-            sys.stdout = open(target, mode)
+            f = open(target, mode)
+            self._opened_streams.append(f)
+            sys.stdout = f
             if self.state.options.get('debug-exec'):
                 print(f"DEBUG IOManager: redirected stdout to '{target}' "
                       f"(mode {mode!r}); sys.stdout is now {sys.stdout}",
@@ -165,7 +199,9 @@ class IOManager:
             return backup, None
         if target_fd == 2:
             backup = sys.stderr
-            sys.stderr = open(target, mode)
+            f = open(target, mode)
+            self._opened_streams.append(f)
+            sys.stderr = f
             return None, backup
         # fd >= 3: operate on the real descriptor, not sys.stdout.
         saved_fds = self.file_redirector.apply_redirections([redirect])
@@ -174,34 +210,29 @@ class IOManager:
 
     def restore_builtin_redirections(self, stdin_backup, stdout_backup, stderr_backup, stdin_fd_backup=None):
         """Restore original stdin/stdout/stderr after built-in execution"""
-        import io
-
         # Restore any file descriptors saved by file_redirector
         if self._saved_fds_list:
             self.file_redirector.restore_redirections(self._saved_fds_list)
             self._saved_fds_list = []
 
-        # Restore in reverse order
+        # Restore the original stream objects first, then close exactly the
+        # files setup opened. Never close whatever happens to be in
+        # sys.stdout/sys.stderr: after `cmd 2>&1`, sys.stderr IS the shell's
+        # real stdout, and closing it used to kill all builtin output for the
+        # rest of the session.
         if stderr_backup is not None:
-            if hasattr(sys.stderr, 'close') and sys.stderr != stderr_backup:
-                # Don't close StringIO objects as they might be reused
-                if not isinstance(sys.stderr, io.StringIO):
-                    sys.stderr.close()
             sys.stderr = stderr_backup
-
         if stdout_backup is not None:
-            if hasattr(sys.stdout, 'close') and sys.stdout != stdout_backup:
-                # Don't close StringIO objects as they might be reused
-                if not isinstance(sys.stdout, io.StringIO):
-                    sys.stdout.close()
             sys.stdout = stdout_backup
-
         if stdin_backup is not None:
-            if hasattr(sys.stdin, 'close') and sys.stdin != stdin_backup:
-                # Don't close StringIO objects as they might be reused
-                if not isinstance(sys.stdin, io.StringIO):
-                    sys.stdin.close()
             sys.stdin = stdin_backup
+
+        for f in self._opened_streams:
+            try:
+                f.close()
+            except OSError:
+                pass
+        self._opened_streams = []
 
         # Restore stdin file descriptor if it was saved
         if stdin_fd_backup is not None:

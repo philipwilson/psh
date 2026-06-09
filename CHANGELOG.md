@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.246.0 (2026-06-09) - Transactional redirection save/restore (review Tier 0 #9)
+- `builtin 2>&1` no longer kills the shell's stdout: restore used to close
+  whatever object was in sys.stderr (after 2>&1 that IS the real stdout),
+  breaking every later builtin with "I/O operation on closed file". Restore
+  now closes exactly the files setup opened, tracked per call.
+- Same fd redirected twice (`echo hi >c >d`, `{ cmd; } >e >f`) restores the
+  ORIGINAL stream/fd afterwards: fd-level restore iterates in reverse (as the
+  io_redirect CLAUDE.md always documented) and builtin stream backups are
+  recorded first-touch-wins instead of being overwritten.
+- A redirect failing part-way (`echo hi >a >/bad/x`) rolls back the
+  redirections already applied — both the builtin stream path and the
+  fd-level apply_redirections — instead of leaving the shell's stdout
+  hijacked for the rest of the session.
+- New subprocess regression tests in
+  tests/integration/redirection/test_redirection_restore.py (12 cases pinned
+  to bash 5.2 behaviour).
+
 ## 0.245.0 (2026-06-09) - Brace expansion on heredoc lines (review Tier 0 #8)
 - tokenize_with_heredocs() omitted the TokenBraceExpander pass that
   tokenize() performs, so any command line containing a heredoc silently
