@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.266.0 (2026-06-10) - Pattern-operator operand expansion (review Tier 3, phase 1a)
+- Pattern operands of `${x#pat}`, `${x##pat}`, `${x%pat}`, `${x%%pat}`,
+  `${x/pat/repl}` and the case-mod operators now undergo variable, command
+  and arithmetic expansion with one level of quote removal, matching bash.
+  Previously `$var` in these operands was matched as the four literal
+  characters `$var`, so the everyday `${f%$ext}` / `${f#$prefix}` idioms
+  silently failed; quoted operands (`${f#'a'}`) kept their quotes.
+- Quoting controls glob power exactly as in bash: unquoted text and
+  unquoted-expansion results keep glob meaning (`p='*'; ${x/$p/Z}` matches
+  everything), while quoted text and quoted-expansion results match
+  literally (`${x/"$p"/Z}` looks for a literal star).
+- Replacements are inserted literally via a callable, never interpreted as
+  a regex template: `${x/b/\1}` no longer crashes with "invalid group
+  reference" and `${x//X/\n}` no longer injects newlines.
+- bash 5.2 patsub_replacement semantics: an unquoted `&` in the replacement
+  (even one produced by an expansion) stands for the matched text; `\&`,
+  `"&"` and `'&'` are literal; an unquoted backslash escapes the next
+  character and is removed; backslashes inside expansion results stay
+  literal.
+- Pattern/replacement splitting is now quote- and construct-aware, so a
+  `/` inside quotes, `${...}`, `$(...)` or `$((4/2))` no longer splits the
+  operand early. Empty patterns are a no-op (`${x///Z}` returned
+  `ZaZbZcZ`-style corruption before; bash returns the value unchanged).
+- Case modification matches bash's per-character rule: `${v^pat}` tests
+  only the FIRST character against the pattern (`${v^b}` on `abc` is now a
+  no-op) and `${v^^pat}` examines each character individually, so
+  multi-character patterns like `${v^^bc}` never match.
+- All of the above applies per element to array expansions
+  (`${a[@]%$ext}`, `${a[@]/$p/X}`).
+- 44 new bash-pinned tests (tests/unit/expansion/test_pattern_operand_expansion.py).
+
 ## 0.265.0 (2026-06-10) - Heredoc lexing redesign + lexer correctness (review Tier 2, phase 6)
 - HeredocLexer rewritten: lines are classified (command text vs heredoc
   body) and the joined command text is tokenized in ONE ModularLexer pass,
