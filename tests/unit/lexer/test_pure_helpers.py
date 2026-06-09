@@ -7,87 +7,12 @@ escape handling, and content extraction.
 """
 
 from psh.lexer import pure_helpers
-from psh.lexer.constants import OPERATORS_BY_LENGTH, SPECIAL_VARIABLES
+from psh.lexer.constants import SPECIAL_VARIABLES
 from psh.token_types import TokenType
 
 
 class TestTextProcessing:
     """Test basic text processing functions."""
-
-    def test_read_until_char_basic(self):
-        """Test basic character reading with read_until_char."""
-        content, pos = pure_helpers.read_until_char("hello world", 0, " ")
-        assert content == "hello"
-        assert pos == 5
-
-    def test_read_until_char_not_found(self):
-        """Test read_until_char when target character is not found."""
-        content, pos = pure_helpers.read_until_char("hello", 0, "x")
-        assert content == "hello"
-        assert pos == 5
-
-    def test_read_until_char_with_escapes(self):
-        """Test read_until_char with escape sequences."""
-        content, pos = pure_helpers.read_until_char("hello\\\"world", 0, '"', escape=True)
-        assert content == "hello\"world"
-        assert pos == 12  # No unescaped quote found
-
-        content, pos = pure_helpers.read_until_char("hello\\\"world\"end", 0, '"', escape=True)
-        assert content == "hello\"world"
-        assert pos == 12  # Should stop at the unescaped quote
-
-    def test_read_until_char_empty_input(self):
-        """Test read_until_char with empty input."""
-        content, pos = pure_helpers.read_until_char("", 0, "x")
-        assert content == ""
-        assert pos == 0
-
-    def test_read_until_char_start_position(self):
-        """Test read_until_char with different start positions."""
-        content, pos = pure_helpers.read_until_char("hello world", 6, "d")
-        assert content == "worl"
-        assert pos == 10
-
-    def test_find_word_boundary_basic(self):
-        """Test basic word boundary detection."""
-        terminators = {' ', '\t', '\n', ';', '|'}
-        pos = pure_helpers.find_word_boundary("hello world", 0, terminators)
-        assert pos == 5
-
-    def test_find_word_boundary_with_escapes(self):
-        """Test word boundary detection with escapes."""
-        terminators = {' '}
-        pos = pure_helpers.find_word_boundary("hello\\ world", 0, terminators, handle_escapes=True)
-        assert pos == 12  # Should skip escaped space
-
-        pos = pure_helpers.find_word_boundary("hello\\ world", 0, terminators, handle_escapes=False)
-        assert pos == 6  # Should stop at space after backslash
-
-    def test_find_word_boundary_no_boundary(self):
-        """Test word boundary when no boundary is found."""
-        terminators = {'x'}
-        pos = pure_helpers.find_word_boundary("hello", 0, terminators)
-        assert pos == 5  # End of string
-
-    def test_scan_whitespace_basic(self):
-        """Test basic ASCII whitespace scanning."""
-        pos = pure_helpers.scan_whitespace("   hello", 0, unicode_aware=False)
-        assert pos == 3
-
-    def test_scan_whitespace_mixed(self):
-        """Test mixed whitespace character scanning."""
-        pos = pure_helpers.scan_whitespace(" \t\n hello", 0, unicode_aware=False)
-        assert pos == 4
-
-    def test_scan_whitespace_none(self):
-        """Test scanning when no whitespace is present."""
-        pos = pure_helpers.scan_whitespace("hello", 0, unicode_aware=False)
-        assert pos == 0
-
-    def test_scan_whitespace_all(self):
-        """Test scanning when entire string is whitespace."""
-        pos = pure_helpers.scan_whitespace("   ", 0, unicode_aware=False)
-        assert pos == 3
 
 
 class TestDelimiterMatching:
@@ -325,38 +250,6 @@ class TestCommentDetection:
 class TestOperatorRecognition:
     """Test operator recognition functions."""
 
-    def test_find_operator_match_single_char(self):
-        """Test single character operator matching."""
-        result = pure_helpers.find_operator_match("|", 0, OPERATORS_BY_LENGTH)
-        assert result is not None
-        op, token_type, pos = result
-        assert op == "|"
-        assert token_type == TokenType.PIPE
-        assert pos == 1
-
-    def test_find_operator_match_multi_char(self):
-        """Test multi-character operator matching."""
-        result = pure_helpers.find_operator_match("&&", 0, OPERATORS_BY_LENGTH)
-        assert result is not None
-        op, token_type, pos = result
-        assert op == "&&"
-        assert token_type == TokenType.AND_AND
-        assert pos == 2
-
-    def test_find_operator_match_longest_priority(self):
-        """Test that longest operator match takes priority."""
-        # << should match as HEREDOC, not two < operators
-        result = pure_helpers.find_operator_match("<<", 0, OPERATORS_BY_LENGTH)
-        assert result is not None
-        op, token_type, pos = result
-        assert op == "<<"
-        assert pos == 2
-
-    def test_find_operator_match_no_match(self):
-        """Test operator matching when no operator matches."""
-        result = pure_helpers.find_operator_match("abc", 0, OPERATORS_BY_LENGTH)
-        assert result is None
-
 
 class TestExpansionDetection:
     """Test expansion context detection functions."""
@@ -391,13 +284,6 @@ class TestPureFunctionIntegration:
     def test_complex_parsing_scenario(self):
         """Test complex parsing scenario using multiple pure functions."""
         input_text = 'echo "hello $(echo world)" | grep test'
-
-        # Find the pipe operator
-        result = pure_helpers.find_operator_match(input_text, 27, OPERATORS_BY_LENGTH)
-        assert result is not None
-        op, token_type, pos = result
-        assert op == "|"
-        assert pos == 28
 
         # Extract the quoted content
         content, end_pos, found = pure_helpers.extract_quoted_content(
@@ -441,21 +327,9 @@ class TestPureFunctionIntegration:
         name, var_end = pure_helpers.extract_variable_name("var123_test", 0, SPECIAL_VARIABLES)
         assert name == "var123_test"
 
-        # Find boundary after variable
-        terminators = {' ', '\t', '\n', ';'}
-        boundary = pure_helpers.find_word_boundary("var123 next", 0, terminators)
-        assert boundary == 6  # Should stop at space
-
     def test_comment_and_operator_interaction(self):
-        """Test interaction between comment detection and operator matching."""
+        """Test comment detection in operator-adjacent positions."""
         text = "cmd; # comment with | pipe"
 
         # Should detect comment start
         assert pure_helpers.is_comment_start(text, 5) is True
-
-        # Should still find operators before comment
-        result = pure_helpers.find_operator_match(text, 3, OPERATORS_BY_LENGTH)
-        assert result is not None
-        op, token_type, pos = result
-        assert op == ";"
-        assert pos == 4

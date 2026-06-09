@@ -1,6 +1,6 @@
 """Unified quote parsing with configurable rules and expansion support."""
 
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from . import pure_helpers
 from .position import Position
@@ -14,7 +14,7 @@ class QuoteRules:
         self,
         quote_char: str,
         allow_expansions: bool,
-        escape_sequences: Dict[str, str],
+        processes_escapes: bool,
         allows_newlines: bool = True,
         allows_nested_quotes: bool = False
     ):
@@ -24,13 +24,15 @@ class QuoteRules:
         Args:
             quote_char: The quote character ('"', "'", '`')
             allow_expansions: Whether to process variable/command expansions
-            escape_sequences: Map of escape sequences to their replacements
+            processes_escapes: Whether backslash escapes are processed at all.
+                The actual escape semantics per context live in
+                pure_helpers.handle_escape_sequence; this flag only gates it.
             allows_newlines: Whether newlines are allowed in quoted strings
             allows_nested_quotes: Whether the same quote can be nested (with escaping)
         """
         self.quote_char = quote_char
         self.allow_expansions = allow_expansions
-        self.escape_sequences = escape_sequences
+        self.processes_escapes = processes_escapes
         self.allows_newlines = allows_newlines
         self.allows_nested_quotes = allows_nested_quotes
 
@@ -40,44 +42,28 @@ QUOTE_RULES = {
     '"': QuoteRules(
         quote_char='"',
         allow_expansions=True,
-        escape_sequences={
-            'n': '\n', 't': '\t', 'r': '\r', 'b': '\b',
-            'f': '\f', 'v': '\v', '\\': '\\', '"': '"',
-            '`': '`', '$': '\\$'  # Special handling for $
-        },
+        processes_escapes=True,   # \$ \\ \" \` (handle_escape_sequence)
         allows_newlines=True,
         allows_nested_quotes=True
     ),
     "'": QuoteRules(
         quote_char="'",
         allow_expansions=False,
-        escape_sequences={},  # No escapes in single quotes
+        processes_escapes=False,  # No escapes in single quotes
         allows_newlines=True,
         allows_nested_quotes=False
     ),
     '`': QuoteRules(
         quote_char='`',
         allow_expansions=False,  # Backticks are command substitution, not string quotes
-        escape_sequences={
-            '\\': '\\',
-            '`': '`',
-            '$': '$'
-        },
+        processes_escapes=True,
         allows_newlines=True,
         allows_nested_quotes=True
     ),
     "$'": QuoteRules(
         quote_char="'",  # Closing quote is just '
         allow_expansions=False,  # No variable expansion in ANSI-C quotes
-        escape_sequences={
-            # Standard C escapes
-            'n': '\n', 't': '\t', 'r': '\r', 'b': '\b',
-            'f': '\f', 'v': '\v', 'a': '\a', '\\': '\\',
-            "'": "'", '"': '"', '?': '?',
-            # ANSI escape
-            'e': '\x1b', 'E': '\x1b',
-            # Special sequences handled separately: \xHH, \0NNN, \uHHHH, \UHHHHHHHH
-        },
+        processes_escapes=True,  # C escapes, \xHH, \0NNN, \uHHHH, \UHHHHHHHH
         allows_newlines=True,
         allows_nested_quotes=False
     )
@@ -180,7 +166,7 @@ class UnifiedQuoteParser:
                 continue
 
             # Handle escape sequences (only if allowed by the quote rules)
-            if char == '\\' and pos + 1 < len(input_text) and rules.escape_sequences:
+            if char == '\\' and pos + 1 < len(input_text) and rules.processes_escapes:
                 # Use the quote_type parameter if provided (for ANSI-C quotes)
                 context = quote_type if quote_type else rules.quote_char
                 escaped_str, new_pos = pure_helpers.handle_escape_sequence(

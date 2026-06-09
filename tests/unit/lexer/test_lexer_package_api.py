@@ -119,14 +119,11 @@ class TestDemotedImports:
 
     def test_constants_importable(self):
         """Test that lexer constants are still importable as convenience imports."""
-        from psh.lexer import KEYWORDS, OPERATORS_BY_LENGTH
+        from psh.lexer import KEYWORDS
 
         assert isinstance(KEYWORDS, (set, frozenset))
         assert len(KEYWORDS) > 0
         assert 'if' in KEYWORDS
-
-        assert isinstance(OPERATORS_BY_LENGTH, dict)
-        assert len(OPERATORS_BY_LENGTH) > 0
 
     def test_unicode_helpers_importable(self):
         """Test that Unicode helper functions are still importable."""
@@ -152,14 +149,7 @@ class TestDemotedImports:
 
     def test_tier3_importable_from_submodules(self):
         """Test that Tier 3 items are importable from their submodule paths."""
-        from psh.lexer.position import Position, LexerState, PositionTracker
-        from psh.lexer.position import LexerErrorHandler, RecoverableLexerError
-
-        assert Position is not None
-        assert LexerState is not None
-        assert PositionTracker is not None
-        assert LexerErrorHandler is not None
-        assert RecoverableLexerError is not None
+        from psh.lexer.position import Position, PositionTracker
 
 
 class TestPackageInternals:

@@ -5,7 +5,7 @@ from typing import List, Optional
 from ..token_types import Token, TokenType
 from .command_position import COMMAND_GROUP_OPENERS, STATEMENT_SEPARATORS
 from .expansion_parser import ExpansionContext, ExpansionParser
-from .position import LexerConfig, LexerState, Position, PositionTracker
+from .position import LexerConfig, Position, PositionTracker
 from .quote_parser import QuoteParsingContext, UnifiedQuoteParser
 from .recognizers import RecognizerRegistry
 from .state_context import LexerContext
@@ -124,17 +124,6 @@ class ModularLexer:
     def get_current_position(self) -> Position:
         """Get current position as a Position object."""
         return self.position_tracker.get_current_position()
-
-    # State management
-    @property
-    def state(self) -> LexerState:
-        """Get current lexer state."""
-        return self.context.state
-
-    @state.setter
-    def state(self, value: LexerState) -> None:
-        """Set lexer state."""
-        self.context.state = value
 
     # Token emission
     def emit_token(
