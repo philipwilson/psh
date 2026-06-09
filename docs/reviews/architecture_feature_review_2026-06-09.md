@@ -9,6 +9,21 @@ independently re-verified before publication. The rerunnable probe harness is at
 
 > Line numbers are as of v0.237.0 (commit a0d79bf) and will drift.
 
+> ## ⚡ STATUS UPDATE (2026-06-10, as of v0.265.0)
+>
+> All Tier 0, Tier 1, and Tier 2 remediation items are **RESOLVED** across
+> 28 releases (v0.238.0–v0.265.0); only Tier 3 (larger/architectural) remains.
+> Every issue row below carries a marker: **✅ FIXED (version)** or
+> **❌ OPEN** (with its tier when scheduled). The original v0.237.0 findings
+> are preserved unchanged as the historical record; per-tier release notes
+> live in the blockquotes under the Prioritized Remediation Plan, and full
+> detail in CHANGELOG.md.
+>
+> Suite growth over the campaign: 3,979 → 4,220 tests (net of ~1,800 lines
+> of removed dead code and its fiction-testing tests), including the
+> project's first errexit conformance tests, heredoc-module unit tests, and
+> field-count-pinned array expansion tests.
+
 ---
 
 ## Executive Summary
@@ -24,43 +39,44 @@ However, the review found a cluster of **verified correctness defects** concentr
 exactly the seams the test suite does not exercise: redirection fd save/restore, script-mode
 `set -e` semantics, and quoted multi-field array expansion. Several are severe enough to be
 release-blocking for the "POSIX compliance within reason" claim.
+*(2026-06-10: every defect in this cluster is fixed — see the per-row markers below.)*
 
-| Subsystem | Verdict | One-line summary |
-|---|---|---|
-| Lexer | ADEQUATE | Solid daily tokenization; heredoc re-lexing design unsound; much dead config |
-| Parser | GOOD | Clean RD design; `&` (async list) handling violates POSIX grammar |
-| Expansion | ADEQUATE | Scalars excellent; multi-field `"${arr[@]}"` semantics broken |
-| Executor | ADEQUATE | Process/job mechanics solid; errexit/eval/subshell semantics wrong; one crash |
-| Core + Builtins | ADEQUATE | Scoping/readonly/namerefs faithful; `local` injection bug; phantom DEBUG/ERR traps |
-| I/O + Interactive | NEEDS WORK | Five reproducible redirection defects, incl. one that kills the shell's stdout |
-| Feature conformance | GOOD | Broad parity; error-handling semantics are the weak axis |
+| Subsystem | Verdict (v0.237.0) | One-line summary | Status (v0.265.0) |
+|---|---|---|---|
+| Lexer | ADEQUATE | Solid daily tokenization; heredoc re-lexing design unsound; much dead config | Heredoc lexing redesigned (v0.265.0); dead config purged (v0.257.0). Open: quadratic scan, literal.py (Tier 3) |
+| Parser | GOOD | Clean RD design; `&` (async list) handling violates POSIX grammar | POSIX `&` grammar + structural at_eof (v0.264.0); dead machinery purged (v0.256.0) |
+| Expansion | ADEQUATE | Scalars excellent; multi-field `"${arr[@]}"` semantics broken | Multi-field semantics fixed (v0.254.0); proc-sub quoting (v0.255.0); operand quoting (v0.265.0) |
+| Executor | ADEQUATE | Process/job mechanics solid; errexit/eval/subshell semantics wrong; one crash | errexit policy + subshell inheritance (v0.253.0); eval control flow (v0.247.0); crash fixed (v0.238.0) |
+| Core + Builtins | ADEQUATE | Scoping/readonly/namerefs faithful; `local` injection bug; phantom DEBUG/ERR traps | Injection fixed (v0.239.0); DEBUG/ERR fire (v0.263.0); umask/times/+=/builtin added (v0.260–262) |
+| I/O + Interactive | NEEDS WORK | Five reproducible redirection defects, incl. one that kills the shell's stdout | All five redirection defects fixed (v0.246/0.251/0.252); vi keymap honest (v0.258.0). Open: rendering (Tier 3) |
+| Feature conformance | GOOD | Broad parity; error-handling semantics are the weak axis | Error-handling semantics now bash-faithful; conformance suite grew errexit/array-field/set coverage |
 
 ### Critical defects (all re-verified with one-line repros)
 
-1. **`true 2>&1; echo after` permanently breaks builtin output.**
+1. ✅ **FIXED (v0.246.0)** — `true 2>&1; echo after` permanently breaks builtin output.
    `restore_builtin_redirections` (`psh/io_redirect/manager.py:185-204`) closes the *real*
    stdout/stderr object after the stream swap; its only guard is for StringIO — which is
    precisely why `captured_shell` tests structurally cannot see it.
-2. **`set -e` exempts nothing** (`psh/executor/core.py:113-157`): `if false; then :; fi`,
+2. ✅ **FIXED (v0.253.0)** — `set -e` exempts nothing (`psh/executor/core.py:113-157`): `if false; then :; fi`,
    `false && true`, `! true`, and `while` conditions all kill the script. Conversely
    `set -e; (false)` does *not* propagate because subshells don't inherit `state.options`
    or `$?` (`psh/shell.py:55-68`). Breaks the canonical `set -eu` strict-mode idiom; the
    user guide claims "Full support". Existing tests pass only because they use the
    interactive-mode fixture, which never reaches the script-mode `sys.exit` path.
-3. **`"${arr[@]}"` collapses to one word** (`psh/expansion/manager.py:237-269`): only
+3. ✅ **FIXED (v0.254.0)** — `"${arr[@]}"` collapses to one word (`psh/expansion/manager.py:237-269`): only
    `$@` is special-cased inside double quotes. `a=(1 "2 3"); set -- "${a[@]}"; echo $#`
    → psh `1`, bash `2`. For-loops work only via a duplicate array path in the executor.
-4. **External-command redirections applied twice** — parent (`psh/executor/command.py:521`)
+4. ✅ **FIXED (v0.252.0)** — External-command redirections applied twice — parent (`psh/executor/command.py:521`)
    and child (`psh/executor/strategies.py:163,320,366`) both apply the list. Consequences:
    `cmd 2>&1 >f` puts stderr into `f` (bash: original stdout), and command substitutions in
    heredoc bodies / redirect targets **execute twice** (verified by side-effect counting).
-5. **`local v='$(echo injected)'` re-expands the value** (`psh/builtins/shell_state.py:177-179`)
+5. ✅ **FIXED (v0.239.0)** — `local v='$(echo injected)'` re-expands the value (`psh/builtins/shell_state.py:177-179`)
    — single-quoted text in `local` assignments passes through expansion a second time.
    Correctness *and* injection defect.
-6. **`break N` past loop depth crashes** (`psh/executor/core.py:115,154`): a function-local
+6. ✅ **FIXED (v0.238.0)** — `break N` past loop depth crashes (`psh/executor/core.py:115,154`): a function-local
    `import sys` shadows the module import; the `except LoopBreak` handler then raises
    `UnboundLocalError`.
-7. **Errors mid-redirection leak fds permanently**: setup happens outside the `try`
+7. ✅ **FIXED (v0.246.0 + v0.251.0)** — Errors mid-redirection leak fds permanently: setup happens outside the `try`
    (`psh/executor/command.py:544-546`, `psh/io_redirect/manager.py:30-40`) and restore
    iterates forward instead of `reversed()` (`psh/io_redirect/file_redirect.py:249-261`,
    contradicting `psh/io_redirect/CLAUDE.md:68-73`). `echo hi >a >/bad/x; echo AFTER`
@@ -91,27 +107,31 @@ of dead/misleading code undercut both POSIX compliance and educational clarity.
 ### Issues
 | Sev | Location | Issue |
 |---|---|---|
-| HIGH | `pure_helpers.py:643-674` | `validate_brace_expansion` counts `{`/`}` with no quote/`$()` awareness: `echo ${x:-"}"}`, `${x:-'}'}`, `${x:-$(echo "}")}` all die with "Unclosed quote"; bash prints `}`. POSIX 2.6.2 violation. |
-| HIGH | `lexer/__init__.py:83-123` | `tokenize_with_heredocs` omits the `TokenBraceExpander` pass that `tokenize()` performs (line 74). Any line with a heredoc loses brace expansion: `cat <<EOF; echo {a,b}` prints `{a,b}`. |
-| HIGH | `heredoc_lexer.py:103-113` | `HeredocLexer._tokenize_line` re-lexes each physical line with a **fresh** ModularLexer, discarding cross-line state (open quotes, case/bracket depth). `cat <<EOF && echo "two\nwords"` → "Unclosed quote". Architecturally unsound. |
-| MED | `pure_helpers.py:102-169` | `find_balanced_parentheses` can't handle case-pattern `)` inside `$(...)`: `echo "$(case a in a) echo inner;; esac)"` → parse error (bash: `inner`). |
-| MED | `modular_lexer.py:353-418` | `_is_inside_potential_array_assignment` backward-scans on every `"`, `'`, `$` with logically unsound right-to-left quote tracking; with the position-setter tracker rebuild (96-105), lexing is quadratic (0.56s @ 2000 quoted words → 2.17s @ 4000). |
-| MED | `quote_parser.py:43-47` | `QUOTE_RULES['"']` declares escape sequences (`'n': '\n'`, …) that are wrong per bash **and never used** (only tested for truthiness). Misleading documentation-as-code. |
-| MED | `constants.py:28-64` | `OPERATORS_BY_LENGTH` is dead (live table is `OperatorRecognizer.OPERATORS`, recognizers/operator.py:18-59) and has drifted (lacks `&>` `&>>` `|&` `>|` `<>`; bogus `'2>&1'` entry). `psh/lexer/CLAUDE.md:106-115` instructs contributors to edit the dead table. |
-| MED | various | Dead code mass: `RecoverableLexerError`/`LexerErrorHandler` (position.py:79-86, 299-342 — type-hints a nonexistent `StateMachineLexer`); ~20 never-read `LexerConfig` fields + unused factory methods; all `LexerState` members except `NORMAL`; ~7 `LexerContext` fields + ~14 methods never called; unused pure_helpers (`read_until_char`, `find_word_boundary`, `scan_whitespace`, `find_operator_match`); `quote_parser.parse_simple_quoted_string`. |
-| MED | `scripting/source_processor.py:282-298` | Heredoc-containing commands tokenized **twice** (full `tokenize()` discarded, then `tokenize_with_heredocs()`); `strict=` conflates POSIX mode with batch/interactive lexer config. |
-| MED | `recognizers/literal.py` (834 L) | Heuristic swamp: `_is_in_string_concatenation` (678-709) guesses by character class; `_parse_ansi_c_quote_inline` (638-676) duplicates quote_parser; quote-state tracking reimplemented ≥4× across the lexer. |
-| LOW | `modular_lexer.py:272,315-351,568` | "Modular recognizer" story half-true: quotes/ANSI-C/`$`-expansions bypass the registry; `WhitespaceRecognizer` can never fire; `CommentRecognizer` wins by fragile implicit coupling and violates the declared return contract. |
-| LOW | `modular_lexer.py:443` | PARAM_EXPANSION vs VARIABLE decided by substring scan missing bare `-` `+` `^` `,` `@`; harmless only because downstream re-parses both identically. |
-| LOW | `keyword_normalizer.py:47,55` | `heredoc_already_collected` assigned in one branch, read in the next iteration's other branch — NameError-prone under refactoring. |
-| LOW | `constants.py:67-75` | `break`/`continue`/`return` in `KEYWORDS`; bash treats them as builtins (`function break {...}` works in bash, rejected by psh). |
-| LOW | `state_context.py:41-59` | `LexerContext.copy()` omits the case_depth fields — latent state-loss if ever used. |
+| HIGH | `pure_helpers.py:643-674` | `validate_brace_expansion` counts `{`/`}` with no quote/`$()` awareness: `echo ${x:-"}"}`, `${x:-'}'}`, `${x:-$(echo "}")}` all die with "Unclosed quote"; bash prints `}`. POSIX 2.6.2 violation. **→ ✅ FIXED (v0.265.0)** |
+| HIGH | `lexer/__init__.py:83-123` | `tokenize_with_heredocs` omits the `TokenBraceExpander` pass that `tokenize()` performs (line 74). Any line with a heredoc loses brace expansion: `cat <<EOF; echo {a,b}` prints `{a,b}`. **→ ✅ FIXED (v0.245.0)** |
+| HIGH | `heredoc_lexer.py:103-113` | `HeredocLexer._tokenize_line` re-lexes each physical line with a **fresh** ModularLexer, discarding cross-line state (open quotes, case/bracket depth). `cat <<EOF && echo "two\nwords"` → "Unclosed quote". Architecturally unsound. **→ ✅ FIXED (v0.265.0 — redesigned: single-pass over command text)** |
+| MED | `pure_helpers.py:102-169` | `find_balanced_parentheses` can't handle case-pattern `)` inside `$(...)`: `echo "$(case a in a) echo inner;; esac)"` → parse error (bash: `inner`). **→ ❌ OPEN** |
+| MED | `modular_lexer.py:353-418` | `_is_inside_potential_array_assignment` backward-scans on every `"`, `'`, `$` with logically unsound right-to-left quote tracking; with the position-setter tracker rebuild (96-105), lexing is quadratic (0.56s @ 2000 quoted words → 2.17s @ 4000). **→ ❌ OPEN (Tier 3: quote-state consolidation)** |
+| MED | `quote_parser.py:43-47` | `QUOTE_RULES['"']` declares escape sequences (`'n': '\n'`, …) that are wrong per bash **and never used** (only tested for truthiness). Misleading documentation-as-code. **→ ✅ FIXED (v0.257.0 — honest processes_escapes boolean)** |
+| MED | `constants.py:28-64` | `OPERATORS_BY_LENGTH` is dead (live table is `OperatorRecognizer.OPERATORS`, recognizers/operator.py:18-59) and has drifted (lacks `&>` `&>>` `|&` `>|` `<>`; bogus `'2>&1'` entry). `psh/lexer/CLAUDE.md:106-115` instructs contributors to edit the dead table. **→ ✅ FIXED (v0.257.0 — deleted; CLAUDE.md points at the live table)** |
+| MED | various | Dead code mass: `RecoverableLexerError`/`LexerErrorHandler` (position.py:79-86, 299-342 — type-hints a nonexistent `StateMachineLexer`); ~20 never-read `LexerConfig` fields + unused factory methods; all `LexerState` members except `NORMAL`; ~7 `LexerContext` fields + ~14 methods never called; unused pure_helpers (`read_until_char`, `find_word_boundary`, `scan_whitespace`, `find_operator_match`); `quote_parser.parse_simple_quoted_string`. **→ ✅ FIXED (v0.257.0)** |
+| MED | `scripting/source_processor.py:282-298` | Heredoc-containing commands tokenized **twice** (full `tokenize()` discarded, then `tokenize_with_heredocs()`); `strict=` conflates POSIX mode with batch/interactive lexer config. **→ ✅ FIXED (v0.265.0)** |
+| MED | `recognizers/literal.py` (834 L) | Heuristic swamp: `_is_in_string_concatenation` (678-709) guesses by character class; `_parse_ansi_c_quote_inline` (638-676) duplicates quote_parser; quote-state tracking reimplemented ≥4× across the lexer. **→ ❌ OPEN (Tier 3)** |
+| LOW | `modular_lexer.py:272,315-351,568` | "Modular recognizer" story half-true: quotes/ANSI-C/`$`-expansions bypass the registry; `WhitespaceRecognizer` can never fire; `CommentRecognizer` wins by fragile implicit coupling and violates the declared return contract. **→ ❌ OPEN** |
+| LOW | `modular_lexer.py:443` | PARAM_EXPANSION vs VARIABLE decided by substring scan missing bare `-` `+` `^` `,` `@`; harmless only because downstream re-parses both identically. **→ ❌ OPEN** |
+| LOW | `keyword_normalizer.py:47,55` | `heredoc_already_collected` assigned in one branch, read in the next iteration's other branch — NameError-prone under refactoring. **→ ❌ OPEN** |
+| LOW | `constants.py:67-75` | `break`/`continue`/`return` in `KEYWORDS`; bash treats them as builtins (`function break {...}` works in bash, rejected by psh). **→ ❌ OPEN** |
+| LOW | `state_context.py:41-59` | `LexerContext.copy()` omits the case_depth fields — latent state-loss if ever used. **→ ✅ FIXED (v0.257.0 — copy() and the dead fields removed)** |
 
 ### Test coverage
 257 unit tests, strong on pure_helpers (87%), keyword normalizer (96%), ANSI-C. Gaps:
 `heredoc_lexer.py`/`heredoc_collector.py` at **0%** unit coverage (where the HIGH bugs
 live); `literal.py` 53%; `process_sub.py` 26%; no tests for quoted braces inside `${...}`,
 multi-line-string + heredoc, or lexer performance regression.
+*(2026-06-10: heredoc modules now have dedicated unit tests —
+test_heredoc_lexer.py + test_heredoc_brace_expansion.py — covering quoted
+braces, multi-line strings with heredocs, quoted markers, and `<<-`. The
+performance-regression gap remains.)*
 
 ---
 
@@ -136,18 +156,18 @@ state-management machinery that CLAUDE.md misleadingly documents as core archite
 ### Issues
 | Sev | Location | Issue |
 |---|---|---|
-| HIGH | `recursive_descent/parsers/commands.py:117` | `&` consumed into `SimpleCommand.background` — backgrounds only the last simple command. `sleep 1.5 && echo b &` blocks in psh, immediate in bash. POSIX applies `&` to the whole list. Same in combinator parser. |
-| HIGH | `control_structures.py:129,158,255,322,364,479` | Control structures cannot be backgrounded at all: `while ...; done &` and `if ...; fi &` are parse errors in BOTH parsers (subshell/brace groups do handle `&` — an inconsistency, not a design decision). |
-| HIGH | `commands.py:281-287` | Newline after `|` rejected (no `skip_newlines()` after consuming PIPE); POSIX permits a linebreak after `|`. Both parsers. |
-| HIGH | `scripting/source_processor.py:168-249` | Scripts ending a line with `&&` fail: `_is_incomplete_command` detects continuation by **string-matching ~40 error messages**, and "Expected command" lacks the required substring. Parser should signal incomplete-at-EOF structurally (e.g. `ParseError.at_eof`). |
-| MED | `functions.py:80-84` | `f() ( ... )` unwraps SubshellGroup into a plain CommandList — subshell function bodies lose subshell semantics (`f() ( cd / ); f` leaks the cd; bash isolates). |
-| MED | `functions.py:43-64` | `f() { ...; } > file` silently mis-parses as FunctionDef + separate empty command with a redirect (creates the file once at definition); bash applies the redirect at every call. |
-| MED | `commands.py:421-469` + control_structures + arithmetic | Dead `execution_context` machinery: 7 constructs × `_parse_X_neutral`/`parse_X_statement`/`parse_X_command` triplets (~25 wrappers) solely to set `ExecutionContext.STATEMENT/PIPELINE` — **nothing reads it** (only an exclusion list in metrics_visitor.py:513), and it's set wrongly for nested constructs. Deletable. |
-| MED | `context.py` (528 L) | ~Half dead: `in_test_expr`/`in_arithmetic`/`in_case_pattern`/`in_function_body` written, never read (the save/restore context manager at 456-474 is a no-op — yet CLAUDE.md documents it as a core pattern); `ParserProfiler` (~105 L) never enabled; `enter_rule`/`exit_rule` only called by tests; scope_stack/loop_depth/function_depth unused; ctx heredoc trackers only reached via the duplicate `Parser.parse_with_heredocs` that only regression tests call (production uses `support/utils.py:82`). |
-| LOW | statements.py:96-101, parser.py:328-333, commands.py:325-331 | And-or chain parsing duplicated 3×; two `parse_with_heredocs` implementations; `_FD_DUP_RE` defined 3× with variations. |
-| LOW | commands.py | psh accepts invalid `echo a & && echo b` (bash: syntax error) — side effect of `&` at SimpleCommand level. |
-| LOW | `control_structures.py:270,375,434` | Case patterns / for-loop items flattened to strings (`''.join(str(p) ...)`), losing per-part quote context — inconsistent with the Word AST. |
-| LOW | `commands.py:358-382`; `support/utils.py:20-80` | Hacky: previous-token backslash counting for `\$(`; `populate_heredoc_content` is hasattr-based duck traversal instead of the project's own visitor pattern; delimiter-suffix fallback can mismatch duplicate delimiters. |
+| HIGH | `recursive_descent/parsers/commands.py:117` | `&` consumed into `SimpleCommand.background` — backgrounds only the last simple command. `sleep 1.5 && echo b &` blocks in psh, immediate in bash. POSIX applies `&` to the whole list. Same in combinator parser. **→ ✅ FIXED (v0.264.0 — & parsed at the and-or-list level)** |
+| HIGH | `control_structures.py:129,158,255,322,364,479` | Control structures cannot be backgrounded at all: `while ...; done &` and `if ...; fi &` are parse errors in BOTH parsers (subshell/brace groups do handle `&` — an inconsistency, not a design decision). **→ ✅ FIXED (v0.264.0)** |
+| HIGH | `commands.py:281-287` | Newline after `|` rejected (no `skip_newlines()` after consuming PIPE); POSIX permits a linebreak after `|`. Both parsers. **→ ✅ FIXED (v0.264.0)** |
+| HIGH | `scripting/source_processor.py:168-249` | Scripts ending a line with `&&` fail: `_is_incomplete_command` detects continuation by **string-matching ~40 error messages**, and "Expected command" lacks the required substring. Parser should signal incomplete-at-EOF structurally (e.g. `ParseError.at_eof`). **→ ✅ FIXED (v0.264.0 — ParseError.at_eof)** |
+| MED | `functions.py:80-84` | `f() ( ... )` unwraps SubshellGroup into a plain CommandList — subshell function bodies lose subshell semantics (`f() ( cd / ); f` leaks the cd; bash isolates). **→ ❌ OPEN** |
+| MED | `functions.py:43-64` | `f() { ...; } > file` silently mis-parses as FunctionDef + separate empty command with a redirect (creates the file once at definition); bash applies the redirect at every call. **→ ❌ OPEN** |
+| MED | `commands.py:421-469` + control_structures + arithmetic | Dead `execution_context` machinery: 7 constructs × `_parse_X_neutral`/`parse_X_statement`/`parse_X_command` triplets (~25 wrappers) solely to set `ExecutionContext.STATEMENT/PIPELINE` — **nothing reads it** (only an exclusion list in metrics_visitor.py:513), and it's set wrongly for nested constructs. Deletable. **→ ✅ FIXED (v0.256.0 — triplets and AST field removed)** |
+| MED | `context.py` (528 L) | ~Half dead: `in_test_expr`/`in_arithmetic`/`in_case_pattern`/`in_function_body` written, never read (the save/restore context manager at 456-474 is a no-op — yet CLAUDE.md documents it as a core pattern); `ParserProfiler` (~105 L) never enabled; `enter_rule`/`exit_rule` only called by tests; scope_stack/loop_depth/function_depth unused; ctx heredoc trackers only reached via the duplicate `Parser.parse_with_heredocs` that only regression tests call (production uses `support/utils.py:82`). **→ ✅ FIXED (v0.256.0 — ParserContext trimmed to its real responsibilities)** |
+| LOW | statements.py:96-101, parser.py:328-333, commands.py:325-331 | And-or chain parsing duplicated 3×; two `parse_with_heredocs` implementations; `_FD_DUP_RE` defined 3× with variations. **→ ❌ OPEN (duplicate parse_with_heredocs removed in v0.256.0; chain duplication and _FD_DUP_RE remain)** |
+| LOW | commands.py | psh accepts invalid `echo a & && echo b` (bash: syntax error) — side effect of `&` at SimpleCommand level. **→ ✅ FIXED (v0.264.0 — syntax error like bash)** |
+| LOW | `control_structures.py:270,375,434` | Case patterns / for-loop items flattened to strings (`''.join(str(p) ...)`), losing per-part quote context — inconsistent with the Word AST. **→ ❌ OPEN** |
+| LOW | `commands.py:358-382`; `support/utils.py:20-80` | Hacky: previous-token backslash counting for `\$(`; `populate_heredoc_content` is hasattr-based duck traversal instead of the project's own visitor pattern; delimiter-suffix fallback can mismatch duplicate delimiters. **→ ❌ OPEN** |
 
 Combinator credibility note: its hard parts are 100-190-line imperative functions
 (`_build_if_statement` 192 L, conditionals.py:47; `parse_array_element_assignment` 174 L,
@@ -159,6 +179,10 @@ itself is clean and educational.
 redirections, control structures, case items, or function definitions (only indirect via
 execution); nothing tests `&` on lists/control structures or newline-after-`|` — exactly
 where the defects are; `test_parser_context.py` spends effort on the dead profiler.
+*(2026-06-10: test_background_lists.py covers `&` on lists/control structures
+and line continuations; test_parser_context.py was rewritten for the context's
+real responsibilities. Parser-level unit tests for redirections/case items
+remain indirect.)*
 
 ---
 
@@ -182,25 +206,30 @@ tests), but field-production semantics are broken in several HIGH-severity ways.
 ### Issues
 | Sev | Location | Issue |
 |---|---|---|
-| HIGH | `manager.py:237-269` | Only `VariableExpansion(name='@')` produces multiple fields in double quotes: `"${arr[@]}"`, `"${@:2}"`, `"${arr[@]:1:2}"`, `"${arr[@]@Q}"` all join into ONE word. The duplicate for-loop path (executor/control_flow.py:498 via `is_array_expansion`/`expand_array_to_list`, variable.py:1042/1083) is itself the cause of the inconsistency. |
-| HIGH | `manager.py:69-73` | When any arg is a process substitution, ALL words are rebuilt via `Word.from_string(a)`, discarding quote info — a quoted `"*"` then glob-expands. Also mutates `command.args`/`command.words` in place. |
-| HIGH | `variable.py:753-758` | `${!prefix*}`/`${!prefix@}` pass `operand` (always `''`) instead of `var_name` as the prefix → matches every shell+env variable; `match_variable_names(quoted=True)` (parameter_expansion.py:316-318) also emits literal `"` characters. |
-| HIGH | `manager.py:260-269,350-355` | `"$@"` with zero positional params yields one empty argument instead of zero fields (`set --; set -- "$@"; echo $#` → psh 1, bash 0). |
-| HIGH | `variable.py:279-281` | Unquoted `$@`/`$*` joined with a space then IFS-split as one string, losing parameter boundaries (`set -- "a b" c; IFS=:; printf '[%s]' $@` → psh `[a b c]`, bash `[a b][c]`). |
-| MED | `parameter_expansion.py:240-250` | Replacement passed raw to `re.sub`: `${x/b/\1}` aborts "invalid group reference" (bash: `a1c`). Needs a literal-replacement lambda. |
-| MED | `variable.py:639-685` | Operand quote removal missing: `${u:-"quoted def"}` prints the literal quotes. |
-| MED | `variable.py:533-537` | `_expand_tilde_in_operand` expands unconditionally — wrong inside double quotes (`"${x:-~}"`) and wrong when `~` came from an expansion. |
-| MED | `tilde.py:25` | Uses `os.environ['HOME']`, ignoring the shell variable: `HOME=/xyz; echo ~` prints the real home. Layering: should read `state.get_variable('HOME')`. |
-| MED | `variable.py:515-531` | `${!n}` fails for positional names (`n=2; echo ${!n}` → empty) and array-element names (`ref='a[1]'`); `${!n@Q}` empty — final lookup uses `state.get_variable()` instead of `_get_var_or_positional()`. |
-| MED | `manager.py:666-673` | `_expand_vars_in_arithmetic` coerces non-integer values to `'0'`: `x=1+2; echo $(($x))` → 0 (bash 3), while `$((x))` works. |
-| MED | `word_splitter.py:61-65` | Backslash in expansion results treated as an escape during field splitting (`x='a\ b'; printf '[%s]' $x` → 1 field, bash 2). POSIX field splitting has no backslash processing; docstring admits it compensates for downstream escape handling. |
-| LOW | `variable.py:77,297` | Doubled `psh: psh: $undef: unbound variable` under `set -u`; exit 1 vs bash 127. |
-| LOW | `variable.py:67-68`; `manager.py:510-514` | Broad except swallowing `parse_expansion` failures / falling back to `str(expansion)`. |
-| LOW | `variable.py` (1172 L) | Array-subscript resolution reimplemented ~6× (105-130, 234-259, 314-337, 350-383, 489-505, 612-629); pattern/replacement split-join round-trip (parameter_expansion.py:110-126 ↔ variable.py:1152); dozens of repeated inline imports. |
-| LOW | — | Missing: bash 5.2 patsub `&`, `${x~}` case-toggle, `@K`/`@k`; glob results byte-sorted vs locale order. |
-| LOW | `tests/conformance/differences/psh_bash_differences.json:8` | Mischaracterizes `V=hello echo $V` — claims bash has a bug, but POSIX expands `$V` before the assignment takes effect; bash is correct (psh prints `world` in the `V=world echo $V` case, bash `hello`). |
+| HIGH | `manager.py:237-269` | Only `VariableExpansion(name='@')` produces multiple fields in double quotes: `"${arr[@]}"`, `"${@:2}"`, `"${arr[@]:1:2}"`, `"${arr[@]@Q}"` all join into ONE word. The duplicate for-loop path (executor/control_flow.py:498 via `is_array_expansion`/`expand_array_to_list`, variable.py:1042/1083) is itself the cause of the inconsistency. **→ ✅ FIXED (v0.254.0 — expand_to_fields + generalized affix walker; for-loop path retained pending Word-AST for-items)** |
+| HIGH | `manager.py:69-73` | When any arg is a process substitution, ALL words are rebuilt via `Word.from_string(a)`, discarding quote info — a quoted `"*"` then glob-expands. Also mutates `command.args`/`command.words` in place. **→ ✅ FIXED (v0.255.0 — only proc-sub words substituted, AST not mutated)** |
+| HIGH | `variable.py:753-758` | `${!prefix*}`/`${!prefix@}` pass `operand` (always `''`) instead of `var_name` as the prefix → matches every shell+env variable; `match_variable_names(quoted=True)` (parameter_expansion.py:316-318) also emits literal `"` characters. **→ ✅ FIXED (v0.240.0)** |
+| HIGH | `manager.py:260-269,350-355` | `"$@"` with zero positional params yields one empty argument instead of zero fields (`set --; set -- "$@"; echo $#` → psh 1, bash 0). **→ ✅ FIXED (v0.254.0 — zero fields)** |
+| HIGH | `variable.py:279-281` | Unquoted `$@`/`$*` joined with a space then IFS-split as one string, losing parameter boundaries (`set -- "a b" c; IFS=:; printf '[%s]' $@` → psh `[a b c]`, bash `[a b][c]`). **→ ✅ FIXED (v0.254.0)** |
+| MED | `parameter_expansion.py:240-250` | Replacement passed raw to `re.sub`: `${x/b/\1}` aborts "invalid group reference" (bash: `a1c`). Needs a literal-replacement lambda. **→ ❌ OPEN** |
+| MED | `variable.py:639-685` | Operand quote removal missing: `${u:-"quoted def"}` prints the literal quotes. **→ ✅ FIXED (v0.265.0 — _expand_operand strips one quote level)** |
+| MED | `variable.py:533-537` | `_expand_tilde_in_operand` expands unconditionally — wrong inside double quotes (`"${x:-~}"`) and wrong when `~` came from an expansion. **→ ⚠ PARTIAL (v0.265.0 — quoted operands no longer tilde-expand; double-quote word context and expansion-sourced ~ remain)** |
+| MED | `tilde.py:25` | Uses `os.environ['HOME']`, ignoring the shell variable: `HOME=/xyz; echo ~` prints the real home. Layering: should read `state.get_variable('HOME')`. **→ ❌ OPEN** |
+| MED | `variable.py:515-531` | `${!n}` fails for positional names (`n=2; echo ${!n}` → empty) and array-element names (`ref='a[1]'`); `${!n@Q}` empty — final lookup uses `state.get_variable()` instead of `_get_var_or_positional()`. **→ ❌ OPEN** |
+| MED | `manager.py:666-673` | `_expand_vars_in_arithmetic` coerces non-integer values to `'0'`: `x=1+2; echo $(($x))` → 0 (bash 3), while `$((x))` works. **→ ❌ OPEN** |
+| MED | `word_splitter.py:61-65` | Backslash in expansion results treated as an escape during field splitting (`x='a\ b'; printf '[%s]' $x` → 1 field, bash 2). POSIX field splitting has no backslash processing; docstring admits it compensates for downstream escape handling. **→ ❌ OPEN** |
+| LOW | `variable.py:77,297` | Doubled `psh: psh: $undef: unbound variable` under `set -u`; exit 1 vs bash 127. **→ ✅ FIXED (v0.248.0 — single prefix, rc 127, non-interactive abort)** |
+| LOW | `variable.py:67-68`; `manager.py:510-514` | Broad except swallowing `parse_expansion` failures / falling back to `str(expansion)`. **→ ❌ OPEN** |
+| LOW | `variable.py` (1172 L) | Array-subscript resolution reimplemented ~6× (105-130, 234-259, 314-337, 350-383, 489-505, 612-629); pattern/replacement split-join round-trip (parameter_expansion.py:110-126 ↔ variable.py:1152); dozens of repeated inline imports. **→ ❌ OPEN (expand_to_fields consolidated the field paths; scalar sites remain)** |
+| LOW | — | Missing: bash 5.2 patsub `&`, `${x~}` case-toggle, `@K`/`@k`; glob results byte-sorted vs locale order. **→ ❌ OPEN** |
+| LOW | `tests/conformance/differences/psh_bash_differences.json:8` | Mischaracterizes `V=hello echo $V` — claims bash has a bug, but POSIX expands `$V` before the assignment takes effect; bash is correct (psh prints `world` in the `V=world echo $V` case, bash `hello`). **→ ❌ OPEN** |
 
 ### Verified divergences (cmd → psh | bash)
+
+*(2026-06-10: all lines below are fixed and bash-identical EXCEPT
+`${x/b/\1}` regex-group replacement, `HOME=/xyz; echo ~`, `${!n}` through
+positionals/array elements, `$(($x))` coercion, and `a\ b` field splitting
+— see the ❌ rows above.)*
 ```
 a=(1 "2 3" 4); printf "[%s]" "${a[@]}"     → [1 2 3 4]            | [1][2 3][4]
 set -- x y z; printf "[%s]" "${@:2}"       → [y z]                | [y][z]
@@ -226,6 +255,10 @@ word splitter, brace/extglob/glob. Gaps: no test asserts the *field count* of qu
 `in`-assertions that mask the prefix bug; no tests for replacement backslashes, operand
 quote removal, unquoted `$@` + custom IFS, empty-`"$@"` field count, indirection through
 positionals, process-substitution/quoting interplay.
+*(2026-06-10: field counts, empty-`"$@"`, custom-IFS boundaries, operand
+quoting, and proc-sub/quoting interplay are now pinned by
+test_multi_field_expansion.py, test_process_sub_quoting.py, and the
+TestArrayFieldExpansion conformance class.)*
 
 ---
 
@@ -251,21 +284,24 @@ bash in script mode in ways that break real scripts, and one confirmed crash exi
 ### Issues
 | Sev | Location | Issue |
 |---|---|---|
-| HIGH | `core.py:113-117,149-157` | errexit fires inside condition contexts — no suppression for if/while conditions, `&&`/`||` non-final commands, `!` negation. Five verified divergences. Tests pass only via the interactive fixture (script-mode `sys.exit` path untested). |
-| HIGH | `shell.py:55-68` (used by subshell.py:146-151) | `Shell(parent_shell=...)` copies env/vars/functions/aliases/positionals but **not** `state.options` or `last_exit_code`: `set -e; (false; echo no)` prints; `false; (echo $?)` → 0. Outbound isolation is correct (real fork). |
-| HIGH | `strategies.py:75,136`; `shell.py:151-158` | `break`/`continue` inside `eval` swallowed: eval's `run_command` builds a fresh visitor with `loop_depth=0`, and the `except Exception` guards re-raise only FunctionReturn — LoopBreak/LoopContinue (plain Exception subclasses, core/exceptions.py:3-9) are converted to exit 1. Also swallows UnboundVariableError from builtins. (command.py:188-195 gets this right.) |
-| HIGH | `core.py:115,154` | Function-local `import sys` shadows module import → `except LoopBreak` handler crashes with UnboundLocalError on `break N` beyond depth. Trivial fix: delete the two local imports. |
-| MED-HIGH | `command.py:174,587-623` | `exec missing_cmd` doesn't exit the shell (POSIX: non-interactive exits 127); prints error and continues, rc 0. The `cmd_name == 'exec'` special case also bypasses the strategy pattern. |
-| MED | `command.py:188-217` | `set -u` doesn't exit in script mode; doubled "psh: psh:" prefix; rc 1 vs bash 127. |
-| MED | pipeline.py:79-80, subshell.py:40-41, strategies.py:154-155,356-357 | `ProcessLauncher(state, job_manager, io_manager, shell.interactive_manager.signal_manager)` built ad hoc 4× — executor→interactive layering reach; should be one shared `shell.process_launcher`. |
-| MED | pipeline.py:142, strategies.py:348, subshell.py:108, command.py:563-570 | Test-environment awareness in production: `'pytest' in sys.modules` gates terminal-control logic; StringIO special-cases. Tested paths differ from production paths exactly where job control is trickiest. |
-| MED | `process_launcher.py:287-343` | Dead `launch_job` (zero callers) with a fragile `command_str.split()` re-parse. Delete. |
-| LOW | `strategies.py:205-209` | `f &` rejected ("functions cannot be run in background"); bash forks a subshell. |
-| LOW | `strategies.py:263-265` | Alias fallback path re-tokenizes already-expanded args via `' '.join(args)`. |
-| LOW | `control_flow.py:301-303,577-621` | Case expr expanded only when `'$' in expr` (misses backticks); `_convert_case_pattern_for_fnmatch` guesses tokenizer-stripped escapes — fix belongs in lexer/Word AST. |
-| LOW | misc | `psh/executor/test_evaluator.py` violates the project's own naming rule; executor CLAUDE.md:59-65 documents strategy order wrongly (Builtin-before-Function); break/continue messages split between `shell.stderr` and `sys.stderr`; no "Terminated"/"Killed" job-death notices; `VAR=v :` persists assignment (intentional POSIX rule — should be a documented difference). |
+| HIGH | `core.py:113-117,149-157` | errexit fires inside condition contexts — no suppression for if/while conditions, `&&`/`||` non-final commands, `!` negation. Five verified divergences. Tests pass only via the interactive fixture (script-mode `sys.exit` path untested). **→ ✅ FIXED (v0.253.0 — errexit_suppress + per-list eligibility, crossing functions/groups/eval/subshell forks)** |
+| HIGH | `shell.py:55-68` (used by subshell.py:146-151) | `Shell(parent_shell=...)` copies env/vars/functions/aliases/positionals but **not** `state.options` or `last_exit_code`: `set -e; (false; echo no)` prints; `false; (echo $?)` → 0. Outbound isolation is correct (real fork). **→ ✅ FIXED (v0.253.0 — options, $?, is_script_mode, pipestatus, PPID inherited)** |
+| HIGH | `strategies.py:75,136`; `shell.py:151-158` | `break`/`continue` inside `eval` swallowed: eval's `run_command` builds a fresh visitor with `loop_depth=0`, and the `except Exception` guards re-raise only FunctionReturn — LoopBreak/LoopContinue (plain Exception subclasses, core/exceptions.py:3-9) are converted to exit 1. Also swallows UnboundVariableError from builtins. (command.py:188-195 gets this right.) **→ ✅ FIXED (v0.247.0 — shared visitor + re-raising guards)** |
+| HIGH | `core.py:115,154` | Function-local `import sys` shadows module import → `except LoopBreak` handler crashes with UnboundLocalError on `break N` beyond depth. Trivial fix: delete the two local imports. **→ ✅ FIXED (v0.238.0)** |
+| MED-HIGH | `command.py:174,587-623` | `exec missing_cmd` doesn't exit the shell (POSIX: non-interactive exits 127); prints error and continues, rc 0. The `cmd_name == 'exec'` special case also bypasses the strategy pattern. **→ ✅ FIXED (v0.249.0 — 127/126, interactive survives)** |
+| MED | `command.py:188-217` | `set -u` doesn't exit in script mode; doubled "psh: psh:" prefix; rc 1 vs bash 127. **→ ✅ FIXED (v0.248.0)** |
+| MED | pipeline.py:79-80, subshell.py:40-41, strategies.py:154-155,356-357 | `ProcessLauncher(state, job_manager, io_manager, shell.interactive_manager.signal_manager)` built ad hoc 4× — executor→interactive layering reach; should be one shared `shell.process_launcher`. **→ ❌ OPEN (Tier 3: shared shell.process_launcher)** |
+| MED | pipeline.py:142, strategies.py:348, subshell.py:108, command.py:563-570 | Test-environment awareness in production: `'pytest' in sys.modules` gates terminal-control logic; StringIO special-cases. Tested paths differ from production paths exactly where job control is trickiest. **→ ❌ OPEN (Tier 3)** |
+| MED | `process_launcher.py:287-343` | Dead `launch_job` (zero callers) with a fragile `command_str.split()` re-parse. Delete. **→ ✅ FIXED (v0.258.0 — deleted)** |
+| LOW | `strategies.py:205-209` | `f &` rejected ("functions cannot be run in background"); bash forks a subshell. **→ ❌ OPEN** |
+| LOW | `strategies.py:263-265` | Alias fallback path re-tokenizes already-expanded args via `' '.join(args)`. **→ ❌ OPEN** |
+| LOW | `control_flow.py:301-303,577-621` | Case expr expanded only when `'$' in expr` (misses backticks); `_convert_case_pattern_for_fnmatch` guesses tokenizer-stripped escapes — fix belongs in lexer/Word AST. **→ ❌ OPEN** |
+| LOW | misc | `psh/executor/test_evaluator.py` violates the project's own naming rule; executor CLAUDE.md:59-65 documents strategy order wrongly (Builtin-before-Function); break/continue messages split between `shell.stderr` and `sys.stderr`; no "Terminated"/"Killed" job-death notices; `VAR=v :` persists assignment (intentional POSIX rule — should be a documented difference). **→ ⚠ PARTIAL (v0.258.0 — file renamed, CLAUDE.md order corrected; Terminated notices and VAR=v : doc note remain)** |
 
 ### Verified divergences
+
+*(2026-06-10: every line below is fixed and bash-identical —
+v0.238/0.247/0.248/0.249/0.253.)*
 ```
 set -e; if false; then echo t; fi; echo after  → no output rc=1     | after rc=0
 set -e; false && true; echo after              → rc=1               | after rc=0
@@ -288,6 +324,11 @@ outbound isolation, temp-export, function return codes, `break 2` nested, `(exit
 `psh -c` subprocess; no tests for `eval break/continue`, `break N` overflow, `exec` failure
 semantics, subshell option/`$?` inheritance; `is_pytest` branches make the terminal-control
 code structurally untestable by the current suite.
+*(2026-06-10: every named gap except the is_pytest one is now covered by
+subprocess tests — test_errexit_conformance.py, test_errexit_script_mode.py,
+test_nounset_script_mode.py, test_eval_control_flow.py,
+test_break_continue_levels.py, test_exec_builtin.py. The is_pytest
+testability problem is Tier 3.)*
 
 ---
 
@@ -315,27 +356,27 @@ copy-paste duplication across builtins.
 ### Issues
 | Sev | Location | Issue |
 |---|---|---|
-| HIGH | `builtins/shell_state.py:177-179,217-222` | `local` double-expands already-expanded values incl. command substitution: `local v='$(echo injected)'` → runs it. Injection defect. |
-| HIGH | `core/trap_manager.py:244-256` | DEBUG and ERR traps stored, documented in `trap` help (signal_handling.py:54-55), **never dispatched** (zero call sites for `execute_debug_trap`/`execute_err_trap`). Silent no-op of an advertised feature. |
-| HIGH | parser-level | Scalar `+=` unsupported: `x=a; x+=b` → "command not found" rc 127 (also makes `RO+=x` report not-found instead of readonly). `arr+=(b c)` works. |
-| HIGH | `builtins/source_command.py`; `function_support.py:820-824` | `return` in a sourced script doesn't return — prints "can only return..." and keeps executing (bash: stops, rc from return). Check only consults `function_stack`. |
-| MED | `builtins/signal_handling.py:105-113` | `trap -- 'cmd' INT` takes `--` as the action → "invalid signal specification". Standard defensive idiom broken. |
-| MED | `builtins/environment.py:319-323,348-360,258` | `set` returns 0 after the first `-o`/`+o` → `set -o errexit -o pipefail` silently drops pipefail. `set -o vi` prints to stdout (bash silent); bare `set` emits non-bash `edit_mode=` line. |
-| MED | `builtins/environment.py:205-230` | `export` has zero option parsing/validation: `export -p` creates an env var named `-p`; `export 1bad=x` succeeds rc 0 (bash: invalid identifier, rc 1). |
-| MED | `core/scope_enhanced.py:408-421` | UNSET tombstones leak into `get_all_variables()`: `f(){ unset HOME; set \| grep -c '^HOME='; }` → 1 (bash 0). Loop must skip `var.is_unset`. |
-| MED | `core/scope_enhanced.py:101-119` | Cross-declare nameref cycles not rejected at write time: `declare -n a=b; declare -n b=a; a=5` silently rewrites b's target (bash: "circular name reference", fails). |
-| MED | registry | `umask` missing (POSIX-required; on macOS the /usr/bin/umask shadow makes it a silent no-op — `umask 077` has no effect); `times` missing (rc 127); `ulimit`, `hash`, `builtin`, `caller` absent. |
-| MED | non-interactive fatality | `set -u` violations and readonly assignment continue script execution (bash aborts). Same class as executor issue. |
-| MED | `interactive/signal_manager.py:127` | Trap actions execute synchronously inside the Python signal handler (`execute_trap` → `shell.run_command`), re-entering parser/executor mid-command; bash defers to command boundaries. Combined with trap_manager.py:173's broad except, control-flow exceptions raised by trap actions are swallowed. |
-| LOW | `trap_manager.py:153-158` | Dead: `if not action: return` makes `if action == ''` unreachable. |
-| LOW | `trap_manager.py:41-45` | Signal probing by temporarily installing SIG_DFL for 1-31 at startup; use `signal.valid_signals()`. |
-| LOW | `function_support.py:537-559`; shell_state.py:296 | `DeclareBuiltin._apply_attributes` dead (never called); third copy of the transform logic. |
-| LOW | `scope_enhanced.py:499-501` | `declare -l x=ABC; declare -u x` retroactively re-transforms stored value (bash affects future assignments only). |
-| LOW | various | Usage-error exit codes 1 where bash/CLAUDE.md say 2 (`declare -z`, `set -q`, `return abc`); `unset` no-args rc 1 (bash 0); ReturnBuiltin prints to raw sys.stderr. |
-| LOW | all builtins | Ad-hoc hand-rolled flag parsing everywhere (worst: `set` env ladder, declare's 95-line dict parser, `'-f' in args` scans); three divergent array-literal parsers (declare's naive split() mishandles `(a "b c")`). |
-| LOW | 36 sites / 9 sites | `shell.stdout if hasattr(...)` duplicated 36×; `in_forked_child → os.write(1,...)` dance 9× across 4 files — should be one helper on `Builtin`. |
-| LOW | `variables.py:107-113`; environment.py:56 | `Variable.copy()` shallow for arrays; in-process `Shell(parent_shell=)` (env builtin) shares live array objects. |
-| LOW | `shell.py:122-147` | `__getattr__`/`__setattr__` delegation shim hides attribute provenance; `_state_properties` manually synced. ShellState itself is *not* a god object. |
+| HIGH | `builtins/shell_state.py:177-179,217-222` | `local` double-expands already-expanded values incl. command substitution: `local v='$(echo injected)'` → runs it. Injection defect. **→ ✅ FIXED (v0.239.0 — incl. quote-aware shared array-initializer parsing)** |
+| HIGH | `core/trap_manager.py:244-256` | DEBUG and ERR traps stored, documented in `trap` help (signal_handling.py:54-55), **never dispatched** (zero call sites for `execute_debug_trap`/`execute_err_trap`). Silent no-op of an advertised feature. **→ ✅ FIXED (v0.263.0 — both fire with bash semantics)** |
+| HIGH | parser-level | Scalar `+=` unsupported: `x=a; x+=b` → "command not found" rc 127 (also makes `RO+=x` report not-found instead of readonly). `arr+=(b c)` works. **→ ✅ FIXED (v0.262.0 — incl. arithmetic append for -i and export NAME+=)** |
+| HIGH | `builtins/source_command.py`; `function_support.py:820-824` | `return` in a sourced script doesn't return — prints "can only return..." and keeps executing (bash: stops, rc from return). Check only consults `function_stack`. **→ ✅ FIXED (v0.250.0)** |
+| MED | `builtins/signal_handling.py:105-113` | `trap -- 'cmd' INT` takes `--` as the action → "invalid signal specification". Standard defensive idiom broken. **→ ✅ FIXED (v0.244.0)** |
+| MED | `builtins/environment.py:319-323,348-360,258` | `set` returns 0 after the first `-o`/`+o` → `set -o errexit -o pipefail` silently drops pipefail. `set -o vi` prints to stdout (bash silent); bare `set` emits non-bash `edit_mode=` line. **→ ✅ FIXED (v0.242.0 — incl. `set -euo pipefail` cluster support)** |
+| MED | `builtins/environment.py:205-230` | `export` has zero option parsing/validation: `export -p` creates an env var named `-p`; `export 1bad=x` succeeds rc 0 (bash: invalid identifier, rc 1). **→ ✅ FIXED (v0.243.0)** |
+| MED | `core/scope_enhanced.py:408-421` | UNSET tombstones leak into `get_all_variables()`: `f(){ unset HOME; set \| grep -c '^HOME='; }` → 1 (bash 0). Loop must skip `var.is_unset`. **→ ✅ FIXED (v0.241.0)** |
+| MED | `core/scope_enhanced.py:101-119` | Cross-declare nameref cycles not rejected at write time: `declare -n a=b; declare -n b=a; a=5` silently rewrites b's target (bash: "circular name reference", fails). **→ ❌ OPEN** |
+| MED | registry | `umask` missing (POSIX-required; on macOS the /usr/bin/umask shadow makes it a silent no-op — `umask 077` has no effect); `times` missing (rc 127); `ulimit`, `hash`, `builtin`, `caller` absent. **→ ⚠ PARTIAL (umask/times v0.260.0, `builtin` v0.262.0; ulimit/hash/caller still absent)** |
+| MED | non-interactive fatality | `set -u` violations and readonly assignment continue script execution (bash aborts). Same class as executor issue. **→ ✅ FIXED (v0.248.0 + v0.253.0)** |
+| MED | `interactive/signal_manager.py:127` | Trap actions execute synchronously inside the Python signal handler (`execute_trap` → `shell.run_command`), re-entering parser/executor mid-command; bash defers to command boundaries. Combined with trap_manager.py:173's broad except, control-flow exceptions raised by trap actions are swallowed. **→ ✅ FIXED (v0.263.0 — queued, run at command boundaries)** |
+| LOW | `trap_manager.py:153-158` | Dead: `if not action: return` makes `if action == ''` unreachable. **→ ✅ FIXED (v0.263.0)** |
+| LOW | `trap_manager.py:41-45` | Signal probing by temporarily installing SIG_DFL for 1-31 at startup; use `signal.valid_signals()`. **→ ✅ FIXED (v0.258.0 — signal.valid_signals())** |
+| LOW | `function_support.py:537-559`; shell_state.py:296 | `DeclareBuiltin._apply_attributes` dead (never called); third copy of the transform logic. **→ ✅ FIXED (v0.258.0)** |
+| LOW | `scope_enhanced.py:499-501` | `declare -l x=ABC; declare -u x` retroactively re-transforms stored value (bash affects future assignments only). **→ ❌ OPEN** |
+| LOW | various | Usage-error exit codes 1 where bash/CLAUDE.md say 2 (`declare -z`, `set -q`, `return abc`); `unset` no-args rc 1 (bash 0); ReturnBuiltin prints to raw sys.stderr. **→ ✅ FIXED (v0.250.0 + v0.259.0 — declare/local/readonly/unset/return match bash)** |
+| LOW | all builtins | Ad-hoc hand-rolled flag parsing everywhere (worst: `set` env ladder, declare's 95-line dict parser, `'-f' in args` scans); three divergent array-literal parsers (declare's naive split() mishandles `(a "b c")`). **→ ⚠ PARTIAL (v0.259.0 — Builtin.parse_flags added, unset migrated, ONE assoc parser; set/declare keep necessarily-custom parsers)** |
+| LOW | 36 sites / 9 sites | `shell.stdout if hasattr(...)` duplicated 36×; `in_forked_child → os.write(1,...)` dance 9× across 4 files — should be one helper on `Builtin`. **→ ✅ FIXED (v0.259.0 — Builtin.write/write_line/error; the 9 forked-child dances migrated)** |
+| LOW | `variables.py:107-113`; environment.py:56 | `Variable.copy()` shallow for arrays; in-process `Shell(parent_shell=)` (env builtin) shares live array objects. **→ ❌ OPEN** |
+| LOW | `shell.py:122-147` | `__getattr__`/`__setattr__` delegation shim hides attribute provenance; `_state_properties` manually synced. ShellState itself is *not* a god object. **→ ❌ OPEN** |
 
 ### Test coverage
 28 builtin test files, strong on echo/printf/read/test/type/mapfile/let/getopts. Gaps: no
@@ -344,6 +385,11 @@ dedicated unit tests for `set` (`-o` parsing — where the bug is), `export`/`un
 test_nameref.py — EnhancedScopeManager (tombstones, attribute merge, export sync) has no
 direct unit tests, which is why the tombstone leak survived. `test_getopts_builtin_broken.py`
 naming suggests a quarantined suite worth revisiting.
+*(2026-06-10: dedicated suites now exist for `set` (test_set_builtin.py),
+`export` (test_export_builtin.py), `local` (test_local_builtin.py),
+`source`+return (test_source_return.py), scope tombstones
+(test_scope_tombstones.py), umask/times, and the Builtin base helpers.
+kill/wait/help and the quarantined getopts file remain.)*
 
 ---
 
@@ -370,18 +416,18 @@ redirection idioms — clustered exactly where test coverage is absent.
 ### Issues
 | Sev | Location | Issue |
 |---|---|---|
-| HIGH | `io_redirect/manager.py:131-136,185-204` | `builtin 2>&1`/`1>&2` closes the real stdout/stderr: stream swap (`sys.stderr = sys.stdout`) then restore closes "the redirected stream" guarding only StringIO. `echo hi 2>&1; echo again` → "I/O operation on closed file". Breaks the session permanently. The StringIO guard means `captured_shell` tests structurally cannot detect it. |
-| HIGH | `executor/command.py:521` + `strategies.py:163,320,366`, `process_launcher.py:322` | Redirections applied twice for externals (parent `with_redirections` + child `setup_child_redirections`): (a) `ls /x 2>&1 >f` puts stderr into f (bash: original stdout); (b) command substitutions in heredoc bodies and redirect targets execute **twice** (verified). |
-| HIGH | `command.py:544-546`; `manager.py:30-40,139,172` | Error path leaks redirections permanently: setup outside the `try`; failing second redirect loses all backups (`echo hi >a >/bad/x; echo AFTER` → AFTER in a; shell stdout hijacked). Instance-level `_saved_fds_list` partially populated then "restored" by the *next* builtin. |
-| HIGH | `file_redirect.py:249-261` | `restore_redirections` iterates **forward** though io_redirect/CLAUDE.md:68-73 documents `reversed()`: `{ /bin/echo hi; } >e >f; echo A` → A in e. Builtin variant: `stdout_backup` overwritten by second redirect (manager.py:117-124). |
-| HIGH | `file_redirect.py:68-77` | Heredocs >~64KB deadlock: whole body written into a pipe before any reader exists. Bash uses a temp file. Verified hang at 130KB. |
-| MED | `keybindings.py:129-198`; `line_editor.py:301-376,916-926,1176-1209` | vi mode mostly façade: ~25 bound actions (`undo`/`redo`, `dd`/`cc`/`yy`/`p`/`P`/`r`/`D`/`C`, `e`/`E`/`W`/`B`/`^`, `/`/`?`/`n`/`N`, visual, `.`) never dispatched by `_execute_action` — silent no-ops; `LineEditor.undo`/`redo` dead; `key_handler.mode` never synced with `LineEditor.mode`; multi-char bindings unreachable. Dead state: vi_pending_motion, vi_registers, vi_last_change, vi_mark_start, kill_ring_pos. |
-| MED | `line_editor.py:464-478,1155-1162` | Single-row rendering model: raw `\b` + `\033[K` redraws corrupt display once input wraps past terminal width; only SIGWINCH redraw is wrap-aware. (Challenges the "cohesive" assessment: rendering interleaved with buffer mutation in every method is why only buffer-level unit tests exist.) |
-| MED | `signal_manager.py:111-127` | Traps run inside signal-handler context (contradicts the file's own self-pipe philosophy); can re-enter the executor mid-fd-swap. |
-| LOW | `repl_loop.py:87`; `process_sub.py:77` | Broad `except Exception` catches LoopBreak/LoopContinue and genuine bugs; process-sub child catches Exception not BaseException (escaping BaseException unwinds into the forked parent stack copy). |
-| LOW | `line_editor.py:262-266` vs `history_manager.py:12-20` | Dual history appenders with different dedup policies; vestigial readline usage. |
-| LOW | `prompt.py:110-111`; `line_editor.py:944-946` | `\[`/`\]` → `\001`/`\002` counted as visible by `_visible_length` → cursor math off for colored prompts. DSR `ESC[6n` each prompt stalls 0.1s on non-answering terminals (line_editor.py:201). |
-| LOW | `builtins/job_control.py:31`; `line_editor.py:1052,1067` | `jobs -l` is a TODO; tab completion path-only; LineEditor reaches into `CompletionEngine._find_word_start` (private). |
+| HIGH | `io_redirect/manager.py:131-136,185-204` | `builtin 2>&1`/`1>&2` closes the real stdout/stderr: stream swap (`sys.stderr = sys.stdout`) then restore closes "the redirected stream" guarding only StringIO. `echo hi 2>&1; echo again` → "I/O operation on closed file". Breaks the session permanently. The StringIO guard means `captured_shell` tests structurally cannot detect it. **→ ✅ FIXED (v0.246.0 — restore closes exactly the files setup opened)** |
+| HIGH | `executor/command.py:521` + `strategies.py:163,320,366`, `process_launcher.py:322` | Redirections applied twice for externals (parent `with_redirections` + child `setup_child_redirections`): (a) `ls /x 2>&1 >f` puts stderr into f (bash: original stdout); (b) command substitutions in heredoc bodies and redirect targets execute **twice** (verified). **→ ✅ FIXED (v0.252.0 — applied once, in the child)** |
+| HIGH | `command.py:544-546`; `manager.py:30-40,139,172` | Error path leaks redirections permanently: setup outside the `try`; failing second redirect loses all backups (`echo hi >a >/bad/x; echo AFTER` → AFTER in a; shell stdout hijacked). Instance-level `_saved_fds_list` partially populated then "restored" by the *next* builtin. **→ ✅ FIXED (v0.246.0 — transactional setup with rollback, both paths)** |
+| HIGH | `file_redirect.py:249-261` | `restore_redirections` iterates **forward** though io_redirect/CLAUDE.md:68-73 documents `reversed()`: `{ /bin/echo hi; } >e >f; echo A` → A in e. Builtin variant: `stdout_backup` overwritten by second redirect (manager.py:117-124). **→ ✅ FIXED (v0.246.0 — reversed(); backups first-touch-wins)** |
+| HIGH | `file_redirect.py:68-77` | Heredocs >~64KB deadlock: whole body written into a pipe before any reader exists. Bash uses a temp file. Verified hang at 130KB. **→ ✅ FIXED (v0.251.0 — anonymous temp file, like bash)** |
+| MED | `keybindings.py:129-198`; `line_editor.py:301-376,916-926,1176-1209` | vi mode mostly façade: ~25 bound actions (`undo`/`redo`, `dd`/`cc`/`yy`/`p`/`P`/`r`/`D`/`C`, `e`/`E`/`W`/`B`/`^`, `/`/`?`/`n`/`N`, visual, `.`) never dispatched by `_execute_action` — silent no-ops; `LineEditor.undo`/`redo` dead; `key_handler.mode` never synced with `LineEditor.mode`; multi-char bindings unreachable. Dead state: vi_pending_motion, vi_registers, vi_last_change, vi_mark_start, kill_ring_pos. **→ ✅ FIXED (v0.258.0 — keymap matches behavior; undo/redo wired; mode synced; coverage guard test)** |
+| MED | `line_editor.py:464-478,1155-1162` | Single-row rendering model: raw `\b` + `\033[K` redraws corrupt display once input wraps past terminal width; only SIGWINCH redraw is wrap-aware. (Challenges the "cohesive" assessment: rendering interleaved with buffer mutation in every method is why only buffer-level unit tests exist.) **→ ❌ OPEN (Tier 3)** |
+| MED | `signal_manager.py:111-127` | Traps run inside signal-handler context (contradicts the file's own self-pipe philosophy); can re-enter the executor mid-fd-swap. **→ ✅ FIXED (v0.263.0)** |
+| LOW | `repl_loop.py:87`; `process_sub.py:77` | Broad `except Exception` catches LoopBreak/LoopContinue and genuine bugs; process-sub child catches Exception not BaseException (escaping BaseException unwinds into the forked parent stack copy). **→ ❌ OPEN** |
+| LOW | `line_editor.py:262-266` vs `history_manager.py:12-20` | Dual history appenders with different dedup policies; vestigial readline usage. **→ ❌ OPEN** |
+| LOW | `prompt.py:110-111`; `line_editor.py:944-946` | `\[`/`\]` → `\001`/`\002` counted as visible by `_visible_length` → cursor math off for colored prompts. DSR `ESC[6n` each prompt stalls 0.1s on non-answering terminals (line_editor.py:201). **→ ❌ OPEN** |
+| LOW | `builtins/job_control.py:31`; `line_editor.py:1052,1067` | `jobs -l` is a TODO; tab completion path-only; LineEditor reaches into `CompletionEngine._find_word_start` (private). **→ ❌ OPEN** |
 
 ### Test coverage
 `tests/unit/io_redirect/` has just 6 predicate tests; `tests/integration/redirection/` has
@@ -391,12 +437,19 @@ large heredocs — precisely the five verified defects. PTY suites
 interactive job control and line editing are effectively unverified in CI. LineEditor: 22
 unit tests cover buffer ops; the read_line select loop, CSI parsing, CPR drain, resize
 redraw, and vi normal dispatch are untested.
+*(2026-06-10: the five defect classes are pinned by
+test_redirection_restore.py, test_external_redirect_once.py, and
+test_large_heredoc.py; vi undo/redo and keymap coverage have unit tests with
+a guard against phantom bindings. The PTY xfail problem is Tier 3.)*
 
 ---
 
 ## 7. Feature Conformance (204-probe battery vs bash 5.2) — GOOD
 
-**169/204 probes byte-identical.** Full parity verified for: all common parameter-expansion
+**169/204 probes byte-identical** at v0.237.0; *(2026-06-10: most
+divergences below are fixed — re-running the saved probe harness is the way
+to get a fresh score; the markers reflect spot-verified fixes).* Full parity
+verified for: all common parameter-expansion
 operators (incl. `@Q @U @L @u`, substrings with negative offsets, indirect `${!x}` scalar),
 indexed + associative arrays (init, keys, slices, `+=`, negative indices, mapfile), the full
 arithmetic surface (ternary, comma, bases, `**`, `(( ))` status, `let`), brace expansion,
@@ -409,25 +462,25 @@ SHLVL`, `$@`/`$*` IFS edges, exit codes 126/127/128+n, `;&`/`;;&`, C-style for, 
 ### Undocumented divergences (doc claims "Full support" for the first group)
 | Feature | psh | bash |
 |---|---|---|
-| `set -e` exemptions (&&-lists, conditions, subshells) | wrong (see §4) | correct |
-| `set -u` fatality | warns, continues, rc 0 | aborts rc 127 |
-| readonly violation fatality | warns, continues | aborts rc 1 |
-| `builtin 2>&1` | breaks shell stdout | fine |
-| `${0##*/}` | empty | `bash` |
-| Quoted regex in `=~` (`[[ abc =~ "a.c" ]]`) | treated as regex (matches) | literal (no match) |
-| `printf -v var fmt` | prints `-v`, var empty | sets var |
-| `printf '%(fmt)T'` | literal output | strftime |
-| `PIPESTATUS` | empty | populated |
-| `$PPID $UID $EUID $EPOCHSECONDS $EPOCHREALTIME` | empty | populated |
-| `$_` | python path, never updates | last arg |
-| `builtin` builtin | rc 127 (function wrappers infinite-loop) | works |
-| `export -f` | child rc 127 | child runs function |
-| Alias expansion non-interactive | on by default; `shopt expand_aliases` invalid | opt-in |
-| `$"..."` locale string | literal `$localized` | `localized` |
-| `${x@P}` | doesn't prompt-expand | expands |
-| `wait` after `kill %1` | rc 143 | rc 0 |
-| `type -t if` | empty rc 1 | `keyword` |
-| minor | `$-` lacks `c`/`h`; `read -p` prompt not suppressed w/o tty; shopt `lastpipe`, `history -s`, `bind` absent | |
+| `set -e` exemptions (&&-lists, conditions, subshells) | wrong (see §4) | correct **→ ✅ v0.253.0** |
+| `set -u` fatality | warns, continues, rc 0 | aborts rc 127 **→ ✅ v0.248.0** |
+| readonly violation fatality | warns, continues | aborts rc 1 **→ ✅ v0.253.0** |
+| `builtin 2>&1` | breaks shell stdout | fine **→ ✅ v0.246.0** |
+| `${0##*/}` | empty | `bash` **→ ❌ OPEN** |
+| Quoted regex in `=~` (`[[ abc =~ "a.c" ]]`) | treated as regex (matches) | literal (no match) **→ ✅ v0.262.0** |
+| `printf -v var fmt` | prints `-v`, var empty | sets var **→ ✅ v0.262.0** |
+| `printf '%(fmt)T'` | literal output | strftime **→ ✅ v0.262.0** |
+| `PIPESTATUS` | empty | populated **→ ✅ v0.261.0** |
+| `$PPID $UID $EUID $EPOCHSECONDS $EPOCHREALTIME` | empty | populated **→ ✅ v0.261.0** |
+| `$_` | python path, never updates | last arg **→ ❌ OPEN** |
+| `builtin` builtin | rc 127 (function wrappers infinite-loop) | works **→ ✅ v0.262.0** |
+| `export -f` | child rc 127 | child runs function **→ ❌ OPEN** |
+| Alias expansion non-interactive | on by default; `shopt expand_aliases` invalid | opt-in **→ ❌ OPEN** |
+| `$"..."` locale string | literal `$localized` | `localized` **→ ❌ OPEN** |
+| `${x@P}` | doesn't prompt-expand | expands **→ ❌ OPEN** |
+| `wait` after `kill %1` | rc 143 | rc 0 **→ ❌ OPEN** |
+| `type -t if` | empty rc 1 | `keyword` **→ ❌ OPEN** |
+| minor | `$-` lacks `c`/`h`; `read -p` prompt not suppressed w/o tty; shopt `lastpipe`, `history -s`, `bind` absent | **→ ⚠ PARTIAL (`c` in $- since v0.261.0; rest open)** |
 
 ### Documented divergences (doc verified accurate)
 coproc; DEBUG/ERR/RETURN traps; `wait -n`; `caller`; `complete`/`compgen`; history
@@ -435,6 +488,10 @@ expansion; `read -u`; `time` keyword; `BASH_VERSION`/`BASH_SOURCE`/`BASH_LINENO`
 `FUNCNAME[1+]`; `${!prefix@}` listing all variables; `set -euo` combined flags; extglob
 same-line limit; `@K`/`@k`. (One doc error: psh_bash_differences.json:8 inverts the POSIX
 verdict on `V=hello echo $V` — bash is the conformant one.)
+*(2026-06-10: three of these are no longer divergences and the user guide was
+updated accordingly — DEBUG/ERR traps fire (v0.263.0, only RETURN remains),
+`set -euo pipefail` works (v0.242.0), and `${!prefix@}` matches correctly
+(v0.240.0). The psh_bash_differences.json error is still uncorrected.)*
 
 ### Conformance suite assessment
 217 tests (posix/ 70, bash/ 147) vs 3,613 in the main suite. Strong: parameter expansion,
@@ -443,6 +500,12 @@ getopts (0), heredocs (1), job control (1), select (0), fd-dup edge cases (one p
 have caught the `2>&1` crash). The project's own rule — user-guide conformance claims must
 be backed by conformance tests — is violated for the `set -e`/`set -u` "Full support"
 claims.
+*(2026-06-10: the errexit gap is closed — 21 conformance tests in
+test_errexit_conformance.py incl. subshell inheritance — plus
+TestArrayFieldExpansion (8) and set-option tests (3); the `set -e`/`set -u`
+claims are now backed as the project rule requires. getopts/select/job-control
+conformance coverage remains thin — folded into the Tier 3 conformance
+expansion item.)*
 
 ---
 
@@ -573,6 +636,14 @@ rules in CLAUDE.md).
    rc 2; consolidate the three array-literal parsers.
 
 ### Tier 3 — larger/architectural
+
+> **STATUS (2026-06-10): the only remaining tier.** Everything below is
+> open, plus the residual ❌ rows in the subsystem tables above (notably:
+> function-body parser MEDs — `f() (...)` subshell semantics and
+> `f() {...} > file` redirects; `${!n}` indirection through positionals;
+> `${x/b/\1}` replacement escaping; tilde/HOME layering; nameref
+> write-time cycles; `f &` background functions; `${0##*/}`; `export -f`;
+> `$_`).
 - Single shared `shell.process_launcher` (removes the executor→interactive reach ×4).
 - Remove `is_pytest` test-awareness from production terminal-control paths; replace
   blanket-xfail PTY suites with a small passing pexpect smoke set.
