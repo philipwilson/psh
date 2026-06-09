@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.248.0 (2026-06-09) - set -u message and fatality (review Tier 0 #11)
+- `set -u` violations printed "psh: psh: $x: unbound variable": the expansion
+  code wrapped the message in a "psh: " prefix that the printing handler
+  added again. The wrappers are gone; the message now matches bash's format
+  exactly (`x: unbound variable`; positionals keep the `$`).
+- A non-interactive shell now aborts with status 127 on a nounset violation,
+  like bash, instead of continuing with rc 0. Interactive shells report the
+  error and continue.
+- Out-of-range positional parameters (`echo $5`) now trigger the nounset
+  check (previously silently expanded empty).
+- New subprocess tests in
+  tests/integration/shell_options/test_nounset_script_mode.py (8 cases).
+
 ## 0.247.0 (2026-06-09) - Control flow propagates through eval (review Tier 0 #10)
 - `eval break` / `eval continue` / `eval return N` now act on the enclosing
   loop/function instead of printing "only meaningful in a loop" (or
