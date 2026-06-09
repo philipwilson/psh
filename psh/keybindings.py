@@ -10,7 +10,6 @@ class EditMode(Enum):
     EMACS = auto()
     VI_INSERT = auto()
     VI_NORMAL = auto()
-    VI_VISUAL = auto()
 
 
 class KeyBindings:
@@ -101,15 +100,17 @@ class EmacsKeyBindings(KeyBindings):
 
 
 class ViKeyBindings(KeyBindings):
-    """Vi-style key bindings."""
+    """Vi-style key bindings.
+
+    Deliberately a SUBSET of vi: every binding listed here is implemented
+    by LineEditor._execute_action. (Earlier versions bound ~30 more actions
+    — registers, motions, visual mode, search — that silently did nothing.)
+    """
 
     def __init__(self):
         super().__init__()
+        # Kept in sync with LineEditor.mode by _enter_vi_*_mode()
         self.mode = EditMode.VI_INSERT
-        self.repeat_count = 1
-        self.pending_motion = None
-        self.register = '"'  # Default register
-        self.registers = {'"': ''}  # Storage for yanked/deleted text
 
     def setup_bindings(self):
         """Setup Vi key bindings for both insert and normal modes."""
@@ -125,17 +126,13 @@ class ViKeyBindings(KeyBindings):
             self.ENTER: 'accept_line',
         }
 
-        # Normal mode bindings
+        # Normal mode bindings (implemented subset only)
         self.normal_bindings = {
             # Mode switching
             'i': 'enter_insert_mode',
             'I': 'enter_insert_mode_at_beginning',
             'a': 'append_mode',
             'A': 'append_mode_at_end',
-            'o': 'open_line_below',
-            'O': 'open_line_above',
-            'v': 'enter_visual_mode',
-            'V': 'enter_visual_line_mode',
 
             # Movement
             'h': 'move_backward_char',
@@ -143,66 +140,25 @@ class ViKeyBindings(KeyBindings):
             'j': 'next_history',
             'k': 'previous_history',
             'w': 'move_word_forward',
-            'W': 'move_WORD_forward',
             'b': 'move_word_backward',
-            'B': 'move_WORD_backward',
-            'e': 'move_word_end',
-            'E': 'move_WORD_end',
             '0': 'move_beginning_of_line',
-            '^': 'move_first_non_blank',
             '$': 'move_end_of_line',
-            'gg': 'move_to_first_history',
             'G': 'move_to_last_history',
 
             # Editing
             'x': 'delete_char',
             'X': 'backward_delete_char',
-            'd': 'delete_motion',
-            'dd': 'delete_line',
-            'D': 'delete_to_end',
-            'c': 'change_motion',
-            'cc': 'change_line',
-            'C': 'change_to_end',
-            'y': 'yank_motion',
-            'yy': 'yank_line',
-            'p': 'paste_after',
-            'P': 'paste_before',
-            'r': 'replace_char',
-            'R': 'enter_replace_mode',
             'u': 'undo',
             self.CTRL_R: 'redo',
 
-            # Search
-            '/': 'search_forward',
-            '?': 'search_backward',
-            'n': 'search_next',
-            'N': 'search_previous',
-            '*': 'search_word_forward',
-            '#': 'search_word_backward',
-
             # Other
-            '.': 'repeat_last_change',
-            ':': 'enter_command_mode',
             self.CTRL_L: 'clear_screen',
             self.CTRL_C: 'interrupt',
             self.ENTER: 'accept_line',
         }
 
-        # Visual mode bindings (similar to normal mode with some differences)
-        self.visual_bindings = self.normal_bindings.copy()
-        self.visual_bindings.update({
-            self.ESCAPE: 'exit_visual_mode',
-            'd': 'delete_selection',
-            'c': 'change_selection',
-            'y': 'yank_selection',
-        })
-
     def get_action(self, key: str) -> Optional[str]:
         """Get the action for a key based on current mode."""
-        if self.mode == EditMode.VI_INSERT:
-            return self.insert_bindings.get(key)
-        elif self.mode == EditMode.VI_NORMAL:
+        if self.mode == EditMode.VI_NORMAL:
             return self.normal_bindings.get(key)
-        elif self.mode == EditMode.VI_VISUAL:
-            return self.visual_bindings.get(key)
-        return None
+        return self.insert_bindings.get(key)

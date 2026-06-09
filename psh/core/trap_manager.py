@@ -36,25 +36,13 @@ class TrapManager:
         # Reverse mapping for display purposes
         self.signal_names = {v: k for k, v in self.signal_map.items() if isinstance(v, int)}
 
-        # Add numbered signals (1-31 for most systems)
-        for i in range(1, 32):
-            try:
-                # Check if signal exists on this system by getting its handler
-                current_handler = signal.signal(i, signal.SIG_DFL)
-                # Restore the original handler
-                signal.signal(i, current_handler)
-
-                # Always add numeric mapping, even if we have a name mapping
-                if str(i) not in self.signal_map:
-                    self.signal_map[str(i)] = i
-
-                # Add to signal_names if not already there
-                if i not in self.signal_names:
-                    self.signal_names[i] = str(i)
-
-            except (OSError, ValueError):
-                # Signal doesn't exist on this system
-                pass
+        # Add numbered mappings for every signal the platform supports
+        # (no handler-swapping probe needed).
+        for signum in sorted(int(s) for s in signal.valid_signals()):
+            if str(signum) not in self.signal_map:
+                self.signal_map[str(signum)] = signum
+            if signum not in self.signal_names:
+                self.signal_names[signum] = str(signum)
 
     def set_trap(self, action: str, signals: List[str]) -> int:
         """Set trap handler for signals.

@@ -38,7 +38,6 @@ class LineEditor:
 
         # Kill ring for cut/paste operations
         self.kill_ring = []
-        self.kill_ring_pos = 0
 
         # Search state
         self.search_mode = False
@@ -48,11 +47,6 @@ class LineEditor:
 
         # Vi specific state
         self.vi_repeat_count = ""
-        self.vi_pending_motion = None
-        self.vi_last_change = None
-        self.vi_registers = {'"': ''}
-        self.vi_current_register = '"'
-        self.vi_mark_start = -1  # For visual mode
 
         # Undo/redo support
         self.undo_stack = []
@@ -183,8 +177,9 @@ class LineEditor:
         # Reset vi mode to insert
         if self.edit_mode == 'vi':
             self.mode = EditMode.VI_INSERT
+            if hasattr(self.key_handler, 'mode'):
+                self.key_handler.mode = EditMode.VI_INSERT
             self.vi_repeat_count = ""
-            self.vi_pending_motion = None
 
         # Build list of fds to monitor
         stdin_fd = sys.stdin.fileno()
@@ -360,6 +355,11 @@ class LineEditor:
         elif action == 'append_mode_at_end':
             self._move_end()
             self._enter_vi_insert_mode()
+
+        elif action == 'undo':
+            self.undo()
+        elif action == 'redo':
+            self.redo()
 
         # Other actions
         elif action == 'complete':
@@ -917,6 +917,7 @@ class LineEditor:
         """Enter vi normal mode."""
         if self.mode != EditMode.VI_NORMAL:
             self.mode = EditMode.VI_NORMAL
+            self.key_handler.mode = EditMode.VI_NORMAL
             # Move cursor back one position (vi behavior)
             if self.cursor_pos > 0:
                 self._move_left()
@@ -924,6 +925,7 @@ class LineEditor:
     def _enter_vi_insert_mode(self):
         """Enter vi insert mode."""
         self.mode = EditMode.VI_INSERT
+        self.key_handler.mode = EditMode.VI_INSERT
 
     def _clear_screen(self):
         """Clear screen and redraw current line."""
@@ -1174,22 +1176,31 @@ class LineEditor:
             self.redo_stack.clear()
 
     def undo(self):
-        """Undo last change."""
-        if len(self.undo_stack) > 1:
-            # Save current state to redo stack
+        """Undo last change.
+
+        The live buffer is the implicit top of the stack: if it differs
+        from the last saved state, undoing first parks it on the redo
+        stack (otherwise the most recent edit would be skipped entirely).
+        """
+        current = (''.join(self.buffer), self.cursor_pos)
+        if self.undo_stack and self.undo_stack[-1] != current:
+            self.redo_stack.append(current)
+        elif len(self.undo_stack) > 1:
             self.redo_stack.append(self.undo_stack.pop())
+        else:
+            return
 
-            # Restore previous state
-            text, pos = self.undo_stack[-1]
-            self._clear_current_line()
-            self.buffer = list(text)
-            self.cursor_pos = pos
+        # Restore previous state
+        text, pos = self.undo_stack[-1]
+        self._clear_current_line()
+        self.buffer = list(text)
+        self.cursor_pos = pos
 
-            # Redraw
-            sys.stdout.write(text)
-            if pos < len(text):
-                sys.stdout.write('\b' * (len(text) - pos))
-            sys.stdout.flush()
+        # Redraw
+        sys.stdout.write(text)
+        if pos < len(text):
+            sys.stdout.write('\b' * (len(text) - pos))
+        sys.stdout.flush()
 
     def redo(self):
         """Redo last undone change."""

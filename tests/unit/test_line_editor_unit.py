@@ -335,3 +335,59 @@ class TestLineEditorUnit:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+class TestViUndoRedo:
+    """undo/redo are wired to vi normal-mode 'u' / Ctrl-R (v0.258.0).
+
+    Previously the keymap bound ~30 actions (registers, motions, visual
+    mode, search) that _execute_action never dispatched; those bindings
+    were removed and the keymap now matches actual behavior.
+    """
+
+    def _editor(self):
+        from psh.line_editor import LineEditor
+        return LineEditor(history=[], edit_mode='vi')
+
+    def test_undo_action_restores_previous_state(self):
+        import unittest.mock as mock
+        ed = self._editor()
+        with mock.patch('sys.stdout'):
+            for ch in 'abc':
+                ed._insert_char(ch)
+            assert ''.join(ed.buffer) == 'abc'
+            ed._execute_action('undo', 'u')
+        assert ''.join(ed.buffer) == 'ab'
+
+    def test_redo_action_reapplies_change(self):
+        import unittest.mock as mock
+        ed = self._editor()
+        with mock.patch('sys.stdout'):
+            for ch in 'ab':
+                ed._insert_char(ch)
+            ed._execute_action('undo', 'u')
+            assert ''.join(ed.buffer) == 'a'
+            ed._execute_action('redo', '\x12')
+        assert ''.join(ed.buffer) == 'ab'
+
+    def test_mode_switch_syncs_key_handler(self):
+        import unittest.mock as mock
+        ed = self._editor()
+        from psh.keybindings import EditMode
+        with mock.patch('sys.stdout'):
+            ed._enter_vi_normal_mode()
+            assert ed.key_handler.mode == EditMode.VI_NORMAL
+            ed._enter_vi_insert_mode()
+            assert ed.key_handler.mode == EditMode.VI_INSERT
+
+    def test_every_vi_binding_is_dispatched(self):
+        """Guard: no binding may name an action _execute_action ignores."""
+        import inspect
+        import re
+        ed = self._editor()
+        src = inspect.getsource(ed._execute_action)
+        handled = set(re.findall(r"action == '([a-z_]+)'", src))
+        all_bound = (set(ed.key_handler.insert_bindings.values())
+                     | set(ed.key_handler.normal_bindings.values()))
+        unhandled = sorted(all_bound - handled)
+        assert unhandled == [], f"bound but not dispatched: {unhandled}"
