@@ -751,10 +751,12 @@ class VariableExpander:
                 self.state.last_exit_code = 1
                 raise ExpansionError(str(e), exit_code=1)
         elif operator == '!*':
-            names = self.param_expansion.match_variable_names(operand, quoted=False)
-            return ' '.join(names)
+            # ${!prefix*}: names joined with the first character of IFS
+            names = self.param_expansion.match_variable_names(var_name)
+            return self._ifs_star_separator().join(names)
         elif operator == '!@':
-            names = self.param_expansion.match_variable_names(operand, quoted=True)
+            # ${!prefix@}: names joined with spaces
+            names = self.param_expansion.match_variable_names(var_name)
             return ' '.join(names)
         elif operator == '^':
             return self.param_expansion.uppercase_first(value, operand)

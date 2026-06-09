@@ -305,20 +305,13 @@ class ParameterExpansion:
                 return value[offset:offset + length]
 
     # Variable name matching
-    def match_variable_names(self, prefix: str, quoted: bool = False) -> List[str]:
-        """Find all variable names starting with prefix."""
+    def match_variable_names(self, prefix: str) -> List[str]:
+        """Find all variable names starting with prefix (for ${!prefix@})."""
         # Get all variables from both shell variables and environment
         all_vars = set(self.state.variables.keys()) | set(self.state.env.keys())
 
         # Filter by prefix
-        matching = sorted([var for var in all_vars if var.startswith(prefix)])
-
-        if quoted:
-            # Return as quoted strings
-            return [f'"{var}"' for var in matching]
-        else:
-            # Return as space-separated list
-            return matching
+        return sorted([var for var in all_vars if var.startswith(prefix)])
 
     # Case modification
     def uppercase_first(self, value: str, pattern: str = '?') -> str:

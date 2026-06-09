@@ -303,30 +303,50 @@ class TestVariableNameMatching:
     """Test variable name matching operations."""
 
     def test_prefix_matching(self, shell_with_temp_dir):
-        """Test ${!prefix*} for matching variable names."""
+        """Test ${!prefix*} for matching variable names.
+
+        Exact-match assertion: this used to assert only substring presence,
+        which still passed when ${!prefix*} wrongly listed EVERY variable.
+        """
         shell = shell_with_temp_dir
 
-        shell.run_command('USER=john')
         shell.run_command('USER_ID=1000')
         shell.run_command('USER_HOME=/home/john')
-        shell.run_command('echo ${!USER*} > output.txt')
+        shell.run_command('echo ${!USER_*} > output.txt')
         with open('output.txt', 'r') as f:
             content = f.read().strip()
-        assert "USER" in content
-        assert "USER_ID" in content
-        assert "USER_HOME" in content
+        assert content == "USER_HOME USER_ID"
 
-    def test_quoted_output(self, shell_with_temp_dir):
-        """Test ${!prefix@} for quoted output."""
+    def test_prefix_matching_at(self, shell_with_temp_dir):
+        """Test ${!prefix@}: matching names only, no literal quotes."""
         shell = shell_with_temp_dir
 
         shell.run_command('TEST_VAR1=one')
         shell.run_command('TEST_VAR2=two')
-        shell.run_command('echo ${!TEST*} > output.txt')
+        shell.run_command('echo ${!TEST_VAR@} > output.txt')
         with open('output.txt', 'r') as f:
             content = f.read().strip()
-        assert "TEST_VAR1" in content
-        assert "TEST_VAR2" in content
+        assert content == "TEST_VAR1 TEST_VAR2"
+
+    def test_prefix_matching_no_match(self, shell_with_temp_dir):
+        """A prefix matching nothing expands to nothing."""
+        shell = shell_with_temp_dir
+
+        shell.run_command('echo "[${!NOSUCHPREFIXZZ@}]" > output.txt')
+        with open('output.txt', 'r') as f:
+            content = f.read().strip()
+        assert content == "[]"
+
+    def test_prefix_matching_star_joins_with_ifs(self, shell_with_temp_dir):
+        """Quoted ${!prefix*} joins names with the first character of IFS."""
+        shell = shell_with_temp_dir
+
+        shell.run_command('PFX_A=1')
+        shell.run_command('PFX_B=2')
+        shell.run_command('IFS=:; echo "${!PFX_*}" > output.txt')
+        with open('output.txt', 'r') as f:
+            content = f.read().strip()
+        assert content == "PFX_A:PFX_B"
 
 
 class TestCaseModification:
