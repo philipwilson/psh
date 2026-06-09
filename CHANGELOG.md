@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.263.0 (2026-06-09) - DEBUG/ERR traps + deferred signal traps (review Tier 2, phase 4)
+- DEBUG and ERR traps now FIRE. They were stored, documented in `trap`
+  help, and silently never dispatched (execute_debug_trap/execute_err_trap
+  had zero call sites). DEBUG runs before each simple command; ERR runs
+  after eligible failures with exactly the set -e exemptions (reusing the
+  v0.253.0 errexit_eligible machinery), sees the failing status in $?, and
+  fires before an errexit abort, like bash. A re-entrancy guard keeps
+  DEBUG/ERR actions from re-triggering themselves.
+- Signal trap actions no longer execute inside the Python signal handler
+  (where they could re-enter the parser/executor mid-command, contradicting
+  the shell's own self-pipe design). The handler queues the trap and the
+  executor runs it at the next command boundary — bash's documented
+  behaviour — preserving output ordering.
+- Also lands the unreachable empty-action branch removal in
+  TrapManager.execute_trap that the v0.258.0 notes claimed but whose edit
+  was never written to disk.
+- docs/user_guide/17_differences_from_bash.md updated (only RETURN traps
+  remain unsupported); new tests in
+  tests/integration/job_control/test_debug_err_traps.py (11 cases).
+
 ## 0.262.0 (2026-06-09) - Scripting idioms (review Tier 2, phase 3c)
 - Scalar `+=` append assignment: `x+=b` appends (previously "command not
   found"); integer (-i) variables add arithmetically (declare -i n=1;

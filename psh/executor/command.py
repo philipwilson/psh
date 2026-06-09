@@ -73,6 +73,9 @@ class CommandExecutor:
             Exit status code
         """
         try:
+            # bash runs the DEBUG trap before each simple command
+            self.shell.trap_manager.execute_debug_trap()
+
             # Handle array assignments first
             if node.array_assignments:
                 for assignment in node.array_assignments:

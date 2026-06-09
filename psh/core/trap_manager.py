@@ -36,6 +36,14 @@ class TrapManager:
         # Reverse mapping for display purposes
         self.signal_names = {v: k for k, v in self.signal_map.items() if isinstance(v, int)}
 
+        # Signal traps queued by the (async-signal-unsafe) Python handler;
+        # executed at command boundaries via run_pending_traps(), so trap
+        # actions never re-enter the parser/executor mid-command.
+        self.pending_traps: list = []
+        # Re-entrancy guard: a DEBUG/ERR action must not fire DEBUG/ERR
+        # traps for its own commands.
+        self._in_debug_err_trap = False
+
         # Add numbered mappings for every signal the platform supports
         # (no handler-swapping probe needed).
         for signum in sorted(int(s) for s in signal.valid_signals()):
@@ -139,10 +147,7 @@ class TrapManager:
         """
         action = self.state.trap_handlers.get(signal_name)
         if not action:
-            return  # No trap set or empty action
-
-        if action == '':
-            # Signal is ignored
+            # No trap set, or empty action ('' = signal ignored)
             return
 
         # Execute the trap command in the current shell context
@@ -230,9 +235,15 @@ class TrapManager:
             self.execute_trap('EXIT')
 
     def execute_debug_trap(self):
-        """Execute DEBUG trap if set (called before each command)."""
-        if 'DEBUG' in self.state.trap_handlers:
-            self.execute_trap('DEBUG')
+        """Execute DEBUG trap if set (called before each simple command)."""
+        if self._in_debug_err_trap:
+            return
+        if self.state.trap_handlers.get('DEBUG'):
+            self._in_debug_err_trap = True
+            try:
+                self.execute_trap('DEBUG')
+            finally:
+                self._in_debug_err_trap = False
 
     def execute_err_trap(self, exit_code: int):
         """Execute ERR trap if set and command failed.
@@ -240,5 +251,20 @@ class TrapManager:
         Args:
             exit_code: Exit code of the failed command
         """
-        if 'ERR' in self.state.trap_handlers and exit_code != 0:
-            self.execute_trap('ERR')
+        if self._in_debug_err_trap:
+            return
+        if self.state.trap_handlers.get('ERR') and exit_code != 0:
+            self._in_debug_err_trap = True
+            try:
+                self.execute_trap('ERR')
+            finally:
+                self._in_debug_err_trap = False
+
+    def queue_trap(self, signal_name: str):
+        """Queue a signal trap from handler context (async-signal path)."""
+        self.pending_traps.append(signal_name)
+
+    def run_pending_traps(self):
+        """Execute queued signal traps (called at command boundaries)."""
+        while self.pending_traps:
+            self.execute_trap(self.pending_traps.pop(0))

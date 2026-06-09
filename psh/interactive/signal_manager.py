@@ -123,8 +123,10 @@ class SignalManager(InteractiveComponent):
                     # Signal is ignored
                     return
                 else:
-                    # Execute the trap
-                    self.shell.trap_manager.execute_trap(signal_name)
+                    # Queue the trap: actions run at the next command
+                    # boundary, never inside the signal handler (which
+                    # could re-enter the parser/executor mid-command).
+                    self.shell.trap_manager.queue_trap(signal_name)
                     return
 
         # No trap set, use default behavior

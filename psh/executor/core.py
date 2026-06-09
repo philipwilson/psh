@@ -105,6 +105,7 @@ class ExecutorVisitor(ASTVisitor[int]):
 
         for item in node.items:
             try:
+                self.shell.trap_manager.run_pending_traps()
                 exit_status = self.visit(item)
                 # Update $? after each top-level item
                 self.state.last_exit_code = exit_status
@@ -144,6 +145,7 @@ class ExecutorVisitor(ASTVisitor[int]):
 
         for statement in node.statements:
             try:
+                self.shell.trap_manager.run_pending_traps()
                 exit_status = self.visit(statement)
                 # Update $? after each statement
                 self.state.last_exit_code = exit_status
@@ -200,6 +202,11 @@ class ExecutorVisitor(ASTVisitor[int]):
             # set -e; read by the statement-level checks.
             self.state.errexit_eligible = (
                 not exempt and self.context.errexit_suppress == 0)
+            # The ERR trap fires under exactly the errexit conditions (bash);
+            # $? must already be the failing status inside the action.
+            if status != 0 and self.state.errexit_eligible:
+                self.state.last_exit_code = status
+                self.shell.trap_manager.execute_err_trap(status)
             return status
 
         # Execute first pipeline
