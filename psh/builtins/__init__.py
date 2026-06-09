@@ -29,6 +29,7 @@ Modules:
     shell_state     - history, version, local
     signal_handling - trap
     source_command  - source, .
+    system_builtins - umask, times
     test_command    - test, [
     type_builtin    - type
 """
@@ -61,6 +62,7 @@ from . import (
     shell_state,
     signal_handling,
     source_command,
+    system_builtins,
     test_command,
     type_builtin,
 )
