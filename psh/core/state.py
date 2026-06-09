@@ -123,6 +123,14 @@ class ShellState:
         # addition to function_stack.
         self.source_depth = 0
 
+        # Exit statuses of the most recently executed foreground pipeline
+        # (PIPESTATUS). A single command records a one-element list.
+        self.pipestatus = []
+
+        # The shell's parent process id at startup ($PPID). Subshells
+        # inherit it (bash: PPID does not change in subshells).
+        self.initial_ppid = os.getppid()
+
         # Whether the most recent command status may trigger set -e.
         # Maintained by ExecutorVisitor.visit_AndOrList: False for failures
         # POSIX exempts from errexit (condition contexts, non-final members
@@ -312,6 +320,7 @@ class ShellState:
         # Single-letter options in alphabetical order (lowercase first, then uppercase)
         if self.options.get('allexport'): opts.append('a')
         if self.options.get('notify'): opts.append('b')
+        if self.options.get('command_mode'): opts.append('c')
         if self.options.get('errexit'): opts.append('e')
         if self.options.get('noglob'): opts.append('f')
         if self.options.get('hashcmds'): opts.append('h')
