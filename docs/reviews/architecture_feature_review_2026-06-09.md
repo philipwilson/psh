@@ -453,6 +453,27 @@ Each fix must land with regression tests pinned to bash behavior (subprocess-sty
 rules in CLAUDE.md).
 
 ### Tier 0 — surgical fixes, low risk, do now
+
+> **STATUS (2026-06-09): ALL 11 RESOLVED**, one release per issue:
+> #1 → v0.238.0 (also fixed bash semantics for out-of-range break/continue N);
+> #2 → v0.239.0 (also: shared quote-aware array-initializer parser for
+> local/declare, parser kept `$` on VARIABLE tokens in `arr=(...)`);
+> #3 → v0.240.0; #4 → v0.241.0; #5 → v0.242.0 (also: `set -euo pipefail`
+> cluster support — differences-doc entry removed, conformance-tested);
+> #6 → v0.243.0; #7 → v0.244.0; #8 → v0.245.0; #9 → v0.246.0 (expanded into
+> the full transactional redesign: closed Tier 1 item 1 — the `2>&1`
+> stream-close kill, same-fd-twice restore order, and error-path rollback in
+> both the builtin and fd-level paths); #10 → v0.247.0 (expanded: nested
+> execution reuses the caller's visitor, fixing `eval break/continue/return`
+> end-to-end; top-level break/continue now warn-once/rc 0 like bash);
+> #11 → v0.248.0 (also: nounset violations abort non-interactive shells with
+> 127 — part of Tier 1 item 3 — and out-of-range positionals are checked).
+>
+> Still open from Tier 1: external-command redirections applied twice
+> (item 2), errexit condition-context policy + subshell option/`$?`
+> inheritance + readonly fatality (item 3), multi-field `"${arr[@]}"`
+> (item 4), `exec` failure exit / `return` from sourced files / large
+> heredocs (item 5).
 1. **`import sys` shadow crash** — delete the two function-local imports
    (`executor/core.py:115,154`). Fixes the `break N` crash.
 2. **`local` double-expansion injection** — remove the re-expansion in LocalBuiltin
