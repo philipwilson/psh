@@ -1,9 +1,13 @@
 """Advanced parameter expansion operations."""
 import re
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     from ..shell import Shell
+
+# Sentinel marking "the matched text" in a prepared replacement template
+# (bash 5.2 patsub_replacement: an unquoted & in the replacement).
+PATSUB_MATCH = object()
 
 
 class ParameterExpansion:
@@ -165,25 +169,18 @@ class ParameterExpansion:
         # No operator found, might be ${var:-default} which is handled elsewhere
         return '', content, ''
 
-    def _process_replacement_escapes(self, replacement: str) -> str:
-        """Process escape sequences in replacement string."""
-        result = []
-        i = 0
-        while i < len(replacement):
-            if replacement[i] == '\\' and i + 1 < len(replacement):
-                # Handle escaped characters
-                next_char = replacement[i + 1]
-                if next_char == '/':
-                    result.append('/')
-                    i += 2
-                else:
-                    # Keep other escapes as-is for now
-                    result.append(replacement[i])
-                    i += 1
-            else:
-                result.append(replacement[i])
-                i += 1
-        return ''.join(result)
+    @staticmethod
+    def render_replacement(replacement: Union[str, list], matched: str) -> str:
+        """Render the replacement text for one match.
+
+        A prepared template (list built by VariableExpander) may contain
+        PATSUB_MATCH entries standing for the matched text; a plain string
+        is inserted literally (never interpreted as a regex template).
+        """
+        if isinstance(replacement, str):
+            return replacement
+        return ''.join(matched if part is PATSUB_MATCH else part
+                       for part in replacement)
 
     # Length operations
     def get_length(self, value: str) -> str:
@@ -237,29 +234,34 @@ class ParameterExpansion:
         return value
 
     # Pattern substitution
-    def substitute_first(self, value: str, pattern: str, replacement: str) -> str:
+    def substitute_first(self, value: str, pattern: str,
+                         replacement: Union[str, list]) -> str:
         """Replace first match."""
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
-        replacement = self._process_replacement_escapes(replacement)
-        return re.sub(regex, replacement, value, count=1)
+        return re.sub(regex,
+                      lambda m: self.render_replacement(replacement, m.group(0)),
+                      value, count=1)
 
-    def substitute_all(self, value: str, pattern: str, replacement: str) -> str:
+    def substitute_all(self, value: str, pattern: str,
+                       replacement: Union[str, list]) -> str:
         """Replace all matches."""
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
-        replacement = self._process_replacement_escapes(replacement)
-        return re.sub(regex, replacement, value)
+        return re.sub(regex,
+                      lambda m: self.render_replacement(replacement, m.group(0)),
+                      value)
 
-    def substitute_prefix(self, value: str, pattern: str, replacement: str) -> str:
+    def substitute_prefix(self, value: str, pattern: str,
+                          replacement: Union[str, list]) -> str:
         """Replace prefix match."""
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=True, extglob_enabled=self._extglob)
         match = re.match(regex, value)
         if match:
-            # Process escape sequences in replacement
-            replacement = self._process_replacement_escapes(replacement)
-            return replacement + value[match.end():]
+            return (self.render_replacement(replacement, match.group(0))
+                    + value[match.end():])
         return value
 
-    def substitute_suffix(self, value: str, pattern: str, replacement: str) -> str:
+    def substitute_suffix(self, value: str, pattern: str,
+                          replacement: Union[str, list]) -> str:
         """Replace suffix match."""
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob)
         # Convert to end-anchored regex
@@ -268,8 +270,8 @@ class ParameterExpansion:
         # Find match at end
         match = re.search(regex, value)
         if match:
-            replacement = self._process_replacement_escapes(replacement)
-            return value[:match.start()] + replacement
+            return (value[:match.start()]
+                    + self.render_replacement(replacement, match.group(0)))
         return value
 
     # Substring extraction
@@ -313,46 +315,34 @@ class ParameterExpansion:
         # Filter by prefix
         return sorted([var for var in all_vars if var.startswith(prefix)])
 
-    # Case modification
-    def uppercase_first(self, value: str, pattern: str = '?') -> str:
-        """Convert first matching char to uppercase."""
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
+    # Case modification. bash matches the pattern against individual
+    # characters: ${v^^pat} examines each char, ${v^pat} only the first.
+    def _char_matches(self, char: str, pattern: str) -> bool:
+        regex = self.pattern_matcher.shell_pattern_to_regex(
+            pattern, anchored=False, extglob_enabled=self._extglob)
+        return re.fullmatch(regex, char) is not None
 
-        # Find first match
-        match = re.search(regex, value)
-        if match:
-            start, end = match.span()
-            return value[:start] + value[start:end].upper() + value[end:]
+    def uppercase_first(self, value: str, pattern: str = '?') -> str:
+        """Uppercase the first char if it matches the pattern."""
+        if value and self._char_matches(value[0], pattern):
+            return value[0].upper() + value[1:]
         return value
 
     def uppercase_all(self, value: str, pattern: str = '?') -> str:
-        """Convert all matching chars to uppercase."""
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
-
-        def upper_repl(match):
-            return match.group(0).upper()
-
-        return re.sub(regex, upper_repl, value)
+        """Uppercase every char matching the pattern."""
+        return ''.join(c.upper() if self._char_matches(c, pattern) else c
+                       for c in value)
 
     def lowercase_first(self, value: str, pattern: str = '?') -> str:
-        """Convert first matching char to lowercase."""
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
-
-        # Find first match
-        match = re.search(regex, value)
-        if match:
-            start, end = match.span()
-            return value[:start] + value[start:end].lower() + value[end:]
+        """Lowercase the first char if it matches the pattern."""
+        if value and self._char_matches(value[0], pattern):
+            return value[0].lower() + value[1:]
         return value
 
     def lowercase_all(self, value: str, pattern: str = '?') -> str:
-        """Convert all matching chars to lowercase."""
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
-
-        def lower_repl(match):
-            return match.group(0).lower()
-
-        return re.sub(regex, lower_repl, value)
+        """Lowercase every char matching the pattern."""
+        return ''.join(c.lower() if self._char_matches(c, pattern) else c
+                       for c in value)
 
 
 class PatternMatcher:
