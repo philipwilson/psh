@@ -151,8 +151,8 @@ trap -p INT            # Show specific trap
 trap - EXIT INT
 ```
 
-PSH handles standard signals and the `EXIT` pseudo-signal. The Bash-specific
-pseudo-signals **`DEBUG`, `ERR`, and `RETURN` are not supported** (see 17.2).
+PSH handles standard signals and the `EXIT`, `DEBUG`, and `ERR`
+pseudo-signals (as of v0.263.0). `RETURN` is not supported (see 17.2).
 
 ### Select Statement
 
@@ -292,12 +292,11 @@ coproc { command; }           # Command not found
 coproc NAME { command; }      # Command not found
 ```
 
-### DEBUG, ERR, and RETURN Traps
+### RETURN Traps
 
 ```bash
-# Standard signals and EXIT work; these Bash pseudo-signals do not:
-trap 'echo dbg' DEBUG    # Does not fire
-trap 'echo err' ERR      # Does not fire
+# EXIT, DEBUG, and ERR all fire (DEBUG before each simple command; ERR
+# after failures, with the same exemptions as set -e). RETURN does not:
 trap 'echo ret' RETURN   # Error: invalid signal specification
 ```
 
@@ -580,7 +579,7 @@ fi
 | set -o noglob | Yes | Yes | Full support |
 | set -o verbose | Yes | Yes | Full support |
 | **Signal Handling** |
-| trap command | Yes | Yes | Standard signals + EXIT |
+| trap command | Yes | Yes | Standard signals + EXIT/DEBUG/ERR |
 | Signal handling | Yes | Yes | All standard signals |
 | DEBUG/ERR/RETURN traps | Yes | No | Bash pseudo-signals not supported |
 | **Advanced Features** |
