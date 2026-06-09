@@ -189,9 +189,22 @@ class FileRedirector:
             return None
 
     def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int]]:
-        """Apply redirections and return list of (fd, saved_fd) for restoration."""
-        saved_fds = []
+        """Apply redirections and return list of (fd, saved_fd) for restoration.
 
+        Transactional: if any redirect fails part-way through (e.g.
+        `cmd >a >/bad/x`), the ones already applied are rolled back before
+        the exception propagates, so the shell's fds are never left hijacked.
+        """
+        saved_fds = []
+        try:
+            return self._apply_redirections(redirects, saved_fds)
+        except Exception:
+            self.restore_redirections(saved_fds)
+            raise
+
+    def _apply_redirections(self, redirects: List[Redirect],
+                            saved_fds: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+        """Apply redirections, appending (fd, saved_fd) pairs to saved_fds."""
         # Save current Python file objects
         self._saved_stdout = self.state.stdout
         self._saved_stderr = self.state.stderr
@@ -247,8 +260,13 @@ class FileRedirector:
         return saved_fds
 
     def restore_redirections(self, saved_fds: List[Tuple[int, int]]):
-        """Restore file descriptors from saved list."""
-        for fd, saved_fd in saved_fds:
+        """Restore file descriptors from saved list.
+
+        Restore in REVERSE order: with the same fd redirected twice
+        (e.g. `{ cmd; } >a >b`), the first saved backup holds the
+        original fd and must win, i.e. be restored last.
+        """
+        for fd, saved_fd in reversed(saved_fds):
             if saved_fd is None:
                 # The fd wasn't open before we redirected it (e.g. 7>file);
                 # close what we opened instead of restoring an original.
