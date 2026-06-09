@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.252.0 (2026-06-09) - External redirections applied once (review Tier 1 B)
+- External-command redirections were applied TWICE — by the parent
+  (with_redirections) and again by the forked child
+  (setup_child_redirections). Consequences fixed: `cmd 2>&1 >f` resolved
+  `2>&1` against the already-redirected fd 1 and sent stderr into f (bash:
+  to the original stdout), and command substitutions in heredoc bodies and
+  redirect targets executed twice. The parent now skips fd-level
+  application for ExternalExecutionStrategy; the child path already handles
+  every redirect type (incl. process-substitution targets, dynamic fd dups,
+  noclobber, heredocs).
+- New side-effect-counting and ordering tests in
+  tests/integration/redirection/test_external_redirect_once.py (10 cases
+  pinned to bash 5.2).
+
 ## 0.251.0 (2026-06-09) - Large heredocs via temp file (review Tier 1 A3)
 - Heredoc and here-string content used to be written in full into an
   os.pipe() before any reader existed, deadlocking the shell for bodies
