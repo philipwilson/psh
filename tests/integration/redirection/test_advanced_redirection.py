@@ -119,21 +119,20 @@ class TestFileDescriptorDuplication:
         finally:
             os.unlink(temp_path)
 
-    def test_multiple_redirection_operators(self, shell_with_temp_dir):
+    def test_multiple_redirection_operators(self, isolated_shell_with_temp_dir):
         """Test handling multiple redirection operators in one command."""
-        shell = shell_with_temp_dir
-        stdout_path = os.path.join(shell.state.variables['PWD'], 'stdout_test.txt')
-        stderr_path = os.path.join(shell.state.variables['PWD'], 'stderr_test.txt')
+        # Relative paths in the per-test temp dir: building absolute paths
+        # from state.variables['PWD'] used to leak stdout_test.txt /
+        # stderr_test.txt into the repository root (stale PWD).
+        shell = isolated_shell_with_temp_dir
+        shell.run_command('echo "to stdout" > stdout_test.txt && ls /nonexistent 2> stderr_test.txt')
 
-        # Test separate redirection of stdout and stderr
-        shell.run_command(f'echo "to stdout" > {stdout_path} && ls /nonexistent 2> {stderr_path}')
-
-        # Check stdout file
-        with open(stdout_path, 'r') as f:
+        # Check stdout file (cwd is the per-test temp dir)
+        with open('stdout_test.txt', 'r') as f:
             stdout_content = f.read()
         assert "to stdout" in stdout_content
 
-        # Note: We're not checking stderr_path content as ls behavior varies
+        # Note: We're not checking stderr content as ls output varies
 
     def test_null_device_redirection(self, shell):
         """Test redirection to null device."""
