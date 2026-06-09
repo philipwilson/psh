@@ -510,7 +510,7 @@ class MetricsVisitor(ASTVisitor[None]):
             if hasattr(n, '__dict__'):
                 for attr_name, value in n.__dict__.items():
                     # Skip private attributes and known non-node attributes
-                    if attr_name.startswith('_') or attr_name in ['execution_context', 'background']:
+                    if attr_name.startswith('_') or attr_name == 'background':
                         continue
 
                     if isinstance(value, list):

@@ -101,7 +101,6 @@ class ParserConfigBuiltin(Builtin):
         # Show parsing mode
         posix_mode = shell.state.options.get('posix', False)
         collect_errors = shell.state.options.get('collect_errors', False)
-        debug_parser = shell.state.options.get('debug-parser', False)
 
         if posix_mode:
             mode = "strict POSIX"
@@ -113,7 +112,6 @@ class ParserConfigBuiltin(Builtin):
         print(f"  Mode:            {mode}", file=shell.stdout)
         print(f"  POSIX strict:    {'on' if posix_mode else 'off'}", file=shell.stdout)
         print(f"  Collect errors:  {'on' if collect_errors else 'off'}", file=shell.stdout)
-        print(f"  Debug parser:    {'on' if debug_parser else 'off'}", file=shell.stdout)
 
         # Show feature status (based on shell options)
         print("\nFeatures:", file=shell.stdout)
@@ -157,11 +155,10 @@ class ParserConfigBuiltin(Builtin):
         elif mode == 'educational':
             shell.state.options['posix'] = False
             shell.state.options['collect_errors'] = True
-            shell.state.options['debug-parser'] = True
             # Enable features but with debugging
             shell.state.options['braceexpand'] = True
             shell.state.options['histexpand'] = True
-            print("Parser mode set to educational (with debugging)", file=shell.stdout)
+            print("Parser mode set to educational", file=shell.stdout)
 
         else:
             self.error(f"unknown mode: {mode}", shell)
@@ -234,12 +231,9 @@ class ParserModeBuiltin(Builtin):
             # Show current mode
             posix_mode = shell.state.options.get('posix', False)
             collect_errors = shell.state.options.get('collect_errors', False)
-            debug_parser = shell.state.options.get('debug-parser', False)
 
             if posix_mode:
                 mode = "posix"
-            elif debug_parser:
-                mode = "educational"
             elif collect_errors:
                 mode = "permissive"
             else:

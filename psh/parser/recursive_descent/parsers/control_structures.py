@@ -13,8 +13,7 @@ from ....ast_nodes import (
     CasePattern,
     ContinueStatement,
     CStyleForLoop,
-    ExecutionContext,
-    ForLoop,
+        ForLoop,
     IfConditional,
     Redirect,
     SelectLoop,
@@ -35,31 +34,7 @@ class ControlStructureParser:
         """Initialize with reference to main parser."""
         self.parser = main_parser
 
-    def parse_control_structure_neutral(self) -> UnifiedControlStructure:
-        """Parse control structure without setting execution context."""
-        token_type = self.parser.peek().type
-
-        if token_type == TokenType.IF:
-            return self._parse_if_neutral()
-        elif token_type == TokenType.WHILE:
-            return self._parse_while_neutral()
-        elif token_type == TokenType.UNTIL:
-            return self._parse_until_neutral()
-        elif token_type == TokenType.FOR:
-            return self._parse_for_neutral()
-        elif token_type == TokenType.CASE:
-            return self._parse_case_neutral()
-        elif token_type == TokenType.SELECT:
-            return self._parse_select_neutral()
-        elif token_type == TokenType.DOUBLE_LPAREN:
-            return self.parser.arithmetic._parse_arithmetic_neutral()
-        elif token_type in (TokenType.BREAK, TokenType.CONTINUE, TokenType.DOUBLE_LBRACKET):
-            # These don't have unified types, fall back to regular parsing
-            return self._parse_control_structure()
-        else:
-            raise self.parser.error(f"Unexpected control structure token: {token_type.name}")
-
-    def _parse_control_structure(self) -> Statement:
+    def parse_control_structure(self) -> Statement:
         """Parse any control structure based on current token."""
         token_type = self.parser.peek().type
 
@@ -90,12 +65,6 @@ class ControlStructureParser:
 
     def parse_if_statement(self) -> IfConditional:
         """Parse if/then/else/fi conditional statement."""
-        result = self._parse_if_neutral()
-        result.execution_context = ExecutionContext.STATEMENT
-        return result
-
-    def _parse_if_neutral(self) -> IfConditional:
-        """Parse if statement without setting execution context."""
         self.parser.expect(TokenType.IF)
         self.parser.skip_newlines()
 
@@ -119,7 +88,6 @@ class ControlStructureParser:
         self.parser.expect(TokenType.FI)
         redirects = self.parser.redirections.parse_redirects()
 
-        # Create with default execution_context, caller will update if needed
         return IfConditional(
             condition=condition,
             then_part=then_part,
@@ -141,12 +109,6 @@ class ControlStructureParser:
     # === While Statement Parsing ===
 
     def parse_while_statement(self) -> WhileLoop:
-        """Parse while/do/done loop statement."""
-        result = self._parse_while_neutral()
-        result.execution_context = ExecutionContext.STATEMENT
-        return result
-
-    def _parse_while_neutral(self) -> WhileLoop:
         """Parse while loop without setting execution context."""
         condition, body, redirects = self._parse_loop_structure(
             TokenType.WHILE, TokenType.DO, TokenType.DONE
@@ -159,12 +121,6 @@ class ControlStructureParser:
         )
 
     def parse_until_statement(self) -> UntilLoop:
-        """Parse until/do/done loop statement."""
-        result = self._parse_until_neutral()
-        result.execution_context = ExecutionContext.STATEMENT
-        return result
-
-    def _parse_until_neutral(self) -> UntilLoop:
         """Parse until loop without setting execution context."""
         condition, body, redirects = self._parse_loop_structure(
             TokenType.UNTIL, TokenType.DO, TokenType.DONE
@@ -197,12 +153,6 @@ class ControlStructureParser:
     # === For Statement Parsing ===
 
     def parse_for_statement(self) -> Union[ForLoop, CStyleForLoop]:
-        """Parse for loop (traditional or C-style)."""
-        result = self._parse_for_neutral()
-        result.execution_context = ExecutionContext.STATEMENT
-        return result
-
-    def _parse_for_neutral(self) -> Union[ForLoop, CStyleForLoop]:
         """Parse for loop without setting execution context."""
         self.parser.expect(TokenType.FOR)
         self.parser.skip_newlines()
@@ -210,14 +160,14 @@ class ControlStructureParser:
         # Check if it's a C-style for loop
         if self.parser.peek().type == TokenType.DOUBLE_LPAREN:
             self.parser.advance()  # consume ((
-            return self._parse_c_style_for_neutral()
+            return self._parse_c_style_for()
         elif self.parser.peek().type == TokenType.LPAREN:
             saved_pos = self.parser.current
             self.parser.advance()  # consume first (
 
             if self.parser.peek().type == TokenType.LPAREN:
                 self.parser.advance()  # consume second (
-                return self._parse_c_style_for_neutral()
+                return self._parse_c_style_for()
             else:
                 self.parser.current = saved_pos
 
@@ -274,7 +224,7 @@ class ControlStructureParser:
 
         return items, quote_types
 
-    def _parse_c_style_for_neutral(self) -> CStyleForLoop:
+    def _parse_c_style_for(self) -> CStyleForLoop:
         """Parse C-style for loop without setting execution context."""
         # Parse initialization
         init = self.parser.arithmetic.parse_arithmetic_section(";")
@@ -326,12 +276,6 @@ class ControlStructureParser:
     # === Case Statement Parsing ===
 
     def parse_case_statement(self) -> CaseConditional:
-        """Parse case/esac statement."""
-        result = self._parse_case_neutral()
-        result.execution_context = ExecutionContext.STATEMENT
-        return result
-
-    def _parse_case_neutral(self) -> CaseConditional:
         """Parse case statement without setting execution context."""
         self.parser.expect(TokenType.CASE)
         self.parser.skip_newlines()
@@ -385,18 +329,14 @@ class ControlStructureParser:
         self.parser.consume_if(TokenType.LPAREN)
 
         # Parse first pattern
-        with self.parser.ctx:
-            self.parser.ctx.in_case_pattern = True
-            pattern_str = self._parse_case_pattern()
-            patterns.append(CasePattern(pattern=pattern_str))
+        pattern_str = self._parse_case_pattern()
+        patterns.append(CasePattern(pattern=pattern_str))
 
         # Parse additional patterns separated by |
         while self.parser.match(TokenType.PIPE):
             self.parser.advance()
-            with self.parser.ctx:
-                self.parser.ctx.in_case_pattern = True
-                pattern_str = self._parse_case_pattern()
-                patterns.append(CasePattern(pattern=pattern_str))
+            pattern_str = self._parse_case_pattern()
+            patterns.append(CasePattern(pattern=pattern_str))
 
         self.parser.expect(TokenType.RPAREN)
         self.parser.skip_newlines()
@@ -440,12 +380,6 @@ class ControlStructureParser:
     # === Select Statement Parsing ===
 
     def parse_select_statement(self) -> SelectLoop:
-        """Parse select statement."""
-        result = self._parse_select_neutral()
-        result.execution_context = ExecutionContext.STATEMENT
-        return result
-
-    def _parse_select_neutral(self) -> SelectLoop:
         """Parse select statement without setting execution context."""
         self.parser.expect(TokenType.SELECT)
         self.parser.skip_newlines()

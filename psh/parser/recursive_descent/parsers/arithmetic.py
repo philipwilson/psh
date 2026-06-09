@@ -6,7 +6,7 @@ This module handles parsing of arithmetic expressions and commands.
 
 from typing import Optional
 
-from ....ast_nodes import ArithmeticEvaluation, ExecutionContext
+from ....ast_nodes import ArithmeticEvaluation
 from ....token_stream import TokenStream
 from ....token_types import TokenType
 
@@ -20,39 +20,24 @@ class ArithmeticParser:
 
     def parse_arithmetic_command(self) -> ArithmeticEvaluation:
         """Parse arithmetic command: ((expression))"""
-        result = self._parse_arithmetic_neutral()
-        result.execution_context = ExecutionContext.STATEMENT
-        return result
+        self.parser.expect(TokenType.DOUBLE_LPAREN)
 
-    def parse_arithmetic_compound_command(self) -> ArithmeticEvaluation:
-        """Parse arithmetic command as a compound command for use in pipelines."""
-        result = self._parse_arithmetic_neutral()
-        result.execution_context = ExecutionContext.PIPELINE
-        return result
+        expr = self._parse_arithmetic_expression_until_double_rparen()
 
-    def _parse_arithmetic_neutral(self) -> ArithmeticEvaluation:
-        """Parse arithmetic command without setting execution context."""
-        with self.parser.ctx:
-            self.parser.ctx.in_arithmetic = True
+        # Handle both old (two RPAREN) and new (DOUBLE_RPAREN) tokenization
+        if self.parser.match(TokenType.DOUBLE_RPAREN):
+            self.parser.advance()
+        else:
+            self.parser.expect(TokenType.RPAREN)
+            self.parser.expect(TokenType.RPAREN)
 
-            self.parser.expect(TokenType.DOUBLE_LPAREN)
+        redirects = self.parser.redirections.parse_redirects()
 
-            expr = self._parse_arithmetic_expression_until_double_rparen()
-
-            # Handle both old (two RPAREN) and new (DOUBLE_RPAREN) tokenization
-            if self.parser.match(TokenType.DOUBLE_RPAREN):
-                self.parser.advance()
-            else:
-                self.parser.expect(TokenType.RPAREN)
-                self.parser.expect(TokenType.RPAREN)
-
-            redirects = self.parser.redirections.parse_redirects()
-
-            return ArithmeticEvaluation(
-                expression=expr,
-                redirects=redirects,
-                background=False
-            )
+        return ArithmeticEvaluation(
+            expression=expr,
+            redirects=redirects,
+            background=False
+        )
 
     def _parse_arithmetic_expression_until_double_rparen(self) -> str:
         """Parse arithmetic expression until )) is found."""

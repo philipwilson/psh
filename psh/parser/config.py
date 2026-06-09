@@ -49,10 +49,6 @@ class ParserConfig:
     allow_bash_conditionals: bool = True     # Allow [[ ]] conditionals
     allow_bash_arithmetic: bool = True       # Allow (( )) arithmetic
 
-    # === Development and Debugging ===
-    trace_parsing: bool = False              # Trace parsing rules
-    profile_parsing: bool = False            # Profile parser performance
-
     @classmethod
     def strict_posix(cls) -> 'ParserConfig':
         """Create strict POSIX configuration."""

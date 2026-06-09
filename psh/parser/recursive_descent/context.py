@@ -1,145 +1,25 @@
 """Centralized parser context for PSH.
 
-This module provides the ParserContext class that consolidates all parser state
-into a single, manageable object, improving maintainability and performance tracking.
+This module provides the ParserContext class that consolidates all parser
+state into a single object: the token stream and position, the parser
+configuration, error collection, and source text for error messages.
 """
 
-import logging
-import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from ...token_types import Token, TokenType
 from ..config import ParserConfig
 from .helpers import ErrorContext, ErrorSeverity, ParseError
-
-logger = logging.getLogger(__name__)
-
-
-@dataclass
-class HeredocInfo:
-    """Information about a heredoc being processed."""
-    delimiter: str
-    strip_tabs: bool = False
-    quoted: bool = False
-    start_line: int = 0
-    content_lines: List[str] = field(default_factory=list)
-    closed: bool = False
-
-
-class ParserProfiler:
-    """Performance profiler for parser operations."""
-
-    def __init__(self, config: ParserConfig):
-        self.config = config
-        self.rule_times: Dict[str, float] = {}
-        self.rule_counts: Dict[str, int] = {}
-        self.rule_stack: List[tuple] = []  # (rule_name, start_time)
-        self.enabled = config.profile_parsing
-
-        # Additional performance metrics
-        self.token_consumption_count = 0
-        self.backtrack_count = 0
-        self.error_recovery_count = 0
-        self.max_recursion_depth = 0
-        self.parse_start_time = None
-        self.parse_end_time = None
-
-    def enter_rule(self, rule_name: str):
-        """Enter a parse rule."""
-        if self.enabled:
-            self.rule_stack.append((rule_name, time.perf_counter()))
-            self.rule_counts[rule_name] = self.rule_counts.get(rule_name, 0) + 1
-
-            # Track recursion depth
-            current_depth = len(self.rule_stack)
-            self.max_recursion_depth = max(self.max_recursion_depth, current_depth)
-
-    def exit_rule(self, rule_name: str):
-        """Exit a parse rule."""
-        if self.enabled and self.rule_stack:
-            stack_rule, start_time = self.rule_stack.pop()
-            if stack_rule == rule_name:
-                duration = time.perf_counter() - start_time
-                self.rule_times[rule_name] = self.rule_times.get(rule_name, 0.0) + duration
-
-    def start_parsing(self):
-        """Mark the start of parsing."""
-        if self.enabled:
-            self.parse_start_time = time.perf_counter()
-
-    def end_parsing(self):
-        """Mark the end of parsing."""
-        if self.enabled:
-            self.parse_end_time = time.perf_counter()
-
-    def record_token_consumption(self):
-        """Record that a token was consumed."""
-        if self.enabled:
-            self.token_consumption_count += 1
-
-    def record_backtrack(self):
-        """Record that backtracking occurred."""
-        if self.enabled:
-            self.backtrack_count += 1
-
-    def record_error_recovery(self):
-        """Record that error recovery was performed."""
-        if self.enabled:
-            self.error_recovery_count += 1
-
-    def get_total_parse_time(self) -> float:
-        """Get total parsing time in seconds."""
-        if self.parse_start_time and self.parse_end_time:
-            return self.parse_end_time - self.parse_start_time
-        return 0.0
-
-    def report(self) -> str:
-        """Generate profiling report."""
-        if not self.enabled:
-            return "Profiling disabled"
-
-        lines = ["Parser Performance Report:", "=" * 50]
-
-        # Overall statistics
-        total_time = self.get_total_parse_time()
-        if total_time > 0:
-            lines.extend([
-                f"Total Parse Time: {total_time*1000:.2f}ms",
-                f"Tokens Consumed: {self.token_consumption_count}",
-                f"Max Recursion Depth: {self.max_recursion_depth}",
-                f"Backtrack Operations: {self.backtrack_count}",
-                f"Error Recoveries: {self.error_recovery_count}",
-                ""
-            ])
-
-        # Rule performance breakdown
-        if self.rule_times:
-            lines.append("Rule Performance Breakdown:")
-            lines.append("-" * 50)
-
-            # Sort by total time
-            sorted_rules = sorted(self.rule_times.items(), key=lambda x: x[1], reverse=True)
-
-            lines.append(f"{'Rule':<30} {'Count':<8} {'Total(ms)':<10} {'Avg(ms)':<10}")
-            lines.append("-" * 68)
-
-            for rule_name, total_time in sorted_rules:
-                count = self.rule_counts.get(rule_name, 0)
-                avg_time = total_time / count if count > 0 else 0
-                lines.append(f"{rule_name:<30} {count:<8} {total_time*1000:<10.2f} {avg_time*1000:<10.2f}")
-        else:
-            lines.append("No rule timing data collected")
-
-        return "\n".join(lines)
 
 
 @dataclass
 class ParserContext:
     """Centralized parser state management.
 
-    This class consolidates all parser state into a single object, providing
-    cleaner interfaces for sub-parsers and better performance tracking.
+    Consolidates the parser's real state — token stream, position, config,
+    error collection, and source context — behind one object shared by the
+    main parser and all sub-parsers.
     """
 
     # Core parsing state
@@ -152,46 +32,14 @@ class ParserContext:
     error_recovery_mode: bool = False
     fatal_error: Optional[ParseError] = None
 
-    # Parsing context
-    nesting_depth: int = 0
-    scope_stack: List[str] = field(default_factory=list)
-    parse_stack: List[str] = field(default_factory=list)
-
-    # Special parsing state
-    heredoc_trackers: Dict[str, HeredocInfo] = field(default_factory=dict)
-    in_case_pattern: bool = False
-    in_arithmetic: bool = False
-    in_test_expr: bool = False
-    in_function_body: bool = False
-    in_command_substitution: bool = False
-    in_process_substitution: bool = False
-
-    # Control flow state
-    loop_depth: int = 0
-    function_depth: int = 0
-    conditional_depth: int = 0
-
     # Source context
     source_text: Optional[str] = None
     source_lines: Optional[List[str]] = None
-
-    # Performance tracking
-    trace_enabled: bool = False
-    profiler: Optional[ParserProfiler] = None
-
-    # State preservation stack for context manager
-    _saved_states: List[dict] = field(default_factory=list)
 
     def __post_init__(self):
         """Initialize derived state."""
         if self.source_text and not self.source_lines:
             self.source_lines = self.source_text.splitlines()
-
-        if self.config.trace_parsing:
-            self.trace_enabled = True
-
-        if self.config.profile_parsing:
-            self.profiler = ParserProfiler(self.config)
 
     # === Token Access Methods ===
 
@@ -207,11 +55,6 @@ class ParserContext:
         token = self.peek()
         if self.current < len(self.tokens) - 1:
             self.current += 1
-
-        # Record token consumption for profiling
-        if self.profiler:
-            self.profiler.record_token_consumption()
-
         return token
 
     def at_end(self) -> bool:
@@ -288,90 +131,7 @@ class ParserContext:
         elif "Expected TokenType.FI" in error_context.message:
             error_context.suggestions.append("Add 'fi' to close if statement")
 
-    # === Context Management ===
-
-    def enter_scope(self, scope: str):
-        """Enter a new parsing scope."""
-        self.scope_stack.append(scope)
-        self.nesting_depth += 1
-
-        if scope == "loop":
-            self.loop_depth += 1
-        elif scope == "function":
-            self.function_depth += 1
-        elif scope in ("if", "case", "conditional"):
-            self.conditional_depth += 1
-
-    def exit_scope(self) -> Optional[str]:
-        """Exit current parsing scope."""
-        if self.scope_stack:
-            scope = self.scope_stack.pop()
-            self.nesting_depth -= 1
-
-            if scope == "loop":
-                self.loop_depth = max(0, self.loop_depth - 1)
-            elif scope == "function":
-                self.function_depth = max(0, self.function_depth - 1)
-            elif scope in ("if", "case", "conditional"):
-                self.conditional_depth = max(0, self.conditional_depth - 1)
-
-            return scope
-        return None
-
-    def current_scope(self) -> Optional[str]:
-        """Get current parsing scope."""
-        return self.scope_stack[-1] if self.scope_stack else None
-
-    def in_scope(self, scope: str) -> bool:
-        """Check if currently in a specific scope."""
-        return scope in self.scope_stack
-
-    # === Rule Tracking for Profiling/Debugging ===
-
-    def enter_rule(self, rule_name: str):
-        """Enter a parse rule."""
-        self.parse_stack.append(rule_name)
-
-        if self.trace_enabled:
-            indent = "  " * len(self.parse_stack)
-            logger.debug("%s→ %s @ %s", indent, rule_name, self.peek())
-
-        if self.profiler:
-            self.profiler.enter_rule(rule_name)
-
-    def exit_rule(self, rule_name: str):
-        """Exit a parse rule."""
-        if self.parse_stack and self.parse_stack[-1] == rule_name:
-            self.parse_stack.pop()
-
-        if self.trace_enabled:
-            indent = "  " * len(self.parse_stack)
-            logger.debug("%s← %s", indent, rule_name)
-
-        if self.profiler:
-            self.profiler.exit_rule(rule_name)
-
-    def current_rule(self) -> Optional[str]:
-        """Get current parse rule."""
-        return self.parse_stack[-1] if self.parse_stack else None
-
-    def rule_stack_depth(self) -> int:
-        """Get current parse rule stack depth."""
-        return len(self.parse_stack)
-
-    # === State Queries ===
-
-    def in_loop(self) -> bool:
-        """Check if currently parsing inside a loop."""
-        return self.loop_depth > 0
-
-    def in_function(self) -> bool:
-        """Check if currently parsing inside a function."""
-        return self.function_depth > 0
-
-    def in_conditional(self) -> bool:
-        """Check if currently parsing inside a conditional."""
-        return self.conditional_depth > 0
+    # === Error Collection ===
 
     def should_collect_errors(self) -> bool:
         """Check if errors should be collected rather than thrown."""
@@ -384,8 +144,6 @@ class ParserContext:
     def enter_error_recovery(self):
         """Enter error recovery mode."""
         self.error_recovery_mode = True
-        if self.profiler:
-            self.profiler.record_error_recovery()
 
     def exit_error_recovery(self):
         """Exit error recovery mode."""
@@ -413,116 +171,3 @@ class ParserContext:
             return len(self.errors) < self.config.max_errors
 
         return True
-
-    # === Heredoc Management ===
-
-    def register_heredoc(self, delimiter: str, strip_tabs: bool = False,
-                        quoted: bool = False) -> str:
-        """Register a heredoc and return a unique key."""
-        key = f"heredoc_{len(self.heredoc_trackers)}_{delimiter}"
-        self.heredoc_trackers[key] = HeredocInfo(
-            delimiter=delimiter,
-            strip_tabs=strip_tabs,
-            quoted=quoted,
-            start_line=self.peek().line
-        )
-        return key
-
-    def add_heredoc_line(self, key: str, line: str):
-        """Add a line to a heredoc."""
-        if key in self.heredoc_trackers:
-            heredoc = self.heredoc_trackers[key]
-            if heredoc.strip_tabs:
-                line = line.lstrip('\t')
-            heredoc.content_lines.append(line)
-
-    def close_heredoc(self, key: str) -> Optional[str]:
-        """Close a heredoc and return its content."""
-        if key in self.heredoc_trackers:
-            heredoc = self.heredoc_trackers[key]
-            heredoc.closed = True
-            content = '\n'.join(heredoc.content_lines)
-            if heredoc.content_lines:  # Add final newline if there was content
-                content += '\n'
-            return content
-        return None
-
-    def get_open_heredocs(self) -> List[str]:
-        """Get list of open heredoc keys."""
-        return [key for key, info in self.heredoc_trackers.items() if not info.closed]
-
-    # === Context Manager for State Preservation ===
-
-    def __enter__(self):
-        """Save current parsing state flags."""
-        saved = {
-            'in_test_expr': self.in_test_expr,
-            'in_arithmetic': self.in_arithmetic,
-            'in_case_pattern': self.in_case_pattern,
-            'in_function_body': self.in_function_body,
-            'in_command_substitution': self.in_command_substitution,
-        }
-        self._saved_states.append(saved)
-        return self
-
-    def __exit__(self, _exc_type, _exc_val, _exc_tb):
-        """Restore previously saved parsing state flags."""
-        if self._saved_states:
-            saved = self._saved_states.pop()
-            for key, value in saved.items():
-                setattr(self, key, value)
-        return False
-
-    # === Debug and Reporting ===
-
-    def get_state_summary(self) -> Dict[str, Any]:
-        """Get summary of current parser state."""
-        return {
-            'position': self.current,
-            'total_tokens': len(self.tokens),
-            'current_token': str(self.peek()),
-            'nesting_depth': self.nesting_depth,
-            'scope_stack': self.scope_stack.copy(),
-            'parse_stack': self.parse_stack.copy(),
-            'loop_depth': self.loop_depth,
-            'function_depth': self.function_depth,
-            'conditional_depth': self.conditional_depth,
-            'error_count': len(self.errors),
-            'error_recovery_mode': self.error_recovery_mode,
-            'special_state': {
-                'in_case_pattern': self.in_case_pattern,
-                'in_arithmetic': self.in_arithmetic,
-                'in_test_expr': self.in_test_expr,
-                'in_function_body': self.in_function_body,
-                'in_command_substitution': self.in_command_substitution,
-                'in_process_substitution': self.in_process_substitution,
-            },
-            'open_heredocs': len(self.get_open_heredocs())
-        }
-
-    def generate_profiling_report(self) -> str:
-        """Generate profiling report if enabled."""
-        if self.profiler:
-            return self.profiler.report()
-        return "Profiling not enabled"
-
-    def reset_state(self):
-        """Reset parser state for reuse."""
-        self.current = 0
-        self.errors.clear()
-        self.error_recovery_mode = False
-        self.fatal_error = None
-        self.nesting_depth = 0
-        self.scope_stack.clear()
-        self.parse_stack.clear()
-        self.heredoc_trackers.clear()
-        self.in_case_pattern = False
-        self.in_arithmetic = False
-        self.in_test_expr = False
-        self.in_function_body = False
-        self.in_command_substitution = False
-        self.in_process_substitution = False
-        self.loop_depth = 0
-        self.function_depth = 0
-        self.conditional_depth = 0
-        self._saved_states = []

@@ -317,7 +317,6 @@ class SourceProcessor(ScriptComponent):
                 parser = create_parser(
                     tokens,
                     active_parser=self.shell.active_parser,
-                    trace_parsing=self.state.options.get('debug-parser', False),
                     source_text=command_string,
                 )
                 ast = parser.parse()

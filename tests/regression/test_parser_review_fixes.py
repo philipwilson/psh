@@ -257,28 +257,32 @@ class TestSelectWithoutIn:
 # ===========================================================================
 
 class TestParseWithHeredocs:
-    """Tests for parse_with_heredocs() dict and string content formats."""
+    """Tests for parse_with_heredocs() dict and string content formats.
+
+    Targets the module-level function (the production path); the duplicate
+    Parser.parse_with_heredocs method was removed in v0.256.0.
+    """
 
     def test_parse_with_heredocs_dict_format(self):
         """Dict-format heredoc map should not crash."""
+        from psh.parser import parse_with_heredocs
         tokens = tokenize('cat <<EOF\nEOF')
-        parser = Parser(tokens, source_text='cat <<EOF\nEOF')
         heredoc_map = {
             'heredoc_0_EOF': {'content': 'hello world', 'quoted': False}
         }
         # Should not raise
-        ast = parser.parse_with_heredocs(heredoc_map)
+        ast = parse_with_heredocs(tokens, heredoc_map)
         assert ast is not None
 
     def test_parse_with_heredocs_string_format(self):
         """String-format heredoc map should still work (backward compat)."""
+        from psh.parser import parse_with_heredocs
         tokens = tokenize('cat <<EOF\nEOF')
-        parser = Parser(tokens, source_text='cat <<EOF\nEOF')
         heredoc_map = {
             'heredoc_0_EOF': 'hello world'
         }
         # Should not raise
-        ast = parser.parse_with_heredocs(heredoc_map)
+        ast = parse_with_heredocs(tokens, heredoc_map)
         assert ast is not None
 
 

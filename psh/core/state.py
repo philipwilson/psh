@@ -84,7 +84,6 @@ class ShellState:
             # Parser configuration options (enhanced features now standard)
             'posix': False,        # -o posix: strict POSIX mode
             'collect_errors': False,  # -o collect_errors: collect multiple parse errors
-            'debug-parser': False, # -o debug-parser: enable parser tracing
             'validate-context': False,     # -o validate-context: validate token contexts
             'validate-semantics': False,   # -o validate-semantics: validate semantic types
             'analyze-semantics': False,    # -o analyze-semantics: perform semantic analysis

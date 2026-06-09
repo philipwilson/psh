@@ -14,8 +14,7 @@ from ...ast_nodes import (
     CommandList,
     ContinueStatement,
     EnhancedTestStatement,
-    ExecutionContext,
-    Pipeline,
+        Pipeline,
     Statement,
     TopLevel,
 )
@@ -174,25 +173,16 @@ class Parser(ContextBaseParser):
 
     def parse(self) -> Union[CommandList, TopLevel]:
         """Parse input, returning TopLevel if needed, CommandList for simple cases."""
-        # Start profiling if enabled
-        if self.ctx.profiler:
-            self.ctx.profiler.start_parsing()
+        top_level = TopLevel()
+        self.skip_newlines()
 
-        try:
-            top_level = TopLevel()
-            self.skip_newlines()
+        while not self.at_end():
+            item = self._parse_top_level_item()
+            if item:
+                top_level.items.append(item)
+            self.skip_separators()
 
-            while not self.at_end():
-                item = self._parse_top_level_item()
-                if item:
-                    top_level.items.append(item)
-                self.skip_separators()
-
-            return self._simplify_result(top_level)
-        finally:
-            # End profiling if enabled
-            if self.ctx.profiler:
-                self.ctx.profiler.end_parsing()
+        return self._simplify_result(top_level)
 
     def parse_with_error_collection(self) -> MultiErrorParseResult:
         """Parse input collecting multiple errors instead of stopping on first error.
@@ -281,35 +271,13 @@ class Parser(ContextBaseParser):
 
         return False
 
-    def parse_with_heredocs(self, heredoc_map: dict) -> Union[CommandList, TopLevel]:
-        """Parse tokens with heredoc content."""
-        # Populate context with heredoc information
-        for key, heredoc_info in heredoc_map.items():
-            # Extract delimiter from key (format: "heredoc_N_delimiter")
-            parts = key.split('_')
-            if len(parts) >= 3:
-                delimiter = '_'.join(parts[2:])
-                ctx_key = self.ctx.register_heredoc(delimiter)
-                # Handle both dict format {'content': ..., 'quoted': ...}
-                # and plain string format
-                content = heredoc_info['content'] if isinstance(heredoc_info, dict) else heredoc_info
-                # Add content lines
-                for line in content.splitlines():
-                    self.ctx.add_heredoc_line(ctx_key, line)
-                self.ctx.close_heredoc(ctx_key)
-
-        ast = self.parse()
-        # Populate heredoc content in the AST
-        self.utils.populate_heredoc_content(ast, heredoc_map)
-        return ast
-
     def _parse_top_level_item(self) -> Optional[Statement]:
         """Parse a single top-level item."""
         if self.functions.is_function_def():
             return self.functions.parse_function_def()
         elif self.match_any(TokenGroups.CONTROL_KEYWORDS):
             # Check if control structure is part of a pipeline
-            control_struct = self.control_structures.parse_control_structure_neutral()
+            control_struct = self.control_structures.parse_control_structure()
 
             # Check if followed by pipe or logical operators
             if self.match(TokenType.PIPE, TokenType.PIPE_AND):
@@ -317,7 +285,6 @@ class Parser(ContextBaseParser):
                 return self.commands.parse_pipeline_with_initial_component(control_struct)
             elif self.match(TokenType.AND_AND, TokenType.OR_OR):
                 # Create pipeline with control structure and wrap in and_or_list
-                control_struct.execution_context = ExecutionContext.STATEMENT
                 pipeline = Pipeline()
                 pipeline.commands.append(control_struct)
 
@@ -334,8 +301,6 @@ class Parser(ContextBaseParser):
 
                 return and_or_list
             else:
-                # Set as statement context and return
-                control_struct.execution_context = ExecutionContext.STATEMENT
                 return control_struct
         else:
             # Parse commands until we hit a function or control structure

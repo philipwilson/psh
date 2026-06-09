@@ -128,7 +128,6 @@ class HelpBuiltin(Builtin):
         print("  debug-expansion-detail   Show detailed expansion steps", file=output)
         print("  debug-exec               Show execution flow", file=output)
         print("  debug-exec-fork          Show fork/exec details", file=output)
-        print("  debug-parser             Show parser tracing", file=output)
         print("Use 'debug OPTION on/off' or 'debug-ast' for dedicated debug control.", file=output)
         print(file=output)
 
