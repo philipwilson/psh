@@ -173,12 +173,9 @@ class LocalBuiltin(Builtin):
                             array.set(i, val)
                         shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ARRAY)
                 else:
-                    # Regular variable assignment
-                    # Expand variables in the value
-                    if '$' in var_value:
-                        var_value = shell.expansion_manager.expand_string_variables(var_value)
-
-                    # Apply attribute transformations
+                    # Regular variable assignment. The executor has already
+                    # expanded this argument; expanding again here would run
+                    # single-quoted text like '$(cmd)' a second time.
                     var_value = self._apply_attributes(var_value, attributes, shell)
 
                     # Create local variable with value and attributes
@@ -201,29 +198,8 @@ class LocalBuiltin(Builtin):
 
     def _parse_array_init(self, value: str, shell: 'Shell') -> List[str]:
         """Parse array initialization: (val1 "val2" val3)"""
-        # Remove parentheses
-        content = value[1:-1].strip()
-        if not content:
-            return []
-
-        # Split on whitespace while respecting quotes
-        # For now, do simple splitting - a full implementation would use the tokenizer
-        import shlex
-        try:
-            # Use shlex to handle quoted strings properly
-            parsed_values = shlex.split(content)
-            # Expand variables in each value
-            result = []
-            for val in parsed_values:
-                if '$' in val:
-                    expanded = shell.expansion_manager.expand_string_variables(val)
-                    result.append(expanded)
-                else:
-                    result.append(val)
-            return result
-        except ValueError:
-            # Fallback to simple splitting if shlex fails
-            return content.split()
+        from .array_init import parse_array_elements
+        return parse_array_elements(value, shell)
 
     def _parse_options(self, args: List[str], shell: 'Shell') -> tuple:
         """Parse local options and return (options_dict, positional_args)."""
