@@ -197,10 +197,21 @@ class ExecBuiltin(Builtin):
             os.execvpe(args[0], args, shell.env)
         except FileNotFoundError:
             self.error(f"{args[0]}: command not found", shell)
-            return 127
+            return self._exec_failed(shell, 127)
         except OSError as e:
             self.error(f"{args[0]}: {e}", shell)
-            return 126
+            return self._exec_failed(shell, 126)
+
+    def _exec_failed(self, shell: 'Shell', code: int) -> int:
+        """Handle a failed exec.
+
+        POSIX: a non-interactive shell exits when `exec command` fails
+        (127 not found, 126 not executable); an interactive shell survives
+        and reports the status.
+        """
+        if shell.is_script_mode:
+            sys.exit(code)
+        return code
 
     @property
     def help(self) -> str:
