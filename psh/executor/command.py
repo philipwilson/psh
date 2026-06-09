@@ -326,6 +326,24 @@ class CommandExecutor:
         """Check if argument is a valid variable assignment."""
         return is_valid_assignment(arg)
 
+    def _resolve_append(self, var: str, value: str):
+        """Resolve NAME+= append assignments to (name, final_value).
+
+        Plain variables append textually; integer (-i) variables append
+        arithmetically — achieved by handing the INTEGER transform the
+        expression "old+value" to evaluate, matching bash.
+        """
+        from ..core import VarAttributes
+        if not var.endswith('+'):
+            return var, value
+        name = var[:-1]
+        var_obj = self.state.scope_manager.get_variable_object(name)
+        old = '' if var_obj is None or var_obj.value is None else str(var_obj.value)
+        if (var_obj is not None and var_obj.attributes & VarAttributes.INTEGER
+                and value.strip()):
+            return name, f"({old or 0})+({value})"
+        return name, old + value
+
     def _handle_pure_assignments(self, node: 'SimpleCommand',
                                 assignments: List[Tuple[str, str]]) -> int:
         """Handle pure variable assignments (no command)."""
@@ -341,6 +359,7 @@ class CommandExecutor:
 
             for var, value in assignments:
                 # Values are already expanded in execute()
+                var, value = self._resolve_append(var, value)
                 try:
                     self.state.set_variable(var, value)
                 except ReadonlyVariableError:
@@ -370,6 +389,7 @@ class CommandExecutor:
         saved_vars = {}
 
         for var, value in assignments:
+            var, value = self._resolve_append(var, value)
             # Save both shell state and environment values
             saved_vars[var] = {
                 'state': self.state.get_variable(var),

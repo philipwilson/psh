@@ -230,7 +230,7 @@ class TestParser:
         `]`, etc. Reconstruct it from the maximal run of adjacent tokens,
         stopping at unquoted whitespace (non-adjacent token) or a boundary
         (`]]`, `&&`, `||`). Variables keep their `$name` form for later
-        expansion. Always returned unquoted (treated as a pattern).
+        expansion. A wholly-quoted operand reports its quote type so\n        the evaluator can match it literally (bash).
         """
         if not self.parser.match_any(TokenGroups.WORD_LIKE) and \
                 self.parser.peek().type in (TokenType.DOUBLE_RBRACKET,
@@ -239,6 +239,8 @@ class TestParser:
 
         parts = []
         first = True
+        quote_type = None
+        token_count = 0
         stop = (TokenType.DOUBLE_RBRACKET, TokenType.AND_AND,
                 TokenType.OR_OR, TokenType.EOF, TokenType.NEWLINE)
         while self.parser.current < len(self.parser.tokens):
@@ -253,9 +255,16 @@ class TestParser:
                 parts.append(f"${tok.value}")
             else:
                 parts.append(tok.value)
+            if tok.type == TokenType.STRING and tok.quote_type:
+                quote_type = tok.quote_type
+            token_count += 1
             first = False
 
-        return ''.join(parts), None
+        # bash: a QUOTED regex operand is matched literally. Report the
+        # quote type only when the whole operand is one quoted string.
+        if token_count != 1:
+            quote_type = None
+        return ''.join(parts), quote_type
 
     def _is_unary_test_operator(self, value: str) -> bool:
         """Check if a word is a unary test operator."""
