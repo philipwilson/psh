@@ -264,6 +264,12 @@ class SourceProcessor(ScriptComponent):
             # Echo the command to stderr before execution
             print(command_string, file=sys.stderr)
 
+        # Nested execution (eval, source, trap action) runs inside an outer
+        # ExecutorVisitor: control-flow exceptions (break/continue/return)
+        # must propagate to the enclosing loop/function instead of being
+        # reported as errors here.
+        nested = getattr(self.shell, '_current_executor', None) is not None
+
         try:
             # Process line continuations first
             from ..input_preprocessing import process_line_continuations
@@ -360,6 +366,9 @@ class SourceProcessor(ScriptComponent):
                 except (LoopBreak, LoopContinue) as e:
                     # Break/continue outside of any loop is an error. Catch only
                     # these — any other exception propagates to its own handler.
+                    if nested:
+                        # e.g. `eval break` inside a loop — let the loop handle it
+                        raise
                     stmt_name = "break" if isinstance(e, LoopBreak) else "continue"
                     print(f"{stmt_name}: only meaningful in a `for' or `while' loop",
                           file=sys.stderr)
@@ -376,6 +385,12 @@ class SourceProcessor(ScriptComponent):
             self.state.last_exit_code = 2  # Bash uses exit code 2 for syntax errors
             return 2
         except Exception as e:
+            # Control-flow exceptions from nested execution propagate to
+            # their enclosing loop/function handlers.
+            from ..builtins import FunctionReturn
+            from ..core import LoopBreak, LoopContinue
+            if nested and isinstance(e, (LoopBreak, LoopContinue, FunctionReturn)):
+                raise
             # Last-resort guard so an internal defect doesn't kill an
             # interactive session. Surface the full traceback under --debug-exec
             # so the bug is not hidden behind the generic message.

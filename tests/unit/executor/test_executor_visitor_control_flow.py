@@ -394,25 +394,17 @@ class TestLoopControl:
         assert "count: 2" in captured.out
         assert "count: 3" not in captured.out
 
-    def test_break_outside_loop_error(self, captured_shell):
-        """Test error when break is used outside a loop."""
+    def test_break_outside_loop_warns(self, captured_shell):
+        """break outside a loop warns on stderr but exits 0 (bash)."""
         result = captured_shell.run_command("break")
-        assert result != 0
+        assert result == 0
+        assert "break" in captured_shell.get_stderr()
 
-        # Should produce some kind of error message
-        stderr = captured_shell.get_stderr()
-        stdout = captured_shell.get_stdout()
-        assert stderr or "break" in stdout.lower()
-
-    def test_continue_outside_loop_error(self, captured_shell):
-        """Test error when continue is used outside a loop."""
+    def test_continue_outside_loop_warns(self, captured_shell):
+        """continue outside a loop warns on stderr but exits 0 (bash)."""
         result = captured_shell.run_command("continue")
-        assert result != 0
-
-        # Should produce some kind of error message
-        stderr = captured_shell.get_stderr()
-        stdout = captured_shell.get_stdout()
-        assert stderr or "continue" in stdout.lower()
+        assert result == 0
+        assert "continue" in captured_shell.get_stderr()
 
 
 class TestComplexControlFlow:

@@ -73,10 +73,14 @@ class SpecialBuiltinExecutionStrategy(ExecutionStrategy):
             # Some builtins like 'exit' raise SystemExit
             raise
         except Exception as e:
-            # Import FunctionReturn here to avoid circular imports
+            # Imports here to avoid circular imports
             from ..builtins import FunctionReturn
-            if isinstance(e, FunctionReturn):
-                # FunctionReturn must propagate to be caught by function execution
+            from ..core import LoopBreak, LoopContinue, UnboundVariableError
+            if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue,
+                              UnboundVariableError)):
+                # Control-flow exceptions (return / break / continue — e.g.
+                # raised inside `eval`) and set -u violations must propagate
+                # to their handlers, not be converted to exit status 1.
                 raise
             # Last-resort guard: surface the traceback under --debug-exec so a
             # builtin defect isn't hidden behind the generic message.
@@ -134,10 +138,14 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
             # Some builtins like 'exit' raise SystemExit
             raise
         except Exception as e:
-            # Import FunctionReturn here to avoid circular imports
+            # Imports here to avoid circular imports
             from ..builtins import FunctionReturn
-            if isinstance(e, FunctionReturn):
-                # FunctionReturn must propagate to be caught by function execution
+            from ..core import LoopBreak, LoopContinue, UnboundVariableError
+            if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue,
+                              UnboundVariableError)):
+                # Control-flow exceptions (return / break / continue — e.g.
+                # raised inside `eval`) and set -u violations must propagate
+                # to their handlers, not be converted to exit status 1.
                 raise
             # Last-resort guard: surface the traceback under --debug-exec.
             if shell.state.options.get('debug-exec'):

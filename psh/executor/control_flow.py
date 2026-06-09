@@ -462,9 +462,10 @@ class ControlFlowExecutor:
             Never returns normally, always raises LoopBreak
         """
         if context.loop_depth == 0:
+            # bash: warn and continue with status 0 (subsequent statements
+            # still execute; raising here used to print the warning twice)
             print("break: only meaningful in a `for' or `while' loop", file=self.shell.stderr)
-            # Raise exception even outside loop so StatementList stops executing
-            raise LoopBreak(node.level)
+            return 0
         raise LoopBreak(node.level)
 
     def execute_continue(self, node: 'ContinueStatement', context: 'ExecutionContext') -> int:
@@ -479,9 +480,9 @@ class ControlFlowExecutor:
             Never returns normally, always raises LoopContinue
         """
         if context.loop_depth == 0:
+            # bash: warn and continue with status 0 (see execute_break)
             print("continue: only meaningful in a `for' or `while' loop", file=self.shell.stderr)
-            # Raise exception even outside loop so StatementList stops executing
-            raise LoopContinue(node.level)
+            return 0
         raise LoopContinue(node.level)
 
     # Helper methods
