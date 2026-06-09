@@ -148,57 +148,13 @@ class MultiLineInputHandler:
             return True
 
         except ParseError as e:
-            # Check for incomplete constructs
-            error_msg = str(e)
-            incomplete_patterns = [
-                # Updated patterns for human-readable error messages
-                "Expected 'do'",
-                "Expected 'done'",
-                "Expected 'fi'",
-                "Expected 'else'",
-                "Expected 'then'",
-                "Expected 'esac'",
-                "Expected 'in'",
-                "Expected 'elif'",
-                "Expected '{'",
-                "Expected '}'",
-                "Expected ')'",
-                "Expected ']]'",
-                "Expected '('",
-                "Expected closing",
-                "Unexpected EOF",
-                "got end of input",
-                "Expected pattern",  # For incomplete case statements
-                "Expected test operand",
-                # New TokenType-based patterns from ParserContext
-                "Expected TokenType.DO",
-                "Expected TokenType.DONE",
-                "Expected TokenType.FI",
-                "Expected TokenType.ELSE",
-                "Expected TokenType.THEN",
-                "Expected TokenType.ESAC",
-                "Expected TokenType.IN",
-                "Expected TokenType.ELIF",
-                "Expected TokenType.LBRACE",
-                "Expected TokenType.RBRACE",
-                "Expected TokenType.RPAREN",
-                "Expected TokenType.DOUBLE_RBRACKET",
-                "Expected TokenType.LPAREN",
-                # Old patterns for backward compatibility
-                "Expected DO",
-                "Expected DONE",
-                "Expected FI",
-                "Expected ELSE",
-                "Expected THEN",
-                "Expected ESAC",
-                "Expected DOUBLE_RBRACKET",
-            ]
-
-            for pattern in incomplete_patterns:
-                if pattern in error_msg:
-                    # Update context stack for contextual prompts
-                    self._update_context_stack(command, error_msg)
-                    return False
+            # Structural signal: the parse failed at end of input, so more
+            # lines could complete the command (replaces ~40 message
+            # patterns; ParseError.at_eof since v0.264.0).
+            if getattr(e, 'at_eof', False):
+                # Update context stack for contextual prompts (if>, do>, ...)
+                self._update_context_stack(command, str(e))
+                return False
 
             # Other parse errors mean command is complete but invalid
             # Clear context stack since command is complete (though invalid)

@@ -172,10 +172,17 @@ class SourceProcessor(ScriptComponent):
         return exit_code
 
     def _is_incomplete_command(self, error) -> bool:
-        """Check if a parse or lexer error indicates an incomplete command."""
-        error_msg = str(error)
+        """Check if a parse or lexer error indicates an incomplete command.
 
-        # Handle lexer errors from incomplete constructs
+        Parser errors carry a structural ParseError.at_eof flag (the parse
+        failed at end of input, so more lines could complete it) — no
+        message matching needed. Lexer errors still need a few patterns:
+        unclosed quotes/parentheses surface as LexerError strings.
+        """
+        if getattr(error, 'at_eof', False):
+            return True
+
+        error_msg = str(error)
         lexer_incomplete_patterns = [
             "Unclosed parenthesis",
             "Unclosed double parentheses",
@@ -185,74 +192,9 @@ class SourceProcessor(ScriptComponent):
             "Unclosed single quote",
             "Unclosed double quote",
             "Unclosed \" quote at position",
-            "Unclosed ' quote at position"
+            "Unclosed ' quote at position",
         ]
-
-        for pattern in lexer_incomplete_patterns:
-            if pattern in error_msg:
-                return True
-
-        # Handle parser errors - updated patterns to match the new human-readable error messages
-        incomplete_patterns = [
-            # Control structure keywords
-            ("Expected 'do'", "got end of input"),
-            ("Expected 'done'", "got end of input"),
-            ("Expected 'fi'", "got end of input"),
-            ("Expected 'then'", "got end of input"),
-            ("Expected 'in'", "got end of input"),
-            ("Expected 'esac'", "got end of input"),
-            ("Expected 'else'", "got end of input"),
-            ("Expected 'elif'", "got end of input"),
-
-            # Function and compound commands
-            ("Expected '{'", "got end of input"),
-            ("Expected '}'", "got end of input"),
-            ("Expected '}' to end compound command", None),
-
-            # Parentheses and brackets
-            ("Expected ')'", "got end of input"),
-            ("Expected ']]'", "got end of input"),
-            ("Expected '('", "got end of input"),
-            ("Expected '[['", "got end of input"),
-
-            # Test expressions
-            ("Expected test operand", "got end of input"),
-            ("Expected test operand", None),
-
-            # Redirections
-            ("Expected delimiter after here document", "got end of input"),
-            ("Expected string after here string", "got end of input"),
-
-            # Commands
-            ("Expected command", "got end of input"),
-
-            # Case patterns
-            ("Expected pattern in case statement", "got end of input"),
-            ("Expected pattern in case statement", None),  # When no "got" part
-
-            # New TokenType-based patterns from ParserContext (case sensitive)
-            ("Expected TokenType.DO", "got TokenType.EOF"),
-            ("Expected TokenType.DONE", "got TokenType.EOF"),
-            ("Expected TokenType.FI", "got TokenType.EOF"),
-            ("Expected TokenType.THEN", "got TokenType.EOF"),
-            ("Expected TokenType.IN", "got TokenType.EOF"),
-            ("Expected TokenType.ESAC", "got TokenType.EOF"),
-            ("Expected TokenType.RPAREN", "got TokenType.EOF"),
-            ("Expected TokenType.DOUBLE_RBRACKET", "got TokenType.EOF"),
-            ("Expected TokenType.LBRACE", "got TokenType.EOF"),
-            ("Expected TokenType.RBRACE", "got TokenType.EOF"),
-            ("Expected TokenType.LPAREN", "got TokenType.EOF"),
-            ("Expected TokenType.ELSE", "got TokenType.EOF"),
-            ("Expected TokenType.ELIF", "got TokenType.EOF"),
-
-        ]
-
-        for expected, got in incomplete_patterns:
-            if expected in error_msg:
-                if got is None or got in error_msg:
-                    return True
-
-        return False
+        return any(p in error_msg for p in lexer_incomplete_patterns)
 
     def _execute_buffered_command(self, command_string: str, input_source,
                                   start_line: int, add_to_history: bool) -> int:

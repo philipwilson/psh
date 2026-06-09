@@ -170,4 +170,11 @@ class ParseError(Exception):
     def __init__(self, error_context: ErrorContext):
         self.error_context = error_context
         self.message = error_context.message or error_context.format_error()
+        # Structural "incomplete input" signal: the parser failed AT the end
+        # of the token stream, so more input could make the parse succeed.
+        # Interactive/script line-continuation logic keys off this instead
+        # of string-matching error messages.
+        from ...token_types import TokenType
+        token = error_context.token
+        self.at_eof = bool(token is not None and token.type == TokenType.EOF)
         super().__init__(error_context.format_error())
