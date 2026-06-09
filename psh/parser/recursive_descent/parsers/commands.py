@@ -248,6 +248,11 @@ class CommandParser:
                 for token in original_tokens:
                     if token.type == TokenType.STRING and token.quote_type:
                         original_repr_parts.append(token.quote_type + token.value + token.quote_type)
+                    elif token.type == TokenType.VARIABLE:
+                        # VARIABLE token values carry the name without the
+                        # leading '$' ('x' or '{x}') — restore it so the
+                        # consuming builtin can expand the element.
+                        original_repr_parts.append('$' + token.value)
                     else:
                         original_repr_parts.append(token.value)
 

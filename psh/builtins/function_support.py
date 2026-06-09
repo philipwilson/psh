@@ -295,7 +295,7 @@ class DeclareBuiltin(Builtin):
                 if options['array'] and value.startswith('(') and value.endswith(')'):
                     # Parse indexed array initialization
                     array = IndexedArray()
-                    array_values = self._parse_array_init(value)
+                    array_values = self._parse_array_init(value, shell)
                     for i, val in enumerate(array_values):
                         array.set(i, val)
                     self._set_variable_with_attributes(shell, name, array, attributes, options['global'])
@@ -481,24 +481,10 @@ class DeclareBuiltin(Builtin):
         value = value.replace('`', '\\`')
         return value
 
-    def _parse_array_init(self, value: str) -> List[str]:
+    def _parse_array_init(self, value: str, shell: 'Shell') -> List[str]:
         """Parse array initialization: (val1 val2 val3)"""
-        # Remove parentheses
-        content = value[1:-1].strip()
-        if not content:
-            return []
-
-        # Simple word splitting with quote handling
-        parts = content.split()
-        result = []
-        for part in parts:
-            # Remove surrounding quotes if present
-            if (part.startswith('"') and part.endswith('"')) or \
-               (part.startswith("'") and part.endswith("'")):
-                result.append(part[1:-1])
-            else:
-                result.append(part)
-        return result
+        from .array_init import parse_array_elements
+        return parse_array_elements(value, shell)
 
     def _parse_assoc_array_init(self, value: str) -> List[tuple[str, str]]:
         """Parse associative array initialization: ([key]=val [key2]=val2)"""

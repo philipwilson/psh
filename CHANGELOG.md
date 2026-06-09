@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.239.0 (2026-06-09) - Fix local double-expansion injection (review Tier 0 #2)
+- `local v='$(cmd)'` no longer executes the command: LocalBuiltin re-expanded
+  its already-executor-expanded scalar value, so single-quoted `$`-text was
+  expanded a second time (a correctness and injection defect). The value is
+  now used as received.
+- Array initializers for `local`/`declare` are parsed by one shared
+  quote-aware helper (psh/builtins/array_init.py): single-quoted elements
+  stay literal, double-quoted elements expand without word splitting, and
+  unquoted elements expand with word splitting — matching bash. Previously
+  `local` expanded even single-quoted elements and `declare` never expanded.
+- Fix the parser's array-initializer reconstruction dropping `$` from
+  VARIABLE tokens (`local arr=(one $x)` produced element "x" instead of the
+  value of `$x`).
+- New tests in tests/unit/builtins/test_local_builtin.py (14 cases pinned to
+  bash 5.2 behaviour).
+
 ## 0.238.0 (2026-06-09) - Fix break N / continue N beyond loop depth (review Tier 0 #1)
 - Fix a crash when `break N`/`continue N` exceeded the enclosing loop depth:
   function-local `import sys` statements in `ExecutorVisitor.visit_TopLevel`/
