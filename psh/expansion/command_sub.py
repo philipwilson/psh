@@ -132,8 +132,12 @@ class CommandSubstitution:
                     else:
                         raise
 
-                # Update parent shell's last exit code for command substitution
+                # Update parent shell's last exit code for command substitution.
+                # last_cmdsub_status lets a pure assignment (v=$(cmd)) report
+                # the substitution's status as its own (bash: a pure
+                # assignment's status is 0 unless a command substitution ran).
                 self.shell.state.last_exit_code = exit_code
+                self.shell.state.last_cmdsub_status = exit_code
                 if self.shell.state.options.get('debug-expansion-detail'):
                     print(f"[EXPANSION] Command substitution '{cmd_sub}' exit code: {exit_code}", file=self.shell.state.stderr)
 

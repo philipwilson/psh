@@ -72,15 +72,17 @@ class ControlFlowExecutor:
             old_pipeline = context.in_pipeline
             context.in_pipeline = False
             try:
-                # Evaluate main condition
-                condition_status = visitor.visit(node.condition)
+                # Evaluate main condition (set -e is suppressed in conditions)
+                with context.errexit_suppressed():
+                    condition_status = visitor.visit(node.condition)
 
                 if condition_status == 0:
                     return visitor.visit(node.then_part)
 
                 # Check elif conditions
                 for elif_condition, elif_then in node.elif_parts:
-                    elif_status = visitor.visit(elif_condition)
+                    with context.errexit_suppressed():
+                        elif_status = visitor.visit(elif_condition)
                     if elif_status == 0:
                         return visitor.visit(elif_then)
 
@@ -115,8 +117,9 @@ class ControlFlowExecutor:
                 context.in_pipeline = False
                 try:
                     while True:
-                        # Evaluate condition
-                        condition_status = visitor.visit(node.condition)
+                        # Evaluate condition (set -e is suppressed in conditions)
+                        with context.errexit_suppressed():
+                            condition_status = visitor.visit(node.condition)
                         if condition_status != 0:
                             break
 
@@ -149,7 +152,8 @@ class ControlFlowExecutor:
                 context.in_pipeline = False
                 try:
                     while True:
-                        condition_status = visitor.visit(node.condition)
+                        with context.errexit_suppressed():
+                            condition_status = visitor.visit(node.condition)
                         if condition_status == 0:
                             break
                         try:

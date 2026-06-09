@@ -81,7 +81,11 @@ class CommandExecutor:
             # Phase 1: Extract raw assignments (before expansion)
             raw_assignments = self._extract_assignments_raw(node)
 
-            # Expand only the assignment values
+            # Expand only the assignment values. Track command substitutions
+            # run during expansion: a pure assignment's exit status is 0
+            # unless a command substitution ran, in which case it is that
+            # substitution's status (bash).
+            self.state.last_cmdsub_status = None
             assignments = []
             for var, value, value_word in raw_assignments:
                 expanded_value = self._expand_assignment_value_from_word(value, value_word)
@@ -197,6 +201,9 @@ class CommandExecutor:
 
             # Handle other exceptions
             if isinstance(e, ReadonlyVariableError):
+                # Command-prefixed assignments (RO=v cmd): the command fails
+                # with status 1 but, unlike a pure assignment, does not abort
+                # the script (bash).
                 print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
                 return 1
 
@@ -337,11 +344,19 @@ class CommandExecutor:
                 try:
                     self.state.set_variable(var, value)
                 except ReadonlyVariableError:
+                    # bash: assignment to a readonly variable aborts a
+                    # non-interactive shell with status 1.
                     print(f"psh: {var}: readonly variable", file=self.state.stderr)
+                    if self.shell.is_script_mode:
+                        sys.exit(1)
                     return 1
 
-            # Return current exit code (from any command substitutions)
-            return self.state.last_exit_code
+            # bash: a pure assignment's status is 0, unless a command
+            # substitution ran while expanding the value — then it is the
+            # substitution's status (cleared/recorded around expansion).
+            if self.state.last_cmdsub_status is not None:
+                return self.state.last_cmdsub_status
+            return 0
 
     def _apply_command_assignments(self, assignments: List[Tuple[str, str]]) -> dict:
         """Apply variable assignments for command execution.

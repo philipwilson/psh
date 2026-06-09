@@ -66,6 +66,13 @@ class Shell:
             self.alias_manager = parent_shell.alias_manager.copy()
             # Copy positional parameters for subshells
             self.state.positional_params = parent_shell.state.positional_params.copy()
+            # Inherit shell options (set -e, pipefail, ...) and $? — a
+            # subshell starts with the parent's option state and last exit
+            # code (bash). Mode flags recomputed later in __init__
+            # ('interactive', 'stdin_mode', 'emacs') overwrite their copies.
+            self.state.options.update(parent_shell.state.options)
+            self.state.last_exit_code = parent_shell.state.last_exit_code
+            self.state.is_script_mode = parent_shell.state.is_script_mode
             # Sync all exported variables (including local exports) to environment
             self.state.scope_manager.sync_exports_to_environment(self.env)
             # Note: We don't copy jobs - those are shell-specific
@@ -172,6 +179,10 @@ class Shell:
 
         from .executor import ExecutorVisitor
         executor = ExecutorVisitor(self)
+        # A forked subshell created inside a set -e-suppressed context
+        # (condition, non-final && / || member) seeds the suppression into
+        # its fresh visitor so the exemption crosses the fork, as in bash.
+        executor.context.errexit_suppress = getattr(self, '_errexit_suppress_seed', 0)
         self._current_executor = executor
         try:
             return executor.visit(node)

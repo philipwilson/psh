@@ -53,7 +53,8 @@ class SubshellExecutor:
         Returns:
             Exit status code
         """
-        return self._execute_in_subshell(node.statements, node.redirects, node.background)
+        return self._execute_in_subshell(node.statements, node.redirects, node.background,
+                                         errexit_suppress=context.errexit_suppress)
 
     def execute_brace_group(self, node: 'BraceGroup', context: 'ExecutionContext',
                            visitor: 'ASTVisitor[int]') -> int:
@@ -90,15 +91,18 @@ class SubshellExecutor:
         finally:
             context.in_pipeline = old_pipeline
 
-    def _execute_in_subshell(self, statements, redirects: List['Redirect'], background: bool) -> int:
+    def _execute_in_subshell(self, statements, redirects: List['Redirect'], background: bool,
+                             errexit_suppress: int = 0) -> int:
         """Execute statements in an isolated subshell environment."""
         if background:
             return self._execute_background_subshell(statements, redirects)
 
         # Execute in foreground subshell with proper isolation
-        return self._execute_foreground_subshell(statements, redirects)
+        return self._execute_foreground_subshell(statements, redirects,
+                                                 errexit_suppress=errexit_suppress)
 
-    def _execute_foreground_subshell(self, statements, redirects: List['Redirect']) -> int:
+    def _execute_foreground_subshell(self, statements, redirects: List['Redirect'],
+                                     errexit_suppress: int = 0) -> int:
         """Execute subshell in foreground with proper isolation."""
         # Save current terminal foreground process group
         original_pgid = None
@@ -153,6 +157,11 @@ class SubshellExecutor:
                 # Mark as forked child so builtins use os.write() which respects dup2()
                 # This is critical for output redirection to work correctly in subshells
                 subshell.state.in_forked_child = True
+
+                # Inherit the parent's set -e suppression: a subshell that is
+                # e.g. an if-condition or a non-final && / || member must not
+                # errexit internally (bash).
+                subshell._errexit_suppress_seed = errexit_suppress
             finally:
                 # Clean up the environment variable
                 if 'PSH_IN_FORKED_CHILD' in os.environ:
