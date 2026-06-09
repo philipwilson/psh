@@ -110,7 +110,9 @@ class PipelineExecutor:
         """Execute pipeline with forking."""
         if len(node.commands) == 1:
             # Single command, no pipeline needed
-            return visitor.visit(node.commands[0])
+            status = visitor.visit(node.commands[0])
+            self.state.pipestatus = [status]
+            return status
 
         # Multi-command pipeline
         pipeline_ctx = PipelineContext(self.job_manager)
@@ -278,21 +280,22 @@ class PipelineExecutor:
         # Do NOT re-fetch it here — that would cause tcsetpgrp() to be called
         # from a background process group, triggering SIGTTOU.
 
+        # Always collect every member's status so PIPESTATUS is populated
+        all_statuses = self.job_manager.wait_for_job(job, collect_all_statuses=True)
+        if not isinstance(all_statuses, list):
+            all_statuses = [all_statuses]
+        self.state.pipestatus = list(all_statuses)
+
         if self.state.options.get('pipefail') and len(node.commands) > 1:
-            # Get all exit statuses for pipefail
-            all_statuses = self.job_manager.wait_for_job(job, collect_all_statuses=True)
-            if isinstance(all_statuses, list):
-                # Return rightmost non-zero exit status, or 0 if all succeeded
-                exit_status = 0
-                for status in reversed(all_statuses):
-                    if status != 0:
-                        exit_status = status
-                        break
-            else:
-                exit_status = all_statuses
+            # Return rightmost non-zero exit status, or 0 if all succeeded
+            exit_status = 0
+            for status in reversed(all_statuses):
+                if status != 0:
+                    exit_status = status
+                    break
         else:
             # Normal behavior: return exit status of last command
-            exit_status = self.job_manager.wait_for_job(job)
+            exit_status = all_statuses[-1]
 
         # Restore terminal control and clean up foreground job state (H4)
         self.job_manager.finish_foreground_job(original_pgid is not None)

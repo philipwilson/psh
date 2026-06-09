@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.261.0 (2026-06-09) - Special variables (review Tier 2, phase 3b)
+- PIPESTATUS: every foreground pipeline records its members' exit statuses
+  (the waiter now always collects them, not only under pipefail); a single
+  command records a one-element list, matching bash.
+- $PPID (captured at startup; stable across subshells like bash), $UID and
+  $EUID, $EPOCHSECONDS, and $EPOCHREALTIME (microsecond precision) as
+  dynamic special variables.
+- $- includes 'c' when the shell was started with -c.
+- New tests in tests/unit/expansion/test_special_variables.py (10 cases).
+
 ## 0.260.0 (2026-06-09) - umask and times builtins (review Tier 2, phase 3a)
 - New POSIX-required builtins in psh/builtins/system_builtins.py, built on
   the v0.259.0 base helpers:

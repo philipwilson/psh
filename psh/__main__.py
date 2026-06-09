@@ -167,6 +167,7 @@ def main():
         if sys.argv[1] == "-c" and len(sys.argv) > 2:
             # Execute command with -c flag (script mode)
             shell.state.is_script_mode = True
+            shell.state.options['command_mode'] = True  # 'c' in $-
             command = sys.argv[2]
             # Set positional parameters from remaining arguments
             shell.state.positional_params = list(sys.argv[3:])

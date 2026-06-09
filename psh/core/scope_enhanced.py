@@ -1,6 +1,7 @@
 """Enhanced variable scope management with attribute support."""
 
 import random
+import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -386,6 +387,26 @@ class EnhancedScopeManager:
         elif name == 'RANDOM':
             # Return random number between 0 and 32767 (bash compatible)
             return Variable(name='RANDOM', value=str(random.randint(0, 32767)))
+        elif name == 'EPOCHSECONDS':
+            return Variable(name='EPOCHSECONDS', value=str(int(time.time())))
+        elif name == 'EPOCHREALTIME':
+            return Variable(name='EPOCHREALTIME', value=f"{time.time():.6f}")
+        elif name == 'PPID':
+            if self._shell is not None:
+                return Variable(name='PPID',
+                                value=str(self._shell.state.initial_ppid))
+        elif name == 'UID':
+            return Variable(name='UID', value=str(os.getuid()))
+        elif name == 'EUID':
+            return Variable(name='EUID', value=str(os.geteuid()))
+        elif name == 'PIPESTATUS':
+            if self._shell is not None:
+                from .variables import IndexedArray, VarAttributes
+                arr = IndexedArray()
+                for i, st in enumerate(self._shell.state.pipestatus):
+                    arr.set(i, str(st))
+                return Variable(name='PIPESTATUS', value=arr,
+                                attributes=VarAttributes.ARRAY)
         elif name == 'FUNCNAME':
             # Return current function name if in function
             if self._shell and hasattr(self._shell, 'state') and self._shell.state.function_stack:

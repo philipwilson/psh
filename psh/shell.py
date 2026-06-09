@@ -73,6 +73,8 @@ class Shell:
             self.state.options.update(parent_shell.state.options)
             self.state.last_exit_code = parent_shell.state.last_exit_code
             self.state.is_script_mode = parent_shell.state.is_script_mode
+            self.state.pipestatus = list(parent_shell.state.pipestatus)
+            self.state.initial_ppid = parent_shell.state.initial_ppid
             # Sync all exported variables (including local exports) to environment
             self.state.scope_manager.sync_exports_to_environment(self.env)
             # Note: We don't copy jobs - those are shell-specific
