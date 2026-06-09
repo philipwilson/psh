@@ -124,11 +124,11 @@ class ControlFlowExecutor:
                         try:
                             exit_status = visitor.visit(node.body)
                         except LoopContinue as lc:
-                            if lc.level > 1:
+                            if lc.level > 1 and context.loop_depth > 1:
                                 raise LoopContinue(lc.level - 1)
                             continue
                         except LoopBreak as lb:
-                            if lb.level > 1:
+                            if lb.level > 1 and context.loop_depth > 1:
                                 raise LoopBreak(lb.level - 1)
                             break
 
@@ -155,11 +155,11 @@ class ControlFlowExecutor:
                         try:
                             exit_status = visitor.visit(node.body)
                         except LoopContinue as lc:
-                            if lc.level > 1:
+                            if lc.level > 1 and context.loop_depth > 1:
                                 raise LoopContinue(lc.level - 1)
                             continue
                         except LoopBreak as lb:
-                            if lb.level > 1:
+                            if lb.level > 1 and context.loop_depth > 1:
                                 raise LoopBreak(lb.level - 1)
                             break
                 finally:
@@ -205,11 +205,11 @@ class ControlFlowExecutor:
                         try:
                             exit_status = visitor.visit(node.body)
                         except LoopContinue as lc:
-                            if lc.level > 1:
+                            if lc.level > 1 and context.loop_depth > 1:
                                 raise LoopContinue(lc.level - 1)
                             continue
                         except LoopBreak as lb:
-                            if lb.level > 1:
+                            if lb.level > 1 and context.loop_depth > 1:
                                 raise LoopBreak(lb.level - 1)
                             break
 
@@ -263,10 +263,10 @@ class ControlFlowExecutor:
                     try:
                         exit_status = visitor.visit(node.body)
                     except LoopContinue as lc:
-                        if lc.level > 1:
+                        if lc.level > 1 and context.loop_depth > 1:
                             raise LoopContinue(lc.level - 1)
                     except LoopBreak as lb:
-                        if lb.level > 1:
+                        if lb.level > 1 and context.loop_depth > 1:
                             raise LoopBreak(lb.level - 1)
                         break
 
@@ -435,11 +435,11 @@ class ControlFlowExecutor:
                     try:
                         exit_status = visitor.visit(node.body)
                     except LoopContinue as lc:
-                        if lc.level > 1:
+                        if lc.level > 1 and context.loop_depth > 1:
                             raise LoopContinue(lc.level - 1)
                         continue
                     except LoopBreak as lb:
-                        if lb.level > 1:
+                        if lb.level > 1 and context.loop_depth > 1:
                             raise LoopBreak(lb.level - 1)
                         break
             except KeyboardInterrupt:

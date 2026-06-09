@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.238.0 (2026-06-09) - Fix break N / continue N beyond loop depth (review Tier 0 #1)
+- Fix a crash when `break N`/`continue N` exceeded the enclosing loop depth:
+  function-local `import sys` statements in `ExecutorVisitor.visit_TopLevel`/
+  `visit_StatementList` shadowed the module-level import, so the
+  `except LoopBreak` handler died with UnboundLocalError
+  (`while true; do break 2; done` → "cannot access local variable 'sys'").
+- Match bash semantics for out-of-range levels: `break N` with N greater than
+  the number of enclosing loops now exits all enclosing loops with status 0,
+  and `continue N` resumes the outermost loop, instead of escaping to the top
+  level as an error. Applied uniformly across while/until/for/C-style-for/select.
+- New regression tests in tests/integration/control_flow/test_break_continue_levels.py
+  (subprocess-based, pinned to verified bash 5.2 behaviour).
+- First fix from the 2026-06-09 architecture & feature review
+  (docs/reviews/architecture_feature_review_2026-06-09.md, Tier 0 list).
+
 ## 0.237.0 (2026-06-07) - Extract pure multiline helper from LineEditor (§1.5)
 - Move the 93-line, state-free `LineEditor._convert_multiline_to_single` to a
   standalone pure function `psh/line_editor_helpers.convert_multiline_to_single`
