@@ -142,15 +142,9 @@ class EnvBuiltin(Builtin):
         return bool(name)
 
     def _print_environment(self, env_map: Dict[str, str], shell: 'Shell') -> None:
-        """Print environment mapping in a way that works in forked children."""
-        if shell.state.in_forked_child:
-            for key, value in sorted(env_map.items()):
-                os.write(1, f"{key}={value}\n".encode('utf-8', errors='replace'))
-            return
-
-        out = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
+        """Print environment mapping (forked-child aware via Builtin.write)."""
         for key, value in sorted(env_map.items()):
-            print(f"{key}={value}", file=out)
+            self.write_line(f"{key}={value}", shell)
 
     def _bind_process_fds_to_streams(self, shell: 'Shell') -> List[Tuple[int, int]]:
         """Align process fds with shell streams so nested external commands obey redirections."""
@@ -248,7 +242,7 @@ class ExportBuiltin(Builtin):
 
             if print_mode:
                 if key in shell.env:
-                    self._emit(shell, f'declare -x {key}="{shell.env[key]}"')
+                    self.write_line(f'declare -x {key}="{shell.env[key]}"', shell)
                 continue
 
             if unexport:
@@ -273,19 +267,10 @@ class ExportBuiltin(Builtin):
             return False
         return all(c.isalnum() or c == '_' for c in name[1:])
 
-    def _emit(self, shell: 'Shell', line: str) -> None:
-        """Write a line to stdout, honoring forked-child fd semantics."""
-        if shell.state.in_forked_child:
-            # In child process, write directly to fd 1
-            os.write(1, (line + '\n').encode('utf-8', errors='replace'))
-        else:
-            # In parent process, use shell.stdout to respect redirections
-            print(line, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
-
     def _print_exports(self, shell: 'Shell') -> None:
         """Print all exported variables in declare -x format."""
         for key, value in sorted(shell.env.items()):
-            self._emit(shell, f'declare -x {key}="{value}"')
+            self.write_line(f'declare -x {key}="{value}"', shell)
 
     def _remove_export(self, name: str, shell: 'Shell') -> None:
         """Remove the export attribute from a variable (export -n)."""
@@ -503,47 +488,21 @@ class SetBuiltin(Builtin):
             # Show only standard bash-compatible options for conformance
             options_to_show = [opt for opt in standard_options if opt in shell.state.options]
 
-        # Check if we're in a child process (forked for pipeline/background)
-        if shell.state.in_forked_child:
-            # In child process, write directly to fd 1
-            output_lines = []
+        # Show options based on mode (standard vs all); Builtin.write_line
+        # handles forked-child fd semantics.
+        for opt_name in sorted(options_to_show):
+            opt_value = shell.state.options[opt_name]
+            status = 'on' if opt_value else 'off'
+            self.write_line(f"{opt_name:<15}\t{status}", shell)
 
-            # Show options based on mode (standard vs all)
-            for opt_name in sorted(options_to_show):
-                opt_value = shell.state.options[opt_name]
-                status = 'on' if opt_value else 'off'
-                output_lines.append(f"{opt_name:<15}\t{status}\n")
-
-            # Add edit mode info using standard option names
-            if hasattr(shell, 'edit_mode'):
-                if shell.edit_mode == 'emacs':
-                    output_lines.append(f"{'emacs':<15}\ton\n")
-                    output_lines.append(f"{'vi':<15}\toff\n")
-                else:  # vi mode
-                    output_lines.append(f"{'emacs':<15}\toff\n")
-                    output_lines.append(f"{'vi':<15}\ton\n")
-
-            # Write all lines to fd 1
-            for line in output_lines:
-                os.write(1, line.encode('utf-8', errors='replace'))
-        else:
-            # In parent process, use shell.stdout to respect redirections
-            stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
-
-            # Show options based on mode (standard vs all)
-            for opt_name in sorted(options_to_show):
-                opt_value = shell.state.options[opt_name]
-                status = 'on' if opt_value else 'off'
-                print(f"{opt_name:<15}\t{status}", file=stdout)
-
-            # Add edit mode info using standard option names
-            if hasattr(shell, 'edit_mode'):
-                if shell.edit_mode == 'emacs':
-                    print(f"{'emacs':<15}\ton", file=stdout)
-                    print(f"{'vi':<15}\toff", file=stdout)
-                else:  # vi mode
-                    print(f"{'emacs':<15}\toff", file=stdout)
-                    print(f"{'vi':<15}\ton", file=stdout)
+        # Add edit mode info using standard option names
+        if hasattr(shell, 'edit_mode'):
+            if shell.edit_mode == 'emacs':
+                self.write_line(f"{'emacs':<15}\ton", shell)
+                self.write_line(f"{'vi':<15}\toff", shell)
+            else:  # vi mode
+                self.write_line(f"{'emacs':<15}\toff", shell)
+                self.write_line(f"{'vi':<15}\ton", shell)
 
 
 @builtin
@@ -556,32 +515,24 @@ class UnsetBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Unset variables and functions."""
-        if len(args) < 2:
-            self.error("not enough arguments", shell)
-            return 1
+        opts, names = self.parse_flags(args, shell, flags='fvn')
+        if opts is None:
+            return 2  # invalid option (bash usage-error status)
+        if not names:
+            return 0  # bash: unset with no operands succeeds silently
 
-        # Check for -f flag
-        if '-f' in args:
+        if opts['f']:
             # Remove functions
             exit_code = 0
-            for arg in args[1:]:
-                if arg != '-f':
-                    if not shell.function_manager.undefine_function(arg):
-                        self.error(f"{arg}: not a function", shell)
-                        exit_code = 1
+            for arg in names:
+                if not shell.function_manager.undefine_function(arg):
+                    self.error(f"{arg}: not a function", shell)
+                    exit_code = 1
             return exit_code
         else:
             # Remove variables. `-n` unsets the nameref itself; otherwise a
             # nameref name is resolved to its target before unsetting (bash).
-            nameref_mode = False
-            names = []
-            for arg in args[1:]:
-                if arg == '-n':
-                    nameref_mode = True
-                elif arg == '-v':
-                    pass  # explicit "variable" flag (the default)
-                else:
-                    names.append(arg)
+            nameref_mode = opts['n']
 
             exit_code = 0
             for var in names:

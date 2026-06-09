@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.259.0 (2026-06-09) - Builtin infrastructure (review Tier 2, phase 2)
+- New shared helpers on the Builtin base class:
+  - write()/write_line(): one implementation of the forked-child fd-level
+    vs parent shell.stdout output routing that echo/printf/pwd/declare -p/
+    env/export/set each carried a private copy of; error() is now also
+    forked-child aware. Migrated the seven copied sites.
+  - parse_flags(): getopt-style option parsing (clusters, attached or
+    separate option values, --, invalid options exit 2 with a usage line).
+    unset migrated to it.
+- One associative-array initializer parser
+  (array_init.parse_assoc_array_entries) replaces the two divergent copies
+  in local/declare, fixing three bash divergences: declare -A values
+  containing $expansions now expand ([k]=$x), quoted values with spaces work
+  under local -A ([k]="x y" no longer truncates), and dynamic keys expand
+  ([$k]=v). Single-quoted values stay literal.
+- Usage-error exit codes match bash: declare/local/readonly invalid options
+  exit 2 (was 1); `unset` with no operands succeeds silently (bash, was rc
+  1) and invalid unset options exit 2. Two declare tests updated to the
+  bash-verified status.
+- New tests: tests/unit/builtins/test_builtin_base_helpers.py (12 cases).
+
 ## 0.258.0 (2026-06-09) - Executor/builtins/vi scraps purge (review Tier 2, phase 1c)
 - Remove dead ProcessLauncher.launch_job (zero callers; contained a fragile
   command_str.split() re-parse) and the dead DeclareBuiltin._apply_attributes

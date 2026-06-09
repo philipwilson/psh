@@ -383,17 +383,17 @@ class TestDeclareErrorHandling:
     """Test declare error conditions and edge cases."""
 
     def test_declare_invalid_option(self, shell, capsys):
-        """Test declare with invalid option."""
+        """Test declare with invalid option (bash: usage-error status 2)."""
         result = shell.run_command("declare -z invalid")
-        assert result == 1
+        assert result == 2
 
         captured = capsys.readouterr()
         assert "invalid option" in captured.err or "unknown option" in captured.err
 
     def test_declare_invalid_plus_option(self, shell, capsys):
-        """Test declare with invalid +option."""
+        """Test declare with invalid +option (bash: usage-error status 2)."""
         result = shell.run_command("declare +z invalid")
-        assert result == 1
+        assert result == 2
 
         captured = capsys.readouterr()
         assert "invalid option" in captured.err or "unknown option" in captured.err
