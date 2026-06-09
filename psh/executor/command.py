@@ -524,8 +524,19 @@ class CommandExecutor:
                         cmd_name, args, node, context, strategy
                     )
                     return exit_code, is_special
+                elif isinstance(strategy, ExternalExecutionStrategy):
+                    # External commands apply their redirections in the
+                    # forked child (setup_child_redirections). Applying them
+                    # here too resolved `2>&1` against already-redirected
+                    # fds and ran heredoc/target command substitutions twice.
+                    exit_code = strategy.execute(
+                        cmd_name, args, self.shell, context,
+                        node.redirects, node.background,
+                        visitor=getattr(self, '_visitor', None),
+                    )
+                    return exit_code, is_special
                 else:
-                    # Apply fd-level redirections for external commands,
+                    # Apply fd-level redirections for functions, aliases,
                     # builtins in pipelines, and builtins in forked children
                     with self.io_manager.with_redirections(node.redirects):
                         exit_code = strategy.execute(
