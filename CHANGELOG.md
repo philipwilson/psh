@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.240.0 (2026-06-09) - Fix ${!prefix@}/${!prefix*} prefix matching (review Tier 0 #3)
+- `${!prefix@}`/`${!prefix*}` passed the (always-empty) operand instead of the
+  variable name as the prefix, so they listed EVERY shell+environment
+  variable. They now match only names with the given prefix.
+- Names are no longer emitted with literal `"` quote characters (bash never
+  does this), and quoted `${!prefix*}` joins with the first character of IFS,
+  consistent with `$*`.
+- Tightened the integration tests whose substring assertions masked the bug
+  and added no-match and IFS-join cases (exact-match assertions, pinned to
+  bash 5.2).
+
 ## 0.239.0 (2026-06-09) - Fix local double-expansion injection (review Tier 0 #2)
 - `local v='$(cmd)'` no longer executes the command: LocalBuiltin re-expanded
   its already-executor-expanded scalar value, so single-quoted `$`-text was
