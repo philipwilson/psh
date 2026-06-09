@@ -411,12 +411,18 @@ class EnhancedScopeManager:
 
         # Start with global variables
         for name, var in self.global_scope.variables.items():
-            result[name] = var.as_string()
+            if not var.is_unset:
+                result[name] = var.as_string()
 
-        # Override with variables from each scope (oldest to newest)
+        # Override with variables from each scope (oldest to newest).
+        # An UNSET tombstone shadows any outer-scope variable, so it must
+        # remove the name rather than appear as an empty entry.
         for scope in self.scope_stack[1:]:  # Skip global scope
             for name, var in scope.variables.items():
-                result[name] = var.as_string()
+                if var.is_unset:
+                    result.pop(name, None)
+                else:
+                    result[name] = var.as_string()
 
         return result
 
@@ -427,12 +433,17 @@ class EnhancedScopeManager:
 
         # Start with global variables
         for name, var in self.global_scope.variables.items():
-            all_vars[name] = var
+            if not var.is_unset:
+                all_vars[name] = var
 
-        # Override with variables from each scope
+        # Override with variables from each scope; UNSET tombstones shadow
+        # (hide) outer-scope variables rather than appearing themselves.
         for scope in self.scope_stack[1:]:
             for name, var in scope.variables.items():
-                all_vars[name] = var
+                if var.is_unset:
+                    all_vars.pop(name, None)
+                else:
+                    all_vars[name] = var
 
         return list(all_vars.values())
 

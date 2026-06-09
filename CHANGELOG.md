@@ -4,6 +4,15 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.241.0 (2026-06-09) - UNSET tombstones hidden from variable listings (review Tier 0 #4)
+- `get_all_variables()`/`all_variables_with_attributes()` no longer include
+  UNSET tombstones: after `f(){ unset HOME; ...}` the variable disappeared
+  from lookups but still showed as `HOME=` in `set` output (bash shows
+  nothing). Tombstones in inner scopes now also remove the shadowed
+  outer-scope name from listings, matching lookup semantics.
+- First direct unit tests for EnhancedScopeManager tombstone visibility
+  (tests/unit/core/test_scope_tombstones.py, 9 cases pinned to bash 5.2).
+
 ## 0.240.0 (2026-06-09) - Fix ${!prefix@}/${!prefix*} prefix matching (review Tier 0 #3)
 - `${!prefix@}`/`${!prefix*}` passed the (always-empty) operand instead of the
   variable name as the prefix, so they listed EVERY shell+environment
