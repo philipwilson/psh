@@ -64,15 +64,26 @@ class ExpansionManager:
             print(f"[EXPANSION] Expanding Word AST command: {[str(w) for w in command.words]}", file=self.state.stderr)
 
         # Handle process substitutions — detect via Word AST
-        has_proc_sub = self._has_process_substitution(command)
-        if has_proc_sub:
+        words = command.words
+        if self._has_process_substitution(command):
             fds, substituted_args, child_pids = self.shell.io_manager.setup_process_substitutions(command)
             self.shell._process_sub_fds = fds
             self.shell._process_sub_pids = child_pids
-            command.args = substituted_args
-            command.words = [Word.from_string(a) for a in substituted_args]
+            # Replace ONLY the process-substitution words with their
+            # /dev/fd/N paths. Other words keep their Word AST (rebuilding
+            # them from strings used to discard quote context, so a quoted
+            # "*" glob-expanded), and the command node is not mutated (a
+            # command re-executed in a loop re-creates its substitutions
+            # instead of reusing a stale fd path).
+            words = []
+            for i, word in enumerate(command.words):
+                if (i < len(substituted_args)
+                        and substituted_args[i] != command.args[i]):
+                    words.append(Word.from_string(substituted_args[i]))
+                else:
+                    words.append(word)
 
-        for word in command.words:
+        for word in words:
             expanded = self._expand_word(word)
             if isinstance(expanded, list):
                 args.extend(expanded)

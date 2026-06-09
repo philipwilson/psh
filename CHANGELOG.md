@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.255.0 (2026-06-09) - Process substitutions preserve sibling quoting (review Tier 1 E)
+- When any argument was a process substitution, ALL of the command's words
+  were rebuilt from plain strings, discarding quote context — a quoted "*"
+  glob-expanded and a quoted "$x" containing spaces split into fields. Only
+  the process-substitution words are replaced with their /dev/fd/N paths
+  now; every other word keeps its Word AST.
+- The command node is no longer mutated in place, so a command re-executed
+  in a loop re-creates its substitutions instead of reusing a stale fd path.
+- New tests in tests/unit/expansion/test_process_sub_quoting.py (7 cases).
+
 ## 0.254.0 (2026-06-09) - Multi-field quoted array expansion (review Tier 1 D)
 - Quoted @-subscripted expansions now produce one field per element, the
   central bash array semantic: "${a[@]}", "${@:2}", "${a[@]:1:2}",
