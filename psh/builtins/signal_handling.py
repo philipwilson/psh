@@ -102,12 +102,24 @@ EXIT STATUS
                 print(output, file=shell.state.stdout)
             return 0
 
+        # POSIX: -- ends option processing; the next argument is the action.
+        # This is the standard defensive idiom: trap -- 'action' SIGNAL
+        arg_start = 1
+        if args[arg_start] == '--':
+            arg_start += 1
+            if len(args) == arg_start:
+                # Bare `trap --` behaves like bare `trap`: show all traps
+                output = shell.trap_manager.show_traps()
+                if output:
+                    print(output, file=shell.state.stdout)
+                return 0
+
         # Parse action and signals
-        if len(args) < 3:
+        if len(args) < arg_start + 2:
             print("trap: usage: trap [action] [condition...]", file=shell.state.stderr)
             return 2
 
-        action = args[1]
-        signals = args[2:]
+        action = args[arg_start]
+        signals = args[arg_start + 1:]
 
         return shell.trap_manager.set_trap(action, signals)

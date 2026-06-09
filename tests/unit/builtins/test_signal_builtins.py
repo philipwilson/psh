@@ -203,3 +203,39 @@ def test_trap_script_mode(shell):
     # This may behave differently in script vs interactive mode
     result = shell.run_command('trap "echo script" EXIT')
     assert result == 0
+
+
+def test_trap_double_dash_sets_action(shell, capsys):
+    """Regression: trap -- 'action' SIG used to take -- as the action."""
+    result = shell.run_command('trap -- "echo hi" INT')
+    assert result == 0
+    shell.run_command('trap')
+    captured = capsys.readouterr()
+    assert "echo hi" in captured.out
+
+
+def test_trap_double_dash_reset(shell):
+    """trap -- - SIG resets the signal."""
+    shell.run_command('trap "echo x" INT')
+    result = shell.run_command('trap -- - INT')
+    assert result == 0
+
+
+def test_trap_bare_double_dash_lists(shell, capsys):
+    """Bare `trap --` behaves like bare `trap` (bash)."""
+    shell.run_command('trap "echo x" INT')
+    capsys.readouterr()
+    result = shell.run_command('trap --')
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "echo x" in captured.out
+
+
+def test_trap_double_dash_exit_fires(shell, capsys):
+    """A trap set with -- still executes."""
+    import subprocess
+    import sys
+    result = subprocess.run(
+        [sys.executable, '-m', 'psh', '-c', 'trap -- "echo bye" EXIT'],
+        capture_output=True, text=True)
+    assert result.stdout == "bye\n"
