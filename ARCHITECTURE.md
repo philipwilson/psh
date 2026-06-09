@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.241.0
+**Current Version**: 0.242.0
 
 **Note:** For LLM-optimized architecture documentation, see `ARCHITECTURE.llm`
 

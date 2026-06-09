@@ -344,6 +344,20 @@ class TestBashOptions(ConformanceTest):
         self.check_behavior('set -o pipefail; true')
         self.check_behavior('set -u; true')
 
+    def test_set_euo_pipefail_strict_mode(self):
+        """The canonical strict-mode idiom: trailing 'o' in a cluster."""
+        self.assert_identical_behavior(
+            'set -euo pipefail; set -o | grep pipefail')
+
+    def test_set_multiple_o_options(self):
+        """Multiple -o arguments must all be applied."""
+        self.assert_identical_behavior(
+            'set -o errexit -o pipefail; set -o | grep -E "errexit|pipefail"')
+
+    def test_set_o_vi_silent(self):
+        """Changing the edit mode prints nothing."""
+        self.assert_identical_behavior('set -o vi; echo done')
+
     def test_shopt_options(self):
         """Test bash shopt options."""
         self.assert_identical_behavior('shopt -s extglob')
