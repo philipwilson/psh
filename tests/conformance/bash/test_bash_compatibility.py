@@ -365,6 +365,44 @@ class TestBashOptions(ConformanceTest):
         self.assert_identical_behavior('shopt -s dotglob')
 
 
+class TestArrayFieldExpansion(ConformanceTest):
+    """Quoted @-subscripted expansions produce one field per element."""
+
+    def test_quoted_array_field_count(self):
+        self.assert_identical_behavior(
+            'a=(1 "2 3" 4); printf "[%s]" "${a[@]}"; echo')
+
+    def test_set_from_quoted_array(self):
+        self.assert_identical_behavior('a=(1 "2 3"); set -- "${a[@]}"; echo $#')
+
+    def test_empty_at_zero_fields(self):
+        self.assert_identical_behavior('set --; set -- "$@"; echo $#')
+
+    def test_positional_slice_fields(self):
+        self.assert_identical_behavior(
+            'set -- x y z; printf "[%s]" "${@:2}"; echo')
+
+    def test_array_slice_fields(self):
+        self.assert_identical_behavior(
+            'a=(1 "2 3" 4); printf "[%s]" "${a[@]:1:2}"; echo')
+
+    def test_per_element_operators(self):
+        self.assert_identical_behavior(
+            'a=(ab cb); printf "[%s]" "${a[@]#a}"; echo')
+        self.assert_identical_behavior(
+            'a=(ab cb); printf "[%s]" "${a[@]/b/X}"; echo')
+        self.assert_identical_behavior(
+            'a=(ab "c d"); printf "[%s]" "${a[@]@Q}"; echo')
+
+    def test_affix_distribution(self):
+        self.assert_identical_behavior(
+            'a=("x y" z); printf "[%s]" pre"${a[@]}"post; echo')
+
+    def test_unquoted_at_custom_ifs_boundaries(self):
+        self.assert_identical_behavior(
+            'set -- "a b" c; IFS=:; printf "[%s]" $@; echo')
+
+
 class TestBashRedirection(ConformanceTest):
     """Test bash redirection compatibility."""
 

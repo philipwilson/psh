@@ -255,15 +255,15 @@ class PrintfBuiltin(Builtin):
 
     def process_format_string_posix(self, format_str: str, arguments: list) -> str:
         """Process format string with POSIX-compliant behavior including argument cycling."""
-        if not arguments:
-            # No arguments - just process escape sequences in format string
-            return self._process_escapes_only(format_str)
-
         result = []
         arg_index = 0
 
-        # POSIX: Repeat format string until all arguments are consumed
-        while arg_index < len(arguments):
+        # POSIX: apply the format at least once (missing arguments are
+        # treated as ''/0 — `printf '[%s]'` prints `[]`), then repeat it
+        # while arguments remain.
+        first_pass = True
+        while first_pass or arg_index < len(arguments):
+            first_pass = False
             i = 0
             format_consumed_args = False
 

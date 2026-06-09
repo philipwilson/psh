@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.254.0 (2026-06-09) - Multi-field quoted array expansion (review Tier 1 D)
+- Quoted @-subscripted expansions now produce one field per element, the
+  central bash array semantic: "${a[@]}", "${@:2}", "${a[@]:1:2}",
+  "${a[@]#pat}", "${a[@]/p/r}", "${a[@]^^}", "${a[@]@Q}",
+  "${a[@]:-default}" etc. Previously only "$@" was special-cased and
+  everything else collapsed into ONE word, silently corrupting array
+  elements containing whitespace.
+- Implemented as VariableExpander.expand_to_fields() (resolves the base
+  fields, parses operators baked into bracketed parameter text, slices
+  positionals/arrays — indexed arrays slice by INDEX like bash — and
+  applies value operators per element) plus a generalized affix walker in
+  ExpansionManager that distributes prefix/suffix text across fields and
+  supports multiple field expansions per word.
+- Empty "$@"/"${a[@]}" yields ZERO fields (was one empty field):
+  `set --; set -- "$@"; echo $#` now prints 0.
+- Unquoted $@/${a[@]} expand to fields before IFS splitting, so parameter
+  and element boundaries survive a custom IFS
+  (`set -- "a b" c; IFS=:; printf '[%s]' $@` → [a b][c]).
+- printf with no arguments now applies the format once with missing
+  arguments as ''/0 (`printf '[%s]'` prints `[]`), per POSIX — previously
+  the format string was echoed with the bare %s intact.
+- "${a[*]}" and ${#a[@]} keep their scalar semantics; ${a[@]@A} keeps the
+  whole-array assignment form.
+- New tests: tests/unit/expansion/test_multi_field_expansion.py (23
+  field-count-pinned cases) and a TestArrayFieldExpansion conformance class
+  (8 cases). The for-loop array path in control_flow.py is retained until
+  for-loop items carry Word AST (parser limitation).
+
 ## 0.253.0 (2026-06-09) - Context-aware errexit + subshell inheritance + readonly fatality (review Tier 1 C)
 - set -e now honours the POSIX exemptions exactly as bash: failures in
   if/elif/while/until conditions, in non-final members of && / || lists,
