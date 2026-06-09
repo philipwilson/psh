@@ -97,6 +97,11 @@ class Shell:
         self.stderr = sys.stderr
         self.stdin = sys.stdin
 
+        # The ExecutorVisitor currently executing, if any. Nested execution
+        # (eval, source) reuses it so loop depth and function context carry
+        # into the nested commands — `eval break` must break the outer loop.
+        self._current_executor = None
+
         # Determine interactive mode
         is_interactive = force_interactive or sys.stdin.isatty()
         self.state.options['interactive'] = is_interactive
@@ -148,15 +153,30 @@ class Shell:
 
     def execute_command_list(self, command_list: StatementList):
         """Execute a command list"""
-        from .executor import ExecutorVisitor
-        executor = ExecutorVisitor(self)
-        return executor.visit(command_list)
+        return self._execute_with_visitor(command_list)
 
     def execute_toplevel(self, toplevel: TopLevel):
         """Execute a top-level script/input containing functions and commands."""
+        return self._execute_with_visitor(toplevel)
+
+    def _execute_with_visitor(self, node):
+        """Execute an AST node, reusing the active executor when nested.
+
+        Nested execution (eval, source, trap actions) must share the caller's
+        ExecutorVisitor: a fresh visitor starts with loop_depth=0, which used
+        to make `eval break` report "only meaningful in a loop" instead of
+        breaking the enclosing loop.
+        """
+        if self._current_executor is not None:
+            return self._current_executor.visit(node)
+
         from .executor import ExecutorVisitor
         executor = ExecutorVisitor(self)
-        return executor.visit(toplevel)
+        self._current_executor = executor
+        try:
+            return executor.visit(node)
+        finally:
+            self._current_executor = None
 
     def execute_enhanced_test_statement(self, test_stmt: EnhancedTestStatement) -> int:
         """Execute an enhanced test statement [[...]]."""

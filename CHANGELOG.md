@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.247.0 (2026-06-09) - Control flow propagates through eval (review Tier 0 #10)
+- `eval break` / `eval continue` / `eval return N` now act on the enclosing
+  loop/function instead of printing "only meaningful in a loop" (or
+  "unexpected error") and being converted to exit status 1. Three causes
+  fixed: nested execution (eval, source, trap actions) reuses the caller's
+  ExecutorVisitor via Shell._execute_with_visitor so loop depth and function
+  context carry through; the broad exception guards in executor/strategies.py
+  re-raise LoopBreak/LoopContinue/UnboundVariableError (matching
+  command.py's handling); and source_processor re-raises control-flow
+  exceptions when execution is nested instead of reporting them.
+- Top-level `break`/`continue` outside any loop now warn once and continue
+  executing with status 0, like bash (previously: warning printed twice,
+  status 1, remaining statements skipped). Two legacy tests asserting the
+  non-bash exit code were updated to the bash-verified behaviour.
+- New tests in tests/integration/control_flow/test_eval_control_flow.py
+  (9 cases pinned to bash 5.2).
+
 ## 0.246.0 (2026-06-09) - Transactional redirection save/restore (review Tier 0 #9)
 - `builtin 2>&1` no longer kills the shell's stdout: restore used to close
   whatever object was in sys.stderr (after 2>&1 that IS the real stdout),
