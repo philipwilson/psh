@@ -4,6 +4,13 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.249.0 (2026-06-09) - exec failure exits non-interactive shell (review Tier 1 A1)
+- `exec missing_command` now exits a non-interactive shell with status 127
+  (126 for found-but-not-executable), per POSIX and bash, instead of
+  printing the error and continuing with rc 0. Interactive shells survive
+  and report the status.
+- New tests in tests/unit/builtins/test_exec_builtin.py (4 cases).
+
 ## 0.248.0 (2026-06-09) - set -u message and fatality (review Tier 0 #11)
 - `set -u` violations printed "psh: psh: $x: unbound variable": the expansion
   code wrapped the message in a "psh: " prefix that the printing handler

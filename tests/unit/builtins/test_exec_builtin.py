@@ -158,3 +158,42 @@ def test_exec_redirection_persistence(temp_dir):
     with open(os.path.join(temp_dir, "persistent_output.txt")) as f:
         content = f.read()
     assert 'first' in content and 'second' in content and 'third' in content
+
+
+class TestExecFailureExitsShell:
+    """POSIX: a non-interactive shell exits when `exec command` fails.
+
+    Regression: psh used to print the error and keep executing with rc 0
+    (bash: rc 127, no further commands run).
+    """
+
+    @staticmethod
+    def _run_psh(cmd):
+        import subprocess
+        import sys
+        return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
+                              capture_output=True, text=True)
+
+    def test_exec_missing_command_exits_127(self):
+        result = self._run_psh('exec nonexistent_cmd_zz; echo after')
+        assert result.returncode == 127
+        assert 'after' not in result.stdout
+        assert 'command not found' in result.stderr
+
+    def test_exec_not_executable_exits_126(self):
+        result = self._run_psh('exec /etc; echo after')
+        assert result.returncode == 126
+        assert 'after' not in result.stdout
+
+    def test_exec_success_replaces_shell(self):
+        result = self._run_psh('exec /bin/echo replaced; echo not-reached')
+        assert result.returncode == 0
+        assert result.stdout == 'replaced\n'
+        assert 'not-reached' not in result.stdout
+
+    def test_interactive_shell_survives_exec_failure(self, shell):
+        """The interactive-mode shell reports 127 but keeps running."""
+        result = shell.run_command('exec nonexistent_cmd_zz')
+        assert result == 127
+        # Shell still functional
+        assert shell.run_command('true') == 0
