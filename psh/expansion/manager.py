@@ -170,17 +170,29 @@ class ExpansionManager:
             elif isinstance(part, ExpansionPart):
                 has_expansion = True
 
-                # Handle quoted "$@" splitting in composite words.
-                # e.g. pre"$@"post with params (a,b,c) → [prea, b, cpost]
-                if (part.quoted
-                        and isinstance(part.expansion, VariableExpansion)
-                        and part.expansion.name == '@'):
-                    params = list(self.state.positional_params)
-                    if not params:
-                        continue
-                    result = self._expand_at_with_affixes(
-                        word, part, result_parts, in_double_quote=False)
-                    return result
+                # Handle quoted field expansions ("$@", "${a[@]}", ...) in
+                # composite words: pre"$@"post with params (a,b,c) →
+                # [prea, b, cpost]
+                if part.quoted:
+                    fields = self._field_expansion_fields(part)
+                    if fields is not None:
+                        return self._expand_at_with_affixes(
+                            word, part, result_parts, in_double_quote=False,
+                            first_fields=fields)
+
+                # An unquoted field expansion standing alone ($@, ${a[@]}):
+                # expand to fields FIRST, then IFS-split each field, so
+                # parameter/element boundaries survive a custom IFS (bash).
+                if not part.quoted and len(word.parts) == 1:
+                    ufields = self._field_expansion_fields(part)
+                    if ufields is not None:
+                        out: list = []
+                        for f in ufields:
+                            out.extend(self._split_with_ifs(f, None))
+                        if (any(any(c in f for c in '*?[') for f in out)
+                                and not self.state.options.get('noglob', False)):
+                            return self._glob_words(out)
+                        return out
 
                 expanded = self.expand_expansion(part.expansion)
                 if part.quoted:
@@ -234,13 +246,36 @@ class ExpansionManager:
 
         return result
 
+    def _field_expansion_fields(self, part) -> Optional[List[str]]:
+        """Fields if this ExpansionPart is field-producing in double quotes.
+
+        Returns the list of fields for ``$@``, ``${a[@]}``, ``${@:2}``,
+        ``${a[@]:1:2}``, ``${a[@]@Q}`` etc., or None when the expansion has
+        scalar semantics (everything else, including ``$*``/``${a[*]}``).
+        """
+        from ..ast_nodes import ParameterExpansion, VariableExpansion
+        exp = part.expansion
+        if isinstance(exp, VariableExpansion):
+            if exp.name == '@':
+                return list(self.state.positional_params)
+            if '[@]' in exp.name:
+                # Unquoted ${a[@]} arrives as VariableExpansion('a[@]')
+                # (the quoted form parses as ParameterExpansion).
+                return self.variable_expander.expand_to_fields(exp.name, None, None)
+            return None
+        if isinstance(exp, ParameterExpansion):
+            return self.variable_expander.expand_to_fields(
+                exp.parameter, exp.operator, exp.word)
+        return None
+
     def _expand_double_quoted_word(self, word) -> Union[str, List[str]]:
         """Expand a uniformly double-quoted Word (quote_type='"').
 
-        Handles ``$@`` splitting and variable/command expansion but
-        suppresses word splitting and globbing.
+        Handles multi-field expansion ("$@", "${a[@]}", slices, transforms)
+        and variable/command expansion but suppresses word splitting and
+        globbing.
         """
-        from ..ast_nodes import ExpansionPart, LiteralPart, VariableExpansion
+        from ..ast_nodes import ExpansionPart, LiteralPart
 
         result_parts: list = []
         for part in word.parts:
@@ -253,33 +288,30 @@ class ExpansionManager:
                     text = self.process_dquote_escapes(text)
                 result_parts.append(text)
             elif isinstance(part, ExpansionPart):
-                exp = part.expansion
-                # Handle "$@" splitting
-                if isinstance(exp, VariableExpansion) and exp.name == '@':
-                    params = list(self.state.positional_params)
-                    if not params:
-                        continue
-                    result = self._expand_at_with_affixes(
-                        word, part, result_parts, in_double_quote=True)
-                    return result
+                fields = self._field_expansion_fields(part)
+                if fields is not None:
+                    return self._expand_at_with_affixes(
+                        word, part, result_parts, in_double_quote=True,
+                        first_fields=fields)
 
-                expanded = self.expand_expansion(exp)
+                expanded = self.expand_expansion(part.expansion)
                 result_parts.append(expanded)
 
         return ''.join(result_parts)
 
     def _expand_at_with_affixes(self, word, at_part, result_parts_before,
-                                in_double_quote: bool):
-        """Distribute positional params across prefix/suffix text.
+                                in_double_quote: bool,
+                                first_fields: Optional[List[str]] = None):
+        """Distribute expansion fields across prefix/suffix text.
 
         Used by both ``_expand_word()`` (composite words) and
-        ``_expand_double_quoted_word()`` to handle ``"$@"`` splitting
-        with surrounding literal text.  Supports multiple ``$@``
-        occurrences in a single word.
+        ``_expand_double_quoted_word()`` to handle field-producing
+        expansions ("$@", "${a[@]}", ...) with surrounding literal text.
+        Supports multiple field expansions in a single word.
 
         Algorithm: walk parts left to right, accumulating text.  On each
-        ``$@``, splice params into the result — the last param becomes
-        the seed for continued accumulation.
+        field expansion, splice the fields into the result — the last
+        field becomes the seed for continued accumulation.
 
         Example with params ``(1 2)``::
 
@@ -287,55 +319,57 @@ class ExpansionManager:
 
         Args:
             word: The Word AST node being expanded.
-            at_part: The first ExpansionPart for ``$@`` in word.parts.
-            result_parts_before: Parts accumulated before the first ``$@``.
+            at_part: The first field-producing ExpansionPart in word.parts.
+            result_parts_before: Parts accumulated before ``at_part``.
             in_double_quote: True when called from the double-quoted path
                 (all suffix literals are treated as double-quoted).
+            first_fields: Pre-computed fields for ``at_part`` (avoids
+                evaluating its expansion twice).
 
         Returns:
-            A single string or a list of strings.
+            A single string, a list of strings, or [] — a word consisting
+            solely of empty field expansions produces ZERO fields (bash:
+            ``"$@"`` with no parameters vanishes).
         """
-        from ..ast_nodes import ExpansionPart, LiteralPart, VariableExpansion
-
-        params = list(self.state.positional_params)
+        from ..ast_nodes import ExpansionPart, LiteralPart
 
         # current_seed: text accumulated so far that becomes the prefix
-        # of the next word.  We start with everything before the first $@.
+        # of the next word.  We start with everything before the first
+        # field expansion. has_content distinguishes "one empty field"
+        # (some literal/scalar text was present) from "zero fields".
         current_seed = ''.join(result_parts_before)
+        has_content = bool(result_parts_before)
         result_words: list = []
         found_first_at = False
+
+        def splice(fields: List[str]):
+            nonlocal current_seed, has_content
+            if not fields:
+                return
+            has_content = True
+            if len(fields) == 1:
+                current_seed += fields[0]
+            else:
+                result_words.append(current_seed + fields[0])
+                result_words.extend(fields[1:-1])
+                current_seed = fields[-1]
 
         for p in word.parts:
             if not found_first_at:
                 if p is at_part:
                     found_first_at = True
-                    # Splice params: emit seed+first, middles, keep last as new seed
-                    if not params:
-                        continue
-                    if len(params) == 1:
-                        current_seed += params[0]
-                    else:
-                        result_words.append(current_seed + params[0])
-                        result_words.extend(params[1:-1])
-                        current_seed = params[-1]
-                # Parts before the first $@ are already in result_parts_before
+                    splice(first_fields if first_fields is not None else [])
+                # Parts before the first field expansion are already in
+                # result_parts_before
                 continue
 
-            # Process parts after the first $@
-            if (isinstance(p, ExpansionPart)
-                    and isinstance(p.expansion, VariableExpansion)
-                    and p.expansion.name == '@'
-                    and (in_double_quote or p.quoted)):
-                # Another $@ occurrence
-                if not params:
+            # Process parts after the first field expansion
+            if isinstance(p, ExpansionPart) and (in_double_quote or p.quoted):
+                fields = self._field_expansion_fields(p)
+                if fields is not None:
+                    splice(fields)
                     continue
-                if len(params) == 1:
-                    current_seed += params[0]
-                else:
-                    result_words.append(current_seed + params[0])
-                    result_words.extend(params[1:-1])
-                    current_seed = params[-1]
-            elif isinstance(p, LiteralPart):
+            if isinstance(p, LiteralPart):
                 t = p.text
                 if in_double_quote or (p.quoted and p.quote_char == '"'):
                     if '\\' in t:
@@ -344,13 +378,18 @@ class ExpansionManager:
                     if '\\' in t:
                         t, _ = self._process_unquoted_escapes(t)
                 current_seed += t
+                has_content = True
             elif isinstance(p, ExpansionPart):
                 current_seed += self.expand_expansion(p.expansion)
+                has_content = True
 
         # Finalize: the current seed becomes the last word
         result_words.append(current_seed)
 
         if len(result_words) == 1:
+            if result_words[0] == '' and not has_content:
+                # Only empty field expansions: zero fields (bash)
+                return []
             return result_words[0]
         return result_words
 
