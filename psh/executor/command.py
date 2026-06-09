@@ -188,7 +188,8 @@ class CommandExecutor:
         except Exception as e:
             # Import these here to avoid circular imports
             from ..builtins import FunctionReturn
-            from ..core import ExpansionError, LoopBreak, LoopContinue
+            from ..core import (ExpansionError, LoopBreak, LoopContinue,
+                                UnboundVariableError)
 
             # Re-raise control flow exceptions
             if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue, SystemExit)):
@@ -198,6 +199,14 @@ class CommandExecutor:
             if isinstance(e, ReadonlyVariableError):
                 print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
                 return 1
+
+            if isinstance(e, UnboundVariableError):
+                # set -u violation: print once and, like bash, abort a
+                # non-interactive shell with status 127.
+                print(f"psh: {e}", file=self.state.stderr)
+                if self.shell.is_script_mode:
+                    sys.exit(127)
+                return 127
 
             if isinstance(e, ExpansionError):
                 # Error message already printed by the expansion code

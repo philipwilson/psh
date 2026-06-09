@@ -67,14 +67,13 @@ class VariableExpander:
             except (ValueError, AttributeError):
                 pass
 
-            # No operator: a plain ${var}. Honor nounset.
+            # No operator: a plain ${var}. Honor nounset. The error already
+            # carries bash's message format; do not re-wrap (a "psh: " prefix
+            # here doubled up with the printing handler's prefix).
             var_name = var_content
             if self.state.options.get('nounset', False):
-                from ..core import OptionHandler, UnboundVariableError
-                try:
-                    OptionHandler.check_unset_variable(self.state, var_name)
-                except UnboundVariableError:
-                    raise UnboundVariableError(f"psh: ${{{var_name}}}: unbound variable")
+                from ..core import OptionHandler
+                OptionHandler.check_unset_variable(self.state, var_name)
         else:
             var_name = var_expr
 
@@ -283,6 +282,9 @@ class VariableExpander:
             index = int(var_name) - 1
             if 0 <= index < len(self.state.positional_params):
                 return self.state.positional_params[index]
+            if self.state.options.get('nounset', False):
+                from ..core import OptionHandler
+                OptionHandler.check_unset_variable(self.state, var_name)
             return ''
 
         # Regular variables. Route through _get_var_or_positional so a nameref
@@ -290,11 +292,10 @@ class VariableExpander:
         result = self._get_var_or_positional(var_name)
 
         if self.state.options.get('nounset', False):
-            from ..core import OptionHandler, UnboundVariableError
-            try:
-                OptionHandler.check_unset_variable(self.state, var_name)
-            except UnboundVariableError:
-                raise UnboundVariableError(f"psh: ${var_name}: unbound variable")
+            # The error carries bash's message format; no "psh: " re-wrap here
+            # (the printing handler adds the prefix exactly once).
+            from ..core import OptionHandler
+            OptionHandler.check_unset_variable(self.state, var_name)
 
         return result
 
