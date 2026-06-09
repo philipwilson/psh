@@ -112,7 +112,6 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # Check errexit mode (set -e)
                 if exit_status != 0 and self.state.options.get('errexit', False):
                     if hasattr(self.shell, 'is_script_mode') and self.shell.is_script_mode:
-                        import sys
                         sys.exit(exit_status)
                     break
             except LoopBreak:
@@ -151,7 +150,6 @@ class ExecutorVisitor(ASTVisitor[int]):
                 if exit_status != 0 and self.state.options.get('errexit', False):
                     # In script mode, exit the process
                     if hasattr(self.shell, 'is_script_mode') and self.shell.is_script_mode:
-                        import sys
                         sys.exit(exit_status)
                     # Otherwise, just stop executing further statements in this list
                     break
