@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.251.0 (2026-06-09) - Large heredocs via temp file (review Tier 1 A3)
+- Heredoc and here-string content used to be written in full into an
+  os.pipe() before any reader existed, deadlocking the shell for bodies
+  larger than the kernel pipe buffer (~64KB; verified hang at 130KB).
+  Content now goes through an anonymous unlinked temp file dup2'd to stdin
+  — the same approach bash uses — shared by both helpers
+  (FileRedirector._stdin_from_content).
+- New tests in tests/integration/redirection/test_large_heredoc.py
+  (8 cases incl. 300KB bodies, content integrity, expansion behaviour).
+
 ## 0.250.0 (2026-06-09) - return works in sourced files (review Tier 1 A2)
 - `return N` inside a sourced script stops executing the file and becomes the
   exit status of `source`/`.`, like bash (previously: "can only return from a

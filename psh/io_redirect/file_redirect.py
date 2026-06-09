@@ -65,28 +65,38 @@ class FileRedirector:
         fd = os.open(target, os.O_RDONLY)
         _dup2_preserve_target(fd, 0)
 
+    def _stdin_from_content(self, content: str):
+        """Point stdin at `content` via an anonymous (unlinked) temp file.
+
+        A pipe would deadlock for content larger than the kernel pipe buffer
+        (~64KB on most systems) because the whole body is written before any
+        reader exists. Bash uses a temporary file for heredocs for the same
+        reason.
+        """
+        import tempfile
+        tmp = tempfile.TemporaryFile()
+        tmp.write(content.encode())
+        tmp.flush()
+        tmp.seek(0)
+        os.dup2(tmp.fileno(), 0)
+        tmp.close()  # fd 0 keeps the underlying file open
+
     def _redirect_heredoc(self, redirect):
-        """Create pipe with heredoc content, dup2 to stdin. Returns content."""
-        r, w = os.pipe()
+        """Point stdin at the heredoc content. Returns the expanded content."""
         content = redirect.heredoc_content or ''
         if content and not getattr(redirect, 'heredoc_quoted', False):
             content = self.shell.expansion_manager.expand_string_variables(content)
-        os.write(w, content.encode())
-        os.close(w)
-        _dup2_preserve_target(r, 0)
+        self._stdin_from_content(content)
         return content
 
     def _redirect_herestring(self, redirect):
-        """Create pipe with here-string content, dup2 to stdin. Returns content."""
-        r, w = os.pipe()
+        """Point stdin at the here-string content. Returns the content."""
         if hasattr(redirect, 'quote_type') and redirect.quote_type == "'":
             expanded = redirect.target
         else:
             expanded = self.shell.expansion_manager.expand_string_variables(redirect.target)
         content = expanded + '\n'
-        os.write(w, content.encode())
-        os.close(w)
-        _dup2_preserve_target(r, 0)
+        self._stdin_from_content(content)
         return content
 
     def _redirect_output_to_file(self, target, redirect, check_noclobber=True):
