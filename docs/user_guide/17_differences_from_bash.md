@@ -670,13 +670,12 @@ fi
 ### Strict Mode Portability
 
 ```bash
-# Bash strict mode:
-set -euo pipefail       # Works in Bash
+# Bash strict mode works identically in PSH (as of v0.253.0):
+set -euo pipefail
 
-# PSH strict mode (use one of these forms):
-set -eu; set -o pipefail     # Separate statements
-set -e -u -o pipefail        # Separate arguments
-set -eu -o pipefail          # Mixed form
+# errexit honours the POSIX exemptions exactly as bash does:
+# if/while/until conditions, non-final && / || members, and ! negation
+# do not trigger an exit; subshells inherit set -e and $?.
 ```
 
 ## 17.7 Migration Guide
@@ -697,9 +696,6 @@ grep -E '@[Kk]\}' script.sh                   # ${m[@]@K} / @k - not supported
 grep -E 'trap .*(DEBUG|ERR|RETURN)' script.sh
 grep -E '!!|![0-9]' script.sh                 # history expansion
 
-# 4. Check for combined -euo pattern
-grep 'set -euo' script.sh
-# Replace with: set -eu -o pipefail
 ```
 
 ### Script Compatibility Checklist

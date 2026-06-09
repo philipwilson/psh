@@ -5,6 +5,7 @@ This module provides the ExecutionContext class that encapsulates execution
 state, replacing scattered instance variables with a structured approach.
 """
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Optional
 
@@ -27,6 +28,22 @@ class ExecutionContext:
     loop_depth: int = 0
     current_function: Optional[str] = None
 
+    # set -e suppression depth. Non-zero while executing syntactic contexts
+    # where POSIX exempts failures from errexit: if/elif/while/until
+    # conditions, non-final pipelines of a && / || list, and !-negated
+    # pipelines. Because nested commands (functions, groups, eval) share
+    # this context, the exemption extends through them, as in bash.
+    errexit_suppress: int = 0
+
+    @contextmanager
+    def errexit_suppressed(self):
+        """Suppress set -e while executing a condition-like context."""
+        self.errexit_suppress += 1
+        try:
+            yield
+        finally:
+            self.errexit_suppress -= 1
+
     def fork_context(self) -> 'ExecutionContext':
         """
         Create a context for a forked child process.
@@ -40,6 +57,7 @@ class ExecutionContext:
             in_forked_child=True,
             loop_depth=self.loop_depth,
             current_function=self.current_function,
+            errexit_suppress=self.errexit_suppress,
         )
 
     def pipeline_context_enter(self) -> 'ExecutionContext':
@@ -49,6 +67,7 @@ class ExecutionContext:
             in_forked_child=self.in_forked_child,
             loop_depth=self.loop_depth,
             current_function=self.current_function,
+            errexit_suppress=self.errexit_suppress,
         )
 
     def in_loop(self) -> bool:

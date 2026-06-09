@@ -109,8 +109,11 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # Update $? after each top-level item
                 self.state.last_exit_code = exit_status
 
-                # Check errexit mode (set -e)
-                if exit_status != 0 and self.state.options.get('errexit', False):
+                # Check errexit mode (set -e). Only a failure the AndOrList
+                # marked eligible triggers it (POSIX exempts condition
+                # contexts, non-final && / || members, and ! negation).
+                if (exit_status != 0 and self.state.options.get('errexit', False)
+                        and self.state.errexit_eligible):
                     if hasattr(self.shell, 'is_script_mode') and self.shell.is_script_mode:
                         sys.exit(exit_status)
                     break
@@ -146,8 +149,11 @@ class ExecutorVisitor(ASTVisitor[int]):
                 self.state.last_exit_code = exit_status
 
                 # Check errexit mode
-                # If errexit is set and command failed, stop executing further statements
-                if exit_status != 0 and self.state.options.get('errexit', False):
+                # If errexit is set and command failed, stop executing further statements.
+                # Only failures marked eligible by visit_AndOrList trigger this
+                # (POSIX exempts conditions, non-final && / || members, ! negation).
+                if (exit_status != 0 and self.state.options.get('errexit', False)
+                        and self.state.errexit_eligible):
                     # In script mode, exit the process
                     if hasattr(self.shell, 'is_script_mode') and self.shell.is_script_mode:
                         sys.exit(exit_status)
@@ -169,22 +175,45 @@ class ExecutorVisitor(ASTVisitor[int]):
         return exit_status
 
     def visit_AndOrList(self, node: AndOrList) -> int:
-        """Execute pipelines with && and || operators."""
+        """Execute pipelines with && and || operators.
+
+        Also decides set -e eligibility per POSIX: a failure only triggers
+        errexit when it comes from the FINAL pipeline of the list, that
+        pipeline is not !-negated, and we are not inside a condition
+        context. Non-final pipelines run with errexit suppressed so groups
+        and functions inside them are exempt too.
+        """
         if not node.pipelines:
             return 0
 
+        last = len(node.pipelines) - 1
+
+        def run_pipeline(idx: int) -> int:
+            pipeline = node.pipelines[idx]
+            exempt = idx != last or getattr(pipeline, 'negated', False)
+            if exempt:
+                with self.context.errexit_suppressed():
+                    status = self.visit(pipeline)
+            else:
+                status = self.visit(pipeline)
+            # Record whether this (possibly failing) status may trigger
+            # set -e; read by the statement-level checks.
+            self.state.errexit_eligible = (
+                not exempt and self.context.errexit_suppress == 0)
+            return status
+
         # Execute first pipeline
-        exit_status = self.visit(node.pipelines[0])
+        exit_status = run_pipeline(0)
         self.state.last_exit_code = exit_status
 
         # Process remaining pipelines based on operators
         for i, op in enumerate(node.operators):
             if op == '&&' and exit_status == 0:
                 # Execute next pipeline only if previous succeeded
-                exit_status = self.visit(node.pipelines[i + 1])
+                exit_status = run_pipeline(i + 1)
             elif op == '||' and exit_status != 0:
                 # Execute next pipeline only if previous failed
-                exit_status = self.visit(node.pipelines[i + 1])
+                exit_status = run_pipeline(i + 1)
             # Otherwise skip this pipeline
 
             self.state.last_exit_code = exit_status

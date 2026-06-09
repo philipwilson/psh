@@ -4,6 +4,35 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.253.0 (2026-06-09) - Context-aware errexit + subshell inheritance + readonly fatality (review Tier 1 C)
+- set -e now honours the POSIX exemptions exactly as bash: failures in
+  if/elif/while/until conditions, in non-final members of && / || lists,
+  and under ! negation do not exit the shell; everything else does
+  (plain failures, functions, final && members, last pipeline element,
+  subshells). Implemented as an errexit_suppress counter on
+  ExecutionContext (conditions, non-final/negated pipelines) plus a
+  per-AndOrList eligibility flag consumed by the statement-level checks
+  and the three source_processor exit sites. Because nested execution
+  shares the context (and forked subshells seed it), the exemption
+  extends through functions, groups, eval, and subshells, as in bash.
+- Subshells inherit the parent's shell options (set -e, pipefail, ...) and
+  $?: `set -e; (false; echo no)` aborts inside the subshell and
+  `false; (echo $?)` prints 1.
+- Assignment exit status matches bash: a pure assignment reports 0 unless a
+  command substitution ran while expanding its value (then that status) —
+  previously it re-reported the previous command's status, which broke
+  `v=$(false) || v=default` under set -e.
+- Assignment to a readonly variable aborts a non-interactive shell with
+  status 1 (command-prefixed `RO=v cmd` fails with rc 1 but continues,
+  like bash).
+- New tests: tests/conformance/posix/test_errexit_conformance.py (21 cases
+  — the suite previously had zero errexit conformance tests despite the
+  user guide's "Full support" claim) and
+  tests/integration/shell_options/test_errexit_script_mode.py (8 cases,
+  incl. an end-to-end `set -euo pipefail` strict-mode script). The
+  differences doc's strict-mode workaround section was replaced with the
+  bash-identical guidance.
+
 ## 0.252.0 (2026-06-09) - External redirections applied once (review Tier 1 B)
 - External-command redirections were applied TWICE — by the parent
   (with_redirections) and again by the forked child

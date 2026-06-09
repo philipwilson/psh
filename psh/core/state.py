@@ -124,6 +124,18 @@ class ShellState:
         # addition to function_stack.
         self.source_depth = 0
 
+        # Whether the most recent command status may trigger set -e.
+        # Maintained by ExecutorVisitor.visit_AndOrList: False for failures
+        # POSIX exempts from errexit (condition contexts, non-final members
+        # of && / || lists, !-negated pipelines).
+        self.errexit_eligible = True
+
+        # Exit status of the most recent command substitution, or None.
+        # CommandExecutor clears it before expanding a pure assignment's
+        # value and uses it as the assignment's exit status (bash: a pure
+        # assignment reports 0 unless a command substitution ran).
+        self.last_cmdsub_status = None
+
         # Process state. True only inside a forked child (pipeline member,
         # subshell, command-substitution child, etc.); leaf builtins consult it
         # to decide between fd-level writes (os.write) and shell.stdout. A real

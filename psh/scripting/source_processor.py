@@ -41,7 +41,9 @@ class SourceProcessor(ScriptComponent):
                         command_buffer, input_source, command_start_line, add_to_history
                     )
                     # In non-interactive mode with errexit, exit on error
-                    if exit_code != 0 and not input_source.is_interactive() and self.state.options.get('errexit', False):
+                    if (exit_code != 0 and not input_source.is_interactive()
+                            and self.state.options.get('errexit', False)
+                            and self.state.errexit_eligible):
                         if self.state.options.get('debug-exec', False):
                             print(f"DEBUG: Exiting due to errexit with code {exit_code}", file=sys.stderr)
                         return exit_code
@@ -121,7 +123,9 @@ class SourceProcessor(ScriptComponent):
                     command_buffer = ""
                     command_start_line = 0
                     # In non-interactive mode with errexit, exit on error
-                    if exit_code != 0 and not input_source.is_interactive() and self.state.options.get('errexit', False):
+                    if (exit_code != 0 and not input_source.is_interactive()
+                            and self.state.options.get('errexit', False)
+                            and self.state.errexit_eligible):
                         if self.state.options.get('debug-exec', False):
                             print(f"DEBUG: Exiting due to errexit with code {exit_code}", file=sys.stderr)
                         return exit_code
@@ -141,7 +145,9 @@ class SourceProcessor(ScriptComponent):
                         command_buffer = ""
                         command_start_line = 0
                         # In non-interactive mode with errexit, exit on error
-                        if exit_code != 0 and not input_source.is_interactive() and self.state.options.get('errexit', False):
+                        if (exit_code != 0 and not input_source.is_interactive()
+                            and self.state.options.get('errexit', False)
+                            and self.state.errexit_eligible):
                             if self.state.options.get('debug-exec', False):
                                 print(f"DEBUG: Exiting due to errexit with code {exit_code}", file=sys.stderr)
                             return exit_code
