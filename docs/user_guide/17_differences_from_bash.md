@@ -29,15 +29,11 @@ set -o ignoreeof    # Prevent Ctrl-D from exiting the shell
 set -o monitor      # Enable job control
 set -o posix        # Enable POSIX compliance mode
 
-# Short-form combinations work
+# Short-form combinations work, including a trailing 'o' that takes
+# the next argument as a long option name (as of v0.242.0):
 set -eu             # Enable errexit and nounset
 set -eux            # Enable errexit, nounset, and xtrace
-
-# Note: "set -euo pipefail" does NOT work as a single argument.
-# The combined form treats 'o' as a short flag. Use instead:
-set -eu; set -o pipefail
-# Or:
-set -e -u -o pipefail
+set -euo pipefail   # Strict mode, exactly like bash
 
 # View all options
 set -o              # Show all option settings
@@ -374,22 +370,6 @@ echo ${!PATH*}          # Lists ALL variables, not just PATH-prefixed ones
 ## 17.3 Behavioral Differences
 
 Some features work differently in PSH compared to Bash.
-
-### Combined Short Option Parsing
-
-```bash
-# In Bash: set -euo pipefail works
-# In PSH: -euo is parsed as three short flags (-e, -u, -o)
-# and 'o' is not a valid short flag
-
-# This fails in PSH:
-set -euo pipefail       # Error: invalid option -o
-
-# These work in PSH:
-set -eu; set -o pipefail    # Separate statements
-set -e -u -o pipefail       # Separate arguments
-set -eu -o pipefail         # Mixed form
-```
 
 ### Quote Handling
 

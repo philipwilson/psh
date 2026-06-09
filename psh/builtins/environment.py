@@ -254,9 +254,6 @@ class SetBuiltin(Builtin):
             for var, value in sorted(shell.state.variables.items()):
                 print(f"{var}={value}",
                       file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
-            # Also show set options
-            print(f"edit_mode={shell.edit_mode}",
-                  file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
             return 0
 
         # Map short options to long names
@@ -274,101 +271,91 @@ class SetBuiltin(Builtin):
             'x': 'xtrace',
         }
 
-        # Process arguments
+        # Process arguments. Option arguments do NOT stop processing — bash
+        # accepts e.g. `set -o errexit -o pipefail -x`; the first non-option
+        # argument starts the positional parameters.
         i = 1
         while i < len(args):
             arg = args[i]
 
-            # Handle short options like -eux
-            if arg.startswith('-') and not arg.startswith('-o') and len(arg) > 1 and not arg == '--':
-                for opt_char in arg[1:]:
-                    if opt_char in short_to_long:
-                        shell.state.options[short_to_long[opt_char]] = True
+            # -- separates options from positional parameters
+            if arg == '--':
+                shell.positional_params = args[i + 1:]
+                return 0
+
+            # Bare -o / +o without a following name: display options
+            if arg in ('-o', '+o') and i + 1 == len(args):
+                if arg == '-o':
+                    # Show current options with bash-compatible formatting
+                    self._show_all_options(shell)
+                else:
+                    # Show current options as set commands
+                    stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
+                    for opt_name, opt_value in sorted(shell.state.options.items()):
+                        print(f"set {'-o' if opt_value else '+o'} {opt_name}", file=stdout)
+                return 0
+
+            # Short option clusters like -eux / +eux. A trailing 'o' consumes
+            # the next argument as a long option name, so `set -euo pipefail`
+            # works like bash.
+            if arg[0] in '-+' and len(arg) > 1:
+                enable = arg.startswith('-')
+                sign = arg[0]
+                cluster = arg[1:]
+                for pos, opt_char in enumerate(cluster):
+                    if opt_char == 'o' and pos == len(cluster) - 1:
+                        if i + 1 < len(args):
+                            i += 1
+                            rc = self._set_long_option(shell, args[i], enable)
+                            if rc != 0:
+                                return rc
+                        elif enable:
+                            self._show_all_options(shell)
+                    elif opt_char in short_to_long:
+                        shell.state.options[short_to_long[opt_char]] = enable
                     else:
-                        self.error(f"invalid option: -{opt_char}", shell)
-                        return 1
+                        self.error(f"invalid option: {sign}{opt_char}", shell)
+                        return 2
                 i += 1
                 continue
 
-            # Handle +eux to unset options
-            elif arg.startswith('+') and not arg.startswith('+o') and len(arg) > 1:
-                for opt_char in arg[1:]:
-                    if opt_char in short_to_long:
-                        shell.state.options[short_to_long[opt_char]] = False
-                    else:
-                        self.error(f"invalid option: +{opt_char}", shell)
-                        return 1
-                i += 1
-                continue
-
-            # Handle -o option with argument
-            elif arg == '-o' and i + 1 < len(args):
-                option = args[i + 1].lower().replace('_', '-')  # Allow debug_ast or debug-ast
-
-                # Editor modes
-                if option in ('vi', 'emacs'):
-                    shell.edit_mode = option
-                    # Set the corresponding option
-                    shell.state.options['vi'] = (option == 'vi')
-                    shell.state.options['emacs'] = (option == 'emacs')
-                    print(f"Edit mode set to {option}",
-                          file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
-                    return 0
-                # Debug options and new shell options
-                elif option in shell.state.options:
-                    shell.state.options[option] = True
-                    # Special handling for debug-scopes
-                    if option == 'debug-scopes':
-                        shell.state.scope_manager.enable_debug(True)
-                    return 0
-                else:
-                    self.error(f"invalid option: {option}", shell)
-                    valid_opts = ['vi', 'emacs'] + list(sorted(shell.state.options.keys()))
-                    print(f"Valid options: {', '.join(valid_opts)}",
-                          file=shell.stderr if hasattr(shell, 'stderr') else sys.stderr)
-                    return 1
-
-            # Handle -o without argument (show options)
-            elif arg == '-o' and i + 1 == len(args):
-                # Show current options with bash-compatible formatting
-                self._show_all_options(shell)
-                return 0
-
-            # Handle +o without argument (show as set commands)
-            elif arg == '+o' and i + 1 == len(args):
-                # Show current options as set commands
-                stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
-                print(f"set {'+o' if shell.edit_mode == 'emacs' else '-o'} vi", file=stdout)
-                # Show all shell options as set commands
-                for opt_name, opt_value in sorted(shell.state.options.items()):
-                    print(f"set {'-o' if opt_value else '+o'} {opt_name}", file=stdout)
-                return 0
-
-            # Handle +o with argument
-            elif arg == '+o' and i + 1 < len(args):
-                # Unset option
-                option = args[i + 1].lower().replace('_', '-')
-                if option == 'vi':
-                    shell.edit_mode = 'emacs'
-                    print("Edit mode set to emacs",
-                          file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
-                elif option in shell.state.options:
-                    shell.state.options[option] = False
-                    # Special handling for debug-scopes
-                    if option == 'debug-scopes':
-                        shell.state.scope_manager.enable_debug(False)
-                return 0
-
-            # Otherwise, treat as positional parameters
-            else:
-                # Handle -- to separate options from arguments
-                if arg == '--':
-                    shell.positional_params = args[i + 1:]
-                else:
-                    shell.positional_params = args[i:]
-                return 0
+            # First non-option argument: the rest are positional parameters
+            shell.positional_params = args[i:]
+            return 0
 
         return 0
+
+    def _set_long_option(self, shell: 'Shell', name: str, enable: bool) -> int:
+        """Set or unset one -o/+o long option. Returns 0 or an error status."""
+        option = name.lower().replace('_', '-')  # Allow debug_ast or debug-ast
+
+        # Editor modes (silent, like bash)
+        if option in ('vi', 'emacs'):
+            if enable:
+                shell.edit_mode = option
+                shell.state.options['vi'] = (option == 'vi')
+                shell.state.options['emacs'] = (option == 'emacs')
+            elif option == 'vi':
+                shell.edit_mode = 'emacs'
+                shell.state.options['vi'] = False
+            else:
+                shell.state.options['emacs'] = False
+            return 0
+
+        # Debug options and shell options
+        if option in shell.state.options:
+            shell.state.options[option] = enable
+            # Special handling for debug-scopes
+            if option == 'debug-scopes':
+                shell.state.scope_manager.enable_debug(enable)
+            return 0
+
+        self.error(f"{name}: invalid option name", shell)
+        if enable:
+            valid_opts = ['vi', 'emacs'] + list(sorted(shell.state.options.keys()))
+            print(f"Valid options: {', '.join(valid_opts)}",
+                  file=shell.stderr if hasattr(shell, 'stderr') else sys.stderr)
+        return 2
 
     @property
     def help(self) -> str:

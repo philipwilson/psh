@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.242.0 (2026-06-09) - set builtin option parsing (review Tier 0 #5)
+- `set` no longer returns after the first `-o`/`+o`: `set -o errexit -o
+  pipefail` and mixed forms like `set -o pipefail -x foo bar` now apply every
+  option before collecting positional parameters.
+- `set -euo pipefail` works: a trailing `o` in a short-option cluster consumes
+  the next argument as a long option name, like bash. The corresponding
+  "Combined Short Option Parsing" difference was removed from
+  docs/user_guide/17_differences_from_bash.md and is backed by new
+  conformance tests.
+- `set -o vi`/`set -o emacs` are silent (bash prints nothing), and bare `set`
+  no longer emits a non-bash `edit_mode=...` line.
+- Invalid options ("set -q", "set -o badname") now exit 2 with bash-style
+  messages; `+o badname` errors instead of silently succeeding.
+- New tests: tests/unit/builtins/test_set_builtin.py (14 cases) and 3
+  conformance tests in tests/conformance/bash/test_bash_compatibility.py.
+
 ## 0.241.0 (2026-06-09) - UNSET tombstones hidden from variable listings (review Tier 0 #4)
 - `get_all_variables()`/`all_variables_with_attributes()` no longer include
   UNSET tombstones: after `f(){ unset HOME; ...}` the variable disappeared
