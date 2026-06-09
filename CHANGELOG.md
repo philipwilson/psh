@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.250.0 (2026-06-09) - return works in sourced files (review Tier 1 A2)
+- `return N` inside a sourced script stops executing the file and becomes the
+  exit status of `source`/`.`, like bash (previously: "can only return from a
+  function" error and the rest of the file kept executing). Implemented with
+  a source-nesting counter on ShellState; nested sourcing returns one level.
+- `return` inside a function in a sourced file still exits the function only.
+- Exit-code fixes pinned to bash: top-level `return` is rc 2 (was 1), and
+  `return abc` prints the numeric-argument error but still returns from the
+  function/file with rc 2 (was: continued executing the function body).
+- New tests in tests/unit/builtins/test_source_return.py (8 cases).
+
 ## 0.249.0 (2026-06-09) - exec failure exits non-interactive shell (review Tier 1 A1)
 - `exec missing_command` now exits a non-interactive shell with status 127
   (126 for found-but-not-executable), per POSIX and bash, instead of

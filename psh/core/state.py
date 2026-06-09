@@ -119,6 +119,11 @@ class ShellState:
         # Function call stack
         self.function_stack = []
 
+        # Depth of nested `source`/`.` execution. `return` is legal inside a
+        # sourced script (it stops the file), so ReturnBuiltin checks this in
+        # addition to function_stack.
+        self.source_depth = 0
+
         # Process state. True only inside a forked child (pipeline member,
         # subshell, command-substitution child, etc.); leaf builtins consult it
         # to decide between fd-level writes (os.write) and shell.stdout. A real
