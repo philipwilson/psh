@@ -18,6 +18,7 @@ carry specific xfails — they are the target of the terminal-control work
 """
 
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -211,6 +212,125 @@ class TestPtyWrappedLines:
         narrow.send('\x7f' * 4)             # erase 'back'
         narrow.send('m_$((5+6))\r')
         narrow.expect('m_11')
+
+
+class TestPtyViMode:
+    """Arrow keys in vi editing mode (v0.283.0).
+
+    Escape-sequence parsing used to live only in the emacs key path, so
+    in vi insert mode an Up-arrow decomposed into ESC (enter normal
+    mode) + '[' (unbound) + 'A' (append-at-end), corrupting the edit
+    state. One centralized sequence reader now serves every mode; like
+    bash vi-mode, arrows work in both insert and normal mode.
+    """
+
+    @pytest.fixture
+    def vi(self, psh):
+        psh.send('set -o vi\r')
+        psh.expect(PROMPT)
+        return psh
+
+    def test_vi_insert_up_arrow_recalls_history(self, vi):
+        vi.send('echo vi_$((3+3))\r')
+        vi.expect('vi_6')
+        vi.expect(PROMPT)
+        vi.send('\x1b[A')         # up arrow, still in insert mode
+        vi.send('\r')
+        vi.expect('vi_6')
+
+    def test_vi_insert_up_then_down_restores_empty_line(self, vi):
+        vi.send('echo updown_$((2+5))\r')
+        vi.expect('updown_7')
+        vi.expect(PROMPT)
+        vi.send('\x1b[A')         # recall
+        vi.send('\x1b[B')         # back down to the (empty) current line
+        vi.send('echo fresh_$((1+1))\r')
+        vi.expect('fresh_2')
+        # the recalled command must NOT have re-run
+        assert 'updown_7' not in vi.before
+
+    def test_vi_insert_left_arrow_edits_line(self, vi):
+        vi.send('echo ac')
+        vi.send('\x1b[D')         # left over 'c'
+        time.sleep(0.2)           # keep ESC[D and 'b' as separate events
+        vi.send('b')              # insert between a and c (insert mode kept)
+        vi.send('\r')
+        vi.expect('abc')
+
+    def test_vi_normal_mode_up_arrow_recalls_history(self, vi):
+        vi.send('echo norm_$((4+4))\r')
+        vi.expect('norm_8')
+        vi.expect(PROMPT)
+        vi.send('\x1b')           # bare ESC → normal mode
+        time.sleep(0.2)           # must not be glued to the arrow sequence
+        vi.send('\x1b[A')         # up arrow recalls in normal mode too
+        vi.send('\r')
+        vi.expect('norm_8')
+
+    def test_vi_normal_mode_left_right_arrows_move_cursor(self, vi):
+        vi.send('echo xz')
+        vi.send('\x1b')           # normal mode (cursor moves onto 'z')
+        time.sleep(0.2)
+        vi.send('\x1b[D')         # left onto 'x'
+        time.sleep(0.2)
+        vi.send('i')              # insert before 'x'
+        vi.send('w')
+        vi.send('\r')
+        vi.expect('wxz')
+
+
+class TestPtyHistory:
+    """History recording (v0.283.0): ONE writer (the source processor),
+    multi-line commands stored as a single joined entry like bash cmdhist.
+    """
+
+    def test_multiline_command_recorded_joined_once(self, psh):
+        psh.send('echo a_$((1+0))\r')
+        psh.expect('a_1')
+        psh.expect(PROMPT)
+        psh.send('for i in 9; do\r')
+        psh.expect('> ')
+        psh.send('echo loop_$i\r')
+        psh.expect('> ')
+        psh.send('done\r')
+        psh.expect('loop_9')
+        psh.expect(PROMPT)
+        psh.send('history 5\r')
+        psh.expect(PROMPT)
+        # history output lines look like "    2  cmd"
+        entries = re.findall(r'\d+  (.+?)\r', psh.before)
+        # joined one-line form, exactly once (bash-pinned)
+        joined = 'for i in 9; do echo loop_$i; done'
+        assert entries.count(joined) == 1, entries
+        # the individual physical lines must NOT be separate entries
+        assert 'done' not in entries, entries
+        assert 'echo loop_$i' not in entries, entries
+        # and the single-line command appears exactly once (no double write)
+        assert entries.count('echo a_$((1+0))') == 1, entries
+
+    def test_multiline_command_up_arrow_recalls_joined(self, psh):
+        psh.send('for i in 7; do\r')
+        psh.expect('> ')
+        psh.send('echo m_$i\r')
+        psh.expect('> ')
+        psh.send('done\r')
+        psh.expect('m_7')
+        psh.expect(PROMPT)
+        psh.send('\x1b[A')        # one entry: the whole joined command
+        psh.send('\r')
+        psh.expect('m_7')         # re-runs fully (old code recalled 'done')
+
+    def test_quoted_multiline_string_preserves_newline(self, psh):
+        # bash keeps newlines that fall inside quotes verbatim in history
+        psh.send('echo "one\r')
+        psh.expect('> ')
+        psh.send('two_$((1+1))"\r')
+        psh.expect('two_2')
+        psh.expect(PROMPT)
+        psh.send('history 2\r')
+        psh.expect(PROMPT)
+        # stored as ONE entry with the embedded newline intact, not ';'-joined
+        assert 'echo "one\r\ntwo_$((1+1))"' in psh.before
 
 
 class TestPtyJobControl:

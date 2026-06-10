@@ -233,6 +233,16 @@ class SourceProcessor(ScriptComponent):
                     return 1
                 command_string = expanded_command
 
+            # Record in history (interactive use). This is the ONE history
+            # writer: it sees the complete logical command, so multi-line
+            # constructs land as a single joined entry (bash cmdhist).
+            # Done before parsing so that, like bash, commands with syntax
+            # errors are still recallable for editing.
+            if add_to_history and command_string.strip():
+                from ..history_expansion import contains_history_reference
+                if not contains_history_reference(command_string):
+                    self.shell.add_history(command_string.strip())
+
             # Note: Alias expansion happens during execution for proper precedence
 
             # Check if command contains heredocs and tokenize accordingly
@@ -285,13 +295,6 @@ class SourceProcessor(ScriptComponent):
             if self.state.options.get('noexec', False):
                 # Successfully parsed, so syntax is valid
                 return 0
-
-            # Add to history if requested (for interactive or testing)
-            # Don't add history expansion commands to history
-            if add_to_history and command_string.strip():
-                from ..history_expansion import contains_history_reference
-                if not contains_history_reference(command_string):
-                    self.shell.add_history(command_string.strip())
 
             # Increment command number for successful parse
             self.state.command_number += 1
