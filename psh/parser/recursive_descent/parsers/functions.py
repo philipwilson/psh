@@ -61,7 +61,11 @@ class FunctionParser:
         self.parser.skip_newlines()
         body = self.parse_compound_command()
 
-        return FunctionDef(name, body)
+        # Redirections on the definition (f() { ...; } > file) belong to
+        # the function and are applied at each call (bash).
+        redirects = self.parser.redirections.parse_redirects()
+
+        return FunctionDef(name, body, redirects=redirects)
 
     def parse_compound_command(self) -> CommandList:
         """Parse a compound command { ... }"""
@@ -75,10 +79,12 @@ class FunctionParser:
             self.parser.expect(TokenType.RBRACE)
             return statements
         elif self.parser.match(TokenType.LPAREN):
-            # Subshell group
+            # Subshell body: keep the SubshellGroup node so each call forks
+            # (f() (cd /; ...) must not change the caller's state — bash).
             subshell = self.parser.commands.parse_subshell_group()
-            # Convert subshell to command list for function body
-            return subshell.statements
+            cmd_list = CommandList()
+            cmd_list.statements.append(subshell)
+            return cmd_list
         elif self.parser.match(TokenType.IF, TokenType.WHILE, TokenType.UNTIL, TokenType.FOR, TokenType.CASE,
                               TokenType.SELECT, TokenType.DOUBLE_LPAREN, TokenType.DOUBLE_LBRACKET):
             # Control structure

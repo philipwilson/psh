@@ -304,14 +304,7 @@ class Parser(ContextBaseParser):
                 and_or_list.pipelines.append(pipeline)
 
                 # Parse the rest of the and_or_list
-                while self.match(TokenType.AND_AND, TokenType.OR_OR):
-                    operator = self.advance()
-                    and_or_list.operators.append(operator.value)
-                    self.skip_newlines()
-                    pipeline = self.commands.parse_pipeline()
-                    and_or_list.pipelines.append(pipeline)
-
-                return and_or_list
+                return self.statements.parse_and_or_tail(and_or_list)
             else:
                 return control_struct
         else:

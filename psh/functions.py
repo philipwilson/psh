@@ -8,10 +8,14 @@ from .ast_nodes import CommandList
 
 class Function:
     """Represents a shell function definition."""
-    def __init__(self, name: str, body: CommandList, readonly: bool = False):
+    def __init__(self, name: str, body: CommandList, readonly: bool = False,
+                 redirects: Optional[List] = None):
         self.name = name
         self.body = body
         self.readonly = readonly
+        # Redirections from the definition (f() { ...; } > file),
+        # applied at each call (bash).
+        self.redirects = redirects or []
         self.source_location = None  # Could add file:line info later
 
 
@@ -30,7 +34,8 @@ class FunctionManager:
     def __init__(self):
         self.functions: Dict[str, Function] = {}
 
-    def define_function(self, name: str, body: CommandList) -> None:
+    def define_function(self, name: str, body: CommandList,
+                        redirects: Optional[List] = None) -> None:
         """Define or redefine a function."""
         if self._is_reserved_word(name):
             raise ValueError(f"Cannot use reserved word '{name}' as function name")
@@ -45,7 +50,7 @@ class FunctionManager:
 
         # Preserve readonly status if redefining
         readonly = existing.readonly if existing else False
-        self.functions[name] = Function(name, body, readonly)
+        self.functions[name] = Function(name, body, readonly, redirects)
 
     def get_function(self, name: str) -> Optional[Function]:
         """Get a function by name."""

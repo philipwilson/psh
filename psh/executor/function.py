@@ -43,7 +43,8 @@ class FunctionOperationExecutor:
         Returns:
             Exit status code (0 for success)
         """
-        self.function_manager.define_function(node.name, node.body)
+        self.function_manager.define_function(node.name, node.body,
+                                              redirects=node.redirects)
         return 0
 
     def execute_function_call(self, name: str, args: List[str],
@@ -98,8 +99,13 @@ class FunctionOperationExecutor:
         self.shell.state.function_stack.append(name)
 
         try:
-            # Execute function body
-            exit_code = visitor.visit(func_body)
+            # Execute function body, applying any definition-attached
+            # redirections (f() { ...; } > file) at each call (bash).
+            if func.redirects:
+                with self.shell.io_manager.with_redirections(func.redirects):
+                    exit_code = visitor.visit(func_body)
+            else:
+                exit_code = visitor.visit(func_body)
             return exit_code
         except FunctionReturn as fr:
             # Handle return statement

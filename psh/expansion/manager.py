@@ -578,6 +578,27 @@ class ExpansionManager:
         ifs = self.state.get_variable('IFS', ' \t\n')
         return self.word_splitter.split(text, ifs)
 
+    def expand_word_as_pattern(self, word) -> str:
+        """Expand a Word into a glob-pattern string (case patterns).
+
+        Quoted text and quoted-expansion results are escaped so they match
+        literally; unquoted text and unquoted-expansion results keep their
+        glob power — the same quoting rule as ${x#pat} operands.
+        """
+        from ..ast_nodes import ExpansionPart, LiteralPart
+        ve = self.variable_expander
+        out = []
+        for part in word.parts:
+            if isinstance(part, LiteralPart):
+                if part.quoted:
+                    out.append(ve._glob_escape(part.text))
+                else:
+                    out.append(part.text)
+            elif isinstance(part, ExpansionPart):
+                expanded = self.expand_expansion(part.expansion)
+                out.append(ve._glob_escape(expanded) if part.quoted else expanded)
+        return ''.join(out)
+
     def _split_part_fields(self, parts: List[str], splittable_idx: set) -> List[str]:
         """Field-split a composite word part-by-part (POSIX).
 
