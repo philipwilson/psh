@@ -616,11 +616,11 @@ class ReadBuiltin(Builtin):
 
         old_settings = termios.tcgetattr(fd)
         try:
-            tty.setraw(fd)
+            tty.setraw(fd, termios.TCSANOW)
             if not echo:
                 new_settings = termios.tcgetattr(fd)
                 new_settings[3] &= ~termios.ECHO
-                termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
+                termios.tcsetattr(fd, termios.TCSANOW, new_settings)
             yield
         finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            termios.tcsetattr(fd, termios.TCSANOW, old_settings)

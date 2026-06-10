@@ -76,8 +76,7 @@ class PipelineExecutor:
         self.state = shell.state
         self.job_manager = shell.job_manager
         # Use centralized child signal reset (H3)
-        self.launcher = ProcessLauncher(shell.state, shell.job_manager, shell.io_manager,
-                                        shell.interactive_manager.signal_manager)
+        self.launcher = shell.process_launcher
 
     def execute(self, node: 'Pipeline', context: 'ExecutionContext',
                 visitor: 'ASTVisitor[int]') -> int:
@@ -139,20 +138,11 @@ class PipelineExecutor:
         # Create new context for pipeline execution
         pipeline_context = context.pipeline_context_enter()
 
-        # Save original terminal process group for restoration
-        # Skip terminal control when running under pytest to avoid SIGTTOU issues
-        is_pytest = 'PYTEST_CURRENT_TEST' in os.environ or 'pytest' in sys.modules
-        if is_pytest:
-            original_pgid = None
-        else:
-            try:
-                original_pgid = os.tcgetpgrp(0)
-                if self.state.options.get('debug-exec'):
-                    print(f"DEBUG Pipeline: Original terminal PGID: {original_pgid}", file=sys.stderr)
-            except OSError as e:
-                if self.state.options.get('debug-exec'):
-                    print(f"DEBUG Pipeline: Cannot get original PGID: {e}", file=sys.stderr)
-                original_pgid = None
+        # Manage terminal control only when this shell actually owns the
+        # terminal (real capability check — no test-runner sniffing).
+        original_pgid = self.job_manager.terminal_pgid_if_owned()
+        if self.state.options.get('debug-exec'):
+            print(f"DEBUG Pipeline: Original terminal PGID: {original_pgid}", file=sys.stderr)
 
         # Create synchronization pipe for process group setup
         # This replaces the time.sleep() polling loop with atomic synchronization

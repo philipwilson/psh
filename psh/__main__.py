@@ -149,6 +149,12 @@ def main():
                   force_interactive=force_interactive
                   )
 
+    # This process IS psh: install process-global signal handlers (trap
+    # checking, SIGCHLD bookkeeping). In-process embedders/tests construct
+    # Shell directly and never get handlers installed; the interactive loop
+    # additionally re-runs setup and claims the foreground.
+    shell.interactive_manager.signal_manager.setup_signal_handlers()
+
     # Apply --parser selection
     if parser_type is not None:
         from .builtins import PARSERS

@@ -159,8 +159,7 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
                                      redirects: Optional[List['Redirect']] = None) -> int:
         """Execute a builtin command in background by forking a subshell."""
         # Create process launcher with centralized child signal reset (H3)
-        launcher = ProcessLauncher(shell.state, shell.job_manager, shell.io_manager,
-                                   shell.interactive_manager.signal_manager)
+        launcher = shell.process_launcher
 
         # Create execution function
         def execute_fn():
@@ -237,8 +236,7 @@ class FunctionExecutionStrategy(ExecutionStrategy):
                                         redirects: Optional[List['Redirect']] = None,
                                         visitor=None) -> int:
         """Execute a shell function in the background (forked subshell, bash)."""
-        launcher = ProcessLauncher(shell.state, shell.job_manager, shell.io_manager,
-                                   shell.interactive_manager.signal_manager)
+        launcher = shell.process_launcher
 
         def execute_fn():
             if redirects:
@@ -392,19 +390,15 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             from ..interactive.title import command_title, set_terminal_title
             set_terminal_title(command_title(cmd_name, shell))
 
-        # Save current terminal foreground process group
-        # Skip terminal control when running under pytest to avoid SIGTTOU issues
+        # Manage terminal control only for foreground commands when this
+        # shell actually owns the terminal (real capability check — no
+        # test-runner sniffing).
         original_pgid = None
-        is_pytest = 'PYTEST_CURRENT_TEST' in os.environ or 'pytest' in sys.modules
-        if not background and not is_pytest:
-            try:
-                original_pgid = os.tcgetpgrp(0)
-            except OSError:
-                pass
+        if not background:
+            original_pgid = shell.job_manager.terminal_pgid_if_owned()
 
         # Create process launcher with centralized child signal reset (H3)
-        launcher = ProcessLauncher(shell.state, shell.job_manager, shell.io_manager,
-                                   shell.interactive_manager.signal_manager)
+        launcher = shell.process_launcher
 
         # Create execution function
         def execute_fn():
