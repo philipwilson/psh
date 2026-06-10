@@ -30,6 +30,9 @@ class ModularLexer:
             config: Optional lexer configuration
         """
         self.input = input_string
+        # Lazy per-position "inside NAME[..." map (see
+        # _build_array_assignment_map) — built once, O(n).
+        self._array_assignment_map = None
         self.config = config or LexerConfig()
         self.tokens: List[Token] = []
 
@@ -353,68 +356,73 @@ class ModularLexer:
 
         This is used to prevent quote/expansion parsing from breaking up
         array assignments like arr["key"]=value or arr['key']=value.
-        """
-        # Look backward to see if we're in a pattern like NAME[...
-        # We need to find an unmatched opening bracket preceded by a valid identifier
 
+        The answer for every position is precomputed in ONE forward O(n)
+        pass over the input (lazily, on first use). The old implementation
+        scanned BACKWARD from each query position to the previous command
+        separator, which was quadratic on long commands — a single line of
+        N quoted words lexed in O(N^2).
+        """
         if self.position == 0:
             return False
+        if self._array_assignment_map is None:
+            self._array_assignment_map = self._build_array_assignment_map()
+        return bool(self._array_assignment_map[self.position])
 
-        # Scan backward from current position
-        pos = self.position - 1
-        bracket_count = 0
-        in_single_quote = False
-        in_double_quote = False
+    def _build_array_assignment_map(self) -> bytearray:
+        """map[i] == 1 iff position i is inside an unmatched ``NAME[``.
 
-        while pos >= 0:
-            char = self.input[pos]
+        Forward scan tracking quote state and a stack of open brackets;
+        each ``[`` records whether it directly follows a valid identifier
+        at a word boundary (the array-assignment shape). A position is
+        "inside" when the nearest unmatched ``[`` has that shape —
+        mirroring what the old backward scan computed.
+        """
+        from .unicode_support import is_identifier_char, is_identifier_start
 
-            # Track quotes (going backward, so logic is reversed)
-            if char == '"' and not in_single_quote:
-                in_double_quote = not in_double_quote
-            elif char == "'" and not in_double_quote:
-                in_single_quote = not in_single_quote
+        text = self.input
+        n = len(text)
+        result = bytearray(n)
+        posix_mode = self.config.posix_mode if self.config else False
 
-            # Track brackets (only outside quotes)
-            if not in_single_quote and not in_double_quote:
-                if char == ']':
-                    bracket_count += 1
-                elif char == '[':
-                    bracket_count -= 1
-                    if bracket_count < 0:
-                        # Found unmatched opening bracket
-                        # Check if it's IMMEDIATELY preceded by a valid identifier (no space)
-                        # Array assignments look like: arr[index] not arr [index]
-                        if pos > 0 and self.input[pos - 1] not in ' \t\n':
-                            # Character immediately before [
-                            from .unicode_support import is_identifier_char, is_identifier_start
-                            posix_mode = self.config.posix_mode if self.config else False
+        def is_array_open(i: int) -> bool:
+            # `[` must directly follow an identifier that starts at a word
+            # boundary: arr[index], not arr [index] or +x[.
+            if i == 0 or text[i - 1] in ' \t\n':
+                return False
+            if not is_identifier_char(text[i - 1], posix_mode):
+                return False
+            id_start = i - 1
+            while id_start > 0 and is_identifier_char(text[id_start - 1], posix_mode):
+                id_start -= 1
+            if not is_identifier_start(text[id_start], posix_mode):
+                return False
+            return id_start == 0 or text[id_start - 1] in ' \t\n;|&(){}'
 
-                            # Must be an identifier character
-                            if is_identifier_char(self.input[pos - 1], posix_mode):
-                                # Find the start of the identifier
-                                id_start = pos - 1
-                                while id_start > 0 and is_identifier_char(self.input[id_start - 1], posix_mode):
-                                    id_start -= 1
+        in_single = False
+        in_double = False
+        open_flags = []  # one entry per currently-unmatched '[' (outside quotes)
 
-                                # Check if we have a valid identifier
-                                if is_identifier_start(self.input[id_start], posix_mode):
-                                    # Make sure this identifier is at a word boundary
-                                    if id_start == 0 or self.input[id_start - 1] in ' \t\n;|&(){}':
-                                        identifier = self.input[id_start:pos]
-                                        if all(is_identifier_char(c, posix_mode) for c in identifier):
-                                            # We're inside an array assignment pattern
-                                            return True
-                        break
+        for i, ch in enumerate(text):
+            # State coming INTO position i (the old scan started at pos-1)
+            result[i] = 1 if (open_flags and open_flags[-1]) else 0
 
-                # Stop at word boundaries (unless we're tracking an array)
-                if char in '|&;(){}' and bracket_count == 0:
-                    break
+            if ch == '"' and not in_single:
+                in_double = not in_double
+            elif ch == "'" and not in_double:
+                in_single = not in_single
+            elif not in_single and not in_double:
+                if ch == '[':
+                    open_flags.append(is_array_open(i))
+                elif ch == ']':
+                    if open_flags:
+                        open_flags.pop()
+                elif ch in '|&;(){}' and not open_flags:
+                    # Command separator outside any bracket: hard word
+                    # boundary (matches the old scan's break condition).
+                    pass
 
-            pos -= 1
-
-        return False
-
+        return result
 
     def _handle_expansion(self) -> bool:
         """Handle variable/command/arithmetic expansion."""

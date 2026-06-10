@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.272.0 (2026-06-10) - Lexer quote-state consolidation (review Tier 3, phase 6)
+- Killed the quadratic backward scan: _is_inside_potential_array_assignment
+  walked backward from EVERY quote/expansion character to the previous
+  command separator, making a single line of N quoted words lex in
+  O(N^2) — 3.8s for 4,000 words. The answer for every position is now
+  precomputed in one lazy O(n) forward pass (quote state + bracket
+  stack); the same line lexes in 0.039s (~97x) and scaling is linear.
+- literal.py's inline ANSI-C quote parser (a duplicate escape-sequence
+  implementation) now delegates to the UnifiedQuoteParser, so $'...'
+  escape semantics live in exactly one place.
+- New lexer performance regression tests (absolute bound + doubling
+  ratio) pin the linear behavior — the review's "no performance tests"
+  gap for the lexer.
+- Assessed the case-pattern `)` inside `$(...)` limitation (stretch
+  goal): `$(case x in (x) ...)` parses (use the POSIX paren form);
+  making find_balanced_parentheses understand an unparenthesized
+  pattern's `)` mid-scan requires keyword-aware parsing, documented as
+  a known difference rather than special-cased.
+
 ## 0.271.0 (2026-06-10) - Terminal control without test-awareness (review Tier 3, phase 5)
 - **Ctrl-C and Ctrl-Z now work on foreground jobs under any PTY.** Three
   real bugs found and fixed:
