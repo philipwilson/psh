@@ -639,44 +639,21 @@ class LiteralRecognizer(ContextualRecognizer):
                                                                                                     self.config.posix_mode if self.config else False)
 
     def _parse_ansi_c_quote_inline(self, input_text: str, pos: int) -> Tuple[Optional[str], int]:
-        """
-        Parse an ANSI-C quote $'...' starting at the given position.
+        """Parse an ANSI-C quote $\'...\' at pos via the unified quote parser.
 
-        Returns (processed_content, new_position) where processed_content is None if parsing failed.
-        The processed_content has escape sequences converted to their actual characters.
+        Returns (processed_content, new_position); content is None when pos
+        doesn't start $' or the quote is unclosed. Delegates to
+        UnifiedQuoteParser so escape semantics live in exactly one place.
         """
         if pos + 1 >= len(input_text) or input_text[pos:pos+2] != "$'":
             return None, pos
 
-        # Import the pure helpers for ANSI-C quote processing
-        from .. import pure_helpers
-
-        # Start after the $'
-        quote_start = pos + 2
-        quote_pos = quote_start
-        processed_content = ""
-
-        # Find the closing quote and process escape sequences
-        while quote_pos < len(input_text):
-            char = input_text[quote_pos]
-
-            if char == "'":
-                # Found closing quote - return the processed content (not the literal $'...')
-                return processed_content, quote_pos + 1
-
-            if char == '\\' and quote_pos + 1 < len(input_text):
-                # Handle escape sequence using existing helper
-                escaped_str, new_pos = pure_helpers.handle_escape_sequence(
-                    input_text, quote_pos, "$'"
-                )
-                processed_content += escaped_str
-                quote_pos = new_pos
-            else:
-                processed_content += char
-                quote_pos += 1
-
-        # Unclosed quote - return None to indicate parsing failure
-        return None, pos
+        from ..quote_parser import QUOTE_RULES, UnifiedQuoteParser
+        parts, new_pos, closed = UnifiedQuoteParser().parse_quoted_string(
+            input_text, pos + 2, QUOTE_RULES["$'"], None, quote_type="$'")
+        if not closed:
+            return None, pos
+        return ''.join(part.value for part in parts), new_pos
 
     def _is_in_string_concatenation(self, value: str) -> bool:
         """Check if we are currently reading a string that could be concatenated with quotes."""
