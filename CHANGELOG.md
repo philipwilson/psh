@@ -4,6 +4,43 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.271.0 (2026-06-10) - Terminal control without test-awareness (review Tier 3, phase 5)
+- **Ctrl-C and Ctrl-Z now work on foreground jobs under any PTY.** Three
+  real bugs found and fixed:
+  1. tcsetattr with TCSADRAIN/TCSAFLUSH (the tty.setraw default) blocks
+     until the terminal's output queue drains — which never happens on a
+     pty whose master isn't being read. The shell wedged entering/leaving
+     raw mode and restoring job terminal modes. All terminal-mode changes
+     now use TCSANOW (line editor raw mode, job-control mode save/restore,
+     read -s). bash stays responsive in this state; now psh does too.
+  2. restore_shell_foreground restored terminal MODES before reclaiming
+     terminal OWNERSHIP, so the tcsetattr could block against the dead
+     job's process group. Order flipped: tcsetpgrp first.
+  3. The PTY smoke xfails for SIGINT/SIGTSTP-to-foreground-job are now
+     passing tests, plus a new fg-resume test (21/21, zero xfails).
+- One shared `shell.process_launcher` replaces five ad-hoc
+  ProcessLauncher constructions across pipeline/subshell/strategies —
+  removing the executor→interactive layering reach the review flagged.
+- All `'pytest' in sys.modules` gates removed from production code:
+  - pipeline/external/subshell terminal control now uses a real
+    capability check, JobManager.terminal_pgid_if_owned() (tty present,
+    job control supported, AND this shell is the foreground process
+    group). Under a test runner that's naturally None.
+  - Process-global signal handlers are installed at psh's own entry
+    points (__main__ for all modes; the interactive loop re-runs setup
+    and claims the foreground) instead of at InteractiveManager
+    construction behind a pytest gate. In-process embedders/test shells
+    construct Shell directly and never touch process signal state — a
+    structural guarantee instead of runner sniffing. The
+    PSH_IN_FORKED_CHILD env marker became dead and is removed.
+- StringIO type-sniffing removed from the builtin stream-restore path.
+  Root cause fixed instead: Shell.__init__ no longer snapshots
+  sys.stdout/stderr into the custom-stream overrides (which froze
+  init-time objects and defeated the live-tracking ShellState
+  properties); the builtin path now saves/restores the override STATE.
+- Full suite green (4,063 passed / 4,378 collected); PTY smoke suite
+  3x stable at 21/21.
+
 ## 0.270.0 (2026-06-10) - PTY test rehabilitation (review Tier 3, phase 4)
 - New deterministic pexpect smoke suite (test_pty_smoke.py, 18 passing +
   2 specific xfails) covering the real interactive surface: prompt,

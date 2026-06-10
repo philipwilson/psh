@@ -37,8 +37,7 @@ class SubshellExecutor:
         self.job_manager = shell.job_manager
         self.io_manager = shell.io_manager
         # Use centralized child signal reset (H3)
-        self.launcher = ProcessLauncher(shell.state, shell.job_manager, shell.io_manager,
-                                        shell.interactive_manager.signal_manager)
+        self.launcher = shell.process_launcher
 
     def execute_subshell(self, node: 'SubshellGroup', context: 'ExecutionContext',
                         visitor: 'ASTVisitor[int]') -> int:
@@ -104,68 +103,36 @@ class SubshellExecutor:
     def _execute_foreground_subshell(self, statements, redirects: List['Redirect'],
                                      errexit_suppress: int = 0) -> int:
         """Execute subshell in foreground with proper isolation."""
-        # Save current terminal foreground process group
-        original_pgid = None
-        # Check if we're in interactive mode (stdin is a tty and not in script mode)
-        # AND we're actually the foreground process group (not running under pytest/etc)
-        # Also check for pytest environment to be extra safe
-        is_pytest = 'PYTEST_CURRENT_TEST' in os.environ or 'pytest' in sys.modules
-        is_interactive = sys.stdin.isatty() and not self.shell.is_script_mode and not is_pytest
-        if is_interactive:
-            try:
-                current_fg_pgid = os.tcgetpgrp(0)
-                our_pgid = os.getpgrp()
-                # Debug: log the check
-                if self.state.options.get('debug-exec'):
-                    print(f"DEBUG Subshell: isatty={sys.stdin.isatty()}, script_mode={self.shell.is_script_mode}", file=sys.stderr)
-                    print(f"DEBUG Subshell: current_fg_pgid={current_fg_pgid}, our_pgid={our_pgid}", file=sys.stderr)
-                # Only treat as interactive if WE are the foreground process group
-                # This prevents issues when running under pytest with -s flag
-                if current_fg_pgid == our_pgid:
-                    original_pgid = current_fg_pgid
-                    if self.state.options.get('debug-exec'):
-                        print(f"DEBUG Subshell: Will manage terminal control", file=sys.stderr)
-                else:
-                    # We're not in control of the terminal, don't try to manipulate it
-                    is_interactive = False
-                    if self.state.options.get('debug-exec'):
-                        print(f"DEBUG Subshell: Skipping terminal control (not foreground)", file=sys.stderr)
-            except OSError as e:
-                if self.state.options.get('debug-exec'):
-                    print(f"DEBUG Subshell: Exception checking terminal: {e}", file=sys.stderr)
-                is_interactive = False
+        # Manage terminal control only when this shell actually owns the
+        # terminal (real capability check — no test-runner sniffing).
+        original_pgid = self.job_manager.terminal_pgid_if_owned()
+        is_interactive = original_pgid is not None
+        if self.state.options.get('debug-exec'):
+            print(f"DEBUG Subshell: terminal owner pgid={original_pgid}", file=sys.stderr)
 
         # Create execution function
         def execute_fn():
-            # Import Shell here to avoid circular import
-            # Mark that we're in a forked child BEFORE creating the Shell
-            # This prevents the child from trying to set up job control/signals
-            import os
-
+            # Import Shell here to avoid circular import. (Signal handlers
+            # are only installed by run_interactive_loop(), which a forked
+            # child never enters — no env-var marker needed.)
             from ..shell import Shell
-            os.environ['PSH_IN_FORKED_CHILD'] = '1'
 
-            try:
-                # Create new shell instance with copied environment
-                subshell = Shell(
-                    debug_ast=self.shell.state.debug_ast,
-                    debug_tokens=self.shell.state.debug_tokens,
-                    parent_shell=self.shell,  # Copy variables/functions
-                    norc=True
-                )
+            # Create new shell instance with copied environment
+            subshell = Shell(
+                debug_ast=self.shell.state.debug_ast,
+                debug_tokens=self.shell.state.debug_tokens,
+                parent_shell=self.shell,  # Copy variables/functions
+                norc=True
+            )
 
-                # Mark as forked child so builtins use os.write() which respects dup2()
-                # This is critical for output redirection to work correctly in subshells
-                subshell.state.in_forked_child = True
+            # Mark as forked child so builtins use os.write() which respects dup2()
+            # This is critical for output redirection to work correctly in subshells
+            subshell.state.in_forked_child = True
 
-                # Inherit the parent's set -e suppression: a subshell that is
-                # e.g. an if-condition or a non-final && / || member must not
-                # errexit internally (bash).
-                subshell._errexit_suppress_seed = errexit_suppress
-            finally:
-                # Clean up the environment variable
-                if 'PSH_IN_FORKED_CHILD' in os.environ:
-                    del os.environ['PSH_IN_FORKED_CHILD']
+            # Inherit the parent's set -e suppression: a subshell that is
+            # e.g. an if-condition or a non-final && / || member must not
+            # errexit internally (bash).
+            subshell._errexit_suppress_seed = errexit_suppress
 
             # Inherit I/O streams from parent shell for test compatibility
             subshell.stdout = self.shell.stdout

@@ -182,11 +182,9 @@ class TestPtyJobControl:
         psh.expect(PROMPT)
         assert 'sleep' not in psh.before
 
-    @pytest.mark.xfail(reason="SIGINT to a running foreground job does not "
-                              "return the prompt under a pexpect PTY — "
-                              "terminal-control gap, target of the "
-                              "is_pytest-removal phase")
     def test_ctrl_c_interrupts_foreground_job(self, psh):
+        # v0.271.0: fixed — TCSADRAIN-class tcsetattr calls blocked on an
+        # undrained pty, wedging the shell before/after foreground jobs.
         psh.send('sleep 30\r')
         time.sleep(0.8)
         psh.sendintr()
@@ -194,9 +192,6 @@ class TestPtyJobControl:
         psh.send('echo rc_$?\r')
         psh.expect('rc_130')
 
-    @pytest.mark.xfail(reason="SIGTSTP (ctrl-z) does not stop the foreground "
-                              "job under a pexpect PTY — terminal-control "
-                              "gap, target of the is_pytest-removal phase")
     def test_ctrl_z_stops_foreground_job(self, psh):
         psh.send('sleep 30\r')
         time.sleep(0.8)
@@ -205,3 +200,14 @@ class TestPtyJobControl:
         psh.expect(PROMPT)
         psh.send('kill %1\r')
         psh.expect(PROMPT)
+
+    def test_fg_resumes_stopped_job(self, psh):
+        psh.send('sleep 30\r')
+        time.sleep(0.8)
+        psh.send('\x1a')          # ctrl-z
+        psh.expect('Stopped', timeout=8)
+        psh.expect(PROMPT)
+        psh.send('fg\r')
+        time.sleep(0.5)
+        psh.sendintr()             # interrupt the resumed job
+        psh.expect(PROMPT, timeout=8)

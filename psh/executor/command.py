@@ -633,7 +633,14 @@ class CommandExecutor:
             print(f"DEBUG CommandExecutor: Redirections: {[r.type for r in node.redirects]}",
                   file=sys.stderr)
 
-        # Builtins need special redirection handling
+        # Builtins need special redirection handling. The shell's stream
+        # properties live-track sys.* unless a custom stream is installed
+        # (capture buffer, subshell pipe); during the builtin we point them
+        # at the (possibly redirected) live streams, then restore the
+        # custom-override STATE exactly — no type-sniffing.
+        custom_names = ('_custom_stdin', '_custom_stdout', '_custom_stderr')
+        saved_custom = {n: getattr(self.state, n) for n in custom_names
+                        if hasattr(self.state, n)}
         stdin_backup, stdout_backup, stderr_backup, stdin_fd_backup = \
             self.io_manager.setup_builtin_redirections(node)
         try:
@@ -652,15 +659,11 @@ class CommandExecutor:
             self.io_manager.restore_builtin_redirections(
                 stdin_backup, stdout_backup, stderr_backup, stdin_fd_backup
             )
-            # Reset shell stream references
-            # Preserve StringIO objects for test frameworks
-            import io
-            if not isinstance(self.shell.stdout, io.StringIO):
-                self.shell.stdout = sys.stdout
-            if not isinstance(self.shell.stderr, io.StringIO):
-                self.shell.stderr = sys.stderr
-            if not isinstance(self.shell.stdin, io.StringIO):
-                self.shell.stdin = sys.stdin
+            for n in custom_names:
+                if n in saved_custom:
+                    setattr(self.state, n, saved_custom[n])
+                elif hasattr(self.state, n):
+                    delattr(self.state, n)
 
     def _handle_array_assignment(self, assignment):
         """Handle array initialization or element assignment."""

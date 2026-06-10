@@ -38,25 +38,23 @@ class InteractiveManager:
         self.repl_loop.history_manager = self.history_manager
         self.repl_loop.prompt_manager = self.prompt_manager
 
-        # Skip signal setup when running under pytest to avoid affecting subprocess tests
-        # UNLESS we're specifically testing signal handling
-        # Also skip if we're in a forked child process (subshell/pipeline)
-        import os
-        import sys
-        skip_signals = (('pytest' in sys.modules and
-                        os.environ.get('PSH_TEST_SIGNALS') != '1') or
-                       os.environ.get('PSH_IN_FORKED_CHILD') == '1')
-
-        if not skip_signals:
-            # Set up signal handlers FIRST to ignore SIGTTOU/SIGTTIN
-            # This must happen before ensure_foreground() to avoid being stopped
-            self.signal_manager.setup_signal_handlers()
-
-            # Now safe to ensure shell is in its own process group for job control
-            self.signal_manager.ensure_foreground()
-
     def run_interactive_loop(self):
-        """Run the interactive shell loop."""
+        """Run the interactive shell loop.
+
+        Process-global signal handlers are installed HERE, not at manager
+        construction: every Shell builds an InteractiveManager, but only a
+        shell actually entering the interactive loop may take over the
+        process's signal dispositions (an in-process test shell or a
+        library embedder must not). This replaces the old "pytest in
+        sys.modules" gate with a structural guarantee.
+        """
+        # Set up signal handlers FIRST to ignore SIGTTOU/SIGTTIN
+        # This must happen before ensure_foreground() to avoid being stopped
+        self.signal_manager.setup_signal_handlers()
+
+        # Now safe to ensure shell is in its own process group for job control
+        self.signal_manager.ensure_foreground()
+
         return self.repl_loop.run()
 
     def load_history(self):

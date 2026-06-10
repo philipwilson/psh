@@ -175,16 +175,17 @@ class JobManager:
 
         self.current_job = job
 
-        # Restore job's terminal modes if it has them
+        # Restore job's terminal modes if it has them. TCSANOW — the
+        # drain variants block on a pty whose master isn't being read.
         if job and job.tmodes:
             try:
-                termios.tcsetattr(0, termios.TCSADRAIN, job.tmodes)
+                termios.tcsetattr(0, termios.TCSANOW, job.tmodes)
             except (OSError, termios.error):
                 pass
         elif job is None and self.shell_tmodes:
             # Restore shell's terminal modes
             try:
-                termios.tcsetattr(0, termios.TCSADRAIN, self.shell_tmodes)
+                termios.tcsetattr(0, termios.TCSANOW, self.shell_tmodes)
             except (OSError, termios.error):
                 pass
 
@@ -270,6 +271,27 @@ class JobManager:
                     return job
             return None
 
+    def terminal_pgid_if_owned(self) -> Optional[int]:
+        """The terminal's foreground pgid, when this shell owns the terminal.
+
+        Returns None when there is no usable tty, job control is
+        unsupported, or another process group currently owns the terminal.
+        In all of those cases the executors must NOT transfer terminal
+        control around a foreground job. This is a real capability check —
+        it replaces the old "pytest in sys.modules" test-awareness (under a
+        test runner the shell doesn't own the terminal, so this returns
+        None there naturally).
+        """
+        if not self.shell_state or not self.shell_state.supports_job_control:
+            return None
+        try:
+            fg_pgid = os.tcgetpgrp(self.shell_state.terminal_fd)
+        except OSError:
+            return None
+        if fg_pgid != os.getpgrp():
+            return None
+        return fg_pgid
+
     def transfer_terminal_control(self, pgid: int, context: str = "") -> bool:
         """Transfer terminal control to a process group.
 
@@ -325,13 +347,17 @@ class JobManager:
         """
         shell_pgid = os.getpgrp()
 
-        # Clear foreground job tracking
+        # Reclaim the terminal FIRST (H5). set_foreground_job(None) restores
+        # the shell's terminal modes with tcsetattr(TCSADRAIN), which blocks
+        # while another (possibly dead) process group still owns the
+        # terminal — the shell hung here after SIGINT killed a foreground
+        # job under a PTY.
+        self.transfer_terminal_control(shell_pgid, "JobManager:restore")
+
+        # Clear foreground job tracking and restore terminal modes
         self.set_foreground_job(None)
         if self.shell_state is not None and hasattr(self.shell_state, 'foreground_pgid'):
             self.shell_state.foreground_pgid = None
-
-        # Restore terminal control to shell (H5)
-        self.transfer_terminal_control(shell_pgid, "JobManager:restore")
 
     def finish_foreground_job(self, terminal_transferred: bool):
         """Tear down foreground-job state after a foreground job completes.

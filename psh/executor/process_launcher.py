@@ -60,8 +60,7 @@ class ProcessLauncher:
     - Terminal control transfer
 
     Usage:
-        launcher = ProcessLauncher(shell.state, shell.job_manager, shell.io_manager,
-                                   shell.interactive_manager.signal_manager)
+        launcher = shell.process_launcher  # the single shared instance
 
         # Simple foreground command
         config = ProcessConfig(role=ProcessRole.SINGLE, foreground=True)

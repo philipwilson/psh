@@ -86,6 +86,14 @@ class Shell:
         self.script_manager = ScriptManager(self)
         self.interactive_manager = InteractiveManager(self)
 
+        # Single shared process launcher — the one fork/job-control path for
+        # pipelines, external commands, background builtins/functions and
+        # subshells (executors must not build their own).
+        from .executor.process_launcher import ProcessLauncher
+        self.process_launcher = ProcessLauncher(
+            self.state, self.job_manager, self.io_manager,
+            self.interactive_manager.signal_manager)
+
         # Initialize history expander
         from .history_expansion import HistoryExpander
         self.history_expander = HistoryExpander(self)
@@ -101,10 +109,11 @@ class Shell:
         from .core import TrapManager
         self.trap_manager = TrapManager(self)
 
-        # Initialize stream references (used by builtins)
-        self.stdout = sys.stdout
-        self.stderr = sys.stderr
-        self.stdin = sys.stdin
+        # Stream references (shell.stdout/.stderr/.stdin) delegate to
+        # ShellState properties that track the LIVE sys.* streams unless a
+        # caller installs custom ones (capture buffers, subshell pipes).
+        # Do not snapshot sys.stdout here — that would freeze init-time
+        # objects and miss later replacements.
 
         # The ExecutorVisitor currently executing, if any. Nested execution
         # (eval, source) reuses it so loop depth and function context carry
