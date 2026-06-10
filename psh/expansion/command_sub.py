@@ -54,13 +54,16 @@ class CommandSubstitution:
                 os.close(write_fd)
 
                 # Protect stdin in interactive sessions to prevent terminal corruption
-                # But preserve stdin for pipelines and scripts where it's needed
-                # Use same interactive detection logic as shell initialization
+                # But preserve stdin for pipelines and scripts where it's needed.
+                # Capability check, not environment sniffing: only redirect when
+                # fd 0 actually IS the terminal — if stdin was redirected to a
+                # pipe or file (scripts, tests, `cmd | psh`), the substitution
+                # may legitimately need to read it.
                 is_interactive = getattr(self.shell, '_force_interactive', sys.stdin.isatty())
                 should_protect_stdin = (
                     not self.state.is_script_mode and
                     is_interactive and
-                    not os.environ.get('PYTEST_CURRENT_TEST')  # Don't interfere with tests
+                    os.isatty(0)
                 )
                 if should_protect_stdin:
                     # Interactive mode: redirect from /dev/null to prevent terminal input consumption

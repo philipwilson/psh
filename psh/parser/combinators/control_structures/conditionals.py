@@ -28,21 +28,36 @@ def _parse_case_pattern_value(tokens, pos, pattern_types):
     """Parse a single case pattern value.
 
     Returns:
-        (pattern_string, new_pos) or (None, pos) if no pattern found.
+        (pattern_string, token, new_pos) or (None, None, pos) if no
+        pattern found. The token lets the caller build a Word carrying
+        quote context (quoted pattern text matches literally).
     """
     if pos >= len(tokens):
-        return None, pos
+        return None, None, pos
 
     tok = tokens[pos]
 
     if tok.type.name in pattern_types:
-        return format_token_value(tok), pos + 1
+        return format_token_value(tok), tok, pos + 1
 
-    return None, pos
+    return None, None, pos
 
 
 class ConditionalParserMixin:
     """Mixin providing conditional parsers for ControlStructureParsers."""
+
+    def _make_case_pattern(self, pattern_str, pattern_tok):
+        """Build a CasePattern carrying per-part quote context.
+
+        The Word lets the executor distinguish quoted (literal) from
+        unquoted (glob-active) pattern text — same semantics as the
+        recursive descent parser's ``_parse_case_pattern``.
+        """
+        try:
+            word = self.commands.expansions.build_word_from_token(pattern_tok)
+        except ValueError:
+            word = None  # fall back to the flattened-string path
+        return CasePattern(pattern_str, word=word)
 
     def _build_if_statement(self) -> Parser[IfConditional]:
         """Build parser for if/then/elif/else/fi statements."""
@@ -283,19 +298,19 @@ class ConditionalParserMixin:
                     pos += 1
 
                 # Parse first pattern
-                pattern_str, pos = _parse_case_pattern_value(tokens, pos, _CASE_PATTERN_TYPES)
+                pattern_str, pattern_tok, pos = _parse_case_pattern_value(tokens, pos, _CASE_PATTERN_TYPES)
                 if pattern_str is None:
                     break
 
-                patterns.append(CasePattern(pattern_str))
+                patterns.append(self._make_case_pattern(pattern_str, pattern_tok))
 
                 # Parse additional patterns separated by '|'
                 while pos < len(tokens) and tokens[pos].value == '|':
                     pos += 1  # Skip '|'
-                    pattern_str, pos = _parse_case_pattern_value(tokens, pos, _CASE_PATTERN_TYPES)
+                    pattern_str, pattern_tok, pos = _parse_case_pattern_value(tokens, pos, _CASE_PATTERN_TYPES)
                     if pattern_str is None:
                         return ParseResult(success=False, error="Expected pattern after '|'", position=pos)
-                    patterns.append(CasePattern(pattern_str))
+                    patterns.append(self._make_case_pattern(pattern_str, pattern_tok))
 
                 # Expect ')'
                 if pos >= len(tokens) or tokens[pos].value != ')':

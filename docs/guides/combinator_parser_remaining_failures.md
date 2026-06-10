@@ -1,16 +1,36 @@
 # Combinator Parser: Remaining Test Failures
 
-**As of v0.171.0** — 0 remaining failures
+**As of v0.276.0** — 0 known failures, but note the caveat below.
 
-The combinator parser now passes all tests in the main test suite
+The combinator parser passes all tests in the main test suite
 (excluding the directories that are structurally excluded due to subshell
 FD inheritance, advanced function scoping, and complex variable assignment).
 
+## Caveat: drift is the failure mode, not test failures
+
+The combinator parser is experimental/educational and **lags behind
+recursive-descent fixes by default** — the main suite mostly exercises
+the rd parser, so combinator regressions don't show up as failures here.
+The 2026-06-10 ground-up reappraisal found two such drifts (both
+introduced by rd fixes in v0.266–v0.269, fixed in the combinator in
+v0.276.0):
+
+- Function-definition trailing redirects were applied at *definition*
+  time instead of per call (`f() { ...; } > file`).
+- Case patterns lost quote context, so quoted glob characters wrongly
+  stayed active (`case ab in "a*")` matched).
+
+Three-way parity regressions (bash vs rd vs combinator) live in
+`tests/integration/parser/test_combinator_parity_regressions.py`. When
+fixing parser behavior in the rd parser, check whether the combinator
+needs the same fix, and add a parity test there.
+
 ## Summary
 
-No remaining failures.  The last 3 "failures" were test infrastructure
-issues (pytest capture interference with forked child FDs), not parser
-bugs.  They were resolved by rewriting the tests to use `subprocess.run()`.
+No known remaining failures. The last 3 "failures" before v0.171.0 were
+test infrastructure issues (pytest capture interference with forked child
+FDs), not parser bugs. They were resolved by rewriting the tests to use
+`subprocess.run()`.
 
 ## How to Run
 

@@ -192,7 +192,7 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
         # Print job assignment notification (only in interactive mode)
         if shell.state.options.get('interactive'):
             # bash prints job notices only in interactive shells
-            print(f"[{job.job_id}] {pid}")
+            print(f"[{job.job_id}] {pid}", file=shell.stderr)
 
         return 0
 
@@ -271,7 +271,7 @@ class FunctionExecutionStrategy(ExecutionStrategy):
 
         if shell.state.options.get('interactive'):
             # bash prints job notices only in interactive shells
-            print(f"[{job.job_id}] {pid}")
+            print(f"[{job.job_id}] {pid}", file=shell.stderr)
 
         return 0
 
@@ -451,7 +451,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             # Print job assignment notification (only in interactive mode)
             if shell.state.options.get('interactive'):
                 # bash prints job notices only in interactive shells
-                print(f"[{job.job_id}] {pid}")
+                print(f"[{job.job_id}] {pid}", file=shell.stderr)
             return 0
         else:
             # Foreground job - give it terminal control

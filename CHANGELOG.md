@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.276.0 (2026-06-10) - Behavior bugs from the reappraisal (Tier A, 2/4)
+- read builtin: option parsing rewritten getopt-style, pinned to bash with a
+  17-probe battery. Fixes: combined options no longer abandon the option loop
+  (`read -rs -p "" x` and `read -rs y x` lost everything after the cluster —
+  the cluster even became a *variable name*); attached option values now work
+  (`-rn3`, `-rp prompt`); `--` ends options; `read -n 0` reads nothing and
+  succeeds (was rc 1); invalid option *values* exit 1 while invalid options
+  exit 2, matching bash's distinction.
+- Background-job notices: the three `[N] pid` sites in executor/strategies.py
+  printed to stdout; now stderr, consistent with pipeline.py/subshell.py and
+  bash.
+- Last pytest sniff removed from production code: expansion/command_sub.py
+  gated child-stdin protection on PYTEST_CURRENT_TEST; replaced with a real
+  capability check (`os.isatty(0)` — only protect stdin when it actually is
+  the terminal).
+- Combinator parser drift fixed (found by the reappraisal, regressions from
+  rd fixes in v0.266–v0.269): function-definition trailing redirects now
+  attach to FunctionDef and apply per call in all three definition forms
+  (was: applied at definition time); case patterns now carry per-part quote
+  context via Word AST (was: quoted glob chars stayed active, so
+  `case ab in "a*")` wrongly matched).
+- New tests: tests/unit/builtins/test_read_option_parsing.py (13) and
+  tests/integration/parser/test_combinator_parity_regressions.py (9,
+  three-way bash/rd/combinator parity). Suite: 4,520 collected, 4,205 passed.
+- docs/guides/combinator_parser_remaining_failures.md: stale "0 failures as
+  of v0.171.0" replaced with an honest drift caveat and the parity-test
+  convention for future rd fixes.
+
 ## 0.275.0 (2026-06-10) - Packaging truth + whole-tree lint hygiene (reappraisal Tier A, 1/4)
 - Packaging now tells the truth about Python support: `requires-python = ">=3.12"`
   (the tree already required 3.12 in fact — a PEP 701 nested-quote f-string in

@@ -21,6 +21,25 @@ from ..core import Parser, ParseResult
 class StructureParserMixin:
     """Mixin providing structure parsers for ControlStructureParsers."""
 
+    def _collect_definition_redirects(self, tokens: List[Token], pos: int):
+        """Collect redirections trailing a function body.
+
+        Redirections on the definition (``f() { ...; } > file``) belong to
+        the function and are applied at each call (bash) — same semantics
+        as the recursive descent parser's ``parse_function_def``.
+
+        Returns:
+            Tuple of (redirects list, new position)
+        """
+        redirects = []
+        while pos < len(tokens):
+            redir_result = self.commands.redirection.parse(tokens, pos)
+            if not redir_result.success:
+                break
+            redirects.append(redir_result.value)
+            pos = redir_result.position
+        return redirects, pos
+
     def _build_function_name(self) -> Parser[str]:
         """Parse a valid function name."""
         def parse_function_name(tokens: List[Token], pos: int) -> ParseResult[str]:
@@ -168,10 +187,13 @@ class StructureParserMixin:
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
 
+            redirects, end_pos = self._collect_definition_redirects(
+                tokens, body_result.position)
             return ParseResult(
                 success=True,
-                value=FunctionDef(name=name, body=body_result.value),
-                position=body_result.position
+                value=FunctionDef(name=name, body=body_result.value,
+                                  redirects=redirects),
+                position=end_pos
             )
 
         return Parser(parse_posix_function)
@@ -201,10 +223,13 @@ class StructureParserMixin:
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
 
+            redirects, end_pos = self._collect_definition_redirects(
+                tokens, body_result.position)
             return ParseResult(
                 success=True,
-                value=FunctionDef(name=name, body=body_result.value),
-                position=body_result.position
+                value=FunctionDef(name=name, body=body_result.value,
+                                  redirects=redirects),
+                position=end_pos
             )
 
         return Parser(parse_function_keyword)
@@ -239,10 +264,13 @@ class StructureParserMixin:
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
 
+            redirects, end_pos = self._collect_definition_redirects(
+                tokens, body_result.position)
             return ParseResult(
                 success=True,
-                value=FunctionDef(name=name, body=body_result.value),
-                position=body_result.position
+                value=FunctionDef(name=name, body=body_result.value,
+                                  redirects=redirects),
+                position=end_pos
             )
 
         return Parser(parse_function_with_parens)
