@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tests for ANSI-C quoting ($'...') functionality."""
 
-import pytest
 
 
 class TestAnsiCQuoting:

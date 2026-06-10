@@ -5,7 +5,6 @@ for/select loop preserving empty fields from a non-whitespace IFS (#2), and the
 for-loop honoring nullglob (#23).
 """
 
-import pytest
 
 
 class TestEmptyUnquotedExpansion:

@@ -206,8 +206,7 @@ class CommandExecutor:
         except Exception as e:
             # Import these here to avoid circular imports
             from ..builtins import FunctionReturn
-            from ..core import (ExpansionError, LoopBreak, LoopContinue,
-                                UnboundVariableError)
+            from ..core import ExpansionError, LoopBreak, LoopContinue, UnboundVariableError
 
             # Re-raise control flow exceptions
             if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue, SystemExit)):

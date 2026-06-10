@@ -5,7 +5,6 @@
 or a command operator, not by '[' / ']'.
 """
 
-import pytest
 
 
 class TestBraceBracketToken:

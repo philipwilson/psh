@@ -15,8 +15,6 @@ Regression guards (verified against bash 5.2):
 import subprocess
 import sys
 
-import pytest
-
 
 def run_psh(script):
     return subprocess.run([sys.executable, '-m', 'psh', '-c', script],

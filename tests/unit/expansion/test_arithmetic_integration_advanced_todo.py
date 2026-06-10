@@ -14,7 +14,6 @@ was removed and each case verified against bash:
     whose endpoints are `$((...))` (brace expansion precedes arithmetic), so
     the expected output is the literal `{5..8}`, which psh already matches.
 """
-import pytest
 
 
 class TestArithmeticIntegrationAdvanced:

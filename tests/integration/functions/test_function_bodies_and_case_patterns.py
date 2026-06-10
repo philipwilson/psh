@@ -4,11 +4,8 @@ Function subshell bodies, definition-attached redirects, quoted case
 patterns (Word AST), and select's EOF exit status.
 """
 
-import os
 import subprocess
 import sys
-
-import pytest
 
 
 def run_psh(script):

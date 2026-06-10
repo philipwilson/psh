@@ -5,7 +5,6 @@ that the array-assignment collectors in the literal recognizer previously each
 reimplemented.
 """
 
-import pytest
 
 from psh.lexer.pure_helpers import QuoteState
 

@@ -10,7 +10,7 @@ import sys
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional
 
-from .process_launcher import ProcessConfig, ProcessLauncher, ProcessRole
+from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
     from ..ast_nodes import Redirect

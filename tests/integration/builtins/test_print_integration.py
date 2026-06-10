@@ -6,8 +6,6 @@ These exercise the forked-child write path, so they must be run with pytest's
 
 import os
 
-import pytest
-
 
 def _read(shell, name):
     with open(os.path.join(shell.state.variables['PWD'], name)) as f:

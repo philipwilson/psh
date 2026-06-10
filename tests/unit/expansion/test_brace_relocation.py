@@ -4,7 +4,6 @@ These cover the bugs the relocation fixes, plus parity cases that the old
 expand-then-re-lex path got right only by accident.
 """
 
-import pytest
 
 
 def _out(captured_shell, cmd):

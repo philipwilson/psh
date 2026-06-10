@@ -19,7 +19,6 @@ from ....ast_nodes import (
     SelectLoop,
     Statement,
     StatementList,
-    UnifiedControlStructure,
     UntilLoop,
     WhileLoop,
 )

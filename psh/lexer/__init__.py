@@ -30,6 +30,7 @@ from .unicode_support import (
     validate_identifier,
 )
 
+
 def tokenize(input_string: str, strict: bool = True, shell_options: dict = None) -> List[Token]:
     """
     Tokenize a shell command string using the unified lexer implementation.

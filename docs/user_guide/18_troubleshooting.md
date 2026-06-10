@@ -228,18 +228,18 @@ psh: <command>:2: arithmetic: division by zero
 ```bash
 # Check Python version
 $ python3 --version
-Python 3.7.0
+Python 3.11.0
 
-# PSH requires Python 3.8+
+# PSH requires Python 3.12+
 $ pip install psh
-ERROR: psh requires Python >=3.8
+ERROR: psh requires Python >=3.12
 
 # Solution: Upgrade Python
 $ brew upgrade python3  # macOS
-$ sudo apt update && sudo apt install python3.8  # Ubuntu
+$ sudo apt update && sudo apt install python3.12  # Ubuntu
 
 # Use specific Python version
-$ python3.8 -m pip install psh
+$ python3.12 -m pip install psh
 ```
 
 ### RC File Issues
@@ -711,9 +711,9 @@ $ bash -c 'same command'
 # Minimal reproducible example
 cat > bug_report.sh << 'EOF'
 #!/usr/bin/env psh
-# PSH version: 0.187.1
-# Python version: 3.8.10
-# OS: Ubuntu 20.04
+# PSH version: 0.275.0
+# Python version: 3.12.4
+# OS: Ubuntu 24.04
 
 # Problem: Describe issue here
 

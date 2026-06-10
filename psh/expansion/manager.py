@@ -110,7 +110,6 @@ class ExpansionManager:
         from ..ast_nodes import (
             ExpansionPart,
             LiteralPart,
-            VariableExpansion,
             Word,
         )
 

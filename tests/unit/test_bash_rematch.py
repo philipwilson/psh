@@ -1,6 +1,5 @@
 """BASH_REMATCH population from [[ str =~ regex ]]."""
 
-import pytest
 
 
 def _out(captured_shell, cmd):

@@ -12,7 +12,6 @@ Tests cover:
 - Complex combinations
 """
 
-import pytest
 
 
 class TestSimpleBraceExpansion:

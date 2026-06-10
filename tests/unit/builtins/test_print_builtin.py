@@ -1,6 +1,5 @@
 """Unit tests for the zsh-compatible ``print`` builtin."""
 
-import pytest
 
 
 class TestPrintBasic:

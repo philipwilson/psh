@@ -6,6 +6,8 @@ from ..token_types import Token, TokenType
 from .command_position import (
     CASE_TERMINATORS,
     RESET_TO_COMMAND_POSITION,
+)
+from .command_position import (
     STATEMENT_SEPARATORS as _BASE_SEPARATORS,
 )
 from .constants import KEYWORDS

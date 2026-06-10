@@ -12,7 +12,6 @@ This module handles execution of control structures including:
 """
 
 import fnmatch
-import glob
 import re
 import sys
 from typing import TYPE_CHECKING, List, Optional

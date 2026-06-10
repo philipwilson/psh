@@ -30,7 +30,7 @@ Unsupported zsh flags (accepted nowhere; reported as an error): -z, -c, -C,
 import fnmatch
 import os
 import sys
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Tuple
 
 from .base import Builtin
 from .io import PrintfBuiltin, process_escapes

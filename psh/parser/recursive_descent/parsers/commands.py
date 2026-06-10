@@ -4,27 +4,19 @@ Command parsing for PSH shell.
 This module handles parsing of commands, pipelines, and command arguments.
 """
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 from ....ast_nodes import (
     AndOrList,
-    ArithmeticEvaluation,
     BraceGroup,
     BreakStatement,
-    CaseConditional,
     Command,
     ContinueStatement,
-    CStyleForLoop,
-        ForLoop,
-    IfConditional,
     LiteralPart,
     Pipeline,
-    SelectLoop,
     SimpleCommand,
     Statement,
     SubshellGroup,
-    UntilLoop,
-    WhileLoop,
     Word,
 )
 from ....token_stream import TokenStream

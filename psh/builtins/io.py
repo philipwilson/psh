@@ -240,7 +240,6 @@ class PrintfBuiltin(Builtin):
             # Process format string with POSIX-compliant behavior
             output = self.process_format_string_posix(format_str, arguments)
             if target_var is not None:
-                from ..expansion.manager import ExpansionManager
                 shell.expansion_manager.set_var_or_array_element(target_var, output)
                 return 0
             self._write_output(output, shell)
