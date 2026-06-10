@@ -71,9 +71,10 @@ class TestExportOptions:
 
 class TestExportBasics:
     def test_assignment_exports(self, captured_shell):
-        result = captured_shell.run_command('export FOO=bar')
+        result = captured_shell.run_command('export EXPORT_TEST_FOO=bar')
         assert result == 0
-        assert captured_shell.state.env.get('FOO') == 'bar'
+        assert captured_shell.state.env.get('EXPORT_TEST_FOO') == 'bar'
+        captured_shell.run_command('unset EXPORT_TEST_FOO')
 
     def test_existing_variable_export(self, captured_shell):
         # Unique name + unset: the in-process shell syncs exports into the

@@ -81,6 +81,24 @@ def _cleanup_shell(shell_instance):
             sm._sigwinch_notifier.close()
 
 
+@pytest.fixture(autouse=True)
+def _restore_os_environ():
+    """Roll back os.environ mutations after each test.
+
+    In-process shells sync `export` into the test runner's own os.environ,
+    so exported names (FOO, A, B, ...) would otherwise leak into every
+    later test's shell and subprocess. This kills that pollution class.
+    """
+    saved = os.environ.copy()
+    yield
+    for k in list(os.environ.keys()):
+        if k not in saved:
+            del os.environ[k]
+    for k, v in saved.items():
+        if os.environ.get(k) != v:
+            os.environ[k] = v
+
+
 @pytest.fixture
 def shell():
     """Create a fresh shell instance for testing.

@@ -4,7 +4,6 @@ Command parsing for PSH shell.
 This module handles parsing of commands, pipelines, and command arguments.
 """
 
-import re
 from typing import Optional, Tuple, Union
 
 from ....ast_nodes import (
@@ -32,9 +31,7 @@ from ....token_stream import TokenStream
 from ....token_types import Token, TokenType
 from ..helpers import ErrorContext, ParseError, TokenGroups
 from ..support.word_builder import WordBuilder
-
-# Pre-compiled regex for fd duplication detection (e.g. ">&2", "2>&1")
-_FD_DUP_RE = re.compile(r'^(\d*)[><]&(-|\d+)$')
+from .redirections import _FD_DUP_RE
 
 # Mapping from expansion_type to (description, prefix, chars_to_skip)
 _UNCLOSED_EXPANSION_MSGS = {
@@ -323,15 +320,7 @@ class CommandParser:
         and_or_list.pipelines.append(pipeline)
 
         # Check for && or || continuation
-        while self.parser.match(TokenType.AND_AND, TokenType.OR_OR):
-            operator = self.parser.advance()
-            and_or_list.operators.append(operator.value)
-
-            self.parser.skip_newlines()
-            pipeline = self.parse_pipeline()
-            and_or_list.pipelines.append(pipeline)
-
-        return and_or_list
+        return self.parser.statements.parse_and_or_tail(and_or_list)
 
     def parse_pipeline_component(self) -> Command:
         """Parse a single component of a pipeline (simple or compound command)."""

@@ -319,7 +319,17 @@ class ControlFlowExecutor:
                     if not matched:
                         # Check if any pattern matches
                         for pattern_obj in case_item.patterns:
-                            # Expand pattern
+                            if getattr(pattern_obj, 'word', None) is not None:
+                                # Word AST path: per-part quote context
+                                # (quoted text matches literally).
+                                pat = self.expansion_manager.expand_word_as_pattern(
+                                    pattern_obj.word)
+                                if self._match_shell_pattern(expr, pat):
+                                    matched = True
+                                    break
+                                continue
+
+                            # Legacy string path (combinator parser)
                             pattern_str = pattern_obj.pattern
                             expanded_pattern = pattern_str
                             if '$' in pattern_str:
@@ -414,8 +424,10 @@ class ControlFlowExecutor:
                             raise EOFError
                         reply = reply.rstrip('\n')
                     except (EOFError, KeyboardInterrupt):
-                        # Ctrl+D or Ctrl+C exits the loop
+                        # Ctrl+D or Ctrl+C exits the loop; bash reports the
+                        # failed read with a non-zero status.
                         sys.stderr.write("\n")
+                        exit_status = 1
                         break
 
                     # Set REPLY variable
@@ -578,6 +590,18 @@ class ControlFlowExecutor:
                 return match_extglob(pattern, string)
         from ..expansion.glob import normalize_bracket_expressions
         return fnmatch.fnmatch(string, normalize_bracket_expressions(pattern))
+
+    def _match_shell_pattern(self, string: str, pattern: str) -> bool:
+        """Full-match a string against a shell pattern (Word AST path).
+
+        Uses the shared glob→regex converter, which honors backslash
+        escapes (including those _glob_escape added for quoted text) —
+        fnmatch does not.
+        """
+        from ..expansion.parameter_expansion import PatternMatcher
+        regex = PatternMatcher().shell_pattern_to_regex(
+            pattern, extglob_enabled=self.state.options.get('extglob', False))
+        return re.fullmatch(regex, string) is not None
 
     def _convert_case_pattern_for_fnmatch(self, pattern: str) -> str:
         """Convert bash-style case pattern escapes to fnmatch format.

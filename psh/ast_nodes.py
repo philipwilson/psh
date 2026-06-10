@@ -315,6 +315,9 @@ class FunctionDef(Statement):
     """Function definition."""
     name: str
     body: StatementList
+    # Redirections attached to the definition (f() { ...; } > file) are
+    # applied at each CALL, not at definition time (bash).
+    redirects: List[Redirect] = field(default_factory=list)
 
 
 
@@ -336,8 +339,15 @@ class ContinueStatement(Statement, CompoundCommand):
 
 @dataclass
 class CasePattern(ASTNode):
-    """A single pattern in a case statement."""
+    """A single pattern in a case statement.
+
+    ``word`` carries the per-part quote context when built by the
+    recursive descent parser: quoted text matches literally while
+    unquoted glob characters stay active. ``pattern`` is the flattened
+    text, kept for display and for the combinator parser.
+    """
     pattern: str
+    word: Optional['Word'] = None
 
 
 @dataclass

@@ -93,12 +93,7 @@ class StatementParser:
         and_or_list.pipelines.append(pipeline)
 
         # Handle && and || operators
-        while self.parser.match(TokenType.AND_AND, TokenType.OR_OR):
-            operator = self.parser.advance()
-            and_or_list.operators.append(operator.value)
-            self.parser.skip_newlines()
-            pipeline = self.parser.commands.parse_pipeline()
-            and_or_list.pipelines.append(pipeline)
+        self.parse_and_or_tail(and_or_list)
 
         # POSIX: a trailing '&' backgrounds the whole and-or list
         if self.parser.match(TokenType.AMPERSAND):
@@ -108,6 +103,19 @@ class StatementParser:
                     f"syntax error near unexpected token '{self.parser.peek().value}'")
             self._apply_background(and_or_list)
 
+        return and_or_list
+
+    def parse_and_or_tail(self, and_or_list: AndOrList) -> AndOrList:
+        """Consume trailing `&& pipeline` / `|| pipeline` continuations.
+
+        Shared by every place an and-or chain can continue (plain lists,
+        pipelines, control structures used as a chain head).
+        """
+        while self.parser.match(TokenType.AND_AND, TokenType.OR_OR):
+            operator = self.parser.advance()
+            and_or_list.operators.append(operator.value)
+            self.parser.skip_newlines()
+            and_or_list.pipelines.append(self.parser.commands.parse_pipeline())
         return and_or_list
 
     @staticmethod

@@ -329,14 +329,12 @@ class ControlStructureParser:
         self.parser.consume_if(TokenType.LPAREN)
 
         # Parse first pattern
-        pattern_str = self._parse_case_pattern()
-        patterns.append(CasePattern(pattern=pattern_str))
+        patterns.append(self._parse_case_pattern())
 
         # Parse additional patterns separated by |
         while self.parser.match(TokenType.PIPE):
             self.parser.advance()
-            pattern_str = self._parse_case_pattern()
-            patterns.append(CasePattern(pattern=pattern_str))
+            patterns.append(self._parse_case_pattern())
 
         self.parser.expect(TokenType.RPAREN)
         self.parser.skip_newlines()
@@ -356,9 +354,17 @@ class ControlStructureParser:
 
         return CaseItem(patterns=patterns, commands=commands, terminator=terminator)
 
-    def _parse_case_pattern(self) -> str:
-        """Parse a case pattern."""
-        parts = []
+    def _parse_case_pattern(self) -> CasePattern:
+        """Parse a case pattern, keeping per-part quote context.
+
+        The Word parts let the executor distinguish quoted (literal) from
+        unquoted (glob-active) pattern text; the flattened string is kept
+        for display.
+        """
+        from ....ast_nodes import LiteralPart, Word
+
+        text_parts = []
+        word_parts = []
 
         while (not self.parser.match(TokenType.PIPE, TokenType.RPAREN) and
                not self.parser.at_end()):
@@ -367,15 +373,19 @@ class ControlStructureParser:
             if self.parser.match_any(TokenGroups.WORD_LIKE | TokenGroups.CASE_PATTERN_KEYWORDS):
                 if token.type in TokenGroups.CASE_PATTERN_KEYWORDS:
                     # Keywords can be valid patterns
-                    parts.append(token.value)
+                    text_parts.append(token.value)
+                    word_parts.append(LiteralPart(token.value, quoted=False,
+                                                  quote_char=None))
                     self.parser.advance()
                 else:
                     word = self.parser.commands.parse_argument_as_word()
-                    parts.append(''.join(str(p) for p in word.parts))
+                    text_parts.append(''.join(str(p) for p in word.parts))
+                    word_parts.extend(word.parts)
             else:
                 break
 
-        return ''.join(parts)
+        return CasePattern(pattern=''.join(text_parts),
+                           word=Word(parts=word_parts))
 
     # === Select Statement Parsing ===
 

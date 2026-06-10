@@ -4,6 +4,43 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.269.0 (2026-06-10) - Parser correctness sweep (review Tier 3, phase 3)
+- `f() ( ... )` keeps its subshell semantics: the parser preserves the
+  SubshellGroup node instead of unwrapping it, so each call forks.
+  Variable writes, `cd` and even `exit` inside the body no longer leak
+  into (or kill) the calling shell.
+- `f() { ...; } > file` redirections attach to the function definition
+  and are applied at each CALL (bash). Previously the redirect parsed as
+  a separate empty command, creating/truncating the file once at
+  definition time and never during calls. FunctionDef and Function carry
+  a redirects list; execute_function_call wraps the body with them.
+- Quoted case patterns match literally: CasePattern now carries a Word
+  AST with per-part quote context, expanded by the same quoting rule as
+  ${x#pat} operands (quoted text and quoted-expansion results are
+  escaped; unquoted text and expansion results keep glob power). Fixes
+  `case ab in 'a*')` wrongly matching, `"$p"` patterns staying
+  glob-active, and `h"*"llo` style mixed patterns. Matching for the Word
+  path uses the shared glob->regex converter (handles backslash escapes,
+  which fnmatch cannot); the legacy fnmatch path remains for the
+  combinator parser.
+- `select` returns status 1 when the read hits EOF (bash).
+- Dedup: the `&& pipeline / || pipeline` chain loop existed in three
+  copies (statements.py, parser.py, commands.py) — now one
+  parse_and_or_tail helper; the _FD_DUP_RE regex was defined twice in the
+  recursive descent parser (a third lives in the deliberately
+  self-contained combinator parser) — now imported from redirections.py.
+- Test-infrastructure: an autouse fixture now rolls back os.environ
+  after every test, eliminating the export-leak pollution class for
+  good. It exposed two tests whose expectations only held because of
+  leaked exports (double-quoted `$VAR` handed to an inner `sh -c`
+  expands in the OUTER shell, before prefix assignments apply); both
+  fixed with escaped dollars after bash verification.
+- Still open (pre-existing, unchanged): `\[)` and extglob `@(...)`
+  inside case patterns are parse errors; for/select items keep their
+  legacy string+quote-type representation (behavior verified correct
+  against bash; the Word AST conversion is deferred cleanup).
+- 25 new bash-pinned tests (test_function_bodies_and_case_patterns.py).
+
 ## 0.268.0 (2026-06-10) - Executor/builtin correctness sweep (review Tier 3, phase 2)
 - `f &` runs a function in the background by forking a subshell (bash).
   psh previously rejected it with "functions cannot be run in background".

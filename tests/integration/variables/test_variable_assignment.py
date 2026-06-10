@@ -43,7 +43,10 @@ def test_assignment_affects_command_environment():
     # Test that command-prefixed variables work with external commands
     # Using subprocess directly since external command output can't be captured by capsys
     result = subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', 'TEST_VAR=hello sh -c "echo Variable: $TEST_VAR"'],
+        # \$ so the INNER sh expands it from its environment — unescaped,
+        # the outer shell would expand it first, before the prefix
+        # assignment applies (POSIX), yielding empty.
+        [sys.executable, '-m', 'psh', '-c', 'TEST_VAR=hello sh -c "echo Variable: \\$TEST_VAR"'],
         capture_output=True,
         text=True
     )
@@ -93,7 +96,8 @@ def test_multiple_assignments_with_builtin():
     # Test multiple command-prefixed assignments with a simple external command
     # Using subprocess directly since external command output can't be captured by capsys
     result = subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', 'A=1 B=2 C=3 sh -c "echo Variables: $A$B$C"'],
+        # \$ so the INNER sh expands them (see note above)
+        [sys.executable, '-m', 'psh', '-c', 'A=1 B=2 C=3 sh -c "echo Variables: \\$A\\$B\\$C"'],
         capture_output=True,
         text=True
     )
