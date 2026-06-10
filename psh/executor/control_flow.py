@@ -595,7 +595,7 @@ class ControlFlowExecutor:
         """Full-match a string against a shell pattern (Word AST path).
 
         Uses the shared glob→regex converter, which honors backslash
-        escapes (including those _glob_escape added for quoted text) —
+        escapes (including those glob_escape added for quoted text) —
         fnmatch does not.
         """
         from ..expansion.parameter_expansion import PatternMatcher
