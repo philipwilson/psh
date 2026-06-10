@@ -181,16 +181,29 @@ def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True) -> 
         elif ch == '?':
             result.append(dot)
         elif ch == '[':
-            # Character class: collect until ']'
+            # Bracket expression: find the closing ']', skipping over
+            # POSIX class names like [:alpha:] whose ']' does not close
+            # the set ([[:alpha:]] is ONE bracket expression).
             j = i + 1
             if j < len(pattern) and pattern[j] in ('!', '^'):
                 j += 1
             if j < len(pattern) and pattern[j] == ']':
                 j += 1  # ] right after [ or [! is literal
             while j < len(pattern) and pattern[j] != ']':
+                if pattern.startswith('[:', j):
+                    close = pattern.find(':]', j + 2)
+                    if close != -1:
+                        j = close + 2
+                        continue
                 j += 1
             if j < len(pattern):
                 class_content = pattern[i + 1:j]
+                # Translate POSIX classes to Python-re ranges
+                # ([[:digit:]] -> [0-9]); re has no [:name:] syntax.
+                from .glob import _POSIX_CLASS_RE, _POSIX_CLASSES
+                class_content = _POSIX_CLASS_RE.sub(
+                    lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)),
+                    class_content)
                 if class_content.startswith('!'):
                     result.append(f'[^{class_content[1:]}]')
                 elif class_content.startswith('^'):

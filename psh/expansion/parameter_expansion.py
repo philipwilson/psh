@@ -2,6 +2,10 @@
 import re
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
+# Canonical pattern engine lives in pattern.py; re-exported here because
+# many call sites import PatternMatcher from this module.
+from .pattern import PatternMatcher
+
 if TYPE_CHECKING:
     from ..shell import Shell
 
@@ -345,38 +349,3 @@ class ParameterExpansion:
         """Lowercase every char matching the pattern."""
         return ''.join(c.lower() if self._char_matches(c, pattern) else c
                        for c in value)
-
-
-class PatternMatcher:
-    """Convert shell patterns to regex and perform matching."""
-
-    def shell_pattern_to_regex(self, pattern: str, anchored: bool = False,
-                               from_start: bool = True,
-                               extglob_enabled: bool = False) -> str:
-        """
-        Convert shell glob pattern to Python regex.
-
-        Args:
-            pattern: Shell pattern with *, ?, [...]
-            anchored: If True, pattern must match from start or end
-            from_start: If anchored, whether to anchor at start (True) or end (False)
-            extglob_enabled: If True and pattern contains extglob, use extglob converter
-        """
-        from .extglob import contains_extglob, extglob_to_regex, glob_to_regex_body
-        if extglob_enabled and contains_extglob(pattern):
-            return extglob_to_regex(pattern, anchored=anchored,
-                                    from_start=from_start)
-
-        # Plain glob: reuse the shared converter (extglob operators are literal
-        # here). This also handles a leading ']' in a class (e.g. [], [!]]),
-        # which the former inline loop produced an invalid empty class for.
-        regex = glob_to_regex_body(pattern, for_pathname=False, extglob=False)
-
-        if anchored:
-            if from_start:
-                regex = '^' + regex
-            else:
-                # For suffix matching, we'll add $ later
-                pass
-
-        return regex

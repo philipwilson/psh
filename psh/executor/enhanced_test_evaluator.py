@@ -1,5 +1,4 @@
 """Test expression evaluator for [[ ]] constructs."""
-import fnmatch
 import re
 from typing import TYPE_CHECKING
 
@@ -149,13 +148,15 @@ class TestExpressionEvaluator:
         return ''.join(result)
 
     def _pattern_match(self, string: str, pattern: str) -> bool:
-        """Match string against a shell pattern, with extglob support."""
-        if self.state.options.get('extglob', False):
-            from ..expansion.extglob import contains_extglob, match_extglob
-            if contains_extglob(pattern):
-                return match_extglob(pattern, string)
-        from ..expansion.glob import normalize_bracket_expressions
-        return fnmatch.fnmatch(string, normalize_bracket_expressions(pattern))
+        """Match string against a shell pattern.
+
+        Delegates to the canonical engine (expansion/pattern.py) so
+        [[ == ]] cannot drift from case patterns and ${var#pat}.
+        """
+        from ..expansion.pattern import match_shell_pattern
+        return match_shell_pattern(
+            string, pattern,
+            extglob_enabled=self.state.options.get('extglob', False))
 
     def evaluate_unary_test(self, expr: UnaryTestExpression) -> bool:
         """Evaluate unary test expression."""

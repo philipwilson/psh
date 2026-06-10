@@ -17,8 +17,10 @@ import copy
 import re
 from typing import List, Optional, Tuple
 
+from .core.exceptions import PshError
 
-class BraceExpansionError(Exception):
+
+class BraceExpansionError(PshError):
     """Raised when brace expansion encounters an error."""
     pass
 

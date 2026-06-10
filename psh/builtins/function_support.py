@@ -3,19 +3,17 @@ import sys
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from ..core import AssociativeArray, IndexedArray, ReadonlyVariableError, VarAttributes, Variable
+
+# FunctionReturn now lives with its control-flow siblings in
+# core/exceptions.py; re-exported here because many call sites
+# historically import it from this module.
+from ..core.exceptions import FunctionReturn  # noqa: F401
 from ..utils import ShellFormatter
 from .base import Builtin
 from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
-
-
-class FunctionReturn(Exception):
-    """Exception used to implement the return builtin."""
-    def __init__(self, exit_code: int):
-        self.exit_code = exit_code
-        super().__init__()
 
 
 @builtin

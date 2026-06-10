@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List, Optional, Union
 
+from .core.exceptions import PshError
+
 # A plain (optionally signed) decimal integer with no leading-zero octal
 # ambiguity. Values matching this are safe to parse with int(); anything else
 # (0x.., 0.., base#n, "2*3", ...) is evaluated as an arithmetic sub-expression.
@@ -1070,7 +1072,7 @@ class ArithmeticEvaluator:
 
 # Inherit from the Python builtin ArithmeticError so that callers that
 # catch the builtin (without importing psh's version) still work.
-class ShellArithmeticError(builtins.ArithmeticError):
+class ShellArithmeticError(PshError, builtins.ArithmeticError):
     """Exception for arithmetic evaluation errors"""
     pass
 

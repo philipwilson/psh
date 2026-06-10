@@ -11,8 +11,6 @@ This module handles execution of control structures including:
 - Break and continue statements
 """
 
-import fnmatch
-import re
 import sys
 from typing import TYPE_CHECKING, List, Optional
 
@@ -328,16 +326,14 @@ class ControlFlowExecutor:
                                     break
                                 continue
 
-                            # Legacy string path (combinator parser)
+                            # Legacy string path (rare: only when the
+                            # combinator parser couldn't build a Word)
                             pattern_str = pattern_obj.pattern
                             expanded_pattern = pattern_str
                             if '$' in pattern_str:
                                 expanded_pattern = self.expansion_manager.expand_string_variables(pattern_str)
 
-                            # Convert bash-style escape sequences for fnmatch
-                            fnmatch_pattern = self._convert_case_pattern_for_fnmatch(expanded_pattern)
-
-                            if self._match_case_pattern(expr, fnmatch_pattern):
+                            if self._match_shell_pattern(expr, expanded_pattern):
                                 matched = True
                                 break
 
@@ -582,72 +578,17 @@ class ControlFlowExecutor:
         words = self.shell.expansion_manager.word_splitter.split(text, ifs)
         return self.shell.expansion_manager._glob_words(words)
 
-    def _match_case_pattern(self, string: str, pattern: str) -> bool:
-        """Match a string against a case pattern with extglob support."""
-        if self.state.options.get('extglob', False):
-            from ..expansion.extglob import contains_extglob, match_extglob
-            if contains_extglob(pattern):
-                return match_extglob(pattern, string)
-        from ..expansion.glob import normalize_bracket_expressions
-        return fnmatch.fnmatch(string, normalize_bracket_expressions(pattern))
-
     def _match_shell_pattern(self, string: str, pattern: str) -> bool:
-        """Full-match a string against a shell pattern (Word AST path).
+        """Full-match a string against a shell pattern.
 
-        Uses the shared glob→regex converter, which honors backslash
-        escapes (including those glob_escape added for quoted text) —
-        fnmatch does not.
+        Delegates to the canonical engine (expansion/pattern.py), which
+        honors backslash escapes (including those glob_escape added for
+        quoted text), bracket classes, and extglob when enabled.
         """
-        from ..expansion.parameter_expansion import PatternMatcher
-        regex = PatternMatcher().shell_pattern_to_regex(
-            pattern, extglob_enabled=self.state.options.get('extglob', False))
-        return re.fullmatch(regex, string) is not None
-
-    def _convert_case_pattern_for_fnmatch(self, pattern: str) -> str:
-        """Convert bash-style case pattern escapes to fnmatch format.
-
-        In bash case patterns:
-        - \\[ means literal [, not character class
-        - \\] means literal ], not character class
-        - \\* means literal *, not wildcard
-        - \\? means literal ?, not single char wildcard
-
-        Note: The tokenizer strips backslashes, so we need to detect patterns that
-        were likely escaped and restore the literal meaning.
-        """
-        result = []
-        i = 0
-        while i < len(pattern):
-            if pattern[i] == '\\' and i + 1 < len(pattern):
-                next_char = pattern[i + 1]
-                if next_char in '[]*?':
-                    # Escape these special characters for fnmatch
-                    result.append('[' + next_char + ']')
-                    i += 2
-                else:
-                    # Other backslash sequences, keep as-is
-                    result.append(pattern[i])
-                    i += 1
-            else:
-                result.append(pattern[i])
-                i += 1
-
-        # Handle cases where tokenizer stripped escape sequences
-        # Pattern like [*] likely came from \[*\] (literal brackets)
-        # Check for suspicious character classes that contain wildcards
-        converted_pattern = ''.join(result)
-
-        # If pattern looks like [*] or [?] or [*...] with wildcards inside brackets,
-        # it's likely meant to be literal brackets since wildcards in character
-        # classes don't make sense
-        if re.match(r'^\[[*?].*\]$', converted_pattern):
-            # This looks like escaped brackets that got tokenized - treat as literal
-            # Convert [*] to [[][*][]]  (literal [ followed by * followed by literal ])
-            bracket_content = converted_pattern[1:-1]  # Remove outer []
-            literal_pattern = '[[]' + bracket_content + '[]]'
-            return literal_pattern
-
-        return converted_pattern
+        from ..expansion.pattern import match_shell_pattern
+        return match_shell_pattern(
+            string, pattern,
+            extglob_enabled=self.state.options.get('extglob', False))
 
     def _display_select_menu(self, items: List[str]) -> None:
         """Display the select menu to stderr."""
