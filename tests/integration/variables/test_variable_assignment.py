@@ -276,13 +276,12 @@ def test_assignment_precedence_over_existing():
     assert lines[1] == 'global'  # echo output (VAR should be restored)
 
 
-def test_assignment_with_subshell(shell, capsys):
+def test_assignment_with_subshell(shell, capsys, tmp_path):
     """Test assignment in subshell doesn't affect parent."""
     # Test global assignment within subshell - explicit echo capture
-    shell.run_command("(VAR=subshell; echo $VAR) > /tmp/subshell_test.out")
-    with open("/tmp/subshell_test.out", "r") as f:
-        content = f.read()
-    assert "subshell" in content
+    out = tmp_path / "subshell_test.out"
+    shell.run_command(f'(VAR=subshell; echo $VAR) > "{out}"')
+    assert "subshell" in out.read_text()
     # Variable should not exist in parent shell
     assert shell.state.get_variable("VAR") == ""
 

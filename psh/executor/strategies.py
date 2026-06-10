@@ -5,6 +5,7 @@ This module implements the Strategy pattern for command execution,
 providing different strategies for builtins, functions, and external commands.
 """
 
+import errno
 import os
 import sys
 from abc import ABC, abstractmethod
@@ -16,6 +17,29 @@ if TYPE_CHECKING:
     from ..ast_nodes import Redirect
     from ..shell import Shell
     from .context import ExecutionContext
+
+
+def exec_external(full_args: List[str], env: dict) -> None:
+    """execvpe with the POSIX ENOEXEC fallback.
+
+    An executable text file without a shebang fails execve with
+    "Exec format error"; POSIX requires the shell to run it as a shell
+    script instead (bash re-executes it with itself). We re-exec the
+    file through psh. Only returns by raising OSError.
+    """
+    try:
+        os.execvpe(full_args[0], full_args, env)
+    except OSError as e:
+        if e.errno != errno.ENOEXEC:
+            raise
+        # Resolve through PATH the way execvpe did, so a script found
+        # on PATH is opened from the right location.
+        import shutil
+        resolved = shutil.which(full_args[0], path=env.get('PATH', os.defpath)) \
+            or full_args[0]
+        os.execve(sys.executable,
+                  [sys.executable, '-m', 'psh', resolved] + list(full_args[1:]),
+                  env)
 
 
 class ExecutionStrategy(ABC):
@@ -382,7 +406,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                 # This helps when execvpe creates a new process
                 os.setpgid(0, current_pgid)
 
-                os.execvpe(full_args[0], full_args, shell.env)
+                exec_external(full_args, shell.env)
             except OSError as e:
                 print(f"psh: {full_args[0]}: {e}", file=sys.stderr)
                 os._exit(127)
@@ -418,7 +442,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                       file=sys.stderr)
 
             try:
-                os.execvpe(full_args[0], full_args, shell.env)
+                exec_external(full_args, shell.env)
             except FileNotFoundError:
                 # Write to stderr file descriptor
                 error_msg = f"psh: {full_args[0]}: command not found\n"

@@ -173,15 +173,13 @@ def shell_with_temp_dir(shell, temp_dir):
 
 @pytest.fixture
 def isolated_shell_with_temp_dir(temp_dir):
-    """Shell instance isolated from pytest's stream capture for redirection tests.
+    """Shell instance with a real os.chdir into a per-test temp directory.
 
-    This fixture creates a completely fresh shell instance that doesn't
-    interfere with pytest's I/O capture, suitable for testing redirections.
-
-    NOTE: Due to pytest's output capture mechanism interfering with file
-    descriptor operations in forked child processes, some tests using this
-    fixture may fail when run as part of a full suite but pass individually
-    or when run with pytest's `-s` flag (disable capture).
+    Use for tests that create files or perform redirections: each test
+    gets its own directory, so fixed-name outputs can't collide across
+    xdist workers. (The old caveat about needing pytest's `-s` flag was
+    fixed in v0.195.0 — forked children now do fd-level I/O, so capture
+    no longer interferes.)
     """
     import os
     import sys
@@ -324,34 +322,15 @@ def captured_shell():
 
 @pytest.fixture(autouse=True)
 def reset_environment():
-    """Reset environment between tests.
+    """Restore the working directory after each test.
 
-    This fixture automatically runs before each test to ensure
-    a clean environment state.
+    Environment-variable rollback is handled wholesale by the
+    `_restore_os_environ` autouse fixture above (this fixture used to
+    restore a hardcoded list of var names, which that one supersedes).
     """
-    # Store original environment
     original_cwd = os.getcwd()
-
-    # Store original values of test-related environment variables
-    # These are variables that tests commonly set and should be isolated
-    test_env_vars = ['TEST_VAR', 'TEST_VAR1', 'TEST_VAR2', 'MY_VAR', 'MY_TEST_VAR',
-                     'TEST_RC_VAR', 'ENV_VAR', 'TEST_AFTER_ERROR']
-    original_env = {var: os.environ.get(var) for var in test_env_vars}
-
     yield
-
-    # Restore original state
     os.chdir(original_cwd)
-
-    # Restore environment variables to their original state
-    for var, original_value in original_env.items():
-        if original_value is None:
-            # Variable wasn't set before test, remove it if it exists now
-            if var in os.environ:
-                del os.environ[var]
-        else:
-            # Variable was set before, restore its original value
-            os.environ[var] = original_value
 
 
 @pytest.fixture

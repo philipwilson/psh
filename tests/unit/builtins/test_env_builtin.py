@@ -13,74 +13,57 @@ import pytest
 class TestEnvBuiltin:
     """Test the env builtin functionality."""
 
-    def test_env_shows_environment(self, shell, clean_env):
+    def test_env_shows_environment(self, shell, clean_env, temp_dir):
         """Test that env displays environment variables."""
+        out = Path(temp_dir) / 'env_output.txt'
         # Export a test variable through the shell
         result = shell.run_command('export TEST_ENV_VAR=test_value')
         assert result == 0
 
         # Run env and capture output
-        result = shell.run_command('env > /tmp/env_output.txt')
+        result = shell.run_command(f'env > "{out}"')
         assert result == 0
 
         # Check output contains our variable
-        with open('/tmp/env_output.txt', 'r') as f:
-            output = f.read()
-        assert 'TEST_ENV_VAR=test_value' in output
+        assert 'TEST_ENV_VAR=test_value' in out.read_text()
 
-        # Clean up
-        os.unlink('/tmp/env_output.txt')
-
-    def test_export_env_sync(self, shell):
+    def test_export_env_sync(self, shell, temp_dir):
         """Test that exported variables appear in env output."""
         # Export a variable
         result = shell.run_command('export SYNC_TEST=synchronized')
         assert result == 0
 
         # Check env shows it
-        result = shell.run_command('env > /tmp/sync_test.txt')
+        out = Path(temp_dir) / 'sync_test.txt'
+        result = shell.run_command(f'env > "{out}"')
         assert result == 0
+        assert 'SYNC_TEST=synchronized' in out.read_text()
 
-        with open('/tmp/sync_test.txt', 'r') as f:
-            output = f.read()
-        assert 'SYNC_TEST=synchronized' in output
-
-        # Clean up
-        os.unlink('/tmp/sync_test.txt')
-
-    def test_env_in_pipeline(self, shell):
+    def test_env_in_pipeline(self, shell, temp_dir):
         """Test that env works correctly in pipelines."""
         # Export variables
         shell.run_command('export PIPE_VAR1=value1')
         shell.run_command('export PIPE_VAR2=value2')
 
         # Test in pipeline
-        result = shell.run_command('env | /usr/bin/grep PIPE_VAR > /tmp/pipe_test.txt')
+        out = Path(temp_dir) / 'pipe_test.txt'
+        result = shell.run_command(f'env | /usr/bin/grep PIPE_VAR > "{out}"')
         assert result == 0
 
-        with open('/tmp/pipe_test.txt', 'r') as f:
-            output = f.read()
+        output = out.read_text()
         assert 'PIPE_VAR1=value1' in output
         assert 'PIPE_VAR2=value2' in output
 
-        # Clean up
-        os.unlink('/tmp/pipe_test.txt')
-
-    def test_env_external_command_compatibility(self, shell):
+    def test_env_external_command_compatibility(self, shell, temp_dir):
         """Test that exported variables are visible to external commands."""
         # Export a variable
         shell.run_command('export EXTERNAL_VAR=visible')
 
         # Use external env command
-        result = shell.run_command('/usr/bin/env | /usr/bin/grep EXTERNAL_VAR > /tmp/external_test.txt')
+        out = Path(temp_dir) / 'external_test.txt'
+        result = shell.run_command(f'/usr/bin/env | /usr/bin/grep EXTERNAL_VAR > "{out}"')
         assert result == 0
-
-        with open('/tmp/external_test.txt', 'r') as f:
-            output = f.read()
-        assert 'EXTERNAL_VAR=visible' in output
-
-        # Clean up
-        os.unlink('/tmp/external_test.txt')
+        assert 'EXTERNAL_VAR=visible' in out.read_text()
 
     def test_env_builtin_priority(self, shell):
         """Test that env builtin is used instead of external command."""
@@ -89,31 +72,27 @@ class TestEnvBuiltin:
         result = shell.run_command('PATH="" env > /dev/null')
         assert result == 0  # Should succeed with builtin
 
-    def test_export_without_value(self, shell):
+    def test_export_without_value(self, shell, temp_dir):
         """Test exporting existing variable."""
         # Set variable without export
         shell.run_command('NO_EXPORT_YET=test')
 
         # Variable shouldn't be in env yet
         # Use grep -c which always returns 0, and check the count
-        shell.run_command('env | /usr/bin/grep -c NO_EXPORT_YET > /tmp/count1.txt || echo "0" > /tmp/count1.txt')
-        with open('/tmp/count1.txt', 'r') as f:
-            assert f.read().strip() == '0'
+        count1 = Path(temp_dir) / 'count1.txt'
+        shell.run_command(f'env | /usr/bin/grep -c NO_EXPORT_YET > "{count1}" || echo "0" > "{count1}"')
+        assert count1.read_text().strip() == '0'
 
         # Export it
         shell.run_command('export NO_EXPORT_YET')
 
         # Now it should be in env
-        result = shell.run_command('env | /usr/bin/grep NO_EXPORT_YET > /tmp/export_test.txt')
+        out = Path(temp_dir) / 'export_test.txt'
+        result = shell.run_command(f'env | /usr/bin/grep NO_EXPORT_YET > "{out}"')
         assert result == 0
-        with open('/tmp/export_test.txt', 'r') as f:
-            assert 'NO_EXPORT_YET=test' in f.read()
+        assert 'NO_EXPORT_YET=test' in out.read_text()
 
-        # Clean up
-        os.unlink('/tmp/count1.txt')
-        os.unlink('/tmp/export_test.txt')
-
-    def test_multiple_exports(self, shell):
+    def test_multiple_exports(self, shell, temp_dir):
         """Test multiple variables exported at once."""
         # Export multiple variables. Use unique names: the in-process shell
         # writes exports into the test runner's own os.environ, and generic
@@ -123,17 +102,15 @@ class TestEnvBuiltin:
         assert result == 0
 
         # Check all are in env
-        result = shell.run_command('env | /usr/bin/grep -E "^MULTI_[ABC]=" | /usr/bin/sort > /tmp/multi_test.txt')
+        out = Path(temp_dir) / 'multi_test.txt'
+        result = shell.run_command(f'env | /usr/bin/grep -E "^MULTI_[ABC]=" | /usr/bin/sort > "{out}"')
         assert result == 0
 
-        with open('/tmp/multi_test.txt', 'r') as f:
-            output = f.read()
+        output = out.read_text()
         assert 'MULTI_A=1\n' in output
         assert 'MULTI_B=2\n' in output
         assert 'MULTI_C=3\n' in output
 
-        # Clean up
-        os.unlink('/tmp/multi_test.txt')
         shell.run_command('unset MULTI_A MULTI_B MULTI_C')
 
     def test_env_command_override_visible_to_executed_command(self, shell, temp_dir):

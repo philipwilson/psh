@@ -1,8 +1,0 @@
-Exit status of ((2 + 2)): 0
-Exit status of ((0)): 1
-Exit status of ((5)): 0
-10 is greater than 5
-Zero is false in arithmetic
-Result: 30
-After increment: 31
-Final: 67

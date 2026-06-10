@@ -67,7 +67,7 @@ class InteractiveTestHelper:
 class TestCommandCompletion:
     """Test command name completion."""
 
-    @pytest.mark.xfail(reason="Tab completion not implemented yet")
+    @pytest.mark.xfail(reason="tab completion is implemented, but requires a real PTY; piped stdin cannot trigger it — live coverage is in tests/system/interactive/test_pty_smoke.py")
     def test_builtin_command_completion(self):
         """Test completion of builtin command names."""
         # Test that 'ec<TAB>' completes to 'echo'
@@ -89,7 +89,7 @@ class TestCommandCompletion:
         assert result['success']
         # Should show multiple options like 'cat', 'cal', etc.
 
-    @pytest.mark.xfail(reason="Tab completion not implemented yet")
+    @pytest.mark.xfail(reason="tab completion is implemented, but requires a real PTY; piped stdin cannot trigger it — live coverage is in tests/system/interactive/test_pty_smoke.py")
     def test_command_completion_unique_match(self):
         """Test completion when only one command matches."""
         # Test unique completion

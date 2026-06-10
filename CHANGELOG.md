@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.277.0 (2026-06-10) - Test-tree cleanup (reappraisal Tier A, 3/4)
+- Legacy trees deleted: root `conformance_tests/` (123 files — a second,
+  golden-file conformance system superseded by the live psh-vs-bash suite in
+  tests/conformance/, including tracked debug junk), `contract_tests_draft/`
+  (unreferenced; scenarios duplicated by test_pty_smoke.py and the fd/jobs
+  conformance tests), dead `tests/framework/conformance.py` and `base.py`
+  (zero importers; interactive.py/pty_test_framework.py kept — still used),
+  and four empty dirs.
+- Before deleting, the five feature areas only the legacy tree covered were
+  folded into the live suite as 30 new conformance tests
+  (posix/test_source_cd_scripts_conformance.py): source/., cd semantics,
+  backslash-newline line continuation, declare -i/-l/-u/-r/-x, and real
+  script-file execution ($0, ${10}, exit codes, ENOEXEC, noexec perms).
+- The fold-in probes uncovered and fixed TWO REAL BUGS (bash-pinned):
+  - cd used os.environ instead of the HOME/OLDPWD *shell variables* —
+    `HOME=/x; cd` went to the real home, and bare `cd` with HOME unset
+    silently went to / instead of erroring (bash: "cd: HOME not set", rc 1).
+  - psh lacked the POSIX ENOEXEC fallback: an executable text file without
+    a shebang failed with "Exec format error" (rc 126) instead of being run
+    as a shell script. exec_external() in executor/strategies.py now re-execs
+    such files through psh, with PATH-correct resolution.
+- Conformance framework now pins LC_ALL=C/LANG=C in run_in_shell so sort
+  order, error text, and glob ranges can't drift by machine.
+- Fixed-`/tmp` paths removed from 7 test files (xdist collision risk and a
+  violation of the project's own tmp/ rule) — converted to temp_dir/tmp_path
+  fixtures; test_pushd_logical_paths now reads PWD from captured stdout.
+- Stale test metadata corrected: "History/Tab completion not implemented yet"
+  xfail reasons rewritten honestly (the features exist; those tests feed
+  non-interactive stdin which cannot exercise them); the
+  isolated_shell_with_temp_dir docstring no longer warns about the `-s` flag
+  (fixed in v0.195.0); reset_environment's hardcoded env-var list dropped
+  (superseded by the _restore_os_environ autouse fixture, now cwd-only).
+- References updated: AGENTS.md and the CLAUDE.md development principle now
+  name `tests/conformance/` explicitly, and the principle documents the
+  enforcing claims meta-test.
+
 ## 0.276.0 (2026-06-10) - Behavior bugs from the reappraisal (Tier A, 2/4)
 - read builtin: option parsing rewritten getopt-style, pinned to bash with a
   17-probe battery. Fixes: combined options no longer abandon the option loop

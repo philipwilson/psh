@@ -356,4 +356,4 @@ See `docs/test_pattern_guide.md` for examples and patterns.
 - Educational focus means clarity over performance in implementation choices
 
 ## Development Principles
-- If we assert that a feature of psh is POSIX or bash conformant in the user's guide (docs/user_guide/*) then we must have a test in conformance_tests which proves it.
+- If we assert that a feature of psh is POSIX or bash conformant in the user's guide (docs/user_guide/*) then we must have a test in `tests/conformance/` which proves it. This is enforced by a meta-test (`tests/conformance/test_claims_have_tests.py`): adding a "Full support" row to the user-guide compatibility table without a mapped conformance test fails the suite — add the proving test, then map it in `CLAIM_TESTS`.

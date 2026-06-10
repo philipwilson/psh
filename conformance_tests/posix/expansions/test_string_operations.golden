@@ -1,9 +1,0 @@
-Remove prefix 'hello': _world_test
-Remove prefix 'hello_': world_test
-Remove suffix 'test': hello_world_
-Remove suffix '_test': hello_world
-Remove shortest path: subdir/file.txt.bak
-Remove longest path: file.txt.bak
-Remove shortest extension: dir/subdir/file
-Remove longest extension: dir/subdir/file
-Base name of files: files

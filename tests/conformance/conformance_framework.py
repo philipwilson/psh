@@ -127,8 +127,12 @@ class ConformanceTestFramework:
         """Run command in specified shell and return result."""
         import time
 
-        # Prepare environment
+        # Prepare environment. Pin the locale so sort order, error
+        # messages, and glob ranges don't drift by machine (same
+        # convention as the behavioral golden suite).
         test_env = os.environ.copy()
+        test_env['LC_ALL'] = 'C'
+        test_env['LANG'] = 'C'
         if env:
             test_env.update(env)
 

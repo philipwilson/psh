@@ -5,7 +5,7 @@ Core implementation lives in `psh/`, organized by subsystem:
 - `lexer/`, `parser/`, `expansion/`, `executor/`, `io_redirect/`, `interactive/`, `builtins/`, `core/`, and `visitor/`.
 - Entry points: `psh/__main__.py` (CLI) and `psh/shell.py` (orchestration).
 - Tests are under `tests/` by scope: `tests/unit/`, `tests/integration/`, `tests/system/`, `tests/regression/`, `tests/conformance/`, and `tests/performance/`.
-- Supplemental compatibility suites live in `conformance_tests/`. Architecture and design notes are in `README.md`, `ARCHITECTURE.md`, and subsystem `CLAUDE.md` files.
+- POSIX/bash compatibility tests live in `tests/conformance/`. Architecture and design notes are in `README.md`, `ARCHITECTURE.md`, and subsystem `CLAUDE.md` files.
 
 ## Build, Test, and Development Commands
 - Canonical command set is maintained in `docs/testing_source_of_truth.md`.
@@ -15,7 +15,7 @@ Core implementation lives in `psh/`, organized by subsystem:
 - `python run_tests.py` runs the recommended multi-phase test flow (handles subshell capture edge cases).
 - `python run_tests.py --quick` skips slow tests during iteration.
 - `python -m pytest tests/` runs pytest directly.
-- `python -m pytest tests/integration/subshells/ -s` is required for subshell FD-sensitive tests.
+- Subshell tests pass under normal capture (`-s` no longer required as of v0.195.0).
 - `python -m pytest tests/ --cov=psh --cov-report=html` generates a coverage report.
 
 ## Coding Style & Naming Conventions

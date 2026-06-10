@@ -350,8 +350,13 @@ def send_signal_to_process(pid, signal_num):
 
 
 def create_test_script(content, filename):
-    """Helper to create test scripts for signal testing."""
-    script_path = f"/tmp/{filename}"
+    """Helper to create test scripts for signal testing.
+
+    Uses a per-call unique directory rather than a fixed /tmp name so
+    concurrent test runs can't collide.
+    """
+    import tempfile
+    script_path = os.path.join(tempfile.mkdtemp(prefix='psh_sigtest_'), filename)
     with open(script_path, 'w') as f:
         f.write(content)
     os.chmod(script_path, 0o755)
