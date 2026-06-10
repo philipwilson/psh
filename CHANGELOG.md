@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.279.0 (2026-06-10) - expansion/variable.py decomposition (reappraisal Tier B, 1/6)
+- The 1,644-line `expansion/variable.py` grab-bag — the worst file in the
+  reappraisal — is decomposed by concern into four mixins, with
+  `VariableExpander` as the facade (no call-site changes anywhere):
+  - `arrays.py` (307 lines) — subscripts, slices, lengths, array assignment
+  - `operators.py` (352) — ${var<op>operand} operator application
+  - `operands.py` (238) — pattern/replacement operand mini-expansion
+  - `fields.py` (133) — multi-field expansion (${arr[@]}, $@ with operators)
+  - `variable.py` (382) — entry points, name resolution, specials, ${!name}
+- The six copy-pasted array-element resolution blocks (the
+  eval-index-with-ArithmeticError→0 dance, plus 10 repeated local arithmetic
+  imports) are replaced by one canonical `_eval_array_index()` helper with
+  the bash subscript rule documented once.
+- `expand_string_variables` (118 lines) rewritten as a thin wrapper over
+  `_expand_one_dollar` — the shared $-scanner also used for operator
+  operands — so recognized constructs can't drift between contexts; only
+  the double-quote escape rules remain in the wrapper (~70 duplicated
+  lines gone). The two arithmetic-context scanners in manager.py were
+  examined and deliberately NOT unified: arithmetic substitutes value
+  *text* (empty→0, recursively evaluable), a genuinely different rule set.
+- `_glob_escape` renamed to public `glob_escape` (manager.py was using it
+  cross-class as a de-facto API).
+- Pure refactor: zero behavior change intended; full suite green at the
+  same counts (4,235 passed / 4,550 collected).
+
 ## 0.278.0 (2026-06-10) - Meta-documentation sweep (reappraisal Tier A, 4/4 — Tier A complete)
 - ARCHITECTURE.md: sections describing removed subsystems deleted or repointed
   (parser validation/SemanticAnalyzer → psh/visitor/ validators; ParserFactory,

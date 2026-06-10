@@ -590,12 +590,12 @@ class ExpansionManager:
         for part in word.parts:
             if isinstance(part, LiteralPart):
                 if part.quoted:
-                    out.append(ve._glob_escape(part.text))
+                    out.append(ve.glob_escape(part.text))
                 else:
                     out.append(part.text)
             elif isinstance(part, ExpansionPart):
                 expanded = self.expand_expansion(part.expansion)
-                out.append(ve._glob_escape(expanded) if part.quoted else expanded)
+                out.append(ve.glob_escape(expanded) if part.quoted else expanded)
         return ''.join(out)
 
     def _split_part_fields(self, parts: List[str], splittable_idx: set) -> List[str]:
