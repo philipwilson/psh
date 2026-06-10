@@ -4,7 +4,6 @@ Function operations support for the PSH executor.
 This module handles function definition and execution operations.
 """
 
-import sys
 from typing import TYPE_CHECKING, List, Optional
 
 from ..builtins import FunctionReturn
@@ -23,9 +22,10 @@ class FunctionOperationExecutor:
     Handles function definition and execution.
 
     This class encapsulates logic for:
-    - Function definition
-    - Function execution (will be implemented in Phase 7)
-    - Function scope management
+    - Function definition (execute_function_def)
+    - Function execution (execute_function_call): positional parameter
+      setup, function-scoped redirections, running the body, and
+      handling `return` / control-flow exceptions
     """
 
     def __init__(self, shell: 'Shell'):
@@ -121,8 +121,8 @@ class FunctionOperationExecutor:
             # defect inside the function body isn't hidden.
             if self.shell.state.options.get('debug-exec'):
                 import traceback
-                traceback.print_exc(file=sys.stderr)
-            print(f"psh: {name}: {e}", file=sys.stderr)
+                traceback.print_exc(file=self.shell.state.stderr)
+            print(f"psh: {name}: {e}", file=self.shell.state.stderr)
             return 1
         finally:
             # Pop function scope

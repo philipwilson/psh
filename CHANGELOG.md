@@ -4,6 +4,45 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.282.0 (2026-06-11) - Executor cleanup + signal-loss race fix (reappraisal Tier B, 4/6)
+- THE RACE, root-caused — and it wasn't where the reappraisal guessed.
+  `sleep 5 & kill %1 && wait %1` intermittently reported rc=0 instead of
+  143 under load (11/320 in a parallel stress harness). Suspected
+  wait_for_job bookkeeping was innocent: failing runs took the full 5s —
+  the SIGTERM was being LOST. A signal delivered in the child's fork→exec
+  window was consumed by the inherited Python-level trap handler and
+  discarded across exec(), so sleep never received it. Fix:
+  ProcessLauncher blocks SIGTERM/SIGINT/SIGHUP/SIGQUIT across fork
+  (pthread_sigmask; parent restores immediately); the child unblocks only
+  after apply_child_signal_policy resets handlers to SIG_DFL, so a
+  window signal stays kernel-pending and kills the child with the right
+  status; SIGTERM/SIGHUP added to reset_child_signals (children must not
+  inherit trap handlers — bash semantics). Stress: 960/960 clean after
+  (0/320 before-fix failures remained); 30× bash-pins rc=143 and rc=5.
+  wait_for_job additionally hardened (ECHILD distinguished and orphaned
+  processes marked completed so the stored-status fallback always runs;
+  EINTR retried). 3 regression tests added
+  (tests/integration/job_control/test_kill_wait_race.py, auto-serial).
+- `JobManager.launch_background(pgid, command, processes)` extracted: the
+  create-job/add-process/register/notice block was duplicated across 6
+  sites (strategies.py ×3, subshell.py ×2, pipeline.py). The notice is
+  unified on bash's format — PTY-verified that bash prints the LAST
+  process's pid (== $!), not the pipeline leader's pgid, which
+  pipeline.py had been printing.
+- CommandExecutor.execute (191 lines) split: `_strip_backslash_bypass()`
+  and `_handle_execution_error()` extracted; execute() reads as the
+  orchestration narrative.
+- Near-duplicate code factored: the ~40-line builtin exception policy
+  shared by Special/regular builtin strategies → `execute_builtin_guarded()`;
+  the two WIFEXITED blocks in wait_for_job → `exit_status_from_wait_status()`
+  (builtins' `_extract_exit_status` delegates).
+- Dead code removed: `process_metrics` hooks (object never created),
+  `_execute_pipeline` indirection; function.py "Phase 7" docstring fixed.
+- All 20 opaque plan-codename comments (H3/H4/H5/C1...) replaced with
+  self-contained explanations; `job.state.name == 'DONE'` string compare
+  → JobState enum; error output unified on state.stderr where equivalent.
+- Full suite green: 4,223 passed / 4,538 collected (3 new race tests).
+
 ## 0.281.0 (2026-06-11) - Lexer cleanup (reappraisal Tier B, 3/6)
 - literal.py's quadratic string-archaeology fixed — but not the way the
   review prescribed: instrumentation proved `_is_inside_array_assignment`

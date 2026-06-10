@@ -6,6 +6,7 @@ external commands, and subshells.
 """
 
 import os
+import signal
 import sys
 from dataclasses import dataclass
 from enum import Enum
@@ -83,7 +84,8 @@ class ProcessLauncher:
             shell_state: Shell state for options and configuration
             job_manager: Job manager for tracking processes
             io_manager: I/O manager for redirections
-            signal_manager: Signal manager for child signal reset (H3)
+            signal_manager: Signal manager used to reset the child's
+                signal handlers to defaults after fork
         """
         self.state = shell_state
         self.job_manager = job_manager
@@ -118,12 +120,30 @@ class ProcessLauncher:
             # stdout/stderr might not support flush() in some contexts
             pass
 
+        # Block termination signals across fork(). The shell installs
+        # Python-level handlers for these (trap support), and the child
+        # inherits them until apply_child_signal_policy() resets them to
+        # SIG_DFL. Without blocking, a signal aimed at the child in that
+        # window (e.g. `sleep 5 & kill %1` racing the fork) is consumed
+        # by Python's C-level handler and then silently LOST across
+        # exec() — the command would run to completion as if never
+        # signaled. Blocked, the signal stays kernel-pending until the
+        # child unblocks it after resetting handlers, at which point the
+        # default action (termination) is taken with the correct status.
+        block_set = {signal.SIGTERM, signal.SIGINT,
+                     signal.SIGHUP, signal.SIGQUIT}
+        old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, block_set)
+
         pid = os.fork()
 
         if pid == 0:  # Child process
+            # apply_child_signal_policy() (called in _child_setup_and_exec)
+            # resets handlers to SIG_DFL and unblocks these signals.
             self._child_setup_and_exec(execute_fn, config)
             # Does not return - child exits via os._exit()
         else:  # Parent process
+            # Restore the parent's signal mask immediately
+            signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
             pgid = self._parent_setup(pid, config)
             return pid, pgid
 
@@ -167,8 +187,9 @@ class ProcessLauncher:
                           file=sys.stderr)
 
             elif config.role == ProcessRole.PIPELINE_MEMBER:
-                # Non-first in pipeline: wait for parent signal
-                # This uses pipe-based synchronization (C1 implementation)
+                # Non-first in pipeline: block on the sync pipe until the
+                # parent has forked every member and set up the process
+                # group, so no member runs before the group exists
 
                 # Close write end (child won't write to it)
                 if config.sync_pipe_w is not None:

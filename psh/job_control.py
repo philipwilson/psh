@@ -1,10 +1,27 @@
 """Job control functionality for psh."""
 
+import errno
 import os
 import sys
 import termios
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence, Tuple
+
+
+def exit_status_from_wait_status(status: int) -> int:
+    """Convert a raw waitpid() status into a shell exit status.
+
+    Normal exit yields the exit code; death by signal N yields 128+N;
+    a stop by signal N also yields 128+N (matching bash's $? for a
+    just-stopped foreground job).
+    """
+    if os.WIFEXITED(status):
+        return os.WEXITSTATUS(status)
+    elif os.WIFSIGNALED(status):
+        return 128 + os.WTERMSIG(status)
+    elif os.WIFSTOPPED(status):
+        return 128 + os.WSTOPSIG(status)
+    return 0
 
 
 class JobState(Enum):
@@ -223,6 +240,34 @@ class JobManager:
 
         return job
 
+    def launch_background(self, pgid: int, command_string: str,
+                          processes: Sequence[Tuple[int, str]]) -> 'Job':
+        """Record a freshly forked process group as a background job.
+
+        Creates the job, adds its processes, registers it as the current
+        background job (setting $! to the pid of the last process), and —
+        in interactive shells only, matching bash — prints the "[N] PID"
+        notice to stderr. Bash prints the pid of the LAST process in the
+        job (the same value $! receives), not the process group id.
+
+        Args:
+            pgid: Process group id of the new job
+            command_string: Command text for the job table
+            processes: (pid, command) pairs, in pipeline order
+
+        Returns:
+            The newly created Job
+        """
+        job = self.create_job(pgid, command_string)
+        for pid, proc_command in processes:
+            job.add_process(pid, proc_command)
+        last_pid = processes[-1][0] if processes else pgid
+        self.register_background_job(job, shell_state=self.shell_state,
+                                     last_pid=last_pid)
+        if self.shell_state and self.shell_state.options.get('interactive'):
+            print(f"[{job.job_id}] {last_pid}", file=self.shell_state.stderr)
+        return job
+
     def notify_stopped_jobs(self):
         """Print notifications for newly stopped jobs."""
         for job_id, job in list(self.jobs.items()):
@@ -295,8 +340,10 @@ class JobManager:
     def transfer_terminal_control(self, pgid: int, context: str = "") -> bool:
         """Transfer terminal control to a process group.
 
-        This is the single source of truth for all tcsetpgrp() calls,
-        implementing H5 from the executor improvements plan.
+        This is the single source of truth for all tcsetpgrp() calls:
+        every executor that hands the terminal to a foreground job (or
+        reclaims it for the shell) goes through here, so capability
+        checks and debug logging live in one place.
 
         Args:
             pgid: Process group ID to transfer control to
@@ -317,10 +364,6 @@ class JobManager:
                 ctx_str = f"{context}: " if context else ""
                 print(f"DEBUG {ctx_str}Transferred terminal control to pgid {pgid}", file=sys.stderr)
 
-            # Record metrics if available
-            if hasattr(self.shell_state, 'process_metrics'):
-                self.shell_state.process_metrics.record_terminal_transfer_success()
-
             return True
 
         except OSError as e:
@@ -330,24 +373,20 @@ class JobManager:
                 print(f"WARNING {ctx_str}Failed to transfer terminal control to pgid {pgid}: {e}",
                       file=sys.stderr)
 
-            # Record metrics if available
-            if hasattr(self.shell_state, 'process_metrics'):
-                self.shell_state.process_metrics.record_terminal_transfer_failure()
-
             return False
 
     def restore_shell_foreground(self):
         """Restore shell to foreground and clean up state.
 
         This should be called after any foreground job completes
-        to ensure terminal and bookkeeping are properly reset.
-
-        This is the single source of truth for foreground job cleanup,
-        implementing H4 from the executor improvements plan.
+        to ensure terminal and bookkeeping are properly reset. It is the
+        single source of truth for foreground-job cleanup: reclaim the
+        terminal, restore the shell's terminal modes, and clear the
+        foreground bookkeeping.
         """
         shell_pgid = os.getpgrp()
 
-        # Reclaim the terminal FIRST (H5). set_foreground_job(None) restores
+        # Reclaim the terminal FIRST. set_foreground_job(None) restores
         # the shell's terminal modes with tcsetattr(TCSADRAIN), which blocks
         # while another (possibly dead) process group still owns the
         # terminal — the shell hung here after SIGINT killed a foreground
@@ -391,47 +430,55 @@ class JobManager:
             try:
                 # Wait for any child in the job's process group
                 pid, status = os.waitpid(-job.pgid, os.WUNTRACED)
-
-                # Update process status
-                job.update_process_status(pid, status)
-
-                # Extract exit status
-                proc_exit_status = 0
-                if os.WIFEXITED(status):
-                    proc_exit_status = os.WEXITSTATUS(status)
-                elif os.WIFSIGNALED(status):
-                    proc_exit_status = 128 + os.WTERMSIG(status)
-                elif os.WIFSTOPPED(status):
-                    proc_exit_status = 128 + os.WSTOPSIG(status)
-
-                # Find which process this is
-                for i, proc in enumerate(job.processes):
-                    if proc.pid == pid:
-                        if collect_all_statuses:
-                            # Store exit status at the correct index
-                            while len(all_exit_statuses) <= i:
-                                all_exit_statuses.append(0)
-                            all_exit_statuses[i] = proc_exit_status
-
-                        # If this was the last process in the pipeline
-                        if i == len(job.processes) - 1:
-                            exit_status = proc_exit_status
-
-            except OSError:
+            except OSError as e:
+                if e.errno == errno.EINTR:
+                    # Interrupted by a signal — keep waiting. (Python
+                    # normally retries EINTR itself, but a signal handler
+                    # that raises can still surface it.)
+                    continue
+                if e.errno == errno.ECHILD:
+                    # No waitable children remain in the job's process
+                    # group, yet some processes are still marked running:
+                    # they were reaped elsewhere (e.g. the SIGCHLD
+                    # notification path) before we could wait on them.
+                    # Mark them completed so the stored-status fallback
+                    # below runs — otherwise a job whose processes all
+                    # died could incorrectly report exit status 0.
+                    for proc in job.processes:
+                        if not proc.stopped and not proc.completed:
+                            proc.completed = True
                 break
 
-        # If processes were already reaped by SIGCHLD handler, get exit status from stored status
+            # Update process status
+            job.update_process_status(pid, status)
+
+            # Extract exit status
+            proc_exit_status = exit_status_from_wait_status(status)
+
+            # Find which process this is
+            for i, proc in enumerate(job.processes):
+                if proc.pid == pid:
+                    if collect_all_statuses:
+                        # Store exit status at the correct index
+                        while len(all_exit_statuses) <= i:
+                            all_exit_statuses.append(0)
+                        all_exit_statuses[i] = proc_exit_status
+
+                    # If this was the last process in the pipeline
+                    if i == len(job.processes) - 1:
+                        exit_status = proc_exit_status
+
+        # If processes were already reaped by the SIGCHLD notification path,
+        # derive the exit status from the statuses it recorded. If the LAST
+        # process has no recorded status (reaped by something that didn't
+        # record it), fall back to the last process that does have one —
+        # never silently report 0 when a recorded status says otherwise.
         if not job.any_process_running() and job.processes:
+            last_recorded_status = None
             for i, proc in enumerate(job.processes):
                 if proc.completed and proc.status is not None:
-                    status = proc.status
-                    proc_exit_status = 0
-                    if os.WIFEXITED(status):
-                        proc_exit_status = os.WEXITSTATUS(status)
-                    elif os.WIFSIGNALED(status):
-                        proc_exit_status = 128 + os.WTERMSIG(status)
-                    elif os.WIFSTOPPED(status):
-                        proc_exit_status = 128 + os.WSTOPSIG(status)
+                    proc_exit_status = exit_status_from_wait_status(proc.status)
+                    last_recorded_status = proc_exit_status
 
                     if collect_all_statuses:
                         while len(all_exit_statuses) <= i:
@@ -441,6 +488,10 @@ class JobManager:
                     # Last process determines default exit status
                     if i == len(job.processes) - 1:
                         exit_status = proc_exit_status
+
+            last_proc = job.processes[-1]
+            if last_proc.status is None and last_recorded_status is not None:
+                exit_status = last_recorded_status
 
         # Update job state
         old_state = job.state

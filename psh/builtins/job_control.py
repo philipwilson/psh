@@ -76,7 +76,9 @@ class FgBuiltin(Builtin):
         # Print the command being resumed
         print(job.command, file=shell.stdout)
 
-        # Give it terminal control FIRST before sending SIGCONT (H5)
+        # Give it terminal control FIRST, before sending SIGCONT — a resumed
+        # job that reads the terminal before the transfer would be stopped
+        # again by SIGTTIN.
         shell.job_manager.set_foreground_job(job)
         job.foreground = True
         if not shell.job_manager.transfer_terminal_control(job.pgid, "fg builtin"):
@@ -100,7 +102,7 @@ class FgBuiltin(Builtin):
         # Wait for it
         exit_status = shell.job_manager.wait_for_job(job)
 
-        # Restore terminal control to shell (H4)
+        # Reclaim the terminal and clear foreground-job bookkeeping
         shell.job_manager.restore_shell_foreground()
 
         # Remove job if completed
@@ -325,10 +327,5 @@ class WaitBuiltin(Builtin):
 
     def _extract_exit_status(self, status: int) -> int:
         """Extract exit status from waitpid status."""
-        if os.WIFEXITED(status):
-            return os.WEXITSTATUS(status)
-        elif os.WIFSIGNALED(status):
-            return 128 + os.WTERMSIG(status)
-        elif os.WIFSTOPPED(status):
-            return 128 + os.WSTOPSIG(status)
-        return 0
+        from ..job_control import exit_status_from_wait_status
+        return exit_status_from_wait_status(status)
