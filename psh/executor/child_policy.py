@@ -21,6 +21,10 @@ def apply_child_signal_policy(signal_manager, state, is_shell_process=False):
         3. Reset all signals to SIG_DFL via signal_manager
         4. If is_shell_process, re-ignore SIGTTOU (shell processes may
            call tcsetpgrp() and must not be stopped by SIGTTOU)
+        5. Unblock termination signals that the forking parent may have
+           blocked across fork() (see ProcessLauncher.launch): any signal
+           delivered during the fork window is kernel-pending and takes
+           its default action here, with the correct termination status.
 
     Args:
         signal_manager: The SignalManager instance (provides reset_child_signals)
@@ -34,8 +38,8 @@ def apply_child_signal_policy(signal_manager, state, is_shell_process=False):
     # Temporarily ignore SIGTTOU to avoid being stopped during setup
     signal.signal(signal.SIGTTOU, signal.SIG_IGN)
 
-    # Reset all signals to default (SIGINT, SIGQUIT, SIGTSTP, SIGTTOU,
-    # SIGTTIN, SIGCHLD, SIGPIPE, SIGWINCH)
+    # Reset all signals to default (SIGINT, SIGQUIT, SIGTERM, SIGHUP,
+    # SIGTSTP, SIGTTOU, SIGTTIN, SIGCHLD, SIGPIPE, SIGWINCH)
     signal_manager.reset_child_signals()
 
     # Shell processes keep SIGTTOU ignored so they can call tcsetpgrp()
@@ -43,3 +47,15 @@ def apply_child_signal_policy(signal_manager, state, is_shell_process=False):
     # from reset_child_signals().
     if is_shell_process:
         signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+
+    # Now that handlers are SIG_DFL, unblock the termination signals the
+    # parent blocked around fork(). A signal that arrived in the window
+    # is delivered here and terminates the child (its default action)
+    # instead of being swallowed by an inherited Python handler and lost
+    # across exec(). No-op when the parent didn't block.
+    try:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK,
+                               {signal.SIGTERM, signal.SIGINT,
+                                signal.SIGHUP, signal.SIGQUIT})
+    except (OSError, ValueError):
+        pass

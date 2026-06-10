@@ -35,7 +35,7 @@ class SubshellExecutor:
         self.state = shell.state
         self.job_manager = shell.job_manager
         self.io_manager = shell.io_manager
-        # Use centralized child signal reset (H3)
+        # The launcher applies the unified child signal policy on fork
         self.launcher = shell.process_launcher
 
     def execute_subshell(self, node: 'SubshellGroup', context: 'ExecutionContext',
@@ -171,7 +171,7 @@ class SubshellExecutor:
 
         pid, pgid = self.launcher.launch(execute_fn, config)
 
-        # Transfer terminal control to subshell if interactive (H5)
+        # Hand the terminal to the subshell's process group if interactive
         if is_interactive and original_pgid is not None:
             self.job_manager.transfer_terminal_control(pgid, "Subshell")
 
@@ -183,12 +183,13 @@ class SubshellExecutor:
         # Use job manager to wait (handles SIGCHLD properly)
         exit_status = self.job_manager.wait_for_job(job)
 
-        # Restore terminal control to parent shell if interactive (H4)
+        # Reclaim the terminal for the parent shell if interactive
         if is_interactive:
             self.job_manager.restore_shell_foreground()
 
         # Clean up job
-        if job.state.name == 'DONE':
+        from ..job_control import JobState
+        if job.state == JobState.DONE:
             self.job_manager.remove_job(job.job_id)
 
         return exit_status
@@ -239,14 +240,8 @@ class SubshellExecutor:
 
         pid, pgid = self.launcher.launch(execute_fn, config)
 
-        # Create and register background job
-        job = self.job_manager.create_job(pgid, "<subshell>")
-        job.add_process(pid, "subshell")
-        self.job_manager.register_background_job(job, shell_state=self.shell.state, last_pid=pid)
-
-        if self.state.options.get('interactive'):
-            # bash prints job notices only in interactive shells
-            print(f"[{job.job_id}] {job.pgid}", file=self.shell.stderr)
+        # Register the job and print the interactive "[N] PID" notice
+        self.job_manager.launch_background(pgid, "<subshell>", [(pid, "subshell")])
 
         return 0
 
@@ -283,13 +278,7 @@ class SubshellExecutor:
 
         pid, pgid = self.launcher.launch(execute_fn, config)
 
-        # Create and register background job
-        job = self.job_manager.create_job(pgid, "<brace-group>")
-        job.add_process(pid, "brace-group")
-        self.job_manager.register_background_job(job, shell_state=self.shell.state, last_pid=pid)
-
-        if self.state.options.get('interactive'):
-            # bash prints job notices only in interactive shells
-            print(f"[{job.job_id}] {job.pgid}", file=self.shell.stderr)
+        # Register the job and print the interactive "[N] PID" notice
+        self.job_manager.launch_background(pgid, "<brace-group>", [(pid, "brace-group")])
 
         return 0

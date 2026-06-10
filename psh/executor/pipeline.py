@@ -75,7 +75,7 @@ class PipelineExecutor:
         self.shell = shell
         self.state = shell.state
         self.job_manager = shell.job_manager
-        # Use centralized child signal reset (H3)
+        # The launcher applies the unified child signal policy on fork
         self.launcher = shell.process_launcher
 
     def execute(self, node: 'Pipeline', context: 'ExecutionContext',
@@ -102,11 +102,6 @@ class PipelineExecutor:
     def _execute_pipeline(self, node: 'Pipeline', context: 'ExecutionContext',
                          visitor: 'ASTVisitor[int]') -> int:
         """Execute pipeline without NOT handling."""
-        return self._execute_pipeline_with_forking(node, context, visitor)
-
-    def _execute_pipeline_with_forking(self, node: 'Pipeline', context: 'ExecutionContext',
-                                     visitor: 'ASTVisitor[int]') -> int:
-        """Execute pipeline with forking."""
         if len(node.commands) == 1:
             # Single command, no pipeline needed
             status = visitor.visit(node.commands[0])
@@ -217,33 +212,34 @@ class PipelineExecutor:
             if self.state.options.get('debug-exec'):
                 print(f"DEBUG Pipeline: Process group synchronization complete, pgid={pgid}", file=sys.stderr)
 
-            # Create job entry for tracking
-            job = self.job_manager.create_job(pgid, command_string)
-            for i, pid in enumerate(pids):
-                cmd_str = self._command_to_string(node.commands[i])
-                job.add_process(pid, cmd_str)
-            pipeline_ctx.job = job
+            # Per-process command strings for the job table
+            proc_entries = [(pid, self._command_to_string(node.commands[i]))
+                            for i, pid in enumerate(pids)]
 
             # Close pipes in parent
             pipeline_ctx.close_pipes()
 
-            # Transfer terminal control immediately for foreground pipelines (H5)
-            # This prevents SIGTTOU in children before wait method is called
-            if not is_background and original_pgid is not None:
+            if is_background:
+                # Background pipeline: register the job and print the
+                # interactive "[N] PID" notice (bash prints the pid of the
+                # LAST process — the same value $! receives)
+                pipeline_ctx.job = self.job_manager.launch_background(
+                    pgid, command_string, proc_entries)
+                return 0
+
+            # Foreground pipeline: create job entry for tracking
+            job = self.job_manager.create_job(pgid, command_string)
+            for pid, cmd_str in proc_entries:
+                job.add_process(pid, cmd_str)
+            pipeline_ctx.job = job
+
+            # Hand the terminal to the pipeline's process group immediately;
+            # this prevents SIGTTOU in children before the wait starts
+            if original_pgid is not None:
                 self.job_manager.transfer_terminal_control(pgid, "Pipeline")
 
             # Wait for pipeline completion
-            if is_background:
-                # Background pipeline
-                last_pid = pids[-1] if pids else job.pgid
-                self.job_manager.register_background_job(job, shell_state=self.state, last_pid=last_pid)
-                if self.state.options.get('interactive'):
-                    # bash prints job notices only in interactive shells
-                    print(f"[{job.job_id}] {job.pgid}", file=self.shell.stderr)
-                return 0
-            else:
-                # Foreground pipeline - wait for completion
-                return self._wait_for_foreground_pipeline(job, node, original_pgid)
+            return self._wait_for_foreground_pipeline(job, node, original_pgid)
 
         except (OSError, ValueError):
             # Clean up sync pipe on error
@@ -257,7 +253,7 @@ class PipelineExecutor:
                 pass
             # Clean up pipes on error
             pipeline_ctx.close_pipes()
-            # Restore terminal control on error (H4)
+            # Reclaim the terminal for the shell on error
             if not is_background:
                 self.job_manager.restore_shell_foreground()
             raise
@@ -289,7 +285,8 @@ class PipelineExecutor:
             # Normal behavior: return exit status of last command
             exit_status = all_statuses[-1]
 
-        # Restore terminal control and clean up foreground job state (H4)
+        # Reclaim the terminal (if we handed it over) and clear
+        # foreground-job bookkeeping
         self.job_manager.finish_foreground_job(original_pgid is not None)
 
         # Remove completed job

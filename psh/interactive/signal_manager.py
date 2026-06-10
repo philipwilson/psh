@@ -196,7 +196,8 @@ class SignalManager(InteractiveComponent):
                             # Stopped foreground job - mark as not notified so it will be shown
                             job.notified = False
 
-                            # Return control to shell (H5)
+                            # The foreground job just stopped — take the
+                            # terminal back so the shell can show a prompt
                             self.job_manager.transfer_terminal_control(os.getpgrp(), "SignalManager:SIGCHLD")
 
                 except OSError:
@@ -241,7 +242,7 @@ class SignalManager(InteractiveComponent):
             if shell_pgid != shell_pid:
                 os.setpgid(0, shell_pid)
 
-            # Make shell the foreground process group (H5)
+            # Make shell the foreground process group on the terminal
             self.job_manager.transfer_terminal_control(shell_pid, "SignalManager:ensure_foreground")
         except OSError:
             # Not a terminal or already set
@@ -257,6 +258,8 @@ class SignalManager(InteractiveComponent):
         Signals reset to default:
         - SIGINT: Allow child to handle interrupts
         - SIGQUIT: Allow child to handle quit requests
+        - SIGTERM: Drop the shell's trap-check handler (default: terminate)
+        - SIGHUP: Drop the shell's trap-check handler (default: terminate)
         - SIGTSTP: Allow child to handle suspend requests
         - SIGTTOU: Allow child to write to terminal
         - SIGTTIN: Allow child to read from terminal
@@ -270,6 +273,13 @@ class SignalManager(InteractiveComponent):
         signals_to_reset = [
             signal.SIGINT,
             signal.SIGQUIT,
+            # SIGTERM/SIGHUP: the shell installs Python-level trap-check
+            # handlers for these; a child must not inherit them (bash
+            # resets non-ignored signal dispositions in children, and an
+            # inherited Python handler could swallow a signal delivered
+            # before exec).
+            signal.SIGTERM,
+            signal.SIGHUP,
             signal.SIGTSTP,
             signal.SIGTTOU,
             signal.SIGTTIN,

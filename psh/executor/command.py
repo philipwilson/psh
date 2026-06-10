@@ -128,34 +128,9 @@ class CommandExecutor:
                 )
 
 
-                # Check for bypass mechanisms before expansion
-                bypass_aliases = False
-                bypass_functions = False
-                if command_node.args and command_node.args[0].startswith('\\'):
-                    bypass_aliases = True
-                    bypass_functions = True
-                    # Remove backslash from the first argument for expansion
-                    modified_args = [command_node.args[0][1:]] + command_node.args[1:]
-                    # Also strip backslash from the first Word's LiteralPart
-                    modified_words = command_node.words
-                    if command_node.words and command_node.words[0].parts:
-                        from ..ast_nodes import LiteralPart, Word
-                        first_part = command_node.words[0].parts[0]
-                        if isinstance(first_part, LiteralPart) and first_part.text.startswith('\\'):
-                            new_part = LiteralPart(
-                                first_part.text[1:], first_part.quoted, first_part.quote_char
-                            )
-                            new_word = Word(
-                                parts=[new_part] + list(command_node.words[0].parts[1:]),
-                                quote_type=command_node.words[0].quote_type,
-                            )
-                            modified_words = [new_word] + list(command_node.words[1:])
-                    command_node = SimpleCommand(
-                        args=modified_args,
-                        redirects=command_node.redirects,
-                        background=command_node.background,
-                        words=modified_words,
-                    )
+                # Check for the `\cmd` bypass mechanism before expansion
+                command_node, bypass_aliases, bypass_functions = \
+                    self._strip_backslash_bypass(command_node)
 
                 # Expand command arguments (before assignments apply)
                 expanded_args = self._expand_arguments(command_node)
@@ -204,53 +179,111 @@ class CommandExecutor:
                     self._restore_command_assignments(saved_vars)
 
         except Exception as e:
-            # Import these here to avoid circular imports
-            from ..builtins import FunctionReturn
-            from ..core import ExpansionError, LoopBreak, LoopContinue, UnboundVariableError
+            return self._handle_execution_error(e)
 
-            # Re-raise control flow exceptions
-            if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue, SystemExit)):
-                raise
+    def _strip_backslash_bypass(self, command_node: 'SimpleCommand'):
+        """Handle the `\\cmd` alias/function bypass.
 
-            # Handle other exceptions
-            if isinstance(e, ReadonlyVariableError):
-                # Command-prefixed assignments (RO=v cmd): the command fails
-                # with status 1 but, unlike a pure assignment, does not abort
-                # the script (bash).
-                print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
-                return 1
+        A leading backslash on the command word (e.g. ``\\ls``) makes the
+        shell skip alias and function lookup. Strip the backslash from
+        both the raw argument and the first Word's LiteralPart so
+        expansion sees the plain name.
 
-            from ..core import NamerefCycleError
-            if isinstance(e, NamerefCycleError):
-                # Circular nameref in a command-prefix assignment: warn and
-                # fail the command without aborting the script.
-                self.state.scope_manager.warn_nameref_cycle(e.name)
-                return 1
+        Returns:
+            (command_node, bypass_aliases, bypass_functions). The node is
+            a rewritten copy when a bypass was found, otherwise unchanged.
+        """
+        if not (command_node.args and command_node.args[0].startswith('\\')):
+            return command_node, False, False
 
-            if isinstance(e, UnboundVariableError):
-                # set -u violation: print once and, like bash, abort a
-                # non-interactive shell with status 127.
-                print(f"psh: {e}", file=self.state.stderr)
-                if self.shell.is_script_mode:
-                    sys.exit(127)
-                return 127
+        from ..ast_nodes import LiteralPart, SimpleCommand, Word
 
-            if isinstance(e, ExpansionError):
-                # Error message already printed by the expansion code
-                expansion_exit_code = getattr(e, 'exit_code', 1)
-                # In script mode, we should exit the shell
-                if self.shell.is_script_mode:
-                    sys.exit(expansion_exit_code)
-                return expansion_exit_code
+        # Remove backslash from the first argument for expansion
+        modified_args = [command_node.args[0][1:]] + command_node.args[1:]
+        # Also strip backslash from the first Word's LiteralPart
+        modified_words = command_node.words
+        if command_node.words and command_node.words[0].parts:
+            first_part = command_node.words[0].parts[0]
+            if isinstance(first_part, LiteralPart) and first_part.text.startswith('\\'):
+                new_part = LiteralPart(
+                    first_part.text[1:], first_part.quoted, first_part.quote_char
+                )
+                new_word = Word(
+                    parts=[new_part] + list(command_node.words[0].parts[1:]),
+                    quote_type=command_node.words[0].quote_type,
+                )
+                modified_words = [new_word] + list(command_node.words[1:])
+        command_node = SimpleCommand(
+            args=modified_args,
+            redirects=command_node.redirects,
+            background=command_node.background,
+            words=modified_words,
+        )
+        return command_node, True, True
 
-            # Last-resort guard: anything else is likely an internal defect.
-            # Keep the shell alive but surface the traceback under --debug-exec
-            # so the bug isn't hidden behind the generic message.
-            if self.state.options.get('debug-exec'):
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-            print(f"psh: {e}", file=sys.stderr)
+    def _handle_execution_error(self, e: Exception) -> int:
+        """Map an exception raised during command execution to an exit status.
+
+        Policy (matching bash where noted):
+        - Control-flow exceptions (return/break/continue) and SystemExit
+          are re-raised for their handlers.
+        - Readonly assignment in a command prefix (RO=v cmd): status 1,
+          script continues (unlike a pure assignment, which aborts).
+        - Circular nameref in a command prefix: warn, status 1.
+        - set -u violation: print once; abort a non-interactive shell
+          with 127, otherwise return 127.
+        - ExpansionError: message already printed; exit the shell in
+          script mode, otherwise return its exit code.
+        - Anything else is likely an internal defect: keep the shell
+          alive, print a generic message (traceback under --debug-exec).
+        """
+        # Import these here to avoid circular imports
+        from ..builtins import FunctionReturn
+        from ..core import ExpansionError, LoopBreak, LoopContinue, UnboundVariableError
+
+        # Re-raise control flow exceptions
+        if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue, SystemExit)):
+            raise
+
+        # Handle other exceptions
+        if isinstance(e, ReadonlyVariableError):
+            # Command-prefixed assignments (RO=v cmd): the command fails
+            # with status 1 but, unlike a pure assignment, does not abort
+            # the script (bash).
+            print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
             return 1
+
+        from ..core import NamerefCycleError
+        if isinstance(e, NamerefCycleError):
+            # Circular nameref in a command-prefix assignment: warn and
+            # fail the command without aborting the script.
+            self.state.scope_manager.warn_nameref_cycle(e.name)
+            return 1
+
+        if isinstance(e, UnboundVariableError):
+            # set -u violation: print once and, like bash, abort a
+            # non-interactive shell with status 127.
+            print(f"psh: {e}", file=self.state.stderr)
+            if self.shell.is_script_mode:
+                sys.exit(127)
+            return 127
+
+        if isinstance(e, ExpansionError):
+            # Error message already printed by the expansion code
+            expansion_exit_code = getattr(e, 'exit_code', 1)
+            # In script mode, we should exit the shell
+            if self.shell.is_script_mode:
+                sys.exit(expansion_exit_code)
+            return expansion_exit_code
+
+        # Last-resort guard: anything else is likely an internal defect.
+        # Keep the shell alive but surface the traceback under --debug-exec
+        # so the bug isn't hidden behind the generic message.
+        if self.state.options.get('debug-exec'):
+            import traceback
+            traceback.print_exc(file=self.state.stderr)
+        print(f"psh: {e}", file=self.state.stderr)
+        return 1
 
     def _expand_arguments(self, node: 'SimpleCommand') -> List[str]:
         """Expand all arguments in a command."""
@@ -685,7 +718,7 @@ class CommandExecutor:
         # Get the exec builtin for command execution
         exec_builtin = self.builtin_registry.get('exec')
         if not exec_builtin:
-            print("psh: exec: builtin not found", file=sys.stderr)
+            print("psh: exec: builtin not found", file=self.state.stderr)
             return 127
 
         # Remove 'exec' from command args
@@ -710,7 +743,7 @@ class CommandExecutor:
                 except OSError as e:
                     # bash format: "bash: FILE: No such file or directory"
                     print(f"psh: {e.filename or 'exec'}: {e.strerror}",
-                          file=sys.stderr)
+                          file=self.state.stderr)
                     return 1
             else:
                 # No redirections, just succeed

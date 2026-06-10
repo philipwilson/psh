@@ -42,6 +42,40 @@ def exec_external(full_args: List[str], env: dict) -> None:
                   env)
 
 
+def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
+                            shell: 'Shell') -> int:
+    """Run a builtin, converting unexpected exceptions to exit status 1.
+
+    Shared by the special-builtin and regular-builtin strategies:
+
+    - SystemExit (e.g. the ``exit`` builtin) propagates unchanged.
+    - Control-flow exceptions (return / break / continue — e.g. raised
+      inside ``eval``) and ``set -u`` violations propagate to their
+      handlers rather than being converted to exit status 1.
+    - Anything else is a builtin defect: print "psh: NAME: error" and
+      return 1, surfacing the traceback under --debug-exec so the bug
+      isn't hidden behind the generic message.
+    """
+    try:
+        # Builtins expect the command name as the first argument
+        return builtin.execute([cmd_name] + args, shell)
+    except SystemExit:
+        # Some builtins like 'exit' raise SystemExit
+        raise
+    except Exception as e:
+        # Imports here to avoid circular imports
+        from ..builtins import FunctionReturn
+        from ..core import LoopBreak, LoopContinue, UnboundVariableError
+        if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue,
+                          UnboundVariableError)):
+            raise
+        if shell.state.options.get('debug-exec'):
+            import traceback
+            traceback.print_exc(file=shell.stderr)
+        print(f"psh: {cmd_name}: {e}", file=shell.stderr)
+        return 1
+
+
 class ExecutionStrategy(ABC):
     """Abstract base class for command execution strategies."""
 
@@ -89,30 +123,7 @@ class SpecialBuiltinExecutionStrategy(ExecutionStrategy):
         if not builtin:
             return 127  # Command not found
 
-        try:
-            # Use the builtin's execute method
-            # Builtins expect the command name as the first argument
-            return builtin.execute([cmd_name] + args, shell)
-        except SystemExit:
-            # Some builtins like 'exit' raise SystemExit
-            raise
-        except Exception as e:
-            # Imports here to avoid circular imports
-            from ..builtins import FunctionReturn
-            from ..core import LoopBreak, LoopContinue, UnboundVariableError
-            if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue,
-                              UnboundVariableError)):
-                # Control-flow exceptions (return / break / continue — e.g.
-                # raised inside `eval`) and set -u violations must propagate
-                # to their handlers, not be converted to exit status 1.
-                raise
-            # Last-resort guard: surface the traceback under --debug-exec so a
-            # builtin defect isn't hidden behind the generic message.
-            if shell.state.options.get('debug-exec'):
-                import traceback
-                traceback.print_exc(file=shell.stderr)
-            print(f"psh: {cmd_name}: {e}", file=shell.stderr)
-            return 1
+        return execute_builtin_guarded(builtin, cmd_name, args, shell)
 
     def _execute_in_background(self, cmd_name: str, args: List[str],
                               shell: 'Shell', context: 'ExecutionContext',
@@ -153,36 +164,15 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
             print(f"DEBUG BuiltinStrategy: in_pipeline={context.in_pipeline}, "
                   f"in_forked_child={context.in_forked_child}", file=sys.stderr)
 
-        try:
-            # Use the builtin's execute method
-            # The builtin will check context.in_forked_child to determine output method
-            # Builtins expect the command name as the first argument
-            return builtin.execute([cmd_name] + args, shell)
-        except SystemExit:
-            # Some builtins like 'exit' raise SystemExit
-            raise
-        except Exception as e:
-            # Imports here to avoid circular imports
-            from ..builtins import FunctionReturn
-            from ..core import LoopBreak, LoopContinue, UnboundVariableError
-            if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue,
-                              UnboundVariableError)):
-                # Control-flow exceptions (return / break / continue — e.g.
-                # raised inside `eval`) and set -u violations must propagate
-                # to their handlers, not be converted to exit status 1.
-                raise
-            # Last-resort guard: surface the traceback under --debug-exec.
-            if shell.state.options.get('debug-exec'):
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-            print(f"psh: {cmd_name}: {e}", file=sys.stderr)
-            return 1
+        # The builtin will check context.in_forked_child to determine its
+        # output method.
+        return execute_builtin_guarded(builtin, cmd_name, args, shell)
 
     def _execute_builtin_in_background(self, cmd_name: str, args: List[str],
                                      shell: 'Shell', context: 'ExecutionContext',
                                      redirects: Optional[List['Redirect']] = None) -> int:
         """Execute a builtin command in background by forking a subshell."""
-        # Create process launcher with centralized child signal reset (H3)
+        # The launcher applies the unified child signal policy on fork
         launcher = shell.process_launcher
 
         # Create execution function
@@ -208,15 +198,9 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
 
         pid, pgid = launcher.launch(execute_fn, config)
 
-        # Create job and register it
-        job = shell.job_manager.create_job(pgid, f"{cmd_name} {' '.join(args)}")
-        job.add_process(pid, cmd_name)
-        shell.job_manager.register_background_job(job, shell_state=shell.state, last_pid=pid)
-
-        # Print job assignment notification (only in interactive mode)
-        if shell.state.options.get('interactive'):
-            # bash prints job notices only in interactive shells
-            print(f"[{job.job_id}] {pid}", file=shell.stderr)
+        # Register the job and print the interactive "[N] PID" notice
+        shell.job_manager.launch_background(
+            pgid, f"{cmd_name} {' '.join(args)}", [(pid, cmd_name)])
 
         return 0
 
@@ -289,13 +273,9 @@ class FunctionExecutionStrategy(ExecutionStrategy):
 
         pid, pgid = launcher.launch(execute_fn, config)
 
-        job = shell.job_manager.create_job(pgid, f"{cmd_name} {' '.join(args)}")
-        job.add_process(pid, cmd_name)
-        shell.job_manager.register_background_job(job, shell_state=shell.state, last_pid=pid)
-
-        if shell.state.options.get('interactive'):
-            # bash prints job notices only in interactive shells
-            print(f"[{job.job_id}] {pid}", file=shell.stderr)
+        # Register the job and print the interactive "[N] PID" notice
+        shell.job_manager.launch_background(
+            pgid, f"{cmd_name} {' '.join(args)}", [(pid, cmd_name)])
 
         return 0
 
@@ -423,7 +403,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
         if not background:
             original_pgid = shell.job_manager.terminal_pgid_if_owned()
 
-        # Create process launcher with centralized child signal reset (H3)
+        # The launcher applies the unified child signal policy on fork
         launcher = shell.process_launcher
 
         # Create execution function
@@ -465,24 +445,22 @@ class ExternalExecutionStrategy(ExecutionStrategy):
 
         pid, pgid = launcher.launch(execute_fn, config)
 
-        # Create job for tracking
-        job = shell.job_manager.create_job(pgid, " ".join(str(arg) for arg in full_args))
-        job.add_process(pid, str(full_args[0]))
+        command_string = " ".join(str(arg) for arg in full_args)
 
         if background:
-            # Background job - register properly so current_job is set
-            shell.job_manager.register_background_job(job, shell_state=shell.state, last_pid=pid)
-            # Print job assignment notification (only in interactive mode)
-            if shell.state.options.get('interactive'):
-                # bash prints job notices only in interactive shells
-                print(f"[{job.job_id}] {pid}", file=shell.stderr)
+            # Register the job (sets current_job and $!) and print the
+            # interactive "[N] PID" notice
+            shell.job_manager.launch_background(
+                pgid, command_string, [(pid, str(full_args[0]))])
             return 0
         else:
-            # Foreground job - give it terminal control
+            # Foreground job - create it for tracking and give it terminal control
+            job = shell.job_manager.create_job(pgid, command_string)
+            job.add_process(pid, str(full_args[0]))
             job.foreground = True
             shell.job_manager.set_foreground_job(job)
 
-            # Transfer terminal control (H5)
+            # Hand the terminal to the new foreground process group
             if original_pgid is not None:
                 if shell.job_manager.transfer_terminal_control(pgid, "ExternalStrategy"):
                     shell.state.foreground_pgid = pgid
@@ -490,7 +468,8 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             # Use job manager to wait (it handles SIGCHLD)
             exit_status = shell.job_manager.wait_for_job(job)
 
-            # Restore terminal control and clean up foreground job state (H4)
+            # Reclaim the terminal (if we handed it over) and clear
+            # foreground-job bookkeeping
             shell.job_manager.finish_foreground_job(original_pgid is not None)
 
             # Clean up
