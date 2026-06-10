@@ -15,6 +15,13 @@ if TYPE_CHECKING:
 class TypeBuiltin(Builtin):
     """Display information about command types."""
 
+    # Reserved words reported as "keyword" (bash's list)
+    SHELL_KEYWORDS = frozenset({
+        'if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for',
+        'select', 'while', 'until', 'do', 'done', 'in', 'function',
+        'time', '{', '}', '!', '[[', ']]', 'coproc',
+    })
+
     @property
     def name(self) -> str:
         return "type"
@@ -72,6 +79,19 @@ class TypeBuiltin(Builtin):
                     pass
                 else:
                     print(f"{name} is aliased to `{alias_value}'",
+                          file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                found = True
+                if not show_all:
+                    continue
+
+            # Check shell keywords (bash order: alias > keyword > function)
+            if not force_path and not file_only and name in self.SHELL_KEYWORDS:
+                if type_only:
+                    print("keyword", file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                elif path_only:
+                    pass
+                else:
+                    print(f"{name} is a shell keyword",
                           file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
                 found = True
                 if not show_all:

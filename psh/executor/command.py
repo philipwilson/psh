@@ -171,6 +171,14 @@ class CommandExecutor:
                 cmd_name = expanded_args[0]
                 cmd_args = expanded_args[1:]
 
+                # bash: $_ holds the last argument of the previous command.
+                # Set it after this command's own expansion (which still saw
+                # the old value) so the NEXT command reads this one's last arg.
+                try:
+                    self.state.set_variable('_', expanded_args[-1])
+                except ReadonlyVariableError:
+                    pass
+
                 # Apply assignments for this command, now that its words are
                 # expanded. Each value sees the assignments to its left.
                 saved_vars, assignments = self._apply_command_assignments(raw_assignments)
@@ -211,6 +219,13 @@ class CommandExecutor:
                 # with status 1 but, unlike a pure assignment, does not abort
                 # the script (bash).
                 print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
+                return 1
+
+            from ..core import NamerefCycleError
+            if isinstance(e, NamerefCycleError):
+                # Circular nameref in a command-prefix assignment: warn and
+                # fail the command without aborting the script.
+                self.state.scope_manager.warn_nameref_cycle(e.name)
                 return 1
 
             if isinstance(e, UnboundVariableError):
@@ -367,12 +382,20 @@ class CommandExecutor:
                     self.state.stderr.write(ps4 + f"{var}={value}\n")
                     self.state.stderr.flush()
                 var, value = self._resolve_append(var, value)
+                from ..core import NamerefCycleError
                 try:
                     self.state.set_variable(var, value)
                 except ReadonlyVariableError:
                     # bash: assignment to a readonly variable aborts a
                     # non-interactive shell with status 1.
                     print(f"psh: {var}: readonly variable", file=self.state.stderr)
+                    if self.shell.is_script_mode:
+                        sys.exit(1)
+                    return 1
+                except NamerefCycleError as e:
+                    # bash: writing through a circular nameref warns and
+                    # aborts a non-interactive shell with status 1.
+                    self.state.scope_manager.warn_nameref_cycle(e.name)
                     if self.shell.is_script_mode:
                         sys.exit(1)
                     return 1

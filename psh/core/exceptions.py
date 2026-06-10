@@ -22,6 +22,13 @@ class ReadonlyVariableError(Exception):
         self.name = name
         super().__init__(f"readonly variable: {name}")
 
+class NamerefCycleError(Exception):
+    """Raised when writing through a circular nameref chain
+    (declare -n a=b; declare -n b=a; a=5)."""
+    def __init__(self, name: str):
+        self.name = name
+        super().__init__(f"{name}: circular name reference")
+
 class ExpansionError(Exception):
     """Raised when parameter expansion fails (e.g., :? operator)."""
     def __init__(self, message: str, exit_code: int = 1):

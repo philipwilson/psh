@@ -211,10 +211,9 @@ class FunctionExecutionStrategy(ExecutionStrategy):
                 visitor=None) -> int:
         """Execute a shell function."""
         if background:
-            # Functions can't run in background (in current implementation)
-            print(f"psh: {cmd_name}: functions cannot be run in background",
-                  file=sys.stderr)
-            return 1
+            # bash runs `f &` in a forked subshell
+            return self._execute_function_in_background(
+                cmd_name, args, shell, context, redirects, visitor)
 
         # Import here to avoid circular imports
         from .function import FunctionOperationExecutor
@@ -232,6 +231,49 @@ class FunctionExecutionStrategy(ExecutionStrategy):
         return function_executor.execute_function_call(
             cmd_name, args, context, visitor, redirects
         )
+
+    def _execute_function_in_background(self, cmd_name: str, args: List[str],
+                                        shell: 'Shell', context: 'ExecutionContext',
+                                        redirects: Optional[List['Redirect']] = None,
+                                        visitor=None) -> int:
+        """Execute a shell function in the background (forked subshell, bash)."""
+        launcher = ProcessLauncher(shell.state, shell.job_manager, shell.io_manager,
+                                   shell.interactive_manager.signal_manager)
+
+        def execute_fn():
+            if redirects:
+                from ..ast_nodes import SimpleCommand
+                temp_command = SimpleCommand(args=[cmd_name] + args, redirects=redirects)
+                shell.io_manager.setup_child_redirections(temp_command)
+
+            from .function import FunctionOperationExecutor
+            function_executor = FunctionOperationExecutor(shell)
+            v = visitor
+            if v is None:
+                from .core import ExecutorVisitor
+                v = ExecutorVisitor(shell)
+                v.context = context
+            return function_executor.execute_function_call(
+                cmd_name, args, context, v, None)
+
+        # The child keeps running shell code (the function body may start
+        # pipelines or manage terminal control), so mark it a shell process.
+        config = ProcessConfig(
+            role=ProcessRole.SINGLE,
+            foreground=False,
+            is_shell_process=True
+        )
+
+        pid, pgid = launcher.launch(execute_fn, config)
+
+        job = shell.job_manager.create_job(pgid, f"{cmd_name} {' '.join(args)}")
+        job.add_process(pid, cmd_name)
+        shell.job_manager.register_background_job(job, shell_state=shell.state, last_pid=pid)
+
+        if not shell.state.is_script_mode:
+            print(f"[{job.job_id}] {pid}")
+
+        return 0
 
 
 class AliasExecutionStrategy(ExecutionStrategy):

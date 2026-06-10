@@ -302,8 +302,14 @@ class VariableExpander:
     def _get_var_or_positional(self, var_name: str) -> str:
         """Get value of a variable or positional parameter."""
         # Follow a nameref to its target name; an array-element target (arr[1])
-        # then flows into the array branch below.
-        var_name = self.state.scope_manager.resolve_nameref_name(var_name)
+        # then flows into the array branch below. A cyclic chain warns and
+        # reads as unset (bash).
+        from ..core import NamerefCycleError
+        try:
+            var_name = self.state.scope_manager.resolve_nameref_name(var_name)
+        except NamerefCycleError as e:
+            self.state.scope_manager.warn_nameref_cycle(e.name)
+            return ''
         if var_name.isdigit():
             index = int(var_name) - 1
             if 0 <= index < len(self.state.positional_params):
@@ -408,8 +414,14 @@ class VariableExpander:
             var_name = self._resolve_indirect_target(var_name[1:])
 
         # Follow a nameref to its target name so ${ref...} operators apply to
-        # the target (including an array-element target like arr[1]).
-        var_name = self.state.scope_manager.resolve_nameref_name(var_name)
+        # the target (including an array-element target like arr[1]). A
+        # cyclic chain warns and reads as unset (bash).
+        from ..core import NamerefCycleError
+        try:
+            var_name = self.state.scope_manager.resolve_nameref_name(var_name)
+        except NamerefCycleError as e:
+            self.state.scope_manager.warn_nameref_cycle(e.name)
+            var_name = ''
 
         # Resolve the variable value
         if var_name in ('', '#') and operator == '#' and not operand:

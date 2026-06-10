@@ -541,7 +541,13 @@ class UnsetBuiltin(Builtin):
             exit_code = 0
             for var in names:
                 if not nameref_mode and '[' not in var:
-                    var = shell.state.scope_manager.resolve_nameref_name(var)
+                    from ..core import NamerefCycleError
+                    try:
+                        var = shell.state.scope_manager.resolve_nameref_name(var)
+                    except NamerefCycleError as e:
+                        # bash warns but unset still succeeds (status 0)
+                        shell.state.scope_manager.warn_nameref_cycle(e.name)
+                        continue
                 # Check if this is an array element syntax
                 if '[' in var and var.endswith(']'):
                     # Array element unset: arr[index]
