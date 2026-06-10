@@ -5,9 +5,10 @@ Unit tests for multi-line command history handling.
 import sys
 from unittest.mock import Mock, patch
 
-# Mock termios and tty before importing
-sys.modules['termios'] = Mock()
-sys.modules['tty'] = Mock()
+# NOTE: do NOT replace sys.modules['termios']/'tty' with Mocks here —
+# importing them needs no TTY, and the poisoned modules leak into every
+# later import in the process (it broke ptyprocess/pexpect during
+# whole-tree collection). Per-test mocking via patch() is fine.
 
 from psh.line_editor import LineEditor
 
