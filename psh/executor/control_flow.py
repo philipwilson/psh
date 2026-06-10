@@ -425,8 +425,9 @@ class ControlFlowExecutor:
                         reply = reply.rstrip('\n')
                     except (EOFError, KeyboardInterrupt):
                         # Ctrl+D or Ctrl+C exits the loop; bash reports the
-                        # failed read with a non-zero status.
-                        sys.stderr.write("\n")
+                        # failed read with a non-zero status and prints the
+                        # terminating newline on STDOUT.
+                        print()
                         exit_status = 1
                         break
 

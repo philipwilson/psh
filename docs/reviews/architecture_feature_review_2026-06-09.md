@@ -9,20 +9,26 @@ independently re-verified before publication. The rerunnable probe harness is at
 
 > Line numbers are as of v0.237.0 (commit a0d79bf) and will drift.
 
-> ## ⚡ STATUS UPDATE (2026-06-10, as of v0.265.0)
+> ## ⚡ STATUS UPDATE (2026-06-10, as of v0.274.0) — CAMPAIGN COMPLETE
 >
-> All Tier 0, Tier 1, and Tier 2 remediation items are **RESOLVED** across
-> 28 releases (v0.238.0–v0.265.0); only Tier 3 (larger/architectural) remains.
+> **All four tiers are RESOLVED** across 37 releases (v0.238.0–v0.274.0).
+> Tier 0/1/2 landed in v0.238.0–v0.265.0; Tier 3 (larger/architectural)
+> in v0.266.0–v0.274.0 — see the Tier 3 blockquote below for the
+> per-release map. Remaining known differences from bash are deliberate
+> and documented (see "Out of scope / wontfix" at the end of the plan).
 > Every issue row below carries a marker: **✅ FIXED (version)** or
 > **❌ OPEN** (with its tier when scheduled). The original v0.237.0 findings
 > are preserved unchanged as the historical record; per-tier release notes
 > live in the blockquotes under the Prioritized Remediation Plan, and full
 > detail in CHANGELOG.md.
 >
-> Suite growth over the campaign: 3,979 → 4,220 tests (net of ~1,800 lines
-> of removed dead code and its fiction-testing tests), including the
-> project's first errexit conformance tests, heredoc-module unit tests, and
-> field-count-pinned array expansion tests.
+> Suite growth over the campaign: 3,979 → 4,500+ tests (net of ~1,800
+> lines of removed dead code and its fiction-testing tests), including
+> the project's first errexit/getopts/select/trap/heredoc/fd-dup
+> conformance tests, a claims meta-test enforcing the "conformance
+> claims need conformance tests" principle, lexer performance regression
+> tests, pure line-layout unit tests, and a deterministic interactive
+> PTY suite that runs in CI.
 
 ---
 
@@ -637,13 +643,52 @@ rules in CLAUDE.md).
 
 ### Tier 3 — larger/architectural
 
-> **STATUS (2026-06-10): the only remaining tier.** Everything below is
-> open, plus the residual ❌ rows in the subsystem tables above (notably:
-> function-body parser MEDs — `f() (...)` subshell semantics and
-> `f() {...} > file` redirects; `${!n}` indirection through positionals;
-> `${x/b/\1}` replacement escaping; tilde/HOME layering; nameref
-> write-time cycles; `f &` background functions; `${0##*/}`; `export -f`;
-> `$_`).
+> **STATUS (2026-06-10): ✅ RESOLVED — v0.266.0 through v0.274.0.**
+>
+> - **v0.266.0** Pattern-op operand expansion: `${f%$ext}` idioms work;
+>   quoted patterns literal; literal replacements (no `\1` regex crash);
+>   bash 5.2 patsub `&`; per-character case-mod rule.
+> - **v0.267.0** Expansion sweep: `${!n}` through positionals/array
+>   elements/specials with bash diagnostics; recursive arithmetic
+>   (`$(($x))` with `x='2 + 2'` → 4); tilde uses shell HOME; `${0##*/}`;
+>   POSIX field splitting (structural escape protection); POSIX
+>   prefix-assignment ordering (`V=v echo $V` — the "bash bug" verdict in
+>   psh_bash_differences.json was inverted and is removed).
+> - **v0.268.0** Executor sweep: `f &` background functions; nameref
+>   cycle diagnostics; non-retroactive `declare -u/-l/-i`; `type -t`
+>   keywords; `$"..."`; `$_`.
+> - **v0.269.0** Parser sweep: `f() (...)` subshell bodies; per-call
+>   `f() {...} > file` redirects; quoted case patterns via Word AST;
+>   and-or chain dedup ×3; select EOF status.
+> - **v0.270.0** PTY rehabilitation: deterministic 18-test pexpect smoke
+>   suite replaces the blanket-xfail suites and runs in CI (the
+>   "pexpect doesn't work under pytest" premise was folklore: Enter is
+>   CR in raw mode).
+> - **v0.271.0** Terminal control fixed (TCSANOW everywhere; reclaim
+>   ownership before restoring modes — ctrl-c/ctrl-z on foreground jobs
+>   work, xfails flipped); ONE shared `shell.process_launcher`; ALL
+>   `is_pytest` gates removed (capability check
+>   `terminal_pgid_if_owned()`; handlers installed at psh's entry
+>   points; StringIO sniffing root-caused away).
+> - **v0.272.0** Lexer: quadratic backward scan → lazy O(n) map (~97× on
+>   long lines); ANSI-C parsing deduplicated; perf regression tests.
+> - **v0.273.0** Wrap-aware line editor: one central repaint; zero raw
+>   `\b` writes; `\[ \]`/OSC prompt width fixed; pure line_layout
+>   module; 40-column PTY tests.
+> - **v0.274.0** Conformance expansion (getopts/select/trap/heredoc/
+>   fd-dup/job control, 98 new conformance tests) + the claims META-TEST
+>   (every user-guide "Full support" row must map to conformance
+>   evidence — it immediately caught 3 unproven claims, now proven).
+>   Plus fixes it surfaced: `$$` stable in subshells/cmdsubs/children;
+>   `exec N<file` honors the fd; signal traps for unmanaged signals
+>   (USR1...); subshell EXIT traps; job notices interactive-only.
+>
+> **Out of scope / wontfix (documented differences):** `export -f`,
+> coproc, `wait -n`, RETURN traps, history expansion designators,
+> unparenthesized case patterns inside `$(...)` (use the POSIX `(x)`
+> form), `m[$"k"]=v`-style quoted array subscripts, and bash's
+> run-the-command-anyway behavior on readonly prefix-assignment errors
+> (psh follows POSIX).
 - Single shared `shell.process_launcher` (removes the executor→interactive reach ×4).
 - Remove `is_pytest` test-awareness from production terminal-control paths; replace
   blanket-xfail PTY suites with a small passing pexpect smoke set.

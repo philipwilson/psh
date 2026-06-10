@@ -709,7 +709,9 @@ class CommandExecutor:
                     self.io_manager.apply_permanent_redirections(node.redirects)
                     return 0
                 except OSError as e:
-                    print(f"psh: exec: {e}", file=sys.stderr)
+                    # bash format: "bash: FILE: No such file or directory"
+                    print(f"psh: {e.filename or 'exec'}: {e.strerror}",
+                          file=sys.stderr)
                     return 1
             else:
                 # No redirections, just succeed

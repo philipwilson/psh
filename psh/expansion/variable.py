@@ -263,7 +263,7 @@ class VariableExpander:
         if var_name == '?':
             return str(self.state.last_exit_code)
         elif var_name == '$':
-            return str(os.getpid())
+            return str(self.state.shell_pid)
         elif var_name == '!':
             return str(self.state.last_bg_pid) if self.state.last_bg_pid else ''
         elif var_name == '#':

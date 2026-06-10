@@ -581,7 +581,7 @@ fi
 | **Signal Handling** |
 | trap command | Yes | Yes | Standard signals + EXIT/DEBUG/ERR |
 | Signal handling | Yes | Yes | All standard signals |
-| DEBUG/ERR/RETURN traps | Yes | No | Bash pseudo-signals not supported |
+| DEBUG/ERR/RETURN traps | Yes | Partial | DEBUG and ERR supported (v0.263); RETURN not |
 | **Advanced Features** |
 | Here documents | Yes | Yes | Full support |
 | Here strings | Yes | Yes | Full support |
