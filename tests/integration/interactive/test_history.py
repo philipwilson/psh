@@ -81,7 +81,7 @@ class TestBasicHistory:
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @pytest.mark.xfail(reason="History functionality not implemented yet")
+    @pytest.mark.xfail(reason="history is implemented, but this test feeds a non-interactive stdin, which does not record history; live coverage is in tests/system/interactive/test_pty_smoke.py")
     def test_history_command_basic(self):
         """Test basic history command functionality."""
         commands = [
@@ -99,7 +99,7 @@ class TestBasicHistory:
         assert 'echo second' in result['stdout']
         assert 'echo third' in result['stdout']
 
-    @pytest.mark.xfail(reason="History functionality not implemented yet")
+    @pytest.mark.xfail(reason="history is implemented, but this test feeds a non-interactive stdin, which does not record history; live coverage is in tests/system/interactive/test_pty_smoke.py")
     def test_history_numbering(self):
         """Test that history shows command numbers."""
         commands = [
@@ -116,7 +116,7 @@ class TestBasicHistory:
         history_lines = [line for line in lines if 'echo command' in line]
         assert len(history_lines) >= 2
 
-    @pytest.mark.xfail(reason="History functionality not implemented yet")
+    @pytest.mark.xfail(reason="history is implemented, but this test feeds a non-interactive stdin, which does not record history; live coverage is in tests/system/interactive/test_pty_smoke.py")
     def test_history_persistence(self):
         """Test that history persists across shell sessions."""
         # First session
@@ -133,7 +133,7 @@ class TestBasicHistory:
         assert 'echo session1' in result2['stdout']
         assert 'echo persistent' in result2['stdout']
 
-    @pytest.mark.xfail(reason="History functionality not implemented yet")
+    @pytest.mark.xfail(reason="history is implemented, but this test feeds a non-interactive stdin, which does not record history; live coverage is in tests/system/interactive/test_pty_smoke.py")
     def test_history_file_creation(self):
         """Test that history file is created when it doesn't exist."""
         commands = ['echo test', 'history']
@@ -157,7 +157,7 @@ class TestHistoryExpansion:
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @pytest.mark.xfail(reason="History expansion not implemented yet")
+    @pytest.mark.xfail(reason="history expansion (!!, !n) is unsupported (documented wontfix); see docs/reviews/architecture_feature_review_2026-06-09.md")
     def test_history_expansion_last_command(self):
         """Test !! expansion (repeat last command)."""
         commands = [
@@ -172,7 +172,7 @@ class TestHistoryExpansion:
         hello_count = result['stdout'].count('hello world')
         assert hello_count >= 2
 
-    @pytest.mark.xfail(reason="History expansion not implemented yet")
+    @pytest.mark.xfail(reason="history expansion (!!, !n) is unsupported (documented wontfix); see docs/reviews/architecture_feature_review_2026-06-09.md")
     def test_history_expansion_by_number(self):
         """Test !n expansion (repeat command by number)."""
         commands = [
@@ -189,7 +189,7 @@ class TestHistoryExpansion:
         first_count = result['stdout'].count('first')
         assert first_count >= 2
 
-    @pytest.mark.xfail(reason="History expansion not implemented yet")
+    @pytest.mark.xfail(reason="history expansion (!!, !n) is unsupported (documented wontfix); see docs/reviews/architecture_feature_review_2026-06-09.md")
     def test_history_expansion_by_string(self):
         """Test !string expansion (repeat command starting with string)."""
         commands = [
@@ -263,7 +263,7 @@ class TestHistoryConfiguration:
         # With HISTSIZE=3, should only see cmd2, cmd3, cmd4
         assert 'cmd1' not in result['stdout'] or len(echo_lines) <= 3
 
-    @pytest.mark.xfail(reason="History configuration not implemented yet")
+    @pytest.mark.xfail(reason="HISTSIZE/HISTFILE configuration not honored in non-interactive mode used by this test")
     def test_histfile_variable(self):
         """Test HISTFILE variable controls history file location."""
         custom_history = os.path.join(self.temp_dir, 'custom_history')
@@ -362,7 +362,7 @@ class TestHistoryBuiltins:
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @pytest.mark.xfail(reason="History builtin options not implemented yet")
+    @pytest.mark.xfail(reason="history -c/-d options not implemented")
     def test_history_clear(self):
         """Test history -c (clear history)."""
         commands = [
@@ -393,7 +393,7 @@ class TestHistoryBuiltins:
                 content = f.read()
                 assert 'echo test_write' in content
 
-    @pytest.mark.xfail(reason="History builtin options not implemented yet")
+    @pytest.mark.xfail(reason="history -c/-d options not implemented")
     def test_history_read(self):
         """Test history -r (read history from file)."""
         # Pre-populate history file

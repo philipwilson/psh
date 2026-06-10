@@ -1,5 +1,0 @@
-Exported: test value
-Exported later: another value
-After unset:
-TEST_VAR2 not found in exports
-No TEST_VAR variables found

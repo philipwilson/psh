@@ -2,7 +2,7 @@
 
 Project principle (CLAUDE.md): "If we assert that a feature of psh is
 POSIX or bash conformant in the user's guide then we must have a test in
-conformance_tests which proves it."
+tests/conformance/ which proves it."
 
 This test makes that principle CHECKABLE: every feature row in the
 compatibility table of docs/user_guide/17_differences_from_bash.md whose

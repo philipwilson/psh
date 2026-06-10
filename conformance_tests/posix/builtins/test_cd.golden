@@ -1,8 +1,0 @@
-/private/tmp/psh_cd_test/dir1
-/private/tmp/psh_cd_test/dir2
-/private/tmp/psh_cd_test/dir1
-/private/tmp/psh_cd_test/dir1
-/private/tmp/psh_cd_test/dir1
-/private/tmp/psh_cd_test/dir1
-Home directory test: 0
-Non-existent directory exit status: 1

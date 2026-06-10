@@ -299,22 +299,17 @@ class TestAliasExpansion:
         assert result['success']
         # Alias should expand before pipe processing
 
-    def test_alias_with_redirection(self):
+    def test_alias_with_redirection(self, tmp_path):
         """Test alias expansion with I/O redirection."""
+        out = tmp_path / 'alias_test'
         result = AliasTestHelper.run_psh_command([
             'alias output="echo test"',
-            'output > /tmp/alias_test',
-            'cat /tmp/alias_test'
+            f'output > "{out}"',
+            f'cat "{out}"'
         ])
 
         assert result['success']
         assert 'test' in result['stdout']
-
-        # Clean up
-        try:
-            os.unlink('/tmp/alias_test')
-        except:
-            pass
 
     def test_alias_with_background_execution(self):
         """Test alias expansion with background execution."""

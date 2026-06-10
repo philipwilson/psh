@@ -34,8 +34,10 @@ class CdBuiltin(Builtin):
 
             # Handle cd - (change to previous directory)
             if path == '-':
-                oldpwd = shell.env.get('OLDPWD')
-                if oldpwd is None:
+                # The shell variable, not os.environ: OLDPWD=/x cd - and
+                # assignments must be honored (bash)
+                oldpwd = shell.state.get_variable('OLDPWD')
+                if not oldpwd:
                     self.error("OLDPWD not set", shell)
                     return 1
                 path = oldpwd
@@ -44,8 +46,13 @@ class CdBuiltin(Builtin):
             else:
                 print_new_dir = False
         else:
-            # No argument - go to home directory
-            path = shell.env.get('HOME', '/')
+            # No argument - go to home directory. Use the HOME shell
+            # variable (HOME=/x; cd must honor the assignment — bash),
+            # and error like bash when it is unset.
+            path = shell.state.get_variable('HOME')
+            if not path:
+                self.error("HOME not set", shell)
+                return 1
             print_new_dir = False
 
         # Expand tilde if shell supports it

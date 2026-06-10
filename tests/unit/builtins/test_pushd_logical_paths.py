@@ -39,10 +39,9 @@ def test_pushd_tmp_directory(captured_shell):
     # On macOS, /tmp is a symlink to /private/tmp
 
     # Get initial directory from PWD to match what pushd uses
-    captured_shell.run_command('echo $PWD > /tmp/initial_pwd.txt')
-    with open('/tmp/initial_pwd.txt', 'r') as f:
-        initial_pwd = f.read().strip()
-    os.unlink('/tmp/initial_pwd.txt')
+    captured_shell.run_command('echo $PWD')
+    initial_pwd = captured_shell.get_stdout().strip()
+    captured_shell.clear_output()
 
     # Now test pushd /tmp
     result = captured_shell.run_command('pushd /tmp')
