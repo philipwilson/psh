@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.273.0 (2026-06-10) - Multi-row line-editor rendering (review Tier 3, phase 7)
+- The line editor renders wrapped lines correctly. Every mutating edit
+  operation (insert, delete, kills, yank, transpose, history nav,
+  search, undo/redo, completion) now funnels through ONE wrap-aware
+  repaint (_redraw/_paint), and pure cursor movement uses wrap-aware
+  relative positioning (_move_cursor_to). The old per-operation
+  backspace + ESC[K arithmetic — which corrupted the display the moment
+  prompt+input exceeded the terminal width, since \b never moves up a
+  row — is gone (zero raw '\b' writes remain).
+- The auto-wrap "pending" state (content ending exactly at the right
+  margin) is committed deterministically, so relative cursor math never
+  drifts by a row at wrap boundaries. Typing at end of line keeps a
+  fast path (echo one char) when no boundary is involved.
+- Prompt width is measured correctly: a new pure module (line_layout)
+  understands readline's \x01/\x02 invisibility markers (from \[ \]
+  in PS1) and OSC title sequences in addition to bare CSI colors — the
+  old _visible_length only stripped CSI, so colored/marked prompts threw
+  off all cursor math. Marker bytes are also no longer written raw to
+  the terminal.
+- 16 unit tests on the pure layout computation (prompt measurement,
+  wrap positions, boundary handling) and 5 new PTY tests editing in a
+  40-column terminal: mid-line insert on a wrapped line, backspace
+  across the wrap boundary, ctrl-a/ctrl-k on a wrapped line, history
+  recall of a wrapped command, and editing under a colored \[ \]
+  prompt. PTY smoke suite is now 26 passing tests.
+
 ## 0.272.0 (2026-06-10) - Lexer quote-state consolidation (review Tier 3, phase 6)
 - Killed the quadratic backward scan: _is_inside_potential_array_assignment
   walked backward from EVERY quote/expansion character to the previous

@@ -269,15 +269,17 @@ class TestLineEditorUnit:
         # Just verify it doesn't crash
         assert ''.join(self.editor.buffer) == "Hello"
 
-    def test_clear_current_line(self):
-        """Test clearing current line display."""
+    def test_redraw_keeps_buffer(self):
+        """_redraw repaints the display without touching the buffer."""
         self.editor.buffer = list("Hello World")
         self.editor.cursor_pos = 5
 
-        # This clears the display but not the buffer
-        self.editor._clear_current_line()
-        # Buffer should remain unchanged
+        with patch('sys.stdout') as mock_stdout:
+            self.editor._redraw()
         assert ''.join(self.editor.buffer) == "Hello World"
+        assert self.editor.cursor_pos == 5
+        written = ''.join(c[0][0] for c in mock_stdout.write.call_args_list if c[0])
+        assert "Hello World" in written
 
     def test_vi_mode_initialization(self):
         """Test Vi mode initialization."""

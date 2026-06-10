@@ -58,6 +58,12 @@ class LineEditor:
         self._stdin_fd = -1
         self._char_buf: List[str] = []
 
+        # Physical-cursor tracking for wrap-aware rendering: the buffer
+        # position and prompt width the on-screen cursor corresponds to.
+        self._screen_cursor_pos = 0
+        self._screen_prompt_len = 0
+        self._term_width = 80
+
     def _query_cursor_row(self) -> int:
         """Query the terminal for the cursor's current row (0-indexed).
 
@@ -158,10 +164,6 @@ class LineEditor:
             sigwinch_drain: Callback to drain SIGWINCH notifications (returns True if any)
             on_resize: Optional callback invoked after a terminal resize redraw
         """
-        # Print prompt
-        sys.stdout.write(prompt)
-        sys.stdout.flush()
-
         self.buffer = []
         self.cursor_pos = 0
         self.history_pos = len(self.history)
@@ -173,6 +175,9 @@ class LineEditor:
             self._term_width = shutil.get_terminal_size().columns
         except (OSError, ValueError):
             self._term_width = 80
+
+        # Paint the prompt (wrap-aware; strips \x01/\x02 markers)
+        self._paint()
 
         # Reset vi mode to insert
         if self.edit_mode == 'vi':
@@ -446,20 +451,22 @@ class LineEditor:
 
     def _insert_char(self, char: str):
         """Insert a character at the cursor position."""
+        from . import line_layout as L
         self.save_undo_state()
         self.buffer.insert(self.cursor_pos, char)
         self.cursor_pos += 1
 
-        # Redraw the line from cursor position
-        sys.stdout.write(char)
-
-        # If we're not at the end, redraw the rest and move cursor back
-        if self.cursor_pos < len(self.buffer):
-            rest = ''.join(self.buffer[self.cursor_pos:])
-            sys.stdout.write(rest)
-            sys.stdout.write('\b' * len(rest))
-
-        sys.stdout.flush()
+        w = self._term_width if self._term_width > 0 else 80
+        if (self.cursor_pos == len(self.buffer)
+                and not L.at_row_boundary(self._screen_prompt_len,
+                                          len(self.buffer), w)):
+            # Fast path: appending before the right margin — just echo.
+            sys.stdout.write(char)
+            self._screen_cursor_pos = self.cursor_pos
+            sys.stdout.flush()
+        else:
+            # Mid-line insert or wrap boundary: full wrap-aware repaint.
+            self._redraw()
 
     def _backspace(self):
         """Delete character before cursor."""
@@ -467,74 +474,60 @@ class LineEditor:
             self.save_undo_state()
             self.cursor_pos -= 1
             del self.buffer[self.cursor_pos]
-
-            # Move cursor back
-            sys.stdout.write('\b')
-
-            # Redraw from cursor to end of line
-            rest = ''.join(self.buffer[self.cursor_pos:])
-            sys.stdout.write(rest + ' ')
-            sys.stdout.write('\b' * (len(rest) + 1))
-            sys.stdout.flush()
+            self._redraw()
 
     def _delete_char(self):
         """Delete character at cursor."""
         if self.cursor_pos < len(self.buffer):
             self.save_undo_state()
             del self.buffer[self.cursor_pos]
-
-            # Redraw from cursor to end of line
-            rest = ''.join(self.buffer[self.cursor_pos:])
-            sys.stdout.write(rest + ' ')
-            sys.stdout.write('\b' * (len(rest) + 1))
-            sys.stdout.flush()
+            self._redraw()
 
     def _move_left(self):
         """Move cursor left."""
         if self.cursor_pos > 0:
             self.cursor_pos -= 1
-            sys.stdout.write('\b')
-            sys.stdout.flush()
+            self._move_cursor_to(self.cursor_pos)
 
     def _move_right(self):
         """Move cursor right."""
         if self.cursor_pos < len(self.buffer):
-            sys.stdout.write(self.buffer[self.cursor_pos])
             self.cursor_pos += 1
-            sys.stdout.flush()
+            self._move_cursor_to(self.cursor_pos)
 
     def _move_home(self):
         """Move cursor to beginning of line."""
         if self.cursor_pos > 0:
-            sys.stdout.write('\b' * self.cursor_pos)
             self.cursor_pos = 0
-            sys.stdout.flush()
+            self._move_cursor_to(0)
 
     def _move_end(self):
         """Move cursor to end of line."""
         if self.cursor_pos < len(self.buffer):
-            rest = ''.join(self.buffer[self.cursor_pos:])
-            sys.stdout.write(rest)
             self.cursor_pos = len(self.buffer)
-            sys.stdout.flush()
+            self._move_cursor_to(self.cursor_pos)
 
     def _move_word_forward(self):
         """Move cursor forward by one word."""
-        # Skip current word
-        while self.cursor_pos < len(self.buffer) and not self.buffer[self.cursor_pos].isspace():
-            self._move_right()
-        # Skip whitespace
-        while self.cursor_pos < len(self.buffer) and self.buffer[self.cursor_pos].isspace():
-            self._move_right()
+        pos = self.cursor_pos
+        while pos < len(self.buffer) and not self.buffer[pos].isspace():
+            pos += 1
+        while pos < len(self.buffer) and self.buffer[pos].isspace():
+            pos += 1
+        if pos != self.cursor_pos:
+            self.cursor_pos = pos
+            self._move_cursor_to(pos)
 
     def _move_word_backward(self):
         """Move cursor backward by one word."""
-        # Skip whitespace
-        while self.cursor_pos > 0 and self.buffer[self.cursor_pos - 1].isspace():
-            self._move_left()
-        # Skip word
-        while self.cursor_pos > 0 and not self.buffer[self.cursor_pos - 1].isspace():
-            self._move_left()
+        pos = self.cursor_pos
+        while pos > 0 and self.buffer[pos - 1].isspace():
+            pos -= 1
+        while pos > 0 and not self.buffer[pos - 1].isspace():
+            pos -= 1
+        if pos != self.cursor_pos:
+            self.cursor_pos = pos
+            self._move_cursor_to(pos)
 
     def _kill_line(self):
         """Kill from cursor to end of line."""
@@ -543,23 +536,16 @@ class LineEditor:
             killed = ''.join(self.buffer[self.cursor_pos:])
             self.kill_ring.append(killed)
             self.buffer = self.buffer[:self.cursor_pos]
-
-            # Clear to end of line
-            sys.stdout.write('\033[K')
-            sys.stdout.flush()
+            self._redraw()
 
     def _kill_whole_line(self):
         """Kill the entire line."""
         self.save_undo_state()
-        self._move_home()
         killed = ''.join(self.buffer)
         self.kill_ring.append(killed)
         self.buffer = []
         self.cursor_pos = 0
-
-        # Clear line
-        sys.stdout.write('\033[K')
-        sys.stdout.flush()
+        self._redraw()
 
     def _kill_word_backward(self):
         """Kill the word before cursor."""
@@ -577,13 +563,7 @@ class LineEditor:
             killed = ''.join(self.buffer[self.cursor_pos:start])
             self.kill_ring.append(killed)
             del self.buffer[self.cursor_pos:start]
-
-            # Move cursor and clear
-            sys.stdout.write('\b' * (start - self.cursor_pos))
-            rest = ''.join(self.buffer[self.cursor_pos:])
-            sys.stdout.write(rest + ' ' * (start - self.cursor_pos))
-            sys.stdout.write('\b' * (len(rest) + start - self.cursor_pos))
-            sys.stdout.flush()
+            self._redraw()
 
     def _kill_word_forward(self):
         """Kill the word after cursor."""
@@ -602,12 +582,7 @@ class LineEditor:
             self.kill_ring.append(killed)
             del self.buffer[start:self.cursor_pos]
             self.cursor_pos = start
-
-            # Redraw
-            rest = ''.join(self.buffer[self.cursor_pos:])
-            sys.stdout.write(rest + ' ' * len(killed))
-            sys.stdout.write('\b' * (len(rest) + len(killed)))
-            sys.stdout.flush()
+            self._redraw()
 
     def _yank(self):
         """Yank (paste) from kill ring."""
@@ -617,72 +592,34 @@ class LineEditor:
             for char in text:
                 self.buffer.insert(self.cursor_pos, char)
                 self.cursor_pos += 1
-
-            # Display yanked text
-            sys.stdout.write(text)
-            if self.cursor_pos < len(self.buffer):
-                rest = ''.join(self.buffer[self.cursor_pos:])
-                sys.stdout.write(rest)
-                sys.stdout.write('\b' * len(rest))
-            sys.stdout.flush()
+            self._redraw()
 
     def _transpose_chars(self):
         """Transpose characters around cursor."""
         if len(self.buffer) >= 2:
             self.save_undo_state()
 
-            # Special cases:
-            # 1. If at beginning of line (pos 0), transpose first two chars
-            # 2. If at end of line, transpose last two chars
-            # 3. Otherwise, transpose char at cursor with char after cursor
-
             if self.cursor_pos == 0:
                 # At beginning, transpose first two characters
-                if len(self.buffer) >= 2:
-                    self.buffer[0], self.buffer[1] = self.buffer[1], self.buffer[0]
-                    # Redraw
-                    sys.stdout.write(''.join(self.buffer[0:2]))
-                    sys.stdout.write('\b')  # Position after first char
-                    self.cursor_pos = 1
+                self.buffer[0], self.buffer[1] = self.buffer[1], self.buffer[0]
+                self.cursor_pos = 1
             elif self.cursor_pos >= len(self.buffer):
                 # At or past end, transpose last two characters
                 pos = len(self.buffer) - 1
                 self.buffer[pos - 1], self.buffer[pos] = self.buffer[pos], self.buffer[pos - 1]
-                # Move to position before last two chars
-                move_back = self.cursor_pos - (pos - 1)
-                if move_back > 0:
-                    sys.stdout.write('\b' * move_back)
-                # Redraw last two chars
-                sys.stdout.write(''.join(self.buffer[pos - 1:pos + 1]))
                 self.cursor_pos = pos + 1
-            else:
+            elif self.cursor_pos < len(self.buffer) - 1:
                 # Normal case: transpose char at cursor with next char
-                if self.cursor_pos < len(self.buffer) - 1:
-                    self.buffer[self.cursor_pos], self.buffer[self.cursor_pos + 1] = \
-                        self.buffer[self.cursor_pos + 1], self.buffer[self.cursor_pos]
+                self.buffer[self.cursor_pos], self.buffer[self.cursor_pos + 1] = \
+                    self.buffer[self.cursor_pos + 1], self.buffer[self.cursor_pos]
+                self.cursor_pos += 2
+            elif self.cursor_pos > 0:
+                # Only one char after cursor: transpose with char before
+                self.buffer[self.cursor_pos - 1], self.buffer[self.cursor_pos] = \
+                    self.buffer[self.cursor_pos], self.buffer[self.cursor_pos - 1]
+                self.cursor_pos += 1
 
-                    # Redraw the two swapped characters
-                    sys.stdout.write(''.join(self.buffer[self.cursor_pos:self.cursor_pos + 2]))
-
-                    # Move cursor forward past the transposed pair
-                    self.cursor_pos += 2
-
-                    # If not at end, redraw remaining chars and reposition
-                    if self.cursor_pos < len(self.buffer):
-                        rest = ''.join(self.buffer[self.cursor_pos:])
-                        sys.stdout.write(rest)
-                        sys.stdout.write('\b' * len(rest))
-                else:
-                    # Only one char after cursor, transpose with char before
-                    if self.cursor_pos > 0:
-                        self.buffer[self.cursor_pos - 1], self.buffer[self.cursor_pos] = \
-                            self.buffer[self.cursor_pos], self.buffer[self.cursor_pos - 1]
-                        # Move back and redraw
-                        sys.stdout.write('\b')
-                        sys.stdout.write(''.join(self.buffer[self.cursor_pos - 1:self.cursor_pos + 1]))
-                        self.cursor_pos += 1
-
-            sys.stdout.flush()
+            self._redraw()
 
     def _history_up(self):
         """Move up in history."""
@@ -691,76 +628,43 @@ class LineEditor:
             if self.history_pos == len(self.history):
                 self.original_line = ''.join(self.buffer)
 
-            # Clear current line
-            self._clear_current_line()
-
-            # Update to previous history entry
             self.history_pos -= 1
-            history_entry = self.history[self.history_pos]
-
-            # For multi-line commands, convert to single line for editing
-            if '\n' in history_entry:
-                # Multi-line command - convert to single line with semicolons
-                # Join lines with appropriate separators
-                single_line = convert_multiline_to_single(history_entry)
-                self._replace_line(single_line)
-                sys.stdout.write(''.join(self.buffer))
-            else:
-                # Single line command
-                self._replace_line(history_entry)
-                sys.stdout.write(''.join(self.buffer))
-
-            sys.stdout.flush()
+            entry = self.history[self.history_pos]
+            # Multi-line commands edit as a single line with separators
+            if '\n' in entry:
+                entry = convert_multiline_to_single(entry)
+            self._replace_line(entry)
+            self._redraw()
 
     def _history_down(self):
         """Move down in history."""
         if self.history_pos < len(self.history):
-            # Clear current line
-            self._clear_current_line()
-
             self.history_pos += 1
 
             if self.history_pos == len(self.history):
-                # Restore original line
-                self._replace_line(self.original_line)
-                sys.stdout.write(''.join(self.buffer))
+                entry = self.original_line
             else:
-                history_entry = self.history[self.history_pos]
-
-                # Handle multi-line commands
-                if '\n' in history_entry:
-                    # Convert to single line for editing
-                    single_line = convert_multiline_to_single(history_entry)
-                    self._replace_line(single_line)
-                    sys.stdout.write(''.join(self.buffer))
-                else:
-                    # Single line command
-                    self._replace_line(history_entry)
-                    sys.stdout.write(''.join(self.buffer))
-
-            sys.stdout.flush()
+                entry = self.history[self.history_pos]
+                if '\n' in entry:
+                    entry = convert_multiline_to_single(entry)
+            self._replace_line(entry)
+            self._redraw()
 
     def _history_first(self):
         """Move to first history entry."""
         if self.history and self.history_pos > 0:
-            # Save current line if at bottom of history
             if self.history_pos == len(self.history):
                 self.original_line = ''.join(self.buffer)
-
-            self._clear_current_line()
             self.history_pos = 0
             self._replace_line(self.history[0])
-            sys.stdout.write(''.join(self.buffer))
-            sys.stdout.flush()
+            self._redraw()
 
     def _history_last(self):
         """Move to last history entry (current line)."""
         if self.history_pos < len(self.history):
-            self._clear_current_line()
             self.history_pos = len(self.history)
             self._replace_line(self.original_line)
-            sys.stdout.write(''.join(self.buffer))
-            sys.stdout.flush()
+            self._redraw()
 
     def _start_reverse_search(self):
         """Start reverse history search mode."""
@@ -820,8 +724,6 @@ class LineEditor:
                     break
 
         if found:
-            self._clear_current_line()
-            self._replace_line(self.history[self.history_pos])
             self._update_search_prompt()
         else:
             # Pattern not found, restore position
@@ -848,51 +750,31 @@ class LineEditor:
             self._update_search_prompt(failed=True)
 
     def _update_search_prompt(self, failed: bool = False):
-        """Update the search prompt display."""
-        # Clear current line
-        self._move_home()
-        sys.stdout.write('\033[K')
-
-        # Display search prompt
+        """Update the search prompt display (wrap-aware)."""
         direction = "bck" if self.search_direction < 0 else "fwd"
         if failed:
             prompt = f"(failed-{direction}-i-search)`{self.search_pattern}': "
         else:
             prompt = f"({direction}-i-search)`{self.search_pattern}': "
 
-        sys.stdout.write(prompt)
-
-        # Display current match
+        # Show the current match with the cursor just past the matched text
         if self.history_pos < len(self.history):
             line = self.history[self.history_pos]
-            sys.stdout.write(line)
-
-            # Position cursor at match
+            self.buffer = list(line)
             match_pos = line.find(self.search_pattern)
             if match_pos >= 0:
                 self.cursor_pos = match_pos + len(self.search_pattern)
-                move_back = len(line) - self.cursor_pos
-                if move_back > 0:
-                    sys.stdout.write('\b' * move_back)
+            else:
+                self.cursor_pos = len(line)
 
-        sys.stdout.flush()
+        self._redraw(prompt)
 
     def _abort_search(self):
         """Abort search and restore original state."""
         self.search_mode = False
         self.history_pos = self.search_start_pos
-
-        # Restore display
-        self._clear_current_line()
-        sys.stdout.write(self.current_prompt)
         self._replace_line(self.original_line)
-        sys.stdout.write(''.join(self.buffer))
-
-        # Position cursor
-        if self.cursor_pos < len(self.buffer):
-            sys.stdout.write('\b' * (len(self.buffer) - self.cursor_pos))
-
-        sys.stdout.flush()
+        self._redraw()
 
     def _accept_search(self):
         """Accept current search result."""
@@ -901,17 +783,7 @@ class LineEditor:
         # Update buffer with found line
         if self.history_pos < len(self.history):
             self._replace_line(self.history[self.history_pos])
-
-        # Restore normal prompt
-        self._clear_current_line()
-        sys.stdout.write(self.current_prompt)
-        sys.stdout.write(''.join(self.buffer))
-
-        # Position cursor
-        if self.cursor_pos < len(self.buffer):
-            sys.stdout.write('\b' * (len(self.buffer) - self.cursor_pos))
-
-        sys.stdout.flush()
+        self._redraw()
 
     def _enter_vi_normal_mode(self):
         """Enter vi normal mode."""
@@ -929,23 +801,94 @@ class LineEditor:
 
     def _clear_screen(self):
         """Clear screen and redraw current line."""
-        # Clear screen
         sys.stdout.write('\033[2J\033[H')
-
-        # Redraw prompt and current line
-        sys.stdout.write(self.current_prompt)
-        sys.stdout.write(''.join(self.buffer))
-
-        # Position cursor
-        if self.cursor_pos < len(self.buffer):
-            sys.stdout.write('\b' * (len(self.buffer) - self.cursor_pos))
-
-        sys.stdout.flush()
+        self._paint()
 
     @staticmethod
     def _visible_length(text: str) -> int:
-        """Calculate visible length of text, stripping ANSI escape sequences."""
-        return len(re.sub(r'\033\[[0-9;]*[a-zA-Z]', '', text))
+        """Visible column width of prompt text.
+
+        Understands readline's \\x01/\\x02 invisibility markers (from
+        \\[ \\] in PS1) as well as bare ANSI CSI and OSC sequences —
+        the old version only stripped CSI, so colored prompts using
+        markers or title sequences threw off all cursor math.
+        """
+        from . import line_layout
+        return line_layout.visible_prompt_length(text)
+
+    def _paint(self, prompt: str = None):
+        """Write prompt + buffer starting at the CURRENT cursor location
+        (assumed to be the prompt origin: its first row, column 0), then
+        place the physical cursor at self.cursor_pos.
+
+        Wrap-aware: when the content ends exactly at the right margin the
+        auto-wrap is committed (space + CR + erase) so the cursor's
+        position stays deterministic for later relative moves.
+        """
+        from . import line_layout as L
+        if prompt is None:
+            prompt = self.current_prompt
+        w = self._term_width if self._term_width > 0 else 80
+        plen = L.visible_prompt_length(prompt)
+
+        sys.stdout.write(L.displayable_prompt(prompt))
+        sys.stdout.write(''.join(self.buffer))
+
+        blen = len(self.buffer)
+        if L.at_row_boundary(plen, blen, w):
+            # Commit the pending wrap deterministically
+            sys.stdout.write(' \r\033[K')
+
+        end_row, _ = L.position(plen, blen, w)
+        cur_row, cur_col = L.position(plen, self.cursor_pos, w)
+        if end_row > cur_row:
+            sys.stdout.write(f'\033[{end_row - cur_row}A')
+        sys.stdout.write('\r')
+        if cur_col > 0:
+            sys.stdout.write(f'\033[{cur_col}C')
+
+        self._screen_prompt_len = plen
+        self._screen_cursor_pos = self.cursor_pos
+        sys.stdout.flush()
+
+    def _redraw(self, prompt: str = None):
+        """THE central wrap-aware repaint.
+
+        Moves from wherever the physical cursor is (tracked via
+        _screen_cursor_pos/_screen_prompt_len) up to the prompt origin,
+        clears to end of screen, and repaints. Every mutating edit
+        operation funnels through here; pure cursor movement uses
+        _move_cursor_to. This replaces the old per-operation
+        backspace/ESC[K arithmetic, which corrupted the display whenever
+        the line wrapped past the terminal width.
+        """
+        from . import line_layout as L
+        w = self._term_width if self._term_width > 0 else 80
+        rows_up, _ = L.position(self._screen_prompt_len,
+                                self._screen_cursor_pos, w)
+        if rows_up > 0:
+            sys.stdout.write(f'\033[{rows_up}A')
+        sys.stdout.write('\r\033[J')
+        self._paint(prompt)
+
+    def _move_cursor_to(self, pos: int):
+        """Move the physical cursor to buffer position *pos* without
+        rewriting any text (wrap-aware relative movement)."""
+        from . import line_layout as L
+        w = self._term_width if self._term_width > 0 else 80
+        plen = self._screen_prompt_len
+        from_row, from_col = L.position(plen, self._screen_cursor_pos, w)
+        to_row, to_col = L.position(plen, pos, w)
+        if to_row < from_row:
+            sys.stdout.write(f'\033[{from_row - to_row}A')
+        elif to_row > from_row:
+            sys.stdout.write(f'\033[{to_row - from_row}B')
+        if to_col != from_col:
+            sys.stdout.write('\r')
+            if to_col > 0:
+                sys.stdout.write(f'\033[{to_col}C')
+        self._screen_cursor_pos = pos
+        sys.stdout.flush()
 
     def redraw_line(self):
         """Redraw the current prompt and input line in place.
@@ -977,41 +920,16 @@ class LineEditor:
         if rows_up > 0:
             sys.stdout.write(f'\033[{rows_up}A')
 
-        # Move to column 0, then clear from here to end of screen
+        # Move to column 0, clear to end of screen, repaint (wrap-aware)
         sys.stdout.write('\r\033[J')
-
-        # Redraw prompt and buffer
-        sys.stdout.write(self.current_prompt)
-        sys.stdout.write(''.join(self.buffer))
-
-        # Reposition cursor if it isn't at the end of the buffer
-        if self.cursor_pos < len(self.buffer):
-            end_pos = prompt_len + len(self.buffer)
-            cur_pos = prompt_len + self.cursor_pos
-
-            if new_width > 0:
-                rows_back = end_pos // new_width - cur_pos // new_width
-                target_col = cur_pos % new_width
-            else:
-                rows_back = 0
-                target_col = cur_pos
-
-            if rows_back > 0:
-                sys.stdout.write(f'\033[{rows_back}A')
-
-            # Move to the exact column
-            sys.stdout.write('\r')
-            if target_col > 0:
-                sys.stdout.write(f'\033[{target_col}C')
+        self._term_width = new_width
+        self._paint()
 
         # Update prompt draw row for the next resize
         actual_row = self._query_cursor_row()
         if actual_row >= 0:
             cur_row_in_content = (prompt_len + self.cursor_pos) // new_width if new_width > 0 else 0
             self._prompt_draw_row = max(0, actual_row - cur_row_in_content)
-
-        self._term_width = new_width
-        sys.stdout.flush()
 
     def _handle_interrupt(self):
         """Handle Ctrl-C interrupt."""
@@ -1073,35 +991,14 @@ class LineEditor:
             # Not in quotes, escape special characters
             completion = self.completion_engine.escape_path(completion)
 
-        # Calculate what we need to erase
-        chars_to_erase = self.cursor_pos - word_start
-
-        # Move cursor back to word start
-        if chars_to_erase > 0:
-            sys.stdout.write('\b' * chars_to_erase)
-
-        # Clear from cursor to end of line
-        sys.stdout.write('\033[K')
-
-        # Write the completion
-        sys.stdout.write(completion)
-
-        # Write any remaining text after the cursor
-        if self.cursor_pos < len(line):
-            remaining = line[self.cursor_pos:]
-            sys.stdout.write(remaining)
-            # Move cursor back to end of completion
-            sys.stdout.write('\b' * len(remaining))
-
-        sys.stdout.flush()
-
-        # Update buffer and cursor position
+        # Update buffer and cursor position, then repaint (wrap-aware)
         new_line = line[:word_start] + completion
         if self.cursor_pos < len(line):
             new_line += line[self.cursor_pos:]
 
         self.buffer = list(new_line)
         self.cursor_pos = word_start + len(completion)
+        self._redraw()
 
     def _show_completions(self, completions: List[str]):
         """Display multiple completions."""
@@ -1115,14 +1012,7 @@ class LineEditor:
         # Redraw prompt and current line
         self.terminal.enter_raw_mode()
         sys.stdout.write('\r\n')
-        sys.stdout.write(self.current_prompt)
-        sys.stdout.write(''.join(self.buffer))
-
-        # Position cursor correctly
-        if self.cursor_pos < len(self.buffer):
-            sys.stdout.write('\b' * (len(self.buffer) - self.cursor_pos))
-
-        sys.stdout.flush()
+        self._paint()
 
     def _display_in_columns(self, items: List[str]):
         """Display items in columns."""
@@ -1154,15 +1044,6 @@ class LineEditor:
 
         sys.stdout.flush()
 
-    def _clear_current_line(self):
-        """Clear the current input line."""
-        # Move cursor to beginning of input
-        if self.cursor_pos > 0:
-            sys.stdout.write('\b' * self.cursor_pos)
-        # Clear from cursor to end of line
-        sys.stdout.write('\033[K')
-        sys.stdout.flush()
-
     def _replace_line(self, new_line: str):
         """Replace the current line with new text."""
         self.buffer = list(new_line)
@@ -1192,15 +1073,9 @@ class LineEditor:
 
         # Restore previous state
         text, pos = self.undo_stack[-1]
-        self._clear_current_line()
         self.buffer = list(text)
         self.cursor_pos = pos
-
-        # Redraw
-        sys.stdout.write(text)
-        if pos < len(text):
-            sys.stdout.write('\b' * (len(text) - pos))
-        sys.stdout.flush()
+        self._redraw()
 
     def redo(self):
         """Redo last undone change."""
@@ -1209,12 +1084,6 @@ class LineEditor:
             self.undo_stack.append(state)
 
             text, pos = state
-            self._clear_current_line()
             self.buffer = list(text)
             self.cursor_pos = pos
-
-            # Redraw
-            sys.stdout.write(text)
-            if pos < len(text):
-                sys.stdout.write('\b' * (len(text) - pos))
-            sys.stdout.flush()
+            self._redraw()
