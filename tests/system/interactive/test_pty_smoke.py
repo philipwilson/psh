@@ -146,6 +146,73 @@ class TestPtyLineEditing:
         psh.expect(PROMPT)
 
 
+class TestPtyWrappedLines:
+    """Editing lines longer than the terminal width (v0.273.0).
+
+    The editor's old per-operation backspace arithmetic corrupted the
+    display once a line wrapped; rendering is now a centralized
+    wrap-aware repaint. These run in a 40-column PTY so every scenario
+    actually wraps.
+    """
+
+    @pytest.fixture
+    def narrow(self):
+        env = {
+            'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
+            'HOME': '/tmp', 'TERM': 'xterm', 'PS1': 'PSH$ ',
+            'PYTHONUNBUFFERED': '1', 'PYTHONPATH': PSH_ROOT,
+        }
+        child = pexpect.spawn(
+            sys.executable, ['-u', '-m', 'psh', '--norc', '--force-interactive'],
+            timeout=10, encoding='utf-8', env=env, dimensions=(24, 40))
+        child.send('\r')
+        child.expect(PROMPT)
+        yield child
+        child.close(force=True)
+
+    def test_mid_edit_on_wrapped_line(self, narrow):
+        arg = 'x' * 50                      # spans two rows at 40 cols
+        narrow.send(f'echo {arg}END')
+        time.sleep(0.2)
+        narrow.send('\x1b[D' * 3)           # left over 'END'
+        time.sleep(0.2)
+        narrow.send('_MID_')
+        narrow.send('\r')
+        narrow.expect('x{50}_MID_END')
+
+    def test_backspace_across_wrap_boundary(self, narrow):
+        narrow.send('echo ' + 'y' * 40)
+        time.sleep(0.2)
+        narrow.send('\x7f' * 39)            # erase back across the wrap
+        narrow.send('Z\r')
+        narrow.expect('yZ\r?\n')
+
+    def test_kill_line_on_wrapped_line(self, narrow):
+        narrow.send('echo ' + 'z' * 60)
+        time.sleep(0.2)
+        narrow.send('\x01\x0b')             # ctrl-a, ctrl-k
+        narrow.send('echo wrap_$((7*3))\r')
+        narrow.expect('wrap_21')
+
+    def test_history_recall_of_wrapped_line(self, narrow):
+        narrow.send('echo ' + 'h' * 45 + '_$((2+3))\r')
+        narrow.expect('h{45}_5')
+        narrow.expect(PROMPT)
+        narrow.send('\x1b[A')               # recall the wrapped command
+        narrow.send('\r')
+        narrow.expect('h{45}_5')
+
+    def test_colored_marked_prompt_cursor_math(self, narrow):
+        # \[ \] markers (\x01/\x02) are zero-width: editing must stay
+        # correct under a colored prompt
+        narrow.send("PS1='\\[\\e[32m\\]C\\[\\e[0m\\]$ '\r")
+        time.sleep(0.3)
+        narrow.send('echo back')
+        narrow.send('\x7f' * 4)             # erase 'back'
+        narrow.send('m_$((5+6))\r')
+        narrow.expect('m_11')
+
+
 class TestPtyJobControl:
     def test_background_job_notice_and_jobs(self, psh):
         psh.send('sleep 0.5 &\r')
