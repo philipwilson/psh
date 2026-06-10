@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.277.0
+**Current Version**: 0.278.0
 
 **Note:** For LLM-optimized architecture documentation, see `ARCHITECTURE.llm`
 
@@ -21,7 +21,7 @@ Python Shell (psh) is designed with a clean, component-based architecture that s
   - **Clean API**: Simplified interface with no compatibility overhead
 - **Enhanced Parser System**: Comprehensive configuration and validation
   - **Parser Configuration**: Multiple parsing modes (POSIX, bash-compat, educational)
-  - **AST Validation**: Semantic analysis with symbol table management
+  - **AST Validation**: Visitor-based validators in `psh/visitor/` (e.g. `EnhancedValidatorVisitor`)
   - **Centralized Context**: Unified state management for all parser components
   - **Parse Tree Visualization**: Multiple output formats with CLI integration
   - **Advanced Error Recovery**: Smart suggestions and multi-error collection
@@ -103,7 +103,7 @@ Processes history expansions before tokenization:
 Context-aware to avoid expansion in quotes and certain contexts.
 
 ### 1.3 Brace Expansion
-**File**: `expansion/brace_expansion.py`
+**File**: `brace_expansion.py`
 
 Expands brace patterns before tokenization:
 - List expansion: `{a,b,c}` → `a b c`
@@ -143,11 +143,13 @@ The lexer uses a unified, modular architecture with enhanced features as standar
 - **`psh/lexer/recognizers/`** - Modular token recognition system
   - `base.py` - TokenRecognizer abstract interface
   - `operator.py` - Shell operators with context awareness
-  - `keyword.py` - Shell keywords with position validation
   - `literal.py` - Words, identifiers, and numbers
   - `whitespace.py` - Whitespace handling
   - `comment.py` - Comment recognition
+  - `process_sub.py` - Process substitution (`<(...)`, `>(...)`)
   - `registry.py` - Priority-based recognizer dispatch
+
+Keyword recognition is a normalization pass over the token stream (`psh/lexer/keyword_normalizer.py`, with shared definitions in `psh/lexer/keyword_defs.py`).
 
 The architecture combines all components while maintaining backward compatibility:
 ```python
@@ -285,8 +287,7 @@ The recursive descent parser is the primary production parser, using an imperati
 
 **Support Utilities** (`recursive_descent/support/`):
 - **`utils.py`** - Utility functions and heredoc handling
-- **`context_factory.py`** - Parser context factory
-- **`factory.py`** - Parser factory with preset configurations
+- **`context_factory.py`** - Parser context factory (`create_context()`)
 - **`word_builder.py`** - Word AST node construction
 
 #### 3.1.2 Parser Combinator (Educational)
@@ -299,10 +300,10 @@ The parser combinator is a functional parser implementation demonstrating elegan
 - **`tokens.py`** - Token-level parsers
 - **`expansions.py`** - Variable, command substitution, arithmetic expansion
 - **`commands.py`** - Simple and compound command parsing
-- **`control.py`** - Control structures (if, while, for, case, select)
-- **`special.py`** - Special constructs (functions, arrays, here documents)
+- **`control_structures/`** - Control structures (if, while, for, case, select)
+- **`special_commands.py`** - Special constructs (functions, arrays, process substitution)
 - **`parser.py`** - Main ShellParserCombinator class
-- **`heredoc.py`** - Here document two-pass parsing
+- **`heredoc_processor.py`** - Here document two-pass parsing
 
 **Key Features:**
 - **Functional Composition**: Combinators compose to build complex parsers
@@ -326,20 +327,14 @@ The parser combinator is a functional parser implementation demonstrating elegan
 Both parser implementations share common infrastructure:
 
 #### Parser Configuration System
-- **`psh/parser/config.py`** - ParserConfig with 14 configuration fields
-- **`psh/parser/recursive_descent/support/factory.py`** - ParserFactory with preset configurations
+- **`psh/parser/config.py`** - ParserConfig with parsing-mode, error-handling, and bash-compatibility options (preset constructors `strict_posix()` and `permissive()`)
 
 #### Centralized State Management
 - **`psh/parser/recursive_descent/context.py`** - ParserContext class for unified state management
-- **`psh/parser/recursive_descent/support/context_factory.py`** - Factory for creating contexts with different configurations
+- **`psh/parser/recursive_descent/support/context_factory.py`** - `create_context()` for creating contexts with different configurations
 
-#### AST Validation System
-- **`psh/parser/validation/`** - Complete validation package
-  - `semantic_analyzer.py` - SemanticAnalyzer using visitor pattern
-  - `validation_rules.py` - Modular validation rules system
-  - `symbol_table.py` - Symbol table for semantic analysis
-  - `warnings.py` - Warning system with severity levels
-  - `validation_pipeline.py` - Validation orchestration
+#### AST Validation
+AST validation lives in `psh/visitor/` (e.g. `ValidatorVisitor` and `EnhancedValidatorVisitor`), not in the parser; see Section 3.8.
 
 #### Parse Tree Visualization
 - **`psh/parser/visualization/`** - Multi-format AST visualization
@@ -355,7 +350,7 @@ class Parser(ContextBaseParser):
     """Main parser with delegation to specialized parsers using ParserContext"""
     def __init__(self, tokens: List[Token], config: Optional[ParserConfig] = None):
         # Create or use existing ParserContext
-        self.ctx = ParserContextFactory.create(tokens, config)
+        self.ctx = create_context(tokens, config)
         super().__init__(self.ctx)
         
         # Initialize specialized parsers with shared context
@@ -416,7 +411,7 @@ The parser supports comprehensive configuration for different parsing modes and 
 ```python
 @dataclass
 class ParserConfig:
-    """Parser configuration with 14 fields"""
+    """Parser configuration options"""
     # Core parsing mode
     parsing_mode: ParsingMode = ParsingMode.BASH_COMPAT
 
@@ -433,13 +428,6 @@ class ParserConfig:
     # Bash compatibility
     allow_bash_conditionals: bool = True
     allow_bash_arithmetic: bool = True
-
-    # Development and debugging
-    trace_parsing: bool = False
-    profile_parsing: bool = False
-    enable_validation: bool = False
-    enable_semantic_analysis: bool = True
-    enable_validation_rules: bool = True
 
     @classmethod
     def strict_posix(cls) -> 'ParserConfig':
@@ -478,64 +466,16 @@ class ParserContext:
     # Error handling
     errors: List[ParseError] = field(default_factory=list)
     error_recovery_mode: bool = False
-
-    # Parsing context
-    nesting_depth: int = 0
-    scope_stack: List[str] = field(default_factory=list)
-
-    # Special parsing state
-    in_case_pattern: bool = False
-    in_arithmetic: bool = False
-    in_test_expr: bool = False
-    in_function_body: bool = False
-    in_command_substitution: bool = False
-
-    # Control flow state
-    loop_depth: int = 0
-    function_depth: int = 0
+    fatal_error: Optional[ParseError] = None
 
     # Source context
     source_text: Optional[str] = None
-
-    # Performance tracking
-    profiler: Optional[ParserProfiler] = None
+    source_lines: Optional[List[str]] = None
 ```
 
-### 3.8 AST Validation and Semantic Analysis
+### 3.8 AST Validation
 
-The parser includes comprehensive AST validation and semantic analysis:
-
-```python
-class SemanticAnalyzer(ASTVisitor[None]):
-    """Perform semantic analysis on parsed AST"""
-    
-    def __init__(self):
-        self.symbol_table = SymbolTable()
-        self.issues: List[Issue] = []
-        self.warnings: List[Warning] = []
-    
-    def visit_FunctionDef(self, node: FunctionDef) -> None:
-        """Validate function definition"""
-        if self.symbol_table.has_function(node.name):
-            self.issues.append(Issue(
-                f"Function '{node.name}' already defined",
-                node.position,
-                Severity.ERROR
-            ))
-        
-        # Track function context for return validation
-        self.symbol_table.enter_function(node.name)
-        self.visit(node.body)
-        self.symbol_table.exit_function()
-
-# Validation rules system
-class NoEmptyBodyRule(ValidationRule):
-    def validate(self, node: ASTNode, context: ValidationContext) -> List[Issue]:
-        if isinstance(node, (WhileLoop, ForLoop)):
-            if not node.body or not node.body.statements:
-                return [Issue("Empty loop body", node.position, Severity.WARNING)]
-        return []
-```
+AST validation is implemented as visitors in `psh/visitor/`, not in the parser. `ValidatorVisitor` (`psh/visitor/validator_visitor.py`) performs basic structural checks, and `EnhancedValidatorVisitor` (`psh/visitor/enhanced_validator_visitor.py`) adds variable tracking, quoting analysis, and security checks. They power the `--validate` CLI option and can be run over any parsed AST.
 
 ### 3.9 Parse Tree Visualization
 
@@ -650,7 +590,7 @@ The executor uses a modular package architecture with specialized executors:
 ```
 executor/
 ├── __init__.py          # Public API exports
-├── core.py              # Main ExecutorVisitor (~312 lines, down from ~2000)
+├── core.py              # Main ExecutorVisitor
 ├── command.py           # Simple command execution with strategies
 ├── pipeline.py          # Pipeline execution and process management
 ├── process_launcher.py  # Unified process creation
@@ -661,14 +601,14 @@ executor/
 ├── context.py           # ExecutionContext state management
 ├── strategies.py        # Command type execution strategies
 ├── child_policy.py      # Child process signal/cleanup policy
-└── test_evaluator.py    # Test expression evaluation ([, [[)
+└── enhanced_test_evaluator.py  # Test expression evaluation ([, [[)
 ```
 
-#### Unified Process Creation (NEW in v0.103.0)
+#### Unified Process Creation
 
 PSH uses a centralized `ProcessLauncher` component for all process creation, eliminating code duplication and ensuring consistent behavior across all fork points:
 
-**File**: `executor/process_launcher.py` (~365 lines)
+**File**: `executor/process_launcher.py`
 
 **Key Components**:
 ```python
@@ -702,13 +642,12 @@ class ProcessLauncher:
         # 3. Parent: Set process group (race avoidance), return info
 ```
 
-**Benefits**:
+**Key Properties**:
 - **Single Source of Truth**: All process creation flows through one component
-- **Eliminates Duplication**: Replaced ~150 lines of duplicated code across 6 fork locations
-- **Consistent Signal Handling**: Centralized signal reset via required SignalManager
-- **Proper Synchronization**: Implements pipe-based synchronization for pipelines (C1)
+- **Consistent Signal Handling**: Centralized signal reset via the required SignalManager
+- **Proper Synchronization**: Pipe-based synchronization for pipeline process groups
 - **Unified Job Control**: Consistent process group setup and terminal control transfer
-- **Clean Architecture**: Removed backward compatibility code in v0.104.0 (-29 lines)
+- **Shared Instance**: A single `ProcessLauncher` lives on the `Shell` object (`shell.process_launcher`, since v0.271.0); all call sites use it rather than constructing their own
 
 **Used By**:
 - `PipelineExecutor` - All pipeline commands
@@ -716,23 +655,7 @@ class ProcessLauncher:
 - `BuiltinExecutionStrategy` - Background builtins
 - `SubshellExecutor` - Foreground/background subshells and brace groups
 
-**Critical Improvements** (implemented in v0.103.0):
-1. **C1: Pipe-based Pipeline Synchronization**: Replaces polling with atomic pipe-based coordination
-2. **C2: Self-pipe SIGCHLD Handler**: Moves SIGCHLD work out of signal context
-3. **C3: Unified Process Creation**: Single ProcessLauncher for all forks
-
-**Signal Management & Terminal Control** (completed in v0.104.0):
-1. **H1: TTY Detection & Graceful Degradation**: Proper terminal capability detection
-2. **H2: Signal Disposition Tracking**: Track signal handler state across job transitions
-3. **H3: Centralized Child Signal Reset**: SignalManager.reset_child_signals() required (no fallback)
-4. **H4: Unified Foreground Job Cleanup**: JobManager.restore_shell_foreground() consolidation
-5. **H5: Surface Terminal Control Failures**: Explicit error handling for tcsetpgrp() failures
-
-**Architecture Notes** (v0.104.0):
-- ProcessLauncher requires `signal_manager` parameter (no longer Optional)
-- All 4 instantiation sites simplified to direct access: `shell.interactive_manager.signal_manager`
-- Removed fallback `_reset_child_signals()` method (dead code elimination)
-- Benefits: Cleaner code, clearer contract, -29 lines of backward compatibility code
+For the history of how this design evolved (pipeline synchronization, SIGCHLD handling, terminal control hardening), see the v0.103.0-v0.104.0 entries in `CHANGELOG.md`.
 
 #### Core Architecture
 ```python
@@ -894,7 +817,7 @@ def _execute_pipeline(self, node: Pipeline, context: ExecutionContext,
 The refactored executor package provides:
 
 1. **Separation of Concerns**: Each executor handles one aspect of execution
-2. **Reduced Complexity**: Core visitor reduced from ~2000 to ~312 lines (84% reduction)
+2. **Reduced Complexity**: Core visitor is a thin coordinator that delegates to specialized modules
 3. **Improved Testability**: Isolated components with clear interfaces
 4. **Better Maintainability**: Focused modules easier to understand and modify
 5. **Extensibility**: New execution features can be added to specific modules
@@ -902,9 +825,7 @@ The refactored executor package provides:
 
 ### 4.6 Execution Statistics
 
-- **Original ExecutorVisitor**: ~1994 lines in single file
-- **Refactored Package**: 13 modules with clear responsibilities
-- **Core Module**: ~312 lines (84% reduction)
+- **Refactored Package**: 13 modules with clear responsibilities (originally a single ~2000-line ExecutorVisitor)
 - **New Architecture**: Strategy pattern for commands, delegation for all operations
 
 ## Phase 5: Expansion
@@ -1024,25 +945,20 @@ def apply_redirections(self, redirects: List[Redirect]) -> Dict[int, int]:
 ```
 
 ### 6.2 Here Documents
-**File**: `io_redirect/heredoc.py`
+**File**: `io_redirect/file_redirect.py` (`FileRedirector`)
 
-Here documents create temporary files:
+Heredoc content is collected at parse time and attached to the redirect node; at execution time `FileRedirector._redirect_heredoc()` expands the content (unless the delimiter was quoted) and points stdin at it via an anonymous temporary file:
 ```python
-def setup_heredoc(self, delimiter: str, content: str, strip_tabs: bool) -> int:
-    """Create a temporary file with heredoc content"""
-    if strip_tabs:
-        # Remove leading tabs from each line
-        lines = content.splitlines()
-        content = '\n'.join(line.lstrip('\t') for line in lines)
-    
-    # Create temporary file
-    fd, path = tempfile.mkstemp()
-    os.write(fd, content.encode())
-    os.close(fd)
-    
-    # Open for reading
-    return os.open(path, os.O_RDONLY)
+def _redirect_heredoc(self, redirect):
+    """Point stdin at the heredoc content. Returns the expanded content."""
+    content = redirect.heredoc_content or ''
+    if content and not getattr(redirect, 'heredoc_quoted', False):
+        content = self.shell.expansion_manager.expand_string_variables(content)
+    self._stdin_from_content(content)  # anonymous temp file dup2'd to fd 0
+    return content
 ```
+
+A temporary file (rather than a pipe) is used so heredocs larger than the kernel pipe buffer cannot deadlock — the same approach bash takes.
 
 ### 6.3 Process Substitution
 **File**: `io_redirect/process_sub.py`
@@ -1065,7 +981,7 @@ def create_process_substitution(cmd_str: str, direction: str, shell) -> Tuple[in
 ## Component Communication
 
 ### State Management
-**Files**: `core/state.py`, `core/scope.py`
+**Files**: `core/state.py`, `core/scope_enhanced.py`
 
 All components share state through a centralized `ShellState` object:
 - Environment variables
@@ -1142,8 +1058,7 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 - **Parser Selection**: Runtime switchable with `parser-select combinator` builtin
 
 ### Comprehensive Parser Features
-- **Configuration System**: 14 options for POSIX, bash-compat, and permissive modes
-- **AST Validation**: Semantic analysis with symbol table and validation rules
+- **Configuration System**: ParserConfig options for POSIX, bash-compat, and permissive modes
 - **Error Recovery**: Multi-error collection, smart suggestions, panic mode recovery
 - **Visualization**: Pretty-print, DOT graphs, and ASCII tree rendering
 - **Centralized State**: ParserContext manages all parser state consistently
@@ -1151,7 +1066,7 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 ### Modular Execution Engine
 - **Specialized Executors**: Separate modules for commands, pipelines, control flow, arrays, functions
 - **Strategy Pattern**: Flexible command execution (builtins, functions, external)
-- **Clean Delegation**: 84% code reduction through focused executor modules
+- **Clean Delegation**: Thin core visitor coordinating focused executor modules
 - **Visitor Pattern**: Extensible AST traversal for execution and analysis
 
 ### Unified Lexer System
@@ -1163,16 +1078,12 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 ### Component Organization
 - **Clear Boundaries**: Each subsystem (lexer, parser, executor, expansion) is independent
 - **Manager Pattern**: Coordinated functionality through manager classes
-- **POSIX Compliance**: ~93% compliance with proper expansion ordering
-- **Testability**: Comprehensive test suite with 3,400+ tests
+- **POSIX Compliance**: ~98% compliance with proper expansion ordering
+- **Testability**: Comprehensive test suite with 4,550+ tests
 
 ## Known Limitations
 
 1. **Deep Recursion**: Command substitution in recursive functions can hit Python's stack limit due to the multiple layers of function calls per shell recursion level.
-
-2. **Command Substitution Output Capture**: Issues in pytest environments due to complex interaction between pytest's capture mechanism and subshell creation.
-
-3. **Composite Token Quote Loss**: Parser creates COMPOSITE tokens but loses some quote information from RichTokens.
 
 ## Future Enhancements
 

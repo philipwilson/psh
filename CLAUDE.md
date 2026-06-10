@@ -94,14 +94,33 @@ ruff check psh/
 
 ## Critical Information
 
-### To increment the system version after completing an enhancement:
-1. Update `psh/version.py`: bump `__version__`; add a new entry to `CHANGELOG.md`
-2. Update the version string in **all** of these files (they must always match):
-   - `README.md` — the `**Current Version**:` line
+### Bash-verification workflow (how behavior fixes are made)
+
+Behavior changes are pinned to bash, not to intuition. Before fixing,
+write a probe battery comparing the two shells:
+
+```bash
+b=$(bash -c "$cmd" 2>&1); p=$(python -m psh -c "$cmd" 2>&1)
+# diff stdout/stderr/exit codes across the relevant cases
+```
+
+Fix until the probes match, then turn the probes into tests (conformance
+tests for user-guide claims, unit/integration tests otherwise). When an
+existing test fails after a fix, READ it first — if it pins old broken
+behavior, verify against bash and update the test, not the fix.
+
+### Release workflow (per completed enhancement)
+
+1. Work on a `fix/<topic>` branch.
+2. Full suite green: `python run_tests.py --parallel > tmp/test-results-N.txt 2>&1`
+3. Update `psh/version.py` (bump `__version__`) and add a `CHANGELOG.md` entry.
+4. Update the version string in **all** of these files (they must always match):
+   - `README.md` — the `**Current Version**:` line (also test counts and
+     Recent Development when they changed)
    - `ARCHITECTURE.md` — the `**Current Version**:` line
    - `ARCHITECTURE.llm` — the `Version:` line
-
-3. Commit changes in the git repo and tag the commit with the new version
+5. Commit on the branch, `git merge --no-ff` to main, annotated tag
+   `vX.Y.Z`, push main and the tag.
 
 ### Architecture documentation files and what they contain
 
@@ -117,15 +136,9 @@ These files have version-stamped metadata that must stay in sync:
 
 ### Known Test Issues
 
-1. **Subshell Tests — `-s` no longer required** (fixed in v0.195.0):
-   - Subshell tests previously needed pytest's `-s` flag. This is no longer the case:
-     the full suite passes under normal capture (`python -m pytest tests/`).
-   - Root cause (now fixed): the `read` builtin chose `sys.stdin` over the real
-     redirected file descriptor. Forked children write stdout via `os.write(1)`
-     and now read stdin via `os.read(fd)` after `os.dup2`, so fd-level
-     redirections work fine under pytest's `sys.stdout`/`sys.stdin` replacement.
-   - `run_tests.py` still works (it harmlessly passes `-s` for the subshell group).
-   - Documentation: See `tests/integration/subshells/README.md`.
+1. **Subshell Tests**: the full suite passes under normal pytest capture —
+   the `-s` flag has not been needed since v0.195.0 (forked children do
+   fd-level I/O; see `tests/integration/subshells/README.md` for history).
 
 2. **Pytest Collection Best Practices**:
    - Don't name source files starting with `test_`
@@ -175,7 +188,7 @@ Each major subsystem has its own CLAUDE.md with detailed guidance:
 These provide focused documentation for working within each subsystem.
 
 ### Key Files
-- `psh/shell.py` - Main orchestrator (~316 lines)
+- `psh/shell.py` - Main orchestrator (thin wiring; no execution logic)
 - `psh/parser/` - Recursive descent parser package
 - `psh/lexer/` - Modular tokenizer package with recognizer architecture
 - `psh/executor/` - Execution engine with visitor pattern
@@ -187,7 +200,7 @@ Each manager handles a specific aspect:
 - `ExpansionManager` - Variable, command substitution, globs, etc.
 - `IOManager` - Redirections, pipes, heredocs
 - `JobManager` - Background jobs, job control
-- `ProcessLauncher` - Unified process creation with proper job control (NEW in v0.103.0)
+- `ProcessLauncher` - Unified process creation with proper job control (single shared instance on `shell.process_launcher`)
 - `FunctionManager` - Shell function definitions
 - `AliasManager` - Shell aliases
 
@@ -245,8 +258,6 @@ Choose the right fixture based on test type:
    - Testing job control
    - Testing subshells
    - File system operations
-   - Note: subshell + file-redirection tests run fine under normal capture as of
-     v0.195.0; the `-s` flag is no longer required.
 
 3. **System Tests** (use `subprocess`):
    - Testing full shell behavior
@@ -341,7 +352,8 @@ See `docs/test_pattern_guide.md` for examples and patterns.
 
 ## Current Development Status
 
-**Version**: 0.237.0 (see CHANGELOG.md for detailed history)
+The canonical version lives in `psh/version.py`; see `CHANGELOG.md` for
+detailed history. (Do not record the version number here — it goes stale.)
 
 ## Debugging Tips
 

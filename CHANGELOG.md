@@ -4,6 +4,52 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.278.0 (2026-06-10) - Meta-documentation sweep (reappraisal Tier A, 4/4 — Tier A complete)
+- ARCHITECTURE.md: sections describing removed subsystems deleted or repointed
+  (parser validation/SemanticAnalyzer → psh/visitor/ validators; ParserFactory,
+  ParserContext profiler, dead config fields pruned); brace-expansion location,
+  heredoc implementation (FileRedirector, not a heredoc.py), combinator file
+  list, recognizer list, and scope module name corrected; ~93% POSIX claim
+  reconciled with README's ~98%; "3,400+ tests" → 4,550+; two fixed issues
+  removed from Known Limitations; ~60 lines of v0.103/v0.104 ProcessLauncher
+  release archaeology collapsed to a present-tense description + CHANGELOG
+  pointer; stale exact line counts dropped.
+- ARCHITECTURE.llm: file map rewritten against the real tree (10+ deleted
+  files removed: pipeline/builder.py, six purged lexer modules,
+  parser/validation/, support/factory.py, io_redirect/heredoc.py,
+  executor/test_evaluator.py); recipes and quick-reference repointed to the
+  current locations instead of deleted ones; testing conventions point at the
+  real tests/ layout; subshell `-s` limitation removed.
+- README.md: false "trap builtin not yet implemented" claim replaced with the
+  real gaps (RETURN traps; history word designators/modifiers — `!!`/`!n`
+  themselves ARE supported); broken TODO.md link fixed; Built-in Commands list
+  regenerated from the registry (59 builtins, grouped); LOC claim recomputed
+  with a stated basis (~47.7k production / ~53.6k tests); Recent Development
+  trimmed from ~80 bullets to the last 10 versions + CHANGELOG pointer; test
+  statistics refreshed (4,235 passing); nonexistent run_tests.sh reference
+  fixed; Python 3.12+ requirement stated.
+- Root CLAUDE.md: stale "Version: 0.237.0" line replaced with a pointer to
+  psh/version.py (numbers there go stale); duplicated v0.195.0 subshell notes
+  collapsed to one sentence; "NEW in v0.103.0" dropped; the bash-verification
+  probe workflow and the branch/merge/tag release workflow are now documented.
+- Subsystem CLAUDE.md API corrections (executor, io_redirect): ProcessLauncher
+  .launch signature fixed (execute_fn, config) -> (pid, pgid) with caller-owned
+  job registration; ProcessRole values corrected; CommandExecutor/
+  PipelineExecutor method names fixed; fork-path table corrected to the real
+  3 paths; I/O integration section now names the real IOManager API; heredoc/
+  here-string docs now describe the deliberate unlinked-temp-file design (not
+  a pipe); test paths fixed; enhanced_test_evaluator.py added to key files.
+- docs/ top level decluttered: 33 completed plans, dated analyses, and one-off
+  summaries moved to docs/archive/ — what remains at top level is current
+  reference material (guides, test docs, user_guide/, reviews/, architecture/).
+- AGENTS.md: legacy conformance_tests/ reference fixed; stale subshell `-s`
+  guidance corrected. Leftover empty conformance_tests/ dir removed.
+- Known flake recorded: tests/conformance/posix/...::test_wait_after_kill_
+  reports_signal_status failed once under xdist load (psh reported rc=0 vs
+  bash's 143 — a job-status bookkeeping race in wait_for_job's ECHILD path);
+  not reproducible in 70 standalone/loaded attempts, passes in re-runs.
+  Follow-up tracked for the Tier B executor work.
+
 ## 0.277.0 (2026-06-10) - Test-tree cleanup (reappraisal Tier A, 3/4)
 - Legacy trees deleted: root `conformance_tests/` (123 files — a second,
   golden-file conformance system superseded by the live psh-vs-bash suite in

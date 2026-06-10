@@ -1,6 +1,6 @@
 # PSH Architecture Reference for Large Language Models
 
-Version: 0.277.0
+Version: 0.278.0
 Purpose: Optimized reference for LLMs working with the PSH codebase
 
 ## Quick Start
@@ -19,15 +19,15 @@ Purpose: Optimized reference for LLMs working with the PSH codebase
 **Modify parsing behavior**
 1. Edit the appropriate module in `psh/parser/recursive_descent/parsers/` (e.g. `commands.py`, `control_structures.py`)
 2. If context handling or configuration changes are required, adjust `ParserContext` in `psh/parser/recursive_descent/context.py`
-3. Use `ParserConfig` (`psh/parser/config.py`) for feature flags; add presets via `ParserFactory` in `psh/parser/recursive_descent/support/factory.py`
-4. Update validation or semantic rules in `psh/parser/validation/`
-5. Add tests under `tests/test_parser_*.py` or `tests/unit/parser/`
+3. Use `ParserConfig` (`psh/parser/config.py`) for feature flags; presets are the `ParserConfig.strict_posix()` / `ParserConfig.permissive()` constructors
+4. If script validation is affected, update the validator visitors in `psh/visitor/` (`validator_visitor.py`, `enhanced_validator_visitor.py`)
+5. Add tests under `tests/unit/parser/`
 
 **Extend expansion behavior**
 1. Implement the feature in `psh/expansion/` (e.g., extend `parameter_expansion.py` or add a helper in `base.py`)
 2. Register orchestration logic in `psh/expansion/manager.py`
 3. Update ordering-sensitive logic in `ExpansionManager.expand_arguments()` (and relevant helpers)
-4. Add unit tests in `tests/test_expansion_*.py`
+4. Add unit tests in `tests/unit/expansion/`
 
 **Add an AST visitor operation**
 1. Create a visitor in `psh/visitor/` inheriting from `ASTVisitor`
@@ -38,33 +38,28 @@ Purpose: Optimized reference for LLMs working with the PSH codebase
 
 ```
 psh/
-├── shell.py                 # Main orchestrator (~316 lines, visitor executor only)
+├── shell.py                 # Main orchestrator (visitor executor only)
 ├── token_stream.py          # Parser-oriented token stream helpers
 ├── token_transformer.py     # Keyword/context normalization pass
-├── pipeline/                # End-to-end pipeline builder utilities
-│   └── builder.py
 ├── core/                    # Shared state, options, traps
 │   ├── state.py             # ShellState and option plumbing
-│   ├── scope.py             # Scope manager with POSIX semantics
-│   ├── scope_enhanced.py    # Advanced scope features
+│   ├── scope_enhanced.py    # Hierarchical variable scope management
 │   ├── variables.py         # Variable types and exports
+│   ├── options.py           # Shell option behaviors
 │   ├── exceptions.py        # Control-flow exceptions
 │   └── trap_manager.py      # Signal/exit trap handling
 ├── lexer/                   # Unified modular lexer package
 │   ├── modular_lexer.py     # Entry point for tokenization
 │   ├── heredoc_lexer.py     # Tokenization with heredoc capture
 │   ├── state_context.py     # Unified lexer context object
-│   ├── transitions.py       # State machine transitions
-│   ├── enhanced_context.py  # Rich metadata context helpers
-│   ├── context_recognizer.py# Keyword and context detection
+│   ├── keyword_normalizer.py# Keyword normalization pass (WORD → keyword tokens)
+│   ├── keyword_defs.py      # Shared keyword definitions and helpers
+│   ├── command_position.py  # Command-position tracking
 │   ├── quote_parser.py      # Unified quote parsing
 │   ├── expansion_parser.py  # Pre-parse shell expansions
-│   ├── expansion_validator.py
-│   ├── quote_validator.py
 │   ├── heredoc_collector.py
-│   ├── token_stream_validator.py
 │   ├── pure_helpers.py / token_parts.py / position.py / unicode_support.py
-│   └── recognizers/         # Token recognizer registry (operators, keywords, literals, etc.)
+│   └── recognizers/         # Token recognizer registry (operators, literals, etc.)
 ├── token_types.py           # Unified Token & TokenType definitions
 ├── parser/                  # Parser packages and registries
 │   ├── __init__.py          # Exports unified recursive-descent API
@@ -72,12 +67,11 @@ psh/
 │   ├── recursive_descent/
 │   │   ├── parser.py        # Main Parser class (composite-aware)
 │   │   ├── base_context.py  # ContextBaseParser base class
-│   │   ├── context.py       # ParserContext & profiler
+│   │   ├── context.py       # ParserContext state & error handling
 │   │   ├── helpers.py       # TokenGroups & ParseError
 │   │   ├── parsers/         # commands, control_structures, statements, arrays, etc.
-│   │   └── support/         # context_factory, factory, utils, word_builder
+│   │   └── support/         # context_factory, utils, word_builder
 │   ├── combinators/         # Modular parser-combinator implementation
-│   ├── validation/          # Semantic analyzer & validation pipeline
 │   └── visualization/       # AST renderers (ASCII, DOT, pretty)
 ├── expansion/               # POSIX expansion pipeline
 │   ├── manager.py           # Orchestrates expansion order
@@ -86,16 +80,16 @@ psh/
 │   ├── variable.py / parameter_expansion.py
 │   ├── command_sub.py / tilde.py / glob.py / word_splitter.py
 ├── executor/                # Visitor-based executor package
-│   ├── core.py              # ExecutorVisitor (~312 lines, delegates to specialists)
+│   ├── core.py              # ExecutorVisitor (delegates to specialists)
 │   ├── command.py / pipeline.py / control_flow.py
 │   ├── array.py / function.py / subshell.py
 │   ├── process_launcher.py  # Unified process creation
-│   ├── child_policy.py / test_evaluator.py
+│   ├── child_policy.py / enhanced_test_evaluator.py
 │   ├── context.py           # ExecutionContext state management
 │   └── strategies.py        # Builtin/function/external dispatch
 ├── io_redirect/             # Redirection management
 │   ├── manager.py           # IOManager coordinating handlers
-│   ├── file_redirect.py / heredoc.py / process_sub.py
+│   ├── file_redirect.py / process_sub.py  # FileRedirector also handles heredocs
 ├── scripting/               # Script execution pipeline
 │   ├── base.py              # ScriptManager
 │   ├── script_executor.py / source_processor.py
@@ -129,17 +123,16 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
 3. **Token Post-processing**
    - `TokenStream` provides balanced collection, composite lookahead (`peek_composite_sequence()`), and helpers for parsers
    - Adjacent word-like tokens without whitespace are detected by `TokenStream` and built into composite `Word` AST nodes by `WordBuilder` during parsing
-   - `token_stream_validator` ensures heredoc/token ordering sanity when integration requires it
 
 4. **Parsing (`psh/parser/`)**
    - Default `Parser` (recursive descent) built from modular sub-parsers
-   - `ParserContextFactory` wires contexts with config, tokens, and source text
-   - `ParserFactory` produces preset configurations (strict POSIX, Bash-compatible, permissive, etc.)
+   - `create_context()` (`recursive_descent/support/context_factory.py`) wires contexts with config, tokens, and source text
+   - `ParserConfig` preset constructors (`strict_posix()`, `permissive()`) select parsing modes
    - Parser selection (`_active_parser` attribute) switches between recursive descent and parser-combinator implementations
 
 5. **Validation (optional)**
-   - `parser/validation/validation_pipeline.py` provides semantic analysis and warnings
-   - Invoked explicitly via pipeline builder or shell options
+   - Validator visitors in `psh/visitor/` (`ValidatorVisitor`, `EnhancedValidatorVisitor`) provide script validation and warnings
+   - Invoked via the `--validate` CLI option
 
 6. **Expansion (`psh/expansion/`)**
    - `ExpansionManager` enforces POSIX ordering across tilde, parameter, command, arithmetic, word splitting, globbing, quote removal
@@ -164,7 +157,7 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
   - `execute_enhanced_test_statement(test_stmt: EnhancedTestStatement)`
 
 ### ShellState (`psh/core/state.py`)
-- Centralizes environment, scope manager (`scope.py` / `scope_enhanced.py`), positional parameters, option flags, debug toggles, and stream references
+- Centralizes environment, scope manager (`scope_enhanced.py`), positional parameters, option flags, debug toggles, and stream references
 - Tracks job control metadata, `$?`, `$!`, `$-`, and exported variables
 - Provides option-specific helpers (xtrace, errexit, nounset) delegated to `psh/core/options.py`
 - Coordinates trap installation through `TrapManager`
@@ -180,7 +173,7 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
 2. **Modular Lexer (`lexer/modular_lexer.py`)**
    - Uses `state_context.py` and recognizer registry to emit unified `Token` instances
    - Uses `unicode_support.py` for identifier classification and POSIX fallback modes via `LexerConfig`
-   - `recognizers/` includes operator, keyword, literal, whitespace, comment, and process-substitution recognizers
+   - `recognizers/` includes operator, literal, whitespace, comment, and process-substitution recognizers (keywords are normalized in a later pass)
 
 3. **Keyword Normalization & Token Transformation**
    - `lexer/keyword_normalizer.KeywordNormalizer` lowers + validates reserved words while preserving user identifiers; emits canonical keyword token types (e.g., WORD → THEN)
@@ -191,32 +184,27 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
    - Provides `peek`, `advance`, balance collection, composite lookahead (`peek_composite_sequence()`), and save/restore mechanics used across parser submodules
    - Adjacent tokens without whitespace (e.g., `foo${bar}.txt`) are detected via `adjacent_to_previous` token flags and built into composite `Word` AST nodes during parsing by `WordBuilder`
 
-6. **Heredoc Support (`lexer/heredoc_lexer.py`, `lexer/heredoc_collector.py`)**
+5. **Heredoc Support (`lexer/heredoc_lexer.py`, `lexer/heredoc_collector.py`)**
    - Collects heredoc bodies out-of-band while preserving token stream metadata
    - `tokenize_with_heredocs` returns `(tokens, heredoc_map)` for parser consumption
-
-7. **Validation & Contracts**
-   - `lexer/token_stream_validator.py` verifies lexer output contracts before parser integration when enhanced mode is active
-   - `lexer/expansion_validator.py` / `lexer/quote_validator.py` provide sanity checks for complex lexing states
 
 ## Parser Package Highlights
 
 ### Recursive Descent Package (`psh/parser/recursive_descent/`)
-- **`parser.py`**: Central `Parser` class orchestrating modular parsers; uses `ParserContextFactory` and exposes compatibility methods
-- **`context.py`**: Defines `ParserContext`, profiling utilities, heredoc tracking, backtracking support
+- **`parser.py`**: Central `Parser` class orchestrating modular parsers; uses `create_context()` and exposes compatibility methods
+- **`context.py`**: Defines `ParserContext` (token stream position, config, error collection, source context)
 - **`base_context.py`**: Shared context-handling helpers (feature toggles, error policies)
 - **`parsers/`**: Specialized modules for statements, commands, control structures, arithmetic, arrays, redirections, functions, and tests
 - **`helpers.py`**: `ParseError`, `ErrorContext`, `TokenGroups`
 - **`support/`**:
-  - `context_factory.py`: Builds `ParserContext` from tokens/config
-  - `factory.py`: Provides `ParserFactory` presets and configuration validation helpers
+  - `context_factory.py`: `create_context()` builds `ParserContext` from tokens/config
   - `utils.py`: Miscellaneous helpers (`parse_with_heredocs`, context adapters)
   - `word_builder.py`: Constructs Word AST nodes linking to expansion metadata
 
 ### Parser Configuration & Modes
-- `parser/config.py`: `ParserConfig`, `ParsingMode`, `ErrorHandlingMode` with 14 fields (parsing mode, error handling, bash compatibility, validation)
+- `parser/config.py`: `ParserConfig`, `ParsingMode`, `ErrorHandlingMode` (parsing mode, error handling, bash compatibility); presets via `ParserConfig.strict_posix()` / `permissive()`
 - Parser selection: `psh/builtins/parser_experiment.py` provides `parser-select` builtin for runtime parser swapping
-- `parser/validation/`: `SemanticAnalyzer`, `ValidationPipeline`, rule definitions, warnings, and symbol tables
+- AST validation: visitor-based validators in `psh/visitor/` (`validator_visitor.py`, `enhanced_validator_visitor.py`), used by the `--validate` CLI option
 - `parser/visualization/`: Formatters for pretty, DOT, ASCII, and S-expression AST outputs
 - **Keyword Helper Lifecycle**:
   - Lexer: `KeywordNormalizer` converts raw `WORD` tokens into canonical keyword types and updates metadata (`SemanticType.KEYWORD`)
@@ -246,17 +234,11 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
 - `executor/process_launcher.py` provides unified process creation with job control:
   - **ProcessRole**: SINGLE, PIPELINE_LEADER, PIPELINE_MEMBER
   - **ProcessConfig**: role, pgid, foreground, sync pipes, I/O setup callback
-  - **ProcessLauncher.launch()**: Single source of truth for all fork() calls
-  - **Improvements (v0.103.0-v0.104.0)**:
-    - C1: Pipe-based pipeline synchronization (replaces polling)
-    - C2: Self-pipe SIGCHLD handler (async-safe signal handling)
-    - C3: Unified process creation (eliminates duplication)
-    - H3: Centralized child signal reset via required SignalManager
-    - H4: Unified foreground job cleanup (JobManager.restore_shell_foreground)
-    - H5: Surface terminal control failures (explicit tcsetpgrp error handling)
-  - **Architecture Notes**: signal_manager is required parameter (no fallback code)
+  - **ProcessLauncher.launch()**: Single source of truth for all fork() calls; pipe-based pipeline synchronization, centralized child signal reset via the required SignalManager
+  - A single shared instance lives on the `Shell` object (`shell.process_launcher`, since v0.271.0)
+  - Design history (pipeline sync, SIGCHLD handling, terminal control): see v0.103.0-v0.104.0 entries in `CHANGELOG.md`
 - `executor/strategies.py` encapsulates builtin/function/external command execution strategies
-- `io_redirect/manager.py` coordinates file redirects, process substitutions, and heredoc handling; uses `FileRedirector`, `HeredocHandler`, `ProcessSubstitutionHandler`
+- `io_redirect/manager.py` coordinates file redirects, process substitutions, and heredoc handling; uses `FileRedirector` (which also applies heredoc/here-string content) and `ProcessSubstitutionHandler`
 - `job_control.JobManager` integrates job monitoring, shell options (`monitor`, `notify`), and process state tracking
 
 ## Supporting Systems
@@ -305,13 +287,13 @@ class MyBuiltin(Builtin):
 **New Parser Rule**
 1. Add parsing logic in the relevant module under `psh/parser/recursive_descent/parsers/`
 2. Update helper utilities or token groups if the rule needs new token classifications
-3. Provide validation rules in `psh/parser/validation/validation_rules.py` if semantics require checks
+3. Extend the validator visitors in `psh/visitor/enhanced_validator_visitor.py` if semantics require checks
 
 **New Expansion Type**
 1. Implement expander in `psh/expansion/` (e.g., `new_expansion.py`)
 2. Invoke it from `ExpansionManager.expand_arguments()` (or the specific helper it delegates to) in the proper POSIX order slot
 3. Update `ExpansionEvaluator` when Word AST integration is required
-4. Add regression coverage in `tests/test_expansion_new_feature.py`
+4. Add regression coverage in `tests/unit/expansion/`
 
 ## Architecture Invariants
 
@@ -325,15 +307,15 @@ class MyBuiltin(Builtin):
 
 ## Testing Conventions
 
-- Pytest entry: `pytest` (configured via `pytest.ini`)
-- Tests live in `tests/`; place focused parser/unit work under `tests/unit/`
-- Lexer tests: `tests/test_lexer_*.py` (add new focused cases alongside existing files); keyword normalization goldens live in `tests/unit/lexer/test_keyword_normalizer_golden.py`
-- Parser tests: `tests/test_parser_*.py`, combinator parity suites in `tests/unit/parser/`
+- Pytest entry: `pytest` (configured via `pytest.ini`); prefer `python run_tests.py`
+- Tests live under `tests/unit/`, `tests/integration/`, `tests/system/`, `tests/performance/`
+- Lexer tests: `tests/unit/lexer/`; keyword normalization goldens live in `tests/unit/lexer/test_keyword_normalizer_golden.py`
+- Parser tests: `tests/unit/parser/` (combinator parity suites included); a few root-level parity/config suites remain (`tests/test_parser_feature_parity.py`, `tests/test_parser_configuration.py`)
 - Parser parity: `tests/test_parser_feature_parity.py` has keyword-heavy scenarios to keep recursive descent and combinator implementations aligned
-- Expansion tests: `tests/test_expansion_*.py`
-- Executor/integration: `tests/test_executor_*.py`, `tests/test_shell_*.py`, plus golden scripts in `conformance_tests/`
+- Expansion tests: `tests/unit/expansion/`
+- Executor/integration: `tests/unit/executor/`, `tests/integration/`; POSIX/bash conformance suites in `tests/conformance/`
 - Tooling checks: `tests/unit/tooling/test_keyword_comparisons.py` prevents new raw keyword comparisons
-- Use fixtures from `conftest.py` (`shell`, `tokenizer`, etc.) for consistency
+- Use fixtures from `conftest.py` (`captured_shell`, `isolated_shell_with_temp_dir`, etc.) for consistency
 
 ## Performance Considerations
 
@@ -346,8 +328,7 @@ class MyBuiltin(Builtin):
 ## Known Limitations
 
 1. **Python Recursion Limits**: Deeply nested shell functions may exceed Python recursion depth
-2. **Pytest Output Capture**: Command substitution may interfere with pytest's stdout capture in certain tests; subshell tests require `-s` flag
-3. **Builtin Redirections**: Builtins re-use process substitution & FD juggling; some complex redirection combinations still require caution
+2. **Builtin Redirections**: Builtins re-use process substitution & FD juggling; some complex redirection combinations still require caution
 
 ## Quick Reference
 
@@ -356,11 +337,11 @@ class MyBuiltin(Builtin):
 - **Keyword normalization**: `psh/lexer/keyword_normalizer.py`
 - **Token transformation**: `psh/token_transformer.py`
 - **Token stream utilities**: `psh/token_stream.py`
-- **Parser entry point**: `psh/parser/__init__.py` (`parse`, `ParserFactory`)
+- **Parser entry point**: `psh/parser/__init__.py` (`parse`, `parse_with_heredocs`, `create_parser`)
 - **Parser context**: `psh/parser/recursive_descent/context.py`
-- **Parser presets**: `psh/parser/recursive_descent/support/factory.py`
+- **Parser presets**: `ParserConfig.strict_posix()` / `permissive()` in `psh/parser/config.py`
 - **Parser selection**: `psh/builtins/parser_experiment.py` (`parser-select` builtin)
-- **Parser validation**: `psh/parser/validation/validation_pipeline.py`
+- **Script validation**: `psh/visitor/enhanced_validator_visitor.py` (`--validate` CLI option)
 - **Expansion manager**: `psh/expansion/manager.py`
 - **Executor visitor**: `psh/executor/core.py`
 - **IO manager**: `psh/io_redirect/manager.py`

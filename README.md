@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.277.0 | **Tests**: 4,550 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.278.0 | **Tests**: 4,550 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -31,7 +31,7 @@ psh --format script.sh
 
 - 🔍 **CLI Analysis Tools**: Built-in script formatting, metrics, security analysis, and linting
 - 📚 **Educational Focus**: Clean, readable codebase designed for learning shell internals
-- 🧪 **Comprehensive Testing**: 4,499 tests ensuring reliability and robustness
+- 🧪 **Comprehensive Testing**: 4,550 tests ensuring reliability and robustness
 - 🏗️ **Modern Architecture**: Component-based design with unified lexer and visitor pattern integration
 - 🎓 **Dual Parser Implementation**: Both recursive descent and functional parser combinator with near-complete feature parity
 - 📋 **POSIX Compliant**: ~98% compliance with robust bash compatibility
@@ -107,13 +107,19 @@ Complexity:
 - **Prompt Customization**: PS1/PS2 with escape sequences and ANSI colors
 
 ### Built-in Commands ✅
-**Core**: `cd`, `pwd`, `echo`, `exit`, `true`, `false`, `:`  
-**Variables**: `export`, `unset`, `set`, `declare`, `typeset`, `env`, `local`  
-**I/O**: `read` (with `-p`, `-s`, `-t`, `-n`, `-d` options)  
-**Job Control**: `jobs`, `fg`, `bg`  
-**Functions**: `return`, `source`, `.`  
-**Testing**: `test`, `[`, `[[`  
-**Utilities**: `history`, `alias`, `unalias`, `eval`
+All 59 registered builtins (from `psh.builtins.registry`):
+
+**Core**: `cd`, `pwd`, `echo`, `exit`, `true`, `false`, `:`, `exec`  
+**Directory Stack**: `pushd`, `popd`, `dirs`  
+**Variables**: `export`, `unset`, `set`, `shift`, `declare`, `typeset`, `local`, `readonly`, `let`, `getopts`, `env`  
+**I/O**: `read` (with `-p`, `-s`, `-t`, `-n`, `-d` options), `printf`, `print`, `mapfile` (alias `readarray`)  
+**Job Control**: `jobs`, `fg`, `bg`, `wait`, `kill`, `disown`  
+**Functions & Execution**: `return`, `source`, `.`, `eval`, `command`, `builtin`, `type`  
+**Signals**: `trap` (signal traps plus EXIT, DEBUG, ERR)  
+**Testing**: `test`, `[`  
+**Shell Options & Environment**: `shopt`, `umask`, `times`  
+**History & Aliases**: `history`, `alias`, `unalias`  
+**PSH Introspection**: `help`, `version`, `signals`, `parser-select`, `parser-mode`, `parser-config`, `parse-tree`, `show-ast`, `ast-dot`, `debug`, `debug-ast`
 
 ## Usage Examples
 
@@ -191,6 +197,8 @@ psh --lint old_script.sh
 
 ## Installation
 
+Requires Python 3.12 or later.
+
 ```bash
 # Clone and install
 git clone https://github.com/philipwilsonTHG/psh.git
@@ -234,10 +242,10 @@ PSH uniquely includes two complete parser implementations:
 - **Feature Parity**: Both parsers support all shell constructs (control structures, arrays, process substitution, etc.)
 
 ### Project Statistics
-- **Lines of Code**: ~99,000 across 348 Python files
-- **Test Coverage**: 4,499 tests in 217 test files
+- **Lines of Code**: ~47,700 lines of production code in `psh/` across 185 Python files, plus ~53,600 lines of tests in `tests/` (231 files)
+- **Test Coverage**: 4,550 tests in 220 test files
 - **Architecture**: 8 major components with focused responsibilities
-- **Visitors**: 9 analysis and transformation visitors
+- **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
 
 ## Testing & Quality
@@ -252,8 +260,9 @@ Use the provided test runner for correct handling of all tests:
 ```bash
 # Smart mode (recommended) - handles subshell tests correctly
 python run_tests.py
-# or
-./run_tests.sh
+
+# Parallel mode (~4x faster)
+python run_tests.py --parallel
 
 # Quick mode - skip slow tests
 python run_tests.py --quick
@@ -285,10 +294,10 @@ python -m pytest tests/ --cov=psh --cov-report=html
 
 **Note:** As of v0.195.0 the full suite passes under normal pytest capture; the `-s` flag is no longer required for subshell tests (a `read` builtin fix made it read the real redirected file descriptor). `run_tests.py` still works and remains the recommended runner.
 
-**Current Test Statistics:**
-- ✅ 4,184 passing tests
-- ⏭️ 291 skipped tests (platform-specific or interactive)
-- ⚠️ 3 xfailed (expected failures for unimplemented features)
+**Current Test Statistics** (from `python run_tests.py --parallel`):
+- ✅ 4,235 passing tests
+- ⏭️ 269 skipped tests (platform-specific or interactive)
+- ⚠️ 1 xfailed (expected failure for an unimplemented feature)
 - 📊 High coverage across all components
 
 ## POSIX Compliance
@@ -315,11 +324,12 @@ PSH includes many bash extensions while maintaining POSIX compliance:
 
 While PSH implements most shell features, some limitations remain:
 
-- **Signal Handling**: `trap` builtin not yet implemented
+- **RETURN Traps**: `trap` supports signal traps plus the EXIT, DEBUG, and ERR pseudo-signals, but not RETURN
+- **History Word Designators**: basic event designators (`!!`, `!n`, `!string`) work, but word designators and modifiers (`!$`, `!!:1`, `^old^new`) are not supported
 - **Deep Recursion**: Recursive functions hit Python stack limits
 - **Some Advanced Features**: Minor gaps in specialized POSIX utilities
 
-See [TODO.md](TODO.md) for planned enhancements.
+See [CHANGELOG.md](CHANGELOG.md) and `docs/reviews/` for recent fixes and remaining work.
 
 ## Development & Contributing
 
@@ -331,6 +341,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.278.0**: Meta-documentation sweep: ARCHITECTURE files match the post-campaign tree; README builtins list regenerated; stale docs archived
 - **v0.277.0**: Legacy test trees deleted (conformance_tests/, contract_tests_draft/); 30 fold-in conformance tests; cd HOME/OLDPWD shell-variable bug + POSIX ENOEXEC fallback fixed; locale pinned in conformance runs
 - **v0.276.0**: read option parsing rewritten getopt-style (bash-pinned); bg-job notices to stderr; last pytest sniff removed; combinator drift fixed (function-def redirects, quoted case patterns)
 - **v0.275.0**: Packaging truth (`requires-python >= 3.12`) + whole-tree ruff-clean (`psh/` and `tests/`); CI bumped to 3.12
@@ -340,80 +351,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **v0.271.0**: Terminal control fixed (ctrl-c/ctrl-z on foreground jobs); shared ProcessLauncher; all pytest-awareness removed from production code
 - **v0.270.0**: PTY test rehabilitation: deterministic interactive smoke suite runs in CI; blanket xfails removed
 - **v0.269.0**: Parser sweep: `f() (...)` subshell bodies, per-call definition redirects, quoted case patterns (Word AST), and-or dedup
-- **v0.268.0**: Executor sweep: `f &` background functions, nameref cycle diagnostics, non-retroactive `declare -u/-l/-i`, `type -t` keywords, `$"..."`, `$_`
-- **v0.267.0**: Expansion sweep: `${!n}` indirection, recursive arithmetic, POSIX field splitting and prefix-assignment ordering
-- **v0.266.0**: Pattern-op operand expansion (`${f%$ext}`, quoted patterns, literal replacements, patsub `&`)
-- **v0.265.0**: Heredoc lexing redesign (single-pass, cross-line state); `${x:-"}"}` and operand quoting fixed
-- **v0.264.0**: POSIX `&` grammar (lists/control structures background); structural incomplete-input detection
-- **v0.263.0**: DEBUG/ERR traps fire; signal traps deferred to command boundaries
-- **v0.262.0**: Scripting idioms: scalar `+=`, `printf -v`/`%(fmt)T`, quoted-regex literal, `builtin`
-- **v0.261.0**: PIPESTATUS, `$PPID`, `$UID`/`$EUID`, `$EPOCHSECONDS`/`$EPOCHREALTIME`, `c` in `$-`
-- **v0.260.0**: `umask` and `times` builtins (umask was a silent no-op on macOS)
-- **v0.259.0**: Builtin infrastructure: shared write/parse_flags helpers, one assoc-array parser
-- **v0.258.0**: Executor/builtins/vi scraps purge; vi keymap matches behavior, undo/redo wired
-- **v0.257.0**: Lexer dead-code purge (~680 lines: config fiction, dead operator table, error-handler stub)
-- **v0.256.0**: Parser dead-machinery purge (~850 lines: context flags, profiler, execution_context triplets)
-- **v0.255.0**: Process substitutions no longer destroy sibling-argument quoting
-- **v0.254.0**: Multi-field `"${arr[@]}"` expansion (slices, per-element operators, zero fields)
-- **v0.253.0**: Context-aware `set -e` (POSIX exemptions), subshell option/`$?` inheritance, readonly fatality
-- **v0.252.0**: External-command redirections applied once (in the child)
-- **v0.251.0**: Large heredocs no longer deadlock (temp file, like bash)
-- **v0.250.0**: `return` works in sourced files
-- **v0.249.0**: `exec` failure exits non-interactive shell (127/126)
-- **v0.248.0**: `set -u` violations: single-prefix bash message, abort script with 127
-- **v0.247.0**: `eval break`/`continue`/`return` reach their enclosing loop/function
-- **v0.246.0**: Transactional redirection restore (`2>&1` no longer kills shell stdout)
-- **v0.245.0**: Brace expansion no longer lost on heredoc command lines
-- **v0.244.0**: `trap --` (POSIX end-of-options idiom)
-- **v0.243.0**: `export` option parsing (`-p`, `-n`, `--`) and identifier validation
-- **v0.242.0**: `set` option parsing: multiple `-o`, `set -euo pipefail`, silent mode changes
-- **v0.241.0**: UNSET tombstones no longer leak into `set`/`declare -p` output
-- **v0.240.0**: Fix `${!prefix@}`/`${!prefix*}` listing every variable
-- **v0.239.0**: Fix `local` double-expansion injection; quote-aware array initializers
-- **v0.238.0**: Fix `break N`/`continue N` beyond loop depth (crash + bash semantics)
-- **v0.237.0**: Extract pure `convert_multiline_to_single` out of `LineEditor` into `line_editor_helpers`
-- **v0.236.0**: Shell.active_parser / add_history public API (§1.1 E)
-- **v0.235.0**: rc_loader: drop ineffective state-dict mutation (§1.1 C)
-- **v0.234.0**: TrapManager.get_handler() accessor (§1.1 B)
-- **v0.233.0**: Public array accessors (§1.1 A)
-- **v0.232.0**: Remove dead QuoteParsingContext methods (§1.4)
-- **v0.231.0**: Remove dead visitor state/stubs (§1.4)
-- **v0.230.0**: Remove dead scripting scaffolding (§1.4)
-- **v0.229.0**: Remove dead state fields & unreachable branch (§1.4)
-- **v0.228.0**: Remove dead HeredocHandler + _saved_fds (io_redirect §1.4)
-- **v0.227.0**: Public builtin helpers — `evaluate_test`/`evaluate_unary`/`set_mode`/`process_format_string_posix` (no cross-builtin private calls)
-- **v0.226.0**: Public `WordBuilder.has_decomposable_parts` / `token_part_to_word_part` (combinator parser no longer reaches into RD privates)
-- **v0.225.0**: Slim `setup_builtin_redirections` — extract shared output-file helper; document `>&` design
-- **v0.224.0**: Public `ExpansionManager.expand_expansion` / `process_dquote_escapes` (executor no longer reaches into privates)
-- **v0.223.0**: Make `in_forked_child` a first-class state attribute (drop private hasattr/getattr leak)
-- **v0.222.0**: Internal cleanup — public `set_var_or_array_element` API (nameref array-element writes)
-- **v0.221.0**: Namerefs Phase 2 — array-element targets (`declare -n e=arr[1]`)
-- **v0.220.0**: Name references — `declare -n`/`local -n` (scalar targets) and `${!var}` indirect expansion
-- **v0.219.0**: `let` builtin (arithmetic evaluation)
-- **v0.218.0**: `mapfile`/`readarray` builtin (`-d/-n/-O/-s/-t/-u`)
-- **v0.217.0**: Parameter transformation operators `${var@Q/U/u/L/E/P/A/a}` (scalar, array, positional)
-- **v0.216.0**: Brace expansion of expansion items (`{$((1)),$((2))}` → `1 2`); arithmetic/variable fd-duplication targets (`>&$((1+1))`, `2>&$fd`)
-- **v0.215.0**: Stop hiding defects in executor error guards; narrow exception handling (v0.214.0)
-- **v0.210.0**: Flush buffered output in command-substitution children
-- **v0.207.0**: Route builtin output through `shell.stdout` (no more bare `print()`)
-- **v0.206.0**: Fix two analysis-visitor bugs (until loops, brace groups)
-- **v0.201.0–v0.205.0**: De-duplicate divergent reimplementations — unified glob→regex, heredoc detection, command-position classification, and analysis-visitor traversal
-- **v0.200.0**: Positional/array slicing (`${@:off:len}`, `${arr[@]: -2}`) and EXIT-trap edge cases
-- **v0.199.0**: `printf %q`/`%b`, `BASH_REMATCH`, and an edge-case conformance suite
-- **v0.194.0–v0.196.0**: Correctness fixes from the codebase study; expansion de-duplication
-- **v0.195.0**: `read` uses the real fd — retire the global `-s` test flag; parallel-safe test suite (~9× faster via pytest-xdist)
-- **v0.193.0**: Add zsh-compatible `print` builtin
-- **v0.192.0**: Add 5 missing redirection operators (`<>`, `>|`, `&>`, `&>>`, `|&`)
-- **v0.191.0**: Clean up TokenType enum (80 → 59 entries), fd-prefixed redirects as single tokens
-- **v0.161.0**: Fix 7,132 ruff lint issues in test tree, expand CI lint gate to cover `psh/` and `tests/`
-- **v0.160.0**: Fix 626 ruff lint issues in `psh/`, add CI lint gate
-- **v0.155.0**: Fix 8 PSH bug XFAILs - heredocs, forked-child redirections, tests
-- **v0.150.0**: Executor/visitor cleanup - deduplication, shared constants, POSIX word splitting
-- **v0.145.0**: Quote-aware expansion scanners, multiple `$@` support
-- **v0.130.0**: Remove parser abstraction layers (~1,686 lines), `parser-select` builtin
-- **v0.120.0**: Complete `arg_types` migration to Word AST
-- **v0.113.0**: Extended globbing (`extglob`) - Five pattern operators across all shell contexts
-- **v0.108.0**: Fix 4 conformance bugs, achieve 0 PSH bugs - POSIX compliance 98.4%
+- Earlier history: see [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
