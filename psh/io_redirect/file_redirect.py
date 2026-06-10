@@ -60,10 +60,17 @@ class FileRedirector:
             target = self.shell.expansion_manager.expand_tilde(target)
         return target
 
-    def _redirect_input_from_file(self, target):
-        """Open file for input and dup2 to stdin."""
+    def _redirect_input_from_file(self, target, redirect=None):
+        """Open file for input and dup2 to the redirect's fd (default 0).
+
+        Honors an explicit source fd — ``exec 5<file`` must open fd 5,
+        not clobber stdin. Returns the target fd.
+        """
+        target_fd = (redirect.fd if redirect is not None and
+                     redirect.fd is not None else 0)
         fd = os.open(target, os.O_RDONLY)
-        _dup2_preserve_target(fd, 0)
+        _dup2_preserve_target(fd, target_fd)
+        return target_fd
 
     def _stdin_from_content(self, content: str):
         """Point stdin at `content` via an anonymous (unlinked) temp file.
@@ -232,8 +239,9 @@ class FileRedirector:
                 saved_fds.append((2, os.dup(2)))
                 self._redirect_combined(target, redirect)
             elif redirect.type == '<':
-                saved_fds.append((0, os.dup(0)))
-                self._redirect_input_from_file(target)
+                in_fd = redirect.fd if redirect.fd is not None else 0
+                saved_fds.append((in_fd, self._save_fd(in_fd)))
+                self._redirect_input_from_file(target, redirect)
             elif redirect.type == '<>':
                 target_fd = redirect.fd if redirect.fd is not None else 0
                 saved_fds.append((target_fd, self._save_fd(target_fd)))
@@ -318,9 +326,12 @@ class FileRedirector:
                 self.shell.stderr = sys.stderr
                 self.state.stderr = sys.stderr
             elif redirect.type == '<':
-                self._redirect_input_from_file(target)
-                self.shell.stdin = sys.stdin
-                self.state.stdin = sys.stdin
+                target_fd = self._redirect_input_from_file(target, redirect)
+                if target_fd == 0:
+                    # Only rebind the shell's stdin when fd 0 changed —
+                    # `exec 5<file` opens fd 5 and must leave stdin alone.
+                    self.shell.stdin = sys.stdin
+                    self.state.stdin = sys.stdin
             elif redirect.type == '<>':
                 self._redirect_readwrite(target, redirect)
                 self.shell.stdin = sys.stdin

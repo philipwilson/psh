@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.274.0 (2026-06-10) - Conformance expansion + claims meta-test (review Tier 3, phase 8 — campaign complete)
+- 98 new conformance tests filling the thin areas the review flagged:
+  getopts (silent/loud modes, clustering, --, local OPTIND), select
+  (choices, REPLY, EOF status), traps (EXIT/ERR/DEBUG/signals/ignore),
+  heredocs (quoting forms, <<-, pipelines, sequences, redirect targets),
+  fd duplication (exec open/dup/close for read and write, swap order,
+  unopened fds), non-interactive job control (wait statuses, kill, $!),
+  C-style for, control structures in pipelines, and eval.
+- The claims META-TEST (tests/conformance/test_claims_have_tests.py)
+  makes the project principle checkable: every "Full support" row in the
+  user guide's compatibility table must map to existing conformance
+  evidence; new claims without proof fail the suite. It immediately
+  caught three unproven claims (C-style for loops, control structures in
+  pipelines, eval) — all three now have conformance tests.
+- Real bugs the new tests surfaced, all fixed:
+  - `$$` returned the CHILD's pid in subshells, command substitutions
+    and forked redirect-target expansion (POSIX: the original shell's
+    pid everywhere). Captured once at startup, inherited like $PPID.
+  - `exec 5<file` clobbered stdin instead of opening fd 5 (input
+    redirects ignored their explicit fd); `read <&5` then failed.
+  - Signal traps for signals psh doesn't otherwise manage (USR1, USR2,
+    ALRM, ...) never installed an OS handler — the shell simply died on
+    delivery. trap now installs queueing handlers (actions run at
+    command boundaries) and SIG_IGN/SIG_DFL for ''/'-' forms.
+  - Subshells now run their own EXIT trap: (trap 'echo bye' EXIT; ...).
+  - Background-job notices ([1] 1234) printed in non-interactive shells;
+    bash prints them only interactively. Now gated on interactive mode.
+  - select's EOF newline goes to stdout (bash), exec's open errors no
+    longer leak Python errno reprs.
+- Stale user-guide claim corrected: DEBUG/ERR traps are supported (since
+  v0.263); RETURN is not.
+- Final architecture-review annotation: ALL FOUR TIERS RESOLVED across
+  37 releases (v0.238.0-v0.274.0); the remaining bash differences are
+  deliberate and documented. Suite: 3,979 → 4,499 tests over the
+  campaign.
+
 ## 0.273.0 (2026-06-10) - Multi-row line-editor rendering (review Tier 3, phase 7)
 - The line editor renders wrapped lines correctly. Every mutating edit
   operation (insert, delete, kills, yank, transpose, history nav,

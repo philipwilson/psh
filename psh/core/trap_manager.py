@@ -90,6 +90,25 @@ class TrapManager:
 
         return 0
 
+    # Signals whose OS handlers psh manages elsewhere (SignalManager's
+    # trap-checking handlers and job-control bookkeeping). For these, traps
+    # work through the existing handlers; we must not overwrite them.
+    _MANAGED_SIGNALS = frozenset({
+        signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT,
+        signal.SIGCHLD, signal.SIGTSTP, signal.SIGTTOU, signal.SIGTTIN,
+        getattr(signal, 'SIGWINCH', None),
+    }) - {None}
+
+    def _signum(self, signal_spec: str):
+        """The OS signal number for a trap spec, or None for pseudo-signals."""
+        num = self.signal_map.get(signal_spec)
+        if isinstance(num, int):
+            return num
+        try:
+            return int(signal_spec)
+        except (TypeError, ValueError):
+            return None
+
     def _set_signal_handler(self, signal_spec: str, action: str):
         """Set a signal handler for the given signal."""
         # Special handling for pseudo-signals
@@ -97,11 +116,23 @@ class TrapManager:
             self.state.trap_handlers[signal_spec] = action
             return
 
-        # Store the trap action - the SignalManager will handle the actual signal
         self.state.trap_handlers[signal_spec] = action
 
-        # For real signals, we need to ensure the signal manager knows about this trap
-        # The signal manager will check for traps before applying default behavior
+        # Signals outside the managed set (USR1, USR2, ALRM, ...) have no
+        # psh handler installed by default — the shell would simply die on
+        # delivery. Install a queueing handler: the trap action runs at the
+        # next command boundary (run_pending_traps), like bash.
+        signum = self._signum(signal_spec)
+        if signum is not None and signum not in self._MANAGED_SIGNALS:
+            spec = signal_spec
+
+            def _queueing_handler(_signum, _frame, _spec=spec):
+                self.queue_trap(_spec)
+
+            try:
+                signal.signal(signum, _queueing_handler)
+            except (OSError, ValueError):
+                pass  # uncatchable (KILL/STOP) or not in main thread
 
     def _ignore_signal(self, signal_spec: str):
         """Set signal to be ignored."""
@@ -110,9 +141,13 @@ class TrapManager:
             self.state.trap_handlers[signal_spec] = ''
             return
 
-        # For real signals, mark as ignored in trap handlers
-        # The SignalManager will handle the actual signal ignoring
         self.state.trap_handlers[signal_spec] = ''
+        signum = self._signum(signal_spec)
+        if signum is not None and signum not in self._MANAGED_SIGNALS:
+            try:
+                signal.signal(signum, signal.SIG_IGN)
+            except (OSError, ValueError):
+                pass
 
     def _reset_trap(self, signal_spec: str):
         """Reset signal to default behavior."""
@@ -122,9 +157,14 @@ class TrapManager:
                 del self.state.trap_handlers[signal_spec]
             return
 
-        # Remove from trap handlers - SignalManager will handle default behavior
         if signal_spec in self.state.trap_handlers:
             del self.state.trap_handlers[signal_spec]
+        signum = self._signum(signal_spec)
+        if signum is not None and signum not in self._MANAGED_SIGNALS:
+            try:
+                signal.signal(signum, signal.SIG_DFL)
+            except (OSError, ValueError):
+                pass
 
     def remove_trap(self, signals: List[str]) -> int:
         """Remove trap handlers (same as set_trap with action '-')."""

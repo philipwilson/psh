@@ -131,6 +131,11 @@ class ShellState:
         # inherit it (bash: PPID does not change in subshells).
         self.initial_ppid = os.getppid()
 
+        # The shell's own pid at startup ($$). Captured once: $$ must keep
+        # the ORIGINAL shell's pid in subshells, command substitutions and
+        # forked children (POSIX) — never the child's os.getpid().
+        self.shell_pid = os.getpid()
+
         # Whether the most recent command status may trigger set -e.
         # Maintained by ExecutorVisitor.visit_AndOrList: False for failures
         # POSIX exempts from errexit (condition contexts, non-final members
@@ -292,7 +297,7 @@ class ShellState:
         if name == '?':
             return str(self.last_exit_code)
         elif name == '$':
-            return str(os.getpid())
+            return str(self.shell_pid)
         elif name == '!':
             return str(self.last_bg_pid) if self.last_bg_pid else ''
         elif name == '#':

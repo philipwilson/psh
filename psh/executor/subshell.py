@@ -146,6 +146,13 @@ class SubshellExecutor:
             # Execute statements in isolated environment
             exit_code = subshell.execute_command_list(statements)
 
+            # A subshell runs its own EXIT trap when it finishes (bash):
+            # (trap 'echo bye' EXIT; ...) prints bye on subshell exit.
+            try:
+                subshell.trap_manager.execute_exit_trap()
+            except Exception:
+                pass
+
             # Flush output streams before returning
             # This is critical because os._exit() doesn't flush buffers
             try:
@@ -238,7 +245,8 @@ class SubshellExecutor:
         job.add_process(pid, "subshell")
         self.job_manager.register_background_job(job, shell_state=self.shell.state, last_pid=pid)
 
-        if not self.shell.is_script_mode:
+        if self.state.options.get('interactive'):
+            # bash prints job notices only in interactive shells
             print(f"[{job.job_id}] {job.pgid}", file=self.shell.stderr)
 
         return 0
@@ -281,7 +289,8 @@ class SubshellExecutor:
         job.add_process(pid, "brace-group")
         self.job_manager.register_background_job(job, shell_state=self.shell.state, last_pid=pid)
 
-        if not self.shell.is_script_mode:
+        if self.state.options.get('interactive'):
+            # bash prints job notices only in interactive shells
             print(f"[{job.job_id}] {job.pgid}", file=self.shell.stderr)
 
         return 0

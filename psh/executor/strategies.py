@@ -190,7 +190,8 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
         shell.job_manager.register_background_job(job, shell_state=shell.state, last_pid=pid)
 
         # Print job assignment notification (only in interactive mode)
-        if not shell.state.is_script_mode:
+        if shell.state.options.get('interactive'):
+            # bash prints job notices only in interactive shells
             print(f"[{job.job_id}] {pid}")
 
         return 0
@@ -268,7 +269,8 @@ class FunctionExecutionStrategy(ExecutionStrategy):
         job.add_process(pid, cmd_name)
         shell.job_manager.register_background_job(job, shell_state=shell.state, last_pid=pid)
 
-        if not shell.state.is_script_mode:
+        if shell.state.options.get('interactive'):
+            # bash prints job notices only in interactive shells
             print(f"[{job.job_id}] {pid}")
 
         return 0
@@ -447,7 +449,8 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             # Background job - register properly so current_job is set
             shell.job_manager.register_background_job(job, shell_state=shell.state, last_pid=pid)
             # Print job assignment notification (only in interactive mode)
-            if not shell.state.is_script_mode:
+            if shell.state.options.get('interactive'):
+                # bash prints job notices only in interactive shells
                 print(f"[{job.job_id}] {pid}")
             return 0
         else:
