@@ -55,7 +55,7 @@ class ReadBuiltin(Builtin):
             options, var_names = self._parse_options(args)
         except ValueError as e:
             print(str(e), file=sys.stderr)
-            return 2
+            return getattr(e, 'rc', 2)
 
         # Display prompt if specified
         if options['prompt']:
@@ -274,8 +274,19 @@ class ReadBuiltin(Builtin):
         # Set the array in shell state
         shell.state.scope_manager.set_variable(array_name, array, attributes=VarAttributes.ARRAY)
 
+    # Flag options set a boolean; arg options consume a value.
+    _FLAG_OPTS = {'r': 'raw_mode', 's': 'silent'}
+    _ARG_OPTS = frozenset('apdnt')
+
     def _parse_options(self, args: List[str]) -> Tuple[Dict[str, any], List[str]]:
-        """Parse read command options.
+        """Parse read command options getopt-style, matching bash.
+
+        Options may be clustered (``-rs``). An option that takes an
+        argument consumes the rest of its word if non-empty (``-n3``,
+        ``-rp prompt``) or the next word otherwise. ``--`` ends option
+        processing. Invalid options raise ValueError with ``rc=2``;
+        invalid option *values* (bad timeout/count) carry ``rc=1``,
+        as bash distinguishes usage errors from value errors.
 
         Returns:
             Tuple of (options dict, variable names list)
@@ -288,78 +299,37 @@ class ReadBuiltin(Builtin):
             'max_chars': None,
             'delimiter': '\n',
             'fd': 0,
-            'array_name': None  # New option for array assignment
+            'array_name': None
         }
 
         i = 1
         while i < len(args):
-            if args[i] == '-r':
-                options['raw_mode'] = True
-            elif args[i] == '-s':
-                options['silent'] = True
-            elif args[i] == '-a':
-                if i + 1 < len(args):
-                    options['array_name'] = args[i + 1]
-                    i += 1
-                else:
-                    raise ValueError("read: -a: option requires an argument")
-            elif args[i].startswith('-') and len(args[i]) > 2:
-                # Handle combined options like -ra, -rs, etc.
-                option_chars = args[i][1:]
-                for char in option_chars:
-                    if char == 'r':
-                        options['raw_mode'] = True
-                    elif char == 's':
-                        options['silent'] = True
-                    elif char == 'a':
-                        # -a in combined form requires next argument
-                        if i + 1 < len(args):
-                            options['array_name'] = args[i + 1]
-                            i += 1
-                        else:
-                            raise ValueError("read: -a: option requires an argument")
-                    else:
-                        raise ValueError(f"read: -{char}: invalid option")
-                break  # Combined options processed, continue to remaining args
-            elif args[i] == '-p':
-                if i + 1 < len(args):
-                    options['prompt'] = args[i + 1]
-                    i += 1
-                else:
-                    raise ValueError("read: -p: option requires an argument")
-            elif args[i] == '-t':
-                if i + 1 < len(args):
-                    try:
-                        options['timeout'] = float(args[i + 1])
-                        if options['timeout'] < 0:
-                            raise ValueError(f"read: {args[i + 1]}: invalid timeout specification")
-                    except ValueError:
-                        raise ValueError(f"read: {args[i + 1]}: invalid timeout specification")
-                    i += 1
-                else:
-                    raise ValueError("read: -t: option requires an argument")
-            elif args[i] == '-n':
-                if i + 1 < len(args):
-                    try:
-                        options['max_chars'] = int(args[i + 1])
-                        if options['max_chars'] <= 0:
-                            raise ValueError(f"read: {args[i + 1]}: invalid number")
-                    except ValueError:
-                        raise ValueError(f"read: {args[i + 1]}: invalid number")
-                    i += 1
-                else:
-                    raise ValueError("read: -n: option requires an argument")
-            elif args[i] == '-d':
-                if i + 1 < len(args):
-                    # Use first character of delimiter string, empty means null
-                    options['delimiter'] = args[i + 1][0] if args[i + 1] else '\0'
-                    i += 1
-                else:
-                    raise ValueError("read: -d: option requires an argument")
-            elif args[i].startswith('-'):
-                raise ValueError(f"read: {args[i]}: invalid option")
-            else:
+            arg = args[i]
+            if arg == '--':
+                i += 1
                 break
+            if not arg.startswith('-') or arg == '-':
+                break
+            j = 1
+            while j < len(arg):
+                char = arg[j]
+                if char in self._FLAG_OPTS:
+                    options[self._FLAG_OPTS[char]] = True
+                    j += 1
+                    continue
+                if char in self._ARG_OPTS:
+                    # Value is the remainder of this word, else the next word.
+                    if j + 1 < len(arg):
+                        value = arg[j + 1:]
+                    else:
+                        i += 1
+                        if i >= len(args):
+                            raise ValueError(
+                                f"read: -{char}: option requires an argument")
+                        value = args[i]
+                    self._apply_arg_option(char, value, options)
+                    break  # word fully consumed by the value
+                raise ValueError(f"read: -{char}: invalid option")
             i += 1
 
         # Variable names are ignored when using -a option
@@ -369,6 +339,36 @@ class ReadBuiltin(Builtin):
             var_names = args[i:] if i < len(args) else ['REPLY']
 
         return options, var_names
+
+    def _apply_arg_option(self, char: str, value: str, options: Dict[str, any]) -> None:
+        """Validate and store one argument-taking option."""
+        if char == 'a':
+            options['array_name'] = value
+        elif char == 'p':
+            options['prompt'] = value
+        elif char == 'd':
+            # First character of the delimiter string; empty means NUL
+            options['delimiter'] = value[0] if value else '\0'
+        elif char == 't':
+            try:
+                timeout = float(value)
+            except ValueError:
+                timeout = -1.0
+            if timeout < 0:
+                err = ValueError(f"read: {value}: invalid timeout specification")
+                err.rc = 1  # bash exits 1 for bad values (2 for bad options)
+                raise err
+            options['timeout'] = timeout
+        elif char == 'n':
+            try:
+                max_chars = int(value)
+            except ValueError:
+                max_chars = -1
+            if max_chars < 0:
+                err = ValueError(f"read: {value}: invalid number")
+                err.rc = 1
+                raise err
+            options['max_chars'] = max_chars
 
     def _should_use_sys_stdin(self, fd: int) -> bool:
         """Decide whether to read from ``sys.stdin`` or the real OS descriptor.
@@ -450,6 +450,8 @@ class ReadBuiltin(Builtin):
     def _read_special(self, fd: int, delimiter: str, max_chars: Optional[int],
                       silent: bool) -> Optional[str]:
         """Read with special modes (silent and/or character limit)."""
+        if max_chars == 0:
+            return ''  # bash: read -n 0 reads nothing and succeeds
         chars = []
 
         # Check if we're dealing with a TTY
@@ -514,6 +516,8 @@ class ReadBuiltin(Builtin):
     def _read_with_timeout(self, fd: int, timeout: float, delimiter: str,
                           max_chars: Optional[int], silent: bool) -> Optional[str]:
         """Read with timeout support."""
+        if max_chars == 0:
+            return ''  # bash: read -n 0 reads nothing and succeeds
         chars = []
         remaining_timeout = timeout
         is_tty = os.isatty(fd)
