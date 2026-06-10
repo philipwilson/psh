@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional, Set
 
+from ...core.exceptions import PshError
 from ...token_types import Token, TokenType
 
 
@@ -164,7 +165,7 @@ class ErrorContext:
             return token.type.name.lower()
 
 
-class ParseError(Exception):
+class ParseError(PshError):
     """Enhanced parse error with context."""
 
     def __init__(self, error_context: ErrorContext):

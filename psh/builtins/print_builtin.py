@@ -32,6 +32,7 @@ import os
 import sys
 from typing import TYPE_CHECKING, List, Tuple
 
+from ..core.exceptions import PshError
 from .base import Builtin
 from .io import PrintfBuiltin, process_escapes
 from .registry import builtin
@@ -40,7 +41,7 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
-class PrintOptionError(Exception):
+class PrintOptionError(PshError):
     """Raised when option parsing fails."""
 
 

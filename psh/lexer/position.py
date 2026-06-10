@@ -9,6 +9,8 @@ and comprehensive error handling with recovery capabilities.
 import bisect
 from dataclasses import dataclass
 
+from ..core.exceptions import PshError
+
 
 @dataclass
 class Position:
@@ -24,7 +26,7 @@ class Position:
         return f"Position(offset={self.offset}, line={self.line}, column={self.column})"
 
 
-class LexerError(SyntaxError):
+class LexerError(PshError, SyntaxError):
     """Enhanced error with position and context information."""
 
     def __init__(self, message: str, position: Position, input_text: str, severity: str = "error"):

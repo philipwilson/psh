@@ -267,28 +267,11 @@ class OperatorOpsMixin:
 
     @staticmethod
     def _shell_quote(s: str) -> str:
-        """Quote a string so it can be reused as shell input (bash ${var@Q}).
-
-        Empty -> ''. Strings with control characters use the $'...' ANSI-C
-        form; otherwise a single-quoted form with embedded quotes escaped as
-        '\\''.
-        """
-        if s == '':
-            return "''"
-        if any(ord(c) < 32 or ord(c) == 127 for c in s):
-            out = []
-            simple = {'\n': '\\n', '\t': '\\t', '\r': '\\r', '\\': '\\\\',
-                      "'": "\\'", '\a': '\\a', '\b': '\\b', '\f': '\\f',
-                      '\v': '\\v'}
-            for c in s:
-                if c in simple:
-                    out.append(simple[c])
-                elif ord(c) < 32 or ord(c) == 127:
-                    out.append('\\%03o' % ord(c))
-                else:
-                    out.append(c)
-            return "$'" + ''.join(out) + "'"
-        return "'" + s.replace("'", "'\\''") + "'"
+        """${var@Q} quoting — delegates to the shared implementation
+        (psh/utils/escapes.py, which documents why ${var@Q} and
+        printf %q formats differ)."""
+        from ..utils.escapes import quote_at_q
+        return quote_at_q(s)
 
     @staticmethod
     def _ansi_c_expand(s: str) -> str:

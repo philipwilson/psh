@@ -4,6 +4,39 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.280.0 (2026-06-10) - Pattern/escape/exception consolidation (reappraisal Tier B, 2/6)
+- ONE pattern engine: new `expansion/pattern.py` is the canonical home of
+  `PatternMatcher` + module-level `match_shell_pattern()`. The two fnmatch
+  paths are gone: `case` legacy matching (control_flow.py's
+  `_match_case_pattern` + the 65-line `_convert_case_pattern_for_fnmatch`
+  heuristic, deleted) and `[[ == ]]` (`enhanced_test_evaluator._pattern_match`)
+  both delegate to the shared engine, so case / `[[ ]]` / `${var#pat}` can
+  no longer drift. parameter_expansion.py re-exports PatternMatcher for the
+  existing import sites.
+- Real bug fixed by the consolidation: the shared glob→regex converter's
+  bracket scanner stopped at the first `]`, so POSIX classes
+  (`[[ a == [[:alpha:]] ]]`, `case B in [[:upper:]])`, `${x#*[[:digit:]]}`)
+  only worked in the constructs that still used fnmatch. The converter now
+  scans `[:name:]` correctly and translates POSIX classes to re ranges —
+  verified against bash across all constructs (8-probe battery).
+- New `utils/escapes.py` houses the shared escape/quote helpers with the
+  dialect map documented: `process_echo_escapes` (echo -e/print),
+  `quote_printf_q` (printf %q: `a\ b`), `quote_at_q` (${var@Q}: `'a b'`).
+  The two quoters were flagged as duplicates by the review but produce
+  deliberately different formats in bash itself (verified) — consolidated
+  by location and documentation, not falsely unified. printf/read/[[ ]]
+  escape dialects remain in place, each documented as intentionally distinct.
+- Exception hierarchy rooted: new `PshError` base in core/exceptions.py;
+  ShellArithmeticError, BraceExpansionError, LexerError, ParseError,
+  PrintOptionError, ExpansionError, UnboundVariableError,
+  ReadonlyVariableError, NamerefCycleError all derive from it (callers can
+  finally catch "any psh error"). `FunctionReturn` moved to
+  core/exceptions.py beside its control-flow siblings LoopBreak/LoopContinue
+  — the control-flow family deliberately does NOT derive from PshError, and
+  the module docstring explains why. function_support.py re-exports
+  FunctionReturn for existing importers.
+- Full suite green at unchanged counts (4,235 passed / 4,550 collected).
+
 ## 0.279.0 (2026-06-10) - expansion/variable.py decomposition (reappraisal Tier B, 1/6)
 - The 1,644-line `expansion/variable.py` grab-bag — the worst file in the
   reappraisal — is decomposed by concern into four mixins, with

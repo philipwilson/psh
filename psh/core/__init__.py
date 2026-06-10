@@ -13,9 +13,11 @@ Modules:
 from .assignment_utils import extract_assignments, is_exported, is_valid_assignment
 from .exceptions import (
     ExpansionError,
+    FunctionReturn,
     LoopBreak,
     LoopContinue,
     NamerefCycleError,
+    PshError,
     ReadonlyVariableError,
     UnboundVariableError,
 )
