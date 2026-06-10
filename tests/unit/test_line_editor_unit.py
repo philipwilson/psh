@@ -14,11 +14,9 @@ import pytest
 # Add PSH to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 
-# Mock modules that require TTY
-mock_termios = Mock()
-mock_tty = Mock()
-sys.modules['termios'] = mock_termios
-sys.modules['tty'] = mock_tty
+# NOTE: termios/tty import fine without a TTY; never replace them in
+# sys.modules with Mocks — that leaks into every later import in the
+# process (it broke ptyprocess/pexpect during whole-tree collection).
 
 
 class TestLineEditorUnit:

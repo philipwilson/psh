@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.270.0 (2026-06-10) - PTY test rehabilitation (review Tier 3, phase 4)
+- New deterministic pexpect smoke suite (test_pty_smoke.py, 18 passing +
+  2 specific xfails) covering the real interactive surface: prompt,
+  command execution, state across commands, exit/ctrl-d EOF, ctrl-c at
+  the prompt, backspace, arrow-key cursor editing, ctrl-a/k/u/w, history
+  recall, PS2 continuation, long (wrapped) lines, background job
+  notices, jobs, wait, fg, disown. It REPLACES the two blanket-xfail PTY
+  suites (test_pty_line_editing.py, test_pty_job_control.py — deleted),
+  whose "pexpect doesn't work under pytest" premise no longer holds.
+- The smoke suite runs BY DEFAULT in the standard test run (exempt from
+  the --run-interactive gate); the legacy interactive tests stay opt-in.
+  Until now the whole interactive directory was silently skipped in
+  suite runs — zero interactive coverage in CI.
+- Root-caused the old PTY-test folklore (documented in
+  README_PEXPECT_ISSUE.md): the line editor's raw mode means Enter is
+  CR (pexpect sendline's LF is not accept-line); the DSR cursor query
+  (ESC[6n) appears in output; matching must use sentinels that never
+  appear in the typed text; and every send must wait for the prompt.
+- Fixed module-level sys.modules['termios']=Mock() poisoning in two
+  line-editor unit files: it executed at COLLECTION time and broke
+  ptyprocess/pexpect for the entire process in whole-tree runs.
+- Two genuine gaps carry specific xfails and are the target of the next
+  phase (terminal control / is_pytest removal): SIGINT and SIGTSTP
+  delivered to a RUNNING foreground job do not return the prompt under
+  a pexpect PTY.
+
 ## 0.269.0 (2026-06-10) - Parser correctness sweep (review Tier 3, phase 3)
 - `f() ( ... )` keeps its subshell semantics: the parser preserves the
   SubshellGroup node instead of unwrapping it, so each call forks.

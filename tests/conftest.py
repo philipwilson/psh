@@ -494,6 +494,11 @@ def pytest_collection_modifyitems(config, items):
 def pytest_runtest_setup(item):
     """Skip interactive tests unless explicitly requested."""
     if item.get_closest_marker("interactive"):
+        # The PTY smoke suite (test_pty_smoke.py) is deterministic and runs
+        # by default — it is the interactive coverage the suite relies on.
+        # The remaining legacy interactive tests stay opt-in.
+        if "test_pty_smoke" in str(item.fspath):
+            return
         if not item.config.getoption("--run-interactive", default=False):
             pytest.skip("Interactive tests skipped (use --run-interactive to run)")
 
