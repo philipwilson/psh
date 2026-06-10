@@ -9,11 +9,14 @@ The I/O subsystem handles all file descriptor redirections including file redire
 ```
 IOManager (orchestrator)
      ↓
-┌────┴─────┬──────────┐
-↓          ↓          ↓
-File      Heredoc   Process
-Redirector Handler  SubHandler
+┌────┴──────────┐
+↓               ↓
+File          Process
+Redirector    SubHandler
 ```
+
+(Heredocs and here-strings live inside `FileRedirector` — there is no
+separate heredoc handler.)
 
 The package exports only `IOManager` via `__init__.py`.
 
@@ -158,8 +161,8 @@ methods (`apply_redirections`, `apply_permanent_redirections`,
 |--------|----------|
 | `_redirect_input_from_file(target)` | `<` — open + dup2 to stdin |
 | `_redirect_readwrite(target, redirect)` | `<>` — open O_RDWR + dup2; returns target_fd |
-| `_redirect_heredoc(redirect)` | `<<`/`<<-` — pipe + expand + dup2; returns content |
-| `_redirect_herestring(redirect)` | `<<<` — pipe + expand + dup2; returns content |
+| `_redirect_heredoc(redirect)` | `<<`/`<<-` — expand + unlinked temp file + dup2; returns content |
+| `_redirect_herestring(redirect)` | `<<<` — expand + unlinked temp file + dup2; returns content |
 | `_redirect_output_to_file(target, redirect)` | `>`/`>>` — open + dup2; returns target_fd |
 | `_redirect_clobber(target, redirect)` | `>|` — open O_TRUNC (ignore noclobber); returns target_fd |
 | `_redirect_combined(target, redirect)` | `&>`/`&>>` — open + dup2(fd,1) + dup2(1,2) |
@@ -209,16 +212,20 @@ if not heredoc_quoted:
     content = shell.expansion_manager.expand_string_variables(content)
 ```
 
-### Here String
+### Heredoc / Here String Delivery
+
+Both deliver content to stdin via `_stdin_from_content()`, which uses an
+**anonymous (unlinked) temp file, deliberately NOT a pipe**:
 
 ```python
-# <<< creates pipe, writes string + newline
-r, w = os.pipe()
-content = expanded_content + '\n'
-os.write(w, content.encode())
-os.close(w)
-os.dup2(r, 0)  # stdin
-os.close(r)
+# A pipe would deadlock for content larger than the kernel pipe buffer
+# (~64KB) because the whole body is written before any reader exists.
+# Bash uses a temp file for heredocs for the same reason.
+tmp = tempfile.TemporaryFile()
+tmp.write(content.encode())
+tmp.seek(0)
+os.dup2(tmp.fileno(), 0)
+tmp.close()  # fd 0 keeps the underlying file open
 ```
 
 ### Process Substitution
@@ -257,10 +264,10 @@ redirect types.
 
 ```bash
 # Run I/O unit tests
-python -m pytest tests/unit/io/ -v
+python -m pytest tests/unit/io_redirect/ -v
 
 # Run redirection integration tests
-python -m pytest tests/integration/redirections/ -v
+python -m pytest tests/integration/redirection/ -v
 
 # Debug redirections
 python -m psh --debug-exec -c "echo hello > /tmp/test.txt"

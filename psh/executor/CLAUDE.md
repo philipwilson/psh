@@ -29,6 +29,7 @@ Executor  Executor   Executor   Executor  Executor
 | `process_launcher.py` | `ProcessLauncher` - unified process creation |
 | `child_policy.py` | `apply_child_signal_policy()` - single source of truth for child signal setup |
 | `strategies.py` | Execution strategies for different command types |
+| `enhanced_test_evaluator.py` | `[[ ]]` test expression evaluation |
 | `context.py` | `ExecutionContext` - execution state |
 
 ## Core Patterns
@@ -68,25 +69,29 @@ strategies = [
 
 ### 3. Unified Process Creation
 
-All forked processes go through `ProcessLauncher`:
+All forked processes go through the single shared instance
+`shell.process_launcher`:
 
 ```python
 class ProcessLauncher:
-    def launch(self, config: ProcessConfig, child_action: Callable) -> int:
-        """Fork and execute with proper job control setup."""
-        # 1. Create sync pipes for process group coordination
-        # 2. Fork
-        # 3. Child: setup process group, signals, I/O, then exec
-        # 4. Parent: add to job table, manage foreground/background
+    def launch(self, execute_fn: Callable[[], int],
+               config: ProcessConfig) -> Tuple[int, int]:
+        """Fork and run execute_fn in the child; returns (pid, pgid).
+
+        Handles fork, child signal policy, process-group setup, and
+        optional sync pipes (when config requests them). The CALLER is
+        responsible for creating the Job, registering it, and waiting —
+        see strategies.py / pipeline.py for the pattern.
+        """
 ```
 
 ### 4. Process Roles
 
 ```python
 class ProcessRole(Enum):
-    SINGLE = "single"              # Standalone command
-    PIPELINE_LEADER = "leader"     # First process in pipeline (creates pgroup)
-    PIPELINE_MEMBER = "member"     # Subsequent pipeline processes
+    SINGLE = "single"                    # Standalone command
+    PIPELINE_LEADER = "pipeline_leader"  # First in pipeline (creates pgroup)
+    PIPELINE_MEMBER = "pipeline_member"  # Subsequent pipeline processes
 ```
 
 ## Execution Flow
@@ -96,7 +101,7 @@ class ProcessRole(Enum):
 ```
 SimpleCommand AST
     ↓
-CommandExecutor.execute_simple_command()
+CommandExecutor.execute()
     ↓
 1. Expand assignments
 2. Expand arguments (variables, globs, etc.)
@@ -114,7 +119,7 @@ Exit code                                   fork() + execvp()
 ```
 Pipeline AST
     ↓
-PipelineExecutor.execute_pipeline()
+PipelineExecutor.execute()
     ↓
 1. Create pipes between commands
 2. Fork each command:
@@ -202,15 +207,14 @@ The `is_shell_process` flag controls SIGTTOU disposition:
 - **Leaf processes** (`is_shell_process=False`, default): SIGTTOU=SIG_DFL,
   appropriate for external commands that don't manage terminal control.
 
-All 5 fork paths use this policy:
+All 3 fork paths use this policy (file_redirect.py and io_redirect/manager.py
+no longer fork — they delegate to `process_sub.create_process_substitution`):
 
 | Fork Path | File | is_shell_process |
 |-----------|------|-----------------|
 | ProcessLauncher | `process_launcher.py` | `config.is_shell_process` |
 | Command substitution | `expansion/command_sub.py` | `True` |
 | Process substitution | `io_redirect/process_sub.py` | `True` |
-| File redirect proc-sub | `io_redirect/file_redirect.py` | `True` |
-| IOManager builtin proc-sub | `io_redirect/manager.py` | `True` |
 
 ### Process Group Management
 
@@ -289,8 +293,9 @@ python -m psh --debug-expansion # Variable and command substitution
 - Job table: `shell.job_manager`
 - Background jobs: `Job` objects with process group info
 
-### With I/O Manager (`psh/io_manager.py`)
+### With I/O Manager (`psh/io_redirect/`)
 
-- Redirections: `io_manager.setup_redirects()`
-- Heredocs: `io_manager.setup_heredoc()`
-- File descriptor management
+- Per-command redirections: `io_manager.with_redirections(redirects)`
+  (context manager) or `apply_redirections()` / restore
+- Builtin stream redirections: `io_manager.setup_builtin_redirections(command)`
+- Forked-child redirections: `io_manager.setup_child_redirections(command)`
