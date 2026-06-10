@@ -149,7 +149,7 @@ class LocalBuiltin(Builtin):
                 # no array parsing) with the NAMEREF attribute.
                 if options['nameref']:
                     if var_name == var_value:
-                        self.error("nameref variable self references not allowed", shell)
+                        self.error(f"{var_name}: nameref variable self references not allowed", shell)
                         return 1
                     shell.state.scope_manager.create_local(var_name, var_value, attributes)
                     continue

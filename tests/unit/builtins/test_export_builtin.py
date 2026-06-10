@@ -76,10 +76,14 @@ class TestExportBasics:
         assert captured_shell.state.env.get('FOO') == 'bar'
 
     def test_existing_variable_export(self, captured_shell):
-        captured_shell.run_command('V=val')
-        result = captured_shell.run_command('export V')
+        # Unique name + unset: the in-process shell syncs exports into the
+        # test runner's own os.environ, so a generic name like V leaks into
+        # every later test's shell.
+        captured_shell.run_command('EXPORT_TEST_V=val')
+        result = captured_shell.run_command('export EXPORT_TEST_V')
         assert result == 0
-        assert captured_shell.state.env.get('V') == 'val'
+        assert captured_shell.state.env.get('EXPORT_TEST_V') == 'val'
+        captured_shell.run_command('unset EXPORT_TEST_V')
 
     def test_no_args_prints_exports(self, captured_shell):
         captured_shell.run_command('export PRINTME=1')

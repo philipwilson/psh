@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.267.0 | **Tests**: 4,310 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.268.0 | **Tests**: 4,354 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -31,7 +31,7 @@ psh --format script.sh
 
 - 🔍 **CLI Analysis Tools**: Built-in script formatting, metrics, security analysis, and linting
 - 📚 **Educational Focus**: Clean, readable codebase designed for learning shell internals
-- 🧪 **Comprehensive Testing**: 4,310 tests ensuring reliability and robustness
+- 🧪 **Comprehensive Testing**: 4,354 tests ensuring reliability and robustness
 - 🏗️ **Modern Architecture**: Component-based design with unified lexer and visitor pattern integration
 - 🎓 **Dual Parser Implementation**: Both recursive descent and functional parser combinator with near-complete feature parity
 - 📋 **POSIX Compliant**: ~98% compliance with robust bash compatibility
@@ -235,7 +235,7 @@ PSH uniquely includes two complete parser implementations:
 
 ### Project Statistics
 - **Lines of Code**: ~99,000 across 348 Python files
-- **Test Coverage**: 4,310 tests in 208 test files
+- **Test Coverage**: 4,354 tests in 210 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 9 analysis and transformation visitors
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -286,7 +286,7 @@ python -m pytest tests/ --cov=psh --cov-report=html
 **Note:** As of v0.195.0 the full suite passes under normal pytest capture; the `-s` flag is no longer required for subshell tests (a `read` builtin fix made it read the real redirected file descriptor). `run_tests.py` still works and remains the recommended runner.
 
 **Current Test Statistics:**
-- ✅ 3,973 passing tests
+- ✅ 4,017 passing tests
 - ⏭️ 291 skipped tests (platform-specific or interactive)
 - ⚠️ 3 xfailed (expected failures for unimplemented features)
 - 📊 High coverage across all components
@@ -331,6 +331,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.268.0**: Executor sweep: `f &` background functions, nameref cycle diagnostics, non-retroactive `declare -u/-l/-i`, `type -t` keywords, `$"..."`, `$_`
 - **v0.267.0**: Expansion sweep: `${!n}` indirection, recursive arithmetic, POSIX field splitting and prefix-assignment ordering
 - **v0.266.0**: Pattern-op operand expansion (`${f%$ext}`, quoted patterns, literal replacements, patsub `&`)
 - **v0.265.0**: Heredoc lexing redesign (single-pass, cross-line state); `${x:-"}"}` and operand quoting fixed

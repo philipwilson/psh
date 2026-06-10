@@ -86,27 +86,40 @@ class EnhancedScopeManager:
         """Look up a variable, following a nameref chain to its target.
 
         A nameref stores its target *name* as its value. Returns the final
-        non-nameref Variable, or the nameref itself when its target is empty or
-        the chain is cyclic (so reading a target-less nameref yields nothing).
+        non-nameref Variable, or the nameref itself when its target is empty
+        (so reading a target-less nameref yields nothing). A cyclic chain
+        warns and reads as unset (bash: "warning: a: circular name
+        reference", the expansion is empty, status unchanged).
         """
         var = self.get_variable_object(name)
         seen = set()
         while var is not None and var.is_nameref:
             target = str(var.value) if var.value else ''
-            if not target or target in seen:
-                return var  # empty / cyclic target — read the nameref's own value
+            if not target:
+                return var  # empty target — read the nameref's own value
+            if target in seen:
+                self.warn_nameref_cycle(name)
+                return None
             seen.add(target)
             var = self.get_variable_object(target)
         return var
+
+    @staticmethod
+    def warn_nameref_cycle(name: str) -> None:
+        """Print bash's circular-nameref warning."""
+        import sys
+        print(f"psh: warning: {name}: circular name reference", file=sys.stderr)
 
     def resolve_nameref_name(self, name: str) -> str:
         """Follow a nameref chain and return the final target *name*.
 
         Used by the write/unset paths. A plain or unset name resolves to
-        itself; a nameref with an empty or cyclic target also resolves to its
-        own name (so e.g. ``declare -n r; r=x`` sets r's target rather than
-        writing through to nothing).
+        itself; a nameref with an empty target resolves to its own name (so
+        e.g. ``declare -n r; r=x`` sets r's target rather than writing
+        through to nothing). A cyclic chain raises NamerefCycleError — bash
+        rejects the write with "circular name reference".
         """
+        from .exceptions import NamerefCycleError
         seen = set()
         current = name
         while True:
@@ -114,8 +127,10 @@ class EnhancedScopeManager:
             if var is None or not var.is_nameref:
                 return current
             target = str(var.value) if var.value else ''
-            if not target or target in seen:
+            if not target:
                 return current
+            if target in seen or target == current:
+                raise NamerefCycleError(name)
             seen.add(current)
             current = target
 
@@ -524,13 +539,11 @@ class EnhancedScopeManager:
             if attributes & VarAttributes.UPPERCASE:
                 new_attributes &= ~VarAttributes.LOWERCASE
 
-            # Apply new attributes
+            # Apply new attributes. The existing VALUE is left untouched:
+            # bash applies -u/-l/-i transformations only to future
+            # assignments (`u=abc; declare -u u` leaves $u as abc).
             new_attributes |= attributes
             var.attributes = new_attributes
-
-            # Re-apply transformations if needed
-            if attributes & (VarAttributes.UPPERCASE | VarAttributes.LOWERCASE | VarAttributes.INTEGER):
-                var.value = self._apply_attributes(var.value, var.attributes)
 
     def remove_attribute(self, name: str, attributes: VarAttributes):
         """Remove attributes from an existing variable."""

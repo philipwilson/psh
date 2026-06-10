@@ -15,6 +15,7 @@ from .exceptions import (
     ExpansionError,
     LoopBreak,
     LoopContinue,
+    NamerefCycleError,
     ReadonlyVariableError,
     UnboundVariableError,
 )
@@ -30,6 +31,7 @@ __all__ = [
     'LoopContinue',
     'UnboundVariableError',
     'ReadonlyVariableError',
+    'NamerefCycleError',
     'ExpansionError',
     # Variables
     'Variable',

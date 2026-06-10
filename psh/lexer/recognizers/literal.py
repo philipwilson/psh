@@ -480,6 +480,9 @@ class LiteralRecognizer(ContextualRecognizer):
         elif next_char == "'":
             # ANSI-C quoting $'...'
             return True
+        elif next_char == '"':
+            # Locale string $"..." (lexed as a plain double-quoted string)
+            return True
         else:
             # Simple variable $VAR - check if next character can start a variable name
             from ..constants import SPECIAL_VARIABLES

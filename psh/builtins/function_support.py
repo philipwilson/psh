@@ -286,7 +286,7 @@ class DeclareBuiltin(Builtin):
                 # NAMEREF attribute (set_variable writes it raw to `name`).
                 if options['nameref']:
                     if name == value:
-                        self.error("nameref variable self references not allowed", shell)
+                        self.error(f"{name}: nameref variable self references not allowed", shell)
                         return 1
                     self._set_variable_with_attributes(shell, name, value, attributes, options['global'])
                     continue

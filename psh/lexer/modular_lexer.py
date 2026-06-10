@@ -312,6 +312,15 @@ class ModularLexer:
             self.input[self.position + 1] == "'"):
             return self._handle_ansi_c_quote()
 
+        # Locale string $"..." — without a message catalog bash treats it
+        # exactly like "...".
+        if (char == '$' and self.position + 1 < len(self.input) and
+                self.input[self.position + 1] == '"' and
+                self.config.enable_double_quotes and
+                self.quote_context.is_quote_character('"') and
+                not self._is_inside_potential_array_assignment()):
+            return self._handle_locale_string()
+
         # Handle expansions (only if enabled and not in array assignment context)
         if (char == '$' and self.config.enable_variable_expansion and
             self.expansion_context.is_expansion_start(self.position)):
@@ -503,6 +512,40 @@ class ModularLexer:
 
         # Emit token
         self.emit_token(TokenType.STRING, full_value, start_pos, quote_char)
+        return True
+
+    def _handle_locale_string(self) -> bool:
+        """Handle a locale string $\"...\".
+
+        Without a message catalog bash treats $"..." exactly like "...",
+        so lex it as a normal double-quoted STRING. The token spans the $
+        so composite-word adjacency is preserved (pre$"mid"post).
+        """
+        start_pos = self.get_current_position()
+
+        # Skip $"
+        self.advance()  # Skip $
+        self.advance()  # Skip "
+
+        from .quote_parser import QUOTE_RULES
+        rules = QUOTE_RULES.get('"')
+        if not rules:
+            return False
+
+        parts, new_pos, found_closing = self.quote_parser.parse_quoted_string(
+            self.input,
+            self.position,  # Current position (after $")
+            rules,
+            self.position_tracker
+        )
+
+        if not found_closing:
+            raise SyntaxError(f'Unclosed $" quote at position {start_pos}')
+
+        self.position = new_pos
+        full_value = self._build_token_value(parts)
+        self.current_parts = parts
+        self.emit_token(TokenType.STRING, full_value, start_pos, '"')
         return True
 
     def _handle_ansi_c_quote(self) -> bool:

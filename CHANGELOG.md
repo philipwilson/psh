@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.268.0 (2026-06-10) - Executor/builtin correctness sweep (review Tier 3, phase 2)
+- `f &` runs a function in the background by forking a subshell (bash).
+  psh previously rejected it with "functions cannot be run in background".
+  Arguments, `wait %1` exit status, redirections and parent-state isolation
+  all behave like bash; the child is marked a shell process (keeps SIGTTOU
+  ignored) since the function body may run pipelines.
+- Circular namerefs (`declare -n a=b; declare -n b=a`) get bash's
+  diagnostics: creating the cycle is fine; WRITING through it warns
+  "circular name reference" and fails (aborting a non-interactive shell
+  with status 1, like other assignment errors); READING warns and expands
+  empty (status unchanged); `unset` warns but succeeds. New
+  NamerefCycleError raised by resolve_nameref_name and handled per-path.
+  The declare-time self-reference error now names the variable.
+- `declare -u/-l/-i` no longer transform the EXISTING value — bash applies
+  the attribute to future assignments only (`u=abc; declare -u u` leaves
+  $u as abc; `x="2+3"; declare -i x` leaves $x as 2+3).
+- `type`/`type -t` report shell keywords (if, while, for, case, time,
+  `{`, `[[`, ... ) — previously rc 1/no output for `type -t if`.
+- `$"..."` locale strings are lexed as plain double-quoted strings in all
+  contexts (standalone, assignments, composite words), matching bash
+  without a message catalog. The token spans the `$` so composite-word
+  adjacency is preserved.
+- `$_` tracks the last argument of the previous simple command
+  (`true x y; echo $_` prints y); previously it leaked the inherited
+  environment value (the Python interpreter path).
+- Fixed another env-pollution bug: test_export_builtin exported the
+  generic name V into the test runner's environment.
+- 50 new bash-pinned tests (test_builtin_correctness_sweep.py,
+  test_background_functions.py).
+
 ## 0.267.0 (2026-06-10) - Expansion correctness sweep (review Tier 3, phase 1b)
 - `${!name}` indirection resolves through the full parameter namespace:
   positionals (`n=2; ${!n}` -> `$2`), array elements (`ref='a[1]'`,
