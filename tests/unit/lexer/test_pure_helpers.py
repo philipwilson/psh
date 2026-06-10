@@ -144,45 +144,6 @@ class TestEscapeSequenceHandling:
         assert pos == 1
 
 
-class TestQuoteProcessing:
-    """Test quote content extraction functions."""
-
-    def test_extract_quoted_content_double_quotes(self):
-        """Test double-quoted content extraction."""
-        content, pos, found = pure_helpers.extract_quoted_content('hello world"', 0, '"')
-        assert content == "hello world"
-        assert pos == 12
-        assert found is True
-
-    def test_extract_quoted_content_single_quotes(self):
-        """Test single-quoted content extraction."""
-        content, pos, found = pure_helpers.extract_quoted_content("hello'", 0, "'", allow_escapes=False)
-        assert content == "hello"
-        assert pos == 6
-        assert found is True
-
-    def test_extract_quoted_content_with_escapes(self):
-        """Test quoted content extraction with escape sequences."""
-        content, pos, found = pure_helpers.extract_quoted_content('hello\\"world"', 0, '"')
-        assert content == 'hello"world'
-        assert pos == 13
-        assert found is True
-
-    def test_extract_quoted_content_unclosed(self):
-        """Test unclosed quoted string handling."""
-        content, pos, found = pure_helpers.extract_quoted_content("hello", 0, '"')
-        assert content == "hello"
-        assert pos == 5
-        assert found is False
-
-    def test_extract_quoted_content_empty(self):
-        """Test empty quoted string."""
-        content, pos, found = pure_helpers.extract_quoted_content('"', 0, '"')
-        assert content == ""
-        assert pos == 1
-        assert found is True
-
-
 class TestVariableNameExtraction:
     """Test variable name extraction functions."""
 
@@ -222,30 +183,6 @@ class TestVariableNameExtraction:
         assert pos == 4
 
 
-class TestCommentDetection:
-    """Test comment detection functions."""
-
-    def test_is_comment_start_at_line_start(self):
-        """Test comment detection at start of line."""
-        assert pure_helpers.is_comment_start("#comment", 0) is True
-
-    def test_is_comment_start_after_whitespace(self):
-        """Test comment detection after whitespace."""
-        assert pure_helpers.is_comment_start("echo #comment", 5) is True
-
-    def test_is_comment_start_after_operator(self):
-        """Test comment detection after operator."""
-        assert pure_helpers.is_comment_start("cmd; #comment", 5) is True
-
-    def test_is_comment_start_invalid_context(self):
-        """Test # that's not a comment start."""
-        assert pure_helpers.is_comment_start("var#not", 3) is False
-
-    def test_is_comment_start_wrong_character(self):
-        """Test non-# character for comment detection."""
-        assert pure_helpers.is_comment_start("hello", 0) is False
-
-
 class TestOperatorRecognition:
     """Test operator recognition functions."""
 
@@ -280,17 +217,6 @@ class TestExpansionDetection:
 class TestPureFunctionIntegration:
     """Integration tests for pure functions working together."""
 
-    def test_complex_parsing_scenario(self):
-        """Test complex parsing scenario using multiple pure functions."""
-        input_text = 'echo "hello $(echo world)" | grep test'
-
-        # Extract the quoted content
-        content, end_pos, found = pure_helpers.extract_quoted_content(
-            input_text, 6, '"', allow_escapes=True
-        )
-        assert content == "hello $(echo world)"
-        assert found is True
-
     def test_nested_structures_parsing(self):
         """Test parsing of nested expansion structures."""
         input_text = "$((2 + $(echo 3)))"
@@ -307,28 +233,9 @@ class TestPureFunctionIntegration:
         assert found is False
         assert pos == 11
 
-        # Test unclosed quotes
-        content, pos, found = pure_helpers.extract_quoted_content("hello", 0, '"')
-        assert found is False
-        assert content == "hello"
-
-    def test_escape_and_quote_interaction(self):
-        """Test interaction between escape handling and quote processing."""
-        # Test escaped quote within quotes
-        content, pos, found = pure_helpers.extract_quoted_content('test\\"value"', 0, '"')
-        assert content == 'test"value'
-        assert found is True
-        assert pos == 12
-
     def test_variable_name_boundary_detection(self):
         """Test variable name extraction with boundary detection."""
         # Extract variable name and then find word boundary
         name, var_end = pure_helpers.extract_variable_name("var123_test", 0, SPECIAL_VARIABLES)
         assert name == "var123_test"
 
-    def test_comment_and_operator_interaction(self):
-        """Test comment detection in operator-adjacent positions."""
-        text = "cmd; # comment with | pipe"
-
-        # Should detect comment start
-        assert pure_helpers.is_comment_start(text, 5) is True

@@ -4,6 +4,45 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.281.0 (2026-06-11) - Lexer cleanup (reappraisal Tier B, 3/6)
+- literal.py's quadratic string-archaeology fixed — but not the way the
+  review prescribed: instrumentation proved `_is_inside_array_assignment`
+  and the lexer-level array-assignment map are NOT equivalent (the helper
+  fires for glob char-classes like `*[[:upper:]]*`, which the map can't
+  represent). The per-character full re-scan is replaced by an incremental
+  `_ArrayAssignmentTracker` running the identical quote-aware bracket
+  automaton — O(n) by construction, zero behavior change. A 128k-char word
+  lexes in 0.079s vs 0.202s (now linear). The forward-lookahead helpers
+  (`_is_potential_array_assignment_start`, `_collect_array_assignment`)
+  are genuinely needed and kept; the rare-trigger value scans kept.
+- Dead config flags deleted: 12 never-set `enable_*` flags removed from
+  LexerConfig along with their 8-branch feature-disable ladders in
+  literal.py (including 13 unreachable lines) and operator.py
+  (`_is_operator_enabled` deleted whole). `enable_extglob`, `posix_mode`,
+  and `case_sensitive` kept (really used). ProcessSubstitutionRecognizer
+  registered unconditionally.
+- Duplication removed: comment-start logic unified on one module-level
+  `is_comment_start()` (the wider set in comment.py was provably
+  unreachable — LiteralRecognizer outprioritizes it; bash-verified);
+  backtick parsing deduplicated (quote_parser delegates to
+  ExpansionParser; the contract difference on unclosed backticks is
+  unobservable since an enclosing unclosed quote errors first);
+  `_parse_fd_duplication` 93 → 56 lines via a shared tail helper.
+- Dead code deleted (zero production callers, verified):
+  `parse_simple_quoted_string`, `extract_quoted_content`,
+  `get_operator_type`, `_is_identifier`, `pure_helpers.is_comment_start`,
+  `WORD_TERMINATORS`/`WORD_TERMINATORS_IN_BRACKETS` constants,
+  `create_expansion_parser`, registry test-only surface (`unregister`,
+  `get_stats`, `default_registry`, `setup_default_recognizers`), orphaned
+  `QuoteParsingContext` and `_create_error_part`. 15 tests that pinned
+  only the deleted surface were removed; registry tests rewritten against
+  the production-built `ModularLexer.registry`.
+- Fragilities documented in place (PARAM_EXPANSION substring
+  classification, silent unmatched-char drop); `heredoc_already_collected`
+  initialized before its loop (latent NameError trap).
+- Lexer package 4,913 → 4,448 lines (−588 net with tests). Full suite
+  green: 4,220 passed / 4,535 collected (15 dead-surface tests removed).
+
 ## 0.280.0 (2026-06-10) - Pattern/escape/exception consolidation (reappraisal Tier B, 2/6)
 - ONE pattern engine: new `expansion/pattern.py` is the canonical home of
   `PatternMatcher` + module-level `match_shell_pattern()`. The two fnmatch

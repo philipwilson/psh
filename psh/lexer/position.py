@@ -77,25 +77,11 @@ class LexerConfig:
 
     # === CORE FEATURES ===
 
-    # Quote processing
-    enable_double_quotes: bool = True      # Process "..." with expansions
-    enable_single_quotes: bool = True      # Process '...' as literals
-    enable_backtick_quotes: bool = True    # Process `...` command substitution
-
-    # Variable and expansion features
-    enable_variable_expansion: bool = True      # Process $VAR
-    enable_parameter_expansion: bool = True     # Process ${VAR:-default}
-    enable_command_substitution: bool = True    # Process $(cmd)
-    enable_arithmetic_expansion: bool = True    # Process $((expr))
-    enable_process_substitution: bool = True    # Process <(cmd) and >(cmd)
-
-    # Operator and syntax features
-    enable_pipes: bool = True              # Process | operator
-    enable_redirections: bool = True       # Process <, >, >>, etc.
-    enable_background: bool = True         # Process & operator
-    enable_logical_operators: bool = True  # Process && and ||
+    # The historical enable_* flags for quotes, expansions, pipes,
+    # redirections, etc. were never disabled by any caller and have been
+    # removed; the corresponding shell features are always on. Only
+    # extglob is genuinely toggled (by `shopt -s extglob`).
     enable_extglob: bool = False           # Process ?()|*()|+()|@()|!() extended globs
-
 
     # === CHARACTER HANDLING ===
 

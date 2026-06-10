@@ -18,10 +18,6 @@ DOUBLE_QUOTE_ESCAPES = {
     # They are preserved as literal \n, \t, \r
 }
 
-# Terminal characters for word boundaries
-WORD_TERMINATORS = set(' \t\n|<>;&(){}\'"')  # [ and ] removed - handled specially
-WORD_TERMINATORS_IN_BRACKETS = set(' \t\n|<>;&(){}\'"')  # ] handled specially
-
 # Keywords that need context checking
 KEYWORDS = {
     'if', 'then', 'else', 'elif', 'fi',

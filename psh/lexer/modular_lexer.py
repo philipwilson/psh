@@ -6,7 +6,7 @@ from ..token_types import Token, TokenType
 from .command_position import COMMAND_GROUP_OPENERS, STATEMENT_SEPARATORS
 from .expansion_parser import ExpansionContext, ExpansionParser
 from .position import LexerConfig, Position, PositionTracker
-from .quote_parser import QuoteParsingContext, UnifiedQuoteParser
+from .quote_parser import UnifiedQuoteParser
 from .recognizers import RecognizerRegistry
 from .state_context import LexerContext
 from .token_parts import RichToken, TokenPart
@@ -54,9 +54,6 @@ class ModularLexer:
         self.quote_parser = UnifiedQuoteParser(self.expansion_parser)
 
         # Parsing contexts
-        self.quote_context = QuoteParsingContext(
-            input_string, self.position_tracker, self.config
-        )
         self.expansion_context = ExpansionContext(
             input_string, self.config, self.position_tracker
         )
@@ -86,9 +83,7 @@ class ModularLexer:
         literal_recognizer.config = self.config  # Pass config to recognizer
         self.registry.register(literal_recognizer)
 
-        # Process substitution (if enabled in config)
-        if self.config.enable_process_substitution:
-            self.registry.register(ProcessSubstitutionRecognizer())
+        self.registry.register(ProcessSubstitutionRecognizer())
 
     # Position management
     @property
@@ -280,7 +275,11 @@ class ModularLexer:
             if self._handle_fallback_word():
                 continue
 
-            # If nothing worked, advance to avoid infinite loop
+            # If nothing worked, advance to avoid infinite loop. NOTE: this
+            # silently DROPS the character from the token stream (no token,
+            # no error). It is reached for stray characters every recognizer
+            # declines (e.g. a lone ']' in some contexts); changing it to an
+            # error would alter error-recovery behavior.
             self.advance()
 
         # Add EOF token
@@ -319,31 +318,22 @@ class ModularLexer:
         # exactly like "...".
         if (char == '$' and self.position + 1 < len(self.input) and
                 self.input[self.position + 1] == '"' and
-                self.config.enable_double_quotes and
-                self.quote_context.is_quote_character('"') and
                 not self._is_inside_potential_array_assignment()):
             return self._handle_locale_string()
 
-        # Handle expansions (only if enabled and not in array assignment context)
-        if (char == '$' and self.config.enable_variable_expansion and
-            self.expansion_context.is_expansion_start(self.position)):
+        # Handle expansions (unless in array assignment context)
+        if char == '$' and self.expansion_context.is_expansion_start(self.position):
             # Check if we're inside a potential array assignment - if so, let literal recognizer handle it
             if self._is_inside_potential_array_assignment():
                 return False
             return self._handle_expansion()
 
-        # Handle backticks (command substitution, only if enabled)
-        if (char == '`' and self.config.enable_command_substitution and
-            self.expansion_context.is_expansion_start(self.position)):
+        # Handle backticks (command substitution)
+        if char == '`' and self.expansion_context.is_expansion_start(self.position):
             return self._handle_backtick()
 
-        # Handle quotes (only if enabled and not in array assignment)
-        if char == '"' and self.config.enable_double_quotes and self.quote_context.is_quote_character(char):
-            # Check if we're inside a potential array assignment - if so, let literal recognizer handle it
-            if self._is_inside_potential_array_assignment():
-                return False
-            return self._handle_quote(char)
-        if char == "'" and self.config.enable_single_quotes and self.quote_context.is_quote_character(char):
+        # Handle quotes (unless in array assignment context)
+        if char in ('"', "'"):
             # Check if we're inside a potential array assignment - if so, let literal recognizer handle it
             if self._is_inside_potential_array_assignment():
                 return False
@@ -445,7 +435,13 @@ class ModularLexer:
             if expansion_part.expansion_type == 'parameter':
                 # For parameter expansion, check if it's a complex form
                 value = expansion_part.value
-                # Check if it has operators like :-, :=, :?, :+, #, ##, %, %%, /, //
+                # FRAGILE: classification by substring scan over the WHOLE
+                # ${...} text. An operator character appearing anywhere —
+                # including inside a default value or a quoted/nested part
+                # (e.g. ${x:-a/b} matched by '/') — classifies the token as
+                # PARAM_EXPANSION rather than VARIABLE. The parser accepts
+                # both token types, so misclassification is currently
+                # harmless, but don't rely on the distinction being precise.
                 if any(op in value for op in [':-', ':=', ':?', ':+', '##', '#', '%%', '%', '//', '/']):
                     # Complex parameter expansion - use PARAM_EXPANSION token
                     self.emit_token(TokenType.PARAM_EXPANSION, value, start_pos)

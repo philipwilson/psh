@@ -8,22 +8,19 @@ token recognition ordering, and integration with the main tokenization system.
 import pytest
 
 from psh.lexer import LexerContext, ModularLexer, tokenize
-from psh.lexer.recognizers import OperatorRecognizer, setup_default_recognizers
+from psh.lexer.recognizers import OperatorRecognizer
 from psh.token_types import TokenType
+
+
+def production_registry():
+    """The recognizer registry exactly as ModularLexer builds it."""
+    return ModularLexer('').registry
 
 
 class TestModularLexerBasic:
     """Test basic modular lexer functionality."""
 
-    @pytest.fixture
-    def registry(self):
-        return setup_default_recognizers()
-
-    @pytest.fixture
-    def lexer(self, registry):
-        return ModularLexer(registry)
-
-    def test_simple_command_tokenization(self, lexer):
+    def test_simple_command_tokenization(self):
         """Test tokenization of simple commands."""
         tokens = list(tokenize('echo hello'))
 
@@ -36,7 +33,7 @@ class TestModularLexerBasic:
         assert non_eof_tokens[1].type == TokenType.WORD
         assert non_eof_tokens[1].value == 'hello'
 
-    def test_pipeline_tokenization(self, lexer):
+    def test_pipeline_tokenization(self):
         """Test tokenization of pipeline commands."""
         tokens = list(tokenize('ls | grep test'))
 
@@ -46,7 +43,7 @@ class TestModularLexerBasic:
         assert TokenType.PIPE in token_types  # '|'
         assert TokenType.WORD in token_types  # 'grep'
 
-    def test_operator_recognition(self, lexer):
+    def test_operator_recognition(self):
         """Test recognition of various operators."""
         test_cases = [
             ('echo hello && echo world', TokenType.AND_AND),
@@ -62,7 +59,7 @@ class TestModularLexerBasic:
             token_types = [t.type for t in tokens]
             assert expected_operator in token_types, f"Expected {expected_operator} in {command}"
 
-    def test_keyword_recognition(self, lexer):
+    def test_keyword_recognition(self):
         """Test recognition of shell keywords."""
         tokens = list(tokenize('if test; then echo yes; fi'))
 
@@ -72,7 +69,7 @@ class TestModularLexerBasic:
         assert TokenType.THEN in token_types
         assert TokenType.FI in token_types
 
-    def test_for_loop_tokenization(self, lexer):
+    def test_for_loop_tokenization(self):
         """Test tokenization of for loops."""
         tokens = list(tokenize('for file in *.txt; do echo $file; done'))
 
@@ -87,8 +84,8 @@ class TestRecognizerRegistry:
     """Test recognizer registry functionality."""
 
     def test_default_registry_setup(self):
-        """Test that default registry includes expected recognizers."""
-        registry = setup_default_recognizers()
+        """Test that the production registry includes expected recognizers."""
+        registry = production_registry()
         recognizers = registry.get_recognizers()
 
         # Should have multiple recognizers
@@ -100,7 +97,7 @@ class TestRecognizerRegistry:
 
     def test_priority_ordering(self):
         """Test that recognizers are ordered by priority."""
-        registry = setup_default_recognizers()
+        registry = production_registry()
         recognizers = registry.get_recognizers()
 
         # Should be sorted by priority (highest first)
@@ -109,7 +106,7 @@ class TestRecognizerRegistry:
 
     def test_registry_recognition(self):
         """Test registry recognition with context."""
-        registry = setup_default_recognizers()
+        registry = production_registry()
 
         # Test operator recognition
         context = LexerContext()
@@ -181,7 +178,7 @@ class TestLexerContext:
 
     def test_bracket_depth_context(self):
         """Test bracket depth affects special operator recognition."""
-        registry = setup_default_recognizers()
+        registry = production_registry()
 
         # With bracket depth, ]] should be recognized
         bracket_context = LexerContext(bracket_depth=1)
