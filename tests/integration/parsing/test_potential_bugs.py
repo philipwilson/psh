@@ -19,22 +19,37 @@ def _first_simple_command(ast):
 
 
 def test_assignment_whitespace_does_not_absorb_next_token(captured_shell):
+    """POSIX expands $BAR before BAR=echo applies: with BAR previously
+    unset the command is `ok`, which is not found (bash: rc 127)."""
     shell = captured_shell
     shell.clear_output()
 
     result = shell.run_command("BAR=echo FOO= $BAR ok")
 
+    assert result == 127
+    assert shell.get_stdout() == ""
+
+    # With BAR previously set, $BAR expands to the prior value while the
+    # new one is only visible inside the command.
+    shell.clear_output()
+    result = shell.run_command("BAR=echo; BAR=printf $BAR ok")
     assert result == 0
     assert shell.get_stdout() == "ok\n"
-    assert shell.get_stderr() == ""
 
 
 def test_assignment_single_quoted_value_remains_literal(captured_shell):
+    """$FOO in the command's own words expands BEFORE the temporary
+    assignment applies (bash prints an empty line); the literal $HOME
+    value is what the command itself sees."""
     shell = captured_shell
     shell.clear_output()
 
     result = shell.run_command("FOO='$HOME' echo \"$FOO\"")
+    assert result == 0
+    assert shell.get_stdout() == "\n"
 
+    shell.clear_output()
+    result = shell.run_command("f() { echo \"$FOO\"; }; FOO='$HOME' f")
     assert result == 0
     assert shell.get_stdout() == "$HOME\n"
 

@@ -115,22 +115,26 @@ class TestEnvBuiltin:
 
     def test_multiple_exports(self, shell):
         """Test multiple variables exported at once."""
-        # Export multiple variables
-        result = shell.run_command('export A=1 B=2 C=3')
+        # Export multiple variables. Use unique names: the in-process shell
+        # writes exports into the test runner's own os.environ, and generic
+        # names like A/B leaked into later tests' subshells (the conformance
+        # suite probes `A=1 B=2 echo $A$B` in a child process).
+        result = shell.run_command('export MULTI_A=1 MULTI_B=2 MULTI_C=3')
         assert result == 0
 
         # Check all are in env
-        result = shell.run_command('env | /usr/bin/grep -E "^[ABC]=" | /usr/bin/sort > /tmp/multi_test.txt')
+        result = shell.run_command('env | /usr/bin/grep -E "^MULTI_[ABC]=" | /usr/bin/sort > /tmp/multi_test.txt')
         assert result == 0
 
         with open('/tmp/multi_test.txt', 'r') as f:
             output = f.read()
-        assert 'A=1\n' in output
-        assert 'B=2\n' in output
-        assert 'C=3\n' in output
+        assert 'MULTI_A=1\n' in output
+        assert 'MULTI_B=2\n' in output
+        assert 'MULTI_C=3\n' in output
 
         # Clean up
         os.unlink('/tmp/multi_test.txt')
+        shell.run_command('unset MULTI_A MULTI_B MULTI_C')
 
     def test_env_command_override_visible_to_executed_command(self, shell, temp_dir):
         """env NAME=value command should expose NAME only to that command."""

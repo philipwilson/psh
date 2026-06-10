@@ -30,14 +30,27 @@ class TestSimpleCommandExecution:
         assert shell.state.get_variable("VAR") == "value"
 
     def test_command_with_variable_assignment(self, captured_shell):
-        """Test command with preceding variable assignment."""
-        result = captured_shell.run_command("TEST_VAR=hello echo $TEST_VAR")
-        assert result == 0
+        """Test command with preceding variable assignment.
 
-        output = captured_shell.get_stdout()
-        assert "hello" in output
+        POSIX/bash: the command's own words are expanded BEFORE the
+        temporary assignment applies, so $TEST_VAR is its prior (empty)
+        value — but the variable IS visible inside the command itself.
+        """
+        result = captured_shell.run_command("TEST_VAR=hello echo \"[$TEST_VAR]\"")
+        assert result == 0
+        assert captured_shell.get_stdout() == "[]\n"
 
         # Variable should not persist in global scope (returns empty string for unset)
+        assert captured_shell.state.get_variable("TEST_VAR") == ""
+
+        # The assignment is visible to the command while it runs (a
+        # function here — assignments before *special* builtins like eval
+        # persist per POSIX, which psh implements)
+        captured_shell.clear_output()
+        result = captured_shell.run_command(
+            "f() { echo \"[$TEST_VAR]\"; }; TEST_VAR=hello f")
+        assert result == 0
+        assert captured_shell.get_stdout() == "[hello]\n"
         assert captured_shell.state.get_variable("TEST_VAR") == ""
 
     def test_external_command_execution(self, shell, capsys):

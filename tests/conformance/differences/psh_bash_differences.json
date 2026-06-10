@@ -1,26 +1,5 @@
 {
   "documented": {
-    "x=value echo $x": {
-      "id": "COMMAND_SPECIFIC_ASSIGNMENTS",
-      "description": "PSH correctly implements POSIX command-specific variable assignments where variables are visible to the command, while bash has a bug where they are not expanded",
-      "psh_behavior": "VAR=value echo $VAR outputs 'value' (POSIX compliant)",
-      "bash_behavior": "VAR=value echo $VAR outputs empty string (bash bug)",
-      "category": "expansion_differences"
-    },
-    "VAR=value echo $VAR": {
-      "id": "COMMAND_SPECIFIC_ASSIGNMENTS",
-      "description": "PSH correctly implements POSIX command-specific variable assignments where variables are visible to the command, while bash has a bug where they are not expanded",
-      "psh_behavior": "VAR=value echo $VAR outputs 'value' (POSIX compliant)",
-      "bash_behavior": "VAR=value echo $VAR outputs empty string (bash bug)",
-      "category": "expansion_differences"
-    },
-    "A=1 B=2 echo $A$B": {
-      "id": "COMMAND_SPECIFIC_ASSIGNMENTS", 
-      "description": "PSH correctly implements POSIX command-specific variable assignments where variables are visible to the command, while bash has a bug where they are not expanded",
-      "psh_behavior": "Multiple assignments work correctly in PSH",
-      "bash_behavior": "Multiple assignments don't expand in bash",
-      "category": "expansion_differences"
-    },
     "help": {
       "id": "HELP_BUILTIN",
       "description": "PSH and bash both have help but with different output formats",
@@ -66,48 +45,68 @@
   },
   "psh_extensions": {
     "version_builtin": {
-      "id": "VERSION_BUILTIN", 
+      "id": "VERSION_BUILTIN",
       "description": "PSH provides version builtin, bash uses --version flag",
-      "commands": ["version"]
+      "commands": [
+        "version"
+      ]
     },
     "enhanced_debug": {
       "id": "DEBUG_FEATURES",
       "description": "PSH provides enhanced debugging features",
-      "commands": ["--debug-ast", "--debug-tokens", "--debug-expansion"]
+      "commands": [
+        "--debug-ast",
+        "--debug-tokens",
+        "--debug-expansion"
+      ]
     },
     "validation_mode": {
-      "id": "VALIDATION_MODE", 
+      "id": "VALIDATION_MODE",
       "description": "PSH supports validation without execution",
-      "commands": ["--validate"]
+      "commands": [
+        "--validate"
+      ]
     }
   },
   "bash_specific": {
     "bash_arrays": {
       "id": "BASH_ARRAYS",
       "description": "Bash-specific array syntax",
-      "examples": ["declare -a arr", "arr[0]=value", "${arr[@]}"]
+      "examples": [
+        "declare -a arr",
+        "arr[0]=value",
+        "${arr[@]}"
+      ]
     },
     "bash_conditionals": {
-      "id": "BASH_CONDITIONALS", 
+      "id": "BASH_CONDITIONALS",
       "description": "Bash-specific conditional constructs",
-      "examples": ["[[ condition ]]", "(( arithmetic ))"]
+      "examples": [
+        "[[ condition ]]",
+        "(( arithmetic ))"
+      ]
     },
     "bash_builtins": {
       "id": "BASH_BUILTINS",
       "description": "Bash-specific builtin commands",
-      "examples": ["declare", "local", "mapfile", "readarray"]
+      "examples": [
+        "declare",
+        "local",
+        "mapfile",
+        "readarray"
+      ]
     }
   },
   "posix_compliance": {
     "required_features": [
       "parameter_expansion",
-      "command_substitution", 
+      "command_substitution",
       "arithmetic_expansion",
       "tilde_expansion",
       "pathname_expansion",
       "quote_removal",
       "simple_commands",
-      "pipelines", 
+      "pipelines",
       "lists",
       "compound_commands",
       "shell_functions",
@@ -115,7 +114,7 @@
     ],
     "optional_features": [
       "job_control",
-      "history_expansion", 
+      "history_expansion",
       "brace_expansion",
       "process_substitution"
     ]
@@ -127,7 +126,7 @@
       "status": "known_limitation"
     },
     "interactive_features": {
-      "id": "INTERACTIVE_LIMITATIONS", 
+      "id": "INTERACTIVE_LIMITATIONS",
       "description": "Some interactive features not fully implemented",
       "status": "work_in_progress"
     }

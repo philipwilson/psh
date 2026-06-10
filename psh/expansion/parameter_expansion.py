@@ -60,10 +60,12 @@ class ParameterExpansion:
                 return '!*', content[1:-1], ''
             elif content.endswith('@'):
                 return '!@', content[1:-1], ''
-            # ${!name}: indirect / nameref-name expansion for a plain identifier
-            # (the ${!arr[@]} indices form contains '[' and is handled elsewhere).
+            # ${!name}: indirect / nameref-name expansion for a plain
+            # identifier or a special parameter like ${!#} (the ${!arr[@]}
+            # indices form contains '[' and is handled elsewhere).
             ind = content[1:]
-            if ind and all(c.isalnum() or c == '_' for c in ind):
+            if ind and (all(c.isalnum() or c == '_' for c in ind)
+                        or ind in ('#', '?', '$', '-', '!')):
                 return '!', ind, ''
 
         # Transformation operators ${param@OP}: '@' + one transform letter at the

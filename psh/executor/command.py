@@ -84,29 +84,27 @@ class CommandExecutor:
             # Phase 1: Extract raw assignments (before expansion)
             raw_assignments = self._extract_assignments_raw(node)
 
-            # Expand only the assignment values. Track command substitutions
-            # run during expansion: a pure assignment's exit status is 0
-            # unless a command substitution ran, in which case it is that
-            # substitution's status (bash).
+            # Track command substitutions run while expanding assignment
+            # values: a pure assignment's exit status is 0 unless a command
+            # substitution ran, in which case it is that substitution's
+            # status (bash). Values are expanded sequentially at apply time
+            # so `A=1 B=$A` sees the assignment to its left.
             self.state.last_cmdsub_status = None
-            assignments = []
-            for var, value, value_word in raw_assignments:
-                expanded_value = self._expand_assignment_value_from_word(value, value_word)
-                assignments.append((var, expanded_value))
 
             # Check if we have only assignments (no command)
             tokens_consumed = len(raw_assignments)
 
-            if assignments and tokens_consumed == len(node.args):
+            if raw_assignments and tokens_consumed == len(node.args):
                 # Pure assignment (no command)
-                return self._handle_pure_assignments(node, assignments)
+                return self._handle_pure_assignments(node, raw_assignments)
 
-            # Apply assignments for this command
-            saved_vars = self._apply_command_assignments(assignments)
             is_special = False
+            saved_vars = None
 
             try:
-                # Phase 2: Expand remaining arguments with assignments in effect
+                # Phase 2: Expand the remaining arguments. POSIX expands the
+                # command's own words BEFORE the temporary assignments take
+                # effect, so `V=v echo $V` prints V's *prior* value.
                 # command_start_index needs to account for tokens consumed by assignments
                 command_start_index = tokens_consumed
                 if command_start_index >= len(node.args):
@@ -159,18 +157,23 @@ class CommandExecutor:
                         words=modified_words,
                     )
 
-                # Now expand command arguments with assignments in place
+                # Expand command arguments (before assignments apply)
                 expanded_args = self._expand_arguments(command_node)
 
-                if not expanded_args:
+                if not expanded_args or not expanded_args[0]:
+                    # The command words expanded to nothing: the assignments
+                    # affect the current shell environment (bash: after
+                    # `V=v $EMPTY`, $V is v).
+                    if raw_assignments:
+                        return self._handle_pure_assignments(node, raw_assignments)
                     return 0
 
                 cmd_name = expanded_args[0]
                 cmd_args = expanded_args[1:]
 
-                # Check for empty command after expansion
-                if not cmd_name:
-                    return 0
+                # Apply assignments for this command, now that its words are
+                # expanded. Each value sees the assignments to its left.
+                saved_vars, assignments = self._apply_command_assignments(raw_assignments)
 
 
                 # Handle xtrace option
@@ -189,7 +192,7 @@ class CommandExecutor:
 
             finally:
                 # POSIX: assignments before special builtins persist
-                if not is_special:
+                if saved_vars is not None and not is_special:
                     self._restore_command_assignments(saved_vars)
 
         except Exception as e:
@@ -348,20 +351,21 @@ class CommandExecutor:
         return name, old + value
 
     def _handle_pure_assignments(self, node: 'SimpleCommand',
-                                assignments: List[Tuple[str, str]]) -> int:
-        """Handle pure variable assignments (no command)."""
+                                raw_assignments: list) -> int:
+        """Handle pure variable assignments (no command).
+
+        Takes raw (var, value, word) triples: each value is expanded just
+        before it is applied so `A=1 B=$A` gives B the new value of A.
+        """
         # Apply redirections first
         with self.io_manager.with_redirections(node.redirects):
-            # Handle xtrace for assignments
-            if self.state.options.get('xtrace'):
-                ps4 = self.state.get_variable('PS4', '+ ')
-                for var, value in assignments:
-                    trace_line = ps4 + f"{var}={value}\n"
-                    self.state.stderr.write(trace_line)
+            xtrace = self.state.options.get('xtrace')
+            for var, value, value_word in raw_assignments:
+                value = self._expand_assignment_value_from_word(value, value_word)
+                if xtrace:
+                    ps4 = self.state.get_variable('PS4', '+ ')
+                    self.state.stderr.write(ps4 + f"{var}={value}\n")
                     self.state.stderr.flush()
-
-            for var, value in assignments:
-                # Values are already expanded in execute()
                 var, value = self._resolve_append(var, value)
                 try:
                     self.state.set_variable(var, value)
@@ -380,25 +384,33 @@ class CommandExecutor:
                 return self.state.last_cmdsub_status
             return 0
 
-    def _apply_command_assignments(self, assignments: List[Tuple[str, str]]) -> dict:
+    def _apply_command_assignments(self, raw_assignments: list) -> Tuple[dict, List[Tuple[str, str]]]:
         """Apply variable assignments for command execution.
 
         For command-prefixed assignments (FOO=bar cmd), we need to:
         1. Set the variable in shell state (for builtins/functions that use $VAR)
         2. Set the variable in shell.env (for external commands that use os.environ)
 
-        Returns a dict with both state and env values for restoration.
+        Values are expanded one at a time as they are applied, so each
+        sees the assignments to its left (`A=1 B=$A cmd` gives B=1, bash).
+
+        Returns (saved_vars, expanded_assignments): the original state/env
+        values for restoration plus the expanded (var, value) pairs.
         """
         saved_vars = {}
+        assignments: List[Tuple[str, str]] = []
 
-        for var, value in assignments:
+        for var, value, value_word in raw_assignments:
+            value = self._expand_assignment_value_from_word(value, value_word)
             var, value = self._resolve_append(var, value)
-            # Save both shell state and environment values
-            saved_vars[var] = {
-                'state': self.state.get_variable(var),
-                'env': self.shell.env.get(var)  # May be None if not in env
-            }
-            # Values are already expanded by _extract_assignments_raw / execute()
+            assignments.append((var, value))
+            # Save both shell state and environment values (first write wins
+            # if the same variable is assigned twice)
+            if var not in saved_vars:
+                saved_vars[var] = {
+                    'state': self.state.get_variable(var),
+                    'env': self.shell.env.get(var)  # May be None if not in env
+                }
             try:
                 self.state.set_variable(var, value)
                 # Also set in shell.env for external commands
@@ -406,7 +418,7 @@ class CommandExecutor:
             except ReadonlyVariableError:
                 raise
 
-        return saved_vars
+        return saved_vars, assignments
 
     def _restore_command_assignments(self, saved_vars: dict):
         """Restore variables after command execution.

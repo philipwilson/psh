@@ -270,16 +270,15 @@ class TestArithmeticEdgeCases:
         assert captured.out.strip() == "10"  # "hello" -> 0, 0 + 10 = 10
 
     def test_mixed_numeric_string(self, shell, capsys):
-        """Test mixed numeric/alphabetic strings."""
+        """Mixed numeric/alphabetic values are an arithmetic error (bash:
+        "123abc: value too great for base", exit status 1)."""
         shell.run_command('mixed="123abc"')
 
-        # Should parse leading numeric part
         result = shell.run_command('echo $(($mixed + 7))')
-        assert result == 0
+        assert result == 1
         captured = capsys.readouterr()
-        # Should be either 130 (if "123abc" -> 123) or 7 (if -> 0)
-        output = captured.out.strip()
-        assert output in ["130", "7"]
+        assert captured.out == ""
+        assert "arithmetic" in captured.err
 
     def test_leading_zeros(self, shell, capsys):
         """Test numbers with leading zeros."""

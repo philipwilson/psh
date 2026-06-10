@@ -1,6 +1,6 @@
 """Word splitting implementation for shell expansions."""
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 class WordSplitter:
@@ -13,8 +13,10 @@ class WordSplitter:
       preserving empty fields (e.g., 'a::b' with IFS=':' yields ['a', '', 'b']).
     - Each non-whitespace IFS char, along with any adjacent IFS whitespace,
       delimits a field (POSIX 2.6.5).
-    - Backslash-escaped characters are preserved (not treated as delimiters),
-      since psh performs escape processing after word splitting.
+    - A backslash is ordinary data: expansion results are split without
+      regard to backslashes (``x='a\\ b'; $x`` is two fields in bash), and
+      backslash escapes in *literal* word text are protected structurally
+      (only expansion results are ever split).
     - If IFS is None (unset), default ' \\t\\n' is used.
     - If IFS is '' (empty string), no splitting occurs.
     """
@@ -55,14 +57,6 @@ class WordSplitter:
 
         while i < len(text):
             char = text[i]
-
-            # Backslash escapes the next character, preventing it from
-            # being treated as an IFS delimiter
-            if char == '\\' and i + 1 < len(text):
-                current_field.append(char)
-                current_field.append(text[i + 1])
-                i += 2
-                continue
 
             if char in ifs_non_whitespace:
                 # Non-whitespace IFS character - always a separator.
@@ -110,3 +104,19 @@ class WordSplitter:
             return []
 
         return fields
+
+    def split_with_edges(self, text: str, ifs: Optional[str]) -> Tuple[List[str], bool, bool]:
+        """Split text, also reporting delimiters at its edges.
+
+        Returns (fields, leading, trailing) where *leading*/*trailing* say
+        whether the text begins/ends with an IFS delimiter. Callers merging
+        fields across the parts of a composite word need this: in
+        ``pre$x``, a leading delimiter in ``$x`` closes the ``pre`` field.
+        """
+        if not text:
+            return [], False, False
+        if ifs is None:
+            ifs = ' \t\n'
+        if ifs == '':
+            return [text], False, False
+        return self.split(text, ifs), text[0] in ifs, text[-1] in ifs
