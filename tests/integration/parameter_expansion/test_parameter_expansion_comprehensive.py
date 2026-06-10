@@ -6,7 +6,6 @@ pattern removal, pattern substitution, substring extraction, variable name
 matching, case modification, and error handling.
 """
 
-import pytest
 
 
 class TestStringLength:

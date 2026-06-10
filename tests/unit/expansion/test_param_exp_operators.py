@@ -11,8 +11,6 @@ Tests the POSIX parameter expansion operators for:
 import sys
 from pathlib import Path
 
-import pytest
-
 # Add framework to path
 TEST_ROOT = Path(__file__).parent.parent.parent
 PSH_ROOT = TEST_ROOT.parent

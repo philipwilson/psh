@@ -788,8 +788,8 @@ class TokenBraceExpander:
         copies of their original token. All tokens of one result word are marked
         adjacent so the parser merges them back into a single composite word.
         """
-        from .token_types import TokenType
         from .lexer.token_parts import TokenPart
+        from .token_types import TokenType
 
         # Build segments: ('chars', text, quote_type) or ('tok', token).
         segments = []

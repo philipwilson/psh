@@ -5,7 +5,6 @@ out-of-range negative offset returning empty, and the out-of-range negative
 length raising an error with a non-zero exit status.
 """
 
-import pytest
 
 
 class TestSubstringArithmeticOffsets:

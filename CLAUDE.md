@@ -85,10 +85,11 @@ python -m psh --parser rd                 # Start with recursive descent (defaul
 
 **Lint**
 
-Always lint combinator code after changes:
+The whole production tree must stay ruff-clean (enforced since v0.275.0).
+After any change:
 
 ```bash
-ruff check psh/parser/combinators/
+ruff check psh/
 ```
 
 ## Critical Information

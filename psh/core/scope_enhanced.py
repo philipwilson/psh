@@ -1,7 +1,7 @@
 """Enhanced variable scope management with attribute support."""
 
-import random
 import os
+import random
 import time
 from typing import Any, Dict, List, Optional
 

@@ -5,7 +5,6 @@ from psh.ast_nodes import (
     CommandSubstitution,
     ExpansionPart,
     LiteralPart,
-    ProcessSubstitution,
     VariableExpansion,
     Word,
 )

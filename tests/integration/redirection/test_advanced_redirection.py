@@ -354,6 +354,7 @@ class TestReadWriteRedirect:
              'cat <> tmp/rw_create_test.txt; echo $?'],
             capture_output=True, text=True,
             cwd=PSH_ROOT)
+        assert result.returncode == 0
         assert os.path.exists(test_file)
         if os.path.exists(test_file):
             os.unlink(test_file)

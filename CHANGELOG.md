@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.275.0 (2026-06-10) - Packaging truth + whole-tree lint hygiene (reappraisal Tier A, 1/4)
+- Packaging now tells the truth about Python support: `requires-python = ">=3.12"`
+  (the tree already required 3.12 in fact — a PEP 701 nested-quote f-string in
+  `visitor/debug_ast_visitor.py` is a SyntaxError on 3.11 and below); classifiers
+  trimmed to 3.12–3.14; ruff `target-version` bumped py38 → py312.
+- Whole production tree and test tree are now ruff-clean: 36 violations in `psh/`
+  (27 unused imports, 9 unsorted import blocks) and 50 in `tests/` auto-fixed;
+  one F841 fixed by strengthening the test to assert the exit code
+  (`test_readwrite_creates_file_if_missing` now checks `returncode == 0`);
+  stray mis-indented import in `parser/recursive_descent/parser.py` fixed.
+- CI (`.github/workflows/test_migration.yml`) bumped 3.11 → 3.12 in all three
+  jobs so the lint job, quick suite, and conformance smoke all run at the new
+  floor (3.11 CI would now fail `pip install` against `requires-python`).
+- CLAUDE.md lint guidance widened from `ruff check psh/parser/combinators/` to
+  `ruff check psh/` — the whole tree must stay clean from here on.
+- First release of the Tier A program from the ground-up reappraisal
+  (docs/reviews/ground_up_reappraisal_2026-06-10.md).
+
 ## 0.274.0 (2026-06-10) - Conformance expansion + claims meta-test (review Tier 3, phase 8 — campaign complete)
 - 98 new conformance tests filling the thin areas the review flagged:
   getopts (silent/loud modes, clustering, --, local OPTIND), select

@@ -4,7 +4,6 @@ Unit tests for the shared bracket-normalization helper plus filesystem-level
 tests for [^...] negation, POSIX character classes, nocaseglob, and globstar.
 """
 
-import os
 
 import pytest
 

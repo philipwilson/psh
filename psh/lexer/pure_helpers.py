@@ -5,7 +5,7 @@ without coupling to the lexer's internal state. These functions are easier to
 test, reuse, and reason about.
 """
 
-from typing import Dict, Optional, Set, Tuple
+from typing import Optional, Set, Tuple
 
 from .constants import DOUBLE_QUOTE_ESCAPES
 

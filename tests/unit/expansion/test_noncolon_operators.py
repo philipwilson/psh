@@ -5,7 +5,6 @@ unlike the colon variants which test unset-or-null. Also covers ${x//pat}
 deletion (omitted replacement) and null vs unset IFS for $* joining.
 """
 
-import pytest
 
 
 class TestNonColonDefault:

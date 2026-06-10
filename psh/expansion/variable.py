@@ -1,5 +1,4 @@
 """Variable expansion implementation."""
-import os
 import sys
 from typing import TYPE_CHECKING
 

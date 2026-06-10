@@ -14,6 +14,7 @@ from ..ast_nodes import (
     # Core nodes
     ASTNode,
     BinaryTestExpression,
+    BraceGroup,
     BreakStatement,
     CaseConditional,
     # Case statement components
@@ -33,12 +34,12 @@ from ..ast_nodes import (
     SelectLoop,
     SimpleCommand,
     StatementList,
+    SubshellGroup,
     TopLevel,
     UnaryTestExpression,
     # Control structures
     WhileLoop,
 )
-from ..ast_nodes import BraceGroup, SubshellGroup
 from .base import ASTVisitor
 
 

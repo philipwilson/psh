@@ -8,7 +8,6 @@ escape handling, and content extraction.
 
 from psh.lexer import pure_helpers
 from psh.lexer.constants import SPECIAL_VARIABLES
-from psh.token_types import TokenType
 
 
 class TestTextProcessing:

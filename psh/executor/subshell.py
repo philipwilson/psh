@@ -5,11 +5,10 @@ This module handles execution of subshells and brace groups with proper
 process isolation and environment management.
 """
 
-import os
 import sys
 from typing import TYPE_CHECKING, List
 
-from .process_launcher import ProcessConfig, ProcessLauncher, ProcessRole
+from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
     from psh.visitor import ASTVisitor

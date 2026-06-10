@@ -8,8 +8,6 @@ Documents areas where PSH intentionally differs or doesn't support bash extensio
 import os
 import sys
 
-import pytest
-
 # Add parent directory to path for framework import
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest

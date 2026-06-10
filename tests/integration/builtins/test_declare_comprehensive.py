@@ -6,7 +6,6 @@ array declarations, case conversion, readonly/export attributes,
 attribute management, and compatibility with all declare options.
 """
 
-import pytest
 
 
 class TestDeclareBasicAttributes:

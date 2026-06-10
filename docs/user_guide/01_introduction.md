@@ -41,7 +41,7 @@ By studying PSH, you can learn about:
 
 ### Prerequisites
 
-- Python 3.8 or later
+- Python 3.12 or later
 - Unix-like operating system (Linux, macOS, BSD)
 - Basic familiarity with command-line interfaces
 

@@ -10,7 +10,6 @@ expansion ordering for command-prefix assignments.
 Every expectation here was verified against bash 5.2.
 """
 
-import pytest
 
 
 def run(shell, cmd):

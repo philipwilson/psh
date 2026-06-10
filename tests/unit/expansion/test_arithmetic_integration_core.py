@@ -5,7 +5,6 @@ known to work well in the parser combinator implementation.
 
 Part of Phase 3 of the arithmetic expansion testing plan.
 """
-import pytest
 
 
 class TestArithmeticIntegrationCore:

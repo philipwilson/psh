@@ -136,7 +136,7 @@ class TestDemotedImports:
 
     def test_token_classes_importable(self):
         """Test that TokenPart and RichToken are still importable."""
-        from psh.lexer import TokenPart, RichToken
+        from psh.lexer import RichToken, TokenPart
 
         assert TokenPart is not None
         assert RichToken is not None
@@ -149,7 +149,6 @@ class TestDemotedImports:
 
     def test_tier3_importable_from_submodules(self):
         """Test that Tier 3 items are importable from their submodule paths."""
-        from psh.lexer.position import Position, PositionTracker
 
 
 class TestPackageInternals:
@@ -157,12 +156,11 @@ class TestPackageInternals:
 
     def test_internal_module_imports(self):
         """Verify internal modules can be imported directly."""
+        from psh.lexer import KEYWORDS, is_identifier_start
         from psh.lexer.constants import KEYWORDS as internal_keywords
         from psh.lexer.modular_lexer import ModularLexer as internal_lexer
         from psh.lexer.token_parts import TokenPart as internal_token_part
         from psh.lexer.unicode_support import is_identifier_start as internal_is_id
-
-        from psh.lexer import KEYWORDS, is_identifier_start
 
         # Verify they're the same as convenience imports
         assert internal_keywords == KEYWORDS

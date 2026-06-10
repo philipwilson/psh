@@ -1,5 +1,4 @@
 """Function-related builtin commands."""
-import shlex
 import sys
 from typing import TYPE_CHECKING, Any, List, Optional
 

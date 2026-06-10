@@ -10,8 +10,6 @@ level; run via run_tests.py (these fork + redirect).
 
 import os
 
-import pytest
-
 
 def _read(shell, name):
     with open(os.path.join(shell.state.variables['PWD'], name)) as f:

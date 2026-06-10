@@ -5,7 +5,7 @@ This module contains the main Parser class that orchestrates parsing by delegati
 to specialized parser modules for different language constructs.
 """
 
-from typing import List, Optional, Set, Tuple, Union
+from typing import List, Optional, Set, Union
 
 from ...ast_nodes import (
     AndOrList,
@@ -14,7 +14,7 @@ from ...ast_nodes import (
     CommandList,
     ContinueStatement,
     EnhancedTestStatement,
-        Pipeline,
+    Pipeline,
     Statement,
     TopLevel,
 )

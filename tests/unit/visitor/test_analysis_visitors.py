@@ -46,7 +46,6 @@ class TestSharedTraversal:
         # A counting visitor using only generic_visit + visit_children should
         # reach a SimpleCommand nested several levels deep.
         from psh.visitor.base import ASTVisitor
-        from psh.ast_nodes import SimpleCommand
 
         class Counter(ASTVisitor):
             def __init__(self):

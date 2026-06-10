@@ -868,8 +868,7 @@ class ArithmeticEvaluator:
 
     def set_array_element(self, name: str, index: int, value: int) -> None:
         """Assign to an array element, creating the array if necessary."""
-        from .core import IndexedArray, VarAttributes
-        from .core import AssociativeArray
+        from .core import AssociativeArray, IndexedArray, VarAttributes
         var = self.shell.state.scope_manager.get_variable_object(name)
         if var is not None and isinstance(var.value, IndexedArray):
             var.value.set(index, str(value))

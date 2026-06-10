@@ -8,7 +8,6 @@ regex templates) with bash 5.2 patsub_replacement ``&`` semantics.
 Every expectation here was verified against bash 5.2.
 """
 
-import pytest
 
 
 def run(shell, cmd):

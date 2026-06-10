@@ -26,6 +26,7 @@ from .command import CommandExecutor
 from .context import ExecutionContext
 from .control_flow import ControlFlowExecutor
 from .core import ExecutorVisitor
+from .enhanced_test_evaluator import TestExpressionEvaluator
 from .function import FunctionOperationExecutor
 from .pipeline import PipelineContext, PipelineExecutor
 from .strategies import (
@@ -35,7 +36,6 @@ from .strategies import (
     FunctionExecutionStrategy,
 )
 from .subshell import SubshellExecutor
-from .enhanced_test_evaluator import TestExpressionEvaluator
 
 __all__ = [
     'ExecutorVisitor',

@@ -1,6 +1,5 @@
 """printf %q (shell-quote) and %b (interpret escapes) format specifiers."""
 
-import pytest
 
 
 def _out(captured_shell, cmd):

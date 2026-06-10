@@ -13,7 +13,7 @@ import pytest
 
 from psh.ast_nodes import CaseConditional, SelectLoop
 from psh.lexer import tokenize
-from psh.parser import Parser, ParserConfig
+from psh.parser import Parser
 from psh.parser.recursive_descent.helpers import ParseError
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,6 @@ operands inside $(( )), array subscripts (read + assignment), and the octal
 error-token text.
 """
 
-import pytest
 
 
 class TestArithmeticPowerWrapping:

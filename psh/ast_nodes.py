@@ -1,6 +1,5 @@
 from abc import ABC
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:

@@ -7,7 +7,6 @@ separate inline copy. These tests exercise the colon operators in a quoted
 (string-path) context with explicit expected values.
 """
 
-import pytest
 
 
 class TestColonOperatorsStringPath:
