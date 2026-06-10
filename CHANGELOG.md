@@ -4,6 +4,44 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.283.0 (2026-06-11) - Interactive/line-editor cleanup (reappraisal Tier B, 5/6)
+- Vi-mode arrow keys fixed: CSI parsing lived only in the emacs branch, so
+  in vi insert mode an Up-arrow became ESC→normal-mode + stray 'A' →
+  append-at-end, corrupting the edit state. Escape handling is now
+  centralized ABOVE the mode split: `_read_escape_sequence` is the single
+  input-side ANSI parser, yielding symbolic keys ('up'...'delete') that one
+  shared table maps identically in emacs and both vi modes (bare ESC vs
+  sequence distinguished via a 50ms pending probe — terminals send
+  sequences in one burst). Also fixed a pre-existing gap the work exposed:
+  `set -o vi` never reached the live LineEditor (mode was frozen at REPL
+  setup); the editor now syncs from state.edit_mode per read. 5 vi-mode
+  PTY tests added.
+- History single-writer: both LineEditor.read_line and source_processor
+  recorded history (multiline commands landed as physical lines AND the
+  joined form). source_processor is now the sole writer (recording before
+  parse so syntax errors stay recallable, as bash does); multiline
+  commands store as ONE joined entry (`for i in 1; do echo $i; done`)
+  while quoted newlines stay verbatim — both PTY-pinned against real
+  bash. The vestigial `import readline` history mirror is gone. 3 history
+  PTY tests added.
+- Dead DSR machinery deleted: `_prompt_draw_row` was written but never
+  read (redraw uses pure line_layout math), and `_query_cursor_row` +
+  `_drain_stale_cpr` existed only to feed it — psh no longer writes
+  ESC[6n at all, removing a whole class of PTY races.
+- `__main__.main` (~279 lines) decomposed: data-driven `parse_args()` +
+  `print_help()` (help output diff-identical); main() is ~115 lines of
+  orchestration. Flag battery verified (-c, --norc, piped stdin, -i,
+  --parser=X, --validate, --debug-ast=compact, --version, error exits).
+- `TerminalManager` moved from tab_completion.py to its natural home,
+  psh/interactive/terminal.py (re-exported for compatibility).
+  read_builtin's raw-mode block deliberately NOT unified: it operates on
+  an arbitrary fd (redirected stdin, read -u) with an explicit echo flag —
+  different semantics, now documented.
+- Minor: CompletionEngine.find_word_start public (alias kept);
+  line_layout imports hoisted; stale base.py comment fixed.
+- line_editor.py 1089 → 1061 lines; __main__.py 291 → 258. Full suite
+  green: 4,231 passed / 4,546 collected (8 new PTY tests).
+
 ## 0.282.0 (2026-06-11) - Executor cleanup + signal-loss race fix (reappraisal Tier B, 4/6)
 - THE RACE, root-caused — and it wasn't where the reappraisal guessed.
   `sleep 5 & kill %1 && wait %1` intermittently reported rc=0 instead of

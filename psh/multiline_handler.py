@@ -31,6 +31,9 @@ class MultiLineInputHandler:
         """Read a complete command, possibly spanning multiple lines."""
         self.buffer = []
 
+        # Honor `set -o vi` / `set -o emacs` issued since the last read
+        self.line_editor.set_edit_mode(self.shell.state.edit_mode)
+
         # Get SIGWINCH notification fd from signal manager if available
         sigwinch_fd = -1
         sigwinch_drain = None

@@ -1,54 +1,18 @@
 #!/usr/bin/env python3
 """Tab completion utilities for psh.
 
-Provides TerminalManager (raw mode handling) and CompletionEngine
-(path completion logic).  Both are consumed by the production
-LineEditor in psh/line_editor.py.
+Provides CompletionEngine (path completion logic), consumed by the
+production LineEditor in psh/line_editor.py.  TerminalManager (raw mode
+handling) lives in psh/interactive/terminal.py and is re-exported here
+for compatibility.
 """
 
 import os
-import sys
-import termios
-import tty
 from typing import List
 
+from .interactive.terminal import TerminalManager
 
-class TerminalManager:
-    """Manages terminal mode for raw input handling."""
-
-    def __init__(self):
-        self.old_settings = None
-        self.is_raw = False
-
-    def enter_raw_mode(self):
-        """Put terminal in raw mode to capture individual keystrokes."""
-        # Enter raw mode for any TTY (including PTYs)
-        # Note: isatty() returns True for both real terminals and pseudo-terminals
-        # TCSANOW everywhere: the default TCSAFLUSH/TCSADRAIN wait for the
-        # terminal's output queue to drain, which BLOCKS on a pty whose
-        # master isn't currently being read (pexpect between expects, a
-        # wedged terminal emulator). bash stays responsive there; so must we.
-        if sys.stdin.isatty() and not self.is_raw:
-            try:
-                self.old_settings = termios.tcgetattr(sys.stdin)
-                tty.setraw(sys.stdin.fileno(), termios.TCSANOW)
-                self.is_raw = True
-            except (termios.error, OSError):
-                # If we can't set raw mode, continue without it
-                pass
-
-    def exit_raw_mode(self):
-        """Restore normal terminal mode."""
-        if self.old_settings is not None and self.is_raw:
-            termios.tcsetattr(sys.stdin, termios.TCSANOW, self.old_settings)
-            self.is_raw = False
-
-    def __enter__(self):
-        self.enter_raw_mode()
-        return self
-
-    def __exit__(self, exc_type, _exc_val, _exc_tb):
-        self.exit_raw_mode()
+__all__ = ['CompletionEngine', 'TerminalManager']
 
 
 class CompletionEngine:
@@ -57,14 +21,14 @@ class CompletionEngine:
     def get_completions(self, text: str, line: str, cursor_pos: int) -> List[str]:
         """Get possible completions for the current context."""
         # Extract the word being completed
-        word_start = self._find_word_start(line, cursor_pos)
+        word_start = self.find_word_start(line, cursor_pos)
         current_word = line[word_start:cursor_pos]
 
         # Get file/directory completions
         return self._get_path_completions(current_word)
 
-    def _find_word_start(self, line: str, cursor_pos: int) -> int:
-        """Find the start of the current word."""
+    def find_word_start(self, line: str, cursor_pos: int) -> int:
+        """Find the start of the current word (public: LineEditor uses it)."""
         # Handle quotes
         in_quotes = False
         quote_char = None
@@ -104,6 +68,9 @@ class CompletionEngine:
             pos -= 1
 
         return 0
+
+    # Backwards-compatible alias for the pre-v0.283.0 private name.
+    _find_word_start = find_word_start
 
     def _get_path_completions(self, partial_path: str) -> List[str]:
         """Get file/directory completions for a partial path."""

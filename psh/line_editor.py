@@ -2,12 +2,12 @@
 """Enhanced line editor with vi/emacs key bindings and history search."""
 
 import os
-import re
 import select
 import shutil
 import sys
 from typing import Callable, List, Optional
 
+from . import line_layout as L
 from .keybindings import EditMode, EmacsKeyBindings, ViKeyBindings
 from .line_editor_helpers import convert_multiline_to_single
 from .tab_completion import CompletionEngine, TerminalManager
@@ -15,6 +15,35 @@ from .tab_completion import CompletionEngine, TerminalManager
 
 class LineEditor:
     """Interactive line editor with vi/emacs key bindings, tab completion, and history search."""
+
+    # Actions for the symbolic keys produced by _read_escape_sequence.
+    # Shared by emacs mode and BOTH vi modes (bash vi-mode behaves the
+    # same: arrows move the cursor / walk history in insert and normal
+    # mode alike).
+    ESCAPE_KEY_ACTIONS = {
+        'up': 'previous_history',
+        'down': 'next_history',
+        'right': 'move_forward_char',
+        'left': 'move_backward_char',
+        'home': 'move_beginning_of_line',
+        'end': 'move_end_of_line',
+        'delete': 'delete_char',
+    }
+
+    # CSI final bytes with no parameters: ESC [ X
+    _CSI_FINAL_KEYS = {
+        'A': 'up', 'B': 'down', 'C': 'right', 'D': 'left',
+        'H': 'home', 'F': 'end',
+    }
+    # CSI tilde sequences: ESC [ params ~
+    _CSI_TILDE_KEYS = {
+        '1': 'home', '3': 'delete', '4': 'end', '7': 'home', '8': 'end',
+    }
+    # SS3 sequences (application cursor mode): ESC O X
+    _SS3_KEYS = {
+        'A': 'up', 'B': 'down', 'C': 'right', 'D': 'left',
+        'H': 'home', 'F': 'end',
+    }
 
     def __init__(self, history: Optional[List[str]] = None, edit_mode: str = 'emacs'):
         self.buffer = []
@@ -28,13 +57,8 @@ class LineEditor:
         self.current_prompt = ""
 
         # Key binding setup
-        self.edit_mode = edit_mode.lower()
-        if self.edit_mode == 'vi':
-            self.key_handler = ViKeyBindings()
-            self.mode = EditMode.VI_INSERT
-        else:
-            self.key_handler = EmacsKeyBindings()
-            self.mode = EditMode.EMACS
+        self.edit_mode = ''
+        self.set_edit_mode(edit_mode)
 
         # Kill ring for cut/paste operations
         self.kill_ring = []
@@ -64,72 +88,23 @@ class LineEditor:
         self._screen_prompt_len = 0
         self._term_width = 80
 
-    def _query_cursor_row(self) -> int:
-        """Query the terminal for the cursor's current row (0-indexed).
+    def set_edit_mode(self, edit_mode: str) -> None:
+        """Select 'vi' or 'emacs' key bindings.
 
-        Sends the DSR (Device Status Report) sequence ``ESC[6n`` and
-        reads the ``ESC[row;colR`` response directly from the raw fd.
-        Returns -1 if the query fails or times out.
+        Called between reads so that ``set -o vi`` / ``set -o emacs``
+        issued mid-session takes effect at the next prompt (previously
+        the mode was frozen at REPL startup).
         """
-        if self._stdin_fd < 0:
-            return -1
-
-        sys.stdout.write('\033[6n')
-        sys.stdout.flush()
-
-        buf: List[bytes] = []
-        try:
-            for _ in range(20):  # safety limit on response length
-                ready, _, _ = select.select([self._stdin_fd], [], [], 0.1)
-                if not ready:
-                    break
-                data = os.read(self._stdin_fd, 1)
-                if not data:
-                    break
-                buf.append(data)
-                if data == b'R':
-                    break
-        except OSError:
-            pass
-
-        response = b''.join(buf).decode('ascii', errors='replace')
-        m = re.match(r'\x1b\[(\d+);(\d+)R', response)
-        if m:
-            return int(m.group(1)) - 1  # convert to 0-indexed
-
-        # Response wasn't a DSR reply; push characters back
-        if response:
-            self._char_buf = list(response) + self._char_buf
-        return -1
-
-    def _drain_stale_cpr(self):
-        """Discard any cursor position report responses pending on stdin.
-
-        CPR responses (``ESC[row;colR``) can queue up if DSR queries were
-        sent while the terminal was in the background.  If not drained
-        they appear as junk text after the prompt.
-        """
-        if self._stdin_fd < 0:
+        edit_mode = edit_mode.lower()
+        if edit_mode == self.edit_mode:
             return
-        while True:
-            try:
-                ready, _, _ = select.select([self._stdin_fd], [], [], 0)
-                if not ready:
-                    break
-                data = os.read(self._stdin_fd, 256)
-                if not data:
-                    break
-                text = data.decode('ascii', errors='replace')
-                # Strip any complete or partial CPR responses.
-                # Full: ESC [ digits ; digits R
-                # Partial (prefix already consumed): digits ; digits R
-                cleaned = re.sub(r'(\x1b\[)?\d+;\d+R', '', text)
-                if cleaned:
-                    # Non-CPR data was mixed in — put it back
-                    self._char_buf.extend(cleaned)
-                    break
-            except OSError:
-                break
+        self.edit_mode = edit_mode
+        if edit_mode == 'vi':
+            self.key_handler = ViKeyBindings()
+            self.mode = EditMode.VI_INSERT
+        else:
+            self.key_handler = EmacsKeyBindings()
+            self.mode = EditMode.EMACS
 
     def _read_char(self) -> str:
         """Read one character from stdin via the raw file descriptor.
@@ -190,24 +165,11 @@ class LineEditor:
         stdin_fd = sys.stdin.fileno()
         self._stdin_fd = stdin_fd
         self._char_buf = []
-        self._drain_stale_cpr()
         watch_fds = [stdin_fd]
         if sigwinch_fd >= 0:
             watch_fds.append(sigwinch_fd)
 
         with self.terminal:
-            # Record the row where the prompt was drawn so that
-            # redraw_line() can detect cursor displacement on resize.
-            row = self._query_cursor_row()
-            if row >= 0:
-                prompt_vis = self._visible_length(prompt)
-                w = self._term_width if self._term_width > 0 else 80
-                # Cursor is at end of prompt; prompt started further up
-                # if it wrapped.
-                self._prompt_draw_row = max(0, row - prompt_vis // w)
-            else:
-                self._prompt_draw_row = -1
-
             while True:
                 try:
                     # Only call select() when our character buffer is empty.
@@ -257,13 +219,12 @@ class LineEditor:
                     if result == 'accept':
                         sys.stdout.write('\r\n')
                         sys.stdout.flush()
-                        line = ''.join(self.buffer)
-                        if line.strip():
-                            # Don't add history expansion commands to history
-                            from .history_expansion import contains_history_reference
-                            if not contains_history_reference(line):
-                                self.history.append(line)
-                        return line
+                        # History is recorded by ONE writer — the
+                        # source processor (shell.add_history), which
+                        # sees the complete logical command.  self.history
+                        # aliases state.history, so the entry is visible
+                        # for Up-arrow recall at the next read_line.
+                        return ''.join(self.buffer)
                     elif result == 'eof':
                         sys.stdout.write('\r\n')
                         sys.stdout.flush()
@@ -282,21 +243,97 @@ class LineEditor:
                         self.completion_state = None
 
     def _get_key_action(self, char: str) -> Optional[str]:
-        """Get the action for a key based on current mode."""
+        """Get the action for a key based on current mode.
+
+        ESC is intercepted BEFORE the emacs/vi mode split so that escape
+        sequences (arrow keys, Home/End/Delete) are consumed by one
+        reader and behave identically in every mode.  Previously CSI
+        parsing lived only in the emacs branch, so an Up-arrow in vi
+        insert mode decomposed into ESC (enter normal mode), '['
+        (unbound) and 'A' (append-at-end), corrupting the edit state.
+        """
+        if char == '\x1b':
+            return self._handle_escape()
         if self.edit_mode == 'vi':
             return self.key_handler.get_action(char)
-        else:
-            # Emacs mode
-            if char == '\x1b':  # ESC - check for Meta combinations
-                next_char = self._read_char()
-                if next_char == '[':
-                    # Arrow key sequence
-                    return self._handle_arrow_sequence()
-                else:
-                    # Meta key combination
-                    return self.key_handler.meta_bindings.get(next_char)
-            else:
-                return self.key_handler.bindings.get(char)
+        return self.key_handler.bindings.get(char)
+
+    def _handle_escape(self) -> Optional[str]:
+        """Resolve a key event that started with ESC (any mode).
+
+        - ESC [ ... / ESC O x: full sequence consumed by
+          _read_escape_sequence; the symbolic key maps to the same
+          action in emacs mode and both vi modes.
+        - vi mode, bare ESC (no pending input): enter normal mode.
+        - vi mode, ESC + ordinary key: enter normal mode and re-queue
+          the key so it is processed as a normal-mode command.
+        - emacs mode, ESC + ordinary key: Meta combination.
+        """
+        if self.edit_mode == 'vi':
+            if not self._input_pending():
+                return 'enter_normal_mode'
+            next_char = self._read_char()
+            if next_char in ('[', 'O'):
+                key = self._read_escape_sequence(next_char)
+                return self.ESCAPE_KEY_ACTIONS.get(key) if key else None
+            if next_char:
+                self._char_buf.insert(0, next_char)
+            return 'enter_normal_mode'
+
+        # Emacs mode: terminals send the whole sequence in one burst, so
+        # reading the follower blocks only for a human-typed Meta combo.
+        next_char = self._read_char()
+        if next_char in ('[', 'O'):
+            key = self._read_escape_sequence(next_char)
+            return self.ESCAPE_KEY_ACTIONS.get(key) if key else None
+        return self.key_handler.meta_bindings.get(next_char)
+
+    def _input_pending(self, timeout: float = 0.05) -> bool:
+        """True if more input is already buffered or arrives within
+        *timeout* seconds (used to tell a bare ESC keypress from the
+        ESC that introduces a sequence — terminals transmit sequences
+        in a single burst)."""
+        if self._char_buf:
+            return True
+        if self._stdin_fd < 0:
+            return False
+        try:
+            ready, _, _ = select.select([self._stdin_fd], [], [], timeout)
+        except OSError:
+            return False
+        return bool(ready)
+
+    def _read_escape_sequence(self, intro: str) -> Optional[str]:
+        """THE escape-sequence reader: the only input-side ANSI parser.
+
+        Called with ESC and the intro byte ('[' for CSI, 'O' for SS3)
+        already consumed.  Reads the remainder of the sequence and
+        returns a symbolic key name ('up', 'down', 'left', 'right',
+        'home', 'end', 'delete') or None.  Unrecognized sequences are
+        consumed in full so they never leak into the edit buffer.
+        """
+        if intro == 'O':
+            # SS3: exactly one final byte
+            return self._SS3_KEYS.get(self._read_char())
+
+        # CSI: parameter/intermediate bytes, then a final byte @ .. ~
+        params: List[str] = []
+        while True:
+            ch = self._read_char()
+            if not ch:
+                return None
+            if '\x40' <= ch <= '\x7e':
+                final = ch
+                break
+            params.append(ch)
+
+        if not params:
+            return self._CSI_FINAL_KEYS.get(final)
+        if final == '~':
+            return self._CSI_TILDE_KEYS.get(''.join(params))
+        # Parameterised sequences we don't handle (modifiers, CPR
+        # responses ESC[r;cR, ...) are silently discarded.
+        return None
 
     def _execute_action(self, action: str, char: str) -> Optional[str]:
         """Execute a key binding action."""
@@ -380,60 +417,6 @@ class LineEditor:
 
         return None
 
-    def _handle_arrow_sequence(self) -> Optional[str]:
-        """Handle CSI (ESC [) sequences including arrow keys.
-
-        Reads the full CSI sequence so that unrecognised sequences
-        (including cursor position reports ``ESC[row;colR``) are
-        silently consumed rather than leaking into the input buffer.
-        """
-        seq = self._read_char()
-
-        # Simple single-character CSI sequences (arrow keys, Home, End)
-        if seq == 'A':  # Up arrow
-            return 'previous_history'
-        elif seq == 'B':  # Down arrow
-            return 'next_history'
-        elif seq == 'C':  # Right arrow
-            return 'move_forward_char'
-        elif seq == 'D':  # Left arrow
-            return 'move_backward_char'
-        elif seq == 'H':  # Home
-            return 'move_beginning_of_line'
-        elif seq == 'F':  # End
-            return 'move_end_of_line'
-
-        # Parameterised CSI sequence (e.g. ESC[3~, ESC[1;5C, ESC[4;50R).
-        # Read parameter bytes (digits, semicolons) then the final byte
-        # (ASCII 0x40–0x7E) so the whole sequence is consumed.
-        if seq and (seq.isdigit() or seq == ';'):
-            params = [seq]
-            while True:
-                ch = self._read_char()
-                if not ch:
-                    break
-                params.append(ch)
-                # Final byte of a CSI sequence is in the range @ .. ~
-                if '\x40' <= ch <= '\x7e':
-                    break
-
-            final = params[-1] if params else ''
-
-            # Map some common parameterised sequences
-            param_str = ''.join(params[:-1])
-            if final == '~':
-                if param_str == '3':  # Delete key (ESC[3~)
-                    return 'delete_char'
-                elif param_str == '1':  # Home (ESC[1~)
-                    return 'move_beginning_of_line'
-                elif param_str == '4':  # End (ESC[4~)
-                    return 'move_end_of_line'
-
-            # CPR responses (ESC[row;colR) and other unrecognised
-            # sequences are silently discarded.
-
-        return None
-
     def _handle_vi_normal_char(self, char: str):
         """Handle a character in vi normal mode."""
         # Check if this completes a command
@@ -451,7 +434,6 @@ class LineEditor:
 
     def _insert_char(self, char: str):
         """Insert a character at the cursor position."""
-        from . import line_layout as L
         self.save_undo_state()
         self.buffer.insert(self.cursor_pos, char)
         self.cursor_pos += 1
@@ -813,8 +795,7 @@ class LineEditor:
         the old version only stripped CSI, so colored prompts using
         markers or title sequences threw off all cursor math.
         """
-        from . import line_layout
-        return line_layout.visible_prompt_length(text)
+        return L.visible_prompt_length(text)
 
     def _paint(self, prompt: str = None):
         """Write prompt + buffer starting at the CURRENT cursor location
@@ -825,7 +806,6 @@ class LineEditor:
         auto-wrap is committed (space + CR + erase) so the cursor's
         position stays deterministic for later relative moves.
         """
-        from . import line_layout as L
         if prompt is None:
             prompt = self.current_prompt
         w = self._term_width if self._term_width > 0 else 80
@@ -862,7 +842,6 @@ class LineEditor:
         backspace/ESC[K arithmetic, which corrupted the display whenever
         the line wrapped past the terminal width.
         """
-        from . import line_layout as L
         w = self._term_width if self._term_width > 0 else 80
         rows_up, _ = L.position(self._screen_prompt_len,
                                 self._screen_cursor_pos, w)
@@ -874,7 +853,6 @@ class LineEditor:
     def _move_cursor_to(self, pos: int):
         """Move the physical cursor to buffer position *pos* without
         rewriting any text (wrap-aware relative movement)."""
-        from . import line_layout as L
         w = self._term_width if self._term_width > 0 else 80
         plen = self._screen_prompt_len
         from_row, from_col = L.position(plen, self._screen_cursor_pos, w)
@@ -925,12 +903,6 @@ class LineEditor:
         self._term_width = new_width
         self._paint()
 
-        # Update prompt draw row for the next resize
-        actual_row = self._query_cursor_row()
-        if actual_row >= 0:
-            cur_row_in_content = (prompt_len + self.cursor_pos) // new_width if new_width > 0 else 0
-            self._prompt_draw_row = max(0, actual_row - cur_row_in_content)
-
     def _handle_interrupt(self):
         """Handle Ctrl-C interrupt."""
         # Clear line and raise KeyboardInterrupt
@@ -969,7 +941,7 @@ class LineEditor:
             common_prefix = self.completion_engine.find_common_prefix(completions)
 
             # Find the word being completed
-            word_start = self.completion_engine._find_word_start(line, self.cursor_pos)
+            word_start = self.completion_engine.find_word_start(line, self.cursor_pos)
             current_word = line[word_start:self.cursor_pos]
 
             if len(common_prefix) > len(current_word):
@@ -984,7 +956,7 @@ class LineEditor:
         line = ''.join(self.buffer)
 
         # Find the word being completed
-        word_start = self.completion_engine._find_word_start(line, self.cursor_pos)
+        word_start = self.completion_engine.find_word_start(line, self.cursor_pos)
 
         # Check if we need to escape the completion
         if word_start == 0 or line[word_start-1] not in '"\'':
