@@ -77,12 +77,6 @@ class ExpansionParser:
         quote_context: Optional[str]
     ) -> Tuple[TokenPart, int]:
         """Parse $((...)) arithmetic expansion."""
-        # Check if arithmetic expansion is enabled
-        if self.config and not self.config.enable_arithmetic_expansion:
-            return self._create_error_part(
-                "Arithmetic expansion disabled", start_pos, quote_context
-            ), start_pos + 1
-
         # Find the closing ))
         end_pos, found = pure_helpers.find_balanced_double_parentheses(
             input_text, start_pos + 3
@@ -113,12 +107,6 @@ class ExpansionParser:
         quote_context: Optional[str]
     ) -> Tuple[TokenPart, int]:
         """Parse $(...) command substitution."""
-        # Check if command substitution is enabled
-        if self.config and not self.config.enable_command_substitution:
-            return self._create_error_part(
-                "Command substitution disabled", start_pos, quote_context
-            ), start_pos + 1
-
         # Find the closing )
         end_pos, found = pure_helpers.find_balanced_parentheses(
             input_text, start_pos + 2, track_quotes=True
@@ -149,12 +137,6 @@ class ExpansionParser:
         quote_context: Optional[str]
     ) -> Tuple[TokenPart, int]:
         """Parse ${...} parameter expansion."""
-        # Check if parameter expansion is enabled
-        if self.config and not self.config.enable_parameter_expansion:
-            return self._create_error_part(
-                "Parameter expansion disabled", start_pos, quote_context
-            ), start_pos + 1
-
         # Find the closing }
         content, end_pos, found = pure_helpers.validate_brace_expansion(
             input_text, start_pos + 2
@@ -186,12 +168,6 @@ class ExpansionParser:
         quote_context: Optional[str]
     ) -> Tuple[TokenPart, int]:
         """Parse simple variable $VAR."""
-        # Check if variable expansion is enabled
-        if self.config and not self.config.enable_variable_expansion:
-            return self._create_literal_part(
-                '$', start_pos, start_pos + 1, quote_context
-            ), start_pos + 1
-
         # Extract variable name
         var_name, end_pos = pure_helpers.extract_variable_name(
             input_text, start_pos + 1, SPECIAL_VARIABLES,
@@ -230,12 +206,6 @@ class ExpansionParser:
         quote_context: Optional[str] = None
     ) -> Tuple[TokenPart, int]:
         """Parse `...` backtick command substitution."""
-        # Check if backtick substitution is enabled
-        if self.config and not self.config.enable_backtick_quotes:
-            return self._create_literal_part(
-                '`', start_pos, start_pos + 1, quote_context
-            ), start_pos + 1
-
         # Find closing backtick
         pos = start_pos + 1
         content = ""
@@ -286,23 +256,7 @@ class ExpansionParser:
         if pos >= len(input_text):
             return False
 
-        char = input_text[pos]
-
-        # Check for $ expansions
-        if char == '$':
-            # Check if variable expansion is enabled
-            if self.config and not self.config.enable_variable_expansion:
-                return False
-            return True
-
-        # Check for backtick expansions
-        if char == '`':
-            # Check if backtick substitution is enabled
-            if self.config and not self.config.enable_backtick_quotes:
-                return False
-            return True
-
-        return False
+        return input_text[pos] in ('$', '`')
 
     def _create_literal_part(
         self,
@@ -319,23 +273,6 @@ class ExpansionParser:
             is_expansion=False,
             start_pos=Position(start_pos, 0, 0),
             end_pos=Position(end_pos, 0, 0)
-        )
-
-    def _create_error_part(
-        self,
-        error_message: str,
-        start_pos: int,
-        quote_context: Optional[str]
-    ) -> TokenPart:
-        """Create an error token part."""
-        return TokenPart(
-            value='',  # Empty value for error
-            quote_type=quote_context,
-            is_variable=False,
-            is_expansion=False,
-            error_message=error_message,
-            start_pos=Position(start_pos, 0, 0),
-            end_pos=Position(start_pos + 1, 0, 0)
         )
 
 
@@ -381,11 +318,4 @@ class ExpansionContext:
     def is_expansion_start(self, pos: int) -> bool:
         """Check if position starts an expansion."""
         return self.parser.can_start_expansion(self.input_text, pos)
-
-
-# Factory functions for easy access
-def create_expansion_parser(config: Optional['LexerConfig'] = None) -> ExpansionParser:
-    """Create an expansion parser with optional configuration."""
-    return ExpansionParser(config)
-
 

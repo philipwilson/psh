@@ -33,6 +33,7 @@ class KeywordNormalizer:
         command_position = True
         pending_in: Optional[str] = None
         pending_heredoc_delim = False
+        heredoc_already_collected = False
         heredoc_delimiter: Optional[str] = None
         in_heredoc = False
 

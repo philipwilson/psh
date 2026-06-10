@@ -95,73 +95,43 @@ class OperatorRecognizer(ContextualRecognizer):
         return False
 
     def _parse_fd_duplication(self, input_text: str, pos: int) -> Optional[Tuple[Token, int]]:
-        """Parse file descriptor duplication operators."""
+        """Parse file descriptor duplication operators (>&N, N>&M, >&-, ...)."""
         start_pos = pos
 
-        # Check if we're starting at a digit (N>&M pattern)
         if pos < len(input_text) and input_text[pos].isdigit():
-            # Parse the leading digit(s)
+            # N>&M pattern starting at the digit(s)
             while pos < len(input_text) and input_text[pos].isdigit():
                 pos += 1
-
-            # Must be followed by > or <
-            if pos >= len(input_text) or input_text[pos] not in '><':
-                return None
-
-            pos += 1
-
-            # Must be followed by &
-            if pos >= len(input_text) or input_text[pos] != '&':
-                return None
-            pos += 1
-
-            # Get the target fd or '-'
-            if pos >= len(input_text):
-                return None
-
-            if input_text[pos] == '-':
-                pos += 1
-            elif input_text[pos].isdigit():
-                while pos < len(input_text) and input_text[pos].isdigit():
-                    pos += 1
-            elif input_text[pos] in '$`':
-                # Dynamic target (e.g. 2>&$((1+1)), >&$fd): emit only the bare
-                # operator (N>& / >&); the following expansion is tokenized
-                # separately and consumed by the parser as the dup target.
-                op_string = input_text[start_pos:pos]
-                return Token(TokenType.REDIRECT_DUP, op_string, start_pos, pos), pos
-            else:
-                return None
-
-            # Construct the full operator string
-            op_string = input_text[start_pos:pos]
-
-            # Create the appropriate token - use REDIRECT_DUP for file descriptor duplication
-            token_type = TokenType.REDIRECT_DUP
-            token = Token(token_type, op_string, start_pos, pos)
-
-            return token, pos
-
-        # Check if we have a leading digit (N>&M pattern where we're at > or <)
-        if pos > 0 and input_text[pos-1].isdigit():
-            # Need to backtrack to include the digit
+        elif pos > 0 and input_text[pos-1].isdigit():
+            # N>&M pattern where we're already at > or < — backtrack so the
+            # token value includes the leading digit(s)
             digit_start = pos - 1
             while digit_start > 0 and input_text[digit_start-1].isdigit():
                 digit_start -= 1
             start_pos = digit_start
 
-        # Now we're at > or <
+        return self._parse_dup_operator_and_target(input_text, pos, start_pos)
+
+    def _parse_dup_operator_and_target(
+        self,
+        input_text: str,
+        pos: int,
+        start_pos: int
+    ) -> Optional[Tuple[Token, int]]:
+        """Parse the ``>&target``/``<&target`` tail of an fd duplication.
+
+        ``pos`` must point at the ``>`` or ``<``; ``start_pos`` is where the
+        token value begins (may precede ``pos`` to include leading digits).
+        """
+        # Must be > or < followed by &
         if pos >= len(input_text) or input_text[pos] not in '><':
             return None
-
         pos += 1
-
-        # Must be followed by &
         if pos >= len(input_text) or input_text[pos] != '&':
             return None
         pos += 1
 
-        # Get the target fd or '-'
+        # Get the target: fd digits, '-' (close), or a dynamic expansion
         if pos >= len(input_text):
             return None
 
@@ -171,22 +141,15 @@ class OperatorRecognizer(ContextualRecognizer):
             while pos < len(input_text) and input_text[pos].isdigit():
                 pos += 1
         elif input_text[pos] in '$`':
-            # Dynamic target (e.g. >&$((1+1))): emit only the bare operator; the
-            # following expansion is tokenized separately and consumed by the
-            # parser as the dup target.
-            op_string = input_text[start_pos:pos]
-            return Token(TokenType.REDIRECT_DUP, op_string, start_pos, pos), pos
+            # Dynamic target (e.g. 2>&$((1+1)), >&$fd): emit only the bare
+            # operator (N>& / >&); the following expansion is tokenized
+            # separately and consumed by the parser as the dup target.
+            pass
         else:
             return None
 
-        # Construct the full operator string
         op_string = input_text[start_pos:pos]
-
-        # Create the appropriate token - use REDIRECT_DUP for file descriptor duplication
-        token_type = TokenType.REDIRECT_DUP
-        token = Token(token_type, op_string, start_pos, pos)
-
-        return token, pos
+        return Token(TokenType.REDIRECT_DUP, op_string, start_pos, pos), pos
 
     def _try_fd_prefixed_redirect(
         self,
@@ -217,8 +180,6 @@ class OperatorRecognizer(ContextualRecognizer):
             if input_text[pos:pos + len(op)] == op:
                 # Make sure the redirect operator is valid in context
                 if not self.is_valid_in_context(op, context):
-                    return None
-                if not self._is_operator_enabled(op):
                     return None
                 fd = int(input_text[start:pos])
                 end = pos + len(op)
@@ -327,10 +288,6 @@ class OperatorRecognizer(ContextualRecognizer):
                                 if not (nxt.isspace() or nxt in '|&;()<>\n'):
                                     continue
 
-                    # Check configuration to see if this operator is enabled
-                    if not self._is_operator_enabled(candidate):
-                        continue
-
                     # Check if operator is valid in current context
                     if self.is_valid_in_context(candidate, context):
                         token_type = self.OPERATORS[length][candidate]
@@ -346,29 +303,6 @@ class OperatorRecognizer(ContextualRecognizer):
                         return token, pos + length
 
         return None
-
-    def _is_operator_enabled(self, operator: str) -> bool:
-        """Check if operator is enabled by configuration."""
-        if not self.config:
-            return True  # No config means all enabled
-
-        # Check pipes
-        if operator in ('|', '|&') and not self.config.enable_pipes:
-            return False
-
-        # Check redirections
-        if operator in ('<', '>', '>>', '<<', '<<<', '<>', '>|', '&>', '&>>') and not self.config.enable_redirections:
-            return False
-
-        # Check background operator
-        if operator == '&' and not self.config.enable_background:
-            return False
-
-        # Check logical operators
-        if operator in ['&&', '||'] and not self.config.enable_logical_operators:
-            return False
-
-        return True
 
     def is_valid_in_context(
         self,
@@ -447,10 +381,3 @@ class OperatorRecognizer(ContextualRecognizer):
 
         # Most operators are valid in any context
         return True
-
-    def get_operator_type(self, operator: str) -> Optional[TokenType]:
-        """Get the token type for a given operator string."""
-        for length_dict in self.OPERATORS.values():
-            if operator in length_dict:
-                return length_dict[operator]
-        return None

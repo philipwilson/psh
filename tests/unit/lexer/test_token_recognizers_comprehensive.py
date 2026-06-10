@@ -15,7 +15,6 @@ from psh.lexer.recognizers import (
     RecognizerRegistry,
     TokenRecognizer,
     WhitespaceRecognizer,
-    setup_default_recognizers,
 )
 from psh.lexer.state_context import LexerContext
 from psh.token_types import TokenType
@@ -342,16 +341,6 @@ class TestRecognizerRegistry:
         # Should be in registry
         assert recognizer in registry.get_recognizers()
 
-    def test_unregister_recognizer(self, registry):
-        """Test unregistering recognizers."""
-        recognizer = OperatorRecognizer()
-
-        registry.register(recognizer)
-        assert recognizer in registry.get_recognizers()
-
-        registry.unregister(recognizer)
-        assert recognizer not in registry.get_recognizers()
-
     def test_priority_ordering(self, registry):
         """Test that recognizers are ordered by priority."""
         low_priority = LiteralRecognizer()  # Priority 70
@@ -375,22 +364,9 @@ class TestRecognizerRegistry:
         registry.clear()
         assert len(registry) == 0
 
-    def test_registry_statistics(self, registry):
-        """Test registry statistics tracking."""
-        operator_rec = OperatorRecognizer()
-        literal_rec = LiteralRecognizer()
-
-        registry.register(operator_rec)
-        registry.register(literal_rec)
-
-        # Test that registry has stats
-        stats = registry.get_stats()
-        assert 'total_recognizers' in stats
-        assert stats['total_recognizers'] == 2
-
     def test_default_recognizers(self):
-        """Test that default registry comes with standard recognizers."""
-        registry = setup_default_recognizers()
+        """Test that the production registry has the standard recognizers."""
+        registry = ModularLexer('').registry
 
         recognizers = registry.get_recognizers()
 
@@ -426,11 +402,7 @@ class TestRecognizerRegistry:
 class TestModularLexerIntegration:
     """Test integration of the modular lexer system."""
 
-    @pytest.fixture
-    def registry(self):
-        return setup_default_recognizers()
-
-    def test_simple_command_tokenization(self, registry):
+    def test_simple_command_tokenization(self):
         """Test tokenization of simple commands."""
         lexer = ModularLexer('echo hello')
         tokens = list(lexer.tokenize())
@@ -442,7 +414,7 @@ class TestModularLexerIntegration:
         assert tokens[1].type == TokenType.WORD
         assert tokens[1].value == 'hello'
 
-    def test_pipeline_tokenization(self, registry):
+    def test_pipeline_tokenization(self):
         """Test tokenization of pipeline commands."""
         lexer = ModularLexer('ls | grep test')
         tokens = list(lexer.tokenize())
@@ -453,7 +425,7 @@ class TestModularLexerIntegration:
         assert TokenType.PIPE in token_types  # '|'
         assert TokenType.WORD in token_types  # 'grep'
 
-    def test_conditional_tokenization(self, registry):
+    def test_conditional_tokenization(self):
         """Test tokenization of conditional statements."""
         # Use tokenize() which includes KeywordNormalizer
         tokens = list(tokenize('if test; then echo yes; fi'))
@@ -464,7 +436,7 @@ class TestModularLexerIntegration:
         assert TokenType.FI in token_types
         assert TokenType.SEMICOLON in token_types
 
-    def test_complex_command_tokenization(self, registry):
+    def test_complex_command_tokenization(self):
         """Test tokenization of complex shell constructs."""
         # Use tokenize() which includes KeywordNormalizer
         tokens = list(tokenize('for file in *.txt; do echo $file; done'))
@@ -475,7 +447,7 @@ class TestModularLexerIntegration:
         assert TokenType.DO in token_types
         assert TokenType.DONE in token_types
 
-    def test_quoted_string_handling(self, registry):
+    def test_quoted_string_handling(self):
         """Test proper handling of quoted strings."""
         lexer = ModularLexer('echo "Hello $USER"')
         tokens = list(lexer.tokenize())
@@ -485,7 +457,7 @@ class TestModularLexerIntegration:
         assert tokens[0].type == TokenType.WORD
         assert tokens[0].value == 'echo'
 
-    def test_backward_compatibility(self, registry):
+    def test_backward_compatibility(self):
         """Test that modular lexer produces equivalent results."""
         test_commands = [
             'echo hello',

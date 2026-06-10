@@ -148,7 +148,8 @@ class UnifiedQuoteParser:
                 continue
 
             # Handle backtick command substitution in double quotes
-            if rules.allow_expansions and char == '`' and rules.quote_char == '"':
+            if (rules.allow_expansions and char == '`' and rules.quote_char == '"'
+                    and self.expansion_parser):
                 # Save current part
                 if current_value:
                     parts.append(self._create_literal_part(
@@ -156,8 +157,11 @@ class UnifiedQuoteParser:
                     ))
                     current_value = ""
 
-                # Parse backtick substitution
-                backtick_part, new_pos = self._parse_backtick_substitution(
+                # Parse backtick substitution (single implementation lives in
+                # ExpansionParser). NOTE: an unclosed backtick here always
+                # coincides with an unclosed double quote, so the lexer raises
+                # before the 'backtick_unclosed' part type can be observed.
+                backtick_part, new_pos = self.expansion_parser.parse_backtick_substitution(
                     input_text, pos, rules.quote_char
                 )
                 parts.append(backtick_part)
@@ -188,40 +192,6 @@ class UnifiedQuoteParser:
 
         return parts, pos, False
 
-    def parse_simple_quoted_string(
-        self,
-        input_text: str,
-        start_pos: int,
-        quote_char: str
-    ) -> Tuple[str, int, bool]:
-        """
-        Parse a simple quoted string without expansion support.
-
-        This is an optimized version for single quotes and contexts
-        where we just need the literal content.
-
-        Args:
-            input_text: The input string
-            start_pos: Starting position (after opening quote)
-            quote_char: The quote character
-
-        Returns:
-            Tuple of (content, position_after_closing_quote, found_closing_quote)
-        """
-        rules = QUOTE_RULES.get(quote_char)
-        if not rules or rules.allow_expansions:
-            # Fall back to full parsing for complex cases
-            parts, pos, found = self.parse_quoted_string(
-                input_text, start_pos, rules or QUOTE_RULES["'"]
-            )
-            content = ''.join(part.value for part in parts)
-            return content, pos, found
-
-        # Use pure function for simple case
-        return pure_helpers.extract_quoted_content(
-            input_text, start_pos, quote_char, allow_escapes=False
-        )
-
     def _create_literal_part(
         self,
         value: str,
@@ -239,81 +209,5 @@ class UnifiedQuoteParser:
             end_pos=Position(end_pos, 0, 0)
         )
 
-    def _parse_backtick_substitution(
-        self,
-        input_text: str,
-        start_pos: int,
-        quote_context: str
-    ) -> Tuple[TokenPart, int]:
-        """Parse backtick command substitution."""
-        # Find closing backtick
-        pos = start_pos + 1  # Skip opening backtick
-        content = ""
-
-        while pos < len(input_text) and input_text[pos] != '`':
-            if input_text[pos] == '\\' and pos + 1 < len(input_text):
-                next_char = input_text[pos + 1]
-                if next_char in '`$\\':
-                    pos += 1  # Skip backslash
-                    content += input_text[pos] if pos < len(input_text) else ''
-                else:
-                    content += input_text[pos]
-            else:
-                content += input_text[pos]
-            pos += 1
-
-        # Include closing backtick
-        if pos < len(input_text) and input_text[pos] == '`':
-            pos += 1
-            full_value = '`' + content + '`'
-        else:
-            full_value = '`' + content  # Unclosed
-
-        return TokenPart(
-            value=full_value,
-            quote_type=quote_context,
-            is_expansion=True,
-            expansion_type='backtick',
-            start_pos=Position(start_pos, 0, 0),
-            end_pos=Position(pos, 0, 0)
-        ), pos
-
-
-class QuoteParsingContext:
-    """Context for quote parsing operations."""
-
-    def __init__(
-        self,
-        input_text: str,
-        position_tracker: Optional['PositionTracker'] = None,
-        config: Optional['LexerConfig'] = None
-    ):
-        """
-        Initialize parsing context.
-
-        Args:
-            input_text: The input string being parsed
-            position_tracker: Optional position tracker for rich position info
-            config: Optional lexer configuration
-        """
-        self.input_text = input_text
-        self.position_tracker = position_tracker
-        self.config = config
-        self.parser = UnifiedQuoteParser()
-
-    def is_quote_character(self, char: str) -> bool:
-        """Check if character is a supported quote character."""
-        if not self.config:
-            return char in QUOTE_RULES
-
-        # Check configuration
-        if char == '"':
-            return self.config.enable_double_quotes
-        elif char == "'":
-            return self.config.enable_single_quotes
-        elif char == '`':
-            return self.config.enable_backtick_quotes
-
-        return False
 
 

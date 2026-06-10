@@ -35,7 +35,7 @@ command-position context is available. See `psh/brace_expansion.py`
 | File | Recognizes |
 |------|-----------|
 | `operator.py` | Shell operators (`|`, `&&`, `>>`, etc.) |
-| `literal.py` | Words, identifiers, assignments (~850 lines) |
+| `literal.py` | Words, identifiers, assignments (~700 lines) |
 | `whitespace.py` | Spaces, tabs |
 | `comment.py` | `# comments` |
 | `process_sub.py` | Process substitution `<()` and `>()` |
@@ -171,7 +171,8 @@ class MyRecognizer(TokenRecognizer):
 ### Array Assignment Detection
 
 The lexer detects `arr[key]=value` and `arr=(a b c)` patterns:
-- `LiteralRecognizer._is_inside_array_assignment()` tracks state
+- `_ArrayAssignmentTracker` in `recognizers/literal.py` tracks the
+  unmatched-bracket state incrementally while the word is collected
 - Special handling prevents breaking on `]`, `=`, quotes inside assignments
 
 ## Testing

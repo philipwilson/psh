@@ -6,6 +6,53 @@ from ...token_types import Token, TokenType
 from ..state_context import LexerContext
 from ..unicode_support import is_identifier_char, is_identifier_start, is_whitespace
 from .base import ContextualRecognizer
+from .comment import is_comment_start
+
+
+class _ArrayAssignmentTracker:
+    """Incrementally tracks whether the value collected so far ends inside
+    an unmatched ``[`` (outside quotes).
+
+    This replaces the old ``_is_inside_array_assignment(value)`` helper,
+    which re-scanned the whole accumulated value for every character —
+    O(n^2) per word. Feeding each appended character exactly once runs the
+    same quote-aware bracket automaton in O(n) total.
+
+    Note this is NOT the same predicate as the lexer-level array-assignment
+    map (``ModularLexer._build_array_assignment_map``): that map requires
+    the ``NAME[`` shape, while this tracker counts any unmatched bracket —
+    which is what keeps glob character classes like ``*[[:upper:]]*``
+    intact (the second ``]`` must not terminate the word).
+    """
+
+    __slots__ = ('_bracket_count', '_has_opening_bracket',
+                 '_in_single', '_in_double', '_fed_len')
+
+    def __init__(self):
+        self._bracket_count = 0
+        self._has_opening_bracket = False
+        self._in_single = False
+        self._in_double = False
+        self._fed_len = 0
+
+    def sync(self, value: str) -> None:
+        """Feed any not-yet-seen suffix of ``value`` (which only grows)."""
+        for char in value[self._fed_len:]:
+            if char == "'" and not self._in_double:
+                self._in_single = not self._in_single
+            elif char == '"' and not self._in_single:
+                self._in_double = not self._in_double
+            elif not self._in_single and not self._in_double:
+                if char == '[':
+                    self._bracket_count += 1
+                    self._has_opening_bracket = True
+                elif char == ']':
+                    self._bracket_count -= 1
+        self._fed_len = len(value)
+
+    @property
+    def inside(self) -> bool:
+        return self._has_opening_bracket and self._bracket_count > 0
 
 
 class LiteralRecognizer(ContextualRecognizer):
@@ -41,26 +88,12 @@ class LiteralRecognizer(ContextualRecognizer):
 
         char = input_text[pos]
 
-        # Skip whitespace and operators (handled by other recognizers)
-        # But allow disabled quotes to be part of words
+        # Skip whitespace and operators (handled by other recognizers),
+        # with a few exceptions that start words.
         if char in self.WORD_TERMINATORS:
-            # Allow disabled quotes/expansions/operators to be recognized as word chars
-            if char == "'" and self.config and not self.config.enable_single_quotes:
-                return True  # Can be part of word
-            if char == '"' and self.config and not self.config.enable_double_quotes:
-                return True  # Can be part of word
-            if char == '$' and self.config and not self.config.enable_variable_expansion:
-                return True  # Can be part of word
-            if char == '$' and self.config and self.config.enable_variable_expansion and not self._can_start_valid_expansion(input_text, pos):
+            # A $ that cannot start a valid expansion is a literal word char
+            if char == '$' and not self._can_start_valid_expansion(input_text, pos):
                 return True  # Can be part of word (invalid expansion)
-            if char == '`' and self.config and not self.config.enable_command_substitution:
-                return True  # Can be part of word
-            if char == '|' and self.config and not self.config.enable_pipes:
-                return True  # Can be part of word
-            if char in ['<', '>'] and self.config and not self.config.enable_redirections:
-                return True  # Can be part of word
-            if char == '&' and self.config and not self.config.enable_background:
-                return True  # Can be part of word
             # Inside [[ ]], < and > are comparison operators that should be tokenized as words
             if char in ['<', '>'] and context.bracket_depth > 0:
                 return True  # Can be part of word
@@ -70,8 +103,9 @@ class LiteralRecognizer(ContextualRecognizer):
             # they are silently dropped from the token stream.
             if char in ['<', '>'] and context.arithmetic_depth > 0:
                 return True  # Can be part of word
-            # Extglob: !( and +( should be treated as word start, not operator
-            if char in ('!', '+') and self.config and self.config.enable_extglob:
+            # Extglob: +( should be treated as word start, not operator.
+            # ('!' is not in WORD_TERMINATORS; !( is handled below.)
+            if char == '+' and self.config and self.config.enable_extglob:
                 if pos + 1 < len(input_text) and input_text[pos + 1] == '(':
                     return True  # Start of extglob pattern
             # { and } are operators only when standalone (followed by
@@ -94,21 +128,8 @@ class LiteralRecognizer(ContextualRecognizer):
                 return True  # Attached to word chars — part of word
             return False
 
-        # Skip quotes and expansions based on configuration, but only if they can be fully handled
-        # For $ and `, we need to check if they can actually form valid expansions
-        if char == '$' and self.config and self.config.enable_variable_expansion:
-            # Only skip if this can actually start a valid expansion
-            # Otherwise, let literal recognizer handle it as a regular character
-            if self._can_start_valid_expansion(input_text, pos):
-                return False  # Let expansion parser handle it
-        if char == '`' and self.config and self.config.enable_command_substitution:
-            return False  # Let expansion parser handle it
-        if char == "'" and self.config and self.config.enable_single_quotes:
-            return False  # Let quote parser handle it
-        if char == '"' and self.config and self.config.enable_double_quotes:
-            return False  # Let quote parser handle it
-
-        # If we get here, it might be a literal
+        # Anything else (including '!', which the operator recognizer
+        # declines when it isn't a standalone token) can start a literal.
         return True
 
     def recognize(
@@ -155,8 +176,13 @@ class LiteralRecognizer(ContextualRecognizer):
         value = ""
         saw_inline_ansi = False
         in_glob_bracket = False  # Track if we're inside [...] glob pattern
+        # Incremental "inside unmatched [" state over the collected value
+        # (replaces a per-character full re-scan of value — see
+        # _ArrayAssignmentTracker).
+        tracker = _ArrayAssignmentTracker()
 
         while pos < len(input_text):
+            tracker.sync(value)
             char = input_text[pos]
 
             # Handle glob bracket expressions [...]
@@ -178,8 +204,7 @@ class LiteralRecognizer(ContextualRecognizer):
                 continue
 
             # Handle invalid $ expansions as literal characters
-            if (char == '$' and self.config and self.config.enable_variable_expansion and
-                not self._can_start_valid_expansion(input_text, pos)):
+            if char == '$' and not self._can_start_valid_expansion(input_text, pos):
                 value += char
                 pos += 1
                 continue
@@ -205,7 +230,7 @@ class LiteralRecognizer(ContextualRecognizer):
             # Check for word terminators with special case handling
             if self._is_word_terminator(char, context):
                 result = self._handle_terminator_special_cases(
-                    char, value, input_text, pos, context
+                    char, value, input_text, pos, context, tracker.inside
                 )
                 if result is not None:
                     action, value, pos, ansi_flag = result
@@ -219,7 +244,7 @@ class LiteralRecognizer(ContextualRecognizer):
                     break
 
             # Handle quotes inside array assignments
-            if self._is_inside_array_assignment(value):
+            if tracker.inside:
                 if char in ["'", '"', '$', '`']:
                     value += char
                     pos += 1
@@ -237,8 +262,9 @@ class LiteralRecognizer(ContextualRecognizer):
                 # Position advanced, continue loop
                 continue
 
-            # Check if # starts a comment
-            if char == '#' and self._is_comment_start(input_text, pos, context):
+            # Check if # starts a comment (shared definition with
+            # CommentRecognizer — see comment.is_comment_start)
+            if char == '#' and is_comment_start(input_text, pos):
                 break
 
             # Handle escape sequences
@@ -259,7 +285,8 @@ class LiteralRecognizer(ContextualRecognizer):
         value: str,
         input_text: str,
         pos: int,
-        context: LexerContext
+        context: LexerContext,
+        in_array_assignment: bool
     ) -> Optional[Tuple[str, str, int, bool]]:
         """Handle special cases where we don't break on word terminators.
 
@@ -283,7 +310,7 @@ class LiteralRecognizer(ContextualRecognizer):
             return ('continue', value + char, pos + 1, False)
 
         # Inside array assignment - don't break on these characters
-        if self._is_inside_array_assignment(value):
+        if in_array_assignment:
             if char in [']', '$', '(', ')', '+', '-', '*', '/', '%']:
                 return ('continue', value + char, pos + 1, False)
 
@@ -313,7 +340,7 @@ class LiteralRecognizer(ContextualRecognizer):
             Tuple of (should_break, new_value, new_pos, saw_ansi)
         """
         # Check for ANSI-C quotes in variable assignments
-        if char == '$' and self.config and self.config.enable_variable_expansion:
+        if char == '$':
             if (pos + 1 < len(input_text) and input_text[pos + 1] == "'" and
                 self._is_in_variable_assignment_value(value)):
                 ansi_c_content, new_pos = self._parse_ansi_c_quote_inline(input_text, pos)
@@ -321,34 +348,10 @@ class LiteralRecognizer(ContextualRecognizer):
                     return (False, value + ansi_c_content, new_pos, True)
             return (True, value, pos, False)
 
-        if char == '`' and self.config and self.config.enable_command_substitution:
-            return (True, value, pos, False)
-
-        if char == "'" and self.config and self.config.enable_single_quotes:
-            return (True, value, pos, False)
-
-        if char == '"' and self.config and self.config.enable_double_quotes:
+        if char in ('`', "'", '"'):
             return (True, value, pos, False)
 
         return (False, value, pos, False)
-
-    def _is_comment_start(self, input_text: str, pos: int, context: LexerContext) -> bool:
-        """Check if # at current position starts a comment."""
-        if pos == 0:
-            return True
-
-        prev_char = input_text[pos - 1]
-
-        # After whitespace
-        if prev_char in [' ', '\t', '\n', '\r']:
-            return True
-
-        # After operators that can be followed by comments
-        comment_preceding_ops = {'|', '&', ';', '(', '{'}
-        if prev_char in comment_preceding_ops:
-            return True
-
-        return False
 
     def _is_word_terminator(self, char: str, context: LexerContext) -> bool:
         """Check if character terminates a word in current context."""
@@ -364,23 +367,8 @@ class LiteralRecognizer(ContextualRecognizer):
         if is_whitespace(char, posix_mode=context.posix_mode):
             return True
 
-        # Basic word terminators, but check configuration for quotes
+        # Basic word terminators
         if char in self.WORD_TERMINATORS:
-            # Check if quotes/operators should be treated as word characters when disabled
-            if char == "'" and self.config and not self.config.enable_single_quotes:
-                return False  # Treat as word character
-            if char == '"' and self.config and not self.config.enable_double_quotes:
-                return False  # Treat as word character
-            if char == '$' and self.config and not self.config.enable_variable_expansion:
-                return False  # Treat as word character
-            if char == '`' and self.config and not self.config.enable_command_substitution:
-                return False  # Treat as word character
-            if char == '|' and self.config and not self.config.enable_pipes:
-                return False  # Treat as word character
-            if char in ['<', '>'] and self.config and not self.config.enable_redirections:
-                return False  # Treat as word character
-            if char == '&' and self.config and not self.config.enable_background:
-                return False  # Treat as word character
             # Inside [[ ]], < and > are comparison operators that should be treated as word chars
             if char in ['<', '>'] and context.bracket_depth > 0:
                 return False  # Treat as word character
@@ -403,21 +391,6 @@ class LiteralRecognizer(ContextualRecognizer):
                 return True
 
         return False
-
-    def _is_identifier(self, value: str) -> bool:
-        """Check if value is a valid identifier."""
-        if not value:
-            return False
-
-        # Get posix_mode from config
-        posix_mode = self.config.posix_mode if self.config else False
-
-        # Must start with valid identifier start character
-        if not is_identifier_start(value[0], posix_mode):
-            return False
-
-        # Rest must be valid identifier characters
-        return all(is_identifier_char(c, posix_mode) for c in value[1:])
 
     def _is_variable_assignment_start(self, value: str) -> bool:
         """Check if value looks like the start of a variable assignment (NAME=... or NAME[INDEX]=...)."""
@@ -541,33 +514,6 @@ class LiteralRecognizer(ContextualRecognizer):
             i += 1
 
         return False
-
-    def _is_inside_array_assignment(self, value: str) -> bool:
-        """Check if we're currently inside an array assignment pattern."""
-        if not value or '[' not in value:
-            return False
-
-        # Check if we have unmatched opening bracket and this looks like array pattern
-        bracket_count = 0
-        has_opening_bracket = False
-        in_single_quote = False
-        in_double_quote = False
-
-        for char in value:
-            # Track quotes to ignore brackets inside them
-            if char == "'" and not in_double_quote:
-                in_single_quote = not in_single_quote
-            elif char == '"' and not in_single_quote:
-                in_double_quote = not in_double_quote
-            elif not in_single_quote and not in_double_quote:
-                if char == '[':
-                    bracket_count += 1
-                    has_opening_bracket = True
-                elif char == ']':
-                    bracket_count -= 1
-
-        # We're inside array assignment if we have unmatched opening brackets
-        return has_opening_bracket and bracket_count > 0
 
     def _looks_like_array_assignment_before_plus_equals(self, value: str, input_text: str, pos: int) -> bool:
         """Check if + at current position is part of array assignment += pattern."""
@@ -768,7 +714,7 @@ class LiteralRecognizer(ContextualRecognizer):
             char = input_text[pos]
             # Only an active (unquoted, non-quote/escape) char can terminate.
             if state.consume(char):
-                if char in ' \t\n\r|&;(){}' or (char in '<>' and self.config and self.config.enable_redirections):
+                if char in ' \t\n\r|&;(){}<>':
                     break
             result += char
             pos += 1

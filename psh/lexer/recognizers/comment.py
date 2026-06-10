@@ -6,6 +6,30 @@ from ...token_types import Token
 from ..state_context import LexerContext
 from .base import ContextualRecognizer
 
+# Operators/metacharacters after which a '#' begins a comment (besides
+# whitespace and start-of-input). NOTE: ')' and '}' are deliberately NOT
+# in this set. This is the single comment-start definition shared by
+# CommentRecognizer and LiteralRecognizer: because LiteralRecognizer runs
+# at higher priority and collects any '#' this predicate rejects into the
+# current word, both recognizers must agree — a wider set here would be
+# unreachable (the literal recognizer would have consumed the '#' first)
+# and a wider set in the literal recognizer would split words like the
+# extglob pattern a@(b)#c.
+_COMMENT_PRECEDING_OPS = frozenset('|&;({')
+
+
+def is_comment_start(input_text: str, pos: int) -> bool:
+    """Return True when ``#`` at ``pos`` starts a comment.
+
+    A ``#`` starts a comment at the beginning of input, after whitespace,
+    or after one of the operators in ``_COMMENT_PRECEDING_OPS``.
+    """
+    if pos == 0:
+        return True
+
+    prev_char = input_text[pos - 1]
+    return prev_char in ' \t\n\r' or prev_char in _COMMENT_PRECEDING_OPS
+
 
 class CommentRecognizer(ContextualRecognizer):
     """Recognizes shell comments."""
@@ -32,7 +56,7 @@ class CommentRecognizer(ContextualRecognizer):
             return False
 
         # Check if # is actually starting a comment (not part of a word)
-        return self._is_comment_start(input_text, pos, context)
+        return is_comment_start(input_text, pos)
 
     def recognize(
         self,
@@ -47,33 +71,3 @@ class CommentRecognizer(ContextualRecognizer):
 
         # Return None token with new position to indicate skip
         return None, pos
-
-    def _is_comment_start(
-        self,
-        input_text: str,
-        pos: int,
-        context: LexerContext
-    ) -> bool:
-        """
-        Check if # at current position starts a comment.
-
-        # starts a comment if:
-        1. It's at the beginning of input
-        2. It follows whitespace
-        3. It follows certain operators (|, &, ;, etc.)
-        """
-        if pos == 0:
-            return True
-
-        prev_char = input_text[pos - 1]
-
-        # After whitespace
-        if prev_char in [' ', '\t', '\n', '\r']:
-            return True
-
-        # After operators/metacharacters that can precede comments
-        comment_preceding_ops = {'|', '&', ';', '(', ')', '{', '}'}
-        if prev_char in comment_preceding_ops:
-            return True
-
-        return False

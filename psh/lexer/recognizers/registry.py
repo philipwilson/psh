@@ -1,7 +1,7 @@
 """Registry for token recognizers."""
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ...token_types import Token
 from ..state_context import LexerContext
@@ -27,22 +27,6 @@ class RecognizerRegistry:
         """
         self._recognizers.append(recognizer)
         self._sorted = False  # Need to re-sort by priority
-
-    def unregister(self, recognizer: TokenRecognizer) -> bool:
-        """
-        Unregister a recognizer.
-
-        Args:
-            recognizer: The recognizer to remove
-
-        Returns:
-            True if the recognizer was found and removed
-        """
-        try:
-            self._recognizers.remove(recognizer)
-            return True
-        except ValueError:
-            return False
 
     def get_recognizers(self) -> List[TokenRecognizer]:
         """
@@ -96,26 +80,6 @@ class RecognizerRegistry:
 
         return None
 
-    def get_stats(self) -> Dict[str, int]:
-        """
-        Get statistics about registered recognizers.
-
-        Returns:
-            Dictionary with statistics
-        """
-        stats = {
-            'total_recognizers': len(self._recognizers),
-            'recognizer_types': {}
-        }
-
-        for recognizer in self._recognizers:
-            recognizer_type = type(recognizer).__name__
-            stats['recognizer_types'][recognizer_type] = (
-                stats['recognizer_types'].get(recognizer_type, 0) + 1
-            )
-
-        return stats
-
     def clear(self) -> None:
         """Remove all registered recognizers."""
         self._recognizers.clear()
@@ -128,33 +92,3 @@ class RecognizerRegistry:
     def __iter__(self):
         """Iterate over recognizers in priority order."""
         return iter(self.get_recognizers())
-
-
-# Default registry instance
-default_registry = RecognizerRegistry()
-
-
-def get_default_registry() -> RecognizerRegistry:
-    """Get the default registry instance."""
-    return default_registry
-
-
-def setup_default_recognizers() -> RecognizerRegistry:
-    """Set up the default registry with standard recognizers."""
-    from .comment import CommentRecognizer
-    from .literal import LiteralRecognizer
-    from .operator import OperatorRecognizer
-    from .process_sub import ProcessSubstitutionRecognizer
-    from .whitespace import WhitespaceRecognizer
-
-    registry = get_default_registry()
-    registry.clear()
-
-    # Register recognizers in order (priority determines actual order)
-    registry.register(ProcessSubstitutionRecognizer())  # Priority 160
-    registry.register(OperatorRecognizer())
-    registry.register(LiteralRecognizer())
-    registry.register(WhitespaceRecognizer())
-    registry.register(CommentRecognizer())
-
-    return registry

@@ -4,7 +4,7 @@ from .base import TokenRecognizer
 from .comment import CommentRecognizer
 from .literal import LiteralRecognizer
 from .operator import OperatorRecognizer
-from .registry import RecognizerRegistry, setup_default_recognizers
+from .registry import RecognizerRegistry
 from .whitespace import WhitespaceRecognizer
 
 __all__ = [
@@ -14,5 +14,4 @@ __all__ = [
     'WhitespaceRecognizer',
     'CommentRecognizer',
     'RecognizerRegistry',
-    'setup_default_recognizers'
 ]
