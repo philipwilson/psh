@@ -4,6 +4,45 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.267.0 (2026-06-10) - Expansion correctness sweep (review Tier 3, phase 1b)
+- `${!name}` indirection resolves through the full parameter namespace:
+  positionals (`n=2; ${!n}` -> `$2`), array elements (`ref='a[1]'`,
+  `ref='a[@]'`, assoc keys), special parameters (`${!#}` -> last
+  positional, `ref='@'`) and operators after indirection apply to the
+  target (`${!ref%pat}`, `${!n:-d}`). bash diagnostics: an unset source is
+  "invalid indirect expansion" and a malformed target name is "invalid
+  variable name" (both status 1, the error beating any `:-` default);
+  out-of-range positional sources are plain unset.
+- Arithmetic uses bash's textual/recursive variable resolution: `$(($x))`
+  with `x='2 + 2'` is 4 (the value text is substituted, not coerced to 0),
+  reference chains resolve (`y=z; z=42; x=y; $(($x))` -> 42), and circular
+  references now raise "expression recursion level exceeded" (status 1)
+  instead of silently yielding 0.
+- Tilde expansion reads the shell's HOME variable (`HOME=/xyz; echo ~` ->
+  `/xyz`), not the inherited environment.
+- `$0` works in parameter expansion: `${0##*/}`, `${0:-x}`, `${#0}`.
+- POSIX field splitting: only unquoted-expansion text can split. Escapes
+  in literal word text are protected structurally (`pre\ post$x` stays one
+  field -- previously split) while backslashes in expansion data are plain
+  characters (`x='a\ b'; $x` is two fields `a\` and `b` -- previously
+  glued). Composite words merge fields across part boundaries with
+  delimiter-edge awareness (`pre$x` with `x=':a'` and IFS=: is
+  `pre`, `a`). Quoted text adjacent to an expansion no longer splits
+  (`"a b"$x`).
+- POSIX expansion ordering for command-prefix assignments: the command's
+  own words are expanded BEFORE the temporary assignments take effect
+  (`V=v echo $V` prints V's prior value -- psh printed `v` and the
+  conformance suite documented bash's correct behavior as "a bash bug";
+  that inverted verdict is removed from psh_bash_differences.json).
+  Assignments apply sequentially, each value seeing those to its left
+  (`A=1 B=$A cmd` gives B=1), and when the command words expand to
+  nothing the assignments affect the current shell (`V=v $EMPTY`).
+- Fixed cross-test pollution: an env-builtin test exported generic names
+  (A/B) into the test runner's environment, breaking the conformance
+  assignment probe in combined runs.
+- 45 new bash-pinned tests (test_expansion_correctness_sweep.py); 5 tests
+  updated from old-behavior pins to bash-verified expectations.
+
 ## 0.266.0 (2026-06-10) - Pattern-operator operand expansion (review Tier 3, phase 1a)
 - Pattern operands of `${x#pat}`, `${x##pat}`, `${x%pat}`, `${x%%pat}`,
   `${x/pat/repl}` and the case-mod operators now undergo variable, command

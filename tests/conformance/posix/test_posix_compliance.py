@@ -350,10 +350,14 @@ class TestPOSIXSimpleCommands(ConformanceTest):
         self.assert_identical_behavior('cat < /dev/null')
 
     def test_variable_assignments(self):
-        """Test variable assignments with commands."""
-        # PSH correctly implements POSIX behavior, bash has a bug
-        self.assert_documented_difference('VAR=value echo $VAR', 'COMMAND_SPECIFIC_ASSIGNMENTS')
-        self.assert_documented_difference('A=1 B=2 echo $A$B', 'COMMAND_SPECIFIC_ASSIGNMENTS')
+        """Test variable assignments with commands.
+
+        POSIX expands the command's words before the temporary
+        assignments take effect, so the command sees the prior values.
+        """
+        self.assert_identical_behavior('VAR=value echo $VAR')
+        self.assert_identical_behavior('A=1 B=2 echo $A$B')
+        self.assert_identical_behavior('A=1 B=$A /bin/sh -c \'echo "[$B]"\'')
 
 
 class TestPOSIXPipelines(ConformanceTest):

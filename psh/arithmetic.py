@@ -825,7 +825,8 @@ class ArithmeticEvaluator:
             # Bare identifier: follow the reference chain with a cycle guard.
             if value.isidentifier() and not value.startswith('_' * 2):
                 if value in seen:
-                    return 0  # circular reference
+                    raise ShellArithmeticError(
+                        f"{value}: expression recursion level exceeded")
                 seen.add(var)
                 var = value
                 continue

@@ -107,11 +107,15 @@ def test_word_splitter_only_non_whitespace_ifs_input():
     assert result == ['', '']
 
 
-def test_word_splitter_backslash_prevents_splitting():
-    """Backslash-escaped IFS characters should not trigger splitting."""
+def test_word_splitter_backslash_is_plain_data():
+    """A backslash in expansion data does not escape IFS characters.
+
+    bash: x='a\\ b'; printf '[%s]' $x → [a\\][b]. Escapes in *literal*
+    word text are protected structurally by the caller (only expansion
+    results are split), not by the splitter.
+    """
     splitter = WordSplitter()
-    result = splitter.split('a\\ b', ' \t\n')
-    assert result == ['a\\ b']
+    assert splitter.split('a\\ b', ' \t\n') == ['a\\', 'b']
 
 
 def test_word_splitter_backslash_preserved_in_word():
@@ -122,11 +126,10 @@ def test_word_splitter_backslash_preserved_in_word():
 
 
 def test_word_splitter_backslash_not_swallowed():
-    """Backslashes should NOT be stripped from the output."""
+    """Backslashes are kept in the output fields (bash: a\\:b with IFS=:
+    splits into a\\ and b)."""
     splitter = WordSplitter()
-    result = splitter.split('a\\:b', ':')
-    # Backslash prevents ':' from being a delimiter, and both are preserved
-    assert result == ['a\\:b']
+    assert splitter.split('a\\:b', ':') == ['a\\', 'b']
 
 
 def test_word_splitter_colon_separated_path():

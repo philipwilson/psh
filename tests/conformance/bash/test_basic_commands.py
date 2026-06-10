@@ -41,8 +41,10 @@ class TestBasicCommandConformance(ConformanceTest):
         # Multiple assignments
         self.assert_identical_behavior('x=1 y=2 z=3; echo $x $y $z')
 
-        # Assignment with command - PSH correctly implements POSIX behavior
-        self.assert_documented_difference('x=value echo $x', 'COMMAND_SPECIFIC_ASSIGNMENTS')
+        # Assignment with command: $x in the command's own words is
+        # expanded BEFORE the temporary assignment applies (POSIX)
+        self.assert_identical_behavior('x=value echo $x')
+        self.assert_identical_behavior('x=old; x=new echo $x')
 
         # Empty assignment
         self.assert_identical_behavior('x=; echo "[$x]"')

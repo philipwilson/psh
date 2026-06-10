@@ -137,6 +137,9 @@ class ExpansionManager:
         has_unquoted_expansion = False
         all_parts_quoted = True
         result_parts: list = []
+        # Indices in result_parts holding unquoted-expansion text — the only
+        # text field splitting may break (POSIX).
+        splittable_idx: set = set()
 
         for part in word.parts:
             if isinstance(part, LiteralPart):
@@ -215,6 +218,7 @@ class ExpansionManager:
                     # Glob chars from unquoted expansion trigger globbing
                     if any(c in expanded for c in '*?['):
                         has_unquoted_glob = True
+                    splittable_idx.add(len(result_parts))
                     result_parts.append(expanded)
 
         result = ''.join(result_parts)
@@ -229,7 +233,7 @@ class ExpansionManager:
                          '=' in word.parts[0].text and
                          not word.parts[0].text.startswith('='))
         if has_unquoted_expansion and not is_assignment:
-            words = self._split_with_ifs(result, None)
+            words = self._split_part_fields(result_parts, splittable_idx)
             if len(words) > 1:
                 # Glob each split word if there are unquoted glob chars
                 if has_unquoted_glob and not self.state.options.get('noglob', False):
@@ -574,6 +578,45 @@ class ExpansionManager:
         ifs = self.state.get_variable('IFS', ' \t\n')
         return self.word_splitter.split(text, ifs)
 
+    def _split_part_fields(self, parts: List[str], splittable_idx: set) -> List[str]:
+        """Field-split a composite word part-by-part (POSIX).
+
+        Only the text of unquoted expansion results (the indices in
+        *splittable_idx*) can produce field boundaries. Literal and quoted
+        text never splits — even if it contains IFS characters that arrived
+        via escape processing (``pre\\ post$x`` stays one field) — but it
+        merges with adjacent expansion fragments into a single field.
+        """
+        ifs = self.state.get_variable('IFS', ' \t\n')
+        fields: List[str] = []
+        current: Optional[str] = None  # None = no field currently open
+        for idx, text in enumerate(parts):
+            if idx not in splittable_idx:
+                current = (current or '') + text
+                continue
+            pieces, leading, trailing = self.word_splitter.split_with_edges(text, ifs)
+            if leading and current is not None:
+                fields.append(current)
+                current = None
+                # A leading non-whitespace delimiter both closed the open
+                # field and produced an empty first piece — same boundary,
+                # drop the duplicate (pre$x with x=':a' is [pre, a]).
+                if pieces and pieces[0] == '' and text[0] not in ' \t\n':
+                    pieces = pieces[1:]
+            for k, piece in enumerate(pieces):
+                if k == 0 and current is not None:
+                    current += piece
+                else:
+                    if current is not None:
+                        fields.append(current)
+                    current = piece
+            if trailing and current is not None:
+                fields.append(current)
+                current = None
+        if current is not None:
+            fields.append(current)
+        return fields
+
     def expand_string_variables(self, text: str) -> str:
         """
         Expand variables and arithmetic in a string.
@@ -713,15 +756,11 @@ class ExpansionManager:
                     else:
                         value = self.shell.state.get_variable(var_name, '0')
 
-                    # Convert empty or non-numeric to 0
-                    if not value:
-                        value = '0'
-                    try:
-                        int(value)
-                    except ValueError:
-                        value = '0'
-
-                    result.append(value)
+                    # Substitute the value text and let the arithmetic
+                    # evaluator handle it (bash): $x with x='2 + 2' yields
+                    # the sub-expression 2 + 2, and x=y resolves y
+                    # recursively. Empty values count as 0.
+                    result.append(value if str(value).strip() else '0')
                     i = j
                     continue
                 elif expr[i + 1] == '{':
@@ -739,15 +778,9 @@ class ExpansionManager:
                         var_expr = expr[i:j]  # Include ${...}
                         value = self.expand_variable(var_expr)
 
-                        # Convert empty or non-numeric to 0
-                        if not value:
-                            value = '0'
-                        try:
-                            int(value)
-                        except ValueError:
-                            value = '0'
-
-                        result.append(value)
+                        # Substitute the value text (see the $var branch
+                        # above); empty values count as 0.
+                        result.append(value if str(value).strip() else '0')
                         i = j
                         continue
 

@@ -21,8 +21,9 @@ class TildeExpander:
 
         # Just ~ or ~/path
         if path == '~' or path.startswith('~/'):
-            # Get home directory from HOME env var, fallback to pwd
-            home = os.environ.get('HOME')
+            # The shell's HOME variable wins (HOME=/xyz; echo ~ → /xyz),
+            # falling back to the password database like bash.
+            home = self.state.get_variable('HOME')
             if not home:
                 try:
                     home = pwd.getpwuid(os.getuid()).pw_dir

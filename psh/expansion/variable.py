@@ -400,6 +400,13 @@ class VariableExpander:
         if operator == '!' and var_name and not operand:
             return self._expand_indirect(var_name)
 
+        # ${!name<op>...}: resolve the indirection first, then apply the
+        # operator to the target parameter (bash). The ${!arr[@]} keys form
+        # never reaches here (handled before operator parsing).
+        if (var_name.startswith('!') and len(var_name) > 1
+                and not var_name.endswith(('[@]', '[*]'))):
+            var_name = self._resolve_indirect_target(var_name[1:])
+
         # Follow a nameref to its target name so ${ref...} operators apply to
         # the target (including an array-element target like arr[1]).
         var_name = self.state.scope_manager.resolve_nameref_name(var_name)
@@ -432,8 +439,12 @@ class VariableExpander:
                     for p in self.state.positional_params)
             value = ' '.join(self.state.positional_params)
         elif var_name.isdigit():
-            index = int(var_name) - 1
-            value = self.state.positional_params[index] if 0 <= index < len(self.state.positional_params) else ''
+            if int(var_name) == 0:
+                # $0 is the script/shell name, not a positional parameter.
+                value = self.state.get_special_variable('0')
+            else:
+                index = int(var_name) - 1
+                value = self.state.positional_params[index] if 0 <= index < len(self.state.positional_params) else ''
         elif '[' in var_name and var_name.endswith(']'):
             # Array element with parameter expansion
             bracket_pos = var_name.find('[')
@@ -518,18 +529,71 @@ class VariableExpander:
 
         If *name* is a nameref, yield its target *name* (bash treats namerefs
         specially here). Otherwise treat the value of *name* as the name of
-        another variable and yield that variable's value (classic indirect
-        expansion). Resolution of the final lookup follows namerefs.
+        another parameter — a variable, array element (``a[1]``, ``a[@]``),
+        positional or special parameter — and yield that parameter's value.
         """
         var = self.state.scope_manager.get_variable_object(name)  # raw, no deref
-        if var is None:
-            return ''
-        if var.is_nameref:
+        if var is not None and var.is_nameref:
             return str(var.value) if var.value else ''
-        indirect_name = var.as_string()
-        if not indirect_name:
+        target = self._resolve_indirect_target(name)
+        if not target:
             return ''
-        return self.state.get_variable(indirect_name, '') or ''
+        return self.expand_variable('${' + target + '}')
+
+    def _resolve_indirect_target(self, source: str) -> str:
+        """Resolve the target parameter name for ``${!source}``.
+
+        Raises ExpansionError with bash's diagnostics: an unset source is
+        an "invalid indirect expansion" and a target that isn't a valid
+        parameter name is an "invalid variable name" (both exit status 1).
+        """
+        from ..core import ExpansionError
+
+        if source.isdigit():
+            idx = int(source) - 1
+            params = self.state.positional_params
+            if not (0 <= idx < len(params)):
+                # An out-of-range positional source is just an unset
+                # parameter (bash), not an indirection error.
+                return ''
+            target = params[idx]
+        elif len(source) == 1 and source in '#?$!-0':
+            target = self.state.get_special_variable(source) or None
+        elif '[' in source and source.endswith(']'):
+            target = self.expand_variable('${' + source + '}') or None
+        else:
+            var = self.state.scope_manager.get_variable_object(source)
+            target = None if var is None else var.as_string()
+
+        if target is None:
+            print(f"psh: {source}: invalid indirect expansion", file=sys.stderr)
+            self.state.last_exit_code = 1
+            raise ExpansionError(f"{source}: invalid indirect expansion",
+                                 exit_code=1)
+        if not self._valid_indirect_target(target):
+            print(f"psh: {target}: invalid variable name", file=sys.stderr)
+            self.state.last_exit_code = 1
+            raise ExpansionError(f"{target}: invalid variable name",
+                                 exit_code=1)
+        return target
+
+    @staticmethod
+    def _valid_indirect_target(target: str) -> bool:
+        """Whether text can serve as an indirection target parameter name."""
+        if not target:
+            return False
+        if target.isdigit():
+            return True
+        if len(target) == 1 and target in '@*#?$!-':
+            return True
+        name = target
+        if '[' in target:
+            if not target.endswith(']'):
+                return False
+            name = target[:target.find('[')]
+        if not name or not (name[0].isalpha() or name[0] == '_'):
+            return False
+        return all(c.isalnum() or c == '_' for c in name)
 
     def _expand_operand(self, operand: str) -> str:
         """Expand a conditional-operator operand (${x:-OPERAND}).

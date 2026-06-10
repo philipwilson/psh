@@ -39,7 +39,15 @@ class TestArithmeticVariableEvaluation:
     def test_negative_decimal_unaffected(self, shell, capsys):
         assert self._eval(shell, capsys, 'x=-7; echo $((x * 2))') == "-14"
 
-    def test_circular_reference_is_zero(self, shell, capsys):
-        # psh resolves a self-reference to 0 rather than erroring; this is
-        # pre-existing safe behavior (bash raises a recursion error).
-        assert self._eval(shell, capsys, 'a=a; echo $((a))') == "0"
+    def test_circular_reference_errors(self, shell, capsys):
+        # bash: "a: expression recursion level exceeded", exit status 1.
+        assert shell.run_command('a=a; echo $((a))') == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "recursion" in captured.err
+
+    def test_mutual_circular_reference_errors(self, shell, capsys):
+        assert shell.run_command('a=b; b=a; echo $((a))') == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "recursion" in captured.err

@@ -118,6 +118,12 @@ class WordBuilder:
         if len(inner) >= 2 and inner[-2] == '@' and inner[-1] in 'QEPAUuLakK':
             return ParameterExpansion(inner[:-2], '@' + inner[-1], '')
 
+        # Indirection of a special parameter: ${!#}, ${!?}, ${!$}, ${!-},
+        # ${!!} — checked before the operator scan, which would otherwise
+        # read '#'/'?'/'-' as an operator with parameter '!'.
+        if len(inner) == 2 and inner[0] == '!' and inner[1] in '#?$-!':
+            return ParameterExpansion(inner[1], '!', None)
+
         # Check for operators.
         # We find the operator that matches at the earliest position.
         # When two operators match at the same position, prefer the longer one
