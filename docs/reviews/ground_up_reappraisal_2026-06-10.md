@@ -1,5 +1,20 @@
 # psh Ground-Up Reappraisal — 2026-06-10 (v0.274.0)
 
+> **⚡ STATUS (2026-06-11, as of v0.287.0) — PROGRAM COMPLETE.**
+> All three tiers of §5 shipped across 13 releases:
+> **Tier A** v0.275.0–v0.278.0 (packaging truth, behavior bugs, test-tree
+> cleanup, meta-docs); **Tier B** v0.279.0–v0.284.0, GitHub PRs #10–#15
+> (variable.py decomposed, one pattern engine, PshError root, lexer made
+> linear, the fork→exec signal-loss race found and fixed, vi-mode arrows,
+> builtins consistency); **Tier C** v0.285.0–v0.287.0, PRs #16–#18
+> (module relocation + scope rename, parser pruning + CLAUDE.md
+> refreshes, mypy in CI + interactive unit tests). Findings below are
+> preserved as written at v0.274.0; several review claims were disproven
+> during implementation and are documented in the corresponding
+> CHANGELOG entries (lexer map-threading, ErrorContext.suggestions,
+> getopts parser, env builtin). Suite at close: 4,310 passed / 4,625
+> collected; mypy and ruff enforced in CI.
+
 A fresh, post-campaign assessment of the whole project, conducted immediately after
 the architecture/feature review campaign closed (37 releases, v0.238.0–v0.274.0,
 see `architecture_feature_review_2026-06-09.md`). That campaign was about
