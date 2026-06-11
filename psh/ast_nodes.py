@@ -241,11 +241,16 @@ class ArrayElementAssignment(ArrayAssignment):
     name: str
     index: Union[str, List['Token']]  # The index expression (str for compatibility, List[Token] for late binding)
     value: str  # The value to assign
-    # Legacy string metadata pending Word-AST migration (no parallel Word on
-    # this node). Consumed by formatter_visitor to re-quote the value.
+    # Legacy string metadata retained for tooling (formatter_visitor
+    # re-quotes the value from these).
     value_type: str = 'WORD'  # Type of the value
     value_quote_type: Optional[str] = None  # Quote type if any
     is_append: bool = False  # True for += assignment
+    # Word AST node for the value. When present, the executor expands it
+    # with bash assignment-value semantics (all expansions, no word
+    # splitting, no pathname expansion, tilde after '='/':'). None =
+    # legacy string fallback (combinator parser edge paths).
+    value_word: Optional[Word] = None
 
 
 class Command(ASTNode):

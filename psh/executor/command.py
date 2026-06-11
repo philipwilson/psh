@@ -531,82 +531,30 @@ class CommandExecutor:
     def _expand_assignment_word(self, word) -> str:
         """Expand an assignment value using Word AST parts.
 
-        Walks the Word's parts, expanding only what the quote context
-        allows (single-quoted text stays literal, double-quoted text
-        expands variables, unquoted text expands everything). Unquoted
-        tilde prefixes are expanded after the first ``=`` and after each
-        ``:`` (bash: ``P=a:~:b`` expands the middle segment), but a prefix
-        that runs into quoted/expansion text stays literal (``P=~"x"``).
+        Locates the ``=`` in the word's parts (the ``NAME=`` prefix), then
+        delegates the value portion to the shared bash assignment-value
+        policy in ExpansionManager.expand_assignment_value_word() — the
+        same policy array element assignments use.
         """
-        from ..ast_nodes import ExpansionPart, LiteralPart
-
-        result_parts = []
-        # Find the '=' in the parts and only expand the value portion
-        found_eq = False
-        value_len = 0   # value chars emitted so far
-        prev_char = ''  # last unquoted-literal char ('' after others)
-
-        def expand_value_tildes(text: str, trigger: bool, index: int) -> str:
-            parts_follow = index < len(word.parts) - 1
-            return self.expansion_manager._expand_assignment_value_tildes(
-                text, trigger, parts_follow)
+        from ..ast_nodes import LiteralPart, Word
 
         for index, part in enumerate(word.parts):
-            if not found_eq:
-                if isinstance(part, LiteralPart) and '=' in part.text:
-                    # This part contains the '=' — take everything after it
-                    eq_pos = part.text.index('=')
-                    value_text = part.text[eq_pos + 1:]
-                    if value_text:
-                        if part.quoted:
-                            prev_char = ''
-                        else:
-                            # Unquoted text directly after '='
-                            value_text = expand_value_tildes(
-                                value_text, True, index)
-                            prev_char = value_text[-1]
-                        value_len += len(value_text)
-                        result_parts.append(value_text)
-                    else:
-                        prev_char = '='
-                    found_eq = True
-                    continue
-                else:
-                    # Skip parts before '=' (the variable name portion)
-                    continue
+            if isinstance(part, LiteralPart) and '=' in part.text:
+                # This part contains the '=' — the value is everything
+                # after it plus all following parts
+                eq_pos = part.text.index('=')
+                value_text = part.text[eq_pos + 1:]
+                value_parts = []
+                if value_text:
+                    value_parts.append(LiteralPart(
+                        value_text, quoted=part.quoted,
+                        quote_char=part.quote_char))
+                value_parts.extend(word.parts[index + 1:])
+                return self.expansion_manager.expand_assignment_value_word(
+                    Word(parts=value_parts))
 
-            # Process value parts after '='
-            if isinstance(part, LiteralPart):
-                if part.quoted and part.quote_char == "'":
-                    # Single-quoted: completely literal
-                    result_parts.append(part.text)
-                    prev_char = ''
-                elif part.quoted and part.quote_char == '"':
-                    # Double-quoted: literal (expansions are separate ExpansionParts)
-                    # Process backslash escapes (\$, \\, \", \`)
-                    text = part.text
-                    if '\\' in text:
-                        text = self.expansion_manager.process_dquote_escapes(text)
-                    result_parts.append(text)
-                    prev_char = ''
-                else:
-                    # Unquoted literal: tilde after the assignment '=' (only
-                    # when no value text intervened) or after a ':'
-                    text = part.text
-                    trigger = (prev_char == ':'
-                               or (prev_char == '=' and value_len == 0))
-                    text = expand_value_tildes(text, trigger, index)
-                    if part.text:
-                        prev_char = part.text[-1]
-                    result_parts.append(text)
-                value_len += len(part.text)
-            elif isinstance(part, ExpansionPart):
-                expanded = self.expansion_manager.expand_expansion(part.expansion)
-                result_parts.append(expanded)
-                prev_char = ''
-                value_len += 1
-
-        return ''.join(result_parts)
+        # No '=' found in the word's literal parts
+        return ''
 
     def _print_xtrace(self, cmd_name: str, args: List[str]):
         """Print command trace if xtrace is enabled.

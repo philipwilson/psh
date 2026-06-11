@@ -635,10 +635,14 @@ class LiteralRecognizer(ContextualRecognizer):
         return True
 
     def _collect_array_assignment(self, input_text: str, pos: int) -> Tuple[str, int]:
-        """Collect the complete array assignment pattern including quotes.
+        """Collect an array assignment prefix: ``[index]=`` or ``[index]+=``.
 
-        Starting at a '[', collect until we find ']=', ']+=' or hit a terminator.
-        This is quote-aware and will include quoted keys.
+        Starting at a '[', collect until we find ']=', ']+=' or hit a
+        terminator. This is quote-aware and will include quoted keys.
+        Collection stops right after the ``=`` so the VALUE tokenizes
+        exactly like a scalar assignment value (``a[0]=$x`` becomes
+        WORD ``a[0]=`` + VARIABLE ``x``, mirroring ``v=$x``); plain
+        literal characters simply continue the same word.
 
         Returns (collected_string, new_position) or ("", pos) if not an array assignment.
         """
@@ -674,20 +678,18 @@ class LiteralRecognizer(ContextualRecognizer):
 
                 # Check if this closes the array index
                 if bracket_count == 0:
-                    # Look for = or +=
+                    # Look for = or += and stop right after it: the value
+                    # part is tokenized by the normal lexer machinery so
+                    # expansions/quotes become proper adjacent tokens.
                     if pos < len(input_text):
                         if input_text[pos] == '=':
                             result += '='
                             pos += 1
-                            value_part, value_pos = self._collect_assignment_value(input_text, pos)
-                            result += value_part
-                            return result, value_pos
+                            return result, pos
                         elif pos + 1 < len(input_text) and input_text[pos:pos+2] == '+=':
                             result += '+='
                             pos += 2
-                            value_part, value_pos = self._collect_assignment_value(input_text, pos)
-                            result += value_part
-                            return result, value_pos
+                            return result, pos
                     # Not an assignment, return what we have
                     return result, pos
             elif char in ' \t\n\r|&;(){}' and bracket_count == 0:
@@ -699,27 +701,6 @@ class LiteralRecognizer(ContextualRecognizer):
 
         # Reached end of input without finding assignment
         return "", start_pos
-
-    def _collect_assignment_value(self, input_text: str, pos: int) -> Tuple[str, int]:
-        """Collect the value part of an assignment until a terminator.
-
-        This handles quoted values and continues until it hits whitespace or operators.
-        """
-        from ..pure_helpers import QuoteState
-
-        result = ""
-        state = QuoteState()
-
-        while pos < len(input_text):
-            char = input_text[pos]
-            # Only an active (unquoted, non-quote/escape) char can terminate.
-            if state.consume(char):
-                if char in ' \t\n\r|&;(){}<>':
-                    break
-            result += char
-            pos += 1
-
-        return result, pos
 
     def _collect_extglob_parens(self, input_text: str, pos: int) -> Tuple[Optional[str], int]:
         """Collect balanced parenthesized group for extglob patterns.

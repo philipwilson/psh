@@ -153,7 +153,8 @@ class ExpansionManager:
         return args
 
     def expand_word_to_fields(self, word, *,
-                              assignment_tilde: bool = False) -> List[str]:
+                              assignment_tilde: bool = False,
+                              suppress_split_glob: bool = False) -> List[str]:
         """Expand a Word into zero or more fields.
 
         Runs the same pipeline as command arguments — tilde, variable and
@@ -166,11 +167,16 @@ class ExpansionManager:
             assignment_tilde: Expand tilde after ``=``/``:`` in words shaped
                 like assignments (``for i in P=~/x`` does in bash; array
                 initializer elements like ``a=(P=~/x)`` do NOT).
+            suppress_split_glob: Skip IFS word splitting and pathname
+                expansion (bash assignment-context words: associative array
+                initializer elements like ``h=($x)`` stay whole). Multi-field
+                expansions ("$@", "${a[@]}") still produce multiple fields.
 
         Returns a list: an unquoted expansion of an empty/unset value
         contributes zero fields; a quoted empty string contributes one.
         """
-        expanded = self._expand_word(word, assignment_tilde=assignment_tilde)
+        expanded = self._expand_word(word, assignment_tilde=assignment_tilde,
+                                     declaration_assignment=suppress_split_glob)
         if isinstance(expanded, list):
             return expanded
         return [expanded]
@@ -408,6 +414,78 @@ class ExpansionManager:
             return globbed
 
         return result
+
+    def expand_assignment_value_word(self, word) -> str:
+        """Expand a Word holding an assignment VALUE (the text after ``=``).
+
+        Implements bash assignment-value semantics, shared by scalar
+        assignments (``v=...``, via CommandExecutor._expand_assignment_word)
+        and array element assignments (``a[i]=...``, ``a=([i]=...)``):
+
+        - all expansions are performed (parameter, command, arithmetic,
+          process substitution),
+        - NO word splitting and NO pathname expansion of the result,
+        - unquoted tilde prefixes expand at the start of the value and
+          after each ``:`` (``P=a:~:b``), but a prefix running into
+          quoted/expansion text stays literal (``P=~"x"``),
+        - quoted parts keep their text literal (with double-quote
+          backslash-escape processing).
+        """
+        from ..ast_nodes import (
+            ExpansionPart,
+            LiteralPart,
+            ProcessSubstitution,
+            Word,
+        )
+        if not isinstance(word, Word):
+            return str(word)
+
+        result_parts = []
+        value_len = 0   # value chars seen so far (pre-expansion)
+        prev_char = '='  # last unquoted-literal char ('' after others)
+
+        for index, part in enumerate(word.parts):
+            if isinstance(part, LiteralPart):
+                if part.quoted and part.quote_char in ("'", "$'"):
+                    # Single-quoted / ANSI-C: completely literal (the lexer
+                    # already processed $'...' escapes)
+                    result_parts.append(part.text)
+                    prev_char = ''
+                elif part.quoted and part.quote_char == '"':
+                    # Double-quoted: literal text (expansions are separate
+                    # ExpansionParts); process \$ \\ \" \` escapes
+                    text = part.text
+                    if '\\' in text:
+                        text = self.process_dquote_escapes(text)
+                    result_parts.append(text)
+                    prev_char = ''
+                else:
+                    # Unquoted literal: tilde directly after the assignment
+                    # '=' (only when no value text intervened) or after a ':'
+                    text = part.text
+                    trigger = (prev_char == ':'
+                               or (prev_char == '=' and value_len == 0))
+                    parts_follow = index < len(word.parts) - 1
+                    text = self._expand_assignment_value_tildes(
+                        text, trigger, parts_follow)
+                    # Process backslash escapes (v=a\ b assigns "a b")
+                    if '\\' in text:
+                        text, _ = self._process_unquoted_escapes(text)
+                    if part.text:
+                        prev_char = part.text[-1]
+                    result_parts.append(text)
+                value_len += len(part.text)
+            elif isinstance(part, ExpansionPart):
+                if isinstance(part.expansion, ProcessSubstitution):
+                    path = self.shell.io_manager.create_process_substitution_for_expansion(
+                        part.expansion.direction, part.expansion.command)
+                    result_parts.append(path)
+                else:
+                    result_parts.append(self.expand_expansion(part.expansion))
+                prev_char = ''
+                value_len += 1
+
+        return ''.join(result_parts)
 
     def _expand_assignment_value_tildes(self, text: str, first_trigger: bool,
                                         parts_follow: bool) -> str:

@@ -20,11 +20,32 @@ All tests run psh in a subprocess (process/fd lifecycle of the whole
 shell), matching test_process_sub_cleanup.py.
 """
 
+import functools
 import re
 import subprocess
 import sys
 
 import pytest
+
+
+@functools.lru_cache(maxsize=1)
+def _os_supports_affixed_write_side() -> bool:
+    """Whether this OS can open the ``/.``-prefixed ``/./dev/fd/N`` shape
+    for WRITING.
+
+    On some macOS configurations opening the write side of a process
+    substitution through a ``/.``-prefixed path fails in bash itself with
+    "Operation not permitted" — the behavior under test is then OS-level
+    untestable, so the dependent test skips instead of failing.
+    """
+    try:
+        probe = subprocess.run(
+            ['bash', '-c',
+             'echo data | tee /.>(cat >/dev/null) >/dev/null'],
+            capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return probe.returncode == 0 and not probe.stderr.strip()
 
 
 def run_psh(cmd: str, timeout: float = 15.0) -> subprocess.CompletedProcess:
@@ -80,6 +101,9 @@ class TestEmbeddedProcessSubstitution:
     def test_affixed_write_side_is_live(self, tmp_path):
         """tee /.>(cat > file) — the embedded write-side path is openable
         and feeds the child (bash-verified)."""
+        if not _os_supports_affixed_write_side():
+            pytest.skip("OS forbids opening /./dev/fd/N for writing "
+                        "(bash fails this path shape here too)")
         out = tmp_path / 'embedded_out.txt'
         result = run_psh(
             f'echo data | tee /.>(cat > {out}) >/dev/null; sleep 0.3')
