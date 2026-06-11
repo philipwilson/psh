@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.292.0 (2026-06-11) - io_redirect: exec single-open, noclobber, dual-universe docs (reappraisal #2 Tier B, 2/6)
+- Triple-open in apply_permanent_redirections fixed: `exec &>file` (and
+  `>`, `>>`, `>|`, `2>file`) opened up to three independent file objects
+  with separate offsets, so builtin and external output overwrote each
+  other (`exec >f; echo b1; /bin/echo e1; echo b2` lost b1). All output
+  branches now do a single fd-level open + dup2, then rebind sys.stdout/
+  stderr via os.fdopen(os.dup(fd), buffering=1) — one shared open file
+  description, line-buffered for bash-like interleaving. 17 probes match.
+- noclobber now blocks `>` only for existing regular files (and dangling
+  symlinks, matching bash's O_EXCL EEXIST); devices and FIFOs are
+  exempt — `set -o noclobber; echo x 2>/dev/null` works again.
+  Rule verified by probe across all four enforcement paths.
+- The builtin-redirection "dual universe" (Python stream swap for fds
+  1/2, real dup2 for fd>=3) was deliberately KEPT — unification is not
+  viable because builtin output may target non-fd-backed streams
+  (StringIO under test capture) — but the 120-line function is now a
+  ~25-line dispatcher over five named, docstringed helpers with a
+  module-level design explanation; first-touch-wins backups extracted
+  into an explicit _BuiltinStreamSnapshot. Rollback semantics unchanged.
+- io_redirect/CLAUDE.md refreshed: expansion-in-targets table corrected,
+  real debug output, pitfall #7 rewritten for the v0.288 procsub scope
+  mechanism, new two-universes and exec single-open sections.
+- 31 new tests (15 subprocess exec tests, 10 noclobber targets,
+  6 predicate units).
+- Suite: 4,499 passed / 4,769 collected; ruff + mypy clean.
+
 ## 0.291.0 (2026-06-11) - alias/unalias rewrite + printf \e (reappraisal #2 Tier B, 1/6)
 - M3: aliases.py rewritten to the builtins conventions (the one file the
   v0.284 sweep never reached). `alias -p` supported; invalid options now

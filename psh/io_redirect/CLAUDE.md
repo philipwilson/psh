@@ -135,19 +135,47 @@ def restore_redirections(self, saved_fds):
 4. Parent waits for child
 ```
 
-### For Builtin Commands
+### For Builtin Commands — the two redirection universes
+
+Builtins run *in-process* and write through Python stream objects
+(`sys.stdout`/`shell.stdout`), which may not be backed by fd 1 at all
+(capture buffers in tests); external children inherit real fds. So
+`setup_builtin_redirections` dispatches each redirect to the right
+universe — the full design rationale is the module docstring of
+`manager.py` (read it before touching this code):
+
+| Redirect | Universe | Helper |
+|----------|----------|--------|
+| `>`, `>>`, `>|`, `&>` to fd 1/2 | stream swap | `_builtin_redirect_output_file`, `_builtin_redirect_combined` |
+| `2>&1`, `1>&2` | stream swap (`sys.stderr = sys.stdout`) | `_builtin_redirect_dup` |
+| `<`, `<>`, heredoc, here-string | BOTH (stream for the builtin, dup2 of fd 0 for children it spawns) | `_builtin_redirect_stdin` |
+| fd >= 3, other `n>&m`, `>&-` | fd level | `_builtin_redirect_fd_level` |
 
 ```
 1. setup_builtin_redirections()
-   - Backup sys.stdin/stdout/stderr
-   - Redirect Python file objects
-   - Backup file descriptor 0 if needed
+   - _BuiltinStreamSnapshot records pre-redirect streams (first-touch-wins)
+     and a dup of fd 0; opened files accumulate in _opened_streams
+   - Transactional: a failure part-way through rolls everything back
 2. Execute builtin
 3. restore_builtin_redirections()
-   - Close redirected files
-   - Restore original file objects
-   - Restore fd 0 if backed up
+   - Restore fd-level saves (_saved_fds_list) first
+   - Restore the snapshot's original stream objects
+   - Close exactly the files setup opened (never whatever happens to be
+     in sys.stdout — after `cmd 2>&1` that IS the shell's real stdout)
+   - dup2 the saved fd 0 back
 ```
+
+### For `exec` (Permanent Redirections)
+
+`apply_permanent_redirections` (FileRedirector) does the fd-level redirect
+first, then rebinds the Python-level stream onto the **same open file
+description** via `_rebind_output_stream` → `_stream_sharing_fd`
+(`os.fdopen(os.dup(fd), 'w', buffering=1)`). Never re-`open()` the target
+independently: a second open has its own offset (and re-truncates in 'w'
+mode), so builtin writes and external children would overwrite each other.
+`os.dup()` shares the description (offset and O_APPEND), giving both
+universes one file position; line buffering makes builtin output interleave
+with externals like bash's unbuffered writes.
 
 ## Common Tasks
 
@@ -168,8 +196,9 @@ methods (`apply_redirections`, `apply_permanent_redirections`,
 | `_redirect_combined(target, redirect)` | `&>`/`&>>` — open + dup2(fd,1) + dup2(1,2) |
 | `_redirect_dup_fd(redirect)` | `>&`/`<&` — validate + dup2 or close |
 | `_redirect_close_fd(redirect)` | `>&-`/`<&-` — close fd |
-| `_expand_redirect_target(redirect)` | Variable + tilde expansion for `<`/`>`/`>>`/`<>`/`>|`/combined |
-| `_noclobber_blocks(target)` | Predicate: noclobber set AND target exists (shared by all dispatchers; response differs: raise vs `os._exit`) |
+| `_expand_redirect_target(redirect)` | Variable + tilde expansion for `<`/`>`/`>>`/`<>`/`>|`/`&>`/`&>>` |
+| `_noclobber_blocks(target)` | Predicate: noclobber set AND target is an existing regular file or dangling symlink (shared by all dispatchers; response differs: raise vs `os._exit`) |
+| `_stream_sharing_fd(fd)` / `_rebind_output_stream(fd)` | `exec >file` — Python stream sharing the redirected fd's open file description |
 | `_check_noclobber(target)` | Raises OSError if `_noclobber_blocks(target)` |
 | `_dup_fd_valid(dup_fd)` | Predicate: `dup_fd` is an open fd (for `>&`/`<&` validation) |
 
@@ -189,8 +218,14 @@ function (not a method) that wraps `os.dup2()` + `os.close()` safely.
 
 Use the `_check_noclobber` helper on `FileRedirector`:
 ```python
-self._check_noclobber(target)  # Raises OSError if noclobber set and file exists
+self._check_noclobber(target)  # Raises OSError if _noclobber_blocks(target)
 ```
+
+The bash rule (probe-verified): noclobber blocks `>` only when the target
+is an existing **regular** file (directly or through a symlink) or a
+dangling symlink. Non-regular targets — `/dev/null`, devices, FIFOs — are
+always writable, because opening them for write destroys nothing. `>|` and
+`>>` are never blocked.
 
 Exception: child-process noclobber in `setup_child_redirections` uses
 `os.write(2, ...)` + `os._exit(1)` instead of raising.
@@ -257,8 +292,10 @@ target = self._expand_redirect_target(redirect)
 target = self.file_redirector._expand_redirect_target(redirect)
 ```
 
-This expands variables (unless single-quoted) and tilde for `<`, `>`, `>>`
-redirect types.
+This expands variables (unless single-quoted) and tilde for all
+file-target redirect types: `<`, `>`, `>>`, `<>`, `>|`, and the combined
+forms `&>`/`&>>` (see the `redirect.type`/`redirect.combined` guard at the
+top of `_expand_redirect_target` in `file_redirect.py`).
 
 ## Testing
 
@@ -287,19 +324,29 @@ python -m psh --debug-exec -c "echo hello > /tmp/test.txt"
 
 6. **noclobber Check**: Must check before opening file, not after.
 
-7. **Process Substitution PIDs**: Must wait for child processes to prevent zombies.
+7. **Process Substitution Ownership**: Substitutions are owned by an
+   enclosing `process_sub_scope()` (zombie/fd leak fixed in v0.288). The
+   scope records marks into `active_fds`/`active_pids` on entry; on exit it
+   closes the parent-side fds registered inside it and reaps finished
+   children with `WNOHANG` (still-running children are parked in
+   `pending_pids` and re-polled at later scope exits). Scopes nest, so a
+   command inside a redirected loop body cleans up only its own
+   substitutions. Do NOT clean up in `restore_builtin_redirections` — a
+   builtin inside a function called with a `<(...)` argument must not close
+   the caller's still-needed fd.
 
 ## Debug Options
 
 ```bash
-python -m psh --debug-exec -c "cat < input.txt > output.txt"
+python -m psh --debug-exec -c "echo hello > output.txt"
 ```
 
-Output example:
+Output example (IOManager lines appear only for builtins — external
+commands redirect after fork, in the child):
 ```
 DEBUG IOManager: setup_builtin_redirections called
-DEBUG IOManager: Redirects: [('<', 'input.txt', None), ('>', 'output.txt', None)]
-DEBUG IOManager: Redirected stdout to file 'output.txt'
+DEBUG IOManager: Redirects: [('>', 'output.txt', None)]
+DEBUG IOManager: redirected stdout to 'output.txt' (mode 'w'); sys.stdout is now <_io.TextIOWrapper name='output.txt' mode='w' encoding='UTF-8'>
 ```
 
 ## Integration Points

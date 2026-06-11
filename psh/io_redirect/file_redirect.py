@@ -2,6 +2,8 @@
 import copy
 import fcntl
 import os
+import stat
+import sys
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ..ast_nodes import Redirect
@@ -29,12 +31,26 @@ class FileRedirector:
         self._saved_stdin = None
 
     def _noclobber_blocks(self, target) -> bool:
-        """True when noclobber is set and the target already exists.
+        """True when noclobber forbids `>` to this target (bash semantics).
+
+        noclobber protects only existing REGULAR files: `> /dev/null` and
+        writes to FIFOs or other device files are always allowed, because
+        opening a non-regular file for write destroys nothing. A dangling
+        symlink also blocks — bash opens with O_CREAT|O_EXCL when the stat
+        target is missing, and the link itself makes that open fail EEXIST.
 
         Shared predicate for every redirect path; the response differs (raise in
         the parent, os._exit in a forked child), but the condition is one place.
         """
-        return self.state.options.get('noclobber', False) and os.path.exists(target)
+        if not self.state.options.get('noclobber', False):
+            return False
+        try:
+            st = os.stat(target)  # follows symlinks, like bash's stat()
+        except OSError:
+            # Target doesn't stat: nonexistent (allowed — the redirect will
+            # create it) unless it's a dangling symlink (blocked, see above).
+            return os.path.islink(target)
+        return stat.S_ISREG(st.st_mode)
 
     def _dup_fd_valid(self, dup_fd: int) -> bool:
         """True when dup_fd is currently an open file descriptor (for >&/<&)."""
@@ -310,9 +326,53 @@ class FileRedirector:
             self._saved_stderr = None
             self._saved_stdin = None
 
+    def _stream_sharing_fd(self, target_fd: int):
+        """Build a Python text stream that shares target_fd's open file description.
+
+        Used after a *permanent* fd-level redirect (os.open + dup2): builtins
+        write through the Python stream (sys.stdout/state.stdout) while
+        external children inherit the raw fd, so both views MUST share one
+        file offset. A second independent ``open(target, mode)`` would have
+        its own offset (and re-truncate in 'w' mode), making the two writers
+        overwrite each other. ``os.dup()`` shares the open file description
+        (offset and O_APPEND), so dup + fdopen gives both universes a single
+        file position. Line-buffered so builtin output reaches the file as
+        each line completes, interleaving with external commands like bash's
+        unbuffered writes. The dup also means the stream object never owns
+        target_fd itself — replacing it later (a second ``exec >file``)
+        closes only the dup.
+        """
+        return os.fdopen(os.dup(target_fd), 'w', buffering=1)
+
+    def _rebind_output_stream(self, target_fd: int):
+        """Point the shell's Python-level stdout/stderr at a redirected fd.
+
+        Only fds 1 and 2 have Python stream counterparts; for any other fd
+        (``exec 3>file``) the descriptor-level redirect is all there is.
+        """
+        if target_fd == 1:
+            sys.stdout = self._stream_sharing_fd(1)
+            self.shell.stdout = sys.stdout
+            self.state.stdout = sys.stdout
+        elif target_fd == 2:
+            sys.stderr = self._stream_sharing_fd(2)
+            self.shell.stderr = sys.stderr
+            self.state.stderr = sys.stderr
+
     def apply_permanent_redirections(self, redirects: List[Redirect]):
-        """Apply redirections permanently (for exec builtin)."""
-        import sys
+        """Apply redirections permanently (for exec builtin).
+
+        Output branches do the fd-level redirect first, then rebind the
+        Python-level stream onto the SAME open file description via
+        _rebind_output_stream() — never a second independent open().
+        """
+        # Pending buffered output belongs to the OLD destination; flush it
+        # before the fd-level dup2 silently re-routes it to the new file.
+        for stream in (self.state.stdout, self.state.stderr, sys.stdout, sys.stderr):
+            try:
+                stream.flush()
+            except (OSError, ValueError):
+                pass
 
         for redirect in redirects:
             redirect = self._resolved(redirect)
@@ -322,15 +382,13 @@ class FileRedirector:
                 target, procsub_fd = self._handle_process_sub_redirect(target, redirect)
 
             if redirect.combined:
-                # &> or &>> — redirect both stdout and stderr permanently
+                # &> or &>> — redirect both stdout and stderr permanently.
+                # After _redirect_combined, fd 2 is a dup of fd 1, so the
+                # two rebound streams share one offset with each other and
+                # with external children.
                 self._redirect_combined(target, redirect)
-                mode = 'a' if redirect.type.endswith('>>') else 'w'
-                sys.stdout = open(target, mode)
-                self.shell.stdout = sys.stdout
-                self.state.stdout = sys.stdout
-                sys.stderr = open(target, mode)
-                self.shell.stderr = sys.stderr
-                self.state.stderr = sys.stderr
+                self._rebind_output_stream(1)
+                self._rebind_output_stream(2)
             elif redirect.type == '<':
                 target_fd = self._redirect_input_from_file(target, redirect)
                 if target_fd == 0:
@@ -352,34 +410,14 @@ class FileRedirector:
                 self.state.stdin = sys.stdin
             elif redirect.type == '>|':
                 target_fd = self._redirect_clobber(target, redirect)
-                if target_fd == 1:
-                    sys.stdout = open(target, 'w')
-                    self.shell.stdout = sys.stdout
-                    self.state.stdout = sys.stdout
-                elif target_fd == 2:
-                    sys.stderr = open(target, 'w')
-                    self.shell.stderr = sys.stderr
-                    self.state.stderr = sys.stderr
+                self._rebind_output_stream(target_fd)
             elif redirect.type in ('>', '>>'):
                 target_fd = self._redirect_output_to_file(target, redirect)
-                mode = 'w' if redirect.type == '>' else 'a'
-                if target_fd == 1:
-                    sys.stdout = open(target, mode)
-                    self.shell.stdout = sys.stdout
-                    self.state.stdout = sys.stdout
-                elif target_fd == 2:
-                    sys.stderr = open(target, mode)
-                    self.shell.stderr = sys.stderr
-                    self.state.stderr = sys.stderr
+                self._rebind_output_stream(target_fd)
             elif redirect.type in ('>&', '<&'):
                 self._redirect_dup_fd(redirect)
                 if redirect.fd is not None and redirect.dup_fd is not None:
-                    if redirect.fd == 1:
-                        self.shell.stdout = os.fdopen(1, 'w')
-                        self.state.stdout = self.shell.stdout
-                    elif redirect.fd == 2:
-                        self.shell.stderr = os.fdopen(2, 'w')
-                        self.state.stderr = self.shell.stderr
+                    self._rebind_output_stream(redirect.fd)
             elif redirect.type in ('>&-', '<&-'):
                 self._redirect_close_fd(redirect)
 
