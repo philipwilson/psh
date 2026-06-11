@@ -63,9 +63,13 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 if result is not None:
                     return result
 
-            # ${arr[index]} — array subscript (exclude case modification)
-            if ('[' in var_content and var_content.endswith(']') and
-                not any(op in var_content for op in ['^^', ',,', '^', ','])):
+            # ${arr[index]} — array subscript. The structural check (a valid
+            # array name followed by one balanced [...] spanning to the end)
+            # lets subscripts containing `,`/`^` through (assoc keys like
+            # a[x,y], arithmetic comma in arr[i,2]) while case-modification
+            # forms like ${v^^[a-m]} or ${a[x]^^} still fall through to the
+            # operator path below.
+            if self._is_plain_subscript(var_content):
                 result = self._expand_array_subscript(var_content)
                 if result is not None:
                     return result
@@ -90,6 +94,33 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             var_name = var_expr
 
         return self._expand_special_variable(var_name)
+
+    @staticmethod
+    def _is_plain_subscript(var_content: str) -> bool:
+        """True if var_content is exactly ``name[subscript]``.
+
+        ``name`` must be a valid variable identifier and the bracket that
+        closes the first ``[`` must be the final character (nested brackets
+        from arithmetic subscripts like ``arr[arr[0]+1]`` are balanced).
+        """
+        bracket = var_content.find('[')
+        if bracket <= 0 or not var_content.endswith(']'):
+            return False
+        name = var_content[:bracket]
+        if not (name[0].isalpha() or name[0] == '_'):
+            return False
+        if not all(c.isalnum() or c == '_' for c in name):
+            return False
+        depth = 0
+        for i in range(bracket, len(var_content)):
+            char = var_content[i]
+            if char == '[':
+                depth += 1
+            elif char == ']':
+                depth -= 1
+                if depth == 0:
+                    return i == len(var_content) - 1
+        return False
 
     def _expand_special_variable(self, var_name: str) -> str:
         """Expand special variables ($?, $$, $!, etc.) and regular variables."""

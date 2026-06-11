@@ -98,10 +98,9 @@ def test_command_error_handling(shell):
     result = shell.run_command('command -xyz echo')
     # May or may not be implemented - just ensure no crash
 
-    # Test with no arguments
+    # bash: bare `command` succeeds silently (verified: rc 0)
     result = shell.run_command('command')
-    # Should fail or show usage
-    assert result != 0
+    assert result == 0
 
 
 def test_command_search_order(shell):
@@ -133,3 +132,117 @@ def test_command_help(shell):
     """Test command builtin help."""
     shell.run_command('command --help')
     # May succeed or fail depending on implementation
+
+
+class TestCommandVLookup:
+    """`command -v` / `command -V` lookup (bash-pinned).
+
+    Regression: psh only checked builtins and PATH, so functions, aliases,
+    and keywords were reported "not found" (rc 1), and the not-found
+    message was hardcoded as `bash: type: ...`.
+
+    bash lookup order (like `type`): alias > keyword > function > builtin
+    > PATH. rc is 0 if at least one name was found, 1 otherwise.
+    """
+
+    def test_v_function_prints_name(self, captured_shell):
+        result = captured_shell.run_command('f(){ :; }; command -v f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "f\n"
+
+    def test_V_function_prints_definition(self, captured_shell):
+        result = captured_shell.run_command('f(){ echo hi; }; command -V f')
+        assert result == 0
+        out = captured_shell.get_stdout()
+        assert out.startswith("f is a function\n")
+        assert "echo hi" in out
+
+    def test_v_alias_prints_definition_line(self, captured_shell):
+        result = captured_shell.run_command(
+            'alias x="echo hello"; command -v x')
+        assert result == 0
+        assert captured_shell.get_stdout() == "alias x='echo hello'\n"
+
+    def test_V_alias(self, captured_shell):
+        result = captured_shell.run_command(
+            'alias x="echo hello"; command -V x')
+        assert result == 0
+        assert captured_shell.get_stdout() == "x is aliased to `echo hello'\n"
+
+    def test_alias_beats_function(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ :; }; alias f="echo aliased"; command -v f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "alias f='echo aliased'\n"
+
+    def test_v_builtin_prints_name(self, captured_shell):
+        result = captured_shell.run_command('command -v true')
+        assert result == 0
+        assert captured_shell.get_stdout() == "true\n"
+
+    def test_V_builtin(self, captured_shell):
+        result = captured_shell.run_command('command -V true')
+        assert result == 0
+        assert captured_shell.get_stdout() == "true is a shell builtin\n"
+
+    def test_v_keyword(self, captured_shell):
+        result = captured_shell.run_command('command -v if')
+        assert result == 0
+        assert captured_shell.get_stdout() == "if\n"
+
+    def test_V_keyword(self, captured_shell):
+        result = captured_shell.run_command('command -V if')
+        assert result == 0
+        assert captured_shell.get_stdout() == "if is a shell keyword\n"
+
+    def test_v_external_prints_path(self, captured_shell):
+        result = captured_shell.run_command('command -v ls')
+        assert result == 0
+        out = captured_shell.get_stdout()
+        assert out.startswith('/') and out.endswith('/ls\n')
+
+    def test_V_external(self, captured_shell):
+        result = captured_shell.run_command('command -V ls')
+        assert result == 0
+        out = captured_shell.get_stdout()
+        assert out.startswith('ls is /') and out.endswith('/ls\n')
+
+    def test_v_slash_path(self, captured_shell):
+        result = captured_shell.run_command('command -v /bin/ls')
+        assert result == 0
+        assert captured_shell.get_stdout() == "/bin/ls\n"
+
+    def test_v_not_found_silent_rc1(self, captured_shell):
+        result = captured_shell.run_command('command -v nosuchcmd_zz123')
+        assert result == 1
+        assert captured_shell.get_stdout() == ""
+        assert captured_shell.get_stderr() == ""
+
+    def test_V_not_found_message_rc1(self, captured_shell):
+        result = captured_shell.run_command('command -V nosuchcmd_zz123')
+        assert result == 1
+        assert captured_shell.get_stdout() == ""
+        err = captured_shell.get_stderr()
+        assert 'command: nosuchcmd_zz123: not found' in err
+        assert 'bash:' not in err
+        assert 'type:' not in err
+
+    def test_v_multiple_names_rc0_if_any_found(self, captured_shell):
+        result = captured_shell.run_command(
+            'command -v nosuch_zz1 true nosuch_zz2')
+        assert result == 0
+        assert captured_shell.get_stdout() == "true\n"
+
+    def test_v_multiple_names_all_found(self, captured_shell):
+        result = captured_shell.run_command('f(){ :; }; command -v f true')
+        assert result == 0
+        assert captured_shell.get_stdout() == "f\ntrue\n"
+
+    def test_v_multiple_names_rc1_if_none_found(self, captured_shell):
+        result = captured_shell.run_command('command -v nosuch_zz1 nosuch_zz2')
+        assert result == 1
+
+    def test_v_no_names_rc0(self, captured_shell):
+        result = captured_shell.run_command('command -v')
+        assert result == 0
+        assert captured_shell.get_stdout() == ""

@@ -82,6 +82,47 @@ class TestSetShortClusters:
         assert captured_shell.state.options['errexit'] is False
 
 
+class TestRemovedParserOptions:
+    """The four dead parser options (validate-context, validate-semantics,
+    analyze-semantics, enhanced-error-recovery) had zero consumers and were
+    removed. Like bash with any unknown -o name, they must now be rejected
+    with rc 2 (verified: `bash -c 'set -o validate-context'` → rc 2,
+    "invalid option name").
+    """
+
+    DEAD_OPTIONS = ['validate-context', 'validate-semantics',
+                    'analyze-semantics', 'enhanced-error-recovery']
+
+    def test_dead_options_rejected_rc2(self, captured_shell):
+        for opt in self.DEAD_OPTIONS:
+            result = captured_shell.run_command(f'set -o {opt}')
+            assert result == 2, opt
+            assert 'invalid option name' in captured_shell.get_stderr()
+            captured_shell.clear_output()
+
+    def test_dead_options_plus_o_rejected_rc2(self, captured_shell):
+        for opt in self.DEAD_OPTIONS:
+            result = captured_shell.run_command(f'set +o {opt}')
+            assert result == 2, opt
+            captured_shell.clear_output()
+
+    def test_dead_options_not_listed(self, captured_shell):
+        for listing in ('set -o', 'set +o'):
+            result = captured_shell.run_command(listing)
+            assert result == 0
+            out = captured_shell.get_stdout()
+            for opt in self.DEAD_OPTIONS:
+                assert opt not in out, (listing, opt)
+            captured_shell.clear_output()
+
+    def test_dead_options_not_in_help(self, captured_shell):
+        result = captured_shell.run_command('help set')
+        assert result == 0
+        out = captured_shell.get_stdout()
+        for opt in self.DEAD_OPTIONS:
+            assert opt not in out, opt
+
+
 class TestSetDisplay:
     def test_bare_set_has_no_edit_mode_line(self, captured_shell):
         """Regression: bare `set` printed a non-bash edit_mode= line."""

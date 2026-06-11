@@ -42,6 +42,22 @@ def exec_external(full_args: List[str], env: dict) -> None:
                   env)
 
 
+def report_exec_failure(cmd_name: str, exc: OSError) -> int:
+    """Report a failed exec on fd 2 and return the exit status.
+
+    Shared by the in-pipeline (inline exec) and fork execution paths so
+    both produce the same bash-style diagnostics: "command not found"
+    with status 127 for a missing command, the OS error with status 126
+    otherwise (e.g. permission denied). Writes at the fd level — both
+    callers run in a forked child.
+    """
+    if isinstance(exc, FileNotFoundError):
+        os.write(2, f"psh: {cmd_name}: command not found\n".encode('utf-8'))
+        return 127
+    os.write(2, f"psh: {cmd_name}: {exc}\n".encode('utf-8'))
+    return 126
+
+
 def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
                             shell: 'Shell') -> int:
     """Run a builtin, converting unexpected exceptions to exit status 1.
@@ -388,8 +404,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
 
                 exec_external(full_args, shell.env)
             except OSError as e:
-                print(f"psh: {full_args[0]}: {e}", file=sys.stderr)
-                os._exit(127)
+                os._exit(report_exec_failure(full_args[0], e))
 
         # Set terminal title to show running command
         if not background and not context.in_pipeline and shell.state.options.get('interactive'):
@@ -423,16 +438,8 @@ class ExternalExecutionStrategy(ExecutionStrategy):
 
             try:
                 exec_external(full_args, shell.env)
-            except FileNotFoundError:
-                # Write to stderr file descriptor
-                error_msg = f"psh: {full_args[0]}: command not found\n"
-                os.write(2, error_msg.encode('utf-8'))
-                return 127
             except OSError as e:
-                # Write to stderr file descriptor
-                error_msg = f"psh: {full_args[0]}: {e}\n"
-                os.write(2, error_msg.encode('utf-8'))
-                return 126
+                return report_exec_failure(full_args[0], e)
 
             # Not reached if exec succeeds
             return 127
