@@ -14,11 +14,13 @@ from ...ast_nodes import (
     ArrayInitialization,
     BinaryTestExpression,
     EnhancedTestStatement,
+    LiteralPart,
     NegatedTestExpression,
     ProcessSubstitution,
     # Test expressions
     TestExpression,
     UnaryTestExpression,
+    Word,
 )
 from ...lexer.token_types import Token
 from ..config import ParserConfig
@@ -409,6 +411,42 @@ class SpecialCommandParsers:
 
         return Parser(parse_array_initialization)
 
+    #: Token types that can contribute parts to an element-assignment value
+    _VALUE_WORD_TOKENS = frozenset({
+        'WORD', 'STRING', 'VARIABLE', 'COMMAND_SUB', 'COMMAND_SUB_BACKTICK',
+        'PARAM_EXPANSION', 'ARITH_EXPANSION'})
+
+    def _collect_element_value_word(self, tokens: List[Token], pos: int,
+                                    tail: str, consume_first: bool = False):
+        """Collect an array element-assignment value as a Word.
+
+        ``tail`` is literal value text from the same token as ``name[idx]=``.
+        The lexer splits expansions and quoted segments into *adjacent*
+        tokens; those are merged here into a single value Word. When
+        ``consume_first`` is True the first word-like token is consumed
+        even if not adjacent (``arr[0]=`` followed by a separate value).
+
+        Returns (value_word, legacy_value, value_type, quote_type, new_pos).
+        """
+        parts = []
+        if tail:
+            parts.append(LiteralPart(tail))
+        allow_nonadjacent = not tail and consume_first
+        while pos < len(tokens):
+            token = tokens[pos]
+            if token.type.name not in self._VALUE_WORD_TOKENS:
+                break
+            if not (allow_nonadjacent
+                    or getattr(token, 'adjacent_to_previous', False)):
+                break
+            allow_nonadjacent = False
+            parts.extend(self.expansions.build_word_from_token(token).parts)
+            pos += 1
+        word = Word(parts=parts)
+        value = ''.join(str(p) for p in word.parts)
+        value_type = 'STRING' if word.is_quoted else 'WORD'
+        return word, value, value_type, word.effective_quote_char, pos
+
     def _build_array_element_assignment(self) -> Parser[ArrayElementAssignment]:
         """Build parser for array element assignment: arr[index]=value syntax."""
         def parse_array_element_assignment(tokens: List[Token], pos: int) -> ParseResult[ArrayElementAssignment]:
@@ -442,13 +480,13 @@ class SpecialCommandParsers:
                 array_name = value[:lbracket_pos]
                 index_str = value[lbracket_pos + 1:rbracket_pos]
                 if is_append:
-                    assigned_value = value[equals_pos + 2:]
+                    tail = value[equals_pos + 2:]
                 else:
-                    assigned_value = value[equals_pos + 1:]
+                    tail = value[equals_pos + 1:]
 
-                # Determine value type (simplified)
-                value_type = 'WORD'
-                value_quote_type = None
+                # Merge any adjacent continuation tokens into the value
+                value_word, assigned_value, value_type, value_quote_type, pos = \
+                    self._collect_element_value_word(tokens, pos, tail)
 
                 return ParseResult(
                     success=True,
@@ -458,7 +496,8 @@ class SpecialCommandParsers:
                         value=assigned_value,
                         value_type=value_type,
                         value_quote_type=value_quote_type,
-                        is_append=is_append
+                        is_append=is_append,
+                        value_word=value_word
                     ),
                     position=pos
                 )
@@ -480,16 +519,13 @@ class SpecialCommandParsers:
                 array_name = value[:lbracket_pos]
                 index_str = value[lbracket_pos + 1:rbracket_pos]
 
-                # Get the value from the next token
+                # Get the value from the next token(s)
                 if pos >= len(tokens):
                     return ParseResult(success=False, error="Expected value after array assignment", position=pos)
 
-                value_token = tokens[pos]
-                pos += 1
-
-                assigned_value = format_token_value(value_token)
-                value_type = value_token.type.name
-                value_quote_type = getattr(value_token, 'quote_type', None)
+                value_word, assigned_value, value_type, value_quote_type, pos = \
+                    self._collect_element_value_word(tokens, pos, '',
+                                                     consume_first=True)
 
                 return ParseResult(
                     success=True,
@@ -499,7 +535,8 @@ class SpecialCommandParsers:
                         value=assigned_value,
                         value_type=value_type,
                         value_quote_type=value_quote_type,
-                        is_append=is_append
+                        is_append=is_append,
+                        value_word=value_word
                     ),
                     position=pos
                 )
@@ -566,12 +603,9 @@ class SpecialCommandParsers:
                 if pos >= len(tokens):
                     return ParseResult(success=False, error="Expected value after '='", position=pos)
 
-                value_token = tokens[pos]
-                value = format_token_value(value_token)
-                value_type = value_token.type.name
-                value_quote_type = getattr(value_token, 'quote_type', None)
-
-                pos += 1
+                value_word, value, value_type, value_quote_type, pos = \
+                    self._collect_element_value_word(tokens, pos, '',
+                                                     consume_first=True)
 
                 return ParseResult(
                     success=True,
@@ -581,7 +615,8 @@ class SpecialCommandParsers:
                         value=value,
                         value_type=value_type,
                         value_quote_type=value_quote_type,
-                        is_append=is_append
+                        is_append=is_append,
+                        value_word=value_word
                     ),
                     position=pos
                 )

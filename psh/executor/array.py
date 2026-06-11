@@ -7,13 +7,13 @@ including indexed and associative arrays.
 
 import glob
 import re
-from typing import TYPE_CHECKING, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from ..core import AssociativeArray, IndexedArray, VarAttributes
 from ..expansion.arithmetic import evaluate_arithmetic
 
 if TYPE_CHECKING:
-    from ..ast_nodes import ArrayElementAssignment, ArrayInitialization
+    from ..ast_nodes import ArrayElementAssignment, ArrayInitialization, Word, WordPart
     from ..shell import Shell
 
 
@@ -44,10 +44,15 @@ class ArrayOperationExecutor:
         Returns:
             Exit status code (0 for success)
         """
+        # A variable declared associative (declare -A) keeps string keys:
+        # arr=([k]=v ...) populates an AssociativeArray, not an IndexedArray.
+        var_obj = self.state.scope_manager.get_variable_object(node.name)
+        if var_obj and isinstance(var_obj.value, AssociativeArray):
+            return self._initialize_associative_array(node, var_obj.value)
+
         # Handle append mode
         if node.is_append:
             # Get existing array or create new one
-            var_obj = self.state.scope_manager.get_variable_object(node.name)
             if var_obj and isinstance(var_obj.value, IndexedArray):
                 array = var_obj.value
                 # Find next index for appending
@@ -67,35 +72,49 @@ class ArrayOperationExecutor:
             element_type = node.element_types[i] if i < len(node.element_types) else 'WORD'
             word = node.words[i] if i < len(node.words) else None
 
-            # Check if this is an explicit index assignment: [index]=value
-            if element_type in ('COMPOSITE', 'COMPOSITE_QUOTED') and self._is_explicit_array_assignment(element):
-                # Parse explicit index assignment (this will handle expansion internally)
+            # Check for an explicit-index assignment element: [index]=value
+            # or [index]+=value (recognized only when the brackets and '='
+            # are unquoted — bash treats "[0]=x" as a literal element).
+            explicit = self._split_explicit_element(word) if word is not None else None
+            if explicit is not None:
+                index_parts, value_word, elem_append = explicit
+                # bash always evaluates indexed-array subscripts as arithmetic
+                index_text = ''.join(str(p) for p in index_parts)
+                try:
+                    expanded_index = self.expansion_manager.expand_string_variables(index_text)
+                    evaluated_index = evaluate_arithmetic(expanded_index, self.shell)
+                except (ValueError, Exception):
+                    # If index evaluation fails, treat as regular sequential element
+                    next_sequential_index = self._add_word_fields_to_array(
+                        array, word, next_sequential_index)
+                    continue
+                value = self.expansion_manager.expand_assignment_value_word(value_word)
+                if elem_append:
+                    current = array.get(evaluated_index)
+                    if current is not None:
+                        value = current + value
+                array.set(evaluated_index, value)
+                # Update next sequential index to be after this explicit index
+                next_sequential_index = max(next_sequential_index, evaluated_index + 1)
+            elif element_type in ('COMPOSITE', 'COMPOSITE_QUOTED') and \
+                    self._is_explicit_array_assignment(element):
+                # Legacy fallback (no Word AST on the node): parse explicit
+                # index assignment from the raw element string
                 index, value = self._parse_explicit_array_assignment(element)
                 if index is not None:
-                    # Evaluate arithmetic in index (bash always evaluates indices as arithmetic)
                     try:
                         evaluated_index = evaluate_arithmetic(str(index), self.shell)
                         array.set(evaluated_index, value)
-                        # Update next sequential index to be after this explicit index
                         next_sequential_index = max(next_sequential_index, evaluated_index + 1)
                     except (ValueError, Exception):
-                        # If index evaluation fails, treat as regular sequential element
                         next_sequential_index = self._add_expanded_element_to_array(
                             array, element, next_sequential_index, split_words=False)
                 else:
-                    # Failed to parse as explicit assignment, treat as regular element
                     next_sequential_index = self._add_expanded_element_to_array(
                         array, element, next_sequential_index, split_words=False)
             elif word is not None:
-                # Expand through the same Word pipeline command arguments use:
-                # quote-aware tilde/variable/command expansion, IFS splitting
-                # of unquoted expansion results, and globbing that honors
-                # quoting and noglob/nullglob/dotglob. Each resulting field
-                # becomes one array element (an unquoted expansion of an
-                # empty value contributes none).
-                for field in self.expansion_manager.expand_word_to_fields(word):
-                    array.set(next_sequential_index, field)
-                    next_sequential_index += 1
+                next_sequential_index = self._add_word_fields_to_array(
+                    array, word, next_sequential_index)
             elif element_type in ('WORD', 'COMPOSITE', 'COMMAND_SUB',
                                   'ARITH_EXPANSION', 'VARIABLE'):
                 # Legacy fallback (no Word AST on the node): split unquoted
@@ -110,6 +129,62 @@ class ArrayOperationExecutor:
 
         # Set array in shell state
         self.state.scope_manager.set_variable(node.name, array, attributes=VarAttributes.ARRAY)
+        return 0
+
+    def _initialize_associative_array(self, node: 'ArrayInitialization',
+                                      existing: AssociativeArray) -> int:
+        """Initialize a declare -A variable: h=([k]=v ...) or h+=(...).
+
+        bash 5.2 semantics: explicit [key]=value / [key]+=value elements set
+        string keys; other elements alternate key/value pairs WITHOUT word
+        splitting or pathname expansion (``h=($x)`` with x="k v" creates the
+        single key "k v"); an odd trailing key gets an empty value.
+        """
+        from ..ast_nodes import Word
+
+        array = existing if node.is_append else AssociativeArray()
+
+        pending_key: Optional[str] = None
+        for i, element in enumerate(node.elements):
+            word = node.words[i] if i < len(node.words) else None
+            if word is None:
+                # Legacy fallback: expand the raw element text as one field
+                field = self.expansion_manager.expand_string_variables(element)
+                if pending_key is None:
+                    pending_key = field
+                else:
+                    array.set(pending_key, field)
+                    pending_key = None
+                continue
+
+            explicit = self._split_explicit_element(word)
+            if explicit is not None:
+                index_parts, value_word, elem_append = explicit
+                key = self.expansion_manager.expand_assignment_value_word(
+                    Word(parts=list(index_parts)))
+                value = self.expansion_manager.expand_assignment_value_word(value_word)
+                if elem_append:
+                    current = array.get(key)
+                    if current is not None:
+                        value = current + value
+                array.set(key, value)
+            else:
+                # Alternating key/value fields (no splitting, no globbing)
+                for field in self.expansion_manager.expand_word_to_fields(
+                        word, suppress_split_glob=True):
+                    if pending_key is None:
+                        pending_key = field
+                    else:
+                        array.set(pending_key, field)
+                        pending_key = None
+
+        if pending_key is not None:
+            # bash: a trailing key without a value gets the empty string
+            array.set(pending_key, '')
+
+        self.state.scope_manager.set_variable(
+            node.name, array,
+            attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
         return 0
 
     def execute_array_element_assignment(self, node: 'ArrayElementAssignment') -> int:
@@ -184,14 +259,15 @@ class ArrayOperationExecutor:
                 index = 0
             # else: use the numeric index computed above
 
-        # Expand value
-        expanded_value = self.expansion_manager.expand_string_variables(node.value)
-
-        # Remove quotes from value if present (from parsed array assignment patterns)
-        if len(expanded_value) >= 2:
-            if (expanded_value.startswith('"') and expanded_value.endswith('"')) or \
-               (expanded_value.startswith("'") and expanded_value.endswith("'")):
-                expanded_value = expanded_value[1:-1]
+        # Expand value with bash assignment-value semantics: all expansions
+        # performed, NO word splitting, NO pathname expansion, tilde after
+        # '='/':' (shared policy with scalar assignments).
+        if node.value_word is not None:
+            expanded_value = self.expansion_manager.expand_assignment_value_word(
+                node.value_word)
+        else:
+            # Legacy fallback (no Word AST — combinator parser edge paths)
+            expanded_value = self.expansion_manager.expand_string_variables(node.value)
 
         # Get or create array
         if var_obj and (isinstance(var_obj.value, IndexedArray) or isinstance(var_obj.value, AssociativeArray)):
@@ -219,6 +295,88 @@ class ArrayOperationExecutor:
         return 0
 
     # Helper methods
+
+    def _split_explicit_element(self, word: 'Word') -> Optional[
+            Tuple[List['WordPart'], 'Word', bool]]:
+        """Split an initializer element of the form [index]=value.
+
+        Recognizes ``[index]=value`` and ``[index]+=value`` when the
+        brackets and the ``=`` come from *unquoted literal* text (bash:
+        ``"[0]=x"`` is a literal element, not an assignment). The index may
+        contain expansions and quoted segments (``[$key]=v``, ``["a b"]=v``).
+
+        Returns (index_parts, value_word, is_append), or None when the
+        element is not an explicit-index assignment.
+        """
+        from ..ast_nodes import LiteralPart, Word
+
+        parts = word.parts
+        if not parts:
+            return None
+        first = parts[0]
+        if not (isinstance(first, LiteralPart) and not first.quoted
+                and first.text.startswith('[')):
+            return None
+
+        depth = 0
+        for i, part in enumerate(parts):
+            if not (isinstance(part, LiteralPart) and not part.quoted):
+                # Quoted text / expansions inside the brackets belong to
+                # the index; keep scanning for the unquoted closing ']'.
+                continue
+            text = part.text
+            start = 1 if i == 0 else 0  # skip the opening '['
+            for j in range(start, len(text)):
+                ch = text[j]
+                if ch == '[':
+                    depth += 1
+                elif ch == ']':
+                    if depth > 0:
+                        depth -= 1
+                        continue
+                    # Closing bracket: '=' or '+=' must follow immediately
+                    rest = text[j + 1:]
+                    if rest.startswith('+='):
+                        eq_len = 2
+                    elif rest.startswith('='):
+                        eq_len = 1
+                    else:
+                        return None
+                    # Index: parts before this one (minus the opening '[')
+                    # plus this part's text up to the ']'
+                    index_parts: List['WordPart'] = []
+                    if i > 0 and len(first.text) > 1:
+                        index_parts.append(LiteralPart(
+                            first.text[1:], quoted=first.quoted,
+                            quote_char=first.quote_char))
+                    index_parts.extend(parts[1:i])
+                    head = text[start:j] if i == 0 else text[:j]
+                    if head:
+                        index_parts.append(LiteralPart(head))
+                    # Value: this part's text after '='/'+=' plus the rest
+                    tail = text[j + 1 + eq_len:]
+                    value_parts: List['WordPart'] = []
+                    if tail:
+                        value_parts.append(LiteralPart(tail))
+                    value_parts.extend(parts[i + 1:])
+                    return (index_parts, Word(parts=value_parts), eq_len == 2)
+        return None
+
+    def _add_word_fields_to_array(self, array: IndexedArray, word: 'Word',
+                                  start_index: int) -> int:
+        """Add a Word's expanded fields to the array sequentially.
+
+        Expands through the same Word pipeline command arguments use:
+        quote-aware tilde/variable/command expansion, IFS splitting of
+        unquoted expansion results, and globbing that honors quoting and
+        noglob/nullglob/dotglob. Each resulting field becomes one array
+        element (an unquoted expansion of an empty value contributes none).
+        """
+        next_index = start_index
+        for field in self.expansion_manager.expand_word_to_fields(word):
+            array.set(next_index, field)
+            next_index += 1
+        return next_index
 
     def _add_expanded_element_to_array(self, array: IndexedArray, element: str,
                                        start_index: int, split_words: bool = True) -> int:

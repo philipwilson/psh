@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.304.0 (2026-06-12) - Array element values as Words (reassessment Phase 1, 3/3 — REASSESSMENT PHASE 1 COMPLETE)
+- Finding #4, confirmed and worse than stated: the root cause was a
+  layer below the executor — the lexer's _collect_array_assignment()
+  swallowed the whole raw value as one opaque token (and terminated at
+  `(`), so `a[0]=$(cmd)` and `a[0]=$((expr))` were mis-lexed into
+  garbage, `a[0]='lit $x'` expanded inside single quotes, and tilde/
+  ANSI-C/escape forms were all broken in element values.
+- Fix: the lexer now stops right after `=`/`+=` so element values
+  tokenize identically to scalar assignment values; ArrayElement-
+  Assignment carries value_word (both parsers populate it); and ONE
+  shared bash assignment-value policy — new ExpansionManager.
+  expand_assignment_value_word() (all expansions, no split, no glob,
+  tilde after =/:, quote-aware) — serves scalar assignments (the
+  executor's 75-line loop now delegates), array element assignments,
+  explicit [i]=v initializer elements, and assoc-initializer keys.
+  Manual quote-stripping deleted.
+- Explicit-initializer and assoc fixes that fell out, all bash-pinned:
+  `a=([0]=$x [1]=*)` (values unsplit, globs literal), `[i]+=` append,
+  `a=("[0]=x")` quoted form stays a literal element, and
+  `declare -A h; h=([k]=v ...)` — previously the KEYS went to index 0;
+  the alternating pair form `h=(k1 v1 k2 v2)` now works too.
+- 63-probe battery matches bash 5.2 (4 pre-existing out-of-scope
+  diffs recorded: `declare a[0]=v` subscripted declare args;
+  bash's error-then-run on `a[0]= cmd` prefix forms).
+- Test portability: the affixed write-side procsub test now probes
+  bash itself for OS support of the `/.>(...)`  shape and skips with
+  a clear reason where the OS forbids it (reassessment found a macOS
+  environment where bash also fails it).
+- 61 new tests (test_array_element_word_values.py).
+- Suite: 4,877 passed / 5,147 collected; ruff + mypy clean.
+
 ## 0.303.0 (2026-06-12) - Word-splitting semantics: declaration policy + loop items (reassessment Phase 1, 2/3)
 - Finding #2 (High): assignment-shaped ordinary arguments now
   word-split like bash — `x="a b"; printf "<%s>" foo=$x` gives

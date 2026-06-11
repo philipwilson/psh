@@ -34,6 +34,32 @@ class ArrayParser:
             return 'COMPOSITE'
         return 'WORD'
 
+    def _parse_element_value(self, tail: str) -> tuple:
+        """Parse an element-assignment value into (value, word, type, quote_char).
+
+        ``tail`` is literal value text that followed ``=``/``+=`` inside the
+        same token as the array name. The lexer splits expansions and quoted
+        segments into *adjacent* tokens (``a[0]=pre$x"y"`` arrives as
+        WORD ``a[0]=pre`` + VARIABLE ``x`` + STRING ``y``), which are merged
+        here into a single value Word with per-part quote context.
+        """
+        from ....ast_nodes import LiteralPart
+        has_continuation = (
+            self.parser.match_any(TokenGroups.WORD_LIKE)
+            and (not tail or self.parser.peek().adjacent_to_previous))
+        if tail:
+            parts = [LiteralPart(tail)]
+            if has_continuation:
+                parts.extend(self.parser.commands.parse_argument_as_word().parts)
+            word = Word(parts=parts)
+        elif has_continuation:
+            word = self.parser.commands.parse_argument_as_word()
+        else:
+            word = Word(parts=[])
+        value = ''.join(str(p) for p in word.parts)
+        return (value, word, self._word_to_element_type(word),
+                word.effective_quote_char)
+
     def is_array_assignment(self) -> bool:
         """Check if current position starts an array assignment.
 
@@ -185,16 +211,10 @@ class ArrayParser:
 
                 name = name_token.value[:bracket_pos]
                 index_str = name_token.value[bracket_pos+1:close_bracket_pos]
-                value = name_token.value[equals_pos+(2 if is_append else 1):]
+                tail = name_token.value[equals_pos+(2 if is_append else 1):]
 
-                # If value is empty, check for value in next token
-                value_type = 'WORD'
-                quote_type = None
-                if not value and self.parser.match_any(TokenGroups.WORD_LIKE):
-                    word = self.parser.commands.parse_argument_as_word()
-                    value = ''.join(str(p) for p in word.parts)
-                    value_type = self._word_to_element_type(word)
-                    quote_type = word.effective_quote_char
+                value, value_word, value_type, quote_type = \
+                    self._parse_element_value(tail)
 
                 # Create tokens for the index
                 index_tokens = [Token(TokenType.WORD, index_str, 0)]
@@ -205,7 +225,8 @@ class ArrayParser:
                     value=value,
                     value_type=value_type,
                     value_quote_type=quote_type,
-                    is_append=is_append
+                    is_append=is_append,
+                    value_word=value_word
                 )
             else:
                 # Pattern: "arr[0]" "=value" in separate tokens
@@ -224,20 +245,17 @@ class ArrayParser:
 
                 is_append = equals_token.value == '+=' or equals_token.value.startswith('+=')
 
-                # Extract value
+                # Extract value: any literal tail in the equals token, plus
+                # adjacent continuation tokens (expansions, quoted segments)
                 if equals_token.value == '=' or equals_token.value == '+=':
-                    # Value is in next token
                     if not self.parser.match_any(TokenGroups.WORD_LIKE):
                         raise self.parser.error("Expected value after '='")
-                    word = self.parser.commands.parse_argument_as_word()
-                    value = ''.join(str(p) for p in word.parts)
-                    value_type = self._word_to_element_type(word)
-                    quote_type = word.effective_quote_char
+                    tail = ''
                 else:
-                    # Value is part of equals token (e.g., "=value")
-                    value = equals_token.value[2:] if is_append else equals_token.value[1:]
-                    value_type = 'WORD'
-                    quote_type = None
+                    tail = (equals_token.value[2:] if is_append
+                            else equals_token.value[1:])
+                value, value_word, value_type, quote_type = \
+                    self._parse_element_value(tail)
 
                 # Create tokens for the index
                 index_tokens = [Token(TokenType.WORD, index_str, 0)]
@@ -248,7 +266,8 @@ class ArrayParser:
                     value=value,
                     value_type=value_type,
                     value_quote_type=quote_type,
-                    is_append=is_append
+                    is_append=is_append,
+                    value_word=value_word
                 )
 
         # Check for array element assignment with separate bracket: name[index]=value
@@ -389,25 +408,18 @@ class ArrayParser:
         # Check if it's an append operation
         is_append = equals_token.value.startswith('+=')
 
-        # If the equals token has a value after '=' or '+=', use it
+        # If the equals token has a literal value tail after '=' or '+=',
+        # use it; adjacent continuation tokens are merged by the helper.
         if is_append and len(equals_token.value) > 2:
-            # Value is part of the equals token (e.g., "+=value")
-            value = equals_token.value[2:]
-            value_type = 'WORD'
-            quote_type = None
+            tail = equals_token.value[2:]
         elif not is_append and len(equals_token.value) > 1:
-            # Value is part of the equals token (e.g., "=value")
-            value = equals_token.value[1:]
-            value_type = 'WORD'
-            quote_type = None
+            tail = equals_token.value[1:]
         else:
-            # Parse the value as a separate token
             if not self.parser.match_any(TokenGroups.WORD_LIKE):
                 raise self.parser.error("Expected value after '=' in array element assignment")
-            word = self.parser.commands.parse_argument_as_word()
-            value = ''.join(str(p) for p in word.parts)
-            value_type = self._word_to_element_type(word)
-            quote_type = word.effective_quote_char
+            tail = ''
+        value, value_word, value_type, quote_type = \
+            self._parse_element_value(tail)
 
         return ArrayElementAssignment(
             name=name,
@@ -415,7 +427,8 @@ class ArrayParser:
             value=value,
             value_type=value_type,
             value_quote_type=quote_type,
-            is_append=is_append
+            is_append=is_append,
+            value_word=value_word
         )
 
     def _parse_array_initialization(self, name: str, is_append: bool = False) -> ArrayInitialization:
