@@ -497,8 +497,8 @@ See `docs/guides/visitor_public_api.md` for the post-cleanup API reference.
 - `docs/guides/visitor_public_api.md` -- Post-cleanup API reference
 - `docs/guides/visitor_guide.md` -- Full programmer's guide
 - `psh/visitor/CLAUDE.md` -- AI assistant working guide
-- `docs/guides/visitor_executor_implementation_review_2026-02-09.md` --
+- `docs/archive/guides/visitor_executor_implementation_review_2026-02-09.md` --
   Detailed implementation review of the visitor/executor subsystem
-- `docs/guides/codex_visitor_executor_review.md` -- Codex review of
+- `docs/archive/guides/codex_visitor_executor_review.md` -- Codex review of
   visitor executor
 - `ARCHITECTURE.llm` -- System-wide architecture reference

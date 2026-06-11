@@ -1,6 +1,6 @@
 # PSH Architecture Reference for Large Language Models
 
-Version: 0.296.0
+Version: 0.297.0
 Purpose: Optimized reference for LLMs working with the PSH codebase
 
 ## Quick Start
@@ -370,4 +370,4 @@ Related documentation:
 - `CHANGELOG.md` and `psh/version.py` – change history
 - `CLAUDE.md`, `AGENTS.md` – collaboration guidelines for agentic contributors
 - `docs/keyword_helper_cookbook.md` – practical guide for keyword normalization and parser integration
-- `docs/architecture_recommendations.md` – ongoing suggestions for structural improvements and refactors
+- `docs/archive/architecture_recommendations.md` – archived suggestions for structural improvements and refactors

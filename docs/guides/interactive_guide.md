@@ -1,5 +1,10 @@
 # PSH Interactive Subsystem: Programmer's Guide
 
+> **Note (2026-06-11):** This guide describes the tree as of ~v0.27x, before
+> the v0.285 module relocation and subsequent cleanups. In particular it
+> references pre-relocation top-level paths (`psh/tab_completion.py`, `psh/prompt.py`, `psh/line_editor.py`, `psh/multiline_handler.py`, `psh/keybindings.py`, `psh/job_control.py`); these now live under `psh/interactive/` (job-control logic under `psh/executor/job_control.py`).
+> See the subsystem CLAUDE.md files for current structure.
+
 This guide covers the interactive subsystem in detail: its external API,
 internal architecture, and the responsibilities of every source file.  It is
 aimed at developers who need to modify the REPL loop, add new key bindings,

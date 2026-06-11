@@ -1,5 +1,10 @@
 # Expansion Public API Assessment
 
+> **Note (2026-06-11):** This guide describes the tree as of ~v0.27x, before
+> the v0.285 module relocation and subsequent cleanups. In particular it
+> references `psh/arithmetic.py`, which has since moved to `psh/expansion/arithmetic.py`.
+> See the subsystem CLAUDE.md files for current structure.
+
 **As of v0.179.0**
 
 This document assesses the public API surface of the `psh/expansion/`
@@ -368,8 +373,8 @@ ruff check psh/expansion/ psh/builtins/function_support.py psh/builtins/shell_st
   (created in v0.180.0)
 - `docs/guides/expansion_guide.md` -- Full programmer's guide
   (created in v0.180.0)
-- `docs/guides/expander_implementation_review_2026-02-09.md` -- Detailed
+- `docs/archive/guides/expander_implementation_review_2026-02-09.md` -- Detailed
   implementation review of the expansion subsystem
-- `docs/guides/expansion_code_quality_review.md` -- Code quality review
+- `docs/archive/guides/expansion_code_quality_review.md` -- Code quality review
 - `psh/expansion/CLAUDE.md` -- AI assistant working guide
 - `ARCHITECTURE.llm` -- System-wide architecture reference

@@ -1,5 +1,10 @@
 # PSH Utils: Programmer's Guide
 
+> **Note (2026-06-11):** This guide describes the tree as of ~v0.27x, before
+> the v0.285 module relocation and subsequent cleanups. In particular it
+> references `psh/token_types.py`, which has since moved to `psh/lexer/token_types.py`.
+> See the subsystem CLAUDE.md files for current structure.
+
 This guide covers the utils package in detail: its external API, internal
 architecture, and the responsibilities of every source file.  It is aimed at
 developers who need to modify utility functions, add new cross-cutting

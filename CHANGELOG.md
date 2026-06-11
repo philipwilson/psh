@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.297.0 (2026-06-11) - Docs archive sweep (reappraisal #2 Tier C, 1/2)
+- 47 stale documentation files moved to docs/archive/ via git mv
+  (content untouched), per the 2026-06-11 reappraisal §6 plan with
+  per-file re-verification: 3 root docs (StateMachineLexer-era lexer
+  docs, superseded combinator guide), 31 of 33 docs/architecture/
+  files (completed parser-combinator plans/phase summaries, docs for
+  removed ParserFactory/validation.py; the status doc was reclassified
+  stale on verification — it documents a package layout that no longer
+  exists), 4 of 5 docs/posix/ (v0.57-era analyses claiming trap/shift/
+  exec are missing), 9 point-in-time quality reviews from docs/guides/.
+- Kept after verification: lexer_architecture.md and
+  bash_vs_psh_lexer_comparison.md (all module references check out),
+  posix_spec_reference.md (timeless), combinator_parser_remaining_
+  failures.md (current since its v0.276 rewrite).
+- 12 surviving guides got dated staleness banners (only files with
+  grep-verified stale content: pre-v0.285 module paths or removed
+  RECOVER/PERMISSIVE parser modes); 17 guides verified clean, no
+  banner. subsystem_internals.md paths fixed (psh/expansion/
+  arithmetic.py, psh/lexer/token_types.py). 5 dangling links fixed.
+- docs/architecture/ and docs/posix/ now contain only verified-current
+  material. No production or test changes; suite quick-gate green.
+
 ## 0.296.0 (2026-06-11) - Slice/arithmetic unification + prune remnants (reappraisal #2 Tier B, 6/6 — TIER B COMPLETE)
 - M10: `${var:offset:length}` slicing unified on one canonical engine
   in operators.py (_parse_slice_operand/_slice_elements/

@@ -1,5 +1,10 @@
 # PSH Parser: Programmer's Guide
 
+> **Note (2026-06-11):** This guide describes the tree as of ~v0.27x, before
+> the v0.285 module relocation and subsequent cleanups. In particular it
+> describes parser configuration machinery that has since been removed (the `PERMISSIVE`/`EDUCATIONAL` parsing modes, the `COLLECT`/`RECOVER` error-handling modes, and `parse_with_error_collection`).
+> See the subsystem CLAUDE.md files for current structure.
+
 This guide covers the parser package in detail: its external API, internal
 architecture, and the responsibilities of every source file.  It is aimed at
 developers who need to modify the parser, add new syntax, or understand how a
