@@ -10,7 +10,7 @@ as the single lexer implementation.
 
 from typing import List
 
-from .constants import DOUBLE_QUOTE_ESCAPES, KEYWORDS, SPECIAL_VARIABLES
+from .constants import KEYWORDS, SPECIAL_VARIABLES
 from .keyword_normalizer import KeywordNormalizer
 
 # Core lexer components

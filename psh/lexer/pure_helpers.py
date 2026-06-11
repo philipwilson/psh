@@ -7,8 +7,6 @@ test, reuse, and reason about.
 
 from typing import Optional, Set, Tuple
 
-from .constants import DOUBLE_QUOTE_ESCAPES
-
 
 class QuoteState:
     """Tracks single/double-quote and backslash-escape state during a forward
@@ -243,7 +241,9 @@ def handle_escape_sequence(
         # ANSI-C quoting - handle extended escape sequences
         return handle_ansi_c_escape(input_text, pos)
     elif quote_context == '"':
-        # In double quotes
+        # In double quotes, bash only processes: \", \\, \$, \` and
+        # \newline. Other sequences like \n, \t, \r are NOT escape
+        # sequences here — the backslash is preserved literally.
         if next_char == '\n':
             # Escaped newline is a line continuation - remove it
             return '', pos + 2
@@ -252,8 +252,6 @@ def handle_escape_sequence(
         elif next_char == '$':
             # Special case: \$ preserves the backslash in double quotes
             return '\\$', pos + 2
-        elif next_char in DOUBLE_QUOTE_ESCAPES:
-            return DOUBLE_QUOTE_ESCAPES[next_char], pos + 2
         else:
             # Other characters keep the backslash
             return '\\' + next_char, pos + 2

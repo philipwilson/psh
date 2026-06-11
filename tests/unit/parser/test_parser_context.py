@@ -35,7 +35,6 @@ class TestParserContext:
         assert ctx.current == 0
         assert isinstance(ctx.config, ParserConfig)
         assert ctx.errors == []
-        assert not ctx.error_recovery_mode
 
     def test_token_access(self):
         """Test token access methods."""
@@ -115,7 +114,6 @@ class TestParserContext:
         """Test error-related state queries."""
         config = ParserConfig(
             collect_errors=True,
-            enable_error_recovery=True,
             max_errors=5
         )
         # Add a token so we're not at end
@@ -123,7 +121,6 @@ class TestParserContext:
         ctx = ParserContext(tokens=tokens, config=config)
 
         assert ctx.should_collect_errors()
-        assert ctx.should_attempt_recovery()
         assert ctx.can_continue_parsing()
 
         # Add errors up to limit

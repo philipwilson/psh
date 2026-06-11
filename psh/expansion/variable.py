@@ -245,7 +245,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 return str(len(self.state.positional_params))
             if operator == ':':
                 return self._ifs_star_separator().join(
-                    self._slice_sequence(self._positional_slice_elements(), operand))
+                    self._slice_sequence(self._positional_slice_elements(),
+                                         operand, what='*'))
             if len(operator) == 2 and operator[0] == '@':
                 return self._ifs_star_separator().join(
                     self._apply_transform(operator[1], p, var_name)
@@ -256,7 +257,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 return str(len(self.state.positional_params))
             if operator == ':':
                 return ' '.join(
-                    self._slice_sequence(self._positional_slice_elements(), operand))
+                    self._slice_sequence(self._positional_slice_elements(),
+                                         operand, what='@'))
             if len(operator) == 2 and operator[0] == '@':
                 return ' '.join(
                     self._apply_transform(operator[1], p, var_name)
@@ -296,10 +298,22 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 else:
                     elements = []
 
-                # ${arr[@]:offset:length} — array slice (select elements),
-                # distinct from per-element substring.
+                # ${arr[@]:offset:length} — array slice (select elements
+                # by INDEX for sparse indexed arrays), or a string
+                # substring when the subscripted variable is a scalar.
                 if operator == ':':
-                    sliced = self._slice_sequence(elements, operand)
+                    what = f"{array_name}[{index_expr}]"
+                    if var and isinstance(var.value, IndexedArray):
+                        sliced = self._slice_sequence(
+                            elements, operand, what=what,
+                            indices=var.value.indices())
+                    elif var and isinstance(var.value, AssociativeArray):
+                        sliced = self._slice_sequence(elements, operand, what=what)
+                    elif elements:
+                        offset, length = self._parse_slice_operand(operand, what)
+                        sliced = self._slice_scalar_subscript(elements[0], offset, length)
+                    else:
+                        sliced = []
                     if index_expr == '@':
                         return ' '.join(sliced)
                     return self._ifs_star_separator().join(sliced)

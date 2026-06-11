@@ -17,8 +17,10 @@ class ModularLexer:
     """
     Modular lexer using pluggable token recognizers.
 
-    This lexer combines the unified quote/expansion parsing from Phase 3
-    with the modular token recognition system from Phase 4.
+    Quotes and expansions are consumed whole by dedicated parsers
+    (UnifiedQuoteParser, ExpansionParser); everything else is dispatched
+    to pluggable recognizers tried in priority order (operators,
+    process substitution, comments, literals/words).
     """
 
     def __init__(self, input_string: str, config: Optional[LexerConfig] = None):
@@ -263,7 +265,8 @@ class ModularLexer:
             if self.position >= len(self.input):
                 break
 
-            # Try quotes and expansions first (from Phase 3)
+            # Try quotes and expansions first: they must be consumed whole
+            # (a recognizer matching inside a quoted region would corrupt it)
             if self._try_quotes_and_expansions():
                 continue
 

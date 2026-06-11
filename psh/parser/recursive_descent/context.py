@@ -29,7 +29,6 @@ class ParserContext:
 
     # Error handling
     errors: List[ParseError] = field(default_factory=list)
-    error_recovery_mode: bool = False
     fatal_error: Optional[ParseError] = None
 
     # Source context
@@ -136,18 +135,6 @@ class ParserContext:
     def should_collect_errors(self) -> bool:
         """Check if errors should be collected rather than thrown."""
         return self.config.collect_errors or bool(self.errors)
-
-    def should_attempt_recovery(self) -> bool:
-        """Check if error recovery should be attempted."""
-        return self.config.enable_error_recovery and not self.error_recovery_mode
-
-    def enter_error_recovery(self):
-        """Enter error recovery mode."""
-        self.error_recovery_mode = True
-
-    def exit_error_recovery(self):
-        """Exit error recovery mode."""
-        self.error_recovery_mode = False
 
     def add_error(self, error: ParseError) -> None:
         """Add error to the error list, checking for fatal errors."""

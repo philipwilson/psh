@@ -678,12 +678,12 @@ class ExpansionManager:
         else:
             return 0
 
-        # Pre-expand variables in the arithmetic expression
-        # This handles $var syntax which the arithmetic parser doesn't understand
-        arith_expr = self._expand_vars_in_arithmetic(arith_expr)
-
-        # Pre-expand command substitutions in the arithmetic expression
-        arith_expr = self._expand_command_subs_in_arithmetic(arith_expr)
+        # NOTE: no pre-expansion pass here. evaluate_arithmetic() expands
+        # $-constructs itself (via expand_string_variables, which delegates
+        # to the shared _expand_one_dollar scanner), substituting each
+        # value verbatim exactly once. A second pass here would rescan
+        # substituted text for further $-expansion, which bash does not do
+        # (x='$y' makes $(($x)) a syntax error, not the value of y).
 
         from .arithmetic import ArithmeticError, evaluate_arithmetic
 
@@ -701,112 +701,3 @@ class ExpansionManager:
             # Raise exception to stop command execution (like bash)
             raise ExpansionError(f"unexpected arithmetic error: {e}")
 
-    def _expand_command_subs_in_arithmetic(self, expr: str) -> str:
-        """Expand command substitutions and nested arithmetic in arithmetic expression.
-
-        Finds all ``$(...)`` and ``$((...))`` patterns in the arithmetic
-        expression and replaces them with their evaluated output/result
-        before arithmetic evaluation.  Uses quote-aware scanners so that
-        parentheses inside quotes are not treated as delimiters.
-        """
-        from ..lexer.pure_helpers import (
-            find_balanced_double_parentheses,
-            find_balanced_parentheses,
-        )
-
-        result = []
-        i = 0
-
-        while i < len(expr):
-            if expr[i] == '$' and i + 1 < len(expr) and expr[i + 1] == '(':
-                if i + 2 < len(expr) and expr[i + 2] == '(':
-                    # Nested arithmetic expansion $((
-                    end_pos, found = find_balanced_double_parentheses(
-                        expr, i + 3, track_quotes=True)
-                    if found:
-                        arith_expr = expr[i:end_pos]
-                        arith_result = self.execute_arithmetic_expansion(arith_expr)
-                        result.append(str(arith_result))
-                        i = end_pos
-                        continue
-                else:
-                    # Command substitution $(
-                    end_pos, found = find_balanced_parentheses(
-                        expr, i + 2, track_quotes=True)
-                    if found:
-                        cmd_sub_expr = expr[i:end_pos]
-                        output = self.command_sub.execute(cmd_sub_expr).strip()
-                        result.append(output if output else '0')
-                        i = end_pos
-                        continue
-
-            result.append(expr[i])
-            i += 1
-
-        return ''.join(result)
-
-    def _expand_vars_in_arithmetic(self, expr: str) -> str:
-        """Expand $var syntax in arithmetic expression.
-
-        This method finds all $var patterns in the arithmetic expression
-        and replaces them with their values before arithmetic evaluation.
-        The arithmetic parser only understands bare variable names.
-
-        Args:
-            expr: The arithmetic expression potentially containing $var
-
-        Returns:
-            The expression with all $var expanded to their values
-        """
-        result = []
-        i = 0
-
-        while i < len(expr):
-            if expr[i] == '$' and i + 1 < len(expr):
-                # Check if next char could start a variable name
-                if expr[i + 1].isalpha() or expr[i + 1] == '_' or expr[i + 1].isdigit():
-                    # Simple variable like $x, $1, $_
-                    j = i + 1
-                    while j < len(expr) and (expr[j].isalnum() or expr[j] == '_'):
-                        j += 1
-
-                    var_name = expr[i+1:j]
-                    # Check if it's a special variable (positional param, etc)
-                    if var_name.isdigit() or var_name in ('?', '$', '!', '#', '@', '*'):
-                        value = self.shell.state.get_special_variable(var_name)
-                    else:
-                        value = self.shell.state.get_variable(var_name, '0')
-
-                    # Substitute the value text and let the arithmetic
-                    # evaluator handle it (bash): $x with x='2 + 2' yields
-                    # the sub-expression 2 + 2, and x=y resolves y
-                    # recursively. Empty values count as 0.
-                    result.append(value if str(value).strip() else '0')
-                    i = j
-                    continue
-                elif expr[i + 1] == '{':
-                    # Variable like ${x}
-                    j = i + 2
-                    brace_count = 1
-                    while j < len(expr) and brace_count > 0:
-                        if expr[j] == '{':
-                            brace_count += 1
-                        elif expr[j] == '}':
-                            brace_count -= 1
-                        j += 1
-
-                    if brace_count == 0:
-                        var_expr = expr[i:j]  # Include ${...}
-                        value = self.expand_variable(var_expr)
-
-                        # Substitute the value text (see the $var branch
-                        # above); empty values count as 0.
-                        result.append(value if str(value).strip() else '0')
-                        i = j
-                        continue
-
-            # Not a variable expansion, copy character as-is
-            result.append(expr[i])
-            i += 1
-
-        return ''.join(result)

@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.296.0 (2026-06-11) - Slice/arithmetic unification + prune remnants (reappraisal #2 Tier B, 6/6 — TIER B COMPLETE)
+- M10: `${var:offset:length}` slicing unified on one canonical engine
+  in operators.py (_parse_slice_operand/_slice_elements/
+  _slice_scalar_subscript) — the review found 3 copies; verification
+  found a 4th (arrays.py:_expand_array_slice). The ~60-case probe
+  battery exposed 8 real bash divergences, all fixed: empty-present
+  length (`${a[@]:1:}` → empty), sparse arrays slice by index not
+  position, resolved-negative starts (`${@: -99}` → empty, was
+  clamped to everything), negative array length aborts like bash,
+  out-of-range + negative length is empty without error, invalid
+  arithmetic in operands aborts the command (exit 1), scalar-with-[@]
+  subscript string semantics. 50 new tests pin the battery.
+- Arithmetic pre-expansion scanners DELETED (~110 lines): probing
+  showed evaluate_arithmetic already expands $-constructs via the
+  v0.279 shared scanner, so the manager's two bespoke scanners were a
+  redundant second pass — and the source of real divergences, all
+  fixed by deletion: `$12` now means `${1}2` like bash (was `${12}`),
+  empty values no longer 0-padded before evaluation, and variables
+  holding `$(...)` text are no longer rescanned and EXECUTED by
+  arithmetic (bash: syntax error). 24 new tests; 25/25 probes match.
+- v0.286 parser prune finished: ErrorHandlingMode.RECOVER,
+  enable_error_recovery, error_recovery_mode and the recovery method
+  family removed (the review's `can_recover` is actually
+  should_attempt_recovery, and base_context had one more dead
+  delegate). ParserConfig's "only fields actually read" docstring is
+  true again. Two test files updated; parser CLAUDE.md snippets fixed.
+- Lexer smalls: DOUBLE_QUOTE_ESCAPES (dead-by-shadowing — its only
+  lookup sat in an unreachable elif) deleted with its rationale
+  comment moved to the live branch; both "Phase 3/4" plan codenames
+  replaced with self-contained prose.
+- interactive: line_editor EIO path called nonexistent
+  terminal.restore() inside an except clause that also missed
+  termios.error (not an OSError subclass) — fixed both; new interface
+  guard test asserts every self.terminal.<attr> reference exists.
+- Suite: 4,608 passed / 4,878 collected; ruff + mypy clean.
+
 ## 0.295.0 (2026-06-11) - PTY-tier repair + test debris (reappraisal #2 Tier B, 5/6)
 - M8: the 6 reproducible failures in the opt-in PTY tier were NOT
   product bugs and NOT mere assertion fragility — the pty framework's

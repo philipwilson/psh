@@ -26,13 +26,35 @@ class OperatorOpsMixin:
         """
         return [self.state.get_special_variable('0')] + list(self.state.positional_params)
 
-    def _slice_sequence(self, elements: list, operand: str) -> list:
-        """Slice a list of words for ``${seq[@]:offset:length}`` expansions.
+    # === Canonical ${...:offset:length} slice parsing/evaluation ===
+    #
+    # ALL slice forms — scalar ${v:o:l}, positional ${@:o:l}/${*:o:l},
+    # and array ${a[@]:o:l}/${a[*]:o:l}, quoted or not — share the
+    # helpers below (operand parsing, arithmetic evaluation, and element
+    # slicing).  The bash semantics they implement, probe-verified:
+    #
+    # * offset/length are arithmetic expressions; a failed evaluation
+    #   aborts the command with status 1.
+    # * an absent length means "to the end"; an EMPTY length (``${v:1:}``)
+    #   means 0.
+    # * bounds are checked before the length: an out-of-range start
+    #   yields an empty result even with a negative length
+    #   (``${a[@]:9:-1}`` is empty, ``${a[@]:1:-1}`` is an error).
+    # * a negative offset counts back from one past the last element (or
+    #   string char); if still negative the result is empty (no clamping
+    #   to 0 — ``${@: -99}`` is empty, not everything).
+    # * sparse indexed arrays slice by INDEX, not element position;
+    #   length is always a count of elements.
+    # * a scalar subscripted ``${s[@]:o:l}`` gets STRING substring
+    #   semantics: one field when the start is within the string
+    #   (0 <= start <= len), no field otherwise.
 
-        Offset and length are arithmetic expressions.  A negative offset
-        counts from the end; a negative length is an error (matching bash,
-        which only allows from-the-end lengths for scalar substrings, not
-        for ``@``/``*``/array slices).
+    def _parse_slice_operand(self, operand: str, what: str) -> tuple:
+        """Parse and arithmetic-evaluate a ``offset[:length]`` slice operand.
+
+        Returns ``(offset, length)``; ``length`` is None when absent.
+        Raises ExpansionError (status 1) when evaluation fails, as bash
+        aborts the whole command for a bad slice expression.
         """
         from ..core import ExpansionError
         from .arithmetic import ArithmeticError, evaluate_arithmetic
@@ -44,24 +66,79 @@ class OperatorOpsMixin:
 
         try:
             offset = evaluate_arithmetic(offset_str, self.shell) if offset_str.strip() else 0
-            length = (evaluate_arithmetic(length_str, self.shell)
-                      if length_str is not None and length_str.strip() else None)
+            if length_str is None:
+                length = None
+            elif length_str.strip():
+                length = evaluate_arithmetic(length_str, self.shell)
+            else:
+                length = 0
         except (ValueError, ArithmeticError):
-            print(f"psh: ${{seq:{operand}}}: invalid offset or length", file=sys.stderr)
-            return []
+            msg = f"{what}: {operand}: invalid offset or length"
+            print(f"psh: {msg}", file=sys.stderr)
+            self.state.last_exit_code = 1
+            raise ExpansionError(msg, exit_code=1)
+        return offset, length
 
-        n = len(elements)
-        start = n + offset if offset < 0 else offset
-        if start < 0:
-            start = 0
+    def _slice_negative_length_error(self, length: int):
+        """Report a negative element-slice length and abort (bash exit 1)."""
+        from ..core import ExpansionError
+        msg = f"{length}: substring expression < 0"
+        print(f"psh: {msg}", file=sys.stderr)
+        self.state.last_exit_code = 1
+        raise ExpansionError(msg, exit_code=1)
+
+    def _slice_elements(self, elements: list, offset: int,
+                        length, indices=None) -> list:
+        """Slice an element list with bash semantics (see block comment).
+
+        ``indices``: the elements' array indices, for sparse indexed
+        arrays (selection is by index, not position); None for positional
+        slicing.
+        """
+        if indices is not None:
+            top = indices[-1] + 1 if indices else 0
+            start = offset if offset >= 0 else top + offset
+            if start < 0 or start >= top:
+                return []
+            selected = [el for el, i in zip(elements, indices) if i >= start]
+        else:
+            n = len(elements)
+            start = offset if offset >= 0 else n + offset
+            if start < 0 or start >= n:
+                return []
+            selected = elements[start:]
 
         if length is None:
-            return elements[start:]
+            return selected
         if length < 0:
-            print(f"psh: {length}: substring expression < 0", file=sys.stderr)
+            self._slice_negative_length_error(length)
+        return selected[:length]
+
+    def _slice_scalar_subscript(self, value: str, offset: int, length) -> list:
+        """Fields for ``${scalar[@]:o:l}`` — bash applies STRING substring
+        semantics when the subscripted variable is a plain scalar.
+
+        Returns one field (possibly empty) when the start lies within the
+        string, no field when it is out of range.
+        """
+        from ..core import ExpansionError
+        n = len(value)
+        start = offset if offset >= 0 else n + offset
+        if start < 0 or start > n:
+            return []
+        try:
+            return [self.param_expansion.extract_substring(value, offset, length)]
+        except ValueError as e:
+            print(f"psh: {e}", file=sys.stderr)
             self.state.last_exit_code = 1
-            raise ExpansionError(f"{length}: substring expression < 0", exit_code=1)
-        return elements[start:start + length]
+            raise ExpansionError(str(e), exit_code=1)
+
+    def _slice_sequence(self, elements: list, operand: str,
+                        what: str = 'seq', indices=None) -> list:
+        """Parse a slice operand and slice ``elements`` (canonical entry
+        combining _parse_slice_operand + _slice_elements)."""
+        offset, length = self._parse_slice_operand(operand, what)
+        return self._slice_elements(elements, offset, length, indices=indices)
 
     def _ifs_star_separator(self) -> str:
         """Separator for joining $* / ${arr[*]}.
@@ -179,22 +256,8 @@ class OperatorOpsMixin:
             # Substring extraction. Offset and length are arithmetic
             # expressions (bash), so support ${x:1+1:2}, ${x:(-3):2}, etc.
             from ..core import ExpansionError
-            from .arithmetic import ArithmeticError, evaluate_arithmetic
 
-            if ':' in operand:
-                offset_str, length_str = operand.split(':', 1)
-            else:
-                offset_str, length_str = operand, None
-
-            try:
-                offset = evaluate_arithmetic(offset_str, self.shell) if offset_str.strip() else 0
-                length = (evaluate_arithmetic(length_str, self.shell)
-                          if length_str is not None and length_str.strip() else
-                          (0 if length_str is not None else None))
-            except (ValueError, ArithmeticError):
-                print(f"psh: ${{var:{operand}}}: invalid offset or length", file=sys.stderr)
-                return ''
-
+            offset, length = self._parse_slice_operand(operand, var_name or 'var')
             try:
                 return self.param_expansion.extract_substring(value, offset, length)
             except ValueError as e:

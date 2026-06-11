@@ -111,29 +111,19 @@ class ArrayOpsMixin:
             return None
 
         var = self.state.scope_manager.get_variable_object(array_name)
-        slice_params = slice_part[1:].split(':', 1)
+        what = f"{array_name}[{index_expr}]"
+        sep = ' ' if index_expr == '@' else self._ifs_star_separator()
 
         if var and isinstance(var.value, IndexedArray):
-            try:
-                sliced = self._slice_sequence(var.value.all_elements(), slice_part[1:])
-                if index_expr == '@':
-                    return ' '.join(sliced)
-                return self._ifs_star_separator().join(sliced)
-            except (ValueError, TypeError):
-                return ''
+            # bash slices indexed arrays by INDEX (matters for sparse arrays)
+            sliced = self._slice_sequence(var.value.all_elements(), slice_part[1:],
+                                          what=what, indices=var.value.indices())
+            return sep.join(sliced)
         elif var and var.value:
-            try:
-                start = int(self.expand_string_variables(slice_params[0]))
-                if start == 0:
-                    if len(slice_params) > 1:
-                        length = int(self.expand_string_variables(slice_params[1]))
-                        if length > 0:
-                            return str(var.value)
-                        return ''
-                    return str(var.value)
-                return ''
-            except (ValueError, TypeError):
-                return ''
+            # Scalar with an [@]/[*] subscript: bash substring semantics.
+            offset, length = self._parse_slice_operand(slice_part[1:], what)
+            return sep.join(self._slice_scalar_subscript(str(var.value),
+                                                         offset, length))
         return ''
 
     def _expand_array_subscript(self, var_content: str) -> str:

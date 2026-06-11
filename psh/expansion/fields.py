@@ -5,7 +5,6 @@ single string, including per-element operator application and field
 slicing. Mixed into VariableExpander (variable.py).
 """
 
-import sys
 
 
 class FieldExpansionMixin:
@@ -106,46 +105,31 @@ class FieldExpansionMixin:
         return None, None
 
     def _slice_fields(self, param, base, slice_operand):
-        """Slice positional params or array elements: ${@:o:l}, ${a[@]:o:l}."""
-        from .arithmetic import ArithmeticError, evaluate_arithmetic
-        if ':' in slice_operand:
-            offset_str, length_str = slice_operand.split(':', 1)
-        else:
-            offset_str, length_str = slice_operand, None
-        try:
-            offset = evaluate_arithmetic(offset_str, self.shell) if offset_str.strip() else 0
-            length = (evaluate_arithmetic(length_str, self.shell)
-                      if length_str is not None and length_str.strip() else None)
-        except (ValueError, ArithmeticError):
-            print(f"psh: ${{{param}:{slice_operand}}}: invalid offset or length",
-                  file=sys.stderr)
-            return []
+        """Slice positional params or array elements: ${@:o:l}, ${a[@]:o:l}.
+
+        Thin dispatcher over the canonical slice helpers in operators.py
+        (_parse_slice_operand / _slice_elements / _slice_scalar_subscript),
+        which document the shared bash semantics.
+        """
+        offset, length = self._parse_slice_operand(slice_operand, param)
 
         if param == '@':
             # bash: index 0 is $0; the parameters start at offset 1, and a
             # negative offset counts back from one past the last parameter.
-            seq = [self.state.script_name] + base
-            start = len(seq) + offset if offset < 0 else offset
-            sliced = seq[max(0, start):]
-        else:
+            return self._slice_elements(
+                self._positional_slice_elements(), offset, length)
+
+        from ..core import AssociativeArray, IndexedArray
+        name = param[:-3]
+        var = self.state.scope_manager.get_variable_object(name)
+        if var is not None and isinstance(var.value, IndexedArray):
             # bash slices indexed arrays by INDEX, not by element position
             # (matters for sparse arrays).
-            from ..core import IndexedArray
-            name = param[:-3]
-            var = self.state.scope_manager.get_variable_object(name)
-            if var is not None and isinstance(var.value, IndexedArray):
-                indices = var.value.indices()
-                if offset < 0:
-                    offset = (max(indices) + 1 + offset) if indices else 0
-                sliced = [var.value.get(i) for i in indices if i >= offset]
-            else:
-                start = len(base) + offset if offset < 0 else offset
-                sliced = base[max(0, start):]
-
-        if length is not None:
-            if length < 0:
-                print(f"psh: {param}: substring expression < 0", file=sys.stderr)
-                self.state.last_exit_code = 1
-                return []
-            sliced = sliced[:length]
-        return sliced
+            return self._slice_elements(var.value.all_elements(), offset,
+                                        length, indices=var.value.indices())
+        if (var is not None and var.value is not None
+                and not isinstance(var.value, AssociativeArray)):
+            # Scalar with an [@] subscript: bash substring semantics
+            # (a set-but-empty scalar still yields one field for ":0").
+            return self._slice_scalar_subscript(str(var.value), offset, length)
+        return self._slice_elements(base, offset, length)

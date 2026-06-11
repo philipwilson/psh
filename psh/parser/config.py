@@ -18,7 +18,6 @@ class ErrorHandlingMode(Enum):
     """Error handling strategies."""
     STRICT = "strict"                # Stop on first error
     COLLECT = "collect"              # Collect multiple errors
-    RECOVER = "recover"              # Attempt error recovery
 
 
 @dataclass
@@ -37,7 +36,6 @@ class ParserConfig:
     error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
     max_errors: int = 10
     collect_errors: bool = False
-    enable_error_recovery: bool = False
 
     # === Language Features (read by parser) ===
     enable_arithmetic: bool = True
