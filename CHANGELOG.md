@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.289.0 (2026-06-11) - Behavior-bug batch (reappraisal #2 Tier A, 2/3)
+- M1: associative-array keys containing `,` or `^` now expand:
+  `declare -A a; a[x,y]=hi; echo "${a[x,y]}"` → `hi` (was empty). Two-part
+  root cause: variable.py excluded any `${...}` containing case-mod chars
+  from the subscript path, AND parse_expansion's case-mod scan split at
+  `,`/`^` inside `[...]`. Fixed with a structural `_is_plain_subscript()`
+  check (balanced-bracket, handles nested `arr[arr[0]+1]`) and a bracket
+  guard in the operator scan. `${a[x,y]^^}` and all case-mod forms
+  (`${v^^}`, `${v^^[a-m]}`, `${arr[@]^^}`) verified against bash.
+  18 new tests (test_assoc_array_special_keys.py).
+- M2: `command -v`/`-V` now finds aliases, keywords, functions, and
+  builtins in bash's lookup order with bash output formats (`-v`: alias
+  definition line / name / path; `-V`: "is a function" + body via the
+  shared ShellFormatter, "is aliased to", "is a shell builtin/keyword")
+  and bash rc semantics (multi-name rc 0 if any found; `-v` silent rc 1
+  on miss; bare `command` rc 0). The hardcoded `bash: type:` error prefix
+  is gone; raw prints converted to write_line()/error() per convention.
+  PATH probing shared with type via TypeBuiltin._find_in_path.
+  19 new tests (test_command_builtin.py).
+- M4: deleted four dead `set -o` options (validate-context,
+  validate-semantics, analyze-semantics, enhanced-error-recovery) from
+  core/state.py and `set` help — zero consumers (orphaned by the v0.286
+  parser pruning); they now error rc 2 like any unknown option. 4 tests.
+- M5: command-not-found inside a pipeline now prints
+  `psh: name: command not found` and exits 127 (non-executable → 126)
+  instead of a raw Python OSError with the PATH-probe path. Extracted
+  module-level report_exec_failure() shared by the inline-exec and fork
+  paths; pipeline diagnostics byte-identical to single-command ones.
+  5 subprocess tests (test_pipeline_exec_errors.py).
+- Suite: 4,368 passed / 4,683 collected; ruff + mypy clean.
+
 ## 0.288.0 (2026-06-11) - Process-substitution fd/zombie reaping (reappraisal #2 Tier A, 1/3)
 - Fixed (high severity, found by the second ground-up reappraisal): process
   substitutions used by external commands leaked parent-side fds and left

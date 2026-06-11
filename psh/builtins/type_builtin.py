@@ -123,8 +123,11 @@ class TypeBuiltin(Builtin):
 
         return exit_code
 
-    def _find_in_path(self, name: str, path_str: str) -> List[str]:
-        """Find all occurrences of a command in PATH."""
+    @staticmethod
+    def _find_in_path(name: str, path_str: str) -> List[str]:
+        """Find all occurrences of a command in PATH.
+
+        Shared with CommandBuiltin (`command -v` / `-V`)."""
         if not path_str:
             return []
 

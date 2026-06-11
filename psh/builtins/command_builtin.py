@@ -1,6 +1,5 @@
 """Command builtin for bypassing aliases and functions."""
 
-import os
 from typing import TYPE_CHECKING, List
 
 from .base import Builtin
@@ -47,17 +46,16 @@ class CommandBuiltin(Builtin):
             else:
                 break
 
-        # Check if we have a command to process
+        # bash: bare `command` (or `command -v` with no names) succeeds
         if i >= len(args):
-            self.error("usage: command [-pVv] command [arg ...]", shell)
-            return 2
+            return 0
 
         command_name = args[i]
         command_args = args[i:]
 
         # Handle description modes (-v and -V)
         if show_description or verbose_description:
-            return self._show_command_info(command_name, verbose_description, shell)
+            return self._show_command_info(args[i:], verbose_description, shell)
 
         # Execute the command, bypassing aliases and functions
         if use_default_path:
@@ -78,33 +76,74 @@ class CommandBuiltin(Builtin):
                 # Execute external command
                 return self._execute_external_command(command_name, command_args, shell)
 
-    def _show_command_info(self, command_name: str, verbose: bool, shell: 'Shell') -> int:
-        """Display information about a command."""
-        # Check if it's a builtin
-        if command_name in shell.builtin_registry:
-            if verbose:
-                print(f"{command_name} is a shell builtin", file=shell.stdout)
-            else:
-                print(command_name, file=shell.stdout)
-            return 0
+    def _show_command_info(self, names: List[str], verbose: bool, shell: 'Shell') -> int:
+        """Display information about commands (bash `command -v` / `-V`).
 
-        # Check if it's in PATH
-        path_dirs = shell.env.get('PATH', '').split(':')
-        for dir_path in path_dirs:
-            if not dir_path:
-                continue
-            full_path = os.path.join(dir_path, command_name)
-            if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+        Lookup order follows `type`: alias > keyword > function > builtin >
+        PATH. Returns 0 if at least one name was found, 1 otherwise (bash).
+        """
+        from .type_builtin import TypeBuiltin
+
+        any_found = False
+        for name in names:
+            # Aliases (command -v prints the alias definition line)
+            alias_value = shell.alias_manager.get_alias(name)
+            if alias_value is not None:
                 if verbose:
-                    print(f"{command_name} is {full_path}", file=shell.stdout)
+                    self.write_line(f"{name} is aliased to `{alias_value}'", shell)
                 else:
-                    print(full_path, file=shell.stdout)
-                return 0
+                    escaped_value = alias_value.replace("'", "'\"'\"'")
+                    self.write_line(f"alias {name}='{escaped_value}'", shell)
+                any_found = True
+                continue
 
-        # Command not found
-        if verbose:
-            print(f"bash: type: {command_name}: not found", file=shell.stderr)
-        return 1
+            # Shell keywords
+            if name in TypeBuiltin.SHELL_KEYWORDS:
+                if verbose:
+                    self.write_line(f"{name} is a shell keyword", shell)
+                else:
+                    self.write_line(name, shell)
+                any_found = True
+                continue
+
+            # Functions (-V prints the definition, like `declare -f`)
+            func = shell.function_manager.get_function(name)
+            if func is not None:
+                if verbose:
+                    from ..utils.shell_formatter import ShellFormatter
+                    self.write_line(f"{name} is a function", shell)
+                    self.write_line(
+                        f"{name} () " + ShellFormatter.format_function_body(func),
+                        shell)
+                else:
+                    self.write_line(name, shell)
+                any_found = True
+                continue
+
+            # Builtins
+            if shell.builtin_registry.has(name):
+                if verbose:
+                    self.write_line(f"{name} is a shell builtin", shell)
+                else:
+                    self.write_line(name, shell)
+                any_found = True
+                continue
+
+            # PATH search (also handles names containing a slash)
+            paths = TypeBuiltin._find_in_path(name, shell.env.get('PATH', ''))
+            if paths:
+                if verbose:
+                    self.write_line(f"{name} is {paths[0]}", shell)
+                else:
+                    self.write_line(paths[0], shell)
+                any_found = True
+                continue
+
+            # Not found: -v is silent, -V prints an error (bash)
+            if verbose:
+                self.error(f"{name}: not found", shell)
+
+        return 0 if any_found else 1
 
     def _execute_external_command(self, command_name: str, args: List[str], shell: 'Shell') -> int:
         """Execute an external command using PSH's external execution strategy."""

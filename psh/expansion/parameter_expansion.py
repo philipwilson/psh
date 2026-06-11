@@ -161,6 +161,11 @@ class ParameterExpansion:
         # This is checked after substitution to avoid conflicts with commas in patterns
         for i, char in enumerate(content):
             if char in '^,':
+                # A `^`/`,` inside an unclosed bracket is part of an array
+                # subscript (assoc keys like a[x,y]), not a case operator.
+                before = content[:i]
+                if before.count('[') > before.count(']'):
+                    continue
                 if i + 1 < len(content) and content[i + 1] == char:
                     # Double operator (^^ or ,,)
                     var_name = content[:i]
