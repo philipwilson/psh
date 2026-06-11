@@ -4,6 +4,39 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.302.0 (2026-06-11) - Per-invocation builtin redirection frames (reassessment Phase 1, 1/3)
+- High-severity Finding #1 from docs/reviews/code_quality_subsystem_
+  reassessment_2026-06-11.md: nested builtin redirections restored the
+  wrong state. setup_builtin_redirections kept per-invocation state on
+  the SHARED manager — _saved_fds_list was drained wholesale by ANY
+  restore (so an inner builtin's restore re-pointed the outer eval's
+  fd 3 mid-body: `exec 3>f; eval "echo one >&3; echo two >&3" 3>&1`
+  sent `two` to the file; bash sends both to stdout), and
+  _opened_streams was reassigned per setup. (Correction to the claim:
+  the v0.292 _BuiltinStreamSnapshot was already per-call.)
+- Fix: new BuiltinRedirectFrame owns the snapshot, fd-level dup
+  backups, and opened streams; setup returns the frame and restore
+  takes it by identity. Innermost-first order is enforced by paired
+  try/finally construction; out-of-order restore is tolerated (that
+  frame's own state still restores — no leak) and documented.
+  Transactional rollback rolls back only the partial frame — an inner
+  failed redirection no longer corrupts the outer frame. Procsub
+  registrations deliberately stay with process_sub_scope() (moving
+  them would re-break the v0.288 function-argument case).
+- Bonus fix (pre-existing, found by probing): `>&m` for m>=3
+  (`eval "echo b >&3" >/dev/null`) was fd-level only — invisible when
+  sys.stdout is a swapped stream. Now handled in both universes via
+  the exec-style shared-fd dup pattern.
+- Nesting entry points mapped and tested: eval, source, EXIT/DEBUG
+  traps mid-frame, command substitution (forks — unaffected, pinned),
+  three-deep mixed-universe nesting, partial-frame rollback. 16 new
+  bash-pinned tests (test_builtin_redirect_nesting.py).
+- Known out-of-scope DIFF recorded: assignment-only commands apply
+  redirects before expanding their command substitution
+  (`x=$(echo inner >&2) 2>/dev/null`); bash expands first.
+  Pre-existing, unrelated to frame state.
+- Suite: 4,724 passed / 4,994 collected; ruff + mypy clean.
+
 ## 0.301.0 (2026-06-11) - Embedded process substitution (quality assessment Phase 1, 3/3 — PHASE 1 COMPLETE)
 - Correctness Risk #2: `echo pre<(echo hi)post` printed literal text;
   bash prints `pre/dev/fd/63post`. The lexer already tokenized procsub

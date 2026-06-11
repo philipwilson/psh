@@ -683,8 +683,11 @@ class CommandExecutor:
         custom_names = ('_custom_stdin', '_custom_stdout', '_custom_stderr')
         saved_custom = {n: getattr(self.state, n) for n in custom_names
                         if hasattr(self.state, n)}
-        stdin_backup, stdout_backup, stderr_backup, stdin_fd_backup = \
-            self.io_manager.setup_builtin_redirections(node)
+        # The frame records everything this invocation's redirections
+        # changed; setup/restore nest (eval/source/trap handlers run
+        # further redirected builtins), so the pairing must be by frame,
+        # innermost-first — guaranteed here by the try/finally.
+        redirect_frame = self.io_manager.setup_builtin_redirections(node)
         try:
             # Update shell streams for builtins that might use them
             self.shell.stdout = sys.stdout
@@ -698,9 +701,7 @@ class CommandExecutor:
                 visitor=getattr(self, '_visitor', None),
             )
         finally:
-            self.io_manager.restore_builtin_redirections(
-                stdin_backup, stdout_backup, stderr_backup, stdin_fd_backup
-            )
+            self.io_manager.restore_builtin_redirections(redirect_frame)
             for n in custom_names:
                 if n in saved_custom:
                     setattr(self.state, n, saved_custom[n])

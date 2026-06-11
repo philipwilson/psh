@@ -149,21 +149,36 @@ universe — the full design rationale is the module docstring of
 | `>`, `>>`, `>|`, `&>` to fd 1/2 | stream swap | `_builtin_redirect_output_file`, `_builtin_redirect_combined` |
 | `2>&1`, `1>&2` | stream swap (`sys.stderr = sys.stdout`) | `_builtin_redirect_dup` |
 | `<`, `<>`, heredoc, here-string | BOTH (stream for the builtin, dup2 of fd 0 for children it spawns) | `_builtin_redirect_stdin` |
-| fd >= 3, other `n>&m`, `>&-` | fd level | `_builtin_redirect_fd_level` |
+| `1>&m`, `2>&m` (m >= 3), e.g. `echo x >&3` | BOTH (dup2 for children, stream onto a dup of m's description for the builtin — sys.stdout may be a swapped file object not backed by fd 1) | `_builtin_redirect_dup` |
+| dups of fd >= 3 (`3>&1`), `>&-` | fd level | `_builtin_redirect_fd_level` |
 
 ```
-1. setup_builtin_redirections()
-   - _BuiltinStreamSnapshot records pre-redirect streams (first-touch-wins)
-     and a dup of fd 0; opened files accumulate in _opened_streams
-   - Transactional: a failure part-way through rolls everything back
+1. frame = setup_builtin_redirections()
+   - Returns a BuiltinRedirectFrame owning everything this invocation
+     changed: a _BuiltinStreamSnapshot of the pre-redirect streams
+     (first-touch-wins) and a dup of fd 0, the (fd, saved_fd) pairs from
+     fd-level redirects (frame.saved_fds), and the files setup opened
+     (frame.opened_streams)
+   - Transactional: a failure part-way through rolls back THIS frame only
 2. Execute builtin
-3. restore_builtin_redirections()
-   - Restore fd-level saves (_saved_fds_list) first
+3. restore_builtin_redirections(frame)
+   - Restore that frame's fd-level saves first
    - Restore the snapshot's original stream objects
    - Close exactly the files setup opened (never whatever happens to be
      in sys.stdout — after `cmd 2>&1` that IS the shell's real stdout)
    - dup2 the saved fd 0 back
 ```
+
+**Frames nest.** `eval "echo one >&3" 3>&1`, `source file 3>&1`, and trap
+handlers all run further redirected builtins while an outer frame is
+active, so this state is per-invocation, never manager-level (manager-level
+lists conflated nested invocations before v0.302: the inner restore
+drained the outer's fd saves). Frames are restored innermost-first (LIFO),
+guaranteed by the paired try/finally in
+`_execute_builtin_with_redirections`; the manager keeps a frame stack only
+to keep that invariant observable. See
+`tests/integration/redirection/test_builtin_redirect_nesting.py` for the
+bash-pinned nesting battery.
 
 ### For `exec` (Permanent Redirections)
 

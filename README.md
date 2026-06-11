@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.301.0 | **Tests**: 4,978 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.302.0 | **Tests**: 4,994 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -243,7 +243,7 @@ PSH uniquely includes two complete parser implementations:
 
 ### Project Statistics
 - **Lines of Code**: ~47,300 lines of production code in `psh/` across 192 Python files, plus ~53,600 lines of tests in `tests/` (231 files)
-- **Test Coverage**: 4,978 tests in 239 test files
+- **Test Coverage**: 4,994 tests in 240 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -341,6 +341,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.302.0**: builtin redirections use per-invocation frame objects — nested eval/source/trap redirections restore correctly (the wholesale-drain bug sent output to the wrong fd); `>&m` for m≥3 now works in both universes (was fd-level only, invisible through swapped streams)
 - **v0.301.0**: process substitution is now a true Word expansion part — `echo pre<(cmd)post`, multiple per word, and `x=<(cmd)` assignments all work like bash; the whole-word string-sniffing pre-pass is deleted (whole-word is just the one-part case); same v0.288 scope cleanup
 - **v0.300.0**: internal expansion bugs now fail loudly instead of becoming literal output; fork sigmask restore wrapped in try/finally (EAGAIN no longer leaks a blocked mask); interactive signal handlers restored on every REPL exit path (restore_default_handlers had zero callers; double-setup and notifier-fd latent bugs fixed)
 - **v0.299.0**: array initializers now use the Word expansion engine (quoted globs stay literal, IFS-aware splitting, noglob/nullglob/dotglob honored, `"${a[@]}"` splicing — 53/53 bash probes); the parser already built Word nodes for elements and threw them away
