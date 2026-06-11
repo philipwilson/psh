@@ -5,8 +5,6 @@ import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, List, Tuple
 
-from ..ast_nodes import Command
-
 if TYPE_CHECKING:
     from ..shell import Shell
 
@@ -107,48 +105,26 @@ class ProcessSubstitutionHandler:
         # behaves the same: the substitution may outlive its command).
         self.pending_pids: List[int] = []
 
-    def setup_process_substitutions(self, command: Command) -> Tuple[List[int], List[str], List[int]]:
-        """
-        Set up process substitutions for a command.
+    def create_for_expansion(self, direction: str, command: str) -> str:
+        """Create one process substitution during word expansion.
+
+        Used by the expansion manager for ProcessSubstitution word parts —
+        both whole-word (``<(cmd)``) and embedded (``pre<(cmd)post``) forms.
+        The parent fd and child pid are registered with the handler so the
+        enclosing scope() closes the fd and reaps the child when the
+        consuming command finishes.
+
+        Args:
+            direction: 'in' for <(cmd), 'out' for >(cmd).
+            command: The command text (without the <()/>()} wrapper).
 
         Returns:
-            Tuple of (file_descriptors, substituted_paths, child_pids)
+            The /dev/fd/N path to splice into the word.
         """
-        fds_to_keep = []
-        substituted_args = []
-        child_pids = []
-
-        from ..ast_nodes import LiteralPart
-        for i, arg in enumerate(command.args):
-            # Detect process substitution via Word AST when available
-            is_proc_sub = False
-            if command.words and i < len(command.words):
-                word = command.words[i]
-                if (len(word.parts) == 1 and
-                        isinstance(word.parts[0], LiteralPart) and
-                        not word.parts[0].quoted):
-                    text = word.parts[0].text
-                    if text.startswith('<('):
-                        is_proc_sub = True
-                        arg_type = 'PROCESS_SUB_IN'
-                    elif text.startswith('>('):
-                        is_proc_sub = True
-                        arg_type = 'PROCESS_SUB_OUT'
-
-            if is_proc_sub:
-                fd, path, pid = self._create_process_substitution(arg, arg_type)
-                fds_to_keep.append(fd)
-                substituted_args.append(path)
-                child_pids.append(pid)
-            else:
-                # Not a process substitution, keep as-is
-                substituted_args.append(arg)
-
-        # Track for cleanup
-        self.active_fds.extend(fds_to_keep)
-        self.active_pids.extend(child_pids)
-
-        return fds_to_keep, substituted_args, child_pids
+        fd, path, pid = create_process_substitution(command, direction, self.shell)
+        self.active_fds.append(fd)
+        self.active_pids.append(pid)
+        return path
 
     def _create_process_substitution(self, arg: str, arg_type: str) -> Tuple[int, str, int]:
         """

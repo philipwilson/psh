@@ -14,6 +14,7 @@ from ....ast_nodes import (
     ExpansionPart,
     LiteralPart,
     ParameterExpansion,
+    ProcessSubstitution,
     VariableExpansion,
     Word,
     WordPart,
@@ -29,6 +30,7 @@ EXPANSION_TYPES = frozenset({
     TokenType.VARIABLE, TokenType.COMMAND_SUB,
     TokenType.COMMAND_SUB_BACKTICK, TokenType.ARITH_EXPANSION,
     TokenType.PARAM_EXPANSION,
+    TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT,
 })
 
 
@@ -91,6 +93,15 @@ class WordBuilder:
         elif token_type == TokenType.PARAM_EXPANSION:
             # Complex parameter expansion ${var:-default} etc.
             return WordBuilder._parse_parameter_expansion(value)
+
+        elif token_type in (TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT):
+            # Process substitution <(cmd) or >(cmd) — may stand alone as a
+            # word or be embedded in a composite (pre<(cmd)post)
+            direction = 'in' if token_type == TokenType.PROCESS_SUB_IN else 'out'
+            command = value
+            if command.startswith(('<(', '>(')) and command.endswith(')'):
+                command = command[2:-1]
+            return ProcessSubstitution(direction=direction, command=command)
 
         else:
             # Fallback - treat as variable

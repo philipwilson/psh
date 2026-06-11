@@ -5,6 +5,7 @@ from psh.ast_nodes import (
     CommandSubstitution,
     ExpansionPart,
     LiteralPart,
+    ProcessSubstitution,
     VariableExpansion,
     Word,
 )
@@ -229,8 +230,11 @@ class TestWordBuilding:
     def test_build_word_from_process_sub_in(self):
         """Test building Word from input process substitution.
 
-        Process substitution tokens are treated as literals — the expansion
-        manager recognises the <()/() syntax during the expansion phase.
+        Process substitution tokens become ProcessSubstitution expansion
+        parts (same representation as the recursive descent parser) so the
+        expansion manager performs the substitution and splices the
+        /dev/fd/N path into the word — including embedded forms like
+        ``pre<(cmd)post``.
         """
         parsers = ExpansionParsers()
 
@@ -239,15 +243,13 @@ class TestWordBuilding:
 
         assert isinstance(word, Word)
         assert len(word.parts) == 1
-        assert isinstance(word.parts[0], LiteralPart)
-        assert word.parts[0].text == "<(sort file.txt)"
+        assert isinstance(word.parts[0], ExpansionPart)
+        assert isinstance(word.parts[0].expansion, ProcessSubstitution)
+        assert word.parts[0].expansion.direction == 'in'
+        assert word.parts[0].expansion.command == 'sort file.txt'
 
     def test_build_word_from_process_sub_out(self):
-        """Test building Word from output process substitution.
-
-        Process substitution tokens are treated as literals — the expansion
-        manager recognises the <()/() syntax during the expansion phase.
-        """
+        """Test building Word from output process substitution."""
         parsers = ExpansionParsers()
 
         token = make_token(TokenType.PROCESS_SUB_OUT, ">(gzip > output.gz)")
@@ -255,8 +257,10 @@ class TestWordBuilding:
 
         assert isinstance(word, Word)
         assert len(word.parts) == 1
-        assert isinstance(word.parts[0], LiteralPart)
-        assert word.parts[0].text == ">(gzip > output.gz)"
+        assert isinstance(word.parts[0], ExpansionPart)
+        assert isinstance(word.parts[0].expansion, ProcessSubstitution)
+        assert word.parts[0].expansion.direction == 'out'
+        assert word.parts[0].expansion.command == 'gzip > output.gz'
 
 
 class TestConvenienceFunctions:

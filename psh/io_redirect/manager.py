@@ -400,9 +400,14 @@ class IOManager:
                     except OSError:
                         pass
 
-    def setup_process_substitutions(self, command: Command) -> Tuple[List[int], List[str], List[int]]:
-        """Set up process substitutions for a command."""
-        return self.process_sub_handler.setup_process_substitutions(command)
+    def create_process_substitution_for_expansion(self, direction: str,
+                                                  command: str) -> str:
+        """Create one process substitution during word expansion.
+
+        Returns the /dev/fd/N path; the fd/pid are owned by the enclosing
+        process_sub_scope().
+        """
+        return self.process_sub_handler.create_for_expansion(direction, command)
 
     def process_sub_scope(self):
         """Context manager owning process substitutions created within it.

@@ -27,17 +27,6 @@ class Redirect(ASTNode):
     combined: bool = False  # True for &> and &>> (redirects both stdout and stderr)
 
 
-@dataclass
-class ProcessSubstitution(ASTNode):
-    """Represents a process substitution <(...) or >(...)."""
-    direction: str  # 'in' or 'out'
-    command: str    # Command to execute
-
-    def __str__(self):
-        symbol = '<' if self.direction == 'in' else '>'
-        return f"{symbol}({self.command})"
-
-
 # =============================================================================
 # EXPANSION NODES
 # =============================================================================
@@ -45,6 +34,22 @@ class ProcessSubstitution(ASTNode):
 class Expansion(ASTNode):
     """Base class for all types of expansions."""
     pass
+
+
+@dataclass
+class ProcessSubstitution(Expansion):
+    """Represents a process substitution <(...) or >(...).
+
+    An Expansion so it can appear as an ExpansionPart inside a Word
+    (embedded form, e.g. ``pre<(cmd)post``); a whole-word substitution is
+    simply a Word with a single ProcessSubstitution part.
+    """
+    direction: str  # 'in' or 'out'
+    command: str    # Command to execute
+
+    def __str__(self):
+        symbol = '<' if self.direction == 'in' else '>'
+        return f"{symbol}({self.command})"
 
 
 @dataclass

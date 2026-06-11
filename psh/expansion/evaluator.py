@@ -7,7 +7,14 @@ to avoid duplicating expansion logic.
 
 from typing import TYPE_CHECKING
 
-from ..ast_nodes import ArithmeticExpansion, CommandSubstitution, Expansion, ParameterExpansion, VariableExpansion
+from ..ast_nodes import (
+    ArithmeticExpansion,
+    CommandSubstitution,
+    Expansion,
+    ParameterExpansion,
+    ProcessSubstitution,
+    VariableExpansion,
+)
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -45,6 +52,8 @@ class ExpansionEvaluator:
             return self._evaluate_parameter(expansion)
         elif isinstance(expansion, ArithmeticExpansion):
             return self._evaluate_arithmetic(expansion)
+        elif isinstance(expansion, ProcessSubstitution):
+            return self._evaluate_process_substitution(expansion)
         else:
             raise ValueError(f"Unknown expansion type: {type(expansion)}")
 
@@ -90,3 +99,14 @@ class ExpansionEvaluator:
             f"$(({expansion.expression}))"
         )
         return str(result)
+
+    def _evaluate_process_substitution(self, expansion: ProcessSubstitution) -> str:
+        """Perform a process substitution and return its /dev/fd/N path.
+
+        The parent fd and child pid register with the
+        ProcessSubstitutionHandler; the enclosing process_sub_scope()
+        closes the fd and reaps the child when the consuming command
+        finishes (e.g. assignment values like ``x=<(cmd)``).
+        """
+        return self.shell.io_manager.create_process_substitution_for_expansion(
+            expansion.direction, expansion.command)

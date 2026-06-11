@@ -183,10 +183,12 @@ class ExpansionParsers:
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         elif token.type.name in ('PROCESS_SUB_IN', 'PROCESS_SUB_OUT'):
-            # Process substitution <(...) / >(...)
-            # Treat as literal — the expansion manager recognizes the <()/() syntax
-            # and handles process substitution during the expansion phase.
-            return Word(parts=[LiteralPart(text=token.value, quoted=is_quoted, quote_char=qt)])
+            # Process substitution <(...) / >(...) — same ExpansionPart
+            # representation as the recursive descent parser (WordBuilder),
+            # so the expansion manager performs the substitution and
+            # splices the /dev/fd/N path into the word.
+            expansion = WordBuilder.parse_expansion_token(token)
+            return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         else:
             # Regular word token
