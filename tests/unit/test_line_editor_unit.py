@@ -391,3 +391,29 @@ class TestViUndoRedo:
                      | set(ed.key_handler.normal_bindings.values()))
         unhandled = sorted(all_bound - handled)
         assert unhandled == [], f"bound but not dispatched: {unhandled}"
+
+
+class TestTerminalManagerInterface:
+    """Guard: LineEditor may only call methods TerminalManager defines.
+
+    Regression test for a defect where the EIO recovery path called
+    self.terminal.restore(), but TerminalManager has no such method —
+    the AttributeError was masked because the surrounding except clause
+    only caught OSError.
+    """
+
+    def test_terminal_attribute_references_exist(self):
+        import inspect
+        import re
+
+        import psh.interactive.line_editor as le_mod
+        from psh.interactive.terminal import TerminalManager
+
+        src = inspect.getsource(le_mod)
+        referenced = set(re.findall(r"self\.terminal\.(\w+)", src))
+        missing = sorted(
+            name for name in referenced if not hasattr(TerminalManager, name)
+        )
+        assert missing == [], (
+            f"line_editor references nonexistent TerminalManager attrs: {missing}"
+        )

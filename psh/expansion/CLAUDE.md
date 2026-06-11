@@ -332,4 +332,6 @@ Output example:
 ### With Arithmetic (`psh/expansion/arithmetic.py`)
 
 - `execute_arithmetic_expansion()` calls `evaluate_arithmetic()`
-- Variables in arithmetic are pre-expanded
+- `evaluate_arithmetic()` expands $-constructs itself (one verbatim pass
+  via `expand_string_variables()` → `_expand_one_dollar`); substituted
+  values are NOT rescanned, and bare names are resolved by the evaluator

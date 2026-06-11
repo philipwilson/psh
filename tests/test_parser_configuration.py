@@ -82,7 +82,6 @@ class TestParserWithConfiguration:
         assert parser.is_feature_enabled('arithmetic') == False
 
         assert parser.should_collect_errors() == False
-        assert parser.should_attempt_recovery() == False
 
     def test_parser_require_feature(self):
         """Test parser feature requirement checking."""

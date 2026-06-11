@@ -5,6 +5,7 @@ import os
 import select
 import shutil
 import sys
+import termios
 from typing import Callable, List, Optional
 
 from . import line_layout as L
@@ -195,10 +196,12 @@ class LineEditor:
                 except OSError as e:
                     # Handle I/O errors (e.g., terminal disconnected)
                     if e.errno == 5:  # EIO
-                        # Try to restore terminal before failing
+                        # Try to restore terminal before failing.
+                        # tcsetattr on a disconnected terminal raises
+                        # termios.error (not an OSError subclass).
                         try:
-                            self.terminal.restore()
-                        except OSError:
+                            self.terminal.exit_raw_mode()
+                        except (termios.error, OSError):
                             pass
                     raise  # Re-raise the exception
 

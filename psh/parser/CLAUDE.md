@@ -129,7 +129,6 @@ class ParserContext:
     # Error handling
     config: ParserConfig
     errors: List[ParseError]
-    error_recovery_mode: bool
     fatal_error: Optional[ParseError]
 
     # Source context (for error messages)
@@ -336,7 +335,6 @@ class ParserConfig:
     error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
     max_errors: int = 10
     collect_errors: bool = False
-    enable_error_recovery: bool = False
 
     # Language features
     enable_arithmetic: bool = True

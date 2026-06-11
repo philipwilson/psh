@@ -60,10 +60,6 @@ class ContextBaseParser:
         """Check if errors should be collected rather than thrown."""
         return self.ctx.should_collect_errors()
 
-    def should_attempt_recovery(self) -> bool:
-        """Check if error recovery should be attempted."""
-        return self.ctx.should_attempt_recovery()
-
     def add_error(self, error: ParseError) -> bool:
         """Add error to context and return whether parsing should continue."""
         if self.ctx.config.collect_errors:
