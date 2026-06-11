@@ -3,7 +3,7 @@ import os
 import signal
 from typing import TYPE_CHECKING, List
 
-from ..job_control import JobState
+from ..executor.job_control import JobState
 from .base import Builtin
 from .registry import builtin
 
@@ -332,5 +332,5 @@ class WaitBuiltin(Builtin):
 
     def _extract_exit_status(self, status: int) -> int:
         """Extract exit status from waitpid status."""
-        from ..job_control import exit_status_from_wait_status
+        from ..executor.job_control import exit_status_from_wait_status
         return exit_status_from_wait_status(status)

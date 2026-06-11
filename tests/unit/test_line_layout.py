@@ -1,6 +1,6 @@
 """Unit tests for the pure line-layout computation (v0.273.0)."""
 
-from psh.line_layout import (
+from psh.interactive.line_layout import (
     at_row_boundary,
     displayable_prompt,
     position,

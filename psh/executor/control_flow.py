@@ -14,8 +14,8 @@ This module handles execution of control structures including:
 import sys
 from typing import TYPE_CHECKING, List, Optional
 
-from ..arithmetic import evaluate_arithmetic
 from ..core import LoopBreak, LoopContinue, ReadonlyVariableError
+from ..expansion.arithmetic import evaluate_arithmetic
 
 if TYPE_CHECKING:
     from psh.visitor import ASTVisitor

@@ -7,8 +7,8 @@ This module handles parsing of arithmetic expressions and commands.
 from typing import Optional
 
 from ....ast_nodes import ArithmeticEvaluation
-from ....token_stream import TokenStream
-from ....token_types import TokenType
+from ....lexer.token_stream import TokenStream
+from ....lexer.token_types import TokenType
 
 
 class ArithmeticParser:

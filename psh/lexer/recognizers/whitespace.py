@@ -2,8 +2,8 @@
 
 from typing import Optional, Tuple
 
-from ...token_types import Token
 from ..state_context import LexerContext
+from ..token_types import Token
 from ..unicode_support import is_whitespace
 from .base import TokenRecognizer
 

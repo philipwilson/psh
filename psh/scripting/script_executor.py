@@ -2,8 +2,8 @@
 import sys
 from typing import List
 
-from ..input_sources import FileInput
 from .base import ScriptComponent
+from .input_sources import FileInput
 
 
 class ScriptExecutor(ScriptComponent):

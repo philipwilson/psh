@@ -20,7 +20,7 @@ from ...ast_nodes import (
     TestExpression,
     UnaryTestExpression,
 )
-from ...token_types import Token
+from ...lexer.token_types import Token
 from ..config import ParserConfig
 from .commands import CommandParsers
 from .core import Parser, ParseResult

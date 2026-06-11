@@ -8,7 +8,7 @@ from unittest.mock import patch
 # importing them needs no TTY, and the poisoned modules leak into every
 # later import in the process (it broke ptyprocess/pexpect during
 # whole-tree collection). Per-test mocking via patch() is fine.
-from psh.line_editor import LineEditor
+from psh.interactive.line_editor import LineEditor
 
 
 class TestMultiLineHistory:
@@ -103,7 +103,7 @@ class TestMultiLineHistory:
         editor = LineEditor(history=[multiline_cmd])
 
         # Convert and set line
-        from psh.line_editor_helpers import convert_multiline_to_single
+        from psh.interactive.line_editor_helpers import convert_multiline_to_single
         single_line = convert_multiline_to_single(multiline_cmd)
         editor._replace_line(single_line)
 

@@ -3,8 +3,8 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from ..token_types import Token
 from .position import Position
+from .token_types import Token
 
 
 @dataclass

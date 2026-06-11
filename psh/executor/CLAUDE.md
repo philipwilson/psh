@@ -288,7 +288,7 @@ python -m psh --debug-expansion # Variable and command substitution
 - Exit code: `shell.state.last_exit_status`
 - Options: `shell.state.options` (errexit, pipefail, etc.)
 
-### With Job Control (`psh/job_control.py`)
+### With Job Control (`psh/executor/job_control.py`)
 
 - Job table: `shell.job_manager`
 - Background jobs: `Job` objects with process group info

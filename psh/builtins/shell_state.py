@@ -266,7 +266,7 @@ class LocalBuiltin(Builtin):
             # Evaluate arithmetic expression
             try:
                 # Use shell's arithmetic evaluator
-                from ..arithmetic import evaluate_arithmetic
+                from ..expansion.arithmetic import evaluate_arithmetic
                 result = evaluate_arithmetic(value, shell)
                 return str(result)
             except (ValueError, ArithmeticError):

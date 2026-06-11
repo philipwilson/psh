@@ -64,8 +64,8 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
         raise
     except Exception as e:
         # Imports here to avoid circular imports
-        from ..builtins import FunctionReturn
         from ..core import LoopBreak, LoopContinue, UnboundVariableError
+        from ..core.exceptions import FunctionReturn
         if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue,
                           UnboundVariableError)):
             raise
@@ -473,7 +473,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             shell.job_manager.finish_foreground_job(original_pgid is not None)
 
             # Clean up
-            from ..job_control import JobState
+            from .job_control import JobState
             if job.state == JobState.DONE:
                 shell.job_manager.remove_job(job.job_id)
 

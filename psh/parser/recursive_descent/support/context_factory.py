@@ -3,7 +3,7 @@
 from typing import List, Optional
 
 from ....lexer.keyword_normalizer import KeywordNormalizer
-from ....token_types import Token
+from ....lexer.token_types import Token
 from ...config import ParserConfig
 from ..context import ParserContext
 

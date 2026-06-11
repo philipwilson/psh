@@ -1,5 +1,5 @@
 """Token formatting utilities for debugging."""
-from ..token_types import Token
+from ..lexer.token_types import Token
 
 
 class TokenFormatter:

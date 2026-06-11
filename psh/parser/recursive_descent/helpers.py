@@ -5,7 +5,7 @@ from enum import Enum
 from typing import List, Optional, Set
 
 from ...core.exceptions import PshError
-from ...token_types import Token, TokenType
+from ...lexer.token_types import Token, TokenType
 
 
 class ErrorSeverity(Enum):
@@ -175,7 +175,7 @@ class ParseError(PshError):
         # of the token stream, so more input could make the parse succeed.
         # Interactive/script line-continuation logic keys off this instead
         # of string-matching error messages.
-        from ...token_types import TokenType
+        from ...lexer.token_types import TokenType
         token = error_context.token
         self.at_eof = bool(token is not None and token.type == TokenType.EOF)
         super().__init__(error_context.format_error())

@@ -4,6 +4,38 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.285.0 (2026-06-11) - Top-level module relocation + scope rename (reappraisal Tier C, 1/3)
+- The 19 orphan top-level modules (15% of the tree) moved into their
+  packages via `git mv`, so the layout finally matches the documented
+  architecture. Top level is now exactly: shell.py, __main__.py,
+  ast_nodes.py, version.py (+ __init__.py).
+  - lexer/: token_types.py, token_stream.py, token_transformer.py
+  - expansion/: arithmetic.py, brace_expansion.py, aliases.py
+  - executor/: job_control.py
+  - core/: functions.py
+  - scripting/: input_sources.py, input_preprocessing.py
+  - interactive/: line_editor.py, line_editor_helpers.py, line_layout.py,
+    tab_completion.py, prompt.py, keybindings.py, multiline_handler.py,
+    history_expansion.py
+- No compatibility shims (pre-1.0 educational software; this entry is the
+  record). 87 psh/ files + 31 test files had imports rewritten by a
+  resolution-aware script (relative imports resolved to absolute targets
+  first, so the parser's own local functions.py/arithmetic.py were
+  correctly untouched). No string/importlib references existed.
+- One import cycle surfaced and was fixed at the root: executor modules
+  imported FunctionReturn from psh.builtins (a re-export), creating
+  builtins → executor → builtins at startup once job_control moved.
+  Executor now imports it from its true home, core.exceptions, severing
+  the executor → builtins import-time edge entirely.
+- `core/scope_enhanced.py` renamed to `core/scope.py` and
+  `EnhancedScopeManager` to `ScopeManager` — there was never a
+  non-enhanced version to be enhanced relative to. Full reference update,
+  no alias kept (only 4 files referenced it).
+- ~26 doc path references updated (ARCHITECTURE.md/.llm component tree,
+  seven subsystem CLAUDE.mds).
+- Pure relocation: zero behavior change; full suite green at exact
+  baseline (4,249 passed / 4,564 collected), PTY smoke 34/34.
+
 ## 0.284.0 (2026-06-11) - Builtins consistency (reappraisal Tier B, 6/6 — Tier B complete)
 - Option parsing converged selectively (not blindly): `type` converted to
   the shared parse_flags helper, fixing 3 bash-pinned divergences

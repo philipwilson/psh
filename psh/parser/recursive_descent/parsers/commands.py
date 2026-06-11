@@ -19,8 +19,8 @@ from ....ast_nodes import (
     SubshellGroup,
     Word,
 )
-from ....token_stream import TokenStream
-from ....token_types import Token, TokenType
+from ....lexer.token_stream import TokenStream
+from ....lexer.token_types import Token, TokenType
 from ..helpers import ErrorContext, ParseError, TokenGroups
 from ..support.word_builder import WordBuilder
 from .redirections import _FD_DUP_RE

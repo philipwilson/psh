@@ -6,8 +6,8 @@ This module handles function definition and execution operations.
 
 from typing import TYPE_CHECKING, List, Optional
 
-from ..builtins import FunctionReturn
 from ..core import LoopBreak, LoopContinue, UnboundVariableError
+from ..core.exceptions import FunctionReturn
 
 if TYPE_CHECKING:
     from psh.visitor import ASTVisitor

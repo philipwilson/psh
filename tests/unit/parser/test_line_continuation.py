@@ -9,8 +9,8 @@ that handles backslash-newline sequences.
 
 def test_basic_line_continuation():
     """Test basic line continuation processing."""
-    from psh.input_preprocessing import process_line_continuations
     from psh.lexer import tokenize
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo hello \\\nworld")
     assert result == "echo hello world"
@@ -23,7 +23,7 @@ def test_basic_line_continuation():
 
 def test_line_continuation_without_space():
     """Test line continuation without space before backslash."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo hello\\\nworld")
     assert result == "echo helloworld"
@@ -31,7 +31,7 @@ def test_line_continuation_without_space():
 
 def test_line_continuation_with_spaces_after():
     """Test line continuation with spaces after the newline."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo hello \\\n   world")
     assert result == "echo hello    world"
@@ -39,7 +39,7 @@ def test_line_continuation_with_spaces_after():
 
 def test_multiple_continuations():
     """Test multiple line continuations."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo \\\nhello \\\nworld")
     assert result == "echo hello world"
@@ -47,7 +47,7 @@ def test_multiple_continuations():
 
 def test_escaped_backslashes_with_continuation():
     """Test escaped backslashes with line continuations."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     # 3 backslashes: \\\\ -> \\, last \ escapes \n
     result = process_line_continuations("echo hello\\\\\\\nworld")
@@ -60,7 +60,7 @@ def test_escaped_backslashes_with_continuation():
 
 def test_even_backslashes_no_continuation():
     """Test even number of backslashes - no line continuation."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     # 2 backslashes: \\\\ -> \\, \n stays as literal
     result = process_line_continuations("echo hello\\\\\nworld")
@@ -73,7 +73,7 @@ def test_even_backslashes_no_continuation():
 
 def test_quotes_prevent_processing():
     """Test that quotes prevent line continuation processing."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     # Single quotes prevent processing
     result = process_line_continuations("echo 'hello \\\nworld'")
@@ -86,7 +86,7 @@ def test_quotes_prevent_processing():
 
 def test_mixed_quotes_and_continuations():
     """Test mixed quotes and line continuations."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo 'no \\\nprocess' \\\nyes")
     assert result == "echo 'no \\\nprocess' yes"
@@ -94,7 +94,7 @@ def test_mixed_quotes_and_continuations():
 
 def test_escaped_quotes():
     """Test that escaped quotes don't affect quote state."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo \\\"hello \\\nworld\\\"")
     assert result == "echo \\\"hello world\\\""
@@ -102,7 +102,7 @@ def test_escaped_quotes():
 
 def test_carriage_return_line_endings():
     """Test Windows-style line endings."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo hello \\\r\nworld")
     assert result == "echo hello world"
@@ -110,14 +110,14 @@ def test_carriage_return_line_endings():
 
 def test_empty_input():
     """Test empty input."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     assert process_line_continuations("") == ""
 
 
 def test_no_continuation():
     """Test input without line continuations."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo hello world")
     assert result == "echo hello world"
@@ -125,7 +125,7 @@ def test_no_continuation():
 
 def test_trailing_backslash_no_newline():
     """Test trailing backslash without newline."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo hello\\")
     assert result == "echo hello\\"
@@ -133,8 +133,8 @@ def test_trailing_backslash_no_newline():
 
 def test_tokenization_after_preprocessing():
     """Test that tokenization works correctly after preprocessing."""
-    from psh.input_preprocessing import process_line_continuations
     from psh.lexer import tokenize
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     # Test case that previously failed
     input_text = "echo hello \\\nworld"
@@ -151,7 +151,7 @@ def test_tokenization_after_preprocessing():
 
 def test_complex_command_preprocessing():
     """Test preprocessing of complex multi-line commands."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     complex_command = """echo {1..3} \\
     | while read num
@@ -170,8 +170,8 @@ done"""
 
 def test_pipeline_with_continuations():
     """Test pipeline with line continuations."""
-    from psh.input_preprocessing import process_line_continuations
     from psh.lexer import tokenize
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     pipeline = "ls -la \\\n| grep test \\\n| sort"
     processed = process_line_continuations(pipeline)
@@ -185,8 +185,8 @@ def test_pipeline_with_continuations():
 
 def test_complex_script_like_testscript():
     """Test complex script similar to testscript.sh."""
-    from psh.input_preprocessing import process_line_continuations
     from psh.lexer import tokenize
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     script = """echo {1..10} \\
     | sed 's/ /\\n/g' \\
@@ -215,7 +215,7 @@ done \\
 
 def test_continuation_at_start_of_line():
     """Test line continuation at start of line."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("\\\necho hello")
     assert result == "echo hello"
@@ -223,7 +223,7 @@ def test_continuation_at_start_of_line():
 
 def test_multiple_consecutive_continuations():
     """Test multiple consecutive line continuations."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo \\\n\\\n\\\nhello")
     assert result == "echo hello"
@@ -231,7 +231,7 @@ def test_multiple_consecutive_continuations():
 
 def test_continuation_with_only_whitespace_after():
     """Test line continuation with only whitespace after newline."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo hello \\\n   \\\nworld")
     assert result == "echo hello    world"
@@ -239,7 +239,7 @@ def test_continuation_with_only_whitespace_after():
 
 def test_complex_quoting_scenarios():
     """Test complex quoting scenarios."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     # Escaped quote doesn't end quote context, line continuation is processed
     result = process_line_continuations('echo "hello \\" \\\nworld"')
@@ -252,7 +252,7 @@ def test_complex_quoting_scenarios():
 
 def test_backslash_quote_interactions():
     """Test interactions between backslashes and quotes."""
-    from psh.input_preprocessing import process_line_continuations
+    from psh.scripting.input_preprocessing import process_line_continuations
 
     # Backslash before quote
     result = process_line_continuations("echo \\' \\\nhello")

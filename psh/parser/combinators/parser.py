@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from ...ast_nodes import ASTNode, CommandList, StatementList, TopLevel
 from ...lexer.keyword_normalizer import KeywordNormalizer
-from ...token_types import Token, TokenType
+from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
 from ..recursive_descent.helpers import ErrorContext, ParseError
 from .commands import create_command_parsers

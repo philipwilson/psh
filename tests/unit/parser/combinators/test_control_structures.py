@@ -15,10 +15,10 @@ from psh.ast_nodes import (
     SubshellGroup,
     WhileLoop,
 )
+from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.commands import CommandParsers
 from psh.parser.combinators.control_structures import ControlStructureParsers, create_control_structure_parsers
 from psh.parser.recursive_descent.helpers import ParseError
-from psh.token_types import Token, TokenType
 
 
 def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:

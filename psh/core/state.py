@@ -4,7 +4,7 @@ import sys
 from typing import Dict, Optional
 
 from ..version import __version__
-from .scope_enhanced import EnhancedScopeManager
+from .scope import ScopeManager
 from .variables import VarAttributes
 
 
@@ -18,7 +18,7 @@ class ShellState:
         self.env = os.environ.copy()
 
         # Initialize enhanced scope manager for variable scoping with attributes
-        self.scope_manager = EnhancedScopeManager()
+        self.scope_manager = ScopeManager()
 
         # Default prompt variables (set in global scope)
         self.scope_manager.set_variable('PS1', 'psh$ ')

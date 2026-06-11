@@ -1,7 +1,7 @@
 """Unit tests for enhanced lexer expansion tokens."""
 
 from psh.lexer import tokenize
-from psh.token_types import TokenType
+from psh.lexer.token_types import TokenType
 
 
 class TestCommandSubstitution:

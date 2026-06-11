@@ -3,7 +3,7 @@ import pytest
 import sys
 import os
 from psh.shell import Shell
-from psh.job_control import JobState
+from psh.executor.job_control import JobState
 
 
 def pytest_configure(config):

@@ -1,7 +1,6 @@
 import os
 import sys
 
-from .aliases import AliasManager
 from .ast_nodes import (
     EnhancedTestStatement,
     StatementList,
@@ -9,11 +8,12 @@ from .ast_nodes import (
 )
 from .builtins import registry as builtin_registry
 from .core import ShellState
+from .core.functions import FunctionManager
+from .executor.job_control import JobManager
 from .expansion import ExpansionManager
-from .functions import FunctionManager
+from .expansion.aliases import AliasManager
 from .interactive import InteractiveManager
 from .io_redirect import IOManager
-from .job_control import JobManager
 from .scripting.base import ScriptManager
 
 
@@ -96,7 +96,7 @@ class Shell:
             self.interactive_manager.signal_manager)
 
         # Initialize history expander
-        from .history_expansion import HistoryExpander
+        from .interactive.history_expansion import HistoryExpander
         self.history_expander = HistoryExpander(self)
 
         # Active parser selection ('recursive_descent' or 'combinator')
@@ -323,7 +323,7 @@ class Shell:
 
     def run_command(self, command_string: str, add_to_history=True):
         """Execute a command string using the unified input system."""
-        from .input_sources import StringInput
+        from .scripting.input_sources import StringInput
 
         # Use the unified execution system for consistency
         input_source = StringInput(command_string, "<command>")

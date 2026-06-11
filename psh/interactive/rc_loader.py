@@ -28,7 +28,7 @@ def load_rc_file(shell: 'Shell') -> None:
             # own context. A previous attempt assigned shell.variables['0'],
             # which is a no-op — state.variables is a snapshot dict — so it
             # never had any effect.)
-            from ..input_sources import FileInput
+            from ..scripting.input_sources import FileInput
             with FileInput(rc_file) as input_source:
                 shell.script_manager.execute_from_source(input_source, add_to_history=False)
 

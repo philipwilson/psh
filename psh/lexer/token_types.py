@@ -6,7 +6,7 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
-    from .lexer.token_parts import TokenPart
+    from .token_parts import TokenPart
 
 
 class TokenType(Enum):
@@ -142,7 +142,7 @@ class Token:
 
         # Prefer canonical keyword spelling when available
         try:
-            from .lexer.keyword_defs import keyword_from_type  # Late import avoids cycles
+            from .keyword_defs import keyword_from_type  # Late import avoids cycles
         except ImportError:
             keyword_from_type = None  # type: ignore
         if keyword_from_type is not None:

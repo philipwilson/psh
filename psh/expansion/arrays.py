@@ -17,7 +17,7 @@ class ArrayOpsMixin:
         result is evaluated as arithmetic; an unevaluable subscript
         counts as 0, matching bash (``a[junk]`` addresses ``a[0]``).
         """
-        from ..arithmetic import ArithmeticError, evaluate_arithmetic
+        from .arithmetic import ArithmeticError, evaluate_arithmetic
         expanded = self.expand_array_index(index_expr)
         try:
             return evaluate_arithmetic(expanded, self.shell)

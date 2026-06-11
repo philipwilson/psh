@@ -684,7 +684,7 @@ class ExpansionManager:
         # Pre-expand command substitutions in the arithmetic expression
         arith_expr = self._expand_command_subs_in_arithmetic(arith_expr)
 
-        from ..arithmetic import ArithmeticError, evaluate_arithmetic
+        from .arithmetic import ArithmeticError, evaluate_arithmetic
 
         try:
             result = evaluate_arithmetic(arith_expr, self.shell)

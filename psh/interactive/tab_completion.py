@@ -10,7 +10,7 @@ for compatibility.
 import os
 from typing import List
 
-from .interactive.terminal import TerminalManager
+from .terminal import TerminalManager
 
 __all__ = ['CompletionEngine', 'TerminalManager']
 

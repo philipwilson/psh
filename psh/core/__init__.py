@@ -4,7 +4,7 @@ Modules:
     assignment_utils - Variable assignment parsing and validation
     exceptions       - Control flow and error exceptions
     options          - Shell option behaviour handlers
-    scope_enhanced   - Hierarchical variable scope management
+    scope   - Hierarchical variable scope management
     state            - Central shell state container
     trap_manager     - Signal trap management
     variables        - Variable types, attributes, and array implementations
@@ -22,7 +22,7 @@ from .exceptions import (
     UnboundVariableError,
 )
 from .options import OptionHandler
-from .scope_enhanced import EnhancedScopeManager, VariableScope
+from .scope import ScopeManager, VariableScope
 from .state import ShellState
 from .trap_manager import TrapManager
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
@@ -41,7 +41,7 @@ __all__ = [
     'IndexedArray',
     'AssociativeArray',
     # Scope management
-    'EnhancedScopeManager',
+    'ScopeManager',
     'VariableScope',
     # State
     'ShellState',

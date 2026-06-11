@@ -107,7 +107,7 @@ class FieldExpansionMixin:
 
     def _slice_fields(self, param, base, slice_operand):
         """Slice positional params or array elements: ${@:o:l}, ${a[@]:o:l}."""
-        from ..arithmetic import ArithmeticError, evaluate_arithmetic
+        from .arithmetic import ArithmeticError, evaluate_arithmetic
         if ':' in slice_operand:
             offset_str, length_str = slice_operand.split(':', 1)
         else:

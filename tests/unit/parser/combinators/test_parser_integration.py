@@ -1,10 +1,10 @@
 """Tests for the integrated modular parser combinator."""
 
 from psh.ast_nodes import AndOrList, ForLoop, IfConditional, Pipeline, SimpleCommand, TopLevel, WhileLoop
+from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.parser import ParserCombinatorShellParser, create_parser_combinator_shell_parser
 from psh.parser.config import ParserConfig
 from psh.parser.recursive_descent.helpers import ParseError
-from psh.token_types import Token, TokenType
 
 
 def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:

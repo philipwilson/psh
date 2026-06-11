@@ -16,7 +16,7 @@ from ....ast_nodes import (
     WhileLoop,
 )
 from ....lexer.keyword_defs import matches_keyword
-from ....token_types import Token
+from ....lexer.token_types import Token
 from ..core import Parser, ParseResult
 from ..utils import format_token_value
 

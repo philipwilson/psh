@@ -13,7 +13,7 @@ from typing import List, Optional, Tuple
 
 from ....ast_nodes import CommandList, Redirect
 from ....lexer.keyword_defs import matches_keyword
-from ....token_types import Token
+from ....lexer.token_types import Token
 from ...config import ParserConfig
 from ..commands import CommandParsers
 from ..core import ForwardParser, Parser, ParseResult, keyword

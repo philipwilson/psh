@@ -18,7 +18,7 @@ class TestArithmeticTokenizer:
 
     def test_basic_numbers(self):
         """Test tokenizing basic numbers."""
-        from psh.arithmetic import ArithTokenizer
+        from psh.expansion.arithmetic import ArithTokenizer
 
         tokenizer = ArithTokenizer("42")
         tokens = tokenizer.tokenize()
@@ -27,7 +27,7 @@ class TestArithmeticTokenizer:
 
     def test_hex_numbers(self):
         """Test tokenizing hexadecimal numbers."""
-        from psh.arithmetic import ArithTokenizer
+        from psh.expansion.arithmetic import ArithTokenizer
 
         tokenizer = ArithTokenizer("0xFF")
         tokens = tokenizer.tokenize()
@@ -39,7 +39,7 @@ class TestArithmeticTokenizer:
 
     def test_octal_numbers(self):
         """Test tokenizing octal numbers."""
-        from psh.arithmetic import ArithTokenizer
+        from psh.expansion.arithmetic import ArithTokenizer
 
         tokenizer = ArithTokenizer("010")
         tokens = tokenizer.tokenize()
@@ -51,7 +51,7 @@ class TestArithmeticTokenizer:
 
     def test_basic_operators(self):
         """Test tokenizing basic operators."""
-        from psh.arithmetic import ArithTokenizer
+        from psh.expansion.arithmetic import ArithTokenizer
 
         tokenizer = ArithTokenizer("1 + 2 * 3")
         tokens = tokenizer.tokenize()
@@ -60,7 +60,7 @@ class TestArithmeticTokenizer:
 
     def test_comparison_operators(self):
         """Test tokenizing comparison operators."""
-        from psh.arithmetic import ArithTokenizer
+        from psh.expansion.arithmetic import ArithTokenizer
 
         tokenizer = ArithTokenizer("a < b && c >= d")
         tokens = tokenizer.tokenize()
@@ -69,7 +69,7 @@ class TestArithmeticTokenizer:
 
     def test_assignment_operators(self):
         """Test tokenizing assignment operators."""
-        from psh.arithmetic import ArithTokenizer
+        from psh.expansion.arithmetic import ArithTokenizer
 
         tokenizer = ArithTokenizer("x = 5, x += 3")
         tokens = tokenizer.tokenize()
@@ -78,7 +78,7 @@ class TestArithmeticTokenizer:
 
     def test_increment_decrement(self):
         """Test tokenizing increment/decrement operators."""
-        from psh.arithmetic import ArithTokenizer
+        from psh.expansion.arithmetic import ArithTokenizer
 
         tokenizer = ArithTokenizer("++x + y--")
         tokens = tokenizer.tokenize()
@@ -91,7 +91,7 @@ class TestArithmeticParser:
 
     def test_simple_expression(self):
         """Test parsing simple expressions."""
-        from psh.arithmetic import ArithParser, ArithTokenizer
+        from psh.expansion.arithmetic import ArithParser, ArithTokenizer
 
         tokenizer = ArithTokenizer("2 + 3")
         tokens = tokenizer.tokenize()
@@ -101,7 +101,7 @@ class TestArithmeticParser:
 
     def test_precedence(self):
         """Test operator precedence parsing."""
-        from psh.arithmetic import ArithParser, ArithTokenizer
+        from psh.expansion.arithmetic import ArithParser, ArithTokenizer
 
         # Test that multiplication has higher precedence than addition
         tokenizer = ArithTokenizer("2 + 3 * 4")
@@ -114,7 +114,7 @@ class TestArithmeticParser:
 
     def test_parentheses(self):
         """Test parentheses override precedence."""
-        from psh.arithmetic import ArithParser, ArithTokenizer
+        from psh.expansion.arithmetic import ArithParser, ArithTokenizer
 
         tokenizer = ArithTokenizer("(2 + 3) * 4")
         tokens = tokenizer.tokenize()
@@ -126,7 +126,7 @@ class TestArithmeticParser:
 
     def test_ternary_operator(self):
         """Test ternary operator parsing."""
-        from psh.arithmetic import ArithParser, ArithTokenizer
+        from psh.expansion.arithmetic import ArithParser, ArithTokenizer
 
         tokenizer = ArithTokenizer("x > 0 ? x : -x")
         tokens = tokenizer.tokenize()
@@ -142,7 +142,7 @@ class TestArithmeticEvaluator:
 
     def test_basic_arithmetic(self, shell):
         """Test basic arithmetic operations."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         assert evaluate_arithmetic("2 + 2", shell) == 4
         assert evaluate_arithmetic("10 - 3", shell) == 7
@@ -153,7 +153,7 @@ class TestArithmeticEvaluator:
 
     def test_precedence_evaluation(self, shell):
         """Test operator precedence in evaluation."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         assert evaluate_arithmetic("2 + 3 * 4", shell) == 14
         assert evaluate_arithmetic("(2 + 3) * 4", shell) == 20
@@ -162,7 +162,7 @@ class TestArithmeticEvaluator:
 
     def test_comparison_operators(self, shell):
         """Test comparison operators."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         assert evaluate_arithmetic("5 > 3", shell) == 1
         assert evaluate_arithmetic("3 > 5", shell) == 0
@@ -174,7 +174,7 @@ class TestArithmeticEvaluator:
 
     def test_logical_operators(self, shell):
         """Test logical operators."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         assert evaluate_arithmetic("1 && 1", shell) == 1
         assert evaluate_arithmetic("1 && 0", shell) == 0
@@ -185,7 +185,7 @@ class TestArithmeticEvaluator:
 
     def test_bitwise_operators(self, shell):
         """Test bitwise operators."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         assert evaluate_arithmetic("5 & 3", shell) == 1  # 101 & 011 = 001
         assert evaluate_arithmetic("5 | 3", shell) == 7  # 101 | 011 = 111
@@ -197,7 +197,7 @@ class TestArithmeticEvaluator:
 
     def test_variable_expansion(self, shell):
         """Test variable expansion in arithmetic."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         shell.state.set_variable('x', '10')
         assert evaluate_arithmetic("x", shell) == 10
@@ -206,7 +206,7 @@ class TestArithmeticEvaluator:
 
     def test_variable_assignment(self, shell):
         """Test variable assignment in arithmetic."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         evaluate_arithmetic("x = 10", shell)
         assert shell.state.get_variable('x') == '10'
@@ -219,7 +219,7 @@ class TestArithmeticEvaluator:
 
     def test_increment_decrement(self, shell):
         """Test increment and decrement operators."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         shell.state.set_variable('x', '5')
 
@@ -241,7 +241,7 @@ class TestArithmeticEvaluator:
 
     def test_ternary_operator(self, shell):
         """Test ternary conditional operator."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         assert evaluate_arithmetic("1 ? 10 : 20", shell) == 10
         assert evaluate_arithmetic("0 ? 10 : 20", shell) == 20
@@ -254,7 +254,7 @@ class TestArithmeticEvaluator:
 
     def test_comma_operator(self, shell):
         """Test comma operator."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         # Comma operator evaluates both but returns rightmost
         assert evaluate_arithmetic("3, 5", shell) == 5
@@ -268,7 +268,7 @@ class TestArithmeticEvaluator:
 
     def test_complex_expressions(self, shell):
         """Test complex arithmetic expressions."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         # Fibonacci-like calculation
         shell.state.set_variable('a', '1')
@@ -281,7 +281,7 @@ class TestArithmeticEvaluator:
 
     def test_division_by_zero(self, shell):
         """Test division by zero error handling."""
-        from psh.arithmetic import ArithmeticError, evaluate_arithmetic
+        from psh.expansion.arithmetic import ArithmeticError, evaluate_arithmetic
 
         with pytest.raises(ArithmeticError, match="Division by zero"):
             evaluate_arithmetic("5 / 0", shell)
@@ -291,14 +291,14 @@ class TestArithmeticEvaluator:
 
     def test_empty_expression(self, shell):
         """Test empty expression evaluation."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         # Empty expression evaluates to 0
         assert evaluate_arithmetic("", shell) == 0
 
     def test_non_numeric_variables(self, shell):
         """Test non-numeric variable handling."""
-        from psh.arithmetic import evaluate_arithmetic
+        from psh.expansion.arithmetic import evaluate_arithmetic
 
         # Non-numeric strings evaluate to 0
         shell.state.set_variable('text', 'hello')

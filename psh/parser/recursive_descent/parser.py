@@ -18,7 +18,7 @@ from ...ast_nodes import (
     Statement,
     TopLevel,
 )
-from ...token_types import Token, TokenType
+from ...lexer.token_types import Token, TokenType
 from ..config import ErrorHandlingMode, ParserConfig
 from .base_context import ContextBaseParser
 from .context import ParserContext

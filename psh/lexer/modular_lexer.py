@@ -2,7 +2,6 @@
 
 from typing import List, Optional
 
-from ..token_types import Token, TokenType
 from .command_position import COMMAND_GROUP_OPENERS, STATEMENT_SEPARATORS
 from .expansion_parser import ExpansionContext, ExpansionParser
 from .position import LexerConfig, Position, PositionTracker
@@ -10,6 +9,7 @@ from .quote_parser import UnifiedQuoteParser
 from .recognizers import RecognizerRegistry
 from .state_context import LexerContext
 from .token_parts import RichToken, TokenPart
+from .token_types import Token, TokenType
 from .unicode_support import is_whitespace
 
 

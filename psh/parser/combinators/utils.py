@@ -1,6 +1,6 @@
 """Shared utility functions for parser combinators."""
 
-from ...token_types import Token
+from ...lexer.token_types import Token
 
 
 def format_token_value(token: Token) -> str:

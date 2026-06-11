@@ -157,7 +157,7 @@ class PromptExpander:
 
     def _get_version_short(self) -> str:
         """Get short version string."""
-        from .version import __version__
+        from ..version import __version__
         # Extract major.minor from version like "0.25.0"
         parts = __version__.split('.')
         if len(parts) >= 2:
@@ -166,7 +166,7 @@ class PromptExpander:
 
     def _get_version_long(self) -> str:
         """Get long version string."""
-        from .version import __version__
+        from ..version import __version__
         return __version__
 
     def _get_cwd(self) -> str:

@@ -13,7 +13,7 @@ from ....ast_nodes import (
     SubshellGroup,
 )
 from ....lexer.keyword_defs import matches_keyword
-from ....token_types import Token
+from ....lexer.token_types import Token
 from ...recursive_descent.helpers import ErrorContext, ParseError
 from ..core import Parser, ParseResult
 

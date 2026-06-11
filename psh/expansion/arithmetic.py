@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List, Optional, Union
 
-from .core.exceptions import PshError
+from ..core.exceptions import PshError
 
 # A plain (optionally signed) decimal integer with no leading-zero octal
 # ambiguity. Values matching this are safe to parse with int(); anything else
@@ -856,7 +856,7 @@ class ArithmeticEvaluator:
 
     def get_array_element(self, name: str, index: int) -> int:
         """Read an array element (or scalar via index 0) as an integer."""
-        from .core import AssociativeArray, IndexedArray
+        from ..core import AssociativeArray, IndexedArray
         var = self.shell.state.scope_manager.get_variable_object(name)
         if var is None:
             return 0
@@ -870,7 +870,7 @@ class ArithmeticEvaluator:
 
     def set_array_element(self, name: str, index: int, value: int) -> None:
         """Assign to an array element, creating the array if necessary."""
-        from .core import AssociativeArray, IndexedArray, VarAttributes
+        from ..core import AssociativeArray, IndexedArray, VarAttributes
         var = self.shell.state.scope_manager.get_variable_object(name)
         if var is not None and isinstance(var.value, IndexedArray):
             var.value.set(index, str(value))
@@ -1078,7 +1078,7 @@ class ShellArithmeticError(PshError, builtins.ArithmeticError):
 
 
 # Keep the old name as an alias so that callers that import
-# ``from psh.arithmetic import ArithmeticError`` continue to work.
+# ``from psh.expansion.arithmetic import ArithmeticError`` continue to work.
 ArithmeticError = ShellArithmeticError  # noqa: A001
 
 

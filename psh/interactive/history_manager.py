@@ -2,9 +2,9 @@
 import os
 from typing import List
 
-from ..line_editor_helpers import convert_multiline_to_single
 from ..utils import contains_heredoc
 from .base import InteractiveComponent
+from .line_editor_helpers import convert_multiline_to_single
 
 
 def _newline_inside_quotes(command: str) -> bool:

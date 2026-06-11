@@ -13,7 +13,7 @@ from ....ast_nodes import (
     IfConditional,
 )
 from ....lexer.keyword_defs import KeywordGuard, matches_keyword
-from ....token_types import Token, TokenType
+from ....lexer.token_types import Token, TokenType
 from ..core import Parser, ParseResult
 from ..utils import format_token_value
 

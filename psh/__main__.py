@@ -194,7 +194,7 @@ def main():
                 sys.exit(exit_code)
 
             # Use StringInput with script mode to process line-by-line like bash -c
-            from .input_sources import StringInput
+            from .scripting.input_sources import StringInput
             input_source = StringInput(command, "-c")
             exit_code = shell.script_manager.source_processor.execute_from_source(
                 input_source, add_to_history=False)
@@ -245,7 +245,7 @@ def main():
             # history loaded) but commands come from the pipe — no REPL.
             script_content = sys.stdin.read()
             if script_content.strip():
-                from .input_sources import StringInput
+                from .scripting.input_sources import StringInput
                 input_source = StringInput(script_content, "<stdin>")
                 exit_code = shell.script_manager.source_processor.execute_from_source(
                     input_source, add_to_history=False)

@@ -9,8 +9,8 @@ from psh.ast_nodes import (
     VariableExpansion,
     Word,
 )
+from psh.lexer.token_types import Token, TokenType
 from psh.parser.recursive_descent.support.word_builder import WordBuilder
-from psh.token_types import Token, TokenType
 
 
 class TestExpansionASTNodes:

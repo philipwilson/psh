@@ -34,8 +34,8 @@ class OperatorOpsMixin:
         which only allows from-the-end lengths for scalar substrings, not
         for ``@``/``*``/array slices).
         """
-        from ..arithmetic import ArithmeticError, evaluate_arithmetic
         from ..core import ExpansionError
+        from .arithmetic import ArithmeticError, evaluate_arithmetic
 
         if ':' in operand:
             offset_str, length_str = operand.split(':', 1)
@@ -178,8 +178,8 @@ class OperatorOpsMixin:
         elif operator == ':':
             # Substring extraction. Offset and length are arithmetic
             # expressions (bash), so support ${x:1+1:2}, ${x:(-3):2}, etc.
-            from ..arithmetic import ArithmeticError, evaluate_arithmetic
             from ..core import ExpansionError
+            from .arithmetic import ArithmeticError, evaluate_arithmetic
 
             if ':' in operand:
                 offset_str, length_str = operand.split(':', 1)
@@ -254,7 +254,7 @@ class OperatorOpsMixin:
         if op == 'E':
             return self._ansi_c_expand(value)
         if op == 'P':
-            from ..prompt import PromptExpander
+            from ..interactive.prompt import PromptExpander
             return PromptExpander(self.shell).expand_prompt(value)
         if op == 'a':
             return self._var_attr_flags(var_name)

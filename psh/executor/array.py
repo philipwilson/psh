@@ -9,8 +9,8 @@ import glob
 import re
 from typing import TYPE_CHECKING, Optional, Tuple, Union
 
-from ..arithmetic import evaluate_arithmetic
 from ..core import AssociativeArray, IndexedArray, VarAttributes
+from ..expansion.arithmetic import evaluate_arithmetic
 
 if TYPE_CHECKING:
     from ..ast_nodes import ArrayElementAssignment, ArrayInitialization

@@ -1,6 +1,6 @@
 # PSH Architecture Reference for Large Language Models
 
-Version: 0.284.0
+Version: 0.285.0
 Purpose: Optimized reference for LLMs working with the PSH codebase
 
 ## Quick Start
@@ -39,12 +39,11 @@ Purpose: Optimized reference for LLMs working with the PSH codebase
 ```
 psh/
 ├── shell.py                 # Main orchestrator (visitor executor only)
-├── token_stream.py          # Parser-oriented token stream helpers
-├── token_transformer.py     # Keyword/context normalization pass
 ├── core/                    # Shared state, options, traps
 │   ├── state.py             # ShellState and option plumbing
-│   ├── scope_enhanced.py    # Hierarchical variable scope management
+│   ├── scope.py             # Hierarchical variable scope management
 │   ├── variables.py         # Variable types and exports
+│   ├── functions.py         # FunctionManager (shell function definitions)
 │   ├── options.py           # Shell option behaviors
 │   ├── exceptions.py        # Control-flow exceptions
 │   └── trap_manager.py      # Signal/exit trap handling
@@ -58,9 +57,11 @@ psh/
 │   ├── quote_parser.py      # Unified quote parsing
 │   ├── expansion_parser.py  # Pre-parse shell expansions
 │   ├── heredoc_collector.py
+│   ├── token_types.py       # Unified Token & TokenType definitions
+│   ├── token_stream.py      # Parser-oriented token stream helpers
+│   ├── token_transformer.py # Keyword/context normalization pass
 │   ├── pure_helpers.py / token_parts.py / position.py / unicode_support.py
 │   └── recognizers/         # Token recognizer registry (operators, literals, etc.)
-├── token_types.py           # Unified Token & TokenType definitions
 ├── parser/                  # Parser packages and registries
 │   ├── __init__.py          # Exports unified recursive-descent API
 │   ├── config.py            # ParserConfig & enums
@@ -77,6 +78,9 @@ psh/
 │   ├── manager.py           # Orchestrates expansion order
 │   ├── base.py              # Shared expansion helpers
 │   ├── evaluator.py         # Word AST evaluation support
+│   ├── arithmetic.py        # Arithmetic expression evaluation
+│   ├── brace_expansion.py   # Brace expansion (token stream pass)
+│   ├── aliases.py           # AliasManager
 │   ├── variable.py / parameter_expansion.py
 │   ├── command_sub.py / tilde.py / glob.py / word_splitter.py
 ├── executor/                # Visitor-based executor package
@@ -84,6 +88,7 @@ psh/
 │   ├── command.py / pipeline.py / control_flow.py
 │   ├── array.py / function.py / subshell.py
 │   ├── process_launcher.py  # Unified process creation
+│   ├── job_control.py       # Job control manager (JobManager)
 │   ├── child_policy.py / enhanced_test_evaluator.py
 │   ├── context.py           # ExecutionContext state management
 │   └── strategies.py        # Builtin/function/external dispatch
@@ -92,15 +97,16 @@ psh/
 │   ├── file_redirect.py / process_sub.py  # FileRedirector also handles heredocs
 ├── scripting/               # Script execution pipeline
 │   ├── base.py              # ScriptManager
+│   ├── input_sources.py / input_preprocessing.py  # Input abstraction, line continuations
 │   ├── script_executor.py / source_processor.py
 │   └── shebang_handler.py / script_validator.py
-├── interactive/             # REPL, history, completion
+├── interactive/             # REPL, history, completion, line editing
 │   ├── base.py              # InteractiveManager wiring
 │   ├── repl_loop.py / prompt_manager.py / history_manager.py / signal_manager.py
-│   └── completion_manager.py
-├── brace_expansion.py / history_expansion.py / multiline_handler.py
+│   ├── line_editor.py / line_editor_helpers.py / line_layout.py
+│   ├── tab_completion.py / keybindings.py / prompt.py
+│   └── multiline_handler.py / history_expansion.py
 ├── builtins/                # Builtin commands (registry + implementations)
-├── job_control.py           # Job control manager (JobManager)
 └── utils/                   # Formatting helpers, path utilities, etc.
 ```
 
@@ -111,7 +117,7 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
 ```
 
 1. **Input Processing**
-   - `input_preprocessing.py` handles line continuations
+   - `scripting/input_preprocessing.py` handles line continuations
    - `history_expansion.HistoryExpander` expands `!` references
    - `brace_expansion.BraceExpander` expands `{…}` before lexing
 
@@ -157,7 +163,7 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
   - `execute_enhanced_test_statement(test_stmt: EnhancedTestStatement)`
 
 ### ShellState (`psh/core/state.py`)
-- Centralizes environment, scope manager (`scope_enhanced.py`), positional parameters, option flags, debug toggles, and stream references
+- Centralizes environment, scope manager (`core/scope.py`), positional parameters, option flags, debug toggles, and stream references
 - Tracks job control metadata, `$?`, `$!`, `$-`, and exported variables
 - Provides option-specific helpers (xtrace, errexit, nounset) delegated to `psh/core/options.py`
 - Coordinates trap installation through `TrapManager`
@@ -167,7 +173,7 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
 
 ## Token Pipeline Details
 
-1. **Brace Expansion (`brace_expansion.py`)**
+1. **Brace Expansion (`expansion/brace_expansion.py`)**
    - Expands `{a,b}` and ranges before lexing; failures fall back to raw input
 
 2. **Modular Lexer (`lexer/modular_lexer.py`)**
@@ -180,7 +186,7 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
    - `token_transformer.TokenTransformer` enforces context rules (e.g., `;;` allowed only inside `case`)
    - Downstream code should match keywords via `matches_keyword`, `matches_keyword_type`, or `KeywordGuard` rather than inspecting `token.value`
 
-4. **Token Stream Utilities (`token_stream.py`)**
+4. **Token Stream Utilities (`lexer/token_stream.py`)**
    - Provides `peek`, `advance`, balance collection, composite lookahead (`peek_composite_sequence()`), and save/restore mechanics used across parser submodules
    - Adjacent tokens without whitespace (e.g., `foo${bar}.txt`) are detected via `adjacent_to_previous` token flags and built into composite `Word` AST nodes during parsing by `WordBuilder`
 
@@ -246,7 +252,7 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
 - `scripting/base.py` (`ScriptManager`) manages script execution, sourcing, and shebang handling
 - `scripting/script_validator.py` / `source_processor.py` provide linting and pre-processing for scripts
 - `interactive/base.py` coordinates REPL, prompt, history, and signal managers; `repl_loop.py` drives interactive shells
-- `input_sources.py`, `multiline_handler.py`, `line_editor.py` support multi-line editing and input abstraction
+- `scripting/input_sources.py`, `interactive/multiline_handler.py`, `interactive/line_editor.py` support multi-line editing and input abstraction
 - `utils/token_formatter.py` and friends provide debugging/trace formatting
 
 ## Data Flow Examples
@@ -335,8 +341,8 @@ class MyBuiltin(Builtin):
 - **Add builtin**: `psh/builtins/` + `psh/builtins/registry.py`
 - **Modify tokenization**: `psh/lexer/modular_lexer.py` and recognizers; configs via `LexerConfig` in `psh/lexer/position.py`
 - **Keyword normalization**: `psh/lexer/keyword_normalizer.py`
-- **Token transformation**: `psh/token_transformer.py`
-- **Token stream utilities**: `psh/token_stream.py`
+- **Token transformation**: `psh/lexer/token_transformer.py`
+- **Token stream utilities**: `psh/lexer/token_stream.py`
 - **Parser entry point**: `psh/parser/__init__.py` (`parse`, `parse_with_heredocs`, `create_parser`)
 - **Parser context**: `psh/parser/recursive_descent/context.py`
 - **Parser presets**: `ParserConfig.strict_posix()` / `permissive()` in `psh/parser/config.py`
@@ -346,7 +352,7 @@ class MyBuiltin(Builtin):
 - **Executor visitor**: `psh/executor/core.py`
 - **IO manager**: `psh/io_redirect/manager.py`
 - **Shell options**: `psh/core/state.py`, behaviors in `psh/core/options.py`
-- **Job control**: `psh/job_control.py`
+- **Job control**: `psh/executor/job_control.py`
 - **Interactive shell**: `psh/interactive/base.py`, `psh/interactive/repl_loop.py`
 - **Script execution**: `psh/scripting/base.py`, `psh/scripting/script_executor.py`
 

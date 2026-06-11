@@ -1,4 +1,4 @@
-"""Enhanced variable scope management with attribute support."""
+"""Hierarchical variable scope management with attribute support."""
 
 import os
 import random
@@ -28,8 +28,8 @@ class VariableScope:
         return new_scope
 
 
-class EnhancedScopeManager:
-    """Enhanced scope manager with variable attributes support."""
+class ScopeManager:
+    """Hierarchical scope manager with variable attributes support."""
 
     def __init__(self):
         self.global_scope = VariableScope(name='global')
@@ -349,7 +349,7 @@ class EnhancedScopeManager:
         # Always use the shell's arithmetic evaluator if available
         # This properly handles octal (010), hex (0x10), and arithmetic expressions
         if hasattr(self, '_shell') and self._shell:
-            from ..arithmetic import evaluate_arithmetic
+            from ..expansion.arithmetic import evaluate_arithmetic
             try:
                 # Evaluate the expression using the helper function
                 result = evaluate_arithmetic(expr, self._shell)
@@ -361,7 +361,7 @@ class EnhancedScopeManager:
         # Fallback when no shell context: try to use the arithmetic tokenizer
         # to handle octal and hex properly
         try:
-            from ..arithmetic import ArithmeticEvaluator, ArithParser, ArithTokenizer
+            from ..expansion.arithmetic import ArithmeticEvaluator, ArithParser, ArithTokenizer
 
             # Create a minimal evaluator without shell context
             class MinimalShell:

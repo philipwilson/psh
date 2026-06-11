@@ -2,7 +2,7 @@
 
 from typing import Optional, Set
 
-from ...token_types import Token, TokenType
+from ...lexer.token_types import Token, TokenType
 from ..config import ParsingMode
 from .context import ParserContext
 from .helpers import ParseError

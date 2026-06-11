@@ -9,7 +9,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 # PSH test setup will import these properly
-from psh.prompt import PromptExpander
+from psh.interactive.prompt import PromptExpander
 
 
 class TestBasicPromptExpansion:

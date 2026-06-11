@@ -1,6 +1,6 @@
-"""Tests for psh.line_editor_helpers.convert_multiline_to_single."""
+"""Tests for psh.interactive.line_editor_helpers.convert_multiline_to_single."""
 
-from psh.line_editor_helpers import convert_multiline_to_single as conv
+from psh.interactive.line_editor_helpers import convert_multiline_to_single as conv
 
 
 class TestConvertMultilineToSingle:

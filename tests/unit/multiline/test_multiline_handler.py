@@ -7,10 +7,10 @@ line continuation handling, and multi-line input management.
 
 from unittest.mock import Mock, patch
 
-from psh.line_editor import LineEditor
+from psh.interactive.line_editor import LineEditor
 
 # PSH test setup will import these properly
-from psh.multiline_handler import MultiLineInputHandler
+from psh.interactive.multiline_handler import MultiLineInputHandler
 
 
 class TestCommandCompletion:

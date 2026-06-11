@@ -8,7 +8,7 @@ and/or lists, and statement sequencing.
 from typing import Optional, Union
 
 from ....ast_nodes import AndOrList, BreakStatement, CommandList, ContinueStatement, Statement
-from ....token_types import TokenType
+from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups
 
 

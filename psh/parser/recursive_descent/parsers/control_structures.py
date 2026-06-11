@@ -22,7 +22,7 @@ from ....ast_nodes import (
     UntilLoop,
     WhileLoop,
 )
-from ....token_types import TokenType
+from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups
 
 
