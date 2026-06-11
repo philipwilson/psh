@@ -251,6 +251,30 @@ class TestPrintfEscapeSequences:
         captured = capsys.readouterr()
         assert captured.out == "ABC\n"
 
+    def test_escape_char_e(self, shell, capsys):
+        """Test \\e escape character (bash extension): printf "x\\ey"."""
+        shell.run_command('printf "x\\ey"')
+        captured = capsys.readouterr()
+        assert captured.out == "x\x1by"
+
+    def test_escape_char_E(self, shell, capsys):
+        """Test \\E alternative escape character form."""
+        shell.run_command('printf "a\\eb\\E c"')
+        captured = capsys.readouterr()
+        assert captured.out == "a\x1bb\x1b c"
+
+    def test_escape_char_in_format_with_specifier(self, shell, capsys):
+        """Test \\e in a format string that also has a conversion."""
+        shell.run_command('printf "%s\\e" z')
+        captured = capsys.readouterr()
+        assert captured.out == "z\x1b"
+
+    def test_escape_char_b_dialect(self, shell, capsys):
+        """Test \\e via %b (argument escape dialect)."""
+        shell.run_command('printf "%b" "x\\ey"')
+        captured = capsys.readouterr()
+        assert captured.out == "x\x1by"
+
 
 class TestPrintfComplexFormats:
     """Test complex format combinations."""

@@ -1,6 +1,5 @@
 """Alias management builtins (alias, unalias)."""
 
-import sys
 from typing import TYPE_CHECKING, List
 
 from .base import Builtin
@@ -8,6 +7,15 @@ from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
+
+
+def _quote_alias_value(value: str) -> str:
+    """Quote an alias value for reusable output, the way bash does.
+
+    bash's sh_single_quote(): wrap in single quotes, with each embedded
+    single quote rendered as '\\'' (close quote, escaped quote, reopen).
+    """
+    return "'" + value.replace("'", "'\\''") + "'"
 
 
 @builtin
@@ -18,95 +26,64 @@ class AliasBuiltin(Builtin):
     def name(self) -> str:
         return "alias"
 
+    @property
+    def synopsis(self) -> str:
+        return "alias [-p] [name[=value] ... ]"
+
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Define or display aliases."""
-        if len(args) == 1:
-            # No arguments - list all aliases
+        opts, operands = self.parse_flags(args, shell, flags='p')
+        if opts is None:
+            return 2
+
+        if opts['p'] or not operands:
+            # bash quirk (alias.def): with -p, an empty alias table causes
+            # an immediate successful return -- any operands are skipped.
+            if not shell.alias_manager.aliases:
+                return 0
             for name, value in sorted(shell.alias_manager.list_aliases()):
-                # Escape single quotes in value for display
-                escaped_value = value.replace("'", "'\"'\"'")
-                print(f"alias {name}='{escaped_value}'",
-                      file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
-            return 0
+                self.write_line(
+                    f"alias {name}={_quote_alias_value(value)}", shell)
+            if not operands:
+                return 0
 
         exit_code = 0
-
-        # Process each argument
-        i = 1
-        while i < len(args):
-            arg = args[i]
-
-            if '=' in arg:
-                # This looks like an assignment
-                equals_pos = arg.index('=')
+        for arg in operands:
+            equals_pos = arg.find('=')
+            if equals_pos > 0:
+                # Assignment: name=value (a leading '=' is not an
+                # assignment -- bash treats '=foo' as a name lookup).
                 name = arg[:equals_pos]
-                value_start = arg[equals_pos + 1:]
-
-                # Check if value starts with a quote
-                if value_start and value_start[0] in ("'", '"'):
-                    quote_char = value_start[0]
-                    # Need to find the closing quote, which might be in later args
-                    value_parts = [value_start[1:]]  # Remove opening quote
-
-                    # Look for closing quote
-                    found_close = False
-                    j = i
-
-                    # Check if closing quote is in the same arg
-                    if value_start[1:].endswith(quote_char):
-                        value = value_start[1:-1]
-                        found_close = True
-                    else:
-                        # Look in subsequent args
-                        j = i + 1
-                        while j < len(args):
-                            if args[j].endswith(quote_char):
-                                value_parts.append(args[j][:-1])  # Remove closing quote
-                                found_close = True
-                                break
-                            else:
-                                value_parts.append(args[j])
-                            j += 1
-
-                        if found_close:
-                            value = ' '.join(value_parts)
-                            i = j  # Skip the args we consumed
-                        else:
-                            # No closing quote found
-                            value = value_start
-                else:
-                    # No quotes, just use the value as is
-                    value = value_start
-
+                value = arg[equals_pos + 1:]
                 try:
                     shell.alias_manager.define_alias(name, value)
-                except ValueError as e:
-                    self.error(str(e), shell)
+                except ValueError:
+                    self.error(f"`{name}': invalid alias name", shell)
                     exit_code = 1
             else:
-                # Show specific alias
+                # Lookup: print the alias or report it missing.
                 value = shell.alias_manager.get_alias(arg)
                 if value is not None:
-                    # Escape single quotes in value for display
-                    escaped_value = value.replace("'", "'\"'\"'")
-                    print(f"alias {arg}='{escaped_value}'",
-                          file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                    self.write_line(
+                        f"alias {arg}={_quote_alias_value(value)}", shell)
                 else:
                     self.error(f"{arg}: not found", shell)
                     exit_code = 1
-
-            i += 1
 
         return exit_code
 
     @property
     def help(self) -> str:
-        return """alias: alias [name[=value] ...]
+        return """alias: alias [-p] [name[=value] ... ]
 
     Define or display aliases.
-    With no arguments, print all aliases.
-    With name=value, define an alias.
-    With just name, display the alias value."""
+
+    Without arguments, print all aliases in reusable `alias name=value'
+    form. With name=value arguments, define each name as an alias.
+    With plain name arguments, print the named aliases.
+
+    Options:
+      -p    Print all defined aliases in reusable form"""
 
 
 @builtin
@@ -117,19 +94,27 @@ class UnaliasBuiltin(Builtin):
     def name(self) -> str:
         return "unalias"
 
+    @property
+    def synopsis(self) -> str:
+        return "unalias [-a] name [name ...]"
+
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Remove aliases."""
-        if len(args) == 1:
-            self.error("usage: unalias [-a] name [name ...]", shell)
-            return 1
+        opts, operands = self.parse_flags(args, shell, flags='a')
+        if opts is None:
+            return 2
 
-        if args[1] == '-a':
-            # Remove all aliases
+        if opts['a']:
+            # Remove all aliases; any operands are ignored (bash behavior).
             shell.alias_manager.clear_aliases()
             return 0
 
+        if not operands:
+            self.error(f"usage: {self.synopsis}", shell)
+            return 2
+
         exit_code = 0
-        for name in args[1:]:
+        for name in operands:
             if not shell.alias_manager.undefine_alias(name):
                 self.error(f"{name}: not found", shell)
                 exit_code = 1
@@ -145,4 +130,4 @@ class UnaliasBuiltin(Builtin):
     Options:
       -a    Remove all aliases
 
-    Without -a, remove the specified aliases."""
+    Without -a, remove each named alias."""
