@@ -4,6 +4,40 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.287.0 (2026-06-11) - Mypy adoption + interactive unit tests (reappraisal Tier C, 3/3 — REAPPRAISAL PROGRAM COMPLETE)
+- Type checking is now enforced: `[tool.mypy]` in pyproject.toml (3.12,
+  non-strict, files-driven scope) covering psh/core/ (8 modules),
+  ast_nodes.py, version.py, and the pure showcases
+  expansion/pattern.py / utils/escapes.py / interactive/line_layout.py —
+  14 files, zero issues. The 5 errors mypy found were FIXED with real
+  annotations (an implicit-Optional in trap_manager; a None-sentinel loop
+  in scope.py refactored to a typed Optional branch) — no `# type: ignore`
+  anywhere. CI's lint job runs mypy; CLAUDE.md documents the
+  grow-the-scope convention.
+- The interactive layer finally has fast in-process unit tests: 76 new
+  tests in tests/unit/interactive/ (xdist-safe, 0.07s total, no PTY):
+  - line-editor buffer ops (insert/delete boundaries, kill/yank
+    round-trips, transpose, word motion, history navigation preserving
+    the in-progress line, undo/redo — including a documented dedupe
+    quirk in the redo stack)
+  - the v0.283 escape reader fed synthetic byte streams: every CSI/SS3
+    variant, unknown-sequence full consumption (nothing leaks as typed
+    text), EOF mid-sequence, vi bare-ESC vs sequence via the mockable
+    `_input_pending` probe
+  - completion candidates against tmp_path fixtures (partial/unique/
+    dir/hidden/subdir), find_word_start quote/operator cases, tab-apply
+    paths with space escaping. One test documents that command-position
+    completion does not exist (CompletionEngine is purely path-based) —
+    an honest feature gap, not a regression.
+- tests/unit/interactive/ exempted from the PTY skip-by-default marker
+  (these tests are terminal-free).
+- Full suite green: 4,310 passed / 4,625 collected (+76).
+- This closes the ground-up reappraisal program
+  (docs/reviews/ground_up_reappraisal_2026-06-10.md): Tier A
+  v0.275–v0.278, Tier B v0.279–v0.284, Tier C v0.285–v0.287 —
+  13 releases across every recommendation, with each inaccurate review
+  claim verified and documented rather than blindly executed.
+
 ## 0.286.0 (2026-06-11) - Parser pruning + subsystem CLAUDE.md refresh (reappraisal Tier C, 2/3)
 - Dead rd-parser error-recovery machinery deleted after a reachability
   audit: `parse_with_error_collection` / `MultiErrorParseResult` /

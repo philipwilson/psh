@@ -455,8 +455,10 @@ def pytest_collection_modifyitems(config, items):
         elif "performance/" in str(item.fspath):
             item.add_marker(pytest.mark.performance)
 
-        # Mark interactive tests
-        if "interactive/" in str(item.fspath):
+        # Mark interactive (PTY/terminal-driven) tests. tests/unit/interactive/
+        # holds pure in-process unit tests of editor/completion logic — no
+        # terminal needed — so it runs by default and is exempt here.
+        if "interactive/" in str(item.fspath) and "unit/interactive/" not in str(item.fspath):
             item.add_marker(pytest.mark.interactive)
 
         # Mark tests that need serial execution
