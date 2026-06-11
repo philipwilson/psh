@@ -2,6 +2,7 @@
 import fcntl
 import os
 import sys
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, List, Tuple
 
 from ..ast_nodes import Command
@@ -95,9 +96,16 @@ class ProcessSubstitutionHandler:
         self.shell = shell
         self.state = shell.state
 
-        # Track process substitution resources
-        self.active_fds = []
-        self.active_pids = []
+        # Track process substitution resources for the scope currently
+        # being executed (see scope()).
+        self.active_fds: List[int] = []
+        self.active_pids: List[int] = []
+        # Children whose consuming command has finished but which had not
+        # exited yet (e.g. `echo >(sleep 3)`). They are re-polled
+        # non-blockingly at every scope exit so they are reaped soon after
+        # they exit, without ever making the shell wait for them (bash
+        # behaves the same: the substitution may outlive its command).
+        self.pending_pids: List[int] = []
 
     def setup_process_substitutions(self, command: Command) -> Tuple[List[int], List[str], List[int]]:
         """
@@ -169,7 +177,8 @@ class ProcessSubstitutionHandler:
             target: The process substitution string (e.g., "<(cmd)" or ">(cmd)")
 
         Returns:
-            Tuple of (fd_path, fd_to_close, child_pid)
+            Tuple of (fd_path, fd_to_close, child_pid). The CALLER owns
+            fd_to_close (setup_child_redirections closes it after dup2).
         """
         if target.startswith('<('):
             arg_type = 'PROCESS_SUB_IN'
@@ -179,27 +188,57 @@ class ProcessSubstitutionHandler:
             raise ValueError(f"Invalid process substitution redirect: {target}")
 
         fd, path, pid = self._create_process_substitution(target, arg_type)
-
-        # Track for cleanup
-        self.active_fds.append(fd)
         self.active_pids.append(pid)
-
         return path, fd, pid
 
-    def cleanup(self):
-        """Clean up process substitution file descriptors and wait for children."""
-        # Close file descriptors
-        for fd in self.active_fds:
+    @contextmanager
+    def scope(self):
+        """Own the substitutions created while the scope is active.
+
+        On exit, the parent-side fds registered inside the scope are
+        closed and their children reaped non-blockingly; children that
+        are still running are parked in pending_pids for later polling.
+        Scopes nest (a command inside a redirected loop body only cleans
+        up its own substitutions, not the loop's `< <(cmd)`).
+        """
+        fd_mark = len(self.active_fds)
+        pid_mark = len(self.active_pids)
+        try:
+            yield
+        finally:
+            self._cleanup_from(fd_mark, pid_mark)
+
+    def _cleanup_from(self, fd_mark: int, pid_mark: int):
+        """Release substitutions registered at or after the given marks."""
+        # Close the parent-side fds. Consumers hold their own references
+        # (a forked child inherited the fd; a redirect dup2'd it), so this
+        # only releases the shell's copy.
+        for fd in self.active_fds[fd_mark:]:
             try:
                 os.close(fd)
             except OSError:
                 pass
-        self.active_fds.clear()
+        del self.active_fds[fd_mark:]
 
-        # Wait for child processes
-        for pid in self.active_pids:
+        # Never block on substitution children: a >(cmd) child may outlive
+        # the command that spawned it (bash returns immediately too).
+        self.pending_pids.extend(self.active_pids[pid_mark:])
+        del self.active_pids[pid_mark:]
+        self.reap_pending()
+
+    def reap_pending(self):
+        """Reap any finished substitution children without blocking.
+
+        Only the recorded substitution pids are waited on (never -1), so
+        this can never steal an exit status from the job manager.
+        """
+        still_running = []
+        for pid in self.pending_pids:
             try:
-                os.waitpid(pid, 0)
+                wpid, _status = os.waitpid(pid, os.WNOHANG)
             except OSError:
-                pass
-        self.active_pids.clear()
+                # Already reaped (e.g. by a waitpid(-1) elsewhere) — drop it.
+                continue
+            if wpid == 0:
+                still_running.append(pid)
+        self.pending_pids[:] = still_running

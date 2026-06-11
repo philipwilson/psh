@@ -205,22 +205,16 @@ class Shell:
         """Execute an enhanced test statement [[...]]."""
         from .executor import TestExpressionEvaluator
 
-        # Apply redirections if present
-        if test_stmt.redirects:
-            saved_fds = self.io_manager.apply_redirections(test_stmt.redirects)
-        else:
-            saved_fds = None
-
-        try:
-            evaluator = TestExpressionEvaluator(self)
-            result = evaluator.evaluate(test_stmt.expression)
-            return 0 if result else 1
-        except (ValueError, TypeError, OSError) as e:
-            print(f"psh: [[: {e}", file=sys.stderr)
-            return 2  # Syntax error
-        finally:
-            if saved_fds:
-                self.io_manager.restore_redirections(saved_fds)
+        # with_redirections also owns any process substitutions used as
+        # redirect targets (cleaned up when the statement finishes).
+        with self.io_manager.with_redirections(test_stmt.redirects):
+            try:
+                evaluator = TestExpressionEvaluator(self)
+                result = evaluator.evaluate(test_stmt.expression)
+                return 0 if result else 1
+            except (ValueError, TypeError, OSError) as e:
+                print(f"psh: [[: {e}", file=sys.stderr)
+                return 2  # Syntax error
 
     def _handle_visitor_mode_for_command(self, command: str) -> int:
         """Handle visitor modes for -c commands."""
