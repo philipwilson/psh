@@ -4,6 +4,47 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.303.0 (2026-06-12) - Word-splitting semantics: declaration policy + loop items (reassessment Phase 1, 2/3)
+- Finding #2 (High): assignment-shaped ordinary arguments now
+  word-split like bash — `x="a b"; printf "<%s>" foo=$x` gives
+  `<foo=a><b>` (was one field). Suppression is now an explicit
+  DECLARATION_BUILTINS policy (alias, declare, typeset, export, local,
+  readonly) with bash's *syntactic* recognition, all probe-pinned:
+  the command word must be an unquoted literal — `command export`,
+  `builtin export`, `\export`, `"export"`, and `$d` (d=declare) all
+  SPLIT in bash 5.2 and now in psh; `eval export` doesn't (re-parse).
+  Declaration args also skip pathname expansion (`declare foo=*`
+  stays literal). True command-prefix assignments were already
+  stripped pre-expansion (verified, unchanged).
+- Probes CORRECTED the review's tilde claim: bash does tilde-expand
+  assignment-shaped ordinary args (`echo P=~/x` → expanded).
+  Implemented bash's rule (after first `=` and each `:`, valid NAME
+  only, `+=` form too, quoted prefix suppresses) — also fixing
+  pre-existing bugs in real assignments (`P=a:~:b` colon-tilde,
+  `P=~"x"` over-expansion). Array initializers don't expand
+  (bash-verified).
+- Adjacent gap closed: `NAME+=value` arguments now work for
+  declare/typeset/readonly/local (export already did) via shared
+  core/assignment_utils.resolve_append_assignment() — textual,
+  integer (-i), and scalar-append-to-array (was leaking an
+  IndexedArray repr).
+- Finding #3 (Medium): for/select item lists route through
+  expand_word_to_fields(). ForLoop/SelectLoop carry item_words
+  (the RD parser already built the Words and flattened them; the
+  combinator now builds them too, fixing its composite-item bug);
+  the 60-line legacy item-expansion engine is DELETED. Fixes
+  IFS-aware splitting of command subs (`IFS=:; for i in $(printf
+  a:b)` → two items), unquoted `${a[@]}` debris, tilde items,
+  arithmetic-result splitting. 28-case probe table matches on both
+  parsers.
+- 92 new tests (56 assignment-splitting/tilde/append unit tests,
+  36 loop-item integration tests incl. select-via-stdin and
+  combinator parity). Conformance unchanged: POSIX 162/162.
+- Known pre-existing edges recorded, not fixed: `name+=(...)` not
+  tokenized as one word at the lexer; `declare -ai` arithmetic
+  append to array element; no failglob.
+- Suite: 4,816 passed / 5,086 collected; ruff + mypy clean.
+
 ## 0.302.0 (2026-06-11) - Per-invocation builtin redirection frames (reassessment Phase 1, 1/3)
 - High-severity Finding #1 from docs/reviews/code_quality_subsystem_
   reassessment_2026-06-11.md: nested builtin redirections restored the

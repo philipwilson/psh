@@ -79,6 +79,37 @@ def extract_assignments(args: List[str]) -> List[Tuple[str, str]]:
     return assignments
 
 
+def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str, object]:
+    """Resolve ``NAME+=value`` appends to (name, final_value).
+
+    ``var`` is the text left of '=' (so ``NAME+`` for appends; anything
+    else is returned unchanged). Plain variables append textually;
+    integer (-i) variables append arithmetically — achieved by handing
+    the INTEGER transform the expression "(old)+(value)" to evaluate,
+    matching bash. A scalar append to an array variable updates element
+    0 in place and returns the array (bash: ``a=(1 2); a+=x`` makes
+    a[0] "1x").
+    """
+    from .variables import AssociativeArray, IndexedArray, VarAttributes
+    if not var.endswith('+'):
+        return var, value
+    name = var[:-1]
+    var_obj = scope_manager.get_variable_object(name)
+    if var_obj is not None and isinstance(var_obj.value, IndexedArray):
+        indexed = var_obj.value
+        indexed.set(0, (indexed.get(0) or '') + value)
+        return name, indexed
+    if var_obj is not None and isinstance(var_obj.value, AssociativeArray):
+        assoc = var_obj.value
+        assoc.set('0', (assoc.get('0') or '') + value)
+        return name, assoc
+    old = '' if var_obj is None or var_obj.value is None else str(var_obj.value)
+    if (var_obj is not None and var_obj.attributes & VarAttributes.INTEGER
+            and value.strip()):
+        return name, f"({old or 0})+({value})"
+    return name, old + value
+
+
 def is_exported(var_name: str) -> bool:
     """Check if a variable is exported to the environment.
 

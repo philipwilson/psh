@@ -13,17 +13,28 @@ from ....ast_nodes import (
     CasePattern,
     ContinueStatement,
     CStyleForLoop,
-        ForLoop,
+    ExpansionPart,
+    ForLoop,
     IfConditional,
     Redirect,
     SelectLoop,
     Statement,
     StatementList,
     UntilLoop,
+    VariableExpansion,
     WhileLoop,
+    Word,
 )
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups
+
+
+def _positional_params_word() -> Word:
+    """The implicit ``"$@"`` Word used when for/select has no ``in`` list."""
+    return Word(
+        parts=[ExpansionPart(expansion=VariableExpansion('@'),
+                             quoted=True, quote_char='"')],
+        quote_type='"')
 
 
 class ControlStructureParser:
@@ -181,11 +192,12 @@ class ControlStructureParser:
             # Explicit item list provided
             self.parser.advance()
             self.parser.skip_newlines()
-            items, quote_types = self._parse_for_iterable()
+            items, quote_types, item_words = self._parse_for_iterable()
         else:
             # No explicit list - default to positional parameters ("$@")
             items = ['$@']
             quote_types = ['"']
+            item_words = [_positional_params_word()]
 
         self.parser.skip_separators()
         self.parser.expect(TokenType.DO)
@@ -199,15 +211,21 @@ class ControlStructureParser:
             variable=variable,
             items=items,
             item_quote_types=quote_types,
+            item_words=item_words,
             body=body,
             redirects=redirects,
             background=False
         )
 
-    def _parse_for_iterable(self) -> tuple[List[str], List[Optional[str]]]:
-        """Parse the iterable part of a for loop."""
+    def _parse_for_iterable(self) -> tuple[List[str], List[Optional[str]], List[Word]]:
+        """Parse the iterable part of a for/select loop.
+
+        Returns parallel lists: display strings, legacy quote types, and
+        the Word AST nodes the executor expands.
+        """
         items = []
         quote_types = []
+        item_words = []
 
         # Parse items until we hit DO, newline, or semicolon
         while (not self.parser.match(TokenType.DO) and
@@ -218,10 +236,11 @@ class ControlStructureParser:
                 word = self.parser.commands.parse_argument_as_word()
                 items.append(''.join(str(p) for p in word.parts))
                 quote_types.append(word.effective_quote_char)
+                item_words.append(word)
             else:
                 break
 
-        return items, quote_types
+        return items, quote_types, item_words
 
     def _parse_c_style_for(self) -> CStyleForLoop:
         """Parse C-style for loop without setting execution context."""
@@ -399,11 +418,12 @@ class ControlStructureParser:
         if self.parser.match(TokenType.IN):
             self.parser.advance()
             self.parser.skip_newlines()
-            items, quote_types = self._parse_for_iterable()
+            items, quote_types, item_words = self._parse_for_iterable()
         else:
             # No explicit list - default to positional parameters ("$@")
             items = ['$@']
             quote_types = ['"']
+            item_words = [_positional_params_word()]
 
         self.parser.skip_separators()
         self.parser.expect(TokenType.DO)
@@ -417,6 +437,7 @@ class ControlStructureParser:
             variable=variable,
             items=items,
             item_quote_types=quote_types,
+            item_words=item_words,
             body=body,
             redirects=redirects,
             background=False

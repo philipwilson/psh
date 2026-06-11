@@ -4,25 +4,60 @@ This module provides mixin parsers for while, until, for (traditional and
 C-style), select loops, and break/continue statements.
 """
 
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from ....ast_nodes import (
     BreakStatement,
     ContinueStatement,
     CStyleForLoop,
+    ExpansionPart,
     ForLoop,
     SelectLoop,
     UntilLoop,
+    VariableExpansion,
     WhileLoop,
+    Word,
 )
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ..core import Parser, ParseResult
-from ..utils import format_token_value
+
+
+def _positional_params_word() -> Word:
+    """The implicit ``"$@"`` Word used when for/select has no ``in`` list."""
+    return Word(
+        parts=[ExpansionPart(expansion=VariableExpansion('@'),
+                             quoted=True, quote_char='"')],
+        quote_type='"')
 
 
 class LoopParserMixin:
     """Mixin providing loop parsers for ControlStructureParsers."""
+
+    def _build_loop_items(
+        self, item_tokens: List[Token],
+    ) -> Tuple[List[str], List[Optional[str]], List[Word]]:
+        """Build for/select item lists from collected item tokens.
+
+        Adjacent tokens are merged into composite words (``pre$x`` is ONE
+        item) and each item gets a Word AST node, expanded by the executor
+        through the canonical Word engine.
+        """
+        from ...recursive_descent.support.word_builder import WordBuilder
+
+        items: List[str] = []
+        item_quote_types: List[Optional[str]] = []
+        item_words: List[Word] = []
+        for group in self.commands._group_adjacent_tokens(item_tokens):
+            items.append(''.join(
+                self.commands.expansions.format_token_value(t) for t in group))
+            if len(group) == 1:
+                word = self.commands.expansions.build_word_from_token(group[0])
+            else:
+                word = WordBuilder.build_composite_word(group)
+            item_words.append(word)
+            item_quote_types.append(word.effective_quote_char)
+        return items, item_quote_types, item_words
 
     def _build_while_loop(self) -> Parser[WhileLoop]:
         """Build parser for while/do/done loops."""
@@ -201,10 +236,10 @@ class LoopParserMixin:
 
             items: List[str]
             item_quote_types: List[Optional[str]]
+            item_words: List[Word]
             if has_in_clause:
-                items = []
-                item_quote_types = []
-                # Parse items (words until 'do' or separator+do)
+                # Collect item tokens (words until 'do' or separator+do)
+                item_tokens: List[Token] = []
                 while pos < len(tokens):
                     token = tokens[pos]
                     if matches_keyword(token, 'do'):
@@ -216,16 +251,16 @@ class LoopParserMixin:
                     if token.type.name in ['WORD', 'STRING', 'VARIABLE', 'COMPOSITE',
                                             'COMMAND_SUB', 'COMMAND_SUB_BACKTICK',
                                             'ARITH_EXPANSION', 'PARAM_EXPANSION']:
-                        items.append(format_token_value(token))
-                        quote_type = getattr(token, 'quote_type', None)
-                        item_quote_types.append(quote_type)
+                        item_tokens.append(token)
                         pos += 1
                     else:
                         break
+                items, item_quote_types, item_words = self._build_loop_items(item_tokens)
             else:
                 # No explicit list - default to positional parameters ("$@")
                 items = ['$@']
                 item_quote_types = ['"']
+                item_words = [_positional_params_word()]
 
             # Skip optional separator before 'do'
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
@@ -263,6 +298,7 @@ class LoopParserMixin:
                     items=items,
                     body=body_result.value,
                     item_quote_types=item_quote_types,
+                    item_words=item_words,
                     redirects=redirects,
                     background=background,
                 ),
@@ -390,9 +426,8 @@ class LoopParserMixin:
 
             pos += 1  # Skip 'in'
 
-            # Parse items (words until 'do' or separator+do)
-            items = []
-            item_quote_types = []
+            # Collect item tokens (words until 'do' or separator+do)
+            item_tokens: List[Token] = []
             while pos < len(tokens):
                 token = tokens[pos]
                 if matches_keyword(token, 'do'):
@@ -401,17 +436,14 @@ class LoopParserMixin:
                     if (pos + 1 < len(tokens) and
                         matches_keyword(tokens[pos + 1], 'do')):
                         break
-                if token.type.name in ['WORD', 'STRING', 'VARIABLE', 'COMMAND_SUB',
-                                      'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION', 'PARAM_EXPANSION']:
-                    items.append(format_token_value(token))
-
-                    # Track quote type for strings
-                    quote_type = getattr(token, 'quote_type', None)
-                    item_quote_types.append(quote_type)
-
+                if token.type.name in ['WORD', 'STRING', 'VARIABLE', 'COMPOSITE',
+                                      'COMMAND_SUB', 'COMMAND_SUB_BACKTICK',
+                                      'ARITH_EXPANSION', 'PARAM_EXPANSION']:
+                    item_tokens.append(token)
                     pos += 1
                 else:
                     break
+            items, item_quote_types, item_words = self._build_loop_items(item_tokens)
 
             # Skip separator and 'do'
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
@@ -447,6 +479,7 @@ class LoopParserMixin:
                     variable=var_name,
                     items=items,
                     item_quote_types=item_quote_types,
+                    item_words=item_words,
                     body=body_result.value,
                     redirects=redirects,
                     background=background,

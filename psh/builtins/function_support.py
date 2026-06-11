@@ -227,8 +227,13 @@ class DeclareBuiltin(Builtin):
         # Process each argument
         for arg in args:
             if '=' in arg:
-                # Variable assignment
+                # Variable assignment (NAME=value or NAME+=value append).
+                # Namerefs take the text verbatim, so '+' stays part of
+                # the (invalid) name there, as in bash.
                 name, value = arg.split('=', 1)
+                append = name.endswith('+') and not options['nameref']
+                if append:
+                    name = name[:-1]
 
                 # Validate variable name
                 if not self._is_valid_identifier(name):
@@ -246,16 +251,28 @@ class DeclareBuiltin(Builtin):
 
                 # Handle array initialization syntax
                 if options['array'] and value.startswith('(') and value.endswith(')'):
-                    # Parse indexed array initialization
+                    # Parse indexed array initialization; += appends after
+                    # the existing array's highest index (bash).
                     array = IndexedArray()
+                    start = 0
+                    if append:
+                        existing = self._get_variable_with_attributes(shell, name)
+                        if existing is not None and isinstance(existing.value, IndexedArray):
+                            array = existing.value
+                            start = array.next_index()
                     array_values = self._parse_array_init(value, shell)
                     for i, val in enumerate(array_values):
-                        array.set(i, val)
+                        array.set(start + i, val)
                     self._set_variable_with_attributes(shell, name, array, attributes, options['global'])
 
                 elif options['assoc_array'] and value.startswith('(') and value.endswith(')'):
-                    # Parse associative array initialization
+                    # Parse associative array initialization; += merges
+                    # into the existing array (bash).
                     array = AssociativeArray()
+                    if append:
+                        existing = self._get_variable_with_attributes(shell, name)
+                        if existing is not None and isinstance(existing.value, AssociativeArray):
+                            array = existing.value
                     assoc_values = self._parse_assoc_array_init(value, shell)
                     for key, val in assoc_values:
                         array.set(key, val)
@@ -264,6 +281,10 @@ class DeclareBuiltin(Builtin):
                 else:
                     # Regular variable assignment
                     # The enhanced scope manager will apply attribute transformations
+                    if append:
+                        from ..core import resolve_append_assignment
+                        _, value = resolve_append_assignment(
+                            shell.state.scope_manager, name + '+', value)
                     self._set_variable_with_attributes(shell, name, value, attributes, options['global'])
 
             else:

@@ -10,7 +10,12 @@ Modules:
     variables        - Variable types, attributes, and array implementations
 """
 
-from .assignment_utils import extract_assignments, is_exported, is_valid_assignment
+from .assignment_utils import (
+    extract_assignments,
+    is_exported,
+    is_valid_assignment,
+    resolve_append_assignment,
+)
 from .exceptions import (
     ExpansionError,
     FunctionReturn,
@@ -53,4 +58,5 @@ __all__ = [
     'is_valid_assignment',
     'extract_assignments',
     'is_exported',
+    'resolve_append_assignment',
 ]

@@ -142,8 +142,11 @@ class LocalBuiltin(Builtin):
         # Process each argument
         for arg in positional:
             if '=' in arg:
-                # Variable with assignment: local var=value
+                # Variable with assignment: local var=value / var+=value
                 var_name, var_value = arg.split('=', 1)
+                append = var_name.endswith('+') and not options['nameref']
+                if append:
+                    var_name = var_name[:-1]
 
                 # Name reference: store the target name verbatim (no expansion,
                 # no array parsing) with the NAMEREF attribute.
@@ -156,26 +159,39 @@ class LocalBuiltin(Builtin):
 
                 # Check if this is an array assignment: var=(value1 value2 ...)
                 if var_value.startswith('(') and var_value.endswith(')'):
-                    # Parse array initialization
+                    # Parse array initialization; += appends to/merges with
+                    # an existing array of the same kind (bash).
                     from ..core import AssociativeArray, IndexedArray
+                    existing = (shell.state.scope_manager.get_variable_object(var_name)
+                                if append else None)
                     if attributes & VarAttributes.ASSOC_ARRAY:
-                        # Create associative array
-                        array = AssociativeArray()
+                        if existing is not None and isinstance(existing.value, AssociativeArray):
+                            array = existing.value
+                        else:
+                            array = AssociativeArray()
                         assoc_values = self._parse_assoc_array_init(var_value, shell)
                         for key, val in assoc_values:
                             array.set(key, val)
                         shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ASSOC_ARRAY)
                     else:
-                        # Create indexed array
-                        array = IndexedArray()
+                        if existing is not None and isinstance(existing.value, IndexedArray):
+                            array = existing.value
+                            start = array.next_index()
+                        else:
+                            array = IndexedArray()
+                            start = 0
                         array_values = self._parse_array_init(var_value, shell)
                         for i, val in enumerate(array_values):
-                            array.set(i, val)
+                            array.set(start + i, val)
                         shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ARRAY)
                 else:
                     # Regular variable assignment. The executor has already
                     # expanded this argument; expanding again here would run
                     # single-quoted text like '$(cmd)' a second time.
+                    if append:
+                        from ..core import resolve_append_assignment
+                        _, var_value = resolve_append_assignment(
+                            shell.state.scope_manager, var_name + '+', var_value)
                     var_value = self._apply_attributes(var_value, attributes, shell)
 
                     # Create local variable with value and attributes
