@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.288.0 (2026-06-11) - Process-substitution fd/zombie reaping (reappraisal #2 Tier A, 1/3)
+- Fixed (high severity, found by the second ground-up reappraisal): process
+  substitutions used by external commands leaked parent-side fds and left
+  zombie children for the life of the session — `IOManager.
+  cleanup_process_substitutions` had ZERO callers and `shell._process_sub_fds/
+  _process_sub_pids` were written but never read. Three `cat <(echo x)`
+  commands left three `<defunct>` children; bash leaves none.
+- Design: scoped LIFO ownership on ProcessSubstitutionHandler. `scope()`
+  (via `io_manager.process_sub_scope()`) closes only the fds registered
+  inside the scope on exit and moves its pids to a pending list polled with
+  `os.waitpid(pid, WNOHANG)` — specific pids only, never -1, so JobManager
+  statuses can't be stolen. Still-running children (`echo >(sleep 3)`) are
+  parked and reaped opportunistically by later commands, matching bash.
+  The dead method and dead shell attributes were deleted, not wired — the
+  blanket-cleanup semantics they implied were themselves wrong (see below).
+- Two additional latent bugs fixed by the same design (both bash-verified):
+  `echo >(sleep 3)` blocked ~3s (blocking waitpid in the builtin-restore
+  path; bash returns immediately), and `f() { cat "$1"; }; f <(echo a)`
+  failed with "Bad file descriptor" (any builtin's restore blanket-closed
+  ALL active procsub fds, including the enclosing function call's).
+- Redirect-target procsubs (`< <(cmd)`) now close the parent fd eagerly
+  after dup2, with a guard for the fd-number-collision case
+  (`exec 3< <(cmd)` where the pipe end happens to be fd 3).
+- Wire points cover all consumers: CommandExecutor.execute wraps every
+  simple command; IOManager.with_redirections wraps compound/function
+  redirects; `[[ ]]` redirects now route through with_redirections
+  (shell.execute_enhanced_test_statement simplified).
+- 13 new tests in tests/integration/redirection/test_process_sub_cleanup.py
+  (zombie census, fd-slot census, non-blocking timing, opportunistic reap,
+  and output-correctness pins incl. function args, `exec 3< <(...)`,
+  `tee >(...)`); the four defect tests fail on unfixed main.
+- Suite: 4,323 passed / 4,638 collected; ruff + mypy clean.
+- Also adds docs/reviews/ground_up_reappraisal_2026-06-11.md — the second
+  ground-up reappraisal memo (six-agent review; scorecard, findings H1-H3
+  and M1-M10, three-tier follow-up program).
+
 ## 0.287.0 (2026-06-11) - Mypy adoption + interactive unit tests (reappraisal Tier C, 3/3 — REAPPRAISAL PROGRAM COMPLETE)
 - Type checking is now enforced: `[tool.mypy]` in pyproject.toml (3.12,
   non-strict, files-driven scope) covering psh/core/ (8 modules),

@@ -32,15 +32,21 @@ class IOManager:
 
     @contextmanager
     def with_redirections(self, redirects: List[Redirect]):
-        """Context manager for applying redirections temporarily."""
+        """Context manager for applying redirections temporarily.
+
+        Also owns any process substitutions used as redirect targets
+        (e.g. `while ...; done < <(cmd)`): their parent-side fds are
+        closed and children reaped when the redirected region ends.
+        """
         if not redirects:
             yield
             return
-        saved_fds = self.apply_redirections(redirects)
-        try:
-            yield
-        finally:
-            self.restore_redirections(saved_fds)
+        with self.process_sub_handler.scope():
+            saved_fds = self.apply_redirections(redirects)
+            try:
+                yield
+            finally:
+                self.restore_redirections(saved_fds)
 
     def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int]]:
         """Apply redirections and return list of saved FDs for restoration."""
@@ -239,8 +245,10 @@ class IOManager:
             os.dup2(stdin_fd_backup, 0)
             os.close(stdin_fd_backup)
 
-        # Clean up process substitution resources if any
-        self.process_sub_handler.cleanup()
+        # Process substitution resources are NOT cleaned up here: they are
+        # owned by the enclosing process_sub_scope() (see CommandExecutor),
+        # so a builtin running inside a function called with a <(...)
+        # argument cannot close the caller's still-needed fd.
 
     def setup_child_redirections(self, command: Command):
         """Set up redirections in child process (after fork) using dup2."""
@@ -313,7 +321,13 @@ class IOManager:
         """Set up process substitutions for a command."""
         return self.process_sub_handler.setup_process_substitutions(command)
 
-    def cleanup_process_substitutions(self):
-        """Clean up process substitution resources."""
-        self.process_sub_handler.cleanup()
+    def process_sub_scope(self):
+        """Context manager owning process substitutions created within it.
+
+        On exit, parent-side fds are closed and finished children are
+        reaped with WNOHANG; still-running children are re-polled at later
+        scope exits, so the shell never blocks on a substitution that
+        outlives its command and never accumulates zombies.
+        """
+        return self.process_sub_handler.scope()
 

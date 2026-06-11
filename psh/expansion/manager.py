@@ -66,9 +66,10 @@ class ExpansionManager:
         # Handle process substitutions — detect via Word AST
         words = command.words
         if self._has_process_substitution(command):
-            fds, substituted_args, child_pids = self.shell.io_manager.setup_process_substitutions(command)
-            self.shell._process_sub_fds = fds
-            self.shell._process_sub_pids = child_pids
+            # The fds/pids are registered with the ProcessSubstitutionHandler;
+            # the enclosing process_sub_scope() (CommandExecutor) closes the
+            # parent fds and reaps the children when the command finishes.
+            _fds, substituted_args, _child_pids = self.shell.io_manager.setup_process_substitutions(command)
             # Replace ONLY the process-substitution words with their
             # /dev/fd/N paths. Other words keep their Word AST (rebuilding
             # them from strings used to discard quote context, so a quoted

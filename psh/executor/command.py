@@ -72,6 +72,16 @@ class CommandExecutor:
         Returns:
             Exit status code
         """
+        # Own any process substitutions this command creates (as arguments
+        # or redirect targets): when the command finishes, the parent-side
+        # fds are closed and the children reaped non-blockingly
+        # (still-running ones are polled at later scope exits), so
+        # `cat <(echo a)` neither leaks fds nor leaves zombies.
+        with self.io_manager.process_sub_scope():
+            return self._execute_command(node, context)
+
+    def _execute_command(self, node: 'SimpleCommand', context: 'ExecutionContext') -> int:
+        """Execute a simple command (assignments, expansion, strategy dispatch)."""
         try:
             # bash runs the DEBUG trap before each simple command
             self.shell.trap_manager.execute_debug_trap()

@@ -2,7 +2,7 @@
 import copy
 import fcntl
 import os
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ..ast_nodes import Redirect
 
@@ -230,8 +230,9 @@ class FileRedirector:
         for redirect in redirects:
             redirect = self._resolved(redirect)
             target = self._expand_redirect_target(redirect)
+            procsub_fd = None
             if target and target.startswith(('<(', '>(')) and target.endswith(')'):
-                target = self._handle_process_sub_redirect(target, redirect)
+                target, procsub_fd = self._handle_process_sub_redirect(target, redirect)
 
             if redirect.combined:
                 # &> or &>> — redirect both stdout and stderr
@@ -275,6 +276,10 @@ class FileRedirector:
                     saved_fds.append((redirect.fd, self._save_fd(redirect.fd)))
                 self._redirect_close_fd(redirect)
 
+            # The redirect's target fd now references the pipe itself;
+            # release the substitution's original parent fd.
+            self._close_procsub_parent_fd(procsub_fd, redirect)
+
         return saved_fds
 
     def restore_redirections(self, saved_fds: List[Tuple[int, int]]):
@@ -312,8 +317,9 @@ class FileRedirector:
         for redirect in redirects:
             redirect = self._resolved(redirect)
             target = self._expand_redirect_target(redirect)
+            procsub_fd = None
             if target and target.startswith(('<(', '>(')) and target.endswith(')'):
-                target = self._handle_process_sub_redirect(target, redirect)
+                target, procsub_fd = self._handle_process_sub_redirect(target, redirect)
 
             if redirect.combined:
                 # &> or &>> — redirect both stdout and stderr permanently
@@ -377,14 +383,49 @@ class FileRedirector:
             elif redirect.type in ('>&-', '<&-'):
                 self._redirect_close_fd(redirect)
 
-    def _handle_process_sub_redirect(self, target: str, redirect: Redirect) -> str:
-        """Handle process substitution used as a redirect target."""
+            # The redirect's target fd now references the pipe itself;
+            # release the substitution's original parent fd (skipped when
+            # the parent fd's number became the permanent target, e.g.
+            # `exec 3< <(cmd)` where the pipe end happened to be fd 3).
+            self._close_procsub_parent_fd(procsub_fd, redirect)
+
+    def _handle_process_sub_redirect(self, target: str,
+                                     redirect: Redirect) -> Tuple[str, int]:
+        """Handle process substitution used as a redirect target.
+
+        Returns (fd_path, parent_fd). The child pid is registered with the
+        ProcessSubstitutionHandler for non-blocking reaping; the parent fd
+        is the CALLER's to close once the redirect has been applied (the
+        redirect's target fd then holds its own reference to the pipe) —
+        see _close_procsub_parent_fd().
+        """
         from .process_sub import create_process_substitution
 
         direction = 'in' if target.startswith('<(') else 'out'
         cmd_str = target[2:-1]
         parent_fd, fd_path, pid = create_process_substitution(cmd_str, direction, self.shell)
-        # Track through ProcessSubstitutionHandler for unified cleanup
-        self.shell.io_manager.process_sub_handler.active_fds.append(parent_fd)
         self.shell.io_manager.process_sub_handler.active_pids.append(pid)
-        return fd_path
+        return fd_path, parent_fd
+
+    @staticmethod
+    def _close_procsub_parent_fd(procsub_fd: Optional[int], redirect: Redirect):
+        """Close a redirect-target process substitution's parent fd.
+
+        Skipped when dup2 repurposed the parent fd's NUMBER as the
+        redirect's own target (e.g. `exec 3< <(cmd)` when the pipe end
+        happened to be fd 3) — the number now IS the redirect.
+        """
+        if procsub_fd is None:
+            return
+        if redirect.combined:
+            targets = (1, 2)
+        elif redirect.fd is not None:
+            targets = (redirect.fd,)
+        else:
+            targets = (0,) if redirect.type.startswith('<') else (1,)
+        if procsub_fd in targets:
+            return
+        try:
+            os.close(procsub_fd)
+        except OSError:
+            pass
