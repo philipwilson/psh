@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.295.0 (2026-06-11) - PTY-tier repair + test debris (reappraisal #2 Tier B, 5/6)
+- M8: the 6 reproducible failures in the opt-in PTY tier were NOT
+  product bugs and NOT mere assertion fragility — the pty framework's
+  initial-prompt sync was off by one, so every run_command returned the
+  PREVIOUS command's output window (several "passing" tests passed
+  spuriously on the echoed command). Fixed in pty_test_framework.py:
+  sentinel prompt (PS1='PSH$ ', the proven test_pty_smoke convention),
+  arithmetic-sentinel initial sync, stale-output drain per command,
+  PS2 continuation handling, strip_ansi() + CR-overwrite normalization.
+  No test logic changed; one stale Ctrl-C xfail removed (now passes
+  deterministically). Opt-in tier: 86 passed, 0 failed × 3 runs.
+- Nested tests/system/interactive/pytest.ini deleted (it hijacked
+  pytest rootdir, breaking direct invocation with --run-interactive;
+  its skip-comment referenced a removed README and an unused marker).
+  Both invocation styles verified working.
+- Debris: tracked broken-symlink conformance results git-rm'd and the
+  results dir gitignored (runner recreates on demand — verified,
+  162/162 POSIX); five legacy non-test files removed from
+  tests/system/interactive/ (references checked; dir README updated,
+  stale "can't handle escapes" known-issue dropped); empty
+  tests/integration/lexer/ and untracked husk dirs removed;
+  test_codex_review_findings.py docstring corrected (bugs fixed,
+  no xfails remain).
+- CI workflow renamed test_migration.yml → tests.yml (historical
+  misnomer; `name: Tests CI` already accurate).
+- Suite: 4,533 passed / 4,803 collected; PTY tier green ×3;
+  ruff + mypy clean.
+
 ## 0.294.0 (2026-06-11) - Error/notification channel unification (reappraisal #2 Tier B, 4/6)
 - Job-state notifications now go to stderr like bash (verified by
   pty.fork probe with the shell's own fds redirected): Done, Stopped,

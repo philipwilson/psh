@@ -40,12 +40,31 @@ import pytest
 PSH_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PSH_ROOT))
 
+# Matches OSC sequences (terminal title etc., terminated by BEL or ST),
+# CSI sequences (cursor movement, colors), and other two-byte escapes.
+ANSI_ESCAPE_RE = re.compile(
+    r'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)'  # OSC ... BEL/ST (e.g. \x1b]0;title\x07)
+    r'|\x1b\[[0-9;?]*[ -/]*[@-~]'         # CSI (e.g. \x1b[31C, \x1b[32m)
+    r'|\x1b[@-Z\\-_]'                     # other C1 two-byte escapes
+)
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI/OSC escape sequences from PTY output."""
+    return ANSI_ESCAPE_RE.sub('', text)
+
 
 @dataclass
 class PTYTestConfig:
-    """Configuration for PTY tests."""
+    """Configuration for PTY tests.
+
+    The framework forces PS1 to the sentinel ``PSH$ `` (same convention as
+    tests/system/interactive/test_pty_smoke.py) so prompt detection does not
+    depend on the machine's user/host/cwd or prompt colors. If you override
+    PS1 via ``env``, override ``prompt_pattern`` to match.
+    """
     timeout: int = 5
-    prompt_pattern: str = r'\$ '  # More specific prompt pattern
+    prompt_pattern: str = r'PSH\$ '  # sentinel prompt (see docstring)
     continuation_pattern: str = r'> '
     debug: bool = False
     encoding: str = 'utf-8'
@@ -117,6 +136,10 @@ class PTYTestFramework:
         # Disable readline if it causes issues
         env['INPUTRC'] = '/dev/null'
 
+        # Deterministic sentinel prompt unless the test supplied its own.
+        if not (self.config.env and 'PS1' in self.config.env):
+            env['PS1'] = 'PSH$ '
+
         # Build command
         cmd = [sys.executable, '-u', '-m', 'psh', '--norc', '--force-interactive']
         if self.config.extra_args:
@@ -140,10 +163,46 @@ class PTYTestFramework:
         self.shell.setecho(False)  # Don't echo input
         self.shell.delaybeforesend = 0.05  # Small delay between sends
 
-        # Wait for initial prompt with retries
-        self._wait_for_prompt(initial=True)
+        # Align the stream exactly past a fresh prompt (see method docstring)
+        self._sync_initial_prompt()
 
         return self.shell
+
+    def _sync_initial_prompt(self):
+        """Align the pexpect stream exactly past a fresh primary prompt.
+
+        psh prints its first prompt at startup AND another one in response
+        to the wake-up CR, so a single expect() against the prompt pattern
+        leaves a stale prompt in the stream — after which every
+        run_command() slices its output one prompt-cycle behind (the cause
+        of the historical test_interactive_features.py failures).
+
+        Run a sentinel command whose expected output text never appears in
+        its own echo (the arithmetic-sentinel trick from test_pty_smoke.py),
+        match the output, then match the prompt that follows it: the stream
+        is now deterministically aligned regardless of how many prompts the
+        startup sequence produced.
+        """
+        time.sleep(0.1)
+        self.shell.send('\r')
+        self.shell.send('echo __PTY_SYNC__$((40+2))\r')
+        self.shell.expect('__PTY_SYNC__42', timeout=self.config.timeout)
+        self._wait_for_prompt()
+
+    def _drain_stale_output(self):
+        """Discard any output already buffered from previous interactions.
+
+        Out-of-band prompts (e.g. the one psh prints after a Ctrl-C at the
+        prompt) would otherwise satisfy run_command()'s prompt wait early.
+        Draining immediately before sending a command makes the next prompt
+        in the stream necessarily the post-command one.
+        """
+        try:
+            while True:
+                if not self.shell.read_nonblocking(size=4096, timeout=0.1):
+                    break
+        except (pexpect.TIMEOUT, pexpect.EOF):
+            pass
 
     def _wait_for_prompt(self, initial: bool = False, timeout: Optional[int] = None):
         """Wait for prompt with better error handling."""
@@ -222,20 +281,42 @@ class PTYTestFramework:
         return self.shell.before + (self.shell.match.group(0) if self.shell.match else "")
 
     def run_command(self, cmd: str) -> str:
-        """Run command and return output."""
-        self.send_line(cmd)
-        self._wait_for_prompt()
+        """Run command and return its cleaned output.
 
-        # Get output and clean it up
-        output = self.shell.before
-        if output:
-            # Remove the echoed command if present
-            lines = output.strip().split('\n')
-            # If first line contains the command, remove it
-            if lines and cmd in lines[0]:
-                lines = lines[1:]
-            return '\n'.join(lines).strip()
-        return ""
+        Robustness measures (each fixing a historical fragility):
+        - drain stale buffered output first, so an out-of-band prompt
+          (e.g. after Ctrl-C) can't satisfy the prompt wait early;
+        - keep waiting while continuation prompts (PS2) arrive, so
+          multiline commands return the full output;
+        - strip ANSI/OSC escapes (prompt colors, title sequences,
+          line-editor cursor movement) before returning;
+        - drop echoed command lines from the output.
+        """
+        self._drain_stale_output()
+        self.send_line(cmd)
+
+        # Collect output across continuation prompts until the primary
+        # prompt returns.
+        segments = []
+        while True:
+            at_primary = self._wait_for_prompt()
+            segments.append(self.shell.before or '')
+            if at_primary:
+                break
+
+        output = strip_ansi(''.join(segments))
+
+        # Normalize line endings; a bare CR repositions to column 0
+        # (line-editor redraw), so keep only what follows the last CR.
+        lines = []
+        for line in output.replace('\r\n', '\n').split('\n'):
+            lines.append(line.rsplit('\r', 1)[-1])
+
+        # Remove echoed command lines (the editor echoes typed input).
+        echoed = {part.strip() for part in cmd.split('\n')}
+        lines = [ln for ln in lines if ln.strip() not in echoed]
+
+        return '\n'.join(lines).strip()
 
     def get_cursor_position(self) -> Tuple[int, int]:
         """Get current cursor position using ANSI escape sequence."""
