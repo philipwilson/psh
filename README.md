@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.290.0 | **Tests**: 4,706 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.291.0 | **Tests**: 4,739 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -243,7 +243,7 @@ PSH uniquely includes two complete parser implementations:
 
 ### Project Statistics
 - **Lines of Code**: ~47,300 lines of production code in `psh/` across 192 Python files, plus ~53,600 lines of tests in `tests/` (231 files)
-- **Test Coverage**: 4,706 tests in 227 test files
+- **Test Coverage**: 4,739 tests in 227 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -341,6 +341,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.291.0**: alias/unalias rewritten to conventions (`-p`, rc 2 usage errors, bash `'\''` quoting, wrong quote-rejoin scanner deleted — it mangled escaped-quote operands bash keeps literal); printf gains `\e`/`\E`
 - **v0.290.0**: run_tests.py no longer silently skips 45 tests (obsolete carve-out removed; the two files are xdist-safe); two stale xfails fixed; user guide re-probed claim-by-claim — 17 false "not supported" notes corrected, 10 true ones kept unversioned, all v0.187.1 pins removed; 23 new conformance tests pin the corrected claims
 - **v0.289.0**: Four bash-pinned behavior fixes: assoc-array keys containing `,`/`^` (`${a[x,y]}`); `command -v/-V` now finds aliases/functions/keywords with bash output and rc semantics; in-pipeline command-not-found prints "command not found" (127/126, byte-identical to single-command); four dead `set -o` options deleted
 - **v0.288.0**: Process substitutions no longer leak fds/zombies: scoped LIFO cleanup with non-blocking reaping (bash-pinned); also fixes `echo >(sleep N)` blocking N seconds and "Bad file descriptor" when functions receive `<(...)` arguments

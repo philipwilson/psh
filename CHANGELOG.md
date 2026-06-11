@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.291.0 (2026-06-11) - alias/unalias rewrite + printf \e (reappraisal #2 Tier B, 1/6)
+- M3: aliases.py rewritten to the builtins conventions (the one file the
+  v0.284 sweep never reached). `alias -p` supported; invalid options now
+  rc 2 with a usage line via parse_flags; output uses bash's `'\''`
+  quoting for embedded single quotes; `unalias` with no args rc 2;
+  `alias -- x=v` works; raw print + hasattr dance replaced with
+  write_line()/error(). 37-case probe battery matches bash 5.2.
+- The cross-argument quote-rejoin scanner was live but WRONG in every
+  reachable case, not dead as the review guessed: it stripped quotes
+  bash keeps literal (`alias x="'echo hi'"`) and glued separate operands
+  (`alias x=\'foo bar\'` — bash defines `x`=`'foo` and errors on
+  `bar'`). Deleted; operands are now independent, matching bash.
+  Bash source quirks replicated: `-p` with empty table returns 0 and
+  skips operands; `unalias -a` ignores operands; `=foo` is a lookup.
+- printf now interprets `\e`/`\E` (escape) in its format string — added
+  to printf's own escape dialect in io.py, not the shared echo dialect
+  (which already had it; `$'\e'`, `echo -e '\e'`, `printf '%b'` were
+  already correct).
+- 33 new tests (29 alias/unalias conformance, 4 printf escapes).
+- Suite: 4,469 passed / 4,739 collected; ruff + mypy clean.
+
 ## 0.290.0 (2026-06-11) - Test-runner hole + user-guide truth sweep (reappraisal #2 Tier A, 3/3 — TIER A COMPLETE)
 - H2: run_tests.py no longer silently skips 45 tests. The whole-file
   ignores of test_function_advanced.py and test_variable_assignment.py

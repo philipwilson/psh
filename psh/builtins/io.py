@@ -570,6 +570,8 @@ class PrintfBuiltin(Builtin):
             'r': '\r',    # Carriage return
             't': '\t',    # Tab
             'v': '\v',    # Vertical tab
+            'e': '\x1b',  # Escape character (bash extension)
+            'E': '\x1b',  # Escape character (alternative form)
             '\\': '\\',   # Backslash
             '"': '"',     # Double quote
             "'": "'",     # Single quote

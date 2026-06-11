@@ -219,3 +219,191 @@ class TestAliasExpansion:
         # 'sudo myls' should expand both aliases
         shell.run_command('sudo myls')
         # This is complex behavior that PSH might not support
+
+
+class TestAliasBashConformance:
+    """Probe battery pinned against bash 5.2 (stdout/stderr/rc).
+
+    Each test mirrors a bash probe; the expected values are bash's
+    (modulo bash's "bash: line N: " stderr prefix, which psh renders
+    as just the builtin name prefix).
+    """
+
+    def test_list_empty(self, captured_shell):
+        assert captured_shell.run_command('alias') == 0
+        assert captured_shell.get_stdout() == ""
+        assert captured_shell.get_stderr() == ""
+
+    def test_dash_p_empty_table(self, captured_shell):
+        assert captured_shell.run_command('alias -p') == 0
+        assert captured_shell.get_stdout() == ""
+
+    def test_dash_p_empty_table_skips_operands(self, captured_shell):
+        # bash quirk: with -p and an empty alias table, operands are
+        # skipped entirely and the return code is 0.
+        assert captured_shell.run_command('alias -p nosuch') == 0
+        assert captured_shell.get_stdout() == ""
+        assert captured_shell.get_stderr() == ""
+
+    def test_dash_p_lists_all(self, captured_shell):
+        captured_shell.run_command("alias x='echo hi'")
+        captured_shell.clear_output()
+        assert captured_shell.run_command('alias -p') == 0
+        assert captured_shell.get_stdout() == "alias x='echo hi'\n"
+
+    def test_dash_p_with_name_operand(self, captured_shell):
+        # bash: -p prints all aliases, then the operand is shown too.
+        captured_shell.run_command("alias x='echo hi'")
+        captured_shell.clear_output()
+        assert captured_shell.run_command('alias -p x') == 0
+        assert captured_shell.get_stdout() == (
+            "alias x='echo hi'\nalias x='echo hi'\n")
+
+    def test_dash_p_nosuch_nonempty_table(self, captured_shell):
+        captured_shell.run_command("alias x='echo hi'")
+        captured_shell.clear_output()
+        assert captured_shell.run_command('alias -p nosuch') == 1
+        assert captured_shell.get_stdout() == "alias x='echo hi'\n"
+        assert "alias: nosuch: not found" in captured_shell.get_stderr()
+
+    def test_invalid_option_rc2(self, captured_shell):
+        assert captured_shell.run_command('alias -q') == 2
+        err = captured_shell.get_stderr()
+        assert "alias: -q: invalid option" in err
+        assert "usage: alias [-p] [name[=value] ... ]" in err
+
+    def test_invalid_option_in_cluster_rc2(self, captured_shell):
+        assert captured_shell.run_command('alias -pq') == 2
+        assert "alias: -q: invalid option" in captured_shell.get_stderr()
+
+    def test_show_one(self, captured_shell):
+        captured_shell.run_command("alias x='echo hi'")
+        captured_shell.clear_output()
+        assert captured_shell.run_command('alias x') == 0
+        assert captured_shell.get_stdout() == "alias x='echo hi'\n"
+
+    def test_nosuch_rc1(self, captured_shell):
+        assert captured_shell.run_command('alias nosuch') == 1
+        assert "alias: nosuch: not found" in captured_shell.get_stderr()
+
+    def test_multiple_definitions_one_call(self, captured_shell):
+        assert captured_shell.run_command(
+            "alias x='echo hi' y='echo y'") == 0
+        captured_shell.clear_output()
+        captured_shell.run_command('alias')
+        assert captured_shell.get_stdout() == (
+            "alias x='echo hi'\nalias y='echo y'\n")
+
+    def test_embedded_single_quote_bash_quoting(self, captured_shell):
+        # bash renders an embedded single quote as '\'' in reusable output:
+        #   alias q='it'\''s'
+        captured_shell.run_command("alias q='it'\\''s'")
+        captured_shell.clear_output()
+        assert captured_shell.run_command('alias q') == 0
+        assert captured_shell.get_stdout() == "alias q='it'\\''s'\n"
+
+    def test_quoted_value_keeps_inner_quotes(self, captured_shell):
+        # alias x="'echo hi'" -- the single quotes are part of the value.
+        captured_shell.run_command('alias x="\'echo hi\'"')
+        captured_shell.clear_output()
+        assert captured_shell.run_command('alias x') == 0
+        assert captured_shell.get_stdout() == "alias x=''\\''echo hi'\\'''\n"
+
+    def test_escaped_quote_words_treated_independently(self, captured_shell):
+        # alias x=\'foo bar\'  -- two operands after tokenization: the
+        # first defines x with value 'foo (literal quote retained); the
+        # second is a lookup of "bar'" which is not found (bash behavior;
+        # the old cross-argument quote-rejoin scanner glued these).
+        assert captured_shell.run_command("alias x=\\'foo bar\\'") == 1
+        assert "alias: bar': not found" in captured_shell.get_stderr()
+        captured_shell.clear_output()
+        captured_shell.run_command('alias x')
+        assert captured_shell.get_stdout() == "alias x=''\\''foo'\n"
+
+    def test_double_dash_ends_options(self, captured_shell):
+        assert captured_shell.run_command("alias -- x='echo dd'") == 0
+        captured_shell.clear_output()
+        captured_shell.run_command('alias x')
+        assert captured_shell.get_stdout() == "alias x='echo dd'\n"
+
+    def test_empty_value(self, captured_shell):
+        assert captured_shell.run_command('alias x=') == 0
+        captured_shell.clear_output()
+        assert captured_shell.run_command('alias x') == 0
+        assert captured_shell.get_stdout() == "alias x=''\n"
+
+    def test_leading_equals_is_lookup_not_assignment(self, captured_shell):
+        # bash treats '=foo' as a name lookup, not an empty-name assignment.
+        assert captured_shell.run_command('alias =foo') == 1
+        assert "alias: =foo: not found" in captured_shell.get_stderr()
+
+    def test_invalid_name_message_and_rc(self, captured_shell):
+        assert captured_shell.run_command("alias 'a b'=foo") == 1
+        assert "alias: `a b': invalid alias name" in captured_shell.get_stderr()
+
+    def test_invalid_name_does_not_block_valid(self, captured_shell):
+        assert captured_shell.run_command(
+            "alias 'a b'=foo good='echo g'") == 1
+        captured_shell.clear_output()
+        assert captured_shell.run_command('alias good') == 0
+        assert captured_shell.get_stdout() == "alias good='echo g'\n"
+
+    def test_show_and_define_same_call(self, captured_shell):
+        captured_shell.run_command("alias x='echo 1'")
+        captured_shell.clear_output()
+        assert captured_shell.run_command("alias x y='echo 2'") == 0
+        assert captured_shell.get_stdout() == "alias x='echo 1'\n"
+        captured_shell.clear_output()
+        assert captured_shell.run_command('alias y') == 0
+        assert captured_shell.get_stdout() == "alias y='echo 2'\n"
+
+    def test_listing_is_sorted(self, captured_shell):
+        captured_shell.run_command("alias zz='2' aa='1'")
+        captured_shell.clear_output()
+        captured_shell.run_command('alias')
+        assert captured_shell.get_stdout() == "alias aa='1'\nalias zz='2'\n"
+
+
+class TestUnaliasBashConformance:
+    """unalias probe battery pinned against bash 5.2."""
+
+    def test_no_args_usage_rc2(self, captured_shell):
+        assert captured_shell.run_command('unalias') == 2
+        assert ("unalias: usage: unalias [-a] name [name ...]"
+                in captured_shell.get_stderr())
+
+    def test_invalid_option_rc2(self, captured_shell):
+        assert captured_shell.run_command('unalias -q') == 2
+        err = captured_shell.get_stderr()
+        assert "unalias: -q: invalid option" in err
+        assert "usage: unalias [-a] name [name ...]" in err
+
+    def test_invalid_option_in_cluster_rc2(self, captured_shell):
+        assert captured_shell.run_command('unalias -aq') == 2
+        assert "unalias: -q: invalid option" in captured_shell.get_stderr()
+
+    def test_nosuch_rc1(self, captured_shell):
+        assert captured_shell.run_command('unalias nosuch') == 1
+        assert "unalias: nosuch: not found" in captured_shell.get_stderr()
+
+    def test_mixed_removes_found_rc1(self, captured_shell):
+        captured_shell.run_command("alias a='1' b='2'")
+        captured_shell.clear_output()
+        assert captured_shell.run_command('unalias a nosuch b') == 1
+        assert "unalias: nosuch: not found" in captured_shell.get_stderr()
+        captured_shell.clear_output()
+        captured_shell.run_command('alias')
+        assert captured_shell.get_stdout() == ""
+
+    def test_dash_a_ignores_operands(self, captured_shell):
+        captured_shell.run_command("alias x='a'")
+        captured_shell.clear_output()
+        assert captured_shell.run_command('unalias -a nosuch') == 0
+        assert captured_shell.get_stderr() == ""
+
+    def test_dash_a_empty_table_rc0(self, captured_shell):
+        assert captured_shell.run_command('unalias -a') == 0
+
+    def test_double_dash_ends_options(self, captured_shell):
+        assert captured_shell.run_command('unalias -- nosuch2') == 1
+        assert "unalias: nosuch2: not found" in captured_shell.get_stderr()
