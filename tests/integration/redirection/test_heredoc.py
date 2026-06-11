@@ -11,7 +11,7 @@ import sys
 def test_tokenize_heredoc():
     """Test that << is tokenized correctly."""
     from psh.lexer import tokenize
-    from psh.token_types import TokenType
+    from psh.lexer.token_types import TokenType
 
     tokens = tokenize("cat << EOF")
     assert tokens[1].type == TokenType.HEREDOC
@@ -23,7 +23,7 @@ def test_tokenize_heredoc():
 def test_tokenize_heredoc_strip():
     """Test that <<- is tokenized correctly."""
     from psh.lexer import tokenize
-    from psh.token_types import TokenType
+    from psh.lexer.token_types import TokenType
 
     tokens = tokenize("cat <<- END")
     assert tokens[1].type == TokenType.HEREDOC_STRIP
@@ -51,7 +51,7 @@ def test_parse_heredoc():
 def test_tokenize_here_string():
     """Test that <<< is tokenized correctly."""
     from psh.lexer import tokenize
-    from psh.token_types import TokenType
+    from psh.lexer.token_types import TokenType
 
     tokens = tokenize("cat <<< 'hello world'")
     assert tokens[1].type == TokenType.HERE_STRING

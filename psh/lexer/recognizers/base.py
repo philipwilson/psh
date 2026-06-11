@@ -3,8 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple
 
-from ...token_types import Token
 from ..state_context import LexerContext
+from ..token_types import Token
 
 
 class TokenRecognizer(ABC):

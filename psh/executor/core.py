@@ -39,8 +39,8 @@ from ..ast_nodes import (
     UntilLoop,
     WhileLoop,
 )
-from ..builtins import FunctionReturn
 from ..core import LoopBreak, LoopContinue
+from ..core.exceptions import FunctionReturn
 from .array import ArrayOperationExecutor
 from .command import CommandExecutor
 from .context import ExecutionContext
@@ -310,7 +310,7 @@ class ExecutorVisitor(ASTVisitor[int]):
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> int:
         """Execute arithmetic command: ((expression))"""
-        from ..arithmetic import evaluate_arithmetic
+        from ..expansion.arithmetic import evaluate_arithmetic
 
         try:
             # Apply redirections if any

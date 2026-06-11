@@ -16,9 +16,9 @@ if TYPE_CHECKING:
     from psh.visitor import ASTVisitor
 
     from ..ast_nodes import ASTNode, Pipeline
-    from ..job_control import Job, JobManager
     from ..shell import Shell
     from .context import ExecutionContext
+    from .job_control import Job, JobManager
 
 
 class PipelineContext:
@@ -290,7 +290,7 @@ class PipelineExecutor:
         self.job_manager.finish_foreground_job(original_pgid is not None)
 
         # Remove completed job
-        from ..job_control import JobState
+        from .job_control import JobState
         if job.state == JobState.DONE:
             self.job_manager.remove_job(job.job_id)
 

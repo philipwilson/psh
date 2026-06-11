@@ -1,6 +1,7 @@
 """Tests for command and pipeline parsers."""
 
 from psh.ast_nodes import AndOrList, CommandList, Pipeline, SimpleCommand, Word
+from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.commands import (
     CommandParsers,
     create_command_parsers,
@@ -9,7 +10,6 @@ from psh.parser.combinators.commands import (
 from psh.parser.combinators.expansions import ExpansionParsers
 from psh.parser.combinators.tokens import TokenParsers
 from psh.parser.config import ParserConfig
-from psh.token_types import Token, TokenType
 
 
 def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:

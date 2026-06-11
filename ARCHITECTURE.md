@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.284.0
+**Current Version**: 0.285.0
 
 **Note:** For LLM-optimized architecture documentation, see `ARCHITECTURE.llm`
 
@@ -77,7 +77,7 @@ Python Shell (psh) is designed with a clean, component-based architecture that s
 Before tokenization begins, several preprocessing steps occur:
 
 ### 1.1 Line Continuation Processing
-**File**: `input_preprocessing.py`
+**File**: `scripting/input_preprocessing.py`
 
 Handles POSIX-compliant line continuations (`\<newline>`):
 ```bash
@@ -92,7 +92,7 @@ The preprocessor:
 - Maintains line number tracking for error reporting
 
 ### 1.2 History Expansion
-**File**: `history_expansion.py`
+**File**: `interactive/history_expansion.py`
 
 Processes history expansions before tokenization:
 - `!!` - Previous command
@@ -103,7 +103,7 @@ Processes history expansions before tokenization:
 Context-aware to avoid expansion in quotes and certain contexts.
 
 ### 1.3 Brace Expansion
-**File**: `brace_expansion.py`
+**File**: `expansion/brace_expansion.py`
 
 Expands brace patterns before tokenization:
 - List expansion: `{a,b,c}` → `a b c`
@@ -182,7 +182,7 @@ class LexerState(Enum):
 ```
 
 ### 2.3 Unified Token System
-**Files**: `token_types.py`, `psh/lexer/token_parts.py`
+**Files**: `psh/lexer/token_types.py`, `psh/lexer/token_parts.py`
 
 The lexer produces unified `Token` objects with built-in metadata and context information:
 ```python
@@ -981,7 +981,7 @@ def create_process_substitution(cmd_str: str, direction: str, shell) -> Tuple[in
 ## Component Communication
 
 ### State Management
-**Files**: `core/state.py`, `core/scope_enhanced.py`
+**Files**: `core/state.py`, `core/scope.py`
 
 All components share state through a centralized `ShellState` object:
 - Environment variables

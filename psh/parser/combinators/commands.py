@@ -27,7 +27,7 @@ from ...ast_nodes import (
     SubshellGroup,
     WhileLoop,
 )
-from ...token_types import Token
+from ...lexer.token_types import Token
 from ..config import ParserConfig
 from ..recursive_descent.support.word_builder import WordBuilder
 from .core import ForwardParser, Parser, ParseResult, many, many1, optional, separated_by, sequence, token

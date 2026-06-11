@@ -39,7 +39,7 @@ class LetBuiltin(Builtin):
             self.error("expression expected", shell)
             return 1
 
-        from ..arithmetic import evaluate_arithmetic
+        from ..expansion.arithmetic import evaluate_arithmetic
 
         result = 0
         for expr in exprs:

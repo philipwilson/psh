@@ -3,8 +3,8 @@
 
 from typing import Dict, List, Optional, Set, Tuple
 
-from .lexer import tokenize
-from .token_types import Token, TokenType
+from ..lexer import tokenize
+from ..lexer.token_types import Token, TokenType
 
 
 class AliasManager:

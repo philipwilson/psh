@@ -5,7 +5,7 @@ This module handles parsing of function definitions.
 """
 
 from ....ast_nodes import CommandList, FunctionDef
-from ....token_types import TokenType
+from ....lexer.token_types import TokenType
 
 
 class FunctionParser:

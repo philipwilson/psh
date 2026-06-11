@@ -8,7 +8,7 @@ Both consult the same classification sets defined here so the notion of "what
 returns us to command position" lives in one place.
 """
 
-from ..token_types import TokenType
+from .token_types import TokenType
 
 # Operator token types after which the next token is at command position.
 # Shared verbatim by both passes.

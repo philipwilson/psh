@@ -3,6 +3,7 @@
 
 import pytest
 
+from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.core import (
     ForwardParser,
     Parser,
@@ -22,7 +23,6 @@ from psh.parser.combinators.core import (
     try_parse,
     with_error_context,
 )
-from psh.token_types import Token, TokenType
 
 
 def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:

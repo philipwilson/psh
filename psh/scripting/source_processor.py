@@ -78,7 +78,7 @@ class SourceProcessor(ScriptComponent):
             if command_buffer.strip():
                 # Process line continuations and history expansion before testing completeness
                 test_command = command_buffer
-                from ..input_preprocessing import process_line_continuations
+                from .input_preprocessing import process_line_continuations
                 test_command = process_line_continuations(test_command)
 
                 # Apply history expansion for completeness testing (don't print)
@@ -113,7 +113,7 @@ class SourceProcessor(ScriptComponent):
                             test_command = expanded_test
 
                 # Check if command contains history expansion - if so, treat as complete
-                from ..history_expansion import contains_history_reference
+                from ..interactive.history_expansion import contains_history_reference
                 if contains_history_reference(test_command):
                     # Skip parse testing for history expansions - let execution handle them
                     exit_code = self._execute_buffered_command(
@@ -220,7 +220,7 @@ class SourceProcessor(ScriptComponent):
 
         try:
             # Process line continuations first
-            from ..input_preprocessing import process_line_continuations
+            from .input_preprocessing import process_line_continuations
             command_string = process_line_continuations(command_string)
 
             # Perform history expansion before tokenization
@@ -239,7 +239,7 @@ class SourceProcessor(ScriptComponent):
             # Done before parsing so that, like bash, commands with syntax
             # errors are still recallable for editing.
             if add_to_history and command_string.strip():
-                from ..history_expansion import contains_history_reference
+                from ..interactive.history_expansion import contains_history_reference
                 if not contains_history_reference(command_string):
                     self.shell.add_history(command_string.strip())
 

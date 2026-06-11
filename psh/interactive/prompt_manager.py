@@ -1,6 +1,6 @@
 """Prompt formatting and management."""
-from ..prompt import PromptExpander
 from .base import InteractiveComponent
+from .prompt import PromptExpander
 
 
 class PromptManager(InteractiveComponent):

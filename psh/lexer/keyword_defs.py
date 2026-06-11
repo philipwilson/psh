@@ -2,7 +2,7 @@
 
 from typing import Iterable, Optional
 
-from ..token_types import TokenType
+from .token_types import TokenType
 
 # Mapping between keyword strings and their canonical token types
 KEYWORD_TYPE_MAP = {

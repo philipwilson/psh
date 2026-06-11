@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
-    from .token_types import Token
+    from .lexer.token_types import Token
 
 
 class ASTNode(ABC):

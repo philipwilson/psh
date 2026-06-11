@@ -2,8 +2,8 @@
 
 from typing import Optional, Set, Tuple
 
-from ...token_types import Token, TokenType
 from ..state_context import LexerContext
+from ..token_types import Token, TokenType
 from .base import ContextualRecognizer
 
 

@@ -1,5 +1,6 @@
 """Tests for token-level parsers."""
 
+from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.tokens import (
     TokenParsers,
     background_operator,
@@ -11,7 +12,6 @@ from psh.parser.combinators.tokens import (
     semicolon_separator,
     statement_terminator,
 )
-from psh.token_types import Token, TokenType
 
 
 def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:

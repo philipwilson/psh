@@ -10,7 +10,6 @@ as the single lexer implementation.
 
 from typing import List
 
-from ..token_types import Token
 from .constants import DOUBLE_QUOTE_ESCAPES, KEYWORDS, SPECIAL_VARIABLES
 from .keyword_normalizer import KeywordNormalizer
 
@@ -22,6 +21,7 @@ from .position import (
 )
 from .state_context import LexerContext
 from .token_parts import RichToken, TokenPart
+from .token_types import Token
 from .unicode_support import (
     is_identifier_char,
     is_identifier_start,
@@ -47,8 +47,8 @@ def tokenize(input_string: str, strict: bool = True, shell_options: dict = None)
     Returns:
         List of tokens representing the parsed command
     """
-    from ..brace_expansion import TokenBraceExpander
-    from ..token_transformer import TokenTransformer
+    from ..expansion.brace_expansion import TokenBraceExpander
+    from .token_transformer import TokenTransformer
 
     # Create appropriate lexer config based on strict mode
     if strict:
@@ -96,7 +96,7 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options
     Returns:
         Tuple of (tokens, heredoc_map) where heredoc_map contains collected heredoc content
     """
-    from ..brace_expansion import TokenBraceExpander
+    from ..expansion.brace_expansion import TokenBraceExpander
     from .heredoc_lexer import HeredocLexer
 
     # Create appropriate lexer config based on strict mode
@@ -123,7 +123,7 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options
     tokens = TokenBraceExpander().expand(tokens)
 
     # Apply token transformations
-    from ..token_transformer import TokenTransformer
+    from .token_transformer import TokenTransformer
     transformer = TokenTransformer()
     tokens = transformer.transform(tokens)
 

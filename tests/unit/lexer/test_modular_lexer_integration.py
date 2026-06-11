@@ -9,7 +9,7 @@ import pytest
 
 from psh.lexer import LexerContext, ModularLexer, tokenize
 from psh.lexer.recognizers import OperatorRecognizer
-from psh.token_types import TokenType
+from psh.lexer.token_types import TokenType
 
 
 def production_registry():

@@ -17,7 +17,7 @@ import copy
 import re
 from typing import List, Optional, Tuple
 
-from .core.exceptions import PshError
+from ..core.exceptions import PshError
 
 
 class BraceExpansionError(PshError):
@@ -614,14 +614,14 @@ class TokenBraceExpander:
 
     # Token types that glue to a neighbour to form one composite word.
     def _word_like(self):
-        from .token_types import TokenType
+        from ..lexer.token_types import TokenType
         return {
             TokenType.WORD, TokenType.STRING, TokenType.VARIABLE,
             TokenType.COMMAND_SUB, TokenType.ARITH_EXPANSION,
         }
 
     def _reset_types(self):
-        from .token_types import TokenType
+        from ..lexer.token_types import TokenType
         return {
             TokenType.SEMICOLON, TokenType.NEWLINE, TokenType.AND_AND,
             TokenType.OR_OR, TokenType.PIPE, TokenType.DOUBLE_SEMICOLON,
@@ -665,7 +665,7 @@ class TokenBraceExpander:
         return out
 
     def _zone_after_word(self, first_tok, zone_active):
-        from .token_types import TokenType
+        from ..lexer.token_types import TokenType
         # An assignment word keeps the command prefix open (a=1 b=2 cmd); any
         # other word is the command name (or an argument) and ends the prefix.
         if (first_tok.type == TokenType.WORD and zone_active
@@ -674,7 +674,7 @@ class TokenBraceExpander:
         return False
 
     def _expand_run(self, run, zone_active):
-        from .token_types import TokenType
+        from ..lexer.token_types import TokenType
         first = run[0]
         # Suppress brace expansion on a command-prefix assignment (a={x,y}).
         if (zone_active and first.type == TokenType.WORD
@@ -723,7 +723,7 @@ class TokenBraceExpander:
         the new token list, or None if nothing expanded / the result cannot be
         represented faithfully (see the name-fusion guard below).
         """
-        from .token_types import TokenType
+        from ..lexer.token_types import TokenType
 
         # 1. Encode the run into a string of literal chars + placeholders.
         char_map = {}   # placeholder -> (char, quote_type)
@@ -790,8 +790,8 @@ class TokenBraceExpander:
         copies of their original token. All tokens of one result word are marked
         adjacent so the parser merges them back into a single composite word.
         """
-        from .lexer.token_parts import TokenPart
-        from .token_types import TokenType
+        from ..lexer.token_parts import TokenPart
+        from ..lexer.token_types import TokenType
 
         # Build segments: ('chars', text, quote_type) or ('tok', token).
         segments = []

@@ -7,8 +7,8 @@ simplified architecture.
 """
 
 from psh.lexer import LexerConfig, ModularLexer, tokenize
+from psh.lexer.token_types import Token, TokenType
 from psh.parser import parse
-from psh.token_types import Token, TokenType
 
 
 class TestUnifiedTokenSystem:

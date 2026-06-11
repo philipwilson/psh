@@ -3,7 +3,7 @@ import os
 import signal
 from typing import Callable, Dict
 
-from ..job_control import JobState
+from ..executor.job_control import JobState
 from ..utils import SignalNotifier, get_signal_registry
 from .base import InteractiveComponent
 

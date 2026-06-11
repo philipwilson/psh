@@ -6,12 +6,12 @@ allowing users to naturally type control structures across multiple lines.
 
 from typing import Callable, List, Optional
 
-from .lexer import tokenize
+from ..lexer import tokenize
+from ..lexer.token_types import TokenType
+from ..parser import ParseError, parse
+from ..utils import has_unclosed_heredoc
 from .line_editor import LineEditor
-from .parser import ParseError, parse
 from .prompt import PromptExpander
-from .token_types import TokenType
-from .utils import has_unclosed_heredoc
 
 
 class MultiLineInputHandler:
@@ -62,7 +62,7 @@ class MultiLineInputHandler:
             if self._is_complete_command(full_command):
                 self.reset()
                 # Process line continuations before returning
-                from .input_preprocessing import process_line_continuations
+                from ..scripting.input_preprocessing import process_line_continuations
                 return process_line_continuations(full_command)
 
     def reset(self):

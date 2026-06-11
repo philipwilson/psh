@@ -8,6 +8,7 @@ from psh.ast_nodes import (
     VariableExpansion,
     Word,
 )
+from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.expansions import (
     ExpansionParsers,
     create_expansion_parsers,
@@ -17,7 +18,6 @@ from psh.parser.combinators.expansions import (
     parse_process_substitution,
     parse_variable_expansion,
 )
-from psh.token_types import Token, TokenType
 
 
 def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:

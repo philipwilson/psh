@@ -3,8 +3,8 @@
 import logging
 from typing import List, Optional, Tuple
 
-from ...token_types import Token
 from ..state_context import LexerContext
+from ..token_types import Token
 from .base import TokenRecognizer
 
 logger = logging.getLogger(__name__)

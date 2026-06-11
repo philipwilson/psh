@@ -14,7 +14,7 @@ from ....ast_nodes import (
     TestExpression,
     UnaryTestExpression,
 )
-from ....token_types import TokenType
+from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups
 
 

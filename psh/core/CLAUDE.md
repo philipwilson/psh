@@ -20,7 +20,7 @@ Manager            (arrays)    State    Manager
 | File | Purpose |
 |------|---------|
 | `state.py` | `ShellState` - central state container for entire shell |
-| `scope_enhanced.py` | `EnhancedScopeManager`, `VariableScope` - hierarchical scope management |
+| `scope.py` | `ScopeManager`, `VariableScope` - hierarchical scope management |
 | `variables.py` | `Variable`, `VarAttributes`, `IndexedArray`, `AssociativeArray` |
 | `options.py` | Shell option handlers (errexit, pipefail, etc.) |
 | `exceptions.py` | Shell-specific exceptions (`ReadonlyVariableError`, etc.) |
@@ -37,7 +37,7 @@ All shell state goes through `ShellState`:
 class ShellState:
     def __init__(self):
         # Scope manager for variables
-        self.scope_manager = EnhancedScopeManager()
+        self.scope_manager = ScopeManager()
 
         # Shell options dictionary
         self.options = {
@@ -80,7 +80,7 @@ class VarAttributes(Flag):
 Function calls create nested scopes:
 
 ```python
-class EnhancedScopeManager:
+class ScopeManager:
     def push_scope(self, name: str):
         """Enter new scope (function call)."""
         new_scope = VariableScope(name, parent=self.current_scope)
@@ -318,7 +318,7 @@ Output example:
 - `set` modifies shell options
 - `local` creates function-local variables
 
-### With Job Control (`psh/job_control.py`)
+### With Job Control (`psh/executor/job_control.py`)
 
 - Terminal state: `state.is_terminal`, `state.supports_job_control`
 - Process groups: `state.foreground_pgid`

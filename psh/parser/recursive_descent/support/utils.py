@@ -7,7 +7,7 @@ This module contains utility functions for parser operations like heredoc handli
 from typing import List, Union
 
 from ....ast_nodes import CommandList, TopLevel
-from ....token_types import Token
+from ....lexer.token_types import Token
 
 
 class ParserUtils:

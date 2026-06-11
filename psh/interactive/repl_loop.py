@@ -1,9 +1,9 @@
 """Read-Eval-Print Loop implementation."""
 import sys
 
-from ..line_editor import LineEditor
-from ..multiline_handler import MultiLineInputHandler
 from .base import InteractiveComponent
+from .line_editor import LineEditor
+from .multiline_handler import MultiLineInputHandler
 from .title import idle_title, set_terminal_title
 
 

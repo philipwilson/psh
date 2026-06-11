@@ -2,7 +2,6 @@
 
 from typing import List, Optional
 
-from ..token_types import Token, TokenType
 from .command_position import (
     CASE_TERMINATORS,
     RESET_TO_COMMAND_POSITION,
@@ -12,6 +11,7 @@ from .command_position import (
 )
 from .constants import KEYWORDS
 from .keyword_defs import KEYWORD_TYPE_MAP
+from .token_types import Token, TokenType
 
 
 class KeywordNormalizer:

@@ -8,7 +8,7 @@ import re
 from typing import List
 
 from ....ast_nodes import Redirect
-from ....token_types import Token, TokenType
+from ....lexer.token_types import Token, TokenType
 from ..helpers import TokenGroups
 
 # Pre-compiled regex for fd duplication (e.g. "2>&1", ">&-")

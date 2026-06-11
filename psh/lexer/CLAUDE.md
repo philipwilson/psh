@@ -17,7 +17,7 @@ Input String → ModularLexer → KeywordNormalizer → TokenBraceExpander → T
 
 Note: brace expansion runs **after** tokenization (on the token stream), not as
 raw-text preprocessing — so generated characters are never re-lexed and quote /
-command-position context is available. See `psh/brace_expansion.py`
+command-position context is available. See `psh/expansion/brace_expansion.py`
 (`TokenBraceExpander`).
 
 ## Key Files
@@ -114,14 +114,14 @@ OPERATORS = {
 }
 ```
 
-2. Add `TokenType` in `psh/token_types.py` if needed
+2. Add `TokenType` in `psh/lexer/token_types.py` if needed
 
 3. Add tests in `tests/unit/lexer/`
 
 ### Adding a New Keyword
 
 1. Add to `KEYWORDS` in `constants.py`.
-2. Add a `TokenType` member in `psh/token_types.py`.
+2. Add a `TokenType` member in `psh/lexer/token_types.py`.
 3. Add the mapping to `KEYWORD_TYPE_MAP` in `keyword_defs.py`.
 4. `KeywordNormalizer` (the post-tokenization pass) will automatically
    recognize it at command position.

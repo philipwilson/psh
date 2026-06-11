@@ -32,8 +32,8 @@ class TestLineEditorUnit:
 
         with patch('sys.stdin', self.stdin_mock):
             # Now we can safely import
-            from psh.keybindings import EditMode
-            from psh.line_editor import LineEditor
+            from psh.interactive.keybindings import EditMode
+            from psh.interactive.line_editor import LineEditor
 
             # Create editor instance
             self.editor = LineEditor(history=[])
@@ -248,7 +248,7 @@ class TestLineEditorUnit:
         """Test entering vi insert mode."""
         # Create editor in vi mode
         with patch('sys.stdin', self.stdin_mock):
-            from psh.line_editor import LineEditor
+            from psh.interactive.line_editor import LineEditor
             editor = LineEditor(history=[], edit_mode='vi')
 
             # Enter normal mode first
@@ -285,7 +285,7 @@ class TestLineEditorUnit:
         """Test Vi mode initialization."""
         # Create editor in vi mode
         with patch('sys.stdin', self.stdin_mock):
-            from psh.line_editor import LineEditor
+            from psh.interactive.line_editor import LineEditor
             editor = LineEditor(history=[], edit_mode='vi')
 
             assert editor.edit_mode == 'vi'
@@ -346,7 +346,7 @@ class TestViUndoRedo:
     """
 
     def _editor(self):
-        from psh.line_editor import LineEditor
+        from psh.interactive.line_editor import LineEditor
         return LineEditor(history=[], edit_mode='vi')
 
     def test_undo_action_restores_previous_state(self):
@@ -373,7 +373,7 @@ class TestViUndoRedo:
     def test_mode_switch_syncs_key_handler(self):
         import unittest.mock as mock
         ed = self._editor()
-        from psh.keybindings import EditMode
+        from psh.interactive.keybindings import EditMode
         with mock.patch('sys.stdout'):
             ed._enter_vi_normal_mode()
             assert ed.key_handler.mode == EditMode.VI_NORMAL

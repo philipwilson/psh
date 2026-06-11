@@ -31,7 +31,7 @@ Loop       Manager    Manager   Manager   Manager
 | `rc_loader.py` | `load_rc_file` / `is_safe_rc_file` - startup RC loading |
 | `base.py` | `InteractiveComponent` base class, `InteractiveManager` orchestrator |
 
-### Job Control (`psh/job_control.py`)
+### Job Control (`psh/executor/job_control.py`)
 
 | Class | Purpose |
 |-------|---------|

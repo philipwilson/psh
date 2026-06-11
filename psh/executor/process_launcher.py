@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Callable, Optional, Tuple
 if TYPE_CHECKING:
     from ..core.state import ShellState
     from ..io_redirect import IOManager
-    from ..job_control import JobManager
+    from .job_control import JobManager
 
 
 class ProcessRole(Enum):

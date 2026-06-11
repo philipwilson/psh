@@ -3,7 +3,7 @@
 
 from typing import Dict, List, Optional, Tuple
 
-from .ast_nodes import CommandList
+from ..ast_nodes import CommandList
 
 
 class Function:

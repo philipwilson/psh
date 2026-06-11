@@ -5,7 +5,7 @@ used throughout the shell grammar.
 """
 
 from ...lexer.keyword_defs import KEYWORD_TYPE_MAP, matches_keyword
-from ...token_types import Token
+from ...lexer.token_types import Token
 from .core import Parser, keyword, sequence, skip, token
 
 

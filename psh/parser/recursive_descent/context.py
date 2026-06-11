@@ -8,7 +8,7 @@ configuration, error collection, and source text for error messages.
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from ...token_types import Token, TokenType
+from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
 from .helpers import ErrorContext, ErrorSeverity, ParseError
 

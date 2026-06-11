@@ -84,7 +84,7 @@ class PrintBuiltin(Builtin):
 
         # -P: prompt expansion on each argument.
         if opts['prompt']:
-            from ..prompt import PromptExpander
+            from ..interactive.prompt import PromptExpander
             expander = PromptExpander(shell)
             rest = [expander.expand_prompt(a) for a in rest]
 

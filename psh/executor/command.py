@@ -238,8 +238,8 @@ class CommandExecutor:
           alive, print a generic message (traceback under --debug-exec).
         """
         # Import these here to avoid circular imports
-        from ..builtins import FunctionReturn
         from ..core import ExpansionError, LoopBreak, LoopContinue, UnboundVariableError
+        from ..core.exceptions import FunctionReturn
 
         # Re-raise control flow exceptions
         if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue, SystemExit)):

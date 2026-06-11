@@ -1,6 +1,6 @@
 """Test tab completion handling of tilde expansion."""
 
-from psh.tab_completion import CompletionEngine
+from psh.interactive.tab_completion import CompletionEngine
 
 
 class TestTildeCompletion:

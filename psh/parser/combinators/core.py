@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Callable, Generic, List, Optional, Tuple, TypeVar
 
 from ...lexer.keyword_defs import matches_keyword
-from ...token_types import Token
+from ...lexer.token_types import Token
 
 # Type variables for parser combinators
 T = TypeVar('T')

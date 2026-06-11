@@ -188,7 +188,7 @@ class SubshellExecutor:
             self.job_manager.restore_shell_foreground()
 
         # Clean up job
-        from ..job_control import JobState
+        from .job_control import JobState
         if job.state == JobState.DONE:
             self.job_manager.remove_job(job.job_id)
 

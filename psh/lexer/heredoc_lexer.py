@@ -10,9 +10,9 @@ construct sharing a command with a heredoc.
 
 from typing import Dict, List, Tuple
 
-from ..token_types import Token, TokenType
 from .heredoc_collector import HeredocCollector
 from .modular_lexer import ModularLexer
+from .token_types import Token, TokenType
 
 
 class HeredocLexer:

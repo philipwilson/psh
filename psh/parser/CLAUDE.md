@@ -174,7 +174,7 @@ Command → SimpleCommand | IfConditional | WhileLoop | ...
 
 ### Adding a New Control Structure
 
-1. Add token types in `psh/token_types.py`
+1. Add token types in `psh/lexer/token_types.py`
 
 2. Add AST node in `psh/ast_nodes.py`:
 ```python

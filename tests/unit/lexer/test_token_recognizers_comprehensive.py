@@ -17,7 +17,7 @@ from psh.lexer.recognizers import (
     WhitespaceRecognizer,
 )
 from psh.lexer.state_context import LexerContext
-from psh.token_types import TokenType
+from psh.lexer.token_types import TokenType
 
 
 class TestTokenRecognizerBase:

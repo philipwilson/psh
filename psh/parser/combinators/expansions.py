@@ -14,7 +14,7 @@ from ...ast_nodes import (
     ProcessSubstitution,
     Word,
 )
-from ...token_types import Token
+from ...lexer.token_types import Token
 from ..config import ParserConfig
 from ..recursive_descent.support.word_builder import WordBuilder
 from .core import Parser, ParseResult, token

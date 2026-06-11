@@ -1,24 +1,24 @@
 """
-Tests for UNSET tombstone visibility in EnhancedScopeManager.
+Tests for UNSET tombstone visibility in ScopeManager.
 
 Regression guard: get_all_variables()/all_variables_with_attributes() used to
 include UNSET tombstones, so `f(){ unset HOME; set | grep ^HOME=; }` still
 showed `HOME=` (bash shows nothing). Verified against bash 5.2.
 """
 
-from psh.core.scope_enhanced import EnhancedScopeManager
+from psh.core.scope import ScopeManager
 from psh.core.variables import VarAttributes
 
 
 class TestTombstoneVisibility:
     def test_global_unset_hides_from_get_all_variables(self):
-        mgr = EnhancedScopeManager()
+        mgr = ScopeManager()
         mgr.set_variable('X', '1')
         mgr.unset_variable('X')
         assert 'X' not in mgr.get_all_variables()
 
     def test_function_unset_of_global_hides_from_get_all_variables(self):
-        mgr = EnhancedScopeManager()
+        mgr = ScopeManager()
         mgr.set_variable('HOME', '/home/user')
         mgr.push_scope('f')
         mgr.unset_variable('HOME')
@@ -27,7 +27,7 @@ class TestTombstoneVisibility:
 
     def test_unset_local_hides_not_reveals(self):
         """bash: unsetting a local does NOT reveal the outer value."""
-        mgr = EnhancedScopeManager()
+        mgr = ScopeManager()
         mgr.set_variable('g', 'outer')
         mgr.push_scope('f')
         mgr.create_local('g', 'inner')
@@ -39,7 +39,7 @@ class TestTombstoneVisibility:
         assert mgr.get_all_variables().get('g') == 'outer'
 
     def test_tombstone_excluded_from_all_variables_with_attributes(self):
-        mgr = EnhancedScopeManager()
+        mgr = ScopeManager()
         mgr.set_variable('Y', '2')
         mgr.push_scope('f')
         mgr.unset_variable('Y')
@@ -48,7 +48,7 @@ class TestTombstoneVisibility:
         mgr.pop_scope()
 
     def test_set_after_unset_visible_again(self):
-        mgr = EnhancedScopeManager()
+        mgr = ScopeManager()
         mgr.set_variable('Z', '1')
         mgr.unset_variable('Z')
         mgr.set_variable('Z', '2')
@@ -56,7 +56,7 @@ class TestTombstoneVisibility:
 
     def test_unset_attribute_flag_is_the_mechanism(self):
         """The tombstone is a Variable carrying the UNSET attribute."""
-        mgr = EnhancedScopeManager()
+        mgr = ScopeManager()
         mgr.set_variable('HOME', '/home/user')
         mgr.push_scope('f')
         mgr.unset_variable('HOME')

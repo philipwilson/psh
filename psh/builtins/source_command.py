@@ -67,7 +67,7 @@ class SourceBuiltin(Builtin):
 
         shell.state.source_depth += 1
         try:
-            from ..input_sources import FileInput
+            from ..scripting.input_sources import FileInput
             from .function_support import FunctionReturn
             try:
                 with FileInput(script_path) as input_source:

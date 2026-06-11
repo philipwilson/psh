@@ -7,7 +7,7 @@ This module handles parsing of array assignments and initializations.
 from typing import List
 
 from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, Word
-from ....token_types import Token, TokenType
+from ....lexer.token_types import Token, TokenType
 from ..helpers import TokenGroups
 
 

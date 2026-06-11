@@ -2,8 +2,8 @@
 
 from typing import Optional, Tuple
 
-from ...token_types import Token
 from ..state_context import LexerContext
+from ..token_types import Token
 from .base import ContextualRecognizer
 
 # Operators/metacharacters after which a '#' begins a comment (besides

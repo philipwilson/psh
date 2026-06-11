@@ -10,8 +10,8 @@ from psh.ast_nodes import (
     ProcessSubstitution,
     UnaryTestExpression,
 )
+from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.special_commands import SpecialCommandParsers, create_special_command_parsers
-from psh.token_types import Token, TokenType
 
 
 def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:

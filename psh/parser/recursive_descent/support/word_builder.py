@@ -18,7 +18,7 @@ from ....ast_nodes import (
     Word,
     WordPart,
 )
-from ....token_types import Token, TokenType
+from ....lexer.token_types import Token, TokenType
 
 # Token types that represent standalone expansion tokens
 # Pre-compiled regex patterns for variable name classification

@@ -1,5 +1,5 @@
 from psh.lexer.keyword_normalizer import KeywordNormalizer
-from psh.token_types import Token, TokenType
+from psh.lexer.token_types import Token, TokenType
 
 
 def make_word(value: str, token_type: TokenType = TokenType.WORD) -> Token:

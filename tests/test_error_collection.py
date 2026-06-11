@@ -3,9 +3,9 @@
 import pytest
 
 from psh.lexer import tokenize
+from psh.lexer.token_types import TokenType
 from psh.parser.recursive_descent.helpers import ParseError
 from psh.parser.recursive_descent.parser import MultiErrorParseResult, Parser
-from psh.token_types import TokenType
 
 
 class TestMultiErrorParseResult:
@@ -26,8 +26,8 @@ class TestMultiErrorParseResult:
     def test_partial_success_result(self):
         """Test result for partial success with errors."""
         from psh.ast_nodes import CommandList
+        from psh.lexer.token_types import Token, TokenType
         from psh.parser.recursive_descent.helpers import ErrorContext
-        from psh.token_types import Token, TokenType
 
         ast = CommandList()
         token = Token(TokenType.WORD, "test", 0)
@@ -43,8 +43,8 @@ class TestMultiErrorParseResult:
 
     def test_failed_parse_result(self):
         """Test result for failed parse."""
+        from psh.lexer.token_types import Token, TokenType
         from psh.parser.recursive_descent.helpers import ErrorContext
-        from psh.token_types import Token, TokenType
 
         token = Token(TokenType.WORD, "test", 0)
         context = ErrorContext(token=token, message="Test error", position=0)
@@ -59,8 +59,8 @@ class TestMultiErrorParseResult:
 
     def test_format_errors(self):
         """Test error formatting."""
+        from psh.lexer.token_types import Token, TokenType
         from psh.parser.recursive_descent.helpers import ErrorContext
-        from psh.token_types import Token, TokenType
 
         token1 = Token(TokenType.WORD, "test1", 0)
         context1 = ErrorContext(token=token1, message="First error", position=0)
@@ -200,8 +200,8 @@ class TestErrorCollectionIntegration:
 
     def test_fatal_error_stops_parsing(self):
         """Test that fatal errors stop error collection."""
+        from psh.lexer.token_types import Token
         from psh.parser.recursive_descent.helpers import ErrorContext, ErrorSeverity
-        from psh.token_types import Token
 
         tokens = tokenize("echo hello")
         parser = Parser(tokens, collect_errors=True)

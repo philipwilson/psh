@@ -358,7 +358,7 @@ class BuiltinExecutionStrategy:
 - Options via `shell.state.options`
 - Exit codes via `shell.state.last_exit_code`
 
-### With Job Control (`psh/job_control.py`)
+### With Job Control (`psh/executor/job_control.py`)
 
 - Job manager via `shell.job_manager`
 - Background jobs via `job_manager.jobs`

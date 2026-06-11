@@ -275,7 +275,7 @@ Output example:
 - `ExpansionEvaluator` evaluates Word AST expansion nodes
 - `WordBuilder` (in `parser/recursive_descent/support/`) constructs Word nodes from tokens
 
-### With Arithmetic (`psh/arithmetic.py`)
+### With Arithmetic (`psh/expansion/arithmetic.py`)
 
 - `execute_arithmetic_expansion()` calls `evaluate_arithmetic()`
 - Variables in arithmetic are pre-expanded

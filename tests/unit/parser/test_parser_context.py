@@ -11,11 +11,11 @@ from unittest.mock import Mock
 
 import pytest
 
+from psh.lexer.token_types import Token, TokenType
 from psh.parser.config import ParserConfig, ParsingMode
 from psh.parser.recursive_descent.context import ParserContext
 from psh.parser.recursive_descent.helpers import ParseError
 from psh.parser.recursive_descent.support.context_factory import create_context
-from psh.token_types import Token, TokenType
 
 
 class TestParserContext:
