@@ -143,7 +143,9 @@ class CommandExecutor:
                     self._strip_backslash_bypass(command_node)
 
                 # Expand command arguments (before assignments apply)
-                expanded_args = self._expand_arguments(command_node)
+                expanded_args = self._expand_arguments(
+                    command_node,
+                    declaration_eligible=not (bypass_aliases or bypass_functions))
 
                 if not expanded_args or not expanded_args[0]:
                     # The command words expanded to nothing: the assignments
@@ -295,9 +297,17 @@ class CommandExecutor:
         print(f"psh: {e}", file=self.state.stderr)
         return 1
 
-    def _expand_arguments(self, node: 'SimpleCommand') -> List[str]:
-        """Expand all arguments in a command."""
-        return self.expansion_manager.expand_arguments(node)
+    def _expand_arguments(self, node: 'SimpleCommand', *,
+                          declaration_eligible: bool = True) -> List[str]:
+        """Expand all arguments in a command.
+
+        declaration_eligible=False disables declaration-builtin
+        recognition (used for the ``\\cmd`` bypass: bash word-splits
+        ``\\export foo=$x`` because the quoted command word is not
+        recognized as a declaration builtin).
+        """
+        return self.expansion_manager.expand_arguments(
+            node, declaration_eligible=declaration_eligible)
 
     def _extract_assignments_raw(self, node: 'SimpleCommand') -> list:
         """Extract assignments from raw arguments before expansion.
@@ -392,20 +402,10 @@ class CommandExecutor:
     def _resolve_append(self, var: str, value: str):
         """Resolve NAME+= append assignments to (name, final_value).
 
-        Plain variables append textually; integer (-i) variables append
-        arithmetically — achieved by handing the INTEGER transform the
-        expression "old+value" to evaluate, matching bash.
+        Delegates to the shared core helper (also used by declare/local).
         """
-        from ..core import VarAttributes
-        if not var.endswith('+'):
-            return var, value
-        name = var[:-1]
-        var_obj = self.state.scope_manager.get_variable_object(name)
-        old = '' if var_obj is None or var_obj.value is None else str(var_obj.value)
-        if (var_obj is not None and var_obj.attributes & VarAttributes.INTEGER
-                and value.strip()):
-            return name, f"({old or 0})+({value})"
-        return name, old + value
+        from ..core import resolve_append_assignment
+        return resolve_append_assignment(self.state.scope_manager, var, value)
 
     def _handle_pure_assignments(self, node: 'SimpleCommand',
                                 raw_assignments: list) -> int:
@@ -533,29 +533,42 @@ class CommandExecutor:
 
         Walks the Word's parts, expanding only what the quote context
         allows (single-quoted text stays literal, double-quoted text
-        expands variables, unquoted text expands everything).
+        expands variables, unquoted text expands everything). Unquoted
+        tilde prefixes are expanded after the first ``=`` and after each
+        ``:`` (bash: ``P=a:~:b`` expands the middle segment), but a prefix
+        that runs into quoted/expansion text stays literal (``P=~"x"``).
         """
         from ..ast_nodes import ExpansionPart, LiteralPart
 
         result_parts = []
         # Find the '=' in the parts and only expand the value portion
         found_eq = False
-        for part in word.parts:
+        value_len = 0   # value chars emitted so far
+        prev_char = ''  # last unquoted-literal char ('' after others)
+
+        def expand_value_tildes(text: str, trigger: bool, index: int) -> str:
+            parts_follow = index < len(word.parts) - 1
+            return self.expansion_manager._expand_assignment_value_tildes(
+                text, trigger, parts_follow)
+
+        for index, part in enumerate(word.parts):
             if not found_eq:
                 if isinstance(part, LiteralPart) and '=' in part.text:
                     # This part contains the '=' — take everything after it
                     eq_pos = part.text.index('=')
                     value_text = part.text[eq_pos + 1:]
                     if value_text:
-                        if part.quoted and part.quote_char == "'":
-                            result_parts.append(value_text)
-                        elif part.quoted and part.quote_char == '"':
-                            result_parts.append(value_text)
+                        if part.quoted:
+                            prev_char = ''
                         else:
-                            # Unquoted text after = — expand tilde if first
-                            if not result_parts and value_text.startswith('~'):
-                                value_text = self.expansion_manager.expand_tilde(value_text)
-                            result_parts.append(value_text)
+                            # Unquoted text directly after '='
+                            value_text = expand_value_tildes(
+                                value_text, True, index)
+                            prev_char = value_text[-1]
+                        value_len += len(value_text)
+                        result_parts.append(value_text)
+                    else:
+                        prev_char = '='
                     found_eq = True
                     continue
                 else:
@@ -567,6 +580,7 @@ class CommandExecutor:
                 if part.quoted and part.quote_char == "'":
                     # Single-quoted: completely literal
                     result_parts.append(part.text)
+                    prev_char = ''
                 elif part.quoted and part.quote_char == '"':
                     # Double-quoted: literal (expansions are separate ExpansionParts)
                     # Process backslash escapes (\$, \\, \", \`)
@@ -574,15 +588,23 @@ class CommandExecutor:
                     if '\\' in text:
                         text = self.expansion_manager.process_dquote_escapes(text)
                     result_parts.append(text)
+                    prev_char = ''
                 else:
-                    # Unquoted literal
+                    # Unquoted literal: tilde after the assignment '=' (only
+                    # when no value text intervened) or after a ':'
                     text = part.text
-                    if not result_parts and text.startswith('~'):
-                        text = self.expansion_manager.expand_tilde(text)
+                    trigger = (prev_char == ':'
+                               or (prev_char == '=' and value_len == 0))
+                    text = expand_value_tildes(text, trigger, index)
+                    if part.text:
+                        prev_char = part.text[-1]
                     result_parts.append(text)
+                value_len += len(part.text)
             elif isinstance(part, ExpansionPart):
                 expanded = self.expansion_manager.expand_expansion(part.expansion)
                 result_parts.append(expanded)
+                prev_char = ''
+                value_len += 1
 
         return ''.join(result_parts)
 

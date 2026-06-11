@@ -1,4 +1,5 @@
 """Central expansion manager that orchestrates all shell expansions."""
+import re
 from typing import TYPE_CHECKING, List, Optional, Union
 
 from ..ast_nodes import SimpleCommand
@@ -11,6 +12,18 @@ from .word_splitter import WordSplitter
 
 if TYPE_CHECKING:
     from ..shell import Shell
+
+#: Builtins whose ``NAME=value`` arguments get bash's declaration-argument
+#: expansion: no word splitting and no pathname expansion of the value
+#: (``declare foo=$x`` keeps "$x" intact; ordinary commands split it).
+#: Matches bash 5.2: alias, declare, typeset, export, local, readonly.
+#: NOT in the set: ``env`` (a regular command), and ``command``/``builtin``
+#: prefixes (bash 5.2 loses declaration semantics through them — verified).
+DECLARATION_BUILTINS = frozenset(
+    {'alias', 'declare', 'typeset', 'export', 'local', 'readonly'})
+
+#: ``NAME=`` / ``NAME+=`` at the start of a word (valid identifier only).
+_ASSIGNMENT_PREFIX_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*\+?=')
 
 
 class ExpansionManager:
@@ -38,7 +51,8 @@ class ExpansionManager:
             self._evaluator = ExpansionEvaluator(self.shell)
         return self._evaluator
 
-    def expand_arguments(self, command: SimpleCommand) -> List[str]:
+    def expand_arguments(self, command: SimpleCommand, *,
+                         declaration_eligible: bool = True) -> List[str]:
         """
         Expand all arguments in a command using Word AST nodes.
 
@@ -51,10 +65,55 @@ class ExpansionManager:
         6. Word splitting
         7. Pathname expansion (globbing)
         8. Quote removal
-        """
-        return self._expand_word_ast_arguments(command)
 
-    def _expand_word_ast_arguments(self, command: SimpleCommand) -> List[str]:
+        Args:
+            declaration_eligible: When False the command word can never be
+                recognized as a declaration builtin (used for the ``\\cmd``
+                backslash bypass — bash treats ``\\export foo=$x`` as an
+                ordinary command and word-splits the value).
+        """
+        return self._expand_word_ast_arguments(
+            command, declaration_eligible=declaration_eligible)
+
+    def is_declaration_builtin_command(self, command: SimpleCommand) -> bool:
+        """True if the command word literally names a declaration builtin.
+
+        bash recognizes declaration builtins *syntactically*: the command
+        word must be an unquoted literal (``"export" foo=$x`` and
+        ``$d foo=$x`` with d=declare both word-split their arguments).
+        """
+        if not command.words:
+            return False
+        first = command.words[0]
+        return (first.is_unquoted_literal
+                and str(first) in DECLARATION_BUILTINS)
+
+    @staticmethod
+    def assignment_word_prefix(word) -> Optional[str]:
+        """Return the ``NAME=`` / ``NAME+=`` prefix of an assignment-shaped word.
+
+        The name and the ``=`` must come from *unquoted literal* text at the
+        start of the word (bash: ``declare "foo"=$x`` and ``declare "foo="$x``
+        word-split — quoting any part of the name/= breaks recognition), and
+        the name must be a valid identifier (``declare foo-bar=$x`` splits).
+        Returns None when the word is not assignment-shaped.
+        """
+        from ..ast_nodes import LiteralPart
+        text = ''
+        for part in word.parts:
+            if isinstance(part, LiteralPart) and not part.quoted:
+                text += part.text
+                if '=' in text:
+                    break
+            else:
+                break
+        if '=' not in text:
+            return None
+        m = _ASSIGNMENT_PREFIX_RE.match(text)
+        return m.group(0) if m else None
+
+    def _expand_word_ast_arguments(self, command: SimpleCommand, *,
+                                   declaration_eligible: bool = True) -> List[str]:
         """Expand arguments using Word AST nodes.
 
         Process substitutions need no pre-pass: they are ProcessSubstitution
@@ -70,8 +129,18 @@ class ExpansionManager:
         if self.state.options.get('debug-expansion'):
             print(f"[EXPANSION] Expanding Word AST command: {[str(w) for w in command.words]}", file=self.state.stderr)
 
-        for word in command.words:
-            expanded = self._expand_word(word)
+        # Declaration builtins (declare/export/local/...) give their
+        # assignment-shaped arguments bash's declaration semantics: the
+        # value is not word-split or pathname-expanded.
+        is_declaration = (declaration_eligible
+                          and self.is_declaration_builtin_command(command))
+
+        for i, word in enumerate(command.words):
+            declaration_assignment = (
+                is_declaration and i > 0
+                and self.assignment_word_prefix(word) is not None)
+            expanded = self._expand_word(
+                word, declaration_assignment=declaration_assignment)
             if isinstance(expanded, list):
                 args.extend(expanded)
             else:
@@ -83,25 +152,32 @@ class ExpansionManager:
 
         return args
 
-    def expand_word_to_fields(self, word) -> List[str]:
-        """Expand a Word into zero or more fields (array-initializer semantics).
+    def expand_word_to_fields(self, word, *,
+                              assignment_tilde: bool = False) -> List[str]:
+        """Expand a Word into zero or more fields.
 
         Runs the same pipeline as command arguments — tilde, variable and
         command expansion, IFS word splitting of unquoted expansions, and
         quote-aware pathname expansion honoring noglob/nullglob/dotglob —
-        but WITHOUT the assignment-word splitting suppression, because bash
-        word-splits ``k=$x`` inside ``a=(...)`` initializers.
+        WITHOUT declaration-argument semantics: bash word-splits ``k=$x``
+        both inside ``a=(...)`` initializers and in for/select item lists.
+
+        Args:
+            assignment_tilde: Expand tilde after ``=``/``:`` in words shaped
+                like assignments (``for i in P=~/x`` does in bash; array
+                initializer elements like ``a=(P=~/x)`` do NOT).
 
         Returns a list: an unquoted expansion of an empty/unset value
         contributes zero fields; a quoted empty string contributes one.
         """
-        expanded = self._expand_word(word, suppress_assignment_splitting=False)
+        expanded = self._expand_word(word, assignment_tilde=assignment_tilde)
         if isinstance(expanded, list):
             return expanded
         return [expanded]
 
     def _expand_word(self, word, *,
-                     suppress_assignment_splitting: bool = True) -> Union[str, List[str]]:
+                     assignment_tilde: bool = True,
+                     declaration_assignment: bool = False) -> Union[str, List[str]]:
         """Expand a Word AST node using per-part quote context.
 
         Uses structural information from Word parts instead of \\x00
@@ -110,10 +186,17 @@ class ExpansionManager:
 
         Args:
             word: The Word AST node to expand.
-            suppress_assignment_splitting: When True (command-argument
-                context), a word that looks like ``VAR=value`` skips word
-                splitting (POSIX; used by declare/export/local arguments).
-                Array initializers pass False — bash splits there.
+            assignment_tilde: When True and the word is shaped like an
+                assignment (``NAME=...``/``NAME+=...``), expand unquoted
+                tilde prefixes after the first ``=`` and after each ``:``
+                in the value (bash does this for command arguments and
+                for/select items; array initializers pass False).
+            declaration_assignment: True only for assignment-shaped
+                arguments of declaration builtins (declare/export/local/
+                readonly/typeset/alias): the value is not word-split and
+                not pathname-expanded (bash declaration-argument
+                semantics). The CALLER decides this — it knows the command
+                name; this method never guesses from the presence of '='.
 
         Returns:
             Either a single string or a list of strings (for word splitting
@@ -153,9 +236,25 @@ class ExpansionManager:
         # text field splitting may break (POSIX).
         splittable_idx: set = set()
 
-        for part in word.parts:
+        # Assignment-shaped word (NAME=... / NAME+=...): bash expands tilde
+        # prefixes in the value after the first '=' and after each ':'
+        # (for command arguments and for/select items; array initializers
+        # pass assignment_tilde=False).
+        assign_prefix = None
+        if assignment_tilde or declaration_assignment:
+            assign_prefix = self.assignment_word_prefix(word)
+        assign_seen = 0       # chars of assign_prefix consumed so far
+        value_len = 0         # value chars emitted before the current part
+        prev_char = ''        # last unquoted-literal char ('' after others)
+
+        for part_index, part in enumerate(word.parts):
             if isinstance(part, LiteralPart):
                 text = part.text
+                if assign_prefix is not None and part.quoted:
+                    # Quoted text never extends the assignment prefix and
+                    # never triggers value-tilde expansion.
+                    prev_char = ''
+                    value_len += 1
                 if part.quoted and part.quote_char == "'":
                     # Single-quoted literal: completely literal
                     result_parts.append(text)
@@ -172,6 +271,27 @@ class ExpansionManager:
                     result_parts.append(text)
                 else:
                     all_parts_quoted = False
+                    if assign_prefix is not None:
+                        parts_follow = part_index < len(word.parts) - 1
+                        remaining = len(assign_prefix) - assign_seen
+                        if remaining > 0:
+                            take = min(remaining, len(text))
+                            assign_seen += take
+                            head, chunk = text[:take], text[take:]
+                            # A non-empty chunk directly follows the '='.
+                            trigger = bool(chunk)
+                        else:
+                            head, chunk = '', text
+                            # ':' always re-triggers; the assignment '='
+                            # only when no value text has intervened.
+                            trigger = (prev_char == ':'
+                                       or (prev_char == '=' and value_len == 0))
+                        if chunk:
+                            expanded_chunk = self._expand_assignment_value_tildes(
+                                chunk, trigger, parts_follow)
+                            value_len += len(chunk)
+                            text = head + expanded_chunk
+                        prev_char = text[-1] if text else prev_char
                     had_escapes = False
                     # Process escape sequences in unquoted text
                     if '\\' in text:
@@ -195,6 +315,11 @@ class ExpansionManager:
 
             elif isinstance(part, ExpansionPart):
                 has_expansion = True
+                if assign_prefix is not None:
+                    # Expansion results never trigger value-tilde expansion
+                    # (the check is syntactic, on the pre-expansion word).
+                    prev_char = ''
+                    value_len += 1
 
                 # Process substitution (<(cmd) / >(cmd)) — whole-word or
                 # embedded. Perform it and splice the /dev/fd/N path into
@@ -248,17 +373,11 @@ class ExpansionManager:
 
         result = ''.join(result_parts)
 
-        # Word splitting: only if there are unquoted expansion results
-        # but NOT for assignment words (VAR=value) per POSIX.
-        # While the executor strips true command-prefix assignments before
-        # calling expand_arguments(), builtins like declare/export/local
-        # receive their VAR=value arguments through this path.
-        is_assignment = (suppress_assignment_splitting and
-                         len(word.parts) >= 1 and
-                         isinstance(word.parts[0], LiteralPart) and
-                         '=' in word.parts[0].text and
-                         not word.parts[0].text.startswith('='))
-        if has_unquoted_expansion and not is_assignment:
+        # Word splitting: only if there are unquoted expansion results,
+        # but NOT for declaration-builtin assignment arguments
+        # (``declare foo=$x`` keeps the value whole; ordinary commands
+        # like ``printf '%s' foo=$x`` split it — bash 5.2).
+        if has_unquoted_expansion and not declaration_assignment:
             words = self._split_part_fields(result_parts, splittable_idx)
             if len(words) > 1:
                 # Glob each split word if there are unquoted glob chars
@@ -278,14 +397,46 @@ class ExpansionManager:
             if contains_extglob(result):
                 has_unquoted_glob = True
 
-        # Glob expansion on the single result
-        if has_unquoted_glob and not self.state.options.get('noglob', False):
+        # Glob expansion on the single result. Declaration-builtin
+        # assignment arguments are exempt (``declare foo=*`` keeps the
+        # literal '*' in bash even when files would match).
+        if (has_unquoted_glob and not declaration_assignment
+                and not self.state.options.get('noglob', False)):
             globbed = self._glob_words([result])
             if len(globbed) == 1:
                 return globbed[0]
             return globbed
 
         return result
+
+    def _expand_assignment_value_tildes(self, text: str, first_trigger: bool,
+                                        parts_follow: bool) -> str:
+        """Expand tilde prefixes inside a chunk of an assignment value.
+
+        bash checks assignment-shaped words for unquoted tilde prefixes
+        following the first ``=`` and each ``:``; the prefix runs to the
+        next ``/``, ``:`` or end of word, and must be wholly unquoted.
+
+        Args:
+            text: raw unquoted literal text belonging to the value.
+            first_trigger: True when the chunk directly follows the
+                assignment ``=`` or a ``:`` (so a leading ``~`` counts).
+            parts_follow: True when more word parts follow this literal.
+                A tilde prefix still open at the chunk's end then continues
+                into quoted/expansion text — bash does not expand it
+                (``P=~"x"`` stays literal; ``P=~/"x"`` expands).
+        """
+        segments = text.split(':')
+        last = len(segments) - 1
+        out = []
+        for idx, seg in enumerate(segments):
+            if seg.startswith('~') and (idx > 0 or first_trigger):
+                prefix_open = (idx == last and parts_follow
+                               and '/' not in seg)
+                if not prefix_open:
+                    seg = self.tilde_expander.expand(seg)
+            out.append(seg)
+        return ':'.join(out)
 
     def _field_expansion_fields(self, part) -> Optional[List[str]]:
         """Fields if this ExpansionPart is field-producing in double quotes.

@@ -466,10 +466,15 @@ class ForLoop(UnifiedControlStructure):
     body: StatementList     # Commands to execute for each iteration
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False  # Only used in pipeline context
-    # Legacy quote metadata pending Word-AST migration (items are plain
-    # strings, not Words). Consumed by executor/control_flow.py to decide
-    # per-item expansion/splitting.
+    # Legacy quote metadata kept for tooling/back-compat (visitors,
+    # formatters); execution no longer consumes it.
     item_quote_types: List[Optional[str]] = field(default_factory=list)  # Quote types for items
+    # Word AST nodes for the items. The executor expands these through
+    # ExpansionManager.expand_word_to_fields() so IFS splitting, globbing,
+    # tilde and quote semantics match simple-command arguments. Parsers
+    # always populate this; None only in manually constructed ASTs (items
+    # are then taken as literal fields).
+    item_words: Optional[List[Word]] = None
 
 
 @dataclass
@@ -511,10 +516,11 @@ class SelectLoop(UnifiedControlStructure):
     body: StatementList
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False
-    # Legacy quote metadata pending Word-AST migration (items are plain
-    # strings, not Words). Consumed by executor/control_flow.py to decide
-    # per-item expansion/splitting.
+    # Legacy quote metadata kept for tooling/back-compat (visitors,
+    # formatters); execution no longer consumes it.
     item_quote_types: List[Optional[str]] = field(default_factory=list)  # Quote types for items
+    # Word AST nodes for the items (see ForLoop.item_words).
+    item_words: Optional[List[Word]] = None
 
 
 @dataclass

@@ -12,7 +12,7 @@ This module handles execution of control structures including:
 """
 
 import sys
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List
 
 from ..core import LoopBreak, LoopContinue, ReadonlyVariableError
 from ..expansion.arithmetic import evaluate_arithmetic
@@ -500,83 +500,29 @@ class ControlFlowExecutor:
     # Helper methods
 
     def _expand_loop_items(self, node) -> List[str]:
-        """Expand items for a for or select loop, handling all expansion types."""
-        expanded_items = []
-        quote_types = getattr(node, 'item_quote_types', [None] * len(node.items))
+        """Expand the item list of a for or select loop.
 
-        for i, item in enumerate(node.items):
-            quote_type = quote_types[i] if i < len(quote_types) else None
+        Items go through the canonical Word expansion engine
+        (ExpansionManager.expand_word_to_fields), so IFS splitting of
+        command substitutions and variables, quote suppression, globbing,
+        tilde expansion and empty-expansion elision all match
+        simple-command argument semantics (bash). assignment_tilde=True
+        because bash tilde-expands ``for i in P=~/x`` like a command
+        argument.
 
-            # Check if this is an array expansion
-            if '$' in item and self.expansion_manager.variable_expander.is_array_expansion(item):
-                # Expand array to list of items
-                array_items = self.expansion_manager.variable_expander.expand_array_to_list(item)
-                expanded_items.extend(array_items)
-            else:
-                # Perform full expansion on the item
-                expanded_items.extend(self._expand_single_item(item, quote_type))
-
-        return expanded_items
-
-    def _expand_single_item(self, item: str, quote_type: Optional[str]) -> List[str]:
-        """Expand a single item based on its type and quote context."""
-        # Determine the type of the item (check arithmetic first since it starts with $()
-        if item.startswith('$((') and item.endswith('))'):
-            # Arithmetic expansion
-            result = self.expansion_manager.execute_arithmetic_expansion(item)
-            # Arithmetic expansion always produces a single value
-            return [str(result)]
-        elif item.startswith('$(') and item.endswith(')'):
-            # Command substitution
-            output = self.expansion_manager.execute_command_substitution(item)
-            # For quoted command substitution, don't word split
-            if quote_type == '"':
-                return [output if output else ""]
-            else:
-                # Split on whitespace for word splitting
-                return output.split() if output else []
-        elif item.startswith('`') and item.endswith('`'):
-            # Backtick command substitution
-            output = self.expansion_manager.execute_command_substitution(item)
-            # For quoted command substitution, don't word split
-            if quote_type == '"':
-                return [output if output else ""]
-            else:
-                # Split on whitespace for word splitting
-                return output.split() if output else []
-        elif '$' in item:
-            # Variable expansion
-            expanded = self.expansion_manager.expand_string_variables(item)
-
-            if quote_type == '"':
-                # Double-quoted: no word splitting, no glob expansion
-                return [expanded if expanded else ""]
-            elif quote_type == "'":
-                # Single-quoted: no expansion at all (but shouldn't happen here since we have $)
-                return [item]
-            else:
-                # Unquoted: word splitting and glob expansion
-                return self._word_split_and_glob(expanded)
-        else:
-            # No special expansion needed
-            if quote_type in ['"', "'"]:
-                # Quoted: no glob expansion
-                return [item]
-            else:
-                # Unquoted: glob via the canonical path (honors nullglob,
-                # [^...], POSIX classes, globstar, etc.).
-                return self.shell.expansion_manager._glob_words([item])
-
-    def _word_split_and_glob(self, text: str) -> List[str]:
-        """Perform word splitting and glob expansion on text.
-
-        Delegates globbing to the canonical ExpansionManager path so the
-        for/select loop matches simple-command behavior: empty fields from
-        non-whitespace IFS are preserved, and nullglob is honored.
+        Parsers always populate item_words; a manually constructed AST
+        without it iterates the items as literal fields.
         """
-        ifs = self.state.get_variable('IFS', ' \t\n')
-        words = self.shell.expansion_manager.word_splitter.split(text, ifs)
-        return self.shell.expansion_manager._glob_words(words)
+        item_words = getattr(node, 'item_words', None)
+        if item_words is None or len(item_words) != len(node.items):
+            return list(node.items)
+
+        expanded_items: List[str] = []
+        for word in item_words:
+            expanded_items.extend(
+                self.expansion_manager.expand_word_to_fields(
+                    word, assignment_tilde=True))
+        return expanded_items
 
     def _match_shell_pattern(self, string: str, pattern: str) -> bool:
         """Full-match a string against a shell pattern.

@@ -83,10 +83,18 @@ Key behaviors controlled by Word AST structure:
 - **Word splitting**: Only triggered when there are unquoted expansion results
 - **Tilde expansion**: Only on first unquoted literal, not after escape processing
 - **Escape processing**: `_process_unquoted_escapes()` handles `\$`, `\\`, `\~`, `\*` etc.
-- **Assignment detection**: a word whose first part is a literal containing a
-  non-leading `=` is treated as an assignment word and skips word splitting
-  (used by `declare`/`export`/`local` arguments; true command-prefix
-  assignments are stripped by the executor before expansion)
+- **Declaration-builtin assignments**: an assignment-shaped argument
+  (`NAME=...`/`NAME+=...`, unquoted literal prefix, valid identifier — see
+  `assignment_word_prefix()`) of a declaration builtin (`DECLARATION_BUILTINS`:
+  alias, declare, typeset, export, local, readonly) skips word splitting AND
+  pathname expansion. The CALLER decides (`expand_arguments()` checks the
+  literal command word); `_expand_word()` never guesses from a `=`. Ordinary
+  commands split such arguments (`printf '%s' foo=$x` splits — bash). True
+  command-prefix assignments are stripped by the executor before expansion.
+- **Assignment-value tilde**: assignment-shaped words (any command's
+  arguments and for/select items, NOT array initializers) expand unquoted
+  tilde prefixes after the first `=` and after each `:`
+  (`_expand_assignment_value_tildes()`)
 
 ### 3. ExpansionEvaluator
 
@@ -292,7 +300,9 @@ python -m psh --debug-expansion-detail -c 'echo "${arr[@]}"'
 
 6. **IFS Edge Cases**: Empty IFS means no word splitting; unset IFS uses default `" \t\n"`.
 
-7. **Assignment Word Splitting**: Words containing `VAR=value` suppress word splitting even with unquoted expansions (POSIX behavior).
+7. **Assignment Word Splitting**: Only declaration-builtin arguments
+   (`declare foo=$x`) suppress word splitting of assignment-shaped words;
+   ordinary command arguments (`printf '%s' foo=$x`) split like bash.
 
 ## Debug Options
 
