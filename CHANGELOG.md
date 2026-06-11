@@ -4,6 +4,40 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.284.0 (2026-06-11) - Builtins consistency (reappraisal Tier B, 6/6 — Tier B complete)
+- Option parsing converged selectively (not blindly): `type` converted to
+  the shared parse_flags helper, fixing 3 bash-pinned divergences
+  (clustered `type -af` accepted; `type -` is an operand, rc 1; invalid
+  option message + rc 2 + bare `type` rc 0). `jobs` converted alongside
+  the `jobs -l` work. Deliberately NOT converted, each verified: declare
+  (needs `+x` removal flags — its custom parser instead table-driven,
+  98 → 60 lines, identical semantics), getopts (the "122-line parser" IS
+  the POSIX getopts semantics, not self-option parsing — review claim
+  inaccurate), cd (parses no options today; conversion would invent
+  errors), test/[ (positional expression syntax), read/echo (pinned).
+- Error channels unified: 33 raw `print(file=sys.stderr)` sites converted
+  to the forked-child-aware `self.error()` / `self.write_line()` —
+  type (the 12× hasattr-stdout dance), kill (14), fg/bg/wait, source,
+  return, trap, set, debug_control. Three messages improved to bash's
+  shape along the way (`.`/source filename-required, kill usage, trap
+  usage).
+- unset's inline subscript parsing and "looks arithmetic" heuristic
+  replaced by the canonical `_eval_array_index` path (v0.279.0). An
+  11-probe bash battery now matches exactly, fixing 4 divergences:
+  `unset 'a[-1]'` removes the last element; out-of-range negative reports
+  "bad array subscript" rc 1; scalar `x[0]` unsets x; missing-array
+  unset is silent rc 0.
+- `jobs -l` implemented (the last honest TODO in builtins), bash-pinned:
+  `[1]+ 12345 Running   sleep 10 &`; pipeline jobs list extra PIDs on
+  continuation lines; `-p` wins over `-l` as in bash.
+- env builtin: review's "doing executor work" claim was stale — the fd
+  juggling was already in named private methods; docstrings expanded to
+  explain WHY env must dup2 process-level fds (forked grandchildren
+  inherit fds, not Python stream objects). `set` help no longer lists
+  the nonexistent enhanced-parser options.
+- 18 new bash-pinned tests (type ×6, unset ×10, jobs -l ×2). Full suite
+  green: 4,249 passed / 4,564 collected.
+
 ## 0.283.0 (2026-06-11) - Interactive/line-editor cleanup (reappraisal Tier B, 5/6)
 - Vi-mode arrow keys fixed: CSI parsing lived only in the emacs branch, so
   in vi insert mode an Up-arrow became ESC→normal-mode + stray 'A' →

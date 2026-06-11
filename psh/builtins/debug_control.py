@@ -1,6 +1,5 @@
 """Debug control commands for convenient AST debugging."""
 
-import sys
 from typing import TYPE_CHECKING, List
 
 from .base import Builtin
@@ -277,7 +276,7 @@ class SignalsBuiltin(Builtin):
         registry = get_signal_registry(create=False)
 
         if registry is None:
-            print("Signal registry not initialized", file=sys.stderr)
+            self.error("signal registry not initialized", shell)
             return 1
 
         # Generate and print report

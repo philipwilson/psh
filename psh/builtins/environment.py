@@ -46,8 +46,12 @@ class EnvBuiltin(Builtin):
             self._print_environment(env_map, shell)
             return 0
 
-        # Command mode: run in isolated child shell so command-side effects
-        # (e.g., export/unset/cd builtins) do not leak into parent shell state.
+        # Command mode: env deliberately does its own "executor" work here.
+        # The command runs in an isolated in-process child Shell (not a fork)
+        # so builtin side effects (export/unset/cd) cannot leak into the
+        # parent, while env's environment overrides apply only to the child.
+        # See _bind_process_fds_to_streams() for why fds are juggled around
+        # the child run.
         command_text = " ".join(shlex.quote(arg) for arg in command_args)
 
         from ..core import VarAttributes
@@ -147,7 +151,18 @@ class EnvBuiltin(Builtin):
             self.write_line(f"{key}={value}", shell)
 
     def _bind_process_fds_to_streams(self, shell: 'Shell') -> List[Tuple[int, int]]:
-        """Align process fds with shell streams so nested external commands obey redirections."""
+        """Align process fds 0/1/2 with the shell's stream objects.
+
+        Why env needs this: unlike most builtins, `env CMD` runs CMD in a
+        nested in-process Shell (see execute()). External commands launched
+        by that child shell fork+exec and inherit the *process-level* fds,
+        not the parent shell's stream objects — so when env itself was
+        redirected at the shell level (e.g. `env cmd > file` captured into
+        shell.stdout), the grandchild would write to the wrong place.
+        Temporarily dup2() each stream's fd over 0/1/2 so forked commands
+        see the same redirections. Returns (target_fd, backup_fd) pairs for
+        _restore_process_fds().
+        """
         backups: List[Tuple[int, int]] = []
         stream_to_fd = (
             (shell.stdin if hasattr(shell, 'stdin') else sys.stdin, 0),
@@ -313,8 +328,7 @@ class SetBuiltin(Builtin):
         if len(args) == 1:
             # No arguments, display all variables
             for var, value in sorted(shell.state.variables.items()):
-                print(f"{var}={value}",
-                      file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                self.write_line(f"{var}={value}", shell)
             return 0
 
         # Map short options to long names
@@ -351,9 +365,8 @@ class SetBuiltin(Builtin):
                     self._show_all_options(shell)
                 else:
                     # Show current options as set commands
-                    stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
                     for opt_name, opt_value in sorted(shell.state.options.items()):
-                        print(f"set {'-o' if opt_value else '+o'} {opt_name}", file=stdout)
+                        self.write_line(f"set {'-o' if opt_value else '+o'} {opt_name}", shell)
                 return 0
 
             # Short option clusters like -eux / +eux. A trailing 'o' consumes
@@ -414,8 +427,7 @@ class SetBuiltin(Builtin):
         self.error(f"{name}: invalid option name", shell)
         if enable:
             valid_opts = ['vi', 'emacs'] + list(sorted(shell.state.options.keys()))
-            print(f"Valid options: {', '.join(valid_opts)}",
-                  file=shell.stderr if hasattr(shell, 'stderr') else sys.stderr)
+            print(f"Valid options: {', '.join(valid_opts)}", file=shell.stderr)
         return 2
 
     @property
@@ -458,12 +470,10 @@ class SetBuiltin(Builtin):
       -o ignoreeof      Don't exit on EOF (Ctrl-D)
       -o nolog          Don't log function definitions to history
       -o debug-ast      Enable AST debug output
-      -o enhanced-parser         Use enhanced parser features (default: on)
       -o validate-context        Validate token contexts during parsing
       -o validate-semantics      Validate semantic types during parsing
       -o analyze-semantics       Perform semantic analysis during parsing
       -o enhanced-error-recovery Use enhanced error recovery (default: on)
-      -o enhanced-parser-mode    Set parser performance mode (performance/balanced/development)
       -o debug-tokens   Enable token debug output
       -o debug-scopes   Enable variable scope debug output
       -o debug-expansion Enable expansion debug output
@@ -550,44 +560,7 @@ class UnsetBuiltin(Builtin):
                         continue
                 # Check if this is an array element syntax
                 if '[' in var and var.endswith(']'):
-                    # Array element unset: arr[index]
-                    bracket_pos = var.find('[')
-                    array_name = var[:bracket_pos]
-                    index_expr = var[bracket_pos+1:-1]
-
-                    # Get the array variable
-                    from ..core import AssociativeArray, IndexedArray
-                    var_obj = shell.state.scope_manager.get_variable_object(array_name)
-
-                    if var_obj and isinstance(var_obj.value, IndexedArray):
-                        # Evaluate the index
-                        try:
-                            # Expand variables in index
-                            expanded_index = shell.expansion_manager.expand_string_variables(index_expr)
-
-                            # Check if it's arithmetic
-                            if any(op in expanded_index for op in ['+', '-', '*', '/', '%', '(', ')']):
-                                from ..arithmetic import evaluate_arithmetic
-                                index = evaluate_arithmetic(expanded_index, shell)
-                            else:
-                                index = int(expanded_index)
-
-                            # Unset the element
-                            var_obj.value.unset(index)
-                        except (ValueError, KeyError, IndexError):
-                            # Bash compatibility: treat string indices on indexed arrays as index 0
-                            try:
-                                var_obj.value.unset(0)
-                            except (KeyError, IndexError):
-                                self.error(f"{var}: bad array subscript", shell)
-                                exit_code = 1
-                    elif var_obj and isinstance(var_obj.value, AssociativeArray):
-                        # For associative arrays
-                        expanded_key = shell.expansion_manager.expand_string_variables(index_expr)
-                        var_obj.value.unset(expanded_key)
-                    else:
-                        # Not an array
-                        self.error(f"{array_name}: not an array", shell)
+                    if not self._unset_array_element(var, shell):
                         exit_code = 1
                 else:
                     # Regular variable unset
@@ -599,6 +572,55 @@ class UnsetBuiltin(Builtin):
                         self.error(f"{var}: readonly variable", shell)
                         exit_code = 1
             return exit_code
+
+    def _unset_array_element(self, var: str, shell: 'Shell') -> bool:
+        """Unset one array element (``unset 'arr[index]'``).
+
+        Subscript evaluation delegates to the expansion subsystem's
+        canonical evaluators (VariableExpander._eval_array_index /
+        expand_array_index) rather than re-implementing them here.
+        Returns True on success, False on error (caller sets status 1).
+        """
+        from ..core import AssociativeArray, IndexedArray
+
+        bracket_pos = var.find('[')
+        array_name = var[:bracket_pos]
+        index_expr = var[bracket_pos+1:-1]
+        var_obj = shell.state.scope_manager.get_variable_object(array_name)
+        expander = shell.expansion_manager.variable_expander
+
+        if var_obj is None:
+            # bash: unsetting an element of a nonexistent variable succeeds
+            return True
+
+        if isinstance(var_obj.value, AssociativeArray):
+            var_obj.value.unset(expander.expand_array_index(index_expr))
+            return True
+
+        if isinstance(var_obj.value, IndexedArray):
+            index = expander._eval_array_index(index_expr)
+            if index < 0:
+                # Negative subscripts count back from the end (bash)
+                indices = var_obj.value.indices()
+                if -index > len(indices):
+                    self.error(f"[{index_expr}]: bad array subscript", shell)
+                    return False
+                index = indices[index]
+            var_obj.value.unset(index)
+            return True
+
+        # Scalar variable: bash treats it as a one-element array, so
+        # `unset 'x[0]'` unsets x and any other subscript is an error.
+        if expander._eval_array_index(index_expr) == 0:
+            try:
+                shell.state.scope_manager.unset_variable(array_name)
+                shell.env.pop(array_name, None)
+            except ReadonlyVariableError:
+                self.error(f"{array_name}: readonly variable", shell)
+                return False
+            return True
+        self.error(f"{array_name}: not an array variable", shell)
+        return False
 
     @property
     def help(self) -> str:

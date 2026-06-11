@@ -1,7 +1,6 @@
 """Job control builtin commands."""
 import os
 import signal
-import sys
 from typing import TYPE_CHECKING, List
 
 from ..job_control import JobState
@@ -20,29 +19,37 @@ class JobsBuiltin(Builtin):
     def name(self) -> str:
         return "jobs"
 
+    @property
+    def synopsis(self) -> str:
+        return "jobs [-lp] [jobspec ...]"
+
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the jobs builtin."""
-        # Parse options
-        show_pids_only = False
-        for arg in args[1:]:
-            if arg == '-p':
-                show_pids_only = True
-            elif arg == '-l':
-                pass  # TODO: implement long format
-            elif arg.startswith('-'):
-                self.error(f"invalid option: {arg}", shell)
-                return 1
+        opts, _operands = self.parse_flags(args, shell, flags='lp')
+        if opts is None:
+            return 2  # bash: invalid option is a usage error
 
-        if show_pids_only:
-            # Show only PIDs
-            for job_id in sorted(shell.job_manager.jobs.keys()):
-                job = shell.job_manager.jobs[job_id]
-                for proc in job.processes:
-                    print(proc.pid, file=shell.stdout)
+        manager = shell.job_manager
+        if opts['p']:
+            # Show only PIDs (-p wins over -l, like bash)
+            for job_id in sorted(manager.jobs.keys()):
+                for proc in manager.jobs[job_id].processes:
+                    self.write_line(str(proc.pid), shell)
+        elif opts['l']:
+            # Long format: add the PID column (bash jobs -l). For pipeline
+            # jobs the remaining process PIDs follow on indented lines.
+            for job_id in sorted(manager.jobs.keys()):
+                job = manager.jobs[job_id]
+                pids = [proc.pid for proc in job.processes] or [job.pgid]
+                line = job.format_status(job == manager.current_job,
+                                         job == manager.previous_job,
+                                         pid=pids[0])
+                self.write_line(line, shell)
+                for pid in pids[1:]:
+                    self.write_line(f"     {pid}", shell)
         else:
-            # Use list_jobs() method from JobManager
-            for line in shell.job_manager.list_jobs():
-                print(line, file=shell.stdout)
+            for line in manager.list_jobs():
+                self.write_line(line, shell)
         return 0
 
 
@@ -61,20 +68,20 @@ class FgBuiltin(Builtin):
             job_spec = args[1]
             job = shell.job_manager.parse_job_spec(job_spec)
             if job is None:
-                print(f"fg: {job_spec}: no such job", file=sys.stderr)
+                self.error(f"{job_spec}: no such job", shell)
                 return 1
         else:
             # No argument - use current job
             if not shell.job_manager.jobs:
-                print("fg: no current job", file=sys.stderr)
+                self.error("no current job", shell)
                 return 1
             job = shell.job_manager.current_job
             if job is None:
-                print("fg: %+: no such job", file=sys.stderr)
+                self.error("%+: no such job", shell)
                 return 1
 
         # Print the command being resumed
-        print(job.command, file=shell.stdout)
+        self.write_line(job.command, shell)
 
         # Give it terminal control FIRST, before sending SIGCONT — a resumed
         # job that reads the terminal before the transfer would be stopped
@@ -83,9 +90,9 @@ class FgBuiltin(Builtin):
         job.foreground = True
         if not shell.job_manager.transfer_terminal_control(job.pgid, "fg builtin"):
             if not shell.state.supports_job_control:
-                print(f"fg: no job control in this shell", file=sys.stderr)
+                self.error("no job control in this shell", shell)
             else:
-                print(f"fg: can't set terminal control", file=sys.stderr)
+                self.error("can't set terminal control", shell)
             return 1
 
         # Continue stopped job
@@ -127,16 +134,16 @@ class BgBuiltin(Builtin):
             job_spec = args[1]
             job = shell.job_manager.parse_job_spec(job_spec)
             if job is None:
-                print(f"bg: {job_spec}: no such job", file=sys.stderr)
+                self.error(f"{job_spec}: no such job", shell)
                 return 1
         else:
             # No argument - use current job
             if not shell.job_manager.jobs:
-                print("bg: no current job", file=sys.stderr)
+                self.error("no current job", shell)
                 return 1
             job = shell.job_manager.current_job
             if job is None:
-                print("bg: %+: no such job", file=sys.stderr)
+                self.error("%+: no such job", shell)
                 return 1
 
         # Resume job in background
@@ -150,7 +157,7 @@ class BgBuiltin(Builtin):
 
             # Send SIGCONT to resume
             os.killpg(job.pgid, signal.SIGCONT)
-            print(f"[{job.job_id}]+ {job.command} &", file=shell.stdout)
+            self.write_line(f"[{job.job_id}]+ {job.command} &", shell)
         return 0
 
 
@@ -251,7 +258,7 @@ class WaitBuiltin(Builtin):
                 # Job specification
                 job = shell.job_manager.parse_job_spec(spec)
                 if job is None:
-                    print(f"wait: {spec}: no such job", file=shell.stderr)
+                    self.error(f"{spec}: no such job", shell)
                     exit_status = 127
                     continue
 
@@ -263,7 +270,7 @@ class WaitBuiltin(Builtin):
                             exit_status = self._extract_exit_status(last_proc.status)
                 elif job.state == JobState.STOPPED:
                     # Don't wait for stopped jobs
-                    print(f"wait: {spec}: job is stopped", file=shell.stderr)
+                    self.error(f"{spec}: job is stopped", shell)
                     exit_status = 1
                 else:
                     # Wait for job to complete
@@ -278,7 +285,7 @@ class WaitBuiltin(Builtin):
                 try:
                     pid = int(spec)
                 except ValueError:
-                    print(f"wait: {spec}: not a valid process id", file=shell.stderr)
+                    self.error(f"{spec}: not a valid process id", shell)
                     exit_status = 127
                     continue
 
@@ -288,7 +295,7 @@ class WaitBuiltin(Builtin):
                     # Wait for the entire job containing this PID
                     if job.state != JobState.DONE:
                         if job.state == JobState.STOPPED:
-                            print(f"wait: pid {pid}: job is stopped", file=shell.stderr)
+                            self.error(f"pid {pid}: job is stopped", shell)
                             exit_status = 1
                         else:
                             exit_status = shell.job_manager.wait_for_job(job)
@@ -315,12 +322,10 @@ class WaitBuiltin(Builtin):
                                 _, status = os.waitpid(pid, 0)
                                 exit_status = self._extract_exit_status(status)
                             except (ChildProcessError, OSError):
-                                print(f"wait: pid {pid} is not a child of this shell",
-                                      file=shell.stderr)
+                                self.error(f"pid {pid} is not a child of this shell", shell)
                                 exit_status = 127
                     except (ChildProcessError, OSError):
-                        print(f"wait: pid {pid} is not a child of this shell",
-                              file=shell.stderr)
+                        self.error(f"pid {pid} is not a child of this shell", shell)
                         exit_status = 127
 
         return exit_status

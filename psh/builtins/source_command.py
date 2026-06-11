@@ -1,6 +1,5 @@
 """Source command builtin."""
 import os
-import sys
 from typing import TYPE_CHECKING, List
 
 from .base import Builtin
@@ -39,7 +38,7 @@ class SourceBuiltin(Builtin):
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the source builtin."""
         if len(args) < 2:
-            print("source: filename argument required", file=sys.stderr)
+            self.error("filename argument required", shell)
             return 1
 
         filename = args[1]
@@ -48,7 +47,7 @@ class SourceBuiltin(Builtin):
         # Find the script file
         script_path = self._find_source_file(filename, shell)
         if script_path is None:
-            print(f"source: {filename}: No such file or directory", file=sys.stderr)
+            self.error(f"{filename}: No such file or directory", shell)
             return 1
 
         # Validate the script file
@@ -79,7 +78,7 @@ class SourceBuiltin(Builtin):
                 # and make N the exit status of `source` itself (bash).
                 return ret.exit_code
         except OSError as e:
-            print(f"source: {script_path}: {e}", file=sys.stderr)
+            self.error(f"{script_path}: {e}", shell)
             return 1
         finally:
             shell.state.source_depth -= 1

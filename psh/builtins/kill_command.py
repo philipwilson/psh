@@ -2,7 +2,6 @@
 
 import os
 import signal
-import sys
 from typing import TYPE_CHECKING, Dict, List, Tuple
 
 from .base import Builtin
@@ -96,14 +95,14 @@ class KillBuiltin(Builtin):
         try:
             return self._execute_kill(args, shell)
         except (OSError, ValueError) as e:
-            print(f"kill: {e}", file=sys.stderr)
+            self.error(str(e), shell)
             return 1
 
     def _execute_kill(self, args: List[str], shell: 'Shell') -> int:
         """Main kill execution logic."""
         if len(args) == 1:
             # No arguments - show usage
-            print("Usage: kill [-s signal | -signal] pid... | kill -l [exit_status]", file=sys.stderr)
+            self.error(f"usage: {self.synopsis}", shell)
             return 2
 
         # Parse arguments
@@ -113,7 +112,7 @@ class KillBuiltin(Builtin):
             return self._list_signals(targets, shell)
 
         if not targets:
-            print("kill: no process specified", file=sys.stderr)
+            self.error("no process specified", shell)
             return 2
 
         # Resolve targets to actual PIDs
@@ -122,7 +121,7 @@ class KillBuiltin(Builtin):
             return 1
 
         # Send signals to processes
-        return self._send_signals(signal_num, pids)
+        return self._send_signals(signal_num, pids, shell)
 
     def _parse_args(self, args: List[str]) -> Tuple[int, List[str], bool]:
         """Parse kill command arguments.
@@ -212,7 +211,7 @@ class KillBuiltin(Builtin):
                     # Job specification
                     job = shell.job_manager.parse_job_spec(target)
                     if job is None:
-                        print(f"kill: {target}: no such job", file=sys.stderr)
+                        self.error(f"{target}: no such job", shell)
                         continue
 
                     # Add all process PIDs from the job
@@ -223,15 +222,15 @@ class KillBuiltin(Builtin):
                     pid = int(target)
                     pids.append(pid)
             except ValueError:
-                print(f"kill: {target}: invalid process id", file=sys.stderr)
+                self.error(f"{target}: invalid process id", shell)
                 continue
             except (OSError, KeyError) as e:
-                print(f"kill: {target}: {e}", file=sys.stderr)
+                self.error(f"{target}: {e}", shell)
                 continue
 
         return pids
 
-    def _send_signals(self, signal_num: int, pids: List[int]) -> int:
+    def _send_signals(self, signal_num: int, pids: List[int], shell: 'Shell') -> int:
         """Send signal to list of PIDs."""
         success_count = 0
 
@@ -248,11 +247,11 @@ class KillBuiltin(Builtin):
                     os.kill(pid, signal_num)
                 success_count += 1
             except ProcessLookupError:
-                print(f"kill: ({pid}) - No such process", file=sys.stderr)
+                self.error(f"({pid}) - No such process", shell)
             except PermissionError:
-                print(f"kill: ({pid}) - Operation not permitted", file=sys.stderr)
+                self.error(f"({pid}) - Operation not permitted", shell)
             except OSError as e:
-                print(f"kill: ({pid}) - {e}", file=sys.stderr)
+                self.error(f"({pid}) - {e}", shell)
 
         # Return 0 if at least one signal was sent successfully
         return 0 if success_count > 0 else 1
@@ -271,7 +270,7 @@ class KillBuiltin(Builtin):
             # Print in columns
             for i in range(0, len(signal_names), 4):
                 row = signal_names[i:i+4]
-                print('\t'.join(f"{name:<15}" for name in row), file=shell.stdout)
+                self.write_line('\t'.join(f"{name:<15}" for name in row), shell)
 
             return 0
 
@@ -283,13 +282,13 @@ class KillBuiltin(Builtin):
                     # Exit status from signal = 128 + signal_number
                     signal_num = exit_status - 128
                     if signal_num in SIGNAL_NUMBERS:
-                        print(f"SIG{SIGNAL_NUMBERS[signal_num]}", file=shell.stdout)
+                        self.write_line(f"SIG{SIGNAL_NUMBERS[signal_num]}", shell)
                     else:
-                        print(f"{signal_num}", file=shell.stdout)
+                        self.write_line(f"{signal_num}", shell)
                 else:
-                    print(f"Exit status {exit_status} not from signal", file=shell.stdout)
+                    self.write_line(f"Exit status {exit_status} not from signal", shell)
             except ValueError:
-                print(f"kill: {exit_str}: invalid exit status", file=sys.stderr)
+                self.error(f"{exit_str}: invalid exit status", shell)
                 return 1
 
         return 0

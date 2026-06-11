@@ -99,8 +99,13 @@ class Job:
         else:
             self.state = JobState.RUNNING
 
-    def format_status(self, is_current: bool, is_previous: bool) -> str:
-        """Format job status for display."""
+    def format_status(self, is_current: bool, is_previous: bool,
+                      pid: Optional[int] = None) -> str:
+        """Format job status for display.
+
+        With ``pid``, include a PID column after the job marker, matching
+        bash's ``jobs -l`` format: ``[N]+ 12345 Running    command &``.
+        """
         marker = '+' if is_current else '-' if is_previous else ' '
         state_str = {
             JobState.RUNNING: "Running",
@@ -110,6 +115,8 @@ class Job:
 
         # Match bash format: [N]+  State                 command &
         suffix = " &" if self.state == JobState.RUNNING and not self.foreground else ""
+        if pid is not None:
+            return f"[{self.job_id}]{marker} {pid} {state_str:<24}{self.command}{suffix}"
         return f"[{self.job_id}]{marker}  {state_str:<24}{self.command}{suffix}"
 
 
