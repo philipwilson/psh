@@ -167,7 +167,7 @@ psh$ echo '~'
 ~
 ```
 
-> **Note:** PSH v0.187.1 supports `~`, `~/path`, and `~username` tilde expansion but does not currently support `~+` (current directory) or `~-` (previous directory). Use `$PWD` and `$OLDPWD` as alternatives.
+> **Note:** PSH supports `~`, `~/path`, and `~username` tilde expansion but does not currently support `~+` (current directory) or `~-` (previous directory). Use `$PWD` and `$OLDPWD` as alternatives.
 
 ## 6.4 Command Substitution
 
@@ -251,7 +251,7 @@ psh$ if [ $? -ne 0 ]; then
 psh$ content=$(cat file.txt)
 ```
 
-> **Note:** The `$(< file)` shortcut for reading files (without running `cat`) is not supported in PSH v0.187.1. Use `$(cat file)` instead.
+> **Note:** The `$(< file)` shortcut for reading files (without running `cat`) is not supported in PSH. Use `$(cat file)` instead.
 
 ## 6.5 Arithmetic Expansion $((...))
 

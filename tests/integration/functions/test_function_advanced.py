@@ -5,8 +5,6 @@ Tests advanced function features including function composition,
 complex parameter handling, and interaction with other shell features.
 """
 
-import pytest
-
 
 def test_function_composition(shell, capsys):
     """Test composing multiple functions together."""
@@ -113,20 +111,23 @@ def test_function_error_propagation(shell):
     assert result == 0  # caller_func itself succeeds
 
 
-@pytest.mark.xfail(reason="Here documents in function definitions may not be fully supported")
-def test_function_with_here_document(shell, capsys):
-    """Test function with here document."""
-    # Try to define function with here document
+def test_function_with_here_document(isolated_shell_with_temp_dir):
+    """Test function with here document.
+
+    The heredoc is fed to external ``cat``, whose output is fd-level and
+    invisible to capsys — so redirect to a file and read it back.
+    """
+    shell = isolated_shell_with_temp_dir
     cmd = 'show_doc() { cat << EOF\nThis is a here document\nin a function with parameter: $1\nEOF\n}'
     result = shell.run_command(cmd)
-    if result != 0:
-        pytest.skip("Function definition with here document failed")
-
-    result = shell.run_command('show_doc test')
     assert result == 0
-    captured = capsys.readouterr()
-    assert 'here document' in captured.out
-    assert 'parameter: test' in captured.out
+
+    result = shell.run_command('show_doc test > heredoc_output.txt')
+    assert result == 0
+    with open('heredoc_output.txt', 'r') as f:
+        output = f.read()
+    assert 'here document' in output
+    assert 'parameter: test' in output
 
 
 def test_function_variable_assignment(shell, capsys):
@@ -168,7 +169,6 @@ def test_function_with_subshell(isolated_shell_with_temp_dir, capsys):
     assert 'Outside: original' in captured.out
 
 
-@pytest.mark.xfail(reason="PSH may not support running functions as background jobs")
 def test_function_with_background_job(shell):
     """Test function execution as background job."""
     shell.run_command('bg_func() { sleep 1; echo "Background done"; }')

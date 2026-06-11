@@ -255,10 +255,18 @@ psh$ [[ "$file" =~ \.sh$ ]] && echo "Shell script"
 Shell script
 ```
 
-> **Note:** The `=~` operator works for true/false matching, but
-> `BASH_REMATCH` capture groups are not populated in PSH v0.187.1.
-> Use alternative parsing techniques (parameter expansion, `grep -o`,
-> `sed`, or `awk`) if you need to extract matched substrings.
+After a successful `=~` match, the `BASH_REMATCH` array holds the full
+match in element 0 and any capture groups in elements 1, 2, and so on:
+
+```bash
+psh$ [[ "hello123" =~ ([a-z]+)([0-9]+) ]]
+psh$ echo "${BASH_REMATCH[0]}"
+hello123
+psh$ echo "${BASH_REMATCH[1]}"
+hello
+psh$ echo "${BASH_REMATCH[2]}"
+123
+```
 
 ### Compound Conditions
 
@@ -644,19 +652,19 @@ hEllO wOrld
 
 ### Variable Name Matching
 
-> **Note:** The `${!prefix*}` and `${!prefix@}` variable name prefix
-> matching feature is not fully implemented in PSH v0.187.1. It currently
-> lists all shell variables rather than filtering by prefix. Use `env`
-> or `set` with `grep` as a workaround:
+`${!prefix*}` and `${!prefix@}` expand to the names of all shell
+variables beginning with `prefix`:
 
 ```bash
-# Workaround for listing variables by prefix
-psh$ env | grep '^PATH'
-PATH=/usr/local/bin:/usr/bin:/bin
-
-psh$ set | grep '^USER'
-USER=alice
+psh$ MYAPP_HOST=localhost
+psh$ MYAPP_PORT=8080
+psh$ echo "${!MYAPP_*}"
+MYAPP_HOST MYAPP_PORT
 ```
+
+> **Note:** Unlike bash, PSH's quoted `"${!prefix@}"` form expands to a
+> single word rather than one word per variable name. Use the unquoted
+> form (or `${!prefix*}`) when iterating over the names.
 
 ## 16.6 Arithmetic Commands
 
@@ -818,11 +826,10 @@ psh$ echo "$var"
 hello
 ```
 
-> **Note:** The `read -n` (character count), `read -t` (timeout),
-> `read -s` (silent), and `read -u` (file descriptor) options are
-> not supported in PSH v0.187.1. Use alternative approaches:
-> `stty -echo` for silent input, or file redirection instead of
-> `read -u`.
+> **Note:** PSH supports `read -n` (character count), `read -t`
+> (timeout), and `read -s` (silent). The `read -u fd` (read from a
+> file descriptor) option is not supported — duplicate the descriptor
+> onto stdin instead: `read line <&3`.
 
 ## 16.8 Advanced Shell Options and Debugging
 

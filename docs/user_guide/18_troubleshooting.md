@@ -668,7 +668,7 @@ test
 ```bash
 # Check version
 psh$ psh --version
-Python Shell (psh) version 0.187.1
+Python Shell (psh) version 0.x.y
 
 # Command line help
 psh$ psh --help

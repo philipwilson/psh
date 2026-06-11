@@ -84,7 +84,12 @@ psh$ echo "more" >> existing.txt     # Safe with noclobber
 psh$ set +o noclobber
 ```
 
-> **Note:** The `>|` operator (force overwrite despite noclobber) is not currently supported in PSH. To force an overwrite, temporarily disable noclobber with `set +o noclobber`.
+The `>|` operator forces an overwrite even while noclobber is set:
+
+```bash
+psh$ set -o noclobber
+psh$ echo "second" >| existing.txt   # Succeeds despite noclobber
+```
 
 ## 9.3 Input Redirection (<)
 
@@ -452,13 +457,25 @@ done
 exec 3>&- 4>&- 5>&-
 ```
 
-### Current Limitations
+### Reading from Custom Descriptors
 
-The following file descriptor operations are not yet supported in PSH:
+Descriptors opened with `exec` can be read with `read` via fd duplication, and `<>` opens a descriptor for both reading and writing:
 
-- **Read-write descriptors** (`exec 3<> file`): Opening a file descriptor for both reading and writing is not supported.
-- **Reading from custom descriptors**: `exec 3< file` followed by `read line <&3` does not work reliably. As a workaround, use input redirection directly (`read line < file`) or command substitution.
-- **File descriptor swapping** (`3>&1 1>&2 2>&3 3>&-`): Complex fd manipulation chains involving three-way swaps do not work.
+```bash
+# Read line by line from a custom descriptor
+psh$ exec 3< data.txt
+psh$ read first <&3      # Reads the first line
+psh$ read second <&3     # Reads the second line
+psh$ exec 3<&-           # Close it
+
+# Read-write descriptor
+psh$ exec 3<> scratch.txt
+psh$ read line <&3
+psh$ echo "more" >&3
+psh$ exec 3>&-
+```
+
+File descriptor swapping chains (e.g., `3>&1 1>&2 2>&3 3>&-` to swap stdout and stderr) also work as in bash.
 
 ## 9.10 Redirections on Control Structures
 
@@ -713,10 +730,7 @@ Key concepts:
 - Process substitution enables powerful file-based command composition
 
 Current limitations:
-- `>|` (force clobber) is not supported; disable noclobber instead
 - `>& file` (csh-style) is not supported; use `&> file`
-- Read-write file descriptors (`exec 3<> file`) are not supported
-- Complex fd swapping chains do not work
 
 I/O redirection is fundamental to shell scripting, enabling log files, error handling, data processing pipelines, and clean separation of output types. In the next chapter, we'll explore pipelines and command lists.
 

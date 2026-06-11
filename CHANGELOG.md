@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.290.0 (2026-06-11) - Test-runner hole + user-guide truth sweep (reappraisal #2 Tier A, 3/3 — TIER A COMPLETE)
+- H2: run_tests.py no longer silently skips 45 tests. The whole-file
+  ignores of test_function_advanced.py and test_variable_assignment.py
+  (obsolete since the v0.195.0 subshell fd fix) are removed and the
+  2-test Phase 3 deleted; both files verified xdist-safe (4× under
+  -n 4, no serial markers needed). CI (--quick) now runs them too.
+- Two stale xfails fixed in test_function_advanced.py:
+  test_function_with_background_job xpassed (marker deleted);
+  test_function_with_here_document's feature works — the test was
+  rewritten to file redirection per the project's capture rules.
+- H3: user-guide truth sweep — every limitation note re-probed against
+  bash and current psh (~30 probes). 17 false "not supported" claims
+  corrected (`!` negation, `|&`, PIPESTATUS, `exec 3<>`, fd swaps, `>|`,
+  five bitwise assignment ops, BASH_REMATCH ×3, `[[ ! ]]`,
+  read -n/-t/-s, `${!prefix*}`, `${!varname}`, `${@:off:len}`,
+  `${array[@]#pat}`, $'\NNN' octal, $"...").
+  10 still-true limitations kept and unversioned (csh `>& file`,
+  `<< \EOF`, `~+`/`~-`, `$(< file)`, multi-line declare -A init,
+  bind, wait -n, extglob `@()`, printf "%d" "'A", read -u).
+  All "PSH v0.187.1" pins removed (grep-clean);
+  docs/user_guide/README.md now version-agnostic at ~98%.
+- 23 new conformance tests (tests/conformance/bash/
+  test_user_guide_notes_conformance.py) pin the corrected claims that
+  had zero prior conformance coverage; claims meta-test green.
+- Suite: 4,436 passed / 4,706 collected (+68: 45 reclaimed + 23 new);
+  ruff + mypy clean.
+- Side findings recorded for follow-up: noclobber wrongly blocks
+  redirects to existing device files (`2>/dev/null` under
+  `set -o noclobber`; bash exempts non-regular files); psh printf
+  doesn't interpret `\e` (bash does).
+
 ## 0.289.0 (2026-06-11) - Behavior-bug batch (reappraisal #2 Tier A, 2/3)
 - M1: associative-array keys containing `,` or `^` now expand:
   `declare -A a; a[x,y]=hi; echo "${a[x,y]}"` → `hi` (was empty). Two-part

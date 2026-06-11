@@ -1,6 +1,6 @@
 # Appendix B: Example Scripts
 
-This appendix contains a collection of scripts that demonstrate PSH's capabilities. All scripts have been tested with PSH version 0.187.1.
+This appendix contains a collection of scripts that demonstrate PSH's capabilities. All scripts have been tested with PSH.
 
 ## Table of Contents
 
