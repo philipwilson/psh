@@ -1,5 +1,24 @@
 # Ground-Up Reappraisal #2 — 2026-06-11 (v0.287.0)
 
+> **⚡ STATUS (2026-06-11, as of v0.298.0) — PROGRAM COMPLETE.** All three
+> tiers of §7 shipped across 11 releases, all as GitHub PRs:
+> **Tier A** v0.288.0–v0.290.0 (PRs #19–#21): process-sub fd/zombie
+> reaping (H1, plus two latent bugs the same design fixed); behavior batch
+> (M1, M2, M4, M5); run_tests.py 45-test hole (H2) + user-guide truth
+> sweep (H3 — 17 false claims fixed, 23 conformance tests added).
+> **Tier B** v0.291.0–v0.296.0 (PRs #22–#27): alias rewrite + printf \e;
+> exec single-open + noclobber + dual-universe docs; keyword
+> case-sensitivity (M6); error channels (job notices→stderr); PTY
+> framework prompt-sync off-by-one fixed (M8 — tier green); one slice
+> engine (M10, 4 copies→1, 8 bash divergences fixed) + arithmetic
+> double-expansion deleted + v0.286 prune finished.
+> **Tier C** v0.297.0–v0.298.0 (PRs #28–#29): 47-file archive sweep +
+> guide banners; CLAUDE.md/ARCHITECTURE fix-in-place + M7 documented.
+> Suite at close: 4,608 passed / 4,878 collected; ruff + mypy in CI.
+> Known leftovers (small, found during the program): sparse array literal
+> `b=([2]=x [5]=y)` doesn't parse; `}` reserved-word rc divergence
+> (`:; }` → psh 127 vs bash 2).
+
 **Scope:** full re-review of every major subsystem, the test framework, and all
 documentation, one day after the first reappraisal program
 (`ground_up_reappraisal_2026-06-10.md`) closed with v0.287.0.
