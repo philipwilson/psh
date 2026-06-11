@@ -30,8 +30,8 @@ Statements Commands  Control   Functions  Tests
 
 | File | Parses |
 |------|--------|
-| `statements.py` | Statement lists, command lists, pipelines |
-| `commands.py` | Simple commands, arguments, redirections |
+| `statements.py` | Statement lists, command lists, and-or lists (`&&`/`||`) |
+| `commands.py` | Simple commands, pipelines, arguments, subshell/brace groups |
 | `control_structures.py` | `if`, `while`, `for`, `case`, `select` |
 | `tests.py` | `[[ ]]` test expressions |
 | `arithmetic.py` | `(( ))` arithmetic expressions |
@@ -65,9 +65,10 @@ try it interactively.
 | `tokens.py` | Token-level matchers |
 | `expansions.py` | Expansion parsers and Word AST building |
 | `commands.py` | Simple commands, pipelines, and-or lists |
-| `control_structures.py` | if, while, for, case, select, functions, groups |
+| `control_structures/` | Package of mixins: `conditionals.py` (if, case), `loops.py` (while, until, for, select, break/continue), `structures.py` (functions, subshell/brace groups) |
 | `special_commands.py` | `(( ))`, `[[ ]]`, arrays, process substitution |
 | `heredoc_processor.py` | Post-parse heredoc content population |
+| `utils.py` | Shared combinator helpers |
 | `parser.py` | `ParserCombinatorShellParser` integration class |
 
 > Note: AST validation/linting/security analysis is performed by the visitor
@@ -153,11 +154,12 @@ class TokenGroups:
 ### Top-Level Parsing
 
 ```python
-def parse(self) -> TopLevel:
+def parse(self) -> Union[CommandList, TopLevel]:
     top_level = TopLevel()
     while not self.at_end():
         item = self._parse_top_level_item()  # Function def or statement
-        top_level.items.append(item)
+        if item:
+            top_level.items.append(item)
     return self._simplify_result(top_level)
 ```
 
@@ -245,16 +247,6 @@ Heredocs are parsed in two phases:
 1. Tokenization collects the `<<EOF` marker
 2. Parser collects heredoc content after the command line
 
-### Error Recovery
-
-Multi-error mode collects errors instead of stopping:
-
-```python
-parser = Parser(tokens, config=ParserConfig(collect_errors=True))
-result = parser.parse_with_error_collection()
-# result.ast may be partial, result.errors contains all errors
-```
-
 ## Testing
 
 ```bash
@@ -330,13 +322,30 @@ appropriate WordBuilder method.
 
 ## Configuration
 
-`ParserConfig` controls parser behavior:
+`ParserConfig` (`psh/parser/config.py`) controls parser behavior. Only
+fields actually read by parser code exist; feature checks go through
+`is_feature_enabled()` / `should_allow()`, which `getattr` with a default
+of `False`:
 
 ```python
 @dataclass
 class ParserConfig:
-    strict_posix: bool = False        # POSIX-only syntax
-    enable_bash_extensions: bool = True
-    collect_errors: bool = False      # Multi-error mode
+    parsing_mode: ParsingMode = ParsingMode.BASH_COMPAT  # or STRICT_POSIX
+
+    # Error handling
+    error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
     max_errors: int = 10
+    collect_errors: bool = False
+    enable_error_recovery: bool = False
+
+    # Language features
+    enable_arithmetic: bool = True
+    allow_bash_conditionals: bool = True   # [[ ]]
+    allow_bash_arithmetic: bool = True     # (( ))
 ```
+
+Use `ParserConfig.strict_posix()` for a POSIX-mode config and
+`config.clone(**overrides)` to derive variants. Error collection
+(`collect_errors=True`) is implemented at the `ParserContext` level:
+errors accumulate in `ctx.errors` (up to `max_errors`) instead of raising
+immediately.

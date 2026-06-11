@@ -90,21 +90,15 @@ class ErrorContext:
     column: Optional[int] = None
     source_line: Optional[str] = None
 
-    # Enhanced error information
+    # Enhanced error information (populated by ParserContext._enhance_error_context)
     suggestions: List[str] = field(default_factory=list)
-    error_code: str = ""
     severity: ErrorSeverity = ErrorSeverity.ERROR
-    related_errors: List['ErrorContext'] = field(default_factory=list)
     context_tokens: List[str] = field(default_factory=list)  # Surrounding tokens for context
 
     def format_error(self) -> str:
         """Format a detailed error message."""
         # Main error message
         parts = []
-
-        # Add error code if available
-        if self.error_code:
-            parts.append(f"[{self.error_code}] ")
 
         parts.append(f"Parse error at position {self.position}")
 
@@ -143,15 +137,6 @@ class ErrorContext:
             error_msg += f"\n\nContext: {' '.join(self.context_tokens[-3:])} -> HERE <- {' '.join(self.context_tokens[:3])}"
 
         return error_msg
-
-    def add_suggestion(self, suggestion: str) -> None:
-        """Add a suggestion to the error context."""
-        if suggestion not in self.suggestions:
-            self.suggestions.append(suggestion)
-
-    def add_context_tokens(self, tokens: List[str]) -> None:
-        """Add context tokens around the error position."""
-        self.context_tokens = tokens
 
     def _token_description(self, token: Token) -> str:
         """Get human-readable token description."""

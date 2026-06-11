@@ -32,16 +32,6 @@ class TestParserConfig:
         assert config.allow_bash_conditionals == False
         assert config.allow_bash_arithmetic == False
 
-    def test_permissive_preset(self):
-        """Test permissive preset configuration."""
-        config = ParserConfig.permissive()
-
-        assert config.parsing_mode == ParsingMode.PERMISSIVE
-        assert config.error_handling == ErrorHandlingMode.RECOVER
-        assert config.max_errors == 50
-        assert config.collect_errors == True
-        assert config.enable_error_recovery == True
-
     def test_config_clone(self):
         """Test configuration cloning with overrides."""
         base_config = ParserConfig.strict_posix()
@@ -121,14 +111,13 @@ class TestParserWithConfiguration:
         """Test error collection based on configuration."""
         tokens = tokenize("echo hello")
 
-        # Test strict mode (no collection)
+        # Strict mode does not collect errors
         strict_parser = Parser(tokens, config=ParserConfig.strict_posix())
         assert not strict_parser.ctx.config.collect_errors
 
-        # Test permissive mode (with collection)
-        permissive_parser = Parser(tokens, config=ParserConfig.permissive())
-        assert permissive_parser.ctx.config.collect_errors
-        assert permissive_parser.ctx.config.max_errors == 50
+        # Explicitly enabled collection is honored
+        collecting_parser = Parser(tokens, config=ParserConfig(collect_errors=True))
+        assert collecting_parser.ctx.config.collect_errors
 
 
 class TestConfigurationIntegration:
@@ -148,10 +137,7 @@ class TestConfigurationIntegration:
     def test_configuration_inheritance(self):
         """Test that configuration is properly inherited by sub-parsers."""
         tokens = tokenize("if true; then echo hello; fi")
-        config = ParserConfig(
-            parsing_mode=ParsingMode.EDUCATIONAL,
-            show_error_suggestions=True
-        )
+        config = ParserConfig(parsing_mode=ParsingMode.STRICT_POSIX)
         parser = Parser(tokens, config=config)
 
         # Main parser should have the config

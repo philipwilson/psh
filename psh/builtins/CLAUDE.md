@@ -30,6 +30,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 | `io.py` | `echo`, `printf`, `pwd` (plus shared `process_escapes()` helper) |
 | `print_builtin.py` | `print` (zsh-compatible) |
 | `read_builtin.py` | `read` |
+| `mapfile_builtin.py` | `mapfile` (alias `readarray`) |
 
 **Navigation & Directory**
 | File | Commands |
@@ -40,10 +41,11 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 **Variables & Environment**
 | File | Commands |
 |------|----------|
-| `environment.py` | `export`, `set`, `unset` |
+| `environment.py` | `env`, `export`, `set`, `unset` |
 | `shell_options.py` | `shopt` |
 | `shell_state.py` | `history`, `version`, `local` |
 | `positional.py` | `shift`, `getopts` |
+| `array_init.py` | (no commands — shared array-initializer parsing for `declare`/`local`) |
 
 **Job Control**
 | File | Commands |
@@ -58,6 +60,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 | `function_support.py` | `declare`, `typeset`, `readonly`, `return` |
 | `source_command.py` | `source`, `.` |
 | `eval_command.py` | `eval` |
+| `let_builtin.py` | `let` |
 
 **Flow Control**
 | File | Commands |
@@ -90,8 +93,10 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 | File | Commands |
 |------|----------|
 | `help_command.py` | `help` |
-| `debug_control.py` | Debug-related commands |
-| `parser_control.py` | Parser control commands |
+| `debug_control.py` | `debug-ast`, `debug`, `signals` |
+| `parser_control.py` | `parser-config`, `parser-mode` |
+| `parser_experiment.py` | `parser-select` (switch RD/combinator parser) |
+| `parse_tree.py` | `parse-tree`, `show-ast`, `ast-dot` |
 
 ## Core Patterns
 
@@ -127,10 +132,51 @@ class Builtin(ABC):
             Exit code (0 = success)
         """
         pass
+```
 
-    def error(self, message: str, shell: 'Shell') -> None:
-        """Print error to stderr."""
-        print(f"{self.name}: {message}", file=shell.stderr)
+The base class also provides forked-child-aware I/O helpers — use these,
+never raw `print(..., file=sys.stderr)` (the error-channel convention,
+established in v0.284, is: stdout via `self.write()`/`self.write_line()`,
+errors via `self.error()`):
+
+```python
+def write(self, text: str, shell: 'Shell') -> None:
+    """Write to the builtin's stdout (fd-level in forked children)."""
+    if shell.state.in_forked_child:
+        os.write(1, text.encode('utf-8', errors='replace'))
+    else:
+        stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
+        stdout.write(text)
+        stdout.flush()
+
+def write_line(self, text: str, shell: 'Shell') -> None:
+    """Write one line to the builtin's stdout (see write())."""
+    self.write(text + '\n', shell)
+
+def error(self, message: str, shell: 'Shell') -> None:
+    """Print an error message to stderr."""
+    if shell.state.in_forked_child:
+        os.write(2, f"{self.name}: {message}\n".encode('utf-8', errors='replace'))
+        return
+    stderr = shell.stderr if hasattr(shell, 'stderr') else sys.stderr
+    print(f"{self.name}: {message}", file=stderr)
+    stderr.flush()
+```
+
+For option parsing, use the shared getopt-style helper instead of
+hand-rolling loops:
+
+```python
+def parse_flags(self, args: List[str], shell: 'Shell',
+                flags: str = '', value_flags: str = ''
+                ) -> Tuple[Optional[dict], List[str]]:
+    """Parse leading single-dash options from args.
+
+    flags: chars allowed as boolean flags (clusterable: -ab).
+    value_flags: chars that consume an argument (-d X or -dX).
+    Returns (opts, operands); on an invalid option an error is printed
+    and (None, args) is returned — callers should `return 2`.
+    """
 ```
 
 ### 2. Registration with Decorator
@@ -140,7 +186,9 @@ from .registry import builtin
 
 @builtin
 class MyBuiltin(Builtin):
-    name = "mycommand"
+    @property
+    def name(self) -> str:
+        return "mycommand"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         # Implementation
@@ -181,8 +229,13 @@ if TYPE_CHECKING:
 class MyCommandBuiltin(Builtin):
     """Short description of what mycommand does."""
 
-    name = "mycommand"
-    aliases = ["mc"]  # Optional
+    @property
+    def name(self) -> str:
+        return "mycommand"
+
+    @property
+    def aliases(self) -> List[str]:
+        return ["mc"]  # Optional
 
     @property
     def synopsis(self) -> str:
@@ -193,35 +246,16 @@ class MyCommandBuiltin(Builtin):
         return "Does something useful with the given arguments"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        # args[0] is the command name
-        # Parse options
-        i = 1
-        opt_a = False
-        opt_b = None
+        # args[0] is the command name. Parse options with the shared
+        # helper: '-a' is a boolean flag, '-b' takes a value.
+        opts, operands = self.parse_flags(args, shell, flags='a', value_flags='b')
+        if opts is None:
+            return 2  # invalid option/usage error (bash convention)
 
-        while i < len(args) and args[i].startswith('-'):
-            if args[i] == '-a':
-                opt_a = True
-            elif args[i] == '-b':
-                if i + 1 >= len(args):
-                    self.error("-b requires an argument", shell)
-                    return 1
-                i += 1
-                opt_b = args[i]
-            elif args[i] == '--':
-                i += 1
-                break
-            else:
-                self.error(f"unknown option: {args[i]}", shell)
-                return 1
-            i += 1
-
-        # Remaining args
-        remaining = args[i:]
-
-        # Do the work
-        print(f"Running with a={opt_a}, b={opt_b}, args={remaining}",
-              file=shell.stdout)
+        # Do the work — stdout via write_line(), never raw print()
+        self.write_line(
+            f"Running with a={opts['a']}, b={opts['b']}, args={operands}",
+            shell)
 
         return 0
 ```
@@ -280,19 +314,21 @@ def execute(self, args, shell):
 
 ### I/O Operations
 
+The error-channel convention (v0.284): all builtin output goes through the
+base-class helpers, which are forked-child-aware. Never write directly to
+`sys.stdout`/`sys.stderr` — that breaks fd-level redirections in pipeline
+members and background jobs.
+
 ```python
 def execute(self, args, shell):
     # Output to stdout
-    print("output", file=shell.stdout)
+    self.write_line("output", shell)
 
-    # Output to stderr
-    print("error", file=shell.stderr)
+    # Errors to stderr (prefixed with the builtin's name)
+    self.error("something went wrong", shell)
 
     # Read from stdin
     line = shell.stdin.readline()
-
-    # Use self.error() for consistent error messages
-    self.error("something went wrong", shell)
 ```
 
 ### Working with Job Control
@@ -302,12 +338,16 @@ def execute(self, args, shell):
     # Get job manager
     job_manager = shell.job_manager
 
+    # Look up a job by spec (%1, %+, %-, %prefix, or PID)
+    job = job_manager.parse_job_spec(args[1] if len(args) > 1 else '')
+
     # List jobs
     for job in job_manager.jobs.values():
-        print(f"[{job.job_id}] {job.state} {job.command}")
+        self.write_line(f"[{job.job_id}] {job.state} {job.command}", shell)
 
-    # Foreground a job
-    job_manager.foreground_job(job)
+    # Mark a job as the foreground job (restores its terminal modes);
+    # see FgBuiltin in job_control.py for the full fg sequence
+    job_manager.set_foreground_job(job)
 ```
 
 ## Testing
@@ -317,7 +357,7 @@ def execute(self, args, shell):
 python -m pytest tests/unit/builtins/ -v
 
 # Test specific builtin
-python -m pytest tests/unit/builtins/test_echo.py -v
+python -m pytest tests/unit/builtins/test_echo_comprehensive.py -v
 
 # Test with output capture
 python -m pytest tests/unit/builtins/ -v --capture=no
@@ -344,12 +384,18 @@ python -m pytest tests/unit/builtins/ -v --capture=no
 The executor uses `BuiltinExecutionStrategy` to run builtins:
 
 ```python
-# In strategies.py
-class BuiltinExecutionStrategy:
-    def execute(self, cmd_name, args, shell):
-        builtin = registry.get(cmd_name)
-        if builtin:
-            return builtin.execute(args, shell)
+# In strategies.py (trimmed)
+class BuiltinExecutionStrategy(ExecutionStrategy):
+    def can_execute(self, cmd_name: str, shell: 'Shell') -> bool:
+        return (shell.builtin_registry.has(cmd_name) and
+                cmd_name not in POSIX_SPECIAL_BUILTINS)
+
+    def execute(self, cmd_name, args, shell, context, redirects=None,
+                background=False, visitor=None) -> int:
+        builtin = shell.builtin_registry.get(cmd_name)
+        if not builtin:
+            return 127
+        return execute_builtin_guarded(builtin, cmd_name, args, shell)
 ```
 
 ### With Shell State (`psh/core/state.py`)

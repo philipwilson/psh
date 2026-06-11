@@ -73,13 +73,8 @@ class StatementParser:
 
         return command_list
 
-    def parse_command_list_until_top_level(self) -> CommandList:
-        """Parse command list until top-level boundary - minimal implementation."""
-        # For now, just delegate to regular command list parsing
-        return self.parse_command_list()
-
     def parse_and_or_list(self) -> Union[AndOrList, BreakStatement, ContinueStatement]:
-        """Parse an and/or list - minimal implementation."""
+        """Parse an and/or list."""
         # Check for break/continue first
         if self.parser.match(TokenType.BREAK):
             return self.parser.control_structures.parse_break_statement()

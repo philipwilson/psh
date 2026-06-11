@@ -23,7 +23,7 @@ Manager            (arrays)    State    Manager
 | `scope.py` | `ScopeManager`, `VariableScope` - hierarchical scope management |
 | `variables.py` | `Variable`, `VarAttributes`, `IndexedArray`, `AssociativeArray` |
 | `options.py` | Shell option handlers (errexit, pipefail, etc.) |
-| `exceptions.py` | Shell-specific exceptions (`ReadonlyVariableError`, etc.) |
+| `exceptions.py` | `PshError` root + error classes, and control-flow signals (`LoopBreak`, etc.) |
 | `trap_manager.py` | Signal trap handling |
 | `assignment_utils.py` | Shared assignment validation utilities |
 
@@ -71,31 +71,42 @@ class VarAttributes(Flag):
     UPPERCASE = auto()   # -u: convert to uppercase
     ARRAY = auto()       # -a: indexed array
     ASSOC_ARRAY = auto() # -A: associative array
-    NAMEREF = auto()     # -n: name reference
-    UNSET = auto()       # explicitly unset in scope
+    NAMEREF = auto()     # -n: name reference (indirect)
+    TRACE = auto()       # -t: function tracing enabled
+    UNSET = auto()       # explicitly unset in scope (tombstone)
 ```
 
 ### 3. Hierarchical Scope Management
 
 Function calls create nested scopes:
 
+Scopes hold `Variable` objects (not plain strings); the stack lives in
+`self.scope_stack`, with `scope_stack[0]` always the global scope:
+
 ```python
 class ScopeManager:
-    def push_scope(self, name: str):
-        """Enter new scope (function call)."""
-        new_scope = VariableScope(name, parent=self.current_scope)
-        self._scope_stack.append(new_scope)
+    def __init__(self):
+        self.global_scope = VariableScope(name="global")
+        self.scope_stack: List[VariableScope] = [self.global_scope]
 
-    def pop_scope(self):
-        """Exit scope (function return)."""
-        return self._scope_stack.pop()
+    def push_scope(self, name: Optional[str] = None) -> VariableScope:
+        """Create new scope for function entry."""
+        new_scope = VariableScope(parent=self.current_scope, name=name)
+        self.scope_stack.append(new_scope)
+        return new_scope
 
-    def get_variable(self, name: str) -> Optional[str]:
-        """Look up variable, walking scope chain."""
-        for scope in reversed(self._scope_stack):
-            if name in scope.variables:
-                return scope.variables[name]
-        return None
+    def pop_scope(self) -> Optional[VariableScope]:
+        """Remove scope on function exit (cannot pop global scope)."""
+        ...
+
+    def get_variable(self, name: str, default: Optional[str] = None) -> Optional[str]:
+        """Get variable value as string, following namerefs, or default."""
+        var = self._lookup_resolved(name)   # walks scope chain + nameref chain
+        return var.as_string() if var else default
+
+    def get_variable_object(self, name: str) -> Optional[Variable]:
+        """Full Variable through scope chain (no nameref deref).
+        UNSET tombstones make lookup return None."""
 ```
 
 ## State Components
@@ -221,13 +232,54 @@ state.scope_manager.pop_scope()  # local_var no longer visible
 
 ## Key Implementation Details
 
+### Namerefs (`declare -n`)
+
+A nameref `Variable` stores its target *name* as its value. Two resolution
+paths in `scope.py`:
+
+- **Reads**: `_lookup_resolved()` follows the nameref chain to the final
+  non-nameref `Variable`. A cyclic chain prints bash's
+  "warning: NAME: circular name reference" (via `warn_nameref_cycle()`)
+  and reads as unset.
+- **Writes/unsets**: `resolve_nameref_name(name)` returns the final target
+  *name*. A nameref with an empty target resolves to its own name (so
+  `declare -n r; r=x` sets r's target rather than writing through). A
+  cycle raises `NamerefCycleError` (rejecting the write, like bash).
+
+Tests: `tests/unit/core/test_nameref.py`.
+
+### Unset Tombstones
+
+`unset` inside a function must hide an outer-scope variable, not just
+delete the local one. `unset_variable()` therefore plants a **tombstone**
+— `Variable(name, value="", attributes=VarAttributes.UNSET)` — in the
+current scope after deleting. `get_variable_object()` returns `None` when
+it hits a tombstone (stopping the walk), and `set_variable()` replaces a
+current-scope tombstone, clearing the UNSET flag. Listing functions
+(`get_all_variables()`, etc.) likewise let tombstones shadow outer
+variables. Tests: `tests/unit/core/test_scope_tombstones.py`.
+
+### Exception Hierarchy (`exceptions.py`)
+
+Two distinct families — do not mix them up:
+
+- **Errors** derive from `PshError`, the root of every psh-specific error
+  class (lexer, parser, arithmetic, expansion, builtins). Catch "any psh
+  error" with one `except PshError`. Members here: `UnboundVariableError`,
+  `ReadonlyVariableError`, `NamerefCycleError`, `ExpansionError`.
+- **Control-flow signals** (`LoopBreak`, `LoopContinue`, `FunctionReturn`)
+  implement `break`/`continue`/`return` and deliberately do NOT derive
+  from `PshError` — a blanket `except PshError` must never swallow a
+  `return` statement.
+
 ### Environment Variable Sync
 
 Exported variables are synced to `os.environ`:
 
 ```python
 def export_variable(self, name: str, value: str):
-    self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT)
+    self.scope_manager.set_variable(name, value,
+                                    attributes=VarAttributes.EXPORT, local=False)
     self.env[name] = value
     os.environ[name] = value
     self.scope_manager.sync_exports_to_environment(self.env)
@@ -240,9 +292,13 @@ When `set -a` is enabled, all new variables are automatically exported:
 ```python
 def set_variable(self, name: str, value: str):
     if self.options.get('allexport', False):
-        self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT)
+        self.scope_manager.set_variable(name, value,
+                                        attributes=VarAttributes.EXPORT, local=False)
         self.env[name] = value
         os.environ[name] = value
+        self.scope_manager.sync_exports_to_environment(self.env)
+    else:
+        self.scope_manager.set_variable(name, value, local=False)
 ```
 
 ### Terminal Detection

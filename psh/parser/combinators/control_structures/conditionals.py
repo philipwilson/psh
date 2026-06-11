@@ -77,7 +77,7 @@ class ConditionalParserMixin:
                     # 'then' must be preceded by a separator
                     if condition_tokens and not saw_separator:
                         return ParseResult(success=False,
-                                         error="Syntax error: expected ';' or newline before 'then'",
+                                         error="syntax error: expected ';' or newline before 'then'",
                                          position=current_pos)
                     break
 

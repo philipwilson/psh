@@ -5,7 +5,7 @@ This module contains the main Parser class that orchestrates parsing by delegati
 to specialized parser modules for different language constructs.
 """
 
-from typing import List, Optional, Set, Union
+from typing import List, Optional, Union
 
 from ...ast_nodes import (
     AndOrList,
@@ -19,10 +19,10 @@ from ...ast_nodes import (
     TopLevel,
 )
 from ...lexer.token_types import Token, TokenType
-from ..config import ErrorHandlingMode, ParserConfig
+from ..config import ParserConfig
 from .base_context import ContextBaseParser
 from .context import ParserContext
-from .helpers import ParseError, TokenGroups
+from .helpers import TokenGroups
 from .parsers.arithmetic import ArithmeticParser
 from .parsers.arrays import ArrayParser
 from .parsers.commands import CommandParser
@@ -34,54 +34,12 @@ from .parsers.tests import TestParser
 from .support.context_factory import create_context
 from .support.utils import ParserUtils
 
-# Recovery token sets for error recovery
-_STATEMENT_START = frozenset({
-    TokenType.IF, TokenType.WHILE, TokenType.UNTIL, TokenType.FOR,
-    TokenType.CASE, TokenType.FUNCTION, TokenType.WORD,
-    TokenType.LBRACE, TokenType.DOUBLE_LBRACKET
-})
-
-_STATEMENT_END = frozenset({
-    TokenType.SEMICOLON, TokenType.NEWLINE,
-    TokenType.AMPERSAND, TokenType.PIPE,
-    TokenType.AND_AND, TokenType.OR_OR
-})
-
-
-class MultiErrorParseResult:
-    """Result of parsing with error collection."""
-
-    def __init__(self, ast=None, errors: List[ParseError] = None):
-        self.ast = ast
-        self.errors = errors or []
-        self.success = ast is not None and not self.errors
-        self.partial_success = ast is not None and bool(self.errors)
-
-    def has_errors(self) -> bool:
-        """Check if parsing had errors."""
-        return bool(self.errors)
-
-    def get_error_count(self) -> int:
-        """Get number of parse errors."""
-        return len(self.errors)
-
-    def format_errors(self) -> str:
-        """Format all errors for display."""
-        if not self.errors:
-            return "No errors."
-
-        lines = []
-        for i, error in enumerate(self.errors, 1):
-            lines.append(f"Error {i}: {error.message}")
-
-        return "\n".join(lines)
-
 
 class Parser(ContextBaseParser):
     """Main parser class that orchestrates parsing by delegating to specialized parsers."""
 
     def __init__(self, tokens: List[Token],
-                 source_text: Optional[str] = None, collect_errors: bool = False,
+                 source_text: Optional[str] = None,
                  config: Optional[ParserConfig] = None, ctx: Optional[ParserContext] = None):
         # Create or use provided context
         if ctx is not None:
@@ -90,11 +48,6 @@ class Parser(ContextBaseParser):
         else:
             # Configuration (create default if not provided)
             config = config or ParserConfig()
-
-            # Override config with explicit parameters
-            if collect_errors:
-                config.collect_errors = True
-                config.error_handling = ErrorHandlingMode.COLLECT
 
             # Create context
             ctx = create_context(
@@ -184,93 +137,6 @@ class Parser(ContextBaseParser):
 
         return self._simplify_result(top_level)
 
-    def parse_with_error_collection(self) -> MultiErrorParseResult:
-        """Parse input collecting multiple errors instead of stopping on first error.
-
-        Uses ctx.errors as the sole error list. Returns a MultiErrorParseResult
-        containing the AST (possibly partial) and any errors encountered.
-        """
-        # Ensure error collection is enabled in context
-        old_collect_errors = self.ctx.config.collect_errors
-        self.ctx.config.collect_errors = True
-
-        try:
-            ast = self.parse()
-            return MultiErrorParseResult(ast, list(self.ctx.errors))
-
-        except ParseError as e:
-            self.ctx.add_error(e)
-            # Try to recover and continue parsing
-            if self.ctx.can_continue_parsing():
-                ast = self._parse_with_recovery()
-            else:
-                ast = None
-            return MultiErrorParseResult(ast, list(self.ctx.errors))
-        finally:
-            # Restore original error collection setting
-            self.ctx.config.collect_errors = old_collect_errors
-
-    def _parse_with_recovery(self) -> Optional[Union[CommandList, TopLevel]]:
-        """Continue parsing after error with recovery strategies."""
-        top_level = TopLevel()
-
-        while not self.at_end() and self.ctx.can_continue_parsing():
-            try:
-                # Try to find next statement
-                if not _skip_to_sync_token(self, _STATEMENT_START):
-                    break
-
-                # Try to parse next item
-                item = self._parse_top_level_item_with_recovery()
-                if item:
-                    top_level.items.append(item)
-
-            except ParseError as e:
-                self.ctx.add_error(e)
-                # Skip to next recovery point
-                _skip_to_sync_token(self, _STATEMENT_END)
-
-            self.skip_separators()
-
-        return self._simplify_result(top_level) if top_level.items else None
-
-    def _parse_top_level_item_with_recovery(self):
-        """Parse top level item with error recovery."""
-        try:
-            return self._parse_top_level_item()
-        except ParseError as e:
-            # Add error but try to recover
-            self.ctx.add_error(e)
-
-            # Try different recovery strategies
-            if self._try_statement_recovery():
-                return self._parse_top_level_item()
-            else:
-                # Skip this item and continue
-                _skip_to_sync_token(self, _STATEMENT_END)
-                return None
-
-    def _try_statement_recovery(self) -> bool:
-        """Try to recover at statement level.
-
-        Returns:
-            True if recovery successful, False otherwise
-        """
-        # Look for common missing tokens and try to insert them
-        current = self.peek()
-
-        # Try to recover from missing semicolon
-        if current.type in {TokenType.THEN, TokenType.DO}:
-            # Assume missing semicolon, continue parsing
-            return True
-
-        # Try to recover from missing closing tokens
-        if current.type in {TokenType.FI, TokenType.DONE, TokenType.ESAC}:
-            # Assume we're at the end of a block, continue
-            return True
-
-        return False
-
     def _parse_top_level_item(self) -> Optional[Statement]:
         """Parse a single top-level item."""
         if self.functions.is_function_def():
@@ -309,7 +175,7 @@ class Parser(ContextBaseParser):
                 return control_struct
         else:
             # Parse commands until we hit a function or control structure
-            cmd_list = self.statements.parse_command_list_until_top_level()
+            cmd_list = self.statements.parse_command_list()
             return cmd_list if cmd_list.statements else None
 
     def _simplify_result(self, top_level: TopLevel) -> Union[CommandList, TopLevel]:
@@ -346,17 +212,5 @@ class Parser(ContextBaseParser):
         if not self.should_allow('bash_arithmetic'):
             self.check_posix_compliance('(( )) arithmetic syntax', 'expr command')
         return self.arithmetic.parse_arithmetic_command()
-
-
-def _skip_to_sync_token(parser, sync_tokens: Set[TokenType]) -> bool:
-    """Skip tokens until reaching a synchronization point.
-
-    Returns:
-        True if sync token found, False if EOF reached
-    """
-    while not parser.at_end() and not parser.match_any(sync_tokens):
-        parser.advance()
-
-    return not parser.at_end()
 
 

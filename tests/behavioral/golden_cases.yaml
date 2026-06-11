@@ -971,7 +971,7 @@
 - name: multiple_semicolons
   command: ';;; echo hi'
   stdout: ""
-  stderr: "Syntax error"
+  stderr: "syntax error"
   exit_code: 2
   psh_only: true
 

@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.286.0 (2026-06-11) - Parser pruning + subsystem CLAUDE.md refresh (reappraisal Tier C, 2/3)
+- Dead rd-parser error-recovery machinery deleted after a reachability
+  audit: `parse_with_error_collection` / `MultiErrorParseResult` /
+  `_try_statement_recovery` and their private support had no production
+  caller (--validate runs a normal parse; the parser-config builtin's
+  option never reached ParserConfig). Their 14-test file went with them.
+  The review's claim that ErrorContext.suggestions was dead proved WRONG —
+  it's populated by ParserContext and user-visible in error output; kept.
+  Also deleted: `error_code`, `related_errors`, `add_suggestion`,
+  `show_error_suggestions`, ParsingMode.EDUCATIONAL/PERMISSIVE,
+  `permissive()`. ParserContext-level error collection (the live library
+  surface) remains.
+- Vestigial AST quote-type fields audited (the removed arg_types pattern
+  by another name): all five field groups traced to real consumers in
+  expansion/execution semantics — converting them is Word-AST migration
+  work, not pruning. Each is now marked legacy-pending-migration at the
+  definition; `BinaryTestExpression.left_quote_type` found to have ZERO
+  consumers and flagged as a removal candidate. Stale "dual
+  Statement/Command types" comment fixed.
+- Parser error messages standardized on lowercase "syntax error" (bash's
+  style; one golden-case pin updated after bash verification);
+  `_raise_unclosed_expansion_error` renamed `_raise_syntax_error` (it was
+  used for generic syntax errors); the 25-line backslash-parity scanner
+  in parse_pipeline_component extracted into a documented helper;
+  pure-delegation `parse_command_list_until_top_level` inlined away.
+- Five subsystem CLAUDE.mds verified claim-by-claim against current code
+  and refreshed (expansion, parser, core, builtins, interactive): ~32
+  corrections (wrong APIs, phantom components, stale tables/samples) and
+  ~13 new short sections for v0.266–v0.285 machinery (expansion mixins +
+  pattern.py, ${!name}, PATSUB_MATCH, namerefs + tombstones, PshError
+  family, parse_flags + error-channel conventions, the line editor and
+  its centralized escape parser, history single-writer, entry-point-only
+  signal setup).
+- Net −108 lines of dead parser machinery (+docs). Full suite green:
+  4,234 passed / 4,549 collected (−15: the deleted dead-surface tests).
+
 ## 0.285.0 (2026-06-11) - Top-level module relocation + scope rename (reappraisal Tier C, 1/3)
 - The 19 orphan top-level modules (15% of the tree) moved into their
   packages via `git mv`, so the layout finally matches the documented
