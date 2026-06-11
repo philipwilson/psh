@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.298.0 | **Tests**: 4,878 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.299.0 | **Tests**: 4,934 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -243,7 +243,7 @@ PSH uniquely includes two complete parser implementations:
 
 ### Project Statistics
 - **Lines of Code**: ~47,300 lines of production code in `psh/` across 192 Python files, plus ~53,600 lines of tests in `tests/` (231 files)
-- **Test Coverage**: 4,878 tests in 233 test files
+- **Test Coverage**: 4,934 tests in 235 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -341,6 +341,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.299.0**: array initializers now use the Word expansion engine (quoted globs stay literal, IFS-aware splitting, noglob/nullglob/dotglob honored, `"${a[@]}"` splicing — 53/53 bash probes); the parser already built Word nodes for elements and threw them away
 - **v0.298.0**: doc fix-in-place pass — executor/lexer/visitor CLAUDE.mds corrected against code (phantom modules, wrong priorities, alias-only visit methods); ARCHITECTURE files purged of removed parser machinery; `$(case x in x)...)` paren-counting limitation documented with workaround — closes reappraisal #2 (11 releases, v0.288–v0.298)
 - **v0.297.0**: docs archive sweep — 47 stale files (completed plans, v0.5x POSIX analyses, pre-relocation architecture docs, point-in-time reviews) moved to docs/archive/; 12 surviving guides got dated staleness banners; docs/architecture/ and docs/posix/ now contain only verified-current material
 - **v0.296.0**: `${var:off:len}` slicing unified on one engine (4 copies → 1; 8 bash divergences fixed incl. sparse-array by-index slicing and negative-resolved offsets); arithmetic double-expansion deleted (`$12` now `${1}2`, variables holding `$(...)` no longer rescanned/executed); parser error-recovery remnants pruned; terminal EIO handler fixed

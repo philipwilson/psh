@@ -65,6 +65,7 @@ class ArrayOperationExecutor:
 
         for i, element in enumerate(node.elements):
             element_type = node.element_types[i] if i < len(node.element_types) else 'WORD'
+            word = node.words[i] if i < len(node.words) else None
 
             # Check if this is an explicit index assignment: [index]=value
             if element_type in ('COMPOSITE', 'COMPOSITE_QUOTED') and self._is_explicit_array_assignment(element):
@@ -85,16 +86,24 @@ class ArrayOperationExecutor:
                     # Failed to parse as explicit assignment, treat as regular element
                     next_sequential_index = self._add_expanded_element_to_array(
                         array, element, next_sequential_index, split_words=False)
-            elif element_type in ('WORD', 'COMPOSITE'):
-                # Split unquoted words/composites on whitespace for sequential assignment with glob expansion
-                next_sequential_index = self._add_expanded_element_to_array(
-                    array, element, next_sequential_index, split_words=True)
-            elif element_type in ('COMMAND_SUB', 'ARITH_EXPANSION', 'VARIABLE'):
-                # Command substitution, arithmetic expansion, and variables should be word-split in arrays
+            elif word is not None:
+                # Expand through the same Word pipeline command arguments use:
+                # quote-aware tilde/variable/command expansion, IFS splitting
+                # of unquoted expansion results, and globbing that honors
+                # quoting and noglob/nullglob/dotglob. Each resulting field
+                # becomes one array element (an unquoted expansion of an
+                # empty value contributes none).
+                for field in self.expansion_manager.expand_word_to_fields(word):
+                    array.set(next_sequential_index, field)
+                    next_sequential_index += 1
+            elif element_type in ('WORD', 'COMPOSITE', 'COMMAND_SUB',
+                                  'ARITH_EXPANSION', 'VARIABLE'):
+                # Legacy fallback (no Word AST on the node): split unquoted
+                # words and expansion results on whitespace, with globbing.
                 next_sequential_index = self._add_expanded_element_to_array(
                     array, element, next_sequential_index, split_words=True)
             else:
-                # Keep as single element for sequential assignment (STRING, etc.)
+                # Legacy fallback: keep as single element (STRING, etc.)
                 # Quoted strings should not be glob expanded or word split
                 next_sequential_index = self._add_expanded_element_to_array(
                     array, element, next_sequential_index, split_words=False)

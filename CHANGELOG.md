@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.299.0 (2026-06-11) - Array initializers through the Word expansion engine (quality assessment Phase 1, 1/3)
+- Correctness Risk #1 from docs/reviews/code_quality_subsystem_
+  assessment_2026-06-11.md: `a=(...)` initializer elements were
+  expanded with expand_string_variables + Python .split() + raw
+  glob.glob(), bypassing quote context, IFS, and noglob/nullglob/
+  dotglob. Verified divergences fixed: `a=("*.txt")` no longer globs a
+  quoted pattern; `IFS=:; a=($x)` splits on IFS; `set -f` is honored;
+  no-match globs stay literal (or vanish under nullglob);
+  `b=("${a[@]}")` preserves elements; tilde and composite
+  `pre"$x"post` elements expand correctly.
+- The fix was architecturally cheap because the RD parser ALREADY
+  built Word AST nodes for every element and discarded them:
+  ArrayInitialization now carries `words`, both parsers populate it,
+  and the executor expands each element via the new public
+  ExpansionManager.expand_word_to_fields() — the same pipeline as
+  command arguments, with one bash-verified context difference
+  (initializers word-split `k=$x`; command args don't).
+- Scalar contexts unchanged and probe-pinned: `a[0]=*` stays literal;
+  explicit `[k]=v` initializer elements and `declare -A h=([k]=v)`
+  keep their paths.
+- Bonus fixes: newlines inside `a=(1
+  2)` now parse (bash allows; was a parse error), and `$((...))`
+  elements now parse in the combinator parser.
+- Probe battery: 53/53 match bash 5.2 on the RD parser (was 34/53);
+  combinator 49/53 (remaining 4 are its pre-existing composite-element
+  limitation). 56 new tests (51 integration + 5 conformance).
+- Suite: 4,664 passed / 4,934 collected; ruff + mypy clean.
+
 ## 0.298.0 (2026-06-11) - Doc fix-in-place pass (reappraisal #2 Tier C, 2/2 — REAPPRAISAL #2 COMPLETE)
 - executor/CLAUDE.md: phantom builtin_base import fixed (real: .base +
   .registry); pipefail corrected to rightmost-non-zero; process-group

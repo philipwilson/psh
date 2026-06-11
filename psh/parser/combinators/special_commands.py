@@ -52,6 +52,11 @@ class SpecialCommandParsers:
         self.tokens = token_parsers or TokenParsers()
         self.commands = command_parsers  # May be None initially
 
+        # Word AST builder for array initializer elements (shares the same
+        # token→Word logic command arguments use).
+        from .expansions import create_expansion_parsers
+        self.expansions = create_expansion_parsers(self.config)
+
         self._initialize_parsers()
 
     def set_command_parsers(self, command_parsers: CommandParsers):
@@ -343,6 +348,7 @@ class SpecialCommandParsers:
             elements = []
             element_types = []
             element_quote_types = []
+            words = []
 
             while pos < len(tokens):
                 token = tokens[pos]
@@ -358,7 +364,8 @@ class SpecialCommandParsers:
 
                 # Collect element
                 if token.type.name in ['WORD', 'STRING', 'VARIABLE', 'COMMAND_SUB',
-                                      'COMMAND_SUB_BACKTICK', 'PARAM_EXPANSION']:
+                                      'COMMAND_SUB_BACKTICK', 'PARAM_EXPANSION',
+                                      'ARITH_EXPANSION']:
                     # Format the element value
                     element_value = format_token_value(token)
 
@@ -368,6 +375,10 @@ class SpecialCommandParsers:
                     # Track quote type if applicable
                     quote_type = getattr(token, 'quote_type', None)
                     element_quote_types.append(quote_type)
+
+                    # Build the Word AST node so the executor expands the
+                    # element through the same pipeline as command arguments.
+                    words.append(self.expansions.build_word_from_token(token))
 
                     pos += 1
                 else:
@@ -390,7 +401,8 @@ class SpecialCommandParsers:
                     elements=elements,
                     element_types=element_types,
                     element_quote_types=element_quote_types,
-                    is_append=is_append
+                    is_append=is_append,
+                    words=words
                 ),
                 position=pos
             )
