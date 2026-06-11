@@ -335,23 +335,23 @@ class CommandExecutor:
         """Check if the argument at index is an assignment candidate.
 
         An argument is an assignment candidate if its Word AST contains
-        only LiteralPart and ExpansionPart nodes (no process substitution
-        or other special tokens), AND the variable-name portion (before
-        the ``=``) consists entirely of unquoted LiteralPart text.
-        Quoting any part of the variable name (e.g. ``"FOO"=bar``)
-        disqualifies the word as an assignment per POSIX.
+        only LiteralPart and ExpansionPart nodes, AND the variable-name
+        portion (before the ``=``) consists entirely of unquoted
+        LiteralPart text. Quoting any part of the variable name (e.g.
+        ``"FOO"=bar``) disqualifies the word as an assignment per POSIX.
+
+        Process substitutions are ExpansionPart nodes like any other
+        expansion: ``x=<(cmd)`` is an assignment (bash performs the
+        substitution and assigns the /dev/fd/N path), while a word that
+        STARTS with a process substitution has an ExpansionPart before any
+        ``=`` and is rejected below.
         """
         from ..ast_nodes import ExpansionPart, LiteralPart
         if node.words and index < len(node.words):
             word = node.words[index]
-            # First pass: reject non-word tokens (process substitutions, etc.)
+            # First pass: reject non-word part types
             for part in word.parts:
                 if not isinstance(part, (LiteralPart, ExpansionPart)):
-                    return False
-                # Process substitution is stored as unquoted LiteralPart
-                # starting with <( or >(
-                if (isinstance(part, LiteralPart) and not part.quoted and
-                        (part.text.startswith('<(') or part.text.startswith('>('))):
                     return False
 
             # Second pass: verify the variable-name portion is unquoted.

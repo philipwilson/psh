@@ -55,36 +55,22 @@ class ExpansionManager:
         return self._expand_word_ast_arguments(command)
 
     def _expand_word_ast_arguments(self, command: SimpleCommand) -> List[str]:
-        """Expand arguments using Word AST nodes."""
-        from ..ast_nodes import Word
+        """Expand arguments using Word AST nodes.
+
+        Process substitutions need no pre-pass: they are ProcessSubstitution
+        expansion parts inside Words (whole-word ``<(cmd)`` and embedded
+        ``pre<(cmd)post`` alike) and are performed by _expand_word(). The
+        fds/pids register with the ProcessSubstitutionHandler; the enclosing
+        process_sub_scope() (CommandExecutor) closes the parent fds and
+        reaps the children when the command finishes.
+        """
         args = []
 
         # Debug: show pre-expansion words
         if self.state.options.get('debug-expansion'):
             print(f"[EXPANSION] Expanding Word AST command: {[str(w) for w in command.words]}", file=self.state.stderr)
 
-        # Handle process substitutions — detect via Word AST
-        words = command.words
-        if self._has_process_substitution(command):
-            # The fds/pids are registered with the ProcessSubstitutionHandler;
-            # the enclosing process_sub_scope() (CommandExecutor) closes the
-            # parent fds and reaps the children when the command finishes.
-            _fds, substituted_args, _child_pids = self.shell.io_manager.setup_process_substitutions(command)
-            # Replace ONLY the process-substitution words with their
-            # /dev/fd/N paths. Other words keep their Word AST (rebuilding
-            # them from strings used to discard quote context, so a quoted
-            # "*" glob-expanded), and the command node is not mutated (a
-            # command re-executed in a loop re-creates its substitutions
-            # instead of reusing a stale fd path).
-            words = []
-            for i, word in enumerate(command.words):
-                if (i < len(substituted_args)
-                        and substituted_args[i] != command.args[i]):
-                    words.append(Word.from_string(substituted_args[i]))
-                else:
-                    words.append(word)
-
-        for word in words:
+        for word in command.words:
             expanded = self._expand_word(word)
             if isinstance(expanded, list):
                 args.extend(expanded)
@@ -136,6 +122,7 @@ class ExpansionManager:
         from ..ast_nodes import (
             ExpansionPart,
             LiteralPart,
+            ProcessSubstitution,
             Word,
         )
 
@@ -208,6 +195,19 @@ class ExpansionManager:
 
             elif isinstance(part, ExpansionPart):
                 has_expansion = True
+
+                # Process substitution (<(cmd) / >(cmd)) — whole-word or
+                # embedded. Perform it and splice the /dev/fd/N path into
+                # the word at this position. The path is NOT subject to
+                # word splitting or globbing (bash: process substitution
+                # is not a parameter/command/arithmetic expansion, so its
+                # result never field-splits, even with a pathological IFS).
+                if isinstance(part.expansion, ProcessSubstitution):
+                    all_parts_quoted = False
+                    path = self.shell.io_manager.create_process_substitution_for_expansion(
+                        part.expansion.direction, part.expansion.command)
+                    result_parts.append(path)
+                    continue
 
                 # Handle quoted field expansions ("$@", "${a[@]}", ...) in
                 # composite words: pre"$@"post with params (a,b,c) →
@@ -553,27 +553,9 @@ class ExpansionManager:
         elif isinstance(expansion, ArithmeticExpansion):
             return f"$(({expansion.expression}))"
         else:
+            # ProcessSubstitution and any future expansion types render via
+            # their __str__ (e.g. '<(cmd)')
             return str(expansion)
-
-    @staticmethod
-    def _has_process_substitution(command: SimpleCommand) -> bool:
-        """Check if a command has any process substitution arguments.
-
-        Detects process substitution via the Word AST: process substitution
-        arguments are stored as LiteralPart nodes with text starting with
-        '<(' or '>('.
-        """
-        from ..ast_nodes import LiteralPart
-        if not command.words:
-            return False
-        for word in command.words:
-            if (len(word.parts) == 1 and
-                    isinstance(word.parts[0], LiteralPart) and
-                    not word.parts[0].quoted):
-                text = word.parts[0].text
-                if text.startswith('<(') or text.startswith('>('):
-                    return True
-        return False
 
     def expand_expansion(self, expansion) -> str:
         """Evaluate a single expansion AST node to a string (public API).
@@ -607,8 +589,11 @@ class ExpansionManager:
         Quoted text and quoted-expansion results are escaped so they match
         literally; unquoted text and unquoted-expansion results keep their
         glob power — the same quoting rule as ${x#pat} operands.
+
+        Process substitution parts stay as their literal ``<(cmd)`` text:
+        psh does not perform process substitution in case patterns.
         """
-        from ..ast_nodes import ExpansionPart, LiteralPart
+        from ..ast_nodes import ExpansionPart, LiteralPart, ProcessSubstitution
         ve = self.variable_expander
         out = []
         for part in word.parts:
@@ -618,6 +603,9 @@ class ExpansionManager:
                 else:
                     out.append(part.text)
             elif isinstance(part, ExpansionPart):
+                if isinstance(part.expansion, ProcessSubstitution):
+                    out.append(str(part.expansion))
+                    continue
                 expanded = self.expand_expansion(part.expansion)
                 out.append(ve.glob_escape(expanded) if part.quoted else expanded)
         return ''.join(out)

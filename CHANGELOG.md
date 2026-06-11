@@ -4,6 +4,38 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.301.0 (2026-06-11) - Embedded process substitution (quality assessment Phase 1, 3/3 — PHASE 1 COMPLETE)
+- Correctness Risk #2: `echo pre<(echo hi)post` printed literal text;
+  bash prints `pre/dev/fd/63post`. The lexer already tokenized procsub
+  mid-word and the parser already merged composites — but WordBuilder
+  had no PROCESS_SUB branch, so the token fell into the literal
+  fallback. The whole-word case only worked via a string-sniffing
+  pre-pass in ExpansionManager.
+- ProcessSubstitution is now an Expansion subclass carried as an
+  ExpansionPart inside Words, exactly like $(...): WordBuilder builds
+  it (covers both parsers' composites), _expand_word performs the
+  substitution inline and splices the /dev/fd/N path (exempt from IFS
+  splitting and globbing, bash-verified), and the old pre-pass +
+  _has_process_substitution are DELETED — whole-word is now just the
+  one-part case of the same mechanism. No remaining duality for
+  command words (redirect-target procsub keeps its separate,
+  untouched path).
+- Fixed as natural fallout: procsub in assignments (`x=<(echo hi)` was
+  "command not found"; bash assigns the path) and in array
+  initializers (rd parser); multiple substitutions per word get
+  distinct fds; quoted forms stay literal; case patterns, heredocs,
+  and arithmetic keep procsub literal like bash.
+- Cleanup integrates with the v0.288 scope ownership: new
+  create_for_expansion() registers fd+pid in the same active lists;
+  fd and zombie censuses pass with embedded forms, including when the
+  consumer command fails.
+- 28 new tests (+2 combinator pins updated). Pre-existing gaps
+  reported honestly, all verified identical on main: combinator
+  case-pattern/array-element handling; string-context sites
+  (for-in iterables, case subjects, [[ -p ]]) still don't perform
+  procsub; `~<(x)` tilde divergence.
+- Suite: 4,708 passed / 4,978 collected; ruff + mypy clean.
+
 ## 0.300.0 (2026-06-11) - Loud expansion errors + signal lifecycle (quality assessment Phase 1, 2/3)
 - Correctness Risk #5: expand_expansion no longer catches (ValueError,
   AttributeError, TypeError) and returns str(expansion) — internal
