@@ -97,12 +97,37 @@ class ExpansionManager:
 
         return args
 
-    def _expand_word(self, word) -> Union[str, List[str]]:
+    def expand_word_to_fields(self, word) -> List[str]:
+        """Expand a Word into zero or more fields (array-initializer semantics).
+
+        Runs the same pipeline as command arguments — tilde, variable and
+        command expansion, IFS word splitting of unquoted expansions, and
+        quote-aware pathname expansion honoring noglob/nullglob/dotglob —
+        but WITHOUT the assignment-word splitting suppression, because bash
+        word-splits ``k=$x`` inside ``a=(...)`` initializers.
+
+        Returns a list: an unquoted expansion of an empty/unset value
+        contributes zero fields; a quoted empty string contributes one.
+        """
+        expanded = self._expand_word(word, suppress_assignment_splitting=False)
+        if isinstance(expanded, list):
+            return expanded
+        return [expanded]
+
+    def _expand_word(self, word, *,
+                     suppress_assignment_splitting: bool = True) -> Union[str, List[str]]:
         """Expand a Word AST node using per-part quote context.
 
         Uses structural information from Word parts instead of \\x00
         markers to determine glob suppression, word splitting, and
         tilde expansion behavior.
+
+        Args:
+            word: The Word AST node to expand.
+            suppress_assignment_splitting: When True (command-argument
+                context), a word that looks like ``VAR=value`` skips word
+                splitting (POSIX; used by declare/export/local arguments).
+                Array initializers pass False — bash splits there.
 
         Returns:
             Either a single string or a list of strings (for word splitting
@@ -228,7 +253,8 @@ class ExpansionManager:
         # While the executor strips true command-prefix assignments before
         # calling expand_arguments(), builtins like declare/export/local
         # receive their VAR=value arguments through this path.
-        is_assignment = (len(word.parts) >= 1 and
+        is_assignment = (suppress_assignment_splitting and
+                         len(word.parts) >= 1 and
                          isinstance(word.parts[0], LiteralPart) and
                          '=' in word.parts[0].text and
                          not word.parts[0].text.startswith('='))

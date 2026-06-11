@@ -425,14 +425,18 @@ class ArrayParser:
         elements = []
         element_types = []
         element_quote_types = []
+        words = []
 
-        # Parse array elements
+        # Parse array elements (newlines between elements are allowed, as in bash)
         while not self.parser.match(TokenType.RPAREN) and not self.parser.at_end():
-            if self.parser.match_any(TokenGroups.WORD_LIKE):
+            if self.parser.match(TokenType.NEWLINE):
+                self.parser.advance()
+            elif self.parser.match_any(TokenGroups.WORD_LIKE):
                 word = self.parser.commands.parse_argument_as_word()
                 elements.append(''.join(str(p) for p in word.parts))
                 element_types.append(self._word_to_element_type(word))
                 element_quote_types.append(word.effective_quote_char)
+                words.append(word)
             else:
                 break
 
@@ -443,5 +447,6 @@ class ArrayParser:
             elements=elements,
             element_types=element_types,
             element_quote_types=element_quote_types,
-            is_append=is_append
+            is_append=is_append,
+            words=words
         )

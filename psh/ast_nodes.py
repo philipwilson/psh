@@ -217,13 +217,17 @@ class ArrayAssignment(ASTNode):
 class ArrayInitialization(ArrayAssignment):
     """Array initialization: arr=(one two three) or arr+=(four five)"""
     name: str
-    elements: List[str]  # The elements inside parentheses
-    # Legacy string-list metadata pending Word-AST migration (the node carries
-    # no parallel Word list). Consumed by executor/array.py (split/no-split),
-    # validator_visitor, and formatter_visitor.
+    elements: List[str]  # The elements inside parentheses (flat strings)
+    # Legacy string-list metadata retained for validator_visitor,
+    # formatter_visitor, and the executor's explicit [index]=value detection.
     element_types: List[str] = field(default_factory=list)  # Track element types (WORD, STRING, etc.)
     element_quote_types: List[Optional[str]] = field(default_factory=list)  # Track quote types
     is_append: bool = False  # True for += initialization
+    # Word AST nodes for each element (parallel to `elements`). When present,
+    # the executor expands each element through the same Word expansion
+    # pipeline as command arguments (IFS splitting, quote-aware globbing,
+    # tilde, noglob/nullglob/dotglob). Empty list = legacy fallback.
+    words: List[Word] = field(default_factory=list)
 
 
 @dataclass
