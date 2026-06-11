@@ -544,7 +544,7 @@ fi
 | Variable attributes | Yes | Yes | declare -i, -r, -x, etc. |
 | **Expansions** |
 | Parameter expansion | Yes | Yes | All features |
-| Command substitution | Yes | Yes | Both $() and backticks |
+| Command substitution | Yes | Yes | Both $() and backticks; `case` patterns inside `$()` need the `(pattern)` form (see Ch. 6) |
 | Arithmetic expansion | Yes | Yes | Full support |
 | Brace expansion | Yes | Yes | Full support |
 | Process substitution | Yes | Yes | Full support |

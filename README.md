@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.297.0 | **Tests**: 4,878 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.298.0 | **Tests**: 4,878 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -341,6 +341,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.298.0**: doc fix-in-place pass — executor/lexer/visitor CLAUDE.mds corrected against code (phantom modules, wrong priorities, alias-only visit methods); ARCHITECTURE files purged of removed parser machinery; `$(case x in x)...)` paren-counting limitation documented with workaround — closes reappraisal #2 (11 releases, v0.288–v0.298)
 - **v0.297.0**: docs archive sweep — 47 stale files (completed plans, v0.5x POSIX analyses, pre-relocation architecture docs, point-in-time reviews) moved to docs/archive/; 12 surviving guides got dated staleness banners; docs/architecture/ and docs/posix/ now contain only verified-current material
 - **v0.296.0**: `${var:off:len}` slicing unified on one engine (4 copies → 1; 8 bash divergences fixed incl. sparse-array by-index slicing and negative-resolved offsets); arithmetic double-expansion deleted (`$12` now `${1}2`, variables holding `$(...)` no longer rescanned/executed); parser error-recovery remnants pruned; terminal EIO handler fixed
 - **v0.295.0**: opt-in PTY tier repaired (6 failures were a framework prompt-sync off-by-one slicing each command's output one cycle behind — sentinel-prompt sync + ANSI stripping; 86 passed ×3); rootdir-hijacking nested pytest.ini deleted; test debris removed; CI workflow renamed tests.yml

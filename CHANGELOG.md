@@ -4,6 +4,39 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.298.0 (2026-06-11) - Doc fix-in-place pass (reappraisal #2 Tier C, 2/2 — REAPPRAISAL #2 COMPLETE)
+- executor/CLAUDE.md: phantom builtin_base import fixed (real: .base +
+  .registry); pipefail corrected to rightmost-non-zero; process-group
+  description fixed (the PARENT setpgid's members while children block
+  on the sync pipe); job_control.py added to Key Files; v0.288/v0.289
+  drift incorporated (process_sub_scope wiring, report_exec_failure).
+- lexer/CLAUDE.md: phantom _tokenize_next replaced with the real
+  tokenize() loop; recognizer registration corrected to
+  _setup_recognizers (recognizers/__init__.py only re-exports, and
+  omits ProcessSubstitutionRecognizer); priorities fixed (no keyword
+  recognizer exists — process_sub 160 / operator 150 / literal 70 /
+  comment 60 / whitespace 30, all @property); RecognizerRegistry
+  snippet fixed (register() takes no priority; method is recognize);
+  constants.py row corrected; heredoc_collector.py added.
+- visitor/CLAUDE.md (the one CLAUDE.md never refreshed): nonexistent
+  test file replaced with the real two; traversal.py and
+  analysis_helpers.py added with a visit_children example; examples
+  fixed from alias-only visit_CommandList to visit_StatementList
+  (dispatch uses the real class name, so the old example never fired);
+  bonus defect fixed (IfConditional has no .body field).
+- ARCHITECTURE.md/.llm: removed-machinery purge — §3.3/§3.6/§3.7/§3.10
+  rewritten from parse_with_error_collection / RECOVER / PERMISSIVE /
+  permissive() / ErrorCollector / panic-mode to the real ParserConfig
+  (STRICT_POSIX/BASH_COMPAT, STRICT/COLLECT) and ParserContext
+  error collection; §3.9 visualization snippet fixed to real names;
+  test count 4,550+ → 4,800+ (collected: 4,878).
+- M7 documented: $(case x in x) ...) is a parse error in both parsers
+  (paren counting, not recursive lexing; bash accepts). Known
+  Limitation #2 in ARCHITECTURE.md, code comment at the
+  find_balanced_parentheses call site, user-guide ch. 6 note with the
+  verified workaround $(case x in (x) ...) — leading paren form works.
+- Gates: claims meta-test 39 passed; quick suite green; ruff clean.
+
 ## 0.297.0 (2026-06-11) - Docs archive sweep (reappraisal #2 Tier C, 1/2)
 - 47 stale documentation files moved to docs/archive/ via git mv
   (content untouched), per the 2026-06-11 reappraisal §6 plan with

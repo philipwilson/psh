@@ -28,7 +28,8 @@ Executor  Executor   Executor   Executor  Executor
 | `array.py` | `ArrayOperationExecutor` - array initialization |
 | `process_launcher.py` | `ProcessLauncher` - unified process creation |
 | `child_policy.py` | `apply_child_signal_policy()` - single source of truth for child signal setup |
-| `strategies.py` | Execution strategies for different command types |
+| `job_control.py` | `JobManager`, `Job`, `JobState`, `Process` - job table and waiting (moved into the package in v0.285) |
+| `strategies.py` | Execution strategies for different command types, plus shared helpers `report_exec_failure()` and `execute_builtin_guarded()` |
 | `enhanced_test_evaluator.py` | `[[ ]]` test expression evaluation |
 | `context.py` | `ExecutionContext` - execution state |
 
@@ -102,7 +103,8 @@ class ProcessRole(Enum):
 SimpleCommand AST
     ↓
 CommandExecutor.execute()
-    ↓
+    ↓ (wraps everything in io_manager.process_sub_scope(), which closes
+       parent-side fds and reaps process-substitution children on exit)
 1. Expand assignments
 2. Expand arguments (variables, globs, etc.)
 3. Try each execution strategy in order
@@ -126,7 +128,8 @@ PipelineExecutor.execute()
    - First: PIPELINE_LEADER (creates process group)
    - Rest: PIPELINE_MEMBER (joins process group)
 3. Wait for all processes
-4. Return exit code (last command, or first failure if pipefail)
+4. Return exit code (last command; with pipefail, the rightmost non-zero
+   status, or 0 if all succeeded)
 ```
 
 ## Common Tasks
@@ -135,7 +138,8 @@ PipelineExecutor.execute()
 
 1. Create builtin in `psh/builtins/mybuiltin.py`:
 ```python
-from .builtin_base import Builtin, builtin
+from .base import Builtin
+from .registry import builtin
 
 @builtin
 class MyBuiltin(Builtin):
@@ -218,8 +222,11 @@ no longer fork — they delegate to `process_sub.create_process_substitution`):
 
 ### Process Group Management
 
-- Pipeline leader creates new process group: `os.setpgid(0, 0)`
-- Members join leader's group: `os.setpgid(0, leader_pid)`
+- Pipeline leader creates new process group: `os.setpgid(0, 0)` in the child
+  (the parent also calls `os.setpgid(pid, pid)` — whichever runs first wins)
+- Members never call `setpgid` themselves: the **parent** assigns them with
+  `os.setpgid(pid, leader_pgid)` while each member blocks on the sync pipe,
+  so no member runs before the group exists
 - Foreground processes get terminal: `tcsetpgrp()`
 
 ### Expansion Order

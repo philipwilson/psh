@@ -1,6 +1,6 @@
 # PSH Architecture Reference for Large Language Models
 
-Version: 0.297.0
+Version: 0.298.0
 Purpose: Optimized reference for LLMs working with the PSH codebase
 
 ## Quick Start
@@ -19,7 +19,7 @@ Purpose: Optimized reference for LLMs working with the PSH codebase
 **Modify parsing behavior**
 1. Edit the appropriate module in `psh/parser/recursive_descent/parsers/` (e.g. `commands.py`, `control_structures.py`)
 2. If context handling or configuration changes are required, adjust `ParserContext` in `psh/parser/recursive_descent/context.py`
-3. Use `ParserConfig` (`psh/parser/config.py`) for feature flags; presets are the `ParserConfig.strict_posix()` / `ParserConfig.permissive()` constructors
+3. Use `ParserConfig` (`psh/parser/config.py`) for feature flags; preset is the `ParserConfig.strict_posix()` constructor (derive variants with `clone(**overrides)`)
 4. If script validation is affected, update the validator visitors in `psh/visitor/` (`validator_visitor.py`, `enhanced_validator_visitor.py`)
 5. Add tests under `tests/unit/parser/`
 
@@ -133,7 +133,7 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
 4. **Parsing (`psh/parser/`)**
    - Default `Parser` (recursive descent) built from modular sub-parsers
    - `create_context()` (`recursive_descent/support/context_factory.py`) wires contexts with config, tokens, and source text
-   - `ParserConfig` preset constructors (`strict_posix()`, `permissive()`) select parsing modes
+   - `ParserConfig` preset constructor (`strict_posix()`) and `clone(**overrides)` select parsing modes
    - Parser selection (`_active_parser` attribute) switches between recursive descent and parser-combinator implementations
 
 5. **Validation (optional)**
@@ -208,7 +208,7 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
   - `word_builder.py`: Constructs Word AST nodes linking to expansion metadata
 
 ### Parser Configuration & Modes
-- `parser/config.py`: `ParserConfig`, `ParsingMode`, `ErrorHandlingMode` (parsing mode, error handling, bash compatibility); presets via `ParserConfig.strict_posix()` / `permissive()`
+- `parser/config.py`: `ParserConfig`, `ParsingMode`, `ErrorHandlingMode` (parsing mode, error handling, bash compatibility); preset via `ParserConfig.strict_posix()`, variants via `clone(**overrides)`
 - Parser selection: `psh/builtins/parser_experiment.py` provides `parser-select` builtin for runtime parser swapping
 - AST validation: visitor-based validators in `psh/visitor/` (`validator_visitor.py`, `enhanced_validator_visitor.py`), used by the `--validate` CLI option
 - `parser/visualization/`: Formatters for pretty, DOT, ASCII, and S-expression AST outputs
@@ -345,7 +345,7 @@ class MyBuiltin(Builtin):
 - **Token stream utilities**: `psh/lexer/token_stream.py`
 - **Parser entry point**: `psh/parser/__init__.py` (`parse`, `parse_with_heredocs`, `create_parser`)
 - **Parser context**: `psh/parser/recursive_descent/context.py`
-- **Parser presets**: `ParserConfig.strict_posix()` / `permissive()` in `psh/parser/config.py`
+- **Parser presets**: `ParserConfig.strict_posix()` (plus `clone(**overrides)`) in `psh/parser/config.py`
 - **Parser selection**: `psh/builtins/parser_experiment.py` (`parser-select` builtin)
 - **Script validation**: `psh/visitor/enhanced_validator_visitor.py` (`--validate` CLI option)
 - **Expansion manager**: `psh/expansion/manager.py`

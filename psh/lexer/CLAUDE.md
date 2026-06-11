@@ -27,7 +27,7 @@ command-position context is available. See `psh/expansion/brace_expansion.py`
 | `__init__.py` | Entry point: `tokenize()` and `tokenize_with_heredocs()` |
 | `modular_lexer.py` | Core tokenization engine (~600 lines) |
 | `state_context.py` | `LexerContext` - unified state management |
-| `constants.py` | Keywords, operators, special variables |
+| `constants.py` | Keywords and special variables (operators live in `OperatorRecognizer.OPERATORS`) |
 | `position.py` | Position tracking, `LexerConfig`, error classes |
 
 ### Recognizers (`recognizers/`)
@@ -48,6 +48,7 @@ command-position context is available. See `psh/expansion/brace_expansion.py`
 | `expansion_parser.py` | Parse `${}`, `$()`, `$(())`, backticks |
 | `quote_parser.py` | Parse quoted strings (single, double, ANSI-C) |
 | `heredoc_lexer.py` | Heredoc tokenization |
+| `heredoc_collector.py` | `HeredocCollector` - gathers pending heredoc bodies line-by-line |
 | `token_parts.py` | `RichToken` with expansion metadata |
 | `unicode_support.py` | Unicode identifier handling |
 
@@ -60,12 +61,15 @@ Recognizers are registered with priorities and tried in order:
 ```python
 # In recognizers/registry.py
 class RecognizerRegistry:
-    def register(self, recognizer, priority): ...
-    def try_recognize(self, input_text, pos, context): ...
+    def register(self, recognizer): ...   # priority comes from the recognizer
+    def recognize(self, input_text, pos, context): ...
 
-# Priorities (higher = tried first):
-# - Operators: 150 (greedy matching for multi-char operators)
-# - Literals: 70 (fallback for words)
+# Each recognizer exposes a `priority` @property (higher = tried first):
+# - ProcessSubstitutionRecognizer: 160 (before operators, so `<(` isn't `<`)
+# - OperatorRecognizer: 150 (greedy matching for multi-char operators)
+# - LiteralRecognizer: 70 (fallback for words)
+# - CommentRecognizer: 60
+# - WhitespaceRecognizer: 30
 ```
 
 ### 2. LexerContext State
@@ -91,13 +95,13 @@ state exists.
 ### 3. Token Recognition Flow
 
 ```python
-# In modular_lexer.py
-def _tokenize_next(self):
-    # 1. Skip whitespace (unless significant)
-    # 2. Check for quotes → delegate to quote_parser
-    # 3. Check for expansions ($, `) → delegate to expansion_parser
-    # 4. Try each recognizer in priority order
-    # 5. Fall back to word tokenization
+# In modular_lexer.py — the tokenize() loop tries, in order:
+def tokenize(self):
+    while ...:
+        if self._skip_whitespace(): continue           # 1. Whitespace
+        if self._try_quotes_and_expansions(): continue # 2. Quotes / $, ` → quote_parser / expansion_parser
+        if self._try_recognizers(): continue           # 3. Recognizers in priority order
+        if self._handle_fallback_word(): continue      # 4. Fallback word tokenization
 ```
 
 ## Common Tasks
@@ -134,7 +138,9 @@ OPERATORS = {
 ```python
 # In recognizers/my_recognizer.py
 class MyRecognizer(TokenRecognizer):
-    priority = 75  # Between keywords (80) and literals (70)
+    @property
+    def priority(self) -> int:
+        return 75  # Between operators (150) and literals (70)
 
     def can_recognize(self, input_text, pos, context) -> bool:
         # Quick check if this recognizer applies
@@ -144,8 +150,12 @@ class MyRecognizer(TokenRecognizer):
         # Return (token, new_position) or None
         ...
 ```
+(There is no keyword recognizer — keywords are normalized from WORD tokens
+by the `KeywordNormalizer` post-pass.)
 
-2. Register in `recognizers/__init__.py`
+2. Register it in `ModularLexer._setup_recognizers()` (in `modular_lexer.py`).
+   `recognizers/__init__.py` only re-exports classes; adding one there does
+   not activate it. Optionally add the re-export for discoverability.
 
 ## Key Implementation Details
 

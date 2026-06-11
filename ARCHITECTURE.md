@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.297.0
+**Current Version**: 0.298.0
 
 **Note:** For LLM-optimized architecture documentation, see `ARCHITECTURE.llm`
 
@@ -327,7 +327,7 @@ The parser combinator is a functional parser implementation demonstrating elegan
 Both parser implementations share common infrastructure:
 
 #### Parser Configuration System
-- **`psh/parser/config.py`** - ParserConfig with parsing-mode, error-handling, and bash-compatibility options (preset constructors `strict_posix()` and `permissive()`)
+- **`psh/parser/config.py`** - ParserConfig with parsing-mode, error-handling, and bash-compatibility options (preset constructor `strict_posix()`; derive variants with `clone(**overrides)`)
 
 #### Centralized State Management
 - **`psh/parser/recursive_descent/context.py`** - ParserContext class for unified state management
@@ -361,13 +361,14 @@ class Parser(ContextBaseParser):
         self.arithmetic = ArithmeticParser(self)
         # ... other specialized parsers
 
-    def parse_with_error_collection(self) -> MultiErrorParseResult:
-        """Parse with enhanced error collection and recovery"""
-        if self.ctx.config.collect_errors:
-            # Collect multiple errors for better user experience
-            return self._parse_with_recovery()
-        return self.parse()
+    def parse(self) -> Union[CommandList, TopLevel]:
+        """Parse the token stream into an AST."""
+        ...
 ```
+
+With `config.collect_errors=True`, errors accumulate in `ctx.errors`
+(up to `config.max_errors`) via `ParserContext.add_error()` instead of
+raising immediately; `ctx.can_continue_parsing()` decides when to stop.
 
 ### 3.4 Grammar Overview
 
@@ -411,44 +412,36 @@ The parser supports comprehensive configuration for different parsing modes and 
 ```python
 @dataclass
 class ParserConfig:
-    """Parser configuration options"""
-    # Core parsing mode
+    """Parser configuration options (only fields the parser actually reads)"""
+    # Core parsing mode: BASH_COMPAT (default) or STRICT_POSIX
     parsing_mode: ParsingMode = ParsingMode.BASH_COMPAT
 
-    # Error handling
+    # Error handling: STRICT (stop on first error) or COLLECT
     error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
     max_errors: int = 10
     collect_errors: bool = False
-    enable_error_recovery: bool = False
-    show_error_suggestions: bool = True
 
     # Language features
     enable_arithmetic: bool = True
 
     # Bash compatibility
-    allow_bash_conditionals: bool = True
-    allow_bash_arithmetic: bool = True
+    allow_bash_conditionals: bool = True   # [[ ]]
+    allow_bash_arithmetic: bool = True     # (( ))
 
     @classmethod
     def strict_posix(cls) -> 'ParserConfig':
         """Strict POSIX compliance mode"""
         return cls(
             parsing_mode=ParsingMode.STRICT_POSIX,
+            error_handling=ErrorHandlingMode.STRICT,
             allow_bash_conditionals=False,
             allow_bash_arithmetic=False,
         )
-
-    @classmethod
-    def permissive(cls) -> 'ParserConfig':
-        """Permissive mode with error tolerance"""
-        return cls(
-            parsing_mode=ParsingMode.PERMISSIVE,
-            error_handling=ErrorHandlingMode.RECOVER,
-            max_errors=50,
-            collect_errors=True,
-            enable_error_recovery=True,
-        )
 ```
+
+Derive variants with `config.clone(**overrides)`. Feature checks go
+through `is_feature_enabled()` / `should_allow()`, which `getattr` with
+a default of `False`, so removed fields safely read as disabled.
 
 ### 3.7 Centralized ParserContext
 
@@ -465,7 +458,6 @@ class ParserContext:
 
     # Error handling
     errors: List[ParseError] = field(default_factory=list)
-    error_recovery_mode: bool = False
     fatal_error: Optional[ParseError] = None
 
     # Source context
@@ -483,16 +475,15 @@ Multiple visualization formats are available for AST inspection:
 
 ```python
 # Pretty-printed format
-formatter = ASTPrettyPrinter(indent=2, show_positions=True)
+formatter = ASTPrettyPrinter(indent_size=2, show_positions=True)
 print(formatter.visit(ast))
 
 # Graphviz DOT format for visual diagrams
-dot_generator = ASTDotGenerator(compact=False)
+dot_generator = ASTDotGenerator(compact_nodes=False)
 dot_content = dot_generator.visit(ast)
 
 # ASCII tree for terminal display
-tree_renderer = ASTAsciiTreeRenderer(style='standard')
-print(tree_renderer.visit(ast))
+print(AsciiTreeRenderer.render(ast))
 
 # Integration with shell commands
 psh --debug-ast=pretty -c "if true; then echo hi; fi"
@@ -500,33 +491,33 @@ parse-tree -f dot "for i in 1 2 3; do echo $i; done"
 show-ast "case $var in pattern) echo match;; esac"
 ```
 
-### 3.10 Enhanced Error Recovery
+### 3.10 Error Collection
 
-Advanced error recovery strategies provide better user experience:
+Multi-error collection is implemented at the `ParserContext` level
+(there is no separate recovery subsystem):
 
 ```python
-class ErrorCollector:
-    """Collect multiple parse errors for batch reporting"""
-    
-    def add_error(self, error: ParseError) -> bool:
-        """Add error and determine if parsing should continue"""
+# In ParserContext (recursive_descent/context.py)
+def add_error(self, error: ParseError) -> None:
+    """Add error to the error list, checking for fatal errors."""
+    if len(self.errors) < self.config.max_errors:
         self.errors.append(error)
-        
-        # Check for fatal errors
-        if error.is_fatal or len(self.errors) >= self.max_errors:
-            return False
-        
-        return True
+    if (hasattr(error.error_context, 'severity') and
+        error.error_context.severity == ErrorSeverity.FATAL):
+        self.fatal_error = error
 
-def panic_mode_recovery(self, sync_tokens: Set[TokenType]):
-    """Recover by skipping to synchronization points"""
-    self.ctx.error_recovery_mode = True
-    
-    while not self.ctx.at_end() and not self.ctx.match(*sync_tokens):
-        self.ctx.advance()
-    
-    self.ctx.error_recovery_mode = False
+def can_continue_parsing(self) -> bool:
+    """Check if parsing can continue."""
+    if self.at_end() or self.fatal_error:
+        return False
+    if self.config.collect_errors:
+        return len(self.errors) < self.config.max_errors
+    return True
 ```
+
+With the default `collect_errors=False`, parsing stops on the first
+error; with `collect_errors=True`, errors accumulate in `ctx.errors`
+up to `max_errors`.
 
 ### 3.11 Recursive Descent Implementation
 
@@ -1058,8 +1049,8 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 - **Parser Selection**: Runtime switchable with `parser-select combinator` builtin
 
 ### Comprehensive Parser Features
-- **Configuration System**: ParserConfig options for POSIX, bash-compat, and permissive modes
-- **Error Recovery**: Multi-error collection, smart suggestions, panic mode recovery
+- **Configuration System**: ParserConfig options for POSIX and bash-compat modes
+- **Error Recovery**: Multi-error collection with fatal-error short-circuiting
 - **Visualization**: Pretty-print, DOT graphs, and ASCII tree rendering
 - **Centralized State**: ParserContext manages all parser state consistently
 
@@ -1079,11 +1070,13 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 - **Clear Boundaries**: Each subsystem (lexer, parser, executor, expansion) is independent
 - **Manager Pattern**: Coordinated functionality through manager classes
 - **POSIX Compliance**: ~98% compliance with proper expansion ordering
-- **Testability**: Comprehensive test suite with 4,550+ tests
+- **Testability**: Comprehensive test suite with 4,800+ tests
 
 ## Known Limitations
 
 1. **Deep Recursion**: Command substitution in recursive functions can hit Python's stack limit due to the multiple layers of function calls per shell recursion level.
+
+2. **`case` with unbalanced `)` inside `$(...)`**: The lexer finds the end of a command substitution by counting parentheses (`find_balanced_parentheses` in `psh/lexer/pure_helpers.py`, called from `psh/lexer/expansion_parser.py`) instead of recursively lexing the contents. A case pattern's bare closing paren breaks the count, so `echo $(case x in x) echo inner;; esac)` is a parse error in both parsers (bash prints `inner`). Workaround: use the POSIX leading-paren pattern form, `echo $(case x in (x) echo inner;; esac)`, which keeps the parens balanced and works in psh.
 
 ## Future Enhancements
 
