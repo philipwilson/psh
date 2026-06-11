@@ -10,9 +10,6 @@ These tests use `pexpect` to test PSH in an interactive terminal environment.
 
 ## Known Issues
 
-### Line Editor Escape Sequences
-PSH's line editor doesn't properly handle ANSI escape sequences in pseudo-terminal (PTY) environments. This causes tests that rely on arrow keys, backspace, or other special keys to fail. These tests are marked with `@pytest.mark.skip`.
-
 ### Timing Sensitivity
 Interactive tests can be sensitive to system load and timing. If tests fail intermittently:
 1. Check system load
@@ -36,12 +33,7 @@ If a test fails:
 
 2. Check the debug output added to test_echo_simple for clues
 
-3. Use the debug helpers:
-   ```python
-   from debug_helpers import debug_spawn, debug_expect_failure
-   ```
-
-4. Run the test outside pytest:
+3. Run the test outside pytest:
    ```bash
    python tmp/debug_test_name.py
    ```

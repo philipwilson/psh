@@ -1,12 +1,12 @@
 """
 Regression tests for bugs identified in codex_recommendations.md.
 
-These tests document 5 confirmed bugs. Each test is marked xfail so it
-documents the expected-correct behavior while the bug still exists.
-Once a bug is fixed, remove the xfail marker so the test guards against
-regressions.
+These tests document 5 bugs that were confirmed during the codex review
+and have since been fixed. The tests originally carried xfail markers;
+the markers were removed as each bug was fixed, so the tests now guard
+the corrected behavior against regressions.
 
-Findings:
+Findings (all fixed):
   1. High   — Quoted variable names treated as assignments
   2. Medium — Lone $ expands to empty string instead of literal $
   3. Medium — "$@" splitting missing in composite (mixed-quote) words

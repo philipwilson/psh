@@ -47,9 +47,13 @@ class TestInteractiveFeatures(PTYTest):
         output = pty_framework.run_command("echo 'line editor active'")
         assert "line editor active" in output
 
-    @pytest.mark.xfail(reason="Ctrl-C handling varies in PTY mode")
     def test_ctrl_c_interrupt(self, pty_framework):
-        """Test Ctrl-C interrupt handling."""
+        """Test Ctrl-C interrupt handling.
+
+        Was xfail "Ctrl-C handling varies in PTY mode"; the framework's
+        stale-output drain (run_command resyncs past the post-Ctrl-C
+        prompt) made it deterministic.
+        """
         pty_framework.spawn_shell()
 
         # Type a partial command
