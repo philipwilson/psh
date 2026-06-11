@@ -21,12 +21,27 @@ Input Arguments → ExpansionManager → Expanded Arguments
 |------|---------|
 | `manager.py` | `ExpansionManager` - orchestrates all expansions in correct order |
 | `evaluator.py` | `ExpansionEvaluator` - evaluates expansion AST nodes |
-| `variable.py` | `VariableExpander` - handles `$VAR`, `${VAR}`, arrays (~50KB) |
+| `variable.py` | `VariableExpander` - dispatch, special variables, `${!name}` indirection |
+| `arrays.py` | `ArrayOpsMixin` - `${arr[i]}`, `${arr[@]}`, `_eval_array_index()` |
+| `operators.py` | `OperatorOpsMixin` - `${VAR:-...}`, `${VAR#...}`, `${VAR/p/r}`, case ops |
+| `operands.py` | `OperandOpsMixin` - expands pattern/replacement operands, `glob_escape()` |
+| `fields.py` | `FieldExpansionMixin` - `expand_to_fields()` for multi-field `$@`/array results |
+| `pattern.py` | `PatternMatcher` - THE canonical shell-pattern→regex converter/matcher |
+| `extglob.py` | Extended glob (`@(...)`, `!(...)`) pattern conversion and matching |
+| `parameter_expansion.py` | `ParameterExpansion` - string ops behind the operators (incl. `PATSUB_MATCH`) |
 | `command_sub.py` | `CommandSubstitution` - handles `$(cmd)` and `` `cmd` `` |
 | `tilde.py` | `TildeExpander` - handles `~` and `~user` |
 | `glob.py` | `GlobExpander` - pathname expansion (wildcards) |
-| `word_splitter.py` | `WordSplitter` - splits on IFS |
-| `parameter_expansion.py` | Advanced parameter expansion (`${VAR:-default}`, etc.) |
+| `word_splitter.py` | `WordSplitter` - splits on IFS (`split()`, `split_with_edges()`) |
+| `arithmetic.py` | Arithmetic tokenizer/parser/evaluator (`evaluate_arithmetic()`) |
+| `brace_expansion.py` | `BraceExpander`, `TokenBraceExpander` - `{a,b}`, `{1..5}` |
+| `aliases.py` | `AliasManager` - alias storage and expansion |
+
+`VariableExpander` was decomposed in v0.279: it is now a thin facade,
+`class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
+FieldExpansionMixin, ...)`, with the mixins in `arrays.py`, `operators.py`,
+`operands.py`, and `fields.py`. `arithmetic.py`, `brace_expansion.py`, and
+`aliases.py` moved into this package from the top-level `psh/` in v0.285.
 
 ## Core Patterns
 
@@ -68,7 +83,10 @@ Key behaviors controlled by Word AST structure:
 - **Word splitting**: Only triggered when there are unquoted expansion results
 - **Tilde expansion**: Only on first unquoted literal, not after escape processing
 - **Escape processing**: `_process_unquoted_escapes()` handles `\$`, `\\`, `\~`, `\*` etc.
-- **Assignment detection**: Words containing `=` with valid var name suppress word splitting
+- **Assignment detection**: a word whose first part is a literal containing a
+  non-leading `=` is treated as an assignment word and skips word splitting
+  (used by `declare`/`export`/`local` arguments; true command-prefix
+  assignments are stripped by the executor before expansion)
 
 ### 3. ExpansionEvaluator
 
@@ -180,25 +198,60 @@ Different quote types affect expansion:
 
 ### Array and $@ Expansion in Quotes
 
-`"$@"` splitting is handled in `_expand_double_quoted_word()`. When an
-`ExpansionPart` contains `VariableExpansion(name='@')`, the method
-distributes prefix/suffix text across positional parameters:
+Multi-field expansions inside quotes go through two helpers in `manager.py`:
+
+- `_field_expansion_fields(part)` returns the list of fields a part expands
+  to (`"$@"`, `"${arr[@]}"`, and parameter ops applied to them — the latter
+  via `FieldExpansionMixin.expand_to_fields()` in `fields.py`), or `None`
+  for ordinary single-field parts.
+- `_expand_at_with_affixes(...)` splices those fields into the word,
+  distributing prefix/suffix text onto the first/last field:
 
 ```python
 # "x$@y" with params (a, b) → ["xa", "by"]
 # "$@" with no params → nothing
 ```
 
+### Pattern and Replacement Operand Expansion
+
+Operands of pattern operators (`${VAR#pat}`, `${VAR/pat/repl}`, case ops)
+are expanded in `operands.py` before matching: variables/quotes inside the
+operand are processed, and text that must stay literal is escaped with
+`glob_escape()` so it cannot act as a glob. Replacement operands become a
+list of literal strings interleaved with the `PATSUB_MATCH` sentinel
+(defined in `parameter_expansion.py`), which stands for the matched text —
+this is how a literal `&` in a patsub replacement works.
+
+### Indirection: `${!name}`
+
+`variable.py` implements `${!name}` via `_expand_indirect()` /
+`_resolve_indirect_target()`: the value of `name` (or a nameref's target)
+names the parameter actually expanded. `${!name<op>...}` resolves the
+indirection first, then applies the operator. `${!prefix*}`/`${!arr[@]}`
+forms are dispatched separately (name listing / array keys).
+
+### Array Subscript Arithmetic
+
+`ArrayOpsMixin._eval_array_index()` (`arrays.py`) evaluates indexed-array
+subscripts as full arithmetic expressions (`${arr[i+1]}`), so subscript
+errors surface as arithmetic errors.
+
 ### IFS Word Splitting
 
 ```python
-def _split_with_ifs(self, text: str, quote_type: str) -> List[str]:
+def _split_with_ifs(self, text: Optional[str], quote_type: Optional[str]) -> List[str]:
     if quote_type is not None:
         return [text]  # Quoted - no splitting
 
     ifs = self.state.get_variable('IFS', ' \t\n')
     return self.word_splitter.split(text, ifs)
 ```
+
+Splitting a composite word is part-aware: `_split_part_fields(parts,
+splittable_idx)` in `manager.py` splits ONLY the parts that came from
+unquoted expansions, using `WordSplitter.split_with_edges()` (which also
+reports whether the text had leading/trailing IFS) so quoted text joins
+correctly onto adjacent fields (`a"$x"b`).
 
 ### Command Substitution
 
@@ -218,7 +271,7 @@ class CommandSubstitution:
 python -m pytest tests/unit/expansion/ -v
 
 # Test specific expansion type
-python -m pytest tests/unit/expansion/test_variable_expansion.py -v
+python -m pytest tests/unit/expansion/test_variable_expansion_simple.py -v
 
 # Debug expansion
 python -m psh --debug-expansion -c "echo $HOME"
@@ -271,7 +324,8 @@ Output example:
 ### With Parser (`psh/parser/`)
 
 - Parser always builds Word AST nodes (`command.words`) with per-part quote context
-- `arg_types` and `quote_types` are derived from Word structure for backward compatibility
+- `words` is the SOLE argument metadata representation — the legacy
+  `arg_types`/`quote_types` lists were removed in v0.120
 - `ExpansionEvaluator` evaluates Word AST expansion nodes
 - `WordBuilder` (in `parser/recursive_descent/support/`) constructs Word nodes from tokens
 

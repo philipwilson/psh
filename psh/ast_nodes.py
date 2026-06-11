@@ -218,6 +218,9 @@ class ArrayInitialization(ArrayAssignment):
     """Array initialization: arr=(one two three) or arr+=(four five)"""
     name: str
     elements: List[str]  # The elements inside parentheses
+    # Legacy string-list metadata pending Word-AST migration (the node carries
+    # no parallel Word list). Consumed by executor/array.py (split/no-split),
+    # validator_visitor, and formatter_visitor.
     element_types: List[str] = field(default_factory=list)  # Track element types (WORD, STRING, etc.)
     element_quote_types: List[Optional[str]] = field(default_factory=list)  # Track quote types
     is_append: bool = False  # True for += initialization
@@ -229,6 +232,8 @@ class ArrayElementAssignment(ArrayAssignment):
     name: str
     index: Union[str, List['Token']]  # The index expression (str for compatibility, List[Token] for late binding)
     value: str  # The value to assign
+    # Legacy string metadata pending Word-AST migration (no parallel Word on
+    # this node). Consumed by formatter_visitor to re-quote the value.
     value_type: str = 'WORD'  # Type of the value
     value_quote_type: Optional[str] = None  # Quote type if any
     is_append: bool = False  # True for += assignment
@@ -376,6 +381,11 @@ class BinaryTestExpression(TestExpression):
     left: str
     operator: str  # =, !=, <, >, =~, -eq, -ne, etc.
     right: str
+    # Legacy quote metadata pending Word-AST migration (operands are plain
+    # strings, not Words). right_quote_type drives quoted-pattern/regex
+    # literal-matching semantics in executor/enhanced_test_evaluator.py;
+    # left_quote_type is set by the recursive descent parser but currently
+    # has no consumer.
     left_quote_type: Optional[str] = None  # Quote type for left operand
     right_quote_type: Optional[str] = None  # Quote type for right operand
 
@@ -409,10 +419,11 @@ class EnhancedTestStatement(Statement):
 
 
 # =============================================================================
-# UNIFIED CONTROL STRUCTURE TYPES (Phase 3 Refactoring)
+# UNIFIED CONTROL STRUCTURE TYPES
 # =============================================================================
-# These unified types can serve as both Statement and Command depending on
-# They will eventually replace the dual Statement/Command types above.
+# These types serve as both Statement and Command: each inherits from both
+# Statement and CompoundCommand, so a control structure can appear at
+# statement level or as a pipeline component.
 
 
 class UnifiedControlStructure(Statement, CompoundCommand):
@@ -446,6 +457,9 @@ class ForLoop(UnifiedControlStructure):
     body: StatementList     # Commands to execute for each iteration
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False  # Only used in pipeline context
+    # Legacy quote metadata pending Word-AST migration (items are plain
+    # strings, not Words). Consumed by executor/control_flow.py to decide
+    # per-item expansion/splitting.
     item_quote_types: List[Optional[str]] = field(default_factory=list)  # Quote types for items
 
 
@@ -488,6 +502,9 @@ class SelectLoop(UnifiedControlStructure):
     body: StatementList
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False
+    # Legacy quote metadata pending Word-AST migration (items are plain
+    # strings, not Words). Consumed by executor/control_flow.py to decide
+    # per-item expansion/splitting.
     item_quote_types: List[Optional[str]] = field(default_factory=list)  # Quote types for items
 
 

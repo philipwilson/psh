@@ -7,16 +7,19 @@ This document provides guidance for working with the PSH interactive shell and j
 The interactive subsystem handles the shell's REPL loop, history, completion, and job control for managing background processes.
 
 ```
-Interactive Shell
+InteractiveManager (base.py)
        ↓
-┌──────┴──────┬──────────┬──────────┬──────────┐
-↓             ↓          ↓          ↓          ↓
-REPL       History   Completion  Prompt    Signal
-Loop       Manager    Manager   Manager   Manager
-                                              ↓
-                                        Job Control
-                                        (job_control.py)
+┌──────┴──────┬──────────┬──────────┐
+↓             ↓          ↓          ↓
+REPL       History    Prompt     Signal
+Loop       Manager    Manager    Manager
+  ↓                                  ↓
+Line Editor                    Job Control
+(CompletionEngine inside)   (executor/job_control.py)
 ```
+
+Tab completion is NOT a separate manager: it is `CompletionEngine`
+(`tab_completion.py`), owned by the `LineEditor`.
 
 ## Key Files
 
@@ -25,9 +28,19 @@ Loop       Manager    Manager   Manager   Manager
 | File | Purpose |
 |------|---------|
 | `repl_loop.py` | `REPLLoop` - main Read-Eval-Print Loop |
-| `history_manager.py` | `HistoryManager` - command history |
-| `prompt_manager.py` | `PromptManager` - prompt generation |
-| `signal_manager.py` | `SignalManager` - signal handling, SIGCHLD |
+| `line_editor.py` | `LineEditor` - raw-mode line editing, rendering, key dispatch |
+| `line_layout.py` | Pure layout math (row/col positions, prompt width, wrapping) |
+| `line_editor_helpers.py` | `convert_multiline_to_single()` - cmdhist-style joining |
+| `keybindings.py` | `EditMode`, `EmacsKeyBindings`, `ViKeyBindings` |
+| `multiline_handler.py` | `MultiLineInputHandler` - PS2 continuation, incomplete-command detection |
+| `tab_completion.py` | `CompletionEngine` - path completion (used by LineEditor) |
+| `terminal.py` | `TerminalManager` - raw-mode enter/exit context manager |
+| `history_manager.py` | `HistoryManager` - command history storage/persistence |
+| `history_expansion.py` | `HistoryExpander` - `!!`, `!n`, `!string` expansion |
+| `prompt_manager.py` | `PromptManager` - PS1/PS2 retrieval and expansion |
+| `prompt.py` | `PromptExpander` - `\u`, `\h`, `\w`... escape expansion |
+| `signal_manager.py` | `SignalManager` - signal handling, SIGCHLD/SIGWINCH self-pipes |
+| `title.py` | Terminal title (`set_terminal_title`, `idle_title`, `command_title`) |
 | `rc_loader.py` | `load_rc_file` / `is_safe_rc_file` - startup RC loading |
 | `base.py` | `InteractiveComponent` base class, `InteractiveManager` orchestrator |
 
@@ -70,6 +83,7 @@ class Job:
         self.processes = []       # List of Process
         self.state = JobState.RUNNING
         self.foreground = True
+        self.notified = False
         self.tmodes = None        # Terminal modes when suspended
 ```
 
@@ -83,7 +97,8 @@ class JobManager:
         self.current_job = None    # Most recent job (%)
         self.previous_job = None   # Previous job (%-)
         self.shell_pgid = os.getpgrp()
-        self.shell_tmodes = None   # Shell's terminal modes
+        self.shell_tmodes = None   # Shell's terminal modes (saved at init)
+        self.shell_state = None    # Set by shell via set_shell_state()
 ```
 
 ## Job Specification Parsing
@@ -93,17 +108,31 @@ class JobManager:
 | `%n` | Job number n |
 | `%+` or `%%` | Current job |
 | `%-` | Previous job |
-| `%string` | Job starting with string |
-| `%?string` | Job containing string |
+| `%string` | Job whose command starts with string |
+| `pid` | Bare number: job containing that PID |
 
 ```python
 def parse_job_spec(self, spec: str) -> Optional[Job]:
-    if spec == '%' or spec == '%%' or spec == '%+':
+    """Parse job specification like %1, %+, %-, %string."""
+    if not spec:
         return self.current_job
-    elif spec == '%-':
+    if not spec.startswith('%'):
+        try:
+            return self.get_job_by_pid(int(spec))  # bare PID
+        except ValueError:
+            return None
+    spec = spec[1:]
+    if spec in ('+', '', '%'):
+        return self.current_job
+    elif spec == '-':
         return self.previous_job
-    elif spec.startswith('%') and spec[1:].isdigit():
-        return self.get_job(int(spec[1:]))
+    elif spec.isdigit():
+        return self.get_job(int(spec))
+    else:  # match by command prefix
+        for job in self.jobs.values():
+            if job.command.startswith(spec):
+                return job
+        return None
 ```
 
 ## Interactive Components
@@ -111,7 +140,7 @@ def parse_job_spec(self, spec: str) -> Optional[Job]:
 ### REPL Loop
 
 ```python
-class REPLLoop:
+class REPLLoop(InteractiveComponent):
     def run(self):
         self.setup()  # Creates LineEditor + MultiLineInputHandler
 
@@ -126,32 +155,99 @@ class REPLLoop:
                     self.job_manager.notify_completed_jobs()
                 self.job_manager.notify_stopped_jobs()
 
-                # 3. Read command (may span multiple lines via MultiLineInputHandler)
-                command = self.multi_line_handler.read_command()
+                # 3. Idle terminal title, then read a (possibly multi-line) command
+                set_terminal_title(idle_title(self.shell))
+                on_resize = lambda: set_terminal_title(idle_title(self.shell))
+                command = self.multi_line_handler.read_command(on_resize=on_resize)
+
+                if command is None:  # EOF (Ctrl-D)
+                    print()
+                    break
 
                 # 4. Execute via unified input system
-                if command and command.strip():
+                if command.strip():
                     self.shell.run_command(command)
 
-            except EOFError:
-                break
             except KeyboardInterrupt:
                 self.multi_line_handler.reset()
                 print("^C")
-                self.state.last_exit_code = 130
+                self.state.last_exit_code = 130  # 128 + SIGINT(2)
+                continue
+            except EOFError:
+                print()
+                break
 
-        # Save history on exit
+        # Run the EXIT trap (e.g. on Ctrl-D), then save history on exit
+        if hasattr(self.shell, 'trap_manager'):
+            self.shell.trap_manager.execute_exit_trap()
         self.history_manager.save_to_file()
 ```
 
+### Line Editor
+
+`line_editor.py` is the core of the subsystem: a raw-mode editor with
+emacs and vi modes (no readline). Structure:
+
+- **Rendering**: `_paint()` draws prompt + buffer from scratch;
+  `_redraw()` repaints after an edit; `_move_cursor_to(pos)` emits only
+  cursor movement. All geometry (rows/columns for a given prompt length,
+  buffer position, and terminal width) is pure math in `line_layout.py`
+  (`position()`, `total_rows()`, `at_row_boundary()`), so wrapping logic
+  is unit-testable without a tty.
+- **Key dispatch**: `keybindings.py` maps keys to action names
+  (`EmacsKeyBindings`, `ViKeyBindings`, selected via `EditMode` /
+  `set -o vi`); `_execute_action()` runs them.
+- **Centralized escape parsing** (v0.283): `_read_escape_sequence()` is
+  THE only input-side ANSI parser. It consumes a full CSI/SS3 sequence
+  and returns a symbolic key (`'up'`, `'down'`, `'left'`, `'right'`,
+  `'home'`, `'end'`, `'delete'`) — *above* the emacs/vi split, so both
+  modes share arrow-key handling and unrecognized sequences never leak
+  into the buffer.
+- **Completion**: `CompletionEngine` (`tab_completion.py`) does path
+  completion; the editor owns the instance.
+- **Raw mode**: `TerminalManager` (`terminal.py`) is a context manager
+  for termios raw-mode enter/exit.
+- **Multi-line input**: `MultiLineInputHandler` (`multiline_handler.py`)
+  wraps the editor, detecting incomplete commands and prompting with PS2
+  until a complete logical command is read.
+
+### History: Single Writer
+
+History has exactly ONE writer (v0.283): the source processor
+(`psh/scripting/source_processor.py`) calls `shell.add_history()` with the
+complete logical command — the line editor records nothing itself.
+`HistoryManager.add_to_history()` joins a multi-line command into its
+single-line `; ` form (bash cmdhist), except newlines inside quotes or
+heredocs are preserved verbatim. Recording happens before parsing, so
+syntactically invalid commands are still recallable for editing.
+
 ### Signal Handling
 
+**Where handlers are installed**: process-global signal handlers are set
+up at the two entry points only — `psh/__main__.py` (script/`-c` modes)
+and `InteractiveManager.run_interactive_loop()` (`base.py`) — NOT at
+manager construction. Every `Shell` builds an `InteractiveManager`, but an
+in-process test shell or library embedder must not take over the process's
+signal dispositions, so `SignalManager.__init__` only creates the
+self-pipes; `setup_signal_handlers()` is called explicitly at the entry
+points (it picks script-mode vs interactive-mode handler sets via
+`state.is_script_mode`).
+
 ```python
-class SignalManager:
+class SignalManager(InteractiveComponent):
     def __init__(self, shell):
+        super().__init__(shell)
         # SignalNotifier wraps a self-pipe (os.pipe()) for async-signal-safe notification
         self._sigchld_notifier = SignalNotifier()
         self._sigwinch_notifier = SignalNotifier()
+        self._in_sigchld_processing = False  # reentrancy guard
+
+    def setup_signal_handlers(self):
+        """Configure signal handlers based on shell mode."""
+        if self.state.is_script_mode:
+            self._setup_script_mode_handlers()
+        else:
+            self._setup_interactive_mode_handlers()
 
     def _handle_sigchld(self, signum, frame):
         # Async-signal-safe: just writes a byte to the pipe
@@ -159,20 +255,9 @@ class SignalManager:
 
     def process_sigchld_notifications(self):
         # Called from REPL loop — drains pipe, then reaps children
-        notifications = self._sigchld_notifier.drain_notifications()
-        if not notifications:
-            return
-        while True:
-            try:
-                pid, status = os.waitpid(-1, os.WNOHANG | os.WUNTRACED)
-                if pid == 0:
-                    break
-                job = self.job_manager.get_job_by_pid(pid)
-                if job:
-                    job.update_process_status(pid, status)
-                    job.update_state()
-            except OSError:
-                break
+        # (waitpid WNOHANG|WUNTRACED loop, updating job states) outside
+        # signal-handler context, guarded against reentrancy.
+        ...
 ```
 
 ## Common Tasks
@@ -183,16 +268,15 @@ class SignalManager:
 ```python
 @builtin
 class MyJobBuiltin(Builtin):
-    name = "myjob"
+    @property
+    def name(self) -> str:
+        return "myjob"
 
     def execute(self, args, shell):
         job_manager = shell.job_manager
 
-        # Parse job spec
-        if len(args) > 1:
-            job = job_manager.parse_job_spec(args[1])
-        else:
-            job = job_manager.current_job
+        # Parse job spec ('' → current job)
+        job = job_manager.parse_job_spec(args[1] if len(args) > 1 else '')
 
         if not job:
             self.error("no such job", shell)
@@ -204,74 +288,93 @@ class MyJobBuiltin(Builtin):
 
 ### Foreground a Job
 
+The `fg` sequence lives in `FgBuiltin` (`psh/builtins/job_control.py`),
+built from `JobManager` primitives. Terminal-mode restores use `TCSANOW`
+(v0.271 — the drain variants block on a pty whose master isn't being
+read):
+
 ```python
-def foreground_job(self, job: Job):
-    # 1. Give terminal control to job's process group
-    try:
-        os.tcsetpgrp(0, job.pgid)
-    except OSError:
-        pass
+# From FgBuiltin.execute (trimmed):
+self.write_line(job.command, shell)
 
-    # 2. Restore job's terminal modes
-    if job.tmodes:
-        termios.tcsetattr(0, termios.TCSADRAIN, job.tmodes)
+# Give it terminal control FIRST, before SIGCONT — a resumed job that
+# reads the terminal before the transfer would be stopped by SIGTTIN.
+shell.job_manager.set_foreground_job(job)   # restores job.tmodes (TCSANOW)
+job.foreground = True
+if not shell.job_manager.transfer_terminal_control(job.pgid, "fg builtin"):
+    ...error...
 
-    # 3. Continue stopped processes
-    os.killpg(job.pgid, signal.SIGCONT)
+if job.state == JobState.STOPPED:
+    for proc in job.processes:
+        proc.stopped = False
     job.state = JobState.RUNNING
-    job.foreground = True
+    os.killpg(job.pgid, signal.SIGCONT)
 
-    # 4. Wait for job
-    self.wait_for_job(job)
+exit_status = shell.job_manager.wait_for_job(job)
 
-    # 5. Return terminal to shell
-    os.tcsetpgrp(0, self.shell_pgid)
-    termios.tcsetattr(0, termios.TCSADRAIN, self.shell_tmodes)
+# Reclaim the terminal and clear foreground-job bookkeeping
+shell.job_manager.restore_shell_foreground()
 ```
 
 ### Background a Job
 
+From `BgBuiltin.execute` (trimmed):
+
 ```python
-def background_job(self, job: Job):
-    # Continue stopped processes in background
-    os.killpg(job.pgid, signal.SIGCONT)
+if job.state == JobState.STOPPED:
+    for proc in job.processes:
+        proc.stopped = False
     job.state = JobState.RUNNING
     job.foreground = False
-    print(f"[{job.job_id}]+ {job.command} &")
+    os.killpg(job.pgid, signal.SIGCONT)
+    self.write_line(f"[{job.job_id}]+ {job.command} &", shell)
 ```
 
 ## Key Implementation Details
 
 ### Terminal Control Transfer
 
+`JobManager.transfer_terminal_control()` is the single source of truth
+for ALL `tcsetpgrp()` calls — every executor that hands the terminal to a
+foreground job (or reclaims it) goes through here, so capability checks
+and debug logging live in one place:
+
 ```python
-def transfer_terminal_control(self, pgid: int):
-    """Give terminal control to a process group."""
-    try:
-        os.tcsetpgrp(0, pgid)  # 0 = stdin
-    except OSError as e:
-        # May fail if not controlling terminal
-        pass
+def transfer_terminal_control(self, pgid: int, context: str = "") -> bool:
+    """Transfer terminal control to a process group.
+
+    Returns True if transfer was successful, False otherwise.
+    Skips (returns False) when shell_state.supports_job_control is off.
+    """
 ```
+
+The shell-side counterpart is `restore_shell_foreground()`: reclaim the
+terminal, restore the shell's terminal modes, clear foreground
+bookkeeping (in that order — restoring modes while another process group
+owns the terminal blocks).
 
 ### Reaping Children
 
+Reaping happens in `SignalManager.process_sigchld_notifications()`
+(called from the REPL loop, outside signal-handler context):
+
 ```python
-def _reap_children(self):
-    """Collect terminated children and update job states."""
-    while True:
-        try:
-            pid, status = os.waitpid(-1, os.WNOHANG | os.WUNTRACED)
-            if pid == 0:
-                break
-
-            job = self.get_job_by_pid(pid)
-            if job:
-                job.update_process_status(pid, status)
-                job.update_state()
-
-        except ChildProcessError:
-            break  # No more children
+while True:
+    try:
+        pid, status = os.waitpid(-1, os.WNOHANG | os.WUNTRACED)
+        if pid == 0:
+            break
+        job = self.job_manager.get_job_by_pid(pid)
+        if job:
+            job.update_process_status(pid, status)
+            job.update_state()
+            if job.state == JobState.STOPPED and job.foreground:
+                job.notified = False
+                # Foreground job stopped — take the terminal back
+                self.job_manager.transfer_terminal_control(
+                    os.getpgrp(), "SignalManager:SIGCHLD")
+    except OSError:
+        break  # No more children
 ```
 
 ### Job Notification
@@ -279,19 +382,24 @@ def _reap_children(self):
 ```python
 def notify_completed_jobs(self):
     """Print notifications for completed background jobs."""
-    for job in list(self.jobs.values()):
-        if job.state == JobState.DONE and not job.notified:
-            if not job.foreground:
-                print(f"\n[{job.job_id}]+  Done  {job.command}")
+    completed = []
+    for job_id, job in list(self.jobs.items()):
+        if job.state == JobState.DONE and not job.notified and not job.foreground:
+            print(f"\n[{job.job_id}]+  Done                    {job.command}")
             job.notified = True
-            self.remove_job(job.job_id)
+            completed.append(job_id)
+    # Remove completed jobs after notification
+    ...
 ```
 
 ## Testing
 
 ```bash
-# Run job control tests
-python -m pytest tests/unit/job_control/ -v
+# Run job control tests (serial-marked; don't run under bare -n auto)
+python -m pytest tests/unit/builtins/test_job_control_builtins.py tests/integration/job_control/ -v
+
+# Line editor unit tests (no tty needed — layout math is pure)
+python -m pytest tests/unit/test_line_editor_unit.py tests/unit/test_line_editor_multiline.py -v
 
 # Run interactive tests (may require special handling)
 python -m pytest tests/system/interactive/ -v
@@ -337,7 +445,8 @@ python -m psh --debug-exec  # Debug process groups and signals
 
 - `state.last_bg_pid` updated for `$!`
 - `state.supports_job_control` checked before terminal ops
-- `state.options['monitor']` enables job notifications
+- `state.options['notify']` (-b) enables immediate job-completion notifications;
+  `state.options['monitor']` (-m) is job control mode
 
 ### With Builtins (`psh/builtins/`)
 

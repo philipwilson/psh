@@ -12,8 +12,6 @@ class ParsingMode(Enum):
     """Different parsing modes for shell compatibility."""
     STRICT_POSIX = "strict_posix"    # Strict POSIX compliance
     BASH_COMPAT = "bash_compat"      # Bash compatibility mode
-    PERMISSIVE = "permissive"        # Permissive parsing
-    EDUCATIONAL = "educational"      # Educational mode with extra help
 
 
 class ErrorHandlingMode(Enum):
@@ -40,7 +38,6 @@ class ParserConfig:
     max_errors: int = 10
     collect_errors: bool = False
     enable_error_recovery: bool = False
-    show_error_suggestions: bool = True
 
     # === Language Features (read by parser) ===
     enable_arithmetic: bool = True
@@ -57,18 +54,6 @@ class ParserConfig:
             error_handling=ErrorHandlingMode.STRICT,
             allow_bash_conditionals=False,
             allow_bash_arithmetic=False,
-        )
-
-    @classmethod
-    def permissive(cls) -> 'ParserConfig':
-        """Create permissive configuration for error tolerance."""
-        return cls(
-            parsing_mode=ParsingMode.PERMISSIVE,
-            error_handling=ErrorHandlingMode.RECOVER,
-            max_errors=50,
-            collect_errors=True,
-            enable_error_recovery=True,
-            show_error_suggestions=True,
         )
 
     def clone(self, **overrides) -> 'ParserConfig':

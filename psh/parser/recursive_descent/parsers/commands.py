@@ -46,8 +46,8 @@ class CommandParser:
         # Patterns: >&N, <&N, N>&M, N<&M, >&-, <&-
         return bool(_FD_DUP_RE.match(value))
 
-    def _raise_unclosed_expansion_error(self, msg: str, token: Token) -> None:
-        """Raise a ParseError for an unclosed expansion."""
+    def _raise_syntax_error(self, msg: str, token: Token) -> None:
+        """Raise a ParseError with the given message at the given token."""
         error_context = ErrorContext(
             token=token,
             message=msg,
@@ -70,25 +70,25 @@ class CommandParser:
                     fmt = _UNCLOSED_EXPANSION_MSGS.get(part.expansion_type)
                     if fmt:
                         desc, prefix, skip = fmt
-                        error_msg = f"Syntax error: {desc} '{prefix}{part.value[skip:]}'"
+                        error_msg = f"syntax error: {desc} '{prefix}{part.value[skip:]}'"
                     else:
-                        error_msg = f"Syntax error: unclosed expansion '{part.value}'"
+                        error_msg = f"syntax error: unclosed expansion '{part.value}'"
 
-                    self._raise_unclosed_expansion_error(error_msg, token)
+                    self._raise_syntax_error(error_msg, token)
 
         # Also check for specific token types that indicate unclosed expansions
         if token.type == TokenType.COMMAND_SUB and not token.value.endswith(')'):
-            self._raise_unclosed_expansion_error(
-                f"Syntax error: unclosed command substitution '{token.value}'", token)
+            self._raise_syntax_error(
+                f"syntax error: unclosed command substitution '{token.value}'", token)
         elif token.type == TokenType.COMMAND_SUB_BACKTICK and token.value.count('`') == 1:
-            self._raise_unclosed_expansion_error(
-                f"Syntax error: unclosed backtick substitution '{token.value}'", token)
+            self._raise_syntax_error(
+                f"syntax error: unclosed backtick substitution '{token.value}'", token)
         elif token.type == TokenType.ARITH_EXPANSION and not token.value.endswith('))'):
-            self._raise_unclosed_expansion_error(
-                f"Syntax error: unclosed arithmetic expansion '{token.value}'", token)
+            self._raise_syntax_error(
+                f"syntax error: unclosed arithmetic expansion '{token.value}'", token)
         elif token.type == TokenType.VARIABLE and token.value.startswith('${') and not token.value.endswith('}'):
-            self._raise_unclosed_expansion_error(
-                f"Syntax error: unclosed parameter expansion '{token.value}'", token)
+            self._raise_syntax_error(
+                f"syntax error: unclosed parameter expansion '{token.value}'", token)
 
     def parse_command(self) -> SimpleCommand:
         """Parse a single command with its arguments and redirections."""
@@ -109,8 +109,8 @@ class CommandParser:
         """Validate that we're at a valid command start position."""
         # Check for unexpected tokens
         if self.parser.match_any(TokenGroups.CASE_TERMINATORS):
-            self._raise_unclosed_expansion_error(
-                f"Syntax error near unexpected token '{self.parser.peek().value}'",
+            self._raise_syntax_error(
+                f"syntax error near unexpected token '{self.parser.peek().value}'",
                 self.parser.peek()
             )
 
@@ -338,36 +338,52 @@ class CommandParser:
         elif self.parser.match(TokenType.CONTINUE):
             return self.parse_continue_statement()
         elif self.parser.match(TokenType.LPAREN):
-            # Check for bash-incompatible syntax: escaped dollar followed by parenthesis
-            # This is a syntax error in bash: echo \$(echo test), echo \\\$(echo test)
-            if self.parser.current > 0:
-                prev_token = self.parser.tokens[self.parser.current - 1]
-                if (prev_token.type == TokenType.WORD and
-                    prev_token.value.endswith('\\$')):
-                    # Check if it's truly an escaped dollar (odd number of backslashes before $)
-                    # Count trailing backslashes before the $
-                    num_backslashes = 0
-                    for i in range(len(prev_token.value) - 2, -1, -1):
-                        if prev_token.value[i] == '\\':
-                            num_backslashes += 1
-                        else:
-                            break
-
-                    # If odd number of backslashes, the $ is escaped
-                    if num_backslashes % 2 == 1:
-                        # This matches bash behavior which treats \$( as a syntax error
-                        error_context = ErrorContext(
-                            token=self.parser.peek(),
-                            message="syntax error near unexpected token '('",
-                            position=self.parser.peek().position
-                        )
-                        raise ParseError(error_context)
+            self._reject_escaped_dollar_paren()
             return self.parse_subshell_group()
         elif self.parser.match(TokenType.LBRACE):
             return self.parse_brace_group()
         else:
             # Fall back to simple command
             return self.parse_command()
+
+    def _reject_escaped_dollar_paren(self) -> None:
+        """Reject `\\$(`-style constructs, matching bash's syntax error.
+
+        In `echo \\$(echo test)` the backslash escapes the dollar, so `$(`
+        is not a command substitution: the lexer emits a WORD ending in
+        `\\$` followed by a bare LPAREN. Bash treats this as a syntax error
+        ("syntax error near unexpected token `('") rather than a subshell.
+
+        The check lives in the parser, not the lexer, because only here do
+        we see the WORD/LPAREN token *pair*: the lexer has already (correctly)
+        tokenized each piece on its own, and a bare LPAREN is normally a
+        valid subshell start. We count the backslashes preceding the `$` in
+        the previous WORD token — an odd count means the dollar is escaped
+        (e.g. `\\$(` and `\\\\\\$(`), while an even count means the backslashes
+        escape each other and the `$(` is a real command substitution.
+
+        Raises ParseError if the LPAREN at the current position follows an
+        escaped dollar; otherwise returns normally.
+        """
+        if self.parser.current == 0:
+            return
+        prev_token = self.parser.tokens[self.parser.current - 1]
+        if not (prev_token.type == TokenType.WORD and
+                prev_token.value.endswith('\\$')):
+            return
+
+        # Count trailing backslashes before the $
+        num_backslashes = 0
+        for i in range(len(prev_token.value) - 2, -1, -1):
+            if prev_token.value[i] == '\\':
+                num_backslashes += 1
+            else:
+                break
+
+        # If odd number of backslashes, the $ is escaped
+        if num_backslashes % 2 == 1:
+            self._raise_syntax_error(
+                "syntax error near unexpected token '('", self.parser.peek())
 
     def parse_argument_as_word(self) -> 'Word':
         """Parse an argument as a Word AST node with expansions.
