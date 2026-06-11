@@ -123,15 +123,20 @@ class SignalNotifier:
         return notifications
 
     def close(self):
-        """Clean up pipe resources."""
-        try:
-            os.close(self._pipe_r)
-        except OSError:
-            pass
-        try:
-            os.close(self._pipe_w)
-        except OSError:
-            pass
+        """Clean up pipe resources (idempotent).
+
+        The fds are marked closed (-1) so a second close() — e.g. explicit
+        cleanup followed by __del__ at garbage collection — cannot close an
+        unrelated fd that was since allocated the same number.
+        """
+        for attr in ('_pipe_r', '_pipe_w'):
+            fd = getattr(self, attr, -1)
+            if fd >= 0:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                setattr(self, attr, -1)
 
     def __del__(self):
         """Automatic cleanup on garbage collection."""

@@ -76,12 +76,13 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
 
             # All parameter-expansion operators (colon and non-colon) go
             # through the single application path in expand_parameter_direct.
-            try:
-                operator, var_name, operand = self.param_expansion.parse_expansion('${' + var_content + '}')
-                if operator:
-                    return self.expand_parameter_direct(operator, var_name, operand)
-            except (ValueError, AttributeError):
-                pass
+            # Errors propagate: user-facing failures are raised as
+            # ExpansionError/UnboundVariableError by the operator handlers;
+            # swallowing ValueError/AttributeError here (as pre-v0.300 code
+            # did) silently degraded operator bugs to plain-${var} expansion.
+            operator, var_name, operand = self.param_expansion.parse_expansion('${' + var_content + '}')
+            if operator:
+                return self.expand_parameter_direct(operator, var_name, operand)
 
             # No operator: a plain ${var}. Honor nounset. The error already
             # carries bash's message format; do not re-wrap (a "psh: " prefix
