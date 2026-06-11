@@ -305,4 +305,6 @@ python -m psh --debug-expansion # Variable and command substitution
 - Per-command redirections: `io_manager.with_redirections(redirects)`
   (context manager) or `apply_redirections()` / restore
 - Builtin stream redirections: `io_manager.setup_builtin_redirections(command)`
+  returns a per-invocation `BuiltinRedirectFrame`; pass it to
+  `restore_builtin_redirections(frame)` (frames nest — eval/source/traps)
 - Forked-child redirections: `io_manager.setup_child_redirections(command)`

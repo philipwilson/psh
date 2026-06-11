@@ -40,6 +40,21 @@ order-aware: the ORIGINAL stream objects are recorded first-touch-wins
 exactly the files setup opened are closed (never whatever happens to be in
 ``sys.stdout`` — after ``cmd 2>&1`` that IS the shell's real stdout), and a
 failure part-way through setup rolls back everything already applied.
+
+Nesting: per-invocation frames
+==============================
+
+Builtin redirections NEST: ``eval "echo one >&3" 3>&1`` opens a frame for
+the eval, then the eval'd ``echo`` opens an inner frame while the outer is
+still active (likewise ``source file 3>&1`` for the file's commands, and
+trap handlers firing mid-builtin). Everything one invocation changed —
+fd-level dup2 saves, opened file objects, the stream snapshot — therefore
+lives in a :class:`BuiltinRedirectFrame` returned by setup and consumed by
+restore, never on the shared IOManager (manager-level lists conflated
+nested invocations: the inner restore drained the OUTER's saved fds,
+re-pointing e.g. fd 3 at its exec-time file mid-eval — fixed in v0.302).
+Frames are restored innermost-first; this LIFO discipline is guaranteed by
+the paired try/finally in ``_execute_builtin_with_redirections``.
 """
 import os
 import sys
@@ -61,9 +76,7 @@ class _BuiltinStreamSnapshot:
     First-touch-wins: with the same stream redirected twice
     (``echo hi >a >b``), restore must reinstate the ORIGINAL stream, not the
     file object the first redirect installed. ``note_*()`` records the
-    current stream only if nothing was recorded yet; the four attributes are
-    exactly the tuple ``setup_builtin_redirections`` returns and
-    ``restore_builtin_redirections`` accepts.
+    current stream only if nothing was recorded yet.
     """
 
     def __init__(self):
@@ -85,8 +98,29 @@ class _BuiltinStreamSnapshot:
         if self.stderr is None:
             self.stderr = sys.stderr
 
-    def as_tuple(self) -> Tuple:
-        return self.stdin, self.stdout, self.stderr, self.stdin_fd
+
+class BuiltinRedirectFrame:
+    """Everything ONE setup_builtin_redirections invocation changed.
+
+    Builtin redirections nest (eval/source/trap handlers run further
+    redirected builtins while an outer one is active), so this state must
+    be per-invocation, not manager-level: setup returns a frame, restore
+    consumes exactly that frame.
+
+    Process substitutions used as redirect targets are deliberately NOT
+    part of the frame — they are owned by the enclosing
+    ``process_sub_scope()`` (see ``_builtin_procsub_target``), which
+    already nests per command.
+    """
+
+    def __init__(self):
+        # Pre-redirect Python streams + dup of fd 0 (first-touch-wins).
+        self.snapshot = _BuiltinStreamSnapshot()
+        # (fd, saved_fd) pairs from fd-level redirects (fd >= 3, rare dups).
+        self.saved_fds: List[Tuple[int, int]] = []
+        # File objects this setup opened; restore closes exactly these
+        # (never whatever happens to be in sys.stdout/stderr).
+        self.opened_streams: List[TextIO] = []
 
 
 class IOManager:
@@ -100,11 +134,10 @@ class IOManager:
         self.file_redirector = FileRedirector(shell)
         self.process_sub_handler = ProcessSubstitutionHandler(shell)
 
-        # Track saved file descriptors for restoration
-        self._saved_fds_list = []
-        # File objects opened by setup_builtin_redirections; restore closes
-        # exactly these (never whatever happens to be in sys.stdout/stderr)
-        self._opened_streams = []
+        # Stack of active builtin redirection frames (innermost last).
+        # Used only to check the LIFO discipline documented on
+        # restore_builtin_redirections; the state itself lives in the frames.
+        self._builtin_frame_stack: List[BuiltinRedirectFrame] = []
 
 
     @contextmanager
@@ -137,25 +170,26 @@ class IOManager:
         """Apply redirections permanently (for exec builtin)."""
         return self.file_redirector.apply_permanent_redirections(redirects)
 
-    def setup_builtin_redirections(self, command: Command) -> Tuple:
+    def setup_builtin_redirections(self, command: Command) -> BuiltinRedirectFrame:
         """Set up redirections for a built-in command (see module docstring).
 
         Each redirect goes to the stream universe (fds 0/1/2, which builtins
         reach through Python stream objects) or the fd universe (fd >= 3,
         uncommon dups) — the dispatch table is in the module docstring.
 
-        Returns ``(stdin_backup, stdout_backup, stderr_backup,
-        stdin_fd_backup)`` for ``restore_builtin_redirections``.
+        Returns the :class:`BuiltinRedirectFrame` recording everything this
+        invocation changed; pass it to ``restore_builtin_redirections``.
         Transactional: a redirect failing part-way through (e.g.
-        ``echo hi >a >/bad/x``) rolls back everything already applied so the
-        shell's streams and fds are never left hijacked.
+        ``echo hi >a >/bad/x``) rolls back this frame — and only this
+        frame — so the shell's streams and fds (including any outer
+        invocation's) are never left hijacked.
         """
         if self.state.options.get('debug-exec'):
             print("DEBUG IOManager: setup_builtin_redirections called", file=sys.stderr)
             print(f"DEBUG IOManager: Redirects: {[(r.type, r.target, r.fd) for r in command.redirects]}", file=sys.stderr)
 
-        self._opened_streams = []
-        snapshot = _BuiltinStreamSnapshot()
+        frame = BuiltinRedirectFrame()
+        self._builtin_frame_stack.append(frame)
 
         try:
             for redirect in command.redirects:
@@ -164,20 +198,20 @@ class IOManager:
                 target = self._builtin_procsub_target(target)
 
                 if redirect.combined:
-                    self._builtin_redirect_combined(target, redirect, snapshot)
+                    self._builtin_redirect_combined(target, redirect, frame)
                 elif redirect.type in ('<', '<>', '<<', '<<-', '<<<'):
-                    self._builtin_redirect_stdin(target, redirect, snapshot)
+                    self._builtin_redirect_stdin(target, redirect, frame)
                 elif redirect.type in ('>', '>>', '>|'):
-                    self._builtin_redirect_output_file(target, redirect, snapshot)
+                    self._builtin_redirect_output_file(target, redirect, frame)
                 elif redirect.type == '>&':
-                    self._builtin_redirect_dup(redirect, snapshot)
+                    self._builtin_redirect_dup(redirect, frame)
                 elif redirect.type in ('<&', '>&-', '<&-'):
-                    self._builtin_redirect_fd_level(redirect)
+                    self._builtin_redirect_fd_level(redirect, frame)
         except Exception:
-            self.restore_builtin_redirections(*snapshot.as_tuple())
+            self.restore_builtin_redirections(frame)
             raise
 
-        return snapshot.as_tuple()
+        return frame
 
     def _builtin_procsub_target(self, target):
         """Resolve a process-substitution redirect target to its /dev/fd path.
@@ -198,27 +232,27 @@ class IOManager:
         return fd_path
 
     def _builtin_redirect_stdin(self, target, redirect,
-                                snapshot: _BuiltinStreamSnapshot):
+                                frame: BuiltinRedirectFrame):
         """``<``, ``<>``, heredoc, here-string for a builtin.
 
         Stdin is redirected in BOTH universes: the Python stream for the
         builtin itself (``read`` consumes ``sys.stdin``) and fd 0 — already
         dup2'd by the FileRedirector helpers called here — so any child
         spawned while the builtin runs inherits the redirected stdin. The
-        snapshot's ``stdin_fd`` (a dup of the original fd 0) undoes the
-        fd-level half on restore.
+        frame snapshot's ``stdin_fd`` (a dup of the original fd 0) undoes
+        the fd-level half on restore.
         """
         import io
-        snapshot.note_stdin()
+        frame.snapshot.note_stdin()
         if redirect.type == '<':
             self.file_redirector._redirect_input_from_file(target)
             f = open(target, 'r')
-            self._opened_streams.append(f)
+            frame.opened_streams.append(f)
             sys.stdin = f
         elif redirect.type == '<>':
             self.file_redirector._redirect_readwrite(target, redirect)
             f = open(target, 'r+')
-            self._opened_streams.append(f)
+            frame.opened_streams.append(f)
             sys.stdin = f
         elif redirect.type in ('<<', '<<-'):
             content = self.file_redirector._redirect_heredoc(redirect)
@@ -228,20 +262,20 @@ class IOManager:
             sys.stdin = io.StringIO(content)
 
     def _builtin_redirect_combined(self, target, redirect,
-                                   snapshot: _BuiltinStreamSnapshot):
+                                   frame: BuiltinRedirectFrame):
         """``&>`` / ``&>>`` for a builtin: one file object serves both streams."""
-        snapshot.note_stdout()
-        snapshot.note_stderr()
+        frame.snapshot.note_stdout()
+        frame.snapshot.note_stderr()
         is_append = redirect.type.endswith('>>')
         if not is_append and self.file_redirector._noclobber_blocks(target):
             raise OSError(f"cannot overwrite existing file: {target}")
         f = open(target, 'a' if is_append else 'w')
-        self._opened_streams.append(f)
+        frame.opened_streams.append(f)
         sys.stdout = f
         sys.stderr = f
 
     def _builtin_redirect_output_file(self, target, redirect,
-                                      snapshot: _BuiltinStreamSnapshot):
+                                      frame: BuiltinRedirectFrame):
         """``>``, ``>>``, ``>|`` for a builtin.
 
         For fd 1/2 the Python stream object is swapped (builtins write to
@@ -253,80 +287,124 @@ class IOManager:
         mode = 'a' if redirect.type == '>>' else 'w'
         target_fd = redirect.fd if redirect.fd is not None else 1
         if target_fd == 1:
-            snapshot.note_stdout()
+            frame.snapshot.note_stdout()
             f = open(target, mode)
-            self._opened_streams.append(f)
+            frame.opened_streams.append(f)
             sys.stdout = f
             if self.state.options.get('debug-exec'):
                 print(f"DEBUG IOManager: redirected stdout to '{target}' "
                       f"(mode {mode!r}); sys.stdout is now {sys.stdout}",
                       file=sys.stderr)
         elif target_fd == 2:
-            snapshot.note_stderr()
+            frame.snapshot.note_stderr()
             f = open(target, mode)
-            self._opened_streams.append(f)
+            frame.opened_streams.append(f)
             sys.stderr = f
         else:
-            self._builtin_redirect_fd_level(redirect)
+            self._builtin_redirect_fd_level(redirect, frame)
 
     def _builtin_redirect_dup(self, redirect,
-                              snapshot: _BuiltinStreamSnapshot):
+                              frame: BuiltinRedirectFrame):
         """``>&`` fd duplication for a builtin.
 
         For the common ``2>&1`` / ``1>&2`` cases the Python stream objects
         are swapped, so a builtin's writes interleave correctly and honour
-        redirect ordering. Any other dup (fd >= 3, ``n>&m``) is rare for a
-        builtin and handled at the fd level.
+        redirect ordering. ``1>&m`` / ``2>&m`` with m >= 3 (``echo x >&3``)
+        needs BOTH universes, like stdin: the fd-level dup so children
+        spawned during the builtin inherit it, AND a stream swap onto m's
+        open file description — the builtin writes through sys.stdout,
+        which may be a swapped file object not backed by fd 1 at all
+        (``eval "echo x >&3" >/dev/null``), so the dup2 alone would be
+        invisible to it. Dups of fds >= 3 (``3>&1``) have no stream
+        counterpart and are purely fd level.
         """
         if redirect.fd == 2 and redirect.dup_fd == 1:
-            snapshot.note_stderr()
+            frame.snapshot.note_stderr()
             sys.stderr = sys.stdout
         elif redirect.fd == 1 and redirect.dup_fd == 2:
-            snapshot.note_stdout()
+            frame.snapshot.note_stdout()
             sys.stdout = sys.stderr
+        elif redirect.fd in (1, 2) and redirect.dup_fd is not None:
+            # Validates dup_fd and dup2's it onto fd 1/2 (for children).
+            self._builtin_redirect_fd_level(redirect, frame)
+            # os.dup shares m's open file description (offset, O_APPEND);
+            # line buffering interleaves with fd-level writers — same
+            # pattern as FileRedirector._stream_sharing_fd for `exec`.
+            f = os.fdopen(os.dup(redirect.dup_fd), 'w', buffering=1)
+            frame.opened_streams.append(f)
+            if redirect.fd == 1:
+                frame.snapshot.note_stdout()
+                sys.stdout = f
+            else:
+                frame.snapshot.note_stderr()
+                sys.stderr = f
         else:
-            self._builtin_redirect_fd_level(redirect)
+            self._builtin_redirect_fd_level(redirect, frame)
 
-    def _builtin_redirect_fd_level(self, redirect):
+    def _builtin_redirect_fd_level(self, redirect,
+                                   frame: BuiltinRedirectFrame):
         """Descriptor-level fallback for redirects with no stream counterpart.
 
         FileRedirector applies the redirect to the real fd; the (fd,
-        saved_fd) pairs accumulate in ``self._saved_fds_list``, which
-        ``restore_builtin_redirections`` drains first.
+        saved_fd) pairs accumulate in ``frame.saved_fds``, which
+        ``restore_builtin_redirections`` drains first. They must live on
+        the frame, not the manager: a nested invocation (eval'd builtin
+        inside a redirected eval) restoring manager-level saves would
+        prematurely undo the OUTER command's fd redirects.
         """
         saved_fds = self.file_redirector.apply_redirections([redirect])
-        self._saved_fds_list.extend(saved_fds)
+        frame.saved_fds.extend(saved_fds)
 
-    def restore_builtin_redirections(self, stdin_backup, stdout_backup, stderr_backup, stdin_fd_backup=None):
-        """Restore original stdin/stdout/stderr after built-in execution"""
-        # Restore any file descriptors saved by file_redirector
-        if self._saved_fds_list:
-            self.file_redirector.restore_redirections(self._saved_fds_list)
-            self._saved_fds_list = []
+    def restore_builtin_redirections(self, frame: BuiltinRedirectFrame):
+        """Undo exactly what ``setup_builtin_redirections`` did for *frame*.
+
+        Frames must be restored innermost-first (LIFO). This is guaranteed
+        by construction — every setup is paired with a restore in a
+        ``try/finally`` (``_execute_builtin_with_redirections`` and the
+        rollback path in setup), so even with eval/source/trap-handler
+        nesting the Python call stack enforces the order. Out-of-order
+        restore would re-point fds 0-2 underneath a still-active inner
+        frame; it indicates a caller bug, so it is tolerated (each frame
+        owns its own state) but the stack bookkeeping below keeps the
+        invariant observable.
+        """
+        if self._builtin_frame_stack and self._builtin_frame_stack[-1] is frame:
+            self._builtin_frame_stack.pop()
+        elif frame in self._builtin_frame_stack:
+            # Caller bug (see docstring); still restore this frame's own
+            # state rather than leak fds/streams.
+            self._builtin_frame_stack.remove(frame)
+
+        # Restore any file descriptors this frame saved (fd >= 3 etc.)
+        if frame.saved_fds:
+            self.file_redirector.restore_redirections(frame.saved_fds)
+            frame.saved_fds = []
 
         # Restore the original stream objects first, then close exactly the
         # files setup opened. Never close whatever happens to be in
         # sys.stdout/sys.stderr: after `cmd 2>&1`, sys.stderr IS the shell's
         # real stdout, and closing it used to kill all builtin output for the
         # rest of the session.
-        if stderr_backup is not None:
-            sys.stderr = stderr_backup
-        if stdout_backup is not None:
-            sys.stdout = stdout_backup
-        if stdin_backup is not None:
-            sys.stdin = stdin_backup
+        snapshot = frame.snapshot
+        if snapshot.stderr is not None:
+            sys.stderr = snapshot.stderr
+        if snapshot.stdout is not None:
+            sys.stdout = snapshot.stdout
+        if snapshot.stdin is not None:
+            sys.stdin = snapshot.stdin
 
-        for f in self._opened_streams:
+        for f in frame.opened_streams:
             try:
                 f.close()
             except OSError:
                 pass
-        self._opened_streams = []
+        frame.opened_streams = []
 
         # Restore stdin file descriptor if it was saved
-        if stdin_fd_backup is not None:
-            os.dup2(stdin_fd_backup, 0)
-            os.close(stdin_fd_backup)
+        if snapshot.stdin_fd is not None:
+            os.dup2(snapshot.stdin_fd, 0)
+            os.close(snapshot.stdin_fd)
+            snapshot.stdin_fd = None
 
         # Process substitution resources are NOT cleaned up here: they are
         # owned by the enclosing process_sub_scope() (see CommandExecutor),
