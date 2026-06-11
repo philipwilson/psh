@@ -259,12 +259,12 @@ Red Text  # (displayed in red)
 psh$ echo $'\u2665 \u2663'
 ♥ ♣
 
-# Zero-prefixed octal works
-psh$ echo $'\0101'
-A
+# Octal sequences
+psh$ echo $'\101\102\103'
+ABC
 ```
 
-> **Note:** In PSH v0.187.1, `$'...'` supports `\n`, `\t`, `\r`, `\\`, `\'`, `\"`, `\a`, `\b`, `\f`, `\v`, `\e`, `\xHH` (hex), `\uNNNN` (Unicode), and `\0NNN` (zero-prefixed octal). Non-zero-prefixed octal (`\NNN`) is not yet supported; use the `\0NNN` form or `\xHH` hex form instead.
+> **Note:** PSH's `$'...'` supports `\n`, `\t`, `\r`, `\\`, `\'`, `\"`, `\a`, `\b`, `\f`, `\v`, `\e`, `\xHH` (hex), `\uNNNN` (Unicode), and `\NNN` (octal, with or without a leading zero), matching bash.
 
 ### The echo -e Syntax
 
@@ -609,11 +609,11 @@ $(date) expands to: $(date)
 EOF
 ```
 
-> **Note:** The backslash-escaped delimiter form (`<< \EOF`) is not supported in PSH v0.187.1. Use the single-quoted form (`<< 'EOF'`) instead to prevent expansion in heredocs.
+> **Note:** The backslash-escaped delimiter form (`<< \EOF`) is not supported in PSH. Use the single-quoted form (`<< 'EOF'`) instead to prevent expansion in heredocs.
 
 ### Locale Translation Quoting ($"...")
 
-> **Note:** The `$"..."` locale translation quoting syntax is not supported in PSH v0.187.1. It is treated as a literal `$` followed by a double-quoted string. This is a rarely used bash feature intended for internationalization (i18n) of shell scripts.
+> **Note:** PSH accepts the `$"..."` locale translation quoting syntax and treats it as an ordinary double-quoted string (variables and command substitutions expand normally). No message-catalog translation is performed — which matches bash's behavior when no translation catalog is loaded. This is a rarely used bash feature intended for internationalization (i18n) of shell scripts.
 
 ## Summary
 

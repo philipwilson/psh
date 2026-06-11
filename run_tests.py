@@ -208,11 +208,9 @@ Examples:
         print("  - Phase 2: Subshell tests with capture disabled (-s, serial)")
         print("=" * 80)
 
-        # Shared ignores: the subshell / -s tests run in their own phases below.
+        # Shared ignore: the subshell tests run in their own -s phase below.
         non_subshell_ignores = [
             '--ignore=tests/integration/subshells/',
-            '--ignore=tests/integration/functions/test_function_advanced.py',
-            '--ignore=tests/integration/variables/test_variable_assignment.py',
         ]
 
         # Phase 1: Regular tests. When parallel, exclude `serial`-marked tests
@@ -261,17 +259,7 @@ Examples:
             exit_code = run_command(cmd, "Phase 2: Subshell tests (with -s)", env=env)
             exit_codes.append(exit_code)
 
-            # Phase 3: Run the other tests that need -s
-            cmd = base_cmd + [
-                'tests/integration/functions/test_function_advanced.py::test_function_with_subshell',
-                'tests/integration/variables/test_variable_assignment.py::test_assignment_with_subshell',
-                '-s'
-            ]
-
-            exit_code = run_command(cmd, "Phase 3: Other tests needing -s", env=env)
-            exit_codes.append(exit_code)
-
-        # Phase 4 (opt-in): golden behavioral cases compared against bash.
+        # Phase 3 (opt-in): golden behavioral cases compared against bash.
         # Gated behind --compare-bash because it requires bash on PATH; the
         # comparison itself is locale-pinned (LC_ALL=C) so it is deterministic.
         if args.compare_bash:
@@ -280,7 +268,7 @@ Examples:
                 '--compare-bash',
             ]
             exit_code = run_command(
-                cmd, "Phase 4: Golden behavioral comparison vs bash", env=env)
+                cmd, "Phase 3: Golden behavioral comparison vs bash", env=env)
             exit_codes.append(exit_code)
 
     # Summary

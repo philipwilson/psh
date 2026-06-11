@@ -258,7 +258,7 @@ sBH
 
 # Shell version variable
 psh$ echo $PSH_VERSION
-0.187.1
+0.x.y    # The current PSH version
 
 # IFS (Internal Field Separator)
 # The default IFS splits on spaces, tabs, and newlines
@@ -338,19 +338,12 @@ psh$ echo ${unset:+exists}
 
 ### Indirect Expansion
 
-> **Note:** Indirect variable expansion (`${!varname}`) is not currently supported in PSH v0.187.1. The syntax is recognized but produces empty output. Use `eval` as a workaround if needed:
+Indirect variable expansion (`${!varname}`) expands to the value of the variable whose name is stored in `varname`:
 
 ```bash
-# Indirect expansion (not yet working in PSH)
-# psh$ color="red"
-# psh$ red="FF0000"
-# psh$ varname="red"
-# psh$ echo ${!varname}    # Returns empty in PSH
-
-# Workaround using eval
 psh$ red="FF0000"
 psh$ varname="red"
-psh$ eval "echo \$$varname"
+psh$ echo ${!varname}
 FF0000
 ```
 
@@ -469,7 +462,7 @@ psh$ echo ${str: -6:5}    # 5 chars starting 6 from end
 World
 ```
 
-> **Note:** Substring extraction on positional parameters (`${@:offset:length}`) is not yet supported in PSH v0.187.1. It currently treats the expression as a substring operation on the first positional parameter rather than selecting a range of arguments. Array slicing (`${array[@]:offset:length}`) works correctly.
+> **Note:** Slicing also works on positional parameters: `${@:offset:length}` selects a range of arguments rather than characters (e.g., `set -- a b c d; echo "${@:2:2}"` prints `b c`). Array slicing (`${array[@]:offset:length}`) behaves the same way.
 
 ### Case Modification
 
@@ -513,19 +506,17 @@ The Quick Brown Fox
 
 ### Variable Name Matching
 
-> **Note:** Variable name prefix matching (`${!prefix*}` and `${!prefix@}`) is not fully working in PSH v0.187.1. The syntax is recognized but currently returns all variable names rather than filtering by prefix. This is a known limitation.
+Variable name prefix matching (`${!prefix*}` and `${!prefix@}`) expands to the names of all variables that begin with `prefix`:
 
 ```bash
-# Variable name matching (not yet working correctly in PSH)
-# In bash, ${!USER*} lists only variables starting with USER
-# In PSH, it currently lists all variables
-
-# Workaround: use set and grep to find variables by prefix
-psh$ set | grep '^USER_'
-USER_NAME=Alice
-USER_AGE=25
-USER_CITY=NYC
+psh$ USER_NAME=Alice
+psh$ USER_AGE=25
+psh$ USER_CITY=NYC
+psh$ echo "${!USER_*}"
+USER_AGE USER_CITY USER_NAME
 ```
+
+> **Note:** Unlike bash, PSH's quoted `"${!prefix@}"` form expands to a single word rather than one word per variable name. Use the unquoted form (or `${!prefix*}`) when iterating over the names.
 
 ## 5.6 Local Variables in Functions
 
@@ -874,13 +865,14 @@ psh$ for file in "${files[@]}"; do
 > done
 ```
 
-> **Note:** Pattern removal (`${array[@]#pattern}`, `${array[@]##pattern}`, `${array[@]%pattern}`, `${array[@]%%pattern}`) applied to the `[@]` form is not yet supported in PSH v0.187.1. As a workaround, apply pattern removal inside a loop on individual elements:
+Pattern removal (`#`, `##`, `%`, `%%`) also applies to every element with the `[@]` form:
 
 ```bash
 psh$ paths=(/home/user/file1 /home/user/file2)
-psh$ for p in "${paths[@]}"; do echo "${p##*/}"; done
-file1
-file2
+psh$ echo "${paths[@]##*/}"
+file1 file2
+psh$ echo "${files[@]%.txt}"
+document image data
 ```
 
 ### Practical Array Examples
@@ -1199,7 +1191,7 @@ psh$ lookup_user alice
 psh$ classify_file document.pdf
 ```
 
-> **Note:** Multi-line compound initialization (`declare -A hash=(\n[key1]="val1"\n[key2]="val2"\n)`) is not supported in PSH v0.187.1. Use single-line compound initialization or assign elements individually instead.
+> **Note:** Multi-line compound initialization (`declare -A hash=(\n[key1]="val1"\n[key2]="val2"\n)`) is not supported in PSH. Use single-line compound initialization or assign elements individually instead.
 
 ### Best Practices for Associative Arrays
 

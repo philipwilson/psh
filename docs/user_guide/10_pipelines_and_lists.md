@@ -206,7 +206,13 @@ psh$ echo $?
 psh$ set +o pipefail
 ```
 
-> **Note:** The `PIPESTATUS` array (which captures the exit status of every command in a pipeline) is not currently supported in PSH.
+The `PIPESTATUS` array captures the exit status of every command in the most recent pipeline:
+
+```bash
+psh$ true | false | true
+psh$ echo "${PIPESTATUS[@]}"
+0 1 0
+```
 
 ### Capturing Pipeline Status
 
@@ -409,13 +415,23 @@ psh$ {
 > } || echo "Group failed"
 ```
 
-## Current Limitations
+## Pipeline Negation and |&
 
-The following pipeline-related features are not yet supported in PSH:
+PSH supports two more bash pipeline forms:
 
-- **Pipeline negation** (`!`): The `!` keyword to invert a pipeline's exit status (e.g., `! grep pattern file`) is not supported. Use `[ ! ... ]` inside test brackets for negation, or check `$?` after the command.
-- **PIPESTATUS array**: The bash `PIPESTATUS` array for capturing exit codes of all pipeline members is not available. Use `pipefail` to detect failures.
-- **|& syntax**: The `|&` shorthand for piping both stdout and stderr is not supported. Use `2>&1 |` instead.
+```bash
+# ! inverts the exit status of a pipeline
+psh$ ! false
+psh$ echo $?
+0
+psh$ if ! grep -q "error" logfile.txt; then
+>     echo "No errors found"
+> fi
+
+# |& pipes both stdout and stderr (shorthand for 2>&1 |)
+psh$ ls /nonexistent |& wc -l
+       1
+```
 
 ## Practical Examples
 
@@ -564,11 +580,6 @@ Key concepts:
 - Subshells isolate environment changes
 - Command groups affect the current shell
 - Control structures run in subshells when used in pipelines
-
-Current limitations:
-- `!` (pipeline negation) is not supported
-- `PIPESTATUS` array is not available
-- `|&` shorthand is not supported (use `2>&1 |`)
 
 Mastering pipelines enables you to build complex data processing workflows from simple commands. In the next chapter, we'll explore control structures for conditional execution and loops.
 

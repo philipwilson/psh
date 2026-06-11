@@ -449,11 +449,11 @@ echo "Major: $major, Minor: $minor, Patch: $patch"
 
 While PSH supports many pattern matching features, some limitations exist:
 
-1. **No BASH_REMATCH array** - Captured groups in `[[ string =~ regex ]]` aren't accessible via BASH_REMATCH
-2. **No capturing group syntax in regex** - Parenthesized groups in `=~` patterns are not supported by the parser
-3. **Limited backreferences** - Backreferences may not work in all contexts
-4. **No Perl-style extensions** - Advanced regex features like lookahead/lookbehind aren't supported
-5. **POSIX ERE only** - Extended regular expressions, not Perl-compatible (PCRE)
+1. **Limited backreferences** - Backreferences may not work in all contexts
+2. **No Perl-style extensions** - Advanced regex features like lookahead/lookbehind aren't supported (same as bash)
+3. **POSIX ERE only** - Extended regular expressions, not Perl-compatible (PCRE); same as bash
+
+Capturing groups in `[[ string =~ regex ]]` patterns are fully supported, and successful matches populate the `BASH_REMATCH` array (`${BASH_REMATCH[0]}` is the whole match, `${BASH_REMATCH[1]}` the first group, and so on).
 
 ## Quick Reference Card
 

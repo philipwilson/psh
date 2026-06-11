@@ -347,7 +347,7 @@ Many built-in commands have help text:
 
 ```bash
 psh$ help
-PSH Shell, version 0.187.1
+PSH Shell, version 0.x.y
 These shell commands are defined internally. Type 'help name' to find out more
 about the function 'name'.
 ...
@@ -363,14 +363,14 @@ echo: echo [-neE] [arg ...]
 
 ```bash
 psh$ python -m psh --version
-Python Shell (psh) version 0.187.1
+Python Shell (psh) version 0.x.y
 ```
 
 Or from within PSH:
 
 ```bash
 psh$ version
-Python Shell (psh) version 0.187.1
+Python Shell (psh) version 0.x.y
 ```
 
 ### Debug Output for Learning

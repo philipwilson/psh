@@ -255,7 +255,7 @@ PSH supports various escape sequences in strings:
 |----------|-------|-------------|---------|
 | `\a` | 7 | Alert (bell) | `echo -e "\a"` |
 | `\b` | 8 | Backspace | `echo -e "abc\b"` |
-| `\e` | 27 | Escape (not supported in PSH echo/printf) | N/A |
+| `\e` | 27 | Escape (supported in `echo -e` and `$'...'`; not in PSH `printf`) | `echo -e "\e[31m"` |
 | `\f` | 12 | Form feed | `echo -e "Page\fBreak"` |
 | `\n` | 10 | Newline | `echo -e "Line1\nLine2"` |
 | `\r` | 13 | Carriage return | `echo -e "abc\rXYZ"` |

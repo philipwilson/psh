@@ -326,9 +326,17 @@ psh$ ((x %= 4))    # x = x % 4
 psh$ echo $x
 2
 
+# Bitwise assignment
+psh$ x=12
+psh$ ((x &= 10))   # x = x & 10
+psh$ echo $x
+8
+psh$ ((x <<= 2))   # x = x << 2
+psh$ echo $x
+32
 ```
 
-> **Note:** Bitwise assignment operators (`&=`, `|=`, `^=`, `<<=`, `>>=`) are not yet supported in PSH v0.187.1. Use explicit assignment as a workaround: `((x = x & 3))` instead of `((x &= 3))`.
+The full set of compound assignment operators is supported: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, and `>>=`.
 
 ### Increment and Decrement
 

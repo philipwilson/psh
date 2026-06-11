@@ -1064,7 +1064,7 @@ The `help` builtin provides comprehensive documentation for PSH's built-in comma
 ```bash
 # Show all available builtins
 psh$ help
-PSH Shell, version 0.187.1
+PSH Shell, version 0.x.y
 These shell commands are defined internally. Type 'help name' to find out more
 about the function 'name'.
 
@@ -1187,7 +1187,7 @@ if is a shell keyword
 
 ```bash
 psh$ version
-Python Shell (psh) version 0.187.1
+Python Shell (psh) version 0.x.y
 ```
 
 ## 4.7 Script and Command Execution

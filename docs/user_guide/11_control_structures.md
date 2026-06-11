@@ -119,7 +119,13 @@ psh$ if [ "$age" -ge 18 ] && [ "$age" -le 65 ]; then
 > fi
 ```
 
-> **Note:** The `!` keyword for negating commands (e.g., `if ! command; then`) is not supported in PSH. Use `[ ! condition ]` inside test brackets, or structure your logic with `else` clauses instead.
+The `!` keyword negates a command's exit status, which is especially useful in conditionals:
+
+```bash
+psh$ if ! grep -q "$USER" /etc/passwd; then
+>     echo "User not in passwd file"
+> fi
+```
 
 ### If Statements in Pipelines
 
@@ -904,9 +910,21 @@ psh$ if [[ "$filename" =~ \.txt$ ]]; then
 Text file detected
 ```
 
-> **Note:** Regex capture groups (parentheses in patterns like `^([a-z]+)-([0-9]+)$`) are not currently supported in PSH and will cause parse errors. The `BASH_REMATCH` array is also not populated. Use simpler patterns without capture groups, or use parameter expansion operators (`${var#pattern}`, `${var%pattern}`) to extract substrings.
+Capture groups (parentheses in patterns) populate the `BASH_REMATCH` array after a successful match, and `!` negates conditions inside `[[ ]]`:
 
-> **Note:** Negation inside `[[ ]]` (e.g., `[[ ! -f file ]]`) is not supported. Use `[ ! -f file ]` with single brackets instead.
+```bash
+# Capture groups via BASH_REMATCH
+psh$ if [[ "abc-123" =~ ^([a-z]+)-([0-9]+)$ ]]; then
+>     echo "word=${BASH_REMATCH[1]} number=${BASH_REMATCH[2]}"
+> fi
+word=abc number=123
+
+# Negation inside [[ ]]
+psh$ if [[ ! -f /nonexistent ]]; then
+>     echo "Not a file"
+> fi
+Not a file
+```
 
 ## 11.9 Practical Examples
 
@@ -1075,11 +1093,6 @@ Key concepts:
 - Pattern matching in case statements supports wildcards, character classes, and ranges
 - Select provides interactive menus with automatic numbering
 - All control structures can be used as pipeline components
-
-Current limitations:
-- `!` (command/pipeline negation) is not supported
-- `[[ ! ... ]]` (negation inside double brackets) is not supported; use `[ ! ... ]`
-- `[[ =~ ]]` does not support capture groups or populate `BASH_REMATCH`
 
 ---
 
