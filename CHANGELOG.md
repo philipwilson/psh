@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.293.0 (2026-06-11) - Keyword case-sensitivity (reappraisal #2 Tier B, 3/6)
+- M6: shell reserved words are now matched case-sensitively like bash.
+  `IF true; then echo y; fi` executed in psh (bash: syntax error);
+  `FOR`/`WHILE`/`CASE`/`UNTIL`/`SELECT` likewise (uppercase SELECT even
+  hung on stdin). Now: uppercase keywords are ordinary words — lone `IF`
+  → command not found rc 127, `IF=3; echo $IF` → 3, mid-construct
+  uppercase (`THEN`, `ELIF`, `IN`) → syntax error, all matching bash.
+- Folding removed at every keyword site: keyword_normalizer.py (KEYWORDS
+  lookup + _next_command_position), keyword_defs.py matches_keyword_type
+  / matches_keyword / KeywordGuard (this one fix covers the entire
+  combinator parser — all its keyword checks funnel through
+  matches_keyword), token_types.py normalized_value (now a no-op).
+  The rd parser needed no change (it matches token types, which the
+  normalizer now only assigns to exact-lowercase words). Non-keyword
+  case handling (unicode opt-in identifiers, hex, ${var,,}) untouched.
+- Zero existing tests pinned the old behavior (swept). 10 new lexer
+  unit tests + 6 conformance tests (~20 commands) in
+  tests/conformance/bash/test_keyword_case_conformance.py.
+- Suite: 4,515 passed / 4,785 collected; ruff + mypy clean.
+
 ## 0.292.0 (2026-06-11) - io_redirect: exec single-open, noclobber, dual-universe docs (reappraisal #2 Tier B, 2/6)
 - Triple-open in apply_permanent_redirections fixed: `exec &>file` (and
   `>`, `>>`, `>|`, `2>file`) opened up to three independent file objects

@@ -38,7 +38,9 @@ class KeywordNormalizer:
         in_heredoc = False
 
         for token in tokens:
-            token_lower = token.value if token.value is None else token.value.lower()
+            # Keyword recognition is case-sensitive, matching bash: `IF` is an
+            # ordinary word, only the exact lowercase spelling is a keyword.
+            token_value = token.value
             converted_type: Optional[TokenType] = None
 
             # Track heredoc delimiters to avoid normalizing content lines.
@@ -70,17 +72,17 @@ class KeywordNormalizer:
                 command_position = False
                 continue
 
-            if token.type == TokenType.WORD and token_lower:
-                if pending_in and token_lower == 'in':
+            if token.type == TokenType.WORD and token_value:
+                if pending_in and token_value == 'in':
                     converted_type = TokenType.IN
                     pending_in = None
-                elif command_position and token_lower in KEYWORDS:
-                    if token_lower == 'in' and not pending_in:
+                elif command_position and token_value in KEYWORDS:
+                    if token_value == 'in' and not pending_in:
                         converted_type = None
                     else:
-                        converted_type = KEYWORD_TYPE_MAP.get(token_lower)
-                        if token_lower in {'for', 'select', 'case'}:
-                            pending_in = token_lower
+                        converted_type = KEYWORD_TYPE_MAP.get(token_value)
+                        if token_value in {'for', 'select', 'case'}:
+                            pending_in = token_value
 
             if converted_type:
                 token.type = converted_type
@@ -141,8 +143,8 @@ class KeywordNormalizer:
             return False
 
         if token.type == TokenType.WORD and token.value:
-            lowered = token.value.lower()
-            if lowered in self.CONTROL_KEYWORDS:
-                return lowered in {'if', 'while', 'until'}
+            # Exact (case-sensitive) match, as in bash.
+            if token.value in self.CONTROL_KEYWORDS:
+                return token.value in {'if', 'while', 'until'}
 
         return False
