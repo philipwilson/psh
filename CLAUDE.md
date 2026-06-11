@@ -92,6 +92,15 @@ After any change:
 ruff check psh/
 ```
 
+**Type checking**
+
+A non-strict mypy config lives in `pyproject.toml` (`[tool.mypy]`); the `files`
+list defines the checked scope (currently `psh/core/`, `psh/ast_nodes.py`,
+`psh/version.py`, and a few small pure modules). Run `mypy` (no arguments) and
+keep it passing — CI enforces it. The scope is intended to grow over time:
+keep new `psh/core/` code mypy-clean and add modules to the `files` list as
+they are cleaned up rather than loosening the config.
+
 ## Critical Information
 
 ### Bash-verification workflow (how behavior fixes are made)

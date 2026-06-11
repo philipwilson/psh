@@ -211,20 +211,22 @@ class ScopeManager:
                 scope_name = self.current_scope.name
             else:
                 # Search for existing variable in scope chain (bash behavior)
-                target_scope = None
+                found_scope: Optional[VariableScope] = None
                 for scope in reversed(self.scope_stack):
                     if name in scope.variables:
                         var = scope.variables[name]
                         # Skip unset tombstones when searching for existing variables
                         if not var.is_unset:
-                            target_scope = scope
-                            scope_name = scope.name
+                            found_scope = scope
                             break
 
-                if target_scope is None:
+                if found_scope is None:
                     # Variable doesn't exist anywhere, create in global scope
                     target_scope = self.global_scope
                     scope_name = "global"
+                else:
+                    target_scope = found_scope
+                    scope_name = found_scope.name
 
         # Create or update variable
         if name in target_scope.variables:
@@ -493,7 +495,7 @@ class ScopeManager:
     def sync_exports_to_environment(self, env: Dict[str, str]):
         """Sync variables with EXPORT attribute to environment."""
         # First, get all shell variables
-        all_shell_vars = set()
+        all_shell_vars: set[str] = set()
         for scope in self.scope_stack:
             all_shell_vars.update(scope.variables.keys())
 

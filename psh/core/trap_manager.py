@@ -221,7 +221,7 @@ class TrapManager:
 
         return sorted(signals)
 
-    def show_traps(self, signals: List[str] = None) -> str:
+    def show_traps(self, signals: Optional[List[str]] = None) -> str:
         """Show current trap settings.
 
         Args:

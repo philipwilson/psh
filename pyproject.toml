@@ -71,3 +71,22 @@ select = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["psh"]
+
+[tool.mypy]
+# Minimal, non-strict adoption: the `files` list below is the checked scope.
+# Grow it module-by-module as annotations are cleaned up; keep new core/ code clean.
+python_version = "3.12"
+files = [
+    "psh/core",
+    "psh/ast_nodes.py",
+    "psh/version.py",
+    "psh/expansion/pattern.py",
+    "psh/utils/escapes.py",
+    "psh/interactive/line_layout.py",
+]
+ignore_missing_imports = true
+follow_imports = "silent"
+allow_untyped_defs = true
+allow_incomplete_defs = true
+check_untyped_defs = false
+warn_unused_ignores = true

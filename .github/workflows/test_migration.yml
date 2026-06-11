@@ -16,8 +16,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff
+      - run: pip install ruff mypy
       - run: ruff check psh tests
+      - run: mypy  # scope is driven by [tool.mypy] files in pyproject.toml
 
   quick-suite:
     name: Quick Test Suite
