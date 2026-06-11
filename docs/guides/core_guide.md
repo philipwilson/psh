@@ -1,5 +1,10 @@
 # PSH Core: Programmer's Guide
 
+> **Note (2026-06-11):** This guide describes the tree as of ~v0.27x, before
+> the v0.285 module relocation and subsequent cleanups. In particular it
+> references `scope_enhanced.py`, which has since been renamed to `psh/core/scope.py`.
+> See the subsystem CLAUDE.md files for current structure.
+
 This guide covers the core package in detail: its external API, internal
 architecture, and the responsibilities of every source file.  It is aimed at
 developers who need to modify state management, add shell options, work with

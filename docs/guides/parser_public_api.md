@@ -1,5 +1,10 @@
 # Parser Public API Reference
 
+> **Note (2026-06-11):** This guide describes the tree as of ~v0.27x, before
+> the v0.285 module relocation and subsequent cleanups. In particular it
+> describes parser configuration machinery that has since been removed (the `PERMISSIVE`/`EDUCATIONAL` parsing modes, the `COLLECT`/`RECOVER` error-handling modes, and `parse_with_error_collection`).
+> See the subsystem CLAUDE.md files for current structure.
+
 **As of v0.186.0**
 
 This document describes the public API of the `psh.parser` package: the

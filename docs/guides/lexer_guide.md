@@ -1,5 +1,10 @@
 # PSH Lexer: Programmer's Guide
 
+> **Note (2026-06-11):** This guide describes the tree as of ~v0.27x, before
+> the v0.285 module relocation and subsequent cleanups. In particular it
+> references pre-relocation paths such as `psh/token_types.py`, `psh/token_transformer.py` (now under `psh/lexer/`), and `psh/brace_expansion.py` (now `psh/expansion/brace_expansion.py`).
+> See the subsystem CLAUDE.md files for current structure.
+
 This guide covers the lexer package in detail: its external API, internal
 architecture, and the responsibilities of every source file.  It is aimed at
 developers who need to modify the lexer, add new token types, or understand how

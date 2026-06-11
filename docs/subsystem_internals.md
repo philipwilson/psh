@@ -45,7 +45,7 @@ For commands containing heredocs, `tokenize_with_heredocs()` (`__init__.py:84`) 
 
 ### 1.2 Token Types
 
-Token types are defined in `psh/token_types.py` as an enum (`TokenType`). Key categories:
+Token types are defined in `psh/lexer/token_types.py` as an enum (`TokenType`). Key categories:
 
 | Category | Examples | Token Types |
 |----------|----------|-------------|
@@ -423,7 +423,7 @@ class ExpansionManager:
 
 1. Pre-expands `$var` and `${var}` references within the expression
 2. Pre-expands nested command substitutions
-3. Delegates evaluation to `evaluate_arithmetic()` in `psh/arithmetic.py`
+3. Delegates evaluation to `evaluate_arithmetic()` in `psh/expansion/arithmetic.py`
 
 ### 3.6 Other Expanders
 

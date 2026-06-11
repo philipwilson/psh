@@ -1,5 +1,10 @@
 # Executor Public API Assessment
 
+> **Note (2026-06-11):** This guide describes the tree as of ~v0.27x, before
+> the v0.285 module relocation and subsequent cleanups. In particular it
+> references `psh/arithmetic.py`, which has since moved to `psh/expansion/arithmetic.py`.
+> See the subsystem CLAUDE.md files for current structure.
+
 **As of v0.181.0** (implemented in v0.182.0)
 
 This document assesses the executor package's public API contract -- what is

@@ -1,5 +1,10 @@
 # PSH Executor: Programmer's Guide
 
+> **Note (2026-06-11):** This guide describes the tree as of ~v0.27x, before
+> the v0.285 module relocation and subsequent cleanups. In particular it
+> references pre-relocation paths such as `psh/job_control.py` (now `psh/executor/job_control.py`), `psh/arithmetic.py` (now `psh/expansion/arithmetic.py`), and `psh/token_types.py` (now `psh/lexer/token_types.py`).
+> See the subsystem CLAUDE.md files for current structure.
+
 This guide covers the executor package in detail: its external API, internal
 architecture, and the responsibilities of every source file.  It is aimed at
 developers who need to modify the executor, add new command types, or
