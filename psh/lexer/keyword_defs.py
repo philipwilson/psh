@@ -46,8 +46,9 @@ def matches_keyword_type(token, expected_type: TokenType) -> bool:
     if token.type != TokenType.WORD:
         return False
 
-    token_value = (token.value or '').lower()
-    if token_value == keyword:
+    # Keyword matching is case-sensitive, as in bash: only the exact
+    # lowercase spelling counts as a reserved word.
+    if (token.value or '') == keyword:
         token.is_keyword = True
         return True
 
@@ -55,8 +56,11 @@ def matches_keyword_type(token, expected_type: TokenType) -> bool:
 
 
 def matches_keyword(token, keyword: str) -> bool:
-    """Check whether the token represents the given keyword string."""
-    keyword = keyword.lower()
+    """Check whether the token represents the given keyword string.
+
+    `keyword` must be the canonical lowercase spelling; matching against
+    token text is case-sensitive (as in bash).
+    """
     expected_type = KEYWORD_TYPE_MAP.get(keyword)
     if expected_type is None:
         return False
@@ -78,7 +82,6 @@ class KeywordGuard:
         self._cache: dict[str, bool] = {}
 
     def matches(self, keyword: str) -> bool:
-        keyword = keyword.lower()
         if keyword not in self._cache:
             self._cache[keyword] = matches_keyword(self.token, keyword)
         return self._cache[keyword]

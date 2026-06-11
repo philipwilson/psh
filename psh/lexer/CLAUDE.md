@@ -192,7 +192,7 @@ python -m psh --debug-tokens -c "echo hello"
 
 1. **Greedy Operator Matching**: Operators are matched longest-first. `>>=` matches before `>>` before `>`.
 
-2. **Context-Sensitive Keywords**: `if` is only a keyword at command position. `echo if` tokenizes `if` as WORD.
+2. **Context-Sensitive Keywords**: `if` is only a keyword at command position. `echo if` tokenizes `if` as WORD. Matching is also **case-sensitive** (like bash): `IF` is always a plain WORD.
 
 3. **Quote Nesting**: Double quotes can contain `$()` which can contain more quotes. Track depth carefully.
 

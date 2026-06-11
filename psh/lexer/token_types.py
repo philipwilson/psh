@@ -150,8 +150,6 @@ class Token:
             if canonical:
                 return canonical
 
-        # If marked as a keyword, normalize to lowercase
-        if self.is_keyword:
-            return value.lower()
-
+        # Keyword matching is case-sensitive, so keyword-marked WORD tokens
+        # already carry the canonical lowercase spelling.
         return value
