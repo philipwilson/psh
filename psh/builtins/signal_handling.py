@@ -79,7 +79,7 @@ EXIT STATUS
             # No arguments - show all traps (same as trap -p)
             output = shell.trap_manager.show_traps()
             if output:
-                print(output, file=shell.state.stdout)
+                self.write_line(output, shell)
             return 0
 
         # Check for options
@@ -87,7 +87,7 @@ EXIT STATUS
             # List signals
             signals = shell.trap_manager.list_signals()
             for signal_info in signals:
-                print(signal_info, file=shell.state.stdout)
+                self.write_line(signal_info, shell)
             return 0
 
         if args[1] == '-p':
@@ -99,7 +99,7 @@ EXIT STATUS
                 # Show specific traps
                 output = shell.trap_manager.show_traps(args[2:])
             if output:
-                print(output, file=shell.state.stdout)
+                self.write_line(output, shell)
             return 0
 
         # POSIX: -- ends option processing; the next argument is the action.
@@ -111,12 +111,12 @@ EXIT STATUS
                 # Bare `trap --` behaves like bare `trap`: show all traps
                 output = shell.trap_manager.show_traps()
                 if output:
-                    print(output, file=shell.state.stdout)
+                    self.write_line(output, shell)
                 return 0
 
         # Parse action and signals
         if len(args) < arg_start + 2:
-            print("trap: usage: trap [action] [condition...]", file=shell.state.stderr)
+            self.error(f"usage: {self.synopsis}", shell)
             return 2
 
         action = args[arg_start]

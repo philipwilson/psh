@@ -1,7 +1,6 @@
 """Type builtin command to display command type information."""
 
 import os
-import sys
 from typing import TYPE_CHECKING, List
 
 from .base import Builtin
@@ -26,60 +25,40 @@ class TypeBuiltin(Builtin):
     def name(self) -> str:
         return "type"
 
+    @property
+    def synopsis(self) -> str:
+        return "type [-afptP] name [name ...]"
+
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Display information about command types."""
-        if len(args) < 2:
-            self.error("usage: type [-afptP] name [name ...]", shell)
+        # Parse options (clusterable, like bash: `type -af name`)
+        opts, names = self.parse_flags(args, shell, flags='afptP')
+        if opts is None:
             return 2
+        show_all = opts['a']
+        type_only = opts['t']
+        path_only = opts['p']
+        force_path = opts['P']
+        file_only = opts['f']
 
-        # Parse options
-        show_all = False
-        type_only = False
-        path_only = False
-        force_path = False
-        file_only = False
-
-        i = 1
-        while i < len(args) and args[i].startswith('-'):
-            opt = args[i]
-            if opt == '--':
-                i += 1
-                break
-            elif opt == '-a':
-                show_all = True
-            elif opt == '-t':
-                type_only = True
-            elif opt == '-p':
-                path_only = True
-            elif opt == '-P':
-                force_path = True
-            elif opt == '-f':
-                file_only = True
-            else:
-                self.error(f"invalid option: {opt}", shell)
-                return 2
-            i += 1
-
-        # Process remaining arguments as names to check
-        if i >= len(args):
-            self.error("usage: type [-afptP] name [name ...]", shell)
-            return 2
+        # bash: `type` with no operands prints nothing and succeeds
+        if not names:
+            return 0
 
         exit_code = 0
-        for name in args[i:]:
+        for name in names:
             found = False
 
             # Check aliases first (unless -f is specified)
             if not file_only and not force_path and name in shell.alias_manager.aliases:
                 alias_value = shell.alias_manager.aliases[name]
                 if type_only:
-                    print("alias", file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                    self.write_line("alias", shell)
                 elif path_only:
                     # Path only mode doesn't show aliases
                     pass
                 else:
-                    print(f"{name} is aliased to `{alias_value}'",
-                          file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                    self.write_line(f"{name} is aliased to `{alias_value}'", shell)
                 found = True
                 if not show_all:
                     continue
@@ -87,12 +66,11 @@ class TypeBuiltin(Builtin):
             # Check shell keywords (bash order: alias > keyword > function)
             if not force_path and not file_only and name in self.SHELL_KEYWORDS:
                 if type_only:
-                    print("keyword", file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                    self.write_line("keyword", shell)
                 elif path_only:
                     pass
                 else:
-                    print(f"{name} is a shell keyword",
-                          file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                    self.write_line(f"{name} is a shell keyword", shell)
                 found = True
                 if not show_all:
                     continue
@@ -100,13 +78,12 @@ class TypeBuiltin(Builtin):
             # Check functions (unless -P or -f is specified)
             if not force_path and not file_only and name in shell.function_manager.functions:
                 if type_only:
-                    print("function", file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                    self.write_line("function", shell)
                 elif path_only:
                     # Path only mode doesn't show functions
                     pass
                 else:
-                    print(f"{name} is a function",
-                          file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                    self.write_line(f"{name} is a function", shell)
                     # TODO: Could show function definition here
                 found = True
                 if not show_all:
@@ -116,13 +93,12 @@ class TypeBuiltin(Builtin):
             # builtin names (e.g. `readarray` for mapfile) are recognised too.
             if not force_path and shell.builtin_registry.has(name):
                 if type_only:
-                    print("builtin", file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                    self.write_line("builtin", shell)
                 elif path_only:
                     # Path only mode doesn't show builtins
                     pass
                 else:
-                    print(f"{name} is a shell builtin",
-                          file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                    self.write_line(f"{name} is a shell builtin", shell)
                 found = True
                 if not show_all:
                     continue
@@ -131,11 +107,10 @@ class TypeBuiltin(Builtin):
             paths = self._find_in_path(name, shell.env.get('PATH', ''))
             if paths:
                 if type_only:
-                    print("file", file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                    self.write_line("file", shell)
                 else:
                     for path in paths:
-                        print(f"{name} is {path}",
-                              file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                        self.write_line(f"{name} is {path}", shell)
                         if not show_all:
                             break
                 found = True

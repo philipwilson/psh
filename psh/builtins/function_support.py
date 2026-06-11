@@ -53,33 +53,33 @@ class DeclareBuiltin(Builtin):
             # Pass original args for mutually exclusive attribute handling
             return self._declare_variables(options, positional, shell, args[1:])
 
+    # Flag char → option key (set with `-c`; `+c` sets 'remove_' + key for
+    # the chars in _REMOVABLE_FLAGS). declare cannot use Builtin.parse_flags
+    # because of the `+x` attribute-removal syntax.
+    _FLAG_OPTIONS = {
+        'a': 'array',
+        'A': 'assoc_array',
+        'f': 'functions',
+        'F': 'function_names',
+        'g': 'global',
+        'i': 'integer',
+        'l': 'lowercase',
+        'n': 'nameref',
+        'p': 'print',
+        'r': 'readonly',
+        't': 'trace',
+        'u': 'uppercase',
+        'x': 'export',
+    }
+    _REMOVABLE_FLAGS = frozenset('aAilnrtux')
+
     def _parse_options(self, args: List[str], shell: 'Shell') -> tuple[Optional[dict], List[str]]:
         """Parse declare options and return (options_dict, positional_args)."""
-        options = {
-            'array': False,          # -a
-            'assoc_array': False,    # -A
-            'functions': False,      # -f
-            'function_names': False, # -F
-            'global': False,         # -g
-            'integer': False,        # -i
-            'lowercase': False,      # -l
-            'nameref': False,        # -n
-            'print': False,          # -p
-            'readonly': False,       # -r
-            'trace': False,          # -t
-            'uppercase': False,      # -u
-            'export': False,         # -x
-            'remove_nameref': False, # +n
-            'remove_export': False,  # +x
-            'remove_readonly': False,# +r
-            'remove_integer': False, # +i
-            'remove_lowercase': False,# +l
-            'remove_uppercase': False,# +u
-            'remove_array': False,   # +a
-            'remove_assoc_array': False,# +A
-            'remove_trace': False,   # +t
-            'last_case_attr': None,  # Track last case attribute for "last wins" behavior
-        }
+        options = {key: False for key in self._FLAG_OPTIONS.values()}
+        options.update({f'remove_{self._FLAG_OPTIONS[c]}': False
+                        for c in self._REMOVABLE_FLAGS})
+        # Track last case attribute for "last wins" behavior (-l vs -u)
+        options['last_case_attr'] = None
         positional = []
 
         i = 0
@@ -89,63 +89,22 @@ class DeclareBuiltin(Builtin):
                 positional.extend(args[i+1:])
                 break
             elif arg.startswith('-') and len(arg) > 1 and not arg[1].isdigit():
-                # Process flags
+                # Attribute-setting flags (clusterable: -aix)
                 for flag in arg[1:]:
-                    if flag == 'a':
-                        options['array'] = True
-                    elif flag == 'A':
-                        options['assoc_array'] = True
-                    elif flag == 'f':
-                        options['functions'] = True
-                    elif flag == 'F':
-                        options['function_names'] = True
-                    elif flag == 'g':
-                        options['global'] = True
-                    elif flag == 'i':
-                        options['integer'] = True
-                    elif flag == 'l':
-                        options['lowercase'] = True
-                        options['last_case_attr'] = 'lowercase'
-                    elif flag == 'n':
-                        options['nameref'] = True
-                    elif flag == 'p':
-                        options['print'] = True
-                    elif flag == 'r':
-                        options['readonly'] = True
-                    elif flag == 't':
-                        options['trace'] = True
-                    elif flag == 'u':
-                        options['uppercase'] = True
-                        options['last_case_attr'] = 'uppercase'
-                    elif flag == 'x':
-                        options['export'] = True
-                    else:
+                    key = self._FLAG_OPTIONS.get(flag)
+                    if key is None:
                         self.error(f"invalid option: -{flag}", shell)
                         return None, []
+                    options[key] = True
+                    if flag in 'lu':
+                        options['last_case_attr'] = key
             elif arg.startswith('+') and len(arg) > 1:
-                # Process attribute removal flags
+                # Attribute-removal flags (clusterable: +ix)
                 for flag in arg[1:]:
-                    if flag == 'x':
-                        options['remove_export'] = True
-                    elif flag == 'n':
-                        options['remove_nameref'] = True
-                    elif flag == 'r':
-                        options['remove_readonly'] = True
-                    elif flag == 'i':
-                        options['remove_integer'] = True
-                    elif flag == 'l':
-                        options['remove_lowercase'] = True
-                    elif flag == 'u':
-                        options['remove_uppercase'] = True
-                    elif flag == 'a':
-                        options['remove_array'] = True
-                    elif flag == 'A':
-                        options['remove_assoc_array'] = True
-                    elif flag == 't':
-                        options['remove_trace'] = True
-                    else:
+                    if flag not in self._REMOVABLE_FLAGS:
                         self.error(f"invalid option: +{flag}", shell)
                         return None, []
+                    options[f'remove_{self._FLAG_OPTIONS[flag]}'] = True
             else:
                 positional.append(arg)
             i += 1
@@ -741,7 +700,7 @@ class ReturnBuiltin(Builtin):
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the return builtin."""
         if not shell.function_stack and shell.state.source_depth == 0:
-            print("return: can only `return' from a function or sourced script", file=sys.stderr)
+            self.error("can only `return' from a function or sourced script", shell)
             return 2  # bash usage-error status
 
         # Get return value
@@ -753,7 +712,7 @@ class ReturnBuiltin(Builtin):
             except ValueError:
                 # bash: the error still returns from the function/sourced
                 # file, with the usage-error status 2.
-                print(f"return: {args[1]}: numeric argument required", file=sys.stderr)
+                self.error(f"{args[1]}: numeric argument required", shell)
                 raise FunctionReturn(2)
         else:
             # With no arguments, return the current value of $?

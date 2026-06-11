@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.283.0 | **Tests**: 4,546 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.284.0 | **Tests**: 4,564 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -341,6 +341,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.284.0**: Builtins consistency: 33 error-channel sites unified on self.error()/write_line(); type/jobs on shared option parsing; unset subscripts via the canonical evaluator (4 bash divergences fixed); jobs -l implemented
 - **v0.283.0**: Vi-mode arrows fixed via one centralized escape parser; history single-writer (multiline commands store joined, bash-pinned); dead DSR queries removed; __main__ arg parsing extracted
 - **v0.282.0**: Signal-loss race fixed (signals in the fork→exec window were consumed by inherited Python handlers; now blocked across fork); JobManager.launch_background extracted (6 dup sites); CommandExecutor.execute split; codename comments replaced
 - **v0.281.0**: Lexer cleanup: quadratic word-scan fixed (128k-char word 0.202s → 0.079s); 12 dead config flags + ~590 lines removed; comment/backtick/fd-dup logic deduplicated
