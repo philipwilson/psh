@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.293.0 | **Tests**: 4,785 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.294.0 | **Tests**: 4,803 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -243,7 +243,7 @@ PSH uniquely includes two complete parser implementations:
 
 ### Project Statistics
 - **Lines of Code**: ~47,300 lines of production code in `psh/` across 192 Python files, plus ~53,600 lines of tests in `tests/` (231 files)
-- **Test Coverage**: 4,785 tests in 230 test files
+- **Test Coverage**: 4,803 tests in 231 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -341,6 +341,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.294.0**: job-state notices (`[1]+ Done`, Stopped, `set -b`) now go to stderr like bash; arithmetic errors via state.stderr; last builtin raw-print stragglers converted to write_line()/error() (function_support, read, help, debug_control)
 - **v0.293.0**: keywords are now case-sensitive like bash (`IF`/`THEN`/`FOR` are ordinary words: `IF` → command not found, `IF=3` assignment works); one fix in keyword_defs covers both parsers
 - **v0.292.0**: `exec` permanent redirections fixed (single open file description shared by builtin streams and external children — `exec &>f` no longer self-overwrites); noclobber exempts non-regular files like bash; builtin-redirection dual universe restructured into documented dispatcher + named helpers
 - **v0.291.0**: alias/unalias rewritten to conventions (`-p`, rc 2 usage errors, bash `'\''` quoting, wrong quote-rejoin scanner deleted — it mangled escaped-quote operands bash keeps literal); printf gains `\e`/`\E`

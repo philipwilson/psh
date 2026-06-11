@@ -218,12 +218,25 @@ class JobManager:
         return sum(1 for job in self.jobs.values()
                   if job.state != JobState.DONE)
 
+    def _notification_stream(self):
+        """Stream for asynchronous job-state notices.
+
+        Bash writes job notifications ([1]+ Done ..., [1]+ Stopped ...)
+        to the shell's stderr, never stdout — `bash -i -c 'cmd' >file`
+        keeps the notices on the terminal. Use the state's stderr (which
+        is forked-child/redirect aware) when available.
+        """
+        if self.shell_state is not None:
+            return self.shell_state.stderr
+        return sys.stderr
+
     def notify_completed_jobs(self):
         """Print notifications for completed background jobs."""
         completed = []
         for job_id, job in list(self.jobs.items()):
             if job.state == JobState.DONE and not job.notified and not job.foreground:
-                print(f"\n[{job.job_id}]+  Done                    {job.command}")
+                print(f"\n[{job.job_id}]+  Done                    {job.command}",
+                      file=self._notification_stream())
                 job.notified = True
                 completed.append(job_id)
 
@@ -272,7 +285,7 @@ class JobManager:
         self.register_background_job(job, shell_state=self.shell_state,
                                      last_pid=last_pid)
         if self.shell_state and self.shell_state.options.get('interactive'):
-            print(f"[{job.job_id}] {last_pid}", file=self.shell_state.stderr)
+            print(f"[{job.job_id}] {last_pid}", file=self._notification_stream())
         return job
 
     def notify_stopped_jobs(self):
@@ -281,7 +294,8 @@ class JobManager:
             if job.state == JobState.STOPPED and not job.notified:
                 # Mark with + if it's the current job
                 marker = '+' if job == self.current_job else '-' if job == self.previous_job else ' '
-                print(f"[{job.job_id}]{marker}  Stopped                 {job.command}")
+                print(f"[{job.job_id}]{marker}  Stopped                 {job.command}",
+                      file=self._notification_stream())
                 job.notified = True
 
     def list_jobs(self) -> List[str]:
@@ -508,7 +522,8 @@ class JobManager:
         if (self.shell_state and self.shell_state.options.get('notify', False) and
             old_state != JobState.DONE and job.state == JobState.DONE and
             not job.foreground and not job.notified):
-            print(f"\n[{job.job_id}]+  Done                    {job.command}")
+            print(f"\n[{job.job_id}]+  Done                    {job.command}",
+                  file=self._notification_stream())
             job.notified = True
 
         if collect_all_statuses:

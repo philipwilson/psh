@@ -320,7 +320,7 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # exit 1 if expression is false (zero)
                 return 0 if result != 0 else 1
         except (ValueError, ArithmeticError) as e:
-            print(f"psh: ((: {e}", file=sys.stderr)
+            print(f"psh: ((: {e}", file=self.state.stderr)
             return 1
 
     def visit_CStyleForLoop(self, node: CStyleForLoop) -> int:

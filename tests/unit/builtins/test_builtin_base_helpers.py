@@ -99,6 +99,30 @@ class TestWriteHelpers:
         b.error('boom', sh)
         assert sh.stderr.getvalue() == 'fake: boom\n'
 
+    def test_write_error_line_is_unprefixed_stderr(self):
+        """Follow-up diagnostic lines (usage text) carry no name prefix."""
+        b, sh = _Fake(), _Shell()
+        b.write_error_line('Usage: fake [-ab]', sh)
+        assert sh.stderr.getvalue() == 'Usage: fake [-ab]\n'
+        assert sh.stdout.getvalue() == ''
+
+    def test_set_invalid_option_diagnostics_on_stderr(self, captured_shell):
+        """set -o badname: error + Valid options listing both on stderr."""
+        rc = captured_shell.run_command('set -o nosuchopt')
+        assert rc == 2
+        err = captured_shell.get_stderr()
+        assert 'set: nosuchopt: invalid option name' in err
+        assert 'Valid options:' in err
+        assert captured_shell.get_stdout() == ''
+
+    def test_help_usage_error_on_stderr(self, captured_shell):
+        """help -x: usage diagnostics go to stderr with rc 2 (bash parity)."""
+        rc = captured_shell.run_command('help -x')
+        assert rc == 2
+        err = captured_shell.get_stderr()
+        assert 'Usage: help' in err
+        assert captured_shell.get_stdout() == ''
+
     def test_forked_child_paths_via_pipeline(self):
         """End to end: builtins in pipelines write at the fd level."""
         result = subprocess.run(

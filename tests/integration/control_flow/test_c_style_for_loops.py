@@ -481,6 +481,35 @@ class TestCStyleForSyntaxVariations:
         assert output == "4\n6\n8\n"
 
 
+class TestCStyleForErrorChannel:
+    """Arithmetic errors in loop expressions go to stderr, not stdout.
+
+    Pinned against bash 5.2: each of init/condition/update division by
+    zero prints the error on stderr and the loop fails with rc 1
+    (`bash -c 'for ((1/0;;)); do break; done; echo rc:$?'` → rc:1,
+    message on stderr only). psh's message text differs from bash's but
+    the channel and exit status match.
+    """
+
+    def test_init_error_on_stderr(self, captured_shell):
+        rc = captured_shell.run_command("for ((1/0;;)); do break; done")
+        assert rc == 1
+        assert "psh: ((:" in captured_shell.get_stderr()
+        assert captured_shell.get_stdout() == ""
+
+    def test_condition_error_on_stderr(self, captured_shell):
+        rc = captured_shell.run_command("for ((;1/0;)); do break; done")
+        assert rc == 1
+        assert "psh: ((:" in captured_shell.get_stderr()
+        assert captured_shell.get_stdout() == ""
+
+    def test_update_error_on_stderr(self, captured_shell):
+        rc = captured_shell.run_command("for ((i=0;i<1;1/0)); do :; done")
+        assert rc == 1
+        assert "psh: ((:" in captured_shell.get_stderr()
+        assert captured_shell.get_stdout() == ""
+
+
 class TestCStyleForErrorCases:
     """Test error handling and edge cases."""
 

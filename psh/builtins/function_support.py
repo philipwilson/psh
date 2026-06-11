@@ -1,5 +1,4 @@
 """Function-related builtin commands."""
-import sys
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from ..core import AssociativeArray, IndexedArray, ReadonlyVariableError, VarAttributes, Variable
@@ -113,7 +112,6 @@ class DeclareBuiltin(Builtin):
 
     def _handle_functions(self, options: dict, names: List[str], shell: 'Shell') -> int:
         """Handle function-related options (-f, -F)."""
-        stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
         show_names_only = options['function_names']
 
         if not names:
@@ -122,11 +120,11 @@ class DeclareBuiltin(Builtin):
             if show_names_only:
                 # -F flag: show only function names
                 for name, _ in sorted(functions):
-                    print(f"declare -f {name}", file=stdout)
+                    self.write_line(f"declare -f {name}", shell)
             else:
                 # -f flag: show full definitions
                 for name, func in sorted(functions):
-                    self._print_function_definition(name, func, stdout)
+                    self._print_function_definition(name, func, shell)
         else:
             # List specific functions
             exit_code = 0
@@ -134,9 +132,9 @@ class DeclareBuiltin(Builtin):
                 func = shell.function_manager.get_function(name)
                 if func:
                     if show_names_only:
-                        print(f"declare -f {name}", file=stdout)
+                        self.write_line(f"declare -f {name}", shell)
                     else:
-                        self._print_function_definition(name, func, stdout)
+                        self._print_function_definition(name, func, shell)
                 else:
                     self.error(f"{name}: not found", shell)
                     exit_code = 1
@@ -207,7 +205,6 @@ class DeclareBuiltin(Builtin):
 
         # If no arguments, list all shell variables (not environment)
         if not args:
-            stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
             # Get all variables with their attributes
             variables = self._get_all_variables_with_attributes(shell)
 
@@ -221,10 +218,10 @@ class DeclareBuiltin(Builtin):
             for var in sorted(variables, key=lambda v: v.name):
                 if simple_format:
                     # Simple format: NAME=value
-                    self._print_simple_declaration(var, stdout)
+                    self._print_simple_declaration(var, shell)
                 else:
                     # Full format: declare -flags NAME="value"
-                    self._print_declaration(var, stdout)
+                    self._print_declaration(var, shell)
             return 0
 
         # Process each argument
@@ -332,7 +329,7 @@ class DeclareBuiltin(Builtin):
             for name in names:
                 var = self._get_variable_with_attributes(shell, name)
                 if var:
-                    self._print_declaration_with_pipeline_support(var, shell)
+                    self._print_declaration(var, shell)
                 else:
                     self.error(f"{name}: not found", shell)
                     exit_code = 1
@@ -342,29 +339,22 @@ class DeclareBuiltin(Builtin):
             variables = self._get_all_variables_with_attributes(shell)
             for var in sorted(variables, key=lambda v: v.name):
                 if self._matches_filter(var, options):
-                    self._print_declaration_with_pipeline_support(var, shell)
+                    self._print_declaration(var, shell)
             return 0
 
-    def _print_simple_declaration(self, var: Variable, file):
+    def _print_simple_declaration(self, var: Variable, shell: 'Shell'):
         """Print variable in simple format (NAME=value)."""
         if isinstance(var.value, (IndexedArray, AssociativeArray)):
             # Arrays can't be shown in simple format, use declare format
-            self._print_declaration(var, file)
+            self._print_declaration(var, shell)
         else:
             # Simple format without quotes or escaping
-            print(f"{var.name}={var.value}", file=file)
+            self.write_line(f"{var.name}={var.value}", shell)
 
-    def _print_declaration_with_pipeline_support(self, var: Variable, shell: 'Shell'):
-        """Print variable declaration with pipeline support."""
-        # Build the declaration string
-        declaration_str = self._format_declaration(var)
-
-        self.write_line(declaration_str, shell)
-
-    def _print_declaration(self, var: Variable, file):
+    def _print_declaration(self, var: Variable, shell: 'Shell'):
         """Print variable declaration in reusable format."""
         declaration_str = self._format_declaration(var)
-        print(declaration_str, file=file)
+        self.write_line(declaration_str, shell)
 
     def _format_declaration(self, var: Variable) -> str:
         """Format variable declaration string."""
@@ -507,10 +497,9 @@ class DeclareBuiltin(Builtin):
         except ReadonlyVariableError:
             raise ReadonlyVariableError(f"{self.name}: {name}: readonly variable")
 
-    def _print_function_definition(self, name, func, stdout):
+    def _print_function_definition(self, name, func, shell: 'Shell'):
         """Print a function definition in a format that can be re-executed."""
-        print(f"{name} () ", file=stdout, end='')
-        print(ShellFormatter.format_function_body(func), file=stdout)
+        self.write_line(f"{name} () " + ShellFormatter.format_function_body(func), shell)
 
     @property
     def help(self) -> str:
@@ -651,9 +640,8 @@ class ReadonlyBuiltin(Builtin):
             functions = shell.function_manager.list_functions()
             readonly_funcs = [(name, func) for name, func in functions if func.readonly]
 
-            stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
             for name, func in readonly_funcs:
-                print(f"readonly -f {name}", file=stdout)
+                self.write_line(f"readonly -f {name}", shell)
             return 0
 
         # Set specified functions as readonly

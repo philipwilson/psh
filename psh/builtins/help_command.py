@@ -104,11 +104,11 @@ class HelpBuiltin(Builtin):
 
     def _show_usage(self, shell: 'Shell') -> None:
         """Show usage information."""
-        print(f"Usage: {self.synopsis}", file=shell.stderr)
-        print("Options:", file=shell.stderr)
-        print("  -d    output short description for each topic", file=shell.stderr)
-        print("  -m    display usage in pseudo-manpage format", file=shell.stderr)
-        print("  -s    output only a short usage synopsis for each topic", file=shell.stderr)
+        self.write_error_line(f"Usage: {self.synopsis}", shell)
+        self.write_error_line("Options:", shell)
+        self.write_error_line("  -d    output short description for each topic", shell)
+        self.write_error_line("  -m    display usage in pseudo-manpage format", shell)
+        self.write_error_line("  -s    output only a short usage synopsis for each topic", shell)
 
     def _show_default_listing(self, builtins: List[Builtin], shell: 'Shell') -> None:
         """Show default help listing similar to bash."""
