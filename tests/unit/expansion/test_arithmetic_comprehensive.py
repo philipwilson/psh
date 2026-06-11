@@ -306,6 +306,26 @@ class TestArithmeticEvaluator:
         assert evaluate_arithmetic("text + 5", shell) == 5
 
 
+class TestArithmeticCommandErrorChannel:
+    """((expr)) errors go to stderr with rc 1, matching bash 5.2.
+
+    Probe: `bash -c '((1/0)); echo rc:$?'` prints the division-by-0
+    message on stderr only and rc:1; psh matches the channel and rc
+    (message text differs: "psh: ((: Division by zero").
+    """
+
+    def test_division_by_zero_command_stderr_and_rc(self, captured_shell):
+        rc = captured_shell.run_command("((1/0))")
+        assert rc == 1
+        assert "psh: ((:" in captured_shell.get_stderr()
+        assert captured_shell.get_stdout() == ""
+
+    def test_script_continues_after_arithmetic_error(self, captured_shell):
+        rc = captured_shell.run_command("((1/0)); echo rc:$?")
+        assert rc == 0
+        assert captured_shell.get_stdout() == "rc:1\n"
+
+
 class TestArithmeticIntegration:
     """Test arithmetic expansion integration with shell."""
 

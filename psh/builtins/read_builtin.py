@@ -54,7 +54,7 @@ class ReadBuiltin(Builtin):
         try:
             options, var_names = self._parse_options(args)
         except ValueError as e:
-            print(str(e), file=sys.stderr)
+            self.error(str(e), shell)
             return getattr(e, 'rc', 2)
 
         # Display prompt if specified
@@ -124,7 +124,7 @@ class ReadBuiltin(Builtin):
             # Ctrl-C pressed
             return 130
         except (OSError, ValueError) as e:
-            print(f"read: {e}", file=sys.stderr)
+            self.error(str(e), shell)
             return 1
 
     def _process_escapes(self, line: str) -> str:
@@ -325,11 +325,11 @@ class ReadBuiltin(Builtin):
                         i += 1
                         if i >= len(args):
                             raise ValueError(
-                                f"read: -{char}: option requires an argument")
+                                f"-{char}: option requires an argument")
                         value = args[i]
                     self._apply_arg_option(char, value, options)
                     break  # word fully consumed by the value
-                raise ValueError(f"read: -{char}: invalid option")
+                raise ValueError(f"-{char}: invalid option")
             i += 1
 
         # Variable names are ignored when using -a option
@@ -355,7 +355,7 @@ class ReadBuiltin(Builtin):
             except ValueError:
                 timeout = -1.0
             if timeout < 0:
-                err = ValueError(f"read: {value}: invalid timeout specification")
+                err = ValueError(f"{value}: invalid timeout specification")
                 err.rc = 1  # bash exits 1 for bad values (2 for bad options)
                 raise err
             options['timeout'] = timeout
@@ -365,7 +365,7 @@ class ReadBuiltin(Builtin):
             except ValueError:
                 max_chars = -1
             if max_chars < 0:
-                err = ValueError(f"read: {value}: invalid number")
+                err = ValueError(f"{value}: invalid number")
                 err.rc = 1
                 raise err
             options['max_chars'] = max_chars

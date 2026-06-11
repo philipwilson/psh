@@ -427,7 +427,7 @@ class SetBuiltin(Builtin):
         self.error(f"{name}: invalid option name", shell)
         if enable:
             valid_opts = ['vi', 'emacs'] + list(sorted(shell.state.options.keys()))
-            print(f"Valid options: {', '.join(valid_opts)}", file=shell.stderr)
+            self.write_error_line(f"Valid options: {', '.join(valid_opts)}", shell)
         return 2
 
     @property

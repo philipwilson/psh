@@ -334,6 +334,72 @@ class TestPtyHistory:
 
 
 class TestPtyJobControl:
+    def test_job_notices_go_to_stderr(self, tmp_path):
+        """Launch and Done notices stay on the terminal when stdout is a file.
+
+        Bash 5.2 writes both the "[1] PID" launch notice and the
+        "[1]+  Done ..." completion notice to the shell's stderr (probed
+        with the shell's own fd 1 redirected to a file: the file stays
+        free of notices). Pin the same channel for psh: run psh under a
+        raw pty with fd 1 pointing at a file — both notices must appear
+        on the pty (stderr) and never in the file.
+        """
+        import pty
+        import select
+
+        out_path = tmp_path / 'stdout.txt'
+        pid, fd = pty.fork()
+        if pid == 0:  # child: psh with its own stdout sent to a file
+            f = os.open(str(out_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+            os.dup2(f, 1)
+            os.environ['PYTHONPATH'] = PSH_ROOT
+            os.environ['PS1'] = 'PSH$ '
+            os.execvp(sys.executable, [
+                sys.executable, '-u', '-m', 'psh', '--norc',
+                '--force-interactive'])
+
+        def drain(seconds):
+            data = b''
+            end = time.time() + seconds
+            while time.time() < end:
+                r, _, _ = select.select([fd], [], [], 0.1)
+                if r:
+                    try:
+                        chunk = os.read(fd, 4096)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    data += chunk
+            return data
+
+        try:
+            pty_data = drain(1.0)                      # first prompt
+            os.write(fd, b'sleep 0.2 &\r')
+            pty_data += drain(0.6)
+            os.write(fd, b'sleep 0.4\r')               # outlives the bg job
+            pty_data += drain(1.2)
+            os.write(fd, b'\r')                        # REPL prints Done notice
+            pty_data += drain(0.8)
+            os.write(fd, b'exit\r')
+            pty_data += drain(0.8)
+        finally:
+            try:
+                os.kill(pid, 9)
+            except ProcessLookupError:
+                pass
+            os.waitpid(pid, 0)
+            os.close(fd)
+
+        pty_text = pty_data.decode(errors='replace')
+        file_text = out_path.read_text() if out_path.exists() else ''
+        # Both notices on the pty (the shell's stderr) ...
+        assert re.search(r'\[1\] \d+', pty_text), pty_text
+        assert 'Done' in pty_text, pty_text
+        # ... and neither in the stdout file.
+        assert 'Done' not in file_text, file_text
+        assert not re.search(r'\[1\] \d+', file_text), file_text
+
     def test_background_job_notice_and_jobs(self, psh):
         psh.send('sleep 0.5 &\r')
         psh.expect(r'\[1\]')      # job notice with id

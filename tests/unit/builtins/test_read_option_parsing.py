@@ -67,9 +67,31 @@ class TestDoubleDashAndErrors:
         _feed(monkeypatch, "v\n")
         assert shell.run_command('read -z x') == 2
 
+    def test_invalid_option_message_on_stderr(self, shell, capsys, monkeypatch):
+        """Error text matches bash's tail and goes to stderr, not stdout."""
+        _feed(monkeypatch, "v\n")
+        shell.run_command('read -z x')
+        captured = capsys.readouterr()
+        assert "read: -z: invalid option" in captured.err
+        assert "invalid option" not in captured.out
+
+    def test_invalid_timeout_message_on_stderr(self, shell, capsys, monkeypatch):
+        _feed(monkeypatch, "v\n")
+        shell.run_command('read -t bad x')
+        captured = capsys.readouterr()
+        assert "read: bad: invalid timeout specification" in captured.err
+        assert captured.out == ""
+
     def test_missing_argument_exits_2(self, shell, monkeypatch):
         _feed(monkeypatch, "")
         assert shell.run_command('read -p') == 2
+
+    def test_missing_argument_message_on_stderr(self, shell, capsys, monkeypatch):
+        _feed(monkeypatch, "")
+        shell.run_command('read -p')
+        captured = capsys.readouterr()
+        assert "read: -p: option requires an argument" in captured.err
+        assert captured.out == ""
 
     def test_invalid_timeout_exits_1(self, shell, monkeypatch):
         """bash exits 1 for bad option values (2 for bad options)."""

@@ -81,6 +81,20 @@ class Builtin(ABC):
         print(f"{self.name}: {message}", file=stderr)
         stderr.flush()
 
+    def write_error_line(self, text: str, shell: 'Shell') -> None:
+        """Write one UNPREFIXED line to the builtin's stderr.
+
+        Like error() but without the "name: " prefix — for follow-up
+        diagnostic lines (usage text, option listings) that accompany an
+        error() call. Forked-child-aware like write()/error().
+        """
+        if shell.state.in_forked_child:
+            os.write(2, (text + '\n').encode('utf-8', errors='replace'))
+            return
+        stderr = shell.stderr if hasattr(shell, 'stderr') else sys.stderr
+        stderr.write(text + '\n')
+        stderr.flush()
+
     def parse_flags(self, args: List[str], shell: 'Shell',
                     flags: str = '', value_flags: str = ''
                     ) -> Tuple[Optional[dict], List[str]]:

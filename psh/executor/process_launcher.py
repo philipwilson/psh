@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
+    from ..interactive.signal_manager import SignalManager
     from ..io_redirect import IOManager
     from .job_control import JobManager
 
@@ -112,7 +113,6 @@ class ProcessLauncher:
         # Flush Python's stdout/stderr before forking to prevent buffered content
         # from being inherited by the child process and potentially written to
         # redirected output files
-        import sys
         try:
             sys.stdout.flush()
             sys.stderr.flush()

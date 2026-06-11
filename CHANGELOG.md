@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.294.0 (2026-06-11) - Error/notification channel unification (reappraisal #2 Tier B, 4/6)
+- Job-state notifications now go to stderr like bash (verified by
+  pty.fork probe with the shell's own fds redirected): Done, Stopped,
+  and `set -b` notices via new JobManager._notification_stream();
+  the launch notice (already stderr since v0.276) uses the same helper.
+  The `jobs` builtin's listing stays on stdout (command output).
+- Arithmetic errors (`((1/0))`, C-style for init/cond/update) now write
+  to state.stderr instead of bare sys.stderr (control_flow.py ×3,
+  core.py), making them forked-child-aware like command errors.
+- Builtin stragglers converted to base-class helpers preserving exact
+  text/rc: function_support (declare/readonly listings, function
+  printing — print+hasattr dance removed), read (error() for option
+  errors), environment ("Valid options:"), help (usage), debug_control
+  (14 sites to write_line). New Builtin.write_error_line() for
+  unprefixed stderr diagnostics. aliases/command verified already clean.
+- process_launcher: shadowing `import sys` in launch() removed;
+  dangling 'SignalManager' annotation got its TYPE_CHECKING import.
+- 18 new tests incl. a pty end-to-end pin that notices land on stderr
+  with stdout clean, and channel pins for arithmetic/read/help errors.
+- Suite: 4,533 passed / 4,803 collected; ruff + mypy clean.
+
 ## 0.293.0 (2026-06-11) - Keyword case-sensitivity (reappraisal #2 Tier B, 3/6)
 - M6: shell reserved words are now matched case-sensitively like bash.
   `IF true; then echo y; fi` executed in psh (bash: syntax error);

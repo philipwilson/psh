@@ -241,7 +241,7 @@ class ControlFlowExecutor:
             try:
                 evaluate_arithmetic(node.init_expr, self.shell)
             except (ValueError, ArithmeticError) as e:
-                print(f"psh: ((: {e}", file=sys.stderr)
+                print(f"psh: ((: {e}", file=self.state.stderr)
                 context.loop_depth -= 1
                 return 1
 
@@ -256,7 +256,7 @@ class ControlFlowExecutor:
                             if result == 0:  # Zero means false
                                 break
                         except (ValueError, ArithmeticError) as e:
-                            print(f"psh: ((: {e}", file=sys.stderr)
+                            print(f"psh: ((: {e}", file=self.state.stderr)
                             exit_status = 1
                             break
 
@@ -276,7 +276,7 @@ class ControlFlowExecutor:
                         try:
                             evaluate_arithmetic(node.update_expr, self.shell)
                         except (ValueError, ArithmeticError) as e:
-                            print(f"psh: ((: {e}", file=sys.stderr)
+                            print(f"psh: ((: {e}", file=self.state.stderr)
                             exit_status = 1
                             break
 
