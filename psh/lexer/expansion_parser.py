@@ -107,7 +107,13 @@ class ExpansionParser:
         quote_context: Optional[str]
     ) -> Tuple[TokenPart, int]:
         """Parse $(...) command substitution."""
-        # Find the closing )
+        # Find the closing ) by counting parens (quote-aware) rather than
+        # recursively lexing the contents. Known limitation: a case pattern
+        # with an unbalanced close paren inside breaks the count, so
+        #   echo $(case x in x) echo inner;; esac)
+        # is a parse error in psh (bash accepts it and prints "inner").
+        # Workaround: use the POSIX leading-paren pattern form, which keeps
+        # the parens balanced:  echo $(case x in (x) echo inner;; esac)
         end_pos, found = pure_helpers.find_balanced_parentheses(
             input_text, start_pos + 2, track_quotes=True
         )

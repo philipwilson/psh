@@ -18,6 +18,8 @@ AST → ASTVisitor.visit(node) → visit_NodeType(node) → Result
 | File | Purpose |
 |------|---------|
 | `base.py` | `ASTVisitor[T]` base class |
+| `traversal.py` | `iter_child_nodes()` / `visit_children()` - shared dataclass-field child walk used by the analysis visitors' `generic_visit` |
+| `analysis_helpers.py` | Shared predicates for analysis visitors (e.g. `has_unquoted_expansion()`) |
 | `constants.py` | Shared data: `SHELL_BUILTINS`, `DANGEROUS_COMMANDS`, `COMMON_TYPOS`, etc. |
 | `debug_ast_visitor.py` | Debug/pretty-print AST structure |
 | `validator_visitor.py` | Basic AST validation |
@@ -109,10 +111,14 @@ class MyAnalysisVisitor(ASTVisitor[None]):
             self.visit(cmd)
 
     def visit_IfConditional(self, node: IfConditional) -> None:
-        # Visit condition and body
+        # Visit condition and branches (each is a StatementList)
         self.visit(node.condition)
-        for stmt in node.body:
-            self.visit(stmt)
+        self.visit(node.then_part)
+        for elif_cond, elif_body in node.elif_parts:
+            self.visit(elif_cond)
+            self.visit(elif_body)
+        if node.else_part:
+            self.visit(node.else_part)
 ```
 
 ### Step 2: Add Visitor Methods for Each Node Type
@@ -129,7 +135,10 @@ def visit_CaseConditional(self, node) -> T: ...
 # Commands
 def visit_SimpleCommand(self, node) -> T: ...
 def visit_Pipeline(self, node) -> T: ...
-def visit_CommandList(self, node) -> T: ...
+def visit_StatementList(self, node) -> T: ...  # NB: `CommandList` is an
+                                               # alias for StatementList in
+                                               # ast_nodes.py; dispatch uses
+                                               # the real class name
 def visit_AndOrList(self, node) -> T: ...
 
 # Functions
@@ -195,13 +204,23 @@ def visit(self, node):
 For visitors that need to traverse the entire tree, implement recursive visiting:
 
 ```python
-def visit_CommandList(self, node) -> None:
+def visit_StatementList(self, node) -> None:
     for stmt in node.statements:
         self.visit(stmt)
 
 def visit_Pipeline(self, node) -> None:
     for cmd in node.commands:
         self.visit(cmd)
+```
+
+For a generic descend-into-children default, reuse the shared walk in
+`traversal.py` instead of hand-rolling one:
+
+```python
+from .traversal import visit_children
+
+def generic_visit(self, node) -> None:
+    visit_children(self, node)   # visits every ASTNode child field
 ```
 
 ### Collecting Results
@@ -243,8 +262,9 @@ class CountingVisitor(ASTVisitor[None]):
 # Run visitor tests
 python -m pytest tests/unit/visitor/ -v
 
-# Test specific visitor
-python -m pytest tests/unit/visitor/test_debug_visitor.py -v
+# Test specific visitor files (the two that exist)
+python -m pytest tests/unit/visitor/test_analysis_visitors.py -v
+python -m pytest tests/unit/visitor/test_formatter_visitor.py -v
 
 # Debug AST output
 python -m psh --debug-ast -c "if true; then echo yes; fi"

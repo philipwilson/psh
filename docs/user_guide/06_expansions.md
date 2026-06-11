@@ -253,6 +253,12 @@ psh$ content=$(cat file.txt)
 
 > **Note:** The `$(< file)` shortcut for reading files (without running `cat`) is not supported in PSH. Use `$(cat file)` instead.
 
+> **Note:** A `case` statement inside `$(...)` whose pattern uses the bare
+> form `pattern)` is a parse error in PSH (the unbalanced `)` confuses the
+> substitution scanner): `echo $(case x in x) echo inner;; esac)` works in
+> bash but not in PSH. Use the POSIX leading-paren pattern form instead,
+> which works in PSH: `echo $(case x in (x) echo inner;; esac)`.
+
 ## 6.5 Arithmetic Expansion $((...))
 
 Arithmetic expansion evaluates mathematical expressions:
