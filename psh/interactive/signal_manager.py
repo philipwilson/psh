@@ -29,67 +29,56 @@ class SignalManager(InteractiveComponent):
 
     def setup_signal_handlers(self):
         """Configure signal handlers based on shell mode."""
+        # Recreate the self-pipes if a previous restore_default_handlers()
+        # closed them, so setup → restore → setup (e.g. an embedder running
+        # the interactive loop twice on one Shell) keeps working.
+        if self._sigchld_notifier.get_fd() < 0:
+            self._sigchld_notifier = SignalNotifier()
+        if self._sigwinch_notifier.get_fd() < 0:
+            self._sigwinch_notifier = SignalNotifier()
         if self.state.is_script_mode:
             self._setup_script_mode_handlers()
         else:
             self._setup_interactive_mode_handlers()
 
+    def _install_handler(self, sig: int, handler, component: str):
+        """Install a handler, remembering the ORIGINAL disposition.
+
+        setup_signal_handlers() can legitimately run twice on one shell
+        (psh's __main__ installs handlers at startup and the interactive
+        loop re-runs setup). ``setdefault`` keeps the disposition saved by
+        the FIRST setup, so restore_default_handlers() returns to the
+        pre-psh state rather than to one of our own handlers.
+        """
+        previous = self._signal_registry.register(sig, handler, component)
+        self._original_handlers.setdefault(sig, previous)
+
     def _setup_script_mode_handlers(self):
         """Set up simpler signal handling for script mode."""
         # Script mode: Still check for traps, but use default for job control signals
         # Trappable signals should check for user-defined traps
-        self._original_handlers[signal.SIGINT] = self._signal_registry.register(
-            signal.SIGINT, self._handle_signal_with_trap_check, "SignalManager:script"
-        )
-        self._original_handlers[signal.SIGTERM] = self._signal_registry.register(
-            signal.SIGTERM, self._handle_signal_with_trap_check, "SignalManager:script"
-        )
-        self._original_handlers[signal.SIGHUP] = self._signal_registry.register(
-            signal.SIGHUP, self._handle_signal_with_trap_check, "SignalManager:script"
-        )
-        self._original_handlers[signal.SIGQUIT] = self._signal_registry.register(
-            signal.SIGQUIT, self._handle_signal_with_trap_check, "SignalManager:script"
-        )
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT):
+            self._install_handler(sig, self._handle_signal_with_trap_check,
+                                  "SignalManager:script")
         # Job control signals: use default in script mode (can be stopped/suspended)
-        self._signal_registry.register(signal.SIGTSTP, signal.SIG_DFL, "SignalManager:script")
-        self._signal_registry.register(signal.SIGTTOU, signal.SIG_IGN, "SignalManager:script")
-        self._signal_registry.register(signal.SIGTTIN, signal.SIG_IGN, "SignalManager:script")
-        self._signal_registry.register(signal.SIGCHLD, signal.SIG_DFL, "SignalManager:script")
-        self._signal_registry.register(signal.SIGPIPE, signal.SIG_DFL, "SignalManager:script")
+        self._install_handler(signal.SIGTSTP, signal.SIG_DFL, "SignalManager:script")
+        self._install_handler(signal.SIGTTOU, signal.SIG_IGN, "SignalManager:script")
+        self._install_handler(signal.SIGTTIN, signal.SIG_IGN, "SignalManager:script")
+        self._install_handler(signal.SIGCHLD, signal.SIG_DFL, "SignalManager:script")
+        self._install_handler(signal.SIGPIPE, signal.SIG_DFL, "SignalManager:script")
 
     def _setup_interactive_mode_handlers(self):
         """Set up full signal handling for interactive mode."""
         # Store original handlers for restoration and register with tracking
-        self._original_handlers[signal.SIGINT] = self._signal_registry.register(
-            signal.SIGINT, self._handle_signal_with_trap_check, "SignalManager:interactive"
-        )
-        self._original_handlers[signal.SIGTERM] = self._signal_registry.register(
-            signal.SIGTERM, self._handle_signal_with_trap_check, "SignalManager:interactive"
-        )
-        self._original_handlers[signal.SIGHUP] = self._signal_registry.register(
-            signal.SIGHUP, self._handle_signal_with_trap_check, "SignalManager:interactive"
-        )
-        self._original_handlers[signal.SIGQUIT] = self._signal_registry.register(
-            signal.SIGQUIT, self._handle_signal_with_trap_check, "SignalManager:interactive"
-        )
-        self._original_handlers[signal.SIGTSTP] = self._signal_registry.register(
-            signal.SIGTSTP, signal.SIG_IGN, "SignalManager:interactive"
-        )
-        self._original_handlers[signal.SIGTTOU] = self._signal_registry.register(
-            signal.SIGTTOU, signal.SIG_IGN, "SignalManager:interactive"
-        )
-        self._original_handlers[signal.SIGTTIN] = self._signal_registry.register(
-            signal.SIGTTIN, signal.SIG_IGN, "SignalManager:interactive"
-        )
-        self._original_handlers[signal.SIGCHLD] = self._signal_registry.register(
-            signal.SIGCHLD, self._handle_sigchld, "SignalManager:interactive"
-        )
-        self._original_handlers[signal.SIGPIPE] = self._signal_registry.register(
-            signal.SIGPIPE, signal.SIG_DFL, "SignalManager:interactive"
-        )
-        self._original_handlers[signal.SIGWINCH] = self._signal_registry.register(
-            signal.SIGWINCH, self._handle_sigwinch, "SignalManager:interactive"
-        )
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT):
+            self._install_handler(sig, self._handle_signal_with_trap_check,
+                                  "SignalManager:interactive")
+        self._install_handler(signal.SIGTSTP, signal.SIG_IGN, "SignalManager:interactive")
+        self._install_handler(signal.SIGTTOU, signal.SIG_IGN, "SignalManager:interactive")
+        self._install_handler(signal.SIGTTIN, signal.SIG_IGN, "SignalManager:interactive")
+        self._install_handler(signal.SIGCHLD, self._handle_sigchld, "SignalManager:interactive")
+        self._install_handler(signal.SIGPIPE, signal.SIG_DFL, "SignalManager:interactive")
+        self._install_handler(signal.SIGWINCH, self._handle_sigwinch, "SignalManager:interactive")
 
     def restore_default_handlers(self):
         """Restore default signal handlers."""

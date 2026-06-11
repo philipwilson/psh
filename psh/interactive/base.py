@@ -55,7 +55,16 @@ class InteractiveManager:
         # Now safe to ensure shell is in its own process group for job control
         self.signal_manager.ensure_foreground()
 
-        return self.repl_loop.run()
+        try:
+            return self.repl_loop.run()
+        finally:
+            # Restore the handlers saved by setup_signal_handlers() on EVERY
+            # exit path (EOF, `exit` builtin via SystemExit, exceptions).
+            # When this process IS psh the handlers die with the process
+            # anyway, but an embedder (Shell object inside another Python
+            # process, e.g. the test suite) must get its own signal
+            # dispositions back when the loop ends.
+            self.signal_manager.restore_default_handlers()
 
     def load_history(self):
         """Load command history from file."""

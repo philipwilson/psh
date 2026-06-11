@@ -134,18 +134,29 @@ class ProcessLauncher:
                      signal.SIGHUP, signal.SIGQUIT}
         old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, block_set)
 
-        pid = os.fork()
+        pid = None
+        try:
+            pid = os.fork()
 
-        if pid == 0:  # Child process
-            # apply_child_signal_policy() (called in _child_setup_and_exec)
-            # resets handlers to SIG_DFL and unblocks these signals.
-            self._child_setup_and_exec(execute_fn, config)
-            # Does not return - child exits via os._exit()
-        else:  # Parent process
-            # Restore the parent's signal mask immediately
-            signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
-            pgid = self._parent_setup(pid, config)
-            return pid, pgid
+            if pid == 0:  # Child process
+                # apply_child_signal_policy() (called in _child_setup_and_exec)
+                # resets handlers to SIG_DFL and unblocks these signals.
+                self._child_setup_and_exec(execute_fn, config)
+                # Does not return - child exits via os._exit()
+        finally:
+            # Restore the parent's signal mask ALWAYS — including when
+            # os.fork() itself raises (e.g. EAGAIN under process pressure);
+            # without this the shell would run with SIGINT/SIGTERM/SIGHUP/
+            # SIGQUIT blocked forever after a failed fork. The child
+            # (pid == 0) must NOT restore: it never reaches here in normal
+            # operation (_child_setup_and_exec exits via os._exit()), and
+            # its signals are unblocked by apply_child_signal_policy().
+            if pid != 0:
+                signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+
+        # Parent process
+        pgid = self._parent_setup(pid, config)
+        return pid, pgid
 
     def _child_setup_and_exec(self, execute_fn: Callable[[], int],
                               config: ProcessConfig):

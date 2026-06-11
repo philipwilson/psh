@@ -4,6 +4,39 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.300.0 (2026-06-11) - Loud expansion errors + signal lifecycle (quality assessment Phase 1, 2/3)
+- Correctness Risk #5: expand_expansion no longer catches (ValueError,
+  AttributeError, TypeError) and returns str(expansion) — internal
+  bugs surfaced as literal output. Git archaeology showed the catch
+  was never driven by a user-input need (born as bare except in the
+  Word-AST migration); the one genuine user-facing ValueError
+  (substring < 0) was already converted to ExpansionError locally by
+  the v0.296 slice work. A sibling same-shape catch in variable.py
+  (silently degrading operator bugs to plain-${var}) also removed.
+  Deliberate catches reviewed and kept (subscript int()→'0' etc. are
+  bash semantics). 20-case probe battery: behavior unchanged for all
+  user-facing errors; full suite green with the catches gone.
+- ProcessLauncher.launch: fork sigmask restore wrapped in try/finally
+  — if os.fork() raises (EAGAIN), the parent no longer keeps
+  TERM/INT/HUP/QUIT blocked forever. Child path unaffected (never
+  returns; unblocks via apply_child_signal_policy). Disproof recorded:
+  command_sub.py and process_sub.py fork WITHOUT mask manipulation,
+  so they had nothing to leak.
+- Interactive signal lifecycle (assessment claim CONFIRMED):
+  restore_default_handlers() had zero callers — handlers were never
+  restored on any REPL exit path (matters for embedded Shell use,
+  e.g. the test suite). run_interactive_loop now restores in
+  try/finally on normal EOF, exit-builtin SystemExit, and exceptions.
+  Two adjacent latent bugs fixed: double setup_signal_handlers()
+  overwrote the true pre-psh originals (now setdefault-guarded), and
+  SignalNotifier.close() wasn't idempotent (explicit close + __del__
+  could close an unrelated reused fd). Self-pipes recreated on loop
+  re-entry.
+- 16 new tests (9 error-propagation, 2 sigmask with monkeypatched
+  EAGAIN fork, 5 serial lifecycle tests incl. loop re-entrancy) —
+  all verified red against unfixed main.
+- Suite: 4,680 passed / 4,950 collected; ruff + mypy clean.
+
 ## 0.299.0 (2026-06-11) - Array initializers through the Word expansion engine (quality assessment Phase 1, 1/3)
 - Correctness Risk #1 from docs/reviews/code_quality_subsystem_
   assessment_2026-06-11.md: `a=(...)` initializer elements were

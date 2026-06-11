@@ -581,17 +581,14 @@ class ExpansionManager:
         Used by the executor when building an assignment value from Word parts;
         kept public so callers need not reach into a private method.
         """
-        from ..core import UnboundVariableError
-        # Use ExpansionEvaluator for clean evaluation
-        try:
-            return self.evaluator.evaluate(expansion)
-        except (ExpansionError, UnboundVariableError):
-            raise  # Propagate expansion errors (e.g., ${var:?msg}, nounset)
-        except (ValueError, AttributeError, TypeError) as e:
-            # Fallback to string representation if evaluation fails
-            if self.state.options.get('debug-expansion'):
-                print(f"[EXPANSION] Evaluation failed for {type(expansion).__name__}: {e}", file=self.state.stderr)
-            return str(expansion)
+        # Use ExpansionEvaluator for clean evaluation. Errors propagate:
+        # user-facing failures arrive as ExpansionError/UnboundVariableError
+        # (e.g. ${var:?msg}, nounset, bad slice offsets), and anything else
+        # (AttributeError/TypeError/ValueError) is an implementation defect
+        # that must fail loudly rather than silently degrade to the literal
+        # text of the expansion (the pre-v0.300 fallback returned
+        # str(expansion), turning internal bugs into garbage output).
+        return self.evaluator.evaluate(expansion)
 
     def _split_with_ifs(self, text: Optional[str], quote_type: Optional[str]) -> List[str]:
         """Split text using the current IFS, preserving quoting rules."""
