@@ -11,11 +11,13 @@ from typing import List, Optional, Set
 
 from ..ast_nodes import (
     AndOrList,
+    ArithmeticEvaluation,
     ArrayElementAssignment,
     # Array nodes
     ArrayInitialization,
     # Core nodes
     ASTNode,
+    BraceGroup,
     BreakStatement,
     CaseConditional,
     # Case components
@@ -32,7 +34,9 @@ from ..ast_nodes import (
     SelectLoop,
     SimpleCommand,
     StatementList,
+    SubshellGroup,
     TopLevel,
+    UntilLoop,
     # Control structures
     WhileLoop,
 )
@@ -115,6 +119,11 @@ class ValidatorVisitor(ASTVisitor[None]):
             node_type=node.__class__.__name__,
             context=self._get_context()
         ))
+
+    def _visit_redirects(self, node: ASTNode):
+        """Validate redirects carried by *node* (compound commands too)."""
+        for redirect in getattr(node, 'redirects', []):
+            self.visit(redirect)
 
     # Top-level nodes
 
@@ -235,6 +244,23 @@ class ValidatorVisitor(ASTVisitor[None]):
 
         self.in_loop -= 1
         self._pop_context()
+        self._visit_redirects(node)
+
+    def visit_UntilLoop(self, node: UntilLoop) -> None:
+        """Validate an until loop (mirrors while: condition + body + loop nesting)."""
+        self._push_context("until loop")
+        self.in_loop += 1
+
+        # Check condition
+        if not node.condition.statements:
+            self._add_warning("Until loop with empty condition will loop forever", node)
+
+        self.visit(node.condition)
+        self.visit(node.body)
+
+        self.in_loop -= 1
+        self._pop_context()
+        self._visit_redirects(node)
 
     def visit_ForLoop(self, node: ForLoop) -> None:
         """Validate a for loop."""
@@ -256,6 +282,7 @@ class ValidatorVisitor(ASTVisitor[None]):
 
         self.in_loop -= 1
         self._pop_context()
+        self._visit_redirects(node)
 
     def visit_CStyleForLoop(self, node: CStyleForLoop) -> None:
         """Validate a C-style for loop."""
@@ -274,6 +301,7 @@ class ValidatorVisitor(ASTVisitor[None]):
 
         self.in_loop -= 1
         self._pop_context()
+        self._visit_redirects(node)
 
     def visit_IfConditional(self, node: IfConditional) -> None:
         """Validate an if statement."""
@@ -310,6 +338,7 @@ class ValidatorVisitor(ASTVisitor[None]):
             self._pop_context()
 
         self._pop_context()
+        self._visit_redirects(node)
 
     def visit_CaseConditional(self, node: CaseConditional) -> None:
         """Validate a case statement."""
@@ -332,6 +361,7 @@ class ValidatorVisitor(ASTVisitor[None]):
             self.visit(item)
 
         self._pop_context()
+        self._visit_redirects(node)
 
     def visit_CaseItem(self, node: CaseItem) -> None:
         """Validate a case item."""
@@ -368,6 +398,29 @@ class ValidatorVisitor(ASTVisitor[None]):
 
         self.in_loop -= 1
         self._pop_context()
+        self._visit_redirects(node)
+
+    # Group commands
+
+    def visit_SubshellGroup(self, node: SubshellGroup) -> None:
+        """Validate a subshell group ( ... )."""
+        self._push_context("subshell group")
+        self.visit(node.statements)
+        self._pop_context()
+        self._visit_redirects(node)
+
+    def visit_BraceGroup(self, node: BraceGroup) -> None:
+        """Validate a brace group { ...; }."""
+        self._push_context("brace group")
+        self.visit(node.statements)
+        self._pop_context()
+        self._visit_redirects(node)
+
+    def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> None:
+        """Validate an arithmetic command (( ... ))."""
+        if not node.expression.strip():
+            self._add_warning("Arithmetic command with empty expression", node)
+        self._visit_redirects(node)
 
     # Break/Continue validation
 
@@ -414,6 +467,7 @@ class ValidatorVisitor(ASTVisitor[None]):
 
         self._pop_context()
         self.in_function = old_in_function
+        self._visit_redirects(node)
 
     # Array validation
 
@@ -457,9 +511,9 @@ class ValidatorVisitor(ASTVisitor[None]):
 
     def visit_EnhancedTestStatement(self, node: EnhancedTestStatement) -> None:
         """Validate enhanced test statement."""
-        # Just visit the expression
-        # The test expression validation would be in a separate visitor
-        pass
+        # The test expression itself is not validated here (operands are
+        # plain strings); only the attached redirects are checked.
+        self._visit_redirects(node)
 
     def generic_visit(self, node: ASTNode) -> None:
         """Default handling for unknown nodes."""

@@ -8,6 +8,8 @@ useful for debugging and understanding AST structure.
 from ..ast_nodes import (
     AndOrList,
     ArithmeticEvaluation,
+    # Word/expansion nodes
+    ArithmeticExpansion,
     ArrayElementAssignment,
     # Array nodes
     ArrayInitialization,
@@ -19,15 +21,20 @@ from ..ast_nodes import (
     CaseConditional,
     # Case statement components
     CaseItem,
+    CasePattern,
+    CommandSubstitution,
     CompoundTestExpression,
     ContinueStatement,
     CStyleForLoop,
     EnhancedTestStatement,
+    ExpansionPart,
     ForLoop,
     # Function and test nodes
     FunctionDef,
     IfConditional,
+    LiteralPart,
     NegatedTestExpression,
+    ParameterExpansion,
     Pipeline,
     ProcessSubstitution,
     Redirect,
@@ -37,8 +44,11 @@ from ..ast_nodes import (
     SubshellGroup,
     TopLevel,
     UnaryTestExpression,
+    UntilLoop,
+    VariableExpansion,
     # Control structures
     WhileLoop,
+    Word,
 )
 from .base import ASTVisitor
 
@@ -183,7 +193,10 @@ class FormatterVisitor(ASTVisitor[str]):
                 parts.append(f' {op} ')
                 parts.append(self.visit(node.pipelines[i + 1]).strip())
 
-        return ''.join(parts)
+        result = ''.join(parts)
+        if node.background:
+            result += ' &'
+        return result
 
     # Control structures
 
@@ -192,6 +205,29 @@ class FormatterVisitor(ASTVisitor[str]):
         lines = []
 
         lines.append(self._indent() + 'while')
+        self._increase_indent()
+        lines.append(self.visit(node.condition))
+        self._decrease_indent()
+
+        lines.append(self._indent() + 'do')
+        self._increase_indent()
+        lines.append(self.visit(node.body))
+        self._decrease_indent()
+
+        lines.append(self._indent() + 'done')
+
+        # Add redirections
+        if node.redirects:
+            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
+            lines[-1] += ' ' + redirect_str
+
+        return '\n'.join(lines)
+
+    def visit_UntilLoop(self, node: UntilLoop) -> str:
+        """Format an until loop."""
+        lines = []
+
+        lines.append(self._indent() + 'until')
         self._increase_indent()
         lines.append(self.visit(node.condition))
         self._decrease_indent()
@@ -376,6 +412,12 @@ class FormatterVisitor(ASTVisitor[str]):
         self._decrease_indent()
 
         lines.append(self._indent() + '}')
+
+        # Redirections on the definition apply at each call: f() { ...; } > file
+        if node.redirects:
+            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
+            lines[-1] += ' ' + redirect_str
+
         return '\n'.join(lines)
 
     def visit_BreakStatement(self, node: BreakStatement) -> str:
@@ -394,7 +436,14 @@ class FormatterVisitor(ASTVisitor[str]):
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> str:
         """Format an arithmetic command."""
-        return f"{self._indent()}(({node.expression}))"
+        result = f"{self._indent()}(({node.expression}))"
+
+        # Add redirections
+        if node.redirects:
+            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
+            result += ' ' + redirect_str
+
+        return result
 
     def visit_SubshellGroup(self, node: SubshellGroup) -> str:
         """Format a subshell group ``( ... )``."""
@@ -512,6 +561,48 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format a process substitution."""
         return str(node)
 
+    # Word-level nodes. In normal formatting these are reconstructed by
+    # _format_word() (which preserves per-part quote context) rather than
+    # dispatched through visit(), but explicit methods keep the formatter
+    # total over every real AST node a parse can produce.
+
+    def visit_Word(self, node: Word) -> str:
+        """Format a word from its parts, preserving quoting."""
+        return self._format_word(node)
+
+    def visit_LiteralPart(self, node: LiteralPart) -> str:
+        """Format a literal word part."""
+        return node.text
+
+    def visit_ExpansionPart(self, node: ExpansionPart) -> str:
+        """Format an expansion word part."""
+        return self.visit(node.expansion)
+
+    def visit_VariableExpansion(self, node: VariableExpansion) -> str:
+        """Format a simple variable expansion ($var)."""
+        return str(node)
+
+    def visit_ParameterExpansion(self, node: ParameterExpansion) -> str:
+        """Format a parameter expansion (${...})."""
+        return str(node)
+
+    def visit_CommandSubstitution(self, node: CommandSubstitution) -> str:
+        """Format a command substitution ($(...) or backticks)."""
+        return str(node)
+
+    def visit_ArithmeticExpansion(self, node: ArithmeticExpansion) -> str:
+        """Format an arithmetic expansion ($((...)))."""
+        return str(node)
+
+    def visit_CasePattern(self, node: CasePattern) -> str:
+        """Format a single case pattern."""
+        return node.pattern
+
     def generic_visit(self, node: ASTNode) -> str:
-        """Default formatting for unknown nodes."""
+        """Default formatting for unknown nodes.
+
+        Kept as a defensive fallback for AST nodes added in the future;
+        no node produced by parsing real source should reach it (enforced
+        by tests/unit/visitor/test_ast_coverage_matrix.py).
+        """
         return f"{self._indent()}# Unknown node: {node.__class__.__name__}"
