@@ -46,7 +46,7 @@ Options:
   -V, --version    Show version information and exit
   --norc           Do not read ~/.pshrc on startup
   --rcfile FILE    Read FILE instead of ~/.pshrc
-  --parser PARSER  Select parser: recursive_descent (rd), combinator (pc)
+  --parser PARSER  Select parser: recursive_descent (rd, default), combinator (pc, educational)
   --force-interactive Same as -i
   --debug-ast      Print AST before execution (debugging)
   --debug-ast=FORMAT AST format: pretty, tree, compact, dot, sexp

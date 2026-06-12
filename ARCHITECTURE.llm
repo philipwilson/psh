@@ -1,6 +1,6 @@
 # PSH Architecture Reference for Large Language Models
 
-Version: 0.308.0
+Version: 0.309.0
 Purpose: Optimized reference for LLMs working with the PSH codebase
 
 ## Quick Start
@@ -218,7 +218,8 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
   - AST/Errors: `Token.normalized_value` offers a canonical string for diagnostics and suggestions
 
 ### Alternative Implementation (`psh/parser/combinators/`)
-- Fully modular parser-combinator implementation with near parity to recursive descent (`core.py`, `tokens.py`, `commands.py`, `control_structures.py`, etc.)
+- Modular parser-combinator implementation (`core.py`, `tokens.py`, `commands.py`, `control_structures/`, etc.)
+- **Status: educational only (decision 2026-06-12)** — outside the production quality bar; parity regression tests pin known-good behavior, but gaps (e.g. composite words in some list contexts) are documented, not tracked as defects
 - Selected via `parser-select combinator` builtin (aliases: `"pc"`, `"functional"`)
 - Used for experimentation, benchmarking, and educational comparisons
 

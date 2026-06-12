@@ -35,7 +35,8 @@ class ParserSelectBuiltin(Builtin):
     Parsers:
       recursive_descent  Production recursive descent parser (default)
                          Aliases: rd, recursive, default
-      combinator         Experimental combinator parser
+      combinator         Educational combinator parser (not production-
+                         supported; may lag on edge cases)
                          Aliases: pc, functional
 
     Exit Status:

@@ -4,14 +4,14 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.308.0
+**Current Version**: 0.309.0
 
 **Note:** For LLM-optimized architecture documentation, see `ARCHITECTURE.llm`
 
 **Key Architectural Features**:
 - **Dual Parser Architecture**: Two complete parser implementations for educational comparison
   - **Recursive Descent Parser**: Production parser with modular package structure in `psh/parser/recursive_descent/`
-  - **Parser Combinator**: Functional parser with near-complete feature parity (~95%) in `psh/parser/combinators/`
+  - **Parser Combinator**: Educational functional parser in `psh/parser/combinators/` — outside the production quality bar (decision 2026-06-12); parity tests pin against drift but its gaps are not tracked as defects
   - **Parser Selection**: Switch between implementations with `parser-select combinator` builtin
   - **Educational Value**: Compare imperative vs. functional parsing approaches
 - **Unified Lexer Architecture**: State machine lexer with modular architecture

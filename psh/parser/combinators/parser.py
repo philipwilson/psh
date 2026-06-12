@@ -35,6 +35,12 @@ class ParserCombinatorShellParser:
     counterpoint and proof of concept.  It may lag behind on edge-case fixes
     and new features.  There is no plan to converge the two implementations.
 
+    Project decision (2026-06-12): this parser is **outside the production
+    quality bar**.  Parity regression tests pin known-good behavior against
+    drift, but remaining gaps (e.g. composite words in some list contexts)
+    are documented rather than tracked as defects, and conformance work does
+    not target this parser.  Revisit if/when dedicated time is available.
+
     Use ``parser-select combinator`` inside psh to activate it interactively.
     """
 
