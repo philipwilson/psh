@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.319.0 (2026-06-12) - Textbook program Tier C1: the internals tour
+- New docs/architecture/tour_of_psh_internals.md (516 lines): traces
+  `echo "Hello, $USER" | wc -c > out.txt` through input processing →
+  tokenization → keyword normalization → parsing → Word-AST expansion
+  → pipeline execution → exit status. The defining property: every
+  illustration is REPRODUCIBLE — real --debug-tokens/--debug-ast/
+  --debug-expansion/--debug-exec output generated this session, with
+  the exact regeneration command beside each artifact and trims
+  marked. Flag gaps worked around honestly (RichToken parts shown via
+  a 3-line public-API snippet; keyword normalization via a two-dump
+  contrast). Ends with three trace-it-yourself variations (command
+  substitution → run_child_shell; procsub expansion part + scope;
+  for-loop keywords + LOOP_ITEM policy), each probe-verified.
+- Reader paths wired: ARCHITECTURE.md's note line, the user guide's
+  new "Going Deeper" section, root CLAUDE.md's orientation paragraph.
+- The doc-pointer meta-test's file list extended to scan the tour —
+  its references are enforced like every other load-bearing doc.
+- Closes the teaching-mission gap reappraisal #3 graded C+ (the repo
+  documented psh as a product; now it teaches it as a textbook).
+- Quick gate: 5,324 passed, 0 failures; ruff + mypy clean.
+
 ## 0.318.0 (2026-06-12) - Textbook program Tier B3: shared forked-child runner (zero behavior change)
 - run_child_shell(parent_shell, body, *, norc, io_setup, error_label)
   in executor/child_policy.py completes the P2 design: signal policy ->

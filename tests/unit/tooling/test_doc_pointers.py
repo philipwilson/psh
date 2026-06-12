@@ -1,6 +1,7 @@
 """Doc-pointer meta-test: architecture docs must point at things that exist.
 
-Scans ARCHITECTURE.md, docs/architecture/ast_data_flow.md and every
+Scans ARCHITECTURE.md, docs/architecture/ast_data_flow.md,
+docs/architecture/tour_of_psh_internals.md and every
 psh/**/CLAUDE.md for backticked repo paths and symbol references, and
 asserts each one resolves against the current tree. The goal is to catch
 the "ghost class" of documentation failure loudly:
@@ -49,6 +50,7 @@ DOC_FILES = sorted(
     [
         PROJECT_ROOT / "ARCHITECTURE.md",
         PROJECT_ROOT / "docs" / "architecture" / "ast_data_flow.md",
+        PROJECT_ROOT / "docs" / "architecture" / "tour_of_psh_internals.md",
     ]
     + list((PROJECT_ROOT / "psh").rglob("CLAUDE.md"))
 )
@@ -248,4 +250,5 @@ def test_scanned_docs_exist():
     shrinking coverage."""
     assert (PROJECT_ROOT / "ARCHITECTURE.md").is_file()
     assert (PROJECT_ROOT / "docs/architecture/ast_data_flow.md").is_file()
-    assert len(DOC_FILES) >= 11  # ARCHITECTURE + ast_data_flow + 9 CLAUDE.md
+    assert (PROJECT_ROOT / "docs/architecture/tour_of_psh_internals.md").is_file()
+    assert len(DOC_FILES) >= 12  # ARCHITECTURE + ast_data_flow + tour + 9 CLAUDE.md

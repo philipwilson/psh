@@ -31,6 +31,18 @@ Welcome to the Python Shell (PSH) User's Guide. This comprehensive guide covers 
 - [D. ASCII Character Set](appendix_d_ascii_chart.md)
 - [E. Glossary of Terms](appendix_e_glossary.md)
 
+## Going Deeper: How PSH Works Inside
+
+This guide covers what PSH does. If you want to know how it does it —
+the educational mission of the project — start with
+[A Tour of PSH Internals](../architecture/tour_of_psh_internals.md),
+which traces one real command (`echo "Hello, $USER" | wc -c > out.txt`)
+through tokenization, parsing, expansion, and execution, with every
+stage's output reproducible via PSH's own debug flags
+(`--debug-tokens`, `--debug-ast`, `--debug-expansion`, `--debug-exec`).
+From there, `ARCHITECTURE.md` at the repository root maps the
+components in detail.
+
 ## How to Use This Guide
 
 Each chapter builds upon previous concepts. Beginners should read chapters 1-5 sequentially, while experienced shell users can jump to specific topics of interest.

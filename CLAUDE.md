@@ -151,8 +151,10 @@ These files have version-stamped metadata that must stay in sync:
 
 For agent orientation: ARCHITECTURE.md's Quick Map → the relevant
 subsystem `CLAUDE.md` → `docs/architecture/ast_data_flow.md` for
-expansion-context pointers. (`ARCHITECTURE.llm` was retired to
-`docs/archive/` in v0.311.0.)
+expansion-context pointers. For the end-to-end narrative (one command
+traced through every stage, reproducible via the debug flags) see
+`docs/architecture/tour_of_psh_internals.md`. (`ARCHITECTURE.llm` was
+retired to `docs/archive/` in v0.311.0.)
 
 ### Known Test Issues
 
