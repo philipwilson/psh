@@ -5,6 +5,12 @@ size: a single command line of N quoted words lexed in O(N^2) because
 every quote/expansion character triggered a backward scan to the previous
 command separator (_is_inside_potential_array_assignment). That scan is
 now a lazily-built O(n) forward map; these tests pin the linear behavior.
+
+Measurement discipline (v0.313.0): wall-clock ratios flake under xdist
+contention (16 workers preempting each other), so we measure
+``time.process_time()`` — CPU time consumed by this process only, immune
+to preemption — and take the min of 3 samples to discard cache-cold or
+GC-interrupted runs. An O(N^2) regression shows identically in CPU time.
 """
 
 import time
@@ -13,28 +19,33 @@ from psh.lexer import tokenize
 
 
 def _lex_time(n: int) -> float:
+    """Min-of-3 CPU time to lex one long line of n quoted words."""
     # One long line, space-separated: no ';' barriers, the old scan's
     # worst case.
     src = 'echo ' + ' '.join(f'"w{i}"' for i in range(n))
-    start = time.perf_counter()
-    tokens = tokenize(src)
-    elapsed = time.perf_counter() - start
-    assert len(tokens) > n  # sanity: it actually lexed
-    return elapsed
+
+    def measure() -> float:
+        start = time.process_time()
+        tokens = tokenize(src)
+        elapsed = time.process_time() - start
+        assert len(tokens) > n  # sanity: it actually lexed
+        return elapsed
+
+    return min(measure() for _ in range(3))
 
 
 def test_long_quoted_line_lexes_fast():
     """4000 quoted words on one line must lex in well under a second.
 
-    Linear behavior measures ~0.04s here; the old quadratic scan took
-    ~3.8s. The 2s bound leaves room for slow CI machines while still
+    Linear behavior measures ~0.04s of CPU here; the old quadratic scan
+    took ~3.8s. The 2s bound leaves room for slow CI machines while still
     failing decisively on an O(N^2) regression.
     """
     assert _lex_time(4000) < 2.0
 
 
 def test_lexing_scales_roughly_linearly():
-    """Doubling the input must not quadruple the time.
+    """Doubling the input must not quadruple the CPU time.
 
     A quadratic lexer shows a ratio of ~4 here; linear is ~2. The 3.2
     bound tolerates timer noise while catching superlinear blowup.

@@ -3,9 +3,15 @@ Performance benchmarks for PSH parsing speed.
 
 Tests parsing performance with various sizes and complexities of input
 to ensure PSH maintains reasonable performance.
+
+Measurement discipline (v0.313.0): wall-clock timing flakes under load
+(e.g. xdist worker contention), so these benchmarks measure
+``time.process_time()`` — CPU time consumed by this process only, immune
+to preemption — and take the min over the sampled iterations to discard
+cache-cold or GC-interrupted runs. Algorithmic regressions (e.g. O(N^2)
+blowup) show identically in CPU time.
 """
 
-import statistics
 import sys
 import time
 from pathlib import Path
@@ -25,17 +31,17 @@ class TestParsingPerformance:
     """Benchmark parsing performance."""
 
     def measure_parse_time(self, script: str, iterations: int = 100) -> float:
-        """Measure average time to parse a script."""
+        """Measure min-of-iterations CPU time to parse a script."""
         times = []
 
         for _ in range(iterations):
-            start = time.perf_counter()
+            start = time.process_time()
             parser = Parser(tokenize(script))
             parser.parse()
-            end = time.perf_counter()
+            end = time.process_time()
             times.append(end - start)
 
-        return statistics.mean(times)
+        return min(times)
 
     def test_simple_command_performance(self):
         """Test parsing performance of simple commands."""
@@ -186,16 +192,16 @@ class TestTokenizationPerformance:
     """Benchmark tokenization performance."""
 
     def measure_tokenize_time(self, script: str, iterations: int = 100) -> float:
-        """Measure average time to tokenize a script."""
+        """Measure min-of-iterations CPU time to tokenize a script."""
         times = []
 
         for _ in range(iterations):
-            start = time.perf_counter()
+            start = time.process_time()
             list(tokenize(script))  # Force evaluation of generator
-            end = time.perf_counter()
+            end = time.process_time()
             times.append(end - start)
 
-        return statistics.mean(times)
+        return min(times)
 
     def test_tokenization_scaling(self):
         """Test how tokenization scales with input size."""

@@ -528,21 +528,85 @@ class TestDirsBuiltin:
             # Clear capture buffer after pushd commands
             capsys.readouterr()
 
-            # Show entry at index -1 (last entry)
+            # Bash-verified (bash 5.2): -N counts from the RIGHT, 0-based.
+            # Stack is [minus2, minus1, original], so -0 is the bottom
+            # (original) and -1 is the entry above it (minus1).
             exit_code = shell.run_command('dirs -1')
             assert exit_code == 0
 
             captured = capsys.readouterr()
-            # Should show only one directory (bottom of stack)
             lines = captured.out.strip().split()
             assert len(lines) == 1
-            # Original directory is shown with $HOME abbreviated to ~
-            assert tilde_abbrev(original) in captured.out
+            assert captured.out.strip().endswith('minus1')
+
+            # -0 shows the bottom of the stack (the original directory),
+            # with $HOME abbreviated to ~
+            exit_code = shell.run_command('dirs -0')
+            assert exit_code == 0
+            captured = capsys.readouterr()
+            assert captured.out.strip() == tilde_abbrev(original)
 
         finally:
             # Clean up
             shell.run_command(f'cd {original}')
             for d in dirs:
+                if os.path.exists(d):
+                    os.rmdir(d)
+
+    def test_dirs_p_one_per_line(self, shell, capsys):
+        """dirs -p lists one directory per line without indices (bash-verified)."""
+        original = os.getcwd()
+        os.makedirs("perline", exist_ok=True)
+
+        try:
+            shell.run_command(f'pushd {os.path.join(original, "perline")}')
+            capsys.readouterr()
+
+            exit_code = shell.run_command('dirs -p')
+            assert exit_code == 0
+
+            captured = capsys.readouterr()
+            lines = captured.out.strip().split('\n')
+            assert len(lines) == 2
+            assert lines[0].endswith('perline')
+            assert lines[1] == tilde_abbrev(original)
+            # No index column (that's -v)
+            assert not lines[0].startswith(' 0')
+
+        finally:
+            shell.run_command(f'cd {original}')
+            if os.path.exists("perline"):
+                os.rmdir("perline")
+
+    def test_popd_minus_index_counts_from_right(self, shell, capsys):
+        """popd -N removes the Nth entry from the right, 0-based (bash-verified).
+
+        With stack [c, b, original], `popd -1` removes b (bash 5.2 counts
+        -0 as the bottom), leaving [c, original].
+        """
+        original = os.getcwd()
+        for d in ("popm_b", "popm_c"):
+            os.makedirs(d, exist_ok=True)
+
+        try:
+            shell.run_command(f'pushd {os.path.join(original, "popm_b")}')
+            shell.run_command(f'pushd {os.path.join(original, "popm_c")}')
+            capsys.readouterr()
+
+            exit_code = shell.run_command('popd -1')
+            assert exit_code == 0
+
+            shell.run_command('dirs')
+            captured = capsys.readouterr()
+            last_line = captured.out.strip().split('\n')[-1]
+            entries = last_line.split()
+            assert len(entries) == 2
+            assert entries[0].endswith('popm_c')
+            assert entries[1] == tilde_abbrev(original)
+
+        finally:
+            shell.run_command(f'cd {original}')
+            for d in ("popm_b", "popm_c"):
                 if os.path.exists(d):
                     os.rmdir(d)
 

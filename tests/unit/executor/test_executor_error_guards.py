@@ -56,7 +56,13 @@ def boom_builtin():
     try:
         yield
     finally:
+        # Remove BOTH the name mapping and the instance: the registry is a
+        # process-global singleton, and a leaked _instances entry makes
+        # 'boom' show up in registry.names() for every later test in the
+        # process (caught by tests/unit/visitor/test_shell_builtins_pinned.py).
         registry._builtins.pop("boom", None)
+        registry._instances = {
+            inst for inst in registry._instances if inst.name != "boom"}
 
 
 class TestUnexpectedErrorGuard:

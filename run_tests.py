@@ -23,24 +23,20 @@ from pathlib import Path
 
 
 def run_command(cmd, description, env=None, parallel=False):
-    """Run a command and return the result.
+    """Run a command and return ``(exit_code, output)``.
 
-    When *parallel* is True, the output is captured so we can detect the
+    Output is always captured (and echoed) so the final summary can report
+    combined pass totals across phases and the ``--census`` mode can parse
+    skip/xfail reasons. When *parallel* is True we additionally detect the
     pytest-xdist teardown race (``INTERNALERROR ... cannot send``) that
-    produces exit-code 3 even though all tests passed.  In that case we
-    report success based on the pytest summary line instead.
+    produces exit-code 3 even though all tests passed, and report success
+    based on the pytest summary line instead.
     """
     print(f"\n{'=' * 80}")
     print(f"Running: {description}")
     print(f"Command: {' '.join(cmd)}")
     print('=' * 80)
 
-    if not parallel:
-        result = subprocess.run(cmd, cwd=Path(__file__).parent, env=env)
-        return result.returncode
-
-    # In parallel mode, capture output to detect and suppress the known
-    # pytest-xdist teardown race (BrokenPipeError / "cannot send").
     result = subprocess.run(
         cmd, cwd=Path(__file__).parent, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -54,11 +50,12 @@ def run_command(cmd, description, env=None, parallel=False):
     print('\n'.join(clean_lines))
 
     if result.returncode == 0:
-        return 0
+        return 0, result.stdout
 
     # Exit code 3 with "cannot send (already closed?)" is a known
     # pytest-xdist teardown race — harmless if no tests actually failed.
-    if result.returncode == 3 and 'cannot send (already closed?)' in result.stdout:
+    if parallel and result.returncode == 3 \
+            and 'cannot send (already closed?)' in result.stdout:
         # Check whether the summary line reports any real failures.
         # The pytest summary looks like "=== 1739 passed, 264 skipped ... ==="
         # Note: must distinguish "N failed" from "N xfailed" — only the
@@ -68,12 +65,76 @@ def run_command(cmd, description, env=None, parallel=False):
                 # Real failures present — print the full output so the
                 # user can see what went wrong, then honour the exit code.
                 print(result.stdout)
-                return result.returncode
+                return result.returncode, result.stdout
             if 'passed' in line:
                 # All tests passed (possibly with xfails); teardown noise.
-                return 0
+                return 0, result.stdout
 
-    return result.returncode
+    return result.returncode, result.stdout
+
+
+# Pytest summary tokens we aggregate across phases, e.g.
+# "=== 4844 passed, 272 skipped, 1 xfailed in 22.64s ===".
+_SUMMARY_FIELDS = ('passed', 'failed', 'errors', 'skipped',
+                   'xfailed', 'xpassed', 'deselected')
+
+
+def parse_summary_counts(output):
+    """Extract test-outcome counts from the LAST pytest summary line."""
+    counts = {}
+    for line in reversed(output.splitlines()):
+        if 'passed' in line or 'failed' in line or 'error' in line:
+            for field in _SUMMARY_FIELDS:
+                # \b keeps "failed" from matching inside "xfailed"
+                m = re.search(rf'(\d+) {field}\b', line)
+                if m:
+                    counts[field] = int(m.group(1))
+            if counts:
+                return counts
+    return counts
+
+
+def print_census(phase_outputs):
+    """Print a skip/xfail breakdown with reasons, aggregated across phases.
+
+    Parses the ``-rsxX`` short-summary lines:
+        SKIPPED [3] tests/foo.py:10: reason text
+        XFAIL tests/bar.py::test_x - reason text
+        XPASS tests/baz.py::test_y
+    """
+    skip_reasons = {}
+    xfail_reasons = {}
+    xpasses = []
+    for output in phase_outputs:
+        for line in output.splitlines():
+            m = re.match(r'SKIPPED \[(\d+)\] [^:]+(?::\d+)?: (.*)', line)
+            if m:
+                count, reason = int(m.group(1)), m.group(2).strip()
+                skip_reasons[reason] = skip_reasons.get(reason, 0) + count
+                continue
+            m = re.match(r'XFAIL (\S+)(?: - (.*))?', line)
+            if m:
+                reason = (m.group(2) or '(no reason given)').strip()
+                xfail_reasons[reason] = xfail_reasons.get(reason, 0) + 1
+                continue
+            m = re.match(r'XPASS (\S+)', line)
+            if m:
+                xpasses.append(m.group(1))
+
+    print("\n" + "=" * 80)
+    print("SKIP/XFAIL CENSUS")
+    print("=" * 80)
+    total_skips = sum(skip_reasons.values())
+    print(f"\nSkipped: {total_skips} (by reason, descending):")
+    for reason, count in sorted(skip_reasons.items(), key=lambda kv: -kv[1]):
+        print(f"  {count:4d}  {reason}")
+    print(f"\nXfailed: {sum(xfail_reasons.values())} (by reason, descending):")
+    for reason, count in sorted(xfail_reasons.items(), key=lambda kv: -kv[1]):
+        print(f"  {count:4d}  {reason}")
+    if xpasses:
+        print(f"\nXPASSED (unexpectedly passing — investigate): {len(xpasses)}")
+        for test in xpasses:
+            print(f"        {test}")
 
 
 def main():
@@ -146,6 +207,21 @@ Examples:
     )
 
     parser.add_argument(
+        '--coverage',
+        action='store_true',
+        help='Collect coverage for the psh package across all phases '
+             '(pytest-cov; accumulated with --cov-append). Writes coverage.xml '
+             'and prints a terminal report. Non-gating.'
+    )
+
+    parser.add_argument(
+        '--census',
+        action='store_true',
+        help='Print a skip/xfail breakdown with reasons (aggregated across '
+             'phases) after the run.'
+    )
+
+    parser.add_argument(
         'pytest_args',
         nargs='*',
         help='Additional arguments to pass to pytest'
@@ -165,12 +241,30 @@ Examples:
     if args.verbose:
         base_cmd.append('-v')
 
+    if args.census:
+        # Short summaries for skips/xfails/xpasses so the census can parse
+        # per-test reasons from each phase's output.
+        base_cmd.append('-rsxX')
+
+    if args.coverage:
+        # Accumulate one coverage database across all phases; the xml/term
+        # reports are rewritten per phase, so the LAST phase's reports cover
+        # the whole run. Non-gating (no --cov-fail-under).
+        coverage_db = Path(__file__).parent / '.coverage'
+        if coverage_db.exists():
+            coverage_db.unlink()
+        base_cmd.extend([
+            '--cov=psh', '--cov-append',
+            '--cov-report=xml:coverage.xml', '--cov-report=term',
+        ])
+
     # Add any extra pytest args
     if args.pytest_args:
         base_cmd.extend(args.pytest_args)
 
     parser_label = "combinator" if args.combinator else "recursive_descent"
     exit_codes = []
+    phase_outputs = []
 
     if args.all_nocapture:
         # Simple mode: run everything with -s
@@ -182,8 +276,9 @@ Examples:
         if args.quick:
             cmd.extend(['-m', 'not slow'])
 
-        exit_code = run_command(cmd, "All tests with capture disabled", env=env)
+        exit_code, output = run_command(cmd, "All tests with capture disabled", env=env)
         exit_codes.append(exit_code)
+        phase_outputs.append(output)
 
     elif args.subshells_only:
         # Just run subshell tests
@@ -192,8 +287,9 @@ Examples:
         print("=" * 80)
 
         cmd = base_cmd + ['tests/integration/subshells/', '-s']
-        exit_code = run_command(cmd, "Subshell tests (with -s)", env=env)
+        exit_code, output = run_command(cmd, "Subshell tests (with -s)", env=env)
         exit_codes.append(exit_code)
+        phase_outputs.append(output)
 
     else:
         # Smart mode: Run tests in phases
@@ -233,8 +329,9 @@ Examples:
             desc += f" (parallel, {args.parallel} workers, -m 'not serial')"
         else:
             desc += " (with capture)"
-        exit_code = run_command(cmd, desc, env=env, parallel=bool(args.parallel))
+        exit_code, output = run_command(cmd, desc, env=env, parallel=bool(args.parallel))
         exit_codes.append(exit_code)
+        phase_outputs.append(output)
 
         # Phase 1b: serial-marked tests (process/signal/forked-fd). Only needed
         # in parallel mode — they were excluded from Phase 1. Run without xdist.
@@ -244,10 +341,11 @@ Examples:
             if args.quick:
                 serial_markers.append('not slow')
             cmd.extend(['-m', ' and '.join(serial_markers)])
-            exit_code = run_command(
+            exit_code, output = run_command(
                 cmd, "Phase 1b: serial tests (process/signal/forked-fd, no xdist)",
                 env=env)
             exit_codes.append(exit_code)
+            phase_outputs.append(output)
 
         if not args.no_subshells:
             # Phase 2: Run subshell tests with -s
@@ -256,8 +354,9 @@ Examples:
                 '-s'
             ]
 
-            exit_code = run_command(cmd, "Phase 2: Subshell tests (with -s)", env=env)
+            exit_code, output = run_command(cmd, "Phase 2: Subshell tests (with -s)", env=env)
             exit_codes.append(exit_code)
+            phase_outputs.append(output)
 
         # Phase 3 (opt-in): golden behavioral cases compared against bash.
         # Gated behind --compare-bash because it requires bash on PATH; the
@@ -267,14 +366,29 @@ Examples:
                 'tests/behavioral/test_golden_behavior.py',
                 '--compare-bash',
             ]
-            exit_code = run_command(
+            exit_code, output = run_command(
                 cmd, "Phase 3: Golden behavioral comparison vs bash", env=env)
             exit_codes.append(exit_code)
+            phase_outputs.append(output)
+
+    # Optional skip/xfail census
+    if args.census:
+        print_census(phase_outputs)
 
     # Summary
     print("\n" + "=" * 80)
     print("TEST RUN SUMMARY")
     print("=" * 80)
+
+    # Combined outcome totals across all phases
+    totals = {}
+    for output in phase_outputs:
+        for field, count in parse_summary_counts(output).items():
+            totals[field] = totals.get(field, 0) + count
+    if totals:
+        combined = ', '.join(
+            f"{totals[f]} {f}" for f in _SUMMARY_FIELDS if f in totals)
+        print(f"Combined across {len(phase_outputs)} phase(s): {combined}")
 
     if all(code == 0 for code in exit_codes):
         print("✅ All test phases PASSED")
