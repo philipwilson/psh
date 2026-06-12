@@ -60,8 +60,13 @@ class SourceProcessor(ScriptComponent):
             if not command_buffer and not line.strip():
                 continue
 
-            # Skip comment lines when no command is being built
-            if not command_buffer and line.strip().startswith('#'):
+            # Skip comment lines when no command is being built. Only for
+            # single-line chunks: a multi-line string (e.g. from
+            # run_command(), where StringInput yields the whole string as
+            # one "line") may start with a comment yet contain commands —
+            # the lexer strips embedded comments during tokenization.
+            if (not command_buffer and line.strip().startswith('#')
+                    and '\n' not in line.strip()):
                 continue
 
             # Note: Line continuation handling is now done in preprocessing
@@ -130,13 +135,26 @@ class SourceProcessor(ScriptComponent):
                             print(f"DEBUG: Exiting due to errexit with code {exit_code}", file=sys.stderr)
                         return exit_code
                 else:
-                    # Check if command is complete by trying to parse it
+                    # Check if command is complete by trying to parse it.
+                    # Mirror the execution path's heredoc handling: a plain
+                    # tokenize() would feed heredoc BODY lines to the parser
+                    # as commands (a body line like `)` is then a bogus
+                    # "real" parse error).
                     try:
-                        tokens = tokenize(test_command, shell_options=self.state.options)
-                        # Try parsing to see if command is complete
-                        from ..parser import Parser
-                        parser = Parser(tokens, source_text=test_command)
-                        parser.parse()
+                        if contains_heredoc(test_command):
+                            from ..lexer import tokenize_with_heredocs
+                            tokens, heredoc_map = tokenize_with_heredocs(
+                                test_command,
+                                strict=self.state.options.get('posix', False),
+                                shell_options=self.state.options)
+                            from ..parser import parse_with_heredocs
+                            parse_with_heredocs(tokens, heredoc_map)
+                        else:
+                            tokens = tokenize(test_command, shell_options=self.state.options)
+                            # Try parsing to see if command is complete
+                            from ..parser import Parser
+                            parser = Parser(tokens, source_text=test_command)
+                            parser.parse()
                         # If parsing succeeds, execute the command
                         exit_code = self._execute_buffered_command(
                             command_buffer.rstrip('\n'), input_source, command_start_line, add_to_history
@@ -199,8 +217,11 @@ class SourceProcessor(ScriptComponent):
     def _execute_buffered_command(self, command_string: str, input_source,
                                   start_line: int, add_to_history: bool) -> int:
         """Execute a buffered command with enhanced error reporting."""
-        # Skip empty commands and comments
-        if not command_string.strip() or command_string.strip().startswith('#'):
+        # Skip empty commands and pure single-line comments (a multi-line
+        # buffer starting with a comment still contains commands; the lexer
+        # strips the comment).
+        stripped = command_string.strip()
+        if not stripped or (stripped.startswith('#') and '\n' not in stripped):
             return 0
 
         # Update LINENO special variable with current line number

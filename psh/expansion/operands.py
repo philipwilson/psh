@@ -73,8 +73,8 @@ class OperandOpsMixin:
         """Index just past the ${...}, $(...) or $((...)) at text[i]."""
         from ..lexer.pure_helpers import (
             find_balanced_double_parentheses,
-            find_balanced_parentheses,
             find_closing_delimiter,
+            find_command_substitution_end,
         )
         if text.startswith('$((', i):
             end, found = find_balanced_double_parentheses(
@@ -82,7 +82,7 @@ class OperandOpsMixin:
             if found:
                 return end
         if text.startswith('$(', i):
-            end, found = find_balanced_parentheses(text, i + 2, track_quotes=True)
+            end, found = find_command_substitution_end(text, i + 2)
             return end if found else i + 2
         if text.startswith('${', i):
             end, found = find_closing_delimiter(
@@ -106,8 +106,8 @@ class OperandOpsMixin:
         """
         from ..lexer.pure_helpers import (
             find_balanced_double_parentheses,
-            find_balanced_parentheses,
             find_closing_delimiter,
+            find_command_substitution_end,
         )
         n = len(text)
         if text[i] == '`':
@@ -125,7 +125,7 @@ class OperandOpsMixin:
                 result = self.shell.expansion_manager.execute_arithmetic_expansion(text[i:end])
                 return str(result), end
         if text.startswith('$(', i):
-            end, found = find_balanced_parentheses(text, i + 2, track_quotes=True)
+            end, found = find_command_substitution_end(text, i + 2)
             if found:
                 return self.shell.expansion_manager.command_sub.execute(text[i:end]), end
             return '$', i + 1

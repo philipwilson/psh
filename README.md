@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.305.0 | **Tests**: 5,224 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.306.0 | **Tests**: 5,307 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -243,7 +243,7 @@ PSH uniquely includes two complete parser implementations:
 
 ### Project Statistics
 - **Lines of Code**: ~47,300 lines of production code in `psh/` across 192 Python files, plus ~53,600 lines of tests in `tests/` (231 files)
-- **Test Coverage**: 5,224 tests in 247 test files
+- **Test Coverage**: 5,307 tests in 250 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -341,6 +341,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.306.0**: command-substitution extent detection is grammar-aware — `$(case x in x) ...;; esac)` finally parses (quotes, comments, heredocs, nested constructs all modeled); the long-standing Known Limitation is closed; three pre-existing multiline `$(...)` bugs fixed along the way
 - **v0.305.0**: grammar boundaries tightened — `case` takes exactly one subject word (`case a b in` now errors like bash; `case in in` and `for in in` work); unterminated quotes in bracket words are lexer errors and `x["ok"]`/`x[$v]` expand correctly; assoc-key quote removal at lookup (`${h["k 1"]}`); never-implemented TokenTransformer deleted
 - **v0.304.0**: array element assignment values carry Word AST and share ONE assignment-value policy with scalar assignments (`a[0]=$(echo p q)` was mis-lexed entirely; single quotes leaked expansion; tilde/ANSI-C/escapes broken); explicit `[i]=v` initializers and `declare -A` pair-form fixed (keys went to index 0); 63/63 bash probes
 - **v0.303.0**: assignment-shaped ordinary arguments now word-split like bash (`printf "<%s>" foo=$x`); declaration builtins (declare/export/local/readonly/alias/typeset) get explicit no-split policy with bash's syntactic recognition; for/select items route through the Word engine (IFS-aware, tilde, `${a[@]}`); assignment-value tilde expansion and `+=` declaration args fixed

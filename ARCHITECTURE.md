@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.305.0
+**Current Version**: 0.306.0
 
 **Note:** For LLM-optimized architecture documentation, see `ARCHITECTURE.llm`
 
@@ -1076,7 +1076,7 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 
 1. **Deep Recursion**: Command substitution in recursive functions can hit Python's stack limit due to the multiple layers of function calls per shell recursion level.
 
-2. **`case` with unbalanced `)` inside `$(...)`**: The lexer finds the end of a command substitution by counting parentheses (`find_balanced_parentheses` in `psh/lexer/pure_helpers.py`, called from `psh/lexer/expansion_parser.py`) instead of recursively lexing the contents. A case pattern's bare closing paren breaks the count, so `echo $(case x in x) echo inner;; esac)` is a parse error in both parsers (bash prints `inner`). Workaround: use the POSIX leading-paren pattern form, `echo $(case x in (x) echo inner;; esac)`, which keeps the parens balanced and works in psh.
+(The former limitation here — `case` patterns with a bare `)` inside `$(...)` broke the paren-counting extent detection — was fixed by the grammar-aware extent scanner, `find_command_substitution_end` in `psh/lexer/pure_helpers.py`; its docstring documents the design and the remaining bash divergences.)
 
 ## Future Enhancements
 

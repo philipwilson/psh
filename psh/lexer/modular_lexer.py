@@ -459,6 +459,15 @@ class ModularLexer:
         # Update position
         self.position = new_pos
 
+        # Preserve the "unclosed" marker as a token part: the truncated text
+        # can still end with ')' (e.g. `$(# comment with )` swallowed by the
+        # comment), so the parser cannot infer incompleteness from the token
+        # value alone — it keys off part.expansion_type to raise an
+        # incomplete-input error and gather more lines.
+        if (expansion_part.expansion_type and
+                expansion_part.expansion_type.endswith('_unclosed')):
+            self.current_parts.append(expansion_part)
+
         # Emit token based on expansion type
         if expansion_part.is_variable:
             if expansion_part.expansion_type == 'parameter':
