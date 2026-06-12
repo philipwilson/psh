@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.309.0 | **Tests**: 5,392 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.310.0 | **Tests**: 5,424 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~47,300 lines of production code in `psh/` across 192 Python files, plus ~53,600 lines of tests in `tests/` (231 files)
-- **Test Coverage**: 5,392 tests in 251 test files
+- **Test Coverage**: 5,424 tests in 252 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.310.0**: hygiene release — every string-only legacy AST fallback audited and classified (tested, asserted, or deleted; ~106 lines removed; one live bash divergence found and fixed: quoted `"[0]"=x` initializer elements stay literal); canonical AST data-flow documented (docs/architecture/ast_data_flow.md); cmdsub scanner maintenance contract + 16 conformance cases
 - **v0.309.0**: combinator parser formally declared educational-only, outside the production quality bar (decision recorded in code docstring, CLAUDE.md, guides, help text); README's inaccurate "100% feature parity" claims corrected
 - **v0.308.0**: GitHub CI is green for the first time in the workflow's history (190+ prior failures): missing test deps (pyyaml/pexpect) added to [dev], lint gate aligned with CI (`ruff check psh tests`), and 17 environment-portability test bugs fixed (hardcoded dev-machine paths, BSD exit codes, Linux argv limits); `hash` builtin gap documented
 - **v0.307.0**: visitor tooling is total over the AST — formatter handles all 36 node classes (UntilLoop, dropped redirects, background `&`); security/validator/metrics visit `redirects` on every carrier; validator no longer silently skips until/subshell/brace-group subtrees; an introspective coverage-matrix test (empty exemption lists) fails loudly when a new node lacks visitor support

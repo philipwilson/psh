@@ -408,6 +408,25 @@ def find_command_substitution_end(
     substitution body agree on structure. Malformed input degrades
     gracefully: the scanner picks *a* plausible extent and the real parser
     of the substitution body reports the syntax error (as bash does).
+
+    Maintenance contract
+    --------------------
+    This function is a PARSER COMPONENT that happens to live in the lexer:
+    it models a parallel copy of the shell grammar for quoting (all four
+    quote forms + backslash), comments, heredoc redirections, arithmetic
+    ``$((...))``/``((...))``, ``${...}``, group/subshell parens, and the
+    ``case``..``esac`` statement (keyword-at-command-position rules
+    included). Any parser or lexer grammar change touching those areas —
+    new quoting forms, heredoc operators, case/pattern syntax, arithmetic
+    delimiters, command-position keyword rules — MUST consider whether this
+    scanner needs the same change, or the extent it picks will drift from
+    what the parser later accepts. Owner tests to extend when it changes:
+
+    * tests/unit/lexer/test_cmdsub_extent.py        (unit: extent picking)
+    * tests/integration/parsing/test_cmdsub_grammar.py  (lexer+parser agree)
+    * tests/conformance/bash/test_cmdsub_case_conformance.py
+      (bash 5.2 parity for tricky $(...) bodies — add a probe-verified
+      case here for every new grammar feature this scanner models)
     """
     n = len(input_text)
     pos = start_pos

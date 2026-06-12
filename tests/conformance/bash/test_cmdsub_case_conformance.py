@@ -62,3 +62,87 @@ class TestHiddenParensInCommandSub(ConformanceTest):
 
     def test_multiline_case_in_cmdsub(self):
         self.assert_identical_behavior('echo $(case x in\nx) echo nl;;\nesac)')
+
+
+class TestTrickyCmdsubBodies(ConformanceTest):
+    """Grammar-drift battery (2026-06-12 reassessment, Risk #4): tricky
+    $(...) bodies probed against bash 5.2 before being added here."""
+
+    def test_function_def_with_brace_body_in_cmdsub(self):
+        self.assert_identical_behavior('echo $(f() { echo fn; }; f)')
+
+    def test_function_def_with_subshell_body_in_cmdsub(self):
+        self.assert_identical_behavior('echo $(g() ( echo sub ); g)')
+
+    def test_process_substitution_inside_cmdsub(self):
+        self.assert_identical_behavior('echo $(cat <(echo procsub))')
+
+    def test_case_cmdsub_inside_heredoc_body(self):
+        self.assert_identical_behavior(
+            'cat <<EOF\n$(case x in x) echo in-heredoc;; esac)\nEOF')
+
+    def test_heredoc_inside_case_body_inside_cmdsub(self):
+        self.assert_identical_behavior(
+            'echo $(case x in x) cat <<H\nbody ) text\nH\n;; esac)')
+
+    def test_double_quoted_pattern_containing_paren(self):
+        self.assert_identical_behavior(
+            'echo $(case "x)" in "x)") echo qpat;; esac)')
+
+    def test_single_quoted_paren_pattern(self):
+        self.assert_identical_behavior(
+            "echo $(case ')' in ')') echo paren-pat;; esac)")
+
+    def test_cmdsub_in_case_subject_inside_cmdsub(self):
+        self.assert_identical_behavior(
+            'echo $(case $(echo x) in x) echo nested-subj;; esac)')
+
+    def test_extglob_pattern_in_cmdsub_case(self):
+        # shopt on its own line: bash -c parses incrementally, so extglob
+        # is active when the second line (and its $() body) is parsed.
+        self.assert_identical_behavior(
+            'shopt -s extglob\n'
+            'echo $(case x in @(x|y)) echo extglob;; esac)')
+
+    def test_arithmetic_with_keyword_named_variables(self):
+        """`case`/`esac` as arithmetic variable names are not keywords."""
+        self.assert_identical_behavior('case=5; echo $(( case + 1 ))')
+        self.assert_identical_behavior('echo $(esac=2; echo $(( esac * 2 )))')
+
+    def test_ternary_arithmetic_inside_cmdsub(self):
+        self.assert_identical_behavior('echo $(echo $((2 > 1 ? 10 : 20)))')
+        self.assert_identical_behavior(
+            'echo $(if ((1 < 2)); then echo arith-cmd; fi)')
+
+    def test_case_via_variable_is_not_keyword(self):
+        """`case` arriving by expansion is a plain word: first `)` closes."""
+        self.assert_identical_behavior(
+            'v="case"; echo $($v 2>/dev/null; echo after)')
+
+    def test_explicit_index_array_initializer_in_cmdsub(self):
+        self.assert_identical_behavior(
+            'echo $(arr=([0]=q); echo ${arr[0]})')
+
+
+class TestCmdsubParseErrorBoundaries(ConformanceTest):
+    """Unclosed $(...) at EOF: both shells fail with status 2; the stderr
+    wording differs (bash: "unexpected EOF while looking for matching `)'",
+    psh: "unclosed command substitution"), so compare exit codes only."""
+
+    def _assert_both_fail_rc2(self, command: str):
+        result = self.check_behavior(command)
+        assert result.psh_result.exit_code == 2, (
+            f"psh rc={result.psh_result.exit_code} for: {command}\n"
+            f"stderr: {result.psh_result.stderr}")
+        assert result.bash_result.exit_code == 2, (
+            f"bash rc={result.bash_result.exit_code} for: {command}")
+        assert result.psh_result.stderr and result.bash_result.stderr
+
+    def test_unclosed_case_inside_cmdsub_at_eof(self):
+        self._assert_both_fail_rc2('echo $(case x in x) echo hi;;')
+
+    def test_unclosed_case_header_inside_cmdsub_at_eof(self):
+        self._assert_both_fail_rc2('echo $(case x in')
+
+    def test_bare_unclosed_cmdsub_at_eof(self):
+        self._assert_both_fail_rc2('echo $(')

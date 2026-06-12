@@ -22,9 +22,9 @@ class ArrayParser:
     def _word_to_element_type(word: Word) -> str:
         """Derive a legacy element-type string from a Word AST node.
 
-        The executor uses element_types to decide split/no-split:
-        - 'STRING', 'COMPOSITE_QUOTED' -> split_words=False
-        - 'COMPOSITE', 'WORD' -> split_words=True
+        element_types is display/tooling metadata only (validator and
+        formatter visitors); the executor expands the parallel `words`
+        list exclusively (fallback audit 2026-06-12).
         """
         if word.is_quoted:
             return 'STRING'

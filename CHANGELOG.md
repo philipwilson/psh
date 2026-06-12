@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.310.0 (2026-06-12) - Hygiene release: fallback audit, AST data-flow doc, scanner contract
+- Every string-only legacy AST fallback audited and classified
+  (reassessment next-steps #1/#2/#4): each site checked against every
+  construction point in BOTH parsers plus direct test construction.
+  Outcomes: (a) required-compatibility — for/select item_words=None
+  manual-AST path, kept + tested; (b) migration bridge — combinator
+  CasePattern(word=None) for exotic patterns, kept + tested with an
+  AST-inspection canary that fires if the combinator gains support;
+  (c) unreachable-defensive ×7 — replaced with internal-error raises
+  per the v0.300 fail-loudly policy (incl. _expand_word's silent
+  str(word) coercion and a fallback whose comment claimed a combinator
+  edge that no longer exists); (d) dead ×2 — deleted (~106 lines incl.
+  the whole legacy explicit-[i]=v string re-parser).
+- The audit found a LIVE bash divergence in a "dead" fallback: the
+  legacy explicit-element branch keyed on element_types and OVERRODE
+  correct Word semantics — `a=("[0]"=x)` assigned a[0]=x where bash
+  keeps the literal element `[0]=x`. Fixed by deletion;
+  conformance-pinned.
+- New docs/architecture/ast_data_flow.md (~200 lines, linked as
+  ARCHITECTURE.md §3.13): the canonical build-site → expansion-policy →
+  implementation pointer for command words, assignment values, array
+  initializers/elements, for/select items, case subject/patterns,
+  redirect targets/heredocs (the legitimate string contexts),
+  process substitution, and compound-redirect visitor totality —
+  with an "I want to change X → edit here" table. Every pointer
+  verified against source.
+- find_command_substitution_end gained a Maintenance Contract
+  docstring block (parser-grammar changes touching case/heredoc/
+  quoting/arithmetic must consider the scanner; owner tests listed);
+  16 new bash-probed conformance cases (nested functions in $(),
+  procsub inside $(), $(case) in heredoc bodies, quoted-paren
+  patterns, arithmetic with case-like names, rc-pinned unclosed-EOF
+  boundaries).
+- 32 new tests. Suite: 5,151 passed / 5,424 collected;
+  ruff (psh+tests) + mypy clean.
+
 ## 0.309.0 (2026-06-12) - Combinator parser declared educational-only
 - Project decision (resolving a question raised by three successive
   external reviews): the combinator parser is EDUCATIONAL ONLY and

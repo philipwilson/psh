@@ -125,16 +125,15 @@ class CommandExecutor:
                             pass
                     return 0
 
-                # Create a sub-node for command arguments only
+                # Create a sub-node for command arguments only. node.words
+                # always parallels node.args (both parsers; fallback audit
+                # 2026-06-12) — a missing list fails loudly here.
                 from ..ast_nodes import SimpleCommand
-                words_slice = None
-                if node.words is not None:
-                    words_slice = node.words[command_start_index:]
                 command_node = SimpleCommand(
                     args=node.args[command_start_index:],
                     redirects=node.redirects,
                     background=node.background,
-                    words=words_slice,
+                    words=node.words[command_start_index:],
                 )
 
 
@@ -388,7 +387,9 @@ class CommandExecutor:
 
             # No '=' found in the Word parts at all
             return True
-        # No Word AST available — assume it's a candidate
+        # No Word AST available — unreachable from parsers (words always
+        # parallels args; fallback audit 2026-06-12). Treat as a candidate;
+        # _expand_assignment_value_from_word raises on the missing Word.
         return True
 
     def _extract_assignments(self, args: List[str]) -> List[Tuple[str, str]]:
@@ -518,15 +519,18 @@ class CommandExecutor:
 
         Uses the Word AST's structural information to correctly handle
         quoting (e.g., single-quoted values remain literal).
+
+        Fallback audit 2026-06-12: word=None is unreachable — both parsers
+        keep SimpleCommand.words parallel to args, so every assignment
+        extracted by _extract_assignments_raw carries its Word. The old
+        silent string-expansion fallback lost quote context; fail loudly
+        instead (v0.300 policy).
         """
-        if word is not None:
-            return self._expand_assignment_word(word)
-        # Fallback for cases without Word AST (shouldn't happen normally)
-        if value.startswith('~'):
-            value = self.expansion_manager.expand_tilde(value)
-        if '$' in value or '`' in value:
-            value = self.expansion_manager.expand_string_variables(value)
-        return value
+        if word is None:
+            raise RuntimeError(
+                f"internal error: assignment value {value!r} has no Word "
+                "AST (SimpleCommand.words must parallel args)")
+        return self._expand_assignment_word(word)
 
     def _expand_assignment_word(self, word) -> str:
         """Expand an assignment value using Word AST parts.
