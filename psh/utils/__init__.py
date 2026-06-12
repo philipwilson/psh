@@ -17,6 +17,7 @@ from .heredoc_detection import (
     contains_heredoc,
     has_unclosed_heredoc,
     is_inside_expansion,
+    open_heredoc_delimiters,
 )
 from .shell_formatter import ShellFormatter
 from .signal_utils import SignalNotifier, get_signal_registry
@@ -28,6 +29,7 @@ __all__ = [
     'ShellFormatter',
     'contains_heredoc',
     'has_unclosed_heredoc',
+    'open_heredoc_delimiters',
     'is_inside_expansion',
     'HEREDOC_MARKER_RE',
     'print_ast_debug',

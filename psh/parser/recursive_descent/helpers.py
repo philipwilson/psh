@@ -163,4 +163,9 @@ class ParseError(PshError):
         from ...lexer.token_types import TokenType
         token = error_context.token
         self.at_eof = bool(token is not None and token.type == TokenType.EOF)
+        # Which expansion kind is unclosed ('command', 'parameter',
+        # 'arithmetic', 'backtick'), when the error is an at_eof
+        # unclosed-expansion error. Set by the raise site; a structured
+        # signal for continuation hints (no message string-matching).
+        self.unclosed_expansion: Optional[str] = None
         super().__init__(error_context.format_error())

@@ -18,6 +18,7 @@ from .modular_lexer import ModularLexer
 from .position import (
     LexerConfig,
     LexerError,
+    UnclosedQuoteError,
 )
 from .state_context import LexerContext
 from .token_parts import RichToken, TokenPart
@@ -112,5 +113,5 @@ __all__ = [
     # Configuration
     'LexerConfig',
     # Errors
-    'LexerError',
+    'LexerError', 'UnclosedQuoteError',
 ]

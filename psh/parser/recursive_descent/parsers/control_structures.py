@@ -76,6 +76,7 @@ class ControlStructureParser:
     def parse_if_statement(self) -> IfConditional:
         """Parse if/then/else/fi conditional statement."""
         self.parser.expect(TokenType.IF)
+        self.parser.ctx.push_construct('if')
         self.parser.skip_newlines()
 
         # Parse main condition and body
@@ -85,6 +86,7 @@ class ControlStructureParser:
         elif_parts = []
         while self.parser.match(TokenType.ELIF):
             self.parser.advance()
+            self.parser.ctx.retitle_construct('elif')
             elif_condition, elif_then = self._parse_condition_then_block()
             elif_parts.append((elif_condition, elif_then))
 
@@ -92,10 +94,12 @@ class ControlStructureParser:
         else_part = None
         if self.parser.match(TokenType.ELSE):
             self.parser.advance()
+            self.parser.ctx.retitle_construct('else')
             self.parser.skip_newlines()
             else_part = self.parser.statements.parse_command_list_until(TokenType.FI)
 
         self.parser.expect(TokenType.FI)
+        self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
 
         return IfConditional(
@@ -112,6 +116,7 @@ class ControlStructureParser:
         self.parser.skip_newlines()
         condition = self.parser.statements.parse_command_list_until(TokenType.THEN)
         self.parser.expect(TokenType.THEN)
+        self.parser.ctx.retitle_construct('then')
         self.parser.skip_newlines()
         body = self.parser.statements.parse_command_list_until(TokenType.ELIF, TokenType.ELSE, TokenType.FI)
         return condition, body
@@ -146,6 +151,7 @@ class ControlStructureParser:
                             body_end: TokenType) -> Tuple[StatementList, StatementList, List[Redirect]]:
         """Common pattern for while/until loops."""
         self.parser.expect(start)
+        self.parser.ctx.push_construct(start.name.lower())
         self.parser.skip_newlines()
 
         condition = self.parser.statements.parse_command_list_until(body_start)
@@ -156,6 +162,7 @@ class ControlStructureParser:
         body = self.parser.statements.parse_command_list_until(body_end)
 
         self.parser.expect(body_end)
+        self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
 
         return condition, body, redirects
@@ -165,6 +172,7 @@ class ControlStructureParser:
     def parse_for_statement(self) -> Union[ForLoop, CStyleForLoop]:
         """Parse for loop without setting execution context."""
         self.parser.expect(TokenType.FOR)
+        self.parser.ctx.push_construct('for')
         self.parser.skip_newlines()
 
         # Check if it's a C-style for loop
@@ -205,6 +213,7 @@ class ControlStructureParser:
 
         body = self.parser.statements.parse_command_list_until(TokenType.DONE)
         self.parser.expect(TokenType.DONE)
+        self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
 
         return ForLoop(
@@ -279,6 +288,7 @@ class ControlStructureParser:
 
         body = self.parser.statements.parse_command_list_until(TokenType.DONE)
         self.parser.expect(TokenType.DONE)
+        self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
 
         return CStyleForLoop(
@@ -296,6 +306,7 @@ class ControlStructureParser:
     def parse_case_statement(self) -> CaseConditional:
         """Parse case statement without setting execution context."""
         self.parser.expect(TokenType.CASE)
+        self.parser.ctx.push_construct('case')
 
         expr = self._parse_case_expression()
 
@@ -322,6 +333,7 @@ class ControlStructureParser:
                     )
 
         self.parser.expect(TokenType.ESAC)
+        self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
 
         return CaseConditional(
@@ -425,6 +437,7 @@ class ControlStructureParser:
     def parse_select_statement(self) -> SelectLoop:
         """Parse select statement without setting execution context."""
         self.parser.expect(TokenType.SELECT)
+        self.parser.ctx.push_construct('select')
         self.parser.skip_newlines()
 
         variable = self.parser.expect(TokenType.WORD).value
@@ -446,6 +459,7 @@ class ControlStructureParser:
 
         body = self.parser.statements.parse_command_list_until(TokenType.DONE)
         self.parser.expect(TokenType.DONE)
+        self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
 
         return SelectLoop(

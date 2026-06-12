@@ -1,8 +1,11 @@
 """
 MultiLine handler unit tests.
 
-Tests the MultiLineInputHandler class for command completion detection,
-line continuation handling, and multi-line input management.
+The handler no longer decides completeness itself — that is the shared
+CommandAccumulator's job (tests/unit/scripting/test_command_accumulator.py).
+These tests pin the interactive glue: the read_command loop (one read_line
+per physical line until the accumulator says Complete), EOF handling, and
+the PS1/PS2/contextual continuation prompts.
 """
 
 from unittest.mock import Mock, patch
@@ -13,227 +16,9 @@ from psh.interactive.line_editor import LineEditor
 from psh.interactive.multiline_handler import MultiLineInputHandler
 
 
-class TestCommandCompletion:
-    """Test command completion detection."""
-
-    def test_simple_complete_commands(self, shell):
-        """Test detection of complete simple commands."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Complete commands
-        assert handler._is_complete_command("echo hello")
-        assert handler._is_complete_command("ls -la")
-        assert handler._is_complete_command("")
-        assert handler._is_complete_command("   ")
-
-    def test_line_continuation_detection(self, shell):
-        """Test detection of line continuation with backslash."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete due to line continuation
-        assert not handler._is_complete_command("echo hello \\")
-        assert not handler._is_complete_command("echo \\\n")
-
-        # Complete - backslash is escaped
-        assert handler._is_complete_command("echo hello \\\\")
-        assert handler._is_complete_command("echo hello")
-
-    def test_unclosed_quotes_detection(self, shell):
-        """Test detection of unclosed quotes."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete due to unclosed quotes
-        assert not handler._is_complete_command('echo "hello')
-        assert not handler._is_complete_command("echo 'hello")
-
-        # Complete - quotes are closed
-        assert handler._is_complete_command('echo "hello"')
-        assert handler._is_complete_command("echo 'hello'")
-
-    def test_pipeline_operators_detection(self, shell):
-        """Test detection of incomplete pipeline operators."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete due to operators at end
-        assert not handler._is_complete_command("echo hello |")
-        assert not handler._is_complete_command("echo hello &&")
-        assert not handler._is_complete_command("echo hello ||")
-        assert not handler._is_complete_command("echo hello | ")
-        assert not handler._is_complete_command("echo hello && ")
-
-        # Complete - operators have continuation
-        assert handler._is_complete_command("echo hello | grep")
-        assert handler._is_complete_command("true && echo success")
-
-    def test_unclosed_command_substitution(self, shell):
-        """Test detection of unclosed command substitution."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete command substitution
-        assert not handler._is_complete_command("echo $(")
-        assert not handler._is_complete_command("echo $(echo hello")
-        assert not handler._is_complete_command("echo `echo hello")
-
-        # Complete command substitution
-        assert handler._is_complete_command("echo $(echo hello)")
-        assert handler._is_complete_command("echo `echo hello`")
-
-
-class TestControlStructureCompletion:
-    """Test completion detection for control structures."""
-
-    def test_if_statement_completion(self, shell):
-        """Test detection of incomplete if statements."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete if statements
-        assert not handler._is_complete_command("if true")
-        assert not handler._is_complete_command("if true; then")
-        assert not handler._is_complete_command("if true; then\necho hello")
-        assert not handler._is_complete_command("if true; then ")
-
-        # Complete if statements
-        assert handler._is_complete_command("if true; then echo hello; fi")
-        assert handler._is_complete_command("if true; then\necho hello\nfi")
-
-    def test_while_loop_completion(self, shell):
-        """Test detection of incomplete while loops."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete while loops
-        assert not handler._is_complete_command("while true")
-        assert not handler._is_complete_command("while true; do")
-        assert not handler._is_complete_command("while true; do\necho hello")
-
-        # Complete while loops
-        assert handler._is_complete_command("while true; do echo hello; done")
-        assert handler._is_complete_command("while true; do\necho hello\ndone")
-
-    def test_for_loop_completion(self, shell):
-        """Test detection of incomplete for loops."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete for loops
-        assert not handler._is_complete_command("for i in 1 2 3")
-        assert not handler._is_complete_command("for i in 1 2 3; do")
-        assert not handler._is_complete_command("for i in 1 2 3; do\necho $i")
-
-        # Complete for loops
-        assert handler._is_complete_command("for i in 1 2 3; do echo $i; done")
-        assert handler._is_complete_command("for i in 1 2 3; do\necho $i\ndone")
-
-    def test_case_statement_completion(self, shell):
-        """Test detection of incomplete case statements."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete case statements
-        assert not handler._is_complete_command("case $x in")
-        assert not handler._is_complete_command("case $x in\n1)")
-        assert not handler._is_complete_command("case $x in\n1) echo one;;")
-
-        # Complete case statements
-        assert handler._is_complete_command("case $x in\n1) echo one;;\nesac")
-
-    def test_function_definition_completion(self, shell):
-        """Test detection of incomplete function definitions."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete function definitions
-        assert not handler._is_complete_command("hello() {")
-        assert not handler._is_complete_command("hello() {\necho hello")
-
-        # Complete function definitions
-        assert handler._is_complete_command("hello() { echo hello; }")
-        assert handler._is_complete_command("hello() {\necho hello\n}")
-
-    def test_nested_structure_completion(self, shell):
-        """Test nested incomplete control structures."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Nested incomplete structures
-        assert not handler._is_complete_command("if true; then\n  if false; then")
-        assert not handler._is_complete_command("while true; do\n  for i in 1 2 3; do")
-
-        # Nested complete structures
-        assert handler._is_complete_command("if true; then\n  if false; then\n    echo nested\n  fi\nfi")
-
-
-class TestHeredocCompletion:
-    """Test heredoc completion detection."""
-
-    def test_basic_heredoc_completion(self, shell):
-        """Test detection of incomplete basic heredocs."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete basic heredoc
-        assert not handler._is_complete_command("cat <<EOF")
-        assert not handler._is_complete_command("cat <<EOF\nline1")
-        assert not handler._is_complete_command("cat <<EOF\nline1\nline2")
-
-        # Complete basic heredoc
-        assert handler._is_complete_command("cat <<EOF\nline1\nEOF")
-
-    def test_heredoc_with_dash(self, shell):
-        """Test heredoc with dash (tab stripping)."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete heredoc with dash
-        assert not handler._is_complete_command("cat <<-EOF")
-        assert not handler._is_complete_command("cat <<-EOF\n\tline1")
-
-        # Complete heredoc with dash
-        assert handler._is_complete_command("cat <<-EOF\n\tline1\nEOF")
-        assert handler._is_complete_command("cat <<-EOF\n\tline1\n\tEOF")
-
-    def test_heredoc_with_quotes(self, shell):
-        """Test heredoc with quoted delimiters."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete heredoc with quotes
-        assert not handler._is_complete_command("cat <<'EOF'")
-        assert not handler._is_complete_command('cat <<"EOF"')
-
-        # Complete heredoc with quotes
-        assert handler._is_complete_command("cat <<'EOF'\nline\nEOF")
-        assert handler._is_complete_command('cat <<"EOF"\nline\nEOF')
-
-    def test_multiple_heredocs(self, shell):
-        """Test multiple heredocs in one command."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete multiple heredocs
-        assert not handler._is_complete_command("cat <<EOF1 && cat <<EOF2")
-        assert not handler._is_complete_command("cat <<EOF1 && cat <<EOF2\nline1\nEOF1")
-
-        # Complete multiple heredocs
-        assert handler._is_complete_command("cat <<EOF1 && cat <<EOF2\nline1\nEOF1\nline2\nEOF2")
-
-    def test_escaped_heredoc_delimiter(self, shell):
-        """Test heredoc with escaped delimiter."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
-        # Incomplete escaped heredoc
-        assert not handler._is_complete_command("cat << \\EOF")
-        assert not handler._is_complete_command("cat << \\EOF\nline1")
-
-        # Complete escaped heredoc
-        assert handler._is_complete_command("cat << \\EOF\nline1\nEOF")
+def make_handler(shell):
+    line_editor = Mock(spec=LineEditor)
+    return line_editor, MultiLineInputHandler(line_editor, shell)
 
 
 class TestMultilineInputHandling:
@@ -241,9 +26,7 @@ class TestMultilineInputHandling:
 
     def test_read_simple_command(self, shell):
         """Test reading a simple single-line command."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
+        line_editor, handler = make_handler(shell)
         line_editor.read_line.return_value = "echo hello"
 
         result = handler.read_command()
@@ -253,8 +36,7 @@ class TestMultilineInputHandling:
 
     def test_read_multiline_command(self, shell):
         """Test reading a multi-line command."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
+        line_editor, handler = make_handler(shell)
 
         # Mock multiple line inputs
         line_editor.read_line.side_effect = [
@@ -268,11 +50,40 @@ class TestMultilineInputHandling:
         assert result == "if true; then\n  echo hello\nfi"
         assert line_editor.read_line.call_count == 3
 
+    def test_read_command_joins_line_continuation(self, shell):
+        """A trailing backslash keeps reading; the result is joined."""
+        line_editor, handler = make_handler(shell)
+        line_editor.read_line.side_effect = ["echo one \\", "two"]
+
+        result = handler.read_command()
+
+        assert result == "echo one two"
+        assert line_editor.read_line.call_count == 2
+
+    def test_read_heredoc_command(self, shell):
+        """Heredoc bodies are gathered until the delimiter."""
+        line_editor, handler = make_handler(shell)
+        line_editor.read_line.side_effect = ["cat <<EOF", "body", "EOF"]
+
+        result = handler.read_command()
+
+        assert result == "cat <<EOF\nbody\nEOF"
+        assert line_editor.read_line.call_count == 3
+
+    def test_invalid_command_returned_for_execution(self, shell):
+        """A complete-but-invalid command is returned (the execution path
+        reports the syntax error), never prompted for continuation."""
+        line_editor, handler = make_handler(shell)
+        line_editor.read_line.return_value = "echo )"
+
+        result = handler.read_command()
+
+        assert result == "echo )"
+        assert line_editor.read_line.call_count == 1
+
     def test_read_command_eof(self, shell):
         """Test handling EOF during input."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
+        line_editor, handler = make_handler(shell)
         line_editor.read_line.return_value = None
 
         result = handler.read_command()
@@ -281,9 +92,7 @@ class TestMultilineInputHandling:
 
     def test_read_command_eof_in_multiline(self, shell):
         """Test handling EOF in middle of multi-line input."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
-
+        line_editor, handler = make_handler(shell)
         line_editor.read_line.side_effect = [
             "if true; then",
             None  # EOF
@@ -295,25 +104,80 @@ class TestMultilineInputHandling:
         assert result is None
         mock_print.assert_called_with("\npsh: syntax error: unexpected end of file")
 
+    def test_reset_drops_partial_input(self, shell):
+        """Ctrl-C path: reset() abandons the buffer; the next read starts
+        a fresh command at PS1."""
+        line_editor, handler = make_handler(shell)
+        line_editor.read_line.side_effect = ["if true; then"]
+        try:
+            handler.read_command()
+        except StopIteration:
+            pass  # ran out of mocked lines mid-construct, as intended
+        handler.reset()
+        assert handler.accumulator.is_empty
+
+        line_editor.read_line.side_effect = ["echo clean"]
+        assert handler.read_command() == "echo clean"
+
 
 class TestPromptHandling:
     """Test prompt handling for multiline input."""
 
     def test_get_primary_prompt(self, shell):
         """Test getting primary prompt (PS1)."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
+        _, handler = make_handler(shell)
 
         shell.state.set_variable('PS1', 'test$ ')
         prompt = handler._get_prompt()
         assert 'test$' in prompt  # May be expanded
 
     def test_get_continuation_prompt(self, shell):
-        """Test getting continuation prompt (PS2)."""
-        line_editor = Mock(spec=LineEditor)
-        handler = MultiLineInputHandler(line_editor, shell)
+        """Mid-command without a construct hint (e.g. unclosed quote),
+        the continuation prompt is PS2."""
+        _, handler = make_handler(shell)
 
         shell.state.set_variable('PS2', '... ')
-        handler.buffer = ['if true; then']  # Non-empty buffer
+        handler.accumulator.feed('echo "one')  # NeedMore: unclosed quote
+        handler._hint = None
         prompt = handler._get_prompt()
         assert prompt == '... '
+
+    def test_contextual_continuation_prompt(self, shell):
+        """The parser's open-construct trail renders as the continuation
+        prompt ('if> ', 'then while> ')."""
+        line_editor, handler = make_handler(shell)
+        prompts = []
+
+        def fake_read_line(prompt, *args, **kwargs):
+            prompts.append(prompt)
+            return {
+                0: "if true; then",
+                1: "while true; do",
+                2: "echo hi",
+                3: "done",
+            }.get(len(prompts) - 1, "fi")
+
+        line_editor.read_line.side_effect = fake_read_line
+        result = handler.read_command()
+
+        assert result == "if true; then\nwhile true; do\necho hi\ndone\nfi"
+        assert prompts[1] == "then> "
+        assert prompts[2] == "then while> "
+        assert prompts[3] == "then while> "
+        assert prompts[4] == "then> "
+
+    def test_heredoc_uses_plain_ps2(self, shell):
+        """Heredoc bodies prompt with PS2, not a construct context."""
+        line_editor, handler = make_handler(shell)
+        shell.state.set_variable('PS2', '> ')
+        prompts = []
+
+        def fake_read_line(prompt, *args, **kwargs):
+            prompts.append(prompt)
+            return ["cat <<EOF", "body", "EOF"][len(prompts) - 1]
+
+        line_editor.read_line.side_effect = fake_read_line
+        handler.read_command()
+
+        assert prompts[1] == '> '
+        assert prompts[2] == '> '

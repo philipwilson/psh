@@ -47,7 +47,8 @@ class CommandParser:
         return bool(_FD_DUP_RE.match(value))
 
     def _raise_syntax_error(self, msg: str, token: Token,
-                            at_eof: bool = False) -> None:
+                            at_eof: bool = False,
+                            unclosed: Optional[str] = None) -> None:
         """Raise a ParseError with the given message at the given token.
 
         ``at_eof=True`` marks the error as structurally "incomplete input":
@@ -55,6 +56,11 @@ class CommandParser:
         construction, so more lines could complete it. Interactive and
         script line-gathering key off this flag to keep reading (multi-line
         ``$(...)``, ``${...}``, backticks, and heredocs inside them).
+
+        ``unclosed`` names WHICH expansion kind is open ('command',
+        'parameter', 'arithmetic', 'backtick') — a structured signal for
+        the CommandAccumulator's continuation hints, so nothing has to
+        string-match the error message.
         """
         error_context = ErrorContext(
             token=token,
@@ -64,6 +70,8 @@ class CommandParser:
         error = ParseError(error_context)
         if at_eof:
             error.at_eof = True
+        if unclosed:
+            error.unclosed_expansion = unclosed
         raise error
 
     def _check_for_unclosed_expansions(self, token: Token) -> None:
@@ -78,6 +86,7 @@ class CommandParser:
         if token.parts:
             for part in token.parts:
                 if part.expansion_type and part.expansion_type.endswith('_unclosed'):
+                    kind = part.expansion_type[:-len('_unclosed')]
                     fmt = _UNCLOSED_EXPANSION_MSGS.get(part.expansion_type)
                     if fmt:
                         desc, prefix, skip = fmt
@@ -85,25 +94,26 @@ class CommandParser:
                     else:
                         error_msg = f"syntax error: unclosed expansion '{part.value}'"
 
-                    self._raise_syntax_error(error_msg, token, at_eof=True)
+                    self._raise_syntax_error(error_msg, token, at_eof=True,
+                                             unclosed=kind)
 
         # Also check for specific token types that indicate unclosed expansions
         if token.type == TokenType.COMMAND_SUB and not token.value.endswith(')'):
             self._raise_syntax_error(
                 f"syntax error: unclosed command substitution '{token.value}'", token,
-                at_eof=True)
+                at_eof=True, unclosed='command')
         elif token.type == TokenType.COMMAND_SUB_BACKTICK and token.value.count('`') == 1:
             self._raise_syntax_error(
                 f"syntax error: unclosed backtick substitution '{token.value}'", token,
-                at_eof=True)
+                at_eof=True, unclosed='backtick')
         elif token.type == TokenType.ARITH_EXPANSION and not token.value.endswith('))'):
             self._raise_syntax_error(
                 f"syntax error: unclosed arithmetic expansion '{token.value}'", token,
-                at_eof=True)
+                at_eof=True, unclosed='arithmetic')
         elif token.type == TokenType.VARIABLE and token.value.startswith('${') and not token.value.endswith('}'):
             self._raise_syntax_error(
                 f"syntax error: unclosed parameter expansion '{token.value}'", token,
-                at_eof=True)
+                at_eof=True, unclosed='parameter')
 
     def parse_command(self) -> SimpleCommand:
         """Parse a single command with its arguments and redirections."""
@@ -452,6 +462,7 @@ class CommandParser:
     def parse_subshell_group(self) -> SubshellGroup:
         """Parse subshell group (...) that executes in isolated environment."""
         self.parser.expect(TokenType.LPAREN)
+        self.parser.ctx.push_construct('subshell')
         self.parser.skip_newlines()
 
         # Parse statements inside the subshell
@@ -459,6 +470,7 @@ class CommandParser:
 
         self.parser.skip_newlines()
         self.parser.expect(TokenType.RPAREN)
+        self.parser.ctx.pop_construct()
 
         # Parse any redirections after the subshell
         redirects = self.parser.redirections.parse_redirects()
@@ -482,6 +494,7 @@ class CommandParser:
         - Semicolon or newline required before }
         """
         self.parser.expect(TokenType.LBRACE)
+        self.parser.ctx.push_construct('brace')
         self.parser.skip_newlines()
 
         # Parse statements inside the brace group
@@ -489,6 +502,7 @@ class CommandParser:
 
         self.parser.skip_newlines()
         self.parser.expect(TokenType.RBRACE)
+        self.parser.ctx.pop_construct()
 
         # Parse any redirections after the brace group
         redirects = self.parser.redirections.parse_redirects()

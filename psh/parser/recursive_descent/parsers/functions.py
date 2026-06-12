@@ -43,9 +43,12 @@ class FunctionParser:
     def parse_function_def(self) -> FunctionDef:
         """Parse function definition."""
         name = None
+        keyword_form = False
 
         if self.parser.match(TokenType.FUNCTION):
             self.parser.advance()
+            self.parser.ctx.push_construct('function')
+            keyword_form = True
             name = self.parser.expect(TokenType.WORD).value
 
             # Optional parentheses
@@ -60,6 +63,8 @@ class FunctionParser:
 
         self.parser.skip_newlines()
         body = self.parse_compound_command()
+        if keyword_form:
+            self.parser.ctx.pop_construct()
 
         # Redirections on the definition (f() { ...; } > file) belong to
         # the function and are applied at each call (bash).
@@ -72,11 +77,13 @@ class FunctionParser:
         if self.parser.match(TokenType.LBRACE):
             # Brace group
             self.parser.advance()
+            self.parser.ctx.push_construct('brace')
             self.parser.skip_newlines()
 
             statements = self.parser.statements.parse_command_list_until(TokenType.RBRACE)
 
             self.parser.expect(TokenType.RBRACE)
+            self.parser.ctx.pop_construct()
             return statements
         elif self.parser.match(TokenType.LPAREN):
             # Subshell body: keep the SubshellGroup node so each call forks

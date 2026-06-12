@@ -35,10 +35,41 @@ class ParserContext:
     source_text: Optional[str] = None
     source_lines: Optional[List[str]] = None
 
+    # Open-construct trail for incomplete-input hints. Parse methods push a
+    # name when they consume an opening keyword ('if', 'while', 'case',
+    # 'brace', ...), retitle it at internal transitions ('if' → 'then' →
+    # 'else'), and pop it when the closer is consumed. NO parse decision
+    # ever reads this list — the recursive call structure remains the
+    # parser's real grammar context. It exists for exactly one consumer:
+    # when a parse fails at end of input (ParseError.at_eof), the
+    # CommandAccumulator snapshots it as the honest answer to "which
+    # constructs are still open?", which drives the interactive
+    # continuation prompt ("if> ", "for then> "). On a successful parse
+    # it is balanced back to empty; after a failed parse the whole
+    # context is discarded with its parser.
+    open_constructs: List[str] = field(default_factory=list)
+
     def __post_init__(self):
         """Initialize derived state."""
         if self.source_text and not self.source_lines:
             self.source_lines = self.source_text.splitlines()
+
+    # === Open-construct trail (incomplete-input hints only) ===
+
+    def push_construct(self, name: str) -> None:
+        """Record that an opening keyword was consumed ('if', 'while', ...)."""
+        self.open_constructs.append(name)
+
+    def retitle_construct(self, name: str) -> None:
+        """Rename the innermost open construct at an internal transition
+        (e.g. 'if' → 'then' once THEN is consumed)."""
+        if self.open_constructs:
+            self.open_constructs[-1] = name
+
+    def pop_construct(self) -> None:
+        """Record that the innermost construct's closer was consumed."""
+        if self.open_constructs:
+            self.open_constructs.pop()
 
     # === Token Access Methods ===
 

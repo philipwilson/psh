@@ -124,8 +124,14 @@ All 8 sub-parsers follow the same implicit contract:
 
 `ParserContext` holds the parser's shared state — the token stream and
 position, configuration, error collection, and source text for error
-messages. (It deliberately does NOT track grammar context: the recursive
-call structure *is* the context in a recursive-descent parser.)
+messages. (It deliberately does NOT track grammar context for parse
+decisions: the recursive call structure *is* the context in a
+recursive-descent parser. The one apparent exception,
+`open_constructs`, is a write-only trail of which constructs are open
+('if', 'then', 'while', ...) read by exactly one consumer — the
+`CommandAccumulator`'s incomplete-input hints after an `at_eof` parse
+failure, which drive the interactive `if> `/`for then> ` continuation
+prompts. No parse method ever reads it.)
 
 ```python
 class ParserContext:

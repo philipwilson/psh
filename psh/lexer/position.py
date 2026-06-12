@@ -26,6 +26,20 @@ class Position:
         return f"Position(offset={self.offset}, line={self.line}, column={self.column})"
 
 
+class UnclosedQuoteError(SyntaxError):
+    """A quoted string was still open at end of input.
+
+    Structurally "incomplete input": more lines could close the quote, so
+    line-gathering (the CommandAccumulator) keys off this exception type —
+    not the message text — to keep reading. ``quote_char`` is the opening
+    quote: ``'``, ``"``, ``$'`` or ``$"``.
+    """
+
+    def __init__(self, message: str, quote_char: str):
+        self.quote_char = quote_char
+        super().__init__(message)
+
+
 class LexerError(PshError, SyntaxError):
     """Enhanced error with position and context information."""
 

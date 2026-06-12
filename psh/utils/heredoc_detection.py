@@ -2,9 +2,9 @@
 
 Distinguishes a real ``<<EOF`` heredoc from a ``<<`` bit-shift (arithmetic) or
 a ``<<<`` here-string, and tracks whether a heredoc's delimiter has appeared
-yet. This is the single source of truth shared by the script/`-c`/stdin path
-(`scripting/source_processor.py`) and the interactive multiline path
-(`multiline_handler.py`), which previously carried diverged copies.
+yet. This is the single source of truth for heredoc line-gathering, consumed
+by the shared completeness oracle (`scripting/command_accumulator.py`) that
+both the script/`-c`/stdin path and the interactive multiline path drive.
 """
 
 import re
@@ -145,10 +145,22 @@ def has_unclosed_heredoc(command: str) -> bool:
     ``<<`` inside command substitutions/backticks. Used to decide whether more
     input lines are still needed to complete the command.
     """
+    return bool(open_heredoc_delimiters(command))
+
+
+def open_heredoc_delimiters(command: str) -> list:
+    """The heredocs *command* opens but never closes, in order, as
+    ``(delimiter, strip_tabs)`` pairs.
+
+    Empty list means every heredoc (if any) already has its body. The same
+    scan backs ``has_unclosed_heredoc``; the CommandAccumulator seeds its
+    incremental body tracking from this (checking each subsequent line
+    against the pending delimiters, without re-scanning the whole buffer).
+    """
     # Fast path / arithmetic-only exclusion: if every '<<' is bit-shift inside
     # arithmetic, there is no heredoc at all.
     if not contains_heredoc(command):
-        return False
+        return []
 
     delimiters = []
     quote_state = None  # quote carried across COMMAND lines (multi-line strings)
@@ -173,7 +185,7 @@ def has_unclosed_heredoc(command: str) -> bool:
                     'strip_tabs': bool(match.group(1)),
                     'closed': False,
                 })
-    return any(not d['closed'] for d in delimiters)
+    return [(d['word'], d['strip_tabs']) for d in delimiters if not d['closed']]
 
 
 def contains_heredoc(command_string: str) -> bool:
