@@ -59,7 +59,6 @@ from psh.visitor import (
 )
 from psh.visitor.traversal import iter_child_nodes
 
-
 # ---------------------------------------------------------------------------
 # Node inventory (the introspection spine)
 # ---------------------------------------------------------------------------

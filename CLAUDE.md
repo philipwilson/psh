@@ -85,11 +85,11 @@ python -m psh --parser rd                 # Start with recursive descent (defaul
 
 **Lint**
 
-The whole production tree must stay ruff-clean (enforced since v0.275.0).
-After any change:
+Production AND test trees must stay ruff-clean (CI runs `ruff check psh tests`
+— linting only `psh/` locally will pass here and fail CI). After any change:
 
 ```bash
-ruff check psh/
+ruff check psh tests
 ```
 
 **Type checking**
