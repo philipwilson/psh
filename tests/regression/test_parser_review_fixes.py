@@ -2,8 +2,8 @@
 Regression tests for parser issues from implementation review (2026-02-09).
 
 Each test group corresponds to one of the 7 fixes committed as part of
-the parser review findings documented in
-docs/guides/parser_implementation_review_2026-02-09.md.
+the 2026-02-09 parser implementation review (the review document itself
+was never committed; these tests pin the fixes).
 """
 
 import subprocess

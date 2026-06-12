@@ -23,6 +23,7 @@ Manager            (arrays)    State    Manager
 | `scope.py` | `ScopeManager`, `VariableScope` - hierarchical scope management |
 | `variables.py` | `Variable`, `VarAttributes`, `IndexedArray`, `AssociativeArray` |
 | `options.py` | Shell option handlers (errexit, pipefail, etc.) |
+| `functions.py` | `FunctionManager` - shell function definitions |
 | `exceptions.py` | `PshError` root + error classes, and control-flow signals (`LoopBreak`, etc.) |
 | `trap_manager.py` | Signal trap handling |
 | `assignment_utils.py` | Shared assignment validation utilities |
@@ -259,6 +260,20 @@ current-scope tombstone, clearing the UNSET flag. Listing functions
 (`get_all_variables()`, etc.) likewise let tombstones shadow outer
 variables. Tests: `tests/unit/core/test_scope_tombstones.py`.
 
+### Subshell-Style Inheritance: `ShellState.adopt()`
+
+Child shells for `( ... )` subshells, command/process substitution and the
+`env` builtin's in-process child are built with `Shell.for_subshell(parent)`
+(v0.314). The pure state-copying half is `ShellState.adopt(parent_state)`
+(`state.py`): it copies the live environment, every variable scope as
+whole `Variable` objects (preserving export/readonly/array attributes),
+positional parameters, shell options, `$?`, script mode, PIPESTATUS,
+`$PPID` and `$$`, then re-syncs exports into the environment. Mode flags
+(`interactive`, `stdin_mode`, `emacs`) are recomputed afterwards by
+`Shell._init_interactive`. Jobs are never copied — those are
+shell-specific (the Shell-level half, copying function/alias managers,
+lives in `Shell._inherit_from_parent`).
+
 ### Exception Hierarchy (`exceptions.py`)
 
 Two distinct families — do not mix them up:
@@ -279,7 +294,8 @@ Two distinct families — do not mix them up:
 EXPLICITLY to every child: `execvpe(args, shell.env)` in
 `executor/strategies.py` and `builtins/core.py`, `env=state.env` for
 shebang re-execution (`scripting/shebang_handler.py`), and
-`Shell(parent_shell=...)` copies it for subshell-style children.
+`Shell.for_subshell(parent)` copies it (via `ShellState.adopt`) for
+subshell-style children.
 Nothing writes `os.environ` after startup — such a write would be
 invisible to children and only leak state into the hosting Python
 process (the pre-v0.312 `FOO=bar exec` leak).

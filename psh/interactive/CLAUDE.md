@@ -233,6 +233,17 @@ self-pipes; `setup_signal_handlers()` is called explicitly at the entry
 points (it picks script-mode vs interactive-mode handler sets via
 `state.is_script_mode`).
 
+**Lifecycle symmetry (v0.300)**: `run_interactive_loop()` wraps the REPL
+in try/finally and calls `restore_default_handlers()` on EVERY exit path
+(EOF, the exit builtin's SystemExit, exceptions) — an embedded Shell no
+longer leaves psh handlers installed in the host process. Supporting
+guarantees in `signal_manager.py`: the pre-psh original handlers are
+saved only by the FIRST `setup_signal_handlers()` call (a second setup
+must not overwrite them with psh's own handlers), `SignalNotifier.close()`
+is idempotent (no double-close of a reused fd), and the self-pipes are
+recreated if the loop is re-entered after a restore. Pinned by the serial
+lifecycle tests added in v0.300.
+
 ```python
 class SignalManager(InteractiveComponent):
     def __init__(self, shell):
@@ -401,8 +412,16 @@ python -m pytest tests/unit/builtins/test_job_control_builtins.py tests/integrat
 # Line editor unit tests (no tty needed — layout math is pure)
 python -m pytest tests/unit/test_line_editor_unit.py tests/unit/test_line_editor_multiline.py -v
 
-# Run interactive tests (may require special handling)
+# In-process interactive/system tests (run in the normal suite)
 python -m pytest tests/system/interactive/ -v
+
+# Opt-in PTY tier: real pseudo-terminal end-to-end tests, skipped unless
+# --run-interactive is given. The harness is
+# tests/framework/pty_test_framework.py — repaired in v0.295 (sentinel
+# PS1 prompt sync, stale-output drain per command, PS2 handling,
+# strip_ansi normalization; previously every run_command returned the
+# PREVIOUS command's output window).
+python -m pytest tests/system/interactive/test_interactive_features.py --run-interactive -v
 
 # Test interactively
 python -m psh
@@ -412,6 +431,10 @@ $ jobs
 [1]+  Running  sleep 10 &
 $ fg %1
 ```
+
+There is deliberately no nested pytest.ini under `tests/system/interactive/`
+(removed in v0.295 — it hijacked the pytest rootdir and broke direct
+invocation with `--run-interactive`).
 
 ## Common Pitfalls
 
