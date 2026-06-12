@@ -35,18 +35,18 @@ class MultiLineInputHandler:
         self.line_editor.set_edit_mode(self.shell.state.edit_mode)
 
         # Get SIGWINCH notification fd from signal manager if available
+        # (the line editor's KeyDecoder multiplexes it with stdin and
+        # drains it itself; resize redraws surface as Resize events)
         sigwinch_fd = -1
-        sigwinch_drain = None
         if hasattr(self.shell, 'interactive_manager') and self.shell.interactive_manager:
             sigwinch_fd = self.shell.interactive_manager.signal_manager.get_sigwinch_fd()
-            sigwinch_drain = self.shell.interactive_manager.signal_manager.drain_sigwinch_notifications
 
         while True:
             # Determine prompt
             prompt = self._get_prompt()
 
             # Read one line
-            line = self.line_editor.read_line(prompt, sigwinch_fd, sigwinch_drain,
+            line = self.line_editor.read_line(prompt, sigwinch_fd,
                                               on_resize=on_resize)
             if line is None:  # EOF
                 if self.buffer:

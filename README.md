@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.323.0 | **Tests**: 5,823 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.324.0 | **Tests**: 5,856 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~49,100 lines of production code in `psh/` across 193 Python files, plus ~59,500 lines of tests in `tests/` (262 Python files)
-- **Test Coverage**: 5,823 tests in 266 test files
+- **Test Coverage**: 5,856 tests in 267 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.324.0**: textbook Tier B8-R2 — KeyDecoder is the only reader of stdin (`read_key() -> KeyEvent` algebra; SIGWINCH folded into its select set, the drain plumbing deleted); the vi/emacs ESC conflation teased apart — timing is a decoder knob, meaning is editor policy; 45 pipe-fed decoder cases incl. real-timing bare-ESC; PTY tier green twice
 - **v0.323.0**: textbook Tier B8-R1 — LineEditor decomposition begins: EditBuffer (pure text+cursor model with kill ring and undo) and LineRenderer (the ONLY writer of ANSI — line_editor.py now has zero terminal writes, grep-proven) extracted behind 36 byte-exact snapshot tests pinned against the pre-split code; PTY tier green twice; both new modules join mypy
 - **v0.322.0**: textbook Tier B7 — `SimpleCommand.args` is a derived read-only property over `words` (the parallel-list invariant class is unrepresentable by construction); harness proved the flattening rule byte-exact over 4,455 parsed commands before the stored field died; combinator args-view divergences resolved by unification; the array-init serialization honestly documented as live (declaration builtins re-parse it)
 - **v0.321.0**: textbook Tier B6 — the lexer stops guessing: literal.py 764→326 lines with the four retro-heuristics replaced by a forward WordShapeTracker + pure word_scanners; the tokenize loop is total (silent char-drop now fails loudly — census-proven unreachable across 86k inputs; the fallback's four word-start classes census-documented, 11/11 bash probes); cmdsub scanner gets its own module; 15,091-input characterization harness diffed zero across every step

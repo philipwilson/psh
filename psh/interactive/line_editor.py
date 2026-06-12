@@ -3,11 +3,13 @@
 
 Decomposition status (Textbook B8): the line being edited lives in
 EditBuffer (edit_buffer.py — the single source of truth for text +
-cursor, kill ring, undo/redo), and every terminal write goes through
-LineRenderer (line_renderer.py — the only writer of ANSI). What remains
-here is input reading, key dispatch, history navigation, incremental
-search state, and completion logic — slated for R2 (KeyDecoder) and R3
-(history components).
+cursor, kill ring, undo/redo), every terminal write goes through
+LineRenderer (line_renderer.py — the only writer of ANSI), and every
+terminal read goes through KeyDecoder (key_decoder.py — the only reader
+of stdin, yielding KeyEvents). What remains here is event dispatch
+(mode policy: what each event MEANS in emacs/vi mode), history
+navigation, incremental search state, and completion logic — the
+history components and a dispatch-table conversion are R3.
 
 ``self.buffer`` / ``self.cursor_pos`` (and the kill-ring/undo-stack
 attributes) are compatibility properties delegating to the EditBuffer;
@@ -15,13 +17,22 @@ existing tests poke them directly. Migrating callers to the EditBuffer
 API is R3 cleanup.
 """
 
-import os
-import select
 import sys
 import termios
 from typing import Callable, List, Optional
 
 from .edit_buffer import EditBuffer
+from .key_decoder import (
+    ESC_FOLLOWER_TIMEOUT,
+    Char,
+    Eof,
+    Escape,
+    Key,
+    KeyDecoder,
+    KeyEvent,
+    Meta,
+    Resize,
+)
 from .keybindings import EditMode, EmacsKeyBindings, ViKeyBindings
 from .line_editor_helpers import convert_multiline_to_single
 from .line_renderer import LineRenderer
@@ -31,7 +42,7 @@ from .tab_completion import CompletionEngine, TerminalManager
 class LineEditor:
     """Interactive line editor with vi/emacs key bindings, tab completion, and history search."""
 
-    # Actions for the symbolic keys produced by _read_escape_sequence.
+    # Actions for the symbolic keys decoded by KeyDecoder (Key events).
     # Shared by emacs mode and BOTH vi modes (bash vi-mode behaves the
     # same: arrows move the cursor / walk history in insert and normal
     # mode alike).
@@ -43,21 +54,6 @@ class LineEditor:
         'home': 'move_beginning_of_line',
         'end': 'move_end_of_line',
         'delete': 'delete_char',
-    }
-
-    # CSI final bytes with no parameters: ESC [ X
-    _CSI_FINAL_KEYS = {
-        'A': 'up', 'B': 'down', 'C': 'right', 'D': 'left',
-        'H': 'home', 'F': 'end',
-    }
-    # CSI tilde sequences: ESC [ params ~
-    _CSI_TILDE_KEYS = {
-        '1': 'home', '3': 'delete', '4': 'end', '7': 'home', '8': 'end',
-    }
-    # SS3 sequences (application cursor mode): ESC O X
-    _SS3_KEYS = {
-        'A': 'up', 'B': 'down', 'C': 'right', 'D': 'left',
-        'H': 'home', 'F': 'end',
     }
 
     def __init__(self, history: Optional[List[str]] = None, edit_mode: str = 'emacs'):
@@ -87,10 +83,9 @@ class LineEditor:
         # Vi specific state
         self.vi_repeat_count = ""
 
-        # Raw fd reading state — bypasses Python's BufferedReader so that
-        # select() and reads stay in sync (see _read_char).
-        self._stdin_fd = -1
-        self._char_buf: List[str] = []
+        # The sole reader of stdin; created fresh per read_line (the fd
+        # and the ESC-disambiguation policy are bound at read time).
+        self.decoder: Optional[KeyDecoder] = None
 
     # ------------------------------------------------------------------
     # Compatibility properties (delegating to the components; R3 will
@@ -180,37 +175,15 @@ class LineEditor:
             self.key_handler = EmacsKeyBindings()
             self.mode = EditMode.EMACS
 
-    def _read_char(self) -> str:
-        """Read one character from stdin via the raw file descriptor.
-
-        Uses os.read() instead of sys.stdin.read(1) to bypass Python's
-        internal BufferedReader.  When text is pasted, BufferedReader
-        consumes all available bytes from the fd into its buffer but
-        returns only one character, making the rest invisible to
-        select().  By reading the raw fd ourselves and buffering decoded
-        characters in _char_buf, select() and reads stay in sync.
-        """
-        if self._char_buf:
-            return self._char_buf.pop(0)
-
-        data = os.read(self._stdin_fd, 4096)
-        if not data:
-            return ''
-
-        chars = data.decode('utf-8', errors='replace')
-        if len(chars) > 1:
-            self._char_buf.extend(chars[1:])
-        return chars[0] if chars else ''
-
     def read_line(self, prompt: str = "", sigwinch_fd: int = -1,
-                   sigwinch_drain: Optional[Callable[[], bool]] = None,
                    on_resize: Optional[Callable[[], None]] = None) -> Optional[str]:
         """Read a line with editing and key binding support.
 
         Args:
             prompt: The prompt string to display
-            sigwinch_fd: File descriptor for SIGWINCH notifications (-1 to disable)
-            sigwinch_drain: Callback to drain SIGWINCH notifications (returns True if any)
+            sigwinch_fd: File descriptor for SIGWINCH notifications (-1
+                to disable); the KeyDecoder multiplexes it with stdin
+                and yields Resize events
             on_resize: Optional callback invoked after a terminal resize redraw
         """
         self.edit_buffer.reset()
@@ -231,37 +204,23 @@ class LineEditor:
                 self.key_handler.mode = EditMode.VI_INSERT
             self.vi_repeat_count = ""
 
-        # Build list of fds to monitor
-        stdin_fd = sys.stdin.fileno()
-        self._stdin_fd = stdin_fd
-        self._char_buf = []
-        watch_fds = [stdin_fd]
-        if sigwinch_fd >= 0:
-            watch_fds.append(sigwinch_fd)
+        # A fresh decoder per read: characters left buffered by the
+        # previous read (e.g. the tail of a paste) are deliberately
+        # discarded, as before. The ESC disambiguation policy is a
+        # decoder TIMING knob set per mode here — vi probes 50 ms
+        # because ESC is a key of its own; emacs blocks because ESC is
+        # only ever a Meta/sequence prefix. What the resulting events
+        # MEAN stays mode policy in _dispatch_escape_event.
+        self.decoder = KeyDecoder(
+            sys.stdin.fileno(),
+            sigwinch_fd=sigwinch_fd if sigwinch_fd >= 0 else None,
+            esc_timeout=ESC_FOLLOWER_TIMEOUT if self.edit_mode == 'vi' else None,
+        )
 
         with self.terminal:
             while True:
                 try:
-                    # Only call select() when our character buffer is empty.
-                    # Python's BufferedReader may consume multiple bytes from
-                    # the fd on a single sys.stdin.read(1) call, making them
-                    # invisible to select().  By reading via os.read() into
-                    # our own buffer we keep select() and reads in sync.
-                    if sigwinch_fd >= 0 and not self._char_buf:
-                        readable, _, _ = select.select(watch_fds, [], [])
-
-                        # Check for resize notification
-                        if sigwinch_fd in readable:
-                            if sigwinch_drain:
-                                sigwinch_drain()
-                            self.redraw_line()
-                            if on_resize:
-                                on_resize()
-                            # Don't continue - also check if stdin is readable
-                            if stdin_fd not in readable:
-                                continue
-
-                    char = self._read_char()
+                    event = self.decoder.read_key()
                 except OSError as e:
                     # Handle I/O errors (e.g., terminal disconnected)
                     if e.errno == 5:  # EIO
@@ -274,136 +233,118 @@ class LineEditor:
                             pass
                     raise  # Re-raise the exception
 
-                # Handle EOF (empty string from read)
-                if not char:
+                if isinstance(event, Eof):
                     return None
 
-                # Handle search mode input
-                if self.search_mode:
-                    if self._handle_search_char(char):
+                if isinstance(event, Resize):
+                    self.redraw_line()
+                    if on_resize:
+                        on_resize()
+                    continue
+
+                if isinstance(event, Char):
+                    # Handle search mode input
+                    if self.search_mode and self._handle_search_char(event.char):
                         continue
+                    result = self._dispatch_char(event.char)
+                else:
+                    result = self._dispatch_escape_event(event)
 
-                # Get action for this key
-                action = self._get_key_action(char)
+                if result == 'accept':
+                    self.renderer.finish_line()
+                    # History is recorded by ONE writer — the
+                    # source processor (shell.add_history), which
+                    # sees the complete logical command.  self.history
+                    # aliases state.history, so the entry is visible
+                    # for Up-arrow recall at the next read_line.
+                    return self.edit_buffer.text
+                elif result == 'eof':
+                    self.renderer.finish_line()
+                    return None
 
-                if action:
-                    result = self._execute_action(action, char)
-                    if result == 'accept':
-                        self.renderer.finish_line()
-                        # History is recorded by ONE writer — the
-                        # source processor (shell.add_history), which
-                        # sees the complete logical command.  self.history
-                        # aliases state.history, so the entry is visible
-                        # for Up-arrow recall at the next read_line.
-                        return self.edit_buffer.text
-                    elif result == 'eof':
-                        self.renderer.finish_line()
-                        return None
-                elif ord(char) >= 32:  # Printable character
-                    if self.mode == EditMode.VI_NORMAL:
-                        # In vi normal mode, check for motion/command characters
-                        if char.isdigit() and char != '0':
-                            self.vi_repeat_count += char
-                        else:
-                            # Try to execute as a vi command
-                            self._handle_vi_normal_char(char)
-                    else:
-                        # Insert mode or emacs mode
-                        self._insert_char(char)
-                        self.completion_state = None
+    def _dispatch_char(self, char: str) -> Optional[str]:
+        """Dispatch one literal character through the key bindings.
+
+        Returns the action result ('accept', 'eof' or None) so the main
+        loop can finish the line. Also the re-entry point for the
+        follower of a vi-mode Meta event (see _dispatch_escape_event).
+        """
+        action = self._get_key_action(char)
+        if action:
+            return self._execute_action(action, char)
+        if ord(char) >= 32:  # Printable character
+            if self.mode == EditMode.VI_NORMAL:
+                # In vi normal mode, check for motion/command characters
+                if char.isdigit() and char != '0':
+                    self.vi_repeat_count += char
+                else:
+                    # Try to execute as a vi command
+                    self._handle_vi_normal_char(char)
+            else:
+                # Insert mode or emacs mode
+                self._insert_char(char)
+                self.completion_state = None
+        return None
 
     def _get_key_action(self, char: str) -> Optional[str]:
-        """Get the action for a key based on current mode.
+        """Mode-appropriate binding lookup for a literal key.
 
-        ESC is intercepted BEFORE the emacs/vi mode split so that escape
-        sequences (arrow keys, Home/End/Delete) are consumed by one
-        reader and behave identically in every mode.  Previously CSI
-        parsing lived only in the emacs branch, so an Up-arrow in vi
-        insert mode decomposed into ESC (enter normal mode), '['
-        (unbound) and 'A' (append-at-end), corrupting the edit state.
+        ESC never reaches here: the KeyDecoder resolves every
+        ESC-introduced byte run into a Key/Meta/Escape event before the
+        editor sees it (see _dispatch_escape_event), so escape
+        sequences behave identically in every mode and partial
+        sequences never leak into the edit buffer.
         """
-        if char == '\x1b':
-            return self._handle_escape()
         if self.edit_mode == 'vi':
             return self.key_handler.get_action(char)
         return self.key_handler.bindings.get(char)
 
-    def _handle_escape(self) -> Optional[str]:
-        """Resolve a key event that started with ESC (any mode).
+    def _dispatch_escape_event(self, event: KeyEvent) -> Optional[str]:
+        """Give an ESC-introduced KeyEvent its mode-dependent MEANING.
 
-        - ESC [ ... / ESC O x: full sequence consumed by
-          _read_escape_sequence; the symbolic key maps to the same
-          action in emacs mode and both vi modes.
-        - vi mode, bare ESC (no pending input): enter normal mode.
-        - vi mode, ESC + ordinary key: enter normal mode and re-queue
-          the key so it is processed as a normal-mode command.
-        - emacs mode, ESC + ordinary key: Meta combination.
+        The decoder reported what arrived (Key/Meta/Escape); this is
+        the policy layer deciding what it means:
+
+        - Key(name): the symbolic keys map to the same action in emacs
+          mode and both vi modes (bash agrees: arrows move the cursor /
+          walk history everywhere). Key(None) — a complete but
+          unrecognized sequence — is ignored.
+        - Escape (bare ESC): vi enters normal mode; emacs has no
+          bare-ESC binding (with esc_timeout=None the decoder never
+          produces one).
+        - Meta(c) in vi: enter normal mode, then run c as a normal-mode
+          command. Meta(c) in emacs: the Meta/Alt combination.
+
+        An active incremental search is accepted first, matching the
+        pre-decoder behavior where the raw ESC byte fell through
+        _handle_search_char via _accept_search before escape resolution.
         """
+        if self.search_mode:
+            self._accept_search()
+
+        if isinstance(event, Key):
+            action = self.ESCAPE_KEY_ACTIONS.get(event.name)
+            return self._execute_action(action, '\x1b') if action else None
+
+        if isinstance(event, Escape):
+            if self.edit_mode == 'vi':
+                return self._execute_action('enter_normal_mode', '\x1b')
+            return None
+
+        assert isinstance(event, Meta)
         if self.edit_mode == 'vi':
-            if not self._input_pending():
-                return 'enter_normal_mode'
-            next_char = self._read_char()
-            if next_char in ('[', 'O'):
-                key = self._read_escape_sequence(next_char)
-                return self.ESCAPE_KEY_ACTIONS.get(key) if key else None
-            if next_char:
-                self._char_buf.insert(0, next_char)
-            return 'enter_normal_mode'
-
-        # Emacs mode: terminals send the whole sequence in one burst, so
-        # reading the follower blocks only for a human-typed Meta combo.
-        next_char = self._read_char()
-        if next_char in ('[', 'O'):
-            key = self._read_escape_sequence(next_char)
-            return self.ESCAPE_KEY_ACTIONS.get(key) if key else None
-        return self.key_handler.meta_bindings.get(next_char)
-
-    def _input_pending(self, timeout: float = 0.05) -> bool:
-        """True if more input is already buffered or arrives within
-        *timeout* seconds (used to tell a bare ESC keypress from the
-        ESC that introduces a sequence — terminals transmit sequences
-        in a single burst)."""
-        if self._char_buf:
-            return True
-        if self._stdin_fd < 0:
-            return False
-        try:
-            ready, _, _ = select.select([self._stdin_fd], [], [], timeout)
-        except OSError:
-            return False
-        return bool(ready)
-
-    def _read_escape_sequence(self, intro: str) -> Optional[str]:
-        """THE escape-sequence reader: the only input-side ANSI parser.
-
-        Called with ESC and the intro byte ('[' for CSI, 'O' for SS3)
-        already consumed.  Reads the remainder of the sequence and
-        returns a symbolic key name ('up', 'down', 'left', 'right',
-        'home', 'end', 'delete') or None.  Unrecognized sequences are
-        consumed in full so they never leak into the edit buffer.
-        """
-        if intro == 'O':
-            # SS3: exactly one final byte
-            return self._SS3_KEYS.get(self._read_char())
-
-        # CSI: parameter/intermediate bytes, then a final byte @ .. ~
-        params: List[str] = []
-        while True:
-            ch = self._read_char()
-            if not ch:
+            self._execute_action('enter_normal_mode', '\x1b')
+            if event.char == '\x1b':
+                # ESC ESC: the second ESC needs full disambiguation (it
+                # may introduce a sequence of its own) — hand it back to
+                # the decoder instead of dispatching it as a key.
+                assert self.decoder is not None
+                self.decoder.pushback(event.char)
                 return None
-            if '\x40' <= ch <= '\x7e':
-                final = ch
-                break
-            params.append(ch)
+            return self._dispatch_char(event.char)
 
-        if not params:
-            return self._CSI_FINAL_KEYS.get(final)
-        if final == '~':
-            return self._CSI_TILDE_KEYS.get(''.join(params))
-        # Parameterised sequences we don't handle (modifiers, CPR
-        # responses ESC[r;cR, ...) are silently discarded.
-        return None
+        action = self.key_handler.meta_bindings.get(event.char)
+        return self._execute_action(action, '\x1b') if action else None
 
     def _execute_action(self, action: str, char: str) -> Optional[str]:
         """Execute a key binding action."""

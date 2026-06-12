@@ -88,6 +88,7 @@ files = [
     "psh/interactive/line_layout.py",
     "psh/interactive/edit_buffer.py",
     "psh/interactive/line_renderer.py",
+    "psh/interactive/key_decoder.py",
 ]
 ignore_missing_imports = true
 follow_imports = "silent"
