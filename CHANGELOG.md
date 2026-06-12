@@ -4,6 +4,41 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.317.0 (2026-06-12) - Textbook program Tier B4: WordExpander + named policies (zero behavior change)
+- Every expansion context has a NAME: frozen WordExpansionPolicy
+  (split/glob/assignment_tilde — a caller tabulation proved three
+  axes cover every flag tuple in the tree) with named instances
+  COMMAND_ARGUMENT, DECLARATION_ASSIGNMENT, LOOP_ITEM (an alias of
+  COMMAND_ARGUMENT, by design), ARRAY_INIT_ELEMENT,
+  ASSOC_INIT_ELEMENT, consumed by the new
+  expansion/word_expander.py engine. The 238-line flag-multiplexed
+  _expand_word is decomposed into named phases (expand → walk-literal
+  / walk-expansion on a _WalkState → finish: join → split → glob).
+  The suppress_split_glob→declaration_assignment ALIASING TRAP is
+  dead: the parameter no longer exists; expand_word_to_fields takes a
+  required named policy (TypeError pinned by test).
+- The scalar assignment-value walker lives beside the policy table in
+  the same module, with the docstring explaining why the two walkers
+  stay separate. Escape processors moved with the engine (NOT to
+  utils/escapes.py, per its dialect-map exclusion).
+  _word_to_string became Word.to_literal_string() on the AST
+  (could not reuse __str__ — it re-wraps quotes; divergences
+  documented). The arithmetic adapter moved into arithmetic.py.
+- ExpansionManager: 944 → 267 lines — expand_arguments, the
+  declaration-builtin recognition, debug plumbing, and thin public
+  delegates (every name ast_data_flow.md documents survives).
+- Honest finding pinned under the zero-change contract: the aliasing
+  accidentally re-enabled value-tilde in assoc initializers —
+  `declare -A h; h=(P=~/x v)` expands the tilde where bash 5.2 keeps
+  it literal. Pinned as a PINNED HISTORICAL ACCIDENT with probe/test
+  coverage; the one-line bash-parity flip is queued as a future
+  behavior fix. Also pinned: the standalone unquoted $@/${a[@]} fast
+  path ignores policy split/glob (pre-existing).
+- 26-probe battery byte-identical before/after; 20 new policy/engine
+  tests. Suite: 5,320 passed / 5,560 collected, 0 failures; ruff +
+  mypy (ast_nodes.py annotations extended) + doc-pointer meta-test
+  clean.
+
 ## 0.316.0 (2026-06-12) - Textbook program Tier B2: CommandAssignments (zero behavior change)
 - The assignment sub-domain (9 methods, ~260 lines — what NAME=value
   prefixes MEAN) extracted from CommandExecutor into

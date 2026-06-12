@@ -19,7 +19,8 @@ Input Arguments → ExpansionManager → Expanded Arguments
 
 | File | Purpose |
 |------|---------|
-| `manager.py` | `ExpansionManager` - orchestrates all expansions in correct order |
+| `manager.py` | `ExpansionManager` - orchestrator: owns the sub-expanders, declaration-builtin recognition, public entry points |
+| `word_expander.py` | `WordExpander` - THE Word expansion engine (part walkers, IFS split, glob, escapes) + the named `WordExpansionPolicy` table |
 | `evaluator.py` | `ExpansionEvaluator` - evaluates expansion AST nodes |
 | `variable.py` | `VariableExpander` - dispatch, special variables, `${!name}` indirection |
 | `arrays.py` | `ArrayOpsMixin` - `${arr[i]}`, `${arr[@]}`, `_eval_array_index()` |
@@ -58,24 +59,32 @@ class ExpansionManager:
         self.glob_expander = GlobExpander(shell)
         self.word_splitter = WordSplitter()
 
+        self.word_expander = WordExpander(self)
+
     def expand_arguments(self, command: SimpleCommand) -> List[str]:
         """Expand all arguments using Word AST nodes."""
-        return self._expand_word_ast_arguments(command)
+        # picks COMMAND_ARGUMENT or DECLARATION_ASSIGNMENT per word,
+        # then word_expander.expand(word, policy)
 ```
 
 ### 2. Word AST Expansion (Primary Path)
 
 Arguments are expanded using Word AST nodes. Each `Word` contains
 `LiteralPart` and `ExpansionPart` nodes with per-part quote context.
-The `_expand_word()` method walks the parts and applies expansions
-based on each part's `quoted` and `quote_char` fields:
+`WordExpander.expand(word, policy)` (in `word_expander.py`) walks the
+parts and applies expansions based on each part's `quoted` and
+`quote_char` fields; the `WordExpansionPolicy` names what the context
+permits (axes: `split`, `glob`, `assignment_tilde` — named instances
+`COMMAND_ARGUMENT`, `LOOP_ITEM`, `DECLARATION_ASSIGNMENT`,
+`ARRAY_INIT_ELEMENT`, `ASSOC_INIT_ELEMENT`):
 
 ```python
-def _expand_word(self, word: Word) -> Union[str, List[str]]:
+def expand(self, word: Word, policy: WordExpansionPolicy) -> Union[str, List[str]]:
     # Single-quoted: return literal
     # Double-quoted: expand vars/commands, no splitting/globbing
     # ANSI-C ($'...'): return literal (lexer already processed escapes)
-    # Composite/unquoted: per-part expansion with splitting/globbing
+    # Composite/unquoted: _walk_literal_part/_walk_expansion_part per
+    # part on a _WalkState, then _finish() splits and globs per policy
 ```
 
 Key behaviors controlled by Word AST structure:
@@ -88,7 +97,7 @@ Key behaviors controlled by Word AST structure:
   `assignment_word_prefix()`) of a declaration builtin (`DECLARATION_BUILTINS`:
   alias, declare, typeset, export, local, readonly) skips word splitting AND
   pathname expansion. The CALLER decides (`expand_arguments()` checks the
-  literal command word); `_expand_word()` never guesses from a `=`. Ordinary
+  literal command word); the engine never guesses from a `=`. Ordinary
   commands split such arguments (`printf '%s' foo=$x` splits — bash). True
   command-prefix assignments are stripped by the executor before expansion.
 - **Assignment-value tilde**: assignment-shaped words (any command's
@@ -206,7 +215,8 @@ Different quote types affect expansion:
 
 ### Array and $@ Expansion in Quotes
 
-Multi-field expansions inside quotes go through two helpers in `manager.py`:
+Multi-field expansions inside quotes go through two helpers in
+`word_expander.py`:
 
 - `_field_expansion_fields(part)` returns the list of fields a part expands
   to (`"$@"`, `"${arr[@]}"`, and parameter ops applied to them — the latter
@@ -256,7 +266,7 @@ def _split_with_ifs(self, text: Optional[str], quote_type: Optional[str]) -> Lis
 ```
 
 Splitting a composite word is part-aware: `_split_part_fields(parts,
-splittable_idx)` in `manager.py` splits ONLY the parts that came from
+splittable_idx)` in `word_expander.py` splits ONLY the parts that came from
 unquoted expansions, using `WordSplitter.split_with_edges()` (which also
 reports whether the text had leading/trailing IFS) so quoted text joins
 correctly onto adjacent fields (`a"$x"b`).

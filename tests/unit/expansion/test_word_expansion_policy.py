@@ -1,0 +1,160 @@
+"""The WordExpansionPolicy table: every expansion context has a NAME.
+
+Pins the three axes of each named policy in
+``psh/expansion/word_expander.py`` and exercises ``WordExpander.expand``
+directly under each policy. Also pins the DEATH of the old aliasing trap:
+``expand_word_to_fields`` no longer accepts ``suppress_split_glob`` (which
+silently aliased onto ``declaration_assignment`` and re-enabled
+assignment-tilde for assoc initializer elements).
+"""
+
+import dataclasses
+
+import pytest
+
+from psh.ast_nodes import ExpansionPart, LiteralPart, VariableExpansion, Word
+from psh.expansion.word_expander import (
+    ARRAY_INIT_ELEMENT,
+    ASSOC_INIT_ELEMENT,
+    COMMAND_ARGUMENT,
+    DECLARATION_ASSIGNMENT,
+    LOOP_ITEM,
+    WordExpansionPolicy,
+)
+
+
+def _unquoted_var(name: str) -> Word:
+    return Word(parts=[ExpansionPart(VariableExpansion(name))])
+
+
+def _literal(text: str) -> Word:
+    return Word(parts=[LiteralPart(text)])
+
+
+class TestPolicyTable:
+    """The named policies' axes, pinned (verified against bash/psh probes
+    on 2026-06-12 — see the instance docstrings in word_expander.py)."""
+
+    def test_command_argument_axes(self):
+        assert COMMAND_ARGUMENT == WordExpansionPolicy(
+            split=True, glob=True, assignment_tilde=True)
+
+    def test_loop_item_is_command_argument(self):
+        # bash treats for/select items exactly like command arguments;
+        # the alias is identity, not just equality.
+        assert LOOP_ITEM is COMMAND_ARGUMENT
+
+    def test_declaration_assignment_axes(self):
+        assert DECLARATION_ASSIGNMENT == WordExpansionPolicy(
+            split=False, glob=False, assignment_tilde=True)
+
+    def test_array_init_element_axes(self):
+        assert ARRAY_INIT_ELEMENT == WordExpansionPolicy(
+            split=True, glob=True, assignment_tilde=False)
+
+    def test_assoc_init_element_axes(self):
+        # assignment_tilde=True is the pinned historical accident: the
+        # pre-policy code aliased suppress_split_glob onto the
+        # declaration_assignment flag, re-enabling value-tilde. psh
+        # expands ``h=(P=~/x v)``'s tilde where bash keeps it literal;
+        # preserved under the zero-behavior-change contract.
+        assert ASSOC_INIT_ELEMENT == WordExpansionPolicy(
+            split=False, glob=False, assignment_tilde=True)
+
+    def test_policies_are_frozen(self):
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            COMMAND_ARGUMENT.split = False  # type: ignore[misc]
+
+    def test_suppress_split_glob_parameter_is_dead(self, captured_shell):
+        """The aliasing trap no longer exists as a parameter."""
+        word = _literal('x')
+        with pytest.raises(TypeError):
+            captured_shell.expansion_manager.expand_word_to_fields(
+                word, suppress_split_glob=True)
+
+
+class TestExpandUnderPolicies:
+    """Direct WordExpander.expand() calls, two-three per policy."""
+
+    @pytest.fixture
+    def expander(self, captured_shell):
+        return captured_shell.expansion_manager.word_expander
+
+    # --- split axis -----------------------------------------------------
+
+    def test_command_argument_splits(self, captured_shell, expander):
+        captured_shell.run_command("x='1 2'")
+        assert expander.expand(_unquoted_var('x'), COMMAND_ARGUMENT) \
+            == ['1', '2']
+
+    def test_command_argument_zero_field_rule(self, captured_shell, expander):
+        captured_shell.run_command('unset novar')
+        assert expander.expand(_unquoted_var('novar'), COMMAND_ARGUMENT) == []
+
+    def test_declaration_assignment_keeps_value_whole(
+            self, captured_shell, expander):
+        captured_shell.run_command("x='1 2'")
+        assert expander.expand(_unquoted_var('x'), DECLARATION_ASSIGNMENT) \
+            == '1 2'
+
+    def test_assoc_init_element_keeps_value_whole(
+            self, captured_shell, expander):
+        captured_shell.run_command("x='k v'")
+        assert expander.expand(_unquoted_var('x'), ASSOC_INIT_ELEMENT) \
+            == 'k v'
+
+    def test_array_init_element_splits(self, captured_shell, expander):
+        captured_shell.run_command("x='p q'")
+        assert expander.expand(_unquoted_var('x'), ARRAY_INIT_ELEMENT) \
+            == ['p', 'q']
+
+    # --- glob axis (made observable via nullglob: a matchless pattern
+    #     vanishes when globbed, survives literally when not) -----------
+
+    def test_command_argument_globs(self, captured_shell, expander):
+        captured_shell.run_command('shopt -s nullglob')
+        assert expander.expand(
+            _literal('zz-no-such-file-*'), COMMAND_ARGUMENT) == []
+
+    def test_declaration_assignment_does_not_glob(
+            self, captured_shell, expander):
+        captured_shell.run_command('shopt -s nullglob')
+        assert expander.expand(
+            _literal('zz-no-such-file-*'), DECLARATION_ASSIGNMENT) \
+            == 'zz-no-such-file-*'
+
+    def test_assoc_init_element_does_not_glob(self, captured_shell, expander):
+        captured_shell.run_command('shopt -s nullglob')
+        assert expander.expand(
+            _literal('zz-no-such-file-*'), ASSOC_INIT_ELEMENT) \
+            == 'zz-no-such-file-*'
+
+    # --- assignment_tilde axis ------------------------------------------
+
+    def test_command_argument_value_tilde(self, captured_shell, expander):
+        captured_shell.run_command('HOME=/H')
+        assert expander.expand(_literal('P=~/x'), COMMAND_ARGUMENT) == 'P=/H/x'
+
+    def test_declaration_assignment_value_tilde(
+            self, captured_shell, expander):
+        captured_shell.run_command('HOME=/H')
+        assert expander.expand(_literal('P=~/x'), DECLARATION_ASSIGNMENT) \
+            == 'P=/H/x'
+
+    def test_array_init_element_no_value_tilde(self, captured_shell, expander):
+        captured_shell.run_command('HOME=/H')
+        assert expander.expand(_literal('P=~/x'), ARRAY_INIT_ELEMENT) \
+            == 'P=~/x'
+
+    def test_assoc_init_element_value_tilde_pinned(
+            self, captured_shell, expander):
+        # The historical-aliasing behavior, pinned (see TestPolicyTable).
+        captured_shell.run_command('HOME=/H')
+        assert expander.expand(_literal('P=~/x'), ASSOC_INIT_ELEMENT) \
+            == 'P=/H/x'
+
+    # --- engine type discipline ------------------------------------------
+
+    def test_expand_rejects_non_word(self, expander):
+        with pytest.raises(TypeError, match='expects a Word'):
+            expander.expand('not a word', COMMAND_ARGUMENT)
