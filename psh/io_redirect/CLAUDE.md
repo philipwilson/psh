@@ -298,6 +298,11 @@ else:  # Parent
     return f"/dev/fd/{read_fd}"
 ```
 
+(Sketch only. The real implementation forks via
+`fork_with_signal_window()` and runs the whole child branch through the
+shared runner `run_child_shell()` — both in `executor/child_policy.py` —
+with the dup2 plumbing above passed as its `io_setup` hook.)
+
 ### Variable Expansion in Targets
 
 Use the `_expand_redirect_target` helper on `FileRedirector`:

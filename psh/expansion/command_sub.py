@@ -15,6 +15,39 @@ class CommandSubstitution:
         self.shell = shell
         self.state = shell.state
 
+    def _child_io_setup(self, read_fd: int, write_fd: int) -> None:
+        """Wire the substitution child's stdio (runs in the child).
+
+        Stdout goes to the capture pipe's write end. In interactive
+        sessions stdin is additionally protected with /dev/null to
+        prevent the substitution consuming terminal input.
+        """
+        # Close read end
+        os.close(read_fd)
+
+        # Redirect stdout to write end of pipe
+        os.dup2(write_fd, 1)
+        os.close(write_fd)
+
+        # Protect stdin in interactive sessions to prevent terminal corruption
+        # But preserve stdin for pipelines and scripts where it's needed.
+        # Capability check, not environment sniffing: only redirect when
+        # fd 0 actually IS the terminal — if stdin was redirected to a
+        # pipe or file (scripts, tests, `cmd | psh`), the substitution
+        # may legitimately need to read it.
+        is_interactive = getattr(self.shell, '_force_interactive', sys.stdin.isatty())
+        should_protect_stdin = (
+            not self.state.is_script_mode and
+            is_interactive and
+            os.isatty(0)
+        )
+        if should_protect_stdin:
+            # Interactive mode: redirect from /dev/null to prevent
+            # terminal input consumption
+            null_fd = os.open('/dev/null', os.O_RDONLY)
+            os.dup2(null_fd, 0)
+            os.close(null_fd)
+
     def execute(self, cmd_sub: str) -> str:
         """Execute command substitution and return output"""
         # Remove $(...) or `...`
@@ -25,89 +58,38 @@ class CommandSubstitution:
         else:
             return ''
 
-        # Import Shell here to avoid circular import
-        from ..shell import Shell
-
         # Create a pipe for capturing output
         read_fd, write_fd = os.pipe()
 
-        # Reset SIGCHLD to default to prevent job control interference
+        # Reset SIGCHLD to default to prevent job control interference.
+        # In interactive mode the shell installs a SIGCHLD handler that
+        # notifies the REPL loop, whose processing reaps with
+        # waitpid(-1, WNOHANG); a background job exiting while we sit in
+        # the blocking waitpid(pid) below could let that path steal this
+        # child's exit status (the ECHILD fallback would then report 1).
+        # SIG_DFL for the duration makes the substitution's status
+        # capture race-free; the handler is restored in the finally
+        # below, and the job manager already tolerates reaped-elsewhere
+        # children. (In script mode SIGCHLD is SIG_DFL already, so this
+        # is a no-op there.)
         import signal
         old_handler = signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 
         # Fork with termination signals blocked across the fork window
         # (the v0.300 lost-signal race fix; the child unblocks them in
         # apply_child_signal_policy after resetting handlers to SIG_DFL).
-        from psh.executor import fork_with_signal_window
+        from psh.executor import fork_with_signal_window, run_child_shell
         pid = fork_with_signal_window()
         if pid == 0:
-            # Child process
-            try:
-                from psh.executor import apply_child_signal_policy
-                apply_child_signal_policy(
-                    self.shell.interactive_manager.signal_manager,
-                    self.state,
-                    is_shell_process=True,
-                )
-
-                # Close read end
-                os.close(read_fd)
-
-                # Redirect stdout to write end of pipe
-                os.dup2(write_fd, 1)
-                os.close(write_fd)
-
-                # Protect stdin in interactive sessions to prevent terminal corruption
-                # But preserve stdin for pipelines and scripts where it's needed.
-                # Capability check, not environment sniffing: only redirect when
-                # fd 0 actually IS the terminal — if stdin was redirected to a
-                # pipe or file (scripts, tests, `cmd | psh`), the substitution
-                # may legitimately need to read it.
-                is_interactive = getattr(self.shell, '_force_interactive', sys.stdin.isatty())
-                should_protect_stdin = (
-                    not self.state.is_script_mode and
-                    is_interactive and
-                    os.isatty(0)
-                )
-                if should_protect_stdin:
-                    # Interactive mode: redirect from /dev/null to prevent terminal input consumption
-                    null_fd = os.open('/dev/null', os.O_RDONLY)
-                    os.dup2(null_fd, 0)
-                    os.close(null_fd)
-
-                # Create a temporary shell to execute the command
-                temp_shell = Shell.for_subshell(self.shell)
-                temp_shell.state.in_forked_child = True
-
-                # Execute the command
-                try:
-                    exit_code = temp_shell.run_command(command, add_to_history=False)
-                except SystemExit as e:
-                    # Command substitution runs in a subshell, so exit should not affect parent
-                    exit_code = e.code if e.code is not None else 0
-
-                # os._exit() does NOT flush Python-level buffers, so output a
-                # builtin wrote to the stream (rather than via os.write) would be
-                # lost. Flush before exiting so the pipe sees it. Mirrors
-                # ProcessLauncher's child-exit flush.
-                for stream in (temp_shell.stdout, temp_shell.stderr,
-                               sys.stdout, sys.stderr):
-                    try:
-                        stream.flush()
-                    except (OSError, ValueError, AttributeError):
-                        pass
-
-                os._exit(exit_code)
-            except Exception as e:
-                # Surface the failure on fd 2 before exiting — a silent
-                # bare-except here swallowed real defects (matches
-                # process_sub's error reporting style).
-                try:
-                    os.write(2, f"psh: command substitution error: {e}\n"
-                             .encode('utf-8', errors='replace'))
-                except OSError:
-                    pass
-                os._exit(1)
+            # Child: run_child_shell owns the generic child-process work
+            # (signal policy, child Shell, exception -> exit-code mapping,
+            # stream flush, os._exit). We supply the fd plumbing and body.
+            run_child_shell(
+                self.shell,
+                lambda child: child.run_command(command, add_to_history=False),
+                io_setup=lambda: self._child_io_setup(read_fd, write_fd),
+                error_label='command substitution',
+            )
         else:
             # Parent process
             try:

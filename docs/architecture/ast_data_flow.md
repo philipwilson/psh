@@ -194,7 +194,9 @@ expansion:
 - command words: `WordExpander.expand` handles the part type directly →
   `IOManager.create_process_substitution_for_expansion()` →
   `ProcessSubstitutionHandler` (`psh/io_redirect/process_sub.py`) — forks
-  the child, returns the `/dev/fd/N` path spliced into the word.
+  the child (its body runs through `run_child_shell` in
+  `executor/child_policy.py`), returns the `/dev/fd/N` path spliced into
+  the word.
 - assignment values: `expand_assignment_value_word` handles the part type
   directly (same IOManager call).
 - case patterns: NOT performed — `expand_word_as_pattern` keeps the

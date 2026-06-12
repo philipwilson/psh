@@ -1,8 +1,9 @@
-"""Tests for apply_child_signal_policy()."""
+"""Tests for apply_child_signal_policy() and run_child_shell()."""
 
 import signal
 import subprocess
 import sys
+import textwrap
 from unittest.mock import MagicMock, call, patch
 
 from psh.executor.child_policy import apply_child_signal_policy
@@ -117,4 +118,104 @@ class TestCommandSubstitutionSignals:
             capture_output=True, text=True, timeout=10,
         )
         assert result.stdout.strip() == 'test'
+        assert result.returncode == 0
+
+
+class TestRunChildShell:
+    """Semantics of the shared substitution-child runner.
+
+    run_child_shell() forks-and-exits by design, so it cannot be called
+    in-process under pytest. These tests run a small driver in a
+    subprocess: the driver forks via fork_with_signal_window(), runs a
+    body through run_child_shell(), and the parent half reports the
+    child's wait status — exactly the shape of the real call sites.
+    """
+
+    DRIVER = textwrap.dedent('''
+        import os
+        from psh.shell import Shell
+        from psh.executor.child_policy import (
+            fork_with_signal_window, run_child_shell,
+        )
+
+        shell = Shell(norc=True)
+
+        def spawn(body, **kwargs):
+            pid = fork_with_signal_window()
+            if pid == 0:
+                run_child_shell(shell, body, **kwargs)
+            _, status = os.waitpid(pid, 0)
+            return os.WEXITSTATUS(status)
+
+        def returns_five(child):
+            return 5
+
+        def raises_system_exit(child):
+            raise SystemExit(3)
+
+        def raises_system_exit_none(child):
+            raise SystemExit(None)
+
+        def raises_runtime(child):
+            raise RuntimeError('boom')
+
+        def checks_child_flag(child):
+            # The runner must mark the child shell as a forked child.
+            return 0 if child.state.in_forked_child else 9
+
+        def runs_command(child):
+            # The child shell is a working psh: body output reaches fd 1.
+            return child.run_command('echo child-ran', add_to_history=False)
+
+        # flush=True throughout: a buffered parent print would be
+        # duplicated by the next forked child's exit-time flush.
+        print('return5=%d' % spawn(returns_five), flush=True)
+        print('sysexit3=%d' % spawn(raises_system_exit), flush=True)
+        print('sysexit_none=%d' % spawn(raises_system_exit_none), flush=True)
+        print('raise=%d' % spawn(raises_runtime, error_label='unit-test child'),
+              flush=True)
+        print('flag=%d' % spawn(checks_child_flag), flush=True)
+        print('command=%d' % spawn(runs_command), flush=True)
+    ''')
+
+    def _run_driver(self):
+        return subprocess.run(
+            [sys.executable, '-c', self.DRIVER],
+            capture_output=True, text=True, timeout=30,
+        )
+
+    def test_runner_exit_code_semantics(self):
+        """Body return / SystemExit / unexpected exception map to exit codes."""
+        result = self._run_driver()
+        assert result.returncode == 0, result.stderr
+        lines = result.stdout.splitlines()
+        assert 'return5=5' in lines           # body return value -> exit code
+        assert 'sysexit3=3' in lines          # SystemExit(3) -> 3
+        assert 'sysexit_none=0' in lines      # SystemExit(None) -> 0
+        assert 'raise=1' in lines             # unexpected exception -> 1
+        assert 'flag=0' in lines              # in_forked_child was set
+        assert 'command=0' in lines           # child shell executes commands
+        assert 'child-ran' in lines           # ... whose output reaches fd 1
+
+    def test_runner_reports_unexpected_exception_on_stderr(self):
+        """An unexpected body exception is reported on fd 2 with the label."""
+        result = self._run_driver()
+        assert 'psh: unit-test child error: boom' in result.stderr
+
+    def test_process_sub_exit_builtin_terminates_child_only(self):
+        """`exit` inside <(...) terminates the substitution child, not psh."""
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', 'cat <(exit 3); echo after:$?'],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert result.stdout.strip() == 'after:0'
+        assert result.returncode == 0
+
+    def test_command_sub_exit_builtin_status(self):
+        """`exit 7` in $(...) becomes the substitution's status."""
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', 'x=$(exit 7); echo $?'],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert result.stdout.strip() == '7'
         assert result.returncode == 0

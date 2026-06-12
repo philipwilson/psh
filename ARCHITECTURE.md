@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.317.0
+**Current Version**: 0.318.0
 
 **Note:** For orientation, start with the Quick Map below; for per-context
 expansion pointers see `docs/architecture/ast_data_flow.md`; for working
@@ -79,7 +79,7 @@ psh/
 │   ├── command.py / pipeline.py / control_flow.py
 │   ├── array.py / function.py / subshell.py
 │   ├── process_launcher.py  # Job-controlled process creation (pgids, terminal, sync)
-│   ├── child_policy.py      # fork_with_signal_window() + apply_child_signal_policy() — every fork site
+│   ├── child_policy.py      # fork_with_signal_window() + apply_child_signal_policy() + run_child_shell() — every fork site
 │   ├── job_control.py       # JobManager
 │   └── strategies.py        # Builtin/function/external dispatch
 ├── io_redirect/             # IOManager, FileRedirector (incl. heredocs), procsub scopes
@@ -110,7 +110,7 @@ Input → Preprocessing → Tokenization → Keyword Normalization → Parsing �
 3. **Visitor Execution**: AST nodes are data-only; behavior lives in visitors/executors
 4. **POSIX Expansion Order**: expansion phases stay in standard order
 5. **Word AST as Source of Truth**: `SimpleCommand.words` (and the Word fields on arrays/loops/assignments) are the sole structural argument representation; use Word helper properties, never string-type checks
-6. **One Fork Helper, One Child Signal Policy**: every fork site forks via `fork_with_signal_window()` and every child applies `apply_child_signal_policy()` (both in `psh/executor/child_policy.py`, since v0.312); *job-controlled* process creation (commands, pipelines, subshells) additionally goes through `ProcessLauncher`, while command/process substitution fork directly by design (they are not jobs)
+6. **One Fork Helper, One Child Signal Policy, One Substitution-Child Runner**: every fork site forks via `fork_with_signal_window()` and every child applies `apply_child_signal_policy()`; *job-controlled* process creation (commands, pipelines, subshells) additionally goes through `ProcessLauncher`, while command/process substitution fork directly by design (they are not jobs) and run their child bodies through the shared `run_child_shell()` (child Shell construction, exception→exit-code mapping, `flush_child_streams()`, `os._exit`); all of this lives in `psh/executor/child_policy.py`
 7. **Exit Status Discipline**: every execution path returns an integer exit status
 8. **Fail Loudly**: internal errors raise; only user-facing shell errors map to exit codes (v0.300 policy)
 
@@ -683,13 +683,13 @@ executor/
 ├── subshell.py          # Subshell and brace group execution
 ├── context.py           # ExecutionContext state management
 ├── strategies.py        # Command type execution strategies
-├── child_policy.py      # Child process signal/cleanup policy
+├── child_policy.py      # Fork helper, child signal policy, substitution-child runner
 └── enhanced_test_evaluator.py  # Test expression evaluation ([, [[)
 ```
 
 #### Unified Process Creation
 
-PSH centralizes *job-controlled* process creation in `ProcessLauncher` (commands, pipelines, subshells — anything that becomes a job), eliminating code duplication and ensuring consistent behavior across those fork points. The fork itself and the child-side signal setup are shared by **all** fork sites, including the two that bypass ProcessLauncher by design (command substitution and process substitution, which are not jobs): every site forks via `fork_with_signal_window()` and applies `apply_child_signal_policy()` from `psh/executor/child_policy.py` (v0.312).
+PSH centralizes *job-controlled* process creation in `ProcessLauncher` (commands, pipelines, subshells — anything that becomes a job), eliminating code duplication and ensuring consistent behavior across those fork points. The fork itself and the child-side signal setup are shared by **all** fork sites, including the two that bypass ProcessLauncher by design (command substitution and process substitution, which are not jobs): every site forks via `fork_with_signal_window()` and applies `apply_child_signal_policy()` from `psh/executor/child_policy.py` (v0.312). The two substitution sites additionally run their entire child branch through the shared runner `run_child_shell()` (same module): signal policy, the caller's fd plumbing, child `Shell.for_subshell()` construction, body execution, SystemExit/exception → exit-code mapping, `flush_child_streams()`, and `os._exit()` — the caller supplies only the plumbing and the body.
 
 **File**: `executor/process_launcher.py`
 
@@ -966,9 +966,10 @@ Handles all forms of variable expansion:
 **File**: `expansion/command_sub.py`
 
 Executes commands and captures output. `CommandSubstitution.execute()`
-forks a real child process (via `fork_with_signal_window()` +
-`apply_child_signal_policy()`, like every other fork site) and reads its
-output through a pipe:
+forks a real child process (via `fork_with_signal_window()`, like every
+other fork site; the child branch runs through `run_child_shell()`,
+which applies the child signal policy) and reads its output through a
+pipe:
 
 ```python
 class CommandSubstitution:
