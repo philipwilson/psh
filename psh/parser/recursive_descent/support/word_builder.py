@@ -19,6 +19,7 @@ from ....ast_nodes import (
     Word,
     WordPart,
 )
+from ....expansion.param_parser import parse_parameter_expansion
 from ....lexer.token_types import Token, TokenType
 
 # Token types that represent standalone expansion tokens
@@ -111,89 +112,16 @@ class WordBuilder:
     def _parse_parameter_expansion(value: str) -> ParameterExpansion:
         """Parse a parameter expansion like ${var:-default}.
 
-        Operator precedence matters:
-        - Longer operators before shorter (## before #, %% before %, // before /)
-        - /# and /% (prefix/suffix substitution) before # and %
-        - : (substring) after :-, :=, :?, :+ to avoid false matches
+        Thin wrapper stripping the ``${``/``}`` delimiters; the grammar
+        lives in the single shared parser (expansion/param_parser.py),
+        which is also used by the runtime string-expansion entry point.
+        Subscripted forms are fully parsed here — ``${arr[@]:1:2}`` is
+        ParameterExpansion('arr[@]', ':', '1:2') at parse time, not a
+        deferred opaque parameter string.
         """
-        # Remove ${ and }
         if value.startswith('${') and value.endswith('}'):
-            inner = value[2:-1]
-        else:
-            inner = value
-
-        # Transformation operators ${param@OP}: a single '@' followed by one
-        # transform letter at the very end (e.g. ${x@Q}, ${arr[@]@Q}, ${@@Q}).
-        # The trailing-position check distinguishes the transform '@' from the
-        # array-subscript '@' in ${arr[@]} (which is followed by ']').
-        if len(inner) >= 2 and inner[-2] == '@' and inner[-1] in 'QEPAUuLakK':
-            return ParameterExpansion(inner[:-2], '@' + inner[-1], '')
-
-        # Indirection of a special parameter: ${!#}, ${!?}, ${!$}, ${!-},
-        # ${!!} — checked before the operator scan, which would otherwise
-        # read '#'/'?'/'-' as an operator with parameter '!'.
-        if len(inner) == 2 and inner[0] == '!' and inner[1] in '#?$-!':
-            return ParameterExpansion(inner[1], '!', None)
-
-        # Check for operators.
-        # We find the operator that matches at the earliest position.
-        # When two operators match at the same position, prefer the longer one
-        # (e.g. ':-' over ':' at the same index, '//' over '/' at the same index).
-        operators = [':-', ':=', ':?', ':+', '##', '%%', '/#', '/%', '//',
-                     '#', '%', '/', ':', '-', '=', '+', '?']
-
-        best_idx = len(inner)
-        best_op = None
-        for op in operators:
-            idx = inner.find(op)
-            if idx > 0:  # Must have a variable name before operator
-                before = inner[:idx]
-                # For ':' (substring operator), only match if the parameter
-                # part is a clean variable name (no ':' already in it).
-                # This prevents re-matching inside operands like '0:-1'.
-                if op == ':' and ':' in before:
-                    continue
-                # A non-colon single-char op preceded by ':' is part of a colon
-                # operator (':-', ':=', ':+', ':?'), not a standalone one.
-                if op in ('-', '=', '+', '?') and before.endswith(':'):
-                    continue
-                # Don't match operators inside an unclosed bracket expression
-                # — an array subscript ${arr[-1]} / ${arr[i+1]} or a case-mod
-                # pattern like ${arr[@]^^[a-m]}.
-                if before.count('[') > before.count(']'):
-                    continue
-                # Don't match operators once a closed array subscript precedes
-                # the operator position. ${arr[@]:2:3} (slice), ${arr[0]:-def}
-                # (element default), ${arr[@]:1:-1} (negative length) etc. are
-                # all routed through the string-path parser (parse_expansion),
-                # which resolves the subscript before applying the operator.
-                # Checking only ']'-suffix missed operators buried in the
-                # operand, e.g. the ':-' inside ${arr[@]:1:-1}.
-                if '[' in before and ']' in before and before.index('[') < before.rindex(']'):
-                    continue
-                if idx < best_idx or (idx == best_idx and best_op and len(op) > len(best_op)):
-                    best_idx = idx
-                    best_op = op
-
-        if best_op is not None:
-            parameter = inner[:best_idx]
-            word = inner[best_idx + len(best_op):]
-            return ParameterExpansion(parameter, best_op, word)
-
-        # Check for length operator ${#var}
-        if inner.startswith('#'):
-            return ParameterExpansion(inner[1:], '#', None)
-
-        # Indirect / nameref-name expansion ${!name} for a plain identifier.
-        # (The ${!prefix*}, ${!prefix@}, and ${!arr[@]} forms contain *, @, or
-        # [ and are handled separately; they are excluded here.)
-        if inner.startswith('!') and len(inner) > 1:
-            ind = inner[1:]
-            if not ind.endswith(('*', '@')) and all(c.isalnum() or c == '_' for c in ind):
-                return ParameterExpansion(ind, '!', None)
-
-        # No operator, just a variable
-        return ParameterExpansion(inner, None, None)
+            value = value[2:-1]
+        return parse_parameter_expansion(value)
 
     @staticmethod
     def token_part_to_word_part(tp) -> WordPart:

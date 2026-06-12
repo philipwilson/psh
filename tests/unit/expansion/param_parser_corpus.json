@@ -1,0 +1,3687 @@
+{
+"!#": [
+"#",
+"!",
+null
+],
+"!*": [
+"",
+"!*",
+""
+],
+"!10:-none": [
+"!10",
+":-",
+"none"
+],
+"!@": [
+"",
+"!@",
+""
+],
+"!MYV_*": [
+"MYV_",
+"!*",
+""
+],
+"!NOSUCHPREFIXZZ@": [
+"NOSUCHPREFIXZZ",
+"!@",
+""
+],
+"!PFX_*": [
+"PFX_",
+"!*",
+""
+],
+"!TEST_VAR@": [
+"TEST_VAR",
+"!@",
+""
+],
+"!USER_*": [
+"USER_",
+"!*",
+""
+],
+"!a[0]": [
+"a[0]",
+"!",
+null
+],
+"!a[@]": [
+"a[@]",
+"!",
+null
+],
+"!arr[@]": [
+"arr[@]",
+"!",
+null
+],
+"!e": [
+"e",
+"!",
+null
+],
+"!foo": [
+"foo",
+"!",
+null
+],
+"!h[@]": [
+"h[@]",
+"!",
+null
+],
+"!h[k]": [
+"h[k]",
+"!",
+null
+],
+"!n": [
+"n",
+"!",
+null
+],
+"!n:-d": [
+"!n",
+":-",
+"d"
+],
+"!n:-unset": [
+"!n",
+":-",
+"unset"
+],
+"!name": [
+"name",
+"!",
+null
+],
+"!noexist": [
+"noexist",
+"!",
+null
+],
+"!noexist_xyz": [
+"noexist_xyz",
+"!",
+null
+],
+"!nr": [
+"nr",
+"!",
+null
+],
+"!p": [
+"p",
+"!",
+null
+],
+"!pre-fix*": [
+"!pre",
+"-",
+"fix*"
+],
+"!pre_@": [
+"pre_",
+"!@",
+""
+],
+"!prefix*": [
+"prefix",
+"!*",
+""
+],
+"!prefix@": [
+"prefix",
+"!@",
+""
+],
+"!r": [
+"r",
+"!",
+null
+],
+"!ref": [
+"ref",
+"!",
+null
+],
+"!ref%lo": [
+"!ref",
+"%",
+"lo"
+],
+"!ref:-d": [
+"!ref",
+":-",
+"d"
+],
+"!v": [
+"v",
+"!",
+null
+],
+"!v:-d": [
+"!v",
+":-",
+"d"
+],
+"!var": [
+"var",
+"!",
+null
+],
+"!x": [
+"x",
+"!",
+null
+],
+"#": [
+"",
+"#",
+null
+],
+"#!": [
+"!",
+"#",
+null
+],
+"##": [
+"#",
+"#",
+null
+],
+"#*": [
+"*",
+"#",
+null
+],
+"#+d": [
+"#",
+"+",
+"d"
+],
+"#-": [
+"-",
+"#",
+null
+],
+"#-d": [
+"#",
+"-",
+"d"
+],
+"#:-default": [
+"#",
+":-",
+"default"
+],
+"#?": [
+"?",
+"#",
+null
+],
+"#@": [
+"@",
+"#",
+null
+],
+"#BASH_REMATCH[@]": [
+"BASH_REMATCH[@]",
+"#",
+null
+],
+"#EMPTY": [
+"EMPTY",
+"#",
+null
+],
+"#PATH": [
+"PATH",
+"#",
+null
+],
+"#PIPESTATUS[@]": [
+"PIPESTATUS[@]",
+"#",
+null
+],
+"#UNDEFINED": [
+"UNDEFINED",
+"#",
+null
+],
+"#USER": [
+"USER",
+"#",
+null
+],
+"#VAR": [
+"VAR",
+"#",
+null
+],
+"#a[@]": [
+"a[@]",
+"#",
+null
+],
+"#a[x,y]": [
+"a[x,y]",
+"#",
+null
+],
+"#arr[*]": [
+"arr[*]",
+"#",
+null
+],
+"#arr[0]": [
+"arr[0]",
+"#",
+null
+],
+"#arr[1]": [
+"arr[1]",
+"#",
+null
+],
+"#arr[@]": [
+"arr[@]",
+"#",
+null
+],
+"#arr[bad+]": [
+"arr[bad+]",
+"#",
+null
+],
+"#arr[index]": [
+"arr[index]",
+"#",
+null
+],
+"#array[*]": [
+"array[*]",
+"#",
+null
+],
+"#array[@]": [
+"array[@]",
+"#",
+null
+],
+"#b[@]": [
+"b[@]",
+"#",
+null
+],
+"#c[@]": [
+"c[@]",
+"#",
+null
+],
+"#filename": [
+"filename",
+"#",
+null
+],
+"#h[\"key\"]": [
+"h[\"key\"]",
+"#",
+null
+],
+"#large": [
+"large",
+"#",
+null
+],
+"#new_arr[@]": [
+"new_arr[@]",
+"#",
+null
+],
+"#parameter": [
+"parameter",
+"#",
+null
+],
+"#r": [
+"r",
+"#",
+null
+],
+"#special": [
+"special",
+"#",
+null
+],
+"#v": [
+"v",
+"#",
+null
+],
+"#var": [
+"var",
+"#",
+null
+],
+"#word": [
+"word",
+"#",
+null
+],
+"#x": [
+"x",
+"#",
+null
+],
+"#x[0]": [
+"x[0]",
+"#",
+null
+],
+"#x[@]": [
+"x[@]",
+"#",
+null
+],
+"$": [
+"$",
+null,
+null
+],
+"*: -5": [
+"*",
+":",
+" -5"
+],
+"*:-d": [
+"*",
+":-",
+"d"
+],
+"*:2:2": [
+"*",
+":",
+"2:2"
+],
+"-": [
+"-",
+null,
+null
+],
+"...": [
+"...",
+null,
+null
+],
+"...:offset:length": [
+"...",
+":",
+"offset:length"
+],
+"0##*/": [
+"0",
+"##",
+"*/"
+],
+"0:-1": [
+"0",
+":-",
+"1"
+],
+"0:-empty": [
+"0",
+":-",
+"empty"
+],
+"1": [
+"1",
+null,
+null
+],
+"10": [
+"10",
+null,
+null
+],
+"11": [
+"11",
+null,
+null
+],
+"12": [
+"12",
+null,
+null
+],
+"1:-/tmp/source": [
+"1",
+":-",
+"/tmp/source"
+],
+"1:-World": [
+"1",
+":-",
+"World"
+],
+"1:-empty": [
+"1",
+":-",
+"empty"
+],
+"1:-first_default": [
+"1",
+":-",
+"first_default"
+],
+"1:-no_args": [
+"1",
+":-",
+"no_args"
+],
+"1:-not_used": [
+"1",
+":-",
+"not_used"
+],
+"1:=default": [
+"1",
+":=",
+"default"
+],
+"2:-/tmp/dest": [
+"2",
+":-",
+"/tmp/dest"
+],
+"3:-third_missing": [
+"3",
+":-",
+"third_missing"
+],
+"3:=third": [
+"3",
+":=",
+"third"
+],
+"?:-d": [
+"?",
+":-",
+"d"
+],
+"@: -1": [
+"@",
+":",
+" -1"
+],
+"@: -2": [
+"@",
+":",
+" -2"
+],
+"@: -3:1": [
+"@",
+":",
+" -3:1"
+],
+"@: -5": [
+"@",
+":",
+" -5"
+],
+"@: -99": [
+"@",
+":",
+" -99"
+],
+"@:0": [
+"@",
+":",
+"0"
+],
+"@:0:1": [
+"@",
+":",
+"0:1"
+],
+"@:1:": [
+"@",
+":",
+"1:"
+],
+"@:2": [
+"@",
+":",
+"2"
+],
+"@:2:-1": [
+"@",
+":",
+"2:-1"
+],
+"@:2:0": [
+"@",
+":",
+"2:0"
+],
+"@:2:2": [
+"@",
+":",
+"2:2"
+],
+"@:9:-1": [
+"@",
+":",
+"9:-1"
+],
+"@:n": [
+"@",
+":",
+"n"
+],
+"@@Q": [
+"@",
+"@Q",
+""
+],
+"A:-default1": [
+"A",
+":-",
+"default1"
+],
+"ARR[0]": [
+"ARR[0]",
+null,
+null
+],
+"ARR[1]": [
+"ARR[1]",
+null,
+null
+],
+"ARR[2]": [
+"ARR[2]",
+null,
+null
+],
+"B:-default2": [
+"B",
+":-",
+"default2"
+],
+"BASE": [
+"BASE",
+null,
+null
+],
+"BASE%.txt": [
+"BASE",
+"%",
+".txt"
+],
+"BASH_REMATCH[0]": [
+"BASH_REMATCH[0]",
+null,
+null
+],
+"BASH_REMATCH[1]": [
+"BASH_REMATCH[1]",
+null,
+null
+],
+"BASH_REMATCH[2]": [
+"BASH_REMATCH[2]",
+null,
+null
+],
+"BASH_REMATCH[@]": [
+"BASH_REMATCH[@]",
+null,
+null
+],
+"C:-default3": [
+"C",
+":-",
+"default3"
+],
+"C@a": [
+"C",
+"@a",
+""
+],
+"CAT[0]": [
+"CAT[0]",
+null,
+null
+],
+"CAT[1]": [
+"CAT[1]",
+null,
+null
+],
+"DEFAULT:=/etc/config": [
+"DEFAULT",
+":=",
+"/etc/config"
+],
+"DEFINED:-default": [
+"DEFINED",
+":-",
+"default"
+],
+"DIR##*/": [
+"DIR",
+"##",
+"*/"
+],
+"EMPTY:-default": [
+"EMPTY",
+":-",
+"default"
+],
+"FILE##*/": [
+"FILE",
+"##",
+"*/"
+],
+"FILE#*/": [
+"FILE",
+"#",
+"*/"
+],
+"FILE%%.*": [
+"FILE",
+"%%",
+".*"
+],
+"FILE%.*": [
+"FILE",
+"%",
+".*"
+],
+"FILE%.pdf": [
+"FILE",
+"%",
+".pdf"
+],
+"FILE%.txt": [
+"FILE",
+"%",
+".txt"
+],
+"FOO:-${BAR:-baz}": [
+"FOO",
+":-",
+"${BAR:-baz}"
+],
+"FOO:-bar": [
+"FOO",
+":-",
+"bar"
+],
+"FOO:-default": [
+"FOO",
+":-",
+"default"
+],
+"FOO:=bar": [
+"FOO",
+":=",
+"bar"
+],
+"HASH[key]": [
+"HASH[key]",
+null,
+null
+],
+"HOME": [
+"HOME",
+null,
+null
+],
+"HOME:-/tmp": [
+"HOME",
+":-",
+"/tmp"
+],
+"INNER:-undefined": [
+"INNER",
+":-",
+"undefined"
+],
+"LOCAL:-undefined": [
+"LOCAL",
+":-",
+"undefined"
+],
+"LOCAL_VAR:-undefined": [
+"LOCAL_VAR",
+":-",
+"undefined"
+],
+"MAPFILE[1]": [
+"MAPFILE[1]",
+null,
+null
+],
+"NAME[0]": [
+"NAME[0]",
+null,
+null
+],
+"NAME[1]": [
+"NAME[1]",
+null,
+null
+],
+"NEW_VAR:-undefined": [
+"NEW_VAR",
+":-",
+"undefined"
+],
+"PATH##*/": [
+"PATH",
+"##",
+"*/"
+],
+"PATH#/usr": [
+"PATH",
+"#",
+"/usr"
+],
+"PATH%/*": [
+"PATH",
+"%",
+"/*"
+],
+"PATH//bin/sbin": [
+"PATH",
+"//",
+"bin/sbin"
+],
+"PATH/bin/sbin": [
+"PATH",
+"/",
+"bin/sbin"
+],
+"PIPESTATUS[@]": [
+"PIPESTATUS[@]",
+null,
+null
+],
+"PREFIX": [
+"PREFIX",
+null,
+null
+],
+"TEXT,": [
+"TEXT",
+",",
+""
+],
+"TEXT,,": [
+"TEXT",
+",,",
+""
+],
+"TEXT/#hello/hi": [
+"TEXT",
+"/#",
+"hello/hi"
+],
+"TEXT/#world/hi": [
+"TEXT",
+"/#",
+"world/hi"
+],
+"TEXT/%world/universe": [
+"TEXT",
+"/%",
+"world/universe"
+],
+"TEXT//hello/hi": [
+"TEXT",
+"//",
+"hello/hi"
+],
+"TEXT/hello/hi": [
+"TEXT",
+"/",
+"hello/hi"
+],
+"TEXT/world/": [
+"TEXT",
+"/",
+"world/"
+],
+"TEXT^": [
+"TEXT",
+"^",
+""
+],
+"TEXT^^": [
+"TEXT",
+"^^",
+""
+],
+"UNDEFINED:-default": [
+"UNDEFINED",
+":-",
+"default"
+],
+"UNDEFINED_VAR:-default": [
+"UNDEFINED_VAR",
+":-",
+"default"
+],
+"USER": [
+"USER",
+null,
+null
+],
+"USER:+logged in": [
+"USER",
+":+",
+"logged in"
+],
+"USER:-nobody": [
+"USER",
+":-",
+"nobody"
+],
+"USER:=nobody": [
+"USER",
+":=",
+"nobody"
+],
+"USER:?User not set": [
+"USER",
+":?",
+"User not set"
+],
+"VAR": [
+"VAR",
+null,
+null
+],
+"VAR##[0-9]*": [
+"VAR",
+"##",
+"[0-9]*"
+],
+"VAR#*st": [
+"VAR",
+"#",
+"*st"
+],
+"VAR#[0-9]*": [
+"VAR",
+"#",
+"[0-9]*"
+],
+"VAR#prefix_": [
+"VAR",
+"#",
+"prefix_"
+],
+"VAR#test*": [
+"VAR",
+"#",
+"test*"
+],
+"VAR#xyz": [
+"VAR",
+"#",
+"xyz"
+],
+"VAR%*st": [
+"VAR",
+"%",
+"*st"
+],
+"VAR%test": [
+"VAR",
+"%",
+"test"
+],
+"VAR-default": [
+"VAR",
+"-",
+"default"
+],
+"VAR/": [
+"VAR",
+"/",
+""
+],
+"VAR1": [
+"VAR1",
+null,
+null
+],
+"VAR2": [
+"VAR2",
+null,
+null
+],
+"VAR:+\"$VAR exists\"": [
+"VAR",
+":+",
+"\"$VAR exists\""
+],
+"VAR:+$OTHER value": [
+"VAR",
+":+",
+"$OTHER value"
+],
+"VAR:+alternate": [
+"VAR",
+":+",
+"alternate"
+],
+"VAR:-$(date)": [
+"VAR",
+":-",
+"$(date)"
+],
+"VAR:-$OTHER value": [
+"VAR",
+":-",
+"$OTHER value"
+],
+"VAR:-default": [
+"VAR",
+":-",
+"default"
+],
+"VAR:0:bad": [
+"VAR",
+":",
+"0:bad"
+],
+"VAR:=assigned": [
+"VAR",
+":=",
+"assigned"
+],
+"VAR:?Should not see this": [
+"VAR",
+":?",
+"Should not see this"
+],
+"VAR:?Variable is empty": [
+"VAR",
+":?",
+"Variable is empty"
+],
+"VAR:?Variable not set": [
+"VAR",
+":?",
+"Variable not set"
+],
+"VAR:bad": [
+"VAR",
+":",
+"bad"
+],
+"VAR?Should not error": [
+"VAR",
+"?",
+"Should not error"
+],
+"VERSION": [
+"VERSION",
+null,
+null
+],
+"W+yes": [
+"W",
+"+",
+"yes"
+],
+"a": [
+"a",
+null,
+null
+],
+"a-b[x]": [
+"a",
+"-",
+"b[x]"
+],
+"a[\"0\"]": [
+"a[\"0\"]",
+null,
+null
+],
+"a[*]": [
+"a[*]",
+null,
+null
+],
+"a[*]: -5": [
+"a[*]",
+":",
+" -5"
+],
+"a[*]:-d": [
+"a[*]",
+":-",
+"d"
+],
+"a[*]:1": [
+"a[*]",
+":",
+"1"
+],
+"a[-1]": [
+"a[-1]",
+null,
+null
+],
+"a[0]": [
+"a[0]",
+null,
+null
+],
+"a[0]:-d": [
+"a[0]",
+":-",
+"d"
+],
+"a[1]": [
+"a[1]",
+null,
+null
+],
+"a[2]": [
+"a[2]",
+null,
+null
+],
+"a[3]": [
+"a[3]",
+null,
+null
+],
+"a[4]": [
+"a[4]",
+null,
+null
+],
+"a[5]:-d": [
+"a[5]",
+":-",
+"d"
+],
+"a[@]": [
+"a[@]",
+null,
+null
+],
+"a[@]#a": [
+"a[@]",
+"#",
+"a"
+],
+"a[@]%$ext": [
+"a[@]",
+"%",
+"$ext"
+],
+"a[@]+y": [
+"a[@]",
+"+",
+"y"
+],
+"a[@]-def": [
+"a[@]",
+"-",
+"def"
+],
+"a[@]/$p/X": [
+"a[@]",
+"/",
+"$p/X"
+],
+"a[@]/b/&&": [
+"a[@]",
+"/",
+"b/&&"
+],
+"a[@]/b/X": [
+"a[@]",
+"/",
+"b/X"
+],
+"a[@]: -2": [
+"a[@]",
+":",
+" -2"
+],
+"a[@]: -5": [
+"a[@]",
+":",
+" -5"
+],
+"a[@]:+y": [
+"a[@]",
+":+",
+"y"
+],
+"a[@]:-def": [
+"a[@]",
+":-",
+"def"
+],
+"a[@]:1:": [
+"a[@]",
+":",
+"1:"
+],
+"a[@]:1:-1": [
+"a[@]",
+":",
+"1:-1"
+],
+"a[@]:1:1+1": [
+"a[@]",
+":",
+"1:1+1"
+],
+"a[@]:1:2": [
+"a[@]",
+":",
+"1:2"
+],
+"a[@]:3:-1": [
+"a[@]",
+":",
+"3:-1"
+],
+"a[@]:5:1": [
+"a[@]",
+":",
+"5:1"
+],
+"a[@]:9:-1": [
+"a[@]",
+":",
+"9:-1"
+],
+"a[@]:=d": [
+"a[@]",
+":=",
+"d"
+],
+"a[@]:?m": [
+"a[@]",
+":?",
+"m"
+],
+"a[@]@A": [
+"a[@]",
+"@A",
+""
+],
+"a[@]@K": [
+"a[@]",
+"@K",
+""
+],
+"a[@]@Q": [
+"a[@]",
+"@Q",
+""
+],
+"a[@]@U": [
+"a[@]",
+"@U",
+""
+],
+"a[@]@a": [
+"a[@]",
+"@a",
+""
+],
+"a[@]^^": [
+"a[@]",
+"^^",
+""
+],
+"a[@]^^o": [
+"a[@]",
+"^^",
+"o"
+],
+"a[b[1]]:-d": [
+"a[b[1]]",
+":-",
+"d"
+],
+"a[i+1]+x": [
+"a[i+1]",
+"+",
+"x"
+],
+"a[k]:-d": [
+"a[k]",
+":-",
+"d"
+],
+"a[x,y]": [
+"a[x,y]",
+null,
+null
+],
+"a[x,y],,": [
+"a[x,y]",
+",,",
+""
+],
+"a[x,y]:-gone": [
+"a[x,y]",
+":-",
+"gone"
+],
+"a[x,y]^": [
+"a[x,y]",
+"^",
+""
+],
+"a[x,y]^^": [
+"a[x,y]",
+"^^",
+""
+],
+"a[x:-d": [
+"a[x:-d",
+null,
+null
+],
+"a[x^y]": [
+"a[x^y]",
+null,
+null
+],
+"a[x^y],,": [
+"a[x^y]",
+",,",
+""
+],
+"arr[$(( 1 / 0 ))]": [
+"arr[$(( 1 / 0 ))]",
+null,
+null
+],
+"arr[$((1 + 1))]": [
+"arr[$((1 + 1))]",
+null,
+null
+],
+"arr[$((i*2))]": [
+"arr[$((i*2))]",
+null,
+null
+],
+"arr[$((i+1))]": [
+"arr[$((i+1))]",
+null,
+null
+],
+"arr[$((i+j))]": [
+"arr[$((i+j))]",
+null,
+null
+],
+"arr[$((i-1))]": [
+"arr[$((i-1))]",
+null,
+null
+],
+"arr[$((idx))]": [
+"arr[$((idx))]",
+null,
+null
+],
+"arr[$i]": [
+"arr[$i]",
+null,
+null
+],
+"arr[${indices[$((0))]}]": [
+"arr[${indices[$((0))]}]",
+null,
+null
+],
+"arr[)(]": [
+"arr[)(]",
+null,
+null
+],
+"arr[*]": [
+"arr[*]",
+null,
+null
+],
+"arr[*]:1:2": [
+"arr[*]",
+":",
+"1:2"
+],
+"arr[*]^^": [
+"arr[*]",
+"^^",
+""
+],
+"arr[-1]": [
+"arr[-1]",
+null,
+null
+],
+"arr[-2]": [
+"arr[-2]",
+null,
+null
+],
+"arr[0]": [
+"arr[0]",
+null,
+null
+],
+"arr[0]-d": [
+"arr[0]",
+"-",
+"d"
+],
+"arr[0]/world/universe": [
+"arr[0]",
+"/",
+"world/universe"
+],
+"arr[0]:-def": [
+"arr[0]",
+":-",
+"def"
+],
+"arr[0]:1:3": [
+"arr[0]",
+":",
+"1:3"
+],
+"arr[1+]": [
+"arr[1+]",
+null,
+null
+],
+"arr[10]": [
+"arr[10]",
+null,
+null
+],
+"arr[1]": [
+"arr[1]",
+null,
+null
+],
+"arr[1]#foo ": [
+"arr[1]",
+"#",
+"foo "
+],
+"arr[1]:-default": [
+"arr[1]",
+":-",
+"default"
+],
+"arr[1]^^": [
+"arr[1]",
+"^^",
+""
+],
+"arr[2]": [
+"arr[2]",
+null,
+null
+],
+"arr[5]": [
+"arr[5]",
+null,
+null
+],
+"arr[5]-d": [
+"arr[5]",
+"-",
+"d"
+],
+"arr[5]:-missing": [
+"arr[5]",
+":-",
+"missing"
+],
+"arr[5]:=five": [
+"arr[5]",
+":=",
+"five"
+],
+"arr[@]": [
+"arr[@]",
+null,
+null
+],
+"arr[@]##*/": [
+"arr[@]",
+"##",
+"*/"
+],
+"arr[@]%.txt": [
+"arr[@]",
+"%",
+".txt"
+],
+"arr[@],": [
+"arr[@]",
+",",
+""
+],
+"arr[@],,": [
+"arr[@]",
+",,",
+""
+],
+"arr[@],,[AEIOU]": [
+"arr[@]",
+",,",
+"[AEIOU]"
+],
+"arr[@],,[pattern]": [
+"arr[@]",
+",,",
+"[pattern]"
+],
+"arr[@]: -2": [
+"arr[@]",
+":",
+" -2"
+],
+"arr[@]:0:3": [
+"arr[@]",
+":",
+"0:3"
+],
+"arr[@]:1:2": [
+"arr[@]",
+":",
+"1:2"
+],
+"arr[@]:2:3": [
+"arr[@]",
+":",
+"2:3"
+],
+"arr[@]:3": [
+"arr[@]",
+":",
+"3"
+],
+"arr[@]:start:length": [
+"arr[@]",
+":",
+"start:length"
+],
+"arr[@]@OP": [
+"arr[@]@OP",
+null,
+null
+],
+"arr[@]@Q": [
+"arr[@]",
+"@Q",
+""
+],
+"arr[@]^": [
+"arr[@]",
+"^",
+""
+],
+"arr[@]^^": [
+"arr[@]",
+"^^",
+""
+],
+"arr[@]^^[a-m]": [
+"arr[@]",
+"^^",
+"[a-m]"
+],
+"arr[@]^^[aeiou]": [
+"arr[@]",
+"^^",
+"[aeiou]"
+],
+"arr[@]^^[pattern]": [
+"arr[@]",
+"^^",
+"[pattern]"
+],
+"arr[arr[0]+1]": [
+"arr[arr[0]+1]",
+null,
+null
+],
+"arr[first key]": [
+"arr[first key]",
+null,
+null
+],
+"arr[i+1]": [
+"arr[i+1]",
+null,
+null
+],
+"arr[i,2]": [
+"arr[i,2]",
+null,
+null
+],
+"arr[i]": [
+"arr[i]",
+null,
+null
+],
+"arr[j]": [
+"arr[j]",
+null,
+null
+],
+"arr[key]": [
+"arr[key]",
+null,
+null
+],
+"arr[my key]": [
+"arr[my key]",
+null,
+null
+],
+"arr[my-key]": [
+"arr[my-key]",
+null,
+null
+],
+"arr[my.key]": [
+"arr[my.key]",
+null,
+null
+],
+"arr[second key]": [
+"arr[second key]",
+null,
+null
+],
+"arr[third key]": [
+"arr[third key]",
+null,
+null
+],
+"arr[x,y]": [
+"arr[x,y]",
+null,
+null
+],
+"array[@]": [
+"array[@]",
+null,
+null
+],
+"array[@]#pattern": [
+"array[@]",
+"#",
+"pattern"
+],
+"assoc[@]@K": [
+"assoc[@]",
+"@K",
+""
+],
+"assoc[@]^^": [
+"assoc[@]",
+"^^",
+""
+],
+"b[*]:3": [
+"b[*]",
+":",
+"3"
+],
+"b[0]": [
+"b[0]",
+null,
+null
+],
+"b[@]: -2": [
+"b[@]",
+":",
+" -2"
+],
+"b[@]: -7": [
+"b[@]",
+":",
+" -7"
+],
+"b[@]:0:2": [
+"b[@]",
+":",
+"0:2"
+],
+"b[@]:3": [
+"b[@]",
+":",
+"3"
+],
+"b[@]:5:1": [
+"b[@]",
+":",
+"5:1"
+],
+"base": [
+"base",
+null,
+null
+],
+"basename": [
+"basename",
+null,
+null
+],
+"conf[api.key]": [
+"conf[api.key]",
+null,
+null
+],
+"conf[db.host]": [
+"conf[db.host]",
+null,
+null
+],
+"conf[db.port]": [
+"conf[db.port]",
+null,
+null
+],
+"counter": [
+"counter",
+null,
+null
+],
+"data[${indices[$((0))]}]": [
+"data[${indices[$((0))]}]",
+null,
+null
+],
+"defined_var:+$((2*10))": [
+"defined_var",
+":+",
+"$((2*10))"
+],
+"domain": [
+"domain",
+null,
+null
+],
+"doubled": [
+"doubled",
+null,
+null
+],
+"e": [
+"e",
+null,
+null
+],
+"e^^": [
+"e",
+"^^",
+""
+],
+"empty#*": [
+"empty",
+"#",
+"*"
+],
+"empty%*": [
+"empty",
+"%",
+"*"
+],
+"empty:0:5": [
+"empty",
+":",
+"0:5"
+],
+"f##$d": [
+"f",
+"##",
+"$d"
+],
+"f#$p": [
+"f",
+"#",
+"$p"
+],
+"f#'a'": [
+"f",
+"#",
+"'a'"
+],
+"f%$ext": [
+"f",
+"%",
+"$ext"
+],
+"file": [
+"file",
+null,
+null
+],
+"file##*.": [
+"file",
+"##",
+"*."
+],
+"file##*/": [
+"file",
+"##",
+"*/"
+],
+"file#*.": [
+"file",
+"#",
+"*."
+],
+"file#*/": [
+"file",
+"#",
+"*/"
+],
+"file%%.*": [
+"file",
+"%%",
+".*"
+],
+"file%%/*": [
+"file",
+"%%",
+"/*"
+],
+"file%.*": [
+"file",
+"%",
+".*"
+],
+"file%.txt": [
+"file",
+"%",
+".txt"
+],
+"filename": [
+"filename",
+null,
+null
+],
+"filename##*.": [
+"filename",
+"##",
+"*."
+],
+"filename%.*": [
+"filename",
+"%",
+".*"
+],
+"filename%.???": [
+"filename",
+"%",
+".???"
+],
+"files[0]%.*": [
+"files[0]",
+"%",
+".*"
+],
+"fruits[0]": [
+"fruits[0]",
+null,
+null
+],
+"fruits[1]": [
+"fruits[1]",
+null,
+null
+],
+"fruits[2]": [
+"fruits[2]",
+null,
+null
+],
+"fruits[3]": [
+"fruits[3]",
+null,
+null
+],
+"fruits[4]": [
+"fruits[4]",
+null,
+null
+],
+"h[\"$k\"]": [
+"h[\"$k\"]",
+null,
+null
+],
+"h[\"]\"]:-d": [
+"h[\"]\"]",
+":-",
+"d"
+],
+"h[\"k 1\"]": [
+"h[\"k 1\"]",
+null,
+null
+],
+"h[\"key\"]": [
+"h[\"key\"]",
+null,
+null
+],
+"h['key']": [
+"h['key']",
+null,
+null
+],
+"h[@]:0:1": [
+"h[@]",
+":",
+"0:1"
+],
+"h[Accept]": [
+"h[Accept]",
+null,
+null
+],
+"h[Cache-Control]": [
+"h[Cache-Control]",
+null,
+null
+],
+"h[User-Agent]": [
+"h[User-Agent]",
+null,
+null
+],
+"h[j]": [
+"h[j]",
+null,
+null
+],
+"h[k]": [
+"h[k]",
+null,
+null
+],
+"h[key]": [
+"h[key]",
+null,
+null
+],
+"i": [
+"i",
+null,
+null
+],
+"inner": [
+"inner",
+null,
+null
+],
+"inner:-${outer}_INNER": [
+"inner",
+":-",
+"${outer}_INNER"
+],
+"inner_var": [
+"inner_var",
+null,
+null
+],
+"item": [
+"item",
+null,
+null
+],
+"large:500:10": [
+"large",
+":",
+"500:10"
+],
+"m[@]": [
+"m[@]",
+null,
+null
+],
+"m[k]": [
+"m[k]",
+null,
+null
+],
+"m[k]:-gone": [
+"m[k]",
+":-",
+"gone"
+],
+"missing:?not set": [
+"missing",
+":?",
+"not set"
+],
+"n@A": [
+"n",
+"@A",
+""
+],
+"n@a": [
+"n",
+"@a",
+""
+],
+"name": [
+"name",
+null,
+null
+],
+"nested_var:-": [
+"nested_var",
+":-",
+""
+],
+"new_arr[0]": [
+"new_arr[0]",
+null,
+null
+],
+"new_arr[1]": [
+"new_arr[1]",
+null,
+null
+],
+"newvar:=assigned": [
+"newvar",
+":=",
+"assigned"
+],
+"outer": [
+"outer",
+null,
+null
+],
+"outer_var": [
+"outer_var",
+null,
+null
+],
+"p@a": [
+"p",
+"@a",
+""
+],
+"parameter": [
+"parameter",
+null,
+null
+],
+"parameter##word": [
+"parameter",
+"##",
+"word"
+],
+"parameter#word": [
+"parameter",
+"#",
+"word"
+],
+"parameter%%word": [
+"parameter",
+"%%",
+"word"
+],
+"parameter%word": [
+"parameter",
+"%",
+"word"
+],
+"parameter+word": [
+"parameter",
+"+",
+"word"
+],
+"parameter-word": [
+"parameter",
+"-",
+"word"
+],
+"parameter:+word": [
+"parameter",
+":+",
+"word"
+],
+"parameter:-word": [
+"parameter",
+":-",
+"word"
+],
+"parameter:=word": [
+"parameter",
+":=",
+"word"
+],
+"parameter:?word": [
+"parameter",
+":?",
+"word"
+],
+"parameter=word": [
+"parameter",
+"=",
+"word"
+],
+"parameter?word": [
+"parameter",
+"?",
+"word"
+],
+"parameter@OP": [
+"parameter@OP",
+null,
+null
+],
+"path##*/": [
+"path",
+"##",
+"*/"
+],
+"path#*/": [
+"path",
+"#",
+"*/"
+],
+"path/#\\\\/usr/\\\\/opt": [
+"path",
+"/#",
+"\\\\/usr/\\\\/opt"
+],
+"path/%bin/sbin": [
+"path",
+"/%",
+"bin/sbin"
+],
+"path//:/,": [
+"path",
+"//",
+":/,"
+],
+"path/:/,": [
+"path",
+"/",
+":/,"
+],
+"prefix": [
+"prefix",
+null,
+null
+],
+"q[@]:0": [
+"q[@]",
+":",
+"0"
+],
+"r%lo": [
+"r",
+"%",
+"lo"
+],
+"r-gone": [
+"r",
+"-",
+"gone"
+],
+"r:0:2": [
+"r",
+":",
+"0:2"
+],
+"r^^": [
+"r",
+"^^",
+""
+],
+"result": [
+"result",
+null,
+null
+],
+"result[6]": [
+"result[6]",
+null,
+null
+],
+"s[*]: -3": [
+"s[*]",
+":",
+" -3"
+],
+"s[@]: -9": [
+"s[@]",
+":",
+" -9"
+],
+"s[@]:0": [
+"s[@]",
+":",
+"0"
+],
+"s[@]:1:-1": [
+"s[@]",
+":",
+"1:-1"
+],
+"s[@]:1:2": [
+"s[@]",
+":",
+"1:2"
+],
+"s[@]:1:3": [
+"s[@]",
+":",
+"1:3"
+],
+"s[@]:5": [
+"s[@]",
+":",
+"5"
+],
+"s[@]:9": [
+"s[@]",
+":",
+"9"
+],
+"s[@]:o:l": [
+"s[@]",
+":",
+"o:l"
+],
+"search": [
+"search",
+null,
+null
+],
+"section": [
+"section",
+null,
+null
+],
+"special#*@": [
+"special",
+"#",
+"*@"
+],
+"str: -6": [
+"str",
+":",
+" -6"
+],
+"str:$((2+1)):$((2*2))": [
+"str",
+":",
+"$((2+1)):$((2*2))"
+],
+"str:$((expr)):$((expr))": [
+"str",
+":",
+"$((expr)):$((expr))"
+],
+"str:0:-1": [
+"str",
+":",
+"0:-1"
+],
+"str:10": [
+"str",
+":",
+"10"
+],
+"str:2:10": [
+"str",
+":",
+"2:10"
+],
+"str:3": [
+"str",
+":",
+"3"
+],
+"str:3:4": [
+"str",
+":",
+"3:4"
+],
+"str:7": [
+"str",
+":",
+"7"
+],
+"str:7:5": [
+"str",
+":",
+"7:5"
+],
+"temp%%/*": [
+"temp",
+"%%",
+"/*"
+],
+"testvar2:-${prefix}_TEMP": [
+"testvar2",
+":-",
+"${prefix}_TEMP"
+],
+"testvar3:?${error_prefix}: variable not set": [
+"testvar3",
+":?",
+"${error_prefix}: variable not set"
+],
+"testvar:+alternative": [
+"testvar",
+":+",
+"alternative"
+],
+"testvar:+should_not_appear": [
+"testvar",
+":+",
+"should_not_appear"
+],
+"testvar:-default": [
+"testvar",
+":-",
+"default"
+],
+"testvar:-empty_default": [
+"testvar",
+":-",
+"empty_default"
+],
+"testvar:-still_unset": [
+"testvar",
+":-",
+"still_unset"
+],
+"testvar:=${prefix}_VALUE": [
+"testvar",
+":=",
+"${prefix}_VALUE"
+],
+"testvar:=assigned": [
+"testvar",
+":=",
+"assigned"
+],
+"testvar:=new_value": [
+"testvar",
+":=",
+"new_value"
+],
+"testvar:?": [
+"testvar",
+":?",
+""
+],
+"testvar:?empty variable error": [
+"testvar",
+":?",
+"empty variable error"
+],
+"testvar:?should not error": [
+"testvar",
+":?",
+"should not error"
+],
+"testvar:?variable is not set": [
+"testvar",
+":?",
+"variable is not set"
+],
+"text,": [
+"text",
+",",
+""
+],
+"text,,": [
+"text",
+",,",
+""
+],
+"text// /": [
+"text",
+"//",
+" /"
+],
+"text/hello/hi there": [
+"text",
+"/",
+"hello/hi there"
+],
+"text:$((start*2)):$((len+1))": [
+"text",
+":",
+"$((start*2)):$((len+1))"
+],
+"text:4:4": [
+"text",
+":",
+"4:4"
+],
+"text^": [
+"text",
+"^",
+""
+],
+"text^^": [
+"text",
+"^^",
+""
+],
+"text^^[aeiou]": [
+"text",
+"^^",
+"[aeiou]"
+],
+"u@Q": [
+"u",
+"@Q",
+""
+],
+"undef": [
+"undef",
+null,
+null
+],
+"undef:-fallback": [
+"undef",
+":-",
+"fallback"
+],
+"undefined:-$((1/0))": [
+"undefined",
+":-",
+"$((1/0))"
+],
+"undefined:-default": [
+"undefined",
+":-",
+"default"
+],
+"undefined_var:-$((5*3))": [
+"undefined_var",
+":-",
+"$((5*3))"
+],
+"unset_v9": [
+"unset_v9",
+null,
+null
+],
+"unset_xyz:?custom msg": [
+"unset_xyz",
+":?",
+"custom msg"
+],
+"url#*://": [
+"url",
+"#",
+"*://"
+],
+"v#\"$w\"": [
+"v",
+"#",
+"\"$w\""
+],
+"v##p": [
+"v",
+"##",
+"p"
+],
+"v#p": [
+"v",
+"#",
+"p"
+],
+"v%%p": [
+"v",
+"%%",
+"p"
+],
+"v%p": [
+"v",
+"%",
+"p"
+],
+"v,,": [
+"v",
+",,",
+""
+],
+"v,,pattern": [
+"v",
+",,",
+"pattern"
+],
+"v/#p/r": [
+"v",
+"/#",
+"p/r"
+],
+"v/%p/r": [
+"v",
+"/%",
+"p/r"
+],
+"v//p/r": [
+"v",
+"//",
+"p/r"
+],
+"v/p/r": [
+"v",
+"/",
+"p/r"
+],
+"v: -10": [
+"v",
+":",
+" -10"
+],
+"v: -3": [
+"v",
+":",
+" -3"
+],
+"v:$((1+1)):x": [
+"v",
+":",
+"$((1+1)):x"
+],
+"v:(-3):2": [
+"v",
+":",
+"(-3):2"
+],
+"v:+a": [
+"v",
+":+",
+"a"
+],
+"v:-\"a b\"": [
+"v",
+":-",
+"\"a b\""
+],
+"v:-$(case x in x) echo d;; esac)": [
+"v",
+":-",
+"$(case x in x) echo d;; esac)"
+],
+"v:-${w:-x}": [
+"v",
+":-",
+"${w:-x}"
+],
+"v:-)": [
+"v",
+":-",
+")"
+],
+"v:-d": [
+"v",
+":-",
+"d"
+],
+"v:-x@Q": [
+"v",
+":-",
+"x@Q"
+],
+"v:0:-10": [
+"v",
+":",
+"0:-10"
+],
+"v:1+1:2": [
+"v",
+":",
+"1+1:2"
+],
+"v:10": [
+"v",
+":",
+"10"
+],
+"v:1:": [
+"v",
+":",
+"1:"
+],
+"v:1:-1": [
+"v",
+":",
+"1:-1"
+],
+"v:2": [
+"v",
+":",
+"2"
+],
+"v:2:2": [
+"v",
+":",
+"2:2"
+],
+"v:2:3": [
+"v",
+":",
+"2:3"
+],
+"v:9:-1": [
+"v",
+":",
+"9:-1"
+],
+"v::2": [
+"v",
+":",
+":2"
+],
+"v:=d": [
+"v",
+":=",
+"d"
+],
+"v:?m": [
+"v",
+":?",
+"m"
+],
+"v:bad@:2": [
+"v",
+":",
+"bad@:2"
+],
+"v@Q": [
+"v",
+"@Q",
+""
+],
+"v@Qx": [
+"v@Qx",
+null,
+null
+],
+"v@X": [
+"v@X",
+null,
+null
+],
+"v@a": [
+"v",
+"@a",
+""
+],
+"v^$p": [
+"v",
+"^",
+"$p"
+],
+"v^^": [
+"v",
+"^^",
+""
+],
+"v^^$p": [
+"v",
+"^^",
+"$p"
+],
+"v^^[a-m]": [
+"v",
+"^^",
+"[a-m]"
+],
+"v^^[lo]": [
+"v",
+"^^",
+"[lo]"
+],
+"v^^bc": [
+"v",
+"^^",
+"bc"
+],
+"v^a": [
+"v",
+"^",
+"a"
+],
+"v^b": [
+"v",
+"^",
+"b"
+],
+"var": [
+"var",
+null,
+null
+],
+"var##+(space)": [
+"var",
+"##",
+"+(space)"
+],
+"var##pattern": [
+"var",
+"##",
+"pattern"
+],
+"var#pat": [
+"var",
+"#",
+"pat"
+],
+"var#pattern": [
+"var",
+"#",
+"pattern"
+],
+"var%%pattern": [
+"var",
+"%%",
+"pattern"
+],
+"var%pat": [
+"var",
+"%",
+"pat"
+],
+"var%pattern": [
+"var",
+"%",
+"pattern"
+],
+"var+word": [
+"var",
+"+",
+"word"
+],
+"var,": [
+"var",
+",",
+""
+],
+"var,,": [
+"var",
+",,",
+""
+],
+"var-default": [
+"var",
+"-",
+"default"
+],
+"var-word": [
+"var",
+"-",
+"word"
+],
+"var/#pat/repl": [
+"var",
+"/#",
+"pat/repl"
+],
+"var/#pattern/string": [
+"var",
+"/#",
+"pattern/string"
+],
+"var/%pat/repl": [
+"var",
+"/%",
+"pat/repl"
+],
+"var/%pattern/string": [
+"var",
+"/%",
+"pattern/string"
+],
+"var//a/A": [
+"var",
+"//",
+"a/A"
+],
+"var//foo/bar": [
+"var",
+"//",
+"foo/bar"
+],
+"var//pat/repl": [
+"var",
+"//",
+"pat/repl"
+],
+"var//pattern/replacement": [
+"var",
+"//",
+"pattern/replacement"
+],
+"var//pattern/string": [
+"var",
+"//",
+"pattern/string"
+],
+"var/ell/ELL": [
+"var",
+"/",
+"ell/ELL"
+],
+"var/foo/bar": [
+"var",
+"/",
+"foo/bar"
+],
+"var/pat/repl": [
+"var",
+"/",
+"pat/repl"
+],
+"var/pattern/": [
+"var",
+"/",
+"pattern/"
+],
+"var/pattern/replacement": [
+"var",
+"/",
+"pattern/replacement"
+],
+"var/pattern/string": [
+"var",
+"/",
+"pattern/string"
+],
+"var1:-${var2:-${var3:-NOT_FOUND}}": [
+"var1",
+":-",
+"${var2:-${var3:-NOT_FOUND}}"
+],
+"var:$((expr)):$((expr))": [
+"var",
+":",
+"$((expr)):$((expr))"
+],
+"var:+alternate": [
+"var",
+":+",
+"alternate"
+],
+"var:+word": [
+"var",
+":+",
+"word"
+],
+"var:-$((1/0))": [
+"var",
+":-",
+"$((1/0))"
+],
+"var:-default": [
+"var",
+":-",
+"default"
+],
+"var:-word": [
+"var",
+":-",
+"word"
+],
+"var:-x": [
+"var",
+":-",
+"x"
+],
+"var:=default": [
+"var",
+":=",
+"default"
+],
+"var:=word": [
+"var",
+":=",
+"word"
+],
+"var:?message": [
+"var",
+":?",
+"message"
+],
+"var:?msg": [
+"var",
+":?",
+"msg"
+],
+"var:?word": [
+"var",
+":?",
+"word"
+],
+"var:offset": [
+"var",
+":",
+"offset"
+],
+"var:offset:length": [
+"var",
+":",
+"offset:length"
+],
+"var=word": [
+"var",
+"=",
+"word"
+],
+"var?message": [
+"var",
+"?",
+"message"
+],
+"var?word": [
+"var",
+"?",
+"word"
+],
+"var@A": [
+"var",
+"@A",
+""
+],
+"var@E": [
+"var",
+"@E",
+""
+],
+"var@L": [
+"var",
+"@L",
+""
+],
+"var@P": [
+"var",
+"@P",
+""
+],
+"var@Q": [
+"var",
+"@Q",
+""
+],
+"var@U": [
+"var",
+"@U",
+""
+],
+"var@a": [
+"var",
+"@a",
+""
+],
+"var@u": [
+"var",
+"@u",
+""
+],
+"var[1]": [
+"var[1]",
+null,
+null
+],
+"var^": [
+"var",
+"^",
+""
+],
+"var^^": [
+"var",
+"^^",
+""
+],
+"v~": [
+"v~",
+null,
+null
+],
+"v~~": [
+"v~~",
+null,
+null
+],
+"x": [
+"x",
+null,
+null
+],
+"x##*.": [
+"x",
+"##",
+"*."
+],
+"x##*/": [
+"x",
+"##",
+"*/"
+],
+"x##+([ ])": [
+"x",
+"##",
+"+([ ])"
+],
+"x##+(a)": [
+"x",
+"##",
+"+(a)"
+],
+"x#$(echo a)": [
+"x",
+"#",
+"$(echo a)"
+],
+"x#*.": [
+"x",
+"#",
+"*."
+],
+"x#[]]": [
+"x",
+"#",
+"[]]"
+],
+"x#a$p": [
+"x",
+"#",
+"a$p"
+],
+"x#ab": [
+"x",
+"#",
+"ab"
+],
+"x#pat": [
+"x",
+"#",
+"pat"
+],
+"x%%+([ ])": [
+"x",
+"%%",
+"+([ ])"
+],
+"x%%.*": [
+"x",
+"%%",
+".*"
+],
+"x%.*": [
+"x",
+"%",
+".*"
+],
+"x%.txt": [
+"x",
+"%",
+".txt"
+],
+"x%/*": [
+"x",
+"%",
+"/*"
+],
+"x%pat": [
+"x",
+"%",
+"pat"
+],
+"x+alt": [
+"x",
+"+",
+"alt"
+],
+"x+w": [
+"x",
+"+",
+"w"
+],
+"x,": [
+"x",
+",",
+""
+],
+"x,,": [
+"x",
+",,",
+""
+],
+"x-": [
+"x",
+"-",
+""
+],
+"x-def": [
+"x",
+"-",
+"def"
+],
+"x-default": [
+"x",
+"-",
+"default"
+],
+"x-gone": [
+"x",
+"-",
+"gone"
+],
+"x-w": [
+"x",
+"-",
+"w"
+],
+"x/": [
+"x",
+"/",
+""
+],
+"x/\"$p\"/Z": [
+"x",
+"/",
+"\"$p\"/Z"
+],
+"x/\"*\"/Z": [
+"x",
+"/",
+"\"*\"/Z"
+],
+"x/#a/&-": [
+"x",
+"/#",
+"a/&-"
+],
+"x/#foo/X": [
+"x",
+"/#",
+"foo/X"
+],
+"x/$((1+1))/Z": [
+"x",
+"/",
+"$((1+1))/Z"
+],
+"x/$((4/2))/Z": [
+"x",
+"/",
+"$((4/2))/Z"
+],
+"x/$p/Z": [
+"x",
+"/",
+"$p/Z"
+],
+"x/$y/Z": [
+"x",
+"/",
+"$y/Z"
+],
+"x/%bar/Y": [
+"x",
+"/%",
+"bar/Y"
+],
+"x/%c/-&": [
+"x",
+"/%",
+"c/-&"
+],
+"x//": [
+"x",
+"//",
+""
+],
+"x//&/-": [
+"x",
+"//",
+"&/-"
+],
+"x///Z": [
+"x",
+"//",
+"/Z"
+],
+"x//@(a|b)/X": [
+"x",
+"//",
+"@(a|b)/X"
+],
+"x//X": [
+"x",
+"//",
+"X"
+],
+"x//X/[&]": [
+"x",
+"//",
+"X/[&]"
+],
+"x//X/\\n": [
+"x",
+"//",
+"X/\\n"
+],
+"x//[!a]/X": [
+"x",
+"//",
+"[!a]/X"
+],
+"x//[]ab]/X": [
+"x",
+"//",
+"[]ab]/X"
+],
+"x//[a-z]/X": [
+"x",
+"//",
+"[a-z]/X"
+],
+"x//\\//-": [
+"x",
+"//",
+"\\//-"
+],
+"x//\\\\//-": [
+"x",
+"//",
+"\\\\//-"
+],
+"x//a/X": [
+"x",
+"//",
+"a/X"
+],
+"x//l": [
+"x",
+"//",
+"l"
+],
+"x//l/L": [
+"x",
+"//",
+"l/L"
+],
+"x//pat": [
+"x",
+"//",
+"pat"
+],
+"x/@(a|b)/X": [
+"x",
+"/",
+"@(a|b)/X"
+],
+"x/b/\"&\"": [
+"x",
+"/",
+"b/\"&\""
+],
+"x/b/$(case q in q) echo Z;; esac)": [
+"x",
+"/",
+"b/$(case q in q) echo Z;; esac)"
+],
+"x/b/$(echo Z)": [
+"x",
+"/",
+"b/$(echo Z)"
+],
+"x/b/$r": [
+"x",
+"/",
+"b/$r"
+],
+"x/b/$u": [
+"x",
+"/",
+"b/$u"
+],
+"x/b/$y": [
+"x",
+"/",
+"b/$y"
+],
+"x/b/'&'": [
+"x",
+"/",
+"b/'&'"
+],
+"x/b/[&]": [
+"x",
+"/",
+"b/[&]"
+],
+"x/b/\\&": [
+"x",
+"/",
+"b/\\&"
+],
+"x/b/\\1": [
+"x",
+"/",
+"b/\\1"
+],
+"x/b/\\\\1": [
+"x",
+"/",
+"b/\\\\1"
+],
+"x/b/one&two&": [
+"x",
+"/",
+"b/one&two&"
+],
+"x/b/y\\\\\\\\": [
+"x",
+"/",
+"b/y\\\\\\\\"
+],
+"x/cd/CD": [
+"x",
+"/",
+"cd/CD"
+],
+"x/l": [
+"x",
+"/",
+"l"
+],
+"x/l/L": [
+"x",
+"/",
+"l/L"
+],
+"x/pat": [
+"x",
+"/",
+"pat"
+],
+"x/pat/repl": [
+"x",
+"/",
+"pat/repl"
+],
+"x: -10": [
+"x",
+":",
+" -10"
+],
+"x: -2": [
+"x",
+":",
+" -2"
+],
+"x: -3:2": [
+"x",
+":",
+" -3:2"
+],
+"x:(-3):2": [
+"x",
+":",
+"(-3):2"
+],
+"x:(3):2": [
+"x",
+":",
+"(3):2"
+],
+"x:+a": [
+"x",
+":+",
+"a"
+],
+"x:+alternative": [
+"x",
+":+",
+"alternative"
+],
+"x:+replaced": [
+"x",
+":+",
+"replaced"
+],
+"x:+set": [
+"x",
+":+",
+"set"
+],
+"x:-3": [
+"x",
+":-",
+"3"
+],
+"x:-d": [
+"x",
+":-",
+"d"
+],
+"x:-default": [
+"x",
+":-",
+"default"
+],
+"x:-fallback": [
+"x",
+":-",
+"fallback"
+],
+"x:-gone": [
+"x",
+":-",
+"gone"
+],
+"x:-pre$y": [
+"x",
+":-",
+"pre$y"
+],
+"x:-{hello}": [
+"x",
+":-",
+"{hello}"
+],
+"x:-~": [
+"x",
+":-",
+"~"
+],
+"x:0:-1": [
+"x",
+":",
+"0:-1"
+],
+"x:0:-5": [
+"x",
+":",
+"0:-5"
+],
+"x:0:2+1": [
+"x",
+":",
+"0:2+1"
+],
+"x:1+1:2": [
+"x",
+":",
+"1+1:2"
+],
+"x:1:-2": [
+"x",
+":",
+"1:-2"
+],
+"x:1:3": [
+"x",
+":",
+"1:3"
+],
+"x:2": [
+"x",
+":",
+"2"
+],
+"x::2": [
+"x",
+":",
+":2"
+],
+"x:=assigned": [
+"x",
+":=",
+"assigned"
+],
+"x:=def": [
+"x",
+":=",
+"def"
+],
+"x:=default": [
+"x",
+":=",
+"default"
+],
+"x:=hello": [
+"x",
+":=",
+"hello"
+],
+"x:=v": [
+"x",
+":=",
+"v"
+],
+"x:?boom": [
+"x",
+":?",
+"boom"
+],
+"x:?empty": [
+"x",
+":?",
+"empty"
+],
+"x:?msg": [
+"x",
+":?",
+"msg"
+],
+"x:?should not fail": [
+"x",
+":?",
+"should not fail"
+],
+"x:?undefined": [
+"x",
+":?",
+"undefined"
+],
+"x:?variable not set": [
+"x",
+":?",
+"variable not set"
+],
+"x:n:3": [
+"x",
+":",
+"n:3"
+],
+"x=val": [
+"x",
+"=",
+"val"
+],
+"x=w": [
+"x",
+"=",
+"w"
+],
+"x?boom": [
+"x",
+"?",
+"boom"
+],
+"x?w": [
+"x",
+"?",
+"w"
+],
+"x@A": [
+"x",
+"@A",
+""
+],
+"x@E": [
+"x",
+"@E",
+""
+],
+"x@L": [
+"x",
+"@L",
+""
+],
+"x@P": [
+"x",
+"@P",
+""
+],
+"x@Q": [
+"x",
+"@Q",
+""
+],
+"x@U": [
+"x",
+"@U",
+""
+],
+"x@u": [
+"x",
+"@u",
+""
+],
+"x[0]": [
+"x[0]",
+null,
+null
+],
+"x[0]+s": [
+"x[0]",
+"+",
+"s"
+],
+"x[0]:-d": [
+"x[0]",
+":-",
+"d"
+],
+"x[0]=v": [
+"x[0]",
+"=",
+"v"
+],
+"x[0]?m": [
+"x[0]",
+"?",
+"m"
+],
+"x[0]^^": [
+"x[0]",
+"^^",
+""
+],
+"x[1]": [
+"x[1]",
+null,
+null
+],
+"x^": [
+"x",
+"^",
+""
+],
+"x^^": [
+"x",
+"^^",
+""
+],
+"y": [
+"y",
+null,
+null
+],
+"z@a": [
+"z",
+"@a",
+""
+],
+"{-}": [
+"{",
+"-",
+"}"
+],
+"{CMD_SCOPE:-unset}": [
+"{CMD_SCOPE",
+":-",
+"unset}"
+],
+"{INNER_ONLY:-missing}": [
+"{INNER_ONLY",
+":-",
+"missing}"
+],
+"{NO_LEAK:-unset}": [
+"{NO_LEAK",
+":-",
+"unset}"
+],
+"{ONLY_FOR_PRINT:-missing}": [
+"{ONLY_FOR_PRINT",
+":-",
+"missing}"
+],
+"{TEMP_UNSET_PRINT:-missing}": [
+"{TEMP_UNSET_PRINT",
+":-",
+"missing}"
+],
+"{TEMP_UNSET_VAR:-missing}": [
+"{TEMP_UNSET_VAR",
+":-",
+"missing}"
+],
+"{a[@]}": [
+"{a[@]}",
+null,
+null
+],
+"{var{i}:-default}": [
+"{var{i}",
+":-",
+"default}"
+]
+}

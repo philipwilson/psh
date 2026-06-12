@@ -322,8 +322,11 @@ appropriate WordBuilder method.
 
 3. **Expansion tokens** -- `parse_expansion_token()`: Parses VARIABLE,
    PARAM_EXPANSION, COMMAND_SUB, and ARITH_EXPANSION tokens into
-   expansion AST nodes, handling operators like `${var:-default}`,
-   `${var##pattern}`, etc.
+   expansion AST nodes. The `${...}` operator grammar itself
+   (`${var:-default}`, `${arr[@]:1:2}`, ...) lives in the single shared
+   parser `psh/expansion/param_parser.py`; WordBuilder just strips the
+   delimiters and delegates, so the AST carries fully classified
+   (parameter, operator, word) triples.
 
 ## Configuration
 

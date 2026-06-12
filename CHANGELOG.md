@@ -4,6 +4,46 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.320.0 (2026-06-12) - Textbook program Tier B5: ONE parameter-expansion parser
+- The program's headline-risk release and its oldest structural
+  finding, closed: expansion/param_parser.py's
+  parse_parameter_expansion(content) is now the SINGLE ${...}
+  grammar (228 lines, ~90 of them a grammar-reference docstring with
+  the documented scan strategy: earliest position wins, longest
+  operator at that position, bracket-depth-aware). All four sites
+  unified: WordBuilder delegates (86→14 lines, covers the combinator
+  too) and STOPS deferring subscripted forms — the AST no longer
+  lies: ${arr[@]:1:2} is ParameterExpansion('arr[@]', ':', '1:2') at
+  parse time (was parameter='arr[@]:1:2', operator=None);
+  ParameterExpansion.parse_expansion (152 lines) DELETED;
+  expand_variable's pre-dispatch ladder + _is_plain_subscript
+  DELETED (string contexts keep their string ENTRY — now
+  parse-then-evaluate through the same parser);
+  fields._parse_trailing_op DELETED, plus 72 ladder-only lines.
+  Net: −460/+112 production lines + the new module.
+- The mandatory differential harness (737 distinct ${...} contents
+  harvested from the corpus) found 19 divergences BETWEEN THE OLD
+  PARSERS — each adjudicated by bash 5.2 probe. 18 behavior fixes
+  ride along (presented honestly as fixes, not refactor): the
+  ${a[@]:-def}/:=/:+ family after [@] (the := case CRASHED with
+  "invalid offset or length"); non-colon operators after ] (
+  ${arr[0]-d}, ${a[i+1]+x} were empty); scan-order ${v:-x@Q};
+  ${#-} and ${#:-default} disambiguation; element indirection
+  ${!a[0]}/${!h[k]}; scalar-subscript resolution unified (${#x[0]}
+  was path-dependent 0-vs-5). All-paths-agreed psh↔bash gaps kept
+  and documented (${##}, ${v~~}, assoc-slice ordering).
+- The evaluator's operator-less round-trip branch instrument-verified
+  unreachable for operator-bearing forms (plugin re-parsing every
+  node across 1,487 tests: no violations) and narrowed.
+- Permanent pins: the 737-row frozen expectation corpus
+  (test_param_parser_differential.py — pinned against a frozen table
+  with documented provenance, NOT the deleted code), 130+ grammar
+  cases, 24 behavior-fix pins. Conformance: POSIX 162/162, bash
+  210/217 (the 5 concerns are pre-existing printf message-prefix
+  comparisons).
+- Suite: 5,490 passed / 5,730 collected, 0 failures; ruff + mypy +
+  doc-pointer meta-test clean.
+
 ## 0.319.0 (2026-06-12) - Textbook program Tier C1: the internals tour
 - New docs/architecture/tour_of_psh_internals.md (516 lines): traces
   `echo "Hello, $USER" | wc -c > out.txt` through input processing →

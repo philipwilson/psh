@@ -80,8 +80,9 @@ class ExpansionEvaluator:
     def _evaluate_parameter(self, expansion: ParameterExpansion) -> str:
         """Evaluate parameter expansion by calling VariableExpander directly.
 
-        Uses expand_parameter_direct() to avoid string round-trip through
-        parse_expansion().
+        Uses expand_parameter_direct() with the pre-parsed components —
+        the parser (param_parser.py) fully classifies every operator form,
+        so an operator-less node is always a plain parameter.
         """
         ve = self.expansion_manager.variable_expander
         if expansion.operator:
@@ -90,7 +91,8 @@ class ExpansionEvaluator:
                 expansion.word or ''
             )
         else:
-            # Simple ${var} — no operator
+            # Plain ${var} / ${arr[idx]} — name resolution only (nounset,
+            # specials, subscripts) via the string entry point.
             return ve.expand_variable(f"${{{expansion.parameter}}}")
 
     def _evaluate_arithmetic(self, expansion: ArithmeticExpansion) -> str:

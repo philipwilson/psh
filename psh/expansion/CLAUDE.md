@@ -22,6 +22,7 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `manager.py` | `ExpansionManager` - orchestrator: owns the sub-expanders, declaration-builtin recognition, public entry points |
 | `word_expander.py` | `WordExpander` - THE Word expansion engine (part walkers, IFS split, glob, escapes) + the named `WordExpansionPolicy` table |
 | `evaluator.py` | `ExpansionEvaluator` - evaluates expansion AST nodes |
+| `param_parser.py` | THE `${...}` content parser (`parse_parameter_expansion()`) — the single grammar shared by WordBuilder (parse time) and `expand_variable` (string contexts); module docstring is the grammar reference |
 | `variable.py` | `VariableExpander` - dispatch, special variables, `${!name}` indirection |
 | `arrays.py` | `ArrayOpsMixin` - `${arr[i]}`, `${arr[@]}`, `_eval_array_index()` |
 | `operators.py` | `OperatorOpsMixin` - `${VAR:-...}`, `${VAR#...}`, `${VAR/p/r}`, case ops |
@@ -110,8 +111,8 @@ Key behaviors controlled by Word AST structure:
 `ExpansionEvaluator` evaluates expansion AST nodes by delegating to
 `VariableExpander`.  For `ParameterExpansion` nodes it calls
 `expand_parameter_direct()` with the pre-parsed (operator, var_name,
-operand) components, avoiding the string round-trip through
-`parse_expansion()`:
+operand) components straight from the AST (`param_parser.py` fully
+classifies every form at parse time — nothing is re-parsed at runtime):
 
 ```python
 class ExpansionEvaluator:
@@ -192,13 +193,15 @@ self.new_expander = NewExpander(shell)
 
 ### Adding a Parameter Expansion Operator
 
-1. Edit `parameter_expansion.py`
+1. Add the operator to the grammar in `param_parser.py` (scan tables +
+   module-docstring grammar reference)
 
-2. Add operator to the parsing logic
+2. Implement the application in `operators.py` (`_apply_operator`, and
+   `_apply_op_per_element` if it has per-element array semantics), with
+   string helpers in `parameter_expansion.py`
 
-3. Implement the operation in the appropriate method
-
-4. Add tests for the new operator
+3. Add tests for the new operator (including a `test_param_parser.py`
+   grammar case; extend the frozen corpus only with bash-verified rows)
 
 ## Key Implementation Details
 

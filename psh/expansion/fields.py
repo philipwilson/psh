@@ -24,27 +24,17 @@ class FieldExpansionMixin:
             return None
 
         param = parameter
-        # The parser bakes operators into the parameter text for bracketed
-        # names ('a[@]:1:2', 'a[@]#pat'); positional-parameter operators
-        # arrive separately ("${@:2}" → parameter '@', operator ':').
-        if param != '@' and '[@]' in param and not param.endswith('[@]'):
-            name_part, rest = param.split('[@]', 1)
-            param = name_part + '[@]'
-            operator, operand = self._parse_trailing_op(rest)
-            if operator is None:
-                return None
+
+        # ${!a[@]}: indices/keys, one field per key (no further operators).
+        if operator == '!' and param.endswith('[@]'):
+            return self.expand_array_to_list('${!' + param + '}')
 
         slice_operand = operand if operator == ':' else None
 
         # Resolve the base fields
         if param == '@':
             base = list(self.state.positional_params)
-        elif param.startswith('!') and param.endswith('[@]'):
-            # ${!a[@]}: indices/keys (no further per-element operators)
-            if operator is None and slice_operand is None:
-                return self.expand_array_to_list('${' + param + '}')
-            return None
-        elif param.endswith('[@]') and not param.startswith('#'):
+        elif param.endswith('[@]') and not param.startswith(('!', '#')):
             base = self.expand_array_to_list('${' + param + '}')
         else:
             return None
@@ -79,30 +69,6 @@ class FieldExpansionMixin:
                 return None  # unsupported per-element → scalar fallback
             out.append(new)
         return out
-
-    @staticmethod
-    def _parse_trailing_op(rest: str):
-        """Split the operator+operand text that follows ``name[@]`` inside a
-        baked parameter string ('a[@]#pat' → ('#', 'pat')).
-
-        ``:-`` ``:=`` ``:?`` ``:+`` are checked before bare ``:`` so
-        ``${a[@]:-default}`` is the conditional operator, not a slice with a
-        negative offset (matching bash's disambiguation).
-        """
-        if not rest:
-            return None, None
-        two = rest[:2]
-        if two in (':-', ':=', ':?', ':+'):
-            return two, rest[2:]
-        if rest[0] == ':':
-            return ':', rest[1:]
-        if two in ('##', '%%', '//', '/#', '/%', '^^', ',,'):
-            return two, rest[2:]
-        if rest[0] in '#%/^,':
-            return rest[0], rest[1:]
-        if rest[0] == '@' and len(rest) == 2:
-            return rest, ''
-        return None, None
 
     def _slice_fields(self, param, base, slice_operand):
         """Slice positional params or array elements: ${@:o:l}, ${a[@]:o:l}.
