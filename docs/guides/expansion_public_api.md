@@ -231,8 +231,10 @@ expanded = shell.expansion_manager.expand_string_variables(text)
 ### Expand a single variable
 
 ```python
-value = shell.expansion_manager.expand_variable("$HOME")
-value = shell.expansion_manager.expand_variable("${name:-default}")
+# (manager-level expand_variable() was removed in v0.312 as dead API;
+# use the variable expander directly)
+value = shell.expansion_manager.variable_expander.expand_variable("$HOME")
+value = shell.expansion_manager.variable_expander.expand_variable("${name:-default}")
 ```
 
 ### Tilde expansion
@@ -244,7 +246,9 @@ path = shell.expansion_manager.expand_tilde("~/bin")
 ### Execute command substitution
 
 ```python
-output = shell.expansion_manager.execute_command_substitution("$(date)")
+# (manager-level execute_command_substitution() was removed in v0.312;
+# use the command-substitution component directly)
+output = shell.expansion_manager.command_sub.execute("$(date)")
 ```
 
 ### Arithmetic expansion

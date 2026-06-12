@@ -6,11 +6,12 @@ external commands, and subshells.
 """
 
 import os
-import signal
 import sys
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
+
+from .child_policy import fork_with_signal_window
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -120,39 +121,17 @@ class ProcessLauncher:
             # stdout/stderr might not support flush() in some contexts
             pass
 
-        # Block termination signals across fork(). The shell installs
-        # Python-level handlers for these (trap support), and the child
-        # inherits them until apply_child_signal_policy() resets them to
-        # SIG_DFL. Without blocking, a signal aimed at the child in that
-        # window (e.g. `sleep 5 & kill %1` racing the fork) is consumed
-        # by Python's C-level handler and then silently LOST across
-        # exec() — the command would run to completion as if never
-        # signaled. Blocked, the signal stays kernel-pending until the
-        # child unblocks it after resetting handlers, at which point the
-        # default action (termination) is taken with the correct status.
-        block_set = {signal.SIGTERM, signal.SIGINT,
-                     signal.SIGHUP, signal.SIGQUIT}
-        old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, block_set)
+        # Fork with termination signals blocked across the fork window
+        # (the v0.300 lost-signal race fix — see fork_with_signal_window's
+        # docstring in child_policy.py). The child unblocks them in
+        # apply_child_signal_policy() after resetting handlers to SIG_DFL.
+        pid = fork_with_signal_window()
 
-        pid = None
-        try:
-            pid = os.fork()
-
-            if pid == 0:  # Child process
-                # apply_child_signal_policy() (called in _child_setup_and_exec)
-                # resets handlers to SIG_DFL and unblocks these signals.
-                self._child_setup_and_exec(execute_fn, config)
-                # Does not return - child exits via os._exit()
-        finally:
-            # Restore the parent's signal mask ALWAYS — including when
-            # os.fork() itself raises (e.g. EAGAIN under process pressure);
-            # without this the shell would run with SIGINT/SIGTERM/SIGHUP/
-            # SIGQUIT blocked forever after a failed fork. The child
-            # (pid == 0) must NOT restore: it never reaches here in normal
-            # operation (_child_setup_and_exec exits via os._exit()), and
-            # its signals are unblocked by apply_child_signal_policy().
-            if pid != 0:
-                signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+        if pid == 0:  # Child process
+            # apply_child_signal_policy() (called in _child_setup_and_exec)
+            # resets handlers to SIG_DFL and unblocks these signals.
+            self._child_setup_and_exec(execute_fn, config)
+            # Does not return - child exits via os._exit()
 
         # Parent process
         pgid = self._parent_setup(pid, config)

@@ -11,8 +11,6 @@ Modules:
 """
 
 from .assignment_utils import (
-    extract_assignments,
-    is_exported,
     is_valid_assignment,
     resolve_append_assignment,
 )
@@ -56,7 +54,5 @@ __all__ = [
     'TrapManager',
     # Assignment utilities
     'is_valid_assignment',
-    'extract_assignments',
-    'is_exported',
     'resolve_append_assignment',
 ]

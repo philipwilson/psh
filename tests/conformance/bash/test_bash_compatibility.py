@@ -45,6 +45,37 @@ class TestBashBuiltins(ConformanceTest):
         assert result.psh_result.exit_code == 0
         assert result.bash_result.exit_code == 0
 
+    def test_printf_star_width_precision(self):
+        """printf %* / %.* take width/precision from arguments (bash 5.2)."""
+        self.assert_identical_behavior("printf '%*d\\n' 5 42")
+        self.assert_identical_behavior("printf '%*d|\\n' -5 42")
+        self.assert_identical_behavior("printf '%.*f\\n' 2 3.14159")
+        self.assert_identical_behavior("printf '%*.*f|\\n' 10 2 3.14159")
+        self.assert_identical_behavior("printf '%0*d\\n' 6 42")
+        self.assert_identical_behavior("printf '%*s|%.*s|\\n' 8 hi 3 hello")
+
+    def test_printf_integer_constants(self):
+        """printf integer conversions accept base-prefixed constants."""
+        self.assert_identical_behavior("printf '%d %d\\n' 0x1A 010")
+        self.assert_identical_behavior("printf '%d\\n' \"'A\"")
+        self.assert_identical_behavior("printf '%u %x\\n' -1 -255")
+
+    def test_printf_percent_n_assigns_count(self):
+        """printf %n stores the character count in the named variable."""
+        self.assert_identical_behavior("printf '%s %n%s\\n' ab n cd; echo $n")
+
+    def test_printf_error_status_matches_bash(self):
+        """Diagnostics differ only by the shell-name prefix; stdout and
+        exit status must match bash exactly."""
+        for cmd in ("printf '%p' x", "printf '%d\\n' abc",
+                    "printf '%*d\\n' abc 42", "printf '%'",
+                    "printf 'a\\n' ; printf '%v'"):
+            result = self.check_behavior(cmd)
+            assert result.psh_result.stdout == result.bash_result.stdout, cmd
+            assert result.psh_result.exit_code == result.bash_result.exit_code, cmd
+            # Both diagnose on stderr
+            assert bool(result.psh_result.stderr) == bool(result.bash_result.stderr), cmd
+
     def test_read_builtin(self):
         """Test read builtin compatibility."""
         # Basic read functionality

@@ -94,10 +94,10 @@ class TestEnvBuiltin:
 
     def test_multiple_exports(self, shell, temp_dir):
         """Test multiple variables exported at once."""
-        # Export multiple variables. Use unique names: the in-process shell
-        # writes exports into the test runner's own os.environ, and generic
-        # names like A/B leaked into later tests' subshells (the conformance
-        # suite probes `A=1 B=2 echo $A$B` in a child process).
+        # Export multiple variables. Use unique names: generic names like
+        # A/B leaked into later tests' subshells before os.environ writes
+        # were removed (v0.312); unique names stay good hygiene since
+        # state.env is still inherited by this shell's own children.
         result = shell.run_command('export MULTI_A=1 MULTI_B=2 MULTI_C=3')
         assert result == 0
 

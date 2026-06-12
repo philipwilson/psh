@@ -1,12 +1,50 @@
 """Unified child process signal policy.
 
-Every fork path must call apply_child_signal_policy() immediately after
-os.fork() in the child branch. This ensures consistent signal handling
-across ProcessLauncher, command substitution, process substitution, and
-redirect process substitution forks.
+Every fork path must fork via fork_with_signal_window() and call
+apply_child_signal_policy() immediately after the fork in the child
+branch. This ensures consistent signal handling across ProcessLauncher,
+command substitution, and process substitution forks: the parent-side
+half (block termination signals across the fork window) lives in
+fork_with_signal_window(); the child-side half (reset handlers, then
+unblock) lives in apply_child_signal_policy().
 """
 
+import os
 import signal
+
+
+def fork_with_signal_window() -> int:
+    """fork() with termination signals blocked across the fork window.
+
+    The shell installs Python-level handlers for SIGTERM/SIGINT/SIGHUP/
+    SIGQUIT (trap support), and a forked child inherits them until
+    apply_child_signal_policy() resets them to SIG_DFL. Without
+    blocking, a signal aimed at the child in that window (e.g.
+    ``sleep 5 & kill %1`` racing the fork) is consumed by Python's
+    C-level handler and then silently LOST across exec() — the command
+    would run to completion as if never signaled. Blocked, the signal
+    stays kernel-pending until the child unblocks it in
+    apply_child_signal_policy(), at which point the default action
+    (termination) is taken with the correct status.
+
+    Returns os.fork()'s result (0 in the child, the child's pid in the
+    parent).  The PARENT's mask is restored ALWAYS — including when
+    os.fork() itself raises (e.g. EAGAIN under process pressure);
+    without that the shell would run with the signals blocked forever
+    after a failed fork.  The CHILD does not restore: it must call
+    apply_child_signal_policy(), which unblocks after resetting
+    handlers to SIG_DFL.
+    """
+    block_set = {signal.SIGTERM, signal.SIGINT,
+                 signal.SIGHUP, signal.SIGQUIT}
+    old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, block_set)
+    pid = None
+    try:
+        pid = os.fork()
+    finally:
+        if pid != 0:
+            signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+    return pid
 
 
 def apply_child_signal_policy(signal_manager, state, is_shell_process=False):

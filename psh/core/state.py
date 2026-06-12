@@ -9,12 +9,23 @@ from .variables import VarAttributes
 
 
 class ShellState:
-    """Container for shell state that can be shared across components."""
+    """Container for shell state that can be shared across components.
+
+    Environment policy: ``os.environ`` is read ONCE here at startup;
+    ``state.env`` is the shell's live environment from then on, and it
+    is passed EXPLICITLY to every child (``execvpe(args, shell.env)``
+    in executor/strategies.py and builtins/core.py, ``env=state.env``
+    for shebang re-execution, and ``Shell(parent_shell=...)`` copies).
+    Nothing in psh writes ``os.environ`` after startup — a write there
+    would be invisible to children and only leak state into the hosting
+    Python process (the pre-v0.312 ``FOO=bar exec`` leak).
+    """
 
     def __init__(self, args=None, script_name=None, debug_ast=False,
                  debug_tokens=False, debug_scopes=False, debug_expansion=False, debug_expansion_detail=False,
                  debug_exec=False, debug_exec_fork=False, norc=False, rcfile=None):
-        # Environment and variables
+        # Environment and variables (the ONE read of os.environ — see
+        # the class docstring for the environment policy)
         self.env = os.environ.copy()
 
         # Initialize enhanced scope manager for variable scoping with attributes
@@ -258,9 +269,9 @@ class ShellState:
         # If allexport is enabled, set with export attribute
         if self.options.get('allexport', False):
             self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
-            # Also update both internal and system environment
+            # Update the live environment (state.env — NOT os.environ,
+            # which is read once at startup; see the class docstring)
             self.env[name] = value
-            os.environ[name] = value
             # Sync all exports to environment
             self.scope_manager.sync_exports_to_environment(self.env)
         else:
@@ -269,12 +280,11 @@ class ShellState:
             self.scope_manager.set_variable(name, value, local=False)
 
     def export_variable(self, name: str, value: str):
-        """Export a variable to the environment."""
+        """Export a variable to the environment (state.env, the live
+        environment — os.environ is never written; see class docstring)."""
         # Set variable with EXPORT attribute in global scope
         self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
-        # Also update both internal and system environment
         self.env[name] = value
-        os.environ[name] = value
         # Sync all exports to environment
         self.scope_manager.sync_exports_to_environment(self.env)
 

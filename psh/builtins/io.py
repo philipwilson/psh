@@ -4,7 +4,8 @@ import os
 import sys
 from typing import TYPE_CHECKING, List, Tuple
 
-from ..utils.escapes import process_echo_escapes, quote_printf_q
+from ..utils.escapes import process_echo_escapes
+from ..utils.printf_formatter import format_printf
 from .base import Builtin
 from .registry import builtin
 
@@ -130,7 +131,13 @@ class EchoBuiltin(Builtin):
 
 @builtin
 class PrintfBuiltin(Builtin):
-    """Format and print data according to POSIX printf specification."""
+    """Format and print data according to POSIX printf specification.
+
+    The formatting engine itself is pure and lives in
+    psh/utils/printf_formatter.py (bash 5.2 semantics, directly
+    unit-testable); this builtin only handles option parsing, output,
+    diagnostics, and applying %n / -v variable assignments.
+    """
 
     @property
     def name(self) -> str:
@@ -138,7 +145,7 @@ class PrintfBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "printf format [arguments ...]"
+        return "printf [-v var] format [arguments ...]"
 
     @property
     def description(self) -> str:
@@ -155,473 +162,27 @@ class PrintfBuiltin(Builtin):
                 return 2
             target_var = argv[2]
             argv = [argv[0]] + argv[3:]
+        if len(argv) > 1 and argv[1] == '--':
+            argv = [argv[0]] + argv[2:]
 
         if len(argv) < 2:
-            self.error("usage: printf format [arguments ...]", shell)
+            self.error("usage: printf [-v var] format [arguments]", shell)
             return 2
 
-        format_str = argv[1]
-        arguments = argv[2:]
+        result = format_printf(argv[1], argv[2:])
 
-        try:
-            # Process format string with POSIX-compliant behavior
-            output = self.process_format_string_posix(format_str, arguments)
-            if target_var is not None:
-                shell.expansion_manager.set_var_or_array_element(target_var, output)
-                return 0
-            self._write_output(output, shell)
-            return 0
-        except (ValueError, TypeError, KeyError) as e:
-            self.error(f"printf: {str(e)}", shell)
-            return 1
+        for message in result.errors:
+            self.error(message, shell)
+        # %n assignments (number of characters written so far)
+        for name, value in result.assignments:
+            shell.expansion_manager.set_var_or_array_element(name, value)
 
-    def process_format_string_posix(self, format_str: str, arguments: list) -> str:
-        """Process format string with POSIX-compliant behavior including argument cycling."""
-        result = []
-        arg_index = 0
-
-        # POSIX: apply the format at least once (missing arguments are
-        # treated as ''/0 — `printf '[%s]'` prints `[]`), then repeat it
-        # while arguments remain.
-        first_pass = True
-        while first_pass or arg_index < len(arguments):
-            first_pass = False
-            i = 0
-            format_consumed_args = False
-
-            while i < len(format_str):
-                if format_str[i] == '%' and i + 1 < len(format_str):
-                    if format_str[i + 1] == '%':
-                        # Literal %
-                        result.append('%')
-                        i += 2
-                    elif format_str[i + 1] == '(':
-                        # %(datefmt)T — strftime of an epoch argument (bash).
-                        close = format_str.find(')T', i + 2)
-                        if close == -1:
-                            result.append(format_str[i])
-                            i += 1
-                            continue
-                        datefmt = format_str[i + 2:close]
-                        import time as _time
-                        raw = self._get_argument_value(arguments, arg_index)
-                        if raw in ('', '-1'):
-                            epoch = _time.time()  # -1 / missing: now
-                        elif raw == '-2':
-                            epoch = _time.time()  # -2: shell start (approx.)
-                        else:
-                            try:
-                                epoch = int(raw)
-                            except ValueError:
-                                raise ValueError(f"{raw}: invalid number")
-                        result.append(_time.strftime(datefmt, _time.localtime(epoch)))
-                        arg_index += 1
-                        format_consumed_args = True
-                        i = close + 2
-                    else:
-                        # Parse format specifier
-                        fmt_spec, end_pos = self._parse_format_specifier_enhanced(format_str, i)
-                        if fmt_spec:
-                            # Format the argument
-                            formatted_value = self._format_argument_posix(fmt_spec, arguments, arg_index)
-                            result.append(formatted_value)
-                            # Advance argument index for consuming specifiers
-                            if fmt_spec['type'] not in '%':  # All format types except %% consume arguments
-                                arg_index += 1
-                                format_consumed_args = True
-                            i = end_pos
-                        else:
-                            # Invalid format specifier
-                            result.append(format_str[i])
-                            i += 1
-                elif format_str[i] == '\\' and i + 1 < len(format_str):
-                    # Handle escape sequences
-                    escape_char, skip = self._process_escape_sequence(format_str, i)
-                    result.append(escape_char)
-                    i += skip
-                else:
-                    result.append(format_str[i])
-                    i += 1
-
-            # If format string didn't consume any arguments, break to avoid infinite loop
-            if not format_consumed_args:
-                break
-
-        return ''.join(result)
-
-    def _process_escapes_only(self, format_str: str) -> str:
-        """Process escape sequences and %% literals in format string (no format specifiers with arguments)."""
-        result = []
-        i = 0
-
-        while i < len(format_str):
-            if format_str[i] == '%' and i + 1 < len(format_str):
-                if format_str[i + 1] == '%':
-                    # Literal %
-                    result.append('%')
-                    i += 2
-                else:
-                    # Single % without matching format - treat as literal
-                    result.append(format_str[i])
-                    i += 1
-            elif format_str[i] == '\\' and i + 1 < len(format_str):
-                escape_char, skip = self._process_escape_sequence(format_str, i)
-                result.append(escape_char)
-                i += skip
-            else:
-                result.append(format_str[i])
-                i += 1
-
-        return ''.join(result)
-
-    def _write_output(self, text: str, shell: 'Shell'):
-        """Write output to the appropriate destination (see Builtin.write)."""
-        self.write(text, shell)
-
-    def _parse_format_specifier_enhanced(self, format_str: str, start: int) -> tuple:
-        """Parse a POSIX-compliant format specifier starting at '%'.
-
-        Returns:
-            tuple: (spec_dict, end_position) or (None, 0) if invalid
-        """
-        if format_str[start] != '%':
-            return None, 0
-
-        i = start + 1
-        spec = {
-            'flags': '',
-            'width': '',
-            'precision': '',
-            'type': '',
-            'original': ''
-        }
-
-        # Parse flags (-+# 0)
-        while i < len(format_str) and format_str[i] in '-+# 0':
-            if format_str[i] not in spec['flags']:  # Avoid duplicate flags
-                spec['flags'] += format_str[i]
-            i += 1
-
-        # Parse width (can be * for dynamic width)
-        if i < len(format_str) and format_str[i] == '*':
-            spec['width'] = '*'
-            i += 1
+        if target_var is not None:
+            shell.expansion_manager.set_var_or_array_element(
+                target_var, result.output)
         else:
-            while i < len(format_str) and format_str[i].isdigit():
-                spec['width'] += format_str[i]
-                i += 1
-
-        # Parse precision (.number or .*)
-        if i < len(format_str) and format_str[i] == '.':
-            spec['precision'] = '.'
-            i += 1
-            if i < len(format_str) and format_str[i] == '*':
-                spec['precision'] += '*'
-                i += 1
-            else:
-                while i < len(format_str) and format_str[i].isdigit():
-                    spec['precision'] += format_str[i]
-                    i += 1
-
-        # Parse type specifier (POSIX diouxXeEfFgGaAcspn% plus bash b/q)
-        if i < len(format_str) and format_str[i] in 'diouxXeEfFgGaAcspnbq%':
-            spec['type'] = format_str[i]
-            i += 1
-            spec['original'] = format_str[start:i]
-            return spec, i
-
-        return None, 0
-
-    def _format_argument_posix(self, spec: dict, arguments: list, arg_index: int) -> str:
-        """Format an argument according to POSIX printf specification."""
-        # Get argument value with cycling
-        arg_value = self._get_argument_value(arguments, arg_index)
-
-        fmt_type = spec['type']
-
-        if fmt_type == 's':
-            return self._format_string(arg_value, spec)
-        elif fmt_type == 'b':
-            # bash %b: interpret backslash escapes in the argument, then format
-            # as a string (width/precision apply to the expanded value).
-            expanded, _terminate = process_escapes(arg_value)
-            return self._format_string(expanded, spec)
-        elif fmt_type == 'q':
-            # bash %q: emit the argument quoted so it can be reused as input.
-            return self._format_string(self._shell_quote(arg_value), spec)
-        elif fmt_type in 'diouxX':
-            return self._format_integer(arg_value, spec)
-        elif fmt_type in 'eEfFgGaA':
-            return self._format_float(arg_value, spec)
-        elif fmt_type == 'c':
-            return self._format_character(arg_value, spec)
-        elif fmt_type == '%':
-            return '%'
-        else:
-            # Unknown format specifier - POSIX behavior is implementation-defined
-            return f"%{spec['type']}"
-
-    def _get_argument_value(self, arguments: list, arg_index: int) -> str:
-        """Get argument value with POSIX cycling behavior."""
-        if arg_index < len(arguments):
-            return arguments[arg_index]
-        else:
-            # POSIX: missing arguments are treated as empty string or 0
-            return ''
-
-    def _shell_quote(self, value: str) -> str:
-        """printf %q quoting — delegates to the shared implementation
-        (psh/utils/escapes.py, which documents why %q and ${var@Q}
-        formats differ)."""
-        return quote_printf_q(value)
-
-    def _format_string(self, value: str, spec: dict) -> str:
-        """Format string according to spec."""
-        # Apply precision (max chars)
-        if spec['precision'] and spec['precision'] != '.':
-            precision = int(spec['precision'][1:]) if spec['precision'][1:] else 0
-            value = value[:precision]
-
-        # Apply width and alignment
-        width = int(spec['width']) if spec['width'] and spec['width'] != '*' else 0
-        if width > 0:
-            if '-' in spec['flags']:
-                return value.ljust(width)
-            else:
-                return value.rjust(width)
-
-        return value
-
-    def _format_integer(self, value: str, spec: dict) -> str:
-        """Format integer according to spec."""
-        # Convert to integer with POSIX rules
-        try:
-            # POSIX: leading digits are used, rest ignored
-            import re
-            match = re.match(r'^[+-]?\d+', value.strip())
-            if match:
-                num_value = int(match.group())
-            else:
-                num_value = 0
-        except (ValueError, AttributeError):
-            num_value = 0
-
-        fmt_type = spec['type']
-
-        # Convert to appropriate base
-        if fmt_type == 'd' or fmt_type == 'i':
-            formatted = str(num_value)
-        elif fmt_type == 'o':
-            formatted = oct(abs(num_value))[2:]  # Remove '0o' prefix
-            if num_value < 0:
-                formatted = '-' + formatted
-        elif fmt_type == 'x':
-            formatted = hex(abs(num_value))[2:]  # Remove '0x' prefix
-            if num_value < 0:
-                formatted = '-' + formatted
-        elif fmt_type == 'X':
-            formatted = hex(abs(num_value))[2:].upper()
-            if num_value < 0:
-                formatted = '-' + formatted
-        elif fmt_type == 'u':
-            # Unsigned - treat negative as large positive
-            if num_value < 0:
-                num_value = (1 << 32) + num_value  # 32-bit wrap
-            formatted = str(num_value)
-        else:
-            formatted = str(num_value)
-
-        # Apply flags
-        if '+' in spec['flags'] and num_value >= 0 and fmt_type in 'di':
-            formatted = '+' + formatted
-        elif ' ' in spec['flags'] and num_value >= 0 and fmt_type in 'di':
-            formatted = ' ' + formatted
-
-        if '#' in spec['flags']:
-            if fmt_type == 'o' and not formatted.startswith('0'):
-                formatted = '0' + formatted
-            elif fmt_type == 'x' and num_value != 0:
-                formatted = '0x' + formatted
-            elif fmt_type == 'X' and num_value != 0:
-                formatted = '0X' + formatted
-
-        # Apply precision (minimum digits)
-        if spec['precision'] and spec['precision'] != '.':
-            precision = int(spec['precision'][1:]) if spec['precision'][1:] else 0
-            if precision > 0:
-                sign = ''
-                if formatted.startswith(('+', '-')):
-                    sign = formatted[0]
-                    formatted = formatted[1:]
-                formatted = sign + formatted.zfill(precision)
-
-        # Apply width
-        width = int(spec['width']) if spec['width'] and spec['width'] != '*' else 0
-        if width > 0:
-            if '-' in spec['flags']:
-                formatted = formatted.ljust(width)
-            elif '0' in spec['flags'] and not spec['precision']:
-                # Zero padding only if no precision specified
-                sign = ''
-                if formatted.startswith(('+', '-', ' ')):
-                    sign = formatted[0]
-                    formatted = formatted[1:]
-                formatted = sign + formatted.zfill(width - len(sign))
-            else:
-                formatted = formatted.rjust(width)
-
-        return formatted
-
-    def _format_float(self, value: str, spec: dict) -> str:
-        """Format floating point number according to spec."""
-        # Convert to float with POSIX rules
-        try:
-            float_value = float(value.strip())
-        except (ValueError, TypeError):
-            float_value = 0.0
-
-        fmt_type = spec['type']
-        precision = 6  # Default precision
-
-        if spec['precision'] and spec['precision'] != '.':
-            if spec['precision'][1:]:
-                precision = int(spec['precision'][1:])
-            else:
-                precision = 0
-
-        # Format according to type
-        if fmt_type in 'fF':
-            formatted = f"{float_value:.{precision}f}"
-        elif fmt_type in 'eE':
-            formatted = f"{float_value:.{precision}e}"
-            if fmt_type == 'E':
-                formatted = formatted.replace('e', 'E')
-        elif fmt_type in 'gG':
-            formatted = f"{float_value:.{precision}g}"
-            if fmt_type == 'G':
-                formatted = formatted.upper()
-        elif fmt_type in 'aA':
-            # Hexadecimal float (not widely supported, approximate)
-            formatted = f"{float_value:.{precision}e}"
-            if fmt_type == 'A':
-                formatted = formatted.upper()
-        else:
-            formatted = str(float_value)
-
-        # Apply flags
-        if '+' in spec['flags'] and float_value >= 0:
-            formatted = '+' + formatted
-        elif ' ' in spec['flags'] and float_value >= 0:
-            formatted = ' ' + formatted
-
-        # Apply width
-        width = int(spec['width']) if spec['width'] and spec['width'] != '*' else 0
-        if width > 0:
-            if '-' in spec['flags']:
-                formatted = formatted.ljust(width)
-            elif '0' in spec['flags']:
-                sign = ''
-                if formatted.startswith(('+', '-', ' ')):
-                    sign = formatted[0]
-                    formatted = formatted[1:]
-                formatted = sign + formatted.zfill(width - len(sign))
-            else:
-                formatted = formatted.rjust(width)
-
-        return formatted
-
-    def _format_character(self, value: str, spec: dict) -> str:
-        """Format character according to spec."""
-        if not value:
-            char = '\0'
-        elif value.isdigit():
-            # ASCII code
-            try:
-                char = chr(int(value))
-            except (ValueError, OverflowError):
-                char = '\0'
-        else:
-            # First character of string
-            char = value[0]
-
-        # Apply width
-        width = int(spec['width']) if spec['width'] and spec['width'] != '*' else 0
-        if width > 0:
-            if '-' in spec['flags']:
-                return char.ljust(width)
-            else:
-                return char.rjust(width)
-
-        return char
-
-    def _process_escape_sequence(self, format_str: str, start: int) -> tuple:
-        """Process escape sequence starting at backslash. Returns (char, chars_consumed)."""
-        if start + 1 >= len(format_str):
-            return '\\', 1
-
-        next_char = format_str[start + 1]
-
-        # Standard escape sequences
-        escape_map = {
-            'a': '\a',    # Alert (bell)
-            'b': '\b',    # Backspace
-            'f': '\f',    # Form feed
-            'n': '\n',    # Newline
-            'r': '\r',    # Carriage return
-            't': '\t',    # Tab
-            'v': '\v',    # Vertical tab
-            'e': '\x1b',  # Escape character (bash extension)
-            'E': '\x1b',  # Escape character (alternative form)
-            '\\': '\\',   # Backslash
-            '"': '"',     # Double quote
-            "'": "'",     # Single quote
-        }
-
-        if next_char in escape_map:
-            return escape_map[next_char], 2
-
-        # Octal escape sequence \nnn
-        if next_char.isdigit():
-            octal_str = ''
-            i = start + 1
-            while i < len(format_str) and i < start + 4 and format_str[i].isdigit():
-                octal_str += format_str[i]
-                i += 1
-            try:
-                value = int(octal_str, 8)
-                if value <= 255:
-                    return chr(value), i - start
-            except (ValueError, OverflowError):
-                pass
-
-        # Hex escape sequence \xhh
-        if next_char == 'x' and start + 3 < len(format_str):
-            hex_str = format_str[start + 2:start + 4]
-            if all(c in '0123456789abcdefABCDEF' for c in hex_str):
-                try:
-                    return chr(int(hex_str, 16)), 4
-                except (ValueError, OverflowError):
-                    pass
-
-        # Unicode escape sequences \uhhhh and \Uhhhhhhhh
-        if next_char == 'u' and start + 6 <= len(format_str):
-            hex_str = format_str[start + 2:start + 6]
-            if all(c in '0123456789abcdefABCDEF' for c in hex_str):
-                try:
-                    return chr(int(hex_str, 16)), 6
-                except (ValueError, OverflowError):
-                    pass
-
-        if next_char == 'U' and start + 10 <= len(format_str):
-            hex_str = format_str[start + 2:start + 10]
-            if all(c in '0123456789abcdefABCDEF' for c in hex_str):
-                try:
-                    return chr(int(hex_str, 16)), 10
-                except (ValueError, OverflowError):
-                    pass
-
-        # Default: return the character as-is
-        return next_char, 2
+            self.write(result.output, shell)
+        return result.exit_code
 
     @property
     def help(self) -> str:

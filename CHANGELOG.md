@@ -4,6 +4,46 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.312.0 (2026-06-12) - Textbook program Tier A1: behavior batch
+- printf: the ~550-line formatting engine extracted to pure
+  utils/printf_formatter.py (format_printf(fmt, args) -> PrintfResult;
+  no shell dependency; the builtin thins to ~50 lines; print -f
+  migrated too). Fixed against a ~90-case bash 5.2 probe battery:
+  `%*`/`%.*` width/precision from arguments (negative width
+  left-justifies, negative precision omitted); `%n` assigns
+  chars-written; `%p`/`%v` and bare `%` are bash-shaped fatal errors;
+  integer parsing is strtoll base-0 (0x/0 prefixes, 'A char codes,
+  trailing-junk warnings, 64-bit wrap for %u/%x/%o, overflow clamp at
+  rc 0); `%c` takes the first character (psh's old chr() behavior was
+  wrong — `printf '%c' 65` prints 6); `%b \c` terminates all output;
+  length modifiers accepted; `printf --` handled. 59 engine tests +
+  18 builtin tests + 4 conformance tests.
+- All three fork sites now share fork_with_signal_window() in
+  executor/child_policy.py — command_sub.py and process_sub.py never
+  received the v0.300 lost-signal fix (latent race, found by
+  reappraisal #3). Also: process_sub's temp shell now sets
+  in_forked_child=True; command_sub's silent bare-except writes the
+  exception to fd 2 before _exit.
+- Readonly-prefix assignments match bash: `RO=2 cmd` reports the error
+  and STILL RUNS the command (rc = command's); other prefix
+  assignments apply-then-restore (also fixed a restore leak where
+  `OK=5 RO=2 true` left OK set permanently); pure `RO=2` aborts rc 1;
+  under errexit the error is fatal and the command does not run.
+  25-case probe matrix; 10 conformance tests; 2 old tests pinned the
+  anti-bash behavior and were updated after bash verification.
+- os.environ is read-once at startup: state.env is authoritative and
+  every child receives it explicitly (execvpe/shebang env=/parent_shell
+  copy — verified). All four vestigial os.environ writes deleted
+  (allexport, export_variable, the `FOO=bar exec` leak, export -n
+  pop); zero writes remain in psh/. Policy documented in ShellState's
+  docstring and core/CLAUDE.md. Corrected claim along the way: bash
+  does not persist `FOO=bar exec` without a command; psh now matches.
+- Dead code deleted (~135 lines, callers re-verified): arrays.
+  is_array_expansion, CommandExecutor._extract_assignments/_is_exported
+  + assignment_utils.extract_assignments/is_exported chain, manager.py
+  dead public expand_variable()/execute_command_substitution().
+- Suite: 5,249 passed / 5,522 collected; ruff (psh+tests) + mypy clean.
+
 ## 0.311.0 (2026-06-12) - ARCHITECTURE.llm retired (doc consolidation)
 - ARCHITECTURE.llm moved to docs/archive/ (git mv, content untouched).
   Rationale: its LLM-orientation role is now better served by the

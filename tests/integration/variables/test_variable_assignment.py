@@ -189,12 +189,19 @@ def test_assignment_with_tilde_expansion(shell, capsys):
     assert captured.out.strip() != "~"
 
 
-def test_assignment_readonly_variable_error(shell):
-    """Test assignment to readonly variable fails."""
+def test_assignment_readonly_variable_error(shell, capsys):
+    """A readonly prefix assignment reports the error but still runs the
+    command with its own status (bash 5.2, probe-verified 2026-06-12;
+    see tests/conformance/posix/test_readonly_conformance.py)."""
     shell.run_command("readonly READ_ONLY=value")
     result = shell.run_command("READ_ONLY=new_value echo test")
-    # Should fail
-    assert result != 0
+    captured = capsys.readouterr()
+    assert result == 0
+    assert "test" in captured.out
+    assert "readonly variable" in captured.err
+    # The readonly variable keeps its original value.
+    shell.run_command('echo "[$READ_ONLY]"')
+    assert "[value]" in capsys.readouterr().out
 
 
 def test_assignment_with_function_call(shell, capsys):

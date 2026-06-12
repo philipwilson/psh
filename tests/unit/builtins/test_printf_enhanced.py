@@ -71,11 +71,12 @@ class TestPrintfBasicFormats:
         captured = capsys.readouterr()
         assert captured.out == "A\n"
 
-    def test_character_format_ascii_code(self, shell, capsys):
-        """Test %c with ASCII code."""
+    def test_character_format_first_char_of_number(self, shell, capsys):
+        """%c prints the FIRST character, never a codepoint (bash:
+        `printf '%c' 65` prints '6', verified against bash 5.2)."""
         shell.run_command('printf "%c\\n" "65"')
         captured = capsys.readouterr()
-        assert captured.out == "A\n"
+        assert captured.out == "6\n"
 
     def test_percent_literal(self, shell, capsys):
         """Test %% for literal percent."""
@@ -355,6 +356,97 @@ class TestPrintfRealWorldUseCases:
         captured = capsys.readouterr()
         expected = "server=localhost\nport=8080\ntimeout=30\n"
         assert captured.out == expected
+
+
+class TestPrintfStarWidthPrecision:
+    """%* / %.* consume width/precision from arguments (bash 5.2,
+    probe-verified 2026-06-12)."""
+
+    def test_star_width(self, shell, capsys):
+        shell.run_command("printf '%*d\\n' 5 42")
+        assert capsys.readouterr().out == "   42\n"
+
+    def test_negative_star_width(self, shell, capsys):
+        shell.run_command("printf '%*d|\\n' -5 42")
+        assert capsys.readouterr().out == "42   |\n"
+
+    def test_star_precision(self, shell, capsys):
+        shell.run_command("printf '%.*f\\n' 2 3.14159")
+        assert capsys.readouterr().out == "3.14\n"
+
+    def test_star_width_and_precision(self, shell, capsys):
+        shell.run_command("printf '%*.*f|\\n' 10 2 3.14159")
+        assert capsys.readouterr().out == "      3.14|\n"
+
+    def test_invalid_star_width_diagnoses(self, shell, capsys):
+        exit_code = shell.run_command("printf '%*d\\n' abc 42")
+        captured = capsys.readouterr()
+        assert captured.out == "42\n"
+        assert "invalid number" in captured.err
+        assert exit_code == 1
+
+
+class TestPrintfPercentN:
+    def test_percent_n_assigns_shell_variable(self, shell, capsys):
+        shell.run_command("printf '%s %n%s\\n' ab n cd; echo $n")
+        assert capsys.readouterr().out == "ab cd\n3\n"
+
+    def test_percent_n_invalid_identifier_fatal(self, shell, capsys):
+        exit_code = shell.run_command("printf 'a%nb\\n' '1bad'")
+        captured = capsys.readouterr()
+        assert captured.out == "a"
+        assert "not a valid identifier" in captured.err
+        assert exit_code == 1
+
+
+class TestPrintfFatalFormatErrors:
+    def test_invalid_format_character(self, shell, capsys):
+        exit_code = shell.run_command("printf 'a%pb\\n' x")
+        captured = capsys.readouterr()
+        assert captured.out == "a"
+        assert "invalid format character" in captured.err
+        assert exit_code == 1
+
+    def test_missing_format_character(self, shell, capsys):
+        exit_code = shell.run_command("printf 'x%-5'")
+        captured = capsys.readouterr()
+        assert captured.out == "x"
+        assert "missing format character" in captured.err
+        assert exit_code == 1
+
+
+class TestPrintfNumericBashSemantics:
+    def test_hex_octal_constants(self, shell, capsys):
+        shell.run_command("printf '%d %d\\n' 0x1A 010")
+        assert capsys.readouterr().out == "26 8\n"
+
+    def test_quote_codepoint(self, shell, capsys):
+        shell.run_command('printf "%d\\n" "\'A"')
+        assert capsys.readouterr().out == "65\n"
+
+    def test_unsigned_wraps_64_bit(self, shell, capsys):
+        shell.run_command("printf '%u\\n' -1")
+        assert capsys.readouterr().out == "18446744073709551615\n"
+
+    def test_invalid_number_is_status_1(self, shell, capsys):
+        exit_code = shell.run_command("printf '%d\\n' abc")
+        captured = capsys.readouterr()
+        assert captured.out == "0\n"
+        assert "invalid number" in captured.err
+        assert exit_code == 1
+
+
+class TestPrintfOptions:
+    def test_double_dash_ends_options(self, shell, capsys):
+        shell.run_command("printf -- '-x%s\\n' a")
+        assert capsys.readouterr().out == "-xa\n"
+
+    def test_dash_v_with_warning_status(self, shell, capsys):
+        exit_code = shell.run_command("printf -v out '%d' abc; echo \"$out\"")
+        captured = capsys.readouterr()
+        assert captured.out == "0\n"
+        assert "invalid number" in captured.err
+        assert exit_code == 0  # echo's status; printf itself returned 1
 
 
 class TestPrintfPOSIXCompliance:

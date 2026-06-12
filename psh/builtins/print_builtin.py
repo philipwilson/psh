@@ -33,8 +33,9 @@ import sys
 from typing import TYPE_CHECKING, List, Tuple
 
 from ..core.exceptions import PshError
+from ..utils.printf_formatter import format_printf
 from .base import Builtin
-from .io import PrintfBuiltin, process_escapes
+from .io import process_escapes
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -90,10 +91,11 @@ class PrintBuiltin(Builtin):
 
         # -f: printf-style formatting takes over output entirely.
         if opts['format'] is not None:
-            printf = PrintfBuiltin()
-            output = printf.process_format_string_posix(opts['format'], rest)
-            self._write(output, opts['fd'], shell)
-            return 0
+            result = format_printf(opts['format'], rest)
+            for message in result.errors:
+                self.error(message, shell)
+            self._write(result.output, opts['fd'], shell)
+            return result.exit_code
 
         # -s: append to history instead of printing.
         if opts['history']:

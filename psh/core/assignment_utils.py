@@ -4,8 +4,7 @@ This module provides common functions for parsing and validating shell
 variable assignments, used by both the executor core and command modules.
 """
 
-import os
-from typing import List, Tuple
+from typing import Tuple
 
 
 def is_valid_assignment(arg: str) -> bool:
@@ -48,37 +47,6 @@ def is_valid_assignment(arg: str) -> bool:
     return all(c.isalnum() or c == '_' for c in var_name[1:])
 
 
-def extract_assignments(args: List[str]) -> List[Tuple[str, str]]:
-    """Extract variable assignments from beginning of arguments.
-
-    Scans the argument list from the start, extracting valid assignments
-    until a non-assignment is encountered.
-
-    Args:
-        args: List of argument strings
-
-    Returns:
-        List of (variable_name, value) tuples for each assignment found
-
-    Examples:
-        >>> extract_assignments(["FOO=bar", "BAZ=qux", "echo", "hello"])
-        [("FOO", "bar"), ("BAZ", "qux")]
-        >>> extract_assignments(["echo", "FOO=bar"])
-        []
-    """
-    assignments = []
-
-    for arg in args:
-        if '=' in arg and is_valid_assignment(arg):
-            var, value = arg.split('=', 1)
-            assignments.append((var, value))
-        else:
-            # Stop at first non-assignment
-            break
-
-    return assignments
-
-
 def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str, object]:
     """Resolve ``NAME+=value`` appends to (name, final_value).
 
@@ -108,15 +76,3 @@ def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str,
             and value.strip()):
         return name, f"({old or 0})+({value})"
     return name, old + value
-
-
-def is_exported(var_name: str) -> bool:
-    """Check if a variable is exported to the environment.
-
-    Args:
-        var_name: Name of the variable to check
-
-    Returns:
-        True if the variable exists in os.environ
-    """
-    return var_name in os.environ
