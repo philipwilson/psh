@@ -4,9 +4,12 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.318.0
+**Current Version**: 0.319.0
 
-**Note:** For orientation, start with the Quick Map below; for per-context
+**Note:** For orientation, start with the Quick Map below; for a narrative
+walkthrough of one command through the whole pipeline (with reproducible
+debug-flag output at every stage) read
+`docs/architecture/tour_of_psh_internals.md`; for per-context
 expansion pointers see `docs/architecture/ast_data_flow.md`; for working
 within a subsystem see that package's `CLAUDE.md`. (The separate
 `ARCHITECTURE.llm` file was retired in v0.311.0 — its unique content now
