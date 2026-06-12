@@ -78,9 +78,10 @@ class ExecutorVisitor(ASTVisitor[int]):
         # Execution context - replaces scattered state variables
         self.context = ExecutionContext()
 
-        # Command executor - handles simple command execution
-        self.command_executor = CommandExecutor(shell)
-        self.command_executor._visitor = self
+        # Command executor - handles simple command execution.
+        # It receives this visitor explicitly: strategies use it to run
+        # function bodies and compound commands (no hidden backchannel).
+        self.command_executor = CommandExecutor(shell, self)
 
         # Pipeline executor - handles pipeline execution
         self.pipeline_executor = PipelineExecutor(shell)

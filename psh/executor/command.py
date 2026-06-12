@@ -1,20 +1,22 @@
 """
 Command execution module for the PSH executor.
 
-This module handles the execution of simple commands, including:
-- Variable assignments
-- Command expansion
-- Builtin, function, and external command execution
+This module handles the dispatch of simple commands:
+- Command-word expansion
+- Builtin, function, and external command execution via strategies
 - Redirection handling
+
+The ``NAME=value`` assignment sub-domain (extraction, value expansion,
+application, restoration, and the POSIX ordering contract) lives in
+`command_assignments.py`; this module decides WHEN each of those steps
+runs and whether prefix assignments persist (POSIX special builtins).
 """
 
 import sys
 from typing import TYPE_CHECKING, List, Tuple
 
-from ..core import (
-    ReadonlyVariableError,
-    is_valid_assignment,
-)
+from ..core import ReadonlyVariableError
+from .command_assignments import CommandAssignments
 from .strategies import (
     AliasExecutionStrategy,
     BuiltinExecutionStrategy,
@@ -28,26 +30,39 @@ if TYPE_CHECKING:
     from ..ast_nodes import SimpleCommand
     from ..shell import Shell
     from .context import ExecutionContext
+    from .core import ExecutorVisitor
 
 
 class CommandExecutor:
     """
     Handles execution of simple commands.
 
-    This class encapsulates all logic for executing SimpleCommand nodes,
-    including variable assignments, expansions, and delegating to appropriate
-    execution strategies.
+    This class encapsulates the dispatch logic for SimpleCommand nodes —
+    expansion, strategy selection, redirections — delegating the
+    assignment sub-domain to CommandAssignments.
     """
 
-    def __init__(self, shell: 'Shell'):
-        """Initialize the command executor with a shell instance."""
+    def __init__(self, shell: 'Shell', visitor: 'ExecutorVisitor'):
+        """Initialize the command executor.
+
+        Args:
+            shell: The shell instance providing access to all components.
+            visitor: The ExecutorVisitor that owns this executor;
+                strategies receive it to execute function bodies and
+                compound commands.
+        """
         self.shell = shell
+        self.visitor = visitor
         self.state = shell.state
         self.expansion_manager = shell.expansion_manager
         self.io_manager = shell.io_manager
         self.job_manager = shell.job_manager
         self.builtin_registry = shell.builtin_registry
         self.function_manager = shell.function_manager
+
+        # The NAME=value sub-domain (extract/apply/restore + the POSIX
+        # ordering contract) lives in its own specialist.
+        self.assignments = CommandAssignments(shell)
 
         # Initialize execution strategies
         # Order matters: special builtins > functions > builtins > aliases > external (POSIX compliance)
@@ -90,13 +105,15 @@ class CommandExecutor:
                     self._handle_array_assignment(assignment)
 
             # Phase 1: Extract raw assignments (before expansion)
-            raw_assignments = self._extract_assignments_raw(node)
+            raw_assignments = self.assignments.extract(node)
 
             # Track command substitutions run while expanding assignment
             # values: a pure assignment's exit status is 0 unless a command
             # substitution ran, in which case it is that substitution's
-            # status (bash). Values are expanded sequentially at apply time
-            # so `A=1 B=$A` sees the assignment to its left.
+            # status (bash). The clear must happen HERE — before COMMAND
+            # word expansion, not inside apply_pure — because the
+            # determining substitution can run while expanding command
+            # words that expand to nothing (`V=v $(false)` reports 1).
             self.state.last_cmdsub_status = None
 
             # Check if we have only assignments (no command)
@@ -104,7 +121,7 @@ class CommandExecutor:
 
             if raw_assignments and tokens_consumed == len(node.args):
                 # Pure assignment (no command)
-                return self._handle_pure_assignments(node, raw_assignments)
+                return self.assignments.apply_pure(node, raw_assignments)
 
             is_special = False
             saved_vars = None
@@ -149,7 +166,7 @@ class CommandExecutor:
                     # affect the current shell environment (bash: after
                     # `V=v $EMPTY`, $V is v).
                     if raw_assignments:
-                        return self._handle_pure_assignments(node, raw_assignments)
+                        return self.assignments.apply_pure(node, raw_assignments)
                     return 0
 
                 cmd_name = expanded_args[0]
@@ -165,10 +182,10 @@ class CommandExecutor:
 
                 # Apply assignments for this command, now that its words are
                 # expanded. Each value sees the assignments to its left.
-                saved_vars, assignments, assignment_error = \
-                    self._apply_command_assignments(raw_assignments)
+                prefix = self.assignments.apply_prefix(raw_assignments)
+                saved_vars = prefix.saved
 
-                if assignment_error and self.state.options.get('errexit'):
+                if prefix.failed and self.state.options.get('errexit'):
                     # bash: under set -e a prefix-assignment error (e.g.
                     # readonly) aborts WITHOUT running the command — even
                     # in && / if contexts where errexit is normally
@@ -184,7 +201,7 @@ class CommandExecutor:
 
                 # Special handling for exec builtin (needs access to redirections)
                 if cmd_name == 'exec':
-                    return self._handle_exec_builtin(node, expanded_args, assignments)
+                    return self._handle_exec_builtin(node, expanded_args, prefix.applied)
 
                 # Execute the command using appropriate strategy
                 exit_code, is_special = self._execute_with_strategy(
@@ -195,7 +212,7 @@ class CommandExecutor:
             finally:
                 # POSIX: assignments before special builtins persist
                 if saved_vars is not None and not is_special:
-                    self._restore_command_assignments(saved_vars)
+                    self.assignments.restore(saved_vars)
 
         except Exception as e:
             return self._handle_execution_error(e)
@@ -248,8 +265,8 @@ class CommandExecutor:
           are re-raised for their handlers.
         - ReadonlyVariableError from other paths (array element
           assignments, etc.): status 1, script continues. (Command-prefix
-          assignments no longer raise — _apply_command_assignments reports
-          and skips them so the command still runs, like bash.)
+          assignments no longer raise — CommandAssignments.apply_prefix
+          reports and skips them so the command still runs, like bash.)
         - Circular nameref in a command prefix: warn, status 1.
         - set -u violation: print once; abort a non-interactive shell
           with 127, otherwise return 127.
@@ -317,267 +334,6 @@ class CommandExecutor:
         return self.expansion_manager.expand_arguments(
             node, declaration_eligible=declaration_eligible)
 
-    def _extract_assignments_raw(self, node: 'SimpleCommand') -> list:
-        """Extract assignments from raw arguments before expansion.
-
-        Returns list of (var_name, raw_value, word_or_none) tuples.
-        The Word object is included when available so expansion can use
-        structural quote information.
-        """
-        assignments = []
-        i = 0
-
-        while i < len(node.args):
-            arg = node.args[i]
-
-            # Use Word AST to determine if this argument is an assignment
-            # candidate (i.e., a regular word, not a process substitution
-            # or other special token).
-            if self._is_assignment_candidate(node, i):
-                if '=' in arg and self._is_valid_assignment(arg):
-                    var, value = arg.split('=', 1)
-                    word = node.words[i] if node.words and i < len(node.words) else None
-                    assignments.append((var, value, word))
-                    i += 1
-                else:
-                    # Stop at first non-assignment
-                    break
-            else:
-                # Stop if we hit a non-word type (process sub, etc.)
-                break
-
-        return assignments
-
-    @staticmethod
-    def _is_assignment_candidate(node: 'SimpleCommand', index: int) -> bool:
-        """Check if the argument at index is an assignment candidate.
-
-        An argument is an assignment candidate if its Word AST contains
-        only LiteralPart and ExpansionPart nodes, AND the variable-name
-        portion (before the ``=``) consists entirely of unquoted
-        LiteralPart text. Quoting any part of the variable name (e.g.
-        ``"FOO"=bar``) disqualifies the word as an assignment per POSIX.
-
-        Process substitutions are ExpansionPart nodes like any other
-        expansion: ``x=<(cmd)`` is an assignment (bash performs the
-        substitution and assigns the /dev/fd/N path), while a word that
-        STARTS with a process substitution has an ExpansionPart before any
-        ``=`` and is rejected below.
-        """
-        from ..ast_nodes import ExpansionPart, LiteralPart
-        if node.words and index < len(node.words):
-            word = node.words[index]
-            # First pass: reject non-word part types
-            for part in word.parts:
-                if not isinstance(part, (LiteralPart, ExpansionPart)):
-                    return False
-
-            # Second pass: verify the variable-name portion is unquoted.
-            # Walk parts accumulating text until we find '='.  Every part
-            # (or portion of a part) before the '=' must be an unquoted
-            # LiteralPart — any quoted part or ExpansionPart before '='
-            # means this is not an assignment word.
-            for part in word.parts:
-                if isinstance(part, LiteralPart):
-                    if '=' in part.text:
-                        # Found the '='.  If this part is quoted, the
-                        # variable name includes quoted text.
-                        if part.quoted:
-                            return False
-                        # '=' is in an unquoted literal — valid so far
-                        return True
-                    # Part before '=' — must be unquoted literal
-                    if part.quoted:
-                        return False
-                elif isinstance(part, ExpansionPart):
-                    # Expansion before '=' means the name isn't a plain
-                    # identifier (e.g. $FOO=bar is not an assignment)
-                    return False
-
-            # No '=' found in the Word parts at all
-            return True
-        # No Word AST available — unreachable from parsers (words always
-        # parallels args; fallback audit 2026-06-12). Treat as a candidate;
-        # _expand_assignment_value_from_word raises on the missing Word.
-        return True
-
-    def _is_valid_assignment(self, arg: str) -> bool:
-        """Check if argument is a valid variable assignment."""
-        return is_valid_assignment(arg)
-
-    def _resolve_append(self, var: str, value: str):
-        """Resolve NAME+= append assignments to (name, final_value).
-
-        Delegates to the shared core helper (also used by declare/local).
-        """
-        from ..core import resolve_append_assignment
-        return resolve_append_assignment(self.state.scope_manager, var, value)
-
-    def _handle_pure_assignments(self, node: 'SimpleCommand',
-                                raw_assignments: list) -> int:
-        """Handle pure variable assignments (no command).
-
-        Takes raw (var, value, word) triples: each value is expanded just
-        before it is applied so `A=1 B=$A` gives B the new value of A.
-        """
-        # Apply redirections first
-        with self.io_manager.with_redirections(node.redirects):
-            xtrace = self.state.options.get('xtrace')
-            for var, value, value_word in raw_assignments:
-                value = self._expand_assignment_value_from_word(value, value_word)
-                if xtrace:
-                    ps4 = self.state.get_variable('PS4', '+ ')
-                    self.state.stderr.write(ps4 + f"{var}={value}\n")
-                    self.state.stderr.flush()
-                var, value = self._resolve_append(var, value)
-                from ..core import NamerefCycleError
-                try:
-                    self.state.set_variable(var, value)
-                except ReadonlyVariableError:
-                    # bash: assignment to a readonly variable aborts a
-                    # non-interactive shell with status 1.
-                    print(f"psh: {var}: readonly variable", file=self.state.stderr)
-                    if self.shell.state.is_script_mode:
-                        sys.exit(1)
-                    return 1
-                except NamerefCycleError as e:
-                    # bash: writing through a circular nameref warns and
-                    # aborts a non-interactive shell with status 1.
-                    self.state.scope_manager.warn_nameref_cycle(e.name)
-                    if self.shell.state.is_script_mode:
-                        sys.exit(1)
-                    return 1
-
-            # bash: a pure assignment's status is 0, unless a command
-            # substitution ran while expanding the value — then it is the
-            # substitution's status (cleared/recorded around expansion).
-            if self.state.last_cmdsub_status is not None:
-                return self.state.last_cmdsub_status
-            return 0
-
-    def _apply_command_assignments(self, raw_assignments: list) -> Tuple[dict, List[Tuple[str, str]], bool]:
-        """Apply variable assignments for command execution.
-
-        For command-prefixed assignments (FOO=bar cmd), we need to:
-        1. Set the variable in shell state (for builtins/functions that use $VAR)
-        2. Set the variable in shell.env (for external commands' environments)
-
-        Values are expanded one at a time as they are applied, so each
-        sees the assignments to its left (`A=1 B=$A cmd` gives B=1, bash).
-
-        A readonly assignment does NOT abort the command (bash 5.2,
-        probe-verified): the error is reported, that one assignment is
-        skipped (the command's environment keeps the variable's old
-        value), the OTHER assignments still apply, and the command runs
-        with its own exit status. The caller handles ``set -e``, where
-        bash makes the assignment error fatal instead.
-
-        Returns (saved_vars, expanded_assignments, assignment_error):
-        the original state/env values for restoration, the successfully
-        applied (var, value) pairs, and whether any assignment failed.
-        """
-        saved_vars = {}
-        assignments: List[Tuple[str, str]] = []
-        assignment_error = False
-
-        for var, value, value_word in raw_assignments:
-            value = self._expand_assignment_value_from_word(value, value_word)
-            var, value = self._resolve_append(var, value)
-            # Save both shell state and environment values (first write wins
-            # if the same variable is assigned twice)
-            saved = None
-            if var not in saved_vars:
-                saved = {
-                    'state': self.state.get_variable(var),
-                    'env': self.shell.env.get(var)  # May be None if not in env
-                }
-            try:
-                self.state.set_variable(var, value)
-            except ReadonlyVariableError:
-                # bash: report and skip; earlier assignments stay applied
-                # (and are later restored), the command still runs.
-                print(f"psh: {var}: readonly variable",
-                      file=self.state.stderr)
-                assignment_error = True
-                continue
-            if saved is not None:
-                saved_vars[var] = saved
-            assignments.append((var, value))
-            # Also set in shell.env for external commands
-            self.shell.env[var] = value
-
-        return saved_vars, assignments, assignment_error
-
-    def _restore_command_assignments(self, saved_vars: dict):
-        """Restore variables after command execution.
-
-        Restores both shell state and shell.env to their original values.
-        Command-prefixed assignments (FOO=bar cmd) are always temporary,
-        even for exported variables.
-        """
-        for var, saved in saved_vars.items():
-            # Restore shell state variable
-            old_state_value = saved['state']
-            if old_state_value is None:
-                self.state.unset_variable(var)
-            else:
-                self.state.set_variable(var, old_state_value)
-
-            # Restore shell.env
-            old_env_value = saved['env']
-            if old_env_value is None:
-                # Variable wasn't in env before, remove it
-                if var in self.shell.env:
-                    del self.shell.env[var]
-            else:
-                self.shell.env[var] = old_env_value
-
-    def _expand_assignment_value_from_word(self, value: str, word=None) -> str:
-        """Expand a value used in variable assignment.
-
-        Uses the Word AST's structural information to correctly handle
-        quoting (e.g., single-quoted values remain literal).
-
-        Fallback audit 2026-06-12: word=None is unreachable — both parsers
-        keep SimpleCommand.words parallel to args, so every assignment
-        extracted by _extract_assignments_raw carries its Word. The old
-        silent string-expansion fallback lost quote context; fail loudly
-        instead (v0.300 policy).
-        """
-        if word is None:
-            raise RuntimeError(
-                f"internal error: assignment value {value!r} has no Word "
-                "AST (SimpleCommand.words must parallel args)")
-        return self._expand_assignment_word(word)
-
-    def _expand_assignment_word(self, word) -> str:
-        """Expand an assignment value using Word AST parts.
-
-        Locates the ``=`` in the word's parts (the ``NAME=`` prefix), then
-        delegates the value portion to the shared bash assignment-value
-        policy in ExpansionManager.expand_assignment_value_word() — the
-        same policy array element assignments use.
-        """
-        from ..ast_nodes import LiteralPart, Word
-
-        for index, part in enumerate(word.parts):
-            if isinstance(part, LiteralPart) and '=' in part.text:
-                # This part contains the '=' — the value is everything
-                # after it plus all following parts
-                eq_pos = part.text.index('=')
-                value_text = part.text[eq_pos + 1:]
-                value_parts = []
-                if value_text:
-                    value_parts.append(LiteralPart(
-                        value_text, quoted=part.quoted,
-                        quote_char=part.quote_char))
-                value_parts.extend(word.parts[index + 1:])
-                return self.expansion_manager.expand_assignment_value_word(
-                    Word(parts=value_parts))
-
-        # No '=' found in the word's literal parts
-        return ''
-
     def _print_xtrace(self, cmd_name: str, args: List[str]):
         """Print command trace if xtrace is enabled.
 
@@ -639,7 +395,7 @@ class CommandExecutor:
                     exit_code = strategy.execute(
                         cmd_name, args, self.shell, context,
                         node.redirects, node.background,
-                        visitor=getattr(self, '_visitor', None),
+                        visitor=self.visitor,
                     )
                     return exit_code, is_special
                 else:
@@ -649,7 +405,7 @@ class CommandExecutor:
                         exit_code = strategy.execute(
                             cmd_name, args, self.shell, context,
                             node.redirects, node.background,
-                            visitor=getattr(self, '_visitor', None),
+                            visitor=self.visitor,
                         )
                         return exit_code, is_special
 
@@ -690,7 +446,7 @@ class CommandExecutor:
             return strategy.execute(
                 cmd_name, args, self.shell, context,
                 node.redirects, node.background,
-                visitor=getattr(self, '_visitor', None),
+                visitor=self.visitor,
             )
         finally:
             self.io_manager.restore_builtin_redirections(redirect_frame)

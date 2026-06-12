@@ -4,6 +4,40 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.316.0 (2026-06-12) - Textbook program Tier B2: CommandAssignments (zero behavior change)
+- The assignment sub-domain (9 methods, ~260 lines — what NAME=value
+  prefixes MEAN) extracted from CommandExecutor into
+  executor/command_assignments.py: CommandAssignments(shell) with
+  extract() / apply_pure() / apply_prefix() -> PrefixOutcome
+  (saved/applied/failed NamedTuple — the dispatcher genuinely needs
+  all three: exec persistence, errexit fatality) / restore().
+  CommandExecutor: 724 → 477 lines; _execute_command reads as its
+  dispatch shape. The module docstring states the POSIX ordering
+  contract once, five probe-verified clauses (words-before-
+  assignments, left-to-right value visibility, temporariness +
+  special-builtin persistence, the cmdsub status rule, the readonly
+  path split).
+- Design choice proven by probe: the last_cmdsub_status CLEAR stays
+  in the dispatcher (the read moved into apply_pure) — `V=v $(false);
+  echo $?` → 1 in both shells because the determining substitution
+  runs during command-word expansion before the empty result reroutes
+  to the pure path. Moving the clear would have broken it.
+- The _visitor backchannel is gone: CommandExecutor takes the visitor
+  as a constructor parameter; no getattr-based hidden channels remain
+  anywhere in psh/executor/ (repo-wide survey of the remaining 5
+  getattr(self,'_...') patterns reported in the PR — all legitimate
+  lazy-init flags outside the executor).
+- Pre-existing quirk found and pinned (not fixed): prefix-assignment
+  restore leaves a previously-UNSET variable set-but-empty
+  (`W=1 true; echo ${W+yes}` → psh yes, bash nothing) — snapshot via
+  get_variable's '' default; pre-dates this change; candidate for a
+  future bash-parity fix.
+- 22-probe battery byte-identical before/after (14 bash-exact, 6
+  documented pre-existing diffs preserved verbatim). 12 new unit
+  tests on the class's public surface.
+- Suite: 5,300 passed / 5,540 collected, 0 failures; ruff + mypy +
+  doc-pointer meta-test clean.
+
 ## 0.315.0 (2026-06-12) - Textbook program Tier C2: doc integrity
 - New doc-pointer meta-test (tests/unit/tooling/test_doc_pointers.py):
   six high-precision rules resolving backticked paths and symbol
