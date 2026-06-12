@@ -7,15 +7,30 @@ bodies past the pipe capacity (~64KB). Content now goes through an
 anonymous temp file, like bash.
 """
 
+import os
 import subprocess
 import sys
+import tempfile
 
 import pytest
 
 
 def run_psh(script, timeout=15):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', script],
-                          capture_output=True, text=True, timeout=timeout)
+    """Run a psh script from a file rather than as a `-c` argv element.
+
+    These scripts embed heredoc bodies of up to ~300KB; on Linux a single
+    argv element is capped at MAX_ARG_STRLEN (128KiB), so passing them via
+    -c fails with E2BIG. A script file has no such limit (and is used
+    uniformly here so every size exercises the same code path).
+    """
+    fd, path = tempfile.mkstemp(suffix='.sh', text=True)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(script)
+        return subprocess.run([sys.executable, '-m', 'psh', path],
+                              capture_output=True, text=True, timeout=timeout)
+    finally:
+        os.unlink(path)
 
 
 class TestLargeHeredocs:

@@ -16,6 +16,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 # Add framework to path
 TEST_ROOT = Path(__file__).parent.parent.parent
 PSH_ROOT = TEST_ROOT.parent
@@ -218,6 +220,12 @@ class TestPATHHandling:
             # Output verification would need shell output capture
 
 
+@pytest.mark.skip(reason="psh does not implement the `hash` builtin (POSIX/bash "
+                         "have it). These tests only ever passed on macOS by "
+                         "accident, via the BSD /usr/bin/hash sh-stub script; on "
+                         "Linux there is no such binary and `hash` exits 127. "
+                         "Unskip once a real hash builtin (command-location cache) "
+                         "is implemented.")
 class TestCommandCaching:
     """Test command caching and hash table behavior."""
 

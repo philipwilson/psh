@@ -2,6 +2,11 @@
 
 import subprocess
 import sys
+from pathlib import Path
+
+# Repo root (tests/integration/arrays/ -> three levels up), so `python -m psh`
+# resolves regardless of where the checkout lives or what pytest's cwd is.
+PSH_ROOT = Path(__file__).resolve().parents[3]
 
 
 class TestAssociativeArrayBug:
@@ -13,7 +18,7 @@ class TestAssociativeArrayBug:
             [sys.executable, '-m', 'psh', '-c', command],
             capture_output=True,
             text=True,
-            cwd='/Users/pwilson/src/psh'
+            cwd=PSH_ROOT
         )
         return result.returncode, result.stdout.strip(), result.stderr.strip()
 
