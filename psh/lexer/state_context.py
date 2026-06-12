@@ -1,6 +1,7 @@
 """Unified state representation for the lexer."""
 
 from dataclasses import dataclass
+from typing import Optional, Tuple
 
 
 @dataclass
@@ -25,6 +26,12 @@ class LexerContext:
     case_depth: int = 0               # Nesting depth of case..esac blocks
     case_expecting_in: bool = False   # True between 'case' and its 'in'
     in_case_pattern: bool = False     # True when next tokens are case patterns
+
+    # Per-input cache for the assignment-prefix map: (input_text, map).
+    # Built once per input by word_scanners.build_assignment_prefix_map and
+    # shared by ModularLexer's quote dispatch and the literal recognizer
+    # (see word_scanners.cached_assignment_prefix_map).
+    assignment_map_cache: Optional[Tuple[str, bytearray]] = None
 
     def enter_arithmetic(self) -> None:
         """Enter $((...)) context."""

@@ -31,6 +31,37 @@ from .unicode_support import (
 )
 
 
+def _make_config(strict: bool, shell_options: dict = None) -> LexerConfig:
+    """Build the lexer config for an entry point (batch vs interactive,
+    shell options like extglob applied)."""
+    if strict:
+        config = LexerConfig.create_batch_config()
+    else:
+        config = LexerConfig.create_interactive_config()
+    if shell_options and shell_options.get('extglob', False):
+        config.enable_extglob = True
+    return config
+
+
+def _post_lex(tokens: List[Token]) -> List[Token]:
+    """The shared post-lex pipeline: keyword normalization, then brace
+    expansion over the token stream.
+
+    Keywords are normalized first so the brace expander can see
+    command-prefix boundaries (separators, do/then, etc.) when deciding
+    assignment words. Brace expansion happens AFTER tokenization (on the
+    token stream), so generated characters are never re-lexed and quote/
+    command-position context is available.
+
+    Note: misplaced case terminators (`;;` outside case, etc.) are rejected
+    by the parser (see parsers/statements.py), not by a lexer pass.
+    """
+    from ..expansion.brace_expansion import TokenBraceExpander
+
+    tokens = KeywordNormalizer().normalize(tokens)
+    return TokenBraceExpander().expand(tokens)
+
+
 def tokenize(input_string: str, strict: bool = True, shell_options: dict = None) -> List[Token]:
     """
     Tokenize a shell command string using the unified lexer implementation.
@@ -47,35 +78,8 @@ def tokenize(input_string: str, strict: bool = True, shell_options: dict = None)
     Returns:
         List of tokens representing the parsed command
     """
-    from ..expansion.brace_expansion import TokenBraceExpander
-
-    # Create appropriate lexer config based on strict mode
-    if strict:
-        config = LexerConfig.create_batch_config()
-    else:
-        config = LexerConfig.create_interactive_config()
-
-    # Apply shell options to lexer config
-    if shell_options and shell_options.get('extglob', False):
-        config.enable_extglob = True
-
-    # Tokenize the raw input. Brace expansion happens AFTER tokenization (on the
-    # token stream), so generated characters are never re-lexed and quote/
-    # command-position context is available.
-    lexer = ModularLexer(input_string, config=config)
-    tokens = lexer.tokenize()
-
-    # Normalize keywords first so the brace expander can see command-prefix
-    # boundaries (separators, do/then, etc.) when deciding assignment words.
-    normalizer = KeywordNormalizer()
-    tokens = normalizer.normalize(tokens)
-
-    # Brace expansion on the token stream.
-    tokens = TokenBraceExpander().expand(tokens)
-
-    # Note: misplaced case terminators (`;;` outside case, etc.) are rejected
-    # by the parser (see parsers/statements.py), not by a lexer pass.
-    return tokens
+    lexer = ModularLexer(input_string, config=_make_config(strict, shell_options))
+    return _post_lex(lexer.tokenize())
 
 
 def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options: dict = None):
@@ -83,7 +87,9 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options
     Tokenize a shell command string with heredoc support.
 
     This function tokenizes shell commands that may contain heredocs,
-    collecting the heredoc content for later processing.
+    collecting the heredoc content for later processing. The post-lex
+    pipeline is the same as tokenize() — omitting brace expansion here once
+    silently disabled it on any command line containing a heredoc.
 
     Args:
         input_string: The shell command string to tokenize
@@ -93,33 +99,11 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options
     Returns:
         Tuple of (tokens, heredoc_map) where heredoc_map contains collected heredoc content
     """
-    from ..expansion.brace_expansion import TokenBraceExpander
     from .heredoc_lexer import HeredocLexer
 
-    # Create appropriate lexer config based on strict mode
-    if strict:
-        config = LexerConfig.create_batch_config()
-    else:
-        config = LexerConfig.create_interactive_config()
-
-    # Apply shell options to lexer config
-    if shell_options and shell_options.get('extglob', False):
-        config.enable_extglob = True
-
-    # Use heredoc lexer
-    lexer = HeredocLexer(input_string, config=config)
+    lexer = HeredocLexer(input_string, config=_make_config(strict, shell_options))
     tokens, heredoc_map = lexer.tokenize_with_heredocs()
-
-    # Normalize keywords before transformations
-    normalizer = KeywordNormalizer()
-    tokens = normalizer.normalize(tokens)
-
-    # Brace expansion on the token stream — same pass as tokenize();
-    # omitting it silently disabled brace expansion on any command line
-    # containing a heredoc.
-    tokens = TokenBraceExpander().expand(tokens)
-
-    return tokens, heredoc_map
+    return _post_lex(tokens), heredoc_map
 
 
 __all__ = [

@@ -28,9 +28,11 @@ command-position context is available. See `psh/expansion/brace_expansion.py`
 
 | File | Purpose |
 |------|---------|
-| `__init__.py` | Entry point: `tokenize()` and `tokenize_with_heredocs()` |
-| `modular_lexer.py` | Core tokenization engine (~600 lines) |
+| `__init__.py` | Entry point: `tokenize()` and `tokenize_with_heredocs()` (shared `_post_lex` pipeline) |
+| `modular_lexer.py` | Core tokenization engine (~650 lines) |
 | `state_context.py` | `LexerContext` - unified state management |
+| `command_position.py` | Command-position vocabulary for all THREE tracking machines (lexer pass, normalizer, cmdsub scanner) |
+| `cmdsub_scanner.py` | Grammar-aware `$(...)` extent scanner (`find_command_substitution_end` + maintenance contract) |
 | `constants.py` | Keywords and special variables (operators live in `OperatorRecognizer.OPERATORS`) |
 | `position.py` | Position tracking, `LexerConfig`, error classes |
 
@@ -39,7 +41,8 @@ command-position context is available. See `psh/expansion/brace_expansion.py`
 | File | Recognizes |
 |------|-----------|
 | `operator.py` | Shell operators (`|`, `&&`, `>>`, etc.) |
-| `literal.py` | Words, identifiers, assignments (~700 lines) |
+| `literal.py` | Words, identifiers, assignments — collect loop with forward `WordShape` state (~330 lines) |
+| `word_scanners.py` | Pure mini-scanners (`scan_glob_bracket`, `scan_assignment_prefix`, `scan_extglob_group`, `scan_inline_ansi_c`) + `WordShapeTracker` + the assignment-prefix map |
 | `whitespace.py` | Spaces, tabs |
 | `comment.py` | `# comments` |
 | `process_sub.py` | Process substitution `<()` and `>()` |
@@ -51,6 +54,7 @@ command-position context is available. See `psh/expansion/brace_expansion.py`
 |------|---------|
 | `expansion_parser.py` | Parse `${}`, `$()`, `$(())`, backticks |
 | `quote_parser.py` | Parse quoted strings (single, double, ANSI-C) |
+| `pure_helpers.py` | Stateless char-level helpers (`QuoteState`, delimiter matching, escape decoding) |
 | `heredoc_lexer.py` | Heredoc tokenization |
 | `heredoc_collector.py` | `HeredocCollector` - gathers pending heredoc bodies line-by-line |
 | `token_parts.py` | `RichToken` with expansion metadata |
@@ -105,8 +109,14 @@ def tokenize(self):
         if self._skip_whitespace(): continue           # 1. Whitespace
         if self._try_quotes_and_expansions(): continue # 2. Quotes / $, ` → quote_parser / expansion_parser
         if self._try_recognizers(): continue           # 3. Recognizers in priority order
-        if self._handle_fallback_word(): continue      # 4. Fallback word tokenization
+        if self._handle_fallback_word(): continue      # 4. Operator-debris words (], +=, =, [...)
+        raise RuntimeError(...)                        # 5. Unreachable (census-verified) — fail loudly
 ```
+
+The loop is TOTAL: an instrumented census established that the fallback
+word collector is live for exactly four word-start character classes
+(`]`, `+`, `=`, `[` — see its docstring) and that nothing reaches step 5,
+which therefore raises instead of silently dropping a character.
 
 ## Common Tasks
 
@@ -185,9 +195,14 @@ by the `KeywordNormalizer` post-pass.)
 ### Array Assignment Detection
 
 The lexer detects `arr[key]=value` and `arr=(a b c)` patterns:
-- `_ArrayAssignmentTracker` in `recognizers/literal.py` tracks the
-  unmatched-bracket state incrementally while the word is collected
-- Special handling prevents breaking on `]`, `=`, quotes inside assignments
+- `build_assignment_prefix_map` (in `recognizers/word_scanners.py`) marks
+  every position inside a confirmed `NAME[...]=` subscript in one O(n)
+  pass; the map is cached on the `LexerContext` and shared by the quote
+  dispatch and the literal recognizer
+- `WordShapeTracker` (same module) maintains the forward word shape
+  (`NEUTRAL → ASSIGN_NAME → ASSIGN_VALUE`) so the collect loop knows when
+  `=` continues an assignment; `UnmatchedBracketTracker` keeps `]`, `=`,
+  and quotes inside open subscripts part of the word
 
 ## Testing
 

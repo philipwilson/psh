@@ -62,7 +62,7 @@ def _inside_closed_cmdsub(line: str, position: int) -> bool:
     pending heredoc so the line gatherer keeps reading — matching how the
     full lexer will see it once the substitution is complete.
     """
-    from ..lexer.pure_helpers import find_command_substitution_end
+    from ..lexer.cmdsub_scanner import find_command_substitution_end
     i = 0
     n = len(line)
     while i < n and i <= position:

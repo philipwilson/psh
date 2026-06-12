@@ -61,7 +61,7 @@ class ProcessSubstitutionRecognizer(TokenRecognizer):
         # $(...) command substitutions: the content is a full shell command
         # list, so case patterns (`<(case x in x) echo hi;; esac)`), quotes,
         # comments, and heredocs must not break the extent.
-        from ..pure_helpers import find_command_substitution_end
+        from ..cmdsub_scanner import find_command_substitution_end
         pos, found = find_command_substitution_end(input_text, pos)
         if not found:
             # Unclosed parentheses

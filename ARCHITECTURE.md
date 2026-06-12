@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.320.0
+**Current Version**: 0.321.0
 
 **Note:** For orientation, start with the Quick Map below; for a narrative
 walkthrough of one command through the whole pipeline (with reproducible
@@ -63,7 +63,8 @@ psh/
 │   ├── keyword_defs.py      # Shared keyword definitions and helpers
 │   ├── quote_parser.py / expansion_parser.py
 │   ├── token_types.py / token_stream.py
-│   ├── pure_helpers.py      # Stateless helpers incl. find_command_substitution_end
+│   ├── pure_helpers.py      # Stateless char-level helpers (QuoteState, escapes)
+│   ├── cmdsub_scanner.py    # Grammar-aware $(...) extent scanner
 │   └── recognizers/         # Token recognizer registry (operators, literals, etc.)
 ├── parser/
 │   ├── config.py            # ParserConfig & enums
@@ -125,7 +126,7 @@ Input → Preprocessing → Tokenization → Keyword Normalization → Parsing �
 | Modify tokenization | `psh/lexer/modular_lexer.py` + recognizers (see `psh/lexer/CLAUDE.md`) |
 | Modify parsing | `psh/parser/recursive_descent/parsers/` (see `psh/parser/CLAUDE.md`) |
 | Change expansion semantics | `docs/architecture/ast_data_flow.md` has the per-context table |
-| Command-substitution extent | `find_command_substitution_end` in `psh/lexer/pure_helpers.py` (read its maintenance contract) |
+| Command-substitution extent | `find_command_substitution_end` in `psh/lexer/cmdsub_scanner.py` (read its maintenance contract) |
 | Process creation / signals | `psh/executor/process_launcher.py`, `child_policy.py` |
 | Redirections / heredocs | `psh/io_redirect/` (see its CLAUDE.md for the two-universes design) |
 | Job control | `psh/executor/job_control.py` |
@@ -233,7 +234,8 @@ The lexer uses a unified, modular architecture with enhanced features as standar
 - **`psh/lexer/state_context.py`** - Unified LexerContext for all state
 
 #### Helper Functions
-- **`psh/lexer/pure_helpers.py`** - 15+ stateless helper functions
+- **`psh/lexer/pure_helpers.py`** - Stateless char-level helpers (QuoteState, delimiter matching, escape decoding)
+- **`psh/lexer/cmdsub_scanner.py`** - Grammar-aware `$(...)` extent scanner (a parser component living in the lexer; see its maintenance contract)
 
 #### Quote and Expansion Parsing
 - **`psh/lexer/quote_parser.py`** - Unified quote parsing with configurable rules
@@ -243,7 +245,8 @@ The lexer uses a unified, modular architecture with enhanced features as standar
 - **`psh/lexer/recognizers/`** - Modular token recognition system
   - `base.py` - TokenRecognizer abstract interface
   - `operator.py` - Shell operators with context awareness
-  - `literal.py` - Words, identifiers, and numbers
+  - `literal.py` - Words, identifiers, and assignments (forward WordShape state)
+  - `word_scanners.py` - Pure mini-scanners (glob brackets, assignment prefixes, extglob groups, inline ANSI-C) + WordShapeTracker
   - `whitespace.py` - Whitespace handling
   - `comment.py` - Comment recognition
   - `process_sub.py` - Process substitution (`<(...)`, `>(...)`)
@@ -1173,7 +1176,7 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 
 1. **Deep Recursion**: Command substitution in recursive functions can hit Python's stack limit due to the multiple layers of function calls per shell recursion level.
 
-(The former limitation here — `case` patterns with a bare `)` inside `$(...)` broke the paren-counting extent detection — was fixed by the grammar-aware extent scanner, `find_command_substitution_end` in `psh/lexer/pure_helpers.py`; its docstring documents the design and the remaining bash divergences.)
+(The former limitation here — `case` patterns with a bare `)` inside `$(...)` broke the paren-counting extent detection — was fixed by the grammar-aware extent scanner, `find_command_substitution_end` in `psh/lexer/cmdsub_scanner.py`; its docstring documents the design and the remaining bash divergences.)
 
 ## Future Enhancements
 

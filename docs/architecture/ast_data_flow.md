@@ -239,4 +239,4 @@ redirect-carrying node without visitor support fails that matrix.
 | redirect target/heredoc expansion | `FileRedirector` helpers (io_redirect/file_redirect.py) |
 | process substitution mechanics | `ProcessSubstitutionHandler` (io_redirect/process_sub.py); scope: `process_sub_scope` (io_redirect/manager.py) |
 | token → Word construction | `WordBuilder` (parser/recursive_descent/support/word_builder.py); combinator wrapper: parser/combinators/expansions.py |
-| `$(...)` extent scanning | `find_command_substitution_end` (lexer/pure_helpers.py — see its Maintenance contract docstring) |
+| `$(...)` extent scanning | `find_command_substitution_end` (lexer/cmdsub_scanner.py — see its Maintenance contract docstring) |

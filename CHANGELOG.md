@@ -4,6 +4,46 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.321.0 (2026-06-12) - Textbook program Tier B6: the lexer stops guessing
+- literal.py 764 → 326 lines. The four retro-scanning heuristics
+  (_is_in_variable_assignment_value's rfind, the "likely/probably"
+  _is_in_string_concatenation, _looks_like_array_assignment_before_
+  plus_equals, _is_potential_array_assignment_start) are DEAD,
+  replaced by pure functions in recognizers/word_scanners.py (623
+  lines: scan_glob_bracket / scan_extglob_group /
+  scan_assignment_prefix / scan_inline_ansi_c) and an explicit
+  forward WordShapeTracker (NEUTRAL → ASSIGN_NAME → ASSIGN_VALUE)
+  fed per character — the lexer KNOWS what segment it is in. The
+  action-tuple protocol is gone; its 'break' arm was dead code.
+  The lexer-level assignment map is built once, cached on
+  LexerContext, and consulted instead of re-derived; where it cannot
+  be sole authority (boundary-anchored, escape-blind) the supplement
+  is the module docstring's documented centerpiece with adversarial
+  corners pinned.
+- The tokenize loop is TOTAL: the silent char-drop stage is now a
+  fail-loudly RuntimeError (census across 15k corpus + full suite +
+  71k fuzz inputs: ZERO hits); the fallback word-collector stays —
+  the census found it heavily live for exactly four word-start
+  classes (']' 1,429 hits, '+' 705, '=' 400, '[' 225), all 11
+  representative shapes bash-probed identical — with the census data
+  and rationale in its docstring and pins in test_fallback_words.py.
+- Packaging: find_command_substitution_end + helpers (519 lines) →
+  psh/lexer/cmdsub_scanner.py with its Maintenance Contract intact;
+  pure_helpers.py 1,097 → 574 (genuinely pure char-level helpers);
+  one command-position vocabulary in command_position.py with the
+  three-machines docstring and the fi/done/esac asymmetry documented
+  and mechanically verified; tokenize/tokenize_with_heredocs share
+  _post_lex.
+- Safety: a 15,091-input characterization harness (golden cases +
+  generated pathological matrix + 14k harvested literals) diffed
+  ZERO token-stream changes after every step — it caught two
+  transitional import stragglers mid-refactor. A 957-input
+  frozen-stream corpus is now a permanent test.
+- Net production diff: +345/−1,294. 53 new tests (scanner contracts
+  incl. a retro-predicate oracle over ~3.4k prefixes, fallback pins,
+  corpus). Suite: 5,543 passed / 5,783 collected, 0 failures;
+  ruff + mypy + doc-pointer meta-test + CPU-perf guards clean.
+
 ## 0.320.0 (2026-06-12) - Textbook program Tier B5: ONE parameter-expansion parser
 - The program's headline-risk release and its oldest structural
   finding, closed: expansion/param_parser.py's
