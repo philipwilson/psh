@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.305.0 (2026-06-12) - Grammar boundaries: case subject, bracket quotes, TokenTransformer (reassessment Phase 2, 1/2)
+- Finding #6: `case` now parses exactly one subject word before `in` —
+  `case a b in ...` is a bash-shaped syntax error (was silently
+  accepted, joining the words). Four adjacent divergences fixed by
+  probing: `case in in ...` and `for in in ...` work (the token after
+  case/for/select is never the `in` keyword), newlines allowed before
+  `in` but rejected after `case`, and empty `case a in esac` is valid
+  while `esac)` as a pattern is rejected — all bash-exact.
+- Finding #5 (broader than stated): the lexer suppressed quote AND
+  expansion parsing for any unmatched `NAME[` shape. Now only
+  confirmed `NAME[...]=`/`+=` subscripts suppress; consequently
+  unterminated quotes in bracket words are lexer errors
+  (`echo x["unterm` was silently literal), and `x["ok"]`, `x[$v]`,
+  `x[$((1+1))]` finally quote-remove/expand like bash. Escaped quotes
+  in glob brackets preserved; assignment forms (`h["k 1"]=v`,
+  `a[$(cmd)]=y`) probe-pinned. No lexer performance regression
+  (benchmarked).
+- Bonus fix required by the keep-working battery (broken on main):
+  `${h["key"]}` returned empty — assignment stripped wrapping quotes
+  but lookup didn't. New expand_assoc_key() applies the same quote
+  removal at all five assoc lookup sites (`${h['k']}`, `${h["$k"]}`,
+  `${#h["key"]}` all match bash now).
+- Finding #9: TokenTransformer DELETED — verified every branch
+  appended the original token unchanged (validation intended at
+  v0.27.1, never implemented) and the parser already rejects
+  misplaced `;;`/`;&`/`;;&` with bash-shaped errors. Docs updated
+  (lexer CLAUDE.md pipeline, ARCHITECTURE.llm, guides).
+- 77 new tests (case subject 26, misplaced terminators 10, bracket
+  quotes 29, conformance 12).
+- Suite: 4,954 passed / 5,224 collected; ruff + mypy clean.
+
 ## 0.304.0 (2026-06-12) - Array element values as Words (reassessment Phase 1, 3/3 — REASSESSMENT PHASE 1 COMPLETE)
 - Finding #4, confirmed and worse than stated: the root cause was a
   layer below the executor — the lexer's _collect_array_assignment()

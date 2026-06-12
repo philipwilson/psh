@@ -19,10 +19,10 @@ class _ArrayAssignmentTracker:
     same quote-aware bracket automaton in O(n) total.
 
     Note this is NOT the same predicate as the lexer-level array-assignment
-    map (``ModularLexer._build_array_assignment_map``): that map requires
-    the ``NAME[`` shape, while this tracker counts any unmatched bracket —
-    which is what keeps glob character classes like ``*[[:upper:]]*``
-    intact (the second ``]`` must not terminate the word).
+    map (``ModularLexer._build_array_assignment_map``): that map requires a
+    confirmed ``NAME[...]=`` assignment shape, while this tracker counts any
+    unmatched bracket — which is what keeps glob character classes like
+    ``*[[:upper:]]*`` intact (the second ``]`` must not terminate the word).
     """
 
     __slots__ = ('_bracket_count', '_has_opening_bracket',
@@ -196,7 +196,22 @@ class LiteralRecognizer(ContextualRecognizer):
                     continue
 
             if in_glob_bracket:
-                # Inside [...], collect everything including ! and other special chars
+                # Inside a non-assignment [...] word, quotes and expansions
+                # keep their normal meaning (bash: `echo x["ok"]` prints
+                # `x[ok]`, `echo x[$USER]` expands, and `echo x["oops` is an
+                # unterminated-quote error). End the literal here so the
+                # quote/expansion machinery takes over; the parser re-joins
+                # adjacent parts into one composite word. Only confirmed
+                # array-assignment subscripts (`NAME[...]=`) collect quotes
+                # literally — see _collect_array_assignment.
+                if char == '\\' and pos + 1 < len(input_text):
+                    # Escaped character (e.g. x[\"]) stays literal.
+                    value += char + input_text[pos + 1]
+                    pos += 2
+                    continue
+                if char in ('"', "'", '`') or (
+                        char == '$' and self._can_start_valid_expansion(input_text, pos)):
+                    break
                 value += char
                 pos += 1
                 if char == ']':
@@ -485,8 +500,9 @@ class LiteralRecognizer(ContextualRecognizer):
 
         # Look ahead to see if this looks like arr[...]=... pattern.
         # We're at position of '[', scan forward (quote-aware, so arr["key"]=v
-        # works) for a closing ] followed by = or +=.
-        from ..pure_helpers import QuoteState
+        # works; expansion-aware, so the space in a[$(echo 1 + 1)]=v doesn't
+        # break the word) for a closing ] followed by = or +=.
+        from ..pure_helpers import QuoteState, skip_expansion_region
 
         remaining = input_text[pos:]
         bracket_count = 0
@@ -496,6 +512,13 @@ class LiteralRecognizer(ContextualRecognizer):
         while i < len(remaining):
             char = remaining[i]
             if state.consume(char):  # active (outside quotes, not quote/escape)
+                if char in ('$', '`'):
+                    # $(...), ${...}, `...`: opaque — their contents
+                    # (including whitespace) are part of the subscript.
+                    skip = skip_expansion_region(remaining, i)
+                    if skip is not None:
+                        i = skip
+                        continue
                 if char == '[':
                     bracket_count += 1
                 elif char == ']':

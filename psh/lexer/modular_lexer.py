@@ -345,10 +345,16 @@ class ModularLexer:
         return False
 
     def _is_inside_potential_array_assignment(self) -> bool:
-        """Check if we're potentially inside an array assignment pattern.
+        """Check if we're inside a confirmed array-assignment subscript.
 
         This is used to prevent quote/expansion parsing from breaking up
         array assignments like arr["key"]=value or arr['key']=value.
+
+        Only confirmed assignment subscripts count: a ``NAME[`` whose
+        matching ``]`` is immediately followed by ``=`` or ``+=``. A quote
+        inside any other bracket-looking word keeps its normal meaning
+        (bash: ``echo x["ok"]`` prints ``x[ok]``; ``echo x["oops`` is an
+        unterminated-quote error).
 
         The answer for every position is precomputed in ONE forward O(n)
         pass over the input (lazily, on first use). The old implementation
@@ -363,13 +369,16 @@ class ModularLexer:
         return bool(self._array_assignment_map[self.position])
 
     def _build_array_assignment_map(self) -> bytearray:
-        """map[i] == 1 iff position i is inside an unmatched ``NAME[``.
+        """map[i] == 1 iff position i is inside a confirmed ``NAME[...]=``.
 
         Forward scan tracking quote state and a stack of open brackets;
         each ``[`` records whether it directly follows a valid identifier
-        at a word boundary (the array-assignment shape). A position is
-        "inside" when the nearest unmatched ``[`` has that shape —
-        mirroring what the old backward scan computed.
+        at a word boundary (the array-assignment shape). When the
+        outermost bracket closes with ``]=`` or ``]+=`` and its ``[`` had
+        that shape, the whole subscript span is marked. Unconfirmed
+        bracket words (``x["ok"]``, ``x[$v]``, glob classes) are never
+        marked, so quotes/expansions inside them lex normally. Span
+        marking is amortized O(n): spans never overlap.
         """
         from .unicode_support import is_identifier_char, is_identifier_start
 
@@ -392,28 +401,45 @@ class ModularLexer:
                 return False
             return id_start == 0 or text[id_start - 1] in ' \t\n;|&(){}'
 
+        from .pure_helpers import skip_expansion_region
+
         in_single = False
         in_double = False
-        open_flags = []  # one entry per currently-unmatched '[' (outside quotes)
+        open_stack = []  # (index, is_array_shape) per currently-unmatched '['
 
-        for i, ch in enumerate(text):
-            # State coming INTO position i (the old scan started at pos-1)
-            result[i] = 1 if (open_flags and open_flags[-1]) else 0
-
+        i = 0
+        while i < n:
+            ch = text[i]
+            if not in_single and ch in ('$', '`'):
+                # $(...), ${...}, `...`: opaque — whitespace/brackets inside
+                # are part of the subscript (a[$(echo 1 + 1)]=v).
+                skip = skip_expansion_region(text, i)
+                if skip is not None:
+                    i = skip
+                    continue
             if ch == '"' and not in_single:
                 in_double = not in_double
             elif ch == "'" and not in_double:
                 in_single = not in_single
             elif not in_single and not in_double:
                 if ch == '[':
-                    open_flags.append(is_array_open(i))
+                    open_stack.append((i, is_array_open(i)))
                 elif ch == ']':
-                    if open_flags:
-                        open_flags.pop()
-                elif ch in '|&;(){}' and not open_flags:
-                    # Command separator outside any bracket: hard word
-                    # boundary (matches the old scan's break condition).
-                    pass
+                    if open_stack:
+                        start, shaped = open_stack.pop()
+                        if not open_stack and shaped and (
+                                text[i + 1:i + 2] == '=' or
+                                text[i + 1:i + 3] == '+='):
+                            # Confirmed assignment subscript: mark the span
+                            # between (and including) the brackets' interior
+                            # so quotes/expansions inside stay literal.
+                            for j in range(start + 1, i + 1):
+                                result[j] = 1
+                elif ch in ' \t\n;|&(){}':
+                    # Unquoted word/command boundary: an assignment
+                    # subscript cannot span it (`h[a b]=v` is two words).
+                    open_stack.clear()
+            i += 1
 
         return result
 

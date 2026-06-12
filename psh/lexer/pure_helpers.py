@@ -52,6 +52,30 @@ class QuoteState:
         return not self.in_quotes
 
 
+def skip_expansion_region(text: str, pos: int) -> Optional[int]:
+    """Skip a ``$(...)``, ``${...}`` or `` `...` `` region starting at ``pos``.
+
+    Returns the index just past the closing delimiter, or ``None`` when
+    ``pos`` does not start such a region or the region never closes.
+
+    Used by word-shape scanners (array-assignment detection) so that
+    whitespace and delimiters inside an expansion do not end the shell
+    word: ``a[$(echo 1 + 1)]=v`` is a single assignment word.
+    """
+    if pos >= len(text):
+        return None
+    ch = text[pos]
+    if ch == '`':
+        end = text.find('`', pos + 1)
+        return end + 1 if end != -1 else None
+    if ch == '$' and pos + 1 < len(text) and text[pos + 1] in '({':
+        open_delim, close_delim = (('(', ')') if text[pos + 1] == '('
+                                   else ('{', '}'))
+        end, found = find_closing_delimiter(text, pos + 2, open_delim, close_delim)
+        return end if found else None
+    return None
+
+
 def find_closing_delimiter(
     input_text: str,
     start_pos: int,

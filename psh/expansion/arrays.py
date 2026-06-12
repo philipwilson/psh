@@ -48,7 +48,7 @@ class ArrayOpsMixin:
             element = var.value.get(self._eval_array_index(index_expr))
             return str(len(element)) if element else '0'
         elif var and isinstance(var.value, AssociativeArray):
-            expanded_key = self.expand_array_index(index_expr)
+            expanded_key = self.expand_assoc_key(index_expr)
             element = var.value.get(expanded_key)
             return str(len(element)) if element else '0'
         elif var and var.value:
@@ -156,7 +156,7 @@ class ArrayOpsMixin:
             result = var.value.get(self._eval_array_index(index_expr))
             return result if result is not None else ''
         elif var and isinstance(var.value, AssociativeArray):
-            expanded_key = self.expand_array_index(index_expr)
+            expanded_key = self.expand_assoc_key(index_expr)
             result = var.value.get(expanded_key)
             return result if result is not None else ''
         elif var and var.value:
@@ -190,7 +190,7 @@ class ArrayOpsMixin:
             if var and isinstance(var.value, IndexedArray):
                 var.value.set(self._eval_array_index(index_expr), value)
             elif var and isinstance(var.value, AssociativeArray):
-                expanded_key = self.expand_array_index(index_expr)
+                expanded_key = self.expand_assoc_key(index_expr)
                 var.value.set(expanded_key, value)
             else:
                 # Array doesn't exist yet; create an indexed array
@@ -226,6 +226,20 @@ class ArrayOpsMixin:
             assign = f"{array_name}={self._shell_quote(str(var.value) if var else '')}"
             return f"declare -{flags} {assign}" if flags else assign
         return f"declare -{flags} {array_name}=({body})"
+
+    def expand_assoc_key(self, index_expr: str) -> str:
+        """Expand an associative-array subscript and apply quote removal.
+
+        bash applies quote removal to assoc subscripts: ``${h["k 1"]}`` and
+        ``${h['k 1']}`` address the key ``k 1``. This mirrors the assignment
+        side (executor/array.py), which strips one fully-wrapping quote pair
+        after expansion — keeping lookups symmetric with assignments.
+        """
+        expanded = self.expand_array_index(index_expr)
+        if (len(expanded) >= 2 and expanded[0] == expanded[-1]
+                and expanded[0] in ('"', "'")):
+            return expanded[1:-1]
+        return expanded
 
     def expand_array_index(self, index_expr: str) -> str:
         """Expand variables in array index expressions.

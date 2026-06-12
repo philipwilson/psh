@@ -48,7 +48,6 @@ def tokenize(input_string: str, strict: bool = True, shell_options: dict = None)
         List of tokens representing the parsed command
     """
     from ..expansion.brace_expansion import TokenBraceExpander
-    from .token_transformer import TokenTransformer
 
     # Create appropriate lexer config based on strict mode
     if strict:
@@ -74,10 +73,8 @@ def tokenize(input_string: str, strict: bool = True, shell_options: dict = None)
     # Brace expansion on the token stream.
     tokens = TokenBraceExpander().expand(tokens)
 
-    # Apply token transformations
-    transformer = TokenTransformer()
-    tokens = transformer.transform(tokens)
-
+    # Note: misplaced case terminators (`;;` outside case, etc.) are rejected
+    # by the parser (see parsers/statements.py), not by a lexer pass.
     return tokens
 
 
@@ -121,11 +118,6 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options
     # omitting it silently disabled brace expansion on any command line
     # containing a heredoc.
     tokens = TokenBraceExpander().expand(tokens)
-
-    # Apply token transformations
-    from .token_transformer import TokenTransformer
-    transformer = TokenTransformer()
-    tokens = transformer.transform(tokens)
 
     return tokens, heredoc_map
 

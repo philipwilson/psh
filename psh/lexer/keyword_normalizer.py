@@ -32,6 +32,14 @@ class KeywordNormalizer:
 
         command_position = True
         pending_in: Optional[str] = None
+        # One-shot: the token right after `for`/`select`/`case` is the loop
+        # variable / case subject — bash never reads it as the `in` keyword
+        # (`for in in 1 2` and `case in in in) ...` are valid bash).
+        subject_pending = False
+        # One-shot: the token right after a case's `in` keyword. bash
+        # recognizes `esac` there (`case a in esac` is a valid empty case);
+        # any other word is an ordinary pattern word.
+        case_pattern_start = False
         pending_heredoc_delim = False
         heredoc_already_collected = False
         heredoc_delimiter: Optional[str] = None
@@ -72,23 +80,34 @@ class KeywordNormalizer:
                 command_position = False
                 continue
 
+            next_pattern_start = False
+
             if token.type == TokenType.WORD and token_value:
-                if pending_in and token_value == 'in':
+                if subject_pending:
+                    # Loop variable / case subject: stays a WORD even when
+                    # spelled `in` (or any other keyword).
+                    converted_type = None
+                elif pending_in and token_value == 'in':
                     converted_type = TokenType.IN
+                    if pending_in == 'case':
+                        next_pattern_start = True
                     pending_in = None
+                elif case_pattern_start and token_value == 'esac':
+                    # `case a in esac` — esac right after `in` closes the case.
+                    converted_type = TokenType.ESAC
                 elif command_position and token_value in KEYWORDS:
                     if token_value == 'in' and not pending_in:
                         converted_type = None
                     else:
                         converted_type = KEYWORD_TYPE_MAP.get(token_value)
-                        if token_value in {'for', 'select', 'case'}:
-                            pending_in = token_value
 
             if converted_type:
                 token.type = converted_type
                 token.is_keyword = True
             elif token.type == TokenType.IN:
                 # Already tagged as IN by lexer, clear pending state
+                if pending_in == 'case':
+                    next_pattern_start = True
                 pending_in = None
 
             # Update command position based on (possibly converted) token
@@ -96,9 +115,14 @@ class KeywordNormalizer:
                 token, command_position, pending_in
             )
 
+            # Both flags are one-shot: consumed by this token.
+            subject_pending = False
+            case_pattern_start = next_pattern_start
+
             # Adjust pending_in when encountering explicit tokens
             if token.type in {TokenType.FOR, TokenType.SELECT, TokenType.CASE}:
                 pending_in = token.type.name.lower()
+                subject_pending = True
 
         return tokens
 

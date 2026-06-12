@@ -6,7 +6,7 @@ This guide captures the end-to-end flow for keyword handling in PSH and provides
 
 1. **Normalization (Lexer)**
    - `lexer/keyword_normalizer.KeywordNormalizer` lowers and canonicalizes `WORD` tokens into keyword token types (`TokenType.IF`, `TokenType.THEN`, etc.) and annotates metadata (`SemanticType.KEYWORD`).
-   - `token_transformer.TokenTransformer` performs context-sensitive adjustments (e.g., ensuring `;;` terminators appear only inside `case` blocks).
+   - Context rules (e.g. `;;` terminators appearing only inside `case` blocks) are enforced by the parser, not by a lexer pass.
    - After this stage, tokens expose meaningful `token.type`, `token.metadata.semantic_type`, and `Token.normalized_value`.
 
 2. **Consumption (Parsers)**

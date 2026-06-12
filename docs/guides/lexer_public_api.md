@@ -38,8 +38,8 @@ Primary entry point for shell tokenization. Runs the full pipeline:
 3. **Keyword normalization** -- `KeywordNormalizer` converts WORD tokens
    at command position into keyword token types (e.g. `WORD("if")` becomes
    `IF("if")`).
-4. **Token transformation** -- `TokenTransformer` validates context rules
-   such as `;;` only being legal inside `case` statements.
+Context rules such as `;;` only being legal inside `case` statements are
+enforced by the parser, not by a lexer pass.
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
