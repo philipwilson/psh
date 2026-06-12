@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.322.0 (2026-06-12) - Textbook program Tier B7: args derived from words (zero behavior change)
+- SimpleCommand.args is now a derived, read-only @property flattening
+  words — the stored parallel list is GONE and the diseased state
+  (args/words divergence) is unrepresentable by construction (pinned
+  by test). 89 consumer hits re-measured (the memo's 67 was stale);
+  producers in BOTH parsers now build words only; the executor's
+  slice/length/backslash-bypass sites operate on words (the bypass
+  provably only ever strips a LiteralPart's backslash); four
+  redirect-carrier nodes in strategies.py stopped passing args they
+  never read.
+- The characterization harness ran BEFORE the deletion: 3,593-command
+  corpus, 4,455 SimpleCommands, ZERO mismatches on the recursive-
+  descent parser — the derived rule reproduces the old serialization
+  byte-for-byte. The combinator parser had 33 tooling-only args-view
+  divergences (stored `${y}` where RD stored `$y`); unification
+  resolves them — execution always read words. The harness assertion
+  is a permanent invariant test.
+- Honest finding: _parse_array_initialization's token re-serialization
+  is LIVE, not vestigial — the flat `arr=(1 2)` string is re-parsed
+  quote-aware by the declaration builtins (array_init.py); element
+  Words normalize source details that re-parse differently (`${y}b`,
+  `"a""b"`). The misleading Old/New-lexer archaeology comments died;
+  the docstring now states why the serialization exists and what
+  would have to change to kill it (declaration builtins consuming
+  element Words — future work).
+- Test-construction decision: 10 explicit args= sites across 4 test
+  files — fixed the tests rather than adding a constructor affordance
+  (honesty over affordance).
+- Perf: the property recomputes per access; measured within noise of
+  baseline (0.772s vs 0.798s best-of-3 on an assignment-heavy loop) —
+  no cache, no invalidation invariant.
+- 17 probe anchors byte-identical incl. xtrace, $_, --debug-ast
+  shapes, and all four analysis tools. Suite: 5,547 passed / 5,787
+  collected, 0 failures; conformance identical to baseline;
+  ruff + mypy + doc-pointer meta-test clean.
+
 ## 0.321.0 (2026-06-12) - Textbook program Tier B6: the lexer stops guessing
 - literal.py 764 → 326 lines. The four retro-scanning heuristics
   (_is_in_variable_assignment_value's rfind, the "likely/probably"

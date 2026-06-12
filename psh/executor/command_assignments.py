@@ -89,10 +89,11 @@ class CommandAssignments:
         that word is the command name.
         """
         assignments: List[RawAssignment] = []
+        args = node.args  # derived from words — snapshot once
         i = 0
 
-        while i < len(node.args):
-            arg = node.args[i]
+        while i < len(args):
+            arg = args[i]
 
             # Use Word AST to determine if this argument is an assignment
             # candidate (i.e., a regular word, not a process substitution
@@ -100,8 +101,7 @@ class CommandAssignments:
             if self._is_assignment_candidate(node, i):
                 if '=' in arg and is_valid_assignment(arg):
                     var, value = arg.split('=', 1)
-                    word = node.words[i] if node.words and i < len(node.words) else None
-                    assignments.append((var, value, word))
+                    assignments.append((var, value, node.words[i]))
                     i += 1
                 else:
                     # Stop at first non-assignment
@@ -160,9 +160,8 @@ class CommandAssignments:
 
             # No '=' found in the Word parts at all
             return True
-        # No Word AST available — unreachable from parsers (words always
-        # parallels args; fallback audit 2026-06-12). Treat as a candidate;
-        # _expand_value raises on the missing Word.
+        # Unreachable: args is DERIVED from words, so every valid index
+        # has a Word. Kept as a defensive default.
         return True
 
     # ------------------------------------------------------------------
@@ -309,11 +308,10 @@ class CommandAssignments:
         same policy array element assignments use — so quoting is handled
         structurally (single-quoted values stay literal, etc.).
 
-        Fallback audit 2026-06-12: word=None is unreachable — both parsers
-        keep SimpleCommand.words parallel to args, so every assignment
-        extracted by extract() carries its Word. The old silent
-        string-expansion fallback lost quote context; fail loudly
-        instead (v0.300 policy).
+        word=None is unreachable — SimpleCommand.args is derived from
+        words, so every assignment extracted by extract() carries its
+        Word. The old silent string-expansion fallback lost quote
+        context; fail loudly instead (v0.300 policy).
         """
         if word is None:
             raise RuntimeError(

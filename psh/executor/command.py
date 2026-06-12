@@ -119,7 +119,7 @@ class CommandExecutor:
             # Check if we have only assignments (no command)
             tokens_consumed = len(raw_assignments)
 
-            if raw_assignments and tokens_consumed == len(node.args):
+            if raw_assignments and tokens_consumed == len(node.words):
                 # Pure assignment (no command)
                 return self.assignments.apply_pure(node, raw_assignments)
 
@@ -132,7 +132,7 @@ class CommandExecutor:
                 # effect, so `V=v echo $V` prints V's *prior* value.
                 # command_start_index needs to account for tokens consumed by assignments
                 command_start_index = tokens_consumed
-                if command_start_index >= len(node.args):
+                if command_start_index >= len(node.words):
                     # No command to execute, but apply any redirections
                     # (e.g., ">file" should create/truncate the file)
                     if node.redirects:
@@ -140,17 +140,15 @@ class CommandExecutor:
                             pass
                     return 0
 
-                # Create a sub-node for command arguments only. node.words
-                # always parallels node.args (both parsers; fallback audit
-                # 2026-06-12) — a missing list fails loudly here.
+                # Create a sub-node for the command's own words only
+                # (assignment prefixes sliced off). The string view
+                # (.args) derives from words automatically.
                 from ..ast_nodes import SimpleCommand
                 command_node = SimpleCommand(
-                    args=node.args[command_start_index:],
                     redirects=node.redirects,
                     background=node.background,
                     words=node.words[command_start_index:],
                 )
-
 
                 # Check for the `\cmd` bypass mechanism before expansion
                 command_node, bypass_aliases, bypass_functions = \
@@ -222,8 +220,8 @@ class CommandExecutor:
 
         A leading backslash on the command word (e.g. ``\\ls``) makes the
         shell skip alias and function lookup. Strip the backslash from
-        both the raw argument and the first Word's LiteralPart so
-        expansion sees the plain name.
+        the first Word's LiteralPart so expansion (and the derived
+        ``.args`` view) sees the plain name.
 
         Returns:
             (command_node, bypass_aliases, bypass_functions). The node is
@@ -234,9 +232,10 @@ class CommandExecutor:
 
         from ..ast_nodes import LiteralPart, SimpleCommand, Word
 
-        # Remove backslash from the first argument for expansion
-        modified_args = [command_node.args[0][1:]] + command_node.args[1:]
-        # Also strip backslash from the first Word's LiteralPart
+        # Strip the backslash from the first Word's LiteralPart. The
+        # leading '\\' of args[0] can only come from a LiteralPart (an
+        # ExpansionPart renders as '$...', '`...`' or '<(...)'), so this
+        # rewrite is exactly the args[0][1:] strip in Word form.
         modified_words = command_node.words
         if command_node.words and command_node.words[0].parts:
             first_part = command_node.words[0].parts[0]
@@ -250,7 +249,6 @@ class CommandExecutor:
                 )
                 modified_words = [new_word] + list(command_node.words[1:])
         command_node = SimpleCommand(
-            args=modified_args,
             redirects=command_node.redirects,
             background=command_node.background,
             words=modified_words,

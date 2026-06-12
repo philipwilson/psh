@@ -139,11 +139,11 @@ class TestFormatterCStyleFor:
 
     def test_c_style_for_no_dollar_in_output(self):
         """for ((i=0; i<3; i++)) should format without $ prefixes."""
-        from psh.ast_nodes import CStyleForLoop, SimpleCommand, StatementList
+        from psh.ast_nodes import CStyleForLoop, SimpleCommand, StatementList, Word
         from psh.visitor.formatter_visitor import FormatterVisitor
 
         body = StatementList(statements=[
-            SimpleCommand(args=['echo', 'hi'], words=[])
+            SimpleCommand(words=[Word.from_string('echo'), Word.from_string('hi')])
         ])
         node = CStyleForLoop(
             init_expr='i=0',
@@ -171,15 +171,16 @@ class TestLinterGenericVisit:
             SimpleCommand,
             StatementList,
             WhileLoop,
+            Word,
         )
         from psh.visitor.linter_visitor import LinterVisitor
 
         # Create a simple while loop — generic_visit will be called for
         # WhileLoop since the linter has no explicit visit_WhileLoop
-        cmd = SimpleCommand(args=['echo', 'test'], words=[])
+        cmd = SimpleCommand(words=[Word.from_string('echo'), Word.from_string('test')])
         body = StatementList(statements=[cmd])
         condition = StatementList(statements=[
-            SimpleCommand(args=['true'], words=[])
+            SimpleCommand(words=[Word.from_string('true')])
         ])
         node = WhileLoop(
             condition=condition,
@@ -242,7 +243,6 @@ class TestFormatterArraySubscript:
         expansion = ParameterExpansion(parameter='arr[0]')
         word = Word(parts=[ExpansionPart(expansion=expansion)])
         node = SimpleCommand(
-            args=['echo', '${arr[0]}'],
             words=[
                 Word(parts=[LiteralPart('echo')]),
                 word,

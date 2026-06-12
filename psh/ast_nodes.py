@@ -315,12 +315,35 @@ class Command(ASTNode):
 
 @dataclass
 class SimpleCommand(Command):
-    """Traditional command with arguments (formerly Command class)."""
-    args: List[str] = field(default_factory=list)
+    """Traditional command with arguments (formerly Command class).
+
+    ``words`` is the single source of truth for the command's arguments:
+    one Word per argument, carrying per-part quote context and expansion
+    structure. The string view ``args`` is DERIVED from it (see the
+    property below) — there is no stored string list to keep in sync.
+    """
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False
     array_assignments: List[ArrayAssignment] = field(default_factory=list)  # Array assignments before command
     words: List[Word] = field(default_factory=list)  # Args as Word objects with expansions
+
+    @property
+    def args(self) -> List[str]:
+        """Pre-expansion string view of ``words`` — derived, never stored.
+
+        One string per Word: the concatenation of ``str(part)`` over the
+        word's parts. This is the word WITHOUT its surrounding quotes
+        (``echo "a b"`` yields ``a b``) but with expansions rendered as
+        their ``$``-source form (``echo ${x:-d}`` yields ``${x:-d}``;
+        note a braced simple variable normalizes: ``${y}`` renders
+        ``$y``). Consumers: assignment-prefix extraction (name side
+        only), command-name dispatch checks, and read-only tooling
+        (visitors, --debug-ast, formatters). Execution semantics always
+        come from ``words`` via the expansion engine, never from this
+        view. Recomputed per access — do not mutate the returned list.
+        """
+        return [''.join(str(part) for part in word.parts)
+                for word in self.words]
 
 
 class CompoundCommand(Command):

@@ -108,7 +108,6 @@ class CommandParser:
     def parse_command(self) -> SimpleCommand:
         """Parse a single command with its arguments and redirections."""
         command = SimpleCommand()
-        command.words = []
 
         # Validate command start
         self._validate_command_start()
@@ -140,9 +139,8 @@ class CommandParser:
         has_parsed_regular_args = False
 
         while (self.parser.match_any(TokenGroups.WORD_LIKE | TokenGroups.REDIRECTS) or
-               (command.args and len(command.args) > 0 and
-                command.args[0] in ('test', '[') and
-                self.parser.match(TokenType.EXCLAMATION))):
+               (self.parser.match(TokenType.EXCLAMATION) and
+                command.args and command.args[0] in ('test', '['))):
 
             if self.parser.match_any(TokenGroups.REDIRECTS):
                 redirect = self.parser.redirections.parse_redirect()
@@ -154,7 +152,6 @@ class CommandParser:
 
             elif self.parser.match(TokenType.EXCLAMATION):
                 token = self.parser.advance()
-                command.args.append(token.value)
                 command.words.append(Word(parts=[LiteralPart(token.value)]))
                 has_parsed_regular_args = True
 
@@ -180,16 +177,12 @@ class CommandParser:
 
         if is_array_init:
             arg_value = self._parse_array_initialization(word_token)
-            command.args.append(arg_value)
             command.words.append(Word(parts=[LiteralPart(arg_value)]))
             return True
 
-        # Parse argument as Word AST node
-        word = self.parse_argument_as_word()
-        command.words.append(word)
-        # Use inner content for args (without surrounding quotes)
-        inner = ''.join(str(part) for part in word.parts)
-        command.args.append(inner)
+        # Parse argument as Word AST node. The string view of the
+        # argument (SimpleCommand.args) is derived from this Word.
+        command.words.append(self.parse_argument_as_word())
 
         return True
 
@@ -204,14 +197,17 @@ class CommandParser:
 
         word_token = self.parser.peek()
 
-        # Old lexer pattern: arr=(...)
+        # `arr=(...)`: the lexer emits the name and '=' as one WORD
+        # ('arr=') followed by LPAREN. This is the form bash accepts.
         if (word_token.value.endswith('=') and
             self.parser.peek(1) and
             self.parser.peek(1).type == TokenType.LPAREN):
             self.parser.advance()
             return True, word_token
 
-        # New lexer pattern: arr = (...)
+        # `arr = (...)`: three separate tokens (WORD, WORD '=', LPAREN).
+        # bash rejects this with a syntax error; psh has historically
+        # accepted it as an array initialization (pinned behavior).
         if (self.parser.peek(1) and
             self.parser.peek(1).type == TokenType.WORD and
             self.parser.peek(1).value == '=' and
@@ -224,7 +220,23 @@ class CommandParser:
         return False, None
 
     def _parse_array_initialization(self, word_token: Token) -> str:
-        """Parse array initialization syntax arr=(...).
+        """Parse array initialization syntax arr=(...) in ARGUMENT position
+        (e.g. ``declare -a arr=(1 2)``) into a single flat string.
+
+        The string becomes the literal content of the argument's Word —
+        stored once there; ``SimpleCommand.args`` derives from it. The
+        live consumers are the declaration builtins (``declare``/``local``):
+        they receive the flat string as an argv element and re-parse the
+        initializer quote-aware in ``psh/builtins/array_init.py``.
+
+        Each element is serialized from its TOKENS, not from the element
+        Word, because Word parts normalize source details the initializer
+        parser needs verbatim: ``${y}b`` becomes ExpansionPart('$y') +
+        'b' (would re-read as ``$yb``), and ``"a""b"`` produces two
+        parts indistinguishable from one decomposed ``"a b"`` string
+        (quote boundaries lost). Deriving this string from Words is only
+        possible once the declaration builtins consume element Words
+        directly instead of re-parsing text.
 
         Args:
             word_token: The array variable name token
@@ -241,7 +253,7 @@ class CommandParser:
             if self.parser.match_any(TokenGroups.WORD_LIKE):
                 self.parse_argument_as_word()  # consume element
 
-                # Reconstruct original representation
+                # Serialize the element from the tokens just consumed
                 element_end_pos = self.parser.current
                 original_tokens = self.parser.tokens[element_start_pos:element_end_pos]
 

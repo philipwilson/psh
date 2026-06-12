@@ -196,7 +196,7 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
             # Apply redirections if any
             if redirects:
                 from ..ast_nodes import SimpleCommand
-                temp_command = SimpleCommand(args=[cmd_name] + args, redirects=redirects)
+                temp_command = SimpleCommand(redirects=redirects)
                 shell.io_manager.setup_child_redirections(temp_command)
 
             # Execute the builtin
@@ -266,7 +266,7 @@ class FunctionExecutionStrategy(ExecutionStrategy):
         def execute_fn():
             if redirects:
                 from ..ast_nodes import SimpleCommand
-                temp_command = SimpleCommand(args=[cmd_name] + args, redirects=redirects)
+                temp_command = SimpleCommand(redirects=redirects)
                 shell.io_manager.setup_child_redirections(temp_command)
 
             from .function import FunctionOperationExecutor
@@ -386,7 +386,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                 if redirects:
                     # Create a dummy command object for the io_manager
                     from ..ast_nodes import SimpleCommand
-                    temp_command = SimpleCommand(args=full_args, redirects=redirects)
+                    temp_command = SimpleCommand(redirects=redirects)
                     shell.io_manager.setup_child_redirections(temp_command)
 
                 # Ensure we're in the correct process group before exec
@@ -427,7 +427,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             if redirects:
                 # Create a dummy command object for the io_manager
                 from ..ast_nodes import SimpleCommand
-                temp_command = SimpleCommand(args=full_args, redirects=redirects)
+                temp_command = SimpleCommand(redirects=redirects)
                 shell.io_manager.setup_child_redirections(temp_command)
 
             # Execute the command with proper environment

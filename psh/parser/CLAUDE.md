@@ -288,6 +288,10 @@ python -m psh --validate       # Parse and validate without executing
 The parser always builds **Word AST nodes** for command arguments. Each
 `SimpleCommand.words` list contains `Word` objects with `LiteralPart` and
 `ExpansionPart` nodes carrying per-part quote context (`quoted`, `quote_char`).
+`words` is the **single source of truth** for a command's arguments: the
+string view `SimpleCommand.args` is a derived, read-only property
+(`ast_nodes.py`) that flattens each Word's parts — there is no stored
+args list to keep in sync. Build `words` only; never assign `args`.
 
 ```python
 # "hello $USER!" becomes:
