@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.314.0
+**Current Version**: 0.315.0
 
 **Note:** For orientation, start with the Quick Map below; for per-context
 expansion pointers see `docs/architecture/ast_data_flow.md`; for working
@@ -18,10 +18,10 @@ lives here and in those documents.)
   - **Parser Combinator**: Educational functional parser in `psh/parser/combinators/` — outside the production quality bar (decision 2026-06-12); parity tests pin against drift but its gaps are not tracked as defects
   - **Parser Selection**: Switch between implementations with `parser-select combinator` builtin
   - **Educational Value**: Compare imperative vs. functional parsing approaches
-- **Unified Lexer Architecture**: State machine lexer with modular architecture
-  - **Single Token System**: Unified Token class with built-in metadata and context information
-  - **Enhanced Features Standard**: Context tracking, semantic analysis, and error recovery built-in
+- **Unified Lexer Architecture**: Recognizer-based modular lexer
+  - **Single Token System**: Unified Token dataclass with position, quote and part metadata
   - **Modular Recognition**: Priority-based token recognizer system
+  - **Dedicated Quote/Expansion Parsers**: Quotes and `$`-expansions consumed whole by `UnifiedQuoteParser`/`ExpansionParser`
   - **Clean API**: Simplified interface with no compatibility overhead
 - **Enhanced Parser System**: Comprehensive configuration and validation
   - **Parser Configuration**: Multiple parsing modes (POSIX, bash-compat, educational)
@@ -43,7 +43,7 @@ lives here and in those documents.)
 
 ```
 psh/
-├── shell.py                 # Main orchestrator (visitor executor only)
+├── shell.py                 # Main orchestrator: 7 named lifecycle phases + Shell.for_subshell(); no execution or CLI-mode logic
 ├── core/                    # Shared state, options, traps
 │   ├── state.py             # ShellState and option plumbing
 │   ├── scope.py             # Hierarchical variable scope management
@@ -78,11 +78,12 @@ psh/
 │   ├── core.py              # ExecutorVisitor (delegates to specialists)
 │   ├── command.py / pipeline.py / control_flow.py
 │   ├── array.py / function.py / subshell.py
-│   ├── process_launcher.py  # Single source of truth for fork()
+│   ├── process_launcher.py  # Job-controlled process creation (pgids, terminal, sync)
+│   ├── child_policy.py      # fork_with_signal_window() + apply_child_signal_policy() — every fork site
 │   ├── job_control.py       # JobManager
 │   └── strategies.py        # Builtin/function/external dispatch
 ├── io_redirect/             # IOManager, FileRedirector (incl. heredocs), procsub scopes
-├── scripting/               # ScriptManager, input sources/preprocessing, source processor
+├── scripting/               # ScriptManager, input sources/preprocessing, source processor, CLI analysis modes (visitor_modes.py)
 ├── interactive/             # REPL, line editor, history, completion, signals
 ├── builtins/                # Builtin commands (registry + implementations)
 ├── visitor/                 # Formatter/validator/security/metrics/linter visitors
@@ -100,7 +101,7 @@ Input → Preprocessing → Tokenization → Keyword Normalization → Parsing �
 3. **Parsing**: recursive descent `Parser` from modular sub-parsers; `WordBuilder` builds Word AST (composites via `TokenStream.peek_composite_sequence()`)
 4. **Validation** (optional, `--validate`): visitor validators in `psh/visitor/`
 5. **Expansion**: `ExpansionManager` enforces POSIX order; `_expand_word()` walks Word parts with per-part quote context (see `docs/architecture/ast_data_flow.md` for per-context policies)
-6. **Execution**: `ExecutorVisitor` delegates to specialists; all forks via `ProcessLauncher`
+6. **Execution**: `ExecutorVisitor` delegates to specialists; job-controlled forks via `ProcessLauncher`, every fork via the `child_policy.py` helpers
 
 ### Architecture Invariants
 
@@ -109,7 +110,7 @@ Input → Preprocessing → Tokenization → Keyword Normalization → Parsing �
 3. **Visitor Execution**: AST nodes are data-only; behavior lives in visitors/executors
 4. **POSIX Expansion Order**: expansion phases stay in standard order
 5. **Word AST as Source of Truth**: `SimpleCommand.words` (and the Word fields on arrays/loops/assignments) are the sole structural argument representation; use Word helper properties, never string-type checks
-6. **One Fork Path**: all process creation goes through `ProcessLauncher`; children apply `apply_child_signal_policy()`
+6. **One Fork Helper, One Child Signal Policy**: every fork site forks via `fork_with_signal_window()` and every child applies `apply_child_signal_policy()` (both in `psh/executor/child_policy.py`, since v0.312); *job-controlled* process creation (commands, pipelines, subshells) additionally goes through `ProcessLauncher`, while command/process substitution fork directly by design (they are not jobs)
 7. **Exit Status Discipline**: every execution path returns an integer exit status
 8. **Fail Loudly**: internal errors raise; only user-facing shell errors map to exit codes (v0.300 policy)
 
@@ -146,9 +147,9 @@ Input → Preprocessing → Tokenization → Keyword Normalization → Parsing �
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                 Lexical Analysis (Tokenization)                 │
-│                   State Machine Lexer                           │
+│                Recognizer-Based Modular Lexer                   │
 │                                                                 │
-│  Character Stream → Finite State Machine → Rich Token Stream   │
+│  Characters → Recognizers + Quote/Expansion Parsers → Tokens   │
 └─────────────────────────────┬───────────────────────────────────┘
                              │
                              ▼
@@ -210,7 +211,7 @@ This happens early because it can create multiple tokens from a single pattern.
 
 ## Phase 2: Lexical Analysis (Tokenization)
 
-The lexer converts character streams into meaningful tokens using a state machine approach.
+The lexer converts character streams into meaningful tokens by dispatching to priority-ordered token recognizers, with dedicated parsers consuming quotes and expansions whole.
 
 ### 2.1 Unified Lexer Package Architecture
 **Package**: `psh/lexer/`
@@ -247,97 +248,77 @@ The lexer uses a unified, modular architecture with enhanced features as standar
 
 Keyword recognition is a normalization pass over the token stream (`psh/lexer/keyword_normalizer.py`, with shared definitions in `psh/lexer/keyword_defs.py`).
 
-The architecture combines all components while maintaining backward compatibility:
+The architecture combines all components:
 ```python
 class ModularLexer:
-    """Lexer integrating all refactored components"""
+    """Modular lexer using pluggable token recognizers."""
     def __init__(self, input_string: str, config: Optional[LexerConfig] = None):
         self.position_tracker = PositionTracker(input_string)
-        self.state_manager = StateManager()
-        self.registry = RecognizerRegistry()
+        self.context = LexerContext()          # cross-token lexer state
+        self.registry = RecognizerRegistry()   # priority-ordered recognizers
         self.expansion_parser = ExpansionParser(self.config)
         self.quote_parser = UnifiedQuoteParser(self.expansion_parser)
 ```
 
-### 2.2 State Machine Architecture
+### 2.2 Lexer State
+**File**: `psh/lexer/state_context.py`
 
-The lexer uses a finite state machine with these states:
+There is no token-by-token state machine: quotes and expansions are
+consumed whole by the dedicated parsers, and everything else is dispatched
+to recognizers. The only cross-token state is the small `LexerContext`
+dataclass, tracking exactly what the recognizers consult:
+
 ```python
-class LexerState(Enum):
-    NORMAL = "NORMAL"
-    IN_WORD = "IN_WORD"
-    IN_SINGLE_QUOTE = "IN_SINGLE_QUOTE"
-    IN_DOUBLE_QUOTE = "IN_DOUBLE_QUOTE"
-    IN_BACKQUOTE = "IN_BACKQUOTE"
-    IN_COMMENT = "IN_COMMENT"
-    AFTER_DOLLAR = "AFTER_DOLLAR"
-    IN_VARIABLE = "IN_VARIABLE"
-    IN_COMMAND_SUB = "IN_COMMAND_SUB"
-    IN_ARITHMETIC = "IN_ARITHMETIC"
-    IN_PARAM_EXPANSION = "IN_PARAM_EXPANSION"
+@dataclass
+class LexerContext:
+    bracket_depth: int = 0          # [[ ]] nesting
+    command_position: bool = True   # affects keyword/assignment recognition
+    arithmetic_depth: int = 0       # $((...)) nesting
+    posix_mode: bool = False
+    case_depth: int = 0             # case..esac nesting
+    case_expecting_in: bool = False
+    in_case_pattern: bool = False
 ```
 
 ### 2.3 Unified Token System
 **Files**: `psh/lexer/token_types.py`, `psh/lexer/token_parts.py`
 
-The lexer produces unified `Token` objects with built-in metadata and context information:
+The lexer produces unified `Token` objects carrying position, quote and
+part metadata:
 ```python
 @dataclass
 class Token:
-    """Unified token class with metadata and context information (formerly EnhancedToken)."""
+    """Unified token class for the shell lexer and parser."""
     type: TokenType
     value: str
     position: int
     end_position: int = 0
-    quote_type: Optional[str] = None
+    quote_type: Optional[str] = None       # ' or " or None
     line: Optional[int] = None
     column: Optional[int] = None
-    metadata: Optional['TokenMetadata'] = field(default=None)
+    adjacent_to_previous: bool = False     # no whitespace before this token
+    is_keyword: bool = False               # set by the keyword normalizer
     parts: Optional[List['TokenPart']] = field(default=None)
-    
-    def add_context(self, context: TokenContext):
-        """Add context information to token metadata."""
-        
-    def has_context(self, context: TokenContext) -> bool:
-        """Check if token has specific context."""
-        
-    def is_in_test_context(self) -> bool:
-        """Check if token is in test expression context."""
+    fd: Optional[int] = None               # fd prefix (e.g. 2 in 2>file)
+    combined_redirect: bool = False        # &> and &>>
 ```
+
+`TokenPart` (in `psh/lexer/token_parts.py`) records each quoted/expansion
+segment of a composite word — this per-part decomposition is what the
+parser's `WordBuilder` turns into Word AST nodes.
 
 ### 2.4 Unified Architecture Benefits
 
-The unified lexer architecture provides numerous advantages:
-
-#### Unified Token System
-- **Single Token Class**: Token class includes metadata and enhanced functionality by default
-- **Built-in Context Tracking**: All tokens have context information for semantic analysis
-- **Metadata Integration**: TokenMetadata and context tracking built into every token
-- **No Conversion Overhead**: Direct creation and usage without compatibility layers
-
-#### Simplified Architecture  
-- **Single Implementation Path**: Enhanced lexer features now standard throughout PSH
-- **Eliminated Compatibility Code**: Removed feature flags, adapters, and dual code paths
-- **30% API Reduction**: Token class unification significantly reduced API surface
-- **Clean Codebase**: Focused implementation without legacy compatibility overhead
-
-#### Enhanced Features Standard
-- **Context Tracking**: Tokens know their lexical context (command position, test expression, etc.)
-- **Semantic Analysis**: Built-in semantic type classification for tokens
-- **Error Recovery**: Comprehensive error detection and suggestions
-- **Rich Metadata**: Position, line/column tracking, and part decomposition
-
-Overall benefits:
-- **Performance**: No compatibility overhead, single optimized code path
-- **Maintainability**: Simplified codebase with consistent token handling
-- **Reliability**: Enhanced error detection and recovery standard for all users
-- **Future Development**: Easier to add features without compatibility concerns
+- **Single Token Class**: one `Token` dataclass throughout lexer, parser and executor — no conversion layers
+- **Single Implementation Path**: no feature flags, adapters, or dual code paths
+- **Per-Part Quote Fidelity**: `parts` preserves quoting per segment, the foundation of correct expansion
+- **Maintainability**: focused implementation without legacy compatibility overhead
 
 ### 2.5 Context-Aware Tokenization
 
 The lexer handles context-sensitive tokenization:
 - `<` and `>` are operators inside `[[ ]]`, redirections elsewhere
-- Keywords like `in` are recognized only in appropriate contexts
+- Keywords like `in` are recognized only in appropriate contexts (case statements, for loops)
 - Operators are recognized using length-based lookup for efficiency
 - Quote information is preserved for proper expansion later
 
@@ -403,7 +384,7 @@ The parser combinator is a functional parser implementation demonstrating elegan
 
 **Key Features:**
 - **Functional Composition**: Combinators compose to build complex parsers
-- **100% Feature Parity**: Supports all shell constructs including:
+- **Near-Complete Feature Parity** (~95%): Supports nearly all shell constructs including:
   - Process substitution (`<(cmd)`, `>(cmd)`)
   - Compound commands (subshells, brace groups)
   - Arithmetic commands (`((expr))`)
@@ -708,7 +689,7 @@ executor/
 
 #### Unified Process Creation
 
-PSH uses a centralized `ProcessLauncher` component for all process creation, eliminating code duplication and ensuring consistent behavior across all fork points:
+PSH centralizes *job-controlled* process creation in `ProcessLauncher` (commands, pipelines, subshells — anything that becomes a job), eliminating code duplication and ensuring consistent behavior across those fork points. The fork itself and the child-side signal setup are shared by **all** fork sites, including the two that bypass ProcessLauncher by design (command substitution and process substitution, which are not jobs): every site forks via `fork_with_signal_window()` and applies `apply_child_signal_policy()` from `psh/executor/child_policy.py` (v0.312).
 
 **File**: `executor/process_launcher.py`
 
@@ -745,8 +726,8 @@ class ProcessLauncher:
 ```
 
 **Key Properties**:
-- **Single Source of Truth**: All process creation flows through one component
-- **Consistent Signal Handling**: Centralized signal reset via the required SignalManager
+- **Single Source of Truth for Job Control**: all job-controlled process creation flows through one component
+- **Consistent Signal Handling**: every child applies `apply_child_signal_policy()` via the required SignalManager
 - **Proper Synchronization**: Pipe-based synchronization for pipeline process groups
 - **Unified Job Control**: Consistent process group setup and terminal control transfer
 - **Shared Instance**: A single `ProcessLauncher` lives on the `Shell` object (`shell.process_launcher`, since v0.271.0); all call sites use it rather than constructing their own
@@ -927,7 +908,7 @@ The refactored executor package provides:
 
 ### 4.6 Execution Statistics
 
-- **Refactored Package**: 13 modules with clear responsibilities (originally a single ~2000-line ExecutorVisitor)
+- **Refactored Package**: 14 modules with clear responsibilities (originally a single ~2000-line ExecutorVisitor)
 - **New Architecture**: Strategy pattern for commands, delegation for all operations
 
 ## Phase 5: Expansion
@@ -937,41 +918,27 @@ Expansions happen during execution in POSIX-specified order.
 ### 5.1 Expansion Manager
 **File**: `expansion/manager.py`
 
-Orchestrates all expansions in the correct order:
+Orchestrates all expansions in the correct order. The entry point is
+`expand_arguments(command)`, which walks each `Word` AST node via the core
+walker `_expand_word()` — per-part quote context (not string type tags)
+decides which expansions apply:
 
 ```python
-def expand_argument(self, arg: str, arg_type: str) -> List[str]:
-    """Expand a single argument following POSIX rules"""
-    # 1. Tilde expansion (if unquoted)
-    if should_expand_tilde(arg, arg_type):
-        arg = self.tilde_expander.expand(arg)
-    
-    # 2. Parameter/variable expansion
-    arg = self.variable_expander.expand(arg)
-    
-    # 3. Command substitution
-    arg = self.expand_command_substitution(arg)
-    
-    # 4. Arithmetic expansion
-    arg = self.expand_arithmetic(arg)
-    
-    # 5. Word splitting (if unquoted)
-    if should_split(arg, arg_type):
-        words = self.split_words(arg)
-    else:
-        words = [arg]
-    
-    # 6. Pathname expansion (if unquoted)
-    expanded = []
-    for word in words:
-        if should_glob(word, arg_type):
-            expanded.extend(self.glob_expander.expand(word))
-        else:
-            expanded.append(word)
-    
-    # 7. Quote removal
-    return [self.remove_quotes(w) for w in expanded]
+def expand_arguments(self, command: SimpleCommand, ...) -> List[str]:
+    """Expand a command's Word AST nodes following POSIX rules."""
+    # For each Word in command.words, _expand_word() applies:
+    # 1. Tilde expansion       (first unquoted literal part only)
+    # 2. Variable expansion    (unquoted and double-quoted parts)
+    # 3. Command substitution  (unquoted and double-quoted parts)
+    # 4. Arithmetic expansion  ($((...)) parts)
+    # 5. Word splitting        (only fields from unquoted expansions)
+    # 6. Pathname expansion    (only unquoted parts)
+    # Quote removal falls out of the Word part structure itself.
 ```
+
+The full policy table (which entry point applies in which context —
+command words, assignment values, array elements, for/select items, case
+patterns, redirect targets) lives in `docs/architecture/ast_data_flow.md`.
 
 ### 5.2 Variable Expansion
 **Files**: `expansion/variable.py`, `expansion/parameter_expansion.py`
@@ -990,34 +957,41 @@ Handles all forms of variable expansion:
 ### 5.3 Command Substitution
 **File**: `expansion/command_sub.py`
 
-Executes commands and captures output:
+Executes commands and captures output. `CommandSubstitution.execute()`
+forks a real child process (via `fork_with_signal_window()` +
+`apply_child_signal_policy()`, like every other fork site) and reads its
+output through a pipe:
+
 ```python
-def expand_command_substitution(self, text: str) -> str:
-    """Expand $(...) and `...` in text"""
-    # Create subshell with inherited state
-    subshell = Shell(parent_shell=self.shell)
-    
-    # Execute command and capture output
-    output = subshell.run_command(command, capture_output=True)
-    
-    # Strip trailing newlines
-    return output.rstrip('\n')
+class CommandSubstitution:
+    def execute(self, cmd_sub: str) -> str:
+        """Execute $(...) or `...` and return its output."""
+        # Parent: create pipe, fork, read all output, waitpid,
+        #         record exit status (last_exit_code / last_cmdsub_status)
+        # Child:  apply child signal policy, dup2 stdout to the pipe,
+        #         build a child shell with Shell.for_subshell(parent),
+        #         run the command, flush streams, os._exit(status)
+        ...
+        return output.rstrip('\n')   # strip trailing newlines (POSIX)
 ```
 
-### 5.4 Arithmetic Expansion
-**File**: `arithmetic.py`
+A real fork (not in-process evaluation) is what makes subshell semantics
+correct: variable assignments, `cd`, `exit` and traps inside `$(...)`
+cannot leak into the parent.
 
-Evaluates arithmetic expressions:
+### 5.4 Arithmetic Expansion
+**Files**: `expansion/manager.py`, `expansion/arithmetic.py`
+
+Evaluates arithmetic expressions. `ExpansionManager.execute_arithmetic_expansion()`
+strips the `$((`...`))` delimiters and delegates to the arithmetic
+subsystem:
+
 ```python
-def expand_arithmetic(self, text: str) -> str:
-    """Expand $((...)) in text"""
-    # Extract expression
-    expr = text[3:-2]  # Remove $(( and ))
-    
-    # Evaluate using arithmetic subsystem
-    result = evaluate_arithmetic(expr, self.shell)
-    
-    return str(result)
+def execute_arithmetic_expansion(self, expr: str) -> int:
+    """Evaluate the expression inside $((...))."""
+    # Extract expression text, then evaluate with the arithmetic
+    # tokenizer/parser/evaluator in expansion/arithmetic.py
+    return evaluate_arithmetic(expression, self.shell)
 ```
 
 ## Phase 6: I/O Redirection
@@ -1029,20 +1003,20 @@ I/O redirections are applied around command execution.
 
 Manages all forms of redirection:
 ```python
-def apply_redirections(self, redirects: List[Redirect]) -> Dict[int, int]:
-    """Apply redirections and return saved file descriptors"""
-    saved_fds = {}
-    
+def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int]]:
+    """Apply redirections and return saved (fd, saved_copy) pairs"""
+    saved_fds = []
+
     for redirect in redirects:
         if redirect.type == '>':
             # Output redirection
             fd = redirect.source_fd or 1
-            saved_fds[fd] = os.dup(fd)
+            saved_fds.append((fd, os.dup(fd)))
             target_fd = os.open(redirect.target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
             os.dup2(target_fd, fd)
             os.close(target_fd)
         # ... handle other redirection types
-    
+
     return saved_fds
 ```
 
@@ -1112,7 +1086,7 @@ Special exceptions handle control flow:
 ## Performance Considerations
 
 ### Efficient Tokenization
-- State machine minimizes backtracking
+- Single forward pass with minimal backtracking
 - Length-based operator lookup
 - Minimal string concatenation
 
@@ -1172,16 +1146,16 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 - **Visitor Pattern**: Extensible AST traversal for execution and analysis
 
 ### Unified Lexer System
-- **State Machine**: Robust tokenization with context tracking
-- **Enhanced Tokens**: Built-in metadata, position tracking, and semantic information
-- **Modular Recognition**: Priority-based token recognizers
-- **Context Awareness**: Tokens know their lexical context for semantic analysis
+- **Recognizer Dispatch**: Robust tokenization via priority-ordered recognizers
+- **Unified Tokens**: Built-in position tracking, quote metadata, and part decomposition
+- **Dedicated Sub-Parsers**: Quotes and expansions consumed whole, preserving structure
+- **Context Awareness**: `LexerContext` tracks command position, `[[ ]]`/case/arithmetic nesting
 
 ### Component Organization
 - **Clear Boundaries**: Each subsystem (lexer, parser, executor, expansion) is independent
 - **Manager Pattern**: Coordinated functionality through manager classes
 - **POSIX Compliance**: ~98% compliance with proper expansion ordering
-- **Testability**: Comprehensive test suite with 4,800+ tests
+- **Testability**: Comprehensive test suite with 5,500+ tests
 
 ## Known Limitations
 

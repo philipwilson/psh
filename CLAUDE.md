@@ -118,6 +118,13 @@ tests for user-guide claims, unit/integration tests otherwise). When an
 existing test fails after a fix, READ it first — if it pins old broken
 behavior, verify against bash and update the test, not the fix.
 
+Probe scripts that are still worth keeping after the fix don't stay in
+`tmp/` — promote them to entries in `tests/behavioral/golden_cases.yaml`,
+which the `--compare-bash` phase (`python run_tests.py --compare-bash`,
+or `pytest tests/behavioral --compare-bash`) re-runs against a real bash.
+That keeps the probe earning its keep as a regression pin instead of
+rotting as a scratch file.
+
 ### Release workflow (per completed enhancement)
 
 1. Work on a `fix/<topic>` branch.
@@ -218,12 +225,21 @@ Each manager handles a specific aspect:
 - `AliasManager` - Shell aliases
 
 ### Process Execution Architecture
-PSH uses a unified process creation system for all forked processes:
-- **ProcessLauncher** (`psh/executor/process_launcher.py`) - Single source of truth for all process creation
+PSH has one fork helper and one child signal policy; job-controlled process
+creation additionally goes through ProcessLauncher:
+- **fork helper** (`psh/executor/child_policy.py`) - every fork site uses
+  `fork_with_signal_window()`, and every child applies
+  `apply_child_signal_policy()` immediately after the fork (v0.312)
+- **ProcessLauncher** (`psh/executor/process_launcher.py`) - single source of
+  truth for *job-controlled* process creation (process groups, terminal
+  control, pipeline synchronization)
 - **ProcessRole Enum**: SINGLE, PIPELINE_LEADER, PIPELINE_MEMBER
 - **ProcessConfig**: Configuration for launch (role, pgid, foreground, sync pipes, I/O setup)
-- **Benefits**: Eliminates code duplication, consistent signal handling, centralized job control
 - **Used by**: Pipelines, external commands, builtins (background), subshells, brace groups
+- **Substitutions fork directly by design**: command substitution
+  (`psh/expansion/command_sub.py`) and process substitution
+  (`psh/io_redirect/process_sub.py`) are not jobs — they call the fork helper
+  and child signal policy themselves rather than going through ProcessLauncher
 
 ### Word AST (SimpleCommand Arguments)
 The parser always builds **Word AST nodes** for command arguments. Each

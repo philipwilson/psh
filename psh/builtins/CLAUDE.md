@@ -18,7 +18,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 
 | File | Purpose |
 |------|---------|
-| `base.py` | `Builtin` abstract base class |
+| `base.py` | `Builtin` abstract base class (I/O helpers, `parse_flags`, statelessness contract) |
 | `registry.py` | `BuiltinRegistry` and `@builtin` decorator |
 | `__init__.py` | Imports all builtins to trigger registration |
 
@@ -27,7 +27,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 **I/O Operations**
 | File | Commands |
 |------|----------|
-| `io.py` | `echo`, `printf`, `pwd` (plus shared `process_escapes()` helper) |
+| `io.py` | `echo`, `printf`, `pwd`. The shared `process_escapes()` helper is a thin wrapper over `process_echo_escapes()` in `psh/utils/escapes.py`; printf's FORMAT/argument engine is NOT here either — it was extracted to `psh/utils/printf_formatter.py` (`format_printf()`, pure, no shell dependency; also used by `print -f`) |
 | `print_builtin.py` | `print` (zsh-compatible) |
 | `read_builtin.py` | `read` |
 | `mapfile_builtin.py` | `mapfile` (alias `readarray`) |
@@ -134,6 +134,17 @@ class Builtin(ABC):
         pass
 ```
 
+**Statelessness contract (v0.313)**: builtin instances are process-wide
+singletons — each class is instantiated exactly once at import time by the
+`@builtin` decorator and shared by every Shell in the process (including
+subshells and `Shell.for_subshell()` children). A builtin must keep NO
+per-invocation or per-shell state on `self`; everything mutable lives on
+the `shell` argument (`shell.state`, `shell.env`, ...). Concretely,
+`vars(instance)` must stay empty after any command battery. The contract
+is spelled out in the `Builtin` docstring in `base.py` and enforced by
+`tests/unit/builtins/test_builtin_statelessness.py` (which iterates
+`registry.instances()`).
+
 The base class also provides forked-child-aware I/O helpers — use these,
 never raw `print(..., file=sys.stderr)` (the error-channel convention,
 established in v0.284, is: stdout via `self.write()`/`self.write_line()`,
@@ -162,6 +173,9 @@ def error(self, message: str, shell: 'Shell') -> None:
     print(f"{self.name}: {message}", file=stderr)
     stderr.flush()
 ```
+
+A fourth helper, `write_error_line()`, writes an UNPREFIXED line to
+stderr — for usage/diagnostic lines that accompany an `error()` call.
 
 For option parsing, use the shared getopt-style helper instead of
 hand-rolling loops:
@@ -208,6 +222,15 @@ if registry.has('echo'):
 # Get all builtin names
 names = registry.names()  # ['cd', 'echo', 'exit', ...]
 ```
+
+**Relationship to `SHELL_BUILTINS`**: the analysis visitors (linter,
+metrics, enhanced validator) classify command names against
+`SHELL_BUILTINS` in `psh/visitor/constants.py` — a *bash-scoped* set that
+is a superset of the registry: it contains every builtin psh's registry
+provides PLUS bash-only names (e.g. `suspend`, `fc`) so analyzing
+bash scripts works cleanly. Both directions are pinned by
+`tests/unit/visitor/test_shell_builtins_pinned.py`: registering a new
+builtin without adding it there fails the suite.
 
 ## Adding a New Builtin
 
@@ -376,6 +399,10 @@ python -m pytest tests/unit/builtins/ -v --capture=no
 5. **Option Parsing**: Handle `--` to stop option processing.
 
 6. **Shell State**: Access state through `shell.state`, not global variables.
+
+7. **No State on `self`**: builtin instances are shared singletons — storing
+   anything on `self` leaks across shells and subshells and fails
+   `tests/unit/builtins/test_builtin_statelessness.py`.
 
 ## Integration Points
 
