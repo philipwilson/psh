@@ -1,7 +1,6 @@
 """Directory stack builtin commands (pushd, popd, dirs)."""
 
 import os
-import sys
 from typing import TYPE_CHECKING, List, Optional
 
 from .base import Builtin
@@ -155,6 +154,11 @@ class PushdBuiltin(Builtin):
         if arg.startswith('+') or arg.startswith('-'):
             try:
                 offset = int(arg)
+                if arg.startswith('-'):
+                    # Bash-verified: -N counts from the RIGHT, 0-based
+                    # (-0 is the bottom of the stack), so the left index
+                    # to rotate to the top is size-1-N.
+                    offset = stack.size() - 1 + offset
                 new_dir = stack.rotate(offset)
                 if new_dir is None:
                     self.error("directory stack empty", shell)
@@ -237,7 +241,7 @@ class PushdBuiltin(Builtin):
     def _print_stack(self, stack: DirectoryStack, shell: 'Shell'):
         """Print current directory stack."""
         output = ' '.join(format_directory_for_display(d) for d in stack.stack)
-        print(output, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+        self.write_line(output, shell)
 
     @property
     def help(self) -> str:
@@ -314,8 +318,10 @@ class PopdBuiltin(Builtin):
         try:
             index = int(arg)
             if arg.startswith('-'):
-                # -N means Nth from right (convert to left index)
-                index = stack.size() + index
+                # Bash-verified: -N means Nth from the RIGHT, 0-based
+                # (-0 is the bottom of the stack), so the left index is
+                # size-1-N.
+                index = stack.size() - 1 + index
             else:
                 # +N means Nth from left
                 index = index
@@ -364,7 +370,7 @@ class PopdBuiltin(Builtin):
     def _print_stack(self, stack: DirectoryStack, shell: 'Shell'):
         """Print current directory stack."""
         output = ' '.join(format_directory_for_display(d) for d in stack.stack)
-        print(output, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+        self.write_line(output, shell)
 
     @property
     def help(self) -> str:
@@ -393,7 +399,7 @@ class DirsBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "dirs [-clv] [+N | -N]"
+        return "dirs [-clpv] [+N | -N]"
 
     @property
     def description(self) -> str:
@@ -410,9 +416,14 @@ class DirsBuiltin(Builtin):
 
         stack = shell.state.directory_stack
 
-        # Parse options
+        # Parse options. NOTE: deliberately NOT parse_flags() — `-N` index
+        # arguments (e.g. `dirs -1`) collide with single-dash flag syntax,
+        # and bash itself rejects clustered flags here (`dirs -lv` is
+        # "invalid number" in bash 5.2), so the shared clustering helper
+        # would parse MORE than bash does.
         clear_stack = False
         vertical_format = False
+        per_line = False
         no_tilde = False
         show_index = None
 
@@ -426,6 +437,8 @@ class DirsBuiltin(Builtin):
                         clear_stack = True
                     elif flag == 'v':
                         vertical_format = True
+                    elif flag == 'p':
+                        per_line = True
                     elif flag == 'l':
                         no_tilde = True
                     else:
@@ -436,8 +449,10 @@ class DirsBuiltin(Builtin):
                 try:
                     show_index = int(arg)
                     if arg.startswith('-'):
-                        # -N means Nth from right
-                        show_index = stack.size() + show_index
+                        # Bash-verified: -N means Nth from the RIGHT,
+                        # 0-based (-0 is the bottom of the stack), so the
+                        # left index is size-1-N.
+                        show_index = stack.size() - 1 + show_index
 
                     if show_index < 0 or show_index >= stack.size():
                         self.error(f"directory stack index out of range: {arg}", shell)
@@ -463,30 +478,36 @@ class DirsBuiltin(Builtin):
                 return 1
 
             formatted = format_directory_for_display(directory, no_tilde)
-            print(formatted, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+            self.write_line(formatted, shell)
             return 0
 
         # Display stack
         if vertical_format:
+            # bash separates the index and path with two spaces, not a tab
             for i, directory in enumerate(stack.stack):
                 formatted = format_directory_for_display(directory, no_tilde)
-                print(f" {i}\t{formatted}", file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+                self.write_line(f" {i}  {formatted}", shell)
+        elif per_line:
+            # -p: one entry per line, no indices (bash-verified)
+            for directory in stack.stack:
+                self.write_line(format_directory_for_display(directory, no_tilde), shell)
         else:
             # Horizontal format
             directories = [format_directory_for_display(d, no_tilde) for d in stack.stack]
             output = ' '.join(directories)
-            print(output, file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+            self.write_line(output, shell)
 
         return 0
 
     @property
     def help(self) -> str:
-        return """dirs: dirs [-clv] [+N | -N]
+        return """dirs: dirs [-clpv] [+N | -N]
     Display directory stack.
 
     Options:
         -c      Clear the directory stack by deleting all entries
         -l      List in long format; do not use ~ to indicate HOME
+        -p      List one directory per line
         -v      List in vertical format with indices
         +N      Display Nth entry from left of stack (counting from 0)
         -N      Display Nth entry from right of stack

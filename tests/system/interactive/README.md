@@ -40,7 +40,13 @@ If a test fails:
 
 ## Test Categories
 
-- **test_basic_interactive.py** - Basic command execution without line editing
-- **test_line_editing.py** - Line editor features (many skipped due to PTY issues)
-- **test_simple_commands.py** - Additional command execution tests
+- **test_pty_smoke.py** - The canonical PTY suite (runs by default): prompt,
+  execution, line editing, wrapped lines, vi mode, history, job control,
+  plus behaviors ported from the deleted legacy suites (Ctrl-R search,
+  Ctrl-L, tab completion, pipelines). The old blanket-skipped files
+  (test_basic_interactive.py, test_line_editing.py, test_simple_commands.py,
+  test_working_interactive.py, test_subprocess_commands.py) were removed
+  once their "PTY doesn't work under pytest" skip reasons stopped being
+  true; anything they uniquely covered lives in TestPtyPortedLegacy.
 - **test_basic_spawn.py** - Low-level PSH spawning tests
+- **test_interactive_features.py** - Opt-in extras (--run-interactive)

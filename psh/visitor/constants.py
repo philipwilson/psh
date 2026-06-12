@@ -29,7 +29,18 @@ SENSITIVE_COMMANDS = {
     'fdisk': 'Disk partitioning',
 }
 
-# Shell builtins — union of enhanced_validator and linter lists
+# Shell builtins — commands a script under analysis may legitimately assume
+# are builtins. This set is deliberately BASH-scoped, not psh-scoped: the
+# analysis visitors (linter "called but not defined", metrics builtin/external
+# classification, enhanced validator's typo check) inspect scripts that are
+# usually written FOR bash, so bash builtins psh does not implement (caller,
+# compgen, enable, hash, ...) must not be flagged as unknown commands.
+# It additionally contains every builtin psh's own registry provides
+# (including psh-specific debug builtins like parse-tree), so scripts written
+# for psh analyze cleanly too. Both directions are pinned by
+# tests/unit/visitor/test_shell_builtins_pinned.py: a new registry builtin
+# must be added here, and any bash-only entry must appear in that test's
+# expected list.
 SHELL_BUILTINS = {
     # I/O
     'echo', 'printf', 'read',
@@ -37,7 +48,7 @@ SHELL_BUILTINS = {
     'cd', 'pwd', 'dirs', 'pushd', 'popd',
     # Variables
     'export', 'unset', 'set', 'declare', 'typeset', 'local', 'readonly',
-    'shift', 'getopts',
+    'shift', 'getopts', 'env', 'mapfile',
     # Control
     'exit', 'return', 'break', 'continue', 'eval', 'exec',
     'source', '.', 'true', 'false', ':',
@@ -52,11 +63,14 @@ SHELL_BUILTINS = {
     # Introspection
     'command', 'builtin', 'enable', 'help', 'type', 'hash',
     # Signals / limits
-    'trap', 'umask', 'ulimit', 'times',
+    'trap', 'umask', 'ulimit', 'times', 'signals',
     # Test
     'test', '[', '[[', ']]',
     # Other
-    'shopt', 'caller', 'bind', 'let', 'logout',
+    'shopt', 'caller', 'bind', 'let', 'logout', 'print', 'version',
+    # psh-specific debug/introspection builtins
+    'ast-dot', 'debug', 'debug-ast', 'parse-tree', 'parser-config',
+    'parser-mode', 'parser-select', 'show-ast',
 }
 
 # Common external commands (for linter "unknown command" checks)

@@ -4,6 +4,53 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.313.0 (2026-06-12) - Textbook program Tier A2: test/CI honesty (TIER A COMPLETE)
+- Timing tests measure CPU time: test_lexer_performance.py and the
+  benchmark helpers use time.process_time() + min-of-3 (preemption
+  steals wall time, not CPU time). Regression sensitivity PROVEN by
+  temporarily injecting an O(N²) loop (failed at ratio 4.0) and
+  removing it. The xdist timing-flake class is closed.
+- Skip-debt purge: the 5 legacy interactive files (53 dead skips with
+  false reasons) deleted AFTER porting their 6 uncovered behaviors to
+  the PTY smoke tier — Ctrl-R reverse search, unique-file and
+  common-prefix tab completion (pass), command/variable completion
+  (strict xfail: CompletionEngine is path-only — flips loudly when
+  implemented), Ctrl-L screen clear, pipeline-in-PTY. The wrong
+  subshell xfail rewritten to pin bash semantics (subshell exit 0 when
+  the failing command isn't last — bash agrees). Census: 272 skips /
+  1 xfail → 220 skips / 20 xfails, every reason now true and
+  printable via the new --census flag.
+- Absent-feature ledger (tests/conformance/bash/
+  test_absent_features.py): 19 features probed firsthand against bash
+  5.2.26 — 18 strict-xfail entries (coproc, wait -n/-f, read -u, bind,
+  compgen, complete, caller, hash, enable, exec -a, lastpipe,
+  failglob, ${a[@]@K}, extglob-in-param-expansion, jobs -x, suspend,
+  test -v) + 1 documented-wontfix skip (history expansion). The two
+  SILENT TRAPS are called out: @K degrades to plain values rc 0, and
+  shopt -s extglob reports "on" while patterns are inert in parameter
+  expansion. "98% compliance" now has an honest denominator;
+  implementations flip entries loudly.
+- visitor SHELL_BUILTINS documented as bash-scoped, 13 missing
+  registry builtins added, and pinned in BOTH directions by a new
+  test (registry ⊆ list; extras must be on an explicit allowlist that
+  itself fails if psh implements one).
+- Builtin statelessness enforced: ~60-command battery then
+  vars(instance) == {} for every registered builtin; contract
+  documented in base.py. Caught a real bug: an executor test fixture
+  leaked its builtin instance into the registry process-wide.
+- directory_stack/help channel-convention sweep (raw prints →
+  write_line); probing fixed real divergences: dirs -p added,
+  dirs/popd/pushd -N off-by-one corrected (bash counts from the
+  right, 0-based), dirs -v uses bash's two-space separator.
+- CI: quick-suite job uploads a non-gating coverage.xml artifact
+  (run_tests.py --coverage threads cov args through every phase);
+  new nightly.yml (cron 03:00 UTC + workflow_dispatch) runs the full
+  parallel suite with --compare-bash --census plus the complete
+  conformance suite, printing bash --version. run_tests.py prints
+  combined cross-phase totals.
+- Suite: 5,261 passed / 5,501 collected, 220 skipped, 20 xfailed;
+  ruff (psh+tests) + mypy clean.
+
 ## 0.312.0 (2026-06-12) - Textbook program Tier A1: behavior batch
 - printf: the ~550-line formatting engine extracted to pure
   utils/printf_formatter.py (format_printf(fmt, args) -> PrintfResult;

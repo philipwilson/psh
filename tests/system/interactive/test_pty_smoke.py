@@ -464,3 +464,82 @@ class TestPtyJobControl:
         time.sleep(0.5)
         psh.sendintr()             # interrupt the resumed job
         psh.expect(PROMPT, timeout=8)
+
+
+class TestPtyPortedLegacy:
+    """Behaviors ported from the deleted legacy interactive suites
+    (test_line_editing.py, test_simple_commands.py, ...) whose skip
+    reasons ("escape sequences not working in PTY", "requires raw
+    terminal mode") stopped being true once this smoke framework landed
+    (v0.270.0+). Same conventions as above: send(cmd + '\\r'),
+    arithmetic sentinels so expected output never appears in the typed
+    command, always expect the prompt between commands.
+    """
+
+    def test_pipeline_executes(self, psh):
+        # tr uppercases the sentinel, so the expected text can't match
+        # the echo of the typed command.
+        psh.send('echo start_$((30+7)) | tr a-z A-Z\r')
+        psh.expect('START_37')
+        psh.expect(PROMPT)
+
+    def test_ctrl_r_reverse_search_recalls_command(self, psh):
+        psh.send('echo findme_$((8+8))\r')
+        psh.expect('findme_16')
+        psh.expect(PROMPT)
+        psh.send('echo other_$((1+2))\r')
+        psh.expect('other_3')
+        psh.expect(PROMPT)
+        psh.send('\x12')          # ctrl-r enters reverse search
+        psh.expect('bck-i-search')
+        psh.send('findme')        # incremental match on the older command
+        psh.send('\r')            # accept search result into the buffer
+        psh.send('\r')            # execute the recalled command
+        psh.expect('findme_16')
+
+    def test_ctrl_l_clears_screen_and_keeps_session(self, psh):
+        psh.send('echo before_$((2+2))\r')
+        psh.expect('before_4')
+        psh.expect(PROMPT)
+        psh.send('\x0c')          # ctrl-l
+        psh.expect(re.escape('\x1b[2J'))   # clear-screen escape emitted
+        psh.send('echo after_$((10+1))\r')
+        psh.expect('after_11')    # the session is still healthy
+
+    def test_tab_completes_unique_filename(self, psh, tmp_path):
+        psh.send(f'cd {tmp_path}\r')
+        psh.expect(PROMPT)
+        psh.send('echo data_$((50+5)) > uniquefile.txt\r')
+        psh.expect(PROMPT)
+        psh.send('cat uniq\t')    # completes to uniquefile.txt
+        psh.send('\r')
+        psh.expect('data_55')     # file content: completion must have worked
+
+    def test_tab_expands_common_prefix(self, psh, tmp_path):
+        psh.send(f'cd {tmp_path}\r')
+        psh.expect(PROMPT)
+        psh.send('echo content_$((40+2)) > testfile1.txt\r')
+        psh.expect(PROMPT)
+        psh.send('echo other > testfile2.txt\r')
+        psh.expect(PROMPT)
+        psh.send('cat test\t')    # expands to the common prefix 'testfile'
+        psh.send('1.txt\r')       # disambiguate by hand
+        psh.expect('content_42')
+
+    @pytest.mark.xfail(strict=True, reason=(
+        "psh tab completion is path-only (CompletionEngine completes "
+        "filenames; bash also completes command names from PATH/builtins)"))
+    def test_tab_completes_command_name(self, psh):
+        psh.send('ech\t')         # bash: completes to 'echo'
+        psh.send(' cc_$((3*4))\r')
+        psh.expect('cc_12', timeout=4)
+
+    @pytest.mark.xfail(strict=True, reason=(
+        "psh tab completion is path-only (CompletionEngine completes "
+        "filenames; bash also completes $VAR variable names)"))
+    def test_tab_completes_variable_name(self, psh):
+        psh.send('MYVAR_ALPHA=$((6*7))\r')
+        psh.expect(PROMPT)
+        psh.send('echo v_$MYVAR_AL\t')   # bash: completes to $MYVAR_ALPHA
+        psh.send('\r')
+        psh.expect('v_42', timeout=4)

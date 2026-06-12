@@ -10,7 +10,19 @@ if TYPE_CHECKING:
 
 
 class Builtin(ABC):
-    """Abstract base class for all shell builtins."""
+    """Abstract base class for all shell builtins.
+
+    STATELESSNESS CONTRACT: builtin instances are process-wide singletons —
+    each class is instantiated exactly once at import time by the
+    ``@builtin`` decorator and shared by every Shell in the process
+    (including subshells and nested ``Shell(parent_shell=...)`` instances).
+    A builtin must therefore keep NO per-invocation or per-shell state on
+    ``self``: everything mutable lives on the ``shell`` argument passed to
+    ``execute()`` (e.g. ``shell.state``, ``shell.env``,
+    ``shell.state.directory_stack``). Concretely, ``vars(instance)`` must
+    remain empty after any command battery; this is enforced by
+    tests/unit/builtins/test_builtin_statelessness.py.
+    """
 
     @property
     @abstractmethod

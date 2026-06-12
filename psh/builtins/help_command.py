@@ -89,7 +89,7 @@ class HelpBuiltin(Builtin):
             for builtin_obj in builtins_to_show:
                 self._show_detailed_help(builtin_obj, shell, show_manpage)
                 if len(builtins_to_show) > 1:
-                    print(file=shell.stdout)  # Add blank line between multiple helps
+                    self.write_line("", shell)  # Add blank line between multiple helps
         elif show_descriptions:
             # Show brief descriptions
             self._show_descriptions(builtins_to_show, shell)
@@ -112,24 +112,22 @@ class HelpBuiltin(Builtin):
 
     def _show_default_listing(self, builtins: List[Builtin], shell: 'Shell') -> None:
         """Show default help listing similar to bash."""
-        output = shell.stdout
-
         # Get version from shell state or fallback to hardcoded version
         version = getattr(shell.state, 'version', None) or shell.state.get_variable('PSH_VERSION', '0.54.0')
-        print("PSH Shell, version " + str(version), file=output)
-        print("These shell commands are defined internally. Type 'help name' to find out more", file=output)
-        print("about the function 'name'.", file=output)
-        print(file=output)
-        print("Debug options available via 'set -o' or command line:", file=output)
-        print("  debug-ast                Show AST before execution", file=output)
-        print("  debug-tokens             Show tokens during parsing", file=output)
-        print("  debug-scopes             Show variable scope operations", file=output)
-        print("  debug-expansion          Show parameter/command expansions", file=output)
-        print("  debug-expansion-detail   Show detailed expansion steps", file=output)
-        print("  debug-exec               Show execution flow", file=output)
-        print("  debug-exec-fork          Show fork/exec details", file=output)
-        print("Use 'debug OPTION on/off' or 'debug-ast' for dedicated debug control.", file=output)
-        print(file=output)
+        self.write_line("PSH Shell, version " + str(version), shell)
+        self.write_line("These shell commands are defined internally. Type 'help name' to find out more", shell)
+        self.write_line("about the function 'name'.", shell)
+        self.write_line("", shell)
+        self.write_line("Debug options available via 'set -o' or command line:", shell)
+        self.write_line("  debug-ast                Show AST before execution", shell)
+        self.write_line("  debug-tokens             Show tokens during parsing", shell)
+        self.write_line("  debug-scopes             Show variable scope operations", shell)
+        self.write_line("  debug-expansion          Show parameter/command expansions", shell)
+        self.write_line("  debug-expansion-detail   Show detailed expansion steps", shell)
+        self.write_line("  debug-exec               Show execution flow", shell)
+        self.write_line("  debug-exec-fork          Show fork/exec details", shell)
+        self.write_line("Use 'debug OPTION on/off' or 'debug-ast' for dedicated debug control.", shell)
+        self.write_line("", shell)
 
         # Calculate column layout
         max_width = 79  # Terminal width
@@ -155,47 +153,41 @@ class HelpBuiltin(Builtin):
                     synopsis2 = synopsis2[:col_width - 5] + "..."
                 line += f" {synopsis2}"
 
-            print(line, file=output)
+            self.write_line(line, shell)
 
     def _show_descriptions(self, builtins: List[Builtin], shell: 'Shell') -> None:
         """Show brief descriptions (-d mode)."""
-        output = shell.stdout
-
         for builtin_obj in builtins:
-            print(f"{builtin_obj.name} - {builtin_obj.description}", file=output)
+            self.write_line(f"{builtin_obj.name} - {builtin_obj.description}", shell)
 
     def _show_synopsis(self, builtins: List[Builtin], shell: 'Shell') -> None:
         """Show synopsis only (-s mode)."""
-        output = shell.stdout
-
         for builtin_obj in builtins:
-            print(f"{builtin_obj.name}: {builtin_obj.synopsis}", file=output)
+            self.write_line(f"{builtin_obj.name}: {builtin_obj.synopsis}", shell)
 
     def _show_detailed_help(self, builtin_obj: Builtin, shell: 'Shell', manpage_format: bool = False) -> None:
         """Show detailed help for a specific builtin."""
-        output = shell.stdout
-
         if manpage_format:
             # Manpage format
-            print("NAME", file=output)
-            print(f"    {builtin_obj.name} - {builtin_obj.description}", file=output)
-            print(file=output)
-            print("SYNOPSIS", file=output)
-            print(f"    {builtin_obj.synopsis}", file=output)
-            print(file=output)
-            print("DESCRIPTION", file=output)
+            self.write_line("NAME", shell)
+            self.write_line(f"    {builtin_obj.name} - {builtin_obj.description}", shell)
+            self.write_line("", shell)
+            self.write_line("SYNOPSIS", shell)
+            self.write_line(f"    {builtin_obj.synopsis}", shell)
+            self.write_line("", shell)
+            self.write_line("DESCRIPTION", shell)
 
             # Parse help text for description
             help_text = builtin_obj.help
             lines = help_text.split('\n')
             for line in lines:
                 if line.strip():
-                    print(f"    {line}", file=output)
+                    self.write_line(f"    {line}", shell)
                 else:
-                    print(file=output)
+                    self.write_line("", shell)
         else:
             # Standard format
-            print(builtin_obj.help, file=output)
+            self.write_line(builtin_obj.help, shell)
 
     @property
     def help(self) -> str:

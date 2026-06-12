@@ -7,8 +7,6 @@ inheritance, I/O redirection, and advanced scenarios using the subshell syntax (
 
 import os
 
-import pytest
-
 
 class TestSubshellExecution:
     """Test basic subshell command execution."""
@@ -574,9 +572,15 @@ class TestSubshellCompatibility:
 class TestSubshellErrorHandling:
     """Test error handling in subshells."""
 
-    @pytest.mark.xfail(reason="PSH may not propagate command not found errors from subshells")
     def test_command_not_found_in_subshell(self, isolated_shell_with_temp_dir):
-        """Test handling of command not found errors in subshells."""
+        """Command-not-found inside a subshell follows bash semantics.
+
+        Bash-verified (bash 5.2): a subshell's exit status is that of its
+        LAST command. `(echo before; nonexistent; echo after)` exits 0
+        because the trailing echo succeeds; the failure surfaces only on
+        stderr. When the nonexistent command is last, the subshell exits
+        127.
+        """
         shell = isolated_shell_with_temp_dir
 
         script = '''
@@ -585,15 +589,28 @@ class TestSubshellErrorHandling:
         '''
 
         result = shell.run_command(script)
-        # Main script should continue even if subshell fails
+        # Main script should continue even if a command inside the subshell fails
         assert result == 0
 
         with open('status.txt', 'r') as f:
             status = f.read().strip()
-        # Should capture non-zero exit status
-        assert "Exit status:" in status
-        # Exit status should be non-zero
-        assert not status.endswith("0")
+        # Last command (echo "after") succeeded, so the subshell exits 0 —
+        # exactly as bash does.
+        assert status == "Exit status: 0"
+
+        # The failure is still reported on stderr.
+        with open('error.txt', 'r') as f:
+            error = f.read()
+        assert "nonexistent_command" in error
+
+        # When the failing command is LAST, its 127 becomes the subshell's
+        # exit status (bash-verified).
+        shell.run_command(
+            '(echo "before"; nonexistent_command) 2> error2.txt; '
+            'echo "Exit status: $?" > status2.txt'
+        )
+        with open('status2.txt', 'r') as f:
+            assert f.read().strip() == "Exit status: 127"
 
     def test_syntax_error_handling(self, isolated_shell_with_temp_dir):
         """Test handling of syntax errors in subshells."""
