@@ -16,12 +16,17 @@ The package is organized into focused modules:
 - context: Execution context and state management
 - strategies: Execution strategies (builtin, function, alias, external)
 - process_launcher: Unified process creation with job control
-- child_policy: Child process signal setup
+- child_policy: Fork helper, child signal policy, shared child-body runner
 - enhanced_test_evaluator: [[ ]] test expression evaluation
 """
 
 from .array import ArrayOperationExecutor
-from .child_policy import apply_child_signal_policy, fork_with_signal_window
+from .child_policy import (
+    apply_child_signal_policy,
+    flush_child_streams,
+    fork_with_signal_window,
+    run_child_shell,
+)
 from .command import CommandExecutor
 from .context import ExecutionContext
 from .control_flow import ControlFlowExecutor
@@ -42,6 +47,8 @@ __all__ = [
     'ExecutionContext',
     'ExternalExecutionStrategy',
     'apply_child_signal_policy',
+    'flush_child_streams',
     'fork_with_signal_window',
+    'run_child_shell',
     'TestExpressionEvaluator',
 ]

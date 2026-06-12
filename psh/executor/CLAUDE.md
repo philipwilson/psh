@@ -28,7 +28,7 @@ Executor  Executor   Executor   Executor  Executor
 | `subshell.py` | `SubshellExecutor` - subshells and brace groups |
 | `array.py` | `ArrayOperationExecutor` - array initialization |
 | `process_launcher.py` | `ProcessLauncher` - unified process creation |
-| `child_policy.py` | `fork_with_signal_window()` + `apply_child_signal_policy()` - single source of truth for forking and child signal setup |
+| `child_policy.py` | The "becoming a healthy child process" chapter: `fork_with_signal_window()`, `apply_child_signal_policy()`, `run_child_shell()` (shared substitution-child runner), `flush_child_streams()` |
 | `job_control.py` | `JobManager`, `Job`, `JobState`, `Process` - job table and waiting (moved into the package in v0.285) |
 | `strategies.py` | Execution strategies for different command types, plus shared helpers `report_exec_failure()` and `execute_builtin_guarded()` |
 | `enhanced_test_evaluator.py` | `[[ ]]` test expression evaluation |
@@ -225,11 +225,41 @@ The `is_shell_process` flag controls SIGTTOU disposition:
 All 3 fork paths use this policy (file_redirect.py and io_redirect/manager.py
 no longer fork — they delegate to `process_sub.create_process_substitution`):
 
-| Fork Path | File | is_shell_process |
-|-----------|------|-----------------|
-| ProcessLauncher | `process_launcher.py` | `config.is_shell_process` |
-| Command substitution | `expansion/command_sub.py` | `True` |
-| Process substitution | `io_redirect/process_sub.py` | `True` |
+| Fork Path | File | is_shell_process | Child body |
+|-----------|------|-----------------|------------|
+| ProcessLauncher | `process_launcher.py` | `config.is_shell_process` | own path: `_child_setup_and_exec` |
+| Command substitution | `expansion/command_sub.py` | `True` | `run_child_shell()` |
+| Process substitution | `io_redirect/process_sub.py` | `True` | `run_child_shell()` |
+
+### The Shared Child-Body Runner (`run_child_shell`)
+
+Both substitution fork sites run their child branch through
+`child_policy.run_child_shell(parent_shell, body, *, norc, io_setup,
+error_label)`, which owns everything generic about being a forked psh
+child — the semantic boundary is "becoming a healthy child" (runner) vs
+"what this child does" (caller):
+
+1. `apply_child_signal_policy(..., is_shell_process=True)`
+2. the caller's `io_setup` hook — its pipe/dup2 plumbing (runs BEFORE
+   the child Shell is built, because Shell construction inspects fds
+   via isatty)
+3. `Shell.for_subshell(parent, norc=norc)` + `state.in_forked_child = True`
+4. `exit_code = body(child_shell)`; `SystemExit(n)` maps to `n`
+   (substitutions run in a subshell — exit must not unwind the parent)
+5. `flush_child_streams(child.stdout, child.stderr, sys.stdout, sys.stderr)`
+6. `os._exit(exit_code)`; any other exception → `psh: {error_label}
+   error: ...` on fd 2, then `os._exit(1)`
+
+ProcessLauncher's `_child_setup_and_exec` deliberately does NOT use the
+runner (see its docstring): launcher children need process-group and
+sync-pipe setup, may exec an external binary, and reuse the parent Shell
+object in the forked copy instead of building a child Shell. The shared
+pieces are shared as code, not copies: `fork_with_signal_window()`,
+`apply_child_signal_policy()`, and `flush_child_streams()`.
+
+Note: `expansion/command_sub.py` keeps a documented parent-side SIGCHLD
+reset (SIG_DFL around the fork/waitpid) so the interactive SIGCHLD
+notification path can't steal the substitution child's exit status.
 
 ### Process Group Management
 

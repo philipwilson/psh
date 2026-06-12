@@ -1,16 +1,38 @@
-"""Unified child process signal policy.
+"""Becoming a healthy psh child process.
+
+This module is the one-stop chapter for what every forked psh child has
+in common, separated from what any particular child *does*:
+
+- fork_with_signal_window() — how to fork (termination signals blocked
+  across the window; the parent-side half of the signal policy).
+- apply_child_signal_policy() — the child-side half: reset handlers to
+  SIG_DFL, then unblock.
+- run_child_shell() — the shared child-body runner for substitution
+  children (command substitution, process substitution): signal policy,
+  fd plumbing hook, child Shell construction, body execution, exception
+  → exit-code mapping, stream flushing, os._exit(). The caller supplies
+  only the two site-specific pieces: the fd plumbing (io_setup) and the
+  body (what this child runs).
+- flush_child_streams() — the shared pre-os._exit() flush discipline
+  (os._exit() does not flush Python-level buffers).
 
 Every fork path must fork via fork_with_signal_window() and call
 apply_child_signal_policy() immediately after the fork in the child
-branch. This ensures consistent signal handling across ProcessLauncher,
-command substitution, and process substitution forks: the parent-side
-half (block termination signals across the fork window) lives in
-fork_with_signal_window(); the child-side half (reset handlers, then
-unblock) lives in apply_child_signal_policy().
+branch — substitution children get this by calling run_child_shell(),
+which applies the policy first. ProcessLauncher children keep their own
+body path (_child_setup_and_exec): they need process-group/sync-pipe
+setup and may exec an external binary, and they reuse the parent Shell
+in the forked copy rather than building a child Shell — but they share
+this module's fork helper, signal policy, and flush discipline.
 """
 
 import os
 import signal
+import sys
+from typing import TYPE_CHECKING, Callable, NoReturn, Optional
+
+if TYPE_CHECKING:
+    from ..shell import Shell
 
 
 def fork_with_signal_window() -> int:
@@ -97,3 +119,92 @@ def apply_child_signal_policy(signal_manager, state, is_shell_process=False):
                                 signal.SIGHUP, signal.SIGQUIT})
     except (OSError, ValueError):
         pass
+
+
+def flush_child_streams(*streams) -> None:
+    """Flush Python-level stream buffers before os._exit().
+
+    os._exit() does NOT flush Python's I/O buffers, so output a builtin
+    wrote to a stream object (rather than via os.write) would be lost.
+    Every child exit path must flush the streams its body may have
+    written to before calling os._exit(). Streams that are closed,
+    fd-less, or not flushable are skipped silently — at child exit there
+    is nobody left to report to.
+    """
+    for stream in streams:
+        try:
+            stream.flush()
+        except (OSError, ValueError, AttributeError):
+            pass
+
+
+def run_child_shell(parent_shell: 'Shell',
+                    body: Callable[['Shell'], int],
+                    *,
+                    norc: bool = True,
+                    io_setup: Optional[Callable[[], None]] = None,
+                    error_label: str = 'forked child') -> NoReturn:
+    """Run the body of a forked substitution child; never returns.
+
+    This is the shared "what every substitution child does" runner,
+    called immediately after fork_with_signal_window() returns 0 in
+    the child branch. It owns everything generic about being a healthy
+    psh child; the caller supplies only the site-specific pieces:
+
+    1. apply_child_signal_policy() — reset handlers, unblock the fork
+       window (always with is_shell_process=True: substitution children
+       run shell commands, never exec an external binary directly).
+    2. io_setup() — the caller's pipe/dup2 plumbing. It runs BEFORE the
+       child Shell is built because Shell construction inspects the
+       process's fds (interactive detection via isatty(0)); the child
+       shell must see the post-plumbing world.
+    3. Shell.for_subshell(parent_shell, norc=norc) — the child Shell,
+       with state.in_forked_child set so builtins use fd-level I/O.
+    4. exit_code = body(child_shell) — what THIS child does. A
+       SystemExit (the exit builtin) maps to its code: substitutions
+       run in a subshell, so exit must not unwind the parent's stack.
+    5. flush_child_streams() over the child shell's streams and the
+       process-wide sys streams (see its docstring).
+    6. os._exit(exit_code).
+
+    Any other exception escaping steps 1-6 is reported on fd 2 as
+    ``psh: {error_label} error: ...`` followed by os._exit(1) — a
+    forked child must NEVER return into the parent's call stack, and
+    must never fail silently.
+    """
+    try:
+        apply_child_signal_policy(
+            parent_shell.interactive_manager.signal_manager,
+            parent_shell.state,
+            is_shell_process=True,
+        )
+
+        if io_setup is not None:
+            io_setup()
+
+        # Import here to avoid a circular import (shell -> executor).
+        from ..shell import Shell
+        child_shell = Shell.for_subshell(parent_shell, norc=norc)
+        child_shell.state.in_forked_child = True
+
+        try:
+            exit_code = body(child_shell)
+        except SystemExit as e:
+            # exit in a substitution terminates the child, not the parent.
+            code = e.code
+            exit_code = code if isinstance(code, int) else (0 if code is None else 1)
+
+        flush_child_streams(child_shell.stdout, child_shell.stderr,
+                            sys.stdout, sys.stderr)
+        os._exit(exit_code)
+    except Exception as e:
+        # Surface the failure on fd 2 before exiting — a silent
+        # bare-except here swallowed real defects in the past. fd 2 is
+        # used directly: the child's sys.stderr may be a parent-side
+        # capture object that dies with the forked copy.
+        try:
+            os.write(2, f"psh: {error_label} error: {e}\n"
+                     .encode('utf-8', errors='replace'))
+        except OSError:
+            pass
+        os._exit(1)

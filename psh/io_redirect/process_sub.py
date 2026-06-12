@@ -1,7 +1,6 @@
 """Process substitution implementation."""
 import fcntl
 import os
-import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, List, Tuple
 
@@ -44,46 +43,35 @@ def create_process_substitution(cmd_str: str, direction: str, shell: 'Shell') ->
     # blocked across the fork window (the v0.300 lost-signal race fix;
     # the child unblocks them in apply_child_signal_policy after
     # resetting handlers to SIG_DFL).
-    from psh.executor import fork_with_signal_window
+    from psh.executor import fork_with_signal_window, run_child_shell
     pid = fork_with_signal_window()
     if pid == 0:  # Child
-        from psh.executor import apply_child_signal_policy
-        apply_child_signal_policy(
-            shell.interactive_manager.signal_manager,
-            shell.state,
-            is_shell_process=True,
-        )
+        # run_child_shell owns the generic child-process work (signal
+        # policy, child Shell, exception -> exit-code mapping, stream
+        # flush, os._exit). We supply the fd plumbing and the body.
+        def _io_setup() -> None:
+            # Close parent's end of pipe, wire ours onto stdio.
+            os.close(parent_fd)
+            if direction == 'in':
+                os.dup2(child_stdout, 1)
+            else:
+                os.dup2(child_stdin, 0)
+            # Close the pipe fd we duplicated
+            os.close(child_fd)
 
-        # Close parent's end of pipe
-        os.close(parent_fd)
-
-        # Set up child's stdio
-        if direction == 'in':
-            os.dup2(child_stdout, 1)
-        else:
-            os.dup2(child_stdin, 0)
-
-        # Close the pipe fd we duplicated
-        os.close(child_fd)
-
-        # Execute the substitution command
-        try:
+        def _body(child_shell: 'Shell') -> int:
             from ..lexer import tokenize
             from ..parser import parse
-            from ..shell import Shell as ShellClass
-
             tokens = tokenize(cmd_str)
             ast = parse(tokens)
-            temp_shell = ShellClass.for_subshell(shell, norc=False)
-            # The temp shell is a fresh state object: mark it as a forked
-            # child like command substitution does, so builtins use
-            # fd-level I/O and child-only code paths behave correctly.
-            temp_shell.state.in_forked_child = True
-            exit_code = temp_shell.execute_command_list(ast)
-            os._exit(exit_code)
-        except Exception as e:
-            print(f"psh: process substitution error: {e}", file=sys.stderr)
-            os._exit(1)
+            return child_shell.execute_command_list(ast)
+
+        run_child_shell(
+            shell, _body,
+            norc=False,
+            io_setup=_io_setup,
+            error_label='process substitution',
+        )
 
     else:  # Parent
         # Close child's end of pipe

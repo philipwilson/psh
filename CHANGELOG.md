@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.318.0 (2026-06-12) - Textbook program Tier B3: shared forked-child runner (zero behavior change)
+- run_child_shell(parent_shell, body, *, norc, io_setup, error_label)
+  in executor/child_policy.py completes the P2 design: signal policy ->
+  caller io_setup (BEFORE Shell construction — terminal detection
+  inspects fds) -> Shell.for_subshell + in_forked_child -> body ->
+  flush_child_streams -> os._exit, with SystemExit(n)->n and unexpected
+  exceptions reported to FD 2 (not sys.stderr — the child's stream may
+  be a parent-side capture object) -> exit 1.
+- The before-tabulation showed how uneven the three child paths were:
+  process_sub had NO flush, NO SystemExit mapping, and its signal-
+  policy call outside any try; command_sub and ProcessLauncher each
+  differed in error channel and flush set. Both substitution sites now
+  share the runner; ProcessLauncher KEEPS its own child path
+  (pgroup/sync-pipe setup, exec semantics, parent-Shell reuse) with
+  the rationale in its docstring, but shares flush_child_streams and
+  the fork/signal helpers as code, not copies.
+- command_sub's parent-side SIGCHLD reset KEPT with the explanatory
+  comment the memo asked for: the interactive SignalManager reaps via
+  waitpid(-1, WNOHANG); the SIG_DFL span makes the substitution's
+  status capture race-free (script mode: no-op). Proving it vestigial
+  needs interactive race probes — deferred deliberately.
+- ARCHITECTURE.md invariant #6 strengthened truthfully: One Fork
+  Helper, One Child Signal Policy, One Substitution-Child Runner.
+- 15-probe battery byte-identical; PTY tier green (56 passed — flush
+  changes caused no timing regressions); 12 new tests incl. a
+  subprocess driver pinning the runner's exit-code mapping through a
+  real fork.
+- Suite: 5,324 passed / 5,564 collected, 0 failures; ruff + mypy +
+  doc-pointer meta-test clean.
+
 ## 0.317.0 (2026-06-12) - Textbook program Tier B4: WordExpander + named policies (zero behavior change)
 - Every expansion context has a NAME: frozen WordExpansionPolicy
   (split/glob/assignment_tilde — a caller tabulation proved three

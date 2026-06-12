@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.317.0 | **Tests**: 5,560 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.318.0 | **Tests**: 5,564 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~49,100 lines of production code in `psh/` across 193 Python files, plus ~59,500 lines of tests in `tests/` (262 Python files)
-- **Test Coverage**: 5,560 tests in 258 test files
+- **Test Coverage**: 5,564 tests in 258 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.318.0**: textbook Tier B3 — `run_child_shell()` unifies the substitution child paths (signal policy, child Shell, flush discipline, uniform exception→exit mapping; process_sub's missing flush/SystemExit/unguarded-signal gaps closed); ProcessLauncher keeps its own child path with the rationale documented; the SIGCHLD reset kept with its explanatory comment; invariant strengthened truthfully
 - **v0.317.0**: textbook Tier B4 — every expansion context has a name: `WordExpansionPolicy` (COMMAND_ARGUMENT, DECLARATION_ASSIGNMENT, LOOP_ITEM, ARRAY_INIT_ELEMENT, ASSOC_INIT_ELEMENT) consumed by a new word_expander.py engine; the `suppress_split_glob` aliasing trap is dead; ExpansionManager is a 267-line orchestrator (was 944); a historical tilde accident in assoc initializers pinned for a future bash-parity fix
 - **v0.316.0**: textbook Tier B2 — assignment semantics extracted to executor/command_assignments.py (CommandExecutor 724→477 lines; the POSIX ordering contract stated once in the module docstring; `last_cmdsub_status` clear placement probe-proven); the `_visitor` backchannel replaced with an explicit constructor parameter — no hidden channels remain in the executor
 - **v0.315.0**: textbook Tier C2 — doc-pointer meta-test (caught the known ghosts plus a phantom lexer architecture in ARCHITECTURE.md §2); One-Fork-Path invariant reworded to the truth; core/builtins/interactive CLAUDE.mds refreshed claim-by-claim; 30 stale guides archived; CHANGELOG pre-v0.200 split out; README statistics now test-pinned within ±10%

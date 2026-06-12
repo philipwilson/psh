@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
-from .child_policy import fork_with_signal_window
+from .child_policy import flush_child_streams, fork_with_signal_window
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -148,6 +148,16 @@ class ProcessLauncher:
         4. Execute the command function
         5. Exit cleanly
 
+        This is deliberately NOT child_policy.run_child_shell() (the
+        substitution-child runner): launcher children need process-group
+        and sync-pipe setup that substitutions don't have, may exec an
+        external binary (so KeyboardInterrupt -> 130 and the non-int
+        coercion matter), and reuse the parent Shell object in the
+        forked copy rather than building a child Shell. The shared
+        pieces ARE shared code: fork_with_signal_window(),
+        apply_child_signal_policy(), and flush_child_streams() all come
+        from child_policy.
+
         Args:
             execute_fn: Function to execute
             config: Process configuration
@@ -249,12 +259,9 @@ class ProcessLauncher:
             exit_code = 1
 
         finally:
-            # Ensure we always exit cleanly
-            try:
-                sys.stdout.flush()
-                sys.stderr.flush()
-            except (OSError, ValueError):
-                pass
+            # Ensure we always exit cleanly (shared flush discipline —
+            # os._exit() does not flush Python-level buffers)
+            flush_child_streams(sys.stdout, sys.stderr)
             os._exit(exit_code)
 
     def _parent_setup(self, pid: int, config: ProcessConfig) -> int:
