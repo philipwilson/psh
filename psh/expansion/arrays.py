@@ -24,58 +24,15 @@ class ArrayOpsMixin:
         except ArithmeticError:
             return 0
 
-    def _expand_array_length(self, var_content: str) -> str:
-        """Handle ${#arr[@]}, ${#arr[*]}, and ${#arr[index]}."""
-        from ..core import AssociativeArray, IndexedArray
+    def _expand_array_indices(self, subscripted: str) -> str:
+        """Handle ${!arr[@]} and ${!arr[*]} — *subscripted* is ``arr[@]``.
 
-        array_part = var_content[1:]  # Remove the #
-        bracket_pos = array_part.find('[')
-        array_name = array_part[:bracket_pos]
-        index_expr = array_part[bracket_pos + 1:-1]
-
-        if index_expr in ('@', '*'):
-            var = self.state.scope_manager.get_variable_object(array_name)
-            if var and isinstance(var.value, (IndexedArray, AssociativeArray)):
-                return str(var.value.length())
-            elif var and var.value:
-                return '1'
-            return '0'
-
-        # ${#arr[index]} — length of specific element
-        var = self.state.scope_manager.get_variable_object(array_name)
-
-        if var and isinstance(var.value, IndexedArray):
-            element = var.value.get(self._eval_array_index(index_expr))
-            return str(len(element)) if element else '0'
-        elif var and isinstance(var.value, AssociativeArray):
-            expanded_key = self.expand_assoc_key(index_expr)
-            element = var.value.get(expanded_key)
-            return str(len(element)) if element else '0'
-        elif var and var.value:
-            try:
-                index = int(self.expand_array_index(index_expr))
-                if index == 0:
-                    return str(len(str(var.value)))
-                return '0'
-            except (ValueError, TypeError):
-                return '0'
-        return '0'
-
-    def _expand_array_indices(self, var_content: str) -> str:
-        """Handle ${!arr[@]} and ${!arr[*]}.
-
-        Returns the result string, or None if this is not a matching
-        expansion (so the caller can fall through).
+        Joined with spaces for both @ and * (historical behavior).
         """
         from ..core import AssociativeArray, IndexedArray
 
-        array_part = var_content[1:]  # Remove the !
-        bracket_pos = array_part.find('[')
-        array_name = array_part[:bracket_pos]
-        index_expr = array_part[bracket_pos + 1:-1]
-
-        if index_expr not in ('@', '*'):
-            return None
+        bracket_pos = subscripted.find('[')
+        array_name = subscripted[:bracket_pos]
 
         var = self.state.scope_manager.get_variable_object(array_name)
 
@@ -87,43 +44,6 @@ class ArrayOpsMixin:
             return ' '.join(keys)
         elif var and var.value:
             return '0'
-        return ''
-
-    def _expand_array_slice(self, var_content: str) -> str:
-        """Handle ${arr[@]:start:length}.
-
-        Returns the result string, or None if this is not a slice
-        expansion (so the caller can fall through).
-        """
-        from ..core import IndexedArray
-
-        bracket_pos = var_content.find('[')
-        close_bracket_pos = var_content.find(']')
-
-        if not (bracket_pos < close_bracket_pos and close_bracket_pos < var_content.find(':')):
-            return None
-
-        array_name = var_content[:bracket_pos]
-        index_expr = var_content[bracket_pos + 1:close_bracket_pos]
-        slice_part = var_content[close_bracket_pos + 1:]
-
-        if not (slice_part.startswith(':') and index_expr in ('@', '*')):
-            return None
-
-        var = self.state.scope_manager.get_variable_object(array_name)
-        what = f"{array_name}[{index_expr}]"
-        sep = ' ' if index_expr == '@' else self._ifs_star_separator()
-
-        if var and isinstance(var.value, IndexedArray):
-            # bash slices indexed arrays by INDEX (matters for sparse arrays)
-            sliced = self._slice_sequence(var.value.all_elements(), slice_part[1:],
-                                          what=what, indices=var.value.indices())
-            return sep.join(sliced)
-        elif var and var.value:
-            # Scalar with an [@]/[*] subscript: bash substring semantics.
-            offset, length = self._parse_slice_operand(slice_part[1:], what)
-            return sep.join(self._slice_scalar_subscript(str(var.value),
-                                                         offset, length))
         return ''
 
     def _expand_array_subscript(self, var_content: str) -> str:

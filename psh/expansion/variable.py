@@ -18,6 +18,7 @@ from .arrays import ArrayOpsMixin
 from .fields import FieldExpansionMixin
 from .operands import OperandOpsMixin
 from .operators import OperatorOpsMixin
+from .param_parser import parse_parameter_expansion
 from .parameter_expansion import ParameterExpansion
 
 if TYPE_CHECKING:
@@ -34,8 +35,17 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         self.param_expansion = ParameterExpansion(shell)
 
     def expand_variable(self, var_expr: str) -> str:
-        """Expand a variable expression starting with $."""
+        """Expand a variable expression starting with $.
 
+        This is the string-expansion ENTRY point (here-docs, double-quoted
+        content, operator operands, redirect targets, indirection targets).
+        It is parse-then-evaluate: the ``${...}`` content goes through THE
+        parameter-expansion parser (param_parser.py — the same one the
+        WordBuilder uses at parse time), and the resulting triple through
+        the single application path in expand_parameter_direct. Errors
+        propagate: user-facing failures are raised as ExpansionError/
+        UnboundVariableError by the operator handlers.
+        """
         if not var_expr.startswith('$'):
             return var_expr
 
@@ -43,51 +53,21 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
 
         # Handle ${var} syntax
         if var_expr.startswith('{') and var_expr.endswith('}'):
-            var_content = var_expr[1:-1]
+            node = parse_parameter_expansion(var_expr[1:-1])
 
-            # ${#arr[@]} or ${#arr[index]} — array/element length
-            if var_content.startswith('#') and '[' in var_content and var_content.endswith(']'):
-                return self._expand_array_length(var_content)
+            if node.operator:
+                return self.expand_parameter_direct(
+                    node.operator, node.parameter, node.word or '')
 
-            # ${!arr[@]} — array indices/keys
-            if var_content.startswith('\\!'):
-                var_content = var_content[1:]  # Remove the backslash
-            if var_content.startswith('!') and '[' in var_content and var_content.endswith(']'):
-                result = self._expand_array_indices(var_content)
-                if result is not None:
-                    return result
+            var_name = node.parameter
 
-            # ${arr[@]:start:length} — array slicing
-            if ':' in var_content and '[' in var_content and ']' in var_content:
-                result = self._expand_array_slice(var_content)
-                if result is not None:
-                    return result
+            # Plain ${arr[index]} / ${arr[@]} / ${arr[*]} subscript.
+            if '[' in var_name and var_name.endswith(']') and var_name.find('[') > 0:
+                return self._expand_array_subscript(var_name)
 
-            # ${arr[index]} — array subscript. The structural check (a valid
-            # array name followed by one balanced [...] spanning to the end)
-            # lets subscripts containing `,`/`^` through (assoc keys like
-            # a[x,y], arithmetic comma in arr[i,2]) while case-modification
-            # forms like ${v^^[a-m]} or ${a[x]^^} still fall through to the
-            # operator path below.
-            if self._is_plain_subscript(var_content):
-                result = self._expand_array_subscript(var_content)
-                if result is not None:
-                    return result
-
-            # All parameter-expansion operators (colon and non-colon) go
-            # through the single application path in expand_parameter_direct.
-            # Errors propagate: user-facing failures are raised as
-            # ExpansionError/UnboundVariableError by the operator handlers;
-            # swallowing ValueError/AttributeError here (as pre-v0.300 code
-            # did) silently degraded operator bugs to plain-${var} expansion.
-            operator, var_name, operand = self.param_expansion.parse_expansion('${' + var_content + '}')
-            if operator:
-                return self.expand_parameter_direct(operator, var_name, operand)
-
-            # No operator: a plain ${var}. Honor nounset. The error already
-            # carries bash's message format; do not re-wrap (a "psh: " prefix
-            # here doubled up with the printing handler's prefix).
-            var_name = var_content
+            # Plain ${var}. Honor nounset. The error already carries bash's
+            # message format; do not re-wrap (a "psh: " prefix here doubled
+            # up with the printing handler's prefix).
             if self.state.options.get('nounset', False):
                 from ..core import OptionHandler
                 OptionHandler.check_unset_variable(self.state, var_name)
@@ -95,33 +75,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             var_name = var_expr
 
         return self._expand_special_variable(var_name)
-
-    @staticmethod
-    def _is_plain_subscript(var_content: str) -> bool:
-        """True if var_content is exactly ``name[subscript]``.
-
-        ``name`` must be a valid variable identifier and the bracket that
-        closes the first ``[`` must be the final character (nested brackets
-        from arithmetic subscripts like ``arr[arr[0]+1]`` are balanced).
-        """
-        bracket = var_content.find('[')
-        if bracket <= 0 or not var_content.endswith(']'):
-            return False
-        name = var_content[:bracket]
-        if not (name[0].isalpha() or name[0] == '_'):
-            return False
-        if not all(c.isalnum() or c == '_' for c in name):
-            return False
-        depth = 0
-        for i in range(bracket, len(var_content)):
-            char = var_content[i]
-            if char == '[':
-                depth += 1
-            elif char == ']':
-                depth -= 1
-                if depth == 0:
-                    return i == len(var_content) - 1
-        return False
 
     def _expand_special_variable(self, var_name: str) -> str:
         """Expand special variables ($?, $$, $!, etc.) and regular variables."""
@@ -215,7 +168,12 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             var_name: The variable name (may include array subscript like 'arr[0]')
             operand: The pattern/replacement/offset operand
         """
-        # Indirect / nameref-name expansion: ${!name}
+        # ${!arr[@]} / ${!arr[*]}: array indices/keys.
+        if operator == '!' and var_name.endswith(('[@]', '[*]')):
+            return self._expand_array_indices(var_name)
+
+        # Indirect / nameref-name expansion: ${!name} (including an array
+        # element source like ${!a[0]}, resolved by _resolve_indirect_target).
         if operator == '!' and var_name and not operand:
             return self._expand_indirect(var_name)
 
@@ -239,7 +197,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         # Resolve the variable value
         if var_name in ('', '#') and operator == '#' and not operand:
             # Special case: ${#} is number of positional params
-            # Parser AST uses parameter='', operator='#'; parse_expansion uses var_name='#'
+            # (param_parser emits parameter='', operator='#').
             return str(len(self.state.positional_params))
         elif var_name == '*':
             if operator == '#':
@@ -323,6 +281,23 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 if operator == '@A':
                     return self._array_assignment_form(array_name, var)
 
+                # Conditional operators on the whole array (bash): non-empty
+                # keeps its elements, otherwise the default text applies.
+                joiner = ' ' if index_expr == '@' else self._ifs_star_separator()
+                if operator in (':-', '-'):
+                    if elements:
+                        return joiner.join(elements)
+                    return self._expand_operand(operand or '')
+                if operator in (':+', '+'):
+                    if not elements:
+                        return ''
+                    return self._expand_operand(operand or '')
+                if operator in (':=', '=', ':?', '?'):
+                    # Keep the elements when non-empty; like the quoted path
+                    # (expand_to_fields), no per-element assignment/error is
+                    # performed on @-subscripts.
+                    return joiner.join(elements)
+
                 # Per-element transforms (@Q/@U/@u/@L/@E/@P/@a) apply to each
                 # element; the @-operators need the array *name* (not the
                 # subscripted form) so e.g. ${arr[@]@a} reports the array flag.
@@ -337,14 +312,11 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 else:
                     return self._ifs_star_separator().join(results)
 
-            # Handle regular indexed/associative array access
-            elif var and isinstance(var.value, IndexedArray):
-                value = var.value.get(self._eval_array_index(index_expr)) or ''
-            elif var and isinstance(var.value, AssociativeArray):
-                expanded_key = self.expand_assoc_key(index_expr)
-                value = var.value.get(expanded_key) or ''
+            # Regular indexed/associative element access — through the
+            # canonical subscript evaluator, so a scalar with subscript
+            # resolves like bash (${x[0]} of a scalar x is $x).
             else:
-                value = ''
+                value = self._expand_array_subscript(var_name)
         else:
             # Use _get_var_or_positional to handle special variables (#, ?, $, etc.)
             value = self._get_var_or_positional(var_name)

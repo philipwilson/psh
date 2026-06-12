@@ -1,6 +1,11 @@
-"""Advanced parameter expansion operations."""
+"""Advanced parameter expansion operations.
+
+String operations behind the ``${var<op>...}`` operators (pattern removal,
+substitution, substring, case modification, name matching). Parsing of the
+``${...}`` syntax itself lives in param_parser.py.
+"""
 import re
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 # Canonical pattern engine lives in pattern.py; re-exported here because
 # many call sites import PatternMatcher from this module.
@@ -26,159 +31,6 @@ class ParameterExpansion:
     def _extglob(self) -> bool:
         """Whether extglob is currently enabled."""
         return self.state.options.get('extglob', False)
-
-    def parse_expansion(self, expr: str) -> Tuple[str, str, str]:
-        """
-        Parse a parameter expansion expression.
-
-        Returns (operator, var_name, operand) where:
-        - operator: '#', '##', '%', '%%', '/', '//', '/#', '/%', ':', '!', '^', '^^', ',', ',,'
-        - var_name: The variable name
-        - operand: The pattern, string, or offset/length
-        """
-        # Remove ${ and }
-        if expr.startswith('${') and expr.endswith('}'):
-            content = expr[2:-1]
-        else:
-            raise ValueError(f"Invalid parameter expansion: {expr}")
-
-        # Check for length operation ${#var}
-        if content.startswith('#'):
-            # Special case: ${#} alone means number of positional params
-            if content == '#':
-                return '#', '#', ''
-            # Check if this is ${#:-default} or similar - the # is the variable name, not operator
-            if len(content) > 1 and content[1] == ':':
-                # This is actually a special variable # with a : operator, not a length operation
-                # Return empty operator so it's handled by the default value logic
-                return '', content, ''
-            return '#', content[1:], ''
-
-        # Check for variable name matching ${!prefix*} or ${!prefix@}
-        # Handle escaped ! character
-        if content.startswith('\\!'):
-            content = content[1:]  # Remove the backslash
-
-        if content.startswith('!'):
-            if content.endswith('*'):
-                return '!*', content[1:-1], ''
-            elif content.endswith('@'):
-                return '!@', content[1:-1], ''
-            # ${!name}: indirect / nameref-name expansion for a plain
-            # identifier or a special parameter like ${!#} (the ${!arr[@]}
-            # indices form contains '[' and is handled elsewhere).
-            ind = content[1:]
-            if ind and (all(c.isalnum() or c == '_' for c in ind)
-                        or ind in ('#', '?', '$', '-', '!')):
-                return '!', ind, ''
-
-        # Transformation operators ${param@OP}: '@' + one transform letter at the
-        # end (e.g. x@Q, arr[@]@Q, @@Q). The trailing-position requirement keeps
-        # the array-subscript '@' in ${arr[@]} (followed by ']') from matching.
-        if len(content) >= 2 and content[-2] == '@' and content[-1] in 'QEPAUuLakK':
-            return '@' + content[-1], content[:-2], ''
-
-        # Check for pattern removal and substitution first (before case modification)
-        # This is important because substitution patterns can contain commas
-        for i, char in enumerate(content):
-            if char == '#' and i > 0:
-                # ${var#pattern} or ${var##pattern}
-                if i + 1 < len(content) and content[i + 1] == '#':
-                    return '##', content[:i], content[i + 2:]
-                else:
-                    return '#', content[:i], content[i + 1:]
-            elif char == '%' and i > 0:
-                # ${var%pattern} or ${var%%pattern}
-                if i + 1 < len(content) and content[i + 1] == '%':
-                    return '%%', content[:i], content[i + 2:]
-                else:
-                    return '%', content[:i], content[i + 1:]
-            elif char == '/' and i > 0:
-                # ${var/pattern/string} or ${var//pattern/string} or ${var/#pattern/string} or ${var/%pattern/string}
-                var_name = content[:i]
-                rest = content[i + 1:]
-
-                # Check for special prefixes
-                if rest.startswith('#'):
-                    # ${var/#pattern/string}
-                    operator = '/#'
-                    rest = rest[1:]
-                elif rest.startswith('%'):
-                    # ${var/%pattern/string}
-                    operator = '/%'
-                    rest = rest[1:]
-                elif rest.startswith('/'):
-                    # ${var//pattern/string}
-                    operator = '//'
-                    rest = rest[1:]
-                else:
-                    # ${var/pattern/string}
-                    operator = '/'
-
-                # Find the separator between pattern and replacement
-                # Need to handle escaped slashes
-                pattern_parts = []
-                j = 0
-                while j < len(rest):
-                    if rest[j] == '\\' and j + 1 < len(rest):
-                        pattern_parts.append(rest[j:j+2])
-                        j += 2
-                    elif rest[j] == '/':
-                        # Found separator
-                        pattern = ''.join(pattern_parts)
-                        replacement = rest[j + 1:]
-                        return operator, var_name, pattern + '/' + replacement
-                    else:
-                        pattern_parts.append(rest[j])
-                        j += 1
-
-                # No replacement found, treat as pattern only
-                return operator, var_name, ''.join(pattern_parts) + '/'
-            elif char == ':' and i > 0:
-                before = content[:i]
-                # Don't treat a ':' inside an array subscript as an operator
-                # (slices like ${arr[@]:1:2} are handled before this point).
-                if before.count('[') > before.count(']'):
-                    continue
-                # Colon operators: ${var:-w}, ${var:=w}, ${var:?w}, ${var:+w}.
-                if i + 1 < len(content) and content[i + 1] in '-+=?':
-                    return content[i:i + 2], before, content[i + 2:]
-                # Otherwise substring: ${var:offset} or ${var:offset:length}.
-                return ':', before, content[i + 1:]
-            elif char in '-=+?' and i > 0 and content[i - 1] != ':':
-                # Non-colon operators ${var-w}, ${var=w}, ${var+w}, ${var?w}
-                # (unset test; colon variants are excluded above and handled
-                # separately). Skip inside an unclosed bracket expression (an
-                # array subscript or a case-mod pattern like [a-m]).
-                before = content[:i]
-                if before.count('[') > before.count(']'):
-                    continue
-                if before.endswith(']') and '[' in before:
-                    continue
-                return char, before, content[i + 1:]
-
-        # Check for case modification ${var^pattern}, ${var^^pattern}, etc
-        # This is checked after substitution to avoid conflicts with commas in patterns
-        for i, char in enumerate(content):
-            if char in '^,':
-                # A `^`/`,` inside an unclosed bracket is part of an array
-                # subscript (assoc keys like a[x,y]), not a case operator.
-                before = content[:i]
-                if before.count('[') > before.count(']'):
-                    continue
-                if i + 1 < len(content) and content[i + 1] == char:
-                    # Double operator (^^ or ,,)
-                    var_name = content[:i]
-                    pattern = content[i + 2:] if i + 2 < len(content) else '?'
-                    return char * 2, var_name, pattern
-                else:
-                    # Single operator (^ or ,)
-                    var_name = content[:i]
-                    pattern = content[i + 1:] if i + 1 < len(content) else '?'
-                    return char, var_name, pattern
-
-        # No operator found, might be ${var:-default} which is handled elsewhere
-        return '', content, ''
 
     @staticmethod
     def render_replacement(replacement: Union[str, list], matched: str) -> str:

@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.319.0 | **Tests**: 5,565 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.320.0 | **Tests**: 5,730 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~49,100 lines of production code in `psh/` across 193 Python files, plus ~59,500 lines of tests in `tests/` (262 Python files)
-- **Test Coverage**: 5,565 tests in 258 test files
+- **Test Coverage**: 5,730 tests in 261 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.320.0**: textbook Tier B5 — ONE `${...}` parser (expansion/param_parser.py): all four mutually-load-bearing parser copies unified, 460 lines deleted, the AST no longer lies (`${arr[@]:1:2}` parses structurally at parse time); 18 bash-adjudicated behavior fixes rode along (the old parsers' path-dependent divergences, incl. a crash on `${a[@]:=d}`); 737-row frozen differential corpus pins the grammar
 - **v0.319.0**: textbook Tier C1 — docs/architecture/tour_of_psh_internals.md: a 516-line narrative tracing one command through the whole pipeline, every illustration regenerated from real debug flags (reproducible by the reader); closes the teaching-mission gap; doc-pointer meta-test extended to hold it
 - **v0.318.0**: textbook Tier B3 — `run_child_shell()` unifies the substitution child paths (signal policy, child Shell, flush discipline, uniform exception→exit mapping; process_sub's missing flush/SystemExit/unguarded-signal gaps closed); ProcessLauncher keeps its own child path with the rationale documented; the SIGCHLD reset kept with its explanatory comment; invariant strengthened truthfully
 - **v0.317.0**: textbook Tier B4 — every expansion context has a name: `WordExpansionPolicy` (COMMAND_ARGUMENT, DECLARATION_ASSIGNMENT, LOOP_ITEM, ARRAY_INIT_ELEMENT, ASSOC_INIT_ELEMENT) consumed by a new word_expander.py engine; the `suppress_split_glob` aliasing trap is dead; ExpansionManager is a 267-line orchestrator (was 944); a historical tilde accident in assoc initializers pinned for a future bash-parity fix

@@ -178,7 +178,11 @@ class OperatorOpsMixin:
                 return var.value.get(self._eval_array_index(index_expr)) is not None
             if isinstance(var.value, AssociativeArray):
                 return var.value.get(self.expand_array_index(index_expr)) is not None
-            return False
+            # Scalar with a subscript: bash treats x[0] as set iff x is set
+            # (a scalar acts as an array with one element at index 0).
+            if index_expr in ('@', '*'):
+                return var.value is not None
+            return var.value is not None and self._eval_array_index(index_expr) == 0
         return self.state.get_variable(var_name, _UNSET) is not _UNSET
 
     def _apply_operator(self, operator: str, value: str, operand: str,
@@ -275,17 +279,19 @@ class OperatorOpsMixin:
             names = self.param_expansion.match_variable_names(var_name)
             return ' '.join(names)
         elif operator == '^':
+            # Case mods: an absent pattern (parser emits '') defaults to '?'
+            # — every character matches.
             return self.param_expansion.uppercase_first(
-                value, self._expand_pattern_operand(operand) if operand else operand)
+                value, self._expand_pattern_operand(operand) or '?')
         elif operator == '^^':
             return self.param_expansion.uppercase_all(
-                value, self._expand_pattern_operand(operand) if operand else operand)
+                value, self._expand_pattern_operand(operand) or '?')
         elif operator == ',':
             return self.param_expansion.lowercase_first(
-                value, self._expand_pattern_operand(operand) if operand else operand)
+                value, self._expand_pattern_operand(operand) or '?')
         elif operator == ',,':
             return self.param_expansion.lowercase_all(
-                value, self._expand_pattern_operand(operand) if operand else operand)
+                value, self._expand_pattern_operand(operand) or '?')
         elif len(operator) == 2 and operator[0] == '@':
             # An unset parameter transforms to nothing (bash: ${unset@Q} -> '').
             if not is_set:
