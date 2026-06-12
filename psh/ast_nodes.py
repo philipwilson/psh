@@ -223,15 +223,16 @@ class ArrayInitialization(ArrayAssignment):
     """Array initialization: arr=(one two three) or arr+=(four five)"""
     name: str
     elements: List[str]  # The elements inside parentheses (flat strings)
-    # Legacy string-list metadata retained for validator_visitor,
-    # formatter_visitor, and the executor's explicit [index]=value detection.
+    # Legacy string-list metadata retained for validator_visitor and
+    # formatter_visitor only; the executor uses `words` exclusively.
     element_types: List[str] = field(default_factory=list)  # Track element types (WORD, STRING, etc.)
     element_quote_types: List[Optional[str]] = field(default_factory=list)  # Track quote types
     is_append: bool = False  # True for += initialization
-    # Word AST nodes for each element (parallel to `elements`). When present,
-    # the executor expands each element through the same Word expansion
-    # pipeline as command arguments (IFS splitting, quote-aware globbing,
-    # tilde, noglob/nullglob/dotglob). Empty list = legacy fallback.
+    # Word AST nodes for each element (REQUIRED, parallel to `elements`).
+    # Both parsers always populate this; the executor expands each element
+    # through the same Word expansion pipeline as command arguments (IFS
+    # splitting, quote-aware globbing, tilde, noglob/nullglob/dotglob) and
+    # raises an internal error on a missing Word (fallback audit 2026-06-12).
     words: List[Word] = field(default_factory=list)
 
 
@@ -246,10 +247,11 @@ class ArrayElementAssignment(ArrayAssignment):
     value_type: str = 'WORD'  # Type of the value
     value_quote_type: Optional[str] = None  # Quote type if any
     is_append: bool = False  # True for += assignment
-    # Word AST node for the value. When present, the executor expands it
-    # with bash assignment-value semantics (all expansions, no word
-    # splitting, no pathname expansion, tilde after '='/':'). None =
-    # legacy string fallback (combinator parser edge paths).
+    # Word AST node for the value (REQUIRED). Both parsers always build it;
+    # the executor expands it with bash assignment-value semantics (all
+    # expansions, no word splitting, no pathname expansion, tilde after
+    # '='/':') and raises an internal error when it is None (fallback
+    # audit 2026-06-12).
     value_word: Optional[Word] = None
 
 

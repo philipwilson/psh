@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.309.0
+**Current Version**: 0.310.0
 
 **Note:** For LLM-optimized architecture documentation, see `ARCHITECTURE.llm`
 
@@ -566,6 +566,21 @@ class IfConditional(Statement, CompoundCommand):
     elif_parts: List[Tuple[StatementList, StatementList]]
     else_stmt: Optional[StatementList]
 ```
+
+### 3.13 Canonical AST Data Flow (Words, Values, Redirects)
+
+How shell text becomes runtime values — which node carries the Word AST,
+which expansion policy applies, and where the single canonical
+implementation lives for command words, assignment values, array
+initializers/elements, for/select items, case subjects/patterns, redirect
+targets, and process substitution — is documented in
+[docs/architecture/ast_data_flow.md](docs/architecture/ast_data_flow.md).
+Both parsers always populate the Word fields; the executor raises an
+internal error on a missing Word (fallback audit 2026-06-12), and the
+deliberately retained fallbacks are pinned by
+`tests/unit/executor/test_legacy_ast_fallbacks.py`. Consult that document
+before changing expansion or execution semantics: it answers "which code
+do I change?" per context.
 
 
 ## Phase 4: Execution

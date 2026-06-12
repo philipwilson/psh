@@ -48,3 +48,21 @@ class TestArrayInitializerExpansion(ConformanceTest):
         """a[0]=* stays literal: scalar assignment context, not a list."""
         self.assert_identical_behavior(
             'x="1 2"; a[0]=*; a[1]=$x; echo "${a[0]}" "${a[1]}" ${#a[@]}')
+
+    def test_quoted_bracket_element_is_literal(self):
+        """a=("[0]"=x): quoting the brackets makes a literal element, not an
+        explicit-index assignment (fallback audit 2026-06-12 — the deleted
+        legacy string re-parser wrongly assigned a[0]=x here)."""
+        self.assert_identical_behavior(
+            'a=("[0]"=x); echo ${#a[@]} "${a[0]}"')
+
+    def test_fully_quoted_bracket_element_is_literal(self):
+        """a=("[0]=x") is one literal element."""
+        self.assert_identical_behavior(
+            'a=("[0]=x"); echo ${#a[@]} "${a[0]}"')
+
+    def test_unquoted_explicit_index_assignment(self):
+        """a=([1]=x [3]=y z): unquoted explicit indices assign sparsely."""
+        self.assert_identical_behavior(
+            'a=([1]=x [3]=y z); echo ${#a[@]} "${a[1]}" "${a[3]}" "${a[4]}" '
+            '"${!a[@]}"')

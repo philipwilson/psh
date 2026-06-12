@@ -215,8 +215,13 @@ class ExpansionManager:
             Word,
         )
 
+        # Fallback audit 2026-06-12: every caller passes a Word built by a
+        # parser; coercing other types to str() masked type bugs as
+        # literal text. Fail loudly (v0.300 policy).
         if not isinstance(word, Word):
-            return str(word)
+            raise TypeError(
+                f"_expand_word expects a Word AST node, got "
+                f"{type(word).__name__}: {word!r}")
 
         # Single-quoted word: no expansion at all
         if word.quote_type == "'":
@@ -437,8 +442,12 @@ class ExpansionManager:
             ProcessSubstitution,
             Word,
         )
+        # Fallback audit 2026-06-12: callers always pass a Word (executor
+        # assignment paths build them); str() coercion masked type bugs.
         if not isinstance(word, Word):
-            return str(word)
+            raise TypeError(
+                f"expand_assignment_value_word expects a Word AST node, "
+                f"got {type(word).__name__}: {word!r}")
 
         result_parts = []
         value_len = 0   # value chars seen so far (pre-expansion)

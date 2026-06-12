@@ -326,8 +326,15 @@ class ControlFlowExecutor:
                                     break
                                 continue
 
-                            # Legacy string path (rare: only when the
-                            # combinator parser couldn't build a Word)
+                            # Fallback audit 2026-06-12 — classification
+                            # (b), parser migration bridge: the combinator
+                            # parser emits CasePattern(word=None) when
+                            # build_word_from_token rejects the pattern
+                            # token (e.g. a $(...) pattern containing a
+                            # function definition), and CasePattern's word
+                            # field defaults to None for manual ASTs.
+                            # Exercised by tests/unit/executor/
+                            # test_legacy_ast_fallbacks.py.
                             pattern_str = pattern_obj.pattern
                             expanded_pattern = pattern_str
                             if '$' in pattern_str:
@@ -510,8 +517,12 @@ class ControlFlowExecutor:
         because bash tilde-expands ``for i in P=~/x`` like a command
         argument.
 
-        Parsers always populate item_words; a manually constructed AST
-        without it iterates the items as literal fields.
+        Fallback audit 2026-06-12 — classification (a), kept deliberately:
+        both parsers always populate item_words (parallel to items), but
+        ForLoop/SelectLoop type item_words as Optional with a None default,
+        and manually constructed ASTs (an explicitly supported educational
+        pattern) iterate the items as literal fields. Exercised by
+        tests/unit/executor/test_legacy_ast_fallbacks.py.
         """
         item_words = getattr(node, 'item_words', None)
         if item_words is None or len(item_words) != len(node.items):

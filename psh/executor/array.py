@@ -5,9 +5,7 @@ This module handles array initialization and element assignment operations,
 including indexed and associative arrays.
 """
 
-import glob
-import re
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ..core import AssociativeArray, IndexedArray, VarAttributes
 from ..expansion.arithmetic import evaluate_arithmetic
@@ -69,13 +67,24 @@ class ArrayOperationExecutor:
         next_sequential_index = start_index
 
         for i, element in enumerate(node.elements):
-            element_type = node.element_types[i] if i < len(node.element_types) else 'WORD'
-            word = node.words[i] if i < len(node.words) else None
+            # Fallback audit 2026-06-12: both parsers populate node.words
+            # parallel to node.elements (recursive descent
+            # _parse_array_initialization, combinator
+            # _build_array_initialization). A missing Word is an internal
+            # error — fail loudly (v0.300 policy) rather than degrading to
+            # string re-parsing, which had divergent quoting semantics
+            # (a=("[0]"=x) was treated as an explicit assignment; bash
+            # keeps it a literal element).
+            if i >= len(node.words):
+                raise RuntimeError(
+                    f"internal error: array initializer element {element!r} "
+                    "has no Word AST (node.words must parallel node.elements)")
+            word = node.words[i]
 
             # Check for an explicit-index assignment element: [index]=value
             # or [index]+=value (recognized only when the brackets and '='
             # are unquoted — bash treats "[0]=x" as a literal element).
-            explicit = self._split_explicit_element(word) if word is not None else None
+            explicit = self._split_explicit_element(word)
             if explicit is not None:
                 index_parts, value_word, elem_append = explicit
                 # bash always evaluates indexed-array subscripts as arithmetic
@@ -96,36 +105,9 @@ class ArrayOperationExecutor:
                 array.set(evaluated_index, value)
                 # Update next sequential index to be after this explicit index
                 next_sequential_index = max(next_sequential_index, evaluated_index + 1)
-            elif element_type in ('COMPOSITE', 'COMPOSITE_QUOTED') and \
-                    self._is_explicit_array_assignment(element):
-                # Legacy fallback (no Word AST on the node): parse explicit
-                # index assignment from the raw element string
-                index, value = self._parse_explicit_array_assignment(element)
-                if index is not None:
-                    try:
-                        evaluated_index = evaluate_arithmetic(str(index), self.shell)
-                        array.set(evaluated_index, value)
-                        next_sequential_index = max(next_sequential_index, evaluated_index + 1)
-                    except (ValueError, Exception):
-                        next_sequential_index = self._add_expanded_element_to_array(
-                            array, element, next_sequential_index, split_words=False)
-                else:
-                    next_sequential_index = self._add_expanded_element_to_array(
-                        array, element, next_sequential_index, split_words=False)
-            elif word is not None:
+            else:
                 next_sequential_index = self._add_word_fields_to_array(
                     array, word, next_sequential_index)
-            elif element_type in ('WORD', 'COMPOSITE', 'COMMAND_SUB',
-                                  'ARITH_EXPANSION', 'VARIABLE'):
-                # Legacy fallback (no Word AST on the node): split unquoted
-                # words and expansion results on whitespace, with globbing.
-                next_sequential_index = self._add_expanded_element_to_array(
-                    array, element, next_sequential_index, split_words=True)
-            else:
-                # Legacy fallback: keep as single element (STRING, etc.)
-                # Quoted strings should not be glob expanded or word split
-                next_sequential_index = self._add_expanded_element_to_array(
-                    array, element, next_sequential_index, split_words=False)
 
         # Set array in shell state
         self.state.scope_manager.set_variable(node.name, array, attributes=VarAttributes.ARRAY)
@@ -146,16 +128,15 @@ class ArrayOperationExecutor:
 
         pending_key: Optional[str] = None
         for i, element in enumerate(node.elements):
-            word = node.words[i] if i < len(node.words) else None
-            if word is None:
-                # Legacy fallback: expand the raw element text as one field
-                field = self.expansion_manager.expand_string_variables(element)
-                if pending_key is None:
-                    pending_key = field
-                else:
-                    array.set(pending_key, field)
-                    pending_key = None
-                continue
+            # Fallback audit 2026-06-12: unreachable defensive branch —
+            # both parsers populate node.words parallel to node.elements;
+            # fail loudly instead of string-expanding (see
+            # execute_array_initialization).
+            if i >= len(node.words):
+                raise RuntimeError(
+                    f"internal error: array initializer element {element!r} "
+                    "has no Word AST (node.words must parallel node.elements)")
+            word = node.words[i]
 
             explicit = self._split_explicit_element(word)
             if explicit is not None:
@@ -262,12 +243,17 @@ class ArrayOperationExecutor:
         # Expand value with bash assignment-value semantics: all expansions
         # performed, NO word splitting, NO pathname expansion, tilde after
         # '='/':' (shared policy with scalar assignments).
-        if node.value_word is not None:
-            expanded_value = self.expansion_manager.expand_assignment_value_word(
-                node.value_word)
-        else:
-            # Legacy fallback (no Word AST — combinator parser edge paths)
-            expanded_value = self.expansion_manager.expand_string_variables(node.value)
+        # Fallback audit 2026-06-12: value_word=None is unreachable — every
+        # construction site in both parsers (recursive descent
+        # _parse_element_value x3, combinator _collect_element_value_word x3)
+        # always builds the value Word. Fail loudly (v0.300 policy) instead
+        # of string-expanding, which loses quote context.
+        if node.value_word is None:
+            raise RuntimeError(
+                f"internal error: array element assignment {node.name}[...]="
+                f"{node.value!r} has no value Word AST")
+        expanded_value = self.expansion_manager.expand_assignment_value_word(
+            node.value_word)
 
         # Get or create array
         if var_obj and (isinstance(var_obj.value, IndexedArray) or isinstance(var_obj.value, AssociativeArray)):
@@ -378,67 +364,3 @@ class ArrayOperationExecutor:
             next_index += 1
         return next_index
 
-    def _add_expanded_element_to_array(self, array: IndexedArray, element: str,
-                                       start_index: int, split_words: bool = True) -> int:
-        """
-        Add expanded element to array with glob expansion.
-
-        Args:
-            array: The array to add elements to
-            element: The element to expand and add
-            start_index: Starting index for sequential assignment
-            split_words: Whether to split on whitespace after expansion
-
-        Returns:
-            Next available index after adding elements
-        """
-        # Expand variables first (don't process escape sequences in array context)
-        expanded = self.expansion_manager.expand_string_variables(element)
-
-        if split_words:
-            # Split on whitespace for WORD and command substitution elements
-            words = expanded.split()
-        else:
-            # Keep as single element for STRING and composite elements
-            words = [expanded] if expanded else ['']
-
-        # Handle glob expansion on each word (like for loops do)
-        next_index = start_index
-        for word in words:
-            matches = glob.glob(word)
-            if matches:
-                # Glob pattern matched files - add all matches (already sorted)
-                for match in sorted(matches):
-                    array.set(next_index, match)
-                    next_index += 1
-            else:
-                # No matches, add literal word
-                array.set(next_index, word)
-                next_index += 1
-
-        return next_index
-
-    def _is_explicit_array_assignment(self, element: str) -> bool:
-        """Check if element has explicit array assignment syntax: [index]=value"""
-        # Match [anything]=anything pattern
-        return bool(re.match(r'^\[[^\]]*\]=', element))
-
-    def _parse_explicit_array_assignment(self, element: str) -> Tuple[Optional[Union[str, int]], Optional[str]]:
-        """
-        Parse explicit array assignment: [index]=value
-
-        Returns:
-            tuple: (index, value) or (None, None) if parsing fails
-        """
-        match = re.match(r'^\[([^\]]*)\]=(.*)$', element)
-        if match:
-            index_str = match.group(1)
-            value = match.group(2)
-
-            # Expand any variables in the index
-            expanded_index = self.expansion_manager.expand_string_variables(index_str)
-            expanded_value = self.expansion_manager.expand_string_variables(value)
-
-            return expanded_index, expanded_value
-
-        return None, None
