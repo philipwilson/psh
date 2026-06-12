@@ -377,4 +377,4 @@ ruff check psh/expansion/ psh/builtins/function_support.py psh/builtins/shell_st
   implementation review of the expansion subsystem
 - `docs/archive/guides/expansion_code_quality_review.md` -- Code quality review
 - `psh/expansion/CLAUDE.md` -- AI assistant working guide
-- `ARCHITECTURE.llm` -- System-wide architecture reference
+- `ARCHITECTURE.md` -- System-wide architecture reference (the former ARCHITECTURE.llm is archived)

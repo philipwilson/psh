@@ -501,4 +501,4 @@ See `docs/guides/visitor_public_api.md` for the post-cleanup API reference.
   Detailed implementation review of the visitor/executor subsystem
 - `docs/archive/guides/codex_visitor_executor_review.md` -- Codex review of
   visitor executor
-- `ARCHITECTURE.llm` -- System-wide architecture reference
+- `ARCHITECTURE.md` -- System-wide architecture reference (the former ARCHITECTURE.llm is archived)

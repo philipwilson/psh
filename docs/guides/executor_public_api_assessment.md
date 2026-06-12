@@ -481,4 +481,4 @@ ruff check psh/executor/ psh/builtins/command_builtin.py psh/shell.py psh/expans
   the parser package (implemented in v0.178.0)
 - `docs/guides/lexer_public_api_assessment.md` -- Same analysis for the
   lexer package (implemented in v0.177.0)
-- `ARCHITECTURE.llm` -- System-wide architecture reference
+- `ARCHITECTURE.md` -- System-wide architecture reference (the former ARCHITECTURE.llm is archived)

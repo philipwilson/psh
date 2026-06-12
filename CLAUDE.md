@@ -127,9 +127,9 @@ behavior, verify against bash and update the test, not the fix.
    - `README.md` — the `**Current Version**:` line (also test counts and
      Recent Development when they changed)
    - `ARCHITECTURE.md` — the `**Current Version**:` line
-   - `ARCHITECTURE.llm` — the `Version:` line
-5. Commit on the branch, `git merge --no-ff` to main, annotated tag
-   `vX.Y.Z`, push main and the tag.
+5. Commit on the branch, push, open a PR (`gh pr create --head <branch>`),
+   verify CI is green (`gh pr checks` — all three jobs), merge, then
+   annotated tag `vX.Y.Z` on main and push the tag.
 
 ### Architecture documentation files and what they contain
 
@@ -140,8 +140,12 @@ These files have version-stamped metadata that must stay in sync:
 | `psh/version.py` | Canonical version | `__version__` |
 | `CHANGELOG.md` | Detailed version history | `## VERSION` entries |
 | `README.md` | User-facing overview | Version, test count, LOC, file count, recent development |
-| `ARCHITECTURE.md` | Detailed architecture guide | Version |
-| `ARCHITECTURE.llm` | LLM-optimized architecture | Version |
+| `ARCHITECTURE.md` | Architecture guide (incl. Quick Map for orientation) | Version |
+
+For agent orientation: ARCHITECTURE.md's Quick Map → the relevant
+subsystem `CLAUDE.md` → `docs/architecture/ast_data_flow.md` for
+expansion-context pointers. (`ARCHITECTURE.llm` was retired to
+`docs/archive/` in v0.311.0.)
 
 ### Known Test Issues
 
