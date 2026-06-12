@@ -71,10 +71,10 @@ class OperandOpsMixin:
     @staticmethod
     def _skip_dollar_construct(text: str, i: int) -> int:
         """Index just past the ${...}, $(...) or $((...)) at text[i]."""
+        from ..lexer.cmdsub_scanner import find_command_substitution_end
         from ..lexer.pure_helpers import (
             find_balanced_double_parentheses,
             find_closing_delimiter,
-            find_command_substitution_end,
         )
         if text.startswith('$((', i):
             end, found = find_balanced_double_parentheses(
@@ -104,10 +104,10 @@ class OperandOpsMixin:
         Returns (expanded_text, index_past_construct); a '$' that starts
         nothing expandable stays literal.
         """
+        from ..lexer.cmdsub_scanner import find_command_substitution_end
         from ..lexer.pure_helpers import (
             find_balanced_double_parentheses,
             find_closing_delimiter,
-            find_command_substitution_end,
         )
         n = len(text)
         if text[i] == '`':

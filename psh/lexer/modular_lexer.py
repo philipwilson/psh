@@ -2,11 +2,16 @@
 
 from typing import List, Optional
 
-from .command_position import COMMAND_GROUP_OPENERS, STATEMENT_SEPARATORS
+from .command_position import (
+    COMMAND_GROUP_OPENERS,
+    LEXER_COMMAND_POSITION_WORDS,
+    STATEMENT_SEPARATORS,
+)
 from .expansion_parser import ExpansionContext, ExpansionParser
 from .position import LexerConfig, Position, PositionTracker
 from .quote_parser import UnifiedQuoteParser
 from .recognizers import RecognizerRegistry
+from .recognizers.word_scanners import cached_assignment_prefix_map
 from .state_context import LexerContext
 from .token_parts import RichToken, TokenPart
 from .token_types import Token, TokenType
@@ -32,9 +37,6 @@ class ModularLexer:
             config: Optional lexer configuration
         """
         self.input = input_string
-        # Lazy per-position "inside NAME[..." map (see
-        # _build_array_assignment_map) — built once, O(n).
-        self._array_assignment_map = None
         self.config = config or LexerConfig()
         self.tokens: List[Token] = []
 
@@ -188,19 +190,13 @@ class ModularLexer:
                 full_value += part.value
         return full_value
 
-    # Words whose values are keywords that set command position.
-    # These are checked during tokenization before KeywordNormalizer runs.
-    _COMMAND_POSITION_KEYWORDS = {
-        'if', 'while', 'until', 'for', 'case',
-        'then', 'do', 'else', 'elif',
-    }
-
     def _update_command_position_context(self, token_type: TokenType, token_value: str = '') -> None:
         """Update command position tracking based on token type and value."""
         # Shared separator set plus structural openers. Reserved-word keywords
         # are still WORD tokens at this stage, so they are handled by the
-        # value-based check against _COMMAND_POSITION_KEYWORDS below (the lexer
-        # never sees keyword token TYPES here).
+        # value-based check against LEXER_COMMAND_POSITION_WORDS below (the
+        # lexer never sees keyword token TYPES here; see command_position.py
+        # for the three machines that track command position).
         command_starting_tokens = STATEMENT_SEPARATORS | COMMAND_GROUP_OPENERS
 
         neutral_tokens = {
@@ -244,7 +240,7 @@ class ModularLexer:
         if token_type in command_starting_tokens:
             self.context.set_command_position()
         elif (token_type == TokenType.WORD and
-              token_value in self._COMMAND_POSITION_KEYWORDS):
+              token_value in LEXER_COMMAND_POSITION_WORDS):
             # Keywords are emitted as WORD during tokenization (before
             # KeywordNormalizer runs). Treat keyword-valued words as
             # command-position setters so that operators like [[ are
@@ -274,16 +270,25 @@ class ModularLexer:
             if self._try_recognizers():
                 continue
 
-            # Fallback: treat as word
+            # Operator-debris words: characters that may not START a literal
+            # word still form words mid-command (`echo ]`, `set +x`).
             if self._handle_fallback_word():
                 continue
 
-            # If nothing worked, advance to avoid infinite loop. NOTE: this
-            # silently DROPS the character from the token stream (no token,
-            # no error). It is reached for stray characters every recognizer
-            # declines (e.g. a lone ']' in some contexts); changing it to an
-            # error would alter error-recovery behavior.
-            self.advance()
+            # Nothing consumed this character. An instrumented census
+            # (2026-06-12, B6: the 15k-input characterization corpus, the
+            # full test suite, and ~71k fuzz inputs including [[ / (( /
+            # case-pattern contexts) found ZERO inputs that reach this
+            # point — every stray character is consumed by the fallback
+            # word collector above. A silent self.advance() here used to
+            # DROP the character from the token stream; per the v0.300
+            # fail-loudly policy an unreachable recovery path must not
+            # hide future recognizer bugs as vanished characters.
+            raise RuntimeError(
+                f"lexer made no progress at position {self.position} "
+                f"({self.current_char()!r}) — no recognizer, expansion "
+                f"parser, or fallback consumed the character; this is a "
+                f"psh bug, please report the input")
 
         # Add EOF token
         self.emit_token(TokenType.EOF, '', self.get_current_position())
@@ -357,91 +362,19 @@ class ModularLexer:
         unterminated-quote error).
 
         The answer for every position is precomputed in ONE forward O(n)
-        pass over the input (lazily, on first use). The old implementation
-        scanned BACKWARD from each query position to the previous command
-        separator, which was quadratic on long commands — a single line of
-        N quoted words lexed in O(N^2).
+        pass over the input (lazily, on first use; see
+        word_scanners.build_assignment_prefix_map) and cached on the
+        LexerContext, where the literal recognizer's
+        scan_assignment_prefix consults the same map. The pre-map
+        implementation scanned BACKWARD from each query position to the
+        previous command separator, which was quadratic on long commands —
+        a single line of N quoted words lexed in O(N^2).
         """
         if self.position == 0:
             return False
-        if self._array_assignment_map is None:
-            self._array_assignment_map = self._build_array_assignment_map()
-        return bool(self._array_assignment_map[self.position])
-
-    def _build_array_assignment_map(self) -> bytearray:
-        """map[i] == 1 iff position i is inside a confirmed ``NAME[...]=``.
-
-        Forward scan tracking quote state and a stack of open brackets;
-        each ``[`` records whether it directly follows a valid identifier
-        at a word boundary (the array-assignment shape). When the
-        outermost bracket closes with ``]=`` or ``]+=`` and its ``[`` had
-        that shape, the whole subscript span is marked. Unconfirmed
-        bracket words (``x["ok"]``, ``x[$v]``, glob classes) are never
-        marked, so quotes/expansions inside them lex normally. Span
-        marking is amortized O(n): spans never overlap.
-        """
-        from .unicode_support import is_identifier_char, is_identifier_start
-
-        text = self.input
-        n = len(text)
-        result = bytearray(n)
-        posix_mode = self.config.posix_mode if self.config else False
-
-        def is_array_open(i: int) -> bool:
-            # `[` must directly follow an identifier that starts at a word
-            # boundary: arr[index], not arr [index] or +x[.
-            if i == 0 or text[i - 1] in ' \t\n':
-                return False
-            if not is_identifier_char(text[i - 1], posix_mode):
-                return False
-            id_start = i - 1
-            while id_start > 0 and is_identifier_char(text[id_start - 1], posix_mode):
-                id_start -= 1
-            if not is_identifier_start(text[id_start], posix_mode):
-                return False
-            return id_start == 0 or text[id_start - 1] in ' \t\n;|&(){}'
-
-        from .pure_helpers import skip_expansion_region
-
-        in_single = False
-        in_double = False
-        open_stack = []  # (index, is_array_shape) per currently-unmatched '['
-
-        i = 0
-        while i < n:
-            ch = text[i]
-            if not in_single and ch in ('$', '`'):
-                # $(...), ${...}, `...`: opaque — whitespace/brackets inside
-                # are part of the subscript (a[$(echo 1 + 1)]=v).
-                skip = skip_expansion_region(text, i)
-                if skip is not None:
-                    i = skip
-                    continue
-            if ch == '"' and not in_single:
-                in_double = not in_double
-            elif ch == "'" and not in_double:
-                in_single = not in_single
-            elif not in_single and not in_double:
-                if ch == '[':
-                    open_stack.append((i, is_array_open(i)))
-                elif ch == ']':
-                    if open_stack:
-                        start, shaped = open_stack.pop()
-                        if not open_stack and shaped and (
-                                text[i + 1:i + 2] == '=' or
-                                text[i + 1:i + 3] == '+='):
-                            # Confirmed assignment subscript: mark the span
-                            # between (and including) the brackets' interior
-                            # so quotes/expansions inside stay literal.
-                            for j in range(start + 1, i + 1):
-                                result[j] = 1
-                elif ch in ' \t\n;|&(){}':
-                    # Unquoted word/command boundary: an assignment
-                    # subscript cannot span it (`h[a b]=v` is two words).
-                    open_stack.clear()
-            i += 1
-
-        return result
+        assignment_map = cached_assignment_prefix_map(
+            self.input, self.config.posix_mode, self.context)
+        return bool(assignment_map[self.position])
 
     def _handle_expansion(self) -> bool:
         """Handle variable/command/arithmetic expansion."""
@@ -669,14 +602,37 @@ class ModularLexer:
         return False
 
     def _handle_fallback_word(self) -> bool:
-        """Handle fallback word tokenization."""
+        """Collect an operator-debris word the literal recognizer rejects.
+
+        The literal recognizer's word-START rules reject most operator
+        characters, but the shell grammar still makes words out of them
+        mid-command. An instrumented census (2026-06-12, B6: 15k-input
+        characterization corpus + the full test suite) found exactly FOUR
+        word-start character classes reaching this path, all legitimate
+        and all bash-verified:
+
+        * ``]`` — closing-bracket words: ``[ x = y ]`` test commands,
+          ``a=([1]=x z)`` sparse-array element prefixes (``]=x``), and
+          composite continuations like ``a]b``;
+        * ``+`` — ``vars+=(x)`` append assignments (WORD ``+=`` re-joined
+          by the parser), ``set +x`` option words, regex ``([a-z]+)``;
+        * ``=`` — bare ``=`` in test commands, assignment continuations
+          like the ``=c`` of ``a=b=c`` (re-joined by the parser);
+        * ``[`` — case-pattern glob classes (``[0-9]*)``) and bracket
+          words in array-init contexts.
+
+        These words deliberately use a LOOSER terminator set than the
+        literal recognizer (``= + [ ]`` do not terminate here): folding
+        them into the literal collect loop would split ``]=x`` and
+        ``+=`` differently. The collection rule: read until whitespace,
+        a hard operator (``<>&|;(){}!``), or a quote/expansion starter.
+        """
         if self.position >= len(self.input):
             return False
 
         start_pos = self.get_current_position()
         value = ""
 
-        # Read until whitespace or special character
         while self.position < len(self.input):
             char = self.current_char()
 

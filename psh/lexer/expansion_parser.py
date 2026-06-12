@@ -3,6 +3,7 @@
 from typing import Optional, Tuple
 
 from . import pure_helpers
+from .cmdsub_scanner import find_command_substitution_end
 from .constants import SPECIAL_VARIABLES
 from .position import Position
 from .token_parts import TokenPart
@@ -112,13 +113,13 @@ class ExpansionParser:
         # the substitution (case patterns: `$(case x in x) echo hi;; esac)`),
         # and parens inside quotes, comments, and heredoc bodies are not
         # delimiters at all. See find_command_substitution_end() in
-        # pure_helpers.py for the full design (it mirrors what bash does by
+        # cmdsub_scanner.py for the full design (it mirrors what bash does by
         # recursively invoking its parser in xparse_dolparen()). When no
         # closer is found the token is marked 'command_unclosed', which the
         # parser turns into an incomplete-input error so interactive and
         # script line-gathering can read more lines (multi-line $(...),
         # including heredocs inside the substitution).
-        end_pos, found = pure_helpers.find_command_substitution_end(
+        end_pos, found = find_command_substitution_end(
             input_text, start_pos + 2
         )
 

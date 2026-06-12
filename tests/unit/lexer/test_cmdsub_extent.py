@@ -11,7 +11,7 @@ directly and through the lexer's COMMAND_SUB token values.
 import pytest
 
 from psh.lexer import tokenize
-from psh.lexer.pure_helpers import find_command_substitution_end
+from psh.lexer.cmdsub_scanner import find_command_substitution_end
 from psh.lexer.token_types import TokenType
 
 
