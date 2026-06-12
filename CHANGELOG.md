@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.311.0 (2026-06-12) - ARCHITECTURE.llm retired (doc consolidation)
+- ARCHITECTURE.llm moved to docs/archive/ (git mv, content untouched).
+  Rationale: its LLM-orientation role is now better served by the
+  subsystem CLAUDE.md network + docs/architecture/ast_data_flow.md,
+  and the dual file was a proven drift surface (the v0.298 purge had
+  to hit both files; v0.305 left three stale TokenTransformer
+  references in the .llm alone).
+- Its uniquely valuable content folded into ARCHITECTURE.md as a
+  leading "Quick Map" section: component hierarchy tree (refreshed —
+  visitor/ package added, pattern.py and the educational-only
+  combinator status reflected), one-line-per-phase execution
+  pipeline, architecture invariants (updated: One Fork Path and
+  Fail Loudly added; stale arg_types history dropped), and a
+  "Where do I change X?" table pointing at subsystem CLAUDE.mds.
+- References updated: root CLAUDE.md release ritual now lists four
+  version-stamped files (and now documents the PR + CI-green +
+  tag workflow that has been practice since v0.279); six guide
+  cross-references repointed; ARCHITECTURE.md's pointer note
+  replaced with the orientation path (Quick Map → subsystem
+  CLAUDE.md → ast_data_flow.md).
+- One fewer drift surface; no content lost (archive retains the
+  full historical file).
+
 ## 0.310.0 (2026-06-12) - Hygiene release: fallback audit, AST data-flow doc, scanner contract
 - Every string-only legacy AST fallback audited and classified
   (reassessment next-steps #1/#2/#4): each site checked against every

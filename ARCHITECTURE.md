@@ -4,9 +4,13 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.310.0
+**Current Version**: 0.311.0
 
-**Note:** For LLM-optimized architecture documentation, see `ARCHITECTURE.llm`
+**Note:** For orientation, start with the Quick Map below; for per-context
+expansion pointers see `docs/architecture/ast_data_flow.md`; for working
+within a subsystem see that package's `CLAUDE.md`. (The separate
+`ARCHITECTURE.llm` file was retired in v0.311.0 — its unique content now
+lives here and in those documents.)
 
 **Key Architectural Features**:
 - **Dual Parser Architecture**: Two complete parser implementations for educational comparison
@@ -32,6 +36,98 @@ Python Shell (psh) is designed with a clean, component-based architecture that s
   - **Delegation Architecture**: Clean separation of execution concerns
 - **Multi-phase Expansion**: POSIX-compliant expansion ordering
 - **Component-based Design**: Each subsystem has clear boundaries and responsibilities
+
+## Quick Map
+
+### Component Hierarchy
+
+```
+psh/
+├── shell.py                 # Main orchestrator (visitor executor only)
+├── core/                    # Shared state, options, traps
+│   ├── state.py             # ShellState and option plumbing
+│   ├── scope.py             # Hierarchical variable scope management
+│   ├── variables.py         # Variable types and exports
+│   ├── functions.py         # FunctionManager (shell function definitions)
+│   ├── options.py           # Shell option behaviors
+│   ├── exceptions.py        # PshError root + control-flow exceptions
+│   └── trap_manager.py      # Signal/exit trap handling
+├── lexer/                   # Unified modular lexer package
+│   ├── modular_lexer.py     # Entry point for tokenization
+│   ├── heredoc_lexer.py     # Tokenization with heredoc capture
+│   ├── state_context.py     # Unified lexer context object
+│   ├── keyword_normalizer.py# Keyword normalization pass (WORD → keyword tokens)
+│   ├── keyword_defs.py      # Shared keyword definitions and helpers
+│   ├── quote_parser.py / expansion_parser.py
+│   ├── token_types.py / token_stream.py
+│   ├── pure_helpers.py      # Stateless helpers incl. find_command_substitution_end
+│   └── recognizers/         # Token recognizer registry (operators, literals, etc.)
+├── parser/
+│   ├── config.py            # ParserConfig & enums
+│   ├── recursive_descent/   # THE production parser (parser.py, context.py, parsers/, support/)
+│   ├── combinators/         # Educational-only alternative (decision 2026-06-12)
+│   └── visualization/       # AST renderers (ASCII, DOT, pretty)
+├── expansion/               # POSIX expansion pipeline
+│   ├── manager.py           # Orchestrates expansion order; expand_word_to_fields
+│   ├── variable.py + arrays/operators/operands/fields mixins
+│   ├── parameter_expansion.py / command_sub.py / tilde.py / glob.py
+│   ├── pattern.py           # THE canonical shell-pattern engine
+│   ├── arithmetic.py / brace_expansion.py / word_splitter.py / evaluator.py
+│   └── aliases.py           # AliasManager
+├── executor/                # Visitor-based executor package
+│   ├── core.py              # ExecutorVisitor (delegates to specialists)
+│   ├── command.py / pipeline.py / control_flow.py
+│   ├── array.py / function.py / subshell.py
+│   ├── process_launcher.py  # Single source of truth for fork()
+│   ├── job_control.py       # JobManager
+│   └── strategies.py        # Builtin/function/external dispatch
+├── io_redirect/             # IOManager, FileRedirector (incl. heredocs), procsub scopes
+├── scripting/               # ScriptManager, input sources/preprocessing, source processor
+├── interactive/             # REPL, line editor, history, completion, signals
+├── builtins/                # Builtin commands (registry + implementations)
+├── visitor/                 # Formatter/validator/security/metrics/linter visitors
+└── utils/                   # Shared helpers (escapes.py dialect map, formatting)
+```
+
+### Execution Pipeline (one line per phase)
+
+```
+Input → Preprocessing → Tokenization → Keyword Normalization → Parsing → [Validation] → Expansion → Visitor Execution → Exit Status
+```
+
+1. **Input**: `scripting/input_preprocessing.py` (line continuations), `interactive/history_expansion.py`, `expansion/brace_expansion.py` (pre-lex)
+2. **Tokenization**: `ModularLexer` + recognizer registry; `KeywordNormalizer` (case-sensitive reserved words); `tokenize_with_heredocs` collects bodies
+3. **Parsing**: recursive descent `Parser` from modular sub-parsers; `WordBuilder` builds Word AST (composites via `TokenStream.peek_composite_sequence()`)
+4. **Validation** (optional, `--validate`): visitor validators in `psh/visitor/`
+5. **Expansion**: `ExpansionManager` enforces POSIX order; `_expand_word()` walks Word parts with per-part quote context (see `docs/architecture/ast_data_flow.md` for per-context policies)
+6. **Execution**: `ExecutorVisitor` delegates to specialists; all forks via `ProcessLauncher`
+
+### Architecture Invariants
+
+1. **Centralized State**: all mutable shell state flows through `ShellState`
+2. **Component Isolation**: managers interact via `Shell` references, not globals
+3. **Visitor Execution**: AST nodes are data-only; behavior lives in visitors/executors
+4. **POSIX Expansion Order**: expansion phases stay in standard order
+5. **Word AST as Source of Truth**: `SimpleCommand.words` (and the Word fields on arrays/loops/assignments) are the sole structural argument representation; use Word helper properties, never string-type checks
+6. **One Fork Path**: all process creation goes through `ProcessLauncher`; children apply `apply_child_signal_policy()`
+7. **Exit Status Discipline**: every execution path returns an integer exit status
+8. **Fail Loudly**: internal errors raise; only user-facing shell errors map to exit codes (v0.300 policy)
+
+### "Where do I change X?"
+
+| Task | Start here |
+|------|-----------|
+| Add a builtin | `psh/builtins/` + `@builtin` decorator (see `psh/builtins/CLAUDE.md`) |
+| Modify tokenization | `psh/lexer/modular_lexer.py` + recognizers (see `psh/lexer/CLAUDE.md`) |
+| Modify parsing | `psh/parser/recursive_descent/parsers/` (see `psh/parser/CLAUDE.md`) |
+| Change expansion semantics | `docs/architecture/ast_data_flow.md` has the per-context table |
+| Command-substitution extent | `find_command_substitution_end` in `psh/lexer/pure_helpers.py` (read its maintenance contract) |
+| Process creation / signals | `psh/executor/process_launcher.py`, `child_policy.py` |
+| Redirections / heredocs | `psh/io_redirect/` (see its CLAUDE.md for the two-universes design) |
+| Job control | `psh/executor/job_control.py` |
+| Shell options | `psh/core/state.py` + `psh/core/options.py` |
+| Interactive / line editing | `psh/interactive/` (see its CLAUDE.md) |
+| Analysis tools | `psh/visitor/` (totality enforced by `tests/unit/visitor/test_ast_coverage_matrix.py`) |
 
 ## High-Level Architecture
 

@@ -169,4 +169,4 @@ from the public API and potentially deprecated.
 ## Related Documents
 
 - `psh/lexer/CLAUDE.md` — Subsystem working guide (needs update)
-- `ARCHITECTURE.llm` — System-wide architecture reference
+- `ARCHITECTURE.md` — System-wide architecture reference (the former ARCHITECTURE.llm is archived)

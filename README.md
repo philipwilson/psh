@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.310.0 | **Tests**: 5,424 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.311.0 | **Tests**: 5,424 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.311.0**: ARCHITECTURE.llm retired to docs/archive/ — its unique content (component tree, pipeline walkthrough, invariants, quick-reference) folded into ARCHITECTURE.md as a leading Quick Map section; one fewer drift surface, release ritual drops to four files
 - **v0.310.0**: hygiene release — every string-only legacy AST fallback audited and classified (tested, asserted, or deleted; ~106 lines removed; one live bash divergence found and fixed: quoted `"[0]"=x` initializer elements stay literal); canonical AST data-flow documented (docs/architecture/ast_data_flow.md); cmdsub scanner maintenance contract + 16 conformance cases
 - **v0.309.0**: combinator parser formally declared educational-only, outside the production quality bar (decision recorded in code docstring, CLAUDE.md, guides, help text); README's inaccurate "100% feature parity" claims corrected
 - **v0.308.0**: GitHub CI is green for the first time in the workflow's history (190+ prior failures): missing test deps (pyyaml/pexpect) added to [dev], lint gate aligned with CI (`ruff check psh tests`), and 17 environment-portability test bugs fixed (hardcoded dev-machine paths, BSD exit codes, Linux argv limits); `hash` builtin gap documented

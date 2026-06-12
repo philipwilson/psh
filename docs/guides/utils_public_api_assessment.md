@@ -387,4 +387,4 @@ ruff check psh/utils/ psh/interactive/signal_manager.py psh/builtins/debug_contr
 - `docs/guides/executor_public_api.md` -- `TestExpressionEvaluator`
   (the sole caller of `file_tests`)
 - `docs/guides/parser_guide.md` -- References `create_parser()`
-- `ARCHITECTURE.llm` -- System-wide architecture reference
+- `ARCHITECTURE.md` -- System-wide architecture reference (the former ARCHITECTURE.llm is archived)

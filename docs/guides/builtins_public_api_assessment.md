@@ -409,4 +409,4 @@ ruff check psh/builtins/__init__.py psh/executor/core.py psh/executor/function.p
   `TestBuiltin`)
 - `docs/guides/utils_public_api_assessment.md` -- Previous assessment
   in this series
-- `ARCHITECTURE.llm` -- System-wide architecture reference
+- `ARCHITECTURE.md` -- System-wide architecture reference (the former ARCHITECTURE.llm is archived)
