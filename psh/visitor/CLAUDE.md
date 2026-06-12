@@ -145,7 +145,7 @@ def visit_AndOrList(self, node) -> T: ...
 def visit_FunctionDef(self, node) -> T: ...
 
 # Groups
-def visit_SubshellCommand(self, node) -> T: ...
+def visit_SubshellGroup(self, node) -> T: ...
 def visit_BraceGroup(self, node) -> T: ...
 ```
 
@@ -180,7 +180,13 @@ def visit_MyNewNode(self, node: MyNewNode) -> int:
 
 3. Add to other relevant visitors (validator, formatter, etc.)
 
-4. Update tests
+4. Update tests — `tests/unit/visitor/test_ast_coverage_matrix.py` will
+   fail until the new node is supported: it introspects every concrete
+   `ASTNode` dataclass and requires the formatter to have an explicit
+   `visit_X` for all of them, the executor/validators to cover every
+   executable node, and (if the node carries a `redirects` field) a
+   source-snippet entry proving the security/formatter/metrics visitors
+   handle its redirects.
 
 ## Key Implementation Details
 
@@ -243,6 +249,37 @@ class CountingVisitor(ASTVisitor[None]):
             self.visit(cmd)
 ```
 
+## Totality Over the AST (enforced)
+
+Every visitor must handle every real AST node, but each uses a different
+mechanism for unhandled types — the coverage matrix test
+(`tests/unit/visitor/test_ast_coverage_matrix.py`) enforces the mechanism
+each visitor actually relies on:
+
+| Visitor | `generic_visit` behavior | Requirement |
+|---------|--------------------------|-------------|
+| `FormatterVisitor` | emits `# Unknown node: X` (defensive fallback only) | explicit `visit_X` for **every** concrete node class |
+| `ExecutorVisitor` | raises `NotImplementedError` | explicit `visit_X` for every executable node |
+| `ValidatorVisitor` / `EnhancedValidatorVisitor` | non-traversing `pass` | explicit `visit_X` for every executable node (else its subtree is silently skipped) |
+| `SecurityVisitor` / `MetricsVisitor` / `LinterVisitor` | `visit_children` (shared traversal) | unhandled nodes are still fully traversed |
+| `DebugASTVisitor` | best-effort field dump | fallback acceptable; major nodes have explicit methods |
+
+Two rules that came out of the 2026-06 coverage audit (fixed in the same
+change that added the matrix test):
+
+1. **Explicit handlers must not lose `redirects`.** Compound commands
+   (loops, conditionals, groups, function defs, `[[ ]]`, `(( ))`) carry a
+   `redirects` list just like `SimpleCommand`. A visitor with an explicit
+   `visit_WhileLoop` that only visits condition/body silently skips
+   `while ...; done >/etc/passwd`. The security, validator, and metrics
+   visitors each have a `_visit_redirects(node)` helper that every such
+   handler calls; the matrix test verifies all redirect carriers
+   behaviorally (parse real source, assert the issue/output/count).
+2. **`BreakStatement`/`ContinueStatement` redirects are unreachable from
+   source** (`break >f` parses as two statements); their `redirects`
+   fields exist only to satisfy the `Command` interface and are exempt in
+   the matrix, with a pinning test.
+
 ## Available Visitors
 
 | Visitor | Purpose | Return Type |
@@ -262,9 +299,10 @@ class CountingVisitor(ASTVisitor[None]):
 # Run visitor tests
 python -m pytest tests/unit/visitor/ -v
 
-# Test specific visitor files (the two that exist)
+# Test specific visitor files
 python -m pytest tests/unit/visitor/test_analysis_visitors.py -v
 python -m pytest tests/unit/visitor/test_formatter_visitor.py -v
+python -m pytest tests/unit/visitor/test_ast_coverage_matrix.py -v  # totality matrix
 
 # Debug AST output
 python -m psh --debug-ast -c "if true; then echo yes; fi"

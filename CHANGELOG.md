@@ -4,6 +4,41 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.307.0 (2026-06-12) - Visitor totality over the AST (reassessment Phase 3 — PHASE 3 COMPLETE)
+- Finding #8 and Phase 3: the analysis visitors are now total over the
+  AST, enforced by an introspective coverage-matrix test. The
+  before-matrix found far more than the review's two examples:
+  - Formatter: UntilLoop hit the unknown-node fallback (the repro);
+    FunctionDef and ArithmeticEvaluation DROPPED their redirects;
+    background `&` lost on AndOrList; no word-level methods. Now has
+    an explicit visit method for all 36 concrete node classes, with
+    reparse round-trip tests.
+  - Security visitor: 6 of 13 redirect carriers (while/for/if/case/
+    function/arithmetic) never inspected their redirects —
+    `while ...; done >/etc/passwd` reported nothing. All carriers
+    now flag sensitive writes via a shared _visit_redirects().
+  - Validator: UntilLoop, SubshellGroup, BraceGroup, and
+    ArithmeticEvaluation subtrees were SILENTLY SKIPPED entirely
+    (`until ...; do break 5; done` and `( break )` produced zero
+    diagnostics); compound redirects never validated. Fixed.
+  - Metrics: redirections/heredocs counted only on SimpleCommand;
+    debug-ast lost children of until/subshell/brace-group. Fixed.
+  - Linter and the executor visitor verified total already (the
+    executor raises on unknown nodes — no gaps).
+- tests/unit/visitor/test_ast_coverage_matrix.py (85 tests):
+  programmatic node inventory (36 concrete classes, 7 abstract
+  bases); per-visitor totality assertions matching each visitor's
+  documented generic_visit design; a redirects matrix proving every
+  source-reachable carrier (13) is security-flagged,
+  formatter-emitted, and metrics-counted. ALL exemption lists are
+  EMPTY except REDIRECT_EXEMPT={Break,Continue} (their redirects
+  fields are unreachable from source — both parsers parse `break >f`
+  as two statements; pinned by a dedicated test). Adding a new AST
+  node without visitor support now fails the suite loudly.
+- visitor/CLAUDE.md: new "Totality Over the AST (enforced)" section;
+  wrong example name fixed; new-node checklist points at the matrix.
+- Suite: 5,122 passed / 5,392 collected; ruff + mypy clean.
+
 ## 0.306.0 (2026-06-12) - Grammar-aware command substitution (reassessment Phase 2, 2/2 — PHASE 2 COMPLETE)
 - The long-standing Known Limitation is CLOSED: `$(case x in x) echo
   inner;; esac)` parses and runs (bash prints `inner`; psh errored at

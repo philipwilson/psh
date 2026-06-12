@@ -24,6 +24,7 @@ from ..ast_nodes import (
     IfConditional,
     Pipeline,
     ProcessSubstitution,
+    Redirect,
     SelectLoop,
     SimpleCommand,
     StatementList,
@@ -153,6 +154,24 @@ class MetricsVisitor(ASTVisitor[None]):
         for item in node.items:
             self.visit(item)
 
+    def _visit_redirects(self, node: ASTNode) -> None:
+        """Count redirects carried by *node*.
+
+        Compound commands (loops, conditionals, groups, ...) carry a
+        ``redirects`` list just like simple commands; every explicit visit
+        method for such a node calls this so e.g. ``while ...; done > log``
+        contributes to total_redirections. Nodes without an explicit method
+        reach visit_Redirect through generic_visit's child traversal.
+        """
+        for redirect in getattr(node, 'redirects', []):
+            self.visit(redirect)
+
+    def visit_Redirect(self, node: Redirect) -> None:
+        """Count a redirection (and here-documents)."""
+        self.metrics.total_redirections += 1
+        if node.type in ['<<', '<<-']:
+            self.metrics.here_documents += 1
+
     def visit_StatementList(self, node: StatementList) -> None:
         """Visit statement list."""
         for statement in node.statements:
@@ -185,6 +204,9 @@ class MetricsVisitor(ASTVisitor[None]):
                 self.metrics.array_names.add(assignment.name)
             elif isinstance(assignment, ArrayElementAssignment):
                 self.metrics.array_names.add(assignment.name)
+
+        # Count redirections (even for bare-redirect commands like `> file`)
+        self._visit_redirects(node)
 
         if not node.args:
             return
@@ -224,12 +246,6 @@ class MetricsVisitor(ASTVisitor[None]):
                 var_name = arg.split('=', 1)[0]
                 self.metrics.variable_names.add(var_name)
 
-        # Count redirections
-        self.metrics.total_redirections += len(node.redirects)
-        for redirect in node.redirects:
-            if redirect.type in ['<<', '<<-']:
-                self.metrics.here_documents += 1
-
         # Look for variable expansions and command substitutions
         for arg in node.args:
             self._analyze_string_features(arg)
@@ -263,6 +279,7 @@ class MetricsVisitor(ASTVisitor[None]):
         )
 
         self.current_function = old_function
+        self._visit_redirects(node)
 
     def visit_IfConditional(self, node: IfConditional) -> None:
         """Visit if conditional."""
@@ -289,6 +306,7 @@ class MetricsVisitor(ASTVisitor[None]):
             self.visit(node.else_part)
 
         self.current_nesting_depth -= 1
+        self._visit_redirects(node)
 
     def visit_WhileLoop(self, node: WhileLoop) -> None:
         """Visit while loop."""
@@ -306,6 +324,7 @@ class MetricsVisitor(ASTVisitor[None]):
         self.visit(node.body)
 
         self.current_nesting_depth -= 1
+        self._visit_redirects(node)
 
     def visit_UntilLoop(self, node: UntilLoop) -> None:
         """Visit until loop (mirrors while: a loop with a condition + body)."""
@@ -323,6 +342,7 @@ class MetricsVisitor(ASTVisitor[None]):
         self.visit(node.body)
 
         self.current_nesting_depth -= 1
+        self._visit_redirects(node)
 
     def visit_ForLoop(self, node: ForLoop) -> None:
         """Visit for loop."""
@@ -352,6 +372,7 @@ class MetricsVisitor(ASTVisitor[None]):
         self.visit(node.body)
 
         self.current_nesting_depth -= 1
+        self._visit_redirects(node)
 
     def visit_CStyleForLoop(self, node: CStyleForLoop) -> None:
         """Visit C-style for loop."""
@@ -376,6 +397,7 @@ class MetricsVisitor(ASTVisitor[None]):
         self.visit(node.body)
 
         self.current_nesting_depth -= 1
+        self._visit_redirects(node)
 
     def visit_SelectLoop(self, node: SelectLoop) -> None:
         """Visit select loop."""
@@ -399,6 +421,7 @@ class MetricsVisitor(ASTVisitor[None]):
         self.visit(node.body)
 
         self.current_nesting_depth -= 1
+        self._visit_redirects(node)
 
     def visit_CaseConditional(self, node: CaseConditional) -> None:
         """Visit case statement."""
@@ -422,11 +445,13 @@ class MetricsVisitor(ASTVisitor[None]):
             self.visit(item.commands)
 
         self.current_nesting_depth -= 1
+        self._visit_redirects(node)
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> None:
         """Visit arithmetic evaluation."""
         self.metrics.arithmetic_evaluations += 1
         self._analyze_arithmetic_expr(node.expression)
+        self._visit_redirects(node)
 
     def visit_ProcessSubstitution(self, node: ProcessSubstitution) -> None:
         """Visit process substitution."""
@@ -448,6 +473,7 @@ class MetricsVisitor(ASTVisitor[None]):
         """Visit enhanced test [[...]]."""
         self.metrics.total_conditionals += 1
         self.metrics.conditional_types['test'] += 1
+        self._visit_redirects(node)
 
     # Helper methods
 

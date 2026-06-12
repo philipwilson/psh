@@ -16,6 +16,7 @@ from ..ast_nodes import (
     # Core nodes
     ASTNode,
     BinaryTestExpression,
+    BraceGroup,
     BreakStatement,
     CaseConditional,
     # Case statement components
@@ -35,8 +36,10 @@ from ..ast_nodes import (
     SelectLoop,
     SimpleCommand,
     StatementList,
+    SubshellGroup,
     TopLevel,
     UnaryTestExpression,
+    UntilLoop,
     # Control structures
     WhileLoop,
 )
@@ -173,6 +176,44 @@ class DebugASTVisitor(ASTVisitor[str]):
 
         result += f"{self._indent()}Body:\n"
         result += self._visit_child(node.body)
+        self.level -= 1
+
+        return result
+
+    def visit_UntilLoop(self, node: UntilLoop) -> str:
+        """Format until loop."""
+        result = self._format_header("UntilLoop")
+
+        self.level += 1
+        result += f"{self._indent()}Condition:\n"
+        result += self._visit_child(node.condition)
+
+        result += f"{self._indent()}Body:\n"
+        result += self._visit_child(node.body)
+        self.level -= 1
+
+        return result
+
+    def visit_SubshellGroup(self, node: SubshellGroup) -> str:
+        """Format subshell group ( ... )."""
+        return self._format_group(node, "SubshellGroup")
+
+    def visit_BraceGroup(self, node: BraceGroup) -> str:
+        """Format brace group { ...; }."""
+        return self._format_group(node, "BraceGroup")
+
+    def _format_group(self, node, header: str) -> str:
+        """Shared formatting for subshell / brace groups."""
+        if node.background:
+            header += " (background)"
+        result = self._format_header(header)
+
+        self.level += 1
+        result += f"{self._indent()}Statements:\n"
+        result += self._visit_child(node.statements)
+        if node.redirects:
+            result += f"{self._indent()}Redirects:\n"
+            result += self._visit_children(node.redirects)
         self.level -= 1
 
         return result

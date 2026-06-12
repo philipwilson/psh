@@ -139,7 +139,19 @@ class SecurityVisitor(ASTVisitor[None]):
                     ))
 
         # Also check redirects on the command
-        for redirect in node.redirects:
+        self._visit_redirects(node)
+
+    def _visit_redirects(self, node: ASTNode) -> None:
+        """Inspect every redirect carried by *node*.
+
+        Compound commands (loops, conditionals, groups, function defs, ...)
+        carry a ``redirects`` list just like simple commands; every explicit
+        visit method for such a node must call this so that e.g.
+        ``while ...; done >/etc/passwd`` is flagged. Nodes without an
+        explicit visit method get the same coverage from ``generic_visit``'s
+        child traversal.
+        """
+        for redirect in getattr(node, 'redirects', []):
             self.visit_Redirect(redirect)
 
     def visit_Pipeline(self, node: Pipeline) -> None:
@@ -180,6 +192,7 @@ class SecurityVisitor(ASTVisitor[None]):
         self.visit(node.body)
         self.function_stack.pop()
         self.in_function = bool(self.function_stack)
+        self._visit_redirects(node)
 
     def visit_ForLoop(self, node: ForLoop) -> None:
         """Analyze for loops for security issues."""
@@ -195,6 +208,7 @@ class SecurityVisitor(ASTVisitor[None]):
 
         # Continue analyzing the body
         self.visit(node.body)
+        self._visit_redirects(node)
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> None:
         """Analyze arithmetic expressions."""
@@ -215,6 +229,8 @@ class SecurityVisitor(ASTVisitor[None]):
                 'Variable expansion in arithmetic - ensure variables contain only numbers',
                 node
             ))
+
+        self._visit_redirects(node)
 
     # Visit methods for other nodes that just traverse
     def visit_TopLevel(self, node: TopLevel) -> None:
@@ -237,14 +253,17 @@ class SecurityVisitor(ASTVisitor[None]):
             self.visit(then)
         if node.else_part:
             self.visit(node.else_part)
+        self._visit_redirects(node)
 
     def visit_WhileLoop(self, node: WhileLoop) -> None:
         self.visit(node.condition)
         self.visit(node.body)
+        self._visit_redirects(node)
 
     def visit_CaseConditional(self, node: CaseConditional) -> None:
         for item in node.items:
             self.visit(item.commands)
+        self._visit_redirects(node)
 
     # Helper methods
 
