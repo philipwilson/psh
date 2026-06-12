@@ -290,9 +290,9 @@ def editor():
 
 def sync_screen(ed, width=80):
     """Make the editor's screen tracking agree with its buffer state."""
-    ed._term_width = width
-    ed._screen_prompt_len = L.visible_prompt_length(ed.current_prompt)
-    ed._screen_cursor_pos = ed.cursor_pos
+    ed.renderer.term_width = width
+    ed.renderer.screen_prompt_len = L.visible_prompt_length(ed.current_prompt)
+    ed.renderer.screen_cursor_pos = ed.edit_buffer.cursor
 
 
 def capture(fn, *args):
@@ -307,24 +307,24 @@ class TestEditorWriteFunnel:
     (post-split, they all funnel through the LineRenderer)."""
 
     def test_insert_fast_path_echoes_only_the_char(self, editor):
-        editor.buffer = list("ab")
-        editor.cursor_pos = 2
+        editor.edit_buffer.chars = list("ab")
+        editor.edit_buffer.cursor = 2
         sync_screen(editor)
         assert capture(editor._insert_char, 'c') == "c"
-        assert editor._screen_cursor_pos == 3
+        assert editor.renderer.screen_cursor_pos == 3
 
     def test_insert_reaching_wrap_boundary_repaints(self, editor):
         # 74 chars + 1 inserted = 75; 5 + 75 = 80 → boundary: the fast
         # path is bypassed and the full repaint commits the wrap.
-        editor.buffer = list("x" * 74)
-        editor.cursor_pos = 74
+        editor.edit_buffer.chars = list("x" * 74)
+        editor.edit_buffer.cursor = 74
         sync_screen(editor)
         assert capture(editor._insert_char, 'x') == (
             "\r\x1b[J" + "PSH$ " + "x" * 75 + " \r\x1b[K" + "\r")
 
     def test_mid_line_insert_repaints(self, editor):
-        editor.buffer = list("ad")
-        editor.cursor_pos = 1
+        editor.edit_buffer.chars = list("ad")
+        editor.edit_buffer.cursor = 1
         sync_screen(editor)
         assert capture(editor._insert_char, 'b') == (
             "\r\x1b[J" + "PSH$ abd\r\x1b[7C")
@@ -340,8 +340,8 @@ class TestEditorWriteFunnel:
         assert capture(editor._abort_action) == "\a"
 
     def test_clear_screen_homes_then_repaints(self, editor):
-        editor.buffer = list("hi")
-        editor.cursor_pos = 2
+        editor.edit_buffer.chars = list("hi")
+        editor.edit_buffer.cursor = 2
         sync_screen(editor)
         assert capture(editor._clear_screen) == (
             "\x1b[2J\x1b[H" + "PSH$ hi\r\x1b[7C")
