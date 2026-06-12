@@ -28,7 +28,10 @@ Tab completion is NOT a separate manager: it is `CompletionEngine`
 | File | Purpose |
 |------|---------|
 | `repl_loop.py` | `REPLLoop` - main Read-Eval-Print Loop |
-| `line_editor.py` | `LineEditor` - raw-mode line editing, rendering, key dispatch |
+| `line_editor.py` | `LineEditor` - event dispatch (mode policy), history nav, search, completion |
+| `edit_buffer.py` | `EditBuffer` - single source of truth for text + cursor, kill ring, undo/redo |
+| `line_renderer.py` | `LineRenderer` - the ONLY writer of ANSI to the terminal |
+| `key_decoder.py` | `KeyDecoder` - the ONLY reader of stdin; decodes bytes into `KeyEvent`s |
 | `line_layout.py` | Pure layout math (row/col positions, prompt width, wrapping) |
 | `line_editor_helpers.py` | `convert_multiline_to_single()` - cmdhist-style joining |
 | `keybindings.py` | `EditMode`, `EmacsKeyBindings`, `ViKeyBindings` |
@@ -186,23 +189,38 @@ class REPLLoop(InteractiveComponent):
 ### Line Editor
 
 `line_editor.py` is the core of the subsystem: a raw-mode editor with
-emacs and vi modes (no readline). Structure:
+emacs and vi modes (no readline). Decomposed per Textbook B8 around
+three narrow contracts:
 
-- **Rendering**: `_paint()` draws prompt + buffer from scratch;
-  `_redraw()` repaints after an edit; `_move_cursor_to(pos)` emits only
-  cursor movement. All geometry (rows/columns for a given prompt length,
-  buffer position, and terminal width) is pure math in `line_layout.py`
-  (`position()`, `total_rows()`, `at_row_boundary()`), so wrapping logic
-  is unit-testable without a tty.
+- **Buffer model**: `EditBuffer` (`edit_buffer.py`) is the single
+  source of truth for text + cursor, the kill ring, and undo/redo.
+  The editor's `buffer`/`cursor_pos` attributes are compatibility
+  properties delegating to it.
+- **Rendering**: `LineRenderer` (`line_renderer.py`) is the ONLY
+  writer of ANSI to the terminal (`paint`, `redraw`,
+  `redraw_after_resize`, `move_cursor_to`). All geometry (rows/columns
+  for a given prompt length, buffer position, and terminal width) is
+  pure math in `line_layout.py` (`position()`, `total_rows()`,
+  `at_row_boundary()`), so wrapping logic is unit-testable without a
+  tty. Pinned by snapshot tests.
+- **Input decoding**: `KeyDecoder` (`key_decoder.py`) is the ONLY
+  reader of stdin. `read_key()` returns one `KeyEvent` — `Char(c)`,
+  `Key(name)` for full CSI/SS3 sequences (`'up'`, `'down'`, `'left'`,
+  `'right'`, `'home'`, `'end'`, `'delete'`; `Key(None)` for a complete
+  but unrecognized sequence), `Meta(c)`, `Escape` (bare ESC), `Resize`
+  (the SIGWINCH self-pipe, multiplexed into the decoder's `select()`),
+  and `Eof`. Sequences are always consumed in full, so partial CSI
+  bytes never leak into the buffer. The 50 ms ESC-disambiguation
+  window (`ESC_FOLLOWER_TIMEOUT`, v0.283) is a decoder timing knob:
+  vi mode probes it (bare ESC is a key), emacs mode blocks (ESC is
+  only a prefix). What an event MEANS is mode policy in the editor
+  (`_dispatch_escape_event`): vi turns bare ESC into normal mode and
+  `Meta(c)` into "enter normal mode, run c"; emacs maps `Meta(c)`
+  through `meta_bindings`. Pinned by pipe-fed byte-stream tests
+  (`tests/unit/interactive/test_key_decoder.py`).
 - **Key dispatch**: `keybindings.py` maps keys to action names
   (`EmacsKeyBindings`, `ViKeyBindings`, selected via `EditMode` /
   `set -o vi`); `_execute_action()` runs them.
-- **Centralized escape parsing** (v0.283): `_read_escape_sequence()` is
-  THE only input-side ANSI parser. It consumes a full CSI/SS3 sequence
-  and returns a symbolic key (`'up'`, `'down'`, `'left'`, `'right'`,
-  `'home'`, `'end'`, `'delete'`) — *above* the emacs/vi split, so both
-  modes share arrow-key handling and unrecognized sequences never leak
-  into the buffer.
 - **Completion**: `CompletionEngine` (`tab_completion.py`) does path
   completion; the editor owns the instance.
 - **Raw mode**: `TerminalManager` (`terminal.py`) is a context manager

@@ -1,5 +1,6 @@
 """In-process unit tests for LineEditor buffer operations and the
-centralized escape-sequence reader (v0.283 `_read_escape_sequence`).
+KeyEvent dispatch policy (escape-sequence PARSING lives in KeyDecoder
+since R2 — see test_key_decoder.py for the pipe-fed byte-level tests).
 
 These exercise the editor's pure logic directly — no TTY, no raw mode,
 no PTY — following the approach of tests/unit/test_line_editor_unit.py.
@@ -10,10 +11,10 @@ importing them needs no TTY, and poisoned modules leak into every later
 import in the process. Per-test patch() is fine.
 """
 
-from unittest.mock import patch
-
 import pytest
 
+from psh.interactive.key_decoder import ESCAPE, Key, KeyDecoder, Meta
+from psh.interactive.keybindings import EditMode
 from psh.interactive.line_editor import LineEditor
 
 
@@ -213,85 +214,99 @@ class TestUndoRedo:
         assert line(editor) == "aXY"
 
 
-def feed(ed, chars):
-    """Queue *chars* as pending decoded input.  _read_char() pops from
-    _char_buf before touching the fd; patching os.read to return b''
-    makes exhaustion look like EOF instead of reading fd -1."""
-    ed._char_buf = list(chars)
+class TestEscapeEventDispatch:
+    """_dispatch_escape_event: the mode-policy layer for KeyDecoder
+    events. Sequence PARSING moved to KeyDecoder in R2 (pipe-fed tests
+    in test_key_decoder.py); these pin what each event MEANS per mode.
+    """
 
+    def test_emacs_up_key_walks_history(self):
+        ed = LineEditor(history=['ls -la'])
+        ed.history_pos = 1
+        ed._dispatch_escape_event(Key('up'))
+        assert line(ed) == 'ls -la'
 
-class TestEscapeSequenceReader:
-    """_read_escape_sequence: the single input-side ANSI parser."""
+    def test_emacs_delete_key_deletes_at_cursor(self, editor):
+        set_line(editor, "abc", cursor=0)
+        editor._dispatch_escape_event(Key('delete'))
+        assert line(editor) == "bc"
 
-    @pytest.fixture(autouse=True)
-    def no_fd_reads(self):
-        with patch('psh.interactive.line_editor.os.read', return_value=b''):
-            yield
+    def test_delete_key_on_empty_line_is_not_eof(self, editor):
+        # Ctrl-D on an empty line means EOF; the Delete KEY must not
+        # (the action runs with char '\x1b', never '\x04').
+        assert editor._dispatch_escape_event(Key('delete')) is None
 
-    @pytest.mark.parametrize("final,key", [
-        ('A', 'up'), ('B', 'down'), ('C', 'right'), ('D', 'left'),
-        ('H', 'home'), ('F', 'end'),
-    ])
-    def test_csi_final_keys(self, editor, final, key):
-        feed(editor, final)
-        assert editor._read_escape_sequence('[') == key
+    def test_unrecognized_sequence_event_is_ignored(self, editor):
+        # Key(None): a complete but unrecognized CSI (e.g. Ctrl-Right)
+        # was swallowed by the decoder; the editor does nothing.
+        set_line(editor, "abc", cursor=1)
+        assert editor._dispatch_escape_event(Key(None)) is None
+        assert line(editor) == "abc"
+        assert editor.cursor_pos == 1
 
-    @pytest.mark.parametrize("params,key", [
-        ('1~', 'home'), ('3~', 'delete'), ('4~', 'end'),
-        ('7~', 'home'), ('8~', 'end'),
-    ])
-    def test_csi_tilde_keys(self, editor, params, key):
-        feed(editor, params)
-        assert editor._read_escape_sequence('[') == key
+    def test_emacs_meta_f_moves_word_forward(self, editor):
+        set_line(editor, "echo foo", cursor=0)
+        editor._dispatch_escape_event(Meta('f'))
+        assert editor.cursor_pos == 5  # past "echo" and the space
 
-    @pytest.mark.parametrize("final,key", [
-        ('A', 'up'), ('B', 'down'), ('C', 'right'), ('D', 'left'),
-        ('H', 'home'), ('F', 'end'),
-    ])
-    def test_ss3_keys(self, editor, final, key):
-        feed(editor, final)
-        assert editor._read_escape_sequence('O') == key
+    def test_emacs_unbound_meta_is_ignored(self, editor):
+        set_line(editor, "abc", cursor=1)
+        assert editor._dispatch_escape_event(Meta('z')) is None
+        assert line(editor) == "abc"
 
-    def test_unrecognized_csi_consumed_in_full(self, editor):
-        # Ctrl-Right (xterm modifier form): unknown, but must be fully
-        # consumed so 'C' never leaks into the edit buffer.
-        feed(editor, '1;5C')
-        assert editor._read_escape_sequence('[') is None
-        assert editor._char_buf == []
-
-    def test_eof_mid_sequence_returns_none(self, editor):
-        feed(editor, '1;')  # stream ends before the final byte
-        assert editor._read_escape_sequence('[') is None
-
-    def test_emacs_arrow_maps_to_history_action(self, editor):
-        feed(editor, '[A')
-        assert editor._get_key_action('\x1b') == 'previous_history'
-
-    def test_emacs_delete_csi_tilde(self, editor):
-        feed(editor, '[3~')
-        assert editor._get_key_action('\x1b') == 'delete_char'
-
-    def test_emacs_meta_key(self, editor):
-        feed(editor, 'f')
-        assert editor._get_key_action('\x1b') == 'move_word_forward'
-
-    def test_vi_bare_esc_enters_normal_mode(self):
+    def test_vi_bare_escape_enters_normal_mode(self):
         ed = LineEditor(history=[], edit_mode='vi')
-        # No pending input: this is a human ESC keypress, not a sequence.
-        with patch.object(ed, '_input_pending', return_value=False):
-            assert ed._get_key_action('\x1b') == 'enter_normal_mode'
+        set_line(ed, "ab")
+        ed._dispatch_escape_event(ESCAPE)
+        assert ed.mode == EditMode.VI_NORMAL
+        assert ed.cursor_pos == 1  # vi moves the cursor back one
 
-    def test_vi_arrow_uses_shared_escape_actions(self):
-        ed = LineEditor(history=[], edit_mode='vi')
-        feed(ed, '[B')
-        with patch.object(ed, '_input_pending', return_value=True), \
-             patch('psh.interactive.line_editor.os.read', return_value=b''):
-            assert ed._get_key_action('\x1b') == 'next_history'
+    def test_emacs_bare_escape_is_ignored(self, editor):
+        # Can only arise in probing mode; emacs has no bare-ESC binding.
+        assert editor._dispatch_escape_event(ESCAPE) is None
+        assert editor.mode == EditMode.EMACS
 
-    def test_vi_esc_plus_key_requeues_key(self):
+    def test_vi_meta_runs_follower_as_normal_mode_command(self):
+        # ESC + x in one burst: enter normal mode (cursor backs up one),
+        # then 'x' deletes the character under the cursor.
         ed = LineEditor(history=[], edit_mode='vi')
-        feed(ed, 'x')
-        with patch.object(ed, '_input_pending', return_value=True):
-            assert ed._get_key_action('\x1b') == 'enter_normal_mode'
-        # The follower must be requeued for normal-mode dispatch.
-        assert ed._char_buf == ['x']
+        set_line(ed, "abc")  # cursor at 3
+        ed._dispatch_escape_event(Meta('x'))
+        assert ed.mode == EditMode.VI_NORMAL
+        assert line(ed) == "ab"
+
+    def test_vi_meta_enter_accepts_line(self):
+        ed = LineEditor(history=[], edit_mode='vi')
+        set_line(ed, "echo hi")
+        assert ed._dispatch_escape_event(Meta('\r')) == 'accept'
+
+    def test_vi_meta_escape_hands_second_esc_back_to_decoder(self):
+        # ESC ESC: the second ESC may introduce its own sequence, so it
+        # goes back to the decoder for full disambiguation.
+        ed = LineEditor(history=[], edit_mode='vi')
+        ed.decoder = KeyDecoder(-1, esc_timeout=0.01)
+        assert ed._dispatch_escape_event(Meta('\x1b')) is None
+        assert ed.mode == EditMode.VI_NORMAL
+        assert ed.decoder._char_buf == ['\x1b']
+
+    def test_vi_arrow_in_insert_mode_stays_in_insert_mode(self):
+        # The v0.283 fix, restated as events: an arrow in vi insert mode
+        # is a Key event, never an ESC that flips to normal mode.
+        ed = LineEditor(history=['first'], edit_mode='vi')
+        ed.history_pos = 1
+        ed._dispatch_escape_event(Key('up'))
+        assert line(ed) == 'first'
+        assert ed.mode == EditMode.VI_INSERT
+
+    def test_escape_event_accepts_active_search(self):
+        # In search mode any ESC-introduced event first accepts the
+        # search (the pre-decoder fall-through behavior), then acts.
+        ed = LineEditor(history=['echo match'])
+        ed.history_pos = 1
+        ed._start_reverse_search()
+        for ch in "match":
+            ed._handle_search_char(ch)
+        assert ed.search_mode
+        ed._dispatch_escape_event(Key('left'))
+        assert not ed.search_mode
+        assert line(ed) == 'echo match'

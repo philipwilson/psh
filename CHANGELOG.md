@@ -4,6 +4,39 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.324.0 (2026-06-12) - Textbook program Tier B8-R2: KeyDecoder (zero behavior change)
+- The decomposition's risk release: psh/interactive/key_decoder.py
+  (292 lines) is now the ONLY reader of stdin — it owns the char
+  buffer, the select() loop (now multiplexing the SIGWINCH self-pipe:
+  readable → drain → Resize event; the three-parameter
+  sigwinch_fd/drain/on_resize plumbing collapsed and SignalManager.
+  drain_sigwinch_notifications was deleted with its sole caller),
+  EIO propagation, full-CSI/SS3-sequence consumption, and pushback()
+  for vi ESC-ESC.
+- KeyEvent algebra: Char / Key(name) (name=None = complete-but-
+  unrecognized, swallowed) / Meta / Escape / Resize / Eof. ^C stays
+  Char('\x03') — it arrives as a byte in raw mode, not a signal;
+  the old division preserved exactly.
+- The ESC layering resolution: timing is a decoder KNOB
+  (esc_timeout=0.05 in vi — the v0.283 constant, provenance now
+  documented — vs None in emacs: block, ESC is only ever a prefix);
+  meaning is editor POLICY (_dispatch_escape_event: Escape→normal
+  mode in vi; Meta(c) in vi→normal mode then c as a normal-mode key
+  with the second ESC pushed back for full re-disambiguation).
+  Edge fidelity preserved: ESC-then-EOF divisions, Delete-on-empty-
+  line never EOF, leftover-paste-tail discard. One documented
+  micro-delta: emacs search-accept repaint timing on a lone ESC
+  (byte→action mapping identical).
+- 45 pipe-fed decoder cases (all table sequences, real-timing
+  bare-ESC asserting the probe waits, partial-CSI completed
+  cross-thread, resize coalescing/interleaving, UTF-8, EIO,
+  pushback, the 50ms constant pinned) + 13 mode-policy dispatch
+  tests. line_editor.py: 914 → 855 lines; decoder in mypy scope
+  (18 files).
+- PTY tier green ×2, no flakes. Suite: 5,616 passed / 5,856
+  collected, 0 failures; ruff + mypy + doc-pointer clean (the
+  meta-test caught a stale CLAUDE.md reference mid-work).
+
 ## 0.323.0 (2026-06-12) - Textbook program Tier B8-R1: EditBuffer + LineRenderer (zero behavior change)
 - The LineEditor decomposition begins, contract-first: 36 snapshot
   tests pinning exact ANSI byte sequences (the wrap-boundary

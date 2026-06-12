@@ -205,21 +205,13 @@ class SignalManager(InteractiveComponent):
     def get_sigwinch_fd(self) -> int:
         """Get file descriptor for SIGWINCH notifications.
 
-        Can be used with select() to wait for resize events in input loops.
+        The line editor's KeyDecoder multiplexes this with stdin via
+        select() and drains it when readable, yielding a Resize event.
 
         Returns:
             Read file descriptor for SIGWINCH notifications
         """
         return self._sigwinch_notifier.get_fd()
-
-    def drain_sigwinch_notifications(self) -> bool:
-        """Drain any pending SIGWINCH notifications.
-
-        Returns:
-            True if there were any pending notifications
-        """
-        notifications = self._sigwinch_notifier.drain_notifications()
-        return len(notifications) > 0
 
     def ensure_foreground(self):
         """Ensure shell is in its own process group and is foreground."""
