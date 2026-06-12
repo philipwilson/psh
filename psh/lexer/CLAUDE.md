@@ -9,11 +9,15 @@ The lexer transforms shell command strings into token streams using a **modular 
 1. Tokenization via `ModularLexer`
 2. Keyword normalization
 3. Brace expansion over the token stream (`TokenBraceExpander`)
-4. Token transformation
 
 ```
-Input String → ModularLexer → KeywordNormalizer → TokenBraceExpander → TokenTransformer → Tokens
+Input String → ModularLexer → KeywordNormalizer → TokenBraceExpander → Tokens
 ```
+
+There is no post-lexing validation pass: context rules like "`;;` only
+inside `case`" are enforced by the parser (a `TokenTransformer` layer that
+appeared to validate this was removed as dead code — it appended every
+token unchanged).
 
 Note: brace expansion runs **after** tokenization (on the token stream), not as
 raw-text preprocessing — so generated characters are never re-lexed and quote /

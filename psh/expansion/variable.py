@@ -196,7 +196,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 result = var.value.get(self._eval_array_index(index_expr))
                 return result if result is not None else ''
             elif var and isinstance(var.value, AssociativeArray):
-                expanded_key = self.expand_array_index(index_expr)
+                expanded_key = self.expand_assoc_key(index_expr)
                 result = var.value.get(expanded_key)
                 return result if result is not None else ''
             else:
@@ -341,7 +341,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             elif var and isinstance(var.value, IndexedArray):
                 value = var.value.get(self._eval_array_index(index_expr)) or ''
             elif var and isinstance(var.value, AssociativeArray):
-                expanded_key = self.expand_array_index(index_expr)
+                expanded_key = self.expand_assoc_key(index_expr)
                 value = var.value.get(expanded_key) or ''
             else:
                 value = ''

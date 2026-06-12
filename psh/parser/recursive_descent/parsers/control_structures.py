@@ -296,10 +296,15 @@ class ControlStructureParser:
     def parse_case_statement(self) -> CaseConditional:
         """Parse case statement without setting execution context."""
         self.parser.expect(TokenType.CASE)
-        self.parser.skip_newlines()
 
         expr = self._parse_case_expression()
-        self.parser.expect(TokenType.IN)
+
+        # bash allows newlines between the subject and `in`
+        # (`case a <newline> in ...`), but nothing else.
+        self.parser.skip_newlines()
+        if not self.parser.match(TokenType.IN):
+            raise self._case_syntax_error()
+        self.parser.advance()
         self.parser.skip_newlines()
 
         items = []
@@ -327,17 +332,27 @@ class ControlStructureParser:
         )
 
     def _parse_case_expression(self) -> str:
-        """Parse the expression part of a case statement."""
-        parts = []
-        while (not self.parser.match(TokenType.IN) and
-               not self.parser.match_any(TokenGroups.STATEMENT_SEPARATORS) and
-               not self.parser.at_end()):
-            if self.parser.match_any(TokenGroups.WORD_LIKE):
-                word = self.parser.commands.parse_argument_as_word()
-                parts.append(''.join(str(p) for p in word.parts))
-            else:
-                break
-        return ' '.join(parts)
+        """Parse the case subject: exactly one word.
+
+        bash takes exactly one word (possibly a composite like ``a"b"c``)
+        between ``case`` and ``in``; ``case a b in ...`` is a syntax error
+        near ``b``, raised by the caller when the next token isn't ``in``.
+        The subject may be spelled ``in`` or ``esac`` (the lexer leaves the
+        word right after ``case`` as a plain WORD).
+        """
+        if not self.parser.match_any(TokenGroups.WORD_LIKE):
+            raise self._case_syntax_error()
+        word = self.parser.commands.parse_argument_as_word()
+        return ''.join(str(p) for p in word.parts)
+
+    def _case_syntax_error(self):
+        """Build a bash-shaped syntax error for a malformed case header."""
+        token = self.parser.peek()
+        if token.type == TokenType.EOF:
+            return self.parser.error("syntax error: unexpected end of file", token)
+        display = 'newline' if token.type == TokenType.NEWLINE else token.value
+        return self.parser.error(
+            f"syntax error near unexpected token '{display}'", token)
 
     def parse_case_item(self) -> CaseItem:
         """Parse a single case item."""

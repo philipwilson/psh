@@ -273,7 +273,12 @@ class ConditionalParserMixin:
             expr = format_token_value(tokens[pos])
             pos += 1
 
-            # Expect 'in'
+            # bash allows newlines between the subject and `in`
+            while pos < len(tokens) and tokens[pos].type.name == 'NEWLINE':
+                pos += 1
+
+            # Expect 'in' (exactly one subject word before it; a second word
+            # here fails the parse, matching bash's rejection of `case a b in`)
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'in'):
                 return ParseResult(success=False, error="Expected 'in' after case expression", position=pos)
 

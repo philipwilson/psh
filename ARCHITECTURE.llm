@@ -1,6 +1,6 @@
 # PSH Architecture Reference for Large Language Models
 
-Version: 0.304.0
+Version: 0.305.0
 Purpose: Optimized reference for LLMs working with the PSH codebase
 
 ## Quick Start
@@ -59,7 +59,6 @@ psh/
 │   ├── heredoc_collector.py
 │   ├── token_types.py       # Unified Token & TokenType definitions
 │   ├── token_stream.py      # Parser-oriented token stream helpers
-│   ├── token_transformer.py # Keyword/context normalization pass
 │   ├── pure_helpers.py / token_parts.py / position.py / unicode_support.py
 │   └── recognizers/         # Token recognizer registry (operators, literals, etc.)
 ├── parser/                  # Parser packages and registries
@@ -123,7 +122,7 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
 
 2. **Tokenization (`psh/lexer/`)**
    - `ModularLexer` tokenizes with Unicode + contextual rules
-   - `KeywordNormalizer` and `TokenTransformer` enforce context (case keywords, case terminators)
+   - `KeywordNormalizer` enforces keyword context (case-sensitive reserved words); case-terminator placement is a parser rule
    - `tokenize_with_heredocs` collects heredoc bodies via `HeredocLexer`
 
 3. **Token Post-processing**
@@ -181,9 +180,9 @@ Input → Preprocessing → Tokenization → Token Normalization → Parsing →
    - Uses `unicode_support.py` for identifier classification and POSIX fallback modes via `LexerConfig`
    - `recognizers/` includes operator, literal, whitespace, comment, and process-substitution recognizers (keywords are normalized in a later pass)
 
-3. **Keyword Normalization & Token Transformation**
-   - `lexer/keyword_normalizer.KeywordNormalizer` lowers + validates reserved words while preserving user identifiers; emits canonical keyword token types (e.g., WORD → THEN)
-   - `token_transformer.TokenTransformer` enforces context rules (e.g., `;;` allowed only inside `case`)
+3. **Keyword Normalization**
+   - `lexer/keyword_normalizer.KeywordNormalizer` validates reserved words (case-sensitive, exact match) while preserving user identifiers; emits canonical keyword token types (e.g., WORD → THEN)
+   - Context rules for case terminators (`;;` only inside `case`) are enforced by the parser, not a lexer pass (the never-implemented TokenTransformer was removed in v0.305.0)
    - Downstream code should match keywords via `matches_keyword`, `matches_keyword_type`, or `KeywordGuard` rather than inspecting `token.value`
 
 4. **Token Stream Utilities (`lexer/token_stream.py`)**
@@ -341,7 +340,6 @@ class MyBuiltin(Builtin):
 - **Add builtin**: `psh/builtins/` + `psh/builtins/registry.py`
 - **Modify tokenization**: `psh/lexer/modular_lexer.py` and recognizers; configs via `LexerConfig` in `psh/lexer/position.py`
 - **Keyword normalization**: `psh/lexer/keyword_normalizer.py`
-- **Token transformation**: `psh/lexer/token_transformer.py`
 - **Token stream utilities**: `psh/lexer/token_stream.py`
 - **Parser entry point**: `psh/parser/__init__.py` (`parse`, `parse_with_heredocs`, `create_parser`)
 - **Parser context**: `psh/parser/recursive_descent/context.py`

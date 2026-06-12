@@ -36,8 +36,6 @@ ModularLexer           Core tokenization engine
     ↓
 KeywordNormalizer      Normalizes keyword tokens based on context
     ↓
-TokenTransformer       Post-processing transforms
-    ↓
 Token List
 ```
 
