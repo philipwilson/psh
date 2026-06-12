@@ -53,6 +53,8 @@ class TestExportOptions:
         result = captured_shell.run_command('export -n E2')
         assert result == 0
         assert 'E2' not in captured_shell.state.env
+        # Policy (v0.312): os.environ is read-once at startup and never
+        # written, so the export never touched the runner's environment.
         assert 'E2' not in os.environ
         assert captured_shell.state.get_variable('E2') == 'v2'
 
@@ -77,9 +79,10 @@ class TestExportBasics:
         captured_shell.run_command('unset EXPORT_TEST_FOO')
 
     def test_existing_variable_export(self, captured_shell):
-        # Unique name + unset: the in-process shell syncs exports into the
-        # test runner's own os.environ, so a generic name like V leaks into
-        # every later test's shell.
+        # Unique name + unset: shells in this process share fixtures and
+        # children inherit state.env, so generic names like V can leak
+        # into later tests' shells. (os.environ itself is never written
+        # as of v0.312.)
         captured_shell.run_command('EXPORT_TEST_V=val')
         result = captured_shell.run_command('export EXPORT_TEST_V')
         assert result == 0

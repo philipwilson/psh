@@ -40,8 +40,12 @@ def create_process_substitution(cmd_str: str, direction: str, shell: 'Shell') ->
     flags = fcntl.fcntl(parent_fd, fcntl.F_GETFD)
     fcntl.fcntl(parent_fd, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
 
-    # Fork child for process substitution
-    pid = os.fork()
+    # Fork child for process substitution, with termination signals
+    # blocked across the fork window (the v0.300 lost-signal race fix;
+    # the child unblocks them in apply_child_signal_policy after
+    # resetting handlers to SIG_DFL).
+    from psh.executor import fork_with_signal_window
+    pid = fork_with_signal_window()
     if pid == 0:  # Child
         from psh.executor import apply_child_signal_policy
         apply_child_signal_policy(
@@ -71,6 +75,10 @@ def create_process_substitution(cmd_str: str, direction: str, shell: 'Shell') ->
             tokens = tokenize(cmd_str)
             ast = parse(tokens)
             temp_shell = ShellClass(parent_shell=shell)
+            # The temp shell is a fresh state object: mark it as a forked
+            # child like command substitution does, so builtins use
+            # fd-level I/O and child-only code paths behave correctly.
+            temp_shell.state.in_forked_child = True
             exit_code = temp_shell.execute_command_list(ast)
             os._exit(exit_code)
         except Exception as e:

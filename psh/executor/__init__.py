@@ -21,7 +21,7 @@ The package is organized into focused modules:
 """
 
 from .array import ArrayOperationExecutor
-from .child_policy import apply_child_signal_policy
+from .child_policy import apply_child_signal_policy, fork_with_signal_window
 from .command import CommandExecutor
 from .context import ExecutionContext
 from .control_flow import ControlFlowExecutor
@@ -42,5 +42,6 @@ __all__ = [
     'ExecutionContext',
     'ExternalExecutionStrategy',
     'apply_child_signal_policy',
+    'fork_with_signal_window',
     'TestExpressionEvaluator',
 ]

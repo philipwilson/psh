@@ -894,10 +894,6 @@ class ExpansionManager:
         """
         return self.variable_expander.expand_string_variables(text)
 
-    def expand_variable(self, var_expr: str) -> str:
-        """Expand a variable expression."""
-        return self.variable_expander.expand_variable(var_expr)
-
     def set_var_or_array_element(self, name: str, value) -> None:
         """Assign to a plain variable or an ``arr[index]`` element.
 
@@ -910,10 +906,6 @@ class ExpansionManager:
     def expand_tilde(self, path: str) -> str:
         """Expand tilde in a path."""
         return self.tilde_expander.expand(path)
-
-    def execute_command_substitution(self, cmd_sub: str) -> str:
-        """Execute command substitution and return output."""
-        return self.command_sub.execute(cmd_sub)
 
     def execute_arithmetic_expansion(self, expr: str) -> int:
         """Execute arithmetic expansion and return result.

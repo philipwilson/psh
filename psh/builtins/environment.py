@@ -297,8 +297,9 @@ class ExportBuiltin(Builtin):
         var = shell.state.scope_manager.get_variable_object(name)
         if var is not None and var.is_exported:
             var.attributes &= ~VarAttributes.EXPORT
+        # state.env is the live environment; os.environ is read-once at
+        # startup and never written.
         shell.state.env.pop(name, None)
-        os.environ.pop(name, None)
         shell.state.scope_manager.sync_exports_to_environment(shell.state.env)
 
     @property

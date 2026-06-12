@@ -272,16 +272,25 @@ Two distinct families — do not mix them up:
   from `PshError` — a blanket `except PshError` must never swallow a
   `return` statement.
 
-### Environment Variable Sync
+### Environment Policy (os.environ is read-once)
 
-Exported variables are synced to `os.environ`:
+`os.environ` is read ONCE at startup (`self.env = os.environ.copy()`);
+`state.env` is the live environment from then on and is passed
+EXPLICITLY to every child: `execvpe(args, shell.env)` in
+`executor/strategies.py` and `builtins/core.py`, `env=state.env` for
+shebang re-execution (`scripting/shebang_handler.py`), and
+`Shell(parent_shell=...)` copies it for subshell-style children.
+Nothing writes `os.environ` after startup — such a write would be
+invisible to children and only leak state into the hosting Python
+process (the pre-v0.312 `FOO=bar exec` leak).
+
+Exported variables are synced to `state.env`:
 
 ```python
 def export_variable(self, name: str, value: str):
     self.scope_manager.set_variable(name, value,
                                     attributes=VarAttributes.EXPORT, local=False)
     self.env[name] = value
-    os.environ[name] = value
     self.scope_manager.sync_exports_to_environment(self.env)
 ```
 
@@ -295,7 +304,6 @@ def set_variable(self, name: str, value: str):
         self.scope_manager.set_variable(name, value,
                                         attributes=VarAttributes.EXPORT, local=False)
         self.env[name] = value
-        os.environ[name] = value
         self.scope_manager.sync_exports_to_environment(self.env)
     else:
         self.scope_manager.set_variable(name, value, local=False)
@@ -331,7 +339,9 @@ python -m psh --debug-scopes -c 'f() { local x=1; echo $x; }; f'
 
 1. **Scope Confusion**: Variables set in functions without `local` go to global scope (bash behavior).
 
-2. **Export Sync**: When modifying exported variables, remember to sync to `os.environ`.
+2. **Export Sync**: When modifying exported variables, sync to `state.env`
+   (NEVER `os.environ` — it is read once at startup and never written;
+   children receive `state.env` explicitly).
 
 3. **Readonly Check**: Always check `is_readonly` before modifying a variable.
 

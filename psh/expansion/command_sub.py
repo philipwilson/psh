@@ -35,7 +35,11 @@ class CommandSubstitution:
         import signal
         old_handler = signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 
-        pid = os.fork()
+        # Fork with termination signals blocked across the fork window
+        # (the v0.300 lost-signal race fix; the child unblocks them in
+        # apply_child_signal_policy after resetting handlers to SIG_DFL).
+        from psh.executor import fork_with_signal_window
+        pid = fork_with_signal_window()
         if pid == 0:
             # Child process
             try:
@@ -99,8 +103,15 @@ class CommandSubstitution:
                         pass
 
                 os._exit(exit_code)
-            except Exception:
-                # Exit with error
+            except Exception as e:
+                # Surface the failure on fd 2 before exiting — a silent
+                # bare-except here swallowed real defects (matches
+                # process_sub's error reporting style).
+                try:
+                    os.write(2, f"psh: command substitution error: {e}\n"
+                             .encode('utf-8', errors='replace'))
+                except OSError:
+                    pass
                 os._exit(1)
         else:
             # Parent process

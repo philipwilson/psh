@@ -262,47 +262,6 @@ class ArrayOpsMixin:
 
         return expanded
 
-    def is_array_expansion(self, var_expr: str) -> bool:
-        """Check if this is an array expansion that produces multiple words."""
-        if not var_expr.startswith('$'):
-            return False
-
-        var_expr = var_expr[1:]  # Remove $
-
-        # Check for $@ (positional parameters expansion)
-        if var_expr == '@':
-            return True
-
-        # Check for ${arr[@]} syntax
-        if var_expr.startswith('{') and var_expr.endswith('}'):
-            var_content = var_expr[1:-1]
-
-            # Special expansions that don't produce multiple words
-            if var_content.startswith('#'):
-                # ${#arr[@]} produces single word
-                return False
-
-            # ${!arr[@]} produces multiple words (array indices)
-            # Handle escaped ! if present
-            check_content = var_content
-            if check_content.startswith('\\!'):
-                check_content = check_content[1:]  # Remove the backslash
-
-            if check_content.startswith('!') and '[' in check_content and check_content.endswith(']'):
-                bracket_pos = check_content.find('[')
-                index_expr = check_content[bracket_pos+1:-1]
-                if index_expr == '@' or index_expr == '*':
-                    return True  # This is array indices expansion
-                return False  # Other ! expansions are single words
-
-            # Check for array subscript with @
-            if '[' in var_content and var_content.endswith(']'):
-                bracket_pos = var_content.find('[')
-                index_expr = var_content[bracket_pos+1:-1]
-                return index_expr == '@'
-
-        return False
-
     def expand_array_to_list(self, var_expr: str) -> list:
         """Expand an array variable to a list of words for ${arr[@]} syntax."""
         if not var_expr.startswith('$'):

@@ -20,11 +20,23 @@ class TestReadonlyAssignment:
         assert "readonly variable" in captured_shell.get_stderr()
 
     def test_command_prefix_readonly_assignment_errors(self, captured_shell):
+        """bash 5.2 (probe-verified 2026-06-12): the error is reported but
+        the command STILL RUNS, and the status is the command's own."""
         rc = captured_shell.run_command('readonly RO=1; RO=2 echo hi')
-        assert rc == 1
+        assert rc == 0
         assert "readonly variable" in captured_shell.get_stderr()
-        # The command should not have run.
-        assert captured_shell.get_stdout() == ""
+        assert captured_shell.get_stdout() == "hi\n"
+
+    def test_command_prefix_readonly_missing_command_is_127(self, captured_shell):
+        rc = captured_shell.run_command('readonly RO=1; RO=2 nosuchcmd_xyz')
+        assert rc == 127
+        assert "readonly variable" in captured_shell.get_stderr()
+
+    def test_command_prefix_other_assignments_still_temporary(self, captured_shell):
+        """A readonly failure must not leak the OTHER prefix assignments
+        (pre-fix psh skipped the restore step when the apply aborted)."""
+        captured_shell.run_command('readonly RO=1; OK=5 RO=2 true; echo "OK=[$OK]"')
+        assert captured_shell.get_stdout() == "OK=[]\n"
 
 
 class _BoomBuiltin(Builtin):

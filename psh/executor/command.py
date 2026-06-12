@@ -13,8 +13,6 @@ from typing import TYPE_CHECKING, List, Tuple
 
 from ..core import (
     ReadonlyVariableError,
-    extract_assignments,
-    is_exported,
     is_valid_assignment,
 )
 from .strategies import (
@@ -167,7 +165,17 @@ class CommandExecutor:
 
                 # Apply assignments for this command, now that its words are
                 # expanded. Each value sees the assignments to its left.
-                saved_vars, assignments = self._apply_command_assignments(raw_assignments)
+                saved_vars, assignments, assignment_error = \
+                    self._apply_command_assignments(raw_assignments)
+
+                if assignment_error and self.state.options.get('errexit'):
+                    # bash: under set -e a prefix-assignment error (e.g.
+                    # readonly) aborts WITHOUT running the command — even
+                    # in && / if contexts where errexit is normally
+                    # suppressed (probe-verified, bash 5.2).
+                    if self.shell.is_script_mode:
+                        sys.exit(1)
+                    return 1
 
 
                 # Handle xtrace option
@@ -238,8 +246,10 @@ class CommandExecutor:
         Policy (matching bash where noted):
         - Control-flow exceptions (return/break/continue) and SystemExit
           are re-raised for their handlers.
-        - Readonly assignment in a command prefix (RO=v cmd): status 1,
-          script continues (unlike a pure assignment, which aborts).
+        - ReadonlyVariableError from other paths (array element
+          assignments, etc.): status 1, script continues. (Command-prefix
+          assignments no longer raise — _apply_command_assignments reports
+          and skips them so the command still runs, like bash.)
         - Circular nameref in a command prefix: warn, status 1.
         - set -u violation: print once; abort a non-interactive shell
           with 127, otherwise return 127.
@@ -258,9 +268,8 @@ class CommandExecutor:
 
         # Handle other exceptions
         if isinstance(e, ReadonlyVariableError):
-            # Command-prefixed assignments (RO=v cmd): the command fails
-            # with status 1 but, unlike a pure assignment, does not abort
-            # the script (bash).
+            # Readonly assignment outside the command-prefix path (e.g.
+            # array element assignment): status 1, script continues.
             print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
             return 1
 
@@ -392,10 +401,6 @@ class CommandExecutor:
         # _expand_assignment_value_from_word raises on the missing Word.
         return True
 
-    def _extract_assignments(self, args: List[str]) -> List[Tuple[str, str]]:
-        """Extract variable assignments from beginning of arguments."""
-        return extract_assignments(args)
-
     def _is_valid_assignment(self, arg: str) -> bool:
         """Check if argument is a valid variable assignment."""
         return is_valid_assignment(arg)
@@ -450,41 +455,58 @@ class CommandExecutor:
                 return self.state.last_cmdsub_status
             return 0
 
-    def _apply_command_assignments(self, raw_assignments: list) -> Tuple[dict, List[Tuple[str, str]]]:
+    def _apply_command_assignments(self, raw_assignments: list) -> Tuple[dict, List[Tuple[str, str]], bool]:
         """Apply variable assignments for command execution.
 
         For command-prefixed assignments (FOO=bar cmd), we need to:
         1. Set the variable in shell state (for builtins/functions that use $VAR)
-        2. Set the variable in shell.env (for external commands that use os.environ)
+        2. Set the variable in shell.env (for external commands' environments)
 
         Values are expanded one at a time as they are applied, so each
         sees the assignments to its left (`A=1 B=$A cmd` gives B=1, bash).
 
-        Returns (saved_vars, expanded_assignments): the original state/env
-        values for restoration plus the expanded (var, value) pairs.
+        A readonly assignment does NOT abort the command (bash 5.2,
+        probe-verified): the error is reported, that one assignment is
+        skipped (the command's environment keeps the variable's old
+        value), the OTHER assignments still apply, and the command runs
+        with its own exit status. The caller handles ``set -e``, where
+        bash makes the assignment error fatal instead.
+
+        Returns (saved_vars, expanded_assignments, assignment_error):
+        the original state/env values for restoration, the successfully
+        applied (var, value) pairs, and whether any assignment failed.
         """
         saved_vars = {}
         assignments: List[Tuple[str, str]] = []
+        assignment_error = False
 
         for var, value, value_word in raw_assignments:
             value = self._expand_assignment_value_from_word(value, value_word)
             var, value = self._resolve_append(var, value)
-            assignments.append((var, value))
             # Save both shell state and environment values (first write wins
             # if the same variable is assigned twice)
+            saved = None
             if var not in saved_vars:
-                saved_vars[var] = {
+                saved = {
                     'state': self.state.get_variable(var),
                     'env': self.shell.env.get(var)  # May be None if not in env
                 }
             try:
                 self.state.set_variable(var, value)
-                # Also set in shell.env for external commands
-                self.shell.env[var] = value
             except ReadonlyVariableError:
-                raise
+                # bash: report and skip; earlier assignments stay applied
+                # (and are later restored), the command still runs.
+                print(f"psh: {var}: readonly variable",
+                      file=self.state.stderr)
+                assignment_error = True
+                continue
+            if saved is not None:
+                saved_vars[var] = saved
+            assignments.append((var, value))
+            # Also set in shell.env for external commands
+            self.shell.env[var] = value
 
-        return saved_vars, assignments
+        return saved_vars, assignments, assignment_error
 
     def _restore_command_assignments(self, saved_vars: dict):
         """Restore variables after command execution.
@@ -509,10 +531,6 @@ class CommandExecutor:
                     del self.shell.env[var]
             else:
                 self.shell.env[var] = old_env_value
-
-    def _is_exported(self, var_name: str) -> bool:
-        """Check if a variable is exported."""
-        return is_exported(var_name)
 
     def _expand_assignment_value_from_word(self, value: str, word=None) -> str:
         """Expand a value used in variable assignment.
@@ -713,13 +731,13 @@ class CommandExecutor:
             # exec without command - apply redirections permanently
             # and make variable assignments permanent
             if assignments:
-                # Make assignments permanent by exporting them
+                # Make assignments permanent by exporting them into the
+                # live environment (state.env; os.environ is read-once at
+                # startup and never written — children get state.env
+                # explicitly, so writing os.environ here only leaked).
                 for var, value in assignments:
                     self.state.set_variable(var, value)
-                    # Also export to environment
                     self.shell.env[var] = value
-                    import os
-                    os.environ[var] = value
 
             if node.redirects:
                 try:

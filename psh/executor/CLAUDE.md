@@ -27,7 +27,7 @@ Executor  Executor   Executor   Executor  Executor
 | `subshell.py` | `SubshellExecutor` - subshells and brace groups |
 | `array.py` | `ArrayOperationExecutor` - array initialization |
 | `process_launcher.py` | `ProcessLauncher` - unified process creation |
-| `child_policy.py` | `apply_child_signal_policy()` - single source of truth for child signal setup |
+| `child_policy.py` | `fork_with_signal_window()` + `apply_child_signal_policy()` - single source of truth for forking and child signal setup |
 | `job_control.py` | `JobManager`, `Job`, `JobState`, `Process` - job table and waiting (moved into the package in v0.285) |
 | `strategies.py` | Execution strategies for different command types, plus shared helpers `report_exec_failure()` and `execute_builtin_guarded()` |
 | `enhanced_test_evaluator.py` | `[[ ]]` test expression evaluation |
@@ -194,14 +194,19 @@ class ProcessConfig:
 
 ### Signal Handling
 
-All forked child processes apply the unified signal policy via
-`apply_child_signal_policy()` in `child_policy.py`. This is the single
-source of truth for child signal setup:
+All fork sites fork via `fork_with_signal_window()` in `child_policy.py`,
+which blocks SIGTERM/SIGINT/SIGHUP/SIGQUIT across the fork window (the
+v0.300 lost-signal race fix; the parent's mask is restored even when
+fork() raises). All forked children then apply the unified signal policy
+via `apply_child_signal_policy()` — the single source of truth for child
+signal setup:
 
 1. Set `state.in_forked_child = True`
 2. Temporarily ignore SIGTTOU (prevents STOP during setup)
 3. Reset all signals to SIG_DFL via `signal_manager.reset_child_signals()`
 4. If `is_shell_process=True`: re-ignore SIGTTOU
+5. Unblock the termination signals blocked by `fork_with_signal_window()`
+   (a signal that arrived in the window now takes its default action)
 
 The `is_shell_process` flag controls SIGTTOU disposition:
 

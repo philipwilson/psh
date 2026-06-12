@@ -13,6 +13,7 @@ import signal
 
 import pytest
 
+from psh.executor.child_policy import fork_with_signal_window
 from psh.executor.process_launcher import ProcessConfig, ProcessRole
 
 
@@ -46,6 +47,48 @@ class TestForkFailureRestoresMask:
         after = _current_mask()
         assert after == before, (
             f"signal mask leaked after failed fork: before={before} after={after}")
+
+    def test_helper_mask_restored_when_fork_raises(self, monkeypatch):
+        """fork_with_signal_window() itself (used by ALL three fork sites:
+        ProcessLauncher, command substitution, process substitution) must
+        restore the mask when os.fork() raises."""
+        before = _current_mask()
+        assert signal.SIGINT not in before
+
+        def failing_fork():
+            assert signal.SIGINT in _current_mask(), \
+                "helper should have blocked signals before fork()"
+            raise OSError(errno.EAGAIN, "Resource temporarily unavailable")
+
+        monkeypatch.setattr(os, 'fork', failing_fork)
+        with pytest.raises(OSError):
+            fork_with_signal_window()
+
+        assert _current_mask() == before
+
+    def test_helper_parent_mask_restored_on_success(self, monkeypatch):
+        """Parent path: mask blocked for the (fake) fork, restored after."""
+        before = _current_mask()
+
+        def fake_fork():
+            assert signal.SIGTERM in _current_mask()
+            return 12345  # parent path; no real child created
+
+        monkeypatch.setattr(os, 'fork', fake_fork)
+        assert fork_with_signal_window() == 12345
+        assert _current_mask() == before
+
+    def test_helper_child_keeps_signals_blocked(self, monkeypatch):
+        """Child path (pid 0): the mask must stay blocked — it is unblocked
+        later by apply_child_signal_policy() after handlers are reset."""
+        before = _current_mask()
+        monkeypatch.setattr(os, 'fork', lambda: 0)
+        try:
+            assert fork_with_signal_window() == 0
+            assert signal.SIGINT in _current_mask()
+            assert signal.SIGTERM in _current_mask()
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, before)
 
     def test_mask_restored_after_successful_launch(self, shell):
         """The normal path must also leave the parent's mask untouched."""
