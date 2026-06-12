@@ -74,7 +74,7 @@ def create_process_substitution(cmd_str: str, direction: str, shell: 'Shell') ->
 
             tokens = tokenize(cmd_str)
             ast = parse(tokens)
-            temp_shell = ShellClass(parent_shell=shell)
+            temp_shell = ShellClass.for_subshell(shell, norc=False)
             # The temp shell is a fresh state object: mark it as a forked
             # child like command substitution does, so builtins use
             # fd-level I/O and child-only code paths behave correctly.

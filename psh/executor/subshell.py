@@ -117,12 +117,7 @@ class SubshellExecutor:
             from ..shell import Shell
 
             # Create new shell instance with copied environment
-            subshell = Shell(
-                debug_ast=self.shell.state.debug_ast,
-                debug_tokens=self.shell.state.debug_tokens,
-                parent_shell=self.shell,  # Copy variables/functions
-                norc=True
-            )
+            subshell = Shell.for_subshell(self.shell)
 
             # Mark as forked child so builtins use os.write() which respects dup2()
             # This is critical for output redirection to work correctly in subshells
@@ -201,12 +196,7 @@ class SubshellExecutor:
             # Import Shell lazily to avoid circular dependency
             from ..shell import Shell
 
-            subshell = Shell(
-                debug_ast=self.shell.state.debug_ast,
-                debug_tokens=self.shell.state.debug_tokens,
-                parent_shell=self.shell,
-                norc=True
-            )
+            subshell = Shell.for_subshell(self.shell)
 
             # Share I/O streams for consistent output handling
             subshell.stdout = self.shell.stdout

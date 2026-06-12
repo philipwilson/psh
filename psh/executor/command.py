@@ -173,7 +173,7 @@ class CommandExecutor:
                     # readonly) aborts WITHOUT running the command — even
                     # in && / if contexts where errexit is normally
                     # suppressed (probe-verified, bash 5.2).
-                    if self.shell.is_script_mode:
+                    if self.shell.state.is_script_mode:
                         sys.exit(1)
                     return 1
 
@@ -284,7 +284,7 @@ class CommandExecutor:
             # set -u violation: print once and, like bash, abort a
             # non-interactive shell with status 127.
             print(f"psh: {e}", file=self.state.stderr)
-            if self.shell.is_script_mode:
+            if self.shell.state.is_script_mode:
                 sys.exit(127)
             return 127
 
@@ -292,7 +292,7 @@ class CommandExecutor:
             # Error message already printed by the expansion code
             expansion_exit_code = getattr(e, 'exit_code', 1)
             # In script mode, we should exit the shell
-            if self.shell.is_script_mode:
+            if self.shell.state.is_script_mode:
                 sys.exit(expansion_exit_code)
             return expansion_exit_code
 
@@ -437,14 +437,14 @@ class CommandExecutor:
                     # bash: assignment to a readonly variable aborts a
                     # non-interactive shell with status 1.
                     print(f"psh: {var}: readonly variable", file=self.state.stderr)
-                    if self.shell.is_script_mode:
+                    if self.shell.state.is_script_mode:
                         sys.exit(1)
                     return 1
                 except NamerefCycleError as e:
                     # bash: writing through a circular nameref warns and
                     # aborts a non-interactive shell with status 1.
                     self.state.scope_manager.warn_nameref_cycle(e.name)
-                    if self.shell.is_script_mode:
+                    if self.shell.state.is_script_mode:
                         sys.exit(1)
                     return 1
 

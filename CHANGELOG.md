@@ -4,6 +4,41 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.314.0 (2026-06-12) - Textbook program Tier B1: Shell lifecycle (zero behavior change)
+- Shell.__init__ is now 31 lines (was 122): seven named lifecycle
+  phases, each docstringed with its before/after state —
+  _create_state, _init_managers, _inherit_from_parent,
+  _init_shell_components, _select_parser, _init_traps,
+  _init_interactive. shell.py's module docstring finally answers
+  "what is a Shell?" from the file itself.
+- Shell.for_subshell(parent, *, norc=True) replaces the inline
+  parent-inheritance block; the pure state-copying half lives in
+  ShellState.adopt(parent_state). All five construction-with-parent
+  sites migrated (foreground/background subshells, command
+  substitution, process substitution, the env builtin — the last two
+  keep their historical norc=False explicitly; quirk noted for a
+  future look). 12 new tests pin exactly what a child inherits.
+- The CLI analysis modes (--validate/--format/--metrics/--security/
+  --lint, 77 lines) moved off Shell to scripting/visitor_modes.py;
+  all five probed byte-identical.
+- The forwarding magic is GONE: __getattr__/__setattr__/
+  _setup_compatibility_properties deleted. Four explicit properties
+  (stdout/stderr/stdin/env, with write-through setters — ~126 of the
+  forwarding's production uses) remain as Shell's deliberate public
+  face for builtins; the other 37 production + 8 test sites were
+  rewritten to shell.state.X. A typo'd shell.attr now raises
+  AttributeError instead of silently reading ShellState — pinned by
+  test. One regression during the sweep (return builtin's
+  function_stack read on a line that mixed both forms) was caught by
+  the suite's 33 failures and root-fixed, then the sweep re-run with
+  a per-occurrence regex: zero residuals.
+- psh/shell.py joins the mypy files list (15 files now), fully
+  annotated, zero ignores.
+- Suite: 5,273 passed / 5,513 collected, 0 failures; ruff + mypy
+  clean. Refactor contract: zero behavior change — subshell/procsub/
+  cmdsub/env/source/rc-file/parser-selection batteries and all five
+  analysis modes probed identical.
+
 ## 0.313.0 (2026-06-12) - Textbook program Tier A2: test/CI honesty (TIER A COMPLETE)
 - Timing tests measure CPU time: test_lexer_performance.py and the
   benchmark helpers use time.process_time() + min-of-3 (preemption

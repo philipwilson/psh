@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.313.0 | **Tests**: 5,501 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.314.0 | **Tests**: 5,513 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~47,300 lines of production code in `psh/` across 192 Python files, plus ~53,600 lines of tests in `tests/` (231 files)
-- **Test Coverage**: 5,501 tests in 253 test files
+- **Test Coverage**: 5,513 tests in 254 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.314.0**: textbook Tier B1 — Shell.__init__ is 31 lines of seven named lifecycle phases (was 122); `Shell.for_subshell()` replaces inline parent-inheritance (state copying in `ShellState.adopt()`); CLI analysis modes moved to scripting/; `__getattr__`/`__setattr__` forwarding deleted (four explicit stdout/stderr/stdin/env properties; 45 consumer sites rewritten to shell.state); shell.py mypy-clean with zero ignores
 - **v0.313.0**: textbook Tier A2 — timing tests measure CPU time (regression-sensitivity proven); 53 dead skips purged with 6 behaviors ported to the PTY smoke tier first; 18-entry absent-feature xfail ledger gives "98% compliance" an honest denominator; builtin statelessness enforced (caught a registry-poisoning fixture); dirs/popd/pushd `-N` off-by-one + `dirs -p`/`-v` format fixed vs bash; CI gains coverage artifact + nightly full-suite/conformance/golden workflow; run_tests.py `--census`
 - **v0.312.0**: textbook program Tier A1 — printf engine extracted pure (utils/printf_formatter.py) with `%*`/`%.*`/`%n`/strtoll-numerics fixed (~90 bash probes); fork sigmask window shared by all three fork sites; readonly-prefix assignments run the command like bash; os.environ is read-once (state.env authoritative, all vestigial writes deleted); ~135 lines dead code removed
 - **v0.311.0**: ARCHITECTURE.llm retired to docs/archive/ — its unique content (component tree, pipeline walkthrough, invariants, quick-reference) folded into ARCHITECTURE.md as a leading Quick Map section; one fewer drift surface, release ritual drops to four files

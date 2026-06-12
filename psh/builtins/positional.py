@@ -36,13 +36,13 @@ class ShiftBuiltin(Builtin):
             return 1
 
         # Check if we have enough parameters to shift
-        param_count = len(shell.positional_params)
+        param_count = len(shell.state.positional_params)
         if n > param_count:
             # POSIX: return failure if n > $#
             return 1
 
         # Perform the shift
-        shell.positional_params = shell.positional_params[n:]
+        shell.state.positional_params = shell.state.positional_params[n:]
 
         return 0
 
@@ -107,7 +107,7 @@ class GetoptsBuiltin(Builtin):
             argv = args[3:]
         else:
             # Parse positional parameters
-            argv = shell.positional_params
+            argv = shell.state.positional_params
 
         # Check if we've processed all arguments
         arg_index = optind - 1  # Convert to 0-based

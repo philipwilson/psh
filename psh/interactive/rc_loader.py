@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 def load_rc_file(shell: 'Shell') -> None:
     """Load ~/.pshrc or alternative RC file if it exists."""
     # Determine which RC file to load
-    if shell.rcfile:
-        rc_file = os.path.expanduser(shell.rcfile)
+    if shell.state.rcfile:
+        rc_file = os.path.expanduser(shell.state.rcfile)
     else:
         rc_file = os.path.expanduser("~/.pshrc")
 

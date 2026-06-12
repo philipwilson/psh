@@ -94,7 +94,7 @@ class ReadBuiltin(Builtin):
                 line = line[:-1]
 
             # Get IFS value (default is space, tab, newline)
-            ifs = shell.variables.get('IFS', shell.env.get('IFS', ' \t\n'))
+            ifs = shell.state.variables.get('IFS', shell.env.get('IFS', ' \t\n'))
 
             # Handle assignment based on array option or number of variables
             if options['array_name']:
@@ -236,7 +236,7 @@ class ReadBuiltin(Builtin):
             if i < len(fields):
                 if i == len(var_names) - 1 and i < len(fields) - 1:
                     # Last variable - assign all remaining fields joined by first IFS char
-                    ifs = shell.variables.get('IFS', shell.env.get('IFS', ' \t\n'))
+                    ifs = shell.state.variables.get('IFS', shell.env.get('IFS', ' \t\n'))
                     if ifs:
                         sep = ifs[0]
                     else:

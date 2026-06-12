@@ -76,12 +76,7 @@ class CommandSubstitution:
                     os.close(null_fd)
 
                 # Create a temporary shell to execute the command
-                temp_shell = Shell(
-                    debug_ast=self.state.debug_ast,
-                    debug_tokens=self.state.debug_tokens,
-                    parent_shell=self.shell,
-                    norc=True
-                )
+                temp_shell = Shell.for_subshell(self.shell)
                 temp_shell.state.in_forked_child = True
 
                 # Execute the command

@@ -23,7 +23,7 @@ class HistoryBuiltin(Builtin):
         if len(args) > 1:
             # Check for -c flag to clear history
             if args[1] == '-c':
-                shell.history.clear()
+                shell.state.history.clear()
                 return 0
 
             try:
@@ -39,7 +39,7 @@ class HistoryBuiltin(Builtin):
             count = 10
 
         # Calculate the starting index
-        history = shell.history
+        history = shell.state.history
         start = max(0, len(history) - count)
         history_slice = history[start:]
 

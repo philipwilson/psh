@@ -15,7 +15,7 @@ class ShellState:
     ``state.env`` is the shell's live environment from then on, and it
     is passed EXPLICITLY to every child (``execvpe(args, shell.env)``
     in executor/strategies.py and builtins/core.py, ``env=state.env``
-    for shebang re-execution, and ``Shell(parent_shell=...)`` copies).
+    for shebang re-execution, and ``Shell.for_subshell(...)`` copies).
     Nothing in psh writes ``os.environ`` after startup — a write there
     would be invisible to children and only leak state into the hosting
     Python process (the pre-v0.312 ``FOO=bar exec`` leak).
@@ -182,6 +182,41 @@ class ShellState:
 
         # Detect terminal capabilities after initialization
         self._detect_terminal_capabilities()
+
+    def adopt(self, parent: 'ShellState') -> None:
+        """Copy inheritable execution state from a parent shell's state.
+
+        This is the pure state-copying half of subshell creation (the
+        Shell-level half — function/alias manager copies — lives in
+        ``Shell._inherit_from_parent``). It copies the live environment,
+        every variable scope (whole ``Variable`` objects, preserving
+        attributes), positional parameters, shell options (set -e,
+        pipefail, ...), ``$?``, script mode, PIPESTATUS, ``$PPID`` and
+        ``$$``, then re-syncs exported variables (including local
+        exports) into the environment.
+
+        Mode flags ('interactive', 'stdin_mode', 'emacs') are recomputed
+        afterwards by ``Shell._init_interactive`` and overwrite their
+        copies. Jobs are never copied — those are shell-specific.
+        """
+        self.env = parent.env.copy()
+        # Copy global variables as whole Variable objects to preserve
+        # attributes (export, readonly, arrays, ...).
+        for name, var in parent.scope_manager.global_scope.variables.items():
+            self.scope_manager.global_scope.variables[name] = var.copy()
+        # Copy all nested scopes to inherit local variables and their
+        # attributes (skip global — already copied above).
+        for scope in parent.scope_manager.scope_stack[1:]:
+            self.scope_manager.scope_stack.append(scope.copy())
+        self.positional_params = parent.positional_params.copy()
+        self.options.update(parent.options)
+        self.last_exit_code = parent.last_exit_code
+        self.is_script_mode = parent.is_script_mode
+        self.pipestatus = list(parent.pipestatus)
+        self.initial_ppid = parent.initial_ppid
+        self.shell_pid = parent.shell_pid
+        # Sync all exported variables (including local exports) to environment
+        self.scope_manager.sync_exports_to_environment(self.env)
 
     @property
     def stdout(self):

@@ -4,6 +4,10 @@
 import sys
 from typing import Dict, List, Tuple
 
+from .scripting.visitor_modes import (
+    handle_visitor_mode_for_command,
+    handle_visitor_mode_for_script,
+)
 from .shell import Shell
 
 # Flags that take no value: flag → settings applied when present.
@@ -190,7 +194,7 @@ def main():
 
             # Handle visitor modes for -c commands
             if visitor_mode:
-                exit_code = shell._handle_visitor_mode_for_command(command)
+                exit_code = handle_visitor_mode_for_command(shell, command)
                 sys.exit(exit_code)
 
             # Use StringInput with script mode to process line-by-line like bash -c
@@ -230,7 +234,7 @@ def main():
 
             # Handle visitor modes for script files
             if visitor_mode:
-                exit_code = shell._handle_visitor_mode_for_script(script_path)
+                exit_code = handle_visitor_mode_for_script(shell, script_path)
                 sys.exit(exit_code)
 
             exit_code = shell.script_manager.run_script(script_path, script_args)

@@ -1,5 +1,20 @@
+"""The Shell object: psh's top-level orchestrator.
+
+A Shell is a ``ShellState`` (variables, options, streams, execution
+state) plus the component managers that operate on it (expansion, I/O,
+scripting, interaction, jobs, functions, aliases, traps) and a small
+execution facade (``run_command``/``execute_*``). Construction happens
+in named lifecycle phases — see ``__init__`` — and child shells for
+subshells/substitutions are built with ``Shell.for_subshell``.
+
+This file deliberately contains no execution logic and no CLI-mode
+logic: executors live in ``psh/executor/``, the ``--validate/--format/
+--metrics/...`` analysis modes in ``psh/scripting/visitor_modes.py``.
+"""
+
 import os
 import sys
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO
 
 from .ast_nodes import (
     EnhancedTestStatement,
@@ -16,19 +31,28 @@ from .interactive import InteractiveManager
 from .io_redirect import IOManager
 from .scripting.base import ScriptManager
 
+if TYPE_CHECKING:
+    from .executor.core import ExecutorVisitor
+
 
 class Shell:
-    def __init__(self, args=None, script_name=None, debug_ast=False, debug_tokens=False, debug_scopes=False,
-                 debug_expansion=False, debug_expansion_detail=False, debug_exec=False, debug_exec_fork=False,
-                 norc=False, rcfile=None, validate_only=False, format_only=False, metrics_only=False,
-                 security_only=False, lint_only=False, parent_shell=None, ast_format=None,
-                 force_interactive=False):
-        # Initialize state
-        self.state = ShellState(args, script_name, debug_ast,
-                              debug_tokens, debug_scopes, debug_expansion, debug_expansion_detail,
-                              debug_exec, debug_exec_fork, norc, rcfile)
+    def __init__(self, args: Optional[List[str]] = None, script_name: Optional[str] = None,
+                 debug_ast: bool = False, debug_tokens: bool = False, debug_scopes: bool = False,
+                 debug_expansion: bool = False, debug_expansion_detail: bool = False,
+                 debug_exec: bool = False, debug_exec_fork: bool = False,
+                 norc: bool = False, rcfile: Optional[str] = None, validate_only: bool = False,
+                 format_only: bool = False, metrics_only: bool = False,
+                 security_only: bool = False, lint_only: bool = False,
+                 parent_shell: Optional['Shell'] = None, ast_format: Optional[str] = None,
+                 force_interactive: bool = False) -> None:
+        self._create_state(args, script_name, debug_ast, debug_tokens, debug_scopes,
+                           debug_expansion, debug_expansion_detail, debug_exec,
+                           debug_exec_fork, norc, rcfile)
 
-        # Store validation and visitor modes
+        # CLI analysis-mode flags (--validate/--format/--metrics/--security/
+        # --lint) and AST debug format. Stored verbatim for the callers that
+        # branch on them: __main__/scripting.visitor_modes and the source
+        # processor's validate-only path.
         self.validate_only = validate_only
         self.format_only = format_only
         self.metrics_only = metrics_only
@@ -36,92 +60,138 @@ class Shell:
         self.lint_only = lint_only
         self.ast_format = ast_format
 
-        # Set shell reference in scope manager for arithmetic evaluation
+        self._init_managers()
+        if parent_shell is not None:
+            self._inherit_from_parent(parent_shell)
+        self._init_shell_components()
+        self._select_parser(parent_shell)
+        self._init_traps()
+        self._init_interactive(force_interactive)
+
+    @classmethod
+    def for_subshell(cls, parent: 'Shell', *, norc: bool = True) -> 'Shell':
+        """Construct a child shell that inherits *parent*'s execution state.
+
+        This is the construction path for forked or isolated children:
+        ``( ... )`` subshells, command substitution, process substitution
+        and the env builtin's in-process child. The child inherits the
+        environment, all variable scopes (with attributes), functions,
+        aliases, positional parameters, shell options, ``$?``, PIPESTATUS,
+        ``$PPID`` and ``$$`` — but never jobs (see ``_inherit_from_parent``).
+        Children skip rc-file loading by default (``norc=True``).
+        """
+        return cls(parent_shell=parent, norc=norc)
+
+    # ------------------------------------------------------------------
+    # Construction phases (called, in order, from __init__)
+    # ------------------------------------------------------------------
+
+    def _create_state(self, args: Optional[List[str]], script_name: Optional[str],
+                      debug_ast: bool, debug_tokens: bool, debug_scopes: bool,
+                      debug_expansion: bool, debug_expansion_detail: bool,
+                      debug_exec: bool, debug_exec_fork: bool,
+                      norc: bool, rcfile: Optional[str]) -> None:
+        """Phase 1: create the central ShellState.
+
+        Before: nothing exists. After: ``self.state`` holds fresh defaults
+        (environment snapshot, options, variable scopes, execution state)
+        and its scope manager can reach back to this shell for arithmetic
+        evaluation.
+        """
+        self.state = ShellState(args, script_name, debug_ast,
+                                debug_tokens, debug_scopes, debug_expansion,
+                                debug_expansion_detail, debug_exec, debug_exec_fork,
+                                norc, rcfile)
         self.state.scope_manager.set_shell(self)
 
-        self._setup_compatibility_properties()
+    def _init_managers(self) -> None:
+        """Phase 2: managers that hold no reference back to the shell.
 
+        Before: only ``self.state`` exists. After: the builtin registry,
+        alias, function and job managers exist (the job manager connected
+        to state for option checking). These are exactly the managers a
+        parent shell may replace in ``_inherit_from_parent``.
+        """
         self.builtin_registry = builtin_registry
-
-        # Initialize basic managers first
         self.alias_manager = AliasManager()
         self.function_manager = FunctionManager()
         self.job_manager = JobManager()
-
-        # Connect job manager to shell state for option checking
         self.job_manager.set_shell_state(self.state)
 
-        # Inherit from parent shell if provided - MUST be done before creating other managers
-        if parent_shell:
-            self.env = parent_shell.env.copy()
-            # Copy global variables from parent's scope manager
-            for name, var in parent_shell.state.scope_manager.global_scope.variables.items():
-                # Copy the entire Variable object to preserve attributes
-                self.state.scope_manager.global_scope.variables[name] = var.copy()
-            # Copy all scopes to inherit local variables and their attributes
-            for scope in parent_shell.state.scope_manager.scope_stack[1:]:  # Skip global, already copied
-                new_scope = scope.copy()
-                self.state.scope_manager.scope_stack.append(new_scope)
-            self.function_manager = parent_shell.function_manager.copy()
-            self.alias_manager = parent_shell.alias_manager.copy()
-            # Copy positional parameters for subshells
-            self.state.positional_params = parent_shell.state.positional_params.copy()
-            # Inherit shell options (set -e, pipefail, ...) and $? — a
-            # subshell starts with the parent's option state and last exit
-            # code (bash). Mode flags recomputed later in __init__
-            # ('interactive', 'stdin_mode', 'emacs') overwrite their copies.
-            self.state.options.update(parent_shell.state.options)
-            self.state.last_exit_code = parent_shell.state.last_exit_code
-            self.state.is_script_mode = parent_shell.state.is_script_mode
-            self.state.pipestatus = list(parent_shell.state.pipestatus)
-            self.state.initial_ppid = parent_shell.state.initial_ppid
-            self.state.shell_pid = parent_shell.state.shell_pid
-            # Sync all exported variables (including local exports) to environment
-            self.state.scope_manager.sync_exports_to_environment(self.env)
-            # Note: We don't copy jobs - those are shell-specific
+    def _inherit_from_parent(self, parent: 'Shell') -> None:
+        """Phase 3 (child shells only): adopt the parent's state.
 
-        # Now create managers that need references to the shell
-        # These will get the correct function_manager reference
+        Before: state and the basic managers hold fresh defaults. After:
+        ``self.state`` carries the parent's environment, variables, options,
+        ``$?``, PIPESTATUS, ``$PPID``/``$$`` (see ``ShellState.adopt``) and
+        this shell owns COPIES of the parent's functions and aliases. Jobs
+        are not inherited — those are shell-specific. Must run before
+        ``_init_shell_components``, whose components capture references to
+        the (possibly replaced) function manager.
+        """
+        self.state.adopt(parent.state)
+        self.function_manager = parent.function_manager.copy()
+        self.alias_manager = parent.alias_manager.copy()
+
+    def _init_shell_components(self) -> None:
+        """Phase 4: components that hold a reference to this shell.
+
+        Before: state and the final (post-inheritance) basic managers
+        exist. After: the expansion/I/O/script/interactive managers, the
+        single shared ProcessLauncher — the one fork/job-control path for
+        pipelines, external commands, background builtins/functions and
+        subshells (executors must not build their own) — the history
+        expander, and the nested-execution slot ``_current_executor``.
+        """
         self.expansion_manager = ExpansionManager(self)
         self.io_manager = IOManager(self)
         self.script_manager = ScriptManager(self)
         self.interactive_manager = InteractiveManager(self)
 
-        # Single shared process launcher — the one fork/job-control path for
-        # pipelines, external commands, background builtins/functions and
-        # subshells (executors must not build their own).
         from .executor.process_launcher import ProcessLauncher
         self.process_launcher = ProcessLauncher(
             self.state, self.job_manager, self.io_manager,
             self.interactive_manager.signal_manager)
 
-        # Initialize history expander
         from .interactive.history_expansion import HistoryExpander
         self.history_expander = HistoryExpander(self)
-
-        # Active parser selection ('recursive_descent' or 'combinator')
-        self._active_parser = 'recursive_descent'
-        if parent_shell and hasattr(parent_shell, '_active_parser'):
-            self._active_parser = parent_shell._active_parser
-        elif os.environ.get('PSH_TEST_PARSER'):
-            self._active_parser = os.environ['PSH_TEST_PARSER']
-
-        # Initialize trap manager
-        from .core import TrapManager
-        self.trap_manager = TrapManager(self)
-
-        # Stream references (shell.stdout/.stderr/.stdin) delegate to
-        # ShellState properties that track the LIVE sys.* streams unless a
-        # caller installs custom ones (capture buffers, subshell pipes).
-        # Do not snapshot sys.stdout here — that would freeze init-time
-        # objects and miss later replacements.
 
         # The ExecutorVisitor currently executing, if any. Nested execution
         # (eval, source) reuses it so loop depth and function context carry
         # into the nested commands — `eval break` must break the outer loop.
-        self._current_executor = None
+        self._current_executor: Optional['ExecutorVisitor'] = None
 
-        # Determine interactive mode
+    def _select_parser(self, parent_shell: Optional['Shell']) -> None:
+        """Phase 5: choose the active parser implementation.
+
+        After: ``_active_parser`` is 'recursive_descent' (default) or
+        'combinator'. A child shell keeps its parent's choice; otherwise
+        the PSH_TEST_PARSER environment hook (test matrix) wins.
+        """
+        self._active_parser = 'recursive_descent'
+        if parent_shell is not None:
+            self._active_parser = parent_shell._active_parser
+        elif os.environ.get('PSH_TEST_PARSER'):
+            self._active_parser = os.environ['PSH_TEST_PARSER']
+
+    def _init_traps(self) -> None:
+        """Phase 6: trap manager (trap builtin storage, EXIT/signal dispatch).
+
+        Before: state exists (the manager stores handlers in
+        ``state.trap_handlers``). After: ``self.trap_manager`` is ready.
+        """
+        from .core import TrapManager
+        self.trap_manager = TrapManager(self)
+
+    def _init_interactive(self, force_interactive: bool) -> None:
+        """Phase 7: interactive-mode determination, history and rc loading.
+
+        Before: every component exists; the mode flag options hold defaults
+        or a parent's copies. After: the 'interactive', 'stdin_mode' and
+        'emacs' options reflect THIS process (recomputed even for child
+        shells), history is loaded for interactive shells, and the rc file
+        has run (interactive, non-script shells without --norc only).
+        """
         is_interactive = force_interactive or sys.stdin.isatty()
         self.state.options['interactive'] = is_interactive
 
@@ -129,56 +199,86 @@ class Shell:
         # Will be set to False by __main__.py when a script file is given
         self.state.options['stdin_mode'] = not self.state.is_script_mode
 
-        # Load history only for interactive shells (bash doesn't load history in non-interactive mode)
+        # Load history only for interactive shells (bash doesn't load
+        # history in non-interactive mode)
         if is_interactive:
             self.interactive_manager.load_history()
 
         # Set emacs mode based on interactive status (bash behavior)
         # Interactive: emacs on (for line editing), Non-interactive: emacs off
-        self.state.options['emacs'] = is_interactive and not self.is_script_mode
+        self.state.options['emacs'] = is_interactive and not self.state.is_script_mode
 
-        if not self.is_script_mode and is_interactive and not self.norc:
+        if not self.state.is_script_mode and is_interactive and not self.state.norc:
             from .interactive import load_rc_file
             load_rc_file(self)
 
-    def _setup_compatibility_properties(self):
-        """Configure which attribute names delegate to ShellState."""
-        self._state_properties = [
-            'env', 'variables', 'positional_params', 'script_name',
-            'is_script_mode', 'debug_ast', 'debug_tokens', 'norc', 'rcfile',
-            'last_exit_code', 'last_bg_pid', 'foreground_pgid', 'command_number',
-            'history', 'history_file', 'max_history_size', 'history_index',
-            'current_line', 'edit_mode', 'function_stack', 'in_forked_child',
-            'stdout', 'stderr', 'stdin'
-        ]
+    # ------------------------------------------------------------------
+    # State delegation: the four stream/environment accessors that the
+    # rest of the tree (and the test fixtures) address through the shell.
+    # All other state lives behind the explicit `shell.state` attribute.
+    # ------------------------------------------------------------------
 
-    def __getattr__(self, name):
-        """Delegate attribute access to ShellState."""
-        if hasattr(self.state, name):
-            return getattr(self.state, name)
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+    @property
+    def env(self) -> Dict[str, str]:
+        """The live environment (``state.env``; see ShellState's docstring).
 
-    def __setattr__(self, name, value):
-        """Delegate attribute setting to ShellState for state properties."""
-        if name in ('state', '_state_properties', 'builtin_registry',
-                   'alias_manager', 'function_manager', 'job_manager', 'expansion_manager',
-                   'io_manager', 'script_manager', 'interactive_manager',
-                   'history_expander', '_active_parser'):
-            super().__setattr__(name, value)
-        elif hasattr(self, '_state_properties') and name in self._state_properties:
-            setattr(self.state, name, value)
-        else:
-            super().__setattr__(name, value)
+        Assignment writes through to state so `shell.env = {...}` replaces
+        the environment every component sees.
+        """
+        return self.state.env
 
-    def execute_command_list(self, command_list: StatementList):
+    @env.setter
+    def env(self, value: Dict[str, str]) -> None:
+        self.state.env = value
+
+    # shell.stdout/.stderr/.stdin delegate to ShellState properties that
+    # track the LIVE sys.* streams unless a caller installs custom ones
+    # (capture buffers, subshell pipes). Do not snapshot sys.stdout at
+    # construction time — that would freeze init-time objects and miss
+    # later replacements. Assignment writes through to state: subshell
+    # and io_redirect code relies on `shell.stdout = x` being visible to
+    # everything that reads `state.stdout`.
+
+    @property
+    def stdout(self) -> TextIO:
+        """The shell's current output stream (live unless overridden)."""
+        return self.state.stdout
+
+    @stdout.setter
+    def stdout(self, value: TextIO) -> None:
+        self.state.stdout = value
+
+    @property
+    def stderr(self) -> TextIO:
+        """The shell's current error stream (live unless overridden)."""
+        return self.state.stderr
+
+    @stderr.setter
+    def stderr(self, value: TextIO) -> None:
+        self.state.stderr = value
+
+    @property
+    def stdin(self) -> TextIO:
+        """The shell's current input stream (live unless overridden)."""
+        return self.state.stdin
+
+    @stdin.setter
+    def stdin(self, value: TextIO) -> None:
+        self.state.stdin = value
+
+    # ------------------------------------------------------------------
+    # Execution facade
+    # ------------------------------------------------------------------
+
+    def execute_command_list(self, command_list: StatementList) -> int:
         """Execute a command list"""
         return self._execute_with_visitor(command_list)
 
-    def execute_toplevel(self, toplevel: TopLevel):
+    def execute_toplevel(self, toplevel: TopLevel) -> int:
         """Execute a top-level script/input containing functions and commands."""
         return self._execute_with_visitor(toplevel)
 
-    def _execute_with_visitor(self, node):
+    def _execute_with_visitor(self, node: Any) -> int:
         """Execute an AST node, reusing the active executor when nested.
 
         Nested execution (eval, source, trap actions) must share the caller's
@@ -216,84 +316,6 @@ class Shell:
                 print(f"psh: [[: {e}", file=sys.stderr)
                 return 2  # Syntax error
 
-    def _handle_visitor_mode_for_command(self, command: str) -> int:
-        """Handle visitor modes for -c commands."""
-        # Parse the command to get AST
-        try:
-            from .lexer import tokenize
-            from .parser import parse
-
-            tokens = tokenize(command)
-            ast = parse(tokens)
-
-            return self._apply_visitor_mode(ast)
-        except (ValueError, TypeError) as e:
-            print(f"Error parsing command: {e}", file=sys.stderr)
-            return 1
-
-    def _handle_visitor_mode_for_script(self, script_path: str) -> int:
-        """Handle visitor modes for script files."""
-        try:
-            # Read and parse the script file
-            with open(script_path, 'r') as f:
-                content = f.read()
-
-            from .lexer import tokenize
-            from .parser import parse
-
-            tokens = tokenize(content)
-            ast = parse(tokens)
-
-            return self._apply_visitor_mode(ast)
-        except FileNotFoundError:
-            print(f"psh: {script_path}: No such file or directory", file=sys.stderr)
-            return 1
-        except (ValueError, TypeError, OSError) as e:
-            print(f"Error processing script: {e}", file=sys.stderr)
-            return 1
-
-    def _apply_visitor_mode(self, ast) -> int:
-        """Apply the appropriate visitor mode to the AST."""
-        if self.validate_only:
-            from .visitor import EnhancedValidatorVisitor
-            validator = EnhancedValidatorVisitor()
-            validator.visit(ast)
-            print(validator.get_summary())
-            error_count = sum(1 for i in validator.issues if i.severity.value == 'error')
-            return 1 if error_count > 0 else 0
-
-        if self.format_only:
-            from .visitor import FormatterVisitor
-            formatter = FormatterVisitor()
-            formatted_code = formatter.visit(ast)
-            print(formatted_code)
-            return 0
-
-        if self.metrics_only:
-            from .visitor import MetricsVisitor
-            metrics = MetricsVisitor()
-            metrics.visit(ast)
-            print(metrics.get_summary())
-            return 0
-
-        if self.security_only:
-            from .visitor import SecurityVisitor
-            security = SecurityVisitor()
-            security.visit(ast)
-            print(security.get_summary())
-            issue_count = len(security.issues)
-            return 1 if issue_count > 0 else 0
-
-        if self.lint_only:
-            from .visitor import LinterVisitor
-            linter = LinterVisitor()
-            linter.visit(ast)
-            print(linter.get_summary())
-            issue_count = len(linter.issues)
-            return 1 if issue_count > 0 else 0
-
-        return 0
-
     @property
     def active_parser(self) -> str:
         """Name of the active parser implementation.
@@ -315,13 +337,10 @@ class Shell:
         """
         self.interactive_manager.history_manager.add_to_history(command)
 
-    def run_command(self, command_string: str, add_to_history=True):
+    def run_command(self, command_string: str, add_to_history: bool = True) -> int:
         """Execute a command string using the unified input system."""
         from .scripting.input_sources import StringInput
 
         # Use the unified execution system for consistency
         input_source = StringInput(command_string, "<command>")
         return self.script_manager.execute_from_source(input_source, add_to_history)
-
-
-
