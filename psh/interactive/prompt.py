@@ -186,8 +186,8 @@ class PromptExpander:
 
     def _get_history_number(self) -> str:
         """Get the current history number."""
-        return str(len(self.shell.history) + 1)
+        return str(len(self.shell.state.history) + 1)
 
     def _get_command_number(self) -> str:
         """Get the current command number."""
-        return str(self.shell.command_number + 1)
+        return str(self.shell.state.command_number + 1)

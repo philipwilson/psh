@@ -15,7 +15,7 @@ class Builtin(ABC):
     STATELESSNESS CONTRACT: builtin instances are process-wide singletons —
     each class is instantiated exactly once at import time by the
     ``@builtin`` decorator and shared by every Shell in the process
-    (including subshells and nested ``Shell(parent_shell=...)`` instances).
+    (including subshells and nested ``Shell.for_subshell(...)`` instances).
     A builtin must therefore keep NO per-invocation or per-shell state on
     ``self``: everything mutable lives on the ``shell`` argument passed to
     ``execute()`` (e.g. ``shell.state``, ``shell.env``,

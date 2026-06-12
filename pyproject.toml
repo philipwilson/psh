@@ -81,6 +81,7 @@ python_version = "3.12"
 files = [
     "psh/core",
     "psh/ast_nodes.py",
+    "psh/shell.py",
     "psh/version.py",
     "psh/expansion/pattern.py",
     "psh/utils/escapes.py",

@@ -508,7 +508,7 @@ class DeclareBuiltin(Builtin):
             if global_flag:
                 local_scope = False  # Force global scope
             else:
-                local_scope = bool(shell.function_stack)  # Local if in function
+                local_scope = bool(shell.state.function_stack)  # Local if in function
 
             shell.state.scope_manager.set_variable(name, value, attributes=attributes, local=local_scope)
 
@@ -708,7 +708,7 @@ class ReturnBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the return builtin."""
-        if not shell.function_stack and shell.state.source_depth == 0:
+        if not shell.state.function_stack and shell.state.source_depth == 0:
             self.error("can only `return' from a function or sourced script", shell)
             return 2  # bash usage-error status
 

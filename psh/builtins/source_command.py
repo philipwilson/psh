@@ -56,13 +56,13 @@ class SourceBuiltin(Builtin):
             return validation_result
 
         # Save current shell state
-        old_positional = shell.positional_params.copy()
-        old_script_name = shell.script_name
-        old_script_mode = shell.is_script_mode
+        old_positional = shell.state.positional_params.copy()
+        old_script_name = shell.state.script_name
+        old_script_mode = shell.state.is_script_mode
 
         # Set new state for sourced script
-        shell.positional_params = source_args
-        shell.script_name = script_path
+        shell.state.positional_params = source_args
+        shell.state.script_name = script_path
         # Keep current script mode (sourcing inherits mode)
 
         shell.state.source_depth += 1
@@ -83,9 +83,9 @@ class SourceBuiltin(Builtin):
         finally:
             shell.state.source_depth -= 1
             # Restore previous state
-            shell.positional_params = old_positional
-            shell.script_name = old_script_name
-            shell.is_script_mode = old_script_mode
+            shell.state.positional_params = old_positional
+            shell.state.script_name = old_script_name
+            shell.state.is_script_mode = old_script_mode
 
     def _find_source_file(self, filename: str, shell: 'Shell') -> str:
         """Find a source file, searching PATH if needed."""

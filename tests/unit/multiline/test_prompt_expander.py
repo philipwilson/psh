@@ -216,7 +216,7 @@ class TestHistoryAndCommandCounters:
         expander = PromptExpander(shell)
 
         # Set up shell with some history
-        shell.history = ['echo 1', 'echo 2', 'echo 3']
+        shell.state.history = ['echo 1', 'echo 2', 'echo 3']
         result = expander.expand_prompt("\\!")
         assert result == "4"  # Next history number
 
@@ -225,7 +225,7 @@ class TestHistoryAndCommandCounters:
         assert result == "[4]"
 
         # Empty history
-        shell.history = []
+        shell.state.history = []
         result = expander.expand_prompt("\\!")
         assert result == "1"
 
@@ -234,7 +234,7 @@ class TestHistoryAndCommandCounters:
         expander = PromptExpander(shell)
 
         # Set up shell with command count
-        shell.command_number = 5
+        shell.state.command_number = 5
         result = expander.expand_prompt("\\#")
         assert result == "6"  # Next command number
 
@@ -243,7 +243,7 @@ class TestHistoryAndCommandCounters:
         assert result == "Cmd 6:"
 
         # Fresh shell
-        shell.command_number = 0
+        shell.state.command_number = 0
         result = expander.expand_prompt("\\#")
         assert result == "1"
 
@@ -284,8 +284,8 @@ class TestComplexPromptExpansion:
         """Test complex prompt with history and command numbers."""
         expander = PromptExpander(shell)
 
-        shell.history = ['cmd1', 'cmd2']
-        shell.command_number = 10
+        shell.state.history = ['cmd1', 'cmd2']
+        shell.state.command_number = 10
 
         result = expander.expand_prompt("[\\!:\\#] \\$ ")
         assert result == "[3:11] $ "

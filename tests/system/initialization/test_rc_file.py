@@ -136,7 +136,7 @@ def test_rc_file_sets_variables_and_functions():
         shell._force_interactive = True
         load_rc_file(shell)  # Force load since we're in test environment
         # Shell variable should be set
-        assert shell.variables.get('TEST_VAR') == 'hello_world'
+        assert shell.state.variables.get('TEST_VAR') == 'hello_world'
         # Environment variable should be exported
         assert shell.env.get('ENV_VAR') == 'exported'
         # Function should be defined
@@ -184,7 +184,7 @@ def test_rc_file_preserves_dollar_zero():
         shell._force_interactive = True
         load_rc_file(shell)  # Force load since we're in test environment
         # $0 should be restored to 'psh' after RC file execution
-        assert shell.variables.get('0', shell.script_name) == 'psh'
+        assert shell.state.variables.get('0', shell.state.script_name) == 'psh'
     finally:
         os.unlink(rc_file)
 

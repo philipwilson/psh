@@ -209,7 +209,7 @@ class ExecBuiltin(Builtin):
         (127 not found, 126 not executable); an interactive shell survives
         and reports the status.
         """
-        if shell.is_script_mode:
+        if shell.state.is_script_mode:
             sys.exit(code)
         return code
 

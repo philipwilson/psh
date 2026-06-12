@@ -77,7 +77,7 @@ class MultiLineInputHandler:
         """Get the appropriate prompt based on current state."""
         if not self.buffer:
             # Primary prompt
-            ps1 = self.shell.variables.get('PS1', '\\u@\\h:\\w\\$ ')
+            ps1 = self.shell.state.variables.get('PS1', '\\u@\\h:\\w\\$ ')
             return self.prompt_expander.expand_prompt(ps1)
         else:
             # Continuation prompt - use context-aware prompt if available
@@ -87,7 +87,7 @@ class MultiLineInputHandler:
                 return f"{context_str}> "
             else:
                 # Fallback to standard PS2
-                ps2 = self.shell.variables.get('PS2', '> ')
+                ps2 = self.shell.state.variables.get('PS2', '> ')
                 return self.prompt_expander.expand_prompt(ps2)
 
     def _is_complete_command(self, command: str) -> bool:

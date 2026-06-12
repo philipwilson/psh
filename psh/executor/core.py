@@ -115,7 +115,7 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # contexts, non-final && / || members, and ! negation).
                 if (exit_status != 0 and self.state.options.get('errexit', False)
                         and self.state.errexit_eligible):
-                    if hasattr(self.shell, 'is_script_mode') and self.shell.is_script_mode:
+                    if self.shell.state.is_script_mode:
                         sys.exit(exit_status)
                     break
             except LoopBreak:
@@ -157,7 +157,7 @@ class ExecutorVisitor(ASTVisitor[int]):
                 if (exit_status != 0 and self.state.options.get('errexit', False)
                         and self.state.errexit_eligible):
                     # In script mode, exit the process
-                    if hasattr(self.shell, 'is_script_mode') and self.shell.is_script_mode:
+                    if self.shell.state.is_script_mode:
                         sys.exit(exit_status)
                     # Otherwise, just stop executing further statements in this list
                     break

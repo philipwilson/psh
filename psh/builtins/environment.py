@@ -57,7 +57,7 @@ class EnvBuiltin(Builtin):
         from ..core import VarAttributes
         from ..shell import Shell
 
-        child_shell = Shell(parent_shell=shell)
+        child_shell = Shell.for_subshell(shell, norc=False)
         child_shell.state.options.update(shell.state.options)
         child_shell.stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
         child_shell.stderr = shell.stderr if hasattr(shell, 'stderr') else sys.stderr
@@ -356,7 +356,7 @@ class SetBuiltin(Builtin):
 
             # -- separates options from positional parameters
             if arg == '--':
-                shell.positional_params = args[i + 1:]
+                shell.state.positional_params = args[i + 1:]
                 return 0
 
             # Bare -o / +o without a following name: display options
@@ -395,7 +395,7 @@ class SetBuiltin(Builtin):
                 continue
 
             # First non-option argument: the rest are positional parameters
-            shell.positional_params = args[i:]
+            shell.state.positional_params = args[i:]
             return 0
 
         return 0
@@ -407,11 +407,11 @@ class SetBuiltin(Builtin):
         # Editor modes (silent, like bash)
         if option in ('vi', 'emacs'):
             if enable:
-                shell.edit_mode = option
+                shell.state.edit_mode = option
                 shell.state.options['vi'] = (option == 'vi')
                 shell.state.options['emacs'] = (option == 'emacs')
             elif option == 'vi':
-                shell.edit_mode = 'emacs'
+                shell.state.edit_mode = 'emacs'
                 shell.state.options['vi'] = False
             else:
                 shell.state.options['emacs'] = False
@@ -507,13 +507,12 @@ class SetBuiltin(Builtin):
             self.write_line(f"{opt_name:<15}\t{status}", shell)
 
         # Add edit mode info using standard option names
-        if hasattr(shell, 'edit_mode'):
-            if shell.edit_mode == 'emacs':
-                self.write_line(f"{'emacs':<15}\ton", shell)
-                self.write_line(f"{'vi':<15}\toff", shell)
-            else:  # vi mode
-                self.write_line(f"{'emacs':<15}\toff", shell)
-                self.write_line(f"{'vi':<15}\ton", shell)
+        if shell.state.edit_mode == 'emacs':
+            self.write_line(f"{'emacs':<15}\ton", shell)
+            self.write_line(f"{'vi':<15}\toff", shell)
+        else:  # vi mode
+            self.write_line(f"{'emacs':<15}\toff", shell)
+            self.write_line(f"{'vi':<15}\ton", shell)
 
 
 @builtin
