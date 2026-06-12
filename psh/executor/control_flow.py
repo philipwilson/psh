@@ -510,12 +510,13 @@ class ControlFlowExecutor:
         """Expand the item list of a for or select loop.
 
         Items go through the canonical Word expansion engine
-        (ExpansionManager.expand_word_to_fields), so IFS splitting of
+        (ExpansionManager.expand_word_to_fields) under the LOOP_ITEM
+        policy (an alias of COMMAND_ARGUMENT in
+        ``psh/expansion/word_expander.py``), so IFS splitting of
         command substitutions and variables, quote suppression, globbing,
         tilde expansion and empty-expansion elision all match
-        simple-command argument semantics (bash). assignment_tilde=True
-        because bash tilde-expands ``for i in P=~/x`` like a command
-        argument.
+        simple-command argument semantics — bash tilde-expands
+        ``for i in P=~/x`` like a command argument.
 
         Fallback audit 2026-06-12 — classification (a), kept deliberately:
         both parsers always populate item_words (parallel to items), but
@@ -528,11 +529,12 @@ class ControlFlowExecutor:
         if item_words is None or len(item_words) != len(node.items):
             return list(node.items)
 
+        from ..expansion.word_expander import LOOP_ITEM
+
         expanded_items: List[str] = []
         for word in item_words:
             expanded_items.extend(
-                self.expansion_manager.expand_word_to_fields(
-                    word, assignment_tilde=True))
+                self.expansion_manager.expand_word_to_fields(word, LOOP_ITEM))
         return expanded_items
 
     def _match_shell_pattern(self, string: str, pattern: str) -> bool:

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ..core import AssociativeArray, IndexedArray, VarAttributes
 from ..expansion.arithmetic import evaluate_arithmetic
+from ..expansion.word_expander import ARRAY_INIT_ELEMENT, ASSOC_INIT_ELEMENT
 
 if TYPE_CHECKING:
     from ..ast_nodes import ArrayElementAssignment, ArrayInitialization, Word, WordPart
@@ -152,7 +153,7 @@ class ArrayOperationExecutor:
             else:
                 # Alternating key/value fields (no splitting, no globbing)
                 for field in self.expansion_manager.expand_word_to_fields(
-                        word, suppress_split_glob=True):
+                        word, ASSOC_INIT_ELEMENT):
                     if pending_key is None:
                         pending_key = field
                     else:
@@ -359,7 +360,8 @@ class ArrayOperationExecutor:
         element (an unquoted expansion of an empty value contributes none).
         """
         next_index = start_index
-        for field in self.expansion_manager.expand_word_to_fields(word):
+        for field in self.expansion_manager.expand_word_to_fields(
+                word, ARRAY_INIT_ELEMENT):
             array.set(next_index, field)
             next_index += 1
         return next_index

@@ -364,7 +364,7 @@ class ExpansionManager:
 **Primary entry point**: `expand_arguments(command: SimpleCommand) -> List[str]` (`manager.py:41`) uses Word AST-based expansion. It:
 
 1. Detects and sets up process substitutions via `IOManager`
-2. Expands each Word AST node using per-part quote context (`_expand_word()`)
+2. Expands each Word AST node using per-part quote context (`WordExpander.expand()` in `word_expander.py`)
 3. Handles special cases like `"$@"` and `"${arr[@]}"` producing multiple arguments
 4. Applies word splitting to unquoted expansion results
 5. Applies pathname (glob) expansion to unquoted results

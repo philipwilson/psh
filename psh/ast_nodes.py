@@ -131,6 +131,41 @@ class ExpansionPart(WordPart):
         return str(self.expansion)
 
 
+def _expansion_literal_text(expansion: Expansion) -> str:
+    """Render an Expansion as the literal ``$``-source text it came from.
+
+    Helper for :meth:`Word.to_literal_string` (quote removal of words
+    whose expansions were never live, e.g. inside single quotes). NOT the
+    same as the nodes' ``__str__``: ``ParameterExpansion.__str__`` formats
+    a word-less operator as a prefix (``${#var}``), while this historical
+    rule appends it (``${var#}``) — kept verbatim from the expansion
+    manager (zero-behavior-change; the branch is unreachable for words
+    built by the parsers, which make single-quoted content literal).
+    """
+    if isinstance(expansion, VariableExpansion):
+        return f"${expansion.name}"
+    elif isinstance(expansion, CommandSubstitution):
+        if expansion.backtick_style:
+            return f"`{expansion.command}`"
+        else:
+            return f"$({expansion.command})"
+    elif isinstance(expansion, ParameterExpansion):
+        # Reconstruct parameter expansion syntax
+        result = f"${{{expansion.parameter}"
+        if expansion.operator:
+            result += expansion.operator
+            if expansion.word:
+                result += expansion.word
+        result += "}"
+        return result
+    elif isinstance(expansion, ArithmeticExpansion):
+        return f"$(({expansion.expression}))"
+    else:
+        # ProcessSubstitution and any future expansion types render via
+        # their __str__ (e.g. '<(cmd)')
+        return str(expansion)
+
+
 @dataclass
 class Word(ASTNode):
     """A word that may contain expansions.
@@ -149,6 +184,24 @@ class Word(ASTNode):
         if self.quote_type:
             return f"{self.quote_type}{content}{self.quote_type}"
         return content
+
+    def to_literal_string(self) -> str:
+        """The word's text after quote removal, with expansions unexpanded.
+
+        Used by the expansion engine for single-quoted and ANSI-C-quoted
+        words, where quote removal is the ONLY processing. Distinct from
+        ``__str__``, which is a source-shaped repr that re-wraps the word
+        in its quote characters; this returns the runtime value (quotes
+        gone, any ExpansionPart rendered as its ``$``-source text).
+        """
+        chunks: List[str] = []
+        for part in self.parts:
+            if isinstance(part, LiteralPart):
+                chunks.append(part.text)
+            elif isinstance(part, ExpansionPart):
+                # In single quotes, expansions are literal
+                chunks.append(_expansion_literal_text(part.expansion))
+        return ''.join(chunks)
 
     @property
     def is_quoted(self) -> bool:

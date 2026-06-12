@@ -1114,3 +1114,42 @@ def evaluate_arithmetic(expr: str, shell) -> int:
         raise ShellArithmeticError("expression too deeply nested")
     except (ValueError, OverflowError, MemoryError) as e:
         raise ShellArithmeticError(str(e))
+
+
+def execute_arithmetic_expansion(expr: str, shell) -> int:
+    """Evaluate a ``$((expr))`` arithmetic-expansion string to its value.
+
+    The adapter between expansion-pipeline callers (which hold the full
+    ``$((...))`` source text) and :func:`evaluate_arithmetic`: it strips
+    the ``$((``/``))`` delimiters and converts evaluation failures into
+    :class:`~psh.core.ExpansionError` after printing the user-facing
+    message, so command execution stops (like bash). Text not shaped
+    like ``$((...))`` evaluates to 0.
+
+    NOTE: no pre-expansion pass here. evaluate_arithmetic() expands
+    $-constructs itself (via expand_string_variables, which delegates
+    to the shared _expand_one_dollar scanner), substituting each
+    value verbatim exactly once. A second pass here would rescan
+    substituted text for further $-expansion, which bash does not do
+    (x='$y' makes $(($x)) a syntax error, not the value of y).
+    """
+    import sys
+
+    from ..core import ExpansionError
+
+    # Remove $(( and ))
+    if expr.startswith('$((') and expr.endswith('))'):
+        arith_expr = expr[3:-2]
+    else:
+        return 0
+
+    try:
+        return evaluate_arithmetic(arith_expr, shell)
+    except ShellArithmeticError as e:
+        print(f"psh: arithmetic error: {e}", file=sys.stderr)
+        # Raise exception to stop command execution (like bash)
+        raise ExpansionError(f"arithmetic error: {e}")
+    except (ValueError, TypeError) as e:
+        print(f"psh: unexpected arithmetic error: {e}", file=sys.stderr)
+        # Raise exception to stop command execution (like bash)
+        raise ExpansionError(f"unexpected arithmetic error: {e}")
