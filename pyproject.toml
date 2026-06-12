@@ -86,6 +86,8 @@ files = [
     "psh/expansion/pattern.py",
     "psh/utils/escapes.py",
     "psh/interactive/line_layout.py",
+    "psh/interactive/edit_buffer.py",
+    "psh/interactive/line_renderer.py",
 ]
 ignore_missing_imports = true
 follow_imports = "silent"

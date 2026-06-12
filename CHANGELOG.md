@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.323.0 (2026-06-12) - Textbook program Tier B8-R1: EditBuffer + LineRenderer (zero behavior change)
+- The LineEditor decomposition begins, contract-first: 36 snapshot
+  tests pinning exact ANSI byte sequences (the wrap-boundary
+  ' \r\x1b[K' commit, multi-row paints, cursor moves across wrapped
+  rows, resize arithmetic incl. landing exactly on a boundary, color/
+  OSC prompts, the funneled fast-path/^C/bell/clear/completion writes)
+  were written against the PRE-SPLIT code and passed 30/30 before any
+  extraction; after it they run against the renderer with an injected
+  StringIO — the renderer's permanent unit tests.
+- EditBuffer (psh/interactive/edit_buffer.py, 265 lines): the single
+  source of truth for text+cursor — pure model with kill ring,
+  undo/redo (live-buffer-as-implicit-top rule), word ops, transpose's
+  exact 4-branch semantics, replace_all for history recall; mutators
+  return True-if-changed (the editor's repaint signal). The editor's
+  buffer/cursor_pos/kill_ring/undo/redo attributes are compatibility
+  properties (R3 cleanup noted).
+- LineRenderer (psh/interactive/line_renderer.py, 249 lines): the
+  ONLY writer of ANSI — the memo's named leaks (insert fast path,
+  accept \r\n, ^C, bell, clear-screen, completion columns, search-
+  prompt repaint) all funneled in; output stream injectable.
+  Grep proof: line_editor.py has ZERO .write()/.flush() calls; all
+  25 sites live in the renderer. Search STATE stays in the editor
+  for R3; only its writes moved.
+- line_editor.py: 1,064 → 914 lines. Nothing blocks R2/R3 (input
+  loop, dispatch, history, search untouched). The 47-test buffer
+  battery passes byte-for-byte unchanged on the compatibility
+  properties; PTY tier green twice (no flakes); both new modules
+  fully typed and added to the mypy scope (17 files).
+- Suite: 5,583 passed / 5,823 collected, 0 failures; ruff + mypy +
+  doc-pointer clean.
+
 ## 0.322.0 (2026-06-12) - Textbook program Tier B7: args derived from words (zero behavior change)
 - SimpleCommand.args is now a derived, read-only @property flattening
   words — the stored parallel list is GONE and the diseased state
