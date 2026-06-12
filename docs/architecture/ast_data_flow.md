@@ -79,12 +79,18 @@ lexer tokens (RichToken.parts)
 
 ```
 SimpleCommand.words
-  → CommandExecutor._extract_assignments_raw()   # (var, raw, Word) triples
-  → _handle_pure_assignments / _apply_command_assignments
-  → _expand_assignment_value_from_word(value, word)   # raises if word=None
-  → _expand_assignment_word(word)        # locates '=' in literal parts
+  → CommandAssignments.extract()         # (var, raw, Word) triples
+  → CommandAssignments.apply_pure / CommandAssignments.apply_prefix
+  → CommandAssignments._expand_value(value, word)
+        # raises if word=None; locates '=' in literal parts
   → ExpansionManager.expand_assignment_value_word(value Word)
 ```
+
+(`CommandAssignments` lives in `psh/executor/command_assignments.py`;
+`CommandExecutor` dispatches into it and owns only the WHEN — including
+the POSIX special-builtin persistence decision and the
+`last_cmdsub_status` clear. The module docstring states the ordering
+contract.)
 
 - The shared **assignment-value policy** lives ONLY in
   `expand_assignment_value_word()` (manager.py). It is used by scalar
@@ -92,8 +98,8 @@ SimpleCommand.words
   entries — change value semantics (tilde-after-colon, escape handling,
   no-split) there and all three contexts follow.
 - Assignment *candidacy* (is this word an assignment at all?) is
-  `CommandExecutor._is_assignment_candidate()` — quoting any part of the
-  name or `=` disqualifies (POSIX).
+  `CommandAssignments._is_assignment_candidate()` — quoting any part of
+  the name or `=` disqualifies (POSIX).
 - `declare`/`export` arguments are NOT this path — they are ordinary
   command words with declaration-assignment expansion (see §1), and the
   builtin re-parses `name=value` itself.

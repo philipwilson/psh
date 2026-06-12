@@ -20,7 +20,8 @@ Executor  Executor   Executor   Executor  Executor
 | File | Purpose |
 |------|---------|
 | `core.py` | `ExecutorVisitor` - main visitor coordinating all execution |
-| `command.py` | `CommandExecutor` - simple command execution |
+| `command.py` | `CommandExecutor` - simple command dispatch (expansion, strategy selection, redirections) |
+| `command_assignments.py` | `CommandAssignments` - the `NAME=value` sub-domain (extract/apply_pure/apply_prefix/restore); its module docstring states the POSIX assignment-ordering contract |
 | `pipeline.py` | `PipelineExecutor` - pipeline and process group management |
 | `control_flow.py` | `ControlFlowExecutor` - loops, conditionals, case |
 | `function.py` | `FunctionOperationExecutor` - function calls and scope |
@@ -105,9 +106,14 @@ SimpleCommand AST
 CommandExecutor.execute()
     ↓ (wraps everything in io_manager.process_sub_scope(), which closes
        parent-side fds and reaps process-substitution children on exit)
-1. Expand assignments
-2. Expand arguments (variables, globs, etc.)
-3. Try each execution strategy in order
+1. Extract NAME=value prefix words (CommandAssignments.extract; pure
+   assignments — no command word — short-circuit via apply_pure)
+2. Expand command arguments (variables, globs, etc. — BEFORE the
+   assignments apply, per POSIX; see command_assignments.py docstring)
+3. Apply prefix assignments (CommandAssignments.apply_prefix)
+4. Try each execution strategy in order
+5. Restore assignments (CommandAssignments.restore) — unless the command
+   was a POSIX special builtin, where they persist
     ↓
 BuiltinExecutionStrategy.execute()  -- or --  ExternalExecutionStrategy.execute()
     ↓                                              ↓

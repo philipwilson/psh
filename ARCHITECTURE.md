@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.315.0
+**Current Version**: 0.316.0
 
 **Note:** For orientation, start with the Quick Map below; for per-context
 expansion pointers see `docs/architecture/ast_data_flow.md`; for working
@@ -751,7 +751,7 @@ class ExecutorVisitor(ASTVisitor[int]):
         self.context = ExecutionContext()
         
         # Initialize specialized executors
-        self.command_executor = CommandExecutor(shell)
+        self.command_executor = CommandExecutor(shell, self)
         self.pipeline_executor = PipelineExecutor(shell) 
         self.control_flow_executor = ControlFlowExecutor(shell)
         self.array_executor = ArrayOperationExecutor(shell)
@@ -784,21 +784,27 @@ class ExecutionContext:
 ### 4.2 Specialized Executors
 
 #### CommandExecutor
-Handles simple command execution with the Strategy pattern:
+Handles simple command execution with the Strategy pattern; the
+`NAME=value` assignment sub-domain (extraction, value expansion,
+application, restoration — and the POSIX ordering contract) is owned by
+`CommandAssignments` in `psh/executor/command_assignments.py`:
 ```python
 class CommandExecutor:
-    def __init__(self, shell: Shell):
+    def __init__(self, shell: Shell, visitor: ExecutorVisitor):
+        self.visitor = visitor          # runs function bodies / compounds
+        self.assignments = CommandAssignments(shell)
         self.strategies = [
             BuiltinExecutionStrategy(),
             FunctionExecutionStrategy(),
             ExternalExecutionStrategy()
         ]
-    
+
     def execute(self, node: SimpleCommand, context: ExecutionContext) -> int:
-        # Expand arguments
-        # Extract assignments
-        # Find appropriate strategy
-        # Execute command
+        # Extract assignments (pure assignments short-circuit)
+        # Expand command words (before assignments apply, per POSIX)
+        # Apply prefix assignments
+        # Find appropriate strategy and execute
+        # Restore assignments (unless POSIX special builtin)
 ```
 
 #### PipelineExecutor
