@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 """Enhanced line editor with vi/emacs key bindings and history search.
 
-Decomposition status (Textbook B8): the line being edited lives in
-EditBuffer (edit_buffer.py — the single source of truth for text +
-cursor, kill ring, undo/redo), every terminal write goes through
-LineRenderer (line_renderer.py — the only writer of ANSI), and every
-terminal read goes through KeyDecoder (key_decoder.py — the only reader
-of stdin, yielding KeyEvents). What remains here is event dispatch
-(mode policy: what each event MEANS in emacs/vi mode), history
-navigation, incremental search state, and completion logic — the
-history components and a dispatch-table conversion are R3.
-
-``self.buffer`` / ``self.cursor_pos`` (and the kill-ring/undo-stack
-attributes) are compatibility properties delegating to the EditBuffer;
-existing tests poke them directly. Migrating callers to the EditBuffer
-API is R3 cleanup.
+LineEditor is the COORDINATOR of five narrow components (Textbook B8):
+it owns mode state (emacs / vi-insert / vi-normal, the vi repeat
+count) and the dispatch table mapping key-binding action names to edit
+operations, and it wires the components together — KeyDecoder (the
+only reader of stdin) yields KeyEvents, the mode-policy layer decides
+what each event MEANS, EditBuffer (the single source of truth for
+text + cursor, kill ring, undo/redo) mutates, HistoryNavigator /
+HistorySearch (history_nav.py) compute what history browsing and
+Ctrl-R incremental search should display, and LineRenderer (the only
+writer of ANSI) repaints. The completion-UI glue (tab handling,
+applying a completion, listing candidates around a raw-mode toggle)
+stays here deliberately: it is pure coordination between
+CompletionEngine, TerminalManager and the renderer.
 """
 
 import sys
 import termios
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from .edit_buffer import EditBuffer
+from .history_nav import HistoryNavigator, HistorySearch, SearchState
 from .key_decoder import (
     ESC_FOLLOWER_TIMEOUT,
     Char,
@@ -34,7 +34,6 @@ from .key_decoder import (
     Resize,
 )
 from .keybindings import EditMode, EmacsKeyBindings, ViKeyBindings
-from .line_editor_helpers import convert_multiline_to_single
 from .line_renderer import LineRenderer
 from .tab_completion import CompletionEngine, TerminalManager
 
@@ -57,16 +56,15 @@ class LineEditor:
     }
 
     def __init__(self, history: Optional[List[str]] = None, edit_mode: str = 'emacs'):
-        # The single source of truth for text + cursor + kill ring +
-        # undo/redo, and the only writer of terminal output.
+        # The components: the buffer model, the renderer, and the
+        # history navigator (which keeps the injected list reference —
+        # it aliases shell state and grows between reads).
         self.edit_buffer = EditBuffer()
         self.renderer = LineRenderer()
+        self.history_nav = HistoryNavigator(history or [])
 
-        self.history = history or []
-        self.history_pos = len(self.history)
         self.completion_engine = CompletionEngine()
         self.terminal = TerminalManager()
-        self.original_line = ""
         self.completion_state = None
         self.current_prompt = ""
 
@@ -74,11 +72,8 @@ class LineEditor:
         self.edit_mode = ''
         self.set_edit_mode(edit_mode)
 
-        # Search state
-        self.search_mode = False
-        self.search_pattern = ""
-        self.search_direction = 1  # 1 for forward, -1 for backward
-        self.search_start_pos = 0
+        # The active incremental search session, if any (Ctrl-R)
+        self.search: Optional[HistorySearch] = None
 
         # Vi specific state
         self.vi_repeat_count = ""
@@ -87,75 +82,43 @@ class LineEditor:
         # and the ESC-disambiguation policy are bound at read time).
         self.decoder: Optional[KeyDecoder] = None
 
+        # Action-name -> handler dispatch table (see _build_action_table)
+        self._actions = self._build_action_table()
+
     # ------------------------------------------------------------------
-    # Compatibility properties (delegating to the components; R3 will
-    # migrate the remaining direct pokes to the component APIs)
+    # History state delegation (the navigator owns position + stash;
+    # these names are the editor's stable API for tests and embedders)
     # ------------------------------------------------------------------
 
     @property
-    def buffer(self) -> List[str]:
-        """The edit buffer's character list (single source of truth)."""
-        return self.edit_buffer.chars
+    def history(self) -> List[str]:
+        """The history list (aliases shell state)."""
+        return self.history_nav.history
 
-    @buffer.setter
-    def buffer(self, value) -> None:
-        self.edit_buffer.chars = value if isinstance(value, list) else list(value)
-
-    @property
-    def cursor_pos(self) -> int:
-        return self.edit_buffer.cursor
-
-    @cursor_pos.setter
-    def cursor_pos(self, value: int) -> None:
-        self.edit_buffer.cursor = value
+    @history.setter
+    def history(self, value: List[str]) -> None:
+        self.history_nav.history = value
 
     @property
-    def kill_ring(self) -> List[str]:
-        return self.edit_buffer.kill_ring
+    def history_pos(self) -> int:
+        return self.history_nav.pos
 
-    @kill_ring.setter
-    def kill_ring(self, value: List[str]) -> None:
-        self.edit_buffer.kill_ring = value
-
-    @property
-    def undo_stack(self):
-        return self.edit_buffer.undo_stack
-
-    @undo_stack.setter
-    def undo_stack(self, value) -> None:
-        self.edit_buffer.undo_stack = value
+    @history_pos.setter
+    def history_pos(self, value: int) -> None:
+        self.history_nav.pos = value
 
     @property
-    def redo_stack(self):
-        return self.edit_buffer.redo_stack
+    def original_line(self) -> str:
+        return self.history_nav.original_line
 
-    @redo_stack.setter
-    def redo_stack(self, value) -> None:
-        self.edit_buffer.redo_stack = value
-
-    @property
-    def _term_width(self) -> int:
-        return self.renderer.term_width
-
-    @_term_width.setter
-    def _term_width(self, value: int) -> None:
-        self.renderer.term_width = value
+    @original_line.setter
+    def original_line(self, value: str) -> None:
+        self.history_nav.original_line = value
 
     @property
-    def _screen_cursor_pos(self) -> int:
-        return self.renderer.screen_cursor_pos
-
-    @_screen_cursor_pos.setter
-    def _screen_cursor_pos(self, value: int) -> None:
-        self.renderer.screen_cursor_pos = value
-
-    @property
-    def _screen_prompt_len(self) -> int:
-        return self.renderer.screen_prompt_len
-
-    @_screen_prompt_len.setter
-    def _screen_prompt_len(self, value: int) -> None:
-        self.renderer.screen_prompt_len = value
+    def search_mode(self) -> bool:
+        """True while a Ctrl-R incremental search is active."""
+        return self.search is not None
 
     def set_edit_mode(self, edit_mode: str) -> None:
         """Select 'vi' or 'emacs' key bindings.
@@ -187,11 +150,10 @@ class LineEditor:
             on_resize: Optional callback invoked after a terminal resize redraw
         """
         self.edit_buffer.reset()
-        self.history_pos = len(self.history)
-        self.original_line = ""
+        self.history_nav.reset()
         self.completion_state = None
         self.current_prompt = prompt
-        self.search_mode = False
+        self.search = None
         self.renderer.update_width()
 
         # Paint the prompt (wrap-aware; strips \x01/\x02 markers)
@@ -244,7 +206,7 @@ class LineEditor:
 
                 if isinstance(event, Char):
                     # Handle search mode input
-                    if self.search_mode and self._handle_search_char(event.char):
+                    if self.search is not None and self._handle_search_char(event.char):
                         continue
                     result = self._dispatch_char(event.char)
                 else:
@@ -319,7 +281,7 @@ class LineEditor:
         pre-decoder behavior where the raw ESC byte fell through
         _handle_search_char via _accept_search before escape resolution.
         """
-        if self.search_mode:
+        if self.search is not None:
             self._accept_search()
 
         if isinstance(event, Key):
@@ -346,87 +308,87 @@ class LineEditor:
         action = self.key_handler.meta_bindings.get(event.char)
         return self._execute_action(action, '\x1b') if action else None
 
+    # ------------------------------------------------------------------
+    # Action dispatch: binding NAME -> handler, via one table
+    # ------------------------------------------------------------------
+
+    def _build_action_table(self) -> Dict[str, Callable[[str], Optional[str]]]:
+        """Map every key-binding action name to its handler.
+
+        Every handler takes the triggering character and returns the
+        action result ('accept', 'eof' or None). Most operations don't
+        care which key invoked them; ``op`` adapts those zero-argument
+        methods (their bool return — "did anything change" — is a
+        repaint signal, not an action result). The totality guard test
+        asserts every name bound in keybindings.py resolves here.
+        """
+        def op(method: Callable[[], object]) -> Callable[[str], Optional[str]]:
+            def handler(char: str) -> Optional[str]:
+                method()
+                return None
+            return handler
+
+        return {
+            # Movement
+            'move_beginning_of_line': op(self._move_home),
+            'move_end_of_line': op(self._move_end),
+            'move_forward_char': op(self._move_right),
+            'move_backward_char': op(self._move_left),
+            'move_word_forward': op(self._move_word_forward),
+            'move_word_backward': op(self._move_word_backward),
+
+            # Editing
+            'delete_char': self._delete_char_action,
+            'backward_delete_char': op(self._backspace),
+            'kill_line': op(self._kill_line),
+            'kill_whole_line': op(self._kill_whole_line),
+            'kill_word_backward': op(self._kill_word_backward),
+            'kill_word_forward': op(self._kill_word_forward),
+            'yank': op(self._yank),
+            'transpose_chars': op(self._transpose_chars),
+
+            # History
+            'previous_history': op(self._history_up),
+            'next_history': op(self._history_down),
+            'reverse_search_history': op(self._start_reverse_search),
+            'move_to_first_history': op(self._history_first),
+            'move_to_last_history': op(self._history_last),
+
+            # Vi mode transitions
+            'enter_normal_mode': op(self._enter_vi_normal_mode),
+            'enter_insert_mode': op(self._enter_vi_insert_mode),
+            'enter_insert_mode_at_beginning': op(self._vi_insert_at_beginning),
+            'append_mode': op(self._vi_append),
+            'append_mode_at_end': op(self._vi_append_at_end),
+
+            # Undo / redo
+            'undo': op(self.undo),
+            'redo': op(self.redo),
+
+            # Other
+            'complete': op(self._handle_tab),
+            'accept_line': self._accept_line_action,
+            'interrupt': op(self._handle_interrupt),
+            'clear_screen': op(self._clear_screen),
+            'abort': op(self._abort_action),
+        }
+
     def _execute_action(self, action: str, char: str) -> Optional[str]:
-        """Execute a key binding action."""
-        # Movement actions
-        if action == 'move_beginning_of_line':
-            self._move_home()
-        elif action == 'move_end_of_line':
-            self._move_end()
-        elif action == 'move_forward_char':
-            self._move_right()
-        elif action == 'move_backward_char':
-            self._move_left()
-        elif action == 'move_word_forward':
-            self._move_word_forward()
-        elif action == 'move_word_backward':
-            self._move_word_backward()
+        """Execute a key binding action by name (unknown names are
+        ignored, as the old elif chain ignored them)."""
+        handler = self._actions.get(action)
+        return handler(char) if handler else None
 
-        # Editing actions
-        elif action == 'delete_char':
-            if not self.buffer and char == '\x04':  # Ctrl-D on empty line
-                return 'eof'
-            self._delete_char()
-        elif action == 'backward_delete_char':
-            self._backspace()
-        elif action == 'kill_line':
-            self._kill_line()
-        elif action == 'kill_whole_line':
-            self._kill_whole_line()
-        elif action == 'kill_word_backward':
-            self._kill_word_backward()
-        elif action == 'kill_word_forward':
-            self._kill_word_forward()
-        elif action == 'yank':
-            self._yank()
-        elif action == 'transpose_chars':
-            self._transpose_chars()
-
-        # History actions
-        elif action == 'previous_history':
-            self._history_up()
-        elif action == 'next_history':
-            self._history_down()
-        elif action == 'reverse_search_history':
-            self._start_reverse_search()
-        elif action == 'move_to_first_history':
-            self._history_first()
-        elif action == 'move_to_last_history':
-            self._history_last()
-
-        # Vi mode actions
-        elif action == 'enter_normal_mode':
-            self._enter_vi_normal_mode()
-        elif action == 'enter_insert_mode':
-            self._enter_vi_insert_mode()
-        elif action == 'enter_insert_mode_at_beginning':
-            self._move_home()
-            self._enter_vi_insert_mode()
-        elif action == 'append_mode':
-            self._move_right()
-            self._enter_vi_insert_mode()
-        elif action == 'append_mode_at_end':
-            self._move_end()
-            self._enter_vi_insert_mode()
-
-        elif action == 'undo':
-            self.undo()
-        elif action == 'redo':
-            self.redo()
-
-        # Other actions
-        elif action == 'complete':
-            self._handle_tab()
-        elif action == 'accept_line':
-            return 'accept'
-        elif action == 'interrupt':
-            self._handle_interrupt()
-        elif action == 'clear_screen':
-            self._clear_screen()
-        elif action == 'abort':
-            self._abort_action()
-
+    def _delete_char_action(self, char: str) -> Optional[str]:
+        """delete_char, except Ctrl-D on an empty line means EOF (the
+        Delete KEY arrives as char ESC and never does)."""
+        if not self.edit_buffer.chars and char == '\x04':
+            return 'eof'
+        self._delete_char()
         return None
+
+    def _accept_line_action(self, char: str) -> Optional[str]:
+        return 'accept'
 
     def _handle_vi_normal_char(self, char: str):
         """Handle a character in vi normal mode."""
@@ -528,173 +490,91 @@ class LineEditor:
         if self.edit_buffer.transpose():
             self._redraw()
 
+    # ------------------------------------------------------------------
+    # History browsing: the navigator computes, the editor applies
+    # ------------------------------------------------------------------
+
     def _history_up(self):
         """Move up in history."""
-        if self.history_pos > 0:
-            # Save current line if at bottom of history
-            if self.history_pos == len(self.history):
-                self.original_line = self.edit_buffer.text
-
-            self.history_pos -= 1
-            entry = self.history[self.history_pos]
-            # Multi-line commands edit as a single line with separators
-            if '\n' in entry:
-                entry = convert_multiline_to_single(entry)
-            self._replace_line(entry)
+        text = self.history_nav.up(self.edit_buffer.text)
+        if text is not None:
+            self._replace_line(text)
             self._redraw()
 
     def _history_down(self):
         """Move down in history."""
-        if self.history_pos < len(self.history):
-            self.history_pos += 1
-
-            if self.history_pos == len(self.history):
-                entry = self.original_line
-            else:
-                entry = self.history[self.history_pos]
-                if '\n' in entry:
-                    entry = convert_multiline_to_single(entry)
-            self._replace_line(entry)
+        text = self.history_nav.down()
+        if text is not None:
+            self._replace_line(text)
             self._redraw()
 
     def _history_first(self):
         """Move to first history entry."""
-        if self.history and self.history_pos > 0:
-            if self.history_pos == len(self.history):
-                self.original_line = self.edit_buffer.text
-            self.history_pos = 0
-            self._replace_line(self.history[0])
+        text = self.history_nav.first(self.edit_buffer.text)
+        if text is not None:
+            self._replace_line(text)
             self._redraw()
 
     def _history_last(self):
         """Move to last history entry (current line)."""
-        if self.history_pos < len(self.history):
-            self.history_pos = len(self.history)
-            self._replace_line(self.original_line)
+        text = self.history_nav.last()
+        if text is not None:
+            self._replace_line(text)
             self._redraw()
 
+    # ------------------------------------------------------------------
+    # Incremental search: HistorySearch decides, the editor renders
+    # ------------------------------------------------------------------
+
     def _start_reverse_search(self):
-        """Start reverse history search mode."""
-        self.search_mode = True
-        self.search_pattern = ""
-        self.search_direction = -1
-        self.search_start_pos = self.history_pos
-        self._update_search_prompt()
+        """Start reverse history search mode (Ctrl-R)."""
+        self.search = HistorySearch(self.history_nav.history,
+                                    self.history_nav.pos,
+                                    self.history_nav.original_line)
+        self._apply_search_state(self.search.start())
 
     def _handle_search_char(self, char: str) -> bool:
-        """Handle character input in search mode."""
-        if char == '\x07':  # Ctrl-G - abort search
-            self._abort_search()
-            return True
-        elif char == '\x12':  # Ctrl-R - search backward
-            self._search_next(-1)
-            return True
-        elif char == '\x13':  # Ctrl-S - search forward
-            self._search_next(1)
-            return True
-        elif char in ('\r', '\n'):  # Enter - accept search
-            self._accept_search()
-            return True
-        elif char == '\x7f':  # Backspace
-            if self.search_pattern:
-                self.search_pattern = self.search_pattern[:-1]
-                self._perform_search()
-            return True
-        elif ord(char) >= 32:  # Printable character
-            self.search_pattern += char
-            self._perform_search()
-            return True
-        else:
-            # Exit search mode for other control characters
-            self._accept_search()
-            return False
-
-    def _perform_search(self):
-        """Perform the history search."""
-        found = False
-        start = self.history_pos
-
-        # Search through history
-        if self.search_direction < 0:
-            # Backward search
-            for i in range(self.history_pos - 1, -1, -1):
-                if self.search_pattern in self.history[i]:
-                    self.history_pos = i
-                    found = True
-                    break
-        else:
-            # Forward search
-            for i in range(self.history_pos + 1, len(self.history)):
-                if self.search_pattern in self.history[i]:
-                    self.history_pos = i
-                    found = True
-                    break
-
-        if found:
-            self._update_search_prompt()
-        else:
-            # Pattern not found, restore position
-            self.history_pos = start
-            self._update_search_prompt(failed=True)
-
-    def _search_next(self, direction: int):
-        """Continue search in given direction."""
-        self.search_direction = direction
-        old_pos = self.history_pos
-
-        # Move one position to avoid finding the same match
-        if direction < 0 and self.history_pos > 0:
-            self.history_pos -= 1
-        elif direction > 0 and self.history_pos < len(self.history) - 1:
-            self.history_pos += 1
-        else:
-            return
-
-        self._perform_search()
-
-        # If no match found, restore position
-        if self.history_pos == old_pos:
-            self._update_search_prompt(failed=True)
-
-    def _update_search_prompt(self, failed: bool = False):
-        """Update the search prompt display (wrap-aware).
-
-        Search STATE lives here (until R3); only the terminal WRITES go
-        through the renderer, via the prompt-override repaint.
-        """
-        direction = "bck" if self.search_direction < 0 else "fwd"
-        if failed:
-            prompt = f"(failed-{direction}-i-search)`{self.search_pattern}': "
-        else:
-            prompt = f"({direction}-i-search)`{self.search_pattern}': "
-
-        # Show the current match with the cursor just past the matched text
-        if self.history_pos < len(self.history):
-            line = self.history[self.history_pos]
-            self.buffer = list(line)
-            match_pos = line.find(self.search_pattern)
-            if match_pos >= 0:
-                self.cursor_pos = match_pos + len(self.search_pattern)
-            else:
-                self.cursor_pos = len(line)
-
-        self._redraw(prompt)
-
-    def _abort_search(self):
-        """Abort search and restore original state."""
-        self.search_mode = False
-        self.history_pos = self.search_start_pos
-        self._replace_line(self.original_line)
-        self._redraw()
+        """Feed one character to the active search; returns False when
+        the character must still be dispatched normally (an unbound
+        control character accepts the search, then acts)."""
+        assert self.search is not None
+        state = self.search.feed(char)
+        self._apply_search_state(state)
+        return not state.redispatch
 
     def _accept_search(self):
-        """Accept current search result."""
-        self.search_mode = False
+        """Accept the current search result (Enter, or any
+        ESC-introduced event during a search)."""
+        if self.search is not None:
+            self._apply_search_state(self.search.accept())
 
-        # Update buffer with found line
-        if self.history_pos < len(self.history):
-            self._replace_line(self.history[self.history_pos])
-        self._redraw()
+    def _abort_search(self):
+        """Abort the search and restore the pre-search state (Ctrl-G)."""
+        if self.search is not None:
+            self._apply_search_state(self.search.abort())
+
+    def _apply_search_state(self, state: SearchState) -> None:
+        """Render a SearchState: sync the browse position, update the
+        buffer, and repaint (with the search prompt while active)."""
+        self.history_nav.pos = state.history_pos
+        if not state.repaint:
+            return
+        if state.status == 'active':
+            if state.line is not None:
+                self.edit_buffer.chars = list(state.line)
+                self.edit_buffer.cursor = state.cursor
+            self._redraw(state.prompt)
+        else:
+            # accepted or aborted: leave search mode; the buffer takes
+            # the result (cursor at end), painted under the normal prompt
+            self.search = None
+            if state.line is not None:
+                self._replace_line(state.line)
+            self._redraw()
+
+    # ------------------------------------------------------------------
+    # Vi mode transitions
+    # ------------------------------------------------------------------
 
     def _enter_vi_normal_mode(self):
         """Enter vi normal mode."""
@@ -702,13 +582,28 @@ class LineEditor:
             self.mode = EditMode.VI_NORMAL
             self.key_handler.mode = EditMode.VI_NORMAL
             # Move cursor back one position (vi behavior)
-            if self.cursor_pos > 0:
+            if self.edit_buffer.cursor > 0:
                 self._move_left()
 
     def _enter_vi_insert_mode(self):
         """Enter vi insert mode."""
         self.mode = EditMode.VI_INSERT
         self.key_handler.mode = EditMode.VI_INSERT
+
+    def _vi_insert_at_beginning(self):
+        """Vi 'I': insert mode at the beginning of the line."""
+        self._move_home()
+        self._enter_vi_insert_mode()
+
+    def _vi_append(self):
+        """Vi 'a': insert mode after the cursor."""
+        self._move_right()
+        self._enter_vi_insert_mode()
+
+    def _vi_append_at_end(self):
+        """Vi 'A': insert mode at the end of the line."""
+        self._move_end()
+        self._enter_vi_insert_mode()
 
     # ------------------------------------------------------------------
     # Rendering delegation (the renderer owns the terminal)
@@ -758,16 +653,18 @@ class LineEditor:
         self.renderer.bell()
 
     # ------------------------------------------------------------------
-    # Completion
+    # Completion UI (deliberately in the coordinator: it glues
+    # CompletionEngine, TerminalManager and the renderer together)
     # ------------------------------------------------------------------
 
     def _handle_tab(self):
         """Handle tab completion."""
         line = self.edit_buffer.text
+        cursor = self.edit_buffer.cursor
 
         # Get completions
         completions = self.completion_engine.get_completions(
-            line[:self.cursor_pos], line, self.cursor_pos
+            line[:cursor], line, cursor
         )
 
         if not completions:
@@ -783,8 +680,8 @@ class LineEditor:
             common_prefix = self.completion_engine.find_common_prefix(completions)
 
             # Find the word being completed
-            word_start = self.completion_engine.find_word_start(line, self.cursor_pos)
-            current_word = line[word_start:self.cursor_pos]
+            word_start = self.completion_engine.find_word_start(line, cursor)
+            current_word = line[word_start:cursor]
 
             if len(common_prefix) > len(current_word):
                 # Can expand to common prefix
@@ -796,9 +693,10 @@ class LineEditor:
     def _apply_completion(self, completion: str):
         """Apply a completion to the current line."""
         line = self.edit_buffer.text
+        cursor = self.edit_buffer.cursor
 
         # Find the word being completed
-        word_start = self.completion_engine.find_word_start(line, self.cursor_pos)
+        word_start = self.completion_engine.find_word_start(line, cursor)
 
         # Check if we need to escape the completion
         if word_start == 0 or line[word_start-1] not in '"\'':
@@ -807,11 +705,11 @@ class LineEditor:
 
         # Update buffer and cursor position, then repaint (wrap-aware)
         new_line = line[:word_start] + completion
-        if self.cursor_pos < len(line):
-            new_line += line[self.cursor_pos:]
+        if cursor < len(line):
+            new_line += line[cursor:]
 
-        self.buffer = list(new_line)
-        self.cursor_pos = word_start + len(completion)
+        self.edit_buffer.chars = list(new_line)
+        self.edit_buffer.cursor = word_start + len(completion)
         self._redraw()
 
     def _show_completions(self, completions: List[str]):

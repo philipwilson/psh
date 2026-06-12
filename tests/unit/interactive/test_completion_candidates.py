@@ -118,36 +118,36 @@ class TestEditorTabApply:
 
     def _editor_with(self, text):
         ed = LineEditor(history=[])
-        ed.buffer = list(text)
-        ed.cursor_pos = len(text)
+        ed.edit_buffer.chars = list(text)
+        ed.edit_buffer.cursor = len(text)
         return ed
 
     def test_unique_completion_applied(self, workdir):
         ed = self._editor_with("cat foob")
         ed._handle_tab()
-        assert ''.join(ed.buffer) == "cat foobar.txt"
-        assert ed.cursor_pos == len("cat foobar.txt")
+        assert ''.join(ed.edit_buffer.chars) == "cat foobar.txt"
+        assert ed.edit_buffer.cursor == len("cat foobar.txt")
 
     def test_multiple_matches_expand_to_common_prefix(self, workdir):
         ed = self._editor_with("cat f")
         ed._handle_tab()  # foo.txt / foobar.txt / frob → common prefix "f"... none beyond
         # "f" is already the common prefix of foo*, frob → falls back to
         # showing candidates; buffer must be unchanged.
-        assert ''.join(ed.buffer).startswith("cat f")
+        assert ''.join(ed.edit_buffer.chars).startswith("cat f")
 
     def test_prefix_extension(self, workdir):
         ed = self._editor_with("cat fo")
         ed._handle_tab()  # foo.txt / foobar.txt share "foo"
-        assert ''.join(ed.buffer) == "cat foo"
-        assert ed.cursor_pos == len("cat foo")
+        assert ''.join(ed.edit_buffer.chars) == "cat foo"
+        assert ed.edit_buffer.cursor == len("cat foo")
 
     def test_completion_with_space_is_escaped(self, workdir):
         (workdir / "my file.txt").write_text("x")
         ed = self._editor_with("cat my")
         ed._handle_tab()
-        assert ''.join(ed.buffer) == "cat my\\ file.txt"
+        assert ''.join(ed.edit_buffer.chars) == "cat my\\ file.txt"
 
     def test_no_completions_leave_buffer_unchanged(self, workdir):
         ed = self._editor_with("cat zzz")
         ed._handle_tab()
-        assert ''.join(ed.buffer) == "cat zzz"
+        assert ''.join(ed.edit_buffer.chars) == "cat zzz"

@@ -48,7 +48,7 @@ class TestMultiLineHistory:
             assert '; done' in written
 
             # Buffer should contain the single-line version
-            buffer_content = ''.join(editor.buffer)
+            buffer_content = ''.join(editor.edit_buffer.chars)
             assert 'for i in one two three; do' in buffer_content
             assert '; done' in buffer_content
 
@@ -62,13 +62,13 @@ class TestMultiLineHistory:
         editor._history_up()
 
         # Buffer should contain single-line version
-        buffer_content = ''.join(editor.buffer)
+        buffer_content = ''.join(editor.edit_buffer.chars)
         assert 'if true; then' in buffer_content
         assert "echo 'it works'" in buffer_content
         assert '; fi' in buffer_content
 
         # Cursor should be at end of buffer
-        assert editor.cursor_pos == len(editor.buffer)
+        assert editor.edit_buffer.cursor == len(editor.edit_buffer.chars)
 
     def test_history_navigation_mixed(self):
         """Test navigating through mixed single and multi-line history."""
@@ -108,7 +108,7 @@ class TestMultiLineHistory:
         editor._replace_line(single_line)
 
         # Cursor should be at end of buffer
-        assert editor.cursor_pos == len(editor.buffer)
+        assert editor.edit_buffer.cursor == len(editor.edit_buffer.chars)
 
     def test_history_down_multiline(self):
         """Test moving down in history with multi-line commands."""
@@ -131,6 +131,6 @@ class TestMultiLineHistory:
             assert '; done' in written
 
             # Buffer has single-line command
-            buffer_content = ''.join(editor.buffer)
+            buffer_content = ''.join(editor.edit_buffer.chars)
             assert 'for i in x; do' in buffer_content
             assert '; done' in buffer_content

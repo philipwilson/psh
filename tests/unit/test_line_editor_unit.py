@@ -41,8 +41,8 @@ class TestLineEditorUnit:
 
     def test_initialization(self):
         """Test LineEditor initializes with correct defaults."""
-        assert self.editor.buffer == []
-        assert self.editor.cursor_pos == 0
+        assert self.editor.edit_buffer.chars == []
+        assert self.editor.edit_buffer.cursor == 0
         assert len(self.editor.history) == 0
         assert self.editor.edit_mode == 'emacs'
 
@@ -50,199 +50,199 @@ class TestLineEditorUnit:
         """Test character insertion."""
         # Insert at beginning
         self.editor._insert_char('H')
-        assert self.editor.buffer == ['H']
-        assert self.editor.cursor_pos == 1
+        assert self.editor.edit_buffer.chars == ['H']
+        assert self.editor.edit_buffer.cursor == 1
 
         # Insert more
         self.editor._insert_char('i')
-        assert self.editor.buffer == ['H', 'i']
-        assert self.editor.cursor_pos == 2
+        assert self.editor.edit_buffer.chars == ['H', 'i']
+        assert self.editor.edit_buffer.cursor == 2
 
         # Insert in middle
-        self.editor.cursor_pos = 1
+        self.editor.edit_buffer.cursor = 1
         self.editor._insert_char('e')
-        assert self.editor.buffer == ['H', 'e', 'i']
-        assert self.editor.cursor_pos == 2
+        assert self.editor.edit_buffer.chars == ['H', 'e', 'i']
+        assert self.editor.edit_buffer.cursor == 2
 
     def test_backspace(self):
         """Test backspace functionality."""
-        self.editor.buffer = list("Hello")
-        self.editor.cursor_pos = 3
+        self.editor.edit_buffer.chars = list("Hello")
+        self.editor.edit_buffer.cursor = 3
 
         # Backspace in middle
         self.editor._backspace()
-        assert ''.join(self.editor.buffer) == "Helo"
-        assert self.editor.cursor_pos == 2
+        assert ''.join(self.editor.edit_buffer.chars) == "Helo"
+        assert self.editor.edit_buffer.cursor == 2
 
         # Backspace at beginning (no effect)
-        self.editor.cursor_pos = 0
+        self.editor.edit_buffer.cursor = 0
         self.editor._backspace()
-        assert ''.join(self.editor.buffer) == "Helo"
-        assert self.editor.cursor_pos == 0
+        assert ''.join(self.editor.edit_buffer.chars) == "Helo"
+        assert self.editor.edit_buffer.cursor == 0
 
     def test_delete_char(self):
         """Test delete character."""
-        self.editor.buffer = list("Hello")
-        self.editor.cursor_pos = 2
+        self.editor.edit_buffer.chars = list("Hello")
+        self.editor.edit_buffer.cursor = 2
 
         # Delete at cursor
         self.editor._delete_char()
-        assert ''.join(self.editor.buffer) == "Helo"
-        assert self.editor.cursor_pos == 2
+        assert ''.join(self.editor.edit_buffer.chars) == "Helo"
+        assert self.editor.edit_buffer.cursor == 2
 
         # Delete at end (no effect)
-        self.editor.cursor_pos = 4
+        self.editor.edit_buffer.cursor = 4
         self.editor._delete_char()
-        assert ''.join(self.editor.buffer) == "Helo"
+        assert ''.join(self.editor.edit_buffer.chars) == "Helo"
 
     def test_cursor_movement(self):
         """Test cursor movement methods."""
-        self.editor.buffer = list("Hello World")
-        self.editor.cursor_pos = 5
+        self.editor.edit_buffer.chars = list("Hello World")
+        self.editor.edit_buffer.cursor = 5
 
         # Move left
         self.editor._move_left()
-        assert self.editor.cursor_pos == 4
+        assert self.editor.edit_buffer.cursor == 4
 
         # Move right
         self.editor._move_right()
         self.editor._move_right()
-        assert self.editor.cursor_pos == 6
+        assert self.editor.edit_buffer.cursor == 6
 
         # Move home
         self.editor._move_home()
-        assert self.editor.cursor_pos == 0
+        assert self.editor.edit_buffer.cursor == 0
 
         # Move end
         self.editor._move_end()
-        assert self.editor.cursor_pos == 11
+        assert self.editor.edit_buffer.cursor == 11
 
     def test_word_movement(self):
         """Test word-based cursor movement."""
-        self.editor.buffer = list("Hello World PSH")
+        self.editor.edit_buffer.chars = list("Hello World PSH")
 
         # Move word forward from start
-        self.editor.cursor_pos = 0
+        self.editor.edit_buffer.cursor = 0
         self.editor._move_word_forward()
-        assert self.editor.cursor_pos == 6  # After "Hello "
+        assert self.editor.edit_buffer.cursor == 6  # After "Hello "
 
         # Move word backward from middle of word
-        self.editor.cursor_pos = 8  # In "World"
+        self.editor.edit_buffer.cursor = 8  # In "World"
         self.editor._move_word_backward()
-        assert self.editor.cursor_pos == 6  # At "W"
+        assert self.editor.edit_buffer.cursor == 6  # At "W"
 
     def test_kill_operations(self):
         """Test kill (cut) operations."""
         # Kill to end of line
-        self.editor.buffer = list("Hello World")
-        self.editor.cursor_pos = 6
+        self.editor.edit_buffer.chars = list("Hello World")
+        self.editor.edit_buffer.cursor = 6
         self.editor._kill_line()
-        assert ''.join(self.editor.buffer) == "Hello "
-        assert self.editor.kill_ring[-1] == "World"
+        assert ''.join(self.editor.edit_buffer.chars) == "Hello "
+        assert self.editor.edit_buffer.kill_ring[-1] == "World"
 
         # Kill whole line
-        self.editor.buffer = list("Hello World")
-        self.editor.cursor_pos = 6
+        self.editor.edit_buffer.chars = list("Hello World")
+        self.editor.edit_buffer.cursor = 6
         self.editor._kill_whole_line()
-        assert self.editor.buffer == []
-        assert self.editor.kill_ring[-1] == "Hello World"
+        assert self.editor.edit_buffer.chars == []
+        assert self.editor.edit_buffer.kill_ring[-1] == "Hello World"
 
     def test_yank(self):
         """Test yank (paste) operation."""
         # Add something to kill ring
-        self.editor.kill_ring = ["pasted text"]
-        self.editor.buffer = list("Hello ")
-        self.editor.cursor_pos = 6
+        self.editor.edit_buffer.kill_ring = ["pasted text"]
+        self.editor.edit_buffer.chars = list("Hello ")
+        self.editor.edit_buffer.cursor = 6
 
         # Yank
         self.editor._yank()
-        assert ''.join(self.editor.buffer) == "Hello pasted text"
-        assert self.editor.cursor_pos == 17
+        assert ''.join(self.editor.edit_buffer.chars) == "Hello pasted text"
+        assert self.editor.edit_buffer.cursor == 17
 
     def test_history_navigation(self):
         """Test history up/down navigation."""
         # Setup history
         self.editor.history = ["first", "second", "third"]
         self.editor.history_pos = 3
-        self.editor.buffer = list("current")
+        self.editor.edit_buffer.chars = list("current")
 
         # Save current line
         self.editor.original_line = "current"
 
         # Go up in history
         self.editor._history_up()
-        assert ''.join(self.editor.buffer) == "third"
+        assert ''.join(self.editor.edit_buffer.chars) == "third"
         assert self.editor.history_pos == 2
 
         # Go up again
         self.editor._history_up()
-        assert ''.join(self.editor.buffer) == "second"
+        assert ''.join(self.editor.edit_buffer.chars) == "second"
         assert self.editor.history_pos == 1
 
         # Go down
         self.editor._history_down()
-        assert ''.join(self.editor.buffer) == "third"
+        assert ''.join(self.editor.edit_buffer.chars) == "third"
         assert self.editor.history_pos == 2
 
     def test_get_line(self):
         """Test getting current line as string."""
-        self.editor.buffer = list("echo test")
-        line = ''.join(self.editor.buffer)
+        self.editor.edit_buffer.chars = list("echo test")
+        line = ''.join(self.editor.edit_buffer.chars)
         assert line == "echo test"
 
         # Empty buffer
-        self.editor.buffer = []
-        line = ''.join(self.editor.buffer)
+        self.editor.edit_buffer.chars = []
+        line = ''.join(self.editor.edit_buffer.chars)
         assert line == ""
 
     def test_transpose_chars(self):
         """Test character transposition."""
-        self.editor.buffer = list("Hello")
-        self.editor.cursor_pos = 2  # After 'e'
+        self.editor.edit_buffer.chars = list("Hello")
+        self.editor.edit_buffer.cursor = 2  # After 'e'
 
         self.editor._transpose_chars()
         # Note: transpose might not work as expected without proper implementation
         # Just verify it doesn't crash
-        assert len(self.editor.buffer) == 5
+        assert len(self.editor.edit_buffer.chars) == 5
 
     def test_kill_word_forward(self):
         """Test killing word forward."""
-        self.editor.buffer = list("Hello World PSH")
-        self.editor.cursor_pos = 6  # At "World"
+        self.editor.edit_buffer.chars = list("Hello World PSH")
+        self.editor.edit_buffer.cursor = 6  # At "World"
 
         self.editor._kill_word_forward()
         # The implementation might delete the space too
-        result = ''.join(self.editor.buffer)
+        result = ''.join(self.editor.edit_buffer.chars)
         assert result == "Hello PSH" or result == "Hello  PSH"
-        assert len(self.editor.kill_ring) > 0
+        assert len(self.editor.edit_buffer.kill_ring) > 0
 
     def test_kill_word_backward(self):
         """Test killing word backward."""
-        self.editor.buffer = list("Hello World PSH")
-        self.editor.cursor_pos = 11  # After "World"
+        self.editor.edit_buffer.chars = list("Hello World PSH")
+        self.editor.edit_buffer.cursor = 11  # After "World"
 
         self.editor._kill_word_backward()
-        assert ''.join(self.editor.buffer) == "Hello  PSH"
-        assert self.editor.kill_ring[-1] == "World"
+        assert ''.join(self.editor.edit_buffer.chars) == "Hello  PSH"
+        assert self.editor.edit_buffer.kill_ring[-1] == "World"
 
     def test_clear_screen(self):
         """Test clear screen functionality."""
-        self.editor.buffer = list("Hello World")
-        self.editor.cursor_pos = 6
+        self.editor.edit_buffer.chars = list("Hello World")
+        self.editor.edit_buffer.cursor = 6
 
         # Clear screen doesn't clear buffer, just refreshes display
         self.editor._clear_screen()
-        assert ''.join(self.editor.buffer) == "Hello World"
+        assert ''.join(self.editor.edit_buffer.chars) == "Hello World"
 
     def test_handle_tab(self):
         """Test tab completion handling."""
-        self.editor.buffer = list("echo te")
-        self.editor.cursor_pos = 7
+        self.editor.edit_buffer.chars = list("echo te")
+        self.editor.edit_buffer.cursor = 7
 
         # Tab completion would normally interact with completion engine
         self.editor._handle_tab()
         # Just verify it doesn't crash
-        assert self.editor.cursor_pos >= 0
+        assert self.editor.edit_buffer.cursor >= 0
 
     def test_vi_insert_mode(self):
         """Test entering vi insert mode."""
@@ -261,23 +261,23 @@ class TestLineEditorUnit:
 
     def test_abort_action(self):
         """Test aborting current action."""
-        self.editor.buffer = list("Hello")
-        self.editor.cursor_pos = 5
+        self.editor.edit_buffer.chars = list("Hello")
+        self.editor.edit_buffer.cursor = 5
 
         # Abort should clear any pending state
         self.editor._abort_action()
         # Just verify it doesn't crash
-        assert ''.join(self.editor.buffer) == "Hello"
+        assert ''.join(self.editor.edit_buffer.chars) == "Hello"
 
     def test_redraw_keeps_buffer(self):
         """_redraw repaints the display without touching the buffer."""
-        self.editor.buffer = list("Hello World")
-        self.editor.cursor_pos = 5
+        self.editor.edit_buffer.chars = list("Hello World")
+        self.editor.edit_buffer.cursor = 5
 
         with patch('sys.stdout') as mock_stdout:
             self.editor._redraw()
-        assert ''.join(self.editor.buffer) == "Hello World"
-        assert self.editor.cursor_pos == 5
+        assert ''.join(self.editor.edit_buffer.chars) == "Hello World"
+        assert self.editor.edit_buffer.cursor == 5
         written = ''.join(c[0][0] for c in mock_stdout.write.call_args_list if c[0])
         assert "Hello World" in written
 
@@ -293,8 +293,8 @@ class TestLineEditorUnit:
 
     def test_handle_interrupt(self):
         """Test handling Ctrl-C interrupt."""
-        self.editor.buffer = list("Hello World")
-        self.editor.cursor_pos = 5
+        self.editor.edit_buffer.chars = list("Hello World")
+        self.editor.edit_buffer.cursor = 5
 
         # Handle interrupt raises KeyboardInterrupt, so we need to catch it
         with pytest.raises(KeyboardInterrupt):
@@ -303,7 +303,7 @@ class TestLineEditorUnit:
     def test_search_functionality(self):
         """Test reverse search functionality."""
         self.editor.history = ["echo first", "echo second", "echo third"]
-        self.editor.buffer = list("")
+        self.editor.edit_buffer.chars = list("")
 
         # Start reverse search
         self.editor._start_reverse_search()
@@ -316,21 +316,21 @@ class TestLineEditorUnit:
     def test_edge_cases(self):
         """Test edge cases."""
         # Empty buffer operations
-        self.editor.buffer = []
+        self.editor.edit_buffer.chars = []
         self.editor._backspace()  # Should not crash
         self.editor._delete_char()  # Should not crash
         self.editor._move_left()  # Should not crash
         self.editor._move_right()  # Should not crash
 
         # Cursor at boundaries
-        self.editor.buffer = list("Test")
-        self.editor.cursor_pos = 0
+        self.editor.edit_buffer.chars = list("Test")
+        self.editor.edit_buffer.cursor = 0
         self.editor._move_left()  # Should stay at 0
-        assert self.editor.cursor_pos == 0
+        assert self.editor.edit_buffer.cursor == 0
 
-        self.editor.cursor_pos = 4
+        self.editor.edit_buffer.cursor = 4
         self.editor._move_right()  # Should stay at 4
-        assert self.editor.cursor_pos == 4
+        assert self.editor.edit_buffer.cursor == 4
 
 
 if __name__ == '__main__':
@@ -355,9 +355,9 @@ class TestViUndoRedo:
         with mock.patch('sys.stdout'):
             for ch in 'abc':
                 ed._insert_char(ch)
-            assert ''.join(ed.buffer) == 'abc'
+            assert ''.join(ed.edit_buffer.chars) == 'abc'
             ed._execute_action('undo', 'u')
-        assert ''.join(ed.buffer) == 'ab'
+        assert ''.join(ed.edit_buffer.chars) == 'ab'
 
     def test_redo_action_reapplies_change(self):
         import unittest.mock as mock
@@ -366,9 +366,9 @@ class TestViUndoRedo:
             for ch in 'ab':
                 ed._insert_char(ch)
             ed._execute_action('undo', 'u')
-            assert ''.join(ed.buffer) == 'a'
+            assert ''.join(ed.edit_buffer.chars) == 'a'
             ed._execute_action('redo', '\x12')
-        assert ''.join(ed.buffer) == 'ab'
+        assert ''.join(ed.edit_buffer.chars) == 'ab'
 
     def test_mode_switch_syncs_key_handler(self):
         import unittest.mock as mock
@@ -380,17 +380,28 @@ class TestViUndoRedo:
             ed._enter_vi_insert_mode()
             assert ed.key_handler.mode == EditMode.VI_INSERT
 
-    def test_every_vi_binding_is_dispatched(self):
-        """Guard: no binding may name an action _execute_action ignores."""
-        import inspect
-        import re
-        ed = self._editor()
-        src = inspect.getsource(ed._execute_action)
-        handled = set(re.findall(r"action == '([a-z_]+)'", src))
-        all_bound = (set(ed.key_handler.insert_bindings.values())
-                     | set(ed.key_handler.normal_bindings.values()))
-        unhandled = sorted(all_bound - handled)
-        assert unhandled == [], f"bound but not dispatched: {unhandled}"
+    def test_every_binding_resolves_in_dispatch_table(self):
+        """Totality guard: every action name bound anywhere — vi insert
+        and normal maps, the emacs key and meta maps, and the symbolic
+        ESCAPE_KEY_ACTIONS — must resolve to a callable in the editor's
+        dispatch table (R3 replaced the elif chain with the table; a
+        binding naming an action the table ignores would silently do
+        nothing)."""
+        from psh.interactive.line_editor import LineEditor
+
+        vi = self._editor()
+        emacs = LineEditor(history=[])
+        all_bound = (set(vi.key_handler.insert_bindings.values())
+                     | set(vi.key_handler.normal_bindings.values())
+                     | set(emacs.key_handler.bindings.values())
+                     | set(emacs.key_handler.meta_bindings.values())
+                     | set(LineEditor.ESCAPE_KEY_ACTIONS.values()))
+        for ed in (vi, emacs):
+            unhandled = sorted(all_bound - set(ed._actions))
+            assert unhandled == [], f"bound but not dispatched: {unhandled}"
+            not_callable = sorted(
+                name for name in all_bound if not callable(ed._actions[name]))
+            assert not_callable == [], f"not callable: {not_callable}"
 
 
 class TestTerminalManagerInterface:

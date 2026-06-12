@@ -27,12 +27,12 @@ def editor():
 def set_line(ed, text, cursor=None):
     """Load *text* into the editor buffer with the cursor at *cursor*
     (default: end of line)."""
-    ed.buffer = list(text)
-    ed.cursor_pos = len(text) if cursor is None else cursor
+    ed.edit_buffer.chars = list(text)
+    ed.edit_buffer.cursor = len(text) if cursor is None else cursor
 
 
 def line(ed):
-    return ''.join(ed.buffer)
+    return ''.join(ed.edit_buffer.chars)
 
 
 class TestBufferEditing:
@@ -42,68 +42,68 @@ class TestBufferEditing:
         set_line(editor, "ech")
         editor._insert_char('o')
         assert line(editor) == "echo"
-        assert editor.cursor_pos == 4
+        assert editor.edit_buffer.cursor == 4
 
     def test_insert_mid_line(self, editor):
         set_line(editor, "eco", cursor=2)
         editor._insert_char('h')
         assert line(editor) == "echo"
-        assert editor.cursor_pos == 3
+        assert editor.edit_buffer.cursor == 3
 
     def test_backspace_at_start_is_noop(self, editor):
         set_line(editor, "abc", cursor=0)
         editor._backspace()
         assert line(editor) == "abc"
-        assert editor.cursor_pos == 0
+        assert editor.edit_buffer.cursor == 0
 
     def test_delete_at_end_is_noop(self, editor):
         set_line(editor, "abc")
         editor._delete_char()
         assert line(editor) == "abc"
-        assert editor.cursor_pos == 3
+        assert editor.edit_buffer.cursor == 3
 
     def test_kill_line_then_yank_round_trip(self, editor):
         set_line(editor, "echo hello world", cursor=5)
         editor._kill_line()
         assert line(editor) == "echo "
-        assert editor.kill_ring[-1] == "hello world"
+        assert editor.edit_buffer.kill_ring[-1] == "hello world"
         editor._yank()
         assert line(editor) == "echo hello world"
-        assert editor.cursor_pos == 16
+        assert editor.edit_buffer.cursor == 16
 
     def test_kill_whole_line_then_yank(self, editor):
         set_line(editor, "ls -la", cursor=3)
         editor._kill_whole_line()
         assert line(editor) == ""
-        assert editor.cursor_pos == 0
-        assert editor.kill_ring[-1] == "ls -la"
+        assert editor.edit_buffer.cursor == 0
+        assert editor.edit_buffer.kill_ring[-1] == "ls -la"
         editor._yank()
         assert line(editor) == "ls -la"
 
     def test_yank_inserts_at_cursor_mid_line(self, editor):
-        editor.kill_ring.append("XY")
+        editor.edit_buffer.kill_ring.append("XY")
         set_line(editor, "abcd", cursor=2)
         editor._yank()
         assert line(editor) == "abXYcd"
-        assert editor.cursor_pos == 4
+        assert editor.edit_buffer.cursor == 4
 
     def test_transpose_at_end_swaps_last_two(self, editor):
         set_line(editor, "sl")  # cursor at end
         editor._transpose_chars()
         assert line(editor) == "ls"
-        assert editor.cursor_pos == 2
+        assert editor.edit_buffer.cursor == 2
 
     def test_transpose_mid_line(self, editor):
         set_line(editor, "abcd", cursor=1)
         editor._transpose_chars()
         assert line(editor) == "acbd"
-        assert editor.cursor_pos == 3
+        assert editor.edit_buffer.cursor == 3
 
     def test_transpose_at_start(self, editor):
         set_line(editor, "ab", cursor=0)
         editor._transpose_chars()
         assert line(editor) == "ba"
-        assert editor.cursor_pos == 1
+        assert editor.edit_buffer.cursor == 1
 
     def test_transpose_single_char_is_noop(self, editor):
         set_line(editor, "a", cursor=1)
@@ -117,27 +117,27 @@ class TestWordMovement:
     def test_word_forward_skips_word_then_spaces(self, editor):
         set_line(editor, "echo   foo bar", cursor=0)
         editor._move_word_forward()
-        assert editor.cursor_pos == 7  # past "echo" and the run of spaces
+        assert editor.edit_buffer.cursor == 7  # past "echo" and the run of spaces
 
     def test_word_forward_at_end_is_noop(self, editor):
         set_line(editor, "echo")
         editor._move_word_forward()
-        assert editor.cursor_pos == 4
+        assert editor.edit_buffer.cursor == 4
 
     def test_word_backward_skips_spaces_then_word(self, editor):
         set_line(editor, "echo   foo", cursor=7)
         editor._move_word_backward()
-        assert editor.cursor_pos == 0
+        assert editor.edit_buffer.cursor == 0
 
     def test_word_backward_from_mid_word(self, editor):
         set_line(editor, "echo foo", cursor=7)  # inside "foo"
         editor._move_word_backward()
-        assert editor.cursor_pos == 5  # start of "foo"
+        assert editor.edit_buffer.cursor == 5  # start of "foo"
 
     def test_word_backward_at_start_is_noop(self, editor):
         set_line(editor, "echo", cursor=0)
         editor._move_word_backward()
-        assert editor.cursor_pos == 0
+        assert editor.edit_buffer.cursor == 0
 
 
 class TestHistoryNavigation:
@@ -242,12 +242,12 @@ class TestEscapeEventDispatch:
         set_line(editor, "abc", cursor=1)
         assert editor._dispatch_escape_event(Key(None)) is None
         assert line(editor) == "abc"
-        assert editor.cursor_pos == 1
+        assert editor.edit_buffer.cursor == 1
 
     def test_emacs_meta_f_moves_word_forward(self, editor):
         set_line(editor, "echo foo", cursor=0)
         editor._dispatch_escape_event(Meta('f'))
-        assert editor.cursor_pos == 5  # past "echo" and the space
+        assert editor.edit_buffer.cursor == 5  # past "echo" and the space
 
     def test_emacs_unbound_meta_is_ignored(self, editor):
         set_line(editor, "abc", cursor=1)
@@ -259,7 +259,7 @@ class TestEscapeEventDispatch:
         set_line(ed, "ab")
         ed._dispatch_escape_event(ESCAPE)
         assert ed.mode == EditMode.VI_NORMAL
-        assert ed.cursor_pos == 1  # vi moves the cursor back one
+        assert ed.edit_buffer.cursor == 1  # vi moves the cursor back one
 
     def test_emacs_bare_escape_is_ignored(self, editor):
         # Can only arise in probing mode; emacs has no bare-ESC binding.

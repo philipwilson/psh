@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.325.0 (2026-06-13) - Textbook program Tier B8-R3: history components + dispatch table (zero behavior change)
+- The LineEditor decomposition concludes. HistoryNavigator (owns
+  pos/original_line; up/down/first/last -> Optional[str]) and
+  HistorySearch (feed(char) -> SearchState, a frozen dataclass with
+  prompt/line/cursor/status plus repaint and redispatch fields that
+  reproduce the old machine exactly) extracted as PURE components in
+  psh/interactive/history_nav.py (262 lines) — the editor renders
+  returned states via the renderer's prompt-override and owns mode
+  transitions. The search flow was mapped first and preserved
+  verbatim, including two historical quirks now pinned by tests
+  (strictly-before re-search showing failed-bck-i-search on the only
+  match; repeated ^R double-decrement).
+- The 80-line elif chain in _execute_action is a 31-action
+  dict[str, Callable] dispatch table; the vi guard test became a
+  full totality test (every name in all five binding tables
+  resolves, both modes).
+- R1's compatibility properties DELETED — ~140 consumer sites
+  migrated mechanically to edit_buffer/renderer; four thin
+  navigator-state properties kept deliberately (history's setter
+  preserves list aliasing with shell state). Completion UI stays in
+  the coordinator: its three methods are pure glue — a sixth module
+  would move coordination, not narrow a contract.
+- LineEditor is now a 753-line COORDINATOR (docstring states the
+  five-component architecture); components: edit_buffer 265 +
+  line_renderer 249 + key_decoder 292 + history_nav 262, all in
+  mypy scope (19 files). interactive/CLAUDE.md rewritten for the
+  five-component reality.
+- 26 new tests (11 navigator, 14 search, the totality guard).
+  PTY tier green ×2. Suite: 5,641 passed / 5,882 collected,
+  0 failures; ruff + mypy + doc-pointer clean.
+
 ## 0.324.0 (2026-06-12) - Textbook program Tier B8-R2: KeyDecoder (zero behavior change)
 - The decomposition's risk release: psh/interactive/key_decoder.py
   (292 lines) is now the ONLY reader of stdin — it owns the char

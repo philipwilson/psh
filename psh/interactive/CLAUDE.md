@@ -28,10 +28,11 @@ Tab completion is NOT a separate manager: it is `CompletionEngine`
 | File | Purpose |
 |------|---------|
 | `repl_loop.py` | `REPLLoop` - main Read-Eval-Print Loop |
-| `line_editor.py` | `LineEditor` - event dispatch (mode policy), history nav, search, completion |
+| `line_editor.py` | `LineEditor` - coordinator: mode policy, the action dispatch table, completion UI |
 | `edit_buffer.py` | `EditBuffer` - single source of truth for text + cursor, kill ring, undo/redo |
 | `line_renderer.py` | `LineRenderer` - the ONLY writer of ANSI to the terminal |
 | `key_decoder.py` | `KeyDecoder` - the ONLY reader of stdin; decodes bytes into `KeyEvent`s |
+| `history_nav.py` | `HistoryNavigator` (up/down/first/last) + `HistorySearch` (the Ctrl-R state machine) |
 | `line_layout.py` | Pure layout math (row/col positions, prompt width, wrapping) |
 | `line_editor_helpers.py` | `convert_multiline_to_single()` - cmdhist-style joining |
 | `keybindings.py` | `EditMode`, `EmacsKeyBindings`, `ViKeyBindings` |
@@ -189,13 +190,19 @@ class REPLLoop(InteractiveComponent):
 ### Line Editor
 
 `line_editor.py` is the core of the subsystem: a raw-mode editor with
-emacs and vi modes (no readline). Decomposed per Textbook B8 around
-three narrow contracts:
+emacs and vi modes (no readline). Fully decomposed per Textbook B8
+(three releases) into five components, each with a narrow contract;
+`LineEditor` itself is the COORDINATOR — it owns mode state (emacs /
+vi-insert / vi-normal, the vi repeat count), the dispatch table mapping
+action names to operations, and the completion-UI glue, and it wires
+the components together:
 
 - **Buffer model**: `EditBuffer` (`edit_buffer.py`) is the single
   source of truth for text + cursor, the kill ring, and undo/redo.
-  The editor's `buffer`/`cursor_pos` attributes are compatibility
-  properties delegating to it.
+  Every mutating operation returns True when state changed — exactly
+  the editor's repaint signal. (The editor's old `buffer`/`cursor_pos`
+  compatibility properties were removed in R3; use
+  `editor.edit_buffer.chars` / `.cursor` / `.kill_ring` directly.)
 - **Rendering**: `LineRenderer` (`line_renderer.py`) is the ONLY
   writer of ANSI to the terminal (`paint`, `redraw`,
   `redraw_after_resize`, `move_cursor_to`). All geometry (rows/columns
@@ -218,11 +225,38 @@ three narrow contracts:
   `Meta(c)` into "enter normal mode, run c"; emacs maps `Meta(c)`
   through `meta_bindings`. Pinned by pipe-fed byte-stream tests
   (`tests/unit/interactive/test_key_decoder.py`).
+- **History navigation & search**: `history_nav.py` (R3). Both classes
+  are PURE against the injected history list (which aliases shell
+  state and grows between reads) — they compute what the buffer should
+  show, never touching the terminal. `HistoryNavigator` owns the
+  browse position and the stashed in-progress line; `up()/down()/
+  first()/last()` return the text to display or None for "no move",
+  and the editor applies it via `EditBuffer.replace_all` + repaint
+  (up/down join multi-line entries to their single-line editable
+  form). `HistorySearch` is the Ctrl-R incremental-search state
+  machine: one instance per session; `feed(char)` returns a
+  `SearchState` (search prompt, line, cursor, status ∈
+  active/accepted/aborted, plus repaint/redispatch flags) that the
+  editor renders via the renderer's prompt-override repaint. Ctrl-R/
+  Ctrl-S continue backward/forward, Ctrl-G aborts (restoring the
+  pre-search line), Enter accepts the match into the buffer (a second
+  Enter executes), and any other control character accepts AND is
+  re-dispatched normally. The editor exposes `history`/`history_pos`/
+  `original_line`/`search_mode` as properties delegating to these
+  components. Pinned by `tests/unit/interactive/test_history_nav.py`
+  and the PTY ctrl-r test (which pins the `(bck-i-search)` prompt).
 - **Key dispatch**: `keybindings.py` maps keys to action names
   (`EmacsKeyBindings`, `ViKeyBindings`, selected via `EditMode` /
-  `set -o vi`); `_execute_action()` runs them.
+  `set -o vi`). The editor's `_build_action_table()` maps every action
+  name to a handler (`dict`, not an elif chain since R3);
+  `_execute_action()` is a table lookup. A totality guard test asserts
+  every name bound in `keybindings.py` (and `ESCAPE_KEY_ACTIONS`)
+  resolves to a callable in the table.
 - **Completion**: `CompletionEngine` (`tab_completion.py`) does path
-  completion; the editor owns the instance.
+  completion; the editor owns the instance. The completion UI (tab
+  handling, applying a completion, listing candidates around a
+  raw-mode toggle) deliberately stays in the coordinator: it is pure
+  glue between `CompletionEngine`, `TerminalManager` and the renderer.
 - **Raw mode**: `TerminalManager` (`terminal.py`) is a context manager
   for termios raw-mode enter/exit.
 - **Multi-line input**: `MultiLineInputHandler` (`multiline_handler.py`)
