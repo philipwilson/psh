@@ -46,14 +46,25 @@ class CommandParser:
         # Patterns: >&N, <&N, N>&M, N<&M, >&-, <&-
         return bool(_FD_DUP_RE.match(value))
 
-    def _raise_syntax_error(self, msg: str, token: Token) -> None:
-        """Raise a ParseError with the given message at the given token."""
+    def _raise_syntax_error(self, msg: str, token: Token,
+                            at_eof: bool = False) -> None:
+        """Raise a ParseError with the given message at the given token.
+
+        ``at_eof=True`` marks the error as structurally "incomplete input":
+        an unclosed expansion consumes everything to the end of the input by
+        construction, so more lines could complete it. Interactive and
+        script line-gathering key off this flag to keep reading (multi-line
+        ``$(...)``, ``${...}``, backticks, and heredocs inside them).
+        """
         error_context = ErrorContext(
             token=token,
             message=msg,
             position=token.position
         )
-        raise ParseError(error_context)
+        error = ParseError(error_context)
+        if at_eof:
+            error.at_eof = True
+        raise error
 
     def _check_for_unclosed_expansions(self, token: Token) -> None:
         """Check if a token contains unclosed expansions and raise appropriate errors."""
@@ -74,21 +85,25 @@ class CommandParser:
                     else:
                         error_msg = f"syntax error: unclosed expansion '{part.value}'"
 
-                    self._raise_syntax_error(error_msg, token)
+                    self._raise_syntax_error(error_msg, token, at_eof=True)
 
         # Also check for specific token types that indicate unclosed expansions
         if token.type == TokenType.COMMAND_SUB and not token.value.endswith(')'):
             self._raise_syntax_error(
-                f"syntax error: unclosed command substitution '{token.value}'", token)
+                f"syntax error: unclosed command substitution '{token.value}'", token,
+                at_eof=True)
         elif token.type == TokenType.COMMAND_SUB_BACKTICK and token.value.count('`') == 1:
             self._raise_syntax_error(
-                f"syntax error: unclosed backtick substitution '{token.value}'", token)
+                f"syntax error: unclosed backtick substitution '{token.value}'", token,
+                at_eof=True)
         elif token.type == TokenType.ARITH_EXPANSION and not token.value.endswith('))'):
             self._raise_syntax_error(
-                f"syntax error: unclosed arithmetic expansion '{token.value}'", token)
+                f"syntax error: unclosed arithmetic expansion '{token.value}'", token,
+                at_eof=True)
         elif token.type == TokenType.VARIABLE and token.value.startswith('${') and not token.value.endswith('}'):
             self._raise_syntax_error(
-                f"syntax error: unclosed parameter expansion '{token.value}'", token)
+                f"syntax error: unclosed parameter expansion '{token.value}'", token,
+                at_eof=True)
 
     def parse_command(self) -> SimpleCommand:
         """Parse a single command with its arguments and redirections."""

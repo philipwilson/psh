@@ -54,6 +54,33 @@ def _scan_arith_or_cmdsub(line: str, position: int, opener: str, open_len: int) 
     return False
 
 
+def _inside_closed_cmdsub(line: str, position: int) -> bool:
+    """True if *position* falls within a ``$( … )`` region that CLOSES on
+    *line*, using the grammar-aware extent scanner (so a case pattern's bare
+    ``)`` inside the substitution does not end the region early). An
+    unclosed ``$(`` returns False: a ``<<`` inside it is then treated as a
+    pending heredoc so the line gatherer keeps reading — matching how the
+    full lexer will see it once the substitution is complete.
+    """
+    from ..lexer.pure_helpers import find_command_substitution_end
+    i = 0
+    n = len(line)
+    while i < n and i <= position:
+        if line.startswith('$((', i):
+            i += 3  # arithmetic; handled by _scan_arith_or_cmdsub
+            continue
+        if line.startswith('$(', i):
+            end, found = find_command_substitution_end(line, i + 2)
+            if found:
+                if i <= position < end:
+                    return True
+                i = end
+                continue
+            return False
+        i += 1
+    return False
+
+
 def is_inside_expansion(line: str, position: int) -> bool:
     """True if *position* on *line* is inside an expansion where ``<<`` is not
     a heredoc: ``$((…))`` / bare ``((…))`` arithmetic, ``$(…)`` command
@@ -61,7 +88,7 @@ def is_inside_expansion(line: str, position: int) -> bool:
     """
     if _scan_arith_or_cmdsub(line, position, '$((', 2):
         return True
-    if _scan_arith_or_cmdsub(line, position, '$(', 1):
+    if _inside_closed_cmdsub(line, position):
         return True
     if _scan_arith_or_cmdsub(line, position, '((', 2):
         return True

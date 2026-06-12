@@ -57,48 +57,13 @@ class ProcessSubstitutionRecognizer(TokenRecognizer):
         else:
             return None  # Not a process substitution
 
-        # Read until we find the matching )
-        paren_count = 1
-
-        while pos < len(input_text) and paren_count > 0:
-            char = input_text[pos]
-
-            # Handle quotes to avoid counting parens inside strings
-            if char in ['"', "'"]:
-                # Skip quoted section
-                quote_char = char
-                pos += 1
-                while pos < len(input_text):
-                    if input_text[pos] == quote_char:
-                        # Check if escaped
-                        if pos > 0 and input_text[pos-1] == '\\':
-                            # Count consecutive backslashes
-                            backslash_count = 0
-                            check_pos = pos - 1
-                            while check_pos >= 0 and input_text[check_pos] == '\\':
-                                backslash_count += 1
-                                check_pos -= 1
-                            # If odd number of backslashes, quote is escaped
-                            if backslash_count % 2 == 1:
-                                pos += 1
-                                continue
-                        # Quote is not escaped, we're done with quoted section
-                        pos += 1
-                        break
-                    pos += 1
-            elif char == '(':
-                paren_count += 1
-                pos += 1
-            elif char == ')':
-                paren_count -= 1
-                pos += 1
-            elif char == '\\' and pos + 1 < len(input_text):
-                # Skip escaped character
-                pos += 2
-            else:
-                pos += 1
-
-        if paren_count != 0:
+        # Find the matching ) with the same grammar-aware scanner used for
+        # $(...) command substitutions: the content is a full shell command
+        # list, so case patterns (`<(case x in x) echo hi;; esac)`), quotes,
+        # comments, and heredocs must not break the extent.
+        from ..pure_helpers import find_command_substitution_end
+        pos, found = find_command_substitution_end(input_text, pos)
+        if not found:
             # Unclosed parentheses
             return None
 

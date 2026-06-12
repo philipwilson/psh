@@ -4,6 +4,44 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.306.0 (2026-06-12) - Grammar-aware command substitution (reassessment Phase 2, 2/2 — PHASE 2 COMPLETE)
+- The long-standing Known Limitation is CLOSED: `$(case x in x) echo
+  inner;; esac)` parses and runs (bash prints `inner`; psh errored at
+  `;;` in both parsers since the paren-counting scanner predates the
+  reappraisal programs). New pure scanner find_command_substitution_
+  end() in pure_helpers.py models exactly the contexts where `)` is
+  not a closer: quotes (incl. $'...' and nested-expansion rescan),
+  backticks, ${...}, nested $(...), $(( ))/(( )) arithmetic with the
+  lexer's greedy dispatch, # comments at word start, heredocs
+  (pending-delimiter queue shared across nesting levels — bash reads
+  bodies at the next physical newline regardless of depth, probed),
+  group parens, and a case-statement state stack (case at command
+  position → subject → in → pattern⇄body via ;;/;&/;;&, one unmatched
+  `)` per pattern, esac pops). Design rationale lives in the
+  docstring — it replaces ARCHITECTURE.md Known Limitation #2.
+- All seven paren-counting consumers upgraded to the scanner:
+  expansion_parser, process-sub recognizer (`<(case ...)` works),
+  $((...)) extent, ${...} validation, array-word shapes, the
+  execution-time operand scanner, and heredoc line-gathering's
+  inside-expansion check.
+- Three pre-existing multiline bugs fixed (exposed by the probe
+  battery, all broken on main): unclosed-expansion ParseErrors now
+  set at_eof=True so multiline `$(\necho hi\n)` gathers continuation
+  lines; the source-processor completeness check uses
+  tokenize_with_heredocs (a heredoc body line `)` was a bogus parse
+  error); multi-line buffers starting with `#` were swallowed whole
+  by two comment-skip checks.
+- Probe battery 13/34 → 32/34 exact matches; the 2 remaining are
+  deliberate documented divergences (escaped-paren pattern rejected
+  by both shells with different wording; same-line shopt extglob
+  timing where psh matches `bash -O extglob`).
+- Docs: ARCHITECTURE.md limitation replaced with fixed-by note;
+  user-guide ch6 note deleted, ch17 row note updated; call-site
+  comment rewritten as design doc. Claims meta-test green.
+- 85 new tests (51 scanner/lexer unit, 23 integration incl. both
+  parsers and stdin/script modes, 11 conformance).
+- Suite: 5,037 passed / 5,307 collected; ruff + mypy clean.
+
 ## 0.305.0 (2026-06-12) - Grammar boundaries: case subject, bracket quotes, TokenTransformer (reassessment Phase 2, 1/2)
 - Finding #6: `case` now parses exactly one subject word before `in` —
   `case a b in ...` is a bash-shaped syntax error (was silently
