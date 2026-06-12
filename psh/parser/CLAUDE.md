@@ -47,13 +47,19 @@ Statements Commands  Control   Functions  Tests
 | `word_builder.py` | Build Word AST nodes from tokens |
 | `utils.py` | Parser utilities |
 
-### Parser Combinators (`combinators/`) -- Experimental
+### Parser Combinators (`combinators/`) -- Educational Only
 
-**Status: Experimental / Educational.** This is NOT the production parser.
-It exists as an educational counterpoint demonstrating functional parsing,
+**Status: Educational only (project decision 2026-06-12).** This is NOT
+the production parser and is **outside the production quality bar**. It
+exists as an educational counterpoint demonstrating functional parsing,
 and as a proof of concept that parser combinators can handle real shell
 syntax. There is no plan to converge with or replace the recursive descent
-parser. It may lag behind on edge-case fixes and new features.
+parser. Parity regression tests (`tests/integration/parser/
+test_combinator_parity_regressions.py` and friends) pin known-good
+behavior against drift, but remaining gaps (e.g. composite words in some
+list contexts, `select` without `in`) are documented rather than tracked
+as defects; reviews should not count them as findings. Revisit if/when
+dedicated time is available.
 
 See [Combinator Parser Guide](../../docs/guides/combinator_parser_guide.md)
 for a detailed walkthrough. Use `parser-select combinator` inside psh to

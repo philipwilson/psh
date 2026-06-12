@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.308.0 | **Tests**: 5,392 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.309.0 | **Tests**: 5,392 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -33,7 +33,7 @@ psh --format script.sh
 - 📚 **Educational Focus**: Clean, readable codebase designed for learning shell internals
 - 🧪 **Comprehensive Testing**: 4,550 tests ensuring reliability and robustness
 - 🏗️ **Modern Architecture**: Component-based design with unified lexer and visitor pattern integration
-- 🎓 **Dual Parser Implementation**: Both recursive descent and functional parser combinator with near-complete feature parity
+- 🎓 **Dual Parser Implementation**: Production recursive descent parser, plus an educational parser-combinator alternative for comparing parsing paradigms
 - 📋 **POSIX Compliant**: ~98% compliance with robust bash compatibility
 - 🎯 **Feature Complete**: Supports advanced shell programming with arrays, functions, and control structures
 
@@ -221,7 +221,7 @@ PSH follows a modern component-based architecture with clear separation of conce
 - **Lexer** (`psh/lexer/`): Modular tokenization with mixin architecture
 - **Parser** (`psh/parser/`): Dual parser implementation:
   - **Recursive Descent** (`recursive_descent/`): Production parser with modular package structure
-  - **Parser Combinator** (`combinators/`): Functional parsing with 100% feature parity
+  - **Parser Combinator** (`combinators/`): Educational functional-parsing alternative (not production-supported)
 - **Executor** (`psh/executor/`): Command execution with specialized handlers
 - **Expansion** (`psh/expansion/`): All shell expansions with proper precedence
 - **I/O Management** (`psh/io_redirect/`): File operations and redirection handling
@@ -234,12 +234,11 @@ PSH implements the visitor pattern for AST operations, enabling:
 - **Extensibility**: Easy addition of new analysis features
 
 ### Dual Parser Implementation
-PSH uniquely includes two complete parser implementations:
-- **Recursive Descent Parser**: Production parser with modular package structure, clear error messages, and comprehensive shell support
-- **Parser Combinator**: Functional parsing implementation demonstrating elegant composition and achieving 100% feature parity
+PSH includes two parser implementations with deliberately different statuses:
+- **Recursive Descent Parser**: The production parser — modular package structure, clear error messages, comprehensive shell support. All conformance and correctness work targets this parser.
+- **Parser Combinator**: An educational alternative demonstrating functional composition. It handles the broad shell grammar and is pinned against drift by parity tests, but it is **outside the production quality bar**: it may lag on edge cases (known gaps include composite words in some list contexts) and its gaps are not tracked as defects.
 - **Educational Value**: Compare and contrast imperative vs. functional parsing approaches
-- **Parser Selection**: Use `parser-select combinator` builtin to switch between implementations
-- **Feature Parity**: Both parsers support all shell constructs (control structures, arrays, process substitution, etc.)
+- **Parser Selection**: Use `parser-select combinator` builtin (or `--parser combinator`) to switch implementations interactively
 
 ### Project Statistics
 - **Lines of Code**: ~47,300 lines of production code in `psh/` across 192 Python files, plus ~53,600 lines of tests in `tests/` (231 files)
@@ -341,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.309.0**: combinator parser formally declared educational-only, outside the production quality bar (decision recorded in code docstring, CLAUDE.md, guides, help text); README's inaccurate "100% feature parity" claims corrected
 - **v0.308.0**: GitHub CI is green for the first time in the workflow's history (190+ prior failures): missing test deps (pyyaml/pexpect) added to [dev], lint gate aligned with CI (`ruff check psh tests`), and 17 environment-portability test bugs fixed (hardcoded dev-machine paths, BSD exit codes, Linux argv limits); `hash` builtin gap documented
 - **v0.307.0**: visitor tooling is total over the AST — formatter handles all 36 node classes (UntilLoop, dropped redirects, background `&`); security/validator/metrics visit `redirects` on every carrier; validator no longer silently skips until/subshell/brace-group subtrees; an introspective coverage-matrix test (empty exemption lists) fails loudly when a new node lacks visitor support
 - **v0.306.0**: command-substitution extent detection is grammar-aware — `$(case x in x) ...;; esac)` finally parses (quotes, comments, heredocs, nested constructs all modeled); the long-standing Known Limitation is closed; three pre-existing multiline `$(...)` bugs fixed along the way

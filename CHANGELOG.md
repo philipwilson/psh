@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.309.0 (2026-06-12) - Combinator parser declared educational-only
+- Project decision (resolving a question raised by three successive
+  external reviews): the combinator parser is EDUCATIONAL ONLY and
+  outside the production quality bar. Parity regression tests continue
+  to pin known-good behavior against drift, but documented gaps (e.g.
+  composite words in some list contexts, `select` without `in`) are
+  not tracked as defects, and conformance work does not target it.
+  The decision may be revisited when dedicated time is available.
+- Recorded everywhere the status is stated: the class docstring
+  (combinators/parser.py), parser/CLAUDE.md (with a note that reviews
+  should not count its gaps as findings), the combinator guide banner,
+  ARCHITECTURE.md/.llm, parser-select help, and --parser CLI help.
+- README's inaccurate parity claims corrected: "100% feature parity"
+  (×2) and "Both parsers support all shell constructs" replaced with
+  the accurate framing — these claims predated the parity-regression
+  work and were verifiably false (the gaps are documented in the
+  parity test files and reviews).
+- No behavior changes; parser-select and --parser combinator work
+  unchanged.
+
 ## 0.308.0 (2026-06-12) - CI green (first passing run in the workflow's history)
 - The Tests CI workflow had NEVER passed — 190+ consecutive failures
   going back past v0.287. Two quality reviews verified the workflow

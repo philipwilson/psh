@@ -1,10 +1,13 @@
 # Combinator Parser Guide
 
-> **Status: Experimental / Educational.**  This is not the production
-> parser.  The recursive descent parser in `recursive_descent/` handles
-> all shell input in normal operation.  There is no plan to converge
-> the two implementations or to replace the recursive descent parser.
-> The combinator parser may lag behind on edge-case fixes and new features.
+> **Status: Educational only (project decision 2026-06-12).**  This is not
+> the production parser and is outside the production quality bar.  The
+> recursive descent parser in `recursive_descent/` handles all shell input
+> in normal operation.  There is no plan to converge the two implementations
+> or to replace the recursive descent parser.  The combinator parser may lag
+> behind on edge-case fixes and new features; its documented gaps are not
+> tracked as defects.  The decision may be revisited if dedicated time
+> becomes available.
 
 ## What This Is
 
