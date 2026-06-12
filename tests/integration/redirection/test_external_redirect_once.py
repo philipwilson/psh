@@ -53,8 +53,14 @@ class TestExternalRedirectionBasics:
         assert (tmp_path / 'b1.txt').read_text() == 'out\n'
 
     def test_stderr_suppression(self):
+        # ls's exit code for a missing operand differs by implementation
+        # (BSD ls: 1, GNU coreutils ls: 2) — derive it from the local tool
+        # so the test pins "psh preserves the command's rc", not BSD's value.
+        expected_rc = subprocess.run(
+            ['/bin/ls', '/nonexistent_zz'], capture_output=True).returncode
+        assert expected_rc != 0
         result = run_psh('/bin/ls /nonexistent_zz 2>/dev/null; echo rc=$?')
-        assert result.stdout == 'rc=1\n'
+        assert result.stdout == f'rc={expected_rc}\n'
         assert result.stderr == ''
 
     def test_stdin_redirect(self, tmp_path):

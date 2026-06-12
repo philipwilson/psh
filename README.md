@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.307.0 | **Tests**: 5,392 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.308.0 | **Tests**: 5,392 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -341,6 +341,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.308.0**: GitHub CI is green for the first time in the workflow's history (190+ prior failures): missing test deps (pyyaml/pexpect) added to [dev], lint gate aligned with CI (`ruff check psh tests`), and 17 environment-portability test bugs fixed (hardcoded dev-machine paths, BSD exit codes, Linux argv limits); `hash` builtin gap documented
 - **v0.307.0**: visitor tooling is total over the AST — formatter handles all 36 node classes (UntilLoop, dropped redirects, background `&`); security/validator/metrics visit `redirects` on every carrier; validator no longer silently skips until/subshell/brace-group subtrees; an introspective coverage-matrix test (empty exemption lists) fails loudly when a new node lacks visitor support
 - **v0.306.0**: command-substitution extent detection is grammar-aware — `$(case x in x) ...;; esac)` finally parses (quotes, comments, heredocs, nested constructs all modeled); the long-standing Known Limitation is closed; three pre-existing multiline `$(...)` bugs fixed along the way
 - **v0.305.0**: grammar boundaries tightened — `case` takes exactly one subject word (`case a b in` now errors like bash; `case in in` and `for in in` work); unterminated quotes in bracket words are lexer errors and `x["ok"]`/`x[$v]` expand correctly; assoc-key quote removal at lookup (`${h["k 1"]}`); never-implemented TokenTransformer deleted

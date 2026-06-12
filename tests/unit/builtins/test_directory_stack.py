@@ -13,6 +13,20 @@ Tests cover:
 import os
 
 
+def tilde_abbrev(path):
+    """Expected dirs/pushd display form of a path: bash abbreviates a
+    $HOME prefix to ``~`` (exact match or HOME + separator, so siblings
+    like /home/userfoo are untouched). Computed here independently so the
+    tests hold wherever the checkout lives (under $HOME on CI, elsewhere
+    locally)."""
+    home = os.path.expanduser('~')
+    if path == home:
+        return '~'
+    if path.startswith(home + os.sep):
+        return '~' + path[len(home):]
+    return path
+
+
 class TestPushdBuiltin:
     """Test pushd builtin functionality."""
 
@@ -32,8 +46,8 @@ class TestPushdBuiltin:
             captured = capsys.readouterr()
             # Should show the stack after push
             assert test_dir in captured.out
-            # Original directory might be shown with tilde expansion
-            assert original in captured.out or '~/src/psh' in captured.out
+            # Original directory is shown with $HOME abbreviated to ~
+            assert tilde_abbrev(original) in captured.out
 
             # Verify we're in the new directory
             shell.run_command('pwd')
@@ -54,9 +68,11 @@ class TestPushdBuiltin:
         assert exit_code == 0
 
         captured = capsys.readouterr()
-        assert '/tmp' in captured.out or '/private/tmp' in captured.out
-        # Original directory might be shown with tilde expansion
-        assert original in captured.out or '~/src/psh' in captured.out
+        # /tmp resolves to /private/tmp on macOS; either may itself be
+        # displayed tilde-abbreviated if it falls under $HOME.
+        assert any(tilde_abbrev(p) in captured.out for p in ('/tmp', '/private/tmp'))
+        # Original directory is shown with $HOME abbreviated to ~
+        assert tilde_abbrev(original) in captured.out
 
         # Verify current directory
         shell.run_command('pwd')
@@ -350,8 +366,8 @@ class TestDirsBuiltin:
         # Initially should show just current directory
         shell.run_command('dirs')
         captured = capsys.readouterr()
-        # Directory might be shown with tilde expansion
-        assert original in captured.out or '~/src/psh' in captured.out
+        # Directory is shown with $HOME abbreviated to ~
+        assert tilde_abbrev(original) in captured.out
 
     def test_dirs_with_stack(self, shell, capsys):
         """Test dirs with directories on stack."""
@@ -375,8 +391,8 @@ class TestDirsBuiltin:
             # Should show all directories
             assert 'stack2' in captured.out  # current (top of stack)
             assert 'stack1' in captured.out
-            # Original directory might be shown with tilde expansion
-            assert original in captured.out or '~/src/psh' in captured.out  # bottom of stack
+            # Original directory is shown with $HOME abbreviated to ~
+            assert tilde_abbrev(original) in captured.out  # bottom of stack
 
         finally:
             # Clean up
@@ -520,8 +536,8 @@ class TestDirsBuiltin:
             # Should show only one directory (bottom of stack)
             lines = captured.out.strip().split()
             assert len(lines) == 1
-            # Original directory might be shown with tilde expansion
-            assert original in captured.out or '~/src/psh' in captured.out
+            # Original directory is shown with $HOME abbreviated to ~
+            assert tilde_abbrev(original) in captured.out
 
         finally:
             # Clean up
@@ -602,8 +618,8 @@ class TestDirectoryStackIntegration:
             shell.run_command('dirs')
             captured = capsys.readouterr()
             assert test_dir1 in captured.out
-            # Original directory might be shown with tilde expansion
-            assert original in captured.out or '~/src/psh' in captured.out
+            # Original directory is shown with $HOME abbreviated to ~
+            assert tilde_abbrev(original) in captured.out
 
             # Clear capture buffer before pwd
             capsys.readouterr()
@@ -644,8 +660,8 @@ class TestDirectoryStackIntegration:
             shell.run_command('dirs')
             captured = capsys.readouterr()
             assert test_dir in captured.out
-            # Original directory might be shown with tilde expansion
-            assert original in captured.out or '~/src/psh' in captured.out
+            # Original directory is shown with $HOME abbreviated to ~
+            assert tilde_abbrev(original) in captured.out
 
             # Should still be able to pop
             shell.run_command('popd')

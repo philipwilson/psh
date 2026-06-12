@@ -43,8 +43,10 @@ class TestFunctionDefinitionRedirects:
 
     def test_not_applied_at_definition(self, tmp_path):
         out = tmp_path / "def.txt"
+        # `test -e` is POSIX-pinned to exit 1 for a missing file; `ls` is not
+        # portable here (BSD ls exits 1, GNU coreutils ls exits 2).
         r = run_psh(f'f() {{ echo hello; }} > {out}; '
-                    f'ls {out} 2>/dev/null; echo "after-def:$?"')
+                    f'test -e {out}; echo "after-def:$?"')
         assert "after-def:1" in r.stdout
         assert not out.exists()
 

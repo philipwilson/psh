@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.308.0 (2026-06-12) - CI green (first passing run in the workflow's history)
+- The Tests CI workflow had NEVER passed — 190+ consecutive failures
+  going back past v0.287. Two quality reviews verified the workflow
+  CONFIGURATION matched the docs; nobody (reviewer or maintainer)
+  checked an actual run result. Lesson recorded: "CI matches the
+  documented gate" must mean a green run URL, not a config read.
+- Quick-suite job: [dev] extras were missing pyyaml (behavioral
+  golden-case loader) and pexpect (PTY-tier modules import it at
+  collection time even though the tests are runtime-gated) — 6
+  collection errors on every run. Added both.
+- Lint job: CI runs `ruff check psh tests`; the documented local gate
+  was `ruff check psh/` only. CLAUDE.md now mandates the CI command;
+  the one outstanding test-tree lint error fixed.
+- 17 environment-portability test bugs fixed once the suite actually
+  ran on ubuntu (all test bugs, no product bugs): hardcoded
+  /Users/pwilson cwd in the assoc-array regression file; a hardcoded
+  '~/src/psh' fallback in 7 directory-stack assertions (replaced with
+  an independent tilde-abbreviation helper — strictly stronger);
+  BSD-vs-GNU ls exit codes pinned in 2 redirection tests (now derived
+  from the local tool at runtime / switched to POSIX-pinned test -e);
+  a 300KB script passed as one argv element (Linux MAX_ARG_STRLEN is
+  128KiB — heredoc tests now run via script file).
+- Product gap discovered: psh has NO hash builtin — the two hash
+  tests only ever passed because macOS ships /usr/bin/hash, a 4-line
+  sh stub that runs in a throwaway subprocess (they never exercised
+  psh code). Skipped with the gap documented in the reason; implement
+  hash to unskip.
+- All three CI jobs green on PR #40 (Lint 16s, Conformance Smoke 39s,
+  Quick Test Suite 4m56s); full local suite green; ruff + mypy clean.
+
 ## 0.307.0 (2026-06-12) - Visitor totality over the AST (reassessment Phase 3 — PHASE 3 COMPLETE)
 - Finding #8 and Phase 3: the analysis visitors are now total over the
   AST, enforced by an introspective coverage-matrix test. The

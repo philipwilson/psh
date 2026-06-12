@@ -32,6 +32,8 @@ dev = [
     "pytest>=7.0",
     "pytest-cov",
     "pytest-xdist",
+    "pyyaml",   # tests/behavioral golden-case loader
+    "pexpect",  # tests/system/interactive PTY tier (collection-time import)
 ]
 
 [project.urls]
