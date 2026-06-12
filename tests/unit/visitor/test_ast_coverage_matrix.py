@@ -44,6 +44,7 @@ from psh.ast_nodes import (
     Statement,
     StatementList,
     TopLevel,
+    Word,
     WordPart,
 )
 from psh.executor.core import ExecutorVisitor
@@ -204,7 +205,7 @@ def test_security_generic_visit_traverses_children():
 
 def test_metrics_generic_visit_traverses_children():
     v = MetricsVisitor()
-    v.visit(_UnknownCarrier(child=SimpleCommand(args=['echo'])))
+    v.visit(_UnknownCarrier(child=SimpleCommand(words=[Word.from_string('echo')])))
     assert v.metrics.total_commands == 1, (
         "MetricsVisitor.generic_visit must descend into children of "
         "unhandled node types"
@@ -213,7 +214,8 @@ def test_metrics_generic_visit_traverses_children():
 
 def test_linter_generic_visit_traverses_children():
     v = LinterVisitor()
-    v.visit(_UnknownCarrier(child=SimpleCommand(args=['eval', 'x'])))
+    v.visit(_UnknownCarrier(child=SimpleCommand(
+        words=[Word.from_string('eval'), Word.from_string('x')])))
     assert any('eval' in i.message for i in v.issues), (
         "LinterVisitor.generic_visit must descend into children of "
         "unhandled node types"

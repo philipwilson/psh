@@ -16,7 +16,8 @@ section 2):
 (c) unreachable defensive branches -> now raise internal errors
     - ArrayInitialization elements without parallel Words,
     - ArrayElementAssignment without value_word,
-    - SimpleCommand assignment words without Word AST,
+    - SimpleCommand args/words divergence (now unrepresentable:
+      args is a property derived from words),
     - non-Word arguments to the expansion engine.
 (d) dead code -> deleted (ArrayOperationExecutor._add_expanded_element_to_array
     and the string [index]=value re-parsers; their only live path diverged
@@ -45,7 +46,6 @@ from psh.ast_nodes import (
 def _echo_var_command(name: str) -> SimpleCommand:
     """Build `echo "$name"` with full Word AST (the executor requires Words)."""
     return SimpleCommand(
-        args=['echo', f'${name}'],
         words=[
             Word(parts=[LiteralPart('echo')]),
             Word(parts=[ExpansionPart(VariableExpansion(name),
@@ -57,7 +57,6 @@ def _echo_var_command(name: str) -> SimpleCommand:
 
 def _echo_literal_command(text: str) -> SimpleCommand:
     return SimpleCommand(
-        args=['echo', text],
         words=[Word(parts=[LiteralPart('echo')]),
                Word(parts=[LiteralPart(text)])],
     )
@@ -174,14 +173,18 @@ class TestClassCUnreachableBranchesRaise:
         with pytest.raises(RuntimeError, match='internal error'):
             ExecutorVisitor(shell).visit(node)
 
-    def test_assignment_without_word_ast_fails_loudly(self, shell, capsys):
+    def test_args_words_divergence_is_unrepresentable(self):
         """SimpleCommand(args=['x=1'], words=[]) used to silently assign a
-        partially-expanded value; now it surfaces as an internal error
-        (caught by the executor's last-resort guard, status 1)."""
-        node = SimpleCommand(args=['x=1'], words=[])
-        rc = shell.execute_command_list(StatementList(statements=[node]))
-        assert rc == 1
-        assert 'internal error' in capsys.readouterr().err
+        partially-expanded value, then (v0.300+) raised an internal error.
+        Since args became a property DERIVED from words, the diseased
+        state cannot be constructed at all: there is no args field to
+        diverge, and the derived view always matches words."""
+        node = SimpleCommand(words=[])
+        assert node.args == []
+        with pytest.raises(TypeError):
+            SimpleCommand(args=['x=1'], words=[])  # no such field
+        with pytest.raises(AttributeError):
+            node.args = ['x=1']  # read-only property
 
     def test_expansion_engine_rejects_non_word(self, shell):
         from psh.expansion.word_expander import COMMAND_ARGUMENT

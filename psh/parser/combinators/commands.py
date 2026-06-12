@@ -321,11 +321,9 @@ class CommandParsers:
         # Group adjacent tokens into composite sequences
         groups = self._group_adjacent_tokens(word_tokens)
 
-        # Build traditional string arguments and Word AST nodes
-        cmd.args = []
-        cmd.words = []
+        # Build Word AST nodes; the string view (SimpleCommand.args)
+        # derives from them.
         for group in groups:
-            cmd.args.append(''.join(self.expansions.format_token_value(t) for t in group))
             if len(group) == 1:
                 word = self.expansions.build_word_from_token(group[0])
             else:

@@ -61,16 +61,23 @@ lexer tokens (RichToken.parts)
                [psh/parser/combinators/expansions.py]
                (delegates RichToken decomposition + composite merging
                 to the same WordBuilder)
-  → SimpleCommand(args=[str], words=[Word])   # ALWAYS parallel lists
+  → SimpleCommand(words=[Word])               # words is the only store
   → CommandExecutor._execute_command()  [psh/executor/command.py]
   → ExpansionManager.expand_arguments()
   → WordExpander.expand(word, policy) per word
 ```
 
-- **Invariant**: `words` parallels `args` index-for-index in both parsers
-  (RD `_parse_command_elements` appends in lockstep; combinator builds
-  both per token group). The executor slices both together when stripping
-  assignment prefixes (`command.py`, the `command_node` sub-node).
+- **One source of truth**: `SimpleCommand` stores only `words`. The
+  string view `args` is a **derived, read-only property**
+  (`ast_nodes.py`): `[''.join(str(p) for p in w.parts) for w in words]`
+  — pre-expansion bytes with quotes removed, expansions rendered as
+  their `$`-source (a braced simple variable normalizes: `${y}` -> `$y`).
+  Both parsers build `words` only; the executor slices `words` when
+  stripping assignment prefixes (`command.py`, the `command_node`
+  sub-node) and `args` follows automatically. Execution semantics never
+  read `args` — only `words` through the expansion engine. The invariant
+  (args == derived rule) is pinned permanently by
+  `tests/unit/parser/test_args_derived_from_words.py`.
 - **Declaration builtins** (`declare x=$v` etc.): recognized
   *syntactically* in `expand_arguments` via
   `is_declaration_builtin_command()` + `assignment_word_prefix()`
