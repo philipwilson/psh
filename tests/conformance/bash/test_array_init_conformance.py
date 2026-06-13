@@ -90,16 +90,31 @@ class TestInitializerValueTilde(ConformanceTest):
             'declare -A h; h=(P=a:~:b v); echo "${!h[@]}"')
 
     def test_assoc_leading_tilde_still_expands(self):
-        """A BARE leading tilde in key or value position expands."""
-        self.assert_identical_behavior(
-            'declare -A h; h=(~ v); echo "${!h[@]}"')
-        self.assert_identical_behavior(
-            'declare -A h; h=(k ~/x); echo "${h[k]}"')
+        """A BARE leading tilde in key or value position expands.
+
+        NOT assert_identical_behavior: bash point releases disagree in
+        this corner — 5.2.26 (dev machine) expands a bare tilde in
+        assoc pair-form key/value positions, 5.2.21 (Ubuntu CI runner)
+        keeps it literal. psh follows the 5.2.26 behavior; this test
+        pins psh's output directly so it holds on either bash.
+        """
+        import os
+        home = os.path.expanduser('~')
+        result = self.framework.run_in_psh('declare -A h; h=(~ v); echo "${!h[@]}"')
+        assert result.stdout.strip() == home
+        result = self.framework.run_in_psh('declare -A h; h=(k ~/x); echo "${h[k]}"')
+        assert result.stdout.strip() == f"{home}/x"
 
     def test_assoc_explicit_subscript_value_tilde_expands(self):
-        """[k]=~/x goes through scalar assignment-value semantics."""
-        self.assert_identical_behavior(
-            'declare -A h; h=([k]=~/x); echo "${h[k]}"')
+        """[k]=~/x goes through scalar assignment-value semantics.
+
+        psh-only pin: same bash 5.2.21-vs-5.2.26 divergence as
+        test_assoc_leading_tilde_still_expands (see its docstring).
+        """
+        import os
+        home = os.path.expanduser('~')
+        result = self.framework.run_in_psh('declare -A h; h=([k]=~/x); echo "${h[k]}"')
+        assert result.stdout.strip() == f"{home}/x"
 
     def test_indexed_element_value_tilde_stays_literal(self):
         """The indexed-array twin: a=(P=~/x) keeps the tilde literal."""
