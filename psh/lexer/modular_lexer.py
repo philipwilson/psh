@@ -70,6 +70,7 @@ class ModularLexer:
         from .recognizers.comment import CommentRecognizer
         from .recognizers.literal import LiteralRecognizer
         from .recognizers.operator import OperatorRecognizer
+        from .recognizers.operator_debris import OperatorDebrisWordRecognizer
         from .recognizers.process_sub import ProcessSubstitutionRecognizer
         from .recognizers.whitespace import WhitespaceRecognizer
 
@@ -88,6 +89,11 @@ class ModularLexer:
         self.registry.register(literal_recognizer)
 
         self.registry.register(ProcessSubstitutionRecognizer())
+
+        # Operator-debris words (`]`, `+`, `=`, `[` starts). Lowest priority,
+        # so it is tried strictly last — after every other recognizer
+        # declines — exactly like the old step-4 fallback ordering.
+        self.registry.register(OperatorDebrisWordRecognizer())
 
     # Position management
     @property
@@ -266,28 +272,27 @@ class ModularLexer:
             if self._try_quotes_and_expansions():
                 continue
 
-            # Try modular recognizers
+            # Try modular recognizers (in priority order). The lowest-
+            # priority recognizer is OperatorDebrisWordRecognizer, which
+            # collects operator-debris words (`echo ]`, `set +x`) that the
+            # literal recognizer rejects as word starts — see
+            # recognizers/operator_debris.py.
             if self._try_recognizers():
-                continue
-
-            # Operator-debris words: characters that may not START a literal
-            # word still form words mid-command (`echo ]`, `set +x`).
-            if self._handle_fallback_word():
                 continue
 
             # Nothing consumed this character. An instrumented census
             # (2026-06-12, B6: the 15k-input characterization corpus, the
             # full test suite, and ~71k fuzz inputs including [[ / (( /
             # case-pattern contexts) found ZERO inputs that reach this
-            # point — every stray character is consumed by the fallback
-            # word collector above. A silent self.advance() here used to
-            # DROP the character from the token stream; per the v0.300
-            # fail-loudly policy an unreachable recovery path must not
-            # hide future recognizer bugs as vanished characters.
+            # point — every stray character is consumed by the
+            # operator-debris recognizer above. A silent self.advance()
+            # here used to DROP the character from the token stream; per
+            # the v0.300 fail-loudly policy an unreachable recovery path
+            # must not hide future recognizer bugs as vanished characters.
             raise RuntimeError(
                 f"lexer made no progress at position {self.position} "
-                f"({self.current_char()!r}) — no recognizer, expansion "
-                f"parser, or fallback consumed the character; this is a "
+                f"({self.current_char()!r}) — no recognizer or expansion "
+                f"parser consumed the character; this is a "
                 f"psh bug, please report the input")
 
         # Add EOF token
@@ -600,62 +605,6 @@ class ModularLexer:
             # Update command position context
             self._update_command_position_context(token.type, token.value)
 
-            return True
-
-        return False
-
-    def _handle_fallback_word(self) -> bool:
-        """Collect an operator-debris word the literal recognizer rejects.
-
-        The literal recognizer's word-START rules reject most operator
-        characters, but the shell grammar still makes words out of them
-        mid-command. An instrumented census (2026-06-12, B6: 15k-input
-        characterization corpus + the full test suite) found exactly FOUR
-        word-start character classes reaching this path, all legitimate
-        and all bash-verified:
-
-        * ``]`` — closing-bracket words: ``[ x = y ]`` test commands,
-          ``a=([1]=x z)`` sparse-array element prefixes (``]=x``), and
-          composite continuations like ``a]b``;
-        * ``+`` — ``vars+=(x)`` append assignments (WORD ``+=`` re-joined
-          by the parser), ``set +x`` option words, regex ``([a-z]+)``;
-        * ``=`` — bare ``=`` in test commands, assignment continuations
-          like the ``=c`` of ``a=b=c`` (re-joined by the parser);
-        * ``[`` — case-pattern glob classes (``[0-9]*)``) and bracket
-          words in array-init contexts.
-
-        These words deliberately use a LOOSER terminator set than the
-        literal recognizer (``= + [ ]`` do not terminate here): folding
-        them into the literal collect loop would split ``]=x`` and
-        ``+=`` differently. The collection rule: read until whitespace,
-        a hard operator (``<>&|;(){}!``), or a quote/expansion starter.
-        """
-        if self.position >= len(self.input):
-            return False
-
-        start_pos = self.get_current_position()
-        value = ""
-
-        while self.position < len(self.input):
-            char = self.current_char()
-
-            # Stop at whitespace
-            if is_whitespace(char, self.config.posix_mode):
-                break
-
-            # Stop at operators (but not brackets - they might be part of glob patterns)
-            if char in '<>&|;(){}!':
-                break
-
-            # Stop at quotes and expansions
-            if char in ['$', '`', '"', "'"]:
-                break
-
-            value += char
-            self.advance()
-
-        if value:
-            self.emit_token(TokenType.WORD, value, start_pos)
             return True
 
         return False

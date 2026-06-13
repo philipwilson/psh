@@ -20,7 +20,7 @@ refactor produced ZERO stream changes. Several frozen streams pin
 behavior that intentionally differs from bash at the TOKEN level and is
 reconciled later in the pipeline (the parser re-joins adjacent tokens:
 ``a=b=c`` lexes as WORD ``a=b`` + WORD ``=c``; ``vars+=`` as WORD ``vars``
-+ WORD ``+=``) — see ``ModularLexer._handle_fallback_word``.
++ WORD ``+=``) — see ``OperatorDebrisWordRecognizer``.
 
 If the lexer's behavior deliberately changes, re-verify the affected rows
 against bash and update those entries (never regenerate the whole table

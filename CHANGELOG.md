@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.346.0 (2026-06-13) - Reappraisal #4 Tier C-C3: operator-debris recognizer
+- REFACTOR (zero behavior change, review Ugly 9): the lexer's step-4
+  `_handle_fallback_word` — which collected operator-debris words (those
+  starting with `]`, `+`, `=`, `[`, the only four classes a census found
+  reach it) using a looser terminator set than the literal recognizer — is now
+  a registered `OperatorDebrisWordRecognizer` (`recognizers/operator_debris.py`)
+  at lowest priority (10), tried strictly last. The `tokenize()` loop no longer
+  has a special fallback step: it is whitespace → quotes/expansions →
+  recognizers (debris last) → fail-loud RuntimeError. These word forms are now
+  honestly modeled as a grammar recognizer with an explicit `can_recognize`
+  domain, not a fallback accident.
+- SAFETY NET: a frozen token-stream characterization
+  (`tests/unit/lexer/test_operator_debris_recognizer.py`, 20 tests) over every
+  census case (`[ x = y ]`, `a=([1]=x z)`, `a]b`, `vars+=(x)`, `set +x`,
+  `([a-z]+)`, `a=b=c`, `[0-9]*)`, …) plus "not stolen from operator/literal"
+  pins (`[[ -f x ]]`) — byte-identical before/after (types, offsets,
+  adjacency). 5 bash probes match. Full suite green (6,553 passed). ruff +
+  mypy clean. CLAUDE.md flow/priority docs updated.
+
 ## 0.345.0 (2026-06-13) - Reappraisal #4 Tier C-C2: command-position drift-lock
 - ASSESSMENT (review Ugly 8): the review recommended extracting one shared
   `CommandPositionMachine` for the three machines that track command position
