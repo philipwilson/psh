@@ -10,9 +10,11 @@ from ....ast_nodes import (
     BinaryTestExpression,
     CompoundTestExpression,
     EnhancedTestStatement,
+    LiteralPart,
     NegatedTestExpression,
     TestExpression,
     UnaryTestExpression,
+    Word,
 )
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups
@@ -104,6 +106,7 @@ class TestParser:
 
         # Binary expression or single value
         left, left_quote_type = self._parse_test_operand()
+        left_word = self._operand_word(left, left_quote_type)
         self.parser.skip_newlines()
 
         # Check for binary operators
@@ -134,15 +137,27 @@ class TestParser:
                     right, right_quote_type = self._parse_test_operand()
 
                 return BinaryTestExpression(
-                    left=left,
+                    left_word=left_word,
                     operator=operator,
-                    right=right,
-                    left_quote_type=left_quote_type,
-                    right_quote_type=right_quote_type
+                    right_word=self._operand_word(right, right_quote_type),
                 )
 
         # Single value test
         return UnaryTestExpression('-n', left)
+
+    @staticmethod
+    def _operand_word(text: str, quote_type: Optional[str]) -> Word:
+        """Build the Word for a [[ ]] operand.
+
+        The operand text is the already-reconstructed pre-expansion string
+        (``$name`` form preserved for the evaluator's string-level variable
+        expansion); a wholly-quoted operand carries its quote char, an
+        unquoted or mixed-quote operand is unquoted. This is a single
+        LiteralPart so ``word.display_text()`` equals the old operand string
+        and ``word.is_quoted`` equals the old ``quote_type is not None``
+        (Tier C-D2 equivalence pin)."""
+        return Word(parts=[LiteralPart(
+            text, quoted=quote_type is not None, quote_char=quote_type)])
 
     def _parse_test_operand(self) -> tuple[str, Optional[str]]:
         """Parse a test operand, handling concatenated tokens for patterns.

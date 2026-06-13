@@ -256,9 +256,9 @@ class SpecialCommandParsers:
             if operator in ['==', '!=', '=', '<', '>', '=~',
                           '-eq', '-ne', '-lt', '-le', '-gt', '-ge']:
                 return BinaryTestExpression(
-                    left=left,
+                    left_word=self._operand_word(left),
                     operator=operator,
-                    right=right
+                    right_word=self._operand_word(right),
                 )
 
         # Handle unary operations: operator operand
@@ -283,9 +283,23 @@ class SpecialCommandParsers:
             operator = tokens[1].value if len(tokens) > 1 else '=='
             right = ' '.join(self._format_test_operand(t) for t in tokens[2:])
 
-            return BinaryTestExpression(left=left, operator=operator, right=right)
+            return BinaryTestExpression(
+                left_word=self._operand_word(left),
+                operator=operator,
+                right_word=self._operand_word(right),
+            )
 
         return None
+
+    @staticmethod
+    def _operand_word(text: str) -> Word:
+        """Wrap a combinator test operand string in an unquoted Word.
+
+        The combinator (educational-only parser) does not track operand
+        quote context, so every operand is an unquoted single LiteralPart —
+        ``is_quoted`` is False, matching the former always-None
+        ``right_quote_type`` for combinator-built test expressions."""
+        return Word(parts=[LiteralPart(text, quoted=False, quote_char=None)])
 
     def _format_test_operand(self, token: Token) -> str:
         """Format a test operand token for proper shell representation.
