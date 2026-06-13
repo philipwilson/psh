@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.357.0 (2026-06-13) - Tier T1.2: extract the redirection-mode policy
+- REFACTOR (zero behavior change). `CommandExecutor._execute_with_strategy`
+  (`psh/executor/command.py`) chose how to apply a matched command's
+  redirections via inline nested `if/elif/else`. That decision is now a named
+  `RedirectionMode` enum decided in one place (`_decide_redirection_mode`) and
+  dispatched in one place, with each mode documented:
+  - `BUILTIN_INPROCESS` — builtin not in a pipeline/forked child: Python-stream
+    save/restore around the one command (does not persist).
+  - `EXTERNAL_DEFERRED` — external command: redirections applied in the forked
+    child only (applying them in the parent too would resolve `2>&1` against
+    already-redirected fds and run heredoc/cmdsub twice).
+  - `FD_LEVEL_WINDOW` — functions, aliases, and builtins in a pipeline/forked
+    child: fd-level `os.dup2` save/restore window.
+- The conditions are byte-for-byte the same booleans that were inline. A
+  34-case characterization harness (builtin/special/external/function/alias
+  redirects, pipeline members, background, heredocs/here-strings, persist-vs-
+  restore, bad-fd/unwritable/missing-file errors) matched the pre-refactor
+  golden baseline exactly.
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6760 passed.
+
 ## 0.356.0 (2026-06-13) - Tier T1.1: grow mypy checked scope (21 → 78 files)
 - TYPE-CHECKING SCOPE (textbook lever, zero behavior change). Expanded the
   mypy `files` list in `pyproject.toml` from ~21 to **78 source files**, all
