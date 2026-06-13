@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.347.0 (2026-06-13) - Reappraisal #4 Tier C-D1: quote context in parts only
+- REFACTOR (zero behavior change, review Ugly 3): `Word` stored a whole-word
+  `quote_type` field that duplicated the per-part `quoted`/`quote_char` state.
+  `Word.quote_type` is now a derived `@property` — a word is wholly quoted iff
+  all its parts are quoted with the same quote char, which then is the type.
+  `is_quoted`, `is_unquoted_literal`, and `effective_quote_char` now derive
+  purely from parts. The Word construction sites (`from_string`, `word_builder`,
+  the control-structure/loop parsers in both parser backends, `command.py`)
+  drop the now-redundant `quote_type=` argument since the parts already carry
+  the quote.
+- SAFETY NET: a 128-case quote-derivation characterization
+  (`tests/unit/parser/test_word_quote_derivation.py`, both parser backends)
+  asserting the derived quote properties — green before/after. Characterization
+  surfaced THREE shapes where the OLD stored `quote_type` disagreed with the
+  parts (adjacent same-quote composites `"a""b"`, quoted case patterns, and a
+  combinator `'mixed'` sentinel); all are verified behavior-neutral against
+  bash AND pristine main (uniformly-quoted words expand identically through the
+  whole-word vs composite dispatch branches; case patterns match via per-part
+  quote context, never `quote_type`). Full suite green (6,681 passed); 12 bash
+  quoting probes match. ruff + mypy clean.
+
 ## 0.346.0 (2026-06-13) - Reappraisal #4 Tier C-C3: operator-debris recognizer
 - REFACTOR (zero behavior change, review Ugly 9): the lexer's step-4
   `_handle_fallback_word` — which collected operator-debris words (those

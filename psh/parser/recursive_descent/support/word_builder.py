@@ -211,20 +211,22 @@ class WordBuilder:
 
         # Check if token has decomposable parts from the lexer (RichToken)
         if WordBuilder.has_decomposable_parts(token) and quote_type == '"':
-            # Decompose double-quoted string using lexer's TokenPart data
+            # Decompose double-quoted string using lexer's TokenPart data.
+            # The parts carry the per-part quote context; the whole-word
+            # quote_type is DERIVED from them (single quoted part -> its
+            # quote char), so no field to set here.
             word_parts = [WordBuilder.token_part_to_word_part(tp)
                           for tp in token.parts]
-            return Word(parts=word_parts, quote_type='"')
+            return Word(parts=word_parts)
 
         if token.type in EXPANSION_TYPES:
-            # This is an expansion token
+            # This is an expansion token. The part carries the quote context;
+            # Word.quote_type is derived from it.
             expansion = WordBuilder.parse_expansion_token(token)
-            return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=quote_type)],
-                        quote_type=quote_type)
+            return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=quote_type)])
         else:
-            # This is a literal token
-            return Word(parts=[LiteralPart(token.value, quoted=is_quoted, quote_char=quote_type)],
-                        quote_type=quote_type)
+            # This is a literal token. The part carries the quote context.
+            return Word(parts=[LiteralPart(token.value, quoted=is_quoted, quote_char=quote_type)])
 
     @staticmethod
     def build_composite_word(tokens: List[Token], quote_type: Optional[str] = None) -> Word:
@@ -252,7 +254,7 @@ class WordBuilder:
                 is_quoted = qt is not None
                 parts.append(LiteralPart(token.value, quoted=is_quoted, quote_char=qt))
 
-        return Word(parts=parts, quote_type=None)
+        return Word(parts=parts)
 
     @staticmethod
     def build_word_from_string(text: str, token_type: str = 'WORD',

@@ -65,8 +65,9 @@ class TestExpansionASTNodes:
         word = Word(parts=[LiteralPart("hello")])
         assert str(word) == "hello"
 
-        # With quotes
-        word2 = Word(parts=[LiteralPart("hello world")], quote_type='"')
+        # With quotes (the part carries the quote; quote_type is derived)
+        word2 = Word(parts=[LiteralPart("hello world", quoted=True,
+                                        quote_char='"')])
         assert str(word2) == '"hello world"'
 
     def test_word_with_expansion(self):

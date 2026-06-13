@@ -136,15 +136,15 @@ class ExpansionParsers:
 
         # Check for decomposable parts from the lexer (RichToken with expansions)
         if WordBuilder.has_decomposable_parts(token):
+            # Parts carry per-part quote context; Word.quote_type is derived.
             word_parts = [WordBuilder.token_part_to_word_part(tp)
                           for tp in token.parts]
-            return Word(parts=word_parts, quote_type=qt)
+            return Word(parts=word_parts)
 
         # Use TokenType enum values
         if token.type.name == 'STRING':
-            # String token - check for quote type
-            return Word(parts=[LiteralPart(token.value, quoted=is_quoted, quote_char=qt)],
-                        quote_type=qt)
+            # String token - the part carries the quote context.
+            return Word(parts=[LiteralPart(token.value, quoted=is_quoted, quote_char=qt)])
 
         elif token.type.name == 'VARIABLE':
             # Variable expansion — delegate to WordBuilder for brace-stripping

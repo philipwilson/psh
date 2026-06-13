@@ -27,8 +27,7 @@ def _positional_params_word() -> Word:
     """The implicit ``"$@"`` Word used when for/select has no ``in`` list."""
     return Word(
         parts=[ExpansionPart(expansion=VariableExpansion('@'),
-                             quoted=True, quote_char='"')],
-        quote_type='"')
+                             quoted=True, quote_char='"')])
 
 
 class LoopParserMixin:
