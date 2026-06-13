@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.350.0 (2026-06-13) - Docs sync after reappraisal #4
+- DOCS ONLY (no code change): brought the architecture/CLAUDE docs current
+  after the reappraisal #4 program.
+  - Root `CLAUDE.md` release workflow: GitHub's per-PR `tests.yml` is disabled;
+    the **local** `run_tests.py --parallel` (+ ruff + mypy) is THE gate; merge
+    immediately (no CI wait); `release-tag.yml` auto-creates the `vX.Y.Z` tag
+    on a `psh/version.py` bump (no manual `git tag`).
+  - Root `CLAUDE.md` Known Test Issues: documented that `strict-errors` is
+    enabled suite-wide via `conftest.py` (`PSH_STRICT_ERRORS=1`) — a test
+    hitting a genuine internal defect now fails loudly; a deliberate-defect
+    test must disable it locally.
+  - `psh/core/CLAUDE.md`: added `FunctionDefinitionError` to the `PshError`
+    member list and documented the expected-error taxonomy
+    (`report_internal_defect`: `PshError ∪ OSError ∪ SyntaxError` = expected;
+    everything else = internal defect) and the `strict-errors` mechanism.
+  - `README.md`: corrected the registered-builtin count (60 → 61; the
+    enumerated list was already complete).
+- Verified: the doc-pointer and README-statistics meta-tests pass; every
+  symbol referenced in the new docs exists.
+
 ## 0.349.0 (2026-06-13) - Reappraisal #4 Tier C-B3: unified array-init path (+behavior fixes)
 - REFACTOR + BEHAVIOR FIX (review Ugly 6): psh had TWO array-initialization
   implementations — the structured `ArrayInitialization`/`ARRAY_INIT_ELEMENT`
