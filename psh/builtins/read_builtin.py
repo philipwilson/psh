@@ -4,6 +4,7 @@ import os
 import select
 import sys
 import termios
+import time
 import tty
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
@@ -63,21 +64,25 @@ class ReadBuiltin(Builtin):
             sys.stderr.flush()
 
         try:
+            # Decide once whether input comes from sys.stdin or the real fd
+            use_sys_stdin = self._should_use_sys_stdin(options['fd'])
+
             # Read input based on options
             if options['timeout'] is not None:
                 line = self._read_with_timeout(
                     options['fd'], options['timeout'], options['delimiter'],
-                    options['max_chars'], options['silent']
+                    options['max_chars'], options['silent'], use_sys_stdin
                 )
                 if line is None:
                     return 142  # Timeout exit code
             elif options['silent'] or options['max_chars'] is not None:
                 line = self._read_special(
                     options['fd'], options['delimiter'],
-                    options['max_chars'], options['silent']
+                    options['max_chars'], options['silent'], use_sys_stdin
                 )
             else:
-                line = self._read_normal(options['fd'], options['delimiter'])
+                line = self._read_normal(
+                    options['fd'], options['delimiter'], use_sys_stdin)
 
             # Check for EOF
             if line is None:
@@ -395,219 +400,160 @@ class ReadBuiltin(Builtin):
         except (OSError, AttributeError, ValueError):
             return True
 
-    def _read_normal(self, fd: int, delimiter: str) -> Optional[str]:
-        """Read normally from file descriptor until delimiter."""
-        use_sys_stdin = self._should_use_sys_stdin(fd)
+    def _read_chars(self, fd: int, *, delimiter: str, limit: Optional[int],
+                    use_sys_stdin: bool, echo: bool = False,
+                    timeout: Optional[float] = None,
+                    include_delimiter: bool = False) -> Tuple[str, str]:
+        """The single character-read loop behind every read mode.
 
-        if delimiter == '\n':
+        Reads one character at a time from ``sys.stdin`` (StringIO/test
+        stdin) or the raw descriptor until the delimiter, EOF or a read
+        error, the character limit, or — when ``timeout`` is given — the
+        running time budget expires (the budget is shared across
+        characters, decremented after each one).
+
+        Returns ``(data, status)`` where status is one of:
+          'delim'   - stopped at the delimiter (included in ``data`` only
+                      when ``include_delimiter`` is set)
+          'eof'     - end of input or read error; ``data`` holds any
+                      partial input
+          'limit'   - ``limit`` characters were read
+          'timeout' - the time budget expired (timeout mode only)
+        """
+        chars: List[str] = []
+        remaining = timeout
+        max_count = limit if limit is not None else float('inf')
+
+        while len(chars) < max_count:
+            if remaining is not None:
+                start_time = time.time()
+                ready, _, _ = select.select([fd], [], [], remaining)
+                if not ready:
+                    return ''.join(chars), 'timeout'
+
             if use_sys_stdin:
-                # Use sys.stdin for StringIO/test scenarios
-                line = sys.stdin.readline()
-                if not line:
-                    return None
-                return line
+                char = sys.stdin.read(1)
             else:
-                # Use os.read for real file descriptors
-                chars = []
-                while True:
-                    try:
-                        char = os.read(fd, 1).decode('utf-8', errors='replace')
-                    except OSError:
-                        # Error reading - return what we have
-                        return None if not chars else ''.join(chars)
+                try:
+                    char = os.read(fd, 1).decode('utf-8', errors='replace')
+                except OSError:
+                    return ''.join(chars), 'eof'
 
-                    if not char:
-                        return None if not chars else ''.join(chars)
+            if not char:
+                return ''.join(chars), 'eof'
+            if char == delimiter:
+                if include_delimiter:
                     chars.append(char)
-                    if char == '\n':
-                        return ''.join(chars)
-        else:
-            # Read character by character for custom delimiter
-            chars = []
-            if use_sys_stdin:
-                # Use sys.stdin for StringIO scenarios
-                while True:
-                    char = sys.stdin.read(1)
-                    if not char:
-                        return None if not chars else ''.join(chars)
-                    if char == delimiter:
-                        return ''.join(chars)
-                    chars.append(char)
-            else:
-                while True:
-                    try:
-                        char = os.read(fd, 1).decode('utf-8', errors='replace')
-                    except OSError:
-                        # Not a valid file descriptor
-                        return None if not chars else ''.join(chars)
+                return ''.join(chars), 'delim'
+            chars.append(char)
 
-                    if not char:
-                        return None if not chars else ''.join(chars)
-                    if char == delimiter:
-                        return ''.join(chars)
-                    chars.append(char)
+            if echo:
+                sys.stdout.write(char)
+                sys.stdout.flush()
+
+            if remaining is not None:
+                remaining -= time.time() - start_time
+                if remaining <= 0:
+                    return ''.join(chars), 'timeout'
+
+        return ''.join(chars), 'limit'
+
+    def _read_normal(self, fd: int, delimiter: str,
+                     use_sys_stdin: bool) -> Optional[str]:
+        """Read until the delimiter with no limit, echo, or timeout.
+
+        For the newline delimiter the result keeps its trailing newline
+        (execute() strips it only after escape processing, so that
+        backslash-newline continuation can see it); a custom delimiter is
+        never included. EOF with no data at all is the None (exit 1)
+        case; EOF after partial input returns the partial line.
+        """
+        data, status = self._read_chars(
+            fd, delimiter=delimiter, limit=None, use_sys_stdin=use_sys_stdin,
+            include_delimiter=(delimiter == '\n'))
+        if status == 'eof' and not data:
+            return None
+        return data
 
     def _read_special(self, fd: int, delimiter: str, max_chars: Optional[int],
-                      silent: bool) -> Optional[str]:
+                      silent: bool, use_sys_stdin: bool) -> Optional[str]:
         """Read with special modes (silent and/or character limit)."""
         if max_chars == 0:
             return ''  # bash: read -n 0 reads nothing and succeeds
-        chars = []
 
-        # Check if we're dealing with a TTY
-        is_tty = os.isatty(fd)
-
-        # If we need raw terminal mode and have a TTY
-        if is_tty and (silent or max_chars is not None):
+        if os.isatty(fd) and (silent or max_chars is not None):
+            # Raw terminal mode for char-at-a-time input without canonical
+            # buffering. Raw mode disables terminal echo, so -n without -s
+            # echoes each character back manually.
             with self._terminal_raw_mode(fd, echo=not silent):
-                limit = max_chars if max_chars is not None else float('inf')
-                while len(chars) < limit:
-                    try:
-                        char = os.read(fd, 1).decode('utf-8', errors='replace')
-                    except OSError:
-                        break
-
-                    if not char:
-                        break
-
-                    if char == delimiter:
-                        break
-
-                    chars.append(char)
-
-                    # Echo character if not silent and in raw mode
-                    if not silent and max_chars is not None:
-                        sys.stdout.write(char)
-                        sys.stdout.flush()
-
-                # Echo newline after silent input
+                data, _ = self._read_chars(
+                    fd, delimiter=delimiter, limit=max_chars,
+                    use_sys_stdin=False,
+                    echo=(not silent and max_chars is not None))
                 if silent:
+                    # Echo newline after silent input
                     sys.stdout.write('\n')
                     sys.stdout.flush()
+        elif max_chars is not None:
+            data, _ = self._read_chars(
+                fd, delimiter=delimiter, limit=max_chars,
+                use_sys_stdin=use_sys_stdin)
         else:
-            # Non-TTY or no special handling needed
-            if max_chars is not None:
-                use_sys_stdin = self._should_use_sys_stdin(fd)
+            # Silent mode on a non-TTY is just a normal read (no echo to
+            # suppress).
+            return self._read_normal(fd, delimiter, use_sys_stdin)
 
-                # Read up to max_chars
-                limit = max_chars
-                while len(chars) < limit:
-                    if use_sys_stdin:
-                        char = sys.stdin.read(1)
-                    else:
-                        try:
-                            char = os.read(fd, 1).decode('utf-8', errors='replace')
-                        except OSError:
-                            break
-                    if not char:
-                        break
-                    if char == delimiter:
-                        break
-                    chars.append(char)
-            else:
-                # Just read normally for silent mode on non-TTY
-                line = self._read_normal(fd, delimiter)
-                if line is None:
-                    return None
-                return line
-
-        return ''.join(chars) if chars or delimiter != '\n' else None
+        # Quirk preserved from the original: with a custom delimiter,
+        # EOF-with-no-data returns '' (exit 0); with newline it is None
+        # (EOF, exit 1).
+        return data if data or delimiter != '\n' else None
 
     def _read_with_timeout(self, fd: int, timeout: float, delimiter: str,
-                          max_chars: Optional[int], silent: bool) -> Optional[str]:
-        """Read with timeout support."""
+                           max_chars: Optional[int], silent: bool,
+                           use_sys_stdin: bool) -> Optional[str]:
+        """Read with timeout support; None means timeout (exit 142)."""
         if max_chars == 0:
             return ''  # bash: read -n 0 reads nothing and succeeds
-        chars = []
-        remaining_timeout = timeout
-        is_tty = os.isatty(fd)
 
-        if is_tty and (silent or max_chars is not None):
-            # Need raw mode for character-by-character reading
+        if os.isatty(fd) and (silent or max_chars is not None):
+            # Raw mode, char-at-a-time, with the time budget enforced
+            # across characters.
             with self._terminal_raw_mode(fd, echo=not silent):
-                limit = max_chars if max_chars is not None else float('inf')
-
-                while len(chars) < limit:
-                    import time
-                    start_time = time.time()
-
-                    # Use select to wait for input with timeout
-                    ready, _, _ = select.select([fd], [], [], remaining_timeout)
-                    if not ready:
-                        # Timeout
-                        if silent and chars:
-                            sys.stdout.write('\n')
-                            sys.stdout.flush()
-                        return None
-
-                    # Read one character
-                    try:
-                        char = os.read(fd, 1).decode('utf-8', errors='replace')
-                    except OSError:
-                        break
-
-                    if not char:
-                        break
-
-                    if char == delimiter:
-                        break
-
-                    chars.append(char)
-
-                    # Echo character if not silent
-                    if not silent and max_chars is not None:
-                        sys.stdout.write(char)
-                        sys.stdout.flush()
-
-                    # Update remaining timeout
-                    elapsed = time.time() - start_time
-                    remaining_timeout -= elapsed
-                    if remaining_timeout <= 0:
-                        if silent:
-                            sys.stdout.write('\n')
-                            sys.stdout.flush()
-                        return None
-
-                # Echo newline after silent input
-                if silent:
+                data, status = self._read_chars(
+                    fd, delimiter=delimiter, limit=max_chars,
+                    use_sys_stdin=False,
+                    echo=(not silent and max_chars is not None),
+                    timeout=timeout)
+                if silent and (data or status != 'timeout'):
+                    # Echo newline after silent input (skipped only when
+                    # the timeout expired before anything was typed).
                     sys.stdout.write('\n')
                     sys.stdout.flush()
-        else:
-            # Simple case or non-TTY: just wait for line with timeout
-            use_sys_stdin = self._should_use_sys_stdin(fd)
-            if use_sys_stdin:
-                # StringIO-backed stdin doesn't support select; read immediately.
-                ready = [sys.stdin]
-            else:
-                try:
-                    ready, _, _ = select.select([fd], [], [], timeout)
-                except (OSError, AttributeError, ValueError):
-                    ready = []
-
-            if not ready:
+            if status == 'timeout':
                 return None
+            return data if data else None
 
-            # For non-TTY with char limit
-            if max_chars is not None:
-                limit = max_chars
-                while len(chars) < limit:
-                    if use_sys_stdin:
-                        char = sys.stdin.read(1)
-                    else:
-                        try:
-                            char = os.read(fd, 1).decode('utf-8', errors='replace')
-                        except OSError:
-                            break
-                    if not char:
-                        break
-                    if char == delimiter:
-                        break
-                    chars.append(char)
-                return ''.join(chars) if chars else None
-            else:
-                return self._read_normal(fd, delimiter)
+        # Simple case or non-TTY: select bounds only the wait for the
+        # FIRST byte; once input is ready, reading proceeds unbounded.
+        if use_sys_stdin:
+            # StringIO-backed stdin doesn't support select; read immediately.
+            ready = [sys.stdin]
+        else:
+            try:
+                ready, _, _ = select.select([fd], [], [], timeout)
+            except (OSError, AttributeError, ValueError):
+                ready = []
+        if not ready:
+            return None
 
-        return ''.join(chars) if chars else None
+        if max_chars is not None:
+            data, _ = self._read_chars(
+                fd, delimiter=delimiter, limit=max_chars,
+                use_sys_stdin=use_sys_stdin)
+            # Quirk preserved from the original: no data here (immediate
+            # EOF) reports as a timeout (142) rather than EOF (1).
+            return data if data else None
+        return self._read_normal(fd, delimiter, use_sys_stdin)
 
     @contextmanager
     def _terminal_raw_mode(self, fd: int, echo: bool = True):

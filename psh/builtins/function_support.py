@@ -9,7 +9,8 @@ from ..core import AssociativeArray, IndexedArray, ReadonlyVariableError, VarAtt
 from ..core.exceptions import FunctionReturn  # noqa: F401
 from ..utils import ShellFormatter
 from .base import Builtin
-from .registry import builtin
+from .declare_format import format_declaration, matches_filter
+from .registry import builtin, registry
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -151,57 +152,48 @@ class DeclareBuiltin(Builtin):
         # Rest must be alphanumeric or underscore
         return all(c.isalnum() or c == '_' for c in name[1:])
 
+    # Option key → variable attribute, for both the -set and +remove
+    # directions of _declare_variables.
+    _OPTION_ATTRIBUTES = {
+        'readonly': VarAttributes.READONLY,
+        'export': VarAttributes.EXPORT,
+        'integer': VarAttributes.INTEGER,
+        'lowercase': VarAttributes.LOWERCASE,
+        'uppercase': VarAttributes.UPPERCASE,
+        'array': VarAttributes.ARRAY,
+        'assoc_array': VarAttributes.ASSOC_ARRAY,
+        'trace': VarAttributes.TRACE,
+        'nameref': VarAttributes.NAMEREF,
+    }
+
+    def _attributes_from_options(self, options: dict) -> VarAttributes:
+        """Attributes the -flags select, with -l/-u "last wins" (bash)."""
+        attributes = VarAttributes.NONE
+        for key, attr in self._OPTION_ATTRIBUTES.items():
+            if options[key]:
+                attributes |= attr
+        if options['lowercase'] and options['uppercase']:
+            # Mutually exclusive: keep only the last one seen
+            attributes &= ~(VarAttributes.LOWERCASE | VarAttributes.UPPERCASE)
+            last = options['last_case_attr']
+            if last == 'lowercase':
+                attributes |= VarAttributes.LOWERCASE
+            elif last == 'uppercase':
+                attributes |= VarAttributes.UPPERCASE
+        return attributes
+
+    def _removed_attributes_from_options(self, options: dict) -> VarAttributes:
+        """Attributes the +flags remove."""
+        removed = VarAttributes.NONE
+        for key, attr in self._OPTION_ATTRIBUTES.items():
+            if options.get(f'remove_{key}', False):
+                removed |= attr
+        return removed
+
     def _declare_variables(self, options: dict, args: List[str], shell: 'Shell', _original_args=None) -> int:
         """Handle variable declarations."""
-        # Build attributes from options
-        attributes = VarAttributes.NONE
-        if options['readonly']:
-            attributes |= VarAttributes.READONLY
-        if options['export']:
-            attributes |= VarAttributes.EXPORT
-        if options['integer']:
-            attributes |= VarAttributes.INTEGER
-        # Handle mutually exclusive -l and -u (bash uses "last wins" behavior)
-        if options['lowercase'] and options['uppercase']:
-            # When both -l and -u are specified, apply the last one seen
-            if options['last_case_attr'] == 'lowercase':
-                attributes |= VarAttributes.LOWERCASE
-            elif options['last_case_attr'] == 'uppercase':
-                attributes |= VarAttributes.UPPERCASE
-            # If somehow last_case_attr is None, ignore both (fallback)
-        elif options['lowercase']:
-            attributes |= VarAttributes.LOWERCASE
-        elif options['uppercase']:
-            attributes |= VarAttributes.UPPERCASE
-        if options['array']:
-            attributes |= VarAttributes.ARRAY
-        if options['assoc_array']:
-            attributes |= VarAttributes.ASSOC_ARRAY
-        if options['trace']:
-            attributes |= VarAttributes.TRACE
-        if options['nameref']:
-            attributes |= VarAttributes.NAMEREF
-
-        # Handle attribute removal
-        remove_attrs = VarAttributes.NONE
-        if options['remove_nameref']:
-            remove_attrs |= VarAttributes.NAMEREF
-        if options['remove_export']:
-            remove_attrs |= VarAttributes.EXPORT
-        if options['remove_readonly']:
-            remove_attrs |= VarAttributes.READONLY
-        if options['remove_integer']:
-            remove_attrs |= VarAttributes.INTEGER
-        if options['remove_lowercase']:
-            remove_attrs |= VarAttributes.LOWERCASE
-        if options['remove_uppercase']:
-            remove_attrs |= VarAttributes.UPPERCASE
-        if options['remove_array']:
-            remove_attrs |= VarAttributes.ARRAY
-        if options['remove_assoc_array']:
-            remove_attrs |= VarAttributes.ASSOC_ARRAY
-        if options['remove_trace']:
-            remove_attrs |= VarAttributes.TRACE
+        attributes = self._attributes_from_options(options)
+        remove_attrs = self._removed_attributes_from_options(options)
 
         # If no arguments, list all shell variables (not environment)
         if not args:
@@ -249,8 +241,34 @@ class DeclareBuiltin(Builtin):
                     self._set_variable_with_attributes(shell, name, value, attributes, options['global'])
                     continue
 
-                # Handle array initialization syntax
-                if options['array'] and value.startswith('(') and value.endswith(')'):
+                # Handle array initialization syntax. A parenthesized value
+                # makes an indexed array even WITHOUT -a (bash: ``declare -x
+                # ARR=(a b)`` creates an array — and arrays are never
+                # exported to the environment). -A, or an existing
+                # associative variable, selects the associative form.
+                is_array_init = value.startswith('(') and value.endswith(')')
+                as_assoc = False
+                if is_array_init and not options['array']:
+                    existing = self._get_variable_with_attributes(shell, name)
+                    as_assoc = options['assoc_array'] or (
+                        existing is not None and existing.is_assoc_array)
+
+                if is_array_init and as_assoc:
+                    # Parse associative array initialization; += merges
+                    # into the existing array (bash).
+                    array: Any = AssociativeArray()
+                    if append:
+                        existing = self._get_variable_with_attributes(shell, name)
+                        if existing is not None and isinstance(existing.value, AssociativeArray):
+                            array = existing.value
+                    assoc_values = self._parse_assoc_array_init(value, shell)
+                    for key, val in assoc_values:
+                        array.set(key, val)
+                    self._set_variable_with_attributes(
+                        shell, name, array,
+                        attributes | VarAttributes.ASSOC_ARRAY, options['global'])
+
+                elif is_array_init:
                     # Parse indexed array initialization; += appends after
                     # the existing array's highest index (bash).
                     array = IndexedArray()
@@ -263,20 +281,9 @@ class DeclareBuiltin(Builtin):
                     array_values = self._parse_array_init(value, shell)
                     for i, val in enumerate(array_values):
                         array.set(start + i, val)
-                    self._set_variable_with_attributes(shell, name, array, attributes, options['global'])
-
-                elif options['assoc_array'] and value.startswith('(') and value.endswith(')'):
-                    # Parse associative array initialization; += merges
-                    # into the existing array (bash).
-                    array = AssociativeArray()
-                    if append:
-                        existing = self._get_variable_with_attributes(shell, name)
-                        if existing is not None and isinstance(existing.value, AssociativeArray):
-                            array = existing.value
-                    assoc_values = self._parse_assoc_array_init(value, shell)
-                    for key, val in assoc_values:
-                        array.set(key, val)
-                    self._set_variable_with_attributes(shell, name, array, attributes, options['global'])
+                    self._set_variable_with_attributes(
+                        shell, name, array,
+                        attributes | VarAttributes.ARRAY, options['global'])
 
                 else:
                     # Regular variable assignment
@@ -323,32 +330,35 @@ class DeclareBuiltin(Builtin):
                         self._set_variable_with_attributes(shell, arg, AssociativeArray(), attributes, options['global'])
                 else:
                     # Apply attributes to existing variable or create new one
+                    # (attribute changes fire the scope manager's observer,
+                    # which keeps state.env in sync — no manual export sync)
                     existing = self._get_variable_with_attributes(shell, arg)
                     if existing:
-                        # Apply or remove attributes
                         if remove_attrs:
                             shell.state.scope_manager.remove_attribute(arg, remove_attrs)
-                            # If removing export, sync to remove from environment
-                            if remove_attrs & VarAttributes.EXPORT:
-                                shell.state.scope_manager.sync_exports_to_environment(shell.state.env)
                         if attributes:
                             shell.state.scope_manager.apply_attribute(arg, attributes)
-                            # Sync exports if needed
-                            if attributes & VarAttributes.EXPORT:
-                                shell.state.scope_manager.sync_exports_to_environment(shell.state.env)
                     else:
-                        # Create new variable with empty value
-                        self._set_variable_with_attributes(shell, arg, "", attributes, options['global'])
+                        # Declared-but-unset: record the attributes, but the
+                        # name still reads as unset and (for -x) gains no
+                        # environment entry until assigned (bash: ``declare
+                        # -x FOO`` then ``${FOO-u}`` is ``u``, printenv
+                        # fails; assignment makes both appear).
+                        self._set_variable_with_attributes(
+                            shell, arg, "",
+                            attributes | VarAttributes.UNSET, options['global'])
 
         return 0
 
     def _print_variables(self, options: dict, names: List[str], shell: 'Shell') -> int:
         """Print variables with attributes using declare -p format."""
         if names:
-            # Print specific variables
+            # Print specific variables. The declared-aware lookup also
+            # finds declared-but-unset variables (``export FOO`` shows as
+            # ``declare -x FOO``, like bash).
             exit_code = 0
             for name in names:
-                var = self._get_variable_with_attributes(shell, name)
+                var = shell.state.scope_manager.get_declared_variable_object(name)
                 if var:
                     self._print_declaration(var, shell)
                 else:
@@ -359,7 +369,7 @@ class DeclareBuiltin(Builtin):
             # Print all variables that match filter criteria
             variables = self._get_all_variables_with_attributes(shell)
             for var in sorted(variables, key=lambda v: v.name):
-                if self._matches_filter(var, options):
+                if matches_filter(var, options):
                     self._print_declaration(var, shell)
             return 0
 
@@ -373,71 +383,9 @@ class DeclareBuiltin(Builtin):
             self.write_line(f"{var.name}={var.value}", shell)
 
     def _print_declaration(self, var: Variable, shell: 'Shell'):
-        """Print variable declaration in reusable format."""
-        declaration_str = self._format_declaration(var)
-        self.write_line(declaration_str, shell)
-
-    def _format_declaration(self, var: Variable) -> str:
-        """Format variable declaration string."""
-        # Build flags string
-        flags = []
-        if var.attributes & VarAttributes.ARRAY:
-            flags.append('a')
-        if var.attributes & VarAttributes.ASSOC_ARRAY:
-            flags.append('A')
-        if var.attributes & VarAttributes.READONLY:
-            flags.append('r')
-        if var.attributes & VarAttributes.EXPORT:
-            flags.append('x')
-        if var.attributes & VarAttributes.INTEGER:
-            flags.append('i')
-        if var.attributes & VarAttributes.LOWERCASE:
-            flags.append('l')
-        if var.attributes & VarAttributes.UPPERCASE:
-            flags.append('u')
-        if var.attributes & VarAttributes.NAMEREF:
-            flags.append('n')
-        if var.attributes & VarAttributes.TRACE:
-            flags.append('t')
-
-        flag_str = f"-{''.join(flags)}" if flags else "--"
-
-        # Format value
-        if isinstance(var.value, IndexedArray):
-            # declare -a name=([0]="val" [1]="val")
-            elements = []
-            for idx in var.value.indices():
-                val = var.value.get(idx)
-                elements.append(f'[{idx}]="{self._escape_value(val)}"')
-            if elements:
-                value_str = f"=({' '.join(elements)})"
-            else:
-                value_str = "=()"
-
-        elif isinstance(var.value, AssociativeArray):
-            # declare -A name=([key]="val" [key2]="val2")
-            elements = []
-            for key, val in sorted(var.value.items()):
-                elements.append(f'[{key}]="{self._escape_value(val)}"')
-            if elements:
-                value_str = f"=({' '.join(elements)})"
-            else:
-                value_str = "=()"
-
-        else:
-            # Regular variable
-            value_str = f'="{self._escape_value(str(var.value))}"'
-
-        return f"declare {flag_str} {var.name}{value_str}"
-
-    def _escape_value(self, value: str) -> str:
-        """Escape special characters in value for shell output."""
-        # Escape backslashes first, then double quotes, dollar signs, and backticks
-        value = value.replace('\\', '\\\\')
-        value = value.replace('"', '\\"')
-        value = value.replace('$', '\\$')
-        value = value.replace('`', '\\`')
-        return value
+        """Print variable declaration in reusable format
+        (shared formatter: declare_format.format_declaration)."""
+        self.write_line(format_declaration(var), shell)
 
     def _parse_array_init(self, value: str, shell: 'Shell') -> List[str]:
         """Parse array initialization: (val1 val2 val3)"""
@@ -448,45 +396,6 @@ class DeclareBuiltin(Builtin):
         """Parse associative array initialization: ([key]=val [key2]=val2)"""
         from .array_init import parse_assoc_array_entries
         return parse_assoc_array_entries(value, shell)
-
-    def _matches_filter(self, var: Variable, options: dict) -> bool:
-        """Check if variable matches filter criteria."""
-        from ..core import VarAttributes
-
-        # If no specific attribute options are set, show all variables
-        has_attribute_filter = any([
-            options.get('readonly', False),
-            options.get('export', False),
-            options.get('integer', False),
-            options.get('lowercase', False),
-            options.get('uppercase', False),
-            options.get('array', False),
-            options.get('assoc_array', False),
-            options.get('trace', False),
-        ])
-
-        if not has_attribute_filter:
-            return True
-
-        # Check specific attributes
-        if options.get('readonly', False) and not (var.attributes & VarAttributes.READONLY):
-            return False
-        if options.get('export', False) and not (var.attributes & VarAttributes.EXPORT):
-            return False
-        if options.get('integer', False) and not (var.attributes & VarAttributes.INTEGER):
-            return False
-        if options.get('lowercase', False) and not (var.attributes & VarAttributes.LOWERCASE):
-            return False
-        if options.get('uppercase', False) and not (var.attributes & VarAttributes.UPPERCASE):
-            return False
-        if options.get('array', False) and not (var.attributes & VarAttributes.ARRAY):
-            return False
-        if options.get('assoc_array', False) and not (var.attributes & VarAttributes.ASSOC_ARRAY):
-            return False
-        if options.get('trace', False) and not (var.attributes & VarAttributes.TRACE):
-            return False
-
-        return True
 
     # Methods to interact with shell's enhanced variable storage
 
@@ -510,11 +419,9 @@ class DeclareBuiltin(Builtin):
             else:
                 local_scope = bool(shell.state.function_stack)  # Local if in function
 
+            # (set_variable fires the scope manager's observer, which keeps
+            # state.env in sync for export-attributed variables)
             shell.state.scope_manager.set_variable(name, value, attributes=attributes, local=local_scope)
-
-            # Handle export - sync to environment
-            if attributes & VarAttributes.EXPORT:
-                shell.state.scope_manager.sync_exports_to_environment(shell.state.env)
         except ReadonlyVariableError:
             raise ReadonlyVariableError(f"{self.name}: {name}: readonly variable")
 
@@ -610,19 +517,19 @@ class ReadonlyBuiltin(Builtin):
 
         if options['functions']:
             return self._handle_readonly_functions(names, shell)
-        elif options['print']:
-            # List readonly variables in declare format
-            declare_builtin = DeclareBuiltin()
-            return declare_builtin.execute(['declare', '-pr'], shell)
-        elif not names:
-            # No arguments - list all readonly variables (same as declare -pr)
-            declare_builtin = DeclareBuiltin()
-            return declare_builtin.execute(['declare', '-pr'], shell)
+        elif options['print'] or not names:
+            # `readonly -p` / bare `readonly`: list all readonly variables
+            # in reusable declare format (same output as `declare -pr`,
+            # via the shared formatter).
+            for var in sorted(shell.state.scope_manager.all_variables_with_attributes(),
+                              key=lambda v: v.name):
+                if var.is_readonly:
+                    self.write_line(format_declaration(var), shell)
+            return 0
         else:
-            # Process arguments - readonly is equivalent to declare -r
-            declare_args = ['declare', '-r'] + names
-            declare_builtin = DeclareBuiltin()
-            return declare_builtin.execute(declare_args, shell)
+            # readonly NAME[=value]... is declare -r NAME[=value]...;
+            # delegate to the registered declare singleton.
+            return registry.get('declare').execute(['declare', '-r'] + names, shell)
 
     def _parse_readonly_options(self, args: List[str], shell: 'Shell') -> tuple[Optional[dict], List[str]]:
         """Parse readonly options and return (options_dict, function_names)."""

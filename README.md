@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.327.0 | **Tests**: 6,004 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.328.0 | **Tests**: 6,051 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~49,100 lines of production code in `psh/` across 193 Python files, plus ~59,500 lines of tests in `tests/` (262 Python files)
-- **Test Coverage**: 6,004 tests in 273 test files
+- **Test Coverage**: 6,051 tests in 276 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.328.0**: textbook Tier B10b — THE TEXTBOOK PROGRAM CLOSES: exported variables sync to the env through one observer (22/22 bash matrix incl. local shadowing, declared-unset semantics, arrays-never-exported); declare's if-chains table-driven + shared declare_format; read's three loops unified (six unshared quirks found and pinned); one procsub resolver; the `$*` IFS bug and leaked `#=0` set-entries fixed; −93 net production lines
 - **v0.327.0**: textbook Tier B10a — the `hash` builtin lands (full bash semantics incl. hit counts, -t/-d/-l/-p/-r, `set +h`, the new `checkhash` shopt; probing overturned the assumed design: bash blind-execs stale paths by default); the parity queue flips to bash (assoc-init tilde, prefix-restore unset, no-split field joining — which also fixed `declare v="$@"` keeping only the first field)
 - **v0.326.0**: textbook Tier B9 — ONE parser-driven completeness oracle (CommandAccumulator: feed(line) → Complete|NeedMore(hint)); multiline_handler 515→90 lines (its three heuristic layers dead); the trial-parse/re-parse double parse killed (one parse per command, verified); four interactive bugs fixed with bash adjudication (`echo {a,` no longer hangs at PS2); errexit logic deduplicated
 - **v0.325.0**: textbook Tier B8-R3 — the LineEditor decomposition concludes: HistoryNavigator/HistorySearch extracted as pure components (the search machine's historical quirks mapped and pinned); the 80-line elif chain is a 31-action dispatch table with a totality guard; compatibility properties deleted (~140 consumer sites migrated); LineEditor is a 753-line coordinator over five narrow components

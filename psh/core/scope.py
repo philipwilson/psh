@@ -43,6 +43,15 @@ class ScopeManager:
         # one string compare per write is the whole cost of the hook).
         self.path_changed: Optional[Callable[[], None]] = None
 
+        # Observer fired with the (nameref-resolved) variable name after
+        # any write, attribute change, unset, or scope pop that may alter
+        # the variable visible under that name. Installed by ShellState
+        # to keep ``state.env`` in sync with export-attributed variables
+        # (bash: ``export FOO=old; FOO=new`` updates the environment the
+        # next child sees — the assignment itself syncs, not just the
+        # ``export`` builtin).
+        self.variable_changed: Optional[Callable[[str], None]] = None
+
         # Special variable state
         self._shell_start_time = time.time()
         self._current_line_number = 1
@@ -51,6 +60,11 @@ class ScopeManager:
         """Fire the PATH observer when *name* is PATH (post-nameref)."""
         if name == 'PATH' and self.path_changed is not None:
             self.path_changed()
+
+    def _notify_variable_changed(self, name: str) -> None:
+        """Fire the per-variable observer (post-nameref name)."""
+        if self.variable_changed is not None:
+            self.variable_changed(name)
 
     def set_shell(self, shell):
         """Set reference to shell instance for arithmetic evaluation."""
@@ -82,6 +96,12 @@ class ScopeManager:
                 self._debug_print(f"Popping scope: {scope.name} (destroying variables: {var_names})")
             else:
                 self._debug_print(f"Popping scope: {scope.name} (no variables)")
+            # Every name the popped scope held may now resolve to a
+            # different (outer) variable — let the observer re-derive any
+            # environment entry (bash: an exported local's env entry
+            # reverts to the outer value, or disappears, on return).
+            for name in scope.variables:
+                self._notify_variable_changed(name)
             return scope
         else:
             raise RuntimeError("Cannot pop global scope")
@@ -166,6 +186,26 @@ class ScopeManager:
         self._debug_print(f"Variable lookup: {name} not found in any scope")
         return None
 
+    def get_declared_variable_object(self, name: str) -> Optional[Variable]:
+        """Scope-chain lookup that also finds declared-but-unset variables.
+
+        ``export FOO`` / ``declare -i N`` / ``local -x V`` record
+        attributes on a variable that still READS as unset (UNSET flag;
+        get_variable_object returns None for it). ``declare -p`` must
+        nevertheless display it (bash: ``declare -x FOO``). A plain
+        ``unset`` tombstone carries no attribute besides UNSET and stays
+        hidden — an attribute-less declaration (bare ``declare FOO``) is
+        representationally identical, so it stays hidden too (bash would
+        show ``declare -- FOO``; accepted divergence).
+        """
+        for scope in reversed(self.scope_stack):
+            if name in scope.variables:
+                var = scope.variables[name]
+                if var.is_unset and not (var.attributes & ~VarAttributes.UNSET):
+                    return None  # plain unset tombstone (or bare declaration)
+                return var
+        return None
+
     def set_variable(self, name: str, value: Any,
                      attributes: VarAttributes = VarAttributes.NONE,
                      local: bool = False):
@@ -204,9 +244,6 @@ class ScopeManager:
         elif existing and attributes:
             # Merge attributes when both exist
             attributes = existing.attributes | attributes
-
-        # Apply attribute transformations
-        transformed_value = self._apply_attributes(value, attributes)
 
         # Determine target scope
         if local or len(self.scope_stack) == 1:
@@ -250,16 +287,23 @@ class ScopeManager:
             # But clear UNSET attribute when setting a value
             base_attributes = var.attributes & ~VarAttributes.UNSET  # Remove UNSET flag
             new_attributes = base_attributes | attributes
-            var.value = transformed_value  # Use the already-transformed value
+            # Transform with the FULL merged attribute set: a
+            # declared-but-unset variable (``declare -u s; s=abc``) is
+            # invisible to the `existing` lookup above, so its -u/-l/-i
+            # attributes arrive only via this merge.
+            var.value = self._apply_attributes(value, new_attributes)
             var.attributes = new_attributes
             self._debug_print(f"Updating variable in scope '{scope_name}': {name} = {var.value}")
         else:
             # Create new variable
-            var = Variable(name=name, value=transformed_value, attributes=attributes)
+            var = Variable(name=name,
+                           value=self._apply_attributes(value, attributes),
+                           attributes=attributes)
             target_scope.variables[name] = var
             self._debug_print(f"Setting variable in scope '{scope_name}': {name} = {var.value}")
 
         self._notify_path_changed(name)
+        self._notify_variable_changed(name)
 
     def create_local(self, name: str, value: Optional[Any] = None,
                      attributes: VarAttributes = VarAttributes.NONE):
@@ -275,14 +319,32 @@ class ScopeManager:
             if name in scope.variables and scope.variables[name].is_readonly:
                 raise ReadonlyVariableError(name)
 
+        # bash: a local inherits the EXPORT attribute (and only that) of
+        # the variable it shadows — probe: ``declare -xi N=5; f() { local
+        # N; declare -p N; }; f`` prints ``declare -x N`` (no -i). The
+        # exported local is what children see while the function runs.
+        shadowed = self.get_variable_object(name)
+        if shadowed is not None and shadowed.is_exported:
+            attributes |= VarAttributes.EXPORT
+
         if value is not None:
             transformed_value = self._apply_attributes(value, attributes)
             var = Variable(name=name, value=transformed_value, attributes=attributes)
             self.current_scope.variables[name] = var
             self._debug_print(f"Creating local variable: {name} = {transformed_value}")
+            self._notify_variable_changed(name)
         else:
-            # Create unset local variable (shadows global but has no value)
-            var = Variable(name=name, value="", attributes=attributes)
+            # Create a declared-but-unset local (``local var``): it
+            # shadows any outer variable but reads as unset (bash:
+            # ``local FOO; echo ${FOO-u}`` prints ``u``). The UNSET
+            # attribute is the same tombstone mechanism unset_variable
+            # uses; a later assignment in this scope clears it. No
+            # variable_changed notification: bash leaves an exported
+            # outer variable's env entry visible until the local is
+            # actually assigned (probe: ``export FOO=outer; f() { local
+            # FOO; printenv FOO; }; f`` prints ``outer``).
+            var = Variable(name=name, value="",
+                           attributes=attributes | VarAttributes.UNSET)
             self.current_scope.variables[name] = var
             self._debug_print(f"Creating unset local variable: {name}")
 
@@ -305,9 +367,13 @@ class ScopeManager:
                 self.current_scope.variables[name] = unset_var
                 self._debug_print(f"Creating unset tombstone for {name} in scope '{self.current_scope.name}'")
             self._notify_path_changed(name)
+            self._notify_variable_changed(name)
             return
 
         # If not in current scope and we're in a function, check parent scopes
+        # (the loop includes the global scope — scope_stack[0] — so there is
+        # no separate global fallback; when not in a function the current
+        # scope IS the global scope and the branch above handled it).
         if len(self.scope_stack) > 1:
             # Search for the variable in parent scopes
             for scope in reversed(self.scope_stack[:-1]):  # Skip current scope
@@ -323,15 +389,8 @@ class ScopeManager:
                     self.current_scope.variables[name] = unset_var
                     self._debug_print(f"Creating unset tombstone for {name} in current scope")
                     self._notify_path_changed(name)
+                    self._notify_variable_changed(name)
                     return
-
-        # Check global scope as fallback
-        if name in self.global_scope.variables:
-            var = self.global_scope.variables[name]
-            if var.is_readonly:
-                raise ReadonlyVariableError(name)
-            del self.global_scope.variables[name]
-            self._debug_print(f"Unsetting variable in global scope: {name}")
 
     def _apply_attributes(self, value: Any, attributes: VarAttributes) -> Any:
         """Apply attribute transformations to value."""
@@ -361,48 +420,28 @@ class ScopeManager:
         return str_value
 
     def _evaluate_integer(self, expr: str) -> int:
-        """Evaluate integer expressions using the shell's arithmetic evaluator."""
-        # Remove whitespace
+        """Evaluate an INTEGER-attributed assignment's value.
+
+        Uses the shell's full arithmetic evaluator (octal, hex, variables,
+        operators). Every production ScopeManager has its shell wired in
+        (Shell.__init__ calls set_shell before any command runs); the
+        plain-int fallback exists only for bare ScopeManager construction
+        in unit tests, where a simple conversion is enough.
+        """
         expr = expr.strip()
 
-        # Always use the shell's arithmetic evaluator if available
-        # This properly handles octal (010), hex (0x10), and arithmetic expressions
-        if hasattr(self, '_shell') and self._shell:
+        if self._shell is not None:
             from ..expansion.arithmetic import evaluate_arithmetic
             try:
-                # Evaluate the expression using the helper function
-                result = evaluate_arithmetic(expr, self._shell)
-                return result
+                return evaluate_arithmetic(expr, self._shell)
             except (ValueError, ArithmeticError):
                 # If evaluation fails, return 0
                 return 0
 
-        # Fallback when no shell context: try to use the arithmetic tokenizer
-        # to handle octal and hex properly
         try:
-            from ..expansion.arithmetic import ArithmeticEvaluator, ArithParser, ArithTokenizer
-
-            # Create a minimal evaluator without shell context
-            class MinimalShell:
-                def __init__(self, scope_manager):
-                    self.state = type('State', (), {'get_variable': lambda _, name, default='0': scope_manager.get_variable(name, default)})()
-
-            tokenizer = ArithTokenizer(expr)
-            tokens = tokenizer.tokenize()
-            parser = ArithParser(tokens)
-            ast = parser.parse()
-
-            # Use minimal evaluator
-            minimal_shell = MinimalShell(self)
-            evaluator = ArithmeticEvaluator(minimal_shell)
-            return evaluator.evaluate(ast)
-
-        except (ValueError, ArithmeticError, TypeError):
-            # Last resort: simple conversion, but this loses octal support
-            try:
-                return int(expr)
-            except ValueError:
-                return 0
+            return int(expr)
+        except ValueError:
+            return 0
 
     @property
     def current_scope(self) -> VariableScope:
@@ -523,31 +562,37 @@ class ScopeManager:
                 if var and not var.is_exported:
                     del env[var_name]
 
-        # Collect all exported variables
+        # Collect all exported variables. Declared-but-unset variables
+        # (UNSET attribute — ``export FOO`` of an unset name, ``local
+        # FOO``) carry the attribute for future assignments but have no
+        # environment entry yet (bash: ``export FOO; printenv FOO`` fails
+        # until FOO is assigned).
         exported_vars = {}
 
         # Start with global scope
         for name, var in self.global_scope.variables.items():
-            if var.is_exported and not var.is_array:
+            if var.is_exported and not var.is_array and not var.is_unset:
                 exported_vars[name] = var.as_string()
 
         # Override with function scopes
         for scope in self.scope_stack[1:]:
             for name, var in scope.variables.items():
-                if var.is_exported and not var.is_array:
+                if var.is_exported and not var.is_array and not var.is_unset:
                     exported_vars[name] = var.as_string()
 
         # Update environment
         env.update(exported_vars)
 
     def apply_attribute(self, name: str, attributes: VarAttributes):
-        """Apply additional attributes to an existing variable."""
+        """Apply additional attributes to an existing variable.
+
+        Readonly variables ACCEPT new attributes — readonly forbids
+        changing the value, not the metadata (bash 5.2, probe-verified:
+        ``readonly R=1; export R`` and ``readonly R=1; declare -i R``
+        both succeed; only a value assignment fails).
+        """
         var = self.get_variable_object(name)
         if var:
-            # Check readonly before modifying attributes
-            if var.is_readonly and attributes != VarAttributes.READONLY:
-                raise ReadonlyVariableError(name)
-
             # Handle mutually exclusive attributes
             new_attributes = var.attributes
 
@@ -563,6 +608,7 @@ class ScopeManager:
             # assignments (`u=abc; declare -u u` leaves $u as abc).
             new_attributes |= attributes
             var.attributes = new_attributes
+            self._notify_variable_changed(name)
 
     def remove_attribute(self, name: str, attributes: VarAttributes):
         """Remove attributes from an existing variable."""
@@ -572,11 +618,7 @@ class ScopeManager:
             if attributes & VarAttributes.READONLY and var.is_readonly:
                 raise ReadonlyVariableError(name)
 
-            # Remove specified attributes
+            # Remove specified attributes. The observer re-derives any
+            # environment entry — removing EXPORT deletes it (export -n).
             var.attributes &= ~attributes
-
-            # If removing export, ensure it's removed from environment
-            if attributes & VarAttributes.EXPORT:
-                # The variable is no longer exported, so it won't be synced to env
-                # in the next sync_exports_to_environment call
-                pass
+            self._notify_variable_changed(name)

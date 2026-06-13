@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ..core import ReadonlyVariableError
 from .base import Builtin
+from .declare_format import escape_value
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -261,7 +262,8 @@ class ExportBuiltin(Builtin):
 
             if print_mode:
                 if key in shell.env:
-                    self.write_line(f'declare -x {key}="{shell.env[key]}"', shell)
+                    self.write_line(
+                        f'declare -x {key}="{escape_value(shell.env[key])}"', shell)
                 continue
 
             if unexport:
@@ -272,11 +274,26 @@ class ExportBuiltin(Builtin):
             elif value is not None:
                 shell.state.export_variable(key, value)
             else:
-                # Export existing variable
-                existing = shell.state.get_variable(key)
-                if existing is not None:
-                    shell.state.export_variable(key, existing)
+                self._export_existing(key, shell)
         return status
+
+    def _export_existing(self, key: str, shell: 'Shell') -> None:
+        """Valueless ``export NAME``: add the EXPORT attribute.
+
+        An existing variable keeps its value (readonly included — bash:
+        ``readonly R=1; export R`` succeeds). An UNSET name records the
+        attribute on a declared-but-unset variable: no environment entry
+        appears until it is assigned (bash: ``export FOO; printenv FOO``
+        fails, then ``FOO=now`` makes it visible to children).
+        """
+        from ..core.variables import VarAttributes
+        scope_manager = shell.state.scope_manager
+        if scope_manager.get_variable_object(key) is not None:
+            scope_manager.apply_attribute(key, VarAttributes.EXPORT)
+        else:
+            scope_manager.set_variable(
+                key, "", attributes=VarAttributes.EXPORT | VarAttributes.UNSET,
+                local=False)
 
     def _is_valid_identifier(self, name: str) -> bool:
         """Check if a name is a valid shell identifier."""
@@ -287,9 +304,11 @@ class ExportBuiltin(Builtin):
         return all(c.isalnum() or c == '_' for c in name[1:])
 
     def _print_exports(self, shell: 'Shell') -> None:
-        """Print all exported variables in declare -x format."""
+        """Print all exported variables in declare -x format (values
+        escaped like declare -p, via the shared escaper — bash escapes
+        here too: ``export -p`` shows ``declare -x FOO="a\\"b"``)."""
         for key, value in sorted(shell.env.items()):
-            self.write_line(f'declare -x {key}="{value}"', shell)
+            self.write_line(f'declare -x {key}="{escape_value(value)}"', shell)
 
     def _remove_export(self, name: str, shell: 'Shell') -> None:
         """Remove the export attribute from a variable (export -n)."""

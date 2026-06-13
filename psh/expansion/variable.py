@@ -210,7 +210,9 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 return self._ifs_star_separator().join(
                     self._apply_transform(operator[1], p, var_name)
                     for p in self.state.positional_params)
-            value = ' '.join(self.state.positional_params)
+            # IFS-aware join — the one source in state.get_special_variable
+            # (bash: ``IFS=:; set -- a b; echo "${*-d}"`` → a:b)
+            value = self.state.get_special_variable('*')
         elif var_name == '@':
             if operator == '#':
                 return str(len(self.state.positional_params))

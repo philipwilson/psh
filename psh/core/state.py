@@ -54,11 +54,18 @@ class ShellState:
         for name, value in self.env.items():
             self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
 
-        # Ensure PWD is set to current working directory if not already in environment
+        # From here on, every write/unset/attribute-change of a variable
+        # re-derives that name's entry in the live environment, so a plain
+        # reassignment of an export-attributed variable updates what
+        # children see (bash: ``export FOO=old; FOO=new; printenv FOO``
+        # prints ``new``). Wired AFTER the import loop above — the loop
+        # iterates self.env, which the observer mutates.
+        self.scope_manager.variable_changed = self._sync_exported_variable
+
+        # Ensure PWD is set to current working directory if not already in
+        # environment (the observer adds the env entry).
         if 'PWD' not in self.env:
-            current_dir = os.getcwd()
-            self.env['PWD'] = current_dir
-            self.scope_manager.set_variable('PWD', current_dir, attributes=VarAttributes.EXPORT, local=False)
+            self.scope_manager.set_variable('PWD', os.getcwd(), attributes=VarAttributes.EXPORT, local=False)
 
         # Positional parameters and script info
         self.positional_params = args if args else []
@@ -315,28 +322,38 @@ class ShellState:
         return self.env.get(name, default)
 
     def set_variable(self, name: str, value: str):
-        """Set a shell variable."""
-        # If allexport is enabled, set with export attribute
-        if self.options.get('allexport', False):
-            self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
-            # Update the live environment (state.env — NOT os.environ,
-            # which is read once at startup; see the class docstring)
-            self.env[name] = value
-            # Sync all exports to environment
-            self.scope_manager.sync_exports_to_environment(self.env)
-        else:
-            # Use scope manager (will set in global scope if not in function,
-            # or global scope if in function per bash behavior)
-            self.scope_manager.set_variable(name, value, local=False)
+        """Set a shell variable.
+
+        Under ``set -a`` (allexport) the variable gains the EXPORT
+        attribute. Either way the scope manager's variable_changed
+        observer (:meth:`_sync_exported_variable`) keeps ``self.env`` —
+        the live environment; os.environ is read once at startup and
+        never written — in sync with the variable's export attribute.
+        """
+        attributes = (VarAttributes.EXPORT if self.options.get('allexport', False)
+                      else VarAttributes.NONE)
+        self.scope_manager.set_variable(name, value, attributes=attributes, local=False)
 
     def export_variable(self, name: str, value: str):
-        """Export a variable to the environment (state.env, the live
-        environment — os.environ is never written; see class docstring)."""
-        # Set variable with EXPORT attribute in global scope
+        """Set a variable with the EXPORT attribute (the observer adds the
+        ``state.env`` entry; os.environ is never written — class docstring)."""
         self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
-        self.env[name] = value
-        # Sync all exports to environment
-        self.scope_manager.sync_exports_to_environment(self.env)
+
+    def _sync_exported_variable(self, name: str) -> None:
+        """Re-derive one name's live-environment entry from its variable.
+
+        Installed as ``scope_manager.variable_changed``; fired after any
+        write, unset, attribute change, or scope pop affecting *name*.
+        The environment entry exists exactly when the visible variable
+        carries the EXPORT attribute, is not an array (bash never exports
+        arrays), and is not declared-but-unset (``export FOO`` records
+        the attribute; the entry appears when FOO is assigned).
+        """
+        var = self.scope_manager.get_variable_object(name)
+        if var is not None and var.is_exported and not var.is_array:
+            self.env[name] = var.as_string()
+        else:
+            self.env.pop(name, None)
 
     def get_positional_param(self, index: int) -> str:
         """Get positional parameter by index (1-based)."""
@@ -347,6 +364,19 @@ class ShellState:
     def set_positional_params(self, params):
         """Set positional parameters ($1, $2, etc.)."""
         self.positional_params = params.copy() if params else []
+
+    def ifs_star_separator(self) -> str:
+        """Separator for joining ``$*`` / ``${arr[*]}`` — THE one source.
+
+        bash distinguishes unset IFS (join with a space) from a null IFS
+        (``IFS=``, join with no separator); only the first char is used
+        otherwise. Shared by get_special_variable below and the expansion
+        operators (OperatorOpsMixin delegates here).
+        """
+        ifs = self.scope_manager.get_variable('IFS', None)
+        if ifs is None:
+            return ' '
+        return ifs[0] if ifs else ''
 
     def get_special_variable(self, name: str) -> str:
         """Get special variable value ($?, $$, $!, etc.)."""
@@ -361,9 +391,11 @@ class ShellState:
         elif name == '0':
             return self.script_name
         elif name == '@':
+            # $@ in a string (non-list) context joins with a space
+            # regardless of IFS (bash: ``IFS=:; set -- a b; x=$@`` → "a b")
             return ' '.join(self.positional_params)
         elif name == '*':
-            return ' '.join(self.positional_params)
+            return self.ifs_star_separator().join(self.positional_params)
         elif name == '-':
             return self.get_option_string()
         elif name.isdigit():

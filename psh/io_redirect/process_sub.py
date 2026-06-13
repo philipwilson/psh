@@ -2,7 +2,7 @@
 import fcntl
 import os
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -122,46 +122,44 @@ class ProcessSubstitutionHandler:
         self.active_pids.append(pid)
         return path
 
-    def _create_process_substitution(self, arg: str, arg_type: str) -> Tuple[int, str, int]:
-        """
-        Create a single process substitution.
+    def resolve_procsub_target(
+            self, target: Optional[str]) -> Tuple[Optional[str], Optional[int]]:
+        """Resolve a process-substitution redirect target to its /dev/fd path.
+
+        THE single resolver for ``<(cmd)``/``>(cmd)`` appearing as a
+        redirect target. Every redirect dispatch path delegates here: the
+        parent-shell paths (``FileRedirector.apply_redirections`` /
+        ``apply_permanent_redirections``), the forked-child path
+        (``IOManager.setup_child_redirections``), and the builtin stream
+        path (``IOManager._builtin_procsub_target``). Anything that is not
+        a process substitution passes through unchanged.
+
+        For a substitution this forks the child (via
+        ``create_process_substitution``) and registers its pid with this
+        handler, so the enclosing ``scope()`` reaps it non-blockingly.
 
         Returns:
-            Tuple of (file_descriptor, fd_path, child_pid)
+            ``(fd_path, parent_fd)`` for a substitution, where fd_path is
+            the ``/dev/fd/N`` path and parent_fd the pipe end backing it;
+            ``(target, None)`` otherwise.
+
+        Ownership: the CALLER owns parent_fd and must close it once the
+        redirect has been applied — after dup2, the redirect's target fd
+        holds its own reference to the pipe (see
+        ``FileRedirector._close_procsub_parent_fd`` for the parent-shell
+        paths and the try/finally in ``setup_child_redirections`` for the
+        forked-child path). The builtin path instead transfers ownership
+        to the enclosing scope() by appending parent_fd to ``active_fds``,
+        keeping the /dev/fd path valid for the builtin's whole run.
         """
-        # Extract command from <(cmd) or >(cmd)
-        if arg.startswith('<('):
-            direction = 'in'
-            cmd_str = arg[2:-1]  # Remove <( and )
-        elif arg.startswith('>('):
-            direction = 'out'
-            cmd_str = arg[2:-1]  # Remove >( and )
-        else:
-            raise ValueError(f"Invalid process substitution: {arg}")
-
-        return create_process_substitution(cmd_str, direction, self.shell)
-
-    def handle_redirect_process_sub(self, target: str) -> Tuple[str, int, int]:
-        """
-        Handle process substitution used as a redirect target.
-
-        Args:
-            target: The process substitution string (e.g., "<(cmd)" or ">(cmd)")
-
-        Returns:
-            Tuple of (fd_path, fd_to_close, child_pid). The CALLER owns
-            fd_to_close (setup_child_redirections closes it after dup2).
-        """
-        if target.startswith('<('):
-            arg_type = 'PROCESS_SUB_IN'
-        elif target.startswith('>('):
-            arg_type = 'PROCESS_SUB_OUT'
-        else:
-            raise ValueError(f"Invalid process substitution redirect: {target}")
-
-        fd, path, pid = self._create_process_substitution(target, arg_type)
+        if not (target and target.startswith(('<(', '>('))
+                and target.endswith(')')):
+            return target, None
+        direction = 'in' if target.startswith('<(') else 'out'
+        parent_fd, fd_path, pid = create_process_substitution(
+            target[2:-1], direction, self.shell)
         self.active_pids.append(pid)
-        return path, fd, pid
+        return fd_path, parent_fd
 
     @contextmanager
     def scope(self):

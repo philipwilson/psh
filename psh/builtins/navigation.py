@@ -102,13 +102,15 @@ class CdBuiltin(Builtin):
             if found_in_cdpath:
                 print(logical_new_dir, file=shell.stdout)
 
-            # Update PWD and OLDPWD environment variables and shell variables
+            # Update PWD and OLDPWD: both carry the EXPORT attribute in
+            # bash (`declare -p PWD` → declare -x ...), and the export
+            # observer keeps shell.env in sync. The direct env writes
+            # stay for shells whose state is a test mock (see except).
             shell.env['OLDPWD'] = current_dir
             shell.env['PWD'] = logical_new_dir
-            # Also update shell state variables so they're available for expansion (if not mock)
             try:
-                shell.state.set_variable('OLDPWD', current_dir)
-                shell.state.set_variable('PWD', logical_new_dir)
+                shell.state.export_variable('OLDPWD', current_dir)
+                shell.state.export_variable('PWD', logical_new_dir)
             except (AttributeError, TypeError):
                 # Handle case where shell.state is a mock
                 pass

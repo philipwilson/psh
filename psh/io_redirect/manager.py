@@ -216,20 +216,16 @@ class IOManager:
     def _builtin_procsub_target(self, target):
         """Resolve a process-substitution redirect target to its /dev/fd path.
 
-        The substitution's parent fd and child pid are registered with the
-        ProcessSubstitutionHandler; the enclosing process_sub_scope() owns
-        their cleanup (NOT restore_builtin_redirections — see its docstring).
+        Delegates to the handler's resolve_procsub_target(), then transfers
+        ownership of the parent fd to the enclosing process_sub_scope() via
+        active_fds: the builtin's stream half re-opens the /dev/fd path, so
+        the fd must outlive setup. Cleanup belongs to the scope, NOT to
+        restore_builtin_redirections — see its docstring.
         """
-        if not (target and target.startswith(('<(', '>(')) and target.endswith(')')):
-            return target
-        from .process_sub import create_process_substitution
-
-        direction = 'in' if target.startswith('<(') else 'out'
-        parent_fd, fd_path, pid = create_process_substitution(
-            target[2:-1], direction, self.shell)
-        self.process_sub_handler.active_fds.append(parent_fd)
-        self.process_sub_handler.active_pids.append(pid)
-        return fd_path
+        target, parent_fd = self.process_sub_handler.resolve_procsub_target(target)
+        if parent_fd is not None:
+            self.process_sub_handler.active_fds.append(parent_fd)
+        return target
 
     def _builtin_redirect_stdin(self, target, redirect,
                                 frame: BuiltinRedirectFrame):
@@ -421,12 +417,10 @@ class IOManager:
                 os._exit(1)
             target = self.file_redirector._expand_redirect_target(redirect)
 
-            # Handle process substitution as redirect target
-            proc_sub_fd_to_close = None
-            if target and target.startswith(('<(', '>(')) and target.endswith(')'):
-                path, fd_to_close, pid = self.process_sub_handler.handle_redirect_process_sub(target)
-                target = path
-                proc_sub_fd_to_close = fd_to_close
+            # Process substitution as redirect target: this child owns the
+            # parent fd and closes it after dup2 (the finally below).
+            target, proc_sub_fd_to_close = \
+                self.process_sub_handler.resolve_procsub_target(target)
 
             try:
                 if redirect.combined:

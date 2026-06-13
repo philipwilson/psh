@@ -26,9 +26,6 @@ class FileRedirector:
     def __init__(self, shell: 'Shell'):
         self.shell = shell
         self.state = shell.state
-        self._saved_stdout = None
-        self._saved_stderr = None
-        self._saved_stdin = None
 
     def _noclobber_blocks(self, target) -> bool:
         """True when noclobber forbids `>` to this target (bash semantics).
@@ -238,17 +235,10 @@ class FileRedirector:
     def _apply_redirections(self, redirects: List[Redirect],
                             saved_fds: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
         """Apply redirections, appending (fd, saved_fd) pairs to saved_fds."""
-        # Save current Python file objects
-        self._saved_stdout = self.state.stdout
-        self._saved_stderr = self.state.stderr
-        self._saved_stdin = self.state.stdin
-
         for redirect in redirects:
             redirect = self._resolved(redirect)
             target = self._expand_redirect_target(redirect)
-            procsub_fd = None
-            if target and target.startswith(('<(', '>(')) and target.endswith(')'):
-                target, procsub_fd = self._handle_process_sub_redirect(target, redirect)
+            target, procsub_fd = self._procsub_handler.resolve_procsub_target(target)
 
             if redirect.combined:
                 # &> or &>> — redirect both stdout and stderr
@@ -317,15 +307,6 @@ class FileRedirector:
                 os.dup2(saved_fd, fd)
                 os.close(saved_fd)
 
-        # Restore Python file objects
-        if self._saved_stdout is not None:
-            self.state.stdout = self._saved_stdout
-            self.state.stderr = self._saved_stderr
-            self.state.stdin = self._saved_stdin
-            self._saved_stdout = None
-            self._saved_stderr = None
-            self._saved_stdin = None
-
     def _stream_sharing_fd(self, target_fd: int):
         """Build a Python text stream that shares target_fd's open file description.
 
@@ -377,9 +358,7 @@ class FileRedirector:
         for redirect in redirects:
             redirect = self._resolved(redirect)
             target = self._expand_redirect_target(redirect)
-            procsub_fd = None
-            if target and target.startswith(('<(', '>(')) and target.endswith(')'):
-                target, procsub_fd = self._handle_process_sub_redirect(target, redirect)
+            target, procsub_fd = self._procsub_handler.resolve_procsub_target(target)
 
             if redirect.combined:
                 # &> or &>> — redirect both stdout and stderr permanently.
@@ -427,23 +406,14 @@ class FileRedirector:
             # `exec 3< <(cmd)` where the pipe end happened to be fd 3).
             self._close_procsub_parent_fd(procsub_fd, redirect)
 
-    def _handle_process_sub_redirect(self, target: str,
-                                     redirect: Redirect) -> Tuple[str, int]:
-        """Handle process substitution used as a redirect target.
+    @property
+    def _procsub_handler(self):
+        """The shell's ProcessSubstitutionHandler (resolves redirect targets).
 
-        Returns (fd_path, parent_fd). The child pid is registered with the
-        ProcessSubstitutionHandler for non-blocking reaping; the parent fd
-        is the CALLER's to close once the redirect has been applied (the
-        redirect's target fd then holds its own reference to the pipe) —
-        see _close_procsub_parent_fd().
+        Looked up through shell.io_manager at call time because the IOManager
+        constructs the FileRedirector before the handler exists.
         """
-        from .process_sub import create_process_substitution
-
-        direction = 'in' if target.startswith('<(') else 'out'
-        cmd_str = target[2:-1]
-        parent_fd, fd_path, pid = create_process_substitution(cmd_str, direction, self.shell)
-        self.shell.io_manager.process_sub_handler.active_pids.append(pid)
-        return fd_path, parent_fd
+        return self.shell.io_manager.process_sub_handler
 
     @staticmethod
     def _close_procsub_parent_fd(procsub_fd: Optional[int], redirect: Redirect):
