@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.369.0 (2026-06-13) - Tier T3.2: separate-bracket array syntax matches bash
+- BEHAVIOR FIX (bash-verified) + REFACTOR (−185 lines). `a [ 0 ] = v` (with
+  spaces around the brackets) is NOT array-assignment syntax — bash parses it as
+  the simple command `a` with args `[ 0 ] = v`. psh instead raised a parse error
+  via ~185 lines of bespoke "separate-bracket" detection machinery in
+  `psh/parser/recursive_descent/parsers/arrays.py`.
+- The machinery was also OVER-EAGER: it fired on ANY identifier-named command
+  word followed by `[`, so it broke real commands too — `echo [ 0 ] = v` and
+  `a() { echo hi "$@"; }; a [ 0 ] = v` both raised parse errors in psh while bash
+  runs them. Deleting the machinery makes all of these fall through to normal
+  simple-command execution, matching bash (command-not-found 127 for `a`,
+  correct output for real commands/functions).
+- Valid array assignment is untouched: `a[0]=v`, `a[0]+=v`, `a[ 0 ]=v` (spaces
+  only INSIDE the brackets), `declare -a`/`-A`, associative `m[k]=v` all behave
+  exactly as before. (The combinator parser never had this bug.)
+- Removed `_candidate_separate_bracket`, `_scan_bracket_assignment`,
+  `_is_valid_variable_name`, `_parse_array_key_tokens`,
+  `_parse_separate_bracket_element`, the `separate_bracket` field, and the two
+  routing branches.
+- Tests: flipped the 4 separate-bracket entries in the array-assignment
+  characterization corpus from frozen-ERR to OK (verified vs bash); added 6
+  `tests/behavioral/golden_cases.yaml` cases (pass under `--compare-bash`) and a
+  `TestSeparateBracketIsNotAssignment` conformance class (7 tests).
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6808 passed,
+  `pytest tests/behavioral --compare-bash` 319 passed.
+
 ## 0.368.0 (2026-06-13) - Tier T2.7: shared redirect-traversal mixin for visitors
 - REFACTOR (zero behavior change). The analysis visitors each duplicated the
   skeleton that walks a command's `redirects` to dispatch into them. Extracted a

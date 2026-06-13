@@ -19,10 +19,12 @@ Notes on the corpus (ground truth from the CURRENT ModularLexer):
 - ``a=(...)`` arrives as WORD ``a=`` + ``LPAREN`` (single-token name).
 - ``a+=(...)`` arrives as WORD ``a`` + WORD ``+=`` + ``LPAREN`` and the
   spaced forms ``a = (...)`` likewise (separate ``=``/``+=`` token).
-- The four ``a [ i ] = v`` (space BEFORE the bracket) forms are PINNED
-  LATENT BUGS: psh raises a parse error where bash reports
-  "command not found". They exercise the separate-bracket detection +
-  parse path and are frozen as errors so the refactor preserves them.
+- The four ``a [ i ] = v`` (space BEFORE the bracket) forms are NOT array
+  assignments: bash parses them as a simple command (``a`` plus the words
+  ``[ i ] = v``) and reports "command not found". psh used to special-case
+  them into a bespoke parse error; that separate-bracket machinery was
+  removed (reappraisal #5), so they now parse as ordinary simple commands
+  and the corpus freezes the resulting AST.
 """
 
 import json
@@ -55,7 +57,10 @@ def test_array_assignment_characterization(src, kind, frozen):
     assert actual == frozen, f"{src!r}: parse result changed"
 
 
-def test_corpus_is_nonempty_and_covers_both_outcomes():
+def test_corpus_is_nonempty():
     kinds = {e[1] for e in FROZEN}
     assert len(FROZEN) >= 35
-    assert kinds == {"OK", "ERR"}
+    # Every corpus input now parses successfully: the only failing entries
+    # were the separate-bracket (``a [ i ] = v``) pinned-bug forms, which
+    # were fixed to fall through to normal simple-command parsing.
+    assert kinds == {"OK"}

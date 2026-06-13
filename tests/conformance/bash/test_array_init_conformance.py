@@ -76,6 +76,62 @@ class TestArrayInitializerExpansion(ConformanceTest):
             '"${!a[@]}"')
 
 
+class TestSeparateBracketIsNotAssignment(ConformanceTest):
+    """``a [ 0 ] = v`` (space BEFORE the bracket) is NOT an array assignment.
+
+    bash parses it as a simple command — word ``a`` followed by the args
+    ``[``, ``0``, ``]``, ``=``, ``v`` — and reports ``a: command not found``.
+    psh used to special-case it into a bespoke parse error (a pinned latent
+    bug); the separate-bracket machinery was removed (reappraisal #5) so
+    these now fall through to normal simple-command execution like bash.
+    """
+
+    def _assert_command_not_found(self, command: str):
+        """psh and bash both run the leading word as a command and report
+        command-not-found: same stdout (empty) and exit (127). The stderr
+        text differs only in the shell-name prefix, so compare on stdout +
+        exit + the shared 'command not found' message."""
+        result = self.framework.compare_behavior(command)
+        psh, bash = result.psh_result, result.bash_result
+        assert bash.exit_code == 127, f"bash baseline changed: {bash!r}"
+        assert psh.stdout == bash.stdout == "", (
+            f"unexpected stdout for {command!r}: "
+            f"psh={psh.stdout!r} bash={bash.stdout!r}")
+        assert psh.exit_code == bash.exit_code == 127, (
+            f"exit divergence for {command!r}: "
+            f"psh={psh.exit_code} bash={bash.exit_code}")
+        assert "command not found" in psh.stderr, (
+            f"psh stderr lacks 'command not found': {psh.stderr!r}")
+
+    def test_separate_bracket_command_not_found(self):
+        """`a [ 0 ] = v` runs command `a` -> not found (exit 127)."""
+        self._assert_command_not_found('a [ 0 ] = v')
+
+    def test_separate_bracket_append_command_not_found(self):
+        self._assert_command_not_found('arr [ key ] += val')
+
+    def test_separate_bracket_prefix_assignment(self):
+        """A leading var assignment doesn't change the command word."""
+        self._assert_command_not_found('x=1 a [ 0 ] = v')
+
+    def test_separate_bracket_real_command_runs(self):
+        """A real command followed by `[ ... ]` args runs normally."""
+        self.assert_identical_behavior('echo [ 0 ] = v')
+
+    def test_separate_bracket_function_runs(self):
+        """A function named like an identifier runs with the bracket args."""
+        self.assert_identical_behavior(
+            'a() { echo hi "$@"; }; a [ 0 ] = v')
+
+    def test_no_space_element_assignment_unaffected(self):
+        """The valid no-space form still assigns."""
+        self.assert_identical_behavior('a[0]=v; echo "${a[0]}"')
+
+    def test_spaces_inside_brackets_unaffected(self):
+        """`a[ 0 ]=v` (no space before `[`) still assigns."""
+        self.assert_identical_behavior('a[ 0 ]=v; echo "${a[0]}"')
+
+
 class TestInitializerValueTilde(ConformanceTest):
     """Tilde expansion inside initializer elements (bash 5.2, probed
     2026-06-13 — Tier B10a flipped the assoc-init value-tilde accident).

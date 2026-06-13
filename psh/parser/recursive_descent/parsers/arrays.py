@@ -28,19 +28,17 @@ The LIVE token shapes the current lexer actually produces (verified by a
   with ``=``/``+=`` (only reachable via the space-separated ``a[0] =v``,
   a pre-existing divergence from bash where bash treats ``a[0]`` as a
   command).
-* Separate-bracket -- bare-name WORD + WORD ``[`` (only reachable via the
-  space-separated ``a [ 0 ] = v``). This path is a PINNED LATENT BUG: it
-  always raises ``"Expected '=' or '+=' after array index"`` (bash treats
-  it as command-not-found). It is preserved verbatim, not fixed, here.
 
-A *bare* valid name immediately followed by an ``LBRACKET`` token never
-occurs (``[`` after a word is a WORD token, and ``[`` at command position
-is ``LBRACKET`` but is never preceded by an assignable name) -- the old
-``LBRACKET``-token detection/parse branches were dead and were removed.
+The space-separated ``a [ 0 ] = v`` form (a space BEFORE the bracket) is
+NOT an array assignment: bash parses it as a simple command (``a`` plus
+the words ``[``, ``0``, ``]``, ``=``, ``v``) and reports
+``a: command not found``. psh used to special-case it into a bespoke
+parse error; that machinery was removed so the words fall through to
+normal simple-command execution, matching bash.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Optional
 
 from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, Word
 from ....lexer.token_types import Token, TokenType
@@ -56,9 +54,8 @@ class AssignmentCandidate:
     """
 
     name: str
-    #: "=" or "+="; None only for the separate-bracket error path where the
-    #: operator has not been resolved from the tokens yet.
-    operator: Optional[str]
+    #: "=" or "+=".
+    operator: str
     #: True when the value begins with ``(`` -- an array initialization.
     is_initializer: bool
     #: True when a ``[subscript]`` is present -- an element assignment.
@@ -70,9 +67,6 @@ class AssignmentCandidate:
     inline_tail: str = ""
     #: How many leading tokens the head occupies (name [+ operator]).
     head_token_count: int = 1
-    #: True for the space-separated ``a [ 0 ] ...`` shape, which is routed
-    #: to the legacy separate-bracket parse (a pinned latent error path).
-    separate_bracket: bool = False
 
 
 class ArrayParser:
@@ -114,12 +108,6 @@ class ArrayParser:
         cand = self._candidate_initializer()
         if cand is not None:
             return cand
-
-        # --- Separate-bracket element: bare-name + WORD "[" (pinned bug) ---
-        if self._is_valid_variable_name(value):
-            cand = self._candidate_separate_bracket()
-            if cand is not None:
-                return cand
 
         return None
 
@@ -197,68 +185,11 @@ class ArrayParser:
 
         return None
 
-    def _candidate_separate_bracket(self) -> Optional[AssignmentCandidate]:
-        """Space-separated ``a [ ... ] = v`` (pinned latent error path)."""
-        if not self._scan_bracket_assignment():
-            return None
-        return AssignmentCandidate(
-            name=self.parser.peek().value,
-            operator=None,
-            is_initializer=False,
-            is_element=True,
-            separate_bracket=True,
-        )
-
     def _peek_is_assignment_operator(self, offset: int) -> bool:
         """Check if token at offset is '=…' or '+='."""
         t = self.parser.peek(offset)
         return (t.type == TokenType.WORD and
                 (t.value.startswith('=') or t.value == '+='))
-
-    def _scan_bracket_assignment(self) -> bool:
-        """Scan ahead through WORD-``[`` bracket tokens for ``name[…]=…``.
-
-        Used only by the separate-bracket (``a [ … ] = v``) detection. The
-        scan depth inside brackets is unbounded, so this advances and
-        restores the parser position.
-        """
-        next_token = self.parser.peek(1)
-        if not (next_token.type == TokenType.WORD and next_token.value == '['):
-            return False
-
-        saved_pos = self.parser.current
-        self.parser.advance()  # skip name
-        self.parser.advance()  # skip [
-
-        bracket_count = 1
-        found_assignment = False
-        while bracket_count > 0 and not self.parser.at_end():
-            token = self.parser.peek()
-            if token.type == TokenType.WORD:
-                if '[' in token.value:
-                    bracket_count += token.value.count('[')
-                if ']' in token.value:
-                    bracket_count -= token.value.count(']')
-                    if bracket_count == 0:
-                        self.parser.advance()
-                        if not self.parser.at_end():
-                            nt = self.parser.peek()
-                            if (nt.type == TokenType.WORD and
-                                    (nt.value.startswith('=') or nt.value == '+=')):
-                                found_assignment = True
-                        break
-            self.parser.advance()
-
-        self.parser.current = saved_pos
-        return found_assignment
-
-    def _is_valid_variable_name(self, name: str) -> bool:
-        """Check if a string is a valid shell variable name."""
-        if not name:
-            return False
-        if not (name[0].isalpha() or name[0] == '_'):
-            return False
-        return all(c.isalnum() or c == '_' for c in name[1:])
 
     # ------------------------------------------------------------------ #
     # Detection (thin wrapper over the normalizer).
@@ -277,12 +208,6 @@ class ArrayParser:
         candidate = self._normalize_assignment_head()
         if candidate is None:  # pragma: no cover - guarded by is_array_assignment
             raise self.parser.error("Expected array assignment")
-
-        # Separate-bracket form (a [ … ] = v): delegate to the legacy parse,
-        # which preserves the pinned "Expected '=' or '+='" error behavior.
-        if candidate.separate_bracket:
-            self.parser.expect(TokenType.WORD)  # consume name
-            return self._parse_separate_bracket_element(candidate.name)
 
         # Consume the head tokens (name [+ separate operator]).
         self.parser.advance()  # name (or name-with-subscript) token
@@ -350,116 +275,6 @@ class ArrayParser:
             word = Word(parts=[])
         value = word.display_text()
         return value, word
-
-    def _parse_array_key_tokens(self) -> List[Token]:
-        """Parse array key as list of tokens for later evaluation.
-
-        Late-binding key collection used by the separate-bracket
-        (``a [ … ] = v``) path: tokens are collected unevaluated so the
-        executor can decide arithmetic (indexed) vs string (associative).
-        """
-        tokens = []
-        bracket_count = 0
-
-        while not self.parser.at_end():
-            current_token = self.parser.peek()
-
-            if current_token.type == TokenType.LBRACKET:
-                bracket_count += 1
-                tokens.append(current_token)
-                self.parser.advance()
-            elif current_token.type == TokenType.RBRACKET:
-                bracket_count -= 1
-                if bracket_count < 0:
-                    # This is our closing bracket
-                    self.parser.advance()
-                    break
-                else:
-                    tokens.append(current_token)
-                    self.parser.advance()
-            elif current_token.type == TokenType.WORD and ']' in current_token.value:
-                # Handle case where ]=value is a single token
-                bracket_pos = current_token.value.find(']')
-                if bracket_pos == 0:
-                    # Token starts with ], this is our closing bracket.
-                    # DON'T advance - leave for the equals parsing logic.
-                    break
-                else:
-                    index_part = current_token.value[:bracket_pos]
-                    if index_part:
-                        tokens.append(
-                            Token(TokenType.WORD, index_part, current_token.position))
-                    # DON'T advance - leave for the equals parsing logic.
-                    break
-            else:
-                valid_key_tokens = {
-                    TokenType.WORD, TokenType.STRING, TokenType.VARIABLE,
-                    TokenType.COMMAND_SUB, TokenType.COMMAND_SUB_BACKTICK,
-                    TokenType.ARITH_EXPANSION, TokenType.LPAREN, TokenType.RPAREN
-                }
-                if current_token.type not in valid_key_tokens:
-                    raise self.parser.error(
-                        f"Invalid token in array key: {current_token.type}")
-                tokens.append(current_token)
-                self.parser.advance()
-
-        return tokens
-
-    def _parse_separate_bracket_element(self, name: str) -> ArrayElementAssignment:
-        """Parse the space-separated ``a [ … ] = v`` element shape.
-
-        PINNED LATENT BUG: every reachable input here raises
-        ``"Expected '=' or '+=' after array index"`` (the lexer never
-        produces a successfully-parseable shape for this path; bash treats
-        ``a [ … ]`` as command-not-found). Behavior is preserved, not fixed.
-        """
-        # The name token is consumed by the caller; consume the WORD "[".
-        if self.parser.match(TokenType.WORD) and self.parser.peek().value == '[':
-            self.parser.advance()
-        else:  # pragma: no cover - only reached via _scan_bracket_assignment
-            raise self.parser.error("Expected '[' after array name")
-
-        index_tokens = self._parse_array_key_tokens()
-
-        equals_token = None
-        if self.parser.match(TokenType.WORD):
-            current_token = self.parser.peek()
-            if current_token.value.startswith('=') or current_token.value.startswith('+='):
-                equals_token = current_token
-            elif current_token.value.startswith(']=') or current_token.value.startswith(']+='):
-                bracket_pos = current_token.value.find(']')
-                equals_part = current_token.value[bracket_pos + 1:]
-                equals_token = Token(
-                    TokenType.WORD, equals_part, current_token.position + bracket_pos + 1)
-            else:
-                raise self.parser.error("Expected '=' or '+=' after array index")
-        else:
-            raise self.parser.error("Expected '=' after array index")
-
-        if not (equals_token.value.startswith('=') or equals_token.value.startswith('+=')):
-            raise self.parser.error("Expected '=' or '+=' after array index")
-
-        self.parser.advance()  # consume the equals token
-
-        is_append = equals_token.value.startswith('+=')
-        if is_append and len(equals_token.value) > 2:
-            tail = equals_token.value[2:]
-        elif not is_append and len(equals_token.value) > 1:
-            tail = equals_token.value[1:]
-        else:
-            if not self.parser.match_any(TokenGroups.WORD_LIKE):
-                raise self.parser.error(
-                    "Expected value after '=' in array element assignment")
-            tail = ''
-        value, value_word = self._parse_element_value(tail)
-
-        return ArrayElementAssignment(
-            name=name,
-            index=index_tokens,
-            value=value,
-            is_append=is_append,
-            value_word=value_word,
-        )
 
     def _parse_array_initialization(self, name: str, is_append: bool = False) -> ArrayInitialization:
         """Parse array initialization: name=(elements)"""
