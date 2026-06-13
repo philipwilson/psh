@@ -22,7 +22,7 @@ def convert_multiline_to_single(multiline_cmd: str) -> str:
 
     # For control structures, join with semicolons
     if any(first_line.startswith(kw) for kw in ['for ', 'while ', 'if ', 'case ']):
-        result = []
+        result: list[str] = []
         i = 0
         while i < len(lines):
             line = lines[i]
@@ -83,22 +83,22 @@ def convert_multiline_to_single(multiline_cmd: str) -> str:
     elif first_line.endswith('()') or first_line.endswith('() {'):
         # Join function body with semicolons
         if first_line.endswith('()'):
-            result = first_line + ' { '
+            joined = first_line + ' { '
             body_start = 1
         else:
-            result = first_line + ' '
+            joined = first_line + ' '
             body_start = 1
 
         for i in range(body_start, len(lines)):
             line = lines[i]
             if line == '}':
-                result += '; }'
+                joined += '; }'
             elif line:
-                if not result.endswith((' { ', '; ')):
-                    result += '; '
-                result += line
+                if not joined.endswith((' { ', '; ')):
+                    joined += '; '
+                joined += line
 
-        return result
+        return joined
 
     # For simple multi-line with backslash continuation
     else:

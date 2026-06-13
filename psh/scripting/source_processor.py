@@ -9,13 +9,17 @@ parser is active the execution path reuses its AST instead of parsing the
 same text twice.
 """
 import sys
+from typing import TYPE_CHECKING, Optional, cast
 
-from ..ast_nodes import TopLevel
+from ..ast_nodes import StatementList, TopLevel
 from ..lexer import tokenize
 from ..parser import ParseError
 from ..utils import contains_heredoc
 from .base import ScriptComponent
 from .command_accumulator import CommandAccumulator, Complete, NeedMore
+
+if TYPE_CHECKING:
+    from ..visitor import EnhancedValidatorVisitor
 
 
 class SourceProcessor(ScriptComponent):
@@ -28,11 +32,10 @@ class SourceProcessor(ScriptComponent):
         accumulator = CommandAccumulator(self.shell)
 
         # For validation mode, collect all issues across the entire script
+        self.validation_visitor: Optional["EnhancedValidatorVisitor"] = None
         if self.shell.validate_only:
             from ..visitor import EnhancedValidatorVisitor
             self.validation_visitor = EnhancedValidatorVisitor()
-        else:
-            self.validation_visitor = None
 
         while True:
             line = input_source.read_line()
@@ -235,8 +238,10 @@ class SourceProcessor(ScriptComponent):
             else:
                 from ..core import LoopBreak, LoopContinue
                 try:
-                    # Heredoc content is now pre-populated during parsing
-                    exit_code = self.shell.execute_command_list(ast)
+                    # Heredoc content is now pre-populated during parsing.
+                    # The parser returns a StatementList here (TopLevel handled
+                    # above); the cast records that runtime invariant.
+                    exit_code = self.shell.execute_command_list(cast(StatementList, ast))
                     return exit_code
                 except (LoopBreak, LoopContinue) as e:
                     # Break/continue outside of any loop is an error. Catch only

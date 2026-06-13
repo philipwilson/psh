@@ -52,7 +52,7 @@ class ShebangHandler(ScriptComponent):
         """Determine if script should be executed with its shebang interpreter."""
         has_shebang, interpreter, interpreter_args = self.parse_shebang(script_path)
 
-        if not has_shebang:
+        if not has_shebang or interpreter is None:
             return False
 
         # If interpreter is psh or our script name, use psh directly
@@ -86,7 +86,7 @@ class ShebangHandler(ScriptComponent):
         """Execute script using its shebang interpreter."""
         has_shebang, interpreter, interpreter_args = self.parse_shebang(script_path)
 
-        if not has_shebang:
+        if not has_shebang or interpreter is None:
             return 1
 
         # Build command line for interpreter

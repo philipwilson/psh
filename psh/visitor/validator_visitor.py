@@ -22,6 +22,7 @@ from ..ast_nodes import (
     CaseConditional,
     # Case components
     CaseItem,
+    Command,
     ContinueStatement,
     CStyleForLoop,
     EnhancedTestStatement,
@@ -79,6 +80,8 @@ class ValidatorVisitor(ASTVisitor[None]):
         self.function_names: Set[str] = set()
         self.variable_names: Set[str] = set()
         self.current_context: List[str] = []  # Stack of contexts
+        # Commands of the pipeline currently being validated (None outside one)
+        self._in_pipeline: Optional[List[Command]] = None
 
     def _push_context(self, context: str):
         """Push a new context onto the stack."""

@@ -5,7 +5,7 @@ This visitor replaces the static ASTFormatter utility with a cleaner
 visitor-based implementation.
 """
 
-from typing import List
+from typing import Sequence
 
 from ..ast_nodes import (
     AndOrList,
@@ -84,7 +84,7 @@ class DebugASTVisitor(ASTVisitor[str]):
         self.level -= 1
         return result
 
-    def _visit_children(self, children: List[ASTNode]) -> str:
+    def _visit_children(self, children: Sequence[ASTNode]) -> str:
         """Visit multiple child nodes."""
         return ''.join(self._visit_child(child) for child in children)
 

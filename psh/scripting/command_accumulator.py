@@ -30,7 +30,10 @@ same text a second time.
 
 import enum
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from ..ast_nodes import ASTNode
 
 from ..lexer import UnclosedQuoteError, tokenize
 from ..parser import ParseError, Parser
@@ -87,7 +90,7 @@ class Complete:
 
     text: str
     source: str = ''
-    ast: Optional[object] = None
+    ast: Optional["ASTNode"] = None
     tokens: Optional[list] = None
     error: Optional[Exception] = None
 

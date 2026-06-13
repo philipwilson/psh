@@ -6,7 +6,7 @@ dangerous patterns in shell scripts.
 """
 
 import re
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from ..ast_nodes import (
     AndOrList,
@@ -280,7 +280,7 @@ class SecurityVisitor(ASTVisitor[None]):
             return True
         return False
 
-    def get_report(self) -> Dict[str, any]:
+    def get_report(self) -> Dict[str, Any]:
         """Get a security report."""
         high = [i for i in self.issues if i.severity == 'HIGH']
         medium = [i for i in self.issues if i.severity == 'MEDIUM']

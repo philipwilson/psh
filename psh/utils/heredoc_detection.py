@@ -162,7 +162,7 @@ def open_heredoc_delimiters(command: str) -> list:
     if not contains_heredoc(command):
         return []
 
-    delimiters = []
+    delimiters: list[dict[str, object]] = []
     quote_state = None  # quote carried across COMMAND lines (multi-line strings)
     for line in command.split('\n'):
         if any(not d['closed'] for d in delimiters):

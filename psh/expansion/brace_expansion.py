@@ -147,10 +147,11 @@ class BraceExpander:
             expanded = self._expand_list(brace_content)
         elif '..' in brace_content:
             # Pure sequence expansion
-            expanded = self._expand_sequence(brace_content)
-            if expanded is None:
+            seq = self._expand_sequence(brace_content)
+            if seq is None:
                 # Invalid sequence, return unexpanded
                 return [text]
+            expanded = seq
         else:
             # No comma and no .., not a valid brace expression
             return [text]
