@@ -82,18 +82,17 @@ class FunctionOperationExecutor:
         # Push new variable scope for the function
         self.shell.state.scope_manager.push_scope(name)
 
-        # Set up positional parameters ($1, $2, etc.)
-        # Note: $0 is handled separately by state.script_name
+        # Set up positional parameters ($1, $2, etc.). $#/$@/$* need no
+        # separate bookkeeping: every special-parameter read derives from
+        # state.positional_params (state.get_special_variable), so this
+        # one assignment IS the whole swap. (Until 2026-06-13 this also
+        # wrote shell variables literally named '#', '@' and '*' — never
+        # read by anything, but they leaked into `set` output.)
         self.shell.state.positional_params = args
 
         # Save old script name and set it to function name for $0
         old_script_name = self.shell.state.script_name
         self.shell.state.script_name = name
-
-        # Handle special variables
-        self.shell.state.set_variable('#', str(len(args)))
-        self.shell.state.set_variable('@', args)
-        self.shell.state.set_variable('*', ' '.join(args) if args else '')
 
         # Push function onto stack for return builtin
         self.shell.state.function_stack.append(name)
@@ -132,17 +131,8 @@ class FunctionOperationExecutor:
             if self.shell.state.function_stack:
                 self.shell.state.function_stack.pop()
 
-            # Restore context
+            # Restore context (restoring positional_params restores
+            # $#/$@/$* with it — they are derived, never stored)
             context.current_function = old_function
             self.shell.state.positional_params = old_positional_params
             self.shell.state.script_name = old_script_name
-
-            # Restore special variables
-            if old_positional_params:
-                self.shell.state.set_variable('#', str(len(old_positional_params) - 1))
-                self.shell.state.set_variable('@', old_positional_params[1:])
-                self.shell.state.set_variable('*', ' '.join(old_positional_params[1:]))
-            else:
-                self.shell.state.set_variable('#', '0')
-                self.shell.state.set_variable('@', [])
-                self.shell.state.set_variable('*', '')

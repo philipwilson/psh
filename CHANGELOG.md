@@ -4,6 +4,47 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.328.0 (2026-06-13) - Textbook program Tier B10b (TEXTBOOK PROGRAM COMPLETE)
+- THE BEHAVIOR FIX (B10a's pin-sweep finding, probed 22-case matrix
+  vs bash 5.2 — 11 DIFFs before, 22/22 MATCH after): exported
+  variables now sync to state.env through a second ScopeManager
+  observer (alongside B10a's PATH hook) firing from set_variable /
+  create_local / unset_variable / attribute changes / pop_scope —
+  `export FOO=old; FOO=new; printenv FOO` finally shows new; `+=`,
+  arithmetic/`${:=}`/read/for-loop/nameref writes, local-shadowing-
+  an-export (children see the local, restored on return), unset
+  removal, and arrays-never-exported all bash-exact. The fix forced
+  out real declared-but-unset semantics (`export FOO` / `declare -i
+  N` plant attributed-unset variables: reads as unset, attributes
+  apply on first assignment, `declare -p NAME` displays them) and
+  fixed `readonly R=1; export R` erroring (bash: metadata changes
+  allowed). PWD/OLDPWD now carry EXPORT. 32 conformance pins; three
+  accepted divergences documented.
+- declare factoring: the two ~50-line attribute if-chains are one
+  table; the reporting half is shared psh/builtins/declare_format.py
+  (declare -p / readonly -p / export -p — which now escapes values,
+  bash-verified; the throwaway-DeclareBuiltin delegation died).
+  19-case declare -p matrix byte-identical. function_support 732→639.
+- read factoring: three ~210-line loops → one _read_chars core +
+  thin dispatchers; SIX unshared quirks discovered and pinned (not
+  homogenized): newline-vs-custom-delimiter EOF status, -n -d empty
+  rc 0, -t -n immediate-EOF→142, first-byte-only timeout bound,
+  silent-mode newline suppression rule, -n 0 short-circuit.
+  50-probe + PTY raw-mode batteries byte-identical. 630→576.
+- io_redirect residue (verify-first: B3 had NOT touched these): one
+  resolve_procsub_target() with the ownership contract documented
+  (the builtin path's fd-lifetime difference preserved, not merged
+  away); the write-only _saved_std* ritual deleted (probed guarding
+  nothing, broken under nesting anyway). Net −38.
+- core smalls (verify-first): the `$*` hardcoded-space join was a
+  LIVE bug reachable through two duplicates (`IFS=:; echo "${*-def}"`
+  gave a b) — one ifs_star_separator() source now, 14 probes match;
+  MinimalShell deleted; function.py's "inert" special-var writes were
+  worse than inert (leaked `#=0`, `@=[]` into set output) — deleted;
+  a provably-dead unset_variable fallback branch removed.
+- Net −93 production lines. Suite: 5,815 passed / 6,051 collected,
+  0 failures; ruff + mypy (20 files) + doc-pointer clean.
+
 ## 0.327.0 (2026-06-13) - Textbook program Tier B10a: hash builtin + parity queue
 - The hash builtin (closing the POSIX gap found in v0.308 when CI
   revealed psh's hash tests only passed via macOS's /usr/bin/hash

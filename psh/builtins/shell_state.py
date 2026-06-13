@@ -207,8 +207,11 @@ class LocalBuiltin(Builtin):
                     from ..core import AssociativeArray
                     shell.state.scope_manager.create_local(arg, AssociativeArray(), attributes)
                 else:
-                    # Creates unset local variable (shadows global but has no value)
-                    shell.state.scope_manager.create_local(arg, "", attributes)
+                    # Declared-but-unset local: shadows any outer variable
+                    # but reads as unset (bash: ``local v; echo ${v-u}``
+                    # prints ``u``). create_local(value=None) plants the
+                    # UNSET-attributed variable.
+                    shell.state.scope_manager.create_local(arg, None, attributes)
 
         return 0
 

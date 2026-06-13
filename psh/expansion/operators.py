@@ -141,16 +141,9 @@ class OperatorOpsMixin:
         return self._slice_elements(elements, offset, length, indices=indices)
 
     def _ifs_star_separator(self) -> str:
-        """Separator for joining $* / ${arr[*]}.
-
-        bash distinguishes unset IFS (join with a space) from a null IFS
-        (``IFS=``, join with no separator); only the first char is used
-        otherwise.
-        """
-        ifs = self.state.get_variable('IFS', None)
-        if ifs is None:
-            return ' '
-        return ifs[0] if ifs else ''
+        """Separator for joining $* / ${arr[*]} (delegates to the one
+        source on ShellState — see state.ifs_star_separator)."""
+        return self.state.ifs_star_separator()
 
     def _param_is_set(self, var_name: str) -> bool:
         """Whether a parameter is set (distinct from set-but-empty).

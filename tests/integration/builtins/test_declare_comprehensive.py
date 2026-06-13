@@ -412,14 +412,21 @@ class TestDeclareErrorHandling:
         assert "TEST2" in output
 
     def test_declare_attribute_without_value(self, shell):
-        """Test declare with attribute but no value."""
-        # Declare integer attribute without value
+        """Test declare with attribute but no value.
+
+        bash: ``declare -i NUMBER`` declares the attribute, but the name
+        reads as UNSET until assigned (``${NUMBER-u}`` → u); the integer
+        attribute then applies to the first assignment.
+        """
         result = shell.run_command("declare -i NUMBER")
         assert result == 0
 
-        # Variable should exist but have no value or default
-        var = shell.state.variables.get("NUMBER")
-        assert var is not None
+        # Declared-but-unset: not visible as a set variable
+        assert shell.state.variables.get("NUMBER") is None
+
+        # ...but the attribute was remembered (bash: NUMBER=2+3 → 5)
+        shell.run_command("NUMBER=2+3")
+        assert shell.state.variables.get("NUMBER") == "5"
 
     def test_declare_existing_variable_add_attributes(self, shell):
         """Test adding attributes to existing variables."""

@@ -231,10 +231,11 @@ class PushdBuiltin(Builtin):
         shell.env['OLDPWD'] = old_pwd
         shell.env['PWD'] = directory
 
-        # Also update shell state variables
+        # Also update shell state variables (exported, like bash's
+        # declare -x PWD/OLDPWD; the export observer syncs shell.env)
         try:
-            shell.state.set_variable('OLDPWD', old_pwd)
-            shell.state.set_variable('PWD', directory)
+            shell.state.export_variable('OLDPWD', old_pwd)
+            shell.state.export_variable('PWD', directory)
         except (AttributeError, TypeError):
             pass
 
@@ -360,10 +361,11 @@ class PopdBuiltin(Builtin):
         shell.env['OLDPWD'] = old_pwd
         shell.env['PWD'] = directory
 
-        # Also update shell state variables
+        # Also update shell state variables (exported, like bash's
+        # declare -x PWD/OLDPWD; the export observer syncs shell.env)
         try:
-            shell.state.set_variable('OLDPWD', old_pwd)
-            shell.state.set_variable('PWD', directory)
+            shell.state.export_variable('OLDPWD', old_pwd)
+            shell.state.export_variable('PWD', directory)
         except (AttributeError, TypeError):
             pass
 
