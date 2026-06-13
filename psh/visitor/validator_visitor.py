@@ -41,6 +41,7 @@ from ..ast_nodes import (
     # Control structures
     WhileLoop,
 )
+from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
 
 
@@ -60,7 +61,7 @@ class ValidationIssue:
     context: Optional[str] = None
 
 
-class ValidatorVisitor(ASTVisitor[None]):
+class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     """
     Visitor that validates AST correctness and collects issues.
 
@@ -123,11 +124,6 @@ class ValidatorVisitor(ASTVisitor[None]):
             context=self._get_context()
         ))
 
-    def _visit_redirects(self, node: ASTNode):
-        """Validate redirects carried by *node* (compound commands too)."""
-        for redirect in getattr(node, 'redirects', []):
-            self.visit(redirect)
-
     # Top-level nodes
 
     def visit_TopLevel(self, node: TopLevel) -> None:
@@ -183,8 +179,7 @@ class ValidatorVisitor(ASTVisitor[None]):
             self.visit(assignment)
 
         # Validate redirections
-        for redirect in node.redirects:
-            self.visit(redirect)
+        self._visit_redirects(node)
 
     def visit_Pipeline(self, node: Pipeline) -> None:
         """Validate a pipeline."""

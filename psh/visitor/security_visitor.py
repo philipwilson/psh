@@ -23,7 +23,7 @@ from ..ast_nodes import (
     TopLevel,
     WhileLoop,
 )
-from .analysis_helpers import has_unquoted_expansion
+from .analysis_helpers import RedirectTraversalMixin, has_unquoted_expansion
 from .base import ASTVisitor
 from .constants import DANGEROUS_COMMANDS, SENSITIVE_COMMANDS
 from .traversal import visit_children
@@ -42,7 +42,7 @@ class SecurityIssue:
         return f"[{self.severity}] {self.issue_type}: {self.message}"
 
 
-class SecurityVisitor(ASTVisitor[None]):
+class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     """
     Analyze AST for security vulnerabilities.
 
@@ -140,19 +140,6 @@ class SecurityVisitor(ASTVisitor[None]):
 
         # Also check redirects on the command
         self._visit_redirects(node)
-
-    def _visit_redirects(self, node: ASTNode) -> None:
-        """Inspect every redirect carried by *node*.
-
-        Compound commands (loops, conditionals, groups, function defs, ...)
-        carry a ``redirects`` list just like simple commands; every explicit
-        visit method for such a node must call this so that e.g.
-        ``while ...; done >/etc/passwd`` is flagged. Nodes without an
-        explicit visit method get the same coverage from ``generic_visit``'s
-        child traversal.
-        """
-        for redirect in getattr(node, 'redirects', []):
-            self.visit_Redirect(redirect)
 
     def visit_Pipeline(self, node: Pipeline) -> None:
         """Analyze pipelines for security issues."""

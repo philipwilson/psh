@@ -32,6 +32,7 @@ from ..ast_nodes import (
     UntilLoop,
     WhileLoop,
 )
+from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
 from .constants import SHELL_BUILTINS
 from .traversal import visit_children
@@ -129,7 +130,7 @@ class CodeMetrics:
         }
 
 
-class MetricsVisitor(ASTVisitor[None]):
+class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     """
     Collect code metrics from shell script AST.
 
@@ -153,18 +154,6 @@ class MetricsVisitor(ASTVisitor[None]):
         """Visit top-level statements."""
         for item in node.items:
             self.visit(item)
-
-    def _visit_redirects(self, node: ASTNode) -> None:
-        """Count redirects carried by *node*.
-
-        Compound commands (loops, conditionals, groups, ...) carry a
-        ``redirects`` list just like simple commands; every explicit visit
-        method for such a node calls this so e.g. ``while ...; done > log``
-        contributes to total_redirections. Nodes without an explicit method
-        reach visit_Redirect through generic_visit's child traversal.
-        """
-        for redirect in getattr(node, 'redirects', []):
-            self.visit(redirect)
 
     def visit_Redirect(self, node: Redirect) -> None:
         """Count a redirection (and here-documents)."""

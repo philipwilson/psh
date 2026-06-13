@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.368.0 (2026-06-13) - Tier T2.7: shared redirect-traversal mixin for visitors
+- REFACTOR (zero behavior change). The analysis visitors each duplicated the
+  skeleton that walks a command's `redirects` to dispatch into them. Extracted a
+  `RedirectTraversalMixin._visit_redirects(node)` in
+  `psh/visitor/analysis_helpers.py`; routed `SecurityVisitor`, `MetricsVisitor`,
+  and `ValidatorVisitor` (and `EnhancedValidatorVisitor` transitively) through
+  it, each keeping its own `visit_Redirect` action. Also collapsed an inline
+  duplicate redirect loop in `ValidatorVisitor.visit_SimpleCommand`.
+- `FormatterVisitor`/`DebugASTVisitor` were left alone (they render redirects,
+  not recurse for analysis). Per the zero-behavior mandate, visitors that did
+  not traverse redirects still don't — the hazard is closed for FUTURE code by
+  giving everyone the shared correct helper, not by altering current output.
+- LATENT BUG REPORTED (not fixed here, candidate for a separate behavior fix):
+  `LinterVisitor` never analyzes redirect targets in the nodes it explicitly
+  handles, so e.g. `$undefined` inside `cmd > $undefined.log` is invisible to
+  the linter's variable checks.
+- A 24-script redirect battery (`$(...)`, `${...}`, `2>&1`, glob targets,
+  heredocs with `$var`, process-subs, fd dups, compound-command redirects)
+  produced byte-identical output for every visitor.
+- Full gate green: ruff + mypy clean (visitor package in scope), `run_tests.py
+  --parallel` 6795 passed.
+
 ## 0.367.0 (2026-06-13) - Tier T2.6: formalize the pending-array-inits handoff
 - REFACTOR (zero behavior change). Declaration builtins (`declare`/`typeset`/
   `local`/`export`/`readonly`) received array-initializer data from the executor
