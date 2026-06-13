@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.365.0 (2026-06-13) - Tier T2.4: split environment.py (extract env builtin)
+- REFACTOR (zero behavior change, registry-identical). The 671-line
+  `psh/builtins/environment.py` held `export`, `set`, `unset`, and `env`. The
+  `env` builtin — which carries its own fd-binding helpers (really an I/O
+  concern) — moved to a new `psh/builtins/env_command.py` (208 lines) with
+  `EnvBuiltin` + `_parse_invocation`, `_configure_child_export_attributes`,
+  `_is_env_assignment`, `_print_environment`, `_bind_process_fds_to_streams`,
+  `_restore_process_fds`. `environment.py` shrank to 483 lines (export/set/
+  unset) with its now-unused imports trimmed.
+- Wired `env_command` into `psh/builtins/__init__.py`'s import list so it
+  self-registers. The registered-builtin name-set is byte-identical before and
+  after (verified by registry dump diff), and a 7-case `env` characterization
+  (`env`, `env FOO=bar`, `env FOO=bar cmd`, `env -i`, `env -u`, redirection to
+  grandchild, no-leak) is identical.
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6795 passed.
+
 ## 0.364.0 (2026-06-13) - Test isolation: per-test cwd for file `test`/`[` tests
 - TEST FIX (no production change). `tests/unit/builtins/test_test_builtin.py`'s
   `TestFileTests` created fixed-name files/dirs (`testdir`, `regular.txt`, …) in
