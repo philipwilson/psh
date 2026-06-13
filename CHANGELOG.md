@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.343.0 (2026-06-13) - Reappraisal #4 Tier C-B2: array-assignment normalization
+- REFACTOR (zero behavior change, review Ugly 5): `ArrayParser`
+  (`psh/parser/recursive_descent/parsers/arrays.py`) detected/parsed array
+  assignments by branching inline on ~6 raw tokenisation shapes. A 3,000+
+  input fuzz census against the real `ModularLexer` established which shapes
+  are actually reachable:
+  - DELETED the dead "old-lexer" pattern (a bare name immediately followed by
+    an `LBRACKET` token) — 0 of 3,240 inputs reach it; the current lexer never
+    produces it.
+  - NORMALIZED the live shapes behind a single `_normalize_assignment_head()
+    -> AssignmentCandidate` seam; `is_array_assignment()` is now just
+    `_normalize_assignment_head() is not None` (peek-only) and
+    `parse_array_assignment()` dispatches on the candidate instead of
+    re-inspecting raw tokens. Token-shape variance lives in ONE place.
+- SAFETY NET: a 46-entry frozen AST characterization corpus
+  (`tests/unit/parser/test_array_assignment_characterization.py` + sidecar
+  JSON) — frozen from the original parser, byte-identical after. 12 bash
+  differential probes match. A1 invariants hold. Full suite green
+  (6,397 passed). ruff + mypy clean.
+- PINNED (pre-existing, reported, not changed): the space-separated forms
+  `a [ 0 ] = v` and `a[0] =v` / `a = (...)` diverge from bash (psh parse
+  error / element-or-init vs bash command-not-found); preserved exactly.
+
 ## 0.342.0 (2026-06-13) - Reappraisal #4 Tier C-B1: Word text-method discipline
 - REFACTOR (zero behavior change, review Ugly 4): `Word` now exposes explicit,
   named text methods instead of forcing callers to bypass `__str__`:
