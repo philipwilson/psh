@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.354.0 (2026-06-13) - Behavior fix: explicit input fd for external commands
+- BUG FIX (bash-verified; redirection/IO architecture review, Ugly 2): an
+  explicit input-fd redirect (`cmd 5<file`) did not reach the named fd for
+  external commands. `python3 -c 'os.read(5,...)' 5<file` raised
+  `OSError: [Errno 9] Bad file descriptor` in psh; bash delivers fd 5.
+- ROOT CAUSE: `_redirect_input_from_file(target, redirect=None)` already
+  honored an explicit fd, and the parent (`exec`) path passed the redirect —
+  but the forked-child path (`setup_child_redirections`) and the builtin
+  stdin path called it with only `target`, defaulting to fd 0. The child
+  `<` branch and the builtin `<` branch now pass `redirect` through, so
+  `N<file` opens on fd N across all paths (output `N>file` already worked).
+- 5 bash differential probes match (external read of fd 5/6, plain `<`,
+  `0<` == `<`, `exec 6<`); +4 conformance tests
+  (`tests/conformance/bash/test_explicit_input_fd_conformance.py`). Full
+  suite green (6,760). ruff + mypy clean. Updated the `io_redirect/CLAUDE.md`
+  helper-table signature.
+
 ## 0.353.0 (2026-06-13) - Behavior fix: fd-prefixed heredocs and here-strings
 - BUG FIX (bash-verified; from the redirection/IO architecture review): an
   explicit file-descriptor prefix on a heredoc or here-string failed to PARSE.

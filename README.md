@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.353.0 | **Tests**: 7,003 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.354.0 | **Tests**: 7,007 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~51,100 lines of production code in `psh/` across 213 Python files, plus ~66,200 lines of tests in `tests/` (293 Python files)
-- **Test Coverage**: 7,003 tests in 293 test files
+- **Test Coverage**: 7,007 tests in 294 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.354.0**: behavior fix — an explicit input fd now reaches the named fd for external commands (`cmd 5<file`), matching bash; previously the forked-child input path dropped the fd and defaulted to stdin, so a command reading fd 5 got "Bad file descriptor". The child and builtin `<` paths now pass the redirect through to `_redirect_input_from_file` (review: redirection/IO Ugly 2). Bash-verified; +4 conformance tests
 - **v0.353.0**: behavior fix — file-descriptor-prefixed heredocs and here-strings (`N<<EOF`, `N<<-EOF`, `N<<<word`) now parse and apply to the named fd, matching bash; previously even `0<<EOF` was a parse error. The lexer's operator recognizer now attaches the fd prefix to the heredoc/here-string operators (longest-first so `5<<<` isn't split), and heredoc/here-string materialization honors `redirect.fd` instead of hardcoding fd 0. 19/19 bash probes match; +21 tests
 - **v0.352.0**: test hygiene — the arithmetic characterization fixtures (`sh`/`assoc_sh`) built a bare `Shell()` with no teardown, leaking signal-notifier pipe FDs across the suite; they now build on the shared conftest `shell` fixture (proper `_cleanup_shell` teardown). Test only
 - **v0.351.0**: pruned `docs/archive` — removed 298 stale development-history artifacts (completed implementation plans, phase summaries, point-in-time analyses) with no live references; kept `CHANGELOG_history.md` (the pre-v0.200 version history, referenced from `CHANGELOG.md`). All removed files remain recoverable in git history. Docs only

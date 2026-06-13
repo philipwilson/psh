@@ -252,7 +252,9 @@ class IOManager:
             return
         frame.snapshot.note_stdin()
         if redirect.type == '<':
-            self.file_redirector._redirect_input_from_file(target)
+            # target_fd is 0 here (the non-zero case returned above); pass the
+            # redirect anyway so the fd source stays consistent across paths.
+            self.file_redirector._redirect_input_from_file(target, redirect)
             f = open(target, 'r')
             frame.opened_streams.append(f)
             sys.stdin = f
@@ -441,7 +443,7 @@ class IOManager:
                         os._exit(1)
                     self.file_redirector._redirect_combined(target, redirect)
                 elif redirect.type == '<':
-                    self.file_redirector._redirect_input_from_file(target)
+                    self.file_redirector._redirect_input_from_file(target, redirect)
                 elif redirect.type == '<>':
                     self.file_redirector._redirect_readwrite(target, redirect)
                 elif redirect.type in ('<<', '<<-'):

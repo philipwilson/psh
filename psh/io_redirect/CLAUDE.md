@@ -202,7 +202,7 @@ methods (`apply_redirections`, `apply_permanent_redirections`,
 
 | Helper | Used For |
 |--------|----------|
-| `_redirect_input_from_file(target)` | `<` — open + dup2 to stdin |
+| `_redirect_input_from_file(target, redirect=None)` | `<` — open + dup2 to the redirect's fd (default 0). Pass `redirect` so explicit fds like `5<file` reach the named fd, not stdin |
 | `_redirect_readwrite(target, redirect)` | `<>` — open O_RDWR + dup2; returns target_fd |
 | `_redirect_heredoc(redirect)` | `<<`/`<<-` — expand + unlinked temp file + dup2; returns content |
 | `_redirect_herestring(redirect)` | `<<<` — expand + unlinked temp file + dup2; returns content |
