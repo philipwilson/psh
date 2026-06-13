@@ -32,7 +32,7 @@ walkers, not in ``utils/escapes.py`` — that module's dialect map
 deliberately excludes word-level (quote-context) escape processing.
 """
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 from ..ast_nodes import (
     ExpansionPart,
@@ -118,17 +118,46 @@ ASSOC_INIT_ELEMENT = WordExpansionPolicy(
 
 
 @dataclass
+class ExpandedSegment:
+    """One contiguous piece of an expanded composite/unquoted word.
+
+    The segment list is the explicit intermediate representation that
+    replaced the old parallel arrays (``result_parts`` +
+    ``splittable_idx``) plus the scattered word-level flags. Each part
+    walker appends one (or, for affixed ``$@``, the walker short-circuits)
+    segment; :meth:`WordExpander._finish` then reads the list in visibly
+    separate passes (field-split → glob → join).
+
+    Attributes:
+        text: the expanded text of this segment, in word order.
+        quoted: True when the segment came from quoted context (a quoted
+            literal or a quoted expansion result). Drives the
+            "all parts quoted" decision for extglob detection — quoted
+            text never contributes globbing.
+        splittable: True only for the text of an UNQUOTED expansion
+            result — the sole text POSIX field-splitting may break apart
+            (literal/quoted text merges with neighbors but never splits).
+        glob_eligible: True when this segment contributes UNescaped glob
+            metacharacters from unquoted context (an unquoted literal
+            whose globs were all escaped is NOT eligible; quoted text is
+            never eligible). Drives the globbing pass.
+    """
+    text: str
+    quoted: bool
+    splittable: bool = False
+    glob_eligible: bool = False
+
+
+@dataclass
 class _WalkState:
     """Mutable accumulator for one composite/unquoted word walk."""
-    #: Expanded text of each part, in order; joined by _finish().
-    result_parts: List[str] = field(default_factory=list)
-    #: Indices in result_parts holding unquoted-expansion text — the only
-    #: text field splitting may break (POSIX).
-    splittable_idx: Set[int] = field(default_factory=set)
-    has_unquoted_glob: bool = False
+    #: The expanded segments, in word order; turned into the final
+    #: result by _finish() over explicit passes.
+    segments: List[ExpandedSegment] = field(default_factory=list)
+    #: True once any expansion (quoted or not) has been seen — gates the
+    #: leading-tilde rule (tilde expands only on the very first part,
+    #: before any expansion). Walk-time only; not used by _finish().
     has_expansion: bool = False
-    has_unquoted_expansion: bool = False
-    all_parts_quoted: bool = True
     # --- assignment-shaped word (NAME=...) value-tilde tracking ---
     #: The unquoted ``NAME=``/``NAME+=`` prefix, or None when the word is
     #: not assignment-shaped (or the policy disables assignment_tilde).
@@ -136,6 +165,24 @@ class _WalkState:
     assign_seen: int = 0    # chars of assign_prefix consumed so far
     value_len: int = 0      # value chars emitted before the current part
     prev_char: str = ''     # last unquoted-literal char ('' after others)
+
+    # -- derived word-level views over the segment list (no separate
+    #    bookkeeping: each is computed from the segments on demand) --
+
+    @property
+    def has_unquoted_expansion(self) -> bool:
+        """Any unquoted-expansion text present (the only splittable text)."""
+        return any(s.splittable for s in self.segments)
+
+    @property
+    def has_unquoted_glob(self) -> bool:
+        """Any segment contributes unescaped unquoted glob metacharacters."""
+        return any(s.glob_eligible for s in self.segments)
+
+    @property
+    def all_parts_quoted(self) -> bool:
+        """No unquoted segment was emitted (gates extglob detection)."""
+        return all(s.quoted for s in self.segments)
 
 
 #: Sentinel: the expansion-part walker handled the part normally; keep
@@ -225,10 +272,10 @@ class WordExpander:
             st.value_len += 1
         if part.quoted and part.quote_char == "'":
             # Single-quoted literal: completely literal
-            st.result_parts.append(text)
+            st.segments.append(ExpandedSegment(text, quoted=True))
         elif part.quoted and part.quote_char == "$'":
             # ANSI-C quoted literal: lexer already processed escapes
-            st.result_parts.append(text)
+            st.segments.append(ExpandedSegment(text, quoted=True))
         elif part.quoted and part.quote_char == '"':
             # Double-quoted literal: after WordBuilder decomposition,
             # expansions are separate ExpansionPart nodes, so this
@@ -236,9 +283,9 @@ class WordExpander:
             # escapes (\$, \\, \", \`) still need processing.
             if '\\' in text:
                 text = self.process_dquote_escapes(text)
-            st.result_parts.append(text)
+            st.segments.append(ExpandedSegment(text, quoted=True))
         else:
-            st.all_parts_quoted = False
+            seg_has_glob = False
             if st.assign_prefix is not None:
                 parts_follow = part_index < len(word.parts) - 1
                 remaining = len(st.assign_prefix) - st.assign_seen
@@ -267,19 +314,20 @@ class WordExpander:
                 text, escaped_globs = self._process_unquoted_escapes(text)
                 # If glob chars remain that weren't escaped, track them
                 if any(c in text for c in '*?[') and not escaped_globs:
-                    st.has_unquoted_glob = True
+                    seg_has_glob = True
             else:
                 # Track unquoted glob chars
                 if any(c in text for c in '*?['):
-                    st.has_unquoted_glob = True
+                    seg_has_glob = True
             # Unquoted literal: tilde on first part if leading ~
             # Only suppress tilde expansion if the ~ itself was
             # escaped (\~), not if some later char was escaped.
             tilde_escaped = had_escapes and part.text.startswith('\\~')
-            if (not st.has_expansion and not st.result_parts
+            if (not st.has_expansion and not st.segments
                     and text.startswith('~') and not tilde_escaped):
                 text = self.manager.expand_tilde(text)
-            st.result_parts.append(text)
+            st.segments.append(ExpandedSegment(
+                text, quoted=False, glob_eligible=seg_has_glob))
 
     def _walk_expansion_part(self, word: Word, part: ExpansionPart,
                              st: _WalkState,
@@ -306,10 +354,12 @@ class WordExpander:
         # is not a parameter/command/arithmetic expansion, so its
         # result never field-splits, even with a pathological IFS).
         if isinstance(part.expansion, ProcessSubstitution):
-            st.all_parts_quoted = False
             path = self.shell.io_manager.create_process_substitution_for_expansion(
                 part.expansion.direction, part.expansion.command)
-            st.result_parts.append(path)
+            # The /dev/fd/N path is unquoted-but-unsplittable: it counts
+            # against all_parts_quoted (so extglob may still be detected on
+            # the joined word) yet is never field-split or globbed.
+            st.segments.append(ExpandedSegment(path, quoted=False))
             return _CONTINUE_WALK
 
         # Handle quoted field expansions ("$@", "${a[@]}", ...) in
@@ -324,7 +374,8 @@ class WordExpander:
             if fields is not None:
                 if not policy.split:
                     if fields:
-                        st.result_parts.append(' '.join(fields))
+                        st.segments.append(
+                            ExpandedSegment(' '.join(fields), quoted=True))
                     # Zero fields contribute nothing. (bash goes on to
                     # reject the then-empty word as an assoc key — "bad
                     # array subscript" — but psh accepts empty assoc
@@ -332,8 +383,8 @@ class WordExpander:
                     # independent of this path.)
                     return _CONTINUE_WALK
                 return self._expand_at_with_affixes(
-                    word, part, st.result_parts, in_double_quote=False,
-                    first_fields=fields)
+                    word, part, [s.text for s in st.segments],
+                    in_double_quote=False, first_fields=fields)
 
         # An unquoted field expansion standing alone ($@, ${a[@]}):
         # expand to fields FIRST, then IFS-split each field, so
@@ -359,59 +410,123 @@ class WordExpander:
         expanded = self.manager.expand_expansion(part.expansion)
         if part.quoted:
             # Quoted expansion: no word splitting, no globbing on result
-            st.result_parts.append(expanded)
+            st.segments.append(ExpandedSegment(expanded, quoted=True))
         else:
-            st.all_parts_quoted = False
-            st.has_unquoted_expansion = True
-            # Glob chars from unquoted expansion trigger globbing
-            if any(c in expanded for c in '*?['):
-                st.has_unquoted_glob = True
-            st.splittable_idx.add(len(st.result_parts))
-            st.result_parts.append(expanded)
+            # Unquoted expansion: its text is the only splittable text, and
+            # glob chars in it trigger globbing.
+            has_glob = any(c in expanded for c in '*?[')
+            st.segments.append(ExpandedSegment(
+                expanded, quoted=False, splittable=True,
+                glob_eligible=has_glob))
         return _CONTINUE_WALK
 
     def _finish(self, st: _WalkState,
                 policy: WordExpansionPolicy) -> Union[str, List[str]]:
-        """Join the walked parts, then field-split and glob per policy."""
-        result = ''.join(st.result_parts)
+        """Turn the walked segment list into the final str-or-list.
 
-        # Word splitting: only if there are unquoted expansion results,
-        # and only when the policy allows it (``declare foo=$x`` and
-        # assoc-init elements keep the value whole; ordinary commands
-        # like ``printf '%s' foo=$x`` split it — bash 5.2).
+        Three visibly separate passes over ``st.segments``:
+
+        1. **field-splitting pass** (:meth:`_field_split_pass`) — split the
+           splittable segments on IFS, edge-joining literal/quoted text;
+           runs only for splitting policies with an unquoted expansion
+           present. May settle the result to a multi-field list (then we
+           glob each field), a single field, or zero fields.
+        2. **glob pass** (:meth:`_glob_pass`) — pathname-expand when
+           unquoted glob metacharacters (or, in unquoted text, extglob
+           patterns) are present and the policy permits it.
+        3. **join/quote-removal** — concatenate any remaining segments
+           into the scalar result.
+
+        Quote removal already happened part-by-part during the walk (each
+        segment's ``text`` is post-quote-removal), so pass 3 is a plain
+        join.
+        """
+        has_unquoted_glob = st.has_unquoted_glob
+
+        # --- Pass 1: field splitting -----------------------------------
         if st.has_unquoted_expansion and policy.split:
-            words = self._split_part_fields(st.result_parts, st.splittable_idx)
+            words = self._field_split_pass(st.segments)
             if len(words) > 1:
-                # Glob each split word if there are unquoted glob chars
-                if (st.has_unquoted_glob and policy.glob
-                        and not self.state.options.get('noglob', False)):
-                    return self._glob_words(words)
-                return words
+                return self._glob_pass(words, has_unquoted_glob, policy)
             elif len(words) == 1:
                 result = words[0]
             else:
                 # A purely unquoted expansion that splits to nothing (e.g.
                 # `set -- $unset`) contributes zero fields, not one empty one.
                 return []
+        else:
+            result = ''.join(s.text for s in st.segments)
 
-        # Check for extglob patterns in unquoted text
-        if (not st.has_unquoted_glob and not st.all_parts_quoted
+        # extglob patterns in unquoted text also count as glob-eligible.
+        if (not has_unquoted_glob and not st.all_parts_quoted
                 and self.state.options.get('extglob', False)):
             from .extglob import contains_extglob
             if contains_extglob(result):
-                st.has_unquoted_glob = True
+                has_unquoted_glob = True
 
-        # Glob expansion on the single result. No-glob policies are
-        # exempt (``declare foo=*`` keeps the literal '*' in bash even
-        # when files would match).
-        if (st.has_unquoted_glob and policy.glob
+        # --- Pass 2: globbing (single word) + Pass 3: join -------------
+        globbed = self._glob_pass([result], has_unquoted_glob, policy)
+        if len(globbed) == 1:
+            return globbed[0]
+        return globbed
+
+    def _field_split_pass(self,
+                          segments: List[ExpandedSegment]) -> List[str]:
+        """Pass 1: IFS-split the splittable segments, edge-joining the rest.
+
+        Only the text of unquoted expansion segments
+        (``segment.splittable``) can produce field boundaries; literal and
+        quoted text never splits — even if it contains IFS characters that
+        arrived via escape processing (``pre\\ post$x`` stays one field) —
+        but it merges with adjacent expansion fragments into a single
+        field (``a"$x"b``). Uses :meth:`WordSplitter.split_with_edges` so a
+        leading/trailing IFS run is reported and the join is correct.
+        """
+        ifs = self.state.get_variable('IFS', ' \t\n')
+        fields: List[str] = []
+        current: Optional[str] = None  # None = no field currently open
+        for seg in segments:
+            text = seg.text
+            if not seg.splittable:
+                current = (current or '') + text
+                continue
+            pieces, leading, trailing = \
+                self.manager.word_splitter.split_with_edges(text, ifs)
+            if leading and current is not None:
+                fields.append(current)
+                current = None
+                # A leading non-whitespace delimiter both closed the open
+                # field and produced an empty first piece — same boundary,
+                # drop the duplicate (pre$x with x=':a' is [pre, a]).
+                if pieces and pieces[0] == '' and text[0] not in ' \t\n':
+                    pieces = pieces[1:]
+            for k, piece in enumerate(pieces):
+                if k == 0 and current is not None:
+                    current += piece
+                else:
+                    if current is not None:
+                        fields.append(current)
+                    current = piece
+            if trailing and current is not None:
+                fields.append(current)
+                current = None
+        if current is not None:
+            fields.append(current)
+        return fields
+
+    def _glob_pass(self, words: List[str], has_unquoted_glob: bool,
+                   policy: WordExpansionPolicy) -> List[str]:
+        """Pass 2: pathname-expand *words* when the word is glob-eligible.
+
+        A no-op (returns *words* unchanged) unless unquoted glob
+        metacharacters are present, the policy permits globbing, and
+        noglob is off — so ``declare foo=*`` keeps the literal ``*`` even
+        when files would match.
+        """
+        if (has_unquoted_glob and policy.glob
                 and not self.state.options.get('noglob', False)):
-            globbed = self._glob_words([result])
-            if len(globbed) == 1:
-                return globbed[0]
-            return globbed
-
-        return result
+            return self._glob_words(words)
+        return words
 
     # ------------------------------------------------------------------
     # The scalar assignment-value walker (kept SEPARATE — see module
@@ -759,47 +874,6 @@ class WordExpander:
 
         ifs = self.state.get_variable('IFS', ' \t\n')
         return self.manager.word_splitter.split(text, ifs)
-
-    def _split_part_fields(self, parts: List[str],
-                           splittable_idx: Set[int]) -> List[str]:
-        """Field-split a composite word part-by-part (POSIX).
-
-        Only the text of unquoted expansion results (the indices in
-        *splittable_idx*) can produce field boundaries. Literal and quoted
-        text never splits — even if it contains IFS characters that arrived
-        via escape processing (``pre\\ post$x`` stays one field) — but it
-        merges with adjacent expansion fragments into a single field.
-        """
-        ifs = self.state.get_variable('IFS', ' \t\n')
-        fields: List[str] = []
-        current: Optional[str] = None  # None = no field currently open
-        for idx, text in enumerate(parts):
-            if idx not in splittable_idx:
-                current = (current or '') + text
-                continue
-            pieces, leading, trailing = \
-                self.manager.word_splitter.split_with_edges(text, ifs)
-            if leading and current is not None:
-                fields.append(current)
-                current = None
-                # A leading non-whitespace delimiter both closed the open
-                # field and produced an empty first piece — same boundary,
-                # drop the duplicate (pre$x with x=':a' is [pre, a]).
-                if pieces and pieces[0] == '' and text[0] not in ' \t\n':
-                    pieces = pieces[1:]
-            for k, piece in enumerate(pieces):
-                if k == 0 and current is not None:
-                    current += piece
-                else:
-                    if current is not None:
-                        fields.append(current)
-                    current = piece
-            if trailing and current is not None:
-                fields.append(current)
-                current = None
-        if current is not None:
-            fields.append(current)
-        return fields
 
     def _glob_words(self, words: List[str]) -> List[str]:
         """Apply glob expansion to a list of words."""
