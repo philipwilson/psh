@@ -57,6 +57,11 @@ version = {attr = "psh.version.__version__"}
 [tool.ruff]
 target-version = "py312"
 line-length = 120
+# Archived/retired material is kept verbatim for historical reference and is not
+# held to the live lint bar. The production gate is the explicit `ruff check psh
+# tests` invocation (see CLAUDE.md); excluding the archive here lets a bare
+# `ruff check .` also pass, so the configured command is honest.
+extend-exclude = ["docs/archive"]
 
 [tool.ruff.lint]
 select = [

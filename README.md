@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.328.0 | **Tests**: 6,051 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.329.0 | **Tests**: 6,051 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.329.0**: reappraisal #4 Tier B1 (tooling honesty) — bare `ruff check .` now passes (archive excluded, root `conftest.py` cleaned) while `ruff check psh tests` stays the strict production gate; the independent 2026-06-13 code-quality assessment filed into `docs/reviews/` and its verified residue queued as the reappraisal #4 Tier B plan
 - **v0.328.0**: textbook Tier B10b — THE TEXTBOOK PROGRAM CLOSES: exported variables sync to the env through one observer (22/22 bash matrix incl. local shadowing, declared-unset semantics, arrays-never-exported); declare's if-chains table-driven + shared declare_format; read's three loops unified (six unshared quirks found and pinned); one procsub resolver; the `$*` IFS bug and leaked `#=0` set-entries fixed; −93 net production lines
 - **v0.327.0**: textbook Tier B10a — the `hash` builtin lands (full bash semantics incl. hit counts, -t/-d/-l/-p/-r, `set +h`, the new `checkhash` shopt; probing overturned the assumed design: bash blind-execs stale paths by default); the parity queue flips to bash (assoc-init tilde, prefix-restore unset, no-split field joining — which also fixed `declare v="$@"` keeping only the first field)
 - **v0.326.0**: textbook Tier B9 — ONE parser-driven completeness oracle (CommandAccumulator: feed(line) → Complete|NeedMore(hint)); multiline_handler 515→90 lines (its three heuristic layers dead); the trial-parse/re-parse double parse killed (one parse per command, verified); four interactive bugs fixed with bash adjudication (`echo {a,` no longer hangs at PS2); errexit logic deduplicated
