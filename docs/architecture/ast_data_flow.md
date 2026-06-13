@@ -9,7 +9,7 @@ on 2026-06-12 (fallback audit; see
 
 Two representations exist, by design:
 
-1. **Word AST** (`psh/ast_nodes.py`: `Word`, `LiteralPart`,
+1. **Word AST** (`psh/ast_nodes/words.py`: `Word`, `LiteralPart`,
    `ExpansionPart`) — carries per-part quote context. Used for command
    words, assignment values, array initializer elements, array element
    values, for/select items, and case patterns. **Both parsers always
@@ -69,7 +69,7 @@ lexer tokens (RichToken.parts)
 
 - **One source of truth**: `SimpleCommand` stores only `words`. The
   string view `args` is a **derived, read-only property**
-  (`ast_nodes.py`): `[''.join(str(p) for p in w.parts) for w in words]`
+  (`psh/ast_nodes/commands.py`): `[''.join(str(p) for p in w.parts) for w in words]`
   — pre-expansion bytes with quotes removed, expansions rendered as
   their `$`-source (a braced simple variable normalizes: `${y}` -> `$y`).
   Both parsers build `words` only; the executor slices `words` when
@@ -186,7 +186,7 @@ audit.
 
 ### 6. Redirect targets, heredocs, here-strings
 
-`Redirect` (ast_nodes.py) stores `target` as a **string** plus
+`Redirect` (`psh/ast_nodes/redirects.py`) stores `target` as a **string** plus
 `quote_type` / `heredoc_quoted` metadata — there is no Word here. All
 expansion happens at apply time in `psh/io_redirect/file_redirect.py`:
 
@@ -203,7 +203,7 @@ migrating the `Redirect` node itself.
 
 ### 7. Process substitution `<(cmd)` / `>(cmd)`
 
-`ProcessSubstitution` is an `Expansion` (ast_nodes.py), so it appears as
+`ProcessSubstitution` is an `Expansion` (`psh/ast_nodes/words.py`), so it appears as
 an ordinary `ExpansionPart` inside a Word — whole-word and embedded
 (`pre<(cmd)post`) forms are the same shape. Performed during Word
 expansion:

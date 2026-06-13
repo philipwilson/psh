@@ -163,7 +163,8 @@ class MyBuiltin(Builtin):
 
 ### Adding a New Control Structure
 
-1. Add AST node in `psh/ast_nodes.py`
+1. Add AST node in the `psh/ast_nodes/` package (control structures go in
+   `psh/ast_nodes/control.py`)
 
 2. Add parser support in `psh/parser/`
 

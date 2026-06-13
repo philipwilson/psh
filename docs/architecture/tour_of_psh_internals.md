@@ -248,7 +248,7 @@ SimpleCommand(args=['wc', '-c'],
                       quote_type=None, heredoc_quoted=False, combined=False)], ...)
 ```
 
-**The Word AST.** Each argument is a `Word` (`psh/ast_nodes.py`)
+**The Word AST.** Each argument is a `Word` (`psh/ast_nodes/words.py`)
 whose parts carry per-part quote context — a direct translation of the
 lexer's `TokenPart` list from §3. `WordBuilder`
 (`psh/parser/recursive_descent/support/word_builder.py`) does that

@@ -137,7 +137,7 @@ def visit_SimpleCommand(self, node) -> T: ...
 def visit_Pipeline(self, node) -> T: ...
 def visit_StatementList(self, node) -> T: ...  # NB: `CommandList` is an
                                                # alias for StatementList in
-                                               # ast_nodes.py; dispatch uses
+                                               # psh/ast_nodes/commands.py; dispatch uses
                                                # the real class name
 def visit_AndOrList(self, node) -> T: ...
 
@@ -169,7 +169,7 @@ print(visitor.findings)
 
 When adding a new AST node type:
 
-1. Define the node in `psh/ast_nodes.py`
+1. Define the node in the `psh/ast_nodes/` package
 
 2. Add visit method to `ExecutorVisitor`:
 ```python
@@ -332,7 +332,7 @@ python -m psh --debug-ast -c "if true; then echo yes; fi"
 - `ExecutorVisitor` is the main execution engine
 - Delegates to specialized executors for different node types
 
-### With AST Nodes (`psh/ast_nodes.py`)
+### With AST Nodes (`psh/ast_nodes/`)
 
 - All AST node classes defined there
 - Visitor methods named after node class names
