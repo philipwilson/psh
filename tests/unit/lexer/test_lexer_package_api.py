@@ -30,7 +30,7 @@ class TestLexerPublicAPI:
         expected = {
             'ModularLexer', 'tokenize', 'tokenize_with_heredocs',
             'LexerConfig',
-            'LexerError',
+            'LexerError', 'UnclosedQuoteError',
         }
         assert set(lexer_pkg.__all__) == expected
 

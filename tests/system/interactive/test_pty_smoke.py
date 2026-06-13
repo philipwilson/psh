@@ -138,6 +138,39 @@ class TestPtyLineEditing:
         psh.expect('two')
         psh.expect(PROMPT)
 
+    def test_ps2_context_from_parser_not_data_words(self, psh):
+        """Continuation context comes from the parser's open-construct
+        trail, not keyword-shaped data (the old pseudo-parser split the
+        buffer on whitespace: this showed 'if while> '). Bash shows '> ';
+        psh's richer context must at least be TRUE."""
+        psh.send('echo if ; while true\r')
+        psh.expect(r'\r\nwhile> ')   # only the while is open
+        psh.sendintr()
+        psh.expect(PROMPT)
+
+    def test_ps2_context_survives_keyword_data_in_for_list(self, psh):
+        """`for x in done ; do` is an open for-body; the old heuristic let
+        the data word 'done' pop the context (showed plain '> ')."""
+        psh.send('for x in done ; do\r')
+        psh.expect(r'\r\nfor> ')
+        psh.sendintr()
+        psh.expect(PROMPT)
+
+    def test_incomplete_brace_expansion_executes(self, psh):
+        """`echo {a,` is a complete command (bash 5.2: prints '{a,').
+        The old hand-rolled brace counter hung at PS2 waiting for '}'."""
+        psh.send('echo {a_$((3+3)),\r')
+        psh.expect(r'\{a_6,')     # sentinel: typed text can't match this
+        psh.expect(PROMPT)
+
+    def test_backslash_space_is_escaped_space_not_continuation(self, psh):
+        """`echo x\\ y` ends in no continuation; bash executes immediately.
+        The old heuristic rstripped before its backslash check, so any
+        line ending in 'backslash space' wrongly prompted for more."""
+        psh.send('echo bs_$((4+5))\\ \r')
+        psh.expect('bs_9')        # executed at once — no PS2 round-trip
+        psh.expect(PROMPT)
+
     def test_long_line_executes_correctly(self, psh):
         # Longer than the 80-column PTY: execution must still see the
         # full line even though wrapped-line redraw is imperfect.

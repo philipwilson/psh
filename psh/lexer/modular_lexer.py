@@ -8,7 +8,7 @@ from .command_position import (
     STATEMENT_SEPARATORS,
 )
 from .expansion_parser import ExpansionContext, ExpansionParser
-from .position import LexerConfig, Position, PositionTracker
+from .position import LexerConfig, Position, PositionTracker, UnclosedQuoteError
 from .quote_parser import UnifiedQuoteParser
 from .recognizers import RecognizerRegistry
 from .recognizers.word_scanners import cached_assignment_prefix_map
@@ -474,7 +474,8 @@ class ModularLexer:
 
         # Check if quote was closed
         if not found_closing:
-            raise SyntaxError(f"Unclosed {quote_char} quote at position {start_pos}")
+            raise UnclosedQuoteError(
+                f"Unclosed {quote_char} quote at position {start_pos}", quote_char)
 
         # Update position
         self.position = new_pos
@@ -515,7 +516,8 @@ class ModularLexer:
         )
 
         if not found_closing:
-            raise SyntaxError(f'Unclosed $" quote at position {start_pos}')
+            raise UnclosedQuoteError(
+                f'Unclosed $" quote at position {start_pos}', '$"')
 
         self.position = new_pos
         full_value = self._build_token_value(parts)
@@ -548,7 +550,8 @@ class ModularLexer:
 
         # Check if quote was closed
         if not found_closing:
-            raise SyntaxError(f"Unclosed $' quote at position {start_pos}")
+            raise UnclosedQuoteError(
+                f"Unclosed $' quote at position {start_pos}", "$'")
 
         # Update position
         self.position = new_pos

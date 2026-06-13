@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.325.0 | **Tests**: 5,882 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.326.0 | **Tests**: 5,921 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~49,100 lines of production code in `psh/` across 193 Python files, plus ~59,500 lines of tests in `tests/` (262 Python files)
-- **Test Coverage**: 5,882 tests in 268 test files
+- **Test Coverage**: 5,921 tests in 269 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.326.0**: textbook Tier B9 — ONE parser-driven completeness oracle (CommandAccumulator: feed(line) → Complete|NeedMore(hint)); multiline_handler 515→90 lines (its three heuristic layers dead); the trial-parse/re-parse double parse killed (one parse per command, verified); four interactive bugs fixed with bash adjudication (`echo {a,` no longer hangs at PS2); errexit logic deduplicated
 - **v0.325.0**: textbook Tier B8-R3 — the LineEditor decomposition concludes: HistoryNavigator/HistorySearch extracted as pure components (the search machine's historical quirks mapped and pinned); the 80-line elif chain is a 31-action dispatch table with a totality guard; compatibility properties deleted (~140 consumer sites migrated); LineEditor is a 753-line coordinator over five narrow components
 - **v0.324.0**: textbook Tier B8-R2 — KeyDecoder is the only reader of stdin (`read_key() -> KeyEvent` algebra; SIGWINCH folded into its select set, the drain plumbing deleted); the vi/emacs ESC conflation teased apart — timing is a decoder knob, meaning is editor policy; 45 pipe-fed decoder cases incl. real-timing bare-ESC; PTY tier green twice
 - **v0.323.0**: textbook Tier B8-R1 — LineEditor decomposition begins: EditBuffer (pure text+cursor model with kill ring and undo) and LineRenderer (the ONLY writer of ANSI — line_editor.py now has zero terminal writes, grep-proven) extracted behind 36 byte-exact snapshot tests pinned against the pre-split code; PTY tier green twice; both new modules join mypy

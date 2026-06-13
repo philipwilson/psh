@@ -1,17 +1,21 @@
-"""Source file and command buffer processing."""
+"""Source file and command buffer processing.
+
+The line-gathering loop here drives the shared completeness oracle
+(`command_accumulator.CommandAccumulator`): each physical line is fed to
+the accumulator, which answers NeedMore (keep reading — inside a heredoc
+body, an unclosed quote, an open `if`, ...) or Complete (execute). The
+accumulator already trial-parsed the command, so when the recursive-descent
+parser is active the execution path reuses its AST instead of parsing the
+same text twice.
+"""
 import sys
-from typing import Optional
 
 from ..ast_nodes import TopLevel
-from ..lexer import LexerError, tokenize
+from ..lexer import tokenize
 from ..parser import ParseError
-from ..utils import (
-    HEREDOC_MARKER_RE,
-    contains_heredoc,
-    has_unclosed_heredoc,
-    is_inside_expansion,
-)
+from ..utils import contains_heredoc
 from .base import ScriptComponent
+from .command_accumulator import CommandAccumulator, Complete, NeedMore
 
 
 class SourceProcessor(ScriptComponent):
@@ -20,8 +24,8 @@ class SourceProcessor(ScriptComponent):
     def execute_from_source(self, input_source, add_to_history: bool = True) -> int:
         """Execute commands from an input source with enhanced processing."""
         exit_code = 0
-        command_buffer = ""
         command_start_line = 0
+        accumulator = CommandAccumulator(self.shell)
 
         # For validation mode, collect all issues across the entire script
         if self.shell.validate_only:
@@ -35,17 +39,18 @@ class SourceProcessor(ScriptComponent):
             if self.state.options.get('debug-exec', False):
                 print(f"DEBUG source_processor: read line: {repr(line)}", file=sys.stderr)
             if line is None:  # EOF
-                # Execute any remaining command in buffer
-                if command_buffer.strip():
+                # End of input inside a heredoc body: the command never got
+                # its delimiter, so it is dropped (no execution, and in
+                # validation mode no summary either).
+                if accumulator.pending_heredoc:
+                    return exit_code
+                # Execute any remaining buffered command (a truncated
+                # construct parses to "unexpected end of input" here).
+                if not accumulator.is_empty:
                     exit_code = self._execute_buffered_command(
-                        command_buffer, input_source, command_start_line, add_to_history
-                    )
-                    # In non-interactive mode with errexit, exit on error
-                    if (exit_code != 0 and not input_source.is_interactive()
-                            and self.state.options.get('errexit', False)
-                            and self.state.errexit_eligible):
-                        if self.state.options.get('debug-exec', False):
-                            print(f"DEBUG: Exiting due to errexit with code {exit_code}", file=sys.stderr)
+                        accumulator.flush(), input_source, command_start_line,
+                        add_to_history)
+                    if self._should_exit_on_error(exit_code, input_source):
                         return exit_code
                 # In validation mode, show final summary at end
                 if self.validation_visitor:
@@ -56,167 +61,63 @@ class SourceProcessor(ScriptComponent):
                     exit_code = 1 if error_count > 0 else 0
                 break
 
-            # Skip empty lines when no command is being built
-            if not command_buffer and not line.strip():
-                continue
-
-            # Skip comment lines when no command is being built. Only for
-            # single-line chunks: a multi-line string (e.g. from
-            # run_command(), where StringInput yields the whole string as
-            # one "line") may start with a comment yet contain commands —
-            # the lexer strips embedded comments during tokenization.
-            if (not command_buffer and line.strip().startswith('#')
-                    and '\n' not in line.strip()):
-                continue
-
-            # Note: Line continuation handling is now done in preprocessing
-
-            # Add current line to buffer
-            if not command_buffer:
+            if accumulator.is_empty:
+                # Skip empty lines when no command is being built
+                if not line.strip():
+                    continue
+                # Skip comment lines when no command is being built. Only
+                # for single-line chunks: a multi-line string (e.g. from
+                # run_command(), where StringInput yields the whole string
+                # as one "line") may start with a comment yet contain
+                # commands — the lexer strips embedded comments during
+                # tokenization.
+                if line.strip().startswith('#') and '\n' not in line.strip():
+                    continue
                 command_start_line = input_source.get_line_number()
-            # Add line to buffer with proper spacing
-            if command_buffer and not command_buffer.endswith('\n'):
-                command_buffer += '\n'
-            command_buffer += line
 
-            # Try to parse and execute the command
-            if command_buffer.strip():
-                # Process line continuations and history expansion before testing completeness
-                test_command = command_buffer
-                from .input_preprocessing import process_line_continuations
-                test_command = process_line_continuations(test_command)
+            result = accumulator.feed(line)
+            if isinstance(result, NeedMore):
+                continue
 
-                # Apply history expansion for completeness testing (don't print)
-                if (not self.state.is_script_mode and
-                        hasattr(self.shell, 'history_expander')):
-                    expanded_test = self.shell.history_expander.expand_history(
-                        test_command,
-                        print_expansion=False,
-                        report_errors=False,
-                    )
-                    if expanded_test is not None:
-                        test_command = expanded_test
+            if result.error is not None:
+                # A real syntax error (not incomplete input): report it
+                # against where the command started and reset.
+                filename = input_source.get_name() if hasattr(input_source, 'get_name') else 'stdin'
+                print(f"{filename}:{command_start_line}: {result.error}", file=sys.stderr)
+                command_start_line = 0
+                exit_code = 2  # Bash uses exit code 2 for syntax errors
+                self.state.last_exit_code = 2
+                # In non-interactive mode, exit immediately on parse errors
+                if not input_source.is_interactive():
+                    return exit_code
+                continue
 
-                # Check for unclosed heredocs and collect content if needed
-                # Use the shell's method which properly handles arithmetic expressions
-                if contains_heredoc(test_command) and self._has_unclosed_heredoc(test_command):
-                    # Continue reading lines to complete heredocs
-                    command_buffer = self._collect_heredoc_content(command_buffer, input_source)
-                    if command_buffer is None:  # EOF while reading heredoc
-                        break
-                    # Re-process the complete command
-                    test_command = command_buffer
-                    test_command = process_line_continuations(test_command)
-                    if (not self.state.is_script_mode and
-                            hasattr(self.shell, 'history_expander')):
-                        expanded_test = self.shell.history_expander.expand_history(
-                            test_command,
-                            print_expansion=False,
-                            report_errors=False,
-                        )
-                        if expanded_test is not None:
-                            test_command = expanded_test
-
-                # Check if command contains history expansion - if so, treat as complete
-                from ..interactive.history_expansion import contains_history_reference
-                if contains_history_reference(test_command):
-                    # Skip parse testing for history expansions - let execution handle them
-                    exit_code = self._execute_buffered_command(
-                        command_buffer.rstrip('\n'), input_source, command_start_line, add_to_history
-                    )
-                    # Reset buffer for next command
-                    command_buffer = ""
-                    command_start_line = 0
-                    # In non-interactive mode with errexit, exit on error
-                    if (exit_code != 0 and not input_source.is_interactive()
-                            and self.state.options.get('errexit', False)
-                            and self.state.errexit_eligible):
-                        if self.state.options.get('debug-exec', False):
-                            print(f"DEBUG: Exiting due to errexit with code {exit_code}", file=sys.stderr)
-                        return exit_code
-                else:
-                    # Check if command is complete by trying to parse it.
-                    # Mirror the execution path's heredoc handling: a plain
-                    # tokenize() would feed heredoc BODY lines to the parser
-                    # as commands (a body line like `)` is then a bogus
-                    # "real" parse error).
-                    try:
-                        if contains_heredoc(test_command):
-                            from ..lexer import tokenize_with_heredocs
-                            tokens, heredoc_map = tokenize_with_heredocs(
-                                test_command,
-                                strict=self.state.options.get('posix', False),
-                                shell_options=self.state.options)
-                            from ..parser import parse_with_heredocs
-                            parse_with_heredocs(tokens, heredoc_map)
-                        else:
-                            tokens = tokenize(test_command, shell_options=self.state.options)
-                            # Try parsing to see if command is complete
-                            from ..parser import Parser
-                            parser = Parser(tokens, source_text=test_command)
-                            parser.parse()
-                        # If parsing succeeds, execute the command
-                        exit_code = self._execute_buffered_command(
-                            command_buffer.rstrip('\n'), input_source, command_start_line, add_to_history
-                        )
-                        # Reset buffer for next command
-                        command_buffer = ""
-                        command_start_line = 0
-                        # In non-interactive mode with errexit, exit on error
-                        if (exit_code != 0 and not input_source.is_interactive()
-                            and self.state.options.get('errexit', False)
-                            and self.state.errexit_eligible):
-                            if self.state.options.get('debug-exec', False):
-                                print(f"DEBUG: Exiting due to errexit with code {exit_code}", file=sys.stderr)
-                            return exit_code
-                    except (ParseError, LexerError, SyntaxError) as e:
-                        # Check if this is an incomplete command
-                        if self._is_incomplete_command(e):
-                            # Command is incomplete, continue reading
-                            continue
-                        else:
-                            # It's a real parse error, report it and reset
-                            filename = input_source.get_name() if hasattr(input_source, 'get_name') else 'stdin'
-                            print(f"{filename}:{command_start_line}: {e}", file=sys.stderr)
-                            command_buffer = ""
-                            command_start_line = 0
-                            exit_code = 2  # Bash uses exit code 2 for syntax errors
-                            self.state.last_exit_code = 2
-
-                            # In non-interactive mode, exit immediately on parse errors
-                            if not input_source.is_interactive():
-                                return exit_code
+            exit_code = self._execute_buffered_command(
+                result, input_source, command_start_line, add_to_history)
+            command_start_line = 0
+            if self._should_exit_on_error(exit_code, input_source):
+                return exit_code
 
         return exit_code
 
-    def _is_incomplete_command(self, error) -> bool:
-        """Check if a parse or lexer error indicates an incomplete command.
+    def _should_exit_on_error(self, exit_code: int, input_source) -> bool:
+        """Whether errexit (`set -e`) aborts the whole source now.
 
-        Parser errors carry a structural ParseError.at_eof flag (the parse
-        failed at end of input, so more lines could complete it) — no
-        message matching needed. Lexer errors still need a few patterns:
-        unclosed quotes/parentheses surface as LexerError strings.
+        True when the command failed in a non-interactive source with
+        errexit set and the failure context is errexit-eligible (not a
+        condition, not negated, ...).
         """
-        if getattr(error, 'at_eof', False):
-            return True
+        should_exit = (exit_code != 0 and not input_source.is_interactive()
+                       and self.state.options.get('errexit', False)
+                       and self.state.errexit_eligible)
+        if should_exit and self.state.options.get('debug-exec', False):
+            print(f"DEBUG: Exiting due to errexit with code {exit_code}", file=sys.stderr)
+        return should_exit
 
-        error_msg = str(error)
-        lexer_incomplete_patterns = [
-            "Unclosed parenthesis",
-            "Unclosed double parentheses",
-            "Unclosed arithmetic expansion",
-            "Unclosed brace",
-            "Unclosed quote",
-            "Unclosed single quote",
-            "Unclosed double quote",
-            "Unclosed \" quote at position",
-            "Unclosed ' quote at position",
-        ]
-        return any(p in error_msg for p in lexer_incomplete_patterns)
-
-    def _execute_buffered_command(self, command_string: str, input_source,
+    def _execute_buffered_command(self, complete: Complete, input_source,
                                   start_line: int, add_to_history: bool) -> int:
-        """Execute a buffered command with enhanced error reporting."""
+        """Execute a complete buffered command with enhanced error reporting."""
+        command_string = complete.text
         # Skip empty commands and pure single-line comments (a multi-line
         # buffer starting with a comment still contains commands; the lexer
         # strips the comment).
@@ -244,7 +145,10 @@ class SourceProcessor(ScriptComponent):
             from .input_preprocessing import process_line_continuations
             command_string = process_line_continuations(command_string)
 
-            # Perform history expansion before tokenization
+            # Perform history expansion before tokenization. The accumulator
+            # already expanded silently for the completeness trial; this
+            # pass is the REPORTING one — it echoes the expansion like bash
+            # and prints "event not found" errors.
             if (not self.state.is_script_mode and
                     hasattr(self.shell, 'history_expander')):
                 expanded_command = self.shell.history_expander.expand_history(command_string)
@@ -266,9 +170,14 @@ class SourceProcessor(ScriptComponent):
 
             # Note: Alias expansion happens during execution for proper precedence
 
-            # Check if command contains heredocs and tokenize accordingly
-            # (exactly one tokenization either way).
-            if contains_heredoc(command_string):
+            # Reuse the accumulator's trial parse when it matches what we
+            # are about to execute (recursive-descent parser active and the
+            # reporting preprocessing reproduced the trial's source text);
+            # otherwise tokenize and parse here — exactly once either way.
+            if complete.ast is not None and command_string == complete.source:
+                self._debug_print_tokens(complete.tokens)
+                ast = complete.ast
+            elif contains_heredoc(command_string):
                 # Use the lexer with heredoc support
                 from ..lexer import tokenize_with_heredocs
                 tokens, heredoc_map = tokenize_with_heredocs(command_string, strict=self.state.options.get('posix', False),
@@ -375,74 +284,3 @@ class SourceProcessor(ScriptComponent):
             from ..utils.token_formatter import TokenFormatter
             print(TokenFormatter.format(tokens), file=sys.stderr)
             print("========================", file=sys.stderr)
-
-    def _has_unclosed_heredoc(self, command: str) -> bool:
-        """Check if command has an unclosed heredoc (shared detector)."""
-        return has_unclosed_heredoc(command)
-
-    def _collect_heredoc_content(self, command_buffer: str, input_source) -> Optional[str]:
-        """Collect heredoc content from input source until all delimiters are satisfied."""
-        # Find heredoc markers already present in the buffer and which of them
-        # are closed, using the shared marker regex / expansion exclusion.
-        lines = command_buffer.split('\n')
-        heredoc_delimiters = []
-
-        for line in lines:
-            # If there are open heredocs, this line is heredoc content
-            if any(d for d in heredoc_delimiters if not d['closed']):
-                # Check if this line closes an open heredoc
-                for delimiter in heredoc_delimiters:
-                    if not delimiter['closed']:
-                        check_line = line.lstrip('\t') if delimiter['strip_tabs'] else line
-                        if check_line.rstrip() == delimiter['word']:
-                            delimiter['closed'] = True
-                            break
-            else:
-                # Look for new heredoc markers
-                for match in HEREDOC_MARKER_RE.finditer(line):
-                    if is_inside_expansion(line, match.start()):
-                        continue
-                    strip_tabs = bool(match.group(1))
-                    quoted = bool(match.group(2))
-                    has_backslash = bool(match.group(3))
-                    word = match.group(4)
-                    heredoc_delimiters.append({
-                        'word': word,
-                        'strip_tabs': strip_tabs,
-                        'quoted': quoted,
-                        'closed': False,
-                        'escaped': has_backslash
-                    })
-
-        # If no unclosed heredocs, return current buffer
-        if not heredoc_delimiters or all(d['closed'] for d in heredoc_delimiters):
-            return command_buffer
-
-        # Continue reading lines until all heredocs are closed
-        result_buffer = command_buffer
-
-        while True:
-            # Check if all heredocs are closed
-            if all(d['closed'] for d in heredoc_delimiters):
-                break
-
-            # Read next line
-            line = input_source.read_line()
-            if line is None:  # EOF
-                return None
-
-            # Add line to buffer
-            if not result_buffer.endswith('\n'):
-                result_buffer += '\n'
-            result_buffer += line
-
-            # Check if this line closes any open heredocs
-            for delimiter in heredoc_delimiters:
-                if not delimiter['closed']:
-                    check_line = line.lstrip('\t') if delimiter['strip_tabs'] else line
-                    if check_line.rstrip() == delimiter['word']:
-                        delimiter['closed'] = True
-                        break
-
-        return result_buffer
-

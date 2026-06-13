@@ -28,12 +28,14 @@ class TestParser:
     def parse_enhanced_test_statement(self) -> EnhancedTestStatement:
         """Parse [[ ... ]] enhanced test statement."""
         self.parser.expect(TokenType.DOUBLE_LBRACKET)
+        self.parser.ctx.push_construct('test')
         self.parser.skip_newlines()
 
         expression = self.parse_test_expression()
 
         self.parser.skip_newlines()
         self.parser.expect(TokenType.DOUBLE_RBRACKET)
+        self.parser.ctx.pop_construct()
 
         redirects = self.parser.redirections.parse_redirects()
 

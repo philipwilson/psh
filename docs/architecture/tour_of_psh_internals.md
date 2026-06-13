@@ -77,9 +77,13 @@ is an identity function here — but each is one sentence away:
   mechanism lives at the end of `tokenize()`.
 
 The driver for all of this is `psh/scripting/source_processor.py`,
-which reads input (from `-c`, a script, or the interactive editor),
-assembles complete commands (multi-line constructs, heredocs), and
-pushes each one into the lexer→parser→executor pipeline.
+which reads input (from `-c`, a script, or the interactive editor) and
+pushes each complete command into the lexer→parser→executor pipeline.
+"Is this command complete, or are more lines needed?" (multi-line
+constructs, heredoc bodies, unclosed quotes) is answered by ONE oracle
+shared with the interactive PS2 loop —
+`psh/scripting/command_accumulator.py` — which trial-parses the buffer
+with the real lexer and parser and reports *why* more input is needed.
 
 ---
 

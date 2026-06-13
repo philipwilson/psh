@@ -4,6 +4,40 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.326.0 (2026-06-13) - Textbook program Tier B9: one completeness oracle
+- CommandAccumulator (scripting/command_accumulator.py, 298 lines):
+  feed(line) -> Complete | NeedMore(hint) — the single parser-driven
+  answer to "is this command complete?", extracted from the v0.306
+  trial-parse machinery, not reinvented. Structured channels replaced
+  ALL string matching: UnclosedQuoteError carries quote_char;
+  ParseError.unclosed_expansion names the kind;
+  ParserContext.open_constructs is a write-only trail (10 parse
+  methods push/retitle/pop; no parse decision reads it) snapshotted
+  into hints on at_eof. Heredoc bodies tracked incrementally (O(1)
+  per line — a first-cut full rescan regressed the large-heredoc test
+  and was caught).
+- The double parse is DEAD: Complete carries the trial's AST+tokens;
+  verified one parse per executed command (was two). debug-tokens/
+  debug-ast/--validate/set -v/combinator outputs diffed identical.
+- multiline_handler: 515 → 90 lines. The three heuristic layers'
+  funeral, each wrongness bash-adjudicated: `echo {a,`/`echo {1..`
+  HUNG at PS2 (bash executes) — now execute; escaped-trailing-space
+  `echo \ ` hung — now executes; `echo if ; while true` showed
+  `if while> ` (only a while is open) — now `while> `; a data-word
+  `done` popped the for context — fixed. All 22 previously-correct
+  prompt shapes preserved exactly; one inherited improvement:
+  successful history expansion re-checks completeness (`if !!; then`
+  continues at PS2 instead of mis-executing).
+- source_processor: 448 → 286 lines. _collect_heredoc_content died
+  into the oracle; the 3 errexit copies + parse-error twin became one
+  _should_exit_on_error with exactly 2 call sites; 7 of 9
+  string-matched lexer patterns were proven DEAD and removed.
+- Net −289 production lines in the two diseased files. 46 oracle
+  unit tests + 13 rewritten handler tests + 4 PTY pins for the
+  adjudicated fixes. PTY tier ×2: 60 passed. Suite: 5,681 passed /
+  5,921 collected, 0 failures; conformance unchanged; ruff + mypy +
+  doc-pointer clean.
+
 ## 0.325.0 (2026-06-13) - Textbook program Tier B8-R3: history components + dispatch table (zero behavior change)
 - The LineEditor decomposition concludes. HistoryNavigator (owns
   pos/original_line; up/down/first/last -> Optional[str]) and

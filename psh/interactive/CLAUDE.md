@@ -36,7 +36,7 @@ Tab completion is NOT a separate manager: it is `CompletionEngine`
 | `line_layout.py` | Pure layout math (row/col positions, prompt width, wrapping) |
 | `line_editor_helpers.py` | `convert_multiline_to_single()` - cmdhist-style joining |
 | `keybindings.py` | `EditMode`, `EmacsKeyBindings`, `ViKeyBindings` |
-| `multiline_handler.py` | `MultiLineInputHandler` - PS2 continuation, incomplete-command detection |
+| `multiline_handler.py` | `MultiLineInputHandler` - PS2 loop; completeness decided by the shared `CommandAccumulator` (`psh/scripting/command_accumulator.py`) |
 | `tab_completion.py` | `CompletionEngine` - path completion (used by LineEditor) |
 | `terminal.py` | `TerminalManager` - raw-mode enter/exit context manager |
 | `history_manager.py` | `HistoryManager` - command history storage/persistence |
@@ -260,8 +260,18 @@ the components together:
 - **Raw mode**: `TerminalManager` (`terminal.py`) is a context manager
   for termios raw-mode enter/exit.
 - **Multi-line input**: `MultiLineInputHandler` (`multiline_handler.py`)
-  wraps the editor, detecting incomplete commands and prompting with PS2
-  until a complete logical command is read.
+  wraps the editor, prompting with PS2 until a complete logical command
+  is read. It does NOT decide completeness itself: every line is fed to
+  the shared `CommandAccumulator`
+  (`psh/scripting/command_accumulator.py`) — the same parser-driven
+  oracle the script/`-c` reader uses — which answers
+  `Complete | NeedMore(hint)`. The hint carries what the lexer/parser
+  actually know (pending heredoc delimiter, open quote character,
+  unclosed expansion kind, and the parser's open-construct trail), and
+  the handler renders the construct trail as the contextual
+  continuation prompt (`if> `, `for then> `; plain PS2 otherwise).
+  The handler keeps only the interactive glue: prompt rendering, the
+  read_line loop, and the Ctrl-C `reset()`.
 
 ### History: Single Writer
 
