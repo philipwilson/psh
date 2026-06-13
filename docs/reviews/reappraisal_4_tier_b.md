@@ -54,6 +54,19 @@ the prerequisite to enabling `strict-errors` in `conftest` globally and
 catching internal regressions automatically. Recorded here as a candidate;
 not yet scheduled.
 
+## Emergent behavior finding (from B4, 2026-06-13)
+
+While characterizing arithmetic, B4 confirmed (against pristine main, so
+NOT a refactor regression) a real psh/bash divergence:
+**associative-array elements do not resolve inside `$(( ))`** — `declare -A
+m; m[k]=9; echo $(( m[k] * 2 ))` gives `0` in psh vs `18` in bash. Indexed
+arrays work (`a[2]*2` → `18`). This is a genuine bug (the arithmetic
+evaluator's array-element read path doesn't handle assoc keys), but it's a
+BEHAVIOR change, out of scope for the zero-behavior-change refactor.
+Candidate for a dedicated behavior release. (Also noted, expected and
+already pinned: psh has no `0b` binary literal — `0b101` is octal-0 then
+`b`, an error, like the existing `test_0b_is_not_binary` pin.)
+
 ## Method (unchanged from the Textbook Program)
 
 Per release: `fix/`/`chore/` branch → subagent implements (no commits,

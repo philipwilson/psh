@@ -35,7 +35,7 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `tilde.py` | `TildeExpander` - handles `~` and `~user` |
 | `glob.py` | `GlobExpander` - pathname expansion (wildcards) |
 | `word_splitter.py` | `WordSplitter` - splits on IFS (`split()`, `split_with_edges()`) |
-| `arithmetic.py` | Arithmetic tokenizer/parser/evaluator (`evaluate_arithmetic()`) |
+| `arithmetic/` | Arithmetic package: tokenizer/parser/evaluator (`evaluate_arithmetic()`); decomposed from `arithmetic.py` into `tokens.py`/`tokenizer.py`/`nodes.py`/`parser.py`/`evaluator.py`/`errors.py` |
 | `brace_expansion.py` | `BraceExpander`, `TokenBraceExpander` - `{a,b}`, `{1..5}` |
 | `aliases.py` | `AliasManager` - alias storage and expansion |
 
@@ -352,7 +352,7 @@ Output example:
 - `ExpansionEvaluator` evaluates Word AST expansion nodes
 - `WordBuilder` (in `parser/recursive_descent/support/`) constructs Word nodes from tokens
 
-### With Arithmetic (`psh/expansion/arithmetic.py`)
+### With Arithmetic (`psh/expansion/arithmetic/`)
 
 - `execute_arithmetic_expansion()` calls `evaluate_arithmetic()`
 - `evaluate_arithmetic()` expands $-constructs itself (one verbatim pass

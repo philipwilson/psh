@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.333.0 (2026-06-13) - Reappraisal #4 Tier B4: arithmetic decomposition
+- REFACTOR (zero behavior change): the 1,155-line `psh/expansion/arithmetic.py`
+  is now a package, `psh/expansion/arithmetic/`:
+  - `tokens.py` — `ArithTokenType`, `ArithToken`
+  - `tokenizer.py` — `ArithTokenizer` (the 213-line `read_number` split into
+    per-base helpers: `_read_based_number` / `_based_digit_value` /
+    `_read_hex` / `_read_octal`)
+  - `nodes.py` — the `ArithNode` AST hierarchy
+  - `parser.py` — `ArithParser` (the precedence ladder)
+  - `errors.py` — `ShellArithmeticError`/`ArithmeticError`, `_to_signed64`
+  - `evaluator.py` — `ArithmeticEvaluator` + `evaluate_arithmetic` /
+    `execute_arithmetic_expansion`
+  - `__init__.py` — re-exports the full prior public surface, so every
+    existing importer (`evaluate_arithmetic`, `execute_arithmetic_expansion`,
+    `ArithmeticError`, the tokenizer/parser/nodes) keeps working unchanged.
+- SAFETY NET: a 150-case frozen characterization harness
+  (`tests/unit/expansion/test_arithmetic_characterization.py`) — all bases,
+  every operator, full precedence/associativity, inc/dec, all compound
+  assignments, variable/array reads, the error suite — written FIRST,
+  confirmed green on the original module, still green after. Full suite green
+  (6,074 passed). ruff + mypy clean. Two stale doc-pointers (ARCHITECTURE.md,
+  expansion/CLAUDE.md) referencing the old path were updated.
+- PRE-EXISTING bug confirmed during characterization (NOT introduced here,
+  identical on pristine main; recorded in `docs/reviews/reappraisal_4_tier_b.md`
+  for a future behavior release): associative-array elements don't resolve
+  inside `$(( ))` (`m[k]*2` → 0 vs bash 18); indexed arrays work.
+
 ## 0.332.0 (2026-06-13) - Reappraisal #4 Tier B3: cmdsub scanner decomposition
 - REFACTOR (zero behavior change): `psh/lexer/cmdsub_scanner.py`'s
   `find_command_substitution_end` was a single ~341-line function and a known
