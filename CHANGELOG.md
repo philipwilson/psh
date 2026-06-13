@@ -4,6 +4,35 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.331.0 (2026-06-13) - Reappraisal #4 Tier B2: strict internal-error mode
+- NEW OPTION `strict-errors` (off by default; `set -o strict-errors` /
+  `set +o strict-errors`, and seeded from the `PSH_STRICT_ERRORS` env var
+  the way `debug-exec` is a debug-family option — settable but not listed in
+  `set -o`). When on, an UNEXPECTED exception escaping command execution is
+  re-raised instead of being masked as a generic `psh: ...` exit-1, so a test
+  harness can tell a genuine psh internal defect apart from an ordinary
+  nonzero command exit.
+- SINGLE SOURCE OF TRUTH: the four structurally-identical last-resort
+  "internal defect" guards — `command.py` (`_handle_execution_error`),
+  `strategies.py` (`execute_builtin_guarded`), `function.py` (function body),
+  and `source_processor.py` (the outermost buffered-statement guard) — now
+  all delegate to one helper, `psh.core.report_internal_defect`. The
+  deliberate shell-semantics / control-flow exceptions each site already
+  re-raises (FunctionReturn/LoopBreak/LoopContinue/SystemExit, readonly,
+  unbound, ExpansionError, ...) are unchanged.
+- ZERO BEHAVIOR CHANGE with the option off: the non-strict path is
+  byte-identical (same messages, same exit codes, traceback still only under
+  `--debug-exec`). Default suite stays green (5,822 passed; +7 new tests in
+  `tests/unit/core/test_strict_internal_errors.py`).
+- FOLLOW-UP (documented, not fixed here): the strict-mode sweep surfaced ~20
+  legitimate shell-error paths (bad fd / noclobber / redirect-rollback
+  `OSError`, division-by-zero `ShellArithmeticError`, unclosed-quote
+  `UnclosedQuoteError`, invalid/readonly function-name `ValueError`) that
+  currently flow through the internal-defect guard rather than being
+  classified as deliberate shell semantics. Reclassifying them (a proper
+  expected-error taxonomy) is the prerequisite to ever enabling strict mode
+  suite-wide; recorded in `docs/reviews/reappraisal_4_tier_b.md`.
+
 ## 0.330.0 (2026-06-13) - Reappraisal #4 Tier B: CI health
 - CI SPEED: the per-PR `tests.yml` gate now runs the **full** suite in
   parallel (`run_tests.py --parallel`) instead of `--quick --coverage`, and

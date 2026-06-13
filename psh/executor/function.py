@@ -116,13 +116,13 @@ class FunctionOperationExecutor:
             # Let unbound variable errors propagate
             raise
         except Exception as e:
-            # Last-resort guard: surface the traceback under --debug-exec so a
-            # defect inside the function body isn't hidden.
-            if self.shell.state.options.get('debug-exec'):
-                import traceback
-                traceback.print_exc(file=self.shell.state.stderr)
-            print(f"psh: {name}: {e}", file=self.shell.state.stderr)
-            return 1
+            # Last-resort guard: a defect inside the function body. Keep the
+            # shell alive (or re-raise under strict-errors) — see
+            # report_internal_defect for the policy.
+            from ..core import report_internal_defect
+            return report_internal_defect(
+                self.shell.state, e, prefix=f"{name}: ",
+                stream=self.shell.state.stderr)
         finally:
             # Pop function scope
             self.shell.state.scope_manager.pop_scope()

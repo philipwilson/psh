@@ -312,13 +312,10 @@ class CommandExecutor:
             return expansion_exit_code
 
         # Last-resort guard: anything else is likely an internal defect.
-        # Keep the shell alive but surface the traceback under --debug-exec
-        # so the bug isn't hidden behind the generic message.
-        if self.state.options.get('debug-exec'):
-            import traceback
-            traceback.print_exc(file=self.state.stderr)
-        print(f"psh: {e}", file=self.state.stderr)
-        return 1
+        # Keep the shell alive (or re-raise under strict-errors) — see
+        # report_internal_defect for the policy.
+        from ..core import report_internal_defect
+        return report_internal_defect(self.state, e, stream=self.state.stderr)
 
     def _expand_arguments(self, node: 'SimpleCommand', *,
                           declaration_eligible: bool = True) -> List[str]:

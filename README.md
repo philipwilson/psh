@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.330.0 | **Tests**: 6,051 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.331.0 | **Tests**: 6,058 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~49,100 lines of production code in `psh/` across 193 Python files, plus ~59,500 lines of tests in `tests/` (262 Python files)
-- **Test Coverage**: 6,051 tests in 276 test files
+- **Test Coverage**: 6,058 tests in 276 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.331.0**: reappraisal #4 Tier B2 (strict internal-error mode) — a new opt-in `strict-errors` shell option (seeded from `PSH_STRICT_ERRORS`) makes the four last-resort "internal defect" guards re-raise an unexpected exception instead of masking it as a generic exit-1, so a test harness can tell a real psh bug apart from an ordinary command failure; the four guards now delegate to one `report_internal_defect` helper (single source of truth). Off by default — zero behavior change. The strict-mode sweep also produced an inventory of ~20 shell-error paths that raise exceptions through the defect guard (a documented follow-up: classify them as deliberate shell semantics so strict mode can eventually run suite-wide)
 - **v0.330.0**: reappraisal #4 Tier B (CI health) — the per-PR gate now runs the full suite in parallel (`run_tests.py --parallel`) with pip caching instead of `--quick --coverage`, roughly halving cycle time; coverage moved to the nightly run (it was already non-gating); a new `release-tag.yml` auto-creates the `vX.Y.Z` tag when `psh/version.py` lands on main, closing the release loop for asynchronous merges
 - **v0.329.0**: reappraisal #4 Tier B1 (tooling honesty) — bare `ruff check .` now passes (archive excluded, root `conftest.py` cleaned) while `ruff check psh tests` stays the strict production gate; the independent 2026-06-13 code-quality assessment filed into `docs/reviews/` and its verified residue queued as the reappraisal #4 Tier B plan
 - **v0.328.0**: textbook Tier B10b — THE TEXTBOOK PROGRAM CLOSES: exported variables sync to the env through one observer (22/22 bash matrix incl. local shadowing, declared-unset semantics, arrays-never-exported); declare's if-chains table-driven + shared declare_format; read's three loops unified (six unshared quirks found and pinned); one procsub resolver; the `$*` IFS bug and leaked `#=0` set-entries fixed; −93 net production lines

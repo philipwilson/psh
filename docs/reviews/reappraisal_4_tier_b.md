@@ -31,6 +31,29 @@ Discarded after verification (already done / not real):
 | B6 | Single-authority state | Collapse `ExecutionContext`/`ShellState` forked-child flag duplication; centralize special-variable lookup. |
 | B7 | ProcessLauncher failure-path tests | fork failure, redirect failure, signal interruption, stopped jobs, process-sub cleanup. |
 
+## Emergent follow-up (from B2, 2026-06-13)
+
+B2's strict-mode diagnostic sweep (`PSH_STRICT_ERRORS=1` over the full
+suite) surfaced **~20 legitimate shell-error paths** that currently flow
+through the last-resort *internal-defect* guard rather than being
+classified as deliberate shell semantics:
+
+- bad / unopened fd, `noclobber` overwrite, and redirect-rollback paths →
+  `OSError` (`psh/io_redirect/...`)
+- division by zero → `ShellArithmeticError`
+- unclosed quote → `UnclosedQuoteError`
+- invalid / readonly function name → bare `ValueError` (`psh/executor/core.py`)
+
+None are bugs — in non-strict mode they already produce a clean message +
+exit code. But they mean strict mode can't run suite-wide yet (they'd be
+false positives). The real fix is an **expected-error taxonomy**: a base
+shell-error type for conditions that are normal shell failures, so the
+guards re-raise control-flow + handle any expected `PshError` + treat only
+*truly* unexpected exceptions as defects. That work (call it **B2-R2**) is
+the prerequisite to enabling `strict-errors` in `conftest` globally and
+catching internal regressions automatically. Recorded here as a candidate;
+not yet scheduled.
+
 ## Method (unchanged from the Textbook Program)
 
 Per release: `fix/`/`chore/` branch → subagent implements (no commits,

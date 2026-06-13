@@ -82,6 +82,11 @@ class ShellState:
             'debug-expansion-detail': debug_expansion_detail,
             'debug-exec': debug_exec,
             'debug-exec-fork': debug_exec_fork,
+            # Re-raise unexpected internal exceptions instead of swallowing
+            # them to status 1, so a test harness surfaces internal defects.
+            # Seeded from PSH_STRICT_ERRORS below; toggle with
+            # set -o strict-errors / set +o strict-errors.
+            'strict-errors': self._seed_strict_errors(),
             # Shell options (existing)
             'errexit': False,      # -e: exit on error
             'nounset': False,      # -u: error on undefined variables
@@ -201,6 +206,17 @@ class ShellState:
 
         # Detect terminal capabilities after initialization
         self._detect_terminal_capabilities()
+
+    def _seed_strict_errors(self) -> bool:
+        """Default value for the strict-errors option, from the environment.
+
+        The test harness flips PSH_STRICT_ERRORS to surface latent internal
+        defects (otherwise masked as a generic exit-1). Truthy values are
+        ``1``/``true``/``yes`` (case-insensitive), mirroring the
+        PSH_SHOW_ALL_OPTIONS convention; anything else is False.
+        """
+        return self.env.get('PSH_STRICT_ERRORS', '').lower() in ('1', 'true',
+                                                                  'yes')
 
     def adopt(self, parent: 'ShellState') -> None:
         """Copy inheritable execution state from a parent shell's state.
