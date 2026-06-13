@@ -267,15 +267,15 @@ class SourceProcessor(ScriptComponent):
             if nested and isinstance(e, (LoopBreak, LoopContinue, FunctionReturn)):
                 raise
             # Last-resort guard so an internal defect doesn't kill an
-            # interactive session. Surface the full traceback under --debug-exec
-            # so the bug is not hidden behind the generic message.
+            # interactive session (or re-raise under strict-errors so a test
+            # harness surfaces it) — see report_internal_defect for the policy.
+            from ..core import report_internal_defect
             location = f"{input_source.get_name()}:{start_line}" if start_line > 0 else "command"
-            if self.state.options.get('debug-exec'):
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-            print(f"psh: {location}: unexpected error: {e}", file=sys.stderr)
-            self.state.last_exit_code = 1
-            return 1
+            rc = report_internal_defect(
+                self.state, e, prefix=f"{location}: unexpected error: ",
+                stream=sys.stderr)
+            self.state.last_exit_code = rc
+            return rc
 
     def _debug_print_tokens(self, tokens) -> None:
         """Print the token stream when --debug-tokens is enabled."""

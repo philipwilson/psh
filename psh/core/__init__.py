@@ -5,6 +5,7 @@ Modules:
     exceptions       - Control flow and error exceptions
     options          - Shell option behaviour handlers
     scope   - Hierarchical variable scope management
+    internal_errors  - Last-resort guard for unexpected internal exceptions
     state            - Central shell state container
     trap_manager     - Signal trap management
     variables        - Variable types, attributes, and array implementations
@@ -24,6 +25,7 @@ from .exceptions import (
     ReadonlyVariableError,
     UnboundVariableError,
 )
+from .internal_errors import report_internal_defect
 from .options import OptionHandler
 from .scope import ScopeManager, VariableScope
 from .state import ShellState
@@ -50,6 +52,8 @@ __all__ = [
     'ShellState',
     # Options
     'OptionHandler',
+    # Internal-defect guard
+    'report_internal_defect',
     # Traps
     'TrapManager',
     # Assignment utilities

@@ -103,11 +103,9 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
         if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue,
                           UnboundVariableError)):
             raise
-        if shell.state.options.get('debug-exec'):
-            import traceback
-            traceback.print_exc(file=shell.stderr)
-        print(f"psh: {cmd_name}: {e}", file=shell.stderr)
-        return 1
+        from ..core import report_internal_defect
+        return report_internal_defect(shell.state, e, prefix=f"{cmd_name}: ",
+                                      stream=shell.stderr)
 
 
 class ExecutionStrategy(ABC):
