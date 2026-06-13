@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.372.0 (2026-06-14) - Tier T3.3: brace_expansion.py clarity refactor
+- REFACTOR (zero behavior change). `psh/expansion/brace_expansion.py` was the
+  last large file at the old altitude; reorganized into explicitly-named,
+  top-to-bottom phases with per-phase docstrings: drive-to-fixed-point
+  (`_expand_braces`/`_did_expand`), expand-leftmost-and-recombine
+  (`_expand_one_brace` → `_generate_items`/`_split_detachable_suffix`/
+  `_combine`), locate-a-group (`_find_brace_group` returning a frozen
+  `_BraceGroup` dataclass; `${...}` skip extracted to
+  `_skip_parameter_expansion`; validation split), lists (`_expand_list` +
+  `_split_top_level_commas`), and sequences (`_try_numeric_sequence`/
+  `_try_char_sequence` sharing new `_normalize_step` + `_format_padded` helpers).
+  Magic operator strings named as module constants.
+- Max body-nesting depth 6 → 4; removed an unreachable `isdigit` branch in the
+  char-sequence path (digits always take the numeric path first).
+- Two frozen characterization batteries (73-case: lists/sequences/nesting/
+  escaping/degenerate/multi-word; 12-case: assignment-zone suppression, pipes,
+  loops, background, quoting) are byte-identical before/after.
+- Noted (pre-existing, NOT fixed): two brace-vs-bash divergences — `{Z..a}`
+  backslash handling in the char range, and `}{a,b}{` (psh leaves literal, bash
+  expands the inner group).
+- Full gate green: ruff + mypy clean (file in scope), `run_tests.py --parallel`
+  6837 passed.
+
 ## 0.371.0 (2026-06-14) - Tier T3.1: finish [[ ]] Word adoption (+ quoting fixes)
 - REFACTOR + BEHAVIOR FIX (bash-verified). The `[[ ]]` binary-test operands are
   now genuine multi-part `Word`s carrying per-part quote context (like
