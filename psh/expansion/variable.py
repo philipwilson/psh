@@ -12,7 +12,7 @@ This module keeps the entry points (string scanning, name resolution,
 special variables, ${!name} indirection) and dispatch.
 """
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 
 from .arrays import ArrayOpsMixin
 from .fields import FieldExpansionMixin
@@ -223,92 +223,12 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 index = int(var_name) - 1
                 value = self.state.positional_params[index] if 0 <= index < len(self.state.positional_params) else ''
         elif '[' in var_name and var_name.endswith(']'):
-            # Array element with parameter expansion
-            bracket_pos = var_name.find('[')
-            array_name = var_name[:bracket_pos]
-            index_expr = var_name[bracket_pos+1:-1]
-
-            from ..core import AssociativeArray, IndexedArray
-            var = self.state.scope_manager.get_variable_object(array_name)
-
-            # Handle special indices @ and * for whole-array operations
-            if index_expr in ('@', '*'):
-                # ${#arr[@]} / ${#arr[*]} — array element count
-                if operator == '#' and not operand:
-                    if var and isinstance(var.value, (IndexedArray, AssociativeArray)):
-                        return str(var.value.length())
-                    elif var and var.value:
-                        return '1'
-                    else:
-                        return '0'
-
-                if var and isinstance(var.value, (IndexedArray, AssociativeArray)):
-                    elements = var.value.all_elements()
-                elif var and var.value:
-                    elements = [str(var.value)]
-                else:
-                    elements = []
-
-                # ${arr[@]:offset:length} — array slice (select elements
-                # by INDEX for sparse indexed arrays), or a string
-                # substring when the subscripted variable is a scalar.
-                if operator == ':':
-                    what = f"{array_name}[{index_expr}]"
-                    if var and isinstance(var.value, IndexedArray):
-                        sliced = self._slice_sequence(
-                            elements, operand, what=what,
-                            indices=var.value.indices())
-                    elif var and isinstance(var.value, AssociativeArray):
-                        sliced = self._slice_sequence(elements, operand, what=what)
-                    elif elements:
-                        offset, length = self._parse_slice_operand(operand, what)
-                        sliced = self._slice_scalar_subscript(elements[0], offset, length)
-                    else:
-                        sliced = []
-                    if index_expr == '@':
-                        return ' '.join(sliced)
-                    return self._ifs_star_separator().join(sliced)
-
-                # Whole-array transform: ${arr[@]@A} -> a `declare` statement.
-                if operator == '@A':
-                    return self._array_assignment_form(array_name, var)
-
-                # Conditional operators on the whole array (bash): non-empty
-                # keeps its elements, otherwise the default text applies.
-                joiner = ' ' if index_expr == '@' else self._ifs_star_separator()
-                if operator in (':-', '-'):
-                    if elements:
-                        return joiner.join(elements)
-                    return self._expand_operand(operand or '')
-                if operator in (':+', '+'):
-                    if not elements:
-                        return ''
-                    return self._expand_operand(operand or '')
-                if operator in (':=', '=', ':?', '?'):
-                    # Keep the elements when non-empty; like the quoted path
-                    # (expand_to_fields), no per-element assignment/error is
-                    # performed on @-subscripts.
-                    return joiner.join(elements)
-
-                # Per-element transforms (@Q/@U/@u/@L/@E/@P/@a) apply to each
-                # element; the @-operators need the array *name* (not the
-                # subscripted form) so e.g. ${arr[@]@a} reports the array flag.
-                op_var = array_name if (len(operator) == 2 and operator[0] == '@') else var_name
-                results = []
-                for element in elements:
-                    results.append(self._apply_operator(operator, element, operand,
-                                                        var_name=op_var))
-
-                if index_expr == '@':
-                    return ' '.join(results)
-                else:
-                    return self._ifs_star_separator().join(results)
-
-            # Regular indexed/associative element access — through the
-            # canonical subscript evaluator, so a scalar with subscript
-            # resolves like bash (${x[0]} of a scalar x is $x).
-            else:
-                value = self._expand_array_subscript(var_name)
+            # Array element with parameter expansion. Whole-array @/* forms
+            # return directly; a regular element access yields a scalar value
+            # that falls through to the shared operator application below.
+            handled, value = self._expand_array_parameter(operator, var_name, operand)
+            if handled:
+                return value
         else:
             # Use _get_var_or_positional to handle special variables (#, ?, $, etc.)
             value = self._get_var_or_positional(var_name)
@@ -317,6 +237,105 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                         or (len(operator) == 2 and operator[0] == '@'))
         is_set = self._param_is_set(var_name) if needs_is_set else True
         return self._apply_operator(operator, value, operand, var_name=var_name, is_set=is_set)
+
+    def _expand_array_parameter(self, operator: str, var_name: str,
+                                operand: str) -> Tuple[bool, str]:
+        """Expand the array-subscript branch of ``${arr[...]<op>...}``.
+
+        Handles whole-array ``[@]``/``[*]`` forms (count, slice, conditional
+        and per-element transforms) which produce a finished string, as well
+        as regular indexed/associative element access which yields a scalar.
+
+        Returns ``(handled, value)``: when *handled* is True the *value* is
+        already the complete expansion result and the caller must return it
+        directly; when False the *value* is a scalar to be fed through the
+        shared operator application in ``expand_parameter_direct``.
+        """
+        bracket_pos = var_name.find('[')
+        array_name = var_name[:bracket_pos]
+        index_expr = var_name[bracket_pos+1:-1]
+
+        from ..core import AssociativeArray, IndexedArray
+        var = self.state.scope_manager.get_variable_object(array_name)
+
+        # Handle special indices @ and * for whole-array operations
+        if index_expr in ('@', '*'):
+            # ${#arr[@]} / ${#arr[*]} — array element count
+            if operator == '#' and not operand:
+                if var and isinstance(var.value, (IndexedArray, AssociativeArray)):
+                    return True, str(var.value.length())
+                elif var and var.value:
+                    return True, '1'
+                else:
+                    return True, '0'
+
+            if var and isinstance(var.value, (IndexedArray, AssociativeArray)):
+                elements = var.value.all_elements()
+            elif var and var.value:
+                elements = [str(var.value)]
+            else:
+                elements = []
+
+            # ${arr[@]:offset:length} — array slice (select elements
+            # by INDEX for sparse indexed arrays), or a string
+            # substring when the subscripted variable is a scalar.
+            if operator == ':':
+                what = f"{array_name}[{index_expr}]"
+                if var and isinstance(var.value, IndexedArray):
+                    sliced = self._slice_sequence(
+                        elements, operand, what=what,
+                        indices=var.value.indices())
+                elif var and isinstance(var.value, AssociativeArray):
+                    sliced = self._slice_sequence(elements, operand, what=what)
+                elif elements:
+                    offset, length = self._parse_slice_operand(operand, what)
+                    sliced = self._slice_scalar_subscript(elements[0], offset, length)
+                else:
+                    sliced = []
+                if index_expr == '@':
+                    return True, ' '.join(sliced)
+                return True, self._ifs_star_separator().join(sliced)
+
+            # Whole-array transform: ${arr[@]@A} -> a `declare` statement.
+            if operator == '@A':
+                return True, self._array_assignment_form(array_name, var)
+
+            # Conditional operators on the whole array (bash): non-empty
+            # keeps its elements, otherwise the default text applies.
+            joiner = ' ' if index_expr == '@' else self._ifs_star_separator()
+            if operator in (':-', '-'):
+                if elements:
+                    return True, joiner.join(elements)
+                return True, self._expand_operand(operand or '')
+            if operator in (':+', '+'):
+                if not elements:
+                    return True, ''
+                return True, self._expand_operand(operand or '')
+            if operator in (':=', '=', ':?', '?'):
+                # Keep the elements when non-empty; like the quoted path
+                # (expand_to_fields), no per-element assignment/error is
+                # performed on @-subscripts.
+                return True, joiner.join(elements)
+
+            # Per-element transforms (@Q/@U/@u/@L/@E/@P/@a) apply to each
+            # element; the @-operators need the array *name* (not the
+            # subscripted form) so e.g. ${arr[@]@a} reports the array flag.
+            op_var = array_name if (len(operator) == 2 and operator[0] == '@') else var_name
+            results = []
+            for element in elements:
+                results.append(self._apply_operator(operator, element, operand,
+                                                    var_name=op_var))
+
+            if index_expr == '@':
+                return True, ' '.join(results)
+            else:
+                return True, self._ifs_star_separator().join(results)
+
+        # Regular indexed/associative element access — through the
+        # canonical subscript evaluator, so a scalar with subscript
+        # resolves like bash (${x[0]} of a scalar x is $x). The scalar
+        # value falls through to the shared operator application.
+        return False, self._expand_array_subscript(var_name)
 
     def _expand_indirect(self, name: str) -> str:
         """Expand ${!name}.
@@ -408,37 +427,48 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 result.append(expanded)
                 continue
             elif text[i] == '\\' and i + 1 < len(text):
-                # Handle escape sequences
-                next_char = text[i + 1]
-                # Note: Standard C escape sequences like \n, \t are NOT processed in shell strings
-                # They remain as literal \n, \t for compatibility with prompt expansion
-                # Only backslash before special shell characters is processed
-                if next_char == '\\':
-                    result.append('\\')
-                    i += 2
-                    continue
-                elif next_char in '"$`':
-                    # In double quotes, these characters can be escaped
-                    # But for $ and `, we need to check if they're actually escaping something
-                    if next_char == '$':
-                        # Check if this is escaping a variable expansion
-                        if i + 2 < len(text) and (text[i + 2].isalnum() or text[i + 2] in '_${(@#*!?'):
-                            # This is escaping a variable expansion, remove the backslash
-                            result.append(next_char)
-                            i += 2
-                            continue
-                        else:
-                            # Not escaping a variable, keep the backslash (for PS1 compatibility)
-                            result.append(text[i])
-                            i += 1
-                            continue
-                    else:
-                        # For " and `, always remove the backslash
-                        result.append(next_char)
-                        i += 2
-                        continue
+                piece, i = self._process_double_quote_escape(text, i)
+                result.append(piece)
+                continue
 
             result.append(text[i])
             i += 1
 
         return ''.join(result)
+
+    def _process_double_quote_escape(self, text: str, i: int) -> Tuple[str, int]:
+        """Apply double-quote backslash-escape rules at ``text[i] == '\\'``.
+
+        Only a backslash before a shell-special character (``\\``, ``"``,
+        ``$``, `````) is processed; C escapes like ``\\n``/``\\t`` stay
+        literal (prompt-expansion compatibility). For ``\\$`` the backslash
+        is removed only when it actually shields a variable expansion;
+        otherwise it is kept (PS1 compatibility). For an unrecognized
+        following character the backslash itself is emitted verbatim.
+
+        Returns ``(piece, new_i)`` — the text to append and the index to
+        resume scanning from.
+        """
+        next_char = text[i + 1]
+        # Note: Standard C escape sequences like \n, \t are NOT processed in shell strings
+        # They remain as literal \n, \t for compatibility with prompt expansion
+        # Only backslash before special shell characters is processed
+        if next_char == '\\':
+            return '\\', i + 2
+        elif next_char in '"$`':
+            # In double quotes, these characters can be escaped
+            # But for $ and `, we need to check if they're actually escaping something
+            if next_char == '$':
+                # Check if this is escaping a variable expansion
+                if i + 2 < len(text) and (text[i + 2].isalnum() or text[i + 2] in '_${(@#*!?'):
+                    # This is escaping a variable expansion, remove the backslash
+                    return next_char, i + 2
+                else:
+                    # Not escaping a variable, keep the backslash (for PS1 compatibility)
+                    return text[i], i + 1
+            else:
+                # For " and `, always remove the backslash
+                return next_char, i + 2
+
+        # Unrecognized escape — emit the backslash verbatim.
+        return text[i], i + 1
