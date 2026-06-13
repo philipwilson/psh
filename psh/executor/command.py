@@ -293,13 +293,14 @@ class CommandExecutor:
             # (which is exactly the argv element the builtin sees, since
             # declaration-builtin values are never word-split). The
             # builtin expands them through the SAME structured path the
-            # bare ``a=(...)`` form uses — no shlex reparse. The
-            # attribute is scoped (set here, cleared in finally) and
-            # never globally mutable; see the array-init seam note below.
+            # bare ``a=(...)`` form uses — no shlex reparse. The handoff is
+            # an explicit, single-owner API on the shell (set here, peeked
+            # by the builtin, cleared in finally) — never a globally mutable
+            # attribute; see the array-init seam note below.
             pending_inits = self._collect_array_inits(command_node)
             set_inits = pending_inits is not None
             if set_inits:
-                self.shell._pending_array_inits = pending_inits
+                self.shell.set_pending_array_inits(pending_inits)
             try:
                 # Execute the command using appropriate strategy
                 exit_code, is_special = self._execute_with_strategy(
@@ -308,7 +309,7 @@ class CommandExecutor:
                 )
             finally:
                 if set_inits:
-                    self.shell._pending_array_inits = None
+                    self.shell.clear_pending_array_inits()
             return exit_code
 
         finally:

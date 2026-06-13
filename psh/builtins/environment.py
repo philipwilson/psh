@@ -76,13 +76,13 @@ class ExportBuiltin(Builtin):
             # ``export NAME=(...)`` makes an indexed array with the export
             # attribute (bash; arrays are never written to the environment).
             # The parser attaches a structured ArrayInitialization to the arg
-            # Word, delivered via the scoped shell._pending_array_inits map;
-            # expand it through the SAME structured path the bare ``a=(...)``
-            # form uses (no shlex reparse). Delegating to declare keeps the
-            # array attribute logic in one place.
+            # Word, delivered via the shell's explicit pending-array-init
+            # handoff; expand it through the SAME structured path the bare
+            # ``a=(...)`` form uses (no shlex reparse). Delegating to declare
+            # keeps the array attribute logic in one place — and because the
+            # handoff is a non-consuming peek, declare re-reads the same map.
             if not print_mode and not unexport:
-                pending = getattr(shell, '_pending_array_inits', None)
-                if pending is not None and arg in pending:
+                if shell.pending_array_init(arg) is not None:
                     from .registry import registry
                     rc = registry.get('declare').execute(
                         ['declare', '-x', arg], shell)

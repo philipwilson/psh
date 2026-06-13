@@ -160,8 +160,8 @@ class LocalBuiltin(Builtin):
                 # Array initialization is keyed STRICTLY on the parser having
                 # seen literal ``var=(...)`` syntax: it attaches a structured
                 # ArrayInitialization to the arg Word, delivered via the
-                # scoped shell._pending_array_inits map. We expand it through
-                # the SAME structured path the bare ``a=(...)`` form uses (no
+                # shell's explicit pending-array-init handoff. We expand it
+                # through the SAME structured path the bare ``a=(...)`` form uses (no
                 # shlex reparse). A merely paren-shaped VALUE that did NOT
                 # come from array syntax (``local "a=(1 2)"``) is a scalar in
                 # bash, so it is NOT array-ified.
@@ -219,13 +219,10 @@ class LocalBuiltin(Builtin):
 
     def _pending_array_init(self, shell: 'Shell', arg: str):
         """Look up the structured ArrayInitialization the parser attached to
-        this ``name=(...)`` argument, or None (scoped on shell by the
+        this ``name=(...)`` argument, or None (installed on shell by the
         executor for the duration of this builtin call). Keyed by argv
         element."""
-        pending = getattr(shell, '_pending_array_inits', None)
-        if pending is None:
-            return None
-        return pending.get(arg)
+        return shell.pending_array_init(arg)
 
     def _build_indexed_array(self, array_init, into, shell: 'Shell'):
         """Build an IndexedArray from the structured init via the shared
