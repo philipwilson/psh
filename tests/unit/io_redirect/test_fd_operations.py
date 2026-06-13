@@ -1,6 +1,7 @@
 """Tests for file descriptor operations: close (>&-, <&-) and input dup (<&)."""
 import subprocess
 import sys
+from shlex import quote
 
 
 def run_psh(cmd):
@@ -92,10 +93,12 @@ class TestDynamicDupTarget:
     number before the dup. See docs / brace_expansion is unrelated.
     """
 
-    def test_dup_stdout_to_arithmetic_fd(self):
+    def test_dup_stdout_to_arithmetic_fd(self, tmp_path):
         # >&$((1+2)) duplicates fd 3 (opened by exec) — write reaches the file.
+        out_file = tmp_path / "dyn-fd.txt"
         out, err, rc = run_psh(
-            'exec 3>/dev/stdout; echo hi >&$((1+2)); exec 3>&-')
+            f'exec 3>{quote(str(out_file))}; echo hi >&$((1+2)); exec 3>&-; '
+            f'cat {quote(str(out_file))}')
         assert rc == 0
         assert out.strip() == "hi"
 
