@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.366.0 (2026-06-13) - Tier T2.5: unify glob-metacharacter detection
+- REFACTOR (zero behavior change). The "does this string contain glob
+  metacharacters" predicate was written inline `any(c in s for c in '*?[')` at
+  7 sites (plus 2 per-char checks) across `glob.py` and `word_expander.py`.
+  Collapsed to one source of truth in `psh/expansion/glob.py`:
+  `GLOB_METACHARS = frozenset('*?[')` and `has_glob_metacharacters(s)`.
+- No divergence: every site already used exactly `*?[` — the duplication was
+  textual, not behavioral. The separate, already-centralized extglob predicate
+  (`extglob.contains_extglob`) is untouched. Two visitor-layer sites are left
+  as-is on purpose (a static-analysis visitor that shouldn't couple to the
+  runtime expander, and a formatter that uses a different `*?[]` set for a
+  quoting decision).
+- A 24-word characterization harness (globs, bracket exprs, escaped/quoted,
+  extglob `@()/?()/*()/+()/!()`, char classes, `**`, dotfiles) run through real
+  globbing with extglob both off and on produced identical results before/after.
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6795 passed.
+
 ## 0.365.0 (2026-06-13) - Tier T2.4: split environment.py (extract env builtin)
 - REFACTOR (zero behavior change, registry-identical). The 671-line
   `psh/builtins/environment.py` held `export`, `set`, `unset`, and `env`. The
