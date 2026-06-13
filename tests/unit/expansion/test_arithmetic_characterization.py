@@ -18,13 +18,16 @@ from psh.expansion.arithmetic import (
     ArithTokenizer,
     evaluate_arithmetic,
 )
-from psh.shell import Shell
 
 
 @pytest.fixture
-def sh():
-    """A fresh shell with a few variables/arrays pre-seeded for var cases."""
-    shell = Shell()
+def sh(shell):
+    """A shell with a few variables/arrays pre-seeded for var cases.
+
+    Builds on the conftest ``shell`` fixture so its teardown
+    (``_cleanup_shell``: reap jobs, close signal-notifier pipe FDs) runs —
+    constructing a bare ``Shell()`` here leaked those FDs across the suite.
+    """
     st = shell.state
     st.set_variable("a", "5")
     st.set_variable("b", "3")
@@ -310,8 +313,8 @@ def test_array_element_increment_unset_index(sh):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def assoc_sh():
-    shell = Shell()
+def assoc_sh(shell):
+    # Builds on the conftest ``shell`` fixture for proper teardown (see ``sh``).
     shell.run_command("declare -A m")
     shell.run_command("m[k]=9")
     shell.run_command("m[a]=99")
