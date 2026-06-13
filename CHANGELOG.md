@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.351.0 (2026-06-13) - Prune docs/archive
+- DOCS ONLY (no code change): removed 298 stale development-history files from
+  `docs/archive/` — completed implementation plans, phase summaries, and
+  point-in-time analyses accumulated through the project's development, with no
+  live references from code, tests, or current docs. All are recoverable from
+  git history.
+- KEPT `docs/archive/CHANGELOG_history.md` (the pre-v0.200.0 version history),
+  which `CHANGELOG.md` references live; the `pyproject.toml` ruff
+  `extend-exclude = ["docs/archive"]` remains valid (still covers it).
+- Verified: `ruff check .` passes, the doc-pointer and README-statistics
+  meta-tests pass, the full suite is green (6,735), and the CHANGELOG pointer
+  still resolves.
+
 ## 0.350.0 (2026-06-13) - Docs sync after reappraisal #4
 - DOCS ONLY (no code change): brought the architecture/CLAUDE docs current
   after the reappraisal #4 program.
