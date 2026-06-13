@@ -8,6 +8,7 @@ Modules:
     debug_control   - debug-related commands
     directory_stack - pushd, popd, dirs
     disown          - disown
+    env_command     - env
     environment     - export, set, unset
     eval_command    - eval
     function_support - declare, typeset, readonly, return; FunctionReturn exception
@@ -43,6 +44,7 @@ from . import (
     debug_control,
     directory_stack,
     disown,
+    env_command,
     environment,
     eval_command,
     function_support,

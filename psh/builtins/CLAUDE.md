@@ -41,7 +41,8 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 **Variables & Environment**
 | File | Commands |
 |------|----------|
-| `environment.py` | `env`, `export`, `set`, `unset` |
+| `env_command.py` | `env` (runs command in nested child Shell; owns process-fd binding helpers) |
+| `environment.py` | `export`, `set`, `unset` |
 | `shell_options.py` | `shopt` |
 | `shell_state.py` | `history`, `version`, `local` |
 | `positional.py` | `shift`, `getopts` |
