@@ -13,6 +13,7 @@ runs and whether prefix assignments persist (POSIX special builtins).
 """
 
 import sys
+from enum import Enum
 from typing import TYPE_CHECKING, List, Tuple
 
 from ..core import ReadonlyVariableError
@@ -31,6 +32,41 @@ if TYPE_CHECKING:
     from ..shell import Shell
     from .context import ExecutionContext
     from .core import ExecutorVisitor
+
+
+class RedirectionMode(Enum):
+    """How a matched command's redirections are applied.
+
+    Once a command name resolves to an execution strategy, exactly one of
+    these modes governs the redirection handling. The choice is decided in
+    one place (``_decide_redirection_mode``) and dispatched in one place
+    (``_execute_with_strategy``).
+
+    BUILTIN_INPROCESS
+        A builtin (or special builtin) running in THIS process, not in a
+        pipeline and not in a forked child. Redirections are applied at the
+        Python-stream level and saved/restored around the single command
+        (``_execute_builtin_with_redirections``), so they do not persist.
+
+    EXTERNAL_DEFERRED
+        An external command. Its redirections are NOT applied here — they
+        are set up inside the forked child (``setup_child_redirections``).
+        Applying them in the parent too would resolve ``2>&1`` against
+        already-redirected fds and run heredoc/target command
+        substitutions twice.
+
+    FD_LEVEL_WINDOW
+        Everything else — functions, aliases, and builtins that run in a
+        pipeline or in a forked child. Redirections are applied at the fd
+        level via ``io_manager.with_redirections`` (a save/restore window)
+        because in a forked child builtins use ``os.write()`` on raw fds,
+        so ``os.dup2()`` redirection is required rather than Python-level
+        ``sys.stdout`` replacement.
+    """
+
+    BUILTIN_INPROCESS = "builtin_inprocess"
+    EXTERNAL_DEFERRED = "external_deferred"
+    FD_LEVEL_WINDOW = "fd_level_window"
 
 
 class CommandExecutor:
@@ -389,45 +425,69 @@ class CommandExecutor:
         else:
             strategies_to_use = self.strategies
 
-        # Find the right strategy
+        # Find the right strategy, then apply its redirections according to
+        # the one mode decided by _decide_redirection_mode.
         for strategy in strategies_to_use:
             if strategy.can_execute(cmd_name, self.shell):
                 is_special = isinstance(strategy, SpecialBuiltinExecutionStrategy)
-                # Check if this is a builtin that needs special redirection handling.
-                # In a forked child, builtins use os.write() on raw FDs, so
-                # redirections must be applied via os.dup2() (with_redirections)
-                # rather than Python-level sys.stdout replacement
-                # (setup_builtin_redirections).
-                is_forked = self.state.in_forked_child
-                if isinstance(strategy, (SpecialBuiltinExecutionStrategy, BuiltinExecutionStrategy)) and not context.in_pipeline and not is_forked:
+                mode = self._decide_redirection_mode(strategy, context)
+
+                if mode is RedirectionMode.BUILTIN_INPROCESS:
                     exit_code = self._execute_builtin_with_redirections(
                         cmd_name, args, node, context, strategy
                     )
                     return exit_code, is_special
-                elif isinstance(strategy, ExternalExecutionStrategy):
+
+                if mode is RedirectionMode.EXTERNAL_DEFERRED:
                     # External commands apply their redirections in the
-                    # forked child (setup_child_redirections). Applying them
-                    # here too resolved `2>&1` against already-redirected
-                    # fds and ran heredoc/target command substitutions twice.
+                    # forked child (setup_child_redirections); see the mode
+                    # docstring for why we must NOT apply them here too.
                     exit_code = strategy.execute(
                         cmd_name, args, self.shell, context,
                         node.redirects, node.background,
                         visitor=self.visitor,
                     )
                     return exit_code, is_special
-                else:
-                    # Apply fd-level redirections for functions, aliases,
-                    # builtins in pipelines, and builtins in forked children
-                    with self.io_manager.with_redirections(node.redirects):
-                        exit_code = strategy.execute(
-                            cmd_name, args, self.shell, context,
-                            node.redirects, node.background,
-                            visitor=self.visitor,
-                        )
-                        return exit_code, is_special
+
+                # RedirectionMode.FD_LEVEL_WINDOW: functions, aliases,
+                # builtins in pipelines, and builtins in forked children.
+                with self.io_manager.with_redirections(node.redirects):
+                    exit_code = strategy.execute(
+                        cmd_name, args, self.shell, context,
+                        node.redirects, node.background,
+                        visitor=self.visitor,
+                    )
+                    return exit_code, is_special
 
         # Should never reach here as ExternalExecutionStrategy handles everything
         return 127, False
+
+    def _decide_redirection_mode(
+        self, strategy: 'ExecutionStrategy', context: 'ExecutionContext'
+    ) -> RedirectionMode:
+        """Select how a matched strategy's redirections are applied.
+
+        This is the single place that encodes the redirection-mode policy;
+        ``_execute_with_strategy`` performs the single dispatch on the
+        result. See ``RedirectionMode`` for what each value means.
+        """
+        is_builtin = isinstance(
+            strategy,
+            (SpecialBuiltinExecutionStrategy, BuiltinExecutionStrategy),
+        )
+        if is_builtin and not context.in_pipeline and not self.state.in_forked_child:
+            # A builtin running in this process (not a pipeline, not a
+            # forked child): redirect at the Python-stream level and
+            # save/restore around the one command.
+            return RedirectionMode.BUILTIN_INPROCESS
+
+        if isinstance(strategy, ExternalExecutionStrategy):
+            # External commands redirect inside their own forked child.
+            return RedirectionMode.EXTERNAL_DEFERRED
+
+        # Functions, aliases, and builtins that run in a pipeline or forked
+        # child: apply fd-level redirections in a save/restore window.
+        return RedirectionMode.FD_LEVEL_WINDOW
 
     def _execute_builtin_with_redirections(self, cmd_name: str, args: List[str],
                                           node: 'SimpleCommand', context: 'ExecutionContext',
