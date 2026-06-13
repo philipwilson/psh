@@ -157,7 +157,7 @@ class GetoptsBuiltin(Builtin):
         if opt_pos == -1:
             # Invalid option
             if not silent_mode and opterr:
-                print(f"getopts: illegal option -- {opt_char}", file=shell.stderr)
+                self.write_error_line(f"getopts: illegal option -- {opt_char}", shell)
 
             shell.state.set_variable(varname, '?')
             shell.state.set_variable('OPTARG', opt_char)
@@ -183,7 +183,7 @@ class GetoptsBuiltin(Builtin):
                     shell.state.set_variable('OPTARG', opt_char)
                 else:
                     if opterr:
-                        print(f"getopts: option requires an argument -- {opt_char}", file=shell.stderr)
+                        self.write_error_line(f"getopts: option requires an argument -- {opt_char}", shell)
                     shell.state.set_variable(varname, '?')
                     shell.state.scope_manager.unset_variable('OPTARG')
                 return 0

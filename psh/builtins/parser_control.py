@@ -96,7 +96,7 @@ class ParserConfigBuiltin(Builtin):
 
     def _show_config(self, shell) -> int:
         """Show current parser configuration."""
-        print("Parser Configuration:", file=shell.stdout)
+        self.write_line("Parser Configuration:", shell)
 
         # Show parsing mode
         posix_mode = shell.state.options.get('posix', False)
@@ -109,18 +109,18 @@ class ParserConfigBuiltin(Builtin):
         else:
             mode = "bash compatible"
 
-        print(f"  Mode:            {mode}", file=shell.stdout)
-        print(f"  POSIX strict:    {'on' if posix_mode else 'off'}", file=shell.stdout)
-        print(f"  Collect errors:  {'on' if collect_errors else 'off'}", file=shell.stdout)
+        self.write_line(f"  Mode:            {mode}", shell)
+        self.write_line(f"  POSIX strict:    {'on' if posix_mode else 'off'}", shell)
+        self.write_line(f"  Collect errors:  {'on' if collect_errors else 'off'}", shell)
 
         # Show feature status (based on shell options)
-        print("\nFeatures:", file=shell.stdout)
-        print(f"  Arithmetic:      {'on' if not shell.state.options.get('no_arithmetic', False) else 'off'}", file=shell.stdout)
-        print(f"  Arrays:          {'on' if not shell.state.options.get('no_arrays', False) else 'off'}", file=shell.stdout)
-        print(f"  Functions:       {'on' if not shell.state.options.get('no_functions', False) else 'off'}", file=shell.stdout)
-        print(f"  Aliases:         {'on' if not shell.state.options.get('no_aliases', False) else 'off'}", file=shell.stdout)
-        print(f"  Brace expansion: {'on' if shell.state.options.get('braceexpand', True) else 'off'}", file=shell.stdout)
-        print(f"  History expand:  {'on' if shell.state.options.get('histexpand', True) else 'off'}", file=shell.stdout)
+        self.write_line("\nFeatures:", shell)
+        self.write_line(f"  Arithmetic:      {'on' if not shell.state.options.get('no_arithmetic', False) else 'off'}", shell)
+        self.write_line(f"  Arrays:          {'on' if not shell.state.options.get('no_arrays', False) else 'off'}", shell)
+        self.write_line(f"  Functions:       {'on' if not shell.state.options.get('no_functions', False) else 'off'}", shell)
+        self.write_line(f"  Aliases:         {'on' if not shell.state.options.get('no_aliases', False) else 'off'}", shell)
+        self.write_line(f"  Brace expansion: {'on' if shell.state.options.get('braceexpand', True) else 'off'}", shell)
+        self.write_line(f"  History expand:  {'on' if shell.state.options.get('histexpand', True) else 'off'}", shell)
 
         return 0
 
@@ -134,7 +134,7 @@ class ParserConfigBuiltin(Builtin):
             # Disable non-POSIX features
             shell.state.options['braceexpand'] = False
             shell.state.options['histexpand'] = False
-            print("Parser mode set to strict POSIX", file=shell.stdout)
+            self.write_line("Parser mode set to strict POSIX", shell)
 
         elif mode in ('bash', 'compatible'):
             shell.state.options['posix'] = False
@@ -142,7 +142,7 @@ class ParserConfigBuiltin(Builtin):
             # Enable bash features
             shell.state.options['braceexpand'] = True
             shell.state.options['histexpand'] = True
-            print("Parser mode set to Bash compatible", file=shell.stdout)
+            self.write_line("Parser mode set to Bash compatible", shell)
 
         elif mode == 'permissive':
             shell.state.options['posix'] = False
@@ -150,7 +150,7 @@ class ParserConfigBuiltin(Builtin):
             # Enable all features
             shell.state.options['braceexpand'] = True
             shell.state.options['histexpand'] = True
-            print("Parser mode set to permissive", file=shell.stdout)
+            self.write_line("Parser mode set to permissive", shell)
 
         elif mode == 'educational':
             shell.state.options['posix'] = False
@@ -158,7 +158,7 @@ class ParserConfigBuiltin(Builtin):
             # Enable features but with debugging
             shell.state.options['braceexpand'] = True
             shell.state.options['histexpand'] = True
-            print("Parser mode set to educational", file=shell.stdout)
+            self.write_line("Parser mode set to educational", shell)
 
         else:
             self.error(f"unknown mode: {mode}", shell)
@@ -186,7 +186,7 @@ class ParserConfigBuiltin(Builtin):
         # Positive option: stored value == desired enabled state.
         # Negative (no_*) option: stored value == inverse of enabled state.
         shell.state.options[option_name] = enable if positive else not enable
-        print(f"Parser feature '{feature}' {'enabled' if enable else 'disabled'}", file=shell.stdout)
+        self.write_line(f"Parser feature '{feature}' {'enabled' if enable else 'disabled'}", shell)
         return 0
 
     def _enable_feature(self, feature: str, shell) -> int:
@@ -239,7 +239,7 @@ class ParserModeBuiltin(Builtin):
             else:
                 mode = "bash"
 
-            print(f"Parser mode: {mode}", file=shell.stdout)
+            self.write_line(f"Parser mode: {mode}", shell)
             return 0
 
         mode = args[1].lower()

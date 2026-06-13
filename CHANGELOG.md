@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.360.0 (2026-06-13) - Tier T1.6: builtin output via base-class helpers + guard
+- CONSISTENCY/HARDENING (zero behavior change, verified). Builtins that wrote
+  output with raw `print(..., file=shell.stdout/stderr)` now use the base-class
+  helpers (`self.write_line` for stdout, `self.write_error_line`/`self.error`
+  for stderr), which are forked-child-aware (`os.write` in a child) and honor
+  the flush discipline. Migrated `navigation.py` (cd CDPATH + `cd -` echo),
+  `positional.py` (getopts errors), `shell_options.py` (shopt), `parse_tree.py`,
+  `parser_control.py`, and `io.py` (echo debug-exec diagnostics).
+- A bash-differential harness (`cd -`, CDPATH `cd`, `pwd`, getopts errors —
+  standalone and in pipelines/redirects) confirmed byte-identical output before
+  and after: `shell.stdout/stderr` were already redirect-aware, so this is a
+  pure readability/consistency migration to the v0.284 error-channel convention.
+- Added `tests/unit/builtins/test_no_raw_print.py`: a source-grep guard
+  (parametrized over every `psh/builtins/*.py` except the sanctioned `base.py`)
+  that fails on any new raw `print(..., file=...std...)` — so future builtins
+  can't reintroduce output that may not honor fd-level redirection.
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6794 passed.
+
 ## 0.359.0 (2026-06-13) - Tier T1.5: tooling honesty for the disabled CI workflow
 - TOOLING (no code change). `.github/workflows/tests.yml` still declared
   `on: push/pull_request: [main]` while the workflow has been disabled

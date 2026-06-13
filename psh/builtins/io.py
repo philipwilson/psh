@@ -1,7 +1,6 @@
 """I/O related builtins (echo, pwd)."""
 
 import os
-import sys
 from typing import TYPE_CHECKING, List, Tuple
 
 from ..utils.escapes import process_echo_escapes
@@ -95,8 +94,10 @@ class EchoBuiltin(Builtin):
             text += '\n'
 
         if shell.state.options.get('debug-exec'):
-            print(f"DEBUG EchoBuiltin: in_forked_child={shell.state.in_forked_child}", file=sys.stderr)
-            print(f"DEBUG EchoBuiltin: Writing text: {repr(text[:50])}", file=sys.stderr)
+            self.write_error_line(
+                f"DEBUG EchoBuiltin: in_forked_child={shell.state.in_forked_child}", shell)
+            self.write_error_line(
+                f"DEBUG EchoBuiltin: Writing text: {repr(text[:50])}", shell)
 
         self.write(text, shell)
 
