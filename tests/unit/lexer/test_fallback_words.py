@@ -4,8 +4,9 @@ An instrumented census (2026-06-12: 15k-input characterization corpus +
 the full test suite + ~71k fuzz inputs) established two facts about the
 tokenize loop's tail:
 
-1. ``_handle_fallback_word`` is LIVE for exactly four word-start
-   character classes — ``]``, ``+``, ``=``, ``[`` — all of which produce
+1. The operator-debris collector (historically ``_handle_fallback_word``,
+   now ``OperatorDebrisWordRecognizer``) is LIVE for exactly four
+   word-start character classes — ``]``, ``+``, ``=``, ``[`` — all of which produce
    bash-correct behavior (each shape below was probe-verified against
    bash 5.2). These tests pin the exact token streams so the fallback's
    looser terminator set (``= + [ ]`` do not terminate fallback words)
@@ -79,9 +80,10 @@ class TestNoSilentDrop:
 
     def test_unconsumed_character_raises(self):
         # The branch is unreachable through real input (census), so reach
-        # it by stubbing out every consumer the loop tries.
+        # it by stubbing out every consumer the loop tries. The
+        # operator-debris collector is now the lowest-priority recognizer,
+        # so stubbing registry.recognize covers it too.
         lexer = ModularLexer('x')
         lexer.registry.recognize = lambda *a, **k: None
-        lexer._handle_fallback_word = lambda: False
         with pytest.raises(RuntimeError, match='no progress'):
             lexer.tokenize()

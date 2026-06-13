@@ -78,6 +78,7 @@ class RecognizerRegistry:
 # - LiteralRecognizer: 70 (fallback for words)
 # - CommentRecognizer: 60
 # - WhitespaceRecognizer: 30
+# - OperatorDebrisWordRecognizer: 10 (tried last; operator-debris words ], +=, =, [)
 ```
 
 ### 2. LexerContext State
@@ -109,14 +110,23 @@ def tokenize(self):
         if self._skip_whitespace(): continue           # 1. Whitespace
         if self._try_quotes_and_expansions(): continue # 2. Quotes / $, ` → quote_parser / expansion_parser
         if self._try_recognizers(): continue           # 3. Recognizers in priority order
-        if self._handle_fallback_word(): continue      # 4. Operator-debris words (], +=, =, [...)
-        raise RuntimeError(...)                        # 5. Unreachable (census-verified) — fail loudly
+        raise RuntimeError(...)                        # 4. Unreachable (census-verified) — fail loudly
 ```
 
-The loop is TOTAL: an instrumented census established that the fallback
-word collector is live for exactly four word-start character classes
-(`]`, `+`, `=`, `[` — see its docstring) and that nothing reaches step 5,
-which therefore raises instead of silently dropping a character.
+The recognizer pipeline (step 3) is uniform — there is no special
+"fallback" step. Its lowest-priority member,
+`OperatorDebrisWordRecognizer` (priority 10, in
+`recognizers/operator_debris.py`), is tried strictly last and collects
+operator-debris words (`], +=, =, [...`) that the literal recognizer
+rejects as word starts. (This was historically a separate step-4
+`_handle_fallback_word` method; promoted to a registered recognizer so
+the pipeline has no special cases.)
+
+The loop is TOTAL: an instrumented census established that the
+operator-debris recognizer is live for exactly four word-start character
+classes (`]`, `+`, `=`, `[` — see its docstring) and that nothing reaches
+the final branch, which therefore raises instead of silently dropping a
+character.
 
 ## Common Tasks
 
