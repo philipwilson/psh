@@ -1,10 +1,22 @@
 name: Tests CI
 
+# INTENTIONALLY NOT a per-PR gate. This workflow is disabled (state
+# `disabled_manually`, via `gh workflow disable tests.yml`) because the project
+# runs fast on a LOCAL gate: `python run_tests.py --parallel` + `ruff check psh
+# tests` + `mypy` before every merge (see CLAUDE.md "Release workflow"). To keep
+# the file honest about that, the triggers below are `workflow_dispatch` only —
+# it will NOT auto-run on push/pull_request even if someone re-enables it; the
+# push/PR triggers are commented out, not active. The nightly full+bash+coverage
+# safety net (nightly.yml) and the auto-tagger (release-tag.yml) stay on.
+#
+# To restore per-PR CI: uncomment the push/pull_request block below AND run
+# `gh workflow enable tests.yml`.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  # pull_request:
+  #   branches: [main]
 
 jobs:
   lint:

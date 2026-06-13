@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.359.0 (2026-06-13) - Tier T1.5: tooling honesty for the disabled CI workflow
+- TOOLING (no code change). `.github/workflows/tests.yml` still declared
+  `on: push/pull_request: [main]` while the workflow has been disabled
+  (`disabled_manually`) in favor of the local gate — so the in-tree file
+  misrepresented how the project is tested. Changed the triggers to
+  `workflow_dispatch` only (the push/PR block is commented out, not active)
+  and added a header comment explaining the local-gate policy and exactly how
+  to restore per-PR CI (uncomment + `gh workflow enable tests.yml`). The
+  nightly safety net and the auto-tagger are unaffected.
+
 ## 0.358.0 (2026-06-13) - Tier T1.4: unify expansion-delimiter stripping
 - REFACTOR (zero behavior change, both parser backends). Three sites peeled
   the delimiters off an expansion's source text with their own inline
