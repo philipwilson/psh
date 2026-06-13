@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.342.0 (2026-06-13) - Reappraisal #4 Tier C-B1: Word text-method discipline
+- REFACTOR (zero behavior change, review Ugly 4): `Word` now exposes explicit,
+  named text methods instead of forcing callers to bypass `__str__`:
+  - `source_text()` — flattened parts re-wrapped in the word's quote chars
+    (the old `__str__` behavior; for debug/source rendering).
+  - `display_text()` — flattened pre-expansion text, no whole-word re-wrap
+    (what `''.join(str(p) for p in word.parts)` used to spell out).
+  - `to_literal_string()` — unchanged (quote-removed literal).
+  `__str__` now delegates to `source_text()` and is documented as
+  debug/source-only.
+- The 9 semantic `''.join(str(p) for p in word.parts)` call sites (array,
+  control-structure, and redirection parsers + the combinator special-command
+  parser) and the `SimpleCommand.args` derivation now call `display_text()`,
+  so the flattening rule has ONE definition. Values byte-identical.
+- New `Word`-method unit tests; full suite green (6,350 passed). ruff + mypy
+  clean.
+
 ## 0.341.0 (2026-06-13) - Reappraisal #4 Tier C-A2: AST sidecar cleanup
 - REFACTOR (zero behavior change): removes the parallel STORED quote/type
   sidecar fields that let an AST node hold two truths at once (review Ugly 1).

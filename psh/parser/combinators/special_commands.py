@@ -434,7 +434,7 @@ class SpecialCommandParsers:
             parts.extend(self.expansions.build_word_from_token(token).parts)
             pos += 1
         word = Word(parts=parts)
-        value = ''.join(str(p) for p in word.parts)
+        value = word.display_text()
         return word, value, pos
 
     def _build_array_element_assignment(self) -> Parser[ArrayElementAssignment]:

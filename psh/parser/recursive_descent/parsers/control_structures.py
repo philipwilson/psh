@@ -239,7 +239,7 @@ class ControlStructureParser:
 
             if self.parser.match_any(TokenGroups.WORD_LIKE):
                 word = self.parser.commands.parse_argument_as_word()
-                items.append(''.join(str(p) for p in word.parts))
+                items.append(word.display_text())
                 item_words.append(word)
             else:
                 break
@@ -350,7 +350,7 @@ class ControlStructureParser:
         if not self.parser.match_any(TokenGroups.WORD_LIKE):
             raise self._case_syntax_error()
         word = self.parser.commands.parse_argument_as_word()
-        return ''.join(str(p) for p in word.parts)
+        return word.display_text()
 
     def _case_syntax_error(self):
         """Build a bash-shaped syntax error for a malformed case header."""
@@ -419,7 +419,7 @@ class ControlStructureParser:
                     self.parser.advance()
                 else:
                     word = self.parser.commands.parse_argument_as_word()
-                    text_parts.append(''.join(str(p) for p in word.parts))
+                    text_parts.append(word.display_text())
                     word_parts.extend(word.parts)
             else:
                 break

@@ -180,10 +180,34 @@ class Word(ASTNode):
     quote_type: Optional[str] = None  # None (unquoted), '"' (double), "'" (single)
 
     def __str__(self):
-        content = ''.join(str(part) for part in self.parts)
+        # Debug/source rendering only. Semantic code should call the explicit
+        # text methods below (source_text / display_text / to_literal_string)
+        # rather than relying on str(word).
+        return self.source_text()
+
+    def source_text(self) -> str:
+        """Source-shaped repr: the flattened parts re-wrapped in this word's
+        quote characters (``a b`` quoted becomes ``"a b"``).
+
+        This is what ``__str__`` returns. Use it for debug/source rendering,
+        NOT for the pre-expansion text a consumer wants (see ``display_text``).
+        """
+        content = self.display_text()
         if self.quote_type:
             return f"{self.quote_type}{content}{self.quote_type}"
         return content
+
+    def display_text(self) -> str:
+        """Pre-expansion flattened text: the concatenation of ``str(part)``
+        over this word's parts, WITHOUT re-wrapping in the whole-word quote
+        characters.
+
+        ``echo "a b"`` yields ``a b``; expansions render as their
+        ``$``-source form (``${x:-d}`` -> ``${x:-d}``). This is the text
+        semantic call sites want when they bypass ``__str__``'s quote
+        re-wrapping; it is the basis of ``SimpleCommand.args``.
+        """
+        return ''.join(str(part) for part in self.parts)
 
     def to_literal_string(self) -> str:
         """The word's text after quote removal, with expansions unexpanded.
@@ -378,8 +402,7 @@ class SimpleCommand(Command):
         come from ``words`` via the expansion engine, never from this
         view. Recomputed per access — do not mutate the returned list.
         """
-        return [''.join(str(part) for part in word.parts)
-                for word in self.words]
+        return [word.display_text() for word in self.words]
 
 
 class CompoundCommand(Command):
