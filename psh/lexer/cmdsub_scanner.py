@@ -14,7 +14,7 @@ as its own module makes the maintenance contract (and its owner tests)
 discoverable.
 """
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from .command_position import CMDPOS_KEEPING_WORDS as _CMDPOS_KEEPING_WORDS
 from .pure_helpers import (
@@ -267,253 +267,367 @@ def find_command_substitution_end(
     * tests/conformance/bash/test_cmdsub_case_conformance.py
       (bash 5.2 parity for tricky $(...) bodies — add a probe-verified
       case here for every new grammar feature this scanner models)
+
+    Implementation
+    --------------
+    The scan state and per-construct handlers live in :class:`_CmdSubScanner`;
+    this function is just the public entry point that drives it. Each handler
+    returns ``None`` to continue scanning or a ``(pos, found)`` tuple to stop.
     """
-    n = len(input_text)
-    pos = start_pos
-    depth = 0                # unmatched unquoted '(' group openers
-    case_stack: list = []    # [state, pattern_paren_depth] per open `case`
-    command_position = True
-    at_word_start = True
-    if pending_heredocs is None:
-        pending_heredocs = []
+    return _CmdSubScanner(input_text, start_pos, pending_heredocs).scan()
 
-    while pos < n:
-        ch = input_text[pos]
-        top = case_stack[-1] if case_stack else None
 
-        # --- case-state transitions driven by the raw character ---
-        if top is not None:
-            blank = ch in ' \t\n' or (
-                ch == '\\' and input_text.startswith('\\\n', pos))
-            if top[0] == _CASE_SUBJECT and not blank:
-                top[0] = _CASE_SUBJECT_SEEN
-            elif top[0] == _CASE_SUBJECT_SEEN and blank:
-                top[0] = _CASE_EXPECT_IN
-            elif top[0] == _CASE_EXPECT_PATTERN and not blank and ch != '#':
-                if ch == '(':
-                    # The grammar's optional pattern-opening '(':
-                    # `case x in (x) ...` — consume without counting.
-                    top[0] = _CASE_PATTERN
-                    pos += 1
-                    at_word_start = True
-                    continue
-                if _peek_plain_word(input_text, pos) == 'esac':
-                    case_stack.pop()
-                    pos += 4
-                    command_position = False
-                    at_word_start = False
-                    continue
-                top[0] = _CASE_PATTERN
+class _CmdSubScanner:
+    """Mutable scan state + per-construct handlers for one ``$(`` extent.
 
-        # --- whitespace / newline ---
+    A fresh instance scans one substitution body (nested ``$(...)`` create
+    their own instances via :func:`find_command_substitution_end`, sharing
+    only the ``pending_heredocs`` list). The handlers form a flat dispatch
+    over the construct at the cursor; each consumes its construct, updates the
+    state fields below, and returns either ``None`` (keep scanning) or a final
+    ``(pos, found)`` result tuple.
+
+    State fields:
+        text, n       -- the input and its length (immutable)
+        pos           -- cursor; advances as constructs are consumed
+        depth         -- unmatched unquoted ``(`` group/subshell openers
+        case_stack    -- ``[state, pattern_paren_depth]`` per open ``case``
+        command_position -- True where a reserved word (``case``/``if``/...)
+                         would be recognized (start, after separators, ...)
+        at_word_start -- True at the first char of a word (so ``#`` is a
+                         comment only there)
+        pending_heredocs -- ``(delimiter, strip_tabs)`` queue, shared across
+                         nested scans (bash reads bodies at the next physical
+                         newline regardless of nesting depth)
+    """
+
+    def __init__(
+        self,
+        text: str,
+        start_pos: int,
+        pending_heredocs: Optional[list],
+    ) -> None:
+        self.text = text
+        self.n = len(text)
+        self.pos = start_pos
+        self.depth = 0
+        self.case_stack: List[list] = []
+        self.command_position = True
+        self.at_word_start = True
+        self.pending_heredocs: list = (
+            [] if pending_heredocs is None else pending_heredocs)
+
+    def scan(self) -> Tuple[int, bool]:
+        """Drive the per-construct handlers until a result or end of input."""
+        while self.pos < self.n:
+            ch = self.text[self.pos]
+            top = self.case_stack[-1] if self.case_stack else None
+
+            result = self._advance_case_state(ch, top)
+            if result is not None:
+                continue  # handler consumed input; re-evaluate from new pos
+
+            handler = self._dispatch(ch)
+            outcome = handler(ch, top)
+            if outcome is not None:
+                return outcome
+        return self.n, False
+
+    def _dispatch(self, ch: str):
+        """Pick the handler for the construct starting with *ch*."""
         if ch in ' \t':
-            pos += 1
-            at_word_start = True
-            continue
+            return self._handle_blank
         if ch == '\n':
-            pos += 1
-            if pending_heredocs:
-                pos = _consume_heredoc_bodies(input_text, pos, pending_heredocs)
-                if pending_heredocs:
-                    return n, False  # input ended inside a heredoc body
-            command_position = True
-            at_word_start = True
-            continue
-
-        # --- backslash escapes (and line continuation) ---
+            return self._handle_newline
         if ch == '\\':
-            if input_text.startswith('\\\n', pos):
-                pos += 2  # line continuation: vanishes entirely
-                continue
-            pos += 2
-            command_position = False
-            at_word_start = False
-            continue
-
-        # --- quotes ---
+            return self._handle_backslash
         if ch == "'":
-            end = input_text.find("'", pos + 1)
-            if end == -1:
-                return n, False
-            pos = end + 1
-            command_position = False
-            at_word_start = False
-            continue
+            return self._handle_single_quote
         if ch == '"':
-            end = _skip_double_quotes(input_text, pos + 1, pending_heredocs)
-            if end == -1:
-                return n, False
-            pos = end
-            command_position = False
-            at_word_start = False
-            continue
+            return self._handle_double_quote
         if ch == '`':
-            end = _skip_until_unescaped(input_text, pos + 1, '`')
-            if end == -1:
-                return n, False
-            pos = end
-            command_position = False
-            at_word_start = False
-            continue
-
-        # --- $-expansions ---
+            return self._handle_backtick
         if ch == '$':
-            nxt = input_text[pos + 1] if pos + 1 < n else ''
-            if nxt == "'":           # ANSI-C $'...'
-                end = _skip_until_unescaped(input_text, pos + 2, "'")
-                if end == -1:
-                    return n, False
-                pos = end
-            elif nxt == '"':         # locale string $"..."
-                end = _skip_double_quotes(input_text, pos + 2, pending_heredocs)
-                if end == -1:
-                    return n, False
-                pos = end
-            elif input_text.startswith('$((', pos):
-                end, found = find_balanced_double_parentheses(
-                    input_text, pos + 3)
-                if not found:
-                    return n, False
-                pos = end
-            elif nxt == '(':
-                end, found = find_command_substitution_end(
-                    input_text, pos + 2, pending_heredocs)
-                if not found:
-                    return n, False
-                pos = end
-            elif nxt == '{':
-                _content, end, found = validate_brace_expansion(
-                    input_text, pos + 2)
-                if not found:
-                    return n, False
-                pos = end
-            else:
-                pos += 1
-            command_position = False
-            at_word_start = False
-            continue
-
-        # --- comments ---
-        if ch == '#' and at_word_start:
-            nl = input_text.find('\n', pos)
-            if nl == -1:
-                return n, False  # comment hides the rest of the input
-            pos = nl
-            continue  # the newline branch handles heredocs/command position
-
-        # --- parentheses ---
+            return self._handle_dollar
+        if ch == '#':
+            return self._handle_hash
         if ch == '(':
-            if top is not None and top[0] == _CASE_PATTERN:
-                top[1] += 1  # extglob/group paren inside a pattern
-                pos += 1
-                at_word_start = True
-                continue
-            if command_position and input_text.startswith('((', pos):
-                end, found = find_balanced_double_parentheses(
-                    input_text, pos + 2)
-                if found:  # arithmetic command ((...))
-                    pos = end
-                    command_position = False
-                    at_word_start = False
-                    continue
-                # no '))' — fall through: treat as a grouping paren
-            depth += 1
-            pos += 1
-            command_position = True
-            at_word_start = True
-            continue
+            return self._handle_open_paren
         if ch == ')':
-            if top is not None and top[0] == _CASE_PATTERN:
-                if top[1] > 0:
-                    top[1] -= 1  # closes an extglob/group paren
-                else:
-                    top[0] = _CASE_BODY  # ends the pattern (case syntax)
-                    command_position = True
-                pos += 1
-                at_word_start = True
-                continue
-            if depth > 0:
-                depth -= 1
-                pos += 1
-                command_position = False
-                at_word_start = True
-                continue
-            if case_stack:
-                # A bare ')' while a `case` is still open (no `esac` yet,
-                # e.g. `$(case x in x) echo hi)`) cannot close the
-                # substitution — bash rejects this as a syntax error.
-                # Report the substitution as unclosed: more input could
-                # still complete the case (interactive PS2), and at EOF
-                # the unclosed-substitution error rejects it like bash.
-                return n, False
-            return pos + 1, True  # the closer of this substitution
-
-        # --- separators / operators ---
+            return self._handle_close_paren
         if ch == ';':
-            if top is not None and top[0] == _CASE_BODY:
-                if input_text.startswith(';;&', pos):
-                    top[0] = _CASE_EXPECT_PATTERN
-                    pos += 3
-                elif input_text.startswith(';;', pos) or \
-                        input_text.startswith(';&', pos):
-                    top[0] = _CASE_EXPECT_PATTERN
-                    pos += 2
-                else:
-                    pos += 1
-            else:
-                pos += 1
-            command_position = True
-            at_word_start = True
-            continue
+            return self._handle_semicolon
         if ch in '&|':
-            pos += 1
-            command_position = True
-            at_word_start = True
-            continue
+            return self._handle_pipe_amp
         if ch in '<>':
-            if input_text.startswith('<<', pos) and \
-                    not input_text.startswith('<<<', pos):
-                strip_tabs = input_text.startswith('<<-', pos)
-                j = pos + (3 if strip_tabs else 2)
-                delimiter, j = _read_heredoc_delimiter(input_text, j)
-                if delimiter is not None:
-                    pending_heredocs.append((delimiter, strip_tabs))
-                    pos = j
-                    command_position = False
-                    at_word_start = False
-                    continue
-                pos += 3 if strip_tabs else 2
-            elif input_text.startswith('<<<', pos):
-                pos += 3
-            else:
-                pos += 1
-            # Reserved words are not recognized after redirections.
-            command_position = False
-            at_word_start = True
-            continue
+            return self._handle_redirection
+        return self._handle_word
 
-        # --- plain word ---
-        start = pos
-        while pos < n and input_text[pos] not in _WORD_TERMINATORS:
+    # -- case-statement state machine ------------------------------------
+
+    def _advance_case_state(self, ch: str, top) -> Optional[bool]:
+        """Apply the raw-character ``case`` state transitions.
+
+        Returns ``True`` when it consumed input itself (the optional pattern
+        ``(`` or a closing ``esac`` at pattern-expect) so the caller restarts
+        the loop; otherwise ``None`` after possibly mutating *top* in place.
+        """
+        if top is None:
+            return None
+        blank = ch in ' \t\n' or (
+            ch == '\\' and self.text.startswith('\\\n', self.pos))
+        if top[0] == _CASE_SUBJECT and not blank:
+            top[0] = _CASE_SUBJECT_SEEN
+        elif top[0] == _CASE_SUBJECT_SEEN and blank:
+            top[0] = _CASE_EXPECT_IN
+        elif top[0] == _CASE_EXPECT_PATTERN and not blank and ch != '#':
+            if ch == '(':
+                # The grammar's optional pattern-opening '(':
+                # `case x in (x) ...` — consume without counting.
+                top[0] = _CASE_PATTERN
+                self.pos += 1
+                self.at_word_start = True
+                return True
+            if _peek_plain_word(self.text, self.pos) == 'esac':
+                self.case_stack.pop()
+                self.pos += 4
+                self.command_position = False
+                self.at_word_start = False
+                return True
+            top[0] = _CASE_PATTERN
+        return None
+
+    # -- whitespace / newline --------------------------------------------
+
+    def _handle_blank(self, ch: str, top) -> None:
+        self.pos += 1
+        self.at_word_start = True
+        return None
+
+    def _handle_newline(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+        self.pos += 1
+        if self.pending_heredocs:
+            self.pos = _consume_heredoc_bodies(
+                self.text, self.pos, self.pending_heredocs)
+            if self.pending_heredocs:
+                return self.n, False  # input ended inside a heredoc body
+        self.command_position = True
+        self.at_word_start = True
+        return None
+
+    # -- backslash escapes (and line continuation) -----------------------
+
+    def _handle_backslash(self, ch: str, top) -> None:
+        if self.text.startswith('\\\n', self.pos):
+            self.pos += 2  # line continuation: vanishes entirely
+            return None
+        self.pos += 2
+        self.command_position = False
+        self.at_word_start = False
+        return None
+
+    # -- quotes -----------------------------------------------------------
+
+    def _handle_single_quote(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+        end = self.text.find("'", self.pos + 1)
+        if end == -1:
+            return self.n, False
+        self.pos = end + 1
+        self.command_position = False
+        self.at_word_start = False
+        return None
+
+    def _handle_double_quote(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+        end = _skip_double_quotes(
+            self.text, self.pos + 1, self.pending_heredocs)
+        if end == -1:
+            return self.n, False
+        self.pos = end
+        self.command_position = False
+        self.at_word_start = False
+        return None
+
+    def _handle_backtick(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+        end = _skip_until_unescaped(self.text, self.pos + 1, '`')
+        if end == -1:
+            return self.n, False
+        self.pos = end
+        self.command_position = False
+        self.at_word_start = False
+        return None
+
+    # -- $-expansions -----------------------------------------------------
+
+    def _handle_dollar(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+        text, pos, n = self.text, self.pos, self.n
+        nxt = text[pos + 1] if pos + 1 < n else ''
+        if nxt == "'":            # ANSI-C $'...'
+            end = _skip_until_unescaped(text, pos + 2, "'")
+            if end == -1:
+                return self.n, False
+            self.pos = end
+        elif nxt == '"':          # locale string $"..."
+            end = _skip_double_quotes(text, pos + 2, self.pending_heredocs)
+            if end == -1:
+                return self.n, False
+            self.pos = end
+        elif text.startswith('$((', pos):
+            end, found = find_balanced_double_parentheses(text, pos + 3)
+            if not found:
+                return self.n, False
+            self.pos = end
+        elif nxt == '(':
+            end, found = find_command_substitution_end(
+                text, pos + 2, self.pending_heredocs)
+            if not found:
+                return self.n, False
+            self.pos = end
+        elif nxt == '{':
+            _content, end, found = validate_brace_expansion(text, pos + 2)
+            if not found:
+                return self.n, False
+            self.pos = end
+        else:
+            self.pos += 1
+        self.command_position = False
+        self.at_word_start = False
+        return None
+
+    # -- comments ---------------------------------------------------------
+
+    def _handle_hash(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+        if not self.at_word_start:
+            return self._handle_word(ch, top)
+        nl = self.text.find('\n', self.pos)
+        if nl == -1:
+            return self.n, False  # comment hides the rest of the input
+        self.pos = nl
+        # the newline branch handles heredocs / command position
+        return None
+
+    # -- parentheses ------------------------------------------------------
+
+    def _handle_open_paren(self, ch: str, top) -> None:
+        if top is not None and top[0] == _CASE_PATTERN:
+            top[1] += 1  # extglob/group paren inside a pattern
+            self.pos += 1
+            self.at_word_start = True
+            return None
+        if self.command_position and self.text.startswith('((', self.pos):
+            end, found = find_balanced_double_parentheses(
+                self.text, self.pos + 2)
+            if found:  # arithmetic command ((...))
+                self.pos = end
+                self.command_position = False
+                self.at_word_start = False
+                return None
+            # no '))' — fall through: treat as a grouping paren
+        self.depth += 1
+        self.pos += 1
+        self.command_position = True
+        self.at_word_start = True
+        return None
+
+    def _handle_close_paren(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+        if top is not None and top[0] == _CASE_PATTERN:
+            if top[1] > 0:
+                top[1] -= 1  # closes an extglob/group paren
+            else:
+                top[0] = _CASE_BODY  # ends the pattern (case syntax)
+                self.command_position = True
+            self.pos += 1
+            self.at_word_start = True
+            return None
+        if self.depth > 0:
+            self.depth -= 1
+            self.pos += 1
+            self.command_position = False
+            self.at_word_start = True
+            return None
+        if self.case_stack:
+            # A bare ')' while a `case` is still open (no `esac` yet,
+            # e.g. `$(case x in x) echo hi)`) cannot close the
+            # substitution — bash rejects this as a syntax error.
+            # Report the substitution as unclosed: more input could
+            # still complete the case (interactive PS2), and at EOF
+            # the unclosed-substitution error rejects it like bash.
+            return self.n, False
+        return self.pos + 1, True  # the closer of this substitution
+
+    # -- separators / operators ------------------------------------------
+
+    def _handle_semicolon(self, ch: str, top) -> None:
+        if top is not None and top[0] == _CASE_BODY:
+            if self.text.startswith(';;&', self.pos):
+                top[0] = _CASE_EXPECT_PATTERN
+                self.pos += 3
+            elif self.text.startswith(';;', self.pos) or \
+                    self.text.startswith(';&', self.pos):
+                top[0] = _CASE_EXPECT_PATTERN
+                self.pos += 2
+            else:
+                self.pos += 1
+        else:
+            self.pos += 1
+        self.command_position = True
+        self.at_word_start = True
+        return None
+
+    def _handle_pipe_amp(self, ch: str, top) -> None:
+        self.pos += 1
+        self.command_position = True
+        self.at_word_start = True
+        return None
+
+    def _handle_redirection(self, ch: str, top) -> None:
+        text, pos = self.text, self.pos
+        if text.startswith('<<', pos) and not text.startswith('<<<', pos):
+            strip_tabs = text.startswith('<<-', pos)
+            j = pos + (3 if strip_tabs else 2)
+            delimiter, j = _read_heredoc_delimiter(text, j)
+            if delimiter is not None:
+                self.pending_heredocs.append((delimiter, strip_tabs))
+                self.pos = j
+                self.command_position = False
+                self.at_word_start = False
+                return None
+            self.pos += 3 if strip_tabs else 2
+        elif text.startswith('<<<', pos):
+            self.pos += 3
+        else:
+            self.pos += 1
+        # Reserved words are not recognized after redirections.
+        self.command_position = False
+        self.at_word_start = True
+        return None
+
+    # -- plain word -------------------------------------------------------
+
+    def _handle_word(self, ch: str, top) -> None:
+        text, n = self.text, self.n
+        start = self.pos
+        pos = start
+        while pos < n and text[pos] not in _WORD_TERMINATORS:
             pos += 1
-        word = input_text[start:pos]
-        pure = pos >= n or input_text[pos] not in '\'"`$\\'
+        self.pos = pos
+        word = text[start:pos]
+        pure = pos >= n or text[pos] not in '\'"`$\\'
         if top is not None and top[0] == _CASE_EXPECT_IN:
             if pure and word == 'in':
                 top[0] = _CASE_EXPECT_PATTERN
             else:
-                case_stack.pop()  # malformed `case` — degrade gracefully
-            command_position = False
-        elif command_position and pure and word == 'case' and (
+                self.case_stack.pop()  # malformed `case` — degrade gracefully
+            self.command_position = False
+        elif self.command_position and pure and word == 'case' and (
                 top is None or top[0] == _CASE_BODY):
-            case_stack.append([_CASE_SUBJECT, 0])
-            command_position = False
-        elif command_position and pure and word == 'esac' and \
+            self.case_stack.append([_CASE_SUBJECT, 0])
+            self.command_position = False
+        elif self.command_position and pure and word == 'esac' and \
                 top is not None and top[0] == _CASE_BODY:
-            case_stack.pop()
-            command_position = False
-        elif not (pure and word in _CMDPOS_KEEPING_WORDS and command_position):
-            command_position = False
-        at_word_start = False
-
-    return n, False
+            self.case_stack.pop()
+            self.command_position = False
+        elif not (pure and word in _CMDPOS_KEEPING_WORDS
+                  and self.command_position):
+            self.command_position = False
+        self.at_word_start = False
+        return None

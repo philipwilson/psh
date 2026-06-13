@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.332.0 (2026-06-13) - Reappraisal #4 Tier B3: cmdsub scanner decomposition
+- REFACTOR (zero behavior change): `psh/lexer/cmdsub_scanner.py`'s
+  `find_command_substitution_end` was a single ~341-line function and a known
+  correctness hotspot. It is now decomposed into a small `_CmdSubScanner`
+  class with one handler method per construct — quotes (single/double/ANSI-C/
+  locale), backslash escapes + line continuation, the five `$`-expansion
+  forms, backticks, comments, parens (subshell / arithmetic / group),
+  separators, redirections + heredoc queueing, and the `case`/`esac` state
+  machine. The public function keeps its exact signature and contract; its
+  body is now one delegating line (`return _CmdSubScanner(...).scan()`).
+- SAFETY NET: a 103-case frozen characterization harness
+  (`tests/unit/lexer/test_cmdsub_scanner_characterization.py`) was written
+  FIRST, confirmed green against the original code, and still passes
+  byte-for-byte after the refactor. No latent divergences were found;
+  nothing was silently changed. Six live cmdsub-boundary probes (deep
+  nesting, quote-embedded parens, heredoc-with-cmdsub, arithmetic, nested
+  backticks, case+cmdsub) match bash. Full suite green (5,925 passed).
+
 ## 0.331.0 (2026-06-13) - Reappraisal #4 Tier B2: strict internal-error mode
 - NEW OPTION `strict-errors` (off by default; `set -o strict-errors` /
   `set +o strict-errors`, and seeded from the `PSH_STRICT_ERRORS` env var
