@@ -189,7 +189,8 @@ Command → SimpleCommand | IfConditional | WhileLoop | ...
 
 1. Add token types in `psh/lexer/token_types.py`
 
-2. Add AST node in `psh/ast_nodes.py`:
+2. Add AST node in the `psh/ast_nodes/` package (control structures go in
+   `psh/ast_nodes/control.py`):
 ```python
 @dataclass
 class MyNewStructure(Command):
@@ -222,7 +223,7 @@ elif self.parser.match(TokenType.MY_KEYWORD):
 
 1. Create or extend parser in `parsers/`
 
-2. Add AST node in `psh/ast_nodes.py`
+2. Add AST node in the `psh/ast_nodes/` package
 
 3. Wire into appropriate parsing method
 
@@ -296,7 +297,7 @@ The parser always builds **Word AST nodes** for command arguments. Each
 `ExpansionPart` nodes carrying per-part quote context (`quoted`, `quote_char`).
 `words` is the **single source of truth** for a command's arguments: the
 string view `SimpleCommand.args` is a derived, read-only property
-(`ast_nodes.py`) that flattens each Word's parts — there is no stored
+(`psh/ast_nodes/commands.py`) that flattens each Word's parts — there is no stored
 args list to keep in sync. Build `words` only; never assign `args`.
 
 ```python

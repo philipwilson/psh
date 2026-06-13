@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.363.0 (2026-06-13) - Tier T2.3: split ast_nodes.py into a package
+- REFACTOR (zero behavior change, zero import churn). The 766-line
+  `psh/ast_nodes.py` became a package `psh/ast_nodes/` with cohesive
+  submodules: `base.py` (ASTNode/Statement/Command bases), `redirects.py`,
+  `words.py` (Word + expansion nodes), `arrays.py`, `commands.py`
+  (SimpleCommand/Pipeline/AndOrList/StatementList/TopLevel), `tests.py`
+  (`[[ ]]` nodes), `control.py` (loops/if/case/select/function def).
+- `psh/ast_nodes/__init__.py` flat-re-exports every previously-public name
+  (`__all__` parity verified by set-diff against the pre-split surface: 0 names
+  lost), so every `from psh.ast_nodes import ...` / `from ..ast_nodes import`
+  across the codebase is unchanged — NO other file touched its imports.
+- Key subtlety: the coverage-matrix meta-test filters on
+  `cls.__module__ == 'psh.ast_nodes'`. `__init__` runs `_reparent_to_package()`
+  to rewrite `__module__` back to the package on every `ASTNode` subclass, so
+  introspection (and `test_ast_coverage_matrix.py`) behaves identically.
+- Updated the mypy scope entry `psh/ast_nodes.py` → `psh/ast_nodes` (mypy clean,
+  85 files) and fixed stale `psh/ast_nodes.py` path references in 6 docs (forced
+  by the `test_doc_pointers` meta-test).
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6794 passed.
+
 ## 0.362.0 (2026-06-13) - Tier T2.2: extract dense expansion helpers
 - REFACTOR (zero behavior change, expansion hot path). Two dense regions in
   `psh/expansion/variable.py` lifted into named helpers:

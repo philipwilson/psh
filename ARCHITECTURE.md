@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.362.0
+**Current Version**: 0.363.0
 
 **Note:** For orientation, start with the Quick Map below; for a narrative
 walkthrough of one command through the whole pipeline (with reproducible
@@ -618,7 +618,7 @@ def parse_command(self):
 ```
 
 ### 3.12 AST Node Hierarchy
-**File**: `ast_nodes.py`
+**File**: `psh/ast_nodes/__init__.py`
 
 The AST uses a clean class hierarchy:
 ```python

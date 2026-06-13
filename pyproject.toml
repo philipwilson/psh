@@ -85,7 +85,7 @@ known-first-party = ["psh"]
 python_version = "3.12"
 files = [
     "psh/core",
-    "psh/ast_nodes.py",
+    "psh/ast_nodes",
     "psh/shell.py",
     "psh/version.py",
     # Scripting (whole package)
