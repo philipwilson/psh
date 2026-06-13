@@ -4,6 +4,43 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.349.0 (2026-06-13) - Reappraisal #4 Tier C-B3: unified array-init path (+behavior fixes)
+- REFACTOR + BEHAVIOR FIX (review Ugly 6): psh had TWO array-initialization
+  implementations — the structured `ArrayInitialization`/`ARRAY_INIT_ELEMENT`
+  path for bare `a=(...)`, and a separate serialize-then-`shlex`-reparse for
+  declaration builtins (`declare`/`typeset`/`local`/`export`/`readonly`). They
+  are now UNIFIED: declaration array-init flows through the same structured
+  expansion via shared `ArrayOperationExecutor.build_indexed_array` /
+  `build_associative_array` helpers (one implementation, used by both paths).
+  The parser attaches the structured `ArrayInitialization` to the argument
+  (`Word.array_init`); the executor hands it to the declaration builtin through
+  a scoped `shell._pending_array_inits` (set/cleared around the single call,
+  mirroring the `exec` node-passing precedent). The string-reparse module
+  `psh/builtins/array_init.py` (132 lines) is DELETED — no real entry point
+  needs it (`eval` re-parses to a structured init; dynamic `declare $x`
+  word-splits and never array-ifies, like bash).
+- This FIXES 9 bash divergences the old reparse got wrong (each bash-verified):
+  adjacent-quote `declare -a a=("x""y")` → `xy` (was split); indexed `+=`
+  append; associative `+=` append; bare assoc key/value pairs
+  `declare -A m=(k1 v1 …)`; explicit indices `declare -a a=([2]=x [0]=y)`;
+  tilde and command-substitution elements; `export e=(a b)` (now an indexed
+  array with the export attribute, not a scalar string; arrays aren't exported
+  to the env); and the WRONG array-ification of dynamic scalars (`declare
+  a=$x` with `x='(1 2)'` is now a scalar, like bash). Also fixed `declare -a
+  a+=(…)` parsing (the lexer splits `a+=` → `a` `+=`, previously misparsed).
+- Also fixes the `+=` arg detection in `_check_array_initialization`.
+- SAFETY NET: a value-based declaration-array conformance suite (17 cases via
+  `declare -p`) + reworked legacy tests, all bash-verified; the bare-array
+  path characterization is unchanged. Full suite green (6,735 passed). ruff +
+  mypy clean. Docs updated (`ast_data_flow.md`, `builtins/CLAUDE.md`).
+- PRE-EXISTING divergences confirmed UNCHANGED (present on main too, not
+  regressions): unquoted assoc key containing a space (`[a b]=v`) reads empty
+  (quoted `["a b"]=v` works); `declare -p` assoc display ordering; `declare -i`
+  not applied to array elements.
+- The token-payload rewrite (review Ugly 2/10, "E1") proved UNNECESSARY: the
+  element Words already carry sufficient fidelity for the structured path, so
+  B3 needed none of it. E1 remains unscheduled.
+
 ## 0.348.0 (2026-06-13) - Reappraisal #4 Tier C-D2: test operands in the Word model
 - REFACTOR (zero behavior change, review Ugly 11): `[[ ]]`
   `BinaryTestExpression` stored operands as plain strings plus

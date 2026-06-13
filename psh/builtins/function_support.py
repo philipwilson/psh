@@ -246,7 +246,19 @@ class DeclareBuiltin(Builtin):
                 # ARR=(a b)`` creates an array — and arrays are never
                 # exported to the environment). -A, or an existing
                 # associative variable, selects the associative form.
-                is_array_init = value.startswith('(') and value.endswith(')')
+                #
+                # Array initialization is keyed STRICTLY on the parser having
+                # seen literal ``name=(...)`` syntax: it attaches a structured
+                # ArrayInitialization (element Words with full quote context)
+                # to the argument Word, delivered via the scoped
+                # shell._pending_array_inits map. We expand it through the
+                # SAME structured path the bare ``a=(...)`` form uses
+                # (build_indexed_array / build_associative_array) — no shlex
+                # reparse. A merely paren-shaped VALUE that did NOT come from
+                # array syntax (``declare "a=(1 2)"``, ``declare a=$x`` with
+                # x="(1 2)") is a scalar in bash, so it is NOT array-ified.
+                array_init = self._pending_array_init(shell, arg)
+                is_array_init = array_init is not None
                 as_assoc = False
                 if is_array_init and not options['array']:
                     existing = self._get_variable_with_attributes(shell, name)
@@ -254,33 +266,29 @@ class DeclareBuiltin(Builtin):
                         existing is not None and existing.is_assoc_array)
 
                 if is_array_init and as_assoc:
-                    # Parse associative array initialization; += merges
-                    # into the existing array (bash).
-                    array: Any = AssociativeArray()
-                    if append:
-                        existing = self._get_variable_with_attributes(shell, name)
-                        if existing is not None and isinstance(existing.value, AssociativeArray):
-                            array = existing.value
-                    assoc_values = self._parse_assoc_array_init(value, shell)
-                    for key, val in assoc_values:
-                        array.set(key, val)
+                    # Associative array initialization; += merges into the
+                    # existing array (bash).
+                    existing = (self._get_variable_with_attributes(shell, name)
+                                if append else None)
+                    into = (existing.value
+                            if existing is not None
+                            and isinstance(existing.value, AssociativeArray)
+                            else None)
+                    array: Any = self._build_assoc_array(array_init, into, shell)
                     self._set_variable_with_attributes(
                         shell, name, array,
                         attributes | VarAttributes.ASSOC_ARRAY, options['global'])
 
                 elif is_array_init:
-                    # Parse indexed array initialization; += appends after
-                    # the existing array's highest index (bash).
-                    array = IndexedArray()
-                    start = 0
-                    if append:
-                        existing = self._get_variable_with_attributes(shell, name)
-                        if existing is not None and isinstance(existing.value, IndexedArray):
-                            array = existing.value
-                            start = array.next_index()
-                    array_values = self._parse_array_init(value, shell)
-                    for i, val in enumerate(array_values):
-                        array.set(start + i, val)
+                    # Indexed array initialization; += appends after the
+                    # existing array's highest index (bash).
+                    existing = (self._get_variable_with_attributes(shell, name)
+                                if append else None)
+                    into = (existing.value
+                            if existing is not None
+                            and isinstance(existing.value, IndexedArray)
+                            else None)
+                    array = self._build_indexed_array(array_init, into, shell)
                     self._set_variable_with_attributes(
                         shell, name, array,
                         attributes | VarAttributes.ARRAY, options['global'])
@@ -387,15 +395,35 @@ class DeclareBuiltin(Builtin):
         (shared formatter: declare_format.format_declaration)."""
         self.write_line(format_declaration(var), shell)
 
-    def _parse_array_init(self, value: str, shell: 'Shell') -> List[str]:
-        """Parse array initialization: (val1 val2 val3)"""
-        from .array_init import parse_array_elements
-        return parse_array_elements(value, shell)
+    def _pending_array_init(self, shell: 'Shell', arg: str):
+        """Look up the structured ArrayInitialization the parser attached to
+        this ``name=(...)`` argument, or None.
 
-    def _parse_assoc_array_init(self, value: str, shell: 'Shell') -> List[tuple[str, str]]:
-        """Parse associative array initialization: ([key]=val [key2]=val2)"""
-        from .array_init import parse_assoc_array_entries
-        return parse_assoc_array_entries(value, shell)
+        The executor sets ``shell._pending_array_inits`` (argv element →
+        ArrayInitialization) for the duration of this builtin call only
+        (scoped; cleared in its finally). Keyed by the full argv element so
+        each array-init argument resolves to its own structured node.
+        """
+        pending = getattr(shell, '_pending_array_inits', None)
+        if pending is None:
+            return None
+        return pending.get(arg)
+
+    def _build_indexed_array(self, array_init, into, shell: 'Shell') -> IndexedArray:
+        """Build an IndexedArray from the structured init via the shared
+        ArrayOperationExecutor engine — the SAME path the bare ``a=(...)``
+        form uses (no string reparse). ``into`` is the existing array for
+        ``+=`` append, else None."""
+        from ..executor.array import ArrayOperationExecutor
+        return ArrayOperationExecutor(shell).build_indexed_array(
+            array_init.words, into=into)
+
+    def _build_assoc_array(self, array_init, into, shell: 'Shell') -> AssociativeArray:
+        """Build an AssociativeArray from the structured init via the shared
+        engine (see _build_indexed_array)."""
+        from ..executor.array import ArrayOperationExecutor
+        return ArrayOperationExecutor(shell).build_associative_array(
+            array_init.words, into=into)
 
     # Methods to interact with shell's enhanced variable storage
 

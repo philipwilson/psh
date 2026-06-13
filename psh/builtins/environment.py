@@ -246,12 +246,13 @@ class ExportBuiltin(Builtin):
         for arg in names:
             if '=' in arg:
                 key, value = arg.split('=', 1)
-                if key.endswith('+'):
+                append = key.endswith('+')
+                if append:
                     # export NAME+=value appends (bash)
                     key = key[:-1]
-                    value = (shell.state.get_variable(key) or '') + value
             else:
                 key, value = arg, None
+                append = False
 
             # bash: invalid names are reported (rc 1) but the remaining
             # arguments are still processed.
@@ -259,6 +260,26 @@ class ExportBuiltin(Builtin):
                 self.error(f"`{arg}': not a valid identifier", shell)
                 status = 1
                 continue
+
+            # ``export NAME=(...)`` makes an indexed array with the export
+            # attribute (bash; arrays are never written to the environment).
+            # The parser attaches a structured ArrayInitialization to the arg
+            # Word, delivered via the scoped shell._pending_array_inits map;
+            # expand it through the SAME structured path the bare ``a=(...)``
+            # form uses (no shlex reparse). Delegating to declare keeps the
+            # array attribute logic in one place.
+            if not print_mode and not unexport:
+                pending = getattr(shell, '_pending_array_inits', None)
+                if pending is not None and arg in pending:
+                    from .registry import registry
+                    rc = registry.get('declare').execute(
+                        ['declare', '-x', arg], shell)
+                    if rc != 0:
+                        status = rc
+                    continue
+
+            if append and value is not None:
+                value = (shell.state.get_variable(key) or '') + value
 
             if print_mode:
                 if key in shell.env:

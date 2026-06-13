@@ -8,6 +8,7 @@ from typing import Optional, Tuple
 
 from ....ast_nodes import (
     AndOrList,
+    ArrayInitialization,
     BraceGroup,
     BreakStatement,
     Command,
@@ -186,8 +187,9 @@ class CommandParser:
         is_array_init, word_token = self._check_array_initialization()
 
         if is_array_init:
-            arg_value = self._parse_array_initialization(word_token)
-            command.words.append(Word(parts=[LiteralPart(arg_value)]))
+            arg_value, array_init = self._parse_array_initialization(word_token)
+            command.words.append(
+                Word(parts=[LiteralPart(arg_value)], array_init=array_init))
             return True
 
         # Parse argument as Word AST node. The string view of the
@@ -200,68 +202,95 @@ class CommandParser:
         """Check if current position is array initialization syntax.
 
         Returns:
-            Tuple of (is_array_init, word_token)
+            Tuple of (is_array_init, word_token). The returned word_token's
+            value carries the assignment head (``arr=`` or ``arr+=``) so the
+            caller can rebuild the flat string view; on the split-token forms
+            the head is synthesized.
         """
         if not self.parser.match(TokenType.WORD):
             return False, None
 
         word_token = self.parser.peek()
 
-        # `arr=(...)`: the lexer emits the name and '=' as one WORD
-        # ('arr=') followed by LPAREN. This is the form bash accepts.
-        if (word_token.value.endswith('=') and
+        # `arr=(...)` / `arr+=(...)`: the lexer emits the name and operator
+        # as one WORD ('arr=' or 'arr+=') followed by LPAREN. This is the
+        # form bash accepts.
+        if ((word_token.value.endswith('=')) and
             self.parser.peek(1) and
             self.parser.peek(1).type == TokenType.LPAREN):
             self.parser.advance()
             return True, word_token
 
-        # `arr = (...)`: three separate tokens (WORD, WORD '=', LPAREN).
-        # bash rejects this with a syntax error; psh has historically
-        # accepted it as an array initialization (pinned behavior).
-        if (self.parser.peek(1) and
-            self.parser.peek(1).type == TokenType.WORD and
-            self.parser.peek(1).value == '=' and
-            self.parser.peek(2) and
-            self.parser.peek(2).type == TokenType.LPAREN):
-            word_token = self.parser.advance()
-            self.parser.advance()  # consume =
-            return True, word_token
+        # `arr += (...)` / `arr = (...)`: the operator is a separate WORD
+        # token ('+=' or '='). The lexer splits ``a+=`` into ``a`` + ``+=``
+        # (verified), and ``arr = (...)`` (with spaces) into three tokens.
+        # bash rejects the spaced form but accepts ``a+=`` written
+        # together; psh accepts both (the spaced form is pinned behavior).
+        op_token = self.parser.peek(1)
+        if (op_token and op_token.type == TokenType.WORD and
+                op_token.value in ('=', '+=') and
+                self.parser.peek(2) and
+                self.parser.peek(2).type == TokenType.LPAREN):
+            name_token = self.parser.advance()
+            self.parser.advance()  # consume the '=' / '+=' operator
+            # Synthesize a head token carrying name + operator so the
+            # caller's flat-string rebuild and name/append detection work
+            # uniformly with the single-token form.
+            head = Token(TokenType.WORD, name_token.value + op_token.value,
+                         name_token.position)
+            return True, head
 
         return False, None
 
-    def _parse_array_initialization(self, word_token: Token) -> str:
-        """Parse array initialization syntax arr=(...) in ARGUMENT position
-        (e.g. ``declare -a arr=(1 2)``) into a single flat string.
+    def _parse_array_initialization(
+            self, word_token: Token) -> Tuple[str, 'ArrayInitialization']:
+        """Parse array initialization syntax ``arr=(...)`` / ``arr+=(...)``
+        in ARGUMENT position (e.g. ``declare -a arr=(1 2)``).
 
-        The string becomes the literal content of the argument's Word —
-        stored once there; ``SimpleCommand.args`` derives from it. The
-        live consumers are the declaration builtins (``declare``/``local``):
-        they receive the flat string as an argv element and re-parse the
-        initializer quote-aware in ``psh/builtins/array_init.py``.
+        Returns ``(flat_string, ArrayInitialization)``:
 
-        Each element is serialized from its TOKENS, not from the element
-        Word, because Word parts normalize source details the initializer
-        parser needs verbatim: ``${y}b`` becomes ExpansionPart('$y') +
-        'b' (would re-read as ``$yb``), and ``"a""b"`` produces two
-        parts indistinguishable from one decomposed ``"a b"`` string
-        (quote boundaries lost). Deriving this string from Words is only
-        possible once the declaration builtins consume element Words
-        directly instead of re-parsing text.
+        - The flat string (``arr=(elem1 elem2)``) becomes the literal text
+          of the argument's Word, so ``SimpleCommand.args`` and display keep
+          working for ordinary commands and tooling.
+        - The structured ArrayInitialization carries the per-element Words
+          (with full per-part quote context). The declaration builtins
+          (``declare``/``typeset``/``local``/``export``/``readonly``) consume
+          it through the SAME structured expansion the bare ``a=(...)`` path
+          uses — no serialize-then-shlex-reparse, which is what fixes
+          adjacent-quote joining (``("x""y")``), tilde, command-sub elements,
+          explicit ``[i]=v`` indices, bare assoc keys, and ``+=`` append.
+
+        The flat string's elements are still serialized from the source
+        TOKENS (not the element Words) so the legacy fallback path
+        (``array_init.py``, used only when no structured init is present)
+        keeps its verbatim quoting; the structured path never re-reads it.
 
         Args:
-            word_token: The array variable name token
+            word_token: Head token whose value is ``arr=`` or ``arr+=``.
 
         Returns:
-            Complete array initialization string like "arr=(elem1 elem2)"
+            (flat_string, ArrayInitialization)
         """
+        is_append = word_token.value.endswith('+=')
+        if is_append:
+            name = word_token.value[:-2]
+        else:
+            name = word_token.value[:-1]
+
         self.parser.advance()  # consume LPAREN
 
-        elements = []
+        elements: list = []        # flat-string fragments (token-faithful)
+        element_words: list = []   # structured element Words
         element_start_pos = self.parser.current
 
         while not self.parser.match(TokenType.RPAREN) and not self.parser.at_end():
-            if self.parser.match_any(TokenGroups.WORD_LIKE):
-                self.parse_argument_as_word()  # consume element
+            if self.parser.match(TokenType.NEWLINE):
+                # Newlines between elements are allowed (as in bash).
+                self.parser.advance()
+                element_start_pos = self.parser.current
+            elif self.parser.match_any(TokenGroups.WORD_LIKE):
+                word = self.parse_argument_as_word()  # consume element
+                element_words.append(word)
 
                 # Serialize the element from the tokens just consumed
                 element_end_pos = self.parser.current
@@ -287,11 +316,14 @@ class CommandParser:
         if not self.parser.consume_if(TokenType.RPAREN):
             raise self.parser.error("Expected ')' to close array initialization")
 
-        # Build complete argument
-        if word_token.value.endswith('='):
-            return word_token.value + '(' + ' '.join(elements) + ')'
-        else:
-            return word_token.value + '=(' + ' '.join(elements) + ')'
+        flat_string = name + ('+=' if is_append else '=') + '(' + ' '.join(elements) + ')'
+        array_init = ArrayInitialization(
+            name=name,
+            elements=[w.display_text() for w in element_words],
+            is_append=is_append,
+            words=element_words,
+        )
+        return flat_string, array_init
 
     def parse_pipeline(self) -> Pipeline:
         """Parse a pipeline (commands connected by | or |&)."""

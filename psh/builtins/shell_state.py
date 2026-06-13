@@ -157,32 +157,34 @@ class LocalBuiltin(Builtin):
                     shell.state.scope_manager.create_local(var_name, var_value, attributes)
                     continue
 
-                # Check if this is an array assignment: var=(value1 value2 ...)
-                if var_value.startswith('(') and var_value.endswith(')'):
+                # Array initialization is keyed STRICTLY on the parser having
+                # seen literal ``var=(...)`` syntax: it attaches a structured
+                # ArrayInitialization to the arg Word, delivered via the
+                # scoped shell._pending_array_inits map. We expand it through
+                # the SAME structured path the bare ``a=(...)`` form uses (no
+                # shlex reparse). A merely paren-shaped VALUE that did NOT
+                # come from array syntax (``local "a=(1 2)"``) is a scalar in
+                # bash, so it is NOT array-ified.
+                array_init = self._pending_array_init(shell, arg)
+                if array_init is not None:
                     # Parse array initialization; += appends to/merges with
                     # an existing array of the same kind (bash).
                     from ..core import AssociativeArray, IndexedArray
                     existing = (shell.state.scope_manager.get_variable_object(var_name)
                                 if append else None)
                     if attributes & VarAttributes.ASSOC_ARRAY:
-                        if existing is not None and isinstance(existing.value, AssociativeArray):
-                            array = existing.value
-                        else:
-                            array = AssociativeArray()
-                        assoc_values = self._parse_assoc_array_init(var_value, shell)
-                        for key, val in assoc_values:
-                            array.set(key, val)
+                        into = (existing.value
+                                if existing is not None
+                                and isinstance(existing.value, AssociativeArray)
+                                else None)
+                        array = self._build_assoc_array(array_init, into, shell)
                         shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ASSOC_ARRAY)
                     else:
-                        if existing is not None and isinstance(existing.value, IndexedArray):
-                            array = existing.value
-                            start = array.next_index()
-                        else:
-                            array = IndexedArray()
-                            start = 0
-                        array_values = self._parse_array_init(var_value, shell)
-                        for i, val in enumerate(array_values):
-                            array.set(start + i, val)
+                        into = (existing.value
+                                if existing is not None
+                                and isinstance(existing.value, IndexedArray)
+                                else None)
+                        array = self._build_indexed_array(array_init, into, shell)
                         shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ARRAY)
                 else:
                     # Regular variable assignment. The executor has already
@@ -215,10 +217,30 @@ class LocalBuiltin(Builtin):
 
         return 0
 
-    def _parse_array_init(self, value: str, shell: 'Shell') -> List[str]:
-        """Parse array initialization: (val1 "val2" val3)"""
-        from .array_init import parse_array_elements
-        return parse_array_elements(value, shell)
+    def _pending_array_init(self, shell: 'Shell', arg: str):
+        """Look up the structured ArrayInitialization the parser attached to
+        this ``name=(...)`` argument, or None (scoped on shell by the
+        executor for the duration of this builtin call). Keyed by argv
+        element."""
+        pending = getattr(shell, '_pending_array_inits', None)
+        if pending is None:
+            return None
+        return pending.get(arg)
+
+    def _build_indexed_array(self, array_init, into, shell: 'Shell'):
+        """Build an IndexedArray from the structured init via the shared
+        ArrayOperationExecutor engine (the SAME path the bare ``a=(...)``
+        form uses; no string reparse)."""
+        from ..executor.array import ArrayOperationExecutor
+        return ArrayOperationExecutor(shell).build_indexed_array(
+            array_init.words, into=into)
+
+    def _build_assoc_array(self, array_init, into, shell: 'Shell'):
+        """Build an AssociativeArray from the structured init via the shared
+        engine (see _build_indexed_array)."""
+        from ..executor.array import ArrayOperationExecutor
+        return ArrayOperationExecutor(shell).build_associative_array(
+            array_init.words, into=into)
 
     def _parse_options(self, args: List[str], shell: 'Shell') -> tuple:
         """Parse local options and return (options_dict, positional_args)."""
@@ -267,11 +289,6 @@ class LocalBuiltin(Builtin):
             i += 1
 
         return options, positional
-
-    def _parse_assoc_array_init(self, value: str, shell: 'Shell') -> List[tuple]:
-        """Parse associative array initialization: ([key]=val [key2]=val2)"""
-        from .array_init import parse_assoc_array_entries
-        return parse_assoc_array_entries(value, shell)
 
     def _apply_attributes(self, value: str, attributes, shell: 'Shell') -> str:
         """Apply attribute transformations to value."""

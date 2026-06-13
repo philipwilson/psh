@@ -152,20 +152,37 @@ class TestClassBParserMigrationBridge:
 
 
 class TestClassCUnreachableBranchesRaise:
-    """(c) word-less nodes that no parser can produce now fail loudly."""
+    """(c) word-less nodes: ``words`` is the single source of truth.
 
-    def test_array_initialization_without_words_raises(self, shell):
+    The array-init value computation (ArrayOperationExecutor.build_indexed_array
+    / build_associative_array, shared by the bare ``a=(...)`` path and the
+    declaration builtins) iterates ``node.words`` exclusively; ``elements`` is
+    display-only derived metadata the executor never reads. A node whose
+    ``words`` is empty therefore yields an EMPTY array — the
+    elements/words divergence the old guard policed is now unrepresentable at
+    execution time (it cannot pick the wrong representation: there is only
+    one)."""
+
+    def test_array_initialization_words_are_authoritative(self, shell):
         from psh.executor import ExecutorVisitor
+        # elements claims one entry, but words (the sole truth) is empty:
+        # the result is an empty indexed array, not an error.
         node = ArrayInitialization(name='a', elements=['x'])  # words=[]
-        with pytest.raises(RuntimeError, match='internal error'):
-            ExecutorVisitor(shell).visit(node)
+        assert ExecutorVisitor(shell).visit(node) == 0
+        from psh.core import IndexedArray
+        var = shell.state.scope_manager.get_variable_object('a')
+        assert isinstance(var.value, IndexedArray)
+        assert var.value.indices() == []
 
-    def test_assoc_array_initialization_without_words_raises(self, shell):
+    def test_assoc_array_initialization_words_are_authoritative(self, shell):
         from psh.executor import ExecutorVisitor
         shell.run_command('declare -A h')
         node = ArrayInitialization(name='h', elements=['[k]=v'])  # words=[]
-        with pytest.raises(RuntimeError, match='internal error'):
-            ExecutorVisitor(shell).visit(node)
+        assert ExecutorVisitor(shell).visit(node) == 0
+        from psh.core import AssociativeArray
+        var = shell.state.scope_manager.get_variable_object('h')
+        assert isinstance(var.value, AssociativeArray)
+        assert var.value.keys() == []
 
     def test_array_element_assignment_without_value_word_raises(self):
         """value_word is a REQUIRED field since A2: a node built without it
