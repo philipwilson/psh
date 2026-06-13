@@ -26,6 +26,12 @@ and all of them consult the classifications defined here:
 The sets deliberately differ — each machine sees a different alphabet at a
 different stage — but the notion of "what returns us to command position"
 is defined in this one file so the three stay in sight of each other.
+
+A unified state machine is intentionally NOT extracted: the per-stage
+differences are irreducible. Instead, the documented relationships between
+these sets (and that their keyword-valued entries are real keywords) are
+locked by ``tests/unit/lexer/test_command_position_consistency.py`` so the
+vocabulary cannot silently drift apart.
 """
 
 from .token_types import TokenType
