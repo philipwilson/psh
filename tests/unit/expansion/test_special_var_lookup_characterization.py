@@ -184,21 +184,26 @@ class TestDollarZero:
         out = run_psh('echo "[$0]"').stdout
         assert out.startswith('[') and out.endswith(']\n')
 
-    def test_zero_inside_function_is_function_name(self):
-        # psh is FUNCTION-AWARE for $0: it returns the function name inside a
-        # function. (Pre-existing psh/bash divergence: bash prints the shell
-        # name here. Pinned as a follow-up, NOT changed by this refactor.)
-        assert run_psh('f(){ echo "[$0]"; }; f').stdout == '[f]\n'
+    def test_zero_inside_function_is_script_name(self):
+        # bash semantics (fixed v0.337/v0.338): inside a function $0 stays the
+        # script/shell name, it is NOT the function name (${FUNCNAME[0]} is the
+        # function name). Via -c the name is psh's own $0, identical inside and
+        # outside the function.
+        top = run_psh('echo "[$0]"').stdout
+        infn = run_psh('f(){ echo "[$0]"; }; f').stdout
+        assert infn == top
+        assert infn != '[f]\n'
 
-    def test_zero_nested_function(self):
-        assert run_psh('g(){ echo "[$0]"; }; f(){ g; }; f').stdout == '[g]\n'
+    def test_zero_nested_function_is_script_name(self):
+        top = run_psh('echo "[$0]"').stdout
+        assert run_psh('g(){ echo "[$0]"; }; f(){ g; }; f').stdout == top
+        assert run_psh('g(){ echo "[$0]"; }; f(){ g; }; f').stdout != '[g]\n'
 
-    def test_zero_after_function_returns_to_outer(self):
+    def test_zero_same_inside_and_outside_function(self):
         out = run_psh('f(){ echo "[$0]"; }; f; echo "[$0]"').stdout
         lines = out.splitlines()
-        assert lines[0] == '[f]'
-        # outer $0 is the script name again (not 'f')
-        assert lines[1] != '[f]'
+        assert lines[0] == lines[1]  # $0 unchanged by function entry/exit
+        assert lines[0] != '[f]'
 
 
 class TestNounsetRegularVar:

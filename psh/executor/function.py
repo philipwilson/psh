@@ -90,9 +90,9 @@ class FunctionOperationExecutor:
         # read by anything, but they leaked into `set` output.)
         self.shell.state.positional_params = args
 
-        # Save old script name and set it to function name for $0
-        old_script_name = self.shell.state.script_name
-        self.shell.state.script_name = name
+        # NOTE: $0 is deliberately NOT changed on function entry — bash keeps
+        # $0 as the script/shell name inside functions (${FUNCNAME[0]} is the
+        # function name). The function name lives on function_stack below.
 
         # Push function onto stack for return builtin
         self.shell.state.function_stack.append(name)
@@ -135,4 +135,3 @@ class FunctionOperationExecutor:
             # $#/$@/$* with it — they are derived, never stored)
             context.current_function = old_function
             self.shell.state.positional_params = old_positional_params
-            self.shell.state.script_name = old_script_name

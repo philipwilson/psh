@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.338.0 (2026-06-13) - Behavior fix: $0 inside a function
+- BUG FIX (bash-verified): `$0` inside a function now stays the script/shell
+  name, instead of becoming the function name. Run by path,
+  `f(){ echo "$0"; }; f` reports the script path in psh exactly as in bash;
+  `${FUNCNAME[0]}` remains the function name. Previously psh reported the
+  function name for `$0`.
+- ROOT CAUSE: the function executor (`psh/executor/function.py`) mutated
+  `state.script_name = name` on entry "for $0" (and restored it on exit).
+  bash does not change `$0` on function entry — removed the mutation. The
+  function name still lives on `function_stack` (drives `${FUNCNAME[@]}` and
+  local-scoping), so nothing else changed.
+- CLEANUP: with `$0` no longer function-aware, `_expand_special_variable`
+  (`expansion/variable.py`) now delegates `$0` to
+  `ShellState.get_special_variable` along with the other raw special vars —
+  completing the B6 (v0.335.0) single-source consolidation.
+- A script-file differential conformance test
+  (`tests/conformance/bash/test_dollar_zero_conformance.py`) pins the
+  behavior against real bash; the B6 characterization cases that pinned the
+  old function-name behavior were corrected. Full suite green (6,262 passed).
+  ruff + mypy clean.
+
 ## 0.337.0 (2026-06-13) - Behavior fix: associative arrays in arithmetic
 - BUG FIX (bash-verified): associative-array elements now resolve inside
   arithmetic `$(( ))` / `(( ))`. Previously `declare -A m; m[k]=9; echo

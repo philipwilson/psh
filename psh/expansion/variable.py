@@ -78,21 +78,14 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
 
     def _expand_special_variable(self, var_name: str) -> str:
         """Expand special variables ($?, $$, $!, etc.) and regular variables."""
-        # The genuinely-shared raw lookups ($?, $$, $!, $#, $-, $@, $*) are
+        # The raw special-variable lookups ($?, $$, $!, $#, $-, $@, $*, $0) are
         # byte-identical to ShellState.get_special_variable, so they delegate
-        # to that single source. $0, digit positionals, and the nounset
-        # layering stay here because they carry expander-only behavior
-        # ($0 is function-aware; digits/regular vars honor nounset).
-        if var_name in ('?', '$', '!', '#', '-', '@', '*'):
+        # to that single source. $0 is the script/shell name regardless of
+        # function nesting (bash: inside a function $0 stays the script name;
+        # ${FUNCNAME[0]} is the function name) — it is NOT function-aware.
+        # Digit positionals and the nounset layering stay here.
+        if var_name in ('?', '$', '!', '#', '-', '@', '*', '0'):
             return self.state.get_special_variable(var_name)
-        elif var_name == '0':
-            # FUNCTION-AWARE: inside a function $0 is the function name (this
-            # differs from state.get_special_variable('0'), which returns
-            # script_name only). Pre-existing psh/bash divergence — bash
-            # prints the shell name here.
-            if self.state.function_stack:
-                return self.state.function_stack[-1]
-            return self.state.script_name
         elif var_name.isdigit():
             index = int(var_name) - 1
             if 0 <= index < len(self.state.positional_params):
