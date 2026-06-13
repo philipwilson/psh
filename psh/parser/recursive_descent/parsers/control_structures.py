@@ -4,7 +4,7 @@ Control structure parsing for PSH shell.
 This module handles parsing of control structures like if, while, for, case, and select.
 """
 
-from typing import List, Optional, Tuple, Union
+from typing import List, Tuple, Union
 
 from ....ast_nodes import (
     BreakStatement,
@@ -194,17 +194,15 @@ class ControlStructureParser:
         self.parser.skip_newlines()
 
         items: List[str]
-        quote_types: List[Optional[str]]
 
         if self.parser.match(TokenType.IN):
             # Explicit item list provided
             self.parser.advance()
             self.parser.skip_newlines()
-            items, quote_types, item_words = self._parse_for_iterable()
+            items, item_words = self._parse_for_iterable()
         else:
             # No explicit list - default to positional parameters ("$@")
             items = ['$@']
-            quote_types = ['"']
             item_words = [_positional_params_word()]
 
         self.parser.skip_separators()
@@ -219,21 +217,19 @@ class ControlStructureParser:
         return ForLoop(
             variable=variable,
             items=items,
-            item_quote_types=quote_types,
             item_words=item_words,
             body=body,
             redirects=redirects,
             background=False
         )
 
-    def _parse_for_iterable(self) -> tuple[List[str], List[Optional[str]], List[Word]]:
+    def _parse_for_iterable(self) -> tuple[List[str], List[Word]]:
         """Parse the iterable part of a for/select loop.
 
-        Returns parallel lists: display strings, legacy quote types, and
-        the Word AST nodes the executor expands.
+        Returns parallel lists: display strings and the Word AST nodes the
+        executor expands.
         """
         items = []
-        quote_types = []
         item_words = []
 
         # Parse items until we hit DO, newline, or semicolon
@@ -244,12 +240,11 @@ class ControlStructureParser:
             if self.parser.match_any(TokenGroups.WORD_LIKE):
                 word = self.parser.commands.parse_argument_as_word()
                 items.append(''.join(str(p) for p in word.parts))
-                quote_types.append(word.effective_quote_char)
                 item_words.append(word)
             else:
                 break
 
-        return items, quote_types, item_words
+        return items, item_words
 
     def _parse_c_style_for(self) -> CStyleForLoop:
         """Parse C-style for loop without setting execution context."""
@@ -446,11 +441,10 @@ class ControlStructureParser:
         if self.parser.match(TokenType.IN):
             self.parser.advance()
             self.parser.skip_newlines()
-            items, quote_types, item_words = self._parse_for_iterable()
+            items, item_words = self._parse_for_iterable()
         else:
             # No explicit list - default to positional parameters ("$@")
             items = ['$@']
-            quote_types = ['"']
             item_words = [_positional_params_word()]
 
         self.parser.skip_separators()
@@ -465,7 +459,6 @@ class ControlStructureParser:
         return SelectLoop(
             variable=variable,
             items=items,
-            item_quote_types=quote_types,
             item_words=item_words,
             body=body,
             redirects=redirects,

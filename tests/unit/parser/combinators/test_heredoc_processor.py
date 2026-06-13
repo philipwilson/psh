@@ -376,7 +376,6 @@ class TestHeredocProcessor:
         select_node = SelectLoop(
             variable='choice',
             items=['opt1', 'opt2', 'opt3'],
-            item_quote_types=[None, None, None],
             body=CommandList(statements=[cmd]),
             redirects=[redirect_loop],
             background=False

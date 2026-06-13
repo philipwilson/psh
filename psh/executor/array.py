@@ -243,16 +243,10 @@ class ArrayOperationExecutor:
 
         # Expand value with bash assignment-value semantics: all expansions
         # performed, NO word splitting, NO pathname expansion, tilde after
-        # '='/':' (shared policy with scalar assignments).
-        # Fallback audit 2026-06-12: value_word=None is unreachable — every
-        # construction site in both parsers (recursive descent
-        # _parse_element_value x3, combinator _collect_element_value_word x3)
-        # always builds the value Word. Fail loudly (v0.300 policy) instead
-        # of string-expanding, which loses quote context.
-        if node.value_word is None:
-            raise RuntimeError(
-                f"internal error: array element assignment {node.name}[...]="
-                f"{node.value!r} has no value Word AST")
+        # '='/':' (shared policy with scalar assignments). value_word is a
+        # REQUIRED field (A2, 2026-06-13): both parsers always build it, and
+        # a manually constructed node without it is a TypeError at
+        # construction — so there is no None case to guard here.
         expanded_value = self.expansion_manager.expand_assignment_value_word(
             node.value_word)
 

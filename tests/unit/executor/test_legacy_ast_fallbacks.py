@@ -6,16 +6,18 @@ code_quality_subsystem_reassessment_2026-06-12.md, Remaining Quality Risks
 section 2):
 
 (a) required compatibility  -> kept + exercised here
-    - ForLoop/SelectLoop item_words=None (manually constructed ASTs are an
-      explicitly supported educational pattern; the field is Optional by
-      design): items iterate as literal fields.
+    - ForLoop/SelectLoop item_words empty/length-mismatched (manually
+      constructed ASTs are an explicitly supported educational pattern;
+      since A2 the field is a non-Optional List[Word] defaulting to []):
+      items iterate as literal fields.
 (b) parser migration bridge -> kept + exercised here
     - CaseConditional pattern with CasePattern.word=None: the combinator
       parser emits it when build_word_from_token rejects the pattern token
       (e.g. $(...) containing a function definition).
 (c) unreachable defensive branches -> now raise internal errors
     - ArrayInitialization elements without parallel Words,
-    - ArrayElementAssignment without value_word,
+    - ArrayElementAssignment without value_word (since A2 value_word is a
+      REQUIRED field: omitting it is a TypeError at construction),
     - SimpleCommand args/words divergence (now unrepresentable:
       args is a property derived from words),
     - non-Word arguments to the expansion engine.
@@ -63,13 +65,13 @@ def _echo_literal_command(text: str) -> SimpleCommand:
 
 
 class TestClassARequiredCompatibility:
-    """(a) item_words=None on manually constructed for/select loops."""
+    """(a) empty item_words on manually constructed for/select loops."""
 
     def test_for_loop_without_item_words_iterates_literals(self, shell, capsys):
-        """A manual ForLoop (item_words=None) takes items as literal fields."""
+        """A manual ForLoop (item_words=[]) takes items as literal fields."""
         body = StatementList(statements=[_echo_var_command('i')])
         node = ForLoop(variable='i', items=['one', 'two $x', '*'], body=body)
-        assert node.item_words is None  # dataclass default — the fallback
+        assert node.item_words == []  # dataclass default — the fallback
         rc = shell.execute_command_list(StatementList(statements=[node]))
         assert rc == 0
         # Literal fields: no expansion, no splitting, no globbing
@@ -79,7 +81,7 @@ class TestClassARequiredCompatibility:
         """_expand_loop_items on a manual SelectLoop returns literal items."""
         node = SelectLoop(variable='v', items=['a b', '$x'],
                           body=StatementList(statements=[]))
-        assert node.item_words is None
+        assert node.item_words == []
         from psh.executor.control_flow import ControlFlowExecutor
         executor = ControlFlowExecutor(captured_shell)
         assert executor._expand_loop_items(node) == ['a b', '$x']
@@ -166,12 +168,12 @@ class TestClassCUnreachableBranchesRaise:
         with pytest.raises(RuntimeError, match='internal error'):
             ExecutorVisitor(shell).visit(node)
 
-    def test_array_element_assignment_without_value_word_raises(self, shell):
-        from psh.executor import ExecutorVisitor
-        node = ArrayElementAssignment(name='a', index='0', value='v')
-        assert node.value_word is None
-        with pytest.raises(RuntimeError, match='internal error'):
-            ExecutorVisitor(shell).visit(node)
+    def test_array_element_assignment_without_value_word_raises(self):
+        """value_word is a REQUIRED field since A2: a node built without it
+        is a TypeError at construction (stronger than the old runtime
+        internal-error guard, which is now structurally unreachable)."""
+        with pytest.raises(TypeError):
+            ArrayElementAssignment(name='a', index='0', value='v')
 
     def test_args_words_divergence_is_unrepresentable(self):
         """SimpleCommand(args=['x=1'], words=[]) used to silently assign a

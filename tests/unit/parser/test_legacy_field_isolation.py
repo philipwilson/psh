@@ -9,16 +9,19 @@ legacy quote/type sidecars.
 
 This static-source meta-test scans ``psh/executor/`` and ``psh/expansion/``
 and asserts that NONE of the legacy quote/type attribute accesses appear
-there. Verified 2026-06-13 (grep over both packages found zero hits for
-all five):
+there. A2 (2026-06-13) carried out the cleanup: four sidecars became
+DERIVED ``@property`` on the AST nodes (still read only by the two
+visitors) and ``item_quote_types`` was DELETED outright (no readers).
+The lock remains valid -- the runtime must read none of these names,
+whether they resolve to a property or no longer exist:
 
-| Locked attribute        | Only legitimate readers                        |
+| Locked attribute        | Status after A2 / only legitimate readers      |
 |-------------------------|------------------------------------------------|
-| .element_types          | formatter_visitor / validator_visitor          |
-| .element_quote_types    | formatter_visitor / validator_visitor          |
-| .value_type             | formatter_visitor                              |
-| .value_quote_type       | formatter_visitor                              |
-| .item_quote_types       | (no readers anywhere)                          |
+| .element_types          | derived property; formatter / validator        |
+| .element_quote_types    | derived property; formatter / validator        |
+| .value_type             | derived property; formatter                    |
+| .value_quote_type       | derived property; formatter                    |
+| .item_quote_types       | DELETED (no readers anywhere)                   |
 
 Why only these five (and not ``.elements`` / ``.items`` / ``.value`` /
 ``.pattern``): those are still read in the runtime for LEGITIMATE,

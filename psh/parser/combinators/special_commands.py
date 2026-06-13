@@ -348,8 +348,6 @@ class SpecialCommandParsers:
 
             # Collect elements until closing parenthesis
             elements = []
-            element_types = []
-            element_quote_types = []
             words = []
 
             while pos < len(tokens):
@@ -372,11 +370,6 @@ class SpecialCommandParsers:
                     element_value = format_token_value(token)
 
                     elements.append(element_value)
-                    element_types.append(token.type.name)
-
-                    # Track quote type if applicable
-                    quote_type = getattr(token, 'quote_type', None)
-                    element_quote_types.append(quote_type)
 
                     # Build the Word AST node so the executor expands the
                     # element through the same pipeline as command arguments.
@@ -401,8 +394,6 @@ class SpecialCommandParsers:
                 value=ArrayInitialization(
                     name=array_name,
                     elements=elements,
-                    element_types=element_types,
-                    element_quote_types=element_quote_types,
                     is_append=is_append,
                     words=words
                 ),
@@ -426,7 +417,7 @@ class SpecialCommandParsers:
         ``consume_first`` is True the first word-like token is consumed
         even if not adjacent (``arr[0]=`` followed by a separate value).
 
-        Returns (value_word, legacy_value, value_type, quote_type, new_pos).
+        Returns (value_word, legacy_value, new_pos).
         """
         parts = []
         if tail:
@@ -444,8 +435,7 @@ class SpecialCommandParsers:
             pos += 1
         word = Word(parts=parts)
         value = ''.join(str(p) for p in word.parts)
-        value_type = 'STRING' if word.is_quoted else 'WORD'
-        return word, value, value_type, word.effective_quote_char, pos
+        return word, value, pos
 
     def _build_array_element_assignment(self) -> Parser[ArrayElementAssignment]:
         """Build parser for array element assignment: arr[index]=value syntax."""
@@ -485,7 +475,7 @@ class SpecialCommandParsers:
                     tail = value[equals_pos + 1:]
 
                 # Merge any adjacent continuation tokens into the value
-                value_word, assigned_value, value_type, value_quote_type, pos = \
+                value_word, assigned_value, pos = \
                     self._collect_element_value_word(tokens, pos, tail)
 
                 return ParseResult(
@@ -494,8 +484,6 @@ class SpecialCommandParsers:
                         name=array_name,
                         index=index_str,
                         value=assigned_value,
-                        value_type=value_type,
-                        value_quote_type=value_quote_type,
                         is_append=is_append,
                         value_word=value_word
                     ),
@@ -523,7 +511,7 @@ class SpecialCommandParsers:
                 if pos >= len(tokens):
                     return ParseResult(success=False, error="Expected value after array assignment", position=pos)
 
-                value_word, assigned_value, value_type, value_quote_type, pos = \
+                value_word, assigned_value, pos = \
                     self._collect_element_value_word(tokens, pos, '',
                                                      consume_first=True)
 
@@ -533,8 +521,6 @@ class SpecialCommandParsers:
                         name=array_name,
                         index=index_str,
                         value=assigned_value,
-                        value_type=value_type,
-                        value_quote_type=value_quote_type,
                         is_append=is_append,
                         value_word=value_word
                     ),
@@ -603,7 +589,7 @@ class SpecialCommandParsers:
                 if pos >= len(tokens):
                     return ParseResult(success=False, error="Expected value after '='", position=pos)
 
-                value_word, value, value_type, value_quote_type, pos = \
+                value_word, value, pos = \
                     self._collect_element_value_word(tokens, pos, '',
                                                      consume_first=True)
 
@@ -613,8 +599,6 @@ class SpecialCommandParsers:
                         name=array_name,
                         index=index_str,
                         value=value,
-                        value_type=value_type,
-                        value_quote_type=value_quote_type,
                         is_append=is_append,
                         value_word=value_word
                     ),

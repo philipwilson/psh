@@ -13,10 +13,10 @@ Canonical (Word-based) vs legacy fields covered:
 | Node                    | Canonical          | Legacy                                          |
 |-------------------------|--------------------|-------------------------------------------------|
 | SimpleCommand           | words              | args (now a derived property)                   |
-| ArrayInitialization     | words              | elements/element_types/element_quote_types      |
-| ArrayElementAssignment  | value_word         | value/value_type/value_quote_type               |
-| ForLoop                 | item_words         | items/item_quote_types                          |
-| SelectLoop              | item_words         | items/item_quote_types                          |
+| ArrayInitialization     | words              | elements (element_types/element_quote_types now derived props) |
+| ArrayElementAssignment  | value_word         | value (value_type/value_quote_type now derived props)         |
+| ForLoop                 | item_words         | items (item_quote_types removed in A2)          |
+| SelectLoop              | item_words         | items (item_quote_types removed in A2)          |
 | CasePattern             | word               | pattern                                         |
 
 Each snippet in CORPUS is parsed through the SAME entry the shell uses

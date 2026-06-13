@@ -18,24 +18,8 @@ class ArrayParser:
         """Initialize with reference to main parser."""
         self.parser = main_parser
 
-    @staticmethod
-    def _word_to_element_type(word: Word) -> str:
-        """Derive a legacy element-type string from a Word AST node.
-
-        element_types is display/tooling metadata only (validator and
-        formatter visitors); the executor expands the parallel `words`
-        list exclusively (fallback audit 2026-06-12).
-        """
-        if word.is_quoted:
-            return 'STRING'
-        if any(getattr(p, 'quoted', False) for p in word.parts):
-            return 'COMPOSITE_QUOTED'
-        if len(word.parts) > 1:
-            return 'COMPOSITE'
-        return 'WORD'
-
     def _parse_element_value(self, tail: str) -> tuple:
-        """Parse an element-assignment value into (value, word, type, quote_char).
+        """Parse an element-assignment value into (value, word).
 
         ``tail`` is literal value text that followed ``=``/``+=`` inside the
         same token as the array name. The lexer splits expansions and quoted
@@ -57,8 +41,7 @@ class ArrayParser:
         else:
             word = Word(parts=[])
         value = ''.join(str(p) for p in word.parts)
-        return (value, word, self._word_to_element_type(word),
-                word.effective_quote_char)
+        return value, word
 
     def is_array_assignment(self) -> bool:
         """Check if current position starts an array assignment.
@@ -213,8 +196,7 @@ class ArrayParser:
                 index_str = name_token.value[bracket_pos+1:close_bracket_pos]
                 tail = name_token.value[equals_pos+(2 if is_append else 1):]
 
-                value, value_word, value_type, quote_type = \
-                    self._parse_element_value(tail)
+                value, value_word = self._parse_element_value(tail)
 
                 # Create tokens for the index
                 index_tokens = [Token(TokenType.WORD, index_str, 0)]
@@ -223,8 +205,6 @@ class ArrayParser:
                     name=name,
                     index=index_tokens,
                     value=value,
-                    value_type=value_type,
-                    value_quote_type=quote_type,
                     is_append=is_append,
                     value_word=value_word
                 )
@@ -254,8 +234,7 @@ class ArrayParser:
                 else:
                     tail = (equals_token.value[2:] if is_append
                             else equals_token.value[1:])
-                value, value_word, value_type, quote_type = \
-                    self._parse_element_value(tail)
+                value, value_word = self._parse_element_value(tail)
 
                 # Create tokens for the index
                 index_tokens = [Token(TokenType.WORD, index_str, 0)]
@@ -264,8 +243,6 @@ class ArrayParser:
                     name=name,
                     index=index_tokens,
                     value=value,
-                    value_type=value_type,
-                    value_quote_type=quote_type,
                     is_append=is_append,
                     value_word=value_word
                 )
@@ -418,15 +395,12 @@ class ArrayParser:
             if not self.parser.match_any(TokenGroups.WORD_LIKE):
                 raise self.parser.error("Expected value after '=' in array element assignment")
             tail = ''
-        value, value_word, value_type, quote_type = \
-            self._parse_element_value(tail)
+        value, value_word = self._parse_element_value(tail)
 
         return ArrayElementAssignment(
             name=name,
             index=index_tokens,
             value=value,
-            value_type=value_type,
-            value_quote_type=quote_type,
             is_append=is_append,
             value_word=value_word
         )
@@ -436,8 +410,6 @@ class ArrayParser:
         self.parser.expect(TokenType.LPAREN)
 
         elements = []
-        element_types = []
-        element_quote_types = []
         words = []
 
         # Parse array elements (newlines between elements are allowed, as in bash)
@@ -447,8 +419,6 @@ class ArrayParser:
             elif self.parser.match_any(TokenGroups.WORD_LIKE):
                 word = self.parser.commands.parse_argument_as_word()
                 elements.append(''.join(str(p) for p in word.parts))
-                element_types.append(self._word_to_element_type(word))
-                element_quote_types.append(word.effective_quote_char)
                 words.append(word)
             else:
                 break
@@ -458,8 +428,6 @@ class ArrayParser:
         return ArrayInitialization(
             name=name,
             elements=elements,
-            element_types=element_types,
-            element_quote_types=element_quote_types,
             is_append=is_append,
             words=words
         )

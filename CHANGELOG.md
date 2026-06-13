@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.341.0 (2026-06-13) - Reappraisal #4 Tier C-A2: AST sidecar cleanup
+- REFACTOR (zero behavior change): removes the parallel STORED quote/type
+  sidecar fields that let an AST node hold two truths at once (review Ugly 1).
+  - DELETED dead `ForLoop.item_quote_types` / `SelectLoop.item_quote_types`
+    (zero readers anywhere) and their population in both parsers.
+  - DERIVED, no longer stored: `ArrayInitialization.element_types` /
+    `element_quote_types` and `ArrayElementAssignment.value_type` /
+    `value_quote_type` are now `@property` computed from the canonical `Word`s,
+    reproducing the parser's prior mapping exactly. Population removed from
+    both the recursive-descent and combinator parsers. The only consumers
+    (`formatter_visitor`, `validator_visitor`) are unchanged.
+  - NON-OPTIONAL canonical fields: `ArrayElementAssignment.value_word: Word`
+    (now required) and `ForLoop`/`SelectLoop.item_words: List[Word]`
+    (default `[]`); the now-unreachable `value_word is None` guard in
+    `executor/array.py` was removed (construction enforces it).
+- SAFETY NET: a formatter/validator round-trip characterization
+  (`tests/unit/visitor/test_formatter_array_roundtrip_characterization.py`,
+  40 cases over both parsers) — green before and after, byte-identical on the
+  production recursive-descent parser. A1 invariants still hold. User-visible
+  array/loop output matches bash. Full suite green (6,346 passed). −33 net
+  production lines. ruff + mypy clean.
+- One pinned divergence: for `a=(p$x q)` the combinator parser (educational-
+  only) previously emitted a spurious "mixed element types" validator info
+  from tokenization artifacts; deriving from the (already-split) Words removes
+  it. The production parser is byte-identical.
+
 ## 0.340.0 (2026-06-13) - Reappraisal #4 Tier C-A1: AST canonical invariant lock-down
 - TESTS ONLY (no production change): a safety net for the upcoming AST field
   cleanup (Tier C-A2). New `tests/unit/parser/test_ast_canonical_invariants.py`
