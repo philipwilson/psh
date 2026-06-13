@@ -16,14 +16,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
       - run: pip install ruff mypy
       - run: ruff check psh tests
       - run: mypy  # scope is driven by [tool.mypy] files in pyproject.toml
 
-  quick-suite:
-    name: Quick Test Suite
+  test-suite:
+    name: Test Suite
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -33,24 +34,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-          pip install pytest-cov
 
-      # Coverage is NON-gating: pytest-cov only reports (no --cov-fail-under).
-      - name: Run Canonical Quick Suite (with coverage)
-        run: python run_tests.py --quick --coverage
-
-      - name: Upload Coverage Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-xml
-          path: coverage.xml
-          if-no-files-found: warn
+      # The per-PR gate runs the FULL suite in parallel (pytest-xdist):
+      # the not-serial phase under -n auto, then the serial phase. Coverage
+      # is NOT collected here — it is non-gating reporting and lives in the
+      # nightly run, keeping this gate fast (see nightly.yml).
+      - name: Run Full Parallel Suite
+        run: python run_tests.py --parallel
 
   conformance-smoke:
     name: Conformance Smoke
@@ -65,6 +61,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install Dependencies
         run: |

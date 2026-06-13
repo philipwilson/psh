@@ -1,0 +1,46 @@
+name: Auto-tag Release
+
+# When a version bump lands on main, create the matching annotated tag
+# vX.Y.Z if it does not already exist. This closes the release loop so that
+# merges (including asynchronous / auto-merged PRs) get tagged without a
+# manual `git tag` step. Triggered only when psh/version.py changes, so
+# doc-only or refactor-only merges never tag.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "psh/version.py"
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Tag version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history + existing tags
+
+      - name: Read version
+        id: ver
+        run: |
+          V=$(python -c "import re,pathlib; t=pathlib.Path('psh/version.py').read_text(); print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', t).group(1))")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Detected version: $V"
+
+      - name: Create tag if absent
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists — nothing to do."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+          echo "Created and pushed $TAG."

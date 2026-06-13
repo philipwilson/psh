@@ -19,6 +19,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install Dependencies
         run: |
@@ -31,8 +32,19 @@ jobs:
       # --compare-bash adds the golden bash-comparison phase (Phase 3) to
       # the same run, so the full suite and the golden phase share one
       # invocation; --census logs the skip/xfail breakdown nightly.
-      - name: Run Full Parallel Suite (with bash golden phase)
-        run: python run_tests.py --parallel --compare-bash --census
+      # --coverage accumulates one coverage db across all phases and writes
+      # coverage.xml. Coverage is non-gating reporting (no --cov-fail-under);
+      # it moved here from the per-PR gate (v0.330.0) to keep that gate fast.
+      - name: Run Full Parallel Suite (with bash golden phase + coverage)
+        run: python run_tests.py --parallel --compare-bash --census --coverage
+
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: warn
 
   conformance:
     name: Full Conformance Suite
@@ -47,6 +59,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install Dependencies
         run: |
