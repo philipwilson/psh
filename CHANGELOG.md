@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.329.0 (2026-06-13) - Reappraisal #4 Tier B1: tooling honesty
+- TOOLING: a bare `ruff check .` now passes. `docs/archive` (retired,
+  historically-preserved material) is excluded via `extend-exclude` in
+  `pyproject.toml`, and the root `conftest.py` is import-clean (dropped an
+  unused `import sys`, sorted the block). The strict production gate is
+  unchanged: `ruff check psh tests` still lints both live trees with zero
+  tolerance (CLAUDE.md).
+- DOCS: filed the independent 2026-06-13 code-quality assessment into
+  `docs/reviews/code_quality_assessment_2026-06-13.md`, and recorded its
+  post-verification residue as `docs/reviews/reappraisal_4_tier_b.md` (the
+  plan for this tier). Discarded recommendations that verification showed
+  were already shipped (combinator-parser gating, the `ruff check psh tests`
+  gate, debug-print gating) or environment-specific (the two quick-suite
+  "failures" pass in isolation).
+- No production code changed; behavior is identical.
+
 ## 0.328.0 (2026-06-13) - Textbook program Tier B10b (TEXTBOOK PROGRAM COMPLETE)
 - THE BEHAVIOR FIX (B10a's pin-sweep finding, probed 22-case matrix
   vs bash 5.2 — 11 DIFFs before, 22/22 MATCH after): exported

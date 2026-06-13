@@ -1,9 +1,10 @@
 """Global pytest configuration for psh tests."""
-import pytest
-import sys
 import os
-from psh.shell import Shell
+
+import pytest
+
 from psh.executor.job_control import JobState
+from psh.shell import Shell
 
 
 def pytest_configure(config):
