@@ -356,6 +356,13 @@ class FileRedirector:
             self.shell.stderr = sys.stderr
             self.state.stderr = sys.stderr
 
+    def _rebind_input_stream(self, target_fd: int):
+        """Point the shell's Python-level stdin at redirected fd 0."""
+        if target_fd == 0:
+            sys.stdin = os.fdopen(os.dup(0), 'r')
+            self.shell.stdin = sys.stdin
+            self.state.stdin = sys.stdin
+
     def apply_permanent_redirections(self, redirects: List[Redirect]):
         """Apply redirections permanently (for exec builtin).
 
@@ -386,28 +393,21 @@ class FileRedirector:
                 self._rebind_output_stream(2)
             elif redirect.type == '<':
                 target_fd = self._redirect_input_from_file(target, redirect)
-                if target_fd == 0:
-                    # Only rebind the shell's stdin when fd 0 changed —
-                    # `exec 5<file` opens fd 5 and must leave stdin alone.
-                    self.shell.stdin = sys.stdin
-                    self.state.stdin = sys.stdin
+                # Only rebind the shell's stdin when fd 0 changed —
+                # `exec 5<file` opens fd 5 and must leave stdin alone.
+                self._rebind_input_stream(target_fd)
             elif redirect.type == '<>':
-                self._redirect_readwrite(target, redirect)
-                self.shell.stdin = sys.stdin
-                self.state.stdin = sys.stdin
+                target_fd = self._redirect_readwrite(target, redirect)
+                self._rebind_input_stream(target_fd)
             elif redirect.type in ('<<', '<<-'):
                 self._redirect_heredoc(redirect)
-                if self._heredoc_fd(redirect) == 0:
-                    # Only rebind the shell's stdin when fd 0 changed —
-                    # `exec 5<<EOF` materializes on fd 5 and must leave
-                    # stdin alone.
-                    self.shell.stdin = sys.stdin
-                    self.state.stdin = sys.stdin
+                # Only rebind the shell's stdin when fd 0 changed —
+                # `exec 5<<EOF` materializes on fd 5 and must leave
+                # stdin alone.
+                self._rebind_input_stream(self._heredoc_fd(redirect))
             elif redirect.type == '<<<':
                 self._redirect_herestring(redirect)
-                if self._heredoc_fd(redirect) == 0:
-                    self.shell.stdin = sys.stdin
-                    self.state.stdin = sys.stdin
+                self._rebind_input_stream(self._heredoc_fd(redirect))
             elif redirect.type == '>|':
                 target_fd = self._redirect_clobber(target, redirect)
                 self._rebind_output_stream(target_fd)

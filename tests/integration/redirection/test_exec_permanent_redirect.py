@@ -146,3 +146,24 @@ class TestExecCustomFdRedirect:
         assert result.returncode == 0
         assert result.stdout == 'done\n'
         assert read(os.path.join(temp_dir, 'out3.txt')) == 'hi\next\n'
+
+
+class TestExecStdinRedirect:
+    """exec <file / exec n<file."""
+
+    def test_exec_stdin_then_builtin_read(self, temp_dir):
+        with open(os.path.join(temp_dir, 'in.txt'), 'w') as f:
+            f.write('from-file\n')
+        result = run_psh('exec <in.txt; read line; echo "got:$line"', temp_dir)
+        assert result.returncode == 0
+        assert result.stdout == 'got:from-file\n'
+
+    def test_exec_custom_input_fd_does_not_replace_stdin(self, temp_dir):
+        with open(os.path.join(temp_dir, 'in.txt'), 'w') as f:
+            f.write('custom-fd\n')
+        result = run_psh(
+            'exec 5<in.txt; read line <&5; echo "fd5:$line"; '
+            'printf "stdin-ok\\n"',
+            temp_dir)
+        assert result.returncode == 0
+        assert result.stdout == 'fd5:custom-fd\nstdin-ok\n'

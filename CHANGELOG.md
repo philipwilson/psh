@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.370.0 (2026-06-13) - Write-side process substitution via FIFO (macOS fix)
+- BUG FIX (platform robustness). Write-side process substitution `>(cmd)` used a
+  `/dev/fd/N` pipe path. On macOS, an external consumer (e.g. `tee >(cmd)`)
+  reopening that write-only pipe through `/dev/fd` can fail with EPERM — so the
+  two known `/dev/fd`-sandbox failures (`test_write_side_substitution_tee`,
+  `test_dup_stdout_to_arithmetic_fd`) only passed in some environments.
+- `>(cmd)` now uses a named FIFO (`tempfile.mkdtemp` + `os.mkfifo`) so consumers
+  open a normal path; the substitution child reads the FIFO on stdin with a
+  5-second SIGALRM open-timeout (falls back to `/dev/null` if nothing ever
+  opens it, so the child never blocks forever). `create_process_substitution`
+  now returns a 4-tuple `(parent_fd, path, pid, cleanup_path)` — `parent_fd` is
+  `None` for FIFO-backed write side — and `ProcessSubstitutionHandler` tracks
+  `active_paths`, unlinking the FIFO + its temp dir at scope exit. Read-side
+  `<(cmd)` is unchanged (still a pipe).
+- `file_redirect.py`: extracted `_rebind_input_stream(target_fd)` so the four
+  permanent-input-redirect arms (`<`, `<>`, heredoc, here-string) share one
+  fd-0-only stdin-rebind rule; `<>` now captures `target_fd` so it rebinds stdin
+  only when fd 0 actually changed (matching `<`).
+- Tests: `test_dup_stdout_to_arithmetic_fd` rewritten to write a `tmp_path` file
+  instead of `/dev/stdout` (portable); added `TestExecStdinRedirect`
+  (`exec <file` + `read`; `exec 5<file` must not replace stdin).
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6810 passed,
+  `pytest tests/behavioral --compare-bash` 319 passed.
+
 ## 0.369.0 (2026-06-13) - Tier T3.2: separate-bracket array syntax matches bash
 - BEHAVIOR FIX (bash-verified) + REFACTOR (−185 lines). `a [ 0 ] = v` (with
   spaces around the brackets) is NOT array-assignment syntax — bash parses it as
