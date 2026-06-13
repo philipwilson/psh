@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.344.0 (2026-06-13) - Reappraisal #4 Tier C-C1: typed cmdsub scanner state
+- REFACTOR (zero behavior change, review Ugly 7): `psh/lexer/cmdsub_scanner.py`
+  tracked its `case`-statement scanning with 6 string phase constants and
+  `[state, pattern_paren_depth]` lists. These are now a `CasePhase` enum and a
+  `CaseScanState` dataclass (`case_stack: List[CaseScanState]`); all 24
+  `top[0]`/`top[1]` access sites updated, transition logic byte-for-byte
+  identical.
+- NEW TEST (`tests/unit/lexer/test_cmdsub_scanner_vs_parser.py`, 61-body
+  corpus + per-body double assertion): the scanner's chosen `$()` extent
+  agrees with what the real parser accepts, and the lexer's COMMAND_SUB token
+  spans exactly that extent. Covers nested subs, all quote forms, comments,
+  heredocs, arithmetic, `case` in every form, `;;`/`;&`/`;;&`, compositions.
+- The 103-case frozen scanner characterization harness stays byte-identical;
+  6 bash probes match. Full suite green (6,519 passed). ruff + mypy clean.
+
 ## 0.343.0 (2026-06-13) - Reappraisal #4 Tier C-B2: array-assignment normalization
 - REFACTOR (zero behavior change, review Ugly 5): `ArrayParser`
   (`psh/parser/recursive_descent/parsers/arrays.py`) detected/parsed array

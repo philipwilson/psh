@@ -14,6 +14,8 @@ as its own module makes the maintenance contract (and its owner tests)
 discoverable.
 """
 
+from dataclasses import dataclass
+from enum import Enum
 from typing import List, Optional, Tuple
 
 from .command_position import CMDPOS_KEEPING_WORDS as _CMDPOS_KEEPING_WORDS
@@ -22,13 +24,24 @@ from .pure_helpers import (
     validate_brace_expansion,
 )
 
-# Per-`case` scanner states (one stack entry per enclosing case statement).
-_CASE_SUBJECT = 'subject'              # `case` seen; subject word not started
-_CASE_SUBJECT_SEEN = 'subject_seen'    # consuming the subject word
-_CASE_EXPECT_IN = 'expect_in'          # subject done; the word `in` expected
-_CASE_EXPECT_PATTERN = 'expect_pattern'  # after `in` / `;;` — pattern or esac
-_CASE_PATTERN = 'pattern'              # in a pattern; `)` at depth 0 ends it
-_CASE_BODY = 'body'                    # commands until `;;` / `;&` / `;;&` / esac
+
+class CasePhase(Enum):
+    """Per-`case` scanner phases (one stack entry per enclosing case)."""
+
+    SUBJECT = 'subject'              # `case` seen; subject word not started
+    SUBJECT_SEEN = 'subject_seen'    # consuming the subject word
+    EXPECT_IN = 'expect_in'          # subject done; the word `in` expected
+    EXPECT_PATTERN = 'expect_pattern'  # after `in` / `;;` — pattern or esac
+    PATTERN = 'pattern'              # in a pattern; `)` at depth 0 ends it
+    BODY = 'body'                    # commands until `;;` / `;&` / `;;&` / esac
+
+
+@dataclass
+class CaseScanState:
+    """Mutable scan state for one enclosing ``case`` statement."""
+
+    phase: CasePhase
+    pattern_paren_depth: int = 0
 
 # Characters that end a plain word (quote/expansion starters are handled
 # separately by the main scan loop before the word reader runs).
@@ -291,7 +304,7 @@ class _CmdSubScanner:
         text, n       -- the input and its length (immutable)
         pos           -- cursor; advances as constructs are consumed
         depth         -- unmatched unquoted ``(`` group/subshell openers
-        case_stack    -- ``[state, pattern_paren_depth]`` per open ``case``
+        case_stack    -- a :class:`CaseScanState` per open ``case``
         command_position -- True where a reserved word (``case``/``if``/...)
                          would be recognized (start, after separators, ...)
         at_word_start -- True at the first char of a word (so ``#`` is a
@@ -311,7 +324,7 @@ class _CmdSubScanner:
         self.n = len(text)
         self.pos = start_pos
         self.depth = 0
-        self.case_stack: List[list] = []
+        self.case_stack: List[CaseScanState] = []
         self.command_position = True
         self.at_word_start = True
         self.pending_heredocs: list = (
@@ -376,15 +389,15 @@ class _CmdSubScanner:
             return None
         blank = ch in ' \t\n' or (
             ch == '\\' and self.text.startswith('\\\n', self.pos))
-        if top[0] == _CASE_SUBJECT and not blank:
-            top[0] = _CASE_SUBJECT_SEEN
-        elif top[0] == _CASE_SUBJECT_SEEN and blank:
-            top[0] = _CASE_EXPECT_IN
-        elif top[0] == _CASE_EXPECT_PATTERN and not blank and ch != '#':
+        if top.phase == CasePhase.SUBJECT and not blank:
+            top.phase = CasePhase.SUBJECT_SEEN
+        elif top.phase == CasePhase.SUBJECT_SEEN and blank:
+            top.phase = CasePhase.EXPECT_IN
+        elif top.phase == CasePhase.EXPECT_PATTERN and not blank and ch != '#':
             if ch == '(':
                 # The grammar's optional pattern-opening '(':
                 # `case x in (x) ...` — consume without counting.
-                top[0] = _CASE_PATTERN
+                top.phase = CasePhase.PATTERN
                 self.pos += 1
                 self.at_word_start = True
                 return True
@@ -394,7 +407,7 @@ class _CmdSubScanner:
                 self.command_position = False
                 self.at_word_start = False
                 return True
-            top[0] = _CASE_PATTERN
+            top.phase = CasePhase.PATTERN
         return None
 
     # -- whitespace / newline --------------------------------------------
@@ -508,8 +521,8 @@ class _CmdSubScanner:
     # -- parentheses ------------------------------------------------------
 
     def _handle_open_paren(self, ch: str, top) -> None:
-        if top is not None and top[0] == _CASE_PATTERN:
-            top[1] += 1  # extglob/group paren inside a pattern
+        if top is not None and top.phase == CasePhase.PATTERN:
+            top.pattern_paren_depth += 1  # extglob/group paren in a pattern
             self.pos += 1
             self.at_word_start = True
             return None
@@ -529,11 +542,11 @@ class _CmdSubScanner:
         return None
 
     def _handle_close_paren(self, ch: str, top) -> Optional[Tuple[int, bool]]:
-        if top is not None and top[0] == _CASE_PATTERN:
-            if top[1] > 0:
-                top[1] -= 1  # closes an extglob/group paren
+        if top is not None and top.phase == CasePhase.PATTERN:
+            if top.pattern_paren_depth > 0:
+                top.pattern_paren_depth -= 1  # closes an extglob/group paren
             else:
-                top[0] = _CASE_BODY  # ends the pattern (case syntax)
+                top.phase = CasePhase.BODY  # ends the pattern (case syntax)
                 self.command_position = True
             self.pos += 1
             self.at_word_start = True
@@ -557,13 +570,13 @@ class _CmdSubScanner:
     # -- separators / operators ------------------------------------------
 
     def _handle_semicolon(self, ch: str, top) -> None:
-        if top is not None and top[0] == _CASE_BODY:
+        if top is not None and top.phase == CasePhase.BODY:
             if self.text.startswith(';;&', self.pos):
-                top[0] = _CASE_EXPECT_PATTERN
+                top.phase = CasePhase.EXPECT_PATTERN
                 self.pos += 3
             elif self.text.startswith(';;', self.pos) or \
                     self.text.startswith(';&', self.pos):
-                top[0] = _CASE_EXPECT_PATTERN
+                top.phase = CasePhase.EXPECT_PATTERN
                 self.pos += 2
             else:
                 self.pos += 1
@@ -612,18 +625,18 @@ class _CmdSubScanner:
         self.pos = pos
         word = text[start:pos]
         pure = pos >= n or text[pos] not in '\'"`$\\'
-        if top is not None and top[0] == _CASE_EXPECT_IN:
+        if top is not None and top.phase == CasePhase.EXPECT_IN:
             if pure and word == 'in':
-                top[0] = _CASE_EXPECT_PATTERN
+                top.phase = CasePhase.EXPECT_PATTERN
             else:
                 self.case_stack.pop()  # malformed `case` — degrade gracefully
             self.command_position = False
         elif self.command_position and pure and word == 'case' and (
-                top is None or top[0] == _CASE_BODY):
-            self.case_stack.append([_CASE_SUBJECT, 0])
+                top is None or top.phase == CasePhase.BODY):
+            self.case_stack.append(CaseScanState(CasePhase.SUBJECT))
             self.command_position = False
         elif self.command_position and pure and word == 'esac' and \
-                top is not None and top[0] == _CASE_BODY:
+                top is not None and top.phase == CasePhase.BODY:
             self.case_stack.pop()
             self.command_position = False
         elif not (pure and word in _CMDPOS_KEEPING_WORDS
