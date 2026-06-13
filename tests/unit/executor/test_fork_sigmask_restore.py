@@ -103,3 +103,72 @@ class TestForkFailureRestoresMask:
                 os.waitpid(pid, 0)
             except OSError:
                 pass
+
+
+@pytest.mark.serial
+class TestForkFailureHandledGracefully:
+    """A fork failure (EAGAIN under process pressure) must not crash the
+    shell: it reports an error, yields a sensible nonzero status, leaves
+    the parent's signal mask intact, and the shell keeps running.
+
+    Determinism: the fork is mocked to raise OSError(EAGAIN) — we never
+    exhaust real process limits. These run in-process against the
+    ``captured_shell`` fixture and monkeypatch ``fork_with_signal_window``
+    at the two module references the launcher resolves. They are
+    ``serial``-marked because they exercise the process-creation /
+    signal-mask machinery.
+    """
+
+    def _patch_fork_to_fail(self, monkeypatch):
+        """Make every fork site raise EAGAIN, deterministically."""
+        from psh.executor import child_policy, process_launcher
+
+        def boom():
+            raise OSError(errno.EAGAIN, "Resource temporarily unavailable")
+
+        # The launcher imported the helper by name (`from .child_policy
+        # import ... fork_with_signal_window`), so patch BOTH the
+        # definition and the launcher's bound reference.
+        monkeypatch.setattr(child_policy, "fork_with_signal_window", boom)
+        monkeypatch.setattr(
+            process_launcher, "fork_with_signal_window", boom)
+
+    def test_external_command_fork_failure_does_not_crash(
+            self, captured_shell, monkeypatch):
+        """`/bin/echo hi` with a failing fork: error reported, nonzero
+        status, shell survives to run the next command."""
+        before = _current_mask()
+        self._patch_fork_to_fail(monkeypatch)
+
+        rc = captured_shell.run_command('/bin/echo hi')
+        # Graceful: nonzero status, no traceback escaping to the caller.
+        assert rc != 0, "fork failure should yield a nonzero exit status"
+        # An error was reported to stderr (message format is psh's errno
+        # style; we only assert the failure surfaced, not exact wording).
+        assert captured_shell.get_stderr() != ""
+
+        # The shell is still usable afterwards and the parent's signal
+        # mask was restored (no leaked block from the fork window).
+        assert _current_mask() == before, "signal mask leaked after fork failure"
+
+    def test_shell_keeps_running_after_fork_failure(
+            self, captured_shell, monkeypatch):
+        """After a fork failure on an external command, a subsequent
+        builtin (no fork) still runs and produces its output."""
+        self._patch_fork_to_fail(monkeypatch)
+        # First command forks (and fails); the trailing builtin does not.
+        rc = captured_shell.run_command('/bin/false; echo STILL_ALIVE')
+        assert rc == 0, "trailing builtin should run and succeed"
+        assert "STILL_ALIVE" in captured_shell.get_stdout()
+
+    def test_pipeline_fork_failure_does_not_crash(
+            self, captured_shell, monkeypatch):
+        """A fork failure inside a pipeline is handled: nonzero status,
+        mask restored, no crash."""
+        before = _current_mask()
+        self._patch_fork_to_fail(monkeypatch)
+
+        rc = captured_shell.run_command('/bin/echo a | /bin/cat')
+        assert rc != 0, "pipeline fork failure should yield nonzero status"
+        assert _current_mask() == before, "signal mask leaked after pipeline fork failure"
+        assert captured_shell.get_stderr() != ""

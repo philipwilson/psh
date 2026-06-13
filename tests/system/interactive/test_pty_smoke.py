@@ -498,6 +498,24 @@ class TestPtyJobControl:
         psh.sendintr()             # interrupt the resumed job
         psh.expect(PROMPT, timeout=8)
 
+    def test_jobs_lists_stopped_job(self, psh):
+        """After Ctrl-Z, the job appears in `jobs` as Stopped (the stopped
+        job is tracked in the job table, not silently dropped). The
+        sentinel `sleep 31` distinguishes this job's command text from the
+        echoed input of any other test command."""
+        psh.send('sleep 31\r')
+        time.sleep(0.8)
+        psh.send('\x1a')           # ctrl-z
+        psh.expect('Stopped', timeout=8)
+        psh.expect(PROMPT)
+        psh.send('jobs\r')
+        # The jobs listing names the stopped job and its state.
+        psh.expect('Stopped', timeout=8)
+        psh.expect('sleep 31')
+        psh.expect(PROMPT)
+        psh.send('kill %1\r')      # clean up the stopped job
+        psh.expect(PROMPT)
+
 
 class TestPtyPortedLegacy:
     """Behaviors ported from the deleted legacy interactive suites

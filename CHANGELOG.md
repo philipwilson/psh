@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.336.0 (2026-06-13) - Reappraisal #4 Tier B7: process failure-path tests (TIER B COMPLETE)
+- TESTS ONLY (no production change): 24 deterministic, parallel-safe tests
+  for the process-creation / pipeline error paths the 2026-06-13 assessment
+  flagged as undertested:
+  - **fork failure** — inject `OSError(EAGAIN)` into `fork_with_signal_window`
+    for single-command and pipeline launches; assert graceful error, nonzero
+    exit, parent signal mask restored, shell survives (extends
+    `test_fork_sigmask_restore.py`).
+  - **redirect failure** — output/input/permission cases: nonzero exit, the
+    command body does NOT run, error on stderr, and the shell's fds are
+    restored (a following command writes correctly). Permanent-fd cases run
+    psh in a subprocess. Exit codes matched to bash.
+  - **signal-killed exit status** — child signals itself (no race): SIGINT→130,
+    SIGTERM→143, SIGKILL→137, pipeline SIGPIPE→141; all matched to bash.
+  - **stopped jobs** — a PTY test that `jobs` lists a Ctrl-Z'd job as Stopped.
+  - **process-sub cleanup** — 20-iteration loop proving no `/dev/fd` leak and
+    no zombie accumulation; write-side `>(...)` child reaped.
+  - All paths behaved correctly (matched bash on every exit code and the
+    body-skipped / fds-restored guarantees). The only divergence is cosmetic
+    (Python-errno vs bash redirect-error wording); tests assert non-empty
+    stderr rather than pinning it.
+- This release COMPLETES reappraisal #4 Tier B (v0.329.0–v0.336.0): tooling
+  honesty, CI health, strict internal-error mode, and the four
+  decomposition/consolidation refactors (cmdsub scanner, arithmetic package,
+  WordExpander segment-IR, single-authority state) — each zero-behavior-change
+  and guarded by a frozen characterization harness. Full suite green
+  (6,241 passed). See `docs/reviews/reappraisal_4_tier_b.md`.
+
 ## 0.335.0 (2026-06-13) - Reappraisal #4 Tier B6: single-authority state
 - REFACTOR (zero behavior change), two halves:
   - **Forked-child flag**: removed the vestigial
