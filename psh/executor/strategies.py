@@ -194,9 +194,9 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
             print(f"DEBUG BuiltinStrategy: executing builtin '{cmd_name}' with args {args}",
                   file=sys.stderr)
             print(f"DEBUG BuiltinStrategy: in_pipeline={context.in_pipeline}, "
-                  f"in_forked_child={context.in_forked_child}", file=sys.stderr)
+                  f"in_forked_child={shell.state.in_forked_child}", file=sys.stderr)
 
-        # The builtin will check context.in_forked_child to determine its
+        # The builtin will check shell.state.in_forked_child to determine its
         # output method.
         return execute_builtin_guarded(builtin, cmd_name, args, shell)
 

@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.335.0 (2026-06-13) - Reappraisal #4 Tier B6: single-authority state
+- REFACTOR (zero behavior change), two halves:
+  - **Forked-child flag**: removed the vestigial
+    `ExecutionContext.in_forked_child` (dataclass field + `fork_context()` /
+    `pipeline_context_enter()` constructors). Its only references were a
+    `debug-exec` print and a stale comment in `executor/strategies.py`; every
+    real reader (builtins, `command.py`) and writer (`child_policy.py`,
+    `subshell.py`) uses `ShellState.in_forked_child`, now the sole authority.
+    The strategies.py debug print/comment were corrected to name
+    `shell.state.in_forked_child`.
+  - **Special-variable lookup**: `_expand_special_variable` in
+    `expansion/variable.py` re-implemented raw values that already lived in
+    `ShellState.get_special_variable`. The 7 byte-identical raw lookups
+    (`$?`, `$$`, `$!`, `$#`, `$-`, `$@`, `$*`) now delegate to that single
+    source. The expander-only layering stays in the expander: `$0`
+    (function-aware), digit positionals, and the `nounset` checks. (`$*`'s
+    IFS join was traced to confirm both paths use `state.ifs_star_separator`
+    before delegating.)
+- SAFETY NET: a 49-case characterization harness
+  (`tests/unit/expansion/test_special_var_lookup_characterization.py`) over
+  every special var across contexts (incl. `$*` under varied IFS, `$0` inside
+  nested functions, `nounset` digit out-of-range, and a forked-builtin
+  fd-level-I/O sanity class) — green before and after. Full suite green
+  (6,217 passed). ruff + mypy clean.
+- PRE-EXISTING divergence confirmed and preserved (recorded for a future
+  behavior release in `docs/reviews/reappraisal_4_tier_b.md`): `$0` inside a
+  function returns the function name in psh vs the shell name in bash.
+
 ## 0.334.0 (2026-06-13) - Reappraisal #4 Tier B5: WordExpander segment-IR
 - REFACTOR (zero behavior change): the word-expansion engine
   (`psh/expansion/word_expander.py`) accumulated each part onto a mutable
