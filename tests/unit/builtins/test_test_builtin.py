@@ -11,9 +11,23 @@ Tests cover:
 
 import os
 
+import pytest
+
 
 class TestFileTests:
     """Test file-related test conditions."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_cwd(self, tmp_path, monkeypatch):
+        """Give each file test its own working directory.
+
+        These tests create fixed-name files/dirs (``testdir``, ``regular.txt``,
+        …) and remove them with relative paths. Run in the shared cwd under
+        pytest-xdist they collide across workers (a `testdir` created by one
+        test is removed by another, raising FileNotFoundError). Per-test temp
+        cwd isolation removes the collision (CLAUDE.md parallel-safety rule 2).
+        """
+        monkeypatch.chdir(tmp_path)
 
     def test_file_exists(self, shell, capsys):
         """Test -e (file exists)."""
