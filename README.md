@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.334.0 | **Tests**: 6,405 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.335.0 | **Tests**: 6,454 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~49,100 lines of production code in `psh/` across 193 Python files, plus ~59,500 lines of tests in `tests/` (262 Python files)
-- **Test Coverage**: 6,405 tests in 279 test files
+- **Test Coverage**: 6,454 tests in 280 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.335.0**: reappraisal #4 Tier B6 (single-authority state) — removes the vestigial `ExecutionContext.in_forked_child` (only a debug print read it) so `ShellState.in_forked_child` is the sole authority; and centralizes the 7 byte-identical raw special-variable lookups (`$?`/`$$`/`$!`/`$#`/`$-`/`$@`/`$*`) in `_expand_special_variable` to delegate to `ShellState.get_special_variable` (the function-aware `$0`, digit positionals, and `nounset` layering stay in the expander). 49-case characterization harness; zero behavior change
 - **v0.334.0**: reappraisal #4 Tier B5 (WordExpander segment-IR) — the word-expansion engine's implicit parallel-array accumulator (`result_parts` + `splittable_idx` + scattered flags) is replaced by an explicit `ExpandedSegment(text, quoted, splittable, glob_eligible)` list, and `_finish` now runs three visibly separate passes (field-split → glob → join); the old word-level flags are derived as properties over the segment list. Guarded by a 94-case frozen characterization harness (green before and after) plus 9 adversarial bash probes; zero behavior change
 - **v0.333.0**: reappraisal #4 Tier B4 (arithmetic decomposition) — the 1,155-line `psh/expansion/arithmetic.py` is split into a package (`tokens`, `tokenizer`, `nodes`, `parser`, `errors`, `evaluator`, with `__init__` re-exporting the full public surface); the 213-line number reader is broken into per-base helpers. Guarded by a 150-case frozen characterization harness (green before and after); zero behavior change. (The sweep also confirmed a pre-existing bug, recorded for a future behavior release: associative-array elements don't resolve inside `$(( ))`.)
 - **v0.332.0**: reappraisal #4 Tier B3 (cmdsub scanner decomposition) — the ~341-line `find_command_substitution_end` boundary scanner (a correctness hotspot) is decomposed into a small `_CmdSubScanner` class with one handler per construct (quotes, escapes, `$`-forms, backticks, comments, parens, separators, redirections/heredocs, the `case`/`esac` state machine); the public function body is now one delegating line. Guarded by a 103-case frozen characterization harness (green before and after); zero behavior change

@@ -22,7 +22,6 @@ class ExecutionContext:
 
     # Execution environment flags
     in_pipeline: bool = False
-    in_forked_child: bool = False
 
     # Control flow state
     loop_depth: int = 0
@@ -48,13 +47,13 @@ class ExecutionContext:
         """
         Create a context for a forked child process.
 
-        Inherits pipeline/loop/function state but marks itself as being in a
-        forked child, which affects how certain operations (like builtin
-        output) are handled.
+        Inherits pipeline/loop/function state. (The forked-child flag itself
+        lives on ShellState — ``state.in_forked_child``, the single authority
+        read by builtins to choose fd-level vs Python-level I/O — and is set
+        by child_policy/subshell at fork time, not carried here.)
         """
         return ExecutionContext(
             in_pipeline=self.in_pipeline,
-            in_forked_child=True,
             loop_depth=self.loop_depth,
             current_function=self.current_function,
             errexit_suppress=self.errexit_suppress,
@@ -64,7 +63,6 @@ class ExecutionContext:
         """Create a context for entering a pipeline (``in_pipeline=True``)."""
         return ExecutionContext(
             in_pipeline=True,
-            in_forked_child=self.in_forked_child,
             loop_depth=self.loop_depth,
             current_function=self.current_function,
             errexit_suppress=self.errexit_suppress,

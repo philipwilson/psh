@@ -67,6 +67,16 @@ Candidate for a dedicated behavior release. (Also noted, expected and
 already pinned: psh has no `0b` binary literal — `0b101` is octal-0 then
 `b`, an error, like the existing `test_0b_is_not_binary` pin.)
 
+## Emergent behavior finding (from B6, 2026-06-13)
+
+Confirmed pre-existing (NOT a refactor regression): **`$0` inside a
+function returns the function name in psh, the shell name in bash** —
+`f(){ echo "$0"; }; f` → `f` (psh) vs `bash` (bash). The function-aware
+`$0` lives in `variable.py`'s `_expand_special_variable` and was preserved
+exactly by B6. POSIX/bash keep `$0` as the shell/script name regardless of
+function nesting (`${FUNCNAME[0]}` is the function name). Candidate for a
+dedicated behavior release alongside the B4 assoc-array-in-arithmetic fix.
+
 ## Method (unchanged from the Textbook Program)
 
 Per release: `fix/`/`chore/` branch → subagent implements (no commits,
