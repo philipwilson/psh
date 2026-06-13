@@ -670,6 +670,48 @@
   stderr: ""
   exit_code: 0
 
+# --- separate-bracket "array assignment" is NOT an assignment (matches bash) ---
+# `a [ 0 ] = v` (space BEFORE the bracket) is a simple command: word `a`
+# followed by args `[ 0 ] = v`. bash runs `a` and reports command-not-found.
+- name: array_separate_bracket_command_not_found
+  command: 'a [ 0 ] = v'
+  stdout: ""
+  stderr: "command not found"
+  exit_code: 127
+
+- name: array_separate_bracket_append_command_not_found
+  command: 'arr [ key ] += val'
+  stdout: ""
+  stderr: "command not found"
+  exit_code: 127
+
+# A real command named like an identifier, followed by `[ ... ]` args, must
+# run normally -- the old machinery misdetected this as an array assignment.
+- name: array_separate_bracket_real_command_runs
+  command: 'echo [ 0 ] = v'
+  stdout: "[ 0 ] = v\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_separate_bracket_function_runs
+  command: 'a() { echo hi "$@"; }; a [ 0 ] = v'
+  stdout: "hi [ 0 ] = v\n"
+  stderr: ""
+  exit_code: 0
+
+# Valid (no-space) array assignment is unaffected.
+- name: array_element_no_space_still_works
+  command: 'a[0]=v; echo "${a[0]}"'
+  stdout: "v\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_element_spaces_inside_brackets_still_works
+  command: 'a[ 0 ]=v; echo "${a[0]}"'
+  stdout: "v\n"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # PIPELINES
 # =============================================================================
