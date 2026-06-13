@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.332.0
+**Current Version**: 0.333.0
 
 **Note:** For orientation, start with the Quick Map below; for a narrative
 walkthrough of one command through the whole pipeline (with reproducible
@@ -76,7 +76,7 @@ psh/
 │   ├── variable.py + arrays/operators/operands/fields mixins
 │   ├── parameter_expansion.py / command_sub.py / tilde.py / glob.py
 │   ├── pattern.py           # THE canonical shell-pattern engine
-│   ├── arithmetic.py / brace_expansion.py / word_splitter.py / evaluator.py
+│   ├── arithmetic/ / brace_expansion.py / word_splitter.py / evaluator.py
 │   └── aliases.py           # AliasManager
 ├── executor/                # Visitor-based executor package
 │   ├── core.py              # ExecutorVisitor (delegates to specialists)
@@ -995,7 +995,7 @@ correct: variable assignments, `cd`, `exit` and traps inside `$(...)`
 cannot leak into the parent.
 
 ### 5.4 Arithmetic Expansion
-**Files**: `expansion/manager.py`, `expansion/arithmetic.py`
+**Files**: `expansion/manager.py`, `expansion/arithmetic/`
 
 Evaluates arithmetic expressions. `ExpansionManager.execute_arithmetic_expansion()`
 strips the `$((`...`))` delimiters and delegates to the arithmetic
@@ -1005,7 +1005,7 @@ subsystem:
 def execute_arithmetic_expansion(self, expr: str) -> int:
     """Evaluate the expression inside $((...))."""
     # Extract expression text, then evaluate with the arithmetic
-    # tokenizer/parser/evaluator in expansion/arithmetic.py
+    # tokenizer/parser/evaluator in expansion/arithmetic/
     return evaluate_arithmetic(expression, self.shell)
 ```
 
