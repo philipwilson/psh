@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.334.0 (2026-06-13) - Reappraisal #4 Tier B5: WordExpander segment-IR
+- REFACTOR (zero behavior change): the word-expansion engine
+  (`psh/expansion/word_expander.py`) accumulated each part onto a mutable
+  `_WalkState` using a parallel `result_parts: List[str]` + `splittable_idx:
+  Set[int]` plus scattered word-level flags. That implicit representation is
+  replaced by an explicit intermediate representation: a list of
+  `ExpandedSegment(text, quoted, splittable, glob_eligible)`. The part
+  walkers append segments; the former word-level flags
+  (`has_unquoted_expansion`, `has_unquoted_glob`, `all_parts_quoted`) are now
+  read-only properties derived from the segment list.
+- `_finish` now runs three VISIBLY SEPARATE passes over the segments —
+  `_field_split_pass` (IFS-split only the splittable segments, edge-joining
+  the rest), `_glob_pass` (pathname expansion, unified for the multi-field
+  and single-word cases), then join. The splitting and globbing algorithms
+  are preserved verbatim.
+- SAFETY NET: a 94-case frozen characterization harness
+  (`tests/unit/expansion/test_word_expander_characterization.py`) over every
+  axis (quote types, composite joining, `$@`/`$*`/arrays quoted+unquoted with
+  affixes, IFS variations, globbing, tilde, all four policies, escapes,
+  empty/unset, process-sub paths) — written FIRST, green on the original
+  engine, still green after. Plus 9 adversarial bash differential probes, all
+  matching. Full suite green (6,168 passed). ruff + mypy clean. No latent
+  divergences found.
+
 ## 0.333.0 (2026-06-13) - Reappraisal #4 Tier B4: arithmetic decomposition
 - REFACTOR (zero behavior change): the 1,155-line `psh/expansion/arithmetic.py`
   is now a package, `psh/expansion/arithmetic/`:

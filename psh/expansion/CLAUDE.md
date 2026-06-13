@@ -268,11 +268,14 @@ def _split_with_ifs(self, text: Optional[str], quote_type: Optional[str]) -> Lis
     return self.word_splitter.split(text, ifs)
 ```
 
-Splitting a composite word is part-aware: `_split_part_fields(parts,
-splittable_idx)` in `word_expander.py` splits ONLY the parts that came from
-unquoted expansions, using `WordSplitter.split_with_edges()` (which also
+Splitting a composite word is segment-aware. The walk builds a list of
+`ExpandedSegment`s (`text`, `quoted`, `splittable`, `glob_eligible`); the
+field-splitting pass `_field_split_pass(segments)` in `word_expander.py`
+splits ONLY the segments that came from unquoted expansions
+(`segment.splittable`), using `WordSplitter.split_with_edges()` (which also
 reports whether the text had leading/trailing IFS) so quoted text joins
-correctly onto adjacent fields (`a"$x"b`).
+correctly onto adjacent fields (`a"$x"b`). `_finish()` runs three explicit
+passes over the segment list: field-split → glob (`_glob_pass`) → join.
 
 ### Command Substitution
 
