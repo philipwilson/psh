@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.367.0 (2026-06-13) - Tier T2.6: formalize the pending-array-inits handoff
+- REFACTOR (zero behavior change). Declaration builtins (`declare`/`typeset`/
+  `local`/`export`/`readonly`) received array-initializer data from the executor
+  via an ad-hoc shared-mutable attribute set with `getattr(shell,
+  '_pending_array_inits', None)`. Replaced with a typed, single-owner API on
+  `Shell`: `set_pending_array_inits()`, `pending_array_init(arg)` (non-consuming
+  peek), `clear_pending_array_inits()`; the backing field is now declared and
+  typed in `__init__` (`Optional[Dict[str, ArrayInitialization]]`).
+- Lifetime invariant (documented + enforced at the one owner): the executor's
+  `_run_command` installs the map immediately before the builtin and clears it
+  in a `finally`; outside that window it is `None`. The peek is deliberately
+  non-consuming to preserve the one nested re-read (`export NAME=(...)` delegates
+  to `declare`, which reads the still-installed map). The set-if-non-None /
+  clear-if-set guard is preserved, so an initializer-free command never picks up
+  a stale map.
+- A 14-case characterization (declare/typeset -a/-A, local-in-function, export,
+  readonly, the B3 fidelity case `declare -a a=(${x}b "p""q")`, indexed/assoc
+  `+=`, nested-function declarations, a partway-erroring declare, **no-stale-
+  pickup** `declare -a noinit`) was byte-identical before/after.
+- Full gate green: ruff + mypy clean (shell.py in scope), `run_tests.py
+  --parallel` 6795 passed.
+
 ## 0.366.0 (2026-06-13) - Tier T2.5: unify glob-metacharacter detection
 - REFACTOR (zero behavior change). The "does this string contain glob
   metacharacters" predicate was written inline `any(c in s for c in '*?[')` at

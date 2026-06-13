@@ -250,8 +250,8 @@ class DeclareBuiltin(Builtin):
                 # Array initialization is keyed STRICTLY on the parser having
                 # seen literal ``name=(...)`` syntax: it attaches a structured
                 # ArrayInitialization (element Words with full quote context)
-                # to the argument Word, delivered via the scoped
-                # shell._pending_array_inits map. We expand it through the
+                # to the argument Word, delivered via the shell's explicit
+                # pending-array-init handoff. We expand it through the
                 # SAME structured path the bare ``a=(...)`` form uses
                 # (build_indexed_array / build_associative_array) — no shlex
                 # reparse. A merely paren-shaped VALUE that did NOT come from
@@ -399,15 +399,12 @@ class DeclareBuiltin(Builtin):
         """Look up the structured ArrayInitialization the parser attached to
         this ``name=(...)`` argument, or None.
 
-        The executor sets ``shell._pending_array_inits`` (argv element →
+        The executor installs the structured inits (argv element →
         ArrayInitialization) for the duration of this builtin call only
         (scoped; cleared in its finally). Keyed by the full argv element so
         each array-init argument resolves to its own structured node.
         """
-        pending = getattr(shell, '_pending_array_inits', None)
-        if pending is None:
-            return None
-        return pending.get(arg)
+        return shell.pending_array_init(arg)
 
     def _build_indexed_array(self, array_init, into, shell: 'Shell') -> IndexedArray:
         """Build an IndexedArray from the structured init via the shared
