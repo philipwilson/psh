@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.362.0 (2026-06-13) - Tier T2.2: extract dense expansion helpers
+- REFACTOR (zero behavior change, expansion hot path). Two dense regions in
+  `psh/expansion/variable.py` lifted into named helpers:
+  - `expand_parameter_direct`'s array branch → `_expand_array_parameter`
+    returning `(handled, value)` (handled = whole-array `[@]`/`[*]` forms:
+    count, slice, `@A`/`@Q`, conditional ops, per-element transforms; not
+    handled = scalar element access that falls through to the shared
+    `_apply_operator`). Parent body ~170 → ~90 lines; the array arm is now a
+    6-line dispatch.
+  - `expand_string_variables`'s escape loop → `_process_double_quote_escape`
+    applying the `\\`, `\"`, `\$`, `` \` `` rules (incl. the unrecognized-escape
+    fall-through) and returning `(piece, new_index)`. Parent body ~55 → ~25
+    lines; the loop now reads as a clean three-way dispatch.
+  - Special-char sets, the `\$`-shields-expansion check, IFS join behavior, and
+    all early-return semantics are byte-identical.
+- A 60-case characterization battery (array `[@]`/`[*]` quoted/unquoted,
+  arith-index, `${#a[@]}`, `${!a[@]}` keys, sparse, associative, slices,
+  per-element transforms, custom-IFS; plus the full escape set) matched the
+  pre-refactor golden baseline AND real bash exactly.
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6794 passed.
+
 ## 0.361.0 (2026-06-13) - Tier T2.1: decompose _execute_command
 - REFACTOR (zero behavior change). `CommandExecutor._execute_command`
   (`psh/executor/command.py`) was a ~140-line method conflating two
