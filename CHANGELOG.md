@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.348.0 (2026-06-13) - Reappraisal #4 Tier C-D2: test operands in the Word model
+- REFACTOR (zero behavior change, review Ugly 11): `[[ ]]`
+  `BinaryTestExpression` stored operands as plain strings plus
+  `left_quote_type`/`right_quote_type` side-channels — the last parser
+  expression not using the `Word` model. Operands are now `left_word: Word` /
+  `right_word: Word`:
+  - `left_quote_type` DELETED (was dead — set by the parser, read nowhere).
+  - `right_quote_type` is now a derived `@property` from `right_word.is_quoted`
+    (it drives literal-vs-glob for `==`/`!=` and literal-vs-regex for `=~`);
+    `is_quoted` reproduces the old stored boolean for every operand shape.
+  - `.left`/`.right` retained as derived `display_text()` properties so
+    formatter/debug consumers are unchanged.
+  Both parser backends build operand Words; the evaluator expands the Words and
+  reads `right_word.is_quoted`. `UnaryTestExpression` deliberately left as-is
+  (no quote side-channel to remove; migrating it adds risk with no cleanup).
+- SAFETY NET: a 37-case characterization
+  (`tests/integration/test_enhanced_test_word_operands.py`) over every operator
+  and quoting shape (glob/literal `==`, literal/regex `=~`, BASH_REMATCH
+  capture, numeric, `-z`/`-f`, tilde, empty) plus the `is_quoted == old
+  right_quote_type` equivalence — green before/after. 17 bash differential
+  probes match. Full suite green (6,718 passed). ruff + mypy clean.
+- PINNED (pre-existing, not fixed): a mixed-quote LHS pattern like `a"b"*`
+  collapses to literal text with no per-part quote context (the old
+  single-quote-type model was already lossy here); preserved exactly.
+
 ## 0.347.0 (2026-06-13) - Reappraisal #4 Tier C-D1: quote context in parts only
 - REFACTOR (zero behavior change, review Ugly 3): `Word` stored a whole-word
   `quote_type` field that duplicated the per-part `quoted`/`quote_char` state.

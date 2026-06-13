@@ -582,17 +582,45 @@ class TestExpression(ASTNode):
 
 @dataclass
 class BinaryTestExpression(TestExpression):
-    """Binary test expression like STRING1 < STRING2."""
-    left: str
+    """Binary test expression like STRING1 < STRING2.
+
+    Operands are :class:`Word` nodes (Tier C-D2, 2026-06-13): quote context
+    comes from the Word's parts, like everywhere else in the AST, replacing
+    the former plain-string operands plus ``left_quote_type``/
+    ``right_quote_type`` side-channels. ``left_quote_type`` was dead (no
+    consumer) and is gone; ``right_quote_type`` is now a derived read-only
+    property keyed off ``right_word.is_quoted`` for the evaluator's
+    quoted-pattern/regex literal-matching path.
+
+    ``left``/``right`` remain available as derived read-only strings (the
+    operand's pre-expansion text) for the formatters/debug visitors.
+    """
+    left_word: 'Word'
     operator: str  # =, !=, <, >, =~, -eq, -ne, etc.
-    right: str
-    # Legacy quote metadata pending Word-AST migration (operands are plain
-    # strings, not Words). right_quote_type drives quoted-pattern/regex
-    # literal-matching semantics in executor/enhanced_test_evaluator.py;
-    # left_quote_type is set by the recursive descent parser but currently
-    # has no consumer.
-    left_quote_type: Optional[str] = None  # Quote type for left operand
-    right_quote_type: Optional[str] = None  # Quote type for right operand
+    right_word: 'Word'
+
+    @property
+    def left(self) -> str:
+        """Pre-expansion text of the left operand (derived from the Word)."""
+        return self.left_word.display_text()
+
+    @property
+    def right(self) -> str:
+        """Pre-expansion text of the right operand (derived from the Word)."""
+        return self.right_word.display_text()
+
+    @property
+    def right_quote_type(self) -> Optional[str]:
+        """Legacy quote-type signal for the right operand, derived from the
+        Word. The evaluator's quoted-literal vs glob/regex decision only
+        needs the boolean "is the whole operand quoted"; this returns the
+        dominant quote char when so (so ``is not None`` reproduces the old
+        ``right_quote_type is not None``), else None — exactly matching the
+        former stored field for every operand shape the parser builds
+        (wholly-quoted -> set; unquoted or mixed-quote -> None)."""
+        if self.right_word.is_quoted:
+            return self.right_word.effective_quote_char or '"'
+        return None
 
 
 @dataclass

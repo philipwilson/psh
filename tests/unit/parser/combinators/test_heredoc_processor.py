@@ -550,9 +550,9 @@ class TestHeredocProcessor:
         # Create enhanced test statement
         test_node = EnhancedTestStatement(
             expression=BinaryTestExpression(
-                left='$a',
+                left_word=Word(parts=[LiteralPart('$a')]),
                 operator='==',
-                right='$b'
+                right_word=Word(parts=[LiteralPart('$b')]),
             ),
             redirects=[redirect]
         )

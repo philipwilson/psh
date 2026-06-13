@@ -2,6 +2,34 @@
 
 Date opened: 2026-06-13
 
+> ⚡ **STATUS (2026-06-13) — Tiers A, B, C, D shipped (v0.340.0–v0.348.0);
+> B3 and E deferred.** Nine releases, each zero-behavior-change behind a
+> frozen characterization harness + bash differential probes:
+> A1 invariant lock-down (v0.340) · A2 sidecar derive/delete (v0.341) ·
+> B1 Word text-methods (v0.342) · B2 array-assignment normalization, dead
+> pattern deleted (v0.343) · C1 typed cmdsub scanner state (v0.344) ·
+> C2 command-position drift-lock — unified machine intentionally NOT
+> extracted, the shared vocabulary already realizes Ugly 8 (v0.345) ·
+> C3 OperatorDebrisWordRecognizer (v0.346) · D1 Word.quote_type derived from
+> parts (v0.347) · D2 `[[ ]]` operands → Word model (v0.348).
+>
+> **DEFERRED — B3 (Ugly 6, declaration-arg reparse):** doing it "properly"
+> (a structured `AssignmentWord` consumed by the declaration builtins) is a
+> 5-subsystem change — new AST node + the argv model + the executor→builtin
+> interface + 2 builtins + Word fidelity — because the builtins re-parse the
+> VERBATIM source string (`shlex.split`) and the element Words deliberately
+> lose source detail (`${y}b`→`$y`+`b`, quote boundaries). That couples it to
+> the deferred Ugly 10 (token-payload fidelity, E1). Disproportionate risk for
+> a working, well-documented, tested path. Revisit only if the token-payload
+> work (E1) is taken on.
+>
+> **DEFERRED — E1 (Ugly 2 + 10, typed token payloads):** the most invasive
+> change (the whole lexer↔parser boundary); the review's own phase plan omits
+> it. Not scheduled.
+>
+> Suite at close: 6,718 passed / 6,965 collected; ruff + mypy clean; GitHub
+> CI disabled (local gate is the gate); all releases auto-tagged.
+
 Source: `docs/reviews/lexer_parser_ast_architecture_review_2026-06-13.md` (a
 fresh lexer/parser/AST review identifying 12 "uglies" + a 6-phase plan). The
 goal is **cleanliness, economy, elegance — zero behavior change**; the shell

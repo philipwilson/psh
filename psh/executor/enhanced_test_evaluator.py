@@ -63,13 +63,19 @@ class TestExpressionEvaluator:
 
     def _evaluate_binary_test(self, expr: BinaryTestExpression) -> bool:
         """Evaluate binary test expression."""
-        # Expand tilde and variables in operands
-        left = self._expand_operand(expr.left)
-        right = self._expand_operand(expr.right)
+        # Expand tilde and variables in operands. The operand Words carry the
+        # pre-expansion text in display_text(); a [[ ]] operand is a single
+        # string (no word-splitting, no globbing of the operand itself).
+        left = self._expand_operand(expr.left_word.display_text())
+        right = self._expand_operand(expr.right_word.display_text())
 
         # Process escape sequences for pattern matching
         left = self._process_escape_sequences(left)
         right = self._process_escape_sequences(right)
+
+        # A wholly-quoted right operand is matched literally; an unquoted or
+        # mixed-quote operand is a glob pattern / live regex (bash semantics).
+        right_quoted = expr.right_word.is_quoted
 
         # Handle different operators
         if expr.operator == '=':
@@ -77,15 +83,13 @@ class TestExpressionEvaluator:
         elif expr.operator == '==':
             # Shell pattern matching (not string equality)
             # If the right operand was quoted, treat it as literal string
-            right_quote_type = getattr(expr, 'right_quote_type', None)
-            if right_quote_type:
+            if right_quoted:
                 return left == right
             else:
                 return self._pattern_match(left, right)
         elif expr.operator == '!=':
             # Shell pattern non-matching
-            right_quote_type = getattr(expr, 'right_quote_type', None)
-            if right_quote_type:
+            if right_quoted:
                 return left != right
             else:
                 return not self._pattern_match(left, right)
@@ -97,7 +101,7 @@ class TestExpressionEvaluator:
             # Regex matching; populate BASH_REMATCH with the full match and
             # capture groups (cleared to an empty array on no match), like bash.
             # A quoted right-hand side is matched LITERALLY (bash).
-            if getattr(expr, 'right_quote_type', None):
+            if right_quoted:
                 right = re.escape(right)
             try:
                 pattern = re.compile(right)
