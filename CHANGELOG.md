@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.330.0 (2026-06-13) - Reappraisal #4 Tier B: CI health
+- CI SPEED: the per-PR `tests.yml` gate now runs the **full** suite in
+  parallel (`run_tests.py --parallel`) instead of `--quick --coverage`, and
+  all three jobs use `cache: pip`. Coverage instrumentation (the dominant
+  cost of the old gate) is dropped from the per-PR path. Net: the ~6–7 min
+  cycle drops to roughly 2–3 min while testing *more* (full suite vs the
+  quick subset). The "Quick Test Suite" job is renamed "Test Suite".
+- COVERAGE: moved to the nightly run (`nightly.yml` now passes `--coverage`
+  and uploads `coverage.xml`). It was already non-gating reporting, so the
+  only change is cadence: coverage is reported daily rather than per-PR.
+- RELEASE LOOP: new `release-tag.yml` workflow creates the annotated tag
+  `vX.Y.Z` when a `psh/version.py` bump lands on main (skips if the tag
+  exists; triggers only on `version.py` changes). This makes tagging
+  automatic for asynchronous / auto-merged PRs. Repo "Allow auto-merge" was
+  enabled so native `gh pr merge --auto` is available.
+- No production code changed; behavior is identical.
+
 ## 0.329.0 (2026-06-13) - Reappraisal #4 Tier B1: tooling honesty
 - TOOLING: a bare `ruff check .` now passes. `docs/archive` (retired,
   historically-preserved material) is excluded via `extend-exclude` in
