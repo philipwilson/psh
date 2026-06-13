@@ -26,6 +26,26 @@ _POSIX_CLASSES = {
 
 _POSIX_CLASS_RE = re.compile(r'\[:(\w+):\]')
 
+#: The plain (non-extglob) pathname-expansion metacharacters. A word
+#: containing any of these from an UNQUOTED, unescaped context is a glob
+#: candidate. This is the single source of truth for that character set,
+#: shared by ``GlobExpander`` and ``WordExpander``.
+GLOB_METACHARS = frozenset('*?[')
+
+
+def has_glob_metacharacters(s: str) -> bool:
+    """True if *s* contains any plain glob metacharacter (``*``, ``?``, ``[``).
+
+    This is the single predicate for "does this string look like a pathname
+    pattern". It tests presence only — it does not validate bracket
+    expressions, honor backslash escapes, or consider extglob (callers layer
+    ``extglob.contains_extglob`` on top when ``shopt -s extglob`` is set, and
+    are responsible for having already stripped/accounted-for quoting and
+    escapes). Centralizing it keeps every detection site agreeing on the
+    exact character set.
+    """
+    return any(c in GLOB_METACHARS for c in s)
+
 
 def normalize_bracket_expressions(pattern: str) -> str:
     """Make shell bracket expressions understood by Python's fnmatch/glob.
@@ -67,7 +87,7 @@ class GlobExpander:
         translated = normalize_bracket_expressions(pattern)
 
         # Check if the pattern contains glob characters
-        if not any(c in translated for c in ('*', '?', '[')):
+        if not has_glob_metacharacters(translated):
             return [pattern]
 
         dotglob = self.state.options.get('dotglob', False)
@@ -99,7 +119,7 @@ class GlobExpander:
         for comp in rest.split(sep):
             if comp == '':
                 continue
-            has_magic = any(c in comp for c in ('*', '?', '['))
+            has_magic = has_glob_metacharacters(comp)
             if has_magic:
                 regex = re.compile(fnmatch.translate(comp), re.IGNORECASE)
             else:

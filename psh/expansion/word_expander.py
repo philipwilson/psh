@@ -40,6 +40,7 @@ from ..ast_nodes import (
     ProcessSubstitution,
     Word,
 )
+from .glob import GLOB_METACHARS, has_glob_metacharacters
 
 if TYPE_CHECKING:
     from .manager import ExpansionManager
@@ -313,11 +314,11 @@ class WordExpander:
                 had_escapes = True
                 text, escaped_globs = self._process_unquoted_escapes(text)
                 # If glob chars remain that weren't escaped, track them
-                if any(c in text for c in '*?[') and not escaped_globs:
+                if has_glob_metacharacters(text) and not escaped_globs:
                     seg_has_glob = True
             else:
                 # Track unquoted glob chars
-                if any(c in text for c in '*?['):
+                if has_glob_metacharacters(text):
                     seg_has_glob = True
             # Unquoted literal: tilde on first part if leading ~
             # Only suppress tilde expansion if the ~ itself was
@@ -402,7 +403,7 @@ class WordExpander:
                 out: List[str] = []
                 for f in ufields:
                     out.extend(self._split_with_ifs(f, None))
-                if (any(any(c in f for c in '*?[') for f in out)
+                if (any(has_glob_metacharacters(f) for f in out)
                         and not self.state.options.get('noglob', False)):
                     return self._glob_words(out)
                 return out
@@ -414,7 +415,7 @@ class WordExpander:
         else:
             # Unquoted expansion: its text is the only splittable text, and
             # glob chars in it trigger globbing.
-            has_glob = any(c in expanded for c in '*?[')
+            has_glob = has_glob_metacharacters(expanded)
             st.segments.append(ExpandedSegment(
                 expanded, quoted=False, splittable=True,
                 glob_eligible=has_glob))
@@ -840,7 +841,7 @@ class WordExpander:
                     result.append(nxt)
                     i += 2
                     continue
-                elif nxt in ('*', '?', '['):
+                elif nxt in GLOB_METACHARS:
                     # Escaped glob char: emit the literal char
                     had_glob_chars = True
                     result.append(nxt)
@@ -851,7 +852,7 @@ class WordExpander:
                     result.append(nxt)
                     i += 2
                     continue
-            if text[i] in ('*', '?', '['):
+            if text[i] in GLOB_METACHARS:
                 # Unescaped glob char
                 had_glob_chars = True
                 all_globs_escaped = False
@@ -880,7 +881,7 @@ class WordExpander:
         result = []
         check_extglob = self.state.options.get('extglob', False)
         for w in words:
-            is_glob = any(c in w for c in '*?[')
+            is_glob = has_glob_metacharacters(w)
             if not is_glob and check_extglob:
                 from .extglob import contains_extglob
                 is_glob = contains_extglob(w)
