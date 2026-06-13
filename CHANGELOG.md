@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.352.0 (2026-06-13) - Test hygiene: arithmetic characterization fixtures
+- TEST ONLY (no production change): the arithmetic characterization fixtures
+  (`sh`, `assoc_sh` in `tests/unit/expansion/test_arithmetic_characterization.py`)
+  constructed a bare `Shell()` and returned it with no teardown, leaking the
+  shell's signal-notifier pipe FDs across the suite (flagged by the
+  2026-06-13 expansion architecture review). They now build on the shared
+  conftest `shell` fixture, whose `_cleanup_shell` teardown reaps jobs and
+  closes those FDs. Dropped the now-unused `Shell` import. Full suite green
+  (6,735); ruff + mypy clean.
+
 ## 0.351.0 (2026-06-13) - Prune docs/archive
 - DOCS ONLY (no code change): removed 298 stale development-history files from
   `docs/archive/` — completed implementation plans, phase summaries, and
