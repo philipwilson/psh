@@ -2,6 +2,17 @@
 
 Date opened: 2026-06-13
 
+> ⚡ **STATUS (2026-06-13) — TIER B COMPLETE.** All seven items shipped as
+> v0.329.0–v0.336.0, each green on the local gate and auto-tagged:
+> B1 tooling honesty (v0.329) · CI health (v0.330) · B2 strict internal-error
+> mode (v0.331) · B3 cmdsub-scanner decomposition (v0.332) · B4 arithmetic
+> package (v0.333) · B5 WordExpander segment-IR (v0.334) · B6 single-authority
+> state (v0.335) · B7 process failure-path tests (v0.336). Every refactor was
+> zero-behavior-change behind a frozen characterization harness (103/150/94/49
+> cases) and bash-differential probes. Three behavior follow-ups were
+> discovered and recorded (below), plus B2-R2 (expected-error taxonomy). Suite
+> at close: 6,241 passed / 6,478 collected; ruff + mypy clean.
+
 This tier is the **verified** residue of the independent code-quality
 assessment in `code_quality_assessment_2026-06-13.md`. That assessment was
 written deliberately blind to project conventions, so several of its

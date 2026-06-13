@@ -90,6 +90,68 @@ class TestProcessSubReaping:
             f"substitution child never reaped: {result.stdout!r}")
 
 
+class TestProcessSubRepeatedUse:
+    """Repeated substitution use (a loop) must not accumulate fds or
+    zombies — the per-command cleanup runs every iteration, not just once.
+    """
+
+    def test_no_fd_leak_across_loop_iterations(self):
+        """20 iterations of `cat <(echo i)` then probe the lowest free fd.
+
+        Each leaked parent-side pipe fd would push the lowest free slot
+        up; after a clean run it is back to 3 regardless of iteration
+        count. This is the loop analogue of the 3-command fd test below.
+        """
+        probe = (
+            f'"{sys.executable}" -c '
+            '"import os; print(os.open(\'/dev/null\', os.O_RDONLY))"'
+        )
+        cmd = (
+            'i=0; while [ $i -lt 20 ]; do '
+            '  cat <(echo $i) >/dev/null; '
+            '  i=$((i+1)); '
+            'done; '
+            + probe
+        )
+        result = run_psh(cmd)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == '3', (
+            f"fd slots leaked across loop: lowest free fd is "
+            f"{result.stdout.strip()}")
+
+    def test_no_zombie_accumulation_across_loop(self):
+        """20 read-substitution iterations leave no defunct children."""
+        cmd = (
+            'i=0; while [ $i -lt 20 ]; do '
+            '  cat <(echo $i) >/dev/null; '
+            '  i=$((i+1)); '
+            'done; '
+            'ps -axo pid,ppid,stat | awk -v me=$$ \'$2==me {print $3}\''
+        )
+        result = run_psh(cmd)
+        assert result.returncode == 0, result.stderr
+        zombies = [s for s in result.stdout.split() if s.startswith('Z')]
+        assert zombies == [], (
+            f"zombies accumulated across loop: {result.stdout!r}")
+
+    def test_write_side_substitution_child_reaped(self, tmp_path):
+        """A `>(...)` write-side substitution child is reaped after the
+        command, not left defunct (the cleanup reaps both read- and
+        write-side children)."""
+        out = tmp_path / 'wside.txt'
+        cmd = (
+            f'echo data | tee >(cat > {out}) >/dev/null; '
+            'sleep 0.2; true; '   # let the write child finish; a later
+                                  # command polls + reaps it
+            'ps -axo pid,ppid,stat | awk -v me=$$ \'$2==me {print $3}\''
+        )
+        result = run_psh(cmd, timeout=20)
+        assert result.returncode == 0, result.stderr
+        zombies = [s for s in result.stdout.split() if s.startswith('Z')]
+        assert zombies == [], (
+            f"write-side substitution child not reaped: {result.stdout!r}")
+
+
 class TestProcessSubFdRelease:
     """Parent-side pipe fds must be closed after the command finishes."""
 
