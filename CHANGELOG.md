@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.340.0 (2026-06-13) - Reappraisal #4 Tier C-A1: AST canonical invariant lock-down
+- TESTS ONLY (no production change): a safety net for the upcoming AST field
+  cleanup (Tier C-A2). New `tests/unit/parser/test_ast_canonical_invariants.py`
+  (39 tests, 28-snippet corpus) parses representative scripts through the
+  production recursive-descent parser and asserts every node carries its
+  canonical `Word`-based fields, even when nested: `SimpleCommand.words` (with
+  `args` derived from `words`), `ArrayInitialization.words`,
+  `ArrayElementAssignment.value_word` (non-None), `ForLoop`/`SelectLoop.
+  item_words` (non-None, consistent with `items`), and `CasePattern.word`.
+- New `tests/unit/parser/test_legacy_field_isolation.py`: a static meta-test
+  proving the executor and expansion packages never read the legacy quote/type
+  sidecar fields (`element_types`, `element_quote_types`, `value_type`,
+  `value_quote_type`, `item_quote_types`) — confirming the runtime path is
+  already Word-only, so deleting/deriving those fields is safe.
+- Findings (documented, not changed): `for x; do` (no `in`) is normalized by
+  the parser to `for x in "$@"`, so every `ForLoop` has populated
+  `item_words`; `for ((...))` is a distinct `CStyleForLoop` node. All
+  invariants hold for current parser output. Full suite green (6,307 passed).
+- DOCS: refreshed README Project Statistics (drifted >10%); recorded the
+  lexer/parser/AST elegance plan as `docs/reviews/reappraisal_4_tier_c_lexer_parser.md`.
+
 ## 0.339.0 (2026-06-13) - Expected-error taxonomy; strict-errors enabled suite-wide
 - TAXONOMY (B2-R2): the last-resort guard helper `report_internal_defect`
   (`psh/core/internal_errors.py`) now distinguishes EXPECTED shell errors from
