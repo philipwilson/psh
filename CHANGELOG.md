@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.345.0 (2026-06-13) - Reappraisal #4 Tier C-C2: command-position drift-lock
+- ASSESSMENT (review Ugly 8): the review recommended extracting one shared
+  `CommandPositionMachine` for the three machines that track command position
+  (lexer pass, keyword normalizer, cmdsub scanner). On inspection the codebase
+  ALREADY realizes that intent better: `psh/lexer/command_position.py` is the
+  single shared vocabulary all three consult, with a docstring explaining why
+  their alphabets MUST differ (they run at different pipeline stages — raw
+  text vs token types vs token stream). Forcing a unified state machine would
+  add risk and contradict that design, so it is intentionally NOT extracted.
+- TEST + DOC ONLY (no production logic change): added
+  `tests/unit/lexer/test_command_position_consistency.py` (11 tests) locking
+  the documented relationships so the vocabulary can't silently drift —
+  keyword-valued set entries are real `KEYWORDS`; the documented asymmetries
+  hold (openers set lexer command-position but closers are omitted;
+  `RESET_TO_COMMAND_POSITION` types map to the intermediate+closer keywords);
+  plus end-to-end keyword-recognition coverage (`then case …` recognizes
+  `case`; `echo case` keeps it a WORD). Updated the `command_position.py`
+  docstring to point at this guard. Full suite green (6,530 passed).
+
 ## 0.344.0 (2026-06-13) - Reappraisal #4 Tier C-C1: typed cmdsub scanner state
 - REFACTOR (zero behavior change, review Ugly 7): `psh/lexer/cmdsub_scanner.py`
   tracked its `case`-statement scanning with 6 string phase constants and

@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.344.0 | **Tests**: 6,766 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.345.0 | **Tests**: 6,777 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~51,100 lines of production code in `psh/` across 213 Python files, plus ~66,200 lines of tests in `tests/` (293 Python files)
-- **Test Coverage**: 6,766 tests in 288 test files
+- **Test Coverage**: 6,777 tests in 289 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.345.0**: reappraisal #4 Tier C-C2 (command-position drift-lock) — the three command-position machines (lexer pass, keyword normalizer, cmdsub scanner) already share one vocabulary module (`command_position.py`) with documented, irreducible per-stage differences, so a unified machine is intentionally not extracted; instead adds a drift-lock test asserting the documented set relationships and that keyword-valued entries are real keywords, plus behavioral keyword-recognition coverage. Test + doc only
 - **v0.344.0**: reappraisal #4 Tier C-C1 (typed cmdsub scanner state) — the `$()`-extent scanner's `case`-state machine now uses a `CasePhase` enum and a `CaseScanState` dataclass instead of string constants and `[state, depth]` lists (24 access sites). Adds a 61-body scanner-vs-parser agreement test (the scanner's chosen extent matches what the real parser accepts). 103-case characterization byte-identical; zero behavior change
 - **v0.343.0**: reappraisal #4 Tier C-B2 (array-assignment normalization) — a 3,000+ input fuzz census against the real lexer proved one of the six tokenisation patterns (`name`+LBRACKET-token element) is dead and deleted it; the live shapes now flow through a single `AssignmentCandidate` normalization seam instead of inline token-shape branching in both `is_array_assignment()` and `parse_array_assignment()`. 46-entry frozen AST corpus byte-identical; 12 bash probes match; zero behavior change (two pre-existing space-form divergences pinned)
 - **v0.342.0**: reappraisal #4 Tier C-B1 (`Word` text-method discipline) — gives `Word` explicit named text methods (`source_text()` re-wraps in quotes; `display_text()` is the flattened pre-expansion text; `to_literal_string()` is quote-removed) and routes the 9 semantic `''.join(str(p) for p in word.parts)` call sites and `SimpleCommand.args` through `display_text()`; `__str__` is now debug/source-only. Value-identical; zero behavior change
