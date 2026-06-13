@@ -4,6 +4,18 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.355.0 (2026-06-13) - Docs: ground-up reappraisal #5 (textbook-grade scorecard)
+- DOCS ONLY (no code change). Added
+  `docs/reviews/ground_up_reappraisal_5_2026-06-13.md`: a fresh five-cluster
+  scorecard graded against a strict textbook rubric (small/readable, single
+  source of truth, narrow interfaces, invariants enforced, behavior proven).
+- Scorecard: Expansion A−; Interactive/Scripting/Visitor/Tooling A−;
+  Lexer/Parser/AST B+; Executor/io_redirect B+; Core/Builtins B+. Overall
+  "B+/A− — production-minded, approaching textbook" (7,007 tests green).
+- Defines the prioritized path to the textbook grade: Tier T1 (grow mypy
+  scope, extract inline policies into tables/objects, unify small duplication
+  clusters), Tier T2 (decompose the dense hubs), Tier T3 (finish the model).
+
 ## 0.354.0 (2026-06-13) - Behavior fix: explicit input fd for external commands
 - BUG FIX (bash-verified; redirection/IO architecture review, Ugly 2): an
   explicit input-fd redirect (`cmd 5<file`) did not reach the named fd for
