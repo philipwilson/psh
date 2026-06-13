@@ -30,6 +30,7 @@ from .strategies import (
 if TYPE_CHECKING:
     from ..ast_nodes import SimpleCommand
     from ..shell import Shell
+    from .command_assignments import RawAssignment
     from .context import ExecutionContext
     from .core import ExecutorVisitor
 
@@ -130,7 +131,23 @@ class CommandExecutor:
             return self._execute_command(node, context)
 
     def _execute_command(self, node: 'SimpleCommand', context: 'ExecutionContext') -> int:
-        """Execute a simple command (assignments, expansion, strategy dispatch)."""
+        """Coordinate execution of a simple command.
+
+        This is the thin dispatcher: it runs the per-command preamble
+        (DEBUG trap, array assignments, raw-assignment extraction, the
+        command-substitution-status reset), decides between the two
+        execution shapes, and owns the shared error-to-exit-status mapping.
+
+        - A **pure assignment** (leading ``NAME=value`` words with NO
+          command word, e.g. ``x=1`` or ``arr=(a b c)``) sets variables in
+          the current shell and runs no program → :meth:`_run_pure_assignment`.
+        - An **actual command invocation** (a command word is present, with
+          optional ``NAME=value`` prefixes that become temporary env) →
+          :meth:`_run_command`.
+
+        Both paths share the ``try/except`` here so the error taxonomy in
+        :meth:`_handle_execution_error` applies uniformly.
+        """
         try:
             # bash runs the DEBUG trap before each simple command
             self.shell.trap_manager.execute_debug_trap()
@@ -152,124 +169,152 @@ class CommandExecutor:
             # words that expand to nothing (`V=v $(false)` reports 1).
             self.state.last_cmdsub_status = None
 
-            # Check if we have only assignments (no command)
-            tokens_consumed = len(raw_assignments)
+            # Pure assignment (only NAME=value words, no command word)?
+            if raw_assignments and len(raw_assignments) == len(node.words):
+                return self._run_pure_assignment(node, raw_assignments)
 
-            if raw_assignments and tokens_consumed == len(node.words):
-                # Pure assignment (no command)
-                return self.assignments.apply_pure(node, raw_assignments)
-
-            is_special = False
-            saved_vars = None
-
-            try:
-                # Phase 2: Expand the remaining arguments. POSIX expands the
-                # command's own words BEFORE the temporary assignments take
-                # effect, so `V=v echo $V` prints V's *prior* value.
-                # command_start_index needs to account for tokens consumed by assignments
-                command_start_index = tokens_consumed
-                if command_start_index >= len(node.words):
-                    # No command to execute, but apply any redirections
-                    # (e.g., ">file" should create/truncate the file)
-                    if node.redirects:
-                        with self.io_manager.with_redirections(node.redirects):
-                            pass
-                    return 0
-
-                # Create a sub-node for the command's own words only
-                # (assignment prefixes sliced off). The string view
-                # (.args) derives from words automatically.
-                from ..ast_nodes import SimpleCommand
-                command_node = SimpleCommand(
-                    redirects=node.redirects,
-                    background=node.background,
-                    words=node.words[command_start_index:],
-                )
-
-                # Check for the `\cmd` bypass mechanism before expansion
-                command_node, bypass_aliases, bypass_functions = \
-                    self._strip_backslash_bypass(command_node)
-
-                # Expand command arguments (before assignments apply)
-                expanded_args = self._expand_arguments(
-                    command_node,
-                    declaration_eligible=not (bypass_aliases or bypass_functions))
-
-                if not expanded_args or not expanded_args[0]:
-                    # The command words expanded to nothing: the assignments
-                    # affect the current shell environment (bash: after
-                    # `V=v $EMPTY`, $V is v).
-                    if raw_assignments:
-                        return self.assignments.apply_pure(node, raw_assignments)
-                    return 0
-
-                cmd_name = expanded_args[0]
-                cmd_args = expanded_args[1:]
-
-                # bash: $_ holds the last argument of the previous command.
-                # Set it after this command's own expansion (which still saw
-                # the old value) so the NEXT command reads this one's last arg.
-                try:
-                    self.state.set_variable('_', expanded_args[-1])
-                except ReadonlyVariableError:
-                    pass
-
-                # Apply assignments for this command, now that its words are
-                # expanded. Each value sees the assignments to its left.
-                prefix = self.assignments.apply_prefix(raw_assignments)
-                saved_vars = prefix.saved
-
-                if prefix.failed and self.state.options.get('errexit'):
-                    # bash: under set -e a prefix-assignment error (e.g.
-                    # readonly) aborts WITHOUT running the command — even
-                    # in && / if contexts where errexit is normally
-                    # suppressed (probe-verified, bash 5.2).
-                    if self.shell.state.is_script_mode:
-                        sys.exit(1)
-                    return 1
-
-
-                # Handle xtrace option
-                if self.state.options.get('xtrace'):
-                    self._print_xtrace(cmd_name, cmd_args)
-
-                # Special handling for exec builtin (needs access to redirections)
-                if cmd_name == 'exec':
-                    return self._handle_exec_builtin(node, expanded_args, prefix.applied)
-
-                # Deliver structured array initializers to declaration
-                # builtins (declare/typeset/local/export/readonly). The
-                # parser attaches an ArrayInitialization (element Words with
-                # full quote context) to each ``name=(...)`` argument Word;
-                # we hand them to the builtin keyed by their flat-string view
-                # (which is exactly the argv element the builtin sees, since
-                # declaration-builtin values are never word-split). The
-                # builtin expands them through the SAME structured path the
-                # bare ``a=(...)`` form uses — no shlex reparse. The
-                # attribute is scoped (set here, cleared in finally) and
-                # never globally mutable; see the array-init seam note below.
-                pending_inits = self._collect_array_inits(command_node)
-                set_inits = pending_inits is not None
-                if set_inits:
-                    self.shell._pending_array_inits = pending_inits
-                try:
-                    # Execute the command using appropriate strategy
-                    exit_code, is_special = self._execute_with_strategy(
-                        cmd_name, cmd_args, node, context,
-                        bypass_aliases, bypass_functions
-                    )
-                finally:
-                    if set_inits:
-                        self.shell._pending_array_inits = None
-                return exit_code
-
-            finally:
-                # POSIX: assignments before special builtins persist
-                if saved_vars is not None and not is_special:
-                    self.assignments.restore(saved_vars)
+            # Actual command invocation (command word present).
+            return self._run_command(node, context, raw_assignments)
 
         except Exception as e:
             return self._handle_execution_error(e)
+
+    def _run_pure_assignment(self, node: 'SimpleCommand',
+                             raw_assignments: List['RawAssignment']) -> int:
+        """Run a pure assignment command — variables set, no program run.
+
+        Delegates to :meth:`CommandAssignments.apply_pure`, which expands
+        each value (left-to-right, so later values see earlier ones),
+        applies them under the node's redirections, and returns 0 unless a
+        command substitution ran while expanding (then that substitution's
+        status) or a readonly/nameref error occurred (status 1, aborting a
+        non-interactive shell).
+        """
+        return self.assignments.apply_pure(node, raw_assignments)
+
+    def _run_command(self, node: 'SimpleCommand', context: 'ExecutionContext',
+                     raw_assignments: List['RawAssignment']) -> int:
+        """Run an actual command invocation (a command word is present).
+
+        Handles, in order: command-word expansion (BEFORE prefix
+        assignments take effect, per POSIX), the redirect-only and
+        words-vanish edge cases, prefix-assignment application with
+        ``set -e`` abort, xtrace, the ``exec`` special case, array-init
+        delivery to declaration builtins, strategy dispatch, and prefix
+        restoration (skipped for POSIX special builtins so they persist).
+
+        ``raw_assignments`` are the leading ``NAME=value`` prefix words
+        already extracted by the coordinator.
+        """
+        tokens_consumed = len(raw_assignments)
+        is_special = False
+        saved_vars = None
+
+        try:
+            # Phase 2: Expand the remaining arguments. POSIX expands the
+            # command's own words BEFORE the temporary assignments take
+            # effect, so `V=v echo $V` prints V's *prior* value.
+            # command_start_index needs to account for tokens consumed by assignments
+            command_start_index = tokens_consumed
+            if command_start_index >= len(node.words):
+                # No command to execute, but apply any redirections
+                # (e.g., ">file" should create/truncate the file)
+                if node.redirects:
+                    with self.io_manager.with_redirections(node.redirects):
+                        pass
+                return 0
+
+            # Create a sub-node for the command's own words only
+            # (assignment prefixes sliced off). The string view
+            # (.args) derives from words automatically.
+            from ..ast_nodes import SimpleCommand
+            command_node = SimpleCommand(
+                redirects=node.redirects,
+                background=node.background,
+                words=node.words[command_start_index:],
+            )
+
+            # Check for the `\cmd` bypass mechanism before expansion
+            command_node, bypass_aliases, bypass_functions = \
+                self._strip_backslash_bypass(command_node)
+
+            # Expand command arguments (before assignments apply)
+            expanded_args = self._expand_arguments(
+                command_node,
+                declaration_eligible=not (bypass_aliases or bypass_functions))
+
+            if not expanded_args or not expanded_args[0]:
+                # The command words expanded to nothing: the assignments
+                # affect the current shell environment (bash: after
+                # `V=v $EMPTY`, $V is v).
+                if raw_assignments:
+                    return self.assignments.apply_pure(node, raw_assignments)
+                return 0
+
+            cmd_name = expanded_args[0]
+            cmd_args = expanded_args[1:]
+
+            # bash: $_ holds the last argument of the previous command.
+            # Set it after this command's own expansion (which still saw
+            # the old value) so the NEXT command reads this one's last arg.
+            try:
+                self.state.set_variable('_', expanded_args[-1])
+            except ReadonlyVariableError:
+                pass
+
+            # Apply assignments for this command, now that its words are
+            # expanded. Each value sees the assignments to its left.
+            prefix = self.assignments.apply_prefix(raw_assignments)
+            saved_vars = prefix.saved
+
+            if prefix.failed and self.state.options.get('errexit'):
+                # bash: under set -e a prefix-assignment error (e.g.
+                # readonly) aborts WITHOUT running the command — even
+                # in && / if contexts where errexit is normally
+                # suppressed (probe-verified, bash 5.2).
+                if self.shell.state.is_script_mode:
+                    sys.exit(1)
+                return 1
+
+
+            # Handle xtrace option
+            if self.state.options.get('xtrace'):
+                self._print_xtrace(cmd_name, cmd_args)
+
+            # Special handling for exec builtin (needs access to redirections)
+            if cmd_name == 'exec':
+                return self._handle_exec_builtin(node, expanded_args, prefix.applied)
+
+            # Deliver structured array initializers to declaration
+            # builtins (declare/typeset/local/export/readonly). The
+            # parser attaches an ArrayInitialization (element Words with
+            # full quote context) to each ``name=(...)`` argument Word;
+            # we hand them to the builtin keyed by their flat-string view
+            # (which is exactly the argv element the builtin sees, since
+            # declaration-builtin values are never word-split). The
+            # builtin expands them through the SAME structured path the
+            # bare ``a=(...)`` form uses — no shlex reparse. The
+            # attribute is scoped (set here, cleared in finally) and
+            # never globally mutable; see the array-init seam note below.
+            pending_inits = self._collect_array_inits(command_node)
+            set_inits = pending_inits is not None
+            if set_inits:
+                self.shell._pending_array_inits = pending_inits
+            try:
+                # Execute the command using appropriate strategy
+                exit_code, is_special = self._execute_with_strategy(
+                    cmd_name, cmd_args, node, context,
+                    bypass_aliases, bypass_functions
+                )
+            finally:
+                if set_inits:
+                    self.shell._pending_array_inits = None
+            return exit_code
+
+        finally:
+            # POSIX: assignments before special builtins persist
+            if saved_vars is not None and not is_special:
+                self.assignments.restore(saved_vars)
 
     def _strip_backslash_bypass(self, command_node: 'SimpleCommand'):
         """Handle the `\\cmd` alias/function bypass.

@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.361.0 (2026-06-13) - Tier T2.1: decompose _execute_command
+- REFACTOR (zero behavior change). `CommandExecutor._execute_command`
+  (`psh/executor/command.py`) was a ~140-line method conflating two
+  responsibilities. Split into a thin coordinator plus two focused methods:
+  - `_execute_command` (~45 lines) — per-command preamble (DEBUG trap, array
+    assignments, `assignments.extract`, the `last_cmdsub_status = None` reset
+    that must precede expansion), pure-vs-command decision, and the single
+    shared `try/except → _handle_execution_error`.
+  - `_run_pure_assignment` (~12 lines) — the no-command-word path
+    (`assignments.apply_pure`).
+  - `_run_command` (~110 lines) — the command-word path: word expansion,
+    redirect-only/words-vanish edges, prefix apply + `set -e` abort, xtrace,
+    `exec` special case, array-init delivery, strategy dispatch, restore.
+  - `last_cmdsub_status` reset, `_pending_array_inits` lifetime, `is_special`/
+    `saved_vars` restore, and deferred-pure-on-words-vanish are all preserved
+    exactly.
+- A 36-case characterization harness (pure scalar/multi/chain/array/assoc/
+  cmdsub-status/readonly/append; prefix external/builtin/function/special-
+  persist/temp/chain; normal builtin/external/function/127/alias; empty/
+  redirect-only/words-vanish; exec-assign; xtrace; set-e) matched the
+  pre-refactor golden baseline byte-for-byte.
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6794 passed.
+
 ## 0.360.0 (2026-06-13) - Tier T1.6: builtin output via base-class helpers + guard
 - CONSISTENCY/HARDENING (zero behavior change, verified). Builtins that wrote
   output with raw `print(..., file=shell.stdout/stderr)` now use the base-class
