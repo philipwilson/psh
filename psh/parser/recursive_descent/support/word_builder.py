@@ -35,6 +35,41 @@ EXPANSION_TYPES = frozenset({
 })
 
 
+def strip_command_sub(value: str) -> str:
+    """Strip ``$(``/``)`` from a command substitution's source text.
+
+    Returns the inner command. Falls back to the whole value when the
+    delimiters are absent (shouldn't happen with proper lexing).
+    """
+    if value.startswith('$(') and value.endswith(')'):
+        return value[2:-1]
+    return value
+
+
+def strip_backtick(value: str) -> str:
+    """Strip the surrounding backticks from `` `...` `` command substitution."""
+    if value.startswith('`') and value.endswith('`'):
+        return value[1:-1]
+    return value
+
+
+def strip_arithmetic(value: str) -> str:
+    """Strip ``$((``/``))`` from an arithmetic expansion's source text."""
+    if value.startswith('$((') and value.endswith('))'):
+        return value[3:-2]
+    return value
+
+
+def strip_process_sub(value: str) -> str:
+    """Strip ``<(``/``>(`` and the trailing ``)`` from a process substitution.
+
+    Leaves the value untouched when it isn't a complete ``<(...)``/``>(...)``.
+    """
+    if value.startswith(('<(', '>(')) and value.endswith(')'):
+        return value[2:-1]
+    return value
+
+
 class WordBuilder:
     """Builds Word AST nodes from tokens."""
 
@@ -65,31 +100,15 @@ class WordBuilder:
 
         elif token_type == TokenType.COMMAND_SUB:
             # Command substitution $(...)
-            # Extract command from $(...)
-            if value.startswith('$(') and value.endswith(')'):
-                command = value[2:-1]
-                return CommandSubstitution(command, backtick_style=False)
-            else:
-                # Shouldn't happen with proper lexing
-                return CommandSubstitution(value, backtick_style=False)
+            return CommandSubstitution(strip_command_sub(value), backtick_style=False)
 
         elif token_type == TokenType.COMMAND_SUB_BACKTICK:
             # Backtick command substitution `...`
-            # Extract command from `...`
-            if value.startswith('`') and value.endswith('`'):
-                command = value[1:-1]
-                return CommandSubstitution(command, backtick_style=True)
-            else:
-                return CommandSubstitution(value, backtick_style=True)
+            return CommandSubstitution(strip_backtick(value), backtick_style=True)
 
         elif token_type == TokenType.ARITH_EXPANSION:
-            # Arithmetic expansion $((...)
-            # Extract expression from $((...))
-            if value.startswith('$((') and value.endswith('))'):
-                expression = value[3:-2]
-                return ArithmeticExpansion(expression)
-            else:
-                return ArithmeticExpansion(value)
+            # Arithmetic expansion $((...))
+            return ArithmeticExpansion(strip_arithmetic(value))
 
         elif token_type == TokenType.PARAM_EXPANSION:
             # Complex parameter expansion ${var:-default} etc.
@@ -99,10 +118,8 @@ class WordBuilder:
             # Process substitution <(cmd) or >(cmd) — may stand alone as a
             # word or be embedded in a composite (pre<(cmd)post)
             direction = 'in' if token_type == TokenType.PROCESS_SUB_IN else 'out'
-            command = value
-            if command.startswith(('<(', '>(')) and command.endswith(')'):
-                command = command[2:-1]
-            return ProcessSubstitution(direction=direction, command=command)
+            return ProcessSubstitution(direction=direction,
+                                       command=strip_process_sub(value))
 
         else:
             # Fallback - treat as variable
@@ -165,22 +182,13 @@ class WordBuilder:
             return WordBuilder._parse_parameter_expansion(tp.value)
 
         elif etype == 'command':
-            cmd = tp.value
-            if cmd.startswith('$(') and cmd.endswith(')'):
-                cmd = cmd[2:-1]
-            return CommandSubstitution(cmd, backtick_style=False)
+            return CommandSubstitution(strip_command_sub(tp.value), backtick_style=False)
 
         elif etype == 'arithmetic':
-            expr = tp.value
-            if expr.startswith('$((') and expr.endswith('))'):
-                expr = expr[3:-2]
-            return ArithmeticExpansion(expr)
+            return ArithmeticExpansion(strip_arithmetic(tp.value))
 
         elif etype == 'backtick':
-            cmd = tp.value
-            if cmd.startswith('`') and cmd.endswith('`'):
-                cmd = cmd[1:-1]
-            return CommandSubstitution(cmd, backtick_style=True)
+            return CommandSubstitution(strip_backtick(tp.value), backtick_style=True)
 
         else:
             # Unknown expansion type — treat as variable

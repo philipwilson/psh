@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.358.0 (2026-06-13) - Tier T1.4: unify expansion-delimiter stripping
+- REFACTOR (zero behavior change, both parser backends). Three sites peeled
+  the delimiters off an expansion's source text with their own inline
+  strip-and-fallback blocks: `WordBuilder.parse_expansion_token`,
+  `WordBuilder._parse_token_part_expansion`, and the combinator's
+  `ExpansionParsers.build_word_from_token`. They now share four pure helpers
+  in `word_builder.py`: `strip_command_sub` (`$(`…`)`), `strip_backtick`,
+  `strip_arithmetic` (`$((`…`))`), `strip_process_sub` (`<(`/`>(`…`)`).
+- Real divergences were found and PRESERVED, not silently unified: the
+  combinator keeps its post-strip `_validate_command_substitution` check
+  (recursive-descent has none); only the delimiter strip itself is shared.
+  `$[...]` arithmetic and the combinator's standalone process-sub parser were
+  confirmed out of scope and left untouched.
+- A 29-input dual-backend characterization harness (nested cmd subs, backticks,
+  `${...}` with `:-`/`[@]`/`##`/nesting, arithmetic, simple/special vars, mixed
+  adjacency, quoted composites, process subs) dumped byte-identical ASTs under
+  both `--parser rd` and `--parser combinator` before and after.
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6760 passed.
+
 ## 0.357.0 (2026-06-13) - Tier T1.2: extract the redirection-mode policy
 - REFACTOR (zero behavior change). `CommandExecutor._execute_with_strategy`
   (`psh/executor/command.py`) chose how to apply a matched command's

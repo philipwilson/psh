@@ -16,7 +16,12 @@ from ...ast_nodes import (
 )
 from ...lexer.token_types import Token
 from ..config import ParserConfig
-from ..recursive_descent.support.word_builder import WordBuilder
+from ..recursive_descent.support.word_builder import (
+    WordBuilder,
+    strip_arithmetic,
+    strip_backtick,
+    strip_command_sub,
+)
 from .core import Parser, ParseResult, token
 
 
@@ -153,7 +158,7 @@ class ExpansionParsers:
 
         elif token.type.name == 'COMMAND_SUB':
             # Command substitution $(...)
-            cmd = token.value[2:-1] if token.value.startswith('$(') and token.value.endswith(')') else token.value
+            cmd = strip_command_sub(token.value)
 
             if not self._validate_command_substitution(cmd):
                 raise ValueError(f"Invalid command substitution: {token.value}")
@@ -163,7 +168,7 @@ class ExpansionParsers:
 
         elif token.type.name == 'COMMAND_SUB_BACKTICK':
             # Backtick command substitution
-            cmd = token.value[1:-1] if token.value.startswith('`') and token.value.endswith('`') else token.value
+            cmd = strip_backtick(token.value)
 
             if not self._validate_command_substitution(cmd):
                 raise ValueError(f"Invalid command substitution: {token.value}")
@@ -173,8 +178,7 @@ class ExpansionParsers:
 
         elif token.type.name == 'ARITH_EXPANSION':
             # Arithmetic expansion $((...))
-            expr = token.value[3:-2] if token.value.startswith('$((') and token.value.endswith('))') else token.value
-            expansion = ArithmeticExpansion(expr)
+            expansion = ArithmeticExpansion(strip_arithmetic(token.value))
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         elif token.type.name == 'PARAM_EXPANSION':
