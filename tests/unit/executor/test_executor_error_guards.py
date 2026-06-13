@@ -67,6 +67,9 @@ def boom_builtin():
 
 class TestUnexpectedErrorGuard:
     def test_builtin_defect_reported_without_crashing(self, captured_shell, boom_builtin):
+        # Characterizes the NON-strict swallow-to-1 path; the suite runs with
+        # strict-errors enabled globally (conftest), so disable it here.
+        captured_shell.state.options['strict-errors'] = False
         rc = captured_shell.run_command('boom')
         assert rc == 1
         assert "boom" in captured_shell.get_stderr()
@@ -74,6 +77,9 @@ class TestUnexpectedErrorGuard:
         assert "Traceback" not in captured_shell.get_stderr()
 
     def test_builtin_defect_surfaces_traceback_under_debug_exec(self, captured_shell, boom_builtin):
+        # Non-strict path (see sibling test): a RuntimeError is a defect that
+        # strict mode would re-raise, so turn strict off to test the swallow.
+        captured_shell.state.options['strict-errors'] = False
         captured_shell.state.options['debug-exec'] = True
         try:
             captured_shell.run_command('boom')

@@ -4,6 +4,7 @@
 from typing import Dict, List, Optional, Tuple
 
 from ..ast_nodes import CommandList
+from .exceptions import FunctionDefinitionError
 
 
 class Function:
@@ -38,15 +39,15 @@ class FunctionManager:
                         redirects: Optional[List] = None) -> None:
         """Define or redefine a function."""
         if self._is_reserved_word(name):
-            raise ValueError(f"Cannot use reserved word '{name}' as function name")
+            raise FunctionDefinitionError(f"Cannot use reserved word '{name}' as function name")
 
         if self._is_invalid_name(name):
-            raise ValueError(f"Invalid function name '{name}'")
+            raise FunctionDefinitionError(f"Invalid function name '{name}'")
 
         # Check if function is readonly
         existing = self.functions.get(name)
         if existing and existing.readonly:
-            raise ValueError(f"'{name}': readonly function")
+            raise FunctionDefinitionError(f"'{name}': readonly function")
 
         # Preserve readonly status if redefining
         readonly = existing.readonly if existing else False
@@ -60,7 +61,7 @@ class FunctionManager:
         """Remove a function. Returns True if removed, False if not found."""
         func = self.functions.get(name)
         if func and func.readonly:
-            raise ValueError(f"'{name}': readonly function")
+            raise FunctionDefinitionError(f"'{name}': readonly function")
         return self.functions.pop(name, None) is not None
 
     def set_function_readonly(self, name: str) -> bool:

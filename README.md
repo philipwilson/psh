@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.338.0 | **Tests**: 6,511 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.339.0 | **Tests**: 6,513 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~49,100 lines of production code in `psh/` across 193 Python files, plus ~59,500 lines of tests in `tests/` (262 Python files)
-- **Test Coverage**: 6,511 tests in 283 test files
+- **Test Coverage**: 6,513 tests in 283 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.339.0**: expected-error taxonomy (B2-R2) — `report_internal_defect` now treats `PshError ∪ OSError ∪ SyntaxError` as expected shell errors (redirection, fork, lexer, arithmetic) and re-raises only genuine Python-bug exceptions under `strict-errors`; the function-name `ValueError`s became `FunctionDefinitionError(PshError)`. With the taxonomy in place, **`strict-errors` is now enabled suite-wide** via `conftest`, so a real internal defect fails the test suite loudly. Non-strict behavior byte-identical; full suite green (6,268)
 - **v0.338.0**: behavior fix — `$0` inside a function now stays the script/shell name (bash semantics), instead of becoming the function name; `${FUNCNAME[0]}` remains the function name. Root cause was the function executor mutating `state.script_name` on entry; removed. Also completes B6's special-variable consolidation (`$0` now delegates to `ShellState.get_special_variable`). Bash-verified via script-file differential conformance test
 - **v0.337.0**: behavior fix — associative-array elements now resolve inside arithmetic `$(( ))`/`(( ))` (`m[k]*2`, compound-assign, new-key assign), using the literal subscript as the key for assoc arrays (bash semantics: not arithmetic-evaluated) while indexed arrays still evaluate the subscript; also fixes array-element pre/post `++`/`--` (`a[0]++`, `m[x]++`) for both array kinds. Bash-verified; +21 tests. (Known remaining gap: assoc keys containing spaces.)
 - **v0.336.0**: reappraisal #4 Tier B7 (process failure-path tests) — CLOSES reappraisal #4 Tier B. Adds 24 deterministic, parallel-safe tests for the previously-undertested error paths: fork failure (injected `OSError(EAGAIN)`, parent sigmask restored), redirect failure (nonzero exit, body skipped, fds restored), signal-killed exit status (128+signum, matched to bash), stopped-job listing (PTY), and process-substitution fd/zombie cleanup across repeated use. All paths match bash; no production change

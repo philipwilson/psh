@@ -65,6 +65,16 @@ the prerequisite to enabling `strict-errors` in `conftest` globally and
 catching internal regressions automatically. Recorded here as a candidate;
 not yet scheduled.
 
+> ✅ **RESOLVED — the three behavior follow-ups are FIXED (v0.337–v0.339):**
+> (1) assoc arrays in arithmetic → v0.337.0; (2) `$0`-in-function →
+> v0.338.0; (3) **B2-R2 expected-error taxonomy → v0.339.0** — expected
+> shell errors are classified as `PshError ∪ OSError ∪ SyntaxError`
+> (function-name `ValueError`s promoted to `FunctionDefinitionError(PshError)`),
+> `report_internal_defect` re-raises only genuine Python-bug exceptions, and
+> `strict-errors` is now ENABLED suite-wide via `conftest`
+> (`PSH_STRICT_ERRORS=1`) — so a real internal defect fails the suite loudly
+> going forward.
+
 ## Emergent behavior finding (from B4, 2026-06-13)
 
 While characterizing arithmetic, B4 confirmed (against pristine main, so

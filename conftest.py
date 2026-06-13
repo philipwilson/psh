@@ -23,6 +23,19 @@ def pytest_configure(config):
         path_entries.append(existing)
     os.environ['PYTHONPATH'] = os.pathsep.join(path_entries)
 
+    # Run the entire suite with strict-errors enabled so a genuine INTERNAL
+    # DEFECT (a Python bug surfacing as an unexpected exception) fails loudly
+    # instead of being masked as an ordinary exit-1. This env var seeds the
+    # strict-errors option at Shell construction, so it covers BOTH in-process
+    # shells AND subprocess ``python -m psh`` instances.
+    #
+    # Expected shell errors are NOT affected: per the taxonomy in
+    # psh/core/internal_errors.py, PshError / OSError / SyntaxError reaching a
+    # last-resort guard pass through to normal handling (print + exit 1) even
+    # under strict mode. Only true defects (RuntimeError, AttributeError,
+    # TypeError, ...) are re-raised.
+    os.environ['PSH_STRICT_ERRORS'] = '1'
+
 
 def pytest_collection_modifyitems(config, items):
     """Apply xfail marking to tests marked with visitor_xfail."""

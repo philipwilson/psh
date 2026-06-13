@@ -53,7 +53,13 @@ def boom_builtin():
 
 def test_unexpected_exception_swallowed_when_strict_off(captured_shell,
                                                         boom_builtin):
-    """Default (strict OFF): an internal exception becomes exit status 1."""
+    """Strict OFF: an internal exception becomes exit status 1.
+
+    The suite runs with strict-errors enabled globally (conftest sets
+    PSH_STRICT_ERRORS=1), so this test — which characterizes the NON-strict
+    swallow-to-1 behavior — explicitly turns the option off first.
+    """
+    captured_shell.state.options['strict-errors'] = False
     assert captured_shell.state.options.get('strict-errors') is False
     rc = captured_shell.run_command(boom_builtin)
     assert rc == 1
@@ -115,6 +121,64 @@ def test_strict_errors_seeded_from_environment(monkeypatch):
     monkeypatch.delenv("PSH_STRICT_ERRORS", raising=False)
     shell = Shell(norc=True)
     assert shell.state.options['strict-errors'] is False
+
+
+def test_taxonomy_expected_errors_not_reraised_under_strict():
+    """report_internal_defect honors the expected-error taxonomy: under strict
+    mode a PshError / OSError / SyntaxError is NOT re-raised (handled as exit 1),
+    while a genuine defect (RuntimeError) IS re-raised."""
+    import io
+
+    from psh.core import report_internal_defect
+    from psh.core.exceptions import (
+        ExpansionError,
+        FunctionDefinitionError,
+        PshError,
+    )
+    from psh.shell import Shell
+
+    shell = Shell(norc=True)
+    shell.state.options['strict-errors'] = True
+
+    # Expected shell errors: handled (return 1), never re-raised.
+    for exc in (
+        PshError("generic psh error"),
+        ExpansionError("bad expansion"),
+        FunctionDefinitionError("'x': readonly function"),
+        OSError("Bad file descriptor"),
+        SyntaxError("Unclosed quote"),
+    ):
+        stream = io.StringIO()
+        rc = report_internal_defect(shell.state, exc, stream=stream)
+        assert rc == 1, exc
+        assert "psh:" in stream.getvalue()
+
+    # Genuine internal defects: re-raised under strict mode.
+    for exc in (
+        RuntimeError("boom"),
+        AttributeError("nope"),
+        TypeError("bad type"),
+        KeyError("missing"),
+        ValueError("plain value error"),
+    ):
+        stream = io.StringIO()
+        with pytest.raises(type(exc)):
+            report_internal_defect(shell.state, exc, stream=stream)
+
+
+def test_taxonomy_expected_errors_handled_when_strict_off():
+    """With strict OFF, even a defect is swallowed to exit 1 (baseline)."""
+    import io
+
+    from psh.core import report_internal_defect
+    from psh.shell import Shell
+
+    shell = Shell(norc=True)
+    shell.state.options['strict-errors'] = False
+    stream = io.StringIO()
+    rc = report_internal_defect(shell.state, RuntimeError("boom"), stream=stream)
+    assert rc == 1
+    assert "psh:" in stream.getvalue()
 
 
 def test_set_o_toggles_strict_errors(captured_shell):
