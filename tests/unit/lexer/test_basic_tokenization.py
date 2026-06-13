@@ -275,3 +275,45 @@ class TestNewRedirectionOperators:
         tokens = list(tokenize("echo hello > file"))
         redirect = next(t for t in tokens if t.type == TokenType.REDIRECT_OUT)
         assert redirect.combined_redirect is False
+
+
+class TestFdPrefixedHeredocHerestring:
+    """An fd prefix on <<, <<-, <<< attaches to the operator token (bash:
+    `cat 0<<EOF`, `cat 5<<<word`). Regression: these used to split the
+    digit off and fail to parse."""
+
+    def test_heredoc_with_fd(self):
+        tokens = list(tokenize("cat 5<<EOF"))
+        tok = next(t for t in tokens if t.type == TokenType.HEREDOC)
+        assert tok.value == '<<'
+        assert tok.fd == 5
+
+    def test_heredoc_strip_with_fd(self):
+        tokens = list(tokenize("cat 5<<-EOF"))
+        tok = next(t for t in tokens if t.type == TokenType.HEREDOC_STRIP)
+        assert tok.value == '<<-'
+        assert tok.fd == 5
+
+    def test_herestring_with_fd(self):
+        tokens = list(tokenize("cat 5<<<word"))
+        tok = next(t for t in tokens if t.type == TokenType.HERE_STRING)
+        assert tok.value == '<<<'
+        assert tok.fd == 5
+
+    def test_fd0_herestring_not_split(self):
+        # 0<<< must be ONE here-string token with fd=0, not 0< + <<.
+        tokens = list(tokenize("cat 0<<<word"))
+        tok = next(t for t in tokens if t.type == TokenType.HERE_STRING)
+        assert tok.fd == 0
+        assert not any(t.type == TokenType.REDIRECT_IN for t in tokens)
+
+    def test_multidigit_fd_heredoc(self):
+        tokens = list(tokenize("cat 10<<EOF"))
+        tok = next(t for t in tokens if t.type == TokenType.HEREDOC)
+        assert tok.fd == 10
+
+    def test_plain_heredoc_has_no_fd(self):
+        # Unprefixed heredoc leaves fd unset (defaults to stdin downstream).
+        tokens = list(tokenize("cat <<EOF"))
+        tok = next(t for t in tokens if t.type == TokenType.HEREDOC)
+        assert tok.fd is None

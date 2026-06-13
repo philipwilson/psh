@@ -264,8 +264,10 @@ if not heredoc_quoted:
 
 ### Heredoc / Here String Delivery
 
-Both deliver content to stdin via `_stdin_from_content()`, which uses an
-**anonymous (unlinked) temp file, deliberately NOT a pipe**:
+Both deliver content via `_content_to_fd(content, target_fd)`, which uses an
+**anonymous (unlinked) temp file, deliberately NOT a pipe**. `target_fd` is
+the redirect's fd (default 0/stdin), so an explicit fd prefix — `5<<EOF`,
+`5<<<word` — materializes the body on fd 5 instead, matching bash:
 
 ```python
 # A pipe would deadlock for content larger than the kernel pipe buffer
@@ -274,8 +276,8 @@ Both deliver content to stdin via `_stdin_from_content()`, which uses an
 tmp = tempfile.TemporaryFile()
 tmp.write(content.encode())
 tmp.seek(0)
-os.dup2(tmp.fileno(), 0)
-tmp.close()  # fd 0 keeps the underlying file open
+os.dup2(tmp.fileno(), target_fd)  # target_fd = redirect.fd or 0
+tmp.close()  # target_fd keeps the underlying file open
 ```
 
 ### Process Substitution
