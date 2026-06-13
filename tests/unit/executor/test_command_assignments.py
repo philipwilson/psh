@@ -129,11 +129,11 @@ class TestApplyPrefixAndRestore:
         assert shell.state.get_variable('V') == 'new'
         ca.restore(outcome.saved)
         assert shell.state.get_variable('V') == 'old'
-        # Pre-existing psh quirk (pinned, not endorsed): apply_prefix
-        # snapshots via get_variable(), whose default is '' — so restore
-        # leaves a previously-UNSET variable set-but-empty (bash unsets
-        # it: `W=1 true; echo ${W+yes}` prints nothing in bash).
-        assert shell.state.get_variable('W') == ''
+        # bash 5.2 (pinned 2026-06-13): a previously-UNSET variable is
+        # restored to UNSET, not set-but-empty — `W=1 true; echo ${W+yes}`
+        # prints nothing in bash. (apply_prefix used to snapshot via
+        # get_variable()'s '' default, which could not represent unset.)
+        assert shell.state.scope_manager.get_variable('W') is None
         assert 'W' not in shell.env
 
     def test_readonly_skips_and_continues(self, assignments):
@@ -150,9 +150,10 @@ class TestApplyPrefixAndRestore:
         assert shell.state.get_variable('RO') == '1'
         assert 'readonly variable' in shell.get_stderr()
         ca.restore(outcome.saved)
-        # set-but-empty after restore: see test_restore_returns_state_and_env
-        assert shell.state.get_variable('A') == ''
-        assert shell.state.get_variable('B') == ''
+        # previously-unset variables return to UNSET after restore (bash):
+        # see test_restore_returns_state_and_env
+        assert shell.state.scope_manager.get_variable('A') is None
+        assert shell.state.scope_manager.get_variable('B') is None
 
     def test_append_assignment_resolves_against_current_value(self, assignments):
         ca, shell = assignments

@@ -24,6 +24,7 @@ class ShoptBuiltin(Builtin):
         'extglob': 'extglob',
         'nocaseglob': 'nocaseglob',
         'globstar': 'globstar',
+        'checkhash': 'checkhash',
     }
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
@@ -139,6 +140,7 @@ class ShoptBuiltin(Builtin):
     With optname but no flags, show the status of those options.
 
     Available options:
+      checkhash    Re-verify hashed command paths before executing them
       dotglob      Glob patterns match files beginning with '.'
       extglob      Extended pattern matching: ?()|*()|+()|@()|!()
       globstar     '**' matches all files and directories recursively

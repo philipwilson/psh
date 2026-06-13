@@ -72,6 +72,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 |------|----------|
 | `test_command.py` | `test`, `[` |
 | `type_builtin.py` | `type` |
+| `hash_builtin.py` | `hash` (remembered command locations; the table itself is `shell.state.command_hash`) |
 | `command_builtin.py` | `command` |
 
 **Aliases**

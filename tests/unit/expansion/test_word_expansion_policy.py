@@ -53,13 +53,13 @@ class TestPolicyTable:
             split=True, glob=True, assignment_tilde=False)
 
     def test_assoc_init_element_axes(self):
-        # assignment_tilde=True is the pinned historical accident: the
-        # pre-policy code aliased suppress_split_glob onto the
-        # declaration_assignment flag, re-enabling value-tilde. psh
-        # expands ``h=(P=~/x v)``'s tilde where bash keeps it literal;
-        # preserved under the zero-behavior-change contract.
+        # assignment_tilde=False is the bash-correct value (probed
+        # 2026-06-13): bash keeps ``h=(P=~/x v)``'s tilde literal, like
+        # indexed-array initializer elements. (Until v0.326 this was
+        # True — a pinned historical accident from pre-policy code that
+        # aliased suppress_split_glob onto declaration_assignment.)
         assert ASSOC_INIT_ELEMENT == WordExpansionPolicy(
-            split=False, glob=False, assignment_tilde=True)
+            split=False, glob=False, assignment_tilde=False)
 
     def test_policies_are_frozen(self):
         with pytest.raises(dataclasses.FrozenInstanceError):
@@ -146,12 +146,59 @@ class TestExpandUnderPolicies:
         assert expander.expand(_literal('P=~/x'), ARRAY_INIT_ELEMENT) \
             == 'P=~/x'
 
-    def test_assoc_init_element_value_tilde_pinned(
+    def test_assoc_init_element_no_value_tilde(
             self, captured_shell, expander):
-        # The historical-aliasing behavior, pinned (see TestPolicyTable).
+        # bash 5.2 keeps the tilde literal (the historical accident that
+        # expanded it was fixed 2026-06-13; see TestPolicyTable).
         captured_shell.run_command('HOME=/H')
         assert expander.expand(_literal('P=~/x'), ASSOC_INIT_ELEMENT) \
-            == 'P=/H/x'
+            == 'P=~/x'
+
+    def test_assoc_init_element_leading_tilde_still_expands(
+            self, captured_shell, expander):
+        # bash: a BARE leading tilde in an assoc initializer element does
+        # expand (h=(~ v) keys on $HOME) — only the assignment-shaped
+        # value-tilde is off.
+        captured_shell.run_command('HOME=/H')
+        assert expander.expand(_literal('~/x'), ASSOC_INIT_ELEMENT) == '/H/x'
+
+    # --- field expansions under no-split policies (bash joins) ----------
+
+    def test_assoc_init_unquoted_at_joins_with_spaces(
+            self, captured_shell, expander):
+        # bash: `h=($@)` with params ("a b", c) creates the SINGLE key
+        # "a b c" — fields join with spaces, no IFS splitting, no
+        # globbing. (Until v0.326 this path ignored the policy and
+        # split/globbed — the pinned probe-P22 accident, now fixed.)
+        captured_shell.run_command('set -- "a b" c')
+        word = Word(parts=[ExpansionPart(VariableExpansion('@'),
+                                         quoted=False)])
+        assert expander.expand(word, ASSOC_INIT_ELEMENT) == 'a b c'
+
+    def test_assoc_init_quoted_at_joins_with_spaces(
+            self, captured_shell, expander):
+        # bash: quoted "$@" joins identically in assoc-init context.
+        captured_shell.run_command('set -- "a b" c')
+        word = Word(parts=[ExpansionPart(VariableExpansion('@'),
+                                         quoted=True, quote_char='"')],
+                    quote_type='"')
+        assert expander.expand(word, ASSOC_INIT_ELEMENT) == 'a b c'
+
+    def test_assoc_init_at_join_ignores_ifs(self, captured_shell, expander):
+        # bash joins with SPACES even when IFS is ':' (unlike "$*").
+        captured_shell.run_command('set -- x y; IFS=:')
+        word = Word(parts=[ExpansionPart(VariableExpansion('@'),
+                                         quoted=False)])
+        assert expander.expand(word, ASSOC_INIT_ELEMENT) == 'x y'
+
+    def test_command_argument_at_still_produces_fields(
+            self, captured_shell, expander):
+        # The splitting contexts are untouched: unquoted $@ still
+        # field-splits per parameter.
+        captured_shell.run_command('set -- "a b" c')
+        word = Word(parts=[ExpansionPart(VariableExpansion('@'),
+                                         quoted=False)])
+        assert expander.expand(word, COMMAND_ARGUMENT) == ['a', 'b', 'c']
 
     # --- engine type discipline ------------------------------------------
 

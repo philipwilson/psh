@@ -16,8 +16,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-import pytest
-
 # Add framework to path
 TEST_ROOT = Path(__file__).parent.parent.parent
 PSH_ROOT = TEST_ROOT.parent
@@ -220,12 +218,6 @@ class TestPATHHandling:
             # Output verification would need shell output capture
 
 
-@pytest.mark.skip(reason="psh does not implement the `hash` builtin (POSIX/bash "
-                         "have it). These tests only ever passed on macOS by "
-                         "accident, via the BSD /usr/bin/hash sh-stub script; on "
-                         "Linux there is no such binary and `hash` exits 127. "
-                         "Unskip once a real hash builtin (command-location cache) "
-                         "is implemented.")
 class TestCommandCaching:
     """Test command caching and hash table behavior."""
 
@@ -244,23 +236,29 @@ class TestCommandCaching:
         """Test that hash table is invalidated when PATH changes."""
         # Hash a command
         shell.run_command('hash ls')
+        assert 'ls' in shell.state.command_hash
 
         # Change PATH
         shell.run_command('export PATH="/different/path:$PATH"')
 
-        # Hash table should be invalidated
-        # Exact behavior depends on implementation
+        # Hash table is emptied on ANY PATH assignment (bash 5.2)
+        assert len(shell.state.command_hash) == 0
 
     def test_hash_clear(self, shell):
         """Test clearing the command hash table."""
-        # Hash some commands
+        # Hash some commands (echo is a builtin: silently skipped — bash)
         shell.run_command('hash ls cat echo')
+        assert 'ls' in shell.state.command_hash
+        assert 'cat' in shell.state.command_hash
+        assert 'echo' not in shell.state.command_hash
 
         # Clear hash table
         result = shell.run_command('hash -r')
         assert result == 0
+        assert len(shell.state.command_hash) == 0
 
-        # Hash table should be empty
+        # Listing an empty table still succeeds (bash prints
+        # "hash: hash table empty" on stdout, rc 0)
         hash_result = shell.run_command('hash')
         assert hash_result == 0
 

@@ -20,6 +20,7 @@ Manager            (arrays)    State    Manager
 | File | Purpose |
 |------|---------|
 | `state.py` | `ShellState` - central state container for entire shell |
+| `command_hash.py` | `CommandHashTable` - remembered command locations (`hash` builtin; cleared via `ScopeManager.path_changed` on any PATH write) |
 | `scope.py` | `ScopeManager`, `VariableScope` - hierarchical scope management |
 | `variables.py` | `Variable`, `VarAttributes`, `IndexedArray`, `AssociativeArray` |
 | `options.py` | Shell option handlers (errexit, pipefail, etc.) |

@@ -4,6 +4,41 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.327.0 (2026-06-13) - Textbook program Tier B10a: hash builtin + parity queue
+- The hash builtin (closing the POSIX gap found in v0.308 when CI
+  revealed psh's hash tests only passed via macOS's /usr/bin/hash
+  stub): CommandHashTable on shell.state (statelessness contract
+  honored), HashBuiltin reusing the type builtin's PATH walk,
+  parent-side strategy consult pre-fork. Bash 5.2 semantics
+  replicated from ~20 probes: hits\tcommand listing, -t/-d/-l/-p/-r,
+  hit counts incremented on use AND on -t lookup, builtins/functions/
+  slash-names silently skipped, empty-table -d quirk, set +h
+  (hashcmds now defaults ON and appears in $-), subshell inheritance
+  via adopt(). Probing OVERTURNED the assumed re-verify design: bash
+  blind-execs a stale hashed path by default (127 naming the path,
+  stale entry kept) — re-search only under shopt -s checkhash. psh
+  implements both. PATH invalidation via one ScopeManager observer,
+  fired on ANY PATH write (probe-pinned: PATH=$PATH clears; cd does
+  not). 3 acceptance tests unskipped; the strict-xfail ledger entry
+  flipped; 26 conformance + 27 unit + 5 integration tests.
+- Parity queue flipped to bash: (a) assoc-init value-tilde
+  (B4's pinned accident) — h=(P=~/x v) keeps the tilde literal;
+  leading-tilde and explicit [k]=~ expansion preserved, 6 conformance
+  pins. (b) prefix-restore unset (B2's pin) — W=1 true leaves W
+  UNSET again (the snapshot now distinguishes unset from empty; the
+  old None branch was provably dead code), 8 conformance pins.
+  (c) Same-family bonus: no-split contexts join field expansions
+  with single spaces like bash — h=($@), h=("$@"), affixed forms,
+  and notably declare v="$@" which psh had truncating to the first
+  field. 12 more pins.
+- Pin-sweep inventory reported for follow-up: exported-variable env
+  sync on plain reassignment (REAL: printenv sees stale values —
+  queued into B10b), empty assoc keys accepted, hash listing order
+  (cosmetic, documented), and the ledger's remaining 10 absent
+  features.
+- Suite: 5,768 passed / 6,004 collected, 0 failures; ruff + mypy +
+  doc-pointer clean.
+
 ## 0.326.0 (2026-06-13) - Textbook program Tier B9: one completeness oracle
 - CommandAccumulator (scripting/command_accumulator.py, 298 lines):
   feed(line) -> Complete | NeedMore(hint) — the single parser-driven

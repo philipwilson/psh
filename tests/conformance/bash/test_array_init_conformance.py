@@ -66,3 +66,102 @@ class TestArrayInitializerExpansion(ConformanceTest):
         self.assert_identical_behavior(
             'a=([1]=x [3]=y z); echo ${#a[@]} "${a[1]}" "${a[3]}" "${a[4]}" '
             '"${!a[@]}"')
+
+
+class TestInitializerValueTilde(ConformanceTest):
+    """Tilde expansion inside initializer elements (bash 5.2, probed
+    2026-06-13 — Tier B10a flipped the assoc-init value-tilde accident).
+
+    The rule: assignment-shaped VALUE tilde (after a literal ``=`` in
+    the element) does NOT expand in either array-initializer flavor,
+    while a LEADING tilde and the value of an explicit ``[k]=`` element
+    DO expand.
+    """
+
+    def test_assoc_bare_element_value_tilde_stays_literal(self):
+        """declare -A h; h=(P=~/x v): the element is the literal KEY
+        'P=~/x' — psh expanded the tilde until v0.326 (the pinned
+        historical accident, now fixed)."""
+        self.assert_identical_behavior(
+            'declare -A h; h=(P=~/x v); echo "${!h[@]}"')
+
+    def test_assoc_bare_element_colon_tilde_stays_literal(self):
+        self.assert_identical_behavior(
+            'declare -A h; h=(P=a:~:b v); echo "${!h[@]}"')
+
+    def test_assoc_leading_tilde_still_expands(self):
+        """A BARE leading tilde in key or value position expands.
+
+        NOT assert_identical_behavior: bash point releases disagree in
+        this corner — 5.2.26 (dev machine) expands a bare tilde in
+        assoc pair-form key/value positions, 5.2.21 (Ubuntu CI runner)
+        keeps it literal. psh follows the 5.2.26 behavior; this test
+        pins psh's output directly so it holds on either bash.
+        """
+        import os
+        home = os.path.expanduser('~')
+        result = self.framework.run_in_psh('declare -A h; h=(~ v); echo "${!h[@]}"')
+        assert result.stdout.strip() == home
+        result = self.framework.run_in_psh('declare -A h; h=(k ~/x); echo "${h[k]}"')
+        assert result.stdout.strip() == f"{home}/x"
+
+    def test_assoc_explicit_subscript_value_tilde_expands(self):
+        """[k]=~/x goes through scalar assignment-value semantics.
+
+        psh-only pin: same bash 5.2.21-vs-5.2.26 divergence as
+        test_assoc_leading_tilde_still_expands (see its docstring).
+        """
+        import os
+        home = os.path.expanduser('~')
+        result = self.framework.run_in_psh('declare -A h; h=([k]=~/x); echo "${h[k]}"')
+        assert result.stdout.strip() == f"{home}/x"
+
+    def test_indexed_element_value_tilde_stays_literal(self):
+        """The indexed-array twin: a=(P=~/x) keeps the tilde literal."""
+        self.assert_identical_behavior('a=(P=~/x); echo "${a[0]}"')
+
+    def test_indexed_explicit_subscript_value_tilde_expands(self):
+        self.assert_identical_behavior('a=([0]=~/x); echo "${a[0]}"')
+
+
+class TestAssocInitFieldExpansions(ConformanceTest):
+    """Field expansions ("$@", "${a[@]}") inside assoc bare initializers
+    join into ONE word with single spaces — bash 5.2, probed 2026-06-13
+    (Tier B10a; psh used to split/glob them via a pre-policy path).
+    """
+
+    def test_unquoted_at_joins_to_single_key(self):
+        self.assert_identical_behavior(
+            'set -- "a b" c; declare -A h; h=($@); '
+            'echo "len=${#h[@]} keys=${!h[@]}"')
+
+    def test_quoted_at_joins_to_single_key(self):
+        self.assert_identical_behavior(
+            'set -- "a b" c; declare -A h; h=("$@"); '
+            'echo "len=${#h[@]} keys=${!h[@]}"')
+
+    def test_array_splice_joins_to_single_key(self):
+        self.assert_identical_behavior(
+            'a=("x y" z); declare -A h; h=(${a[@]}); '
+            'echo "len=${#h[@]} keys=${!h[@]}"')
+        self.assert_identical_behavior(
+            'a=("x y" z); declare -A h; h=("${a[@]}"); '
+            'echo "len=${#h[@]} keys=${!h[@]}"')
+
+    def test_affixed_at_joins_within_the_word(self):
+        self.assert_identical_behavior(
+            'set -- x y; declare -A h; h=(pre"$@"post v); echo "${!h[@]}"')
+
+    def test_join_uses_spaces_not_ifs(self):
+        self.assert_identical_behavior(
+            'set -- x y; IFS=:; declare -A h; h=($@ v); echo "${!h[@]}"')
+
+    def test_glob_parameter_stays_literal(self):
+        self.assert_identical_behavior(
+            'set -- "*" c; declare -A h; h=($@); echo "${!h[@]}"')
+
+    def test_declare_scalar_value_at_joins(self):
+        """Same engine path: declare v="$@" joins with spaces (psh used
+        to keep only the first field)."""
+        self.assert_identical_behavior(
+            'set -- a b; declare v="$@"; echo "[$v]"')

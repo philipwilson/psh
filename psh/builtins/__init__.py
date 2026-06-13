@@ -11,6 +11,7 @@ Modules:
     environment     - export, set, unset
     eval_command    - eval
     function_support - declare, typeset, readonly, return; FunctionReturn exception
+    hash_builtin    - hash
     help_command    - help
     io              - echo, printf, pwd
     job_control     - jobs, fg, bg, wait
@@ -45,6 +46,7 @@ from . import (
     environment,
     eval_command,
     function_support,
+    hash_builtin,
     help_command,
     io,
     job_control,

@@ -4,6 +4,7 @@ import sys
 from typing import Dict, Optional
 
 from ..version import __version__
+from .command_hash import CommandHashTable
 from .scope import ScopeManager
 from .variables import VarAttributes
 
@@ -30,6 +31,16 @@ class ShellState:
 
         # Initialize enhanced scope manager for variable scoping with attributes
         self.scope_manager = ScopeManager()
+
+        # Remembered command locations (the `hash` builtin / bash's
+        # COMMAND EXECUTION hashing). Any PATH write empties it — the
+        # scope manager fires the observer below for every PATH
+        # assignment/local/unset (bash 5.2, probe-verified: even
+        # ``PATH=$PATH`` and ``local PATH=...`` clear; ``cd`` does not).
+        # The lambda reads self.command_hash at call time so adopt()'s
+        # table replacement stays wired.
+        self.command_hash = CommandHashTable()
+        self.scope_manager.path_changed = lambda: self.command_hash.clear()
 
         # Default prompt variables (set in global scope)
         self.scope_manager.set_variable('PS1', 'psh$ ')
@@ -74,7 +85,7 @@ class ShellState:
             'notify': False,       # -b: async job completion notifications
             'noclobber': False,    # -C: prevent file overwriting with >
             'noglob': False,       # -f: disable pathname expansion
-            'hashcmds': False,     # -h: hash command locations
+            'hashcmds': True,      # -h: hash command locations (bash default ON)
             'monitor': False,      # -m: job control mode (default for interactive)
             'noexec': False,       # -n: read commands but don't execute
             'verbose': False,      # -v: echo input lines as read
@@ -86,6 +97,7 @@ class ShellState:
             'extglob': False,      # extglob: extended globbing patterns
             'nocaseglob': False,   # nocaseglob: case-insensitive globbing
             'globstar': False,     # globstar: ** matches recursively
+            'checkhash': False,    # checkhash: re-verify hashed paths before exec
             'braceexpand': True,   # -o braceexpand: enable brace expansion (default on)
             'emacs': False,        # -o emacs: emacs key bindings (context-dependent)
             'vi': False,           # -o vi: vi key bindings (off for set -o display)
@@ -210,6 +222,9 @@ class ShellState:
             self.scope_manager.scope_stack.append(scope.copy())
         self.positional_params = parent.positional_params.copy()
         self.options.update(parent.options)
+        # bash: subshell-style children inherit the command hash table
+        # (probe: `hash ls; (hash)` lists the entry in the subshell).
+        self.command_hash = parent.command_hash.copy()
         self.last_exit_code = parent.last_exit_code
         self.is_script_mode = parent.is_script_mode
         self.pipestatus = list(parent.pipestatus)
