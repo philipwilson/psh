@@ -1,6 +1,6 @@
 """Base classes for script handling components."""
 from abc import ABC
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -37,7 +37,7 @@ class ScriptManager:
         self.shebang_handler = ShebangHandler(shell)
         self.source_processor = SourceProcessor(shell)
 
-    def run_script(self, script_path: str, script_args: List[str] = None) -> int:
+    def run_script(self, script_path: str, script_args: Optional[List[str]] = None) -> int:
         """Execute a script file with optional arguments."""
         return self.script_executor.run_script(script_path, script_args)
 

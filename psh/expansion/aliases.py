@@ -57,7 +57,7 @@ class AliasManager:
         if not self.aliases:
             return tokens
 
-        result = []
+        result: List[Token] = []
         i = 0
 
         while i < len(tokens):

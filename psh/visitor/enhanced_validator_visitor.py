@@ -173,7 +173,7 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         # Dangerous commands for security checks
         self.dangerous_commands = DANGEROUS_COMMANDS
 
-        self._current_function = None
+        self._current_function: Optional[str] = None
 
     # Override parent visit methods to add enhanced checks
 

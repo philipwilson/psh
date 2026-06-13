@@ -1,6 +1,6 @@
 """Script file execution."""
 import sys
-from typing import List
+from typing import List, Optional
 
 from .base import ScriptComponent
 from .input_sources import FileInput
@@ -9,7 +9,7 @@ from .input_sources import FileInput
 class ScriptExecutor(ScriptComponent):
     """Executes script files."""
 
-    def run_script(self, script_path: str, script_args: List[str] = None) -> int:
+    def run_script(self, script_path: str, script_args: Optional[List[str]] = None) -> int:
         """Execute a script file with optional arguments."""
         if script_args is None:
             script_args = []

@@ -7,7 +7,7 @@ This module provides different input sources for the shell:
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import List, Optional
 
 
 class InputSource(ABC):
@@ -51,7 +51,7 @@ class FileInput(InputSource):
         self.file_path = file_path
         self.file = None
         self.line_number = 0
-        self.processed_lines = []
+        self.processed_lines: List[str] = []
         self.current_line = 0
         self.preprocessed = False
 

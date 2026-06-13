@@ -7,7 +7,7 @@ providing warnings and suggestions for improvement.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 from ..ast_nodes import ASTNode, FunctionDef, IfConditional, Pipeline, SimpleCommand, TopLevel
 from .base import ASTVisitor
@@ -120,7 +120,7 @@ class LinterVisitor(ASTVisitor[None]):
             return "No issues found!"
 
         # Group by severity
-        by_level = {}
+        by_level: Dict[LintLevel, List[LintIssue]] = {}
         for issue in self.issues:
             by_level.setdefault(issue.level, []).append(issue)
 

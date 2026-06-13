@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.356.0 (2026-06-13) - Tier T1.1: grow mypy checked scope (21 → 78 files)
+- TYPE-CHECKING SCOPE (textbook lever, zero behavior change). Expanded the
+  mypy `files` list in `pyproject.toml` from ~21 to **78 source files**, all
+  100% clean under the existing non-strict config. Added whole packages
+  `psh/scripting` and `psh/visitor`, most of `psh/expansion` (15 modules),
+  `psh/utils` (8 modules), and 14 more `psh/interactive` modules.
+- Real type-bug fixes surfaced by the wider scope (all behavior-preserving):
+  - `keybindings.py`: base `KeyBindings.bindings`/`get_action` were typed
+    `Callable` but actually hold action-name **strings** (the subclass was
+    already correct) — base annotation was simply wrong.
+  - `security_visitor.py`: `Dict[str, any]` used the builtin `any` as a type →
+    `typing.Any`.
+  - `debug_ast_visitor.py`: `_visit_children(List[ASTNode])` rejected
+    `list[Statement]` (List invariance) → `Sequence[ASTNode]`.
+  - `shebang_handler.py`, `command_accumulator.py`: corrected `Optional`
+    interpreter/AST types that allowed `None` to flow into `str`/`ASTNode` uses.
+- Remaining annotation additions are container/`Optional` narrowing only.
+  Deferred as too-noisy-for-a-minimal-pass: `expansion/{arrays,fields,operands,
+  operators}.py` (mixin self-type plumbing), `interactive/line_editor.py`,
+  `utils/signal_utils.py` — recorded for a future increment.
+- Full gate green: `mypy` clean (78 files), `ruff check psh tests` clean,
+  `run_tests.py --parallel` 6760 passed / 228 skipped / 19 xfailed.
+
 ## 0.355.0 (2026-06-13) - Docs: ground-up reappraisal #5 (textbook-grade scorecard)
 - DOCS ONLY (no code change). Added
   `docs/reviews/ground_up_reappraisal_5_2026-06-13.md`: a fresh five-cluster

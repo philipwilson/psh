@@ -15,7 +15,7 @@ constructs are still open.
 
 from typing import Callable, Optional
 
-from ..scripting.command_accumulator import CommandAccumulator, Complete
+from ..scripting.command_accumulator import CommandAccumulator, Complete, Hint
 from .line_editor import LineEditor
 from .prompt import PromptExpander
 
@@ -28,7 +28,8 @@ class MultiLineInputHandler:
         self.shell = shell
         self.accumulator = CommandAccumulator(shell)
         self.prompt_expander = PromptExpander(shell)
-        self._hint = None  # last NeedMore hint, drives the continuation prompt
+        # last NeedMore hint, drives the continuation prompt
+        self._hint: Optional[Hint] = None
 
     def read_command(self, on_resize: Optional[Callable[[], None]] = None) -> Optional[str]:
         """Read a complete command, possibly spanning multiple lines."""

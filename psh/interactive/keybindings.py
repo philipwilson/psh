@@ -2,7 +2,7 @@
 """Key binding modes for command line editing."""
 
 from enum import Enum, auto
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 
 
 class EditMode(Enum):
@@ -41,15 +41,15 @@ class KeyBindings:
     ESCAPE = '\x1b'
 
     def __init__(self):
-        self.bindings: Dict[str, Callable] = {}
+        self.bindings: Dict[str, str] = {}
         self.setup_bindings()
 
     def setup_bindings(self):
         """Setup key bindings - to be overridden by subclasses."""
         pass
 
-    def get_action(self, key: str) -> Optional[Callable]:
-        """Get the action for a key, if any."""
+    def get_action(self, key: str) -> Optional[str]:
+        """Get the action name for a key, if any."""
         return self.bindings.get(key)
 
 
