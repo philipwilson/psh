@@ -282,11 +282,31 @@ Two distinct families — do not mix them up:
 - **Errors** derive from `PshError`, the root of every psh-specific error
   class (lexer, parser, arithmetic, expansion, builtins). Catch "any psh
   error" with one `except PshError`. Members here: `UnboundVariableError`,
-  `ReadonlyVariableError`, `NamerefCycleError`, `ExpansionError`.
+  `ReadonlyVariableError`, `NamerefCycleError`, `ExpansionError`,
+  `FunctionDefinitionError` (invalid/reserved/readonly function name).
 - **Control-flow signals** (`LoopBreak`, `LoopContinue`, `FunctionReturn`)
   implement `break`/`continue`/`return` and deliberately do NOT derive
   from `PshError` — a blanket `except PshError` must never swallow a
   `return` statement.
+
+### Expected-error taxonomy & `strict-errors` (`internal_errors.py`)
+
+The four last-resort guards (command dispatch, builtin execution, function
+body, buffered-statement source) delegate to one helper,
+`report_internal_defect(state, exc, *, prefix, stream)`. It classifies the
+exception: an **expected shell error** — any `PshError`, `OSError`, or
+`SyntaxError` (redirection/fork failures, lexer/parse errors, arithmetic
+errors) — is reported normally (message + exit 1); anything else (a genuine
+Python-bug exception like `RuntimeError`/`AttributeError`/`TypeError`/
+`KeyError`/plain `ValueError`) is an INTERNAL DEFECT.
+
+The `strict-errors` shell option (seeded from `PSH_STRICT_ERRORS`) makes the
+guard RE-RAISE internal defects instead of masking them as exit 1. **`conftest.py`
+enables it suite-wide** (`PSH_STRICT_ERRORS=1`, in-process + subprocess), so a
+genuine internal defect FAILS the test suite loudly. When adding a NEW legitimate
+shell-error path, give it a `PshError` subclass (e.g. `FunctionDefinitionError`)
+so it classifies as expected — do not let a bare Python exception stand in for
+a shell error.
 
 ### Environment Policy (os.environ is read-once)
 
