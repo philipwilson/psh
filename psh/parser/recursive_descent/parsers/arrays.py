@@ -40,7 +40,7 @@ class ArrayParser:
             word = self.parser.commands.parse_argument_as_word()
         else:
             word = Word(parts=[])
-        value = ''.join(str(p) for p in word.parts)
+        value = word.display_text()
         return value, word
 
     def is_array_assignment(self) -> bool:
@@ -418,7 +418,7 @@ class ArrayParser:
                 self.parser.advance()
             elif self.parser.match_any(TokenGroups.WORD_LIKE):
                 word = self.parser.commands.parse_argument_as_word()
-                elements.append(''.join(str(p) for p in word.parts))
+                elements.append(word.display_text())
                 words.append(word)
             else:
                 break

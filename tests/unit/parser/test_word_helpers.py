@@ -185,3 +185,54 @@ class TestEffectiveQuoteChar:
             LiteralPart("world"),
         ])
         assert word.effective_quote_char is None
+
+
+class TestWordTextMethods:
+    """Tests for source_text / display_text / to_literal_string.
+
+    source_text re-wraps in the word's quote chars (and is what __str__
+    returns); display_text is the flattened pre-expansion text with no
+    re-wrap; to_literal_string is the quote-removed literal value.
+    """
+
+    def test_composite_with_expansion(self):
+        # a"b"$c — composite of literal, quoted literal, and expansion.
+        word = Word(parts=[
+            LiteralPart("a"),
+            LiteralPart("b", quoted=True, quote_char='"'),
+            ExpansionPart(VariableExpansion("c")),
+        ])
+        # display_text: flattened parts, no whole-word re-wrap.
+        assert word.display_text() == "ab$c"
+        # source_text == display_text when there is no whole-word quote_type.
+        assert word.source_text() == "ab$c"
+        assert str(word) == "ab$c"
+        # to_literal_string renders the expansion as its $-source too.
+        assert word.to_literal_string() == "ab$c"
+
+    def test_single_quoted_word(self):
+        word = Word(parts=[LiteralPart("a b")], quote_type="'")
+        # source_text re-wraps in the single quotes.
+        assert word.source_text() == "'a b'"
+        assert str(word) == "'a b'"
+        # display_text does NOT re-wrap.
+        assert word.display_text() == "a b"
+        # to_literal_string is the quote-removed literal.
+        assert word.to_literal_string() == "a b"
+
+    def test_double_quoted_word(self):
+        word = Word(parts=[
+            LiteralPart("a ", quoted=True, quote_char='"'),
+            ExpansionPart(VariableExpansion("x")),
+        ], quote_type='"')
+        # source_text re-wraps in the double quotes.
+        assert word.source_text() == '"a $x"'
+        assert str(word) == '"a $x"'
+        # display_text is the flattened text without the wrapping quotes.
+        assert word.display_text() == "a $x"
+        # to_literal_string: quotes removed, expansion as $-source.
+        assert word.to_literal_string() == "a $x"
+
+    def test_str_delegates_to_source_text(self):
+        word = Word(parts=[LiteralPart("hi")], quote_type="'")
+        assert str(word) == word.source_text()

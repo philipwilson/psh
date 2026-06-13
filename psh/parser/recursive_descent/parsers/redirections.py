@@ -112,7 +112,7 @@ class RedirectionParser:
 
         # Use Word AST parsing to handle variables and quotes properly
         word = self.parser.commands.parse_argument_as_word()
-        content_value = ''.join(str(p) for p in word.parts)
+        content_value = word.display_text()
         quote_type = word.effective_quote_char
 
         return Redirect(
@@ -139,7 +139,7 @@ class RedirectionParser:
             # Parse the target as a Word so $fd / $((expr)) / $(cmd) are captured
             # and resolved at execution time.
             word = self.parser.commands.parse_argument_as_word()
-            dup_part = ''.join(str(p) for p in word.parts)
+            dup_part = word.display_text()
 
             if dup_part == '-':
                 return Redirect(type=direction + '&-', target=None, fd=fd)
@@ -182,7 +182,7 @@ class RedirectionParser:
 
         # Use Word AST parsing to handle quoted composites like test'file'.txt
         word = self.parser.commands.parse_argument_as_word()
-        target_value = ''.join(str(p) for p in word.parts)
+        target_value = word.display_text()
 
         # Check for combined redirect (&> or &>>)
         combined = getattr(token, 'combined_redirect', False)
