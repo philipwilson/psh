@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.353.0 (2026-06-13) - Behavior fix: fd-prefixed heredocs and here-strings
+- BUG FIX (bash-verified; from the redirection/IO architecture review): an
+  explicit file-descriptor prefix on a heredoc or here-string failed to PARSE.
+  `cat 0<<EOF`, `cat 1<<EOF`, `cat 5<<EOF`, `cat 0<<-EOF`, `cat 0<<<word`,
+  `cat 5<<<word` all raised `Parse error ... Expected file name`; bash accepts
+  them. Now they parse and the body is materialized on the named fd.
+- ROOT CAUSE: the lexer's operator recognizer attached numeric fd prefixes to
+  `N>`/`N>>`/`N<`/`N<>` etc. but not to the heredoc/here-string operators
+  `<<`/`<<-`/`<<<`, so `0<<` never formed a heredoc token and the parser fell
+  through to the generic file-redirect branch. Fixed in
+  `psh/lexer/recognizers/operator.py` (the fd-prefix matcher now includes
+  `<<<`/`<<-`/`<<`, ordered longest-first so `5<<<` isn't split into `5<` `<<`);
+  the parser already carried `token.fd`.
+- Also fixes the heredoc/here-string MATERIALIZATION hardcoding fd 0
+  (redirection review Ugly 2): `psh/io_redirect/file_redirect.py` /
+  `manager.py` now honor `redirect.fd` (default 0) across the parent-fd,
+  builtin-stream, and forked-child paths, so `5<<EOF` puts the body on fd 5.
+- 19/19 bash differential probes match (fd0 == no-prefix, tab-strip `0<<-`,
+  quoted delimiters, expansion, pipelines, multi-digit fd, `read` on fd5,
+  `exec 5<<<word`). +21 tests (a `tests/conformance/bash/` suite + lexer unit
+  tests). Full suite green (6,756). ruff + mypy clean. Zero change to plain
+  (non-fd-prefixed) heredocs/here-strings.
+
 ## 0.352.0 (2026-06-13) - Test hygiene: arithmetic characterization fixtures
 - TEST ONLY (no production change): the arithmetic characterization fixtures
   (`sh`, `assoc_sh` in `tests/unit/expansion/test_arithmetic_characterization.py`)

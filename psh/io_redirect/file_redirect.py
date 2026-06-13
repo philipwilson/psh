@@ -85,38 +85,52 @@ class FileRedirector:
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
-    def _stdin_from_content(self, content: str):
-        """Point stdin at `content` via an anonymous (unlinked) temp file.
+    def _content_to_fd(self, content: str, target_fd: int):
+        """Point `target_fd` at `content` via an anonymous (unlinked) temp file.
 
         A pipe would deadlock for content larger than the kernel pipe buffer
         (~64KB on most systems) because the whole body is written before any
         reader exists. Bash uses a temporary file for heredocs for the same
         reason.
+
+        `target_fd` defaults to 0 (stdin) for plain `<<EOF`/`<<<word`, but an
+        explicit fd prefix (`5<<EOF`, `5<<<word`) materializes the body on
+        that fd instead, matching bash.
         """
         import tempfile
         tmp = tempfile.TemporaryFile()
         tmp.write(content.encode())
         tmp.flush()
         tmp.seek(0)
-        os.dup2(tmp.fileno(), 0)
-        tmp.close()  # fd 0 keeps the underlying file open
+        if tmp.fileno() != target_fd:
+            os.dup2(tmp.fileno(), target_fd)
+        tmp.close()  # target_fd keeps the underlying file open
+
+    @staticmethod
+    def _heredoc_fd(redirect) -> int:
+        """Target fd for a heredoc/here-string: explicit prefix or stdin (0)."""
+        return redirect.fd if redirect.fd is not None else 0
 
     def _redirect_heredoc(self, redirect):
-        """Point stdin at the heredoc content. Returns the expanded content."""
+        """Point the redirect's fd (default stdin) at the heredoc content.
+
+        Returns the expanded content."""
         content = redirect.heredoc_content or ''
         if content and not getattr(redirect, 'heredoc_quoted', False):
             content = self.shell.expansion_manager.expand_string_variables(content)
-        self._stdin_from_content(content)
+        self._content_to_fd(content, self._heredoc_fd(redirect))
         return content
 
     def _redirect_herestring(self, redirect):
-        """Point stdin at the here-string content. Returns the content."""
+        """Point the redirect's fd (default stdin) at the here-string content.
+
+        Returns the content."""
         if hasattr(redirect, 'quote_type') and redirect.quote_type == "'":
             expanded = redirect.target
         else:
             expanded = self.shell.expansion_manager.expand_string_variables(redirect.target)
         content = expanded + '\n'
-        self._stdin_from_content(content)
+        self._content_to_fd(content, self._heredoc_fd(redirect))
         return content
 
     def _redirect_output_to_file(self, target, redirect, check_noclobber=True):
@@ -254,10 +268,12 @@ class FileRedirector:
                 saved_fds.append((target_fd, self._save_fd(target_fd)))
                 self._redirect_readwrite(target, redirect)
             elif redirect.type in ('<<', '<<-'):
-                saved_fds.append((0, os.dup(0)))
+                target_fd = self._heredoc_fd(redirect)
+                saved_fds.append((target_fd, self._save_fd(target_fd)))
                 self._redirect_heredoc(redirect)
             elif redirect.type == '<<<':
-                saved_fds.append((0, os.dup(0)))
+                target_fd = self._heredoc_fd(redirect)
+                saved_fds.append((target_fd, self._save_fd(target_fd)))
                 self._redirect_herestring(redirect)
             elif redirect.type == '>|':
                 target_fd = redirect.fd if redirect.fd is not None else 1
@@ -381,12 +397,17 @@ class FileRedirector:
                 self.state.stdin = sys.stdin
             elif redirect.type in ('<<', '<<-'):
                 self._redirect_heredoc(redirect)
-                self.shell.stdin = sys.stdin
-                self.state.stdin = sys.stdin
+                if self._heredoc_fd(redirect) == 0:
+                    # Only rebind the shell's stdin when fd 0 changed —
+                    # `exec 5<<EOF` materializes on fd 5 and must leave
+                    # stdin alone.
+                    self.shell.stdin = sys.stdin
+                    self.state.stdin = sys.stdin
             elif redirect.type == '<<<':
                 self._redirect_herestring(redirect)
-                self.shell.stdin = sys.stdin
-                self.state.stdin = sys.stdin
+                if self._heredoc_fd(redirect) == 0:
+                    self.shell.stdin = sys.stdin
+                    self.state.stdin = sys.stdin
             elif redirect.type == '>|':
                 target_fd = self._redirect_clobber(target, redirect)
                 self._rebind_output_stream(target_fd)

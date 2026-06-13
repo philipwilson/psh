@@ -231,14 +231,25 @@ class IOManager:
                                 frame: BuiltinRedirectFrame):
         """``<``, ``<>``, heredoc, here-string for a builtin.
 
-        Stdin is redirected in BOTH universes: the Python stream for the
-        builtin itself (``read`` consumes ``sys.stdin``) and fd 0 — already
-        dup2'd by the FileRedirector helpers called here — so any child
-        spawned while the builtin runs inherits the redirected stdin. The
-        frame snapshot's ``stdin_fd`` (a dup of the original fd 0) undoes
+        Stdin (fd 0) is redirected in BOTH universes: the Python stream for
+        the builtin itself (``read`` consumes ``sys.stdin``) and fd 0 —
+        already dup2'd by the FileRedirector helpers called here — so any
+        child spawned while the builtin runs inherits the redirected stdin.
+        The frame snapshot's ``stdin_fd`` (a dup of the original fd 0) undoes
         the fd-level half on restore.
+
+        An explicit fd prefix (``5<<EOF``, ``5<file``) materializes on that
+        fd instead; the builtin's own ``sys.stdin`` must be left alone, so
+        the stream swap is skipped and the fd-level redirect is saved/restored
+        through the frame's fd-save list (``_builtin_redirect_fd_level``).
         """
         import io
+        target_fd = redirect.fd if redirect.fd is not None else 0
+        if target_fd != 0:
+            # Body/file goes to a non-stdin fd: pure fd-level redirect, no
+            # stream swap (the builtin keeps its own sys.stdin).
+            self._builtin_redirect_fd_level(redirect, frame)
+            return
         frame.snapshot.note_stdin()
         if redirect.type == '<':
             self.file_redirector._redirect_input_from_file(target)

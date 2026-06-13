@@ -157,11 +157,14 @@ class OperatorRecognizer(ContextualRecognizer):
         pos: int,
         context: LexerContext
     ) -> Optional[Tuple[Token, int]]:
-        """Try to parse an fd-prefixed redirect like 2>, 3>>, 0<.
+        """Try to parse an fd-prefixed redirect like 2>, 3>>, 0<, 5<<<.
 
         Called when pos is at a digit. Scans forward past digits, then
-        checks for a redirect operator (>, >>, <). Returns a single
-        redirect token with the fd number stored in token.fd.
+        checks for a redirect operator (including the heredoc/here-string
+        operators <<<, <<-, <<). Returns a single redirect token with the
+        fd number stored in token.fd, mirroring how N>&M is emitted as a
+        single REDIRECT_DUP token. The heredoc operators must be matched
+        BEFORE the shorter '<' so '5<<<' is not split into '5<' + '<<'.
         """
         start = pos
         while pos < len(input_text) and input_text[pos].isdigit():
@@ -170,8 +173,13 @@ class OperatorRecognizer(ContextualRecognizer):
         if pos >= len(input_text):
             return None
 
-        # Try longest redirect operators first
+        # Try longest redirect operators first. Heredoc/here-string
+        # operators are included so an explicit fd prefix attaches to them
+        # the same way it does to plain redirects (bash: `cat 0<<EOF`).
         for op, tok_type in (
+            ('<<<', TokenType.HERE_STRING),
+            ('<<-', TokenType.HEREDOC_STRIP),
+            ('<<', TokenType.HEREDOC),
             ('>>', TokenType.REDIRECT_APPEND),
             ('>', TokenType.REDIRECT_OUT),
             ('<>', TokenType.REDIRECT_READWRITE),
