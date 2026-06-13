@@ -1,18 +1,18 @@
 """Characterization + regression pins for [[ ]] test-operand semantics.
 
-Created for the Tier C-D2 refactor that brings BinaryTestExpression operands
-into the Word model (review Ugly 11). These tests freeze:
+Created for the Tier C-D2 refactor that brought BinaryTestExpression
+operands into the Word model (review Ugly 11); extended by T3.1 (2026-06-14),
+which made the operands genuinely MULTI-PART Words carrying per-part quote
+context and deleted the ``right_quote_type`` sentinel. The evaluator now
+decides pattern-vs-literal per part, so mixed-quote operands (``a"b"*``,
+``ab"?"``) are bash-correct rather than collapsed-to-unquoted. These tests
+freeze:
 
 1. EVALUATION RESULTS (true/false + BASH_REMATCH) for a corpus exercising
-   every operator and quoting shape.
-2. The is_quoted equivalence: for the right operand of each binary test,
-   ``right_word.is_quoted`` must equal the OLD ``right_quote_type is not None``
-   boolean (a wholly-quoted operand is quoted; unquoted or MIXED-quote
-   operands are not). The pre-refactor code stored ``right_quote_type``
-   directly; these assertions are written against the post-refactor Word
-   model and were confirmed equivalent to the stored field before the change.
-
-These pin ZERO BEHAVIOR CHANGE across the refactor.
+   every operator and quoting shape, including per-part mixed quoting.
+2. The whole-operand ``is_quoted`` flag: True only when every part is
+   quoted with the same char; a mixed-quote operand is NOT wholly quoted
+   (its per-part quoting is what drives matching, not this flag).
 """
 
 import pytest
@@ -76,9 +76,24 @@ EVAL_CASES = [
     # literal regex (double-quoted RHS matched literally; '.' is literal dot)
     ("x=aXb", '[[ $x =~ "a.b" ]]', 1),
     ("x=a.b", '[[ $x =~ "a.b" ]]', 0),
-    # mixed-quote LHS pattern: a"b"* parses to literal pattern ab* (unquoted)
+    # mixed-quote RHS pattern: a"b"* -> a (glob) + b (literal) + * (glob)
     ("", '[[ abc == a"b"* ]]', 0),
     ("", '[[ axc == a"b"* ]]', 1),
+    # per-part quoting: the QUOTED '?' is a literal '?', not a glob (bash)
+    ("", '[[ abc == ab"?" ]]', 1),     # ab? literal, abc != ab? -> false
+    ("", '[[ "ab?" == ab"?" ]]', 0),   # ab? literal matches ab? -> true
+    ("", '[[ abc == ab? ]]', 0),       # unquoted ? is a glob -> true
+    # per-part quoting in =~: the quoted '.' is a literal dot
+    ("", '[[ "a.c" =~ a"."c ]]', 0),
+    ("", '[[ "axc" =~ a"."c ]]', 1),
+    ("", '[[ "axc" =~ a.c ]]', 0),     # unquoted . is regex-any -> true
+    # double-quoted backslash stays literal (\. is two chars in dquotes)
+    ("", r'[[ "a\.c" == "a\.c" ]]', 0),
+    ("", r'[[ "a.c" =~ a\.c ]]', 0),   # \. = literal dot in regex
+    ("", r'[[ "axc" =~ a\.c ]]', 1),
+    # quoted variable RHS is literal; unquoted is live pattern
+    ("p='a*'", '[[ aXX == "$p" ]]', 1),
+    ("p='a*'", "[[ aXX == $p ]]", 0),
     # unary file test
     ("f=/", "[[ -f $f ]]", 1),
     # unary string test (quoted operand)
@@ -121,10 +136,11 @@ def test_bash_rematch_no_match_clears(isolated_shell_with_temp_dir):
 
 
 # ---------------------------------------------------------------------------
-# is_quoted equivalence corpus
+# whole-operand is_quoted corpus
 # ---------------------------------------------------------------------------
 # (test_src, expected_is_quoted_for_right_operand)
-# expected matches OLD `right_quote_type is not None`.
+# is_quoted is True only for a WHOLLY (uniformly) quoted operand; a
+# mixed-quote operand is False (its per-part quoting drives matching).
 IS_QUOTED_CASES = [
     ("[[ $x == a* ]]", False),       # unquoted glob
     ('[[ $x == "a*" ]]', True),      # wholly double-quoted
@@ -132,7 +148,7 @@ IS_QUOTED_CASES = [
     ("[[ $x != b* ]]", False),       # unquoted
     ("[[ $x =~ ^a.*$ ]]", False),    # unquoted regex
     ('[[ $x =~ "a.b" ]]', True),     # wholly-quoted regex
-    ('[[ x == a"b"* ]]', False),     # MIXED-quote RHS -> unquoted (lossy, pinned)
+    ('[[ x == a"b"* ]]', False),     # MIXED-quote RHS -> not wholly quoted
     ('[[ "" == "" ]]', True),        # empty quoted
     ("[[ $a -eq 5 ]]", False),       # numeric unquoted
     ("[[ $x < $y ]]", False),        # unquoted var
@@ -140,22 +156,23 @@ IS_QUOTED_CASES = [
 
 
 @pytest.mark.parametrize("src,expected_quoted", IS_QUOTED_CASES)
-def test_right_operand_is_quoted_equivalence(src, expected_quoted):
+def test_right_operand_is_quoted(src, expected_quoted):
     expr = parse_test_expr(src)
     assert isinstance(expr, BinaryTestExpression)
-    # right_quote_type (derived property) must agree with is_quoted, and both
-    # must equal the OLD stored-field boolean.
     assert expr.right_word.is_quoted == expected_quoted
-    assert (expr.right_quote_type is not None) == expected_quoted
 
 
-def test_mixed_quote_lhs_is_lossy_pinned():
-    """PINNED: a"b"* collapses to literal text 'ab*' with no quote context.
+def test_mixed_quote_operand_is_multipart():
+    """A mixed-quote operand is now a genuine multi-part Word: ``a"b"*`` is
+    three parts (unquoted ``a``, double-quoted ``b``, unquoted ``*``).
 
-    This is the pre-existing (lossy) behavior of the string-based operand
-    model. The Word migration preserves it exactly rather than 'improving'
-    mixed-quote fidelity (which would be a behavior change)."""
+    ``display_text()`` still flattens to ``ab*`` (the pre-expansion text),
+    but the per-part quote context is preserved — which is what lets the
+    evaluator treat the ``b`` as a literal and ``a``/``*`` as glob-active
+    (T3.1; replaces the former lossy collapse-to-unquoted)."""
     expr = parse_test_expr('[[ a"b"* == c ]]')
     assert isinstance(expr, BinaryTestExpression)
     assert expr.left_word.display_text() == "ab*"
     assert expr.left_word.is_quoted is False
+    quoted_flags = [getattr(p, 'quoted', False) for p in expr.left_word.parts]
+    assert quoted_flags == [False, True, False]

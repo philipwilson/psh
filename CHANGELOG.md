@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.371.0 (2026-06-14) - Tier T3.1: finish [[ ]] Word adoption (+ quoting fixes)
+- REFACTOR + BEHAVIOR FIX (bash-verified). The `[[ ]]` binary-test operands are
+  now genuine multi-part `Word`s carrying per-part quote context (like
+  `SimpleCommand` words), and the evaluator decides pattern-vs-literal PER PART
+  by reading those parts. The `right_quote_type` single-char sentinel (the last
+  remnant of the pre-Word model, kept derived since v0.348) is deleted.
+- Parser (`recursive_descent/parsers/tests.py` + combinator
+  `special_commands.py`): `_parse_test_operand`/`_parse_regex_operand` build a
+  `Word` with one `WordPart` per glued token, each carrying its own
+  `quoted`/`quote_char`; all expansion kinds (not just `$x`) become real
+  `ExpansionPart`s via the shared `WordBuilder.parse_expansion_token`. The
+  flatten-to-single-`LiteralPart` helper is gone.
+- Evaluator (`enhanced_test_evaluator.py`): new `_rhs_pattern`/`_rhs_regex`
+  build the glob/regex from the RHS Word's parts — quoted parts contribute
+  literal text (glob-escaped / `re.escape`'d), unquoted parts keep glob/regex
+  power; quote-aware subject building replaces the old blanket backslash strip.
+- Bash divergences FIXED (this is the behavior-fix item): per-part quoting
+  `[[ abc == ab"?" ]]` (was wrongly 0 → now 1) and backslash-escaped regex
+  metacharacters `[[ "axc" =~ a\.c ]]` (was wrongly 0 → now 1). Preserved
+  out-of-scope: extglob inside `[[ ]]` (lexer doesn't tokenize it there).
+- Tests: updated `test_enhanced_test_word_operands.py`; added
+  `tests/conformance/bash/test_double_bracket_quoting_conformance.py` (12 tests,
+  all `assert_identical_behavior`) and 4 golden cases (`--compare-bash`).
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6837 passed,
+  `pytest tests/behavioral --compare-bash` 327 passed.
+
 ## 0.370.0 (2026-06-13) - Write-side process substitution via FIFO (macOS fix)
 - BUG FIX (platform robustness). Write-side process substitution `>(cmd)` used a
   `/dev/fd/N` pipe path. On macOS, an external consumer (e.g. `tee >(cmd)`)
