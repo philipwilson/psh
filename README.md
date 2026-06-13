@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.350.0 | **Tests**: 6,982 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.351.0 | **Tests**: 6,982 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.351.0**: pruned `docs/archive` — removed 298 stale development-history artifacts (completed implementation plans, phase summaries, point-in-time analyses) with no live references; kept `CHANGELOG_history.md` (the pre-v0.200 version history, referenced from `CHANGELOG.md`). All removed files remain recoverable in git history. Docs only
 - **v0.350.0**: docs sync after reappraisal #4 — corrected the release workflow (GitHub per-PR CI is disabled; the local `run_tests.py --parallel` + ruff + mypy is the gate; `release-tag.yml` auto-tags), documented the expected-error taxonomy + suite-wide `strict-errors` (`psh/core/CLAUDE.md`, root `CLAUDE.md` test notes), added `FunctionDefinitionError` to the exception hierarchy, and fixed the registered-builtin count (60 → 61). Docs only
 - **v0.349.0**: reappraisal #4 Tier C-B3 (unified array-init path; behavior fix) — declaration builtins (`declare`/`typeset`/`local`/`export`/`readonly`) now route `name=(...)` through the SAME structured `ArrayInitialization` expansion as bare `a=(...)`, via shared `build_indexed_array`/`build_associative_array` helpers; the serialize-then-`shlex`-reparse module (`array_init.py`, 132 lines) is **deleted**. Fixes 9 bash divergences (adjacent-quote `("x""y")`, `+=` append, bare assoc keys, explicit `[i]=` indices, tilde/cmdsub elements, `export e=(…)`, and the wrong array-ification of dynamic scalars). bash-verified; the token-payload rewrite (E1) proved unnecessary
 - **v0.348.0**: reappraisal #4 Tier C-D2 (test operands in the Word model) — `[[ ]]` `BinaryTestExpression` operands are now `Word`s (`left_word`/`right_word`) instead of strings plus `left_quote_type`/`right_quote_type` side-channels; the dead `left_quote_type` is deleted and the live `right_quote_type` (literal-vs-glob for `==`/`!=`, literal-vs-regex for `=~`) is derived from `right_word.is_quoted`. The last parser-expression island now uses the Word model. 17 bash probes match (incl. literal-quoted regex + BASH_REMATCH); zero behavior change (pre-existing mixed-quote-pattern lossiness pinned)
