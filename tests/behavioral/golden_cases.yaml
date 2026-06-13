@@ -928,6 +928,37 @@
   stderr: ""
   exit_code: 0
 
+# Per-part quoting in [[ ]] (T3.1): the QUOTED '?' is a literal '?', not a
+# glob, while the unquoted 'ab' stays plain — a single quote flag could not
+# express this.
+- name: enhanced_test_per_part_quoted_metachar
+  command: '[[ abc == ab"?" ]]; echo $?'
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: enhanced_test_per_part_mixed_pattern
+  command: '[[ abc == a"b"* ]]; echo $?'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+# Per-part quoting in =~: the quoted '.' is a literal dot, the unquoted
+# 'a'/'c' are live regex.
+- name: enhanced_test_regex_per_part_literal_dot
+  command: '[[ "axc" =~ a"."c ]]; echo $?'
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+# A backslash inside double quotes stays literal (quote-aware quote removal,
+# not blanket backslash stripping).
+- name: enhanced_test_dquote_backslash_literal
+  command: '[[ "a\.c" == "a\.c" ]]; echo $?'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # BUILTINS
 # =============================================================================

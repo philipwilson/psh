@@ -296,9 +296,9 @@ class SpecialCommandParsers:
         """Wrap a combinator test operand string in an unquoted Word.
 
         The combinator (educational-only parser) does not track operand
-        quote context, so every operand is an unquoted single LiteralPart —
-        ``is_quoted`` is False, matching the former always-None
-        ``right_quote_type`` for combinator-built test expressions."""
+        quote context, so every operand is an unquoted single LiteralPart
+        (``is_quoted`` is False) — combinator-built test operands are always
+        treated as unquoted (glob/regex-active) patterns."""
         return Word(parts=[LiteralPart(text, quoted=False, quote_char=None)])
 
     def _format_test_operand(self, token: Token) -> str:

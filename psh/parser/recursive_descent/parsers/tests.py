@@ -4,20 +4,35 @@ Test expression parsing for PSH shell.
 This module handles parsing of enhanced test expressions ([[ ... ]]).
 """
 
-from typing import Optional
+from typing import List
 
 from ....ast_nodes import (
     BinaryTestExpression,
     CompoundTestExpression,
     EnhancedTestStatement,
+    ExpansionPart,
     LiteralPart,
     NegatedTestExpression,
     TestExpression,
     UnaryTestExpression,
     Word,
+    WordPart,
 )
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups
+from ..support.word_builder import WordBuilder
+
+#: Token types that are an embedded expansion rather than literal text.
+#: In a [[ ]] operand each becomes its own ExpansionPart so the evaluator
+#: can expand it and apply that part's quote context (an unquoted $x is a
+#: live glob/regex, a quoted "$x" is literal).
+_EXPANSION_TOKENS = frozenset({
+    TokenType.VARIABLE,
+    TokenType.PARAM_EXPANSION,
+    TokenType.COMMAND_SUB,
+    TokenType.COMMAND_SUB_BACKTICK,
+    TokenType.ARITH_EXPANSION,
+})
 
 
 class TestParser:
@@ -101,12 +116,11 @@ class TestParser:
         if self.parser.match(TokenType.WORD) and self._is_unary_test_operator(self.parser.peek().value):
             operator = self.parser.advance().value
             self.parser.skip_newlines()
-            operand, _ = self._parse_test_operand()  # Ignore quote type for unary
-            return UnaryTestExpression(operator, operand)
+            operand = self._parse_test_operand()  # unary operand: text only
+            return UnaryTestExpression(operator, operand.display_text())
 
         # Binary expression or single value
-        left, left_quote_type = self._parse_test_operand()
-        left_word = self._operand_word(left, left_quote_type)
+        left_word = self._parse_test_operand()
         self.parser.skip_newlines()
 
         # Check for binary operators
@@ -132,69 +146,58 @@ class TestParser:
                 # word that may contain (, ), |, ?, etc., which the lexer split
                 # into operator tokens. Reconstruct it from the adjacent run.
                 if operator == '=~':
-                    right, right_quote_type = self._parse_regex_operand()
+                    right_word = self._parse_regex_operand()
                 else:
-                    right, right_quote_type = self._parse_test_operand()
+                    right_word = self._parse_test_operand()
 
                 return BinaryTestExpression(
                     left_word=left_word,
                     operator=operator,
-                    right_word=self._operand_word(right, right_quote_type),
+                    right_word=right_word,
                 )
 
         # Single value test
-        return UnaryTestExpression('-n', left)
+        return UnaryTestExpression('-n', left_word.display_text())
 
     @staticmethod
-    def _operand_word(text: str, quote_type: Optional[str]) -> Word:
-        """Build the Word for a [[ ]] operand.
+    def _token_part(token) -> WordPart:
+        """Build one WordPart from a [[ ]] operand token, preserving its
+        own per-part quote context.
 
-        The operand text is the already-reconstructed pre-expansion string
-        (``$name`` form preserved for the evaluator's string-level variable
-        expansion); a wholly-quoted operand carries its quote char, an
-        unquoted or mixed-quote operand is unquoted. This is a single
-        LiteralPart so ``word.display_text()`` equals the old operand string
-        and ``word.is_quoted`` equals the old ``quote_type is not None``
-        (Tier C-D2 equivalence pin)."""
-        return Word(parts=[LiteralPart(
-            text, quoted=quote_type is not None, quote_char=quote_type)])
+        An expansion token (``$x``, ``${...}``, ``$(...)``, ``$((...))``,
+        `` `...` ``) becomes an ``ExpansionPart`` carrying the expansion AST
+        node, so the evaluator's per-part pattern/regex builder can expand it
+        and apply this part's quoting (an unquoted ``$x`` is a live glob/regex,
+        a quoted ``"$x"`` is literal). Every other token becomes a
+        ``LiteralPart`` with its own ``quoted``/``quote_char``. This is what
+        lets ``ab"?"`` know the ``?`` is a quoted literal while ``ab`` is
+        unquoted — a single flattened part could not."""
+        quoted = bool(
+            token.type == TokenType.STRING
+            and getattr(token, 'quote_type', None))
+        quote_char = token.quote_type if quoted else None
+        if token.type in _EXPANSION_TOKENS:
+            return ExpansionPart(
+                WordBuilder.parse_expansion_token(token),
+                quoted=quoted, quote_char=quote_char)
+        return LiteralPart(token.value, quoted=quoted, quote_char=quote_char)
 
-    def _parse_test_operand(self) -> tuple[str, Optional[str]]:
-        """Parse a test operand, handling concatenated tokens for patterns.
+    def _parse_test_operand(self) -> Word:
+        """Parse a test operand into a multi-part :class:`Word`.
 
-        Returns:
-            tuple: (operand_string, quote_type) where quote_type is None, '"', or "'"
-                  - None means treat as unquoted (glob pattern)
-                  - '"' or "'" means treat as quoted (literal string)
-                  - Mixed quoting (quoted + unquoted parts) is treated as unquoted
+        Each adjacent (glued) token becomes its own WordPart carrying its
+        own quote context, so per-part quoting survives to the evaluator
+        (``ab"?"`` -> unquoted ``ab`` + quoted ``?``). Bash's
+        pattern-vs-literal decision is per-part, which a single quote-type
+        sentinel could not represent.
         """
         if not self.parser.match_any(TokenGroups.WORD_LIKE):
             raise self.parser.error("Expected test operand")
 
-        result_parts = []
-        has_quoted_part = False
-        has_unquoted_part = False
-        quote_type = None
+        parts: List[WordPart] = [self._token_part(self.parser.advance())]
 
-        # Get first token
-        token = self.parser.advance()
-
-        # Track if this token was quoted
-        if token.type == TokenType.STRING and hasattr(token, 'quote_type') and token.quote_type:
-            has_quoted_part = True
-            if quote_type is None:
-                quote_type = token.quote_type
-        else:
-            has_unquoted_part = True
-
-        # Add token value, preserving variable syntax
-        if token.type == TokenType.VARIABLE:
-            result_parts.append(f"${token.value}")
-        else:
-            result_parts.append(token.value)
-
-        # Look ahead to see if we should concatenate more tokens
-        # Only concatenate if they're immediately adjacent (no whitespace)
+        # Concatenate immediately-adjacent word-like tokens (no whitespace),
+        # stopping at operators / boundaries.
         while (self.parser.current < len(self.parser.tokens) and
                self.parser.match_any(TokenGroups.WORD_LIKE)):
 
@@ -215,49 +218,28 @@ class TestParser:
                                  TokenType.DOUBLE_RBRACKET, TokenType.RPAREN):
                 break
 
-            # Consume and add the token
-            token = self.parser.advance()
+            parts.append(self._token_part(self.parser.advance()))
 
-            # Track if this token was quoted
-            if token.type == TokenType.STRING and hasattr(token, 'quote_type') and token.quote_type:
-                has_quoted_part = True
-                if quote_type is None:
-                    quote_type = token.quote_type
-            else:
-                has_unquoted_part = True
+        return Word(parts=parts)
 
-            if token.type == TokenType.VARIABLE:
-                result_parts.append(f"${token.value}")
-            else:
-                result_parts.append(token.value)
-
-        # Quote type determination:
-        # - If all parts are quoted, use the quote type
-        # - If any part is unquoted (mixed or all unquoted), treat as unquoted (None)
-        if has_quoted_part and not has_unquoted_part:
-            return ''.join(result_parts), quote_type
-        else:
-            return ''.join(result_parts), None
-
-    def _parse_regex_operand(self) -> tuple[str, Optional[str]]:
-        """Collect the right-hand operand of `=~` as a raw regex.
+    def _parse_regex_operand(self) -> Word:
+        """Collect the right-hand operand of `=~` as a multi-part Word.
 
         A regex is a single (whitespace-delimited) word, but it may contain
         characters the lexer tokenizes as operators — `(`, `)`, `|`, `?`, `[`,
         `]`, etc. Reconstruct it from the maximal run of adjacent tokens,
         stopping at unquoted whitespace (non-adjacent token) or a boundary
-        (`]]`, `&&`, `||`). Variables keep their `$name` form for later
-        expansion. A wholly-quoted operand reports its quote type so\n        the evaluator can match it literally (bash).
+        (`]]`, `&&`, `||`). Each token keeps its own quote context so the
+        evaluator can match a quoted sub-part literally (``a"."`` -> the
+        ``.`` is a literal dot, bash).
         """
         if not self.parser.match_any(TokenGroups.WORD_LIKE) and \
                 self.parser.peek().type in (TokenType.DOUBLE_RBRACKET,
                                             TokenType.AND_AND, TokenType.OR_OR):
             raise self.parser.error("Expected regex after =~")
 
-        parts = []
+        parts: List[WordPart] = []
         first = True
-        quote_type = None
-        token_count = 0
         stop = (TokenType.DOUBLE_RBRACKET, TokenType.AND_AND,
                 TokenType.OR_OR, TokenType.EOF, TokenType.NEWLINE)
         while self.parser.current < len(self.parser.tokens):
@@ -268,20 +250,10 @@ class TestParser:
             if not first and not getattr(tok, 'adjacent_to_previous', False):
                 break
             self.parser.advance()
-            if tok.type == TokenType.VARIABLE:
-                parts.append(f"${tok.value}")
-            else:
-                parts.append(tok.value)
-            if tok.type == TokenType.STRING and tok.quote_type:
-                quote_type = tok.quote_type
-            token_count += 1
+            parts.append(self._token_part(tok))
             first = False
 
-        # bash: a QUOTED regex operand is matched literally. Report the
-        # quote type only when the whole operand is one quoted string.
-        if token_count != 1:
-            quote_type = None
-        return ''.join(parts), quote_type
+        return Word(parts=parts)
 
     def _is_unary_test_operator(self, value: str) -> bool:
         """Check if a word is a unary test operator."""

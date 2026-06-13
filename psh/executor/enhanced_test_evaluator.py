@@ -57,42 +57,91 @@ class TestExpressionEvaluator:
             raise ValueError(f"Unknown test expression type: {type(expr).__name__}")
 
     def _expand_operand(self, operand: str) -> str:
-        """Expand tilde and variables in a [[ ]] operand."""
+        """Expand tilde and variables in a [[ ]] operand (string form).
+
+        Used by the unary operators, which keep a plain string operand.
+        Binary operands go through :meth:`_operand_string` (quote-aware,
+        per-part) instead.
+        """
         result = self.expansion_manager.expand_tilde(operand)
         return self.expansion_manager.expand_string_variables(result)
 
+    def _operand_string(self, word) -> str:
+        """Expand a [[ ]] operand Word to its subject/literal string,
+        QUOTE-AWARE per part (no word-splitting, no globbing).
+
+        Backslash escapes are removed only from UNQUOTED parts (``ab\\?`` ->
+        ``ab?``); a quoted part's text is already quote-removed by the lexer
+        and is kept verbatim (so ``"a\\.c"`` stays the 4-char ``a\\.c``,
+        bash). Tilde expands only on a leading unquoted literal. Variables
+        are expanded per part (single-quoted ``$x`` is literal because the
+        lexer made it a literal part). This replaces the former
+        flatten-then-strip-all-backslashes path, which corrupted both quoted
+        backslashes and pattern escapes."""
+        from ..ast_nodes import ExpansionPart, LiteralPart
+
+        out = []
+        for i, part in enumerate(word.parts):
+            if isinstance(part, LiteralPart):
+                out.append(self._literal_part_text(part, leading=(i == 0)))
+            elif isinstance(part, ExpansionPart):
+                out.append(self.expansion_manager.expand_expansion(part.expansion))
+        return ''.join(out)
+
+    def _literal_part_text(self, part, leading: bool) -> str:
+        """Expand one LiteralPart of a [[ ]] operand to its subject text.
+
+        Double-quoted (and unquoted) parts still undergo variable expansion
+        — the lexer stores ``$x`` as literal text inside a STRING token, so a
+        quoted operand carries ``$x`` in a LiteralPart, not an ExpansionPart.
+        Single-quoted parts are literal. Unquoted parts get tilde (leading)
+        and backslash-escape removal; quoted-part text is otherwise verbatim
+        (already quote-removed by the lexer)."""
+        from ..expansion.word_expander import WordExpander
+
+        text = part.text
+        if part.quote_char == "'":
+            return text  # single-quoted: fully literal
+        if part.quoted:
+            # double-quoted literal text (e.g. "$x" arrives as the literal
+            # text "$x"): expand variables, then remove ONLY the double-quote
+            # escapes (\$ \\ \" \`); a backslash before anything else stays
+            # literal (so "a\.c" keeps its backslash — bash).
+            expanded = self.expansion_manager.expand_string_variables(text)
+            return WordExpander.process_dquote_escapes(expanded)
+        # unquoted literal: no embedded $ (expansions are separate
+        # ExpansionParts); tilde on a leading literal, then escape removal.
+        if leading and text.startswith('~'):
+            text = self.expansion_manager.expand_tilde(text)
+        return self._process_escape_sequences(text)
+
     def _evaluate_binary_test(self, expr: BinaryTestExpression) -> bool:
         """Evaluate binary test expression."""
-        # Expand tilde and variables in operands. The operand Words carry the
-        # pre-expansion text in display_text(); a [[ ]] operand is a single
-        # string (no word-splitting, no globbing of the operand itself).
-        left = self._expand_operand(expr.left_word.display_text())
-        right = self._expand_operand(expr.right_word.display_text())
+        # The LHS is always the subject string (no word-splitting, no
+        # globbing of the operand itself); expand tilde + variables and
+        # remove backslash escapes from unquoted parts (quote removal), like
+        # bash — quote-aware so a quoted backslash stays literal.
+        left = self._operand_string(expr.left_word)
 
-        # Process escape sequences for pattern matching
-        left = self._process_escape_sequences(left)
-        right = self._process_escape_sequences(right)
-
-        # A wholly-quoted right operand is matched literally; an unquoted or
-        # mixed-quote operand is a glob pattern / live regex (bash semantics).
-        right_quoted = expr.right_word.is_quoted
+        # For literal comparisons (=, <, >, numeric, file) the RHS is also a
+        # plain expanded string. For pattern/regex operators (==, !=, =~) the
+        # RHS pattern is built PER-PART from the Word so quoting is honored
+        # segment by segment (quoted parts are literal, unquoted parts keep
+        # their glob/regex power) — bash semantics a whole-operand flag could
+        # not express.
+        if expr.operator in ('==', '!=', '=~'):
+            right = None  # built per-operator below
+        else:
+            right = self._operand_string(expr.right_word)
 
         # Handle different operators
         if expr.operator == '=':
             return left == right
         elif expr.operator == '==':
-            # Shell pattern matching (not string equality)
-            # If the right operand was quoted, treat it as literal string
-            if right_quoted:
-                return left == right
-            else:
-                return self._pattern_match(left, right)
+            return self._pattern_match(left, self._rhs_pattern(expr.right_word))
         elif expr.operator == '!=':
-            # Shell pattern non-matching
-            if right_quoted:
-                return left != right
-            else:
-                return not self._pattern_match(left, right)
+            return not self._pattern_match(
+                left, self._rhs_pattern(expr.right_word))
         elif expr.operator == '<':
             return left < right
         elif expr.operator == '>':
@@ -100,11 +149,11 @@ class TestExpressionEvaluator:
         elif expr.operator == '=~':
             # Regex matching; populate BASH_REMATCH with the full match and
             # capture groups (cleared to an empty array on no match), like bash.
-            # A quoted right-hand side is matched LITERALLY (bash).
-            if right_quoted:
-                right = re.escape(right)
+            # Quoted sub-parts are matched LITERALLY, unquoted parts are live
+            # regex source (bash) — built per-part from the operand Word.
+            regex_src = self._rhs_regex(expr.right_word)
             try:
-                pattern = re.compile(right)
+                pattern = re.compile(regex_src)
             except re.error as e:
                 raise ValueError(f"invalid regex: {e}")
             match = pattern.search(left)
@@ -133,6 +182,71 @@ class TestExpressionEvaluator:
             return files_same(left, right)
         else:
             raise ValueError(f"unknown binary operator: {expr.operator}")
+
+    def _rhs_pattern(self, word) -> str:
+        """Build the glob pattern for a ``==``/``!=`` RHS from its Word parts.
+
+        Per-part quoting (bash): a quoted part contributes LITERAL text
+        (glob-escaped so its metacharacters match themselves), an unquoted
+        part keeps its glob power. Variables are expanded per part — an
+        unquoted variable's value is a live glob (``p='a*'; [[ x == $p ]]``),
+        a quoted one is literal (``[[ x == "$p" ]]``). The result feeds the
+        canonical pattern engine (``_pattern_match``) so ``[[ == ]]`` cannot
+        drift from case patterns / ``${var#pat}``."""
+        from ..ast_nodes import ExpansionPart, LiteralPart
+        from ..expansion.word_expander import WordExpander
+
+        ve = self.expansion_manager.variable_expander
+        out = []
+        for i, part in enumerate(word.parts):
+            if isinstance(part, LiteralPart):
+                if part.quote_char == "'":
+                    out.append(ve.glob_escape(part.text))
+                elif part.quoted:
+                    # double-quoted literal: expand vars, strip dquote
+                    # escapes, then glob-escape (literal).
+                    expanded = WordExpander.process_dquote_escapes(
+                        self.expansion_manager.expand_string_variables(part.text))
+                    out.append(ve.glob_escape(expanded))
+                else:
+                    # unquoted literal: no embedded $; keep raw text so the
+                    # pattern engine sees its glob metacharacters and any
+                    # user backslash escapes (\*). Tilde on a leading literal.
+                    text = part.text
+                    if i == 0 and text.startswith('~'):
+                        text = self.expansion_manager.expand_tilde(text)
+                    out.append(text)
+            elif isinstance(part, ExpansionPart):
+                expanded = self.expansion_manager.expand_expansion(part.expansion)
+                out.append(ve.glob_escape(expanded) if part.quoted else expanded)
+        return ''.join(out)
+
+    def _rhs_regex(self, word) -> str:
+        """Build the regex source for a ``=~`` RHS from its Word parts.
+
+        Per-part (bash): a quoted part is matched literally (``re.escape``);
+        an unquoted part is live regex source. Variables are expanded; an
+        unquoted variable's value is live regex, a quoted one is literal."""
+        from ..ast_nodes import ExpansionPart, LiteralPart
+        from ..expansion.word_expander import WordExpander
+
+        out = []
+        for part in word.parts:
+            if isinstance(part, LiteralPart):
+                if part.quote_char == "'":
+                    out.append(re.escape(part.text))
+                elif part.quoted:
+                    expanded = WordExpander.process_dquote_escapes(
+                        self.expansion_manager.expand_string_variables(part.text))
+                    out.append(re.escape(expanded))
+                else:
+                    # unquoted literal: no embedded $; live regex source. A
+                    # backslash escape (\.) keeps quoting the next char (re).
+                    out.append(part.text)
+            elif isinstance(part, ExpansionPart):
+                expanded = self.expansion_manager.expand_expansion(part.expansion)
+                out.append(re.escape(expanded) if part.quoted else expanded)
+        return ''.join(out)
 
     def _process_escape_sequences(self, text: str) -> str:
         """Process escape sequences in test expression operands."""
