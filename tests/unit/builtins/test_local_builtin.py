@@ -88,7 +88,9 @@ class TestLocalArrayAssignment:
 
 
 class TestDeclareArrayAssignment:
-    """declare shares the same element parser (psh/builtins/array_init.py)."""
+    """declare shares the same structured element expansion as the bare
+    ``a=(...)`` path (ArrayOperationExecutor.build_indexed_array /
+    build_associative_array)."""
 
     def test_unquoted_variable_element_expands(self, captured_shell):
         result = captured_shell.run_command(

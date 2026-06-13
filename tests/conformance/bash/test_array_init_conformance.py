@@ -16,6 +16,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 
+def _show(name='a'):
+    """Value-based array dump (NOT ``declare -p``): index/key + value per
+    line, so assertions pin VALUES not the ``declare -p`` formatting (assoc
+    key ordering / trailing space differ from bash by design)."""
+    return (f'for k in "${{!{name}[@]}}"; do '
+            f'echo "[$k]=${{{name}[$k]}}"; done; echo "len=${{#{name}[@]}}"')
+
+
 class TestArrayInitializerExpansion(ConformanceTest):
     """Array initialization expansion semantics."""
 
@@ -165,3 +173,101 @@ class TestAssocInitFieldExpansions(ConformanceTest):
         to keep only the first field)."""
         self.assert_identical_behavior(
             'set -- a b; declare v="$@"; echo "[$v]"')
+
+
+class TestDeclarationBuiltinArrayInit(ConformanceTest):
+    """Declaration builtins (declare/typeset/local/export/readonly) route
+    ``name=(...)`` through the SAME structured expansion as the bare
+    ``a=(...)`` path (one engine; the serialize-then-shlex-reparse is gone).
+
+    These cases all MISMATCHED bash before the unification (Ugly 6 fix); a
+    value-based dump pins the bash-correct result and excludes the
+    pre-existing ``declare -p`` display-format differences (assoc key
+    ordering, trailing space) and the pre-existing ``-i`` integer-array
+    arithmetic gap, which are out of this refactor's scope.
+    """
+
+    def test_declare_adjacent_quoted_joins(self):
+        """declare -a a=("x""y") joins to one element (was [x][y]; shlex
+        lost adjacent-quote joining)."""
+        self.assert_identical_behavior(
+            'declare -a a=("x""y"); ' + _show())
+
+    def test_declare_indexed_append(self):
+        """declare -a a+=(...) appends (the += arg form did not parse before
+        — '2: command not found')."""
+        self.assert_identical_behavior(
+            'declare -a a=(1); declare -a a+=(2 3); ' + _show())
+
+    def test_declare_assoc_append(self):
+        self.assert_identical_behavior(
+            'declare -A m=([k]=v); declare -A m+=([j]=w); ' + _show('m'))
+
+    def test_declare_assoc_bare_keys(self):
+        """declare -A m=(k1 v1 k2 v2): alternating bare key/value pairs (the
+        string-reparse produced an empty array)."""
+        self.assert_identical_behavior(
+            'declare -A m=(k1 v1 k2 v2); ' + _show('m'))
+
+    def test_declare_explicit_indices(self):
+        """declare -a a=([2]=x [0]=y): explicit indices (were literals)."""
+        self.assert_identical_behavior(
+            'declare -a a=([2]=x [0]=y); ' + _show())
+
+    def test_declare_tilde_element(self):
+        self.assert_identical_behavior(
+            'declare -a a=(~/foo); echo "${a[0]}"')
+
+    def test_declare_command_substitution_element(self):
+        """declare -a a=($(echo p q)): cmdsub splits (was mangled)."""
+        self.assert_identical_behavior(
+            'declare -a a=($(echo p q)); ' + _show())
+
+    def test_export_creates_array(self):
+        """export e=(a b) makes an indexed array (psh stored a scalar string
+        '(a b)' before)."""
+        self.assert_identical_behavior(
+            'export e=(a b); ' + _show('e'))
+
+    def test_readonly_array(self):
+        self.assert_identical_behavior(
+            'readonly r=(x y); ' + _show('r'))
+
+    def test_local_array_in_function(self):
+        self.assert_identical_behavior(
+            'f() { local a=(1 2); ' + _show() + '; }; f')
+
+    def test_local_assoc_in_function(self):
+        self.assert_identical_behavior(
+            'f() { local -A m=([k]=v [j]="x y"); ' + _show('m') + '; }; f')
+
+    def test_local_indexed_append_in_function(self):
+        self.assert_identical_behavior(
+            'f() { local a=(1); local a+=(2 3); ' + _show() + '; }; f')
+
+    def test_declare_x_array_not_exported(self):
+        """declare -x a=(1 2): an array gets the export attr but is never
+        written to the environment (no child sees it)."""
+        self.assert_identical_behavior(
+            'declare -x a=(1 2); ' + _show() + '; printenv a; echo "rc=$?"')
+
+    def test_quoted_paren_value_is_scalar(self):
+        """declare "a=(1 2)": the quoted parens are literal — bash keeps a
+        SCALAR (psh wrongly array-ified via the now-deleted string path)."""
+        self.assert_identical_behavior(
+            'declare "a=(1 2)"; echo "[${a}]"')
+
+    def test_dynamic_paren_value_is_scalar(self):
+        """declare a=$x with x='(1 2)': a scalar in bash (not array syntax)."""
+        self.assert_identical_behavior(
+            "x='(1 2)'; declare a=$x; echo \"[${a}]\"")
+
+    def test_eval_declare_array_flows_through_structured_path(self):
+        """eval re-parses, so the parser builds the structured init."""
+        self.assert_identical_behavior(
+            'eval "declare -a a=(1 2 3)"; ' + _show())
+
+    def test_typeset_array(self):
+        """typeset is declare (ksh alias) — same structured path."""
+        self.assert_identical_behavior(
+            'typeset -a a=("x""y" z); ' + _show())

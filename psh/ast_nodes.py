@@ -178,6 +178,20 @@ class Word(ASTNode):
     """
     parts: List[WordPart] = field(default_factory=list)
 
+    #: Structured array initializer for a ``name=(...)`` argument of a
+    #: declaration builtin (``declare -a a=(1 2)``, ``local``, ``export``,
+    #: ``readonly``, ``typeset``). The parser cannot tell at parse time
+    #: whether the command is a declaration builtin, so it always attaches
+    #: this when it sees ``name=(...)`` in ARGUMENT position; the Word's
+    #: literal parts still carry the flat string (``a=(1 2)``) for
+    #: ``.args``/display. The declaration builtins consume it through the
+    #: SAME structured expansion the bare ``a=(...)`` path uses (see
+    #: ArrayOperationExecutor.build_indexed_array / build_associative_array),
+    #: eliminating the old serialize-then-shlex-reparse. Ordinary commands
+    #: ignore it (the flat string is the argument). ``None`` for every
+    #: non-array-init word.
+    array_init: Optional['ArrayInitialization'] = None
+
     @property
     def quote_type(self) -> Optional[str]:
         """The whole-word quote character (``'``, ``"``, ``$'``) or None.

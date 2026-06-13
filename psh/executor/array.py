@@ -47,41 +47,49 @@ class ArrayOperationExecutor:
         # arr=([k]=v ...) populates an AssociativeArray, not an IndexedArray.
         var_obj = self.state.scope_manager.get_variable_object(node.name)
         if var_obj and isinstance(var_obj.value, AssociativeArray):
-            return self._initialize_associative_array(node, var_obj.value)
+            array = self.build_associative_array(
+                node.words, into=(var_obj.value if node.is_append else None))
+            self.state.scope_manager.set_variable(
+                node.name, array,
+                attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
+            return 0
 
-        # Handle append mode
-        if node.is_append:
-            # Get existing array or create new one
-            if var_obj and isinstance(var_obj.value, IndexedArray):
-                array = var_obj.value
-                # Find next index for appending
-                start_index = array.next_index()
-            else:
-                array = IndexedArray()
-                start_index = 0
+        existing = (var_obj.value
+                    if node.is_append and var_obj is not None
+                    and isinstance(var_obj.value, IndexedArray) else None)
+        array = self.build_indexed_array(node.words, into=existing)
+
+        # Set array in shell state
+        self.state.scope_manager.set_variable(node.name, array, attributes=VarAttributes.ARRAY)
+        return 0
+
+    # ------------------------------------------------------------------ #
+    # Shared value-computation helpers (the single implementation used by
+    # BOTH the bare ``a=(...)`` path here AND the declaration builtins
+    # ``declare``/``local``/``export``/``readonly``/``typeset`` via the
+    # structured ArrayInitialization attached to the argument Word). They
+    # expand the element Words through the SAME WordExpansionPolicy the
+    # bare path always used — no string re-parsing.
+    # ------------------------------------------------------------------ #
+
+    def build_indexed_array(self, words: List['Word'],
+                            into: Optional[IndexedArray] = None) -> IndexedArray:
+        """Resolve indexed-array initializer element Words into an IndexedArray.
+
+        ``into`` is the existing array to append into (``a+=(...)`` /
+        ``declare -a a+=(...)``); when None a fresh array is built. Explicit
+        ``[i]=v`` / ``[i]+=v`` elements set/append at the evaluated arithmetic
+        index; bare elements expand through ARRAY_INIT_ELEMENT (split + glob)
+        and take sequential indices after the highest index seen so far.
+        """
+        if into is not None:
+            array = into
+            next_sequential_index = array.next_index()
         else:
-            # Create new array
             array = IndexedArray()
-            start_index = 0
+            next_sequential_index = 0
 
-        # Expand and add elements
-        next_sequential_index = start_index
-
-        for i, element in enumerate(node.elements):
-            # Fallback audit 2026-06-12: both parsers populate node.words
-            # parallel to node.elements (recursive descent
-            # _parse_array_initialization, combinator
-            # _build_array_initialization). A missing Word is an internal
-            # error — fail loudly (v0.300 policy) rather than degrading to
-            # string re-parsing, which had divergent quoting semantics
-            # (a=("[0]"=x) was treated as an explicit assignment; bash
-            # keeps it a literal element).
-            if i >= len(node.words):
-                raise RuntimeError(
-                    f"internal error: array initializer element {element!r} "
-                    "has no Word AST (node.words must parallel node.elements)")
-            word = node.words[i]
-
+        for word in words:
             # Check for an explicit-index assignment element: [index]=value
             # or [index]+=value (recognized only when the brackets and '='
             # are unquoted — bash treats "[0]=x" as a literal element).
@@ -110,13 +118,15 @@ class ArrayOperationExecutor:
                 next_sequential_index = self._add_word_fields_to_array(
                     array, word, next_sequential_index)
 
-        # Set array in shell state
-        self.state.scope_manager.set_variable(node.name, array, attributes=VarAttributes.ARRAY)
-        return 0
+        return array
 
-    def _initialize_associative_array(self, node: 'ArrayInitialization',
-                                      existing: AssociativeArray) -> int:
-        """Initialize a declare -A variable: h=([k]=v ...) or h+=(...).
+    def build_associative_array(self, words: List['Word'],
+                                into: Optional[AssociativeArray] = None
+                                ) -> AssociativeArray:
+        """Resolve associative-array initializer element Words.
+
+        ``into`` is the existing array to merge into (``h+=(...)`` /
+        ``declare -A h+=(...)``); when None a fresh array is built.
 
         bash 5.2 semantics: explicit [key]=value / [key]+=value elements set
         string keys; other elements alternate key/value pairs WITHOUT word
@@ -125,20 +135,10 @@ class ArrayOperationExecutor:
         """
         from ..ast_nodes import Word
 
-        array = existing if node.is_append else AssociativeArray()
+        array = into if into is not None else AssociativeArray()
 
         pending_key: Optional[str] = None
-        for i, element in enumerate(node.elements):
-            # Fallback audit 2026-06-12: unreachable defensive branch —
-            # both parsers populate node.words parallel to node.elements;
-            # fail loudly instead of string-expanding (see
-            # execute_array_initialization).
-            if i >= len(node.words):
-                raise RuntimeError(
-                    f"internal error: array initializer element {element!r} "
-                    "has no Word AST (node.words must parallel node.elements)")
-            word = node.words[i]
-
+        for word in words:
             explicit = self._split_explicit_element(word)
             if explicit is not None:
                 index_parts, value_word, elem_append = explicit
@@ -164,10 +164,7 @@ class ArrayOperationExecutor:
             # bash: a trailing key without a value gets the empty string
             array.set(pending_key, '')
 
-        self.state.scope_manager.set_variable(
-            node.name, array,
-            attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
-        return 0
+        return array
 
     def execute_array_element_assignment(self, node: 'ArrayElementAssignment') -> int:
         """

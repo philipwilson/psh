@@ -13,19 +13,23 @@ Date opened: 2026-06-13
 > C3 OperatorDebrisWordRecognizer (v0.346) · D1 Word.quote_type derived from
 > parts (v0.347) · D2 `[[ ]]` operands → Word model (v0.348).
 >
-> **DEFERRED — B3 (Ugly 6, declaration-arg reparse):** doing it "properly"
-> (a structured `AssignmentWord` consumed by the declaration builtins) is a
-> 5-subsystem change — new AST node + the argv model + the executor→builtin
-> interface + 2 builtins + Word fidelity — because the builtins re-parse the
-> VERBATIM source string (`shlex.split`) and the element Words deliberately
-> lose source detail (`${y}b`→`$y`+`b`, quote boundaries). That couples it to
-> the deferred Ugly 10 (token-payload fidelity, E1). Disproportionate risk for
-> a working, well-documented, tested path. Revisit only if the token-payload
-> work (E1) is taken on.
+> **DONE — B3 (Ugly 6, declaration-arg reparse) → v0.349.0.** Investigation
+> overturned the "coupled to E1 / 5-subsystem" estimate: the structured
+> `ArrayInitialization`/`ARRAY_INIT_ELEMENT` path already existed (bare
+> `a=(...)`) and the element Words already carry sufficient fidelity. So the
+> declaration builtins were ROUTED through that same structured expansion
+> (shared `build_indexed_array`/`build_associative_array` helpers; the parser
+> attaches `Word.array_init`; the executor hands it over via a scoped
+> `shell._pending_array_inits`). The buggy string-reparse module
+> `array_init.py` was DELETED. It FIXED 9 bash divergences (adjacent-quote
+> `("x""y")`, `+=` append, bare assoc keys, explicit `[i]=`, tilde/cmdsub,
+> `export e=(…)`, dynamic-scalar mis-array-ification). bash-verified, no
+> regressions.
 >
-> **DEFERRED — E1 (Ugly 2 + 10, typed token payloads):** the most invasive
-> change (the whole lexer↔parser boundary); the review's own phase plan omits
-> it. Not scheduled.
+> **NOT NEEDED — E1 (Ugly 2 + 10, typed token payloads):** B3 needed none of
+> it (the element Words already had the fidelity). E1 is a pure-cosmetic
+> token-model rewrite of the whole lexer↔parser boundary; the review's own
+> phase plan omits it. Remains unscheduled unless explicitly requested.
 >
 > Suite at close: 6,718 passed / 6,965 collected; ruff + mypy clean; GitHub
 > CI disabled (local gate is the gate); all releases auto-tagged.

@@ -201,10 +201,30 @@ class CommandExecutor:
                 if cmd_name == 'exec':
                     return self._handle_exec_builtin(node, expanded_args, prefix.applied)
 
-                # Execute the command using appropriate strategy
-                exit_code, is_special = self._execute_with_strategy(
-                    cmd_name, cmd_args, node, context, bypass_aliases, bypass_functions
-                )
+                # Deliver structured array initializers to declaration
+                # builtins (declare/typeset/local/export/readonly). The
+                # parser attaches an ArrayInitialization (element Words with
+                # full quote context) to each ``name=(...)`` argument Word;
+                # we hand them to the builtin keyed by their flat-string view
+                # (which is exactly the argv element the builtin sees, since
+                # declaration-builtin values are never word-split). The
+                # builtin expands them through the SAME structured path the
+                # bare ``a=(...)`` form uses — no shlex reparse. The
+                # attribute is scoped (set here, cleared in finally) and
+                # never globally mutable; see the array-init seam note below.
+                pending_inits = self._collect_array_inits(command_node)
+                set_inits = pending_inits is not None
+                if set_inits:
+                    self.shell._pending_array_inits = pending_inits
+                try:
+                    # Execute the command using appropriate strategy
+                    exit_code, is_special = self._execute_with_strategy(
+                        cmd_name, cmd_args, node, context,
+                        bypass_aliases, bypass_functions
+                    )
+                finally:
+                    if set_inits:
+                        self.shell._pending_array_inits = None
                 return exit_code
 
             finally:
@@ -452,6 +472,28 @@ class CommandExecutor:
                     setattr(self.state, n, saved_custom[n])
                 elif hasattr(self.state, n):
                     delattr(self.state, n)
+
+    def _collect_array_inits(self, command_node: 'SimpleCommand'):
+        """Map each declaration-builtin ``name=(...)`` arg to its structured init.
+
+        Returns a dict keyed by the argument's flat-string view (the argv
+        element the builtin receives) → ArrayInitialization, or None when the
+        command is not a declaration builtin or has no array-init argument.
+
+        Only declaration builtins (declare/typeset/local/export/readonly)
+        consume the structured init; for an ordinary command a ``name=(...)``
+        argument is just a literal string (bash does not array-ify it), so we
+        return None and the builtin/command never sees a pending init.
+        """
+        if not self.expansion_manager.is_declaration_builtin_command(command_node):
+            return None
+        inits = {}
+        for word in command_node.words:
+            if word.array_init is not None:
+                # The flat literal text is exactly the argv element the
+                # builtin sees (declaration values are not word-split).
+                inits[word.display_text()] = word.array_init
+        return inits or None
 
     def _handle_array_assignment(self, assignment):
         """Handle array initialization or element assignment."""

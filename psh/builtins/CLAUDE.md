@@ -45,7 +45,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 | `shell_options.py` | `shopt` |
 | `shell_state.py` | `history`, `version`, `local` |
 | `positional.py` | `shift`, `getopts` |
-| `array_init.py` | (no commands — shared array-initializer parsing for `declare`/`local`) |
+| (none) | `declare`/`local`/`export`/`readonly`/`typeset` array init `name=(...)` routes through the SAME structured expansion as the bare `a=(...)` path (`ArrayOperationExecutor.build_indexed_array`/`build_associative_array`); the parser attaches an `ArrayInitialization` to `Word.array_init`, delivered via the scoped `shell._pending_array_inits` map. The old string-reparse module (the former array_init.py) was removed. |
 
 **Job Control**
 | File | Commands |
