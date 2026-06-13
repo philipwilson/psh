@@ -245,11 +245,16 @@ class CommandAssignments:
             var, value = resolve_append_assignment(
                 self.state.scope_manager, var, value)
             # Save both shell state and environment values (first write wins
-            # if the same variable is assigned twice)
+            # if the same variable is assigned twice). The state snapshot is
+            # scope-aware: None means the variable was UNSET, so restore()
+            # can unset it again — bash restores `W=1 true` to unset, and
+            # ${W+yes} stays empty afterwards. (state.get_variable()'s ''
+            # default could not represent unset; psh left W set-but-empty
+            # until 2026-06-13, Tier B10a.)
             saved = None
             if var not in saved_vars:
                 saved = {
-                    'state': self.state.get_variable(var),
+                    'state': self.state.scope_manager.get_variable(var),
                     'env': self.shell.env.get(var)  # May be None if not in env
                 }
             try:
@@ -279,10 +284,12 @@ class CommandAssignments:
         call restore in that case.)
         """
         for var, saved in saved_vars.items():
-            # Restore shell state variable
+            # Restore shell state variable. None means it was UNSET before
+            # the prefix applied — restore that, like bash (`W=1 true`
+            # leaves W unset, not set-but-empty).
             old_state_value = saved['state']
             if old_state_value is None:
-                self.state.unset_variable(var)
+                self.state.scope_manager.unset_variable(var)
             else:
                 self.state.set_variable(var, old_state_value)
 

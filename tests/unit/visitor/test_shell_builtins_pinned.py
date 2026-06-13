@@ -21,8 +21,9 @@ from psh.visitor.constants import SHELL_BUILTINS
 BASH_SCOPED_EXTRAS = frozenset({
     # bash builtins psh does not (yet) implement — several have ledger
     # entries in tests/conformance/bash/test_absent_features.py
+    # ('hash' moved out 2026-06-13 when psh implemented it)
     'bind', 'caller', 'compgen', 'complete', 'compopt', 'enable',
-    'fc', 'hash', 'logout', 'suspend', 'ulimit',
+    'fc', 'logout', 'suspend', 'ulimit',
     # keywords / control flow that scripts invoke like commands
     'break', 'continue', '[[', ']]',
 })

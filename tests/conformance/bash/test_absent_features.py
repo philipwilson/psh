@@ -103,17 +103,8 @@ class TestAbsentBashFeatures:
         '1 NULL' for a -c string). psh: command not found, exit 127."""
         assert_bash_parity('f() { caller; }; f')
 
-    @pytest.mark.xfail(strict=True, reason=(
-        "hash builtin is not implemented (psh falls through to PATH, which "
-        "on macOS finds the inert /usr/bin/hash sh-stub and on Linux fails "
-        "with 127); see the skipped TestCommandCaching tests in "
-        "tests/integration/command_resolution/test_command_resolution.py — "
-        "unskip them when implementing"))
-    def test_hash(self):
-        """bash: `hash ls; hash` records the command's location and prints
-        the 'hits  command' remembered-locations table. psh: no builtin —
-        silent no-op via the macOS stub, or command-not-found on Linux."""
-        assert_bash_parity('hash ls; hash')
+    # `hash` was implemented 2026-06-13 (Tier B10a); its ledger entry
+    # flipped to passing and moved to test_hash_conformance.py.
 
     @pytest.mark.xfail(strict=True, reason="enable builtin is not implemented")
     def test_enable(self):

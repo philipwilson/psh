@@ -3,7 +3,7 @@
 import os
 import random
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .exceptions import ReadonlyVariableError
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
@@ -37,9 +37,20 @@ class ScopeManager:
         self._debug = False
         self._shell = None  # Reference to shell for arithmetic evaluation
 
+        # Observer fired whenever PATH is assigned, declared local, or
+        # unset — installed by ShellState to empty the command hash table
+        # (bash empties it on ANY PATH write, even ``PATH=$PATH``; the
+        # one string compare per write is the whole cost of the hook).
+        self.path_changed: Optional[Callable[[], None]] = None
+
         # Special variable state
         self._shell_start_time = time.time()
         self._current_line_number = 1
+
+    def _notify_path_changed(self, name: str) -> None:
+        """Fire the PATH observer when *name* is PATH (post-nameref)."""
+        if name == 'PATH' and self.path_changed is not None:
+            self.path_changed()
 
     def set_shell(self, shell):
         """Set reference to shell instance for arithmetic evaluation."""
@@ -248,6 +259,8 @@ class ScopeManager:
             target_scope.variables[name] = var
             self._debug_print(f"Setting variable in scope '{scope_name}': {name} = {var.value}")
 
+        self._notify_path_changed(name)
+
     def create_local(self, name: str, value: Optional[Any] = None,
                      attributes: VarAttributes = VarAttributes.NONE):
         """Create a local variable in the current scope.
@@ -273,6 +286,8 @@ class ScopeManager:
             self.current_scope.variables[name] = var
             self._debug_print(f"Creating unset local variable: {name}")
 
+        self._notify_path_changed(name)
+
     def unset_variable(self, name: str):
         """Unset a variable in the appropriate scope."""
         # Check current scope first
@@ -289,6 +304,7 @@ class ScopeManager:
                 unset_var = Variable(name=name, value="", attributes=VarAttributes.UNSET)
                 self.current_scope.variables[name] = unset_var
                 self._debug_print(f"Creating unset tombstone for {name} in scope '{self.current_scope.name}'")
+            self._notify_path_changed(name)
             return
 
         # If not in current scope and we're in a function, check parent scopes
@@ -306,6 +322,7 @@ class ScopeManager:
                     unset_var = Variable(name=name, value="", attributes=VarAttributes.UNSET)
                     self.current_scope.variables[name] = unset_var
                     self._debug_print(f"Creating unset tombstone for {name} in current scope")
+                    self._notify_path_changed(name)
                     return
 
         # Check global scope as fallback

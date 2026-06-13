@@ -19,30 +19,38 @@ if TYPE_CHECKING:
     from .context import ExecutionContext
 
 
-def exec_external(full_args: List[str], env: dict) -> None:
-    """execvpe with the POSIX ENOEXEC fallback.
+def exec_external(full_args: List[str], env: dict,
+                  resolved_path: Optional[str] = None) -> None:
+    """exec with the POSIX ENOEXEC fallback.
 
-    An executable text file without a shebang fails execve with
-    "Exec format error"; POSIX requires the shell to run it as a shell
-    script instead (bash re-executes it with itself). We re-exec the
-    file through psh. Only returns by raising OSError.
+    With *resolved_path* (a hash-table/parent-side resolution) the file
+    is exec'd directly; otherwise execvpe walks PATH. An executable text
+    file without a shebang fails execve with "Exec format error"; POSIX
+    requires the shell to run it as a shell script instead (bash
+    re-executes it with itself). We re-exec the file through psh. Only
+    returns by raising OSError.
     """
     try:
-        os.execvpe(full_args[0], full_args, env)
+        if resolved_path is not None:
+            os.execve(resolved_path, full_args, env)
+        else:
+            os.execvpe(full_args[0], full_args, env)
     except OSError as e:
         if e.errno != errno.ENOEXEC:
             raise
         # Resolve through PATH the way execvpe did, so a script found
         # on PATH is opened from the right location.
-        import shutil
-        resolved = shutil.which(full_args[0], path=env.get('PATH', os.defpath)) \
-            or full_args[0]
+        if resolved_path is None:
+            import shutil
+            resolved_path = shutil.which(
+                full_args[0], path=env.get('PATH', os.defpath)) or full_args[0]
         os.execve(sys.executable,
-                  [sys.executable, '-m', 'psh', resolved] + list(full_args[1:]),
+                  [sys.executable, '-m', 'psh', resolved_path] + list(full_args[1:]),
                   env)
 
 
-def report_exec_failure(cmd_name: str, exc: OSError) -> int:
+def report_exec_failure(cmd_name: str, exc: OSError,
+                        resolved_path: Optional[str] = None) -> int:
     """Report a failed exec on fd 2 and return the exit status.
 
     Shared by the in-pipeline (inline exec) and fork execution paths so
@@ -50,9 +58,19 @@ def report_exec_failure(cmd_name: str, exc: OSError) -> int:
     with status 127 for a missing command, the OS error with status 126
     otherwise (e.g. permission denied). Writes at the fd level — both
     callers run in a forked child.
+
+    When the exec used a pre-resolved path (hash table) and the file is
+    gone, bash names the stale PATH: "bash: /path/cmd: No such file or
+    directory", still 127 (probe-verified: bash 5.2 does NOT re-search
+    PATH unless `shopt -s checkhash` — the re-verify happens parent-side
+    in ExternalExecutionStrategy, before the fork).
     """
     if isinstance(exc, FileNotFoundError):
-        os.write(2, f"psh: {cmd_name}: command not found\n".encode('utf-8'))
+        if resolved_path is not None:
+            os.write(2, f"psh: {resolved_path}: No such file or directory\n"
+                     .encode('utf-8'))
+        else:
+            os.write(2, f"psh: {cmd_name}: command not found\n".encode('utf-8'))
         return 127
     os.write(2, f"psh: {cmd_name}: {exc}\n".encode('utf-8'))
     return 126
@@ -371,6 +389,41 @@ class ExternalExecutionStrategy(ExecutionStrategy):
         """External commands are the fallback - always return True."""
         return True
 
+    @staticmethod
+    def resolve_via_hash_table(cmd_name: str, shell: 'Shell') -> Optional[str]:
+        """Consult and populate the command hash table (bash hashing).
+
+        Runs parent-side, before the fork, so the table on shell.state
+        records both new resolutions and hit counts (bash: running an
+        external command remembers its path with 1 hit; each later run
+        increments). Returns the path to exec directly, or None to fall
+        back to execvpe's own PATH walk (slash names, hashing disabled
+        via ``set +h``, or a PATH miss — the forked child then produces
+        the usual "command not found").
+
+        Re-verify semantics are bash 5.2's, probe-verified: by default a
+        remembered path is exec'd blindly even if the file is gone (the
+        exec fails with "No such file or directory", 127, and the hit
+        still counts); under ``shopt -s checkhash`` the stale entry is
+        dropped here and PATH is searched afresh.
+        """
+        if '/' in cmd_name or not shell.state.options.get('hashcmds', True):
+            return None
+        table = shell.state.command_hash
+        cached = table.lookup(cmd_name)  # counts the hit (bash)
+        if cached is not None:
+            if shell.state.options.get('checkhash') and not (
+                    os.path.isfile(cached) and os.access(cached, os.X_OK)):
+                table.remove(cmd_name)  # stale: fall through to re-search
+            else:
+                return cached
+        from ..builtins.type_builtin import TypeBuiltin
+        paths = TypeBuiltin._find_in_path(cmd_name, shell.env.get('PATH', ''))
+        if paths:
+            table.insert(cmd_name, paths[0], hits=1)
+            return paths[0]
+        return None
+
     def execute(self, cmd_name: str, args: List[str],
                 shell: 'Shell', context: 'ExecutionContext',
                 redirects: Optional[List['Redirect']] = None,
@@ -378,6 +431,12 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                 visitor=None) -> int:
         """Execute an external command."""
         full_args = [cmd_name] + args
+        # Resolve through the command hash table BEFORE forking, so the
+        # remembered location and hit count land on the parent's state.
+        # (Pipeline members run this in the forked child — their table is
+        # a fork-copy, matching bash, where `ls | cat` leaves the parent
+        # table untouched.)
+        resolved_path = self.resolve_via_hash_table(cmd_name, shell)
 
         if context.in_pipeline:
             # In pipeline, use exec to replace current process
@@ -402,9 +461,9 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                 # This helps when execvpe creates a new process
                 os.setpgid(0, current_pgid)
 
-                exec_external(full_args, shell.env)
+                exec_external(full_args, shell.env, resolved_path)
             except OSError as e:
-                os._exit(report_exec_failure(full_args[0], e))
+                os._exit(report_exec_failure(full_args[0], e, resolved_path))
 
         # Set terminal title to show running command
         if not background and not context.in_pipeline and shell.state.options.get('interactive'):
@@ -437,9 +496,9 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                       file=sys.stderr)
 
             try:
-                exec_external(full_args, shell.env)
+                exec_external(full_args, shell.env, resolved_path)
             except OSError as e:
-                return report_exec_failure(full_args[0], e)
+                return report_exec_failure(full_args[0], e, resolved_path)
 
             # Not reached if exec succeeds
             return 127

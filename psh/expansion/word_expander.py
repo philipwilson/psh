@@ -10,7 +10,7 @@ between contexts (verified against every caller, 2026-06-12):
 | ``LOOP_ITEM``           |  (alias of COMMAND_ARGUMENT)    |
 | ``DECLARATION_ASSIGNMENT`` | no | no   | yes              |
 | ``ARRAY_INIT_ELEMENT``  |  yes  | yes  | no               |
-| ``ASSOC_INIT_ELEMENT``  |  no   | no   | yes (see note)   |
+| ``ASSOC_INIT_ELEMENT``  |  no   | no   | no               |
 
 Two walkers live side by side and are intentionally SEPARATE:
 
@@ -54,9 +54,14 @@ class WordExpansionPolicy:
     ``_expand_word``/``expand_word_to_fields`` flag pairs):
 
     Attributes:
-        split: IFS-split the results of unquoted expansions. Multi-field
-            expansions ("$@", "${a[@]}") produce multiple fields
-            regardless — this axis governs IFS splitting only.
+        split: IFS-split the results of unquoted expansions. In splitting
+            contexts, multi-field expansions ("$@", "${a[@]}") produce
+            multiple fields regardless — the axis governs IFS splitting
+            only. In NO-split contexts bash instead joins a field
+            expansion's fields into one word with single spaces (probed
+            2026-06-13: assoc-init `h=($@)` / `h=("$@")` and
+            `declare v="$@"` all join), so split=False suppresses field
+            production too.
         glob: pathname-expand unquoted glob characters (honoring
             noglob/nullglob/dotglob as always).
         assignment_tilde: when the word is shaped like an assignment
@@ -95,16 +100,21 @@ ARRAY_INIT_ELEMENT = WordExpansionPolicy(
 
 #: Associative-array bare initializer elements (``h=(k v ...)`` under
 #: declare -A): no splitting, no globbing (``h=($x)`` with x="k v"
-#: creates the single key "k v").
+#: creates the single key "k v"), and NO value-tilde — bash 5.2 keeps
+#: ``h=(P=~/x v)``'s tilde literal (the element is the key "P=~/x"),
+#: exactly like indexed-array initializer elements. A LEADING tilde
+#: still expands (``h=(~ v)`` / ``h=(k ~/x)`` — bash), as does the
+#: value of an explicit ``[k]=~/x`` element, which goes through the
+#: scalar assignment-value walker instead of this policy.
 #:
-#: assignment_tilde=True is a PINNED HISTORICAL ACCIDENT, not a design
-#: choice: the pre-policy code aliased ``suppress_split_glob`` onto the
-#: ``declaration_assignment`` flag, which also re-enabled value-tilde, so
-#: psh expands ``h=(P=~/x v)``'s tilde where bash 5.2 keeps it literal.
-#: Preserved under the zero-behavior-change contract (probe P20);
-#: flipping it to match bash is a separate behavior fix.
+#: History: assignment_tilde was True until v0.326 — a pinned accident
+#: from pre-policy code that aliased ``suppress_split_glob`` onto the
+#: ``declaration_assignment`` flag (re-enabling value-tilde). Flipped to
+#: the bash-correct value 2026-06-13 (Tier B10a); pinned by
+#: tests/unit/expansion/test_word_expansion_policy.py and the assoc
+#: rows in tests/conformance/bash/test_array_init_conformance.py.
 ASSOC_INIT_ELEMENT = WordExpansionPolicy(
-    split=False, glob=False, assignment_tilde=True)
+    split=False, glob=False, assignment_tilde=False)
 
 
 @dataclass
@@ -181,7 +191,7 @@ class WordExpander:
         # Double-quoted word (uniform quote_type on the Word itself):
         # expand variables/commands but no word splitting or globbing
         if word.quote_type == '"':
-            return self._expand_double_quoted_word(word)
+            return self._expand_double_quoted_word(word, policy)
 
         # --- Composite / unquoted word: walk parts, then finish ---
         st = _WalkState()
@@ -196,7 +206,7 @@ class WordExpander:
             if isinstance(part, LiteralPart):
                 self._walk_literal_part(word, part_index, part, st)
             elif isinstance(part, ExpansionPart):
-                early = self._walk_expansion_part(word, part, st)
+                early = self._walk_expansion_part(word, part, st, policy)
                 if early is not _CONTINUE_WALK:
                     return early
 
@@ -272,7 +282,8 @@ class WordExpander:
             st.result_parts.append(text)
 
     def _walk_expansion_part(self, word: Word, part: ExpansionPart,
-                             st: _WalkState) -> Any:
+                             st: _WalkState,
+                             policy: WordExpansionPolicy) -> Any:
         """Walk one ExpansionPart.
 
         Returns ``_CONTINUE_WALK`` when the part was accumulated normally;
@@ -303,10 +314,23 @@ class WordExpander:
 
         # Handle quoted field expansions ("$@", "${a[@]}", ...) in
         # composite words: pre"$@"post with params (a,b,c) →
-        # [prea, b, cpost]
+        # [prea, b, cpost]. In NO-SPLIT contexts (assoc-init elements,
+        # declaration assignment values) bash instead joins the fields
+        # into one word with single spaces — always spaces, regardless
+        # of IFS (probed 2026-06-13: `h=("$@" v)` with params ("a b", c)
+        # creates the single key "a b c"; `declare v="$@"` joins too).
         if part.quoted:
             fields = self._field_expansion_fields(part)
             if fields is not None:
+                if not policy.split:
+                    if fields:
+                        st.result_parts.append(' '.join(fields))
+                    # Zero fields contribute nothing. (bash goes on to
+                    # reject the then-empty word as an assoc key — "bad
+                    # array subscript" — but psh accepts empty assoc
+                    # keys generally; that pre-existing divergence is
+                    # independent of this path.)
+                    return _CONTINUE_WALK
                 return self._expand_at_with_affixes(
                     word, part, st.result_parts, in_double_quote=False,
                     first_fields=fields)
@@ -314,13 +338,16 @@ class WordExpander:
         # An unquoted field expansion standing alone ($@, ${a[@]}):
         # expand to fields FIRST, then IFS-split each field, so
         # parameter/element boundaries survive a custom IFS (bash).
-        # NOTE: this path predates the policy table and intentionally
-        # ignores policy.split/glob — a standalone unquoted $@ splits
-        # and globs even under ASSOC_INIT_ELEMENT (pinned: probe P22,
-        # zero-behavior-change contract).
+        # In no-split contexts the fields join with spaces instead and
+        # are never split or globbed (bash: `h=($@)` with params
+        # ("a b", c) creates the single key "a b c"; a literal `*`
+        # parameter stays literal). Until v0.326 this path ignored the
+        # policy — the flip to bash is Tier B10a, 2026-06-13.
         if not part.quoted and len(word.parts) == 1:
             ufields = self._field_expansion_fields(part)
             if ufields is not None:
+                if not policy.split:
+                    return ' '.join(ufields) if ufields else []
                 out: List[str] = []
                 for f in ufields:
                     out.extend(self._split_with_ifs(f, None))
@@ -519,12 +546,17 @@ class WordExpander:
                 exp.parameter, exp.operator, exp.word)
         return None
 
-    def _expand_double_quoted_word(self, word: Word) -> Union[str, List[str]]:
+    def _expand_double_quoted_word(self, word: Word,
+                                   policy: WordExpansionPolicy
+                                   ) -> Union[str, List[str]]:
         """Expand a uniformly double-quoted Word (quote_type='"').
 
         Handles multi-field expansion ("$@", "${a[@]}", slices, transforms)
         and variable/command expansion but suppresses word splitting and
-        globbing.
+        globbing. In NO-split contexts, field expansions join into one
+        word with single spaces instead of producing fields (bash:
+        `h=("$@")` with params ("a b", c) creates the single key "a b c";
+        see _walk_expansion_part).
         """
         result_parts: list = []
         for part in word.parts:
@@ -539,6 +571,10 @@ class WordExpander:
             elif isinstance(part, ExpansionPart):
                 fields = self._field_expansion_fields(part)
                 if fields is not None:
+                    if not policy.split:
+                        if fields:
+                            result_parts.append(' '.join(fields))
+                        continue
                     return self._expand_at_with_affixes(
                         word, part, result_parts, in_double_quote=True,
                         first_fields=fields)
