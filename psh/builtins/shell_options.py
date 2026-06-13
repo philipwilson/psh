@@ -119,10 +119,10 @@ class ShoptBuiltin(Builtin):
         """Print a single option's status."""
         if reusable:
             flag = '-s' if enabled else '-u'
-            print(f"shopt {flag} {name}", file=shell.stdout)
+            self.write_line(f"shopt {flag} {name}", shell)
         else:
             status = 'on' if enabled else 'off'
-            print(f"{name}\t{status}", file=shell.stdout)
+            self.write_line(f"{name}\t{status}", shell)
 
     @property
     def help(self) -> str:

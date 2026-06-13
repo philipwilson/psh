@@ -51,7 +51,7 @@ class ParseTreeBuiltin(Builtin):
             arg = args[i]
 
             if arg == "-h" or arg == "--help":
-                print(self.execute.__doc__, file=shell.stdout)
+                self.write_line(self.execute.__doc__ or "", shell)
                 return 0
             elif arg == "-f" or arg == "--format":
                 if i + 1 >= len(args):
@@ -116,11 +116,11 @@ class ParseTreeBuiltin(Builtin):
                 output = generator.to_dot(ast)
 
                 # Add helpful comment for DOT format
-                print("# Graphviz DOT format - save to file and render with:", file=shell.stdout)
-                print("# dot -Tpng output.dot -o ast.png && xdg-open ast.png", file=shell.stdout)
-                print(file=shell.stdout)
+                self.write_line("# Graphviz DOT format - save to file and render with:", shell)
+                self.write_line("# dot -Tpng output.dot -o ast.png && xdg-open ast.png", shell)
+                self.write_line("", shell)
 
-            print(output, file=shell.stdout)
+            self.write_line(output, shell)
             return 0
 
         except ParseError as e:

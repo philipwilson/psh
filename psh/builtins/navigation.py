@@ -100,7 +100,7 @@ class CdBuiltin(Builtin):
 
             # If found via CDPATH, print the full path (bash behavior)
             if found_in_cdpath:
-                print(logical_new_dir, file=shell.stdout)
+                self.write_line(logical_new_dir, shell)
 
             # Update PWD and OLDPWD: both carry the EXPORT attribute in
             # bash (`declare -p PWD` → declare -x ...), and the export
@@ -117,7 +117,7 @@ class CdBuiltin(Builtin):
 
             # Print new directory for cd - command
             if print_new_dir:
-                print(logical_new_dir, file=shell.stdout)
+                self.write_line(logical_new_dir, shell)
 
             return 0
         except FileNotFoundError:
