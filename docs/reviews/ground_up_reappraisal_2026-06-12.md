@@ -1,5 +1,29 @@
 # Ground-Up Reappraisal #3 — 2026-06-12 (v0.311.0)
 
+> **⚡ STATUS (2026-06-13, as of v0.328.0) — THE TEXTBOOK PROGRAM IS
+> COMPLETE.** All three tiers of §2 shipped across 17 releases
+> (v0.312.0–v0.328.0, PRs #46–#62), every one merged on green CI:
+> **Tier A** (A1 behavior batch incl. the pure printf engine; A2
+> test/CI honesty incl. the absent-feature ledger and nightly CI).
+> **Tier B** — every named refactor landed with its safety protocol:
+> B1 Shell lifecycle (+__getattr__ deleted), B2 CommandAssignments,
+> B3 forked-child runner, B4 WordExpander + named policies, B5 the
+> ONE ${...} parser (737-row differential corpus; 18 bash-adjudicated
+> fixes rode along), B6 lexer word-scanners + total tokenize loop
+> (15k-input harness, zero diffs), B7 args derived from words,
+> B8 ×3 the LineEditor decomposition (753-line coordinator over five
+> contract-narrow components), B9 one completeness oracle
+> (multiline_handler 515→90; four interactive bugs fixed), B10a hash
+> builtin + parity queue, B10b env-sync fix + final smalls.
+> **Tier C** (C1 the reproducible internals tour; C2 the doc-pointer
+> meta-test + archive/refresh sweep).
+> Suite at close: 5,815 passed / 6,051 collected, 0 failures;
+> conformance POSIX 162/162; ruff + mypy (20 files) enforced;
+> nightly CI running. Known small leftovers live in the B10a
+> pin-sweep inventory (empty assoc keys, hash listing order,
+> the 10 remaining ledger absences) and three documented accepted
+> divergences in the v0.328.0 entry.
+
 **Scope:** the third full reappraisal, one day after the second closed and
 after 24 releases of quality work (v0.288–v0.311, PRs #19–#44). **The ruler
 has changed**: previous programs graded subsystems against their own goals
