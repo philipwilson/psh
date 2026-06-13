@@ -70,15 +70,45 @@ class PostIncrementNode(ArithNode):
 
 @dataclass
 class ArrayElementNode(ArithNode):
-    """Array element reference (arr[index])"""
+    """Array element reference (arr[index]).
+
+    ``index`` is the parsed subscript expression (used for indexed arrays,
+    which arithmetic-evaluate the subscript). ``index_text`` is the raw
+    subscript source text (used verbatim as the key for associative arrays,
+    where the subscript is a literal string, not an arithmetic expression).
+    """
     name: str
     index: ArithNode
+    index_text: str = ""
 
 
 @dataclass
 class ArrayAssignmentNode(ArithNode):
-    """Assignment to an array element (arr[index] = value, arr[index] += value)"""
+    """Assignment to an array element (arr[index] = value, arr[index] += value).
+
+    See :class:`ArrayElementNode` for the meaning of ``index`` vs
+    ``index_text``.
+    """
     name: str
     index: ArithNode
     op: ArithTokenType
     value: ArithNode
+    index_text: str = ""
+
+
+@dataclass
+class ArrayPreIncrementNode(ArithNode):
+    """Pre-increment/decrement of an array element (++arr[i], --arr[i])."""
+    name: str
+    index: ArithNode
+    is_increment: bool
+    index_text: str = ""
+
+
+@dataclass
+class ArrayPostIncrementNode(ArithNode):
+    """Post-increment/decrement of an array element (arr[i]++, arr[i]--)."""
+    name: str
+    index: ArithNode
+    is_increment: bool
+    index_text: str = ""

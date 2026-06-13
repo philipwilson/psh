@@ -1,13 +1,15 @@
 """Evaluator for shell arithmetic AST nodes, plus the public entry points."""
 
 import re
-from typing import Optional
+from typing import Optional, Union
 
 from .errors import ShellArithmeticError, _to_signed64
 from .nodes import (
     ArithNode,
     ArrayAssignmentNode,
     ArrayElementNode,
+    ArrayPostIncrementNode,
+    ArrayPreIncrementNode,
     AssignmentNode,
     BinaryOpNode,
     NumberNode,
@@ -87,52 +89,89 @@ class ArithmeticEvaluator:
             return int(value)
         return evaluate_arithmetic(value, self.shell)
 
-    def get_array_element(self, name: str, index: int) -> int:
-        """Read an array element (or scalar via index 0) as an integer."""
+    def _array_key(self, name: str, index_node: ArithNode, index_text: str) -> Union[int, str]:
+        """Resolve the subscript of an array reference to its lookup key.
+
+        For an associative array the subscript is the LITERAL text used
+        directly as the key (bash: bare identifiers are not variable
+        references). For everything else (indexed arrays, scalars, or a
+        not-yet-created array) the subscript is arithmetic-evaluated to an
+        int.
+        """
+        from ...core import AssociativeArray
+        var = self.shell.state.scope_manager.get_variable_object(name)
+        if var is not None and isinstance(var.value, AssociativeArray):
+            return index_text
+        return self.evaluate(index_node)
+
+    def get_array_element(self, name: str, key: Union[int, str]) -> int:
+        """Read an array element (or scalar via index 0) as an integer.
+
+        ``key`` is a str for associative arrays and an int for indexed
+        arrays / scalars (see :meth:`_array_key`).
+        """
         from ...core import AssociativeArray, IndexedArray
         var = self.shell.state.scope_manager.get_variable_object(name)
         if var is None:
             return 0
         value = var.value
         if isinstance(value, IndexedArray):
-            return self._string_to_int(value.get(index))
+            return self._string_to_int(value.get(int(key)))
         if isinstance(value, AssociativeArray):
-            return self._string_to_int(value.get(str(index)))
+            return self._string_to_int(value.get(str(key)))
         # Scalar variable: index 0 refers to the value, any other index is unset.
-        return self._string_to_int(str(value)) if index == 0 else 0
+        return self._string_to_int(str(value)) if key == 0 else 0
 
-    def set_array_element(self, name: str, index: int, value: int) -> None:
-        """Assign to an array element, creating the array if necessary."""
+    def set_array_element(self, name: str, key: Union[int, str], value: int) -> None:
+        """Assign to an array element, creating the array if necessary.
+
+        ``key`` is a str for associative arrays and an int for indexed
+        arrays / a freshly created indexed array.
+        """
         from ...core import AssociativeArray, IndexedArray, VarAttributes
         var = self.shell.state.scope_manager.get_variable_object(name)
         if var is not None and isinstance(var.value, IndexedArray):
-            var.value.set(index, str(value))
+            var.value.set(int(key), str(value))
         elif var is not None and isinstance(var.value, AssociativeArray):
-            var.value.set(str(index), str(value))
+            var.value.set(str(key), str(value))
         else:
             # No array yet (and not a plain scalar we should clobber as scalar):
             # create an indexed array, matching `arr[i]=` assignment semantics.
             arr = IndexedArray()
-            arr.set(index, str(value))
+            arr.set(int(key), str(value))
             self.shell.state.scope_manager.set_variable(
                 name, arr, attributes=VarAttributes.ARRAY,
             )
 
     def _eval_array_assignment(self, node: 'ArrayAssignmentNode') -> int:
-        index = self.evaluate(node.index)
+        key = self._array_key(node.name, node.index, node.index_text)
         value = self.evaluate(node.value)
 
         if node.op == ArithTokenType.ASSIGN:
-            self.set_array_element(node.name, index, value)
+            self.set_array_element(node.name, key, value)
             return value
 
         base_op = self._COMPOUND_TO_BASE.get(node.op)
         if base_op is None:
             raise ValueError(f"Unknown assignment operator: {node.op}")
-        current = self.get_array_element(node.name, index)
+        current = self.get_array_element(node.name, key)
         result = self._apply_binary_op(base_op, current, value)
-        self.set_array_element(node.name, index, result)
+        self.set_array_element(node.name, key, result)
         return result
+
+    def _eval_array_pre_increment(self, node: 'ArrayPreIncrementNode') -> int:
+        key = self._array_key(node.name, node.index, node.index_text)
+        current = self.get_array_element(node.name, key)
+        new_value = _to_signed64(current + 1 if node.is_increment else current - 1)
+        self.set_array_element(node.name, key, new_value)
+        return new_value
+
+    def _eval_array_post_increment(self, node: 'ArrayPostIncrementNode') -> int:
+        key = self._array_key(node.name, node.index, node.index_text)
+        current = self.get_array_element(node.name, key)
+        new_value = _to_signed64(current + 1 if node.is_increment else current - 1)
+        self.set_array_element(node.name, key, new_value)
+        return current
 
     # Maps compound assignment tokens to the base binary operator so that
     # compound assignments reuse _apply_binary_op() without duplication.
@@ -168,9 +207,14 @@ class ArithmeticEvaluator:
         if isinstance(node, PostIncrementNode):
             return self._eval_post_increment(node)
         if isinstance(node, ArrayElementNode):
-            return self.get_array_element(node.name, self.evaluate(node.index))
+            key = self._array_key(node.name, node.index, node.index_text)
+            return self.get_array_element(node.name, key)
         if isinstance(node, ArrayAssignmentNode):
             return self._eval_array_assignment(node)
+        if isinstance(node, ArrayPreIncrementNode):
+            return self._eval_array_pre_increment(node)
+        if isinstance(node, ArrayPostIncrementNode):
+            return self._eval_array_post_increment(node)
         raise ValueError(f"Unknown node type: {type(node)}")
 
     # -- Node-type evaluators ------------------------------------------------
@@ -313,8 +357,10 @@ def evaluate_arithmetic(expr: str, shell) -> int:
         tokenizer = ArithTokenizer(expanded_expr)
         tokens = tokenizer.tokenize()
 
-        # Parse
-        parser = ArithParser(tokens)
+        # Parse. Pass the (already $-expanded) source so the parser can slice
+        # the raw subscript text of array references (associative arrays use
+        # the literal subscript as their key).
+        parser = ArithParser(tokens, expanded_expr)
         ast = parser.parse()
 
         # Evaluate

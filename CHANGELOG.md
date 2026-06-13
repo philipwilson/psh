@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.337.0 (2026-06-13) - Behavior fix: associative arrays in arithmetic
+- BUG FIX (bash-verified): associative-array elements now resolve inside
+  arithmetic `$(( ))` / `(( ))`. Previously `declare -A m; m[k]=9; echo
+  $(( m[k] ))` gave `0`; now `9`. Covers reads, expressions, compound
+  assignment (`(( m[k] += 5 ))`), and new-key assignment (`(( m[new]=5 ))`).
+- The subscript semantics match bash: for an ASSOCIATIVE array the subscript
+  is the LITERAL key text (not arithmetic-evaluated) — `m[a]` with `a=k` reads
+  key `a`, and `m[i]` reads key `i` — while INDEXED arrays still
+  arithmetic-evaluate the subscript (`a[1+1]`). Implemented by threading the
+  `$`-expanded source into `ArithParser`, storing the raw subscript text on
+  `ArrayElementNode`/`ArrayAssignmentNode`, and deciding key type in the
+  evaluator by the array's kind.
+- Also fixes the related gap (found while probing): array-element pre/post
+  increment/decrement `a[0]++`, `m[x]++`, `++a[i]` for BOTH indexed and
+  associative arrays (previously a parse error).
+- +21 bash-verified tests (arithmetic characterization assoc section + array
+  increment cases) and 9 `golden_cases.yaml` rows. Full suite green
+  (6,262 passed). ruff + mypy clean.
+- KNOWN remaining gap (pre-existing tokenizer limitation, out of scope):
+  associative keys containing spaces (`m[ab cd]`) still error in arithmetic.
+
 ## 0.336.0 (2026-06-13) - Reappraisal #4 Tier B7: process failure-path tests (TIER B COMPLETE)
 - TESTS ONLY (no production change): 24 deterministic, parallel-safe tests
   for the process-creation / pipeline error paths the 2026-06-13 assessment

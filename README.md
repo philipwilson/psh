@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.336.0 | **Tests**: 6,478 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.337.0 | **Tests**: 6,507 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~49,100 lines of production code in `psh/` across 193 Python files, plus ~59,500 lines of tests in `tests/` (262 Python files)
-- **Test Coverage**: 6,478 tests in 282 test files
+- **Test Coverage**: 6,507 tests in 282 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.337.0**: behavior fix — associative-array elements now resolve inside arithmetic `$(( ))`/`(( ))` (`m[k]*2`, compound-assign, new-key assign), using the literal subscript as the key for assoc arrays (bash semantics: not arithmetic-evaluated) while indexed arrays still evaluate the subscript; also fixes array-element pre/post `++`/`--` (`a[0]++`, `m[x]++`) for both array kinds. Bash-verified; +21 tests. (Known remaining gap: assoc keys containing spaces.)
 - **v0.336.0**: reappraisal #4 Tier B7 (process failure-path tests) — CLOSES reappraisal #4 Tier B. Adds 24 deterministic, parallel-safe tests for the previously-undertested error paths: fork failure (injected `OSError(EAGAIN)`, parent sigmask restored), redirect failure (nonzero exit, body skipped, fds restored), signal-killed exit status (128+signum, matched to bash), stopped-job listing (PTY), and process-substitution fd/zombie cleanup across repeated use. All paths match bash; no production change
 - **v0.335.0**: reappraisal #4 Tier B6 (single-authority state) — removes the vestigial `ExecutionContext.in_forked_child` (only a debug print read it) so `ShellState.in_forked_child` is the sole authority; and centralizes the 7 byte-identical raw special-variable lookups (`$?`/`$$`/`$!`/`$#`/`$-`/`$@`/`$*`) in `_expand_special_variable` to delegate to `ShellState.get_special_variable` (the function-aware `$0`, digit positionals, and `nounset` layering stay in the expander). 49-case characterization harness; zero behavior change
 - **v0.334.0**: reappraisal #4 Tier B5 (WordExpander segment-IR) — the word-expansion engine's implicit parallel-array accumulator (`result_parts` + `splittable_idx` + scattered flags) is replaced by an explicit `ExpandedSegment(text, quoted, splittable, glob_eligible)` list, and `_finish` now runs three visibly separate passes (field-split → glob → join); the old word-level flags are derived as properties over the segment list. Guarded by a 94-case frozen characterization harness (green before and after) plus 9 adversarial bash probes; zero behavior change

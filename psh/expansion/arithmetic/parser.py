@@ -1,11 +1,13 @@
 """Recursive-descent parser for shell arithmetic expressions."""
 
-from typing import List
+from typing import List, Tuple
 
 from .nodes import (
     ArithNode,
     ArrayAssignmentNode,
     ArrayElementNode,
+    ArrayPostIncrementNode,
+    ArrayPreIncrementNode,
     AssignmentNode,
     BinaryOpNode,
     NumberNode,
@@ -32,8 +34,12 @@ class ArithParser:
         ArithTokenType.BIT_XOR_ASSIGN,
     )
 
-    def __init__(self, tokens: List[ArithToken]):
+    def __init__(self, tokens: List[ArithToken], source: str = ""):
         self.tokens = tokens
+        # The (already $-expanded) source expression text. Used to slice the
+        # raw subscript of an array reference verbatim, so associative arrays
+        # can use the literal subscript text as their key.
+        self.source = source
         self.current = 0
 
     def peek(self) -> ArithToken:
@@ -231,7 +237,12 @@ class ArithParser:
             if not self.match(ArithTokenType.IDENTIFIER):
                 raise SyntaxError(f"Expected identifier after {op.value}")
             var_name = self.advance().value
-            return PreIncrementNode(var_name, op.type == ArithTokenType.INCREMENT)
+            is_inc = op.type == ArithTokenType.INCREMENT
+            # Array-element lvalue: ++arr[i] / --arr[i]
+            if self.match(ArithTokenType.LBRACKET):
+                index, index_text = self._parse_subscript()
+                return ArrayPreIncrementNode(var_name, index, is_inc, index_text)
+            return PreIncrementNode(var_name, is_inc)
 
         return self.parse_postfix()
 
@@ -240,11 +251,32 @@ class ArithParser:
         expr = self.parse_primary()
 
         # Post-increment/decrement
-        if isinstance(expr, VariableNode) and self.match(ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
-            op = self.advance()
-            return PostIncrementNode(expr.name, op.type == ArithTokenType.INCREMENT)
+        if self.match(ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
+            if isinstance(expr, VariableNode):
+                op = self.advance()
+                return PostIncrementNode(expr.name, op.type == ArithTokenType.INCREMENT)
+            if isinstance(expr, ArrayElementNode):
+                op = self.advance()
+                return ArrayPostIncrementNode(
+                    expr.name, expr.index,
+                    op.type == ArithTokenType.INCREMENT, expr.index_text)
 
         return expr
+
+    def _parse_subscript(self) -> Tuple[ArithNode, str]:
+        """Parse ``[index]`` after an array name.
+
+        Returns the parsed subscript expression (for indexed-array
+        arithmetic) and the raw subscript source text (for associative-array
+        literal keys). Assumes the next token is ``LBRACKET``.
+        """
+        lbracket = self.advance()  # consume '['
+        index = self.parse_comma()  # Allow full expressions in the index
+        rbracket = self.expect(ArithTokenType.RBRACKET)
+        index_text = ""
+        if self.source:
+            index_text = self.source[lbracket.position + 1:rbracket.position].strip()
+        return index, index_text
 
     def parse_primary(self) -> ArithNode:
         """Parse primary expressions"""
@@ -259,14 +291,12 @@ class ArithParser:
 
             # Array subscript: arr[index] (read or assignment target)
             if self.match(ArithTokenType.LBRACKET):
-                self.advance()
-                index = self.parse_comma()  # Allow full expressions in the index
-                self.expect(ArithTokenType.RBRACKET)
+                index, index_text = self._parse_subscript()
                 if self.match(*self._ASSIGNMENT_OPS):
                     op = self.advance().type
                     value = self.parse_ternary()
-                    return ArrayAssignmentNode(var_name, index, op, value)
-                return ArrayElementNode(var_name, index)
+                    return ArrayAssignmentNode(var_name, index, op, value, index_text)
+                return ArrayElementNode(var_name, index, index_text)
 
             # Check for assignment operators
             if self.match(*self._ASSIGNMENT_OPS):

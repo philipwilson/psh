@@ -282,6 +282,101 @@ def test_array_assign_creates_array(sh):
     assert ev("fresh[0]", sh) == 0
 
 
+def test_array_element_pre_increment(sh):
+    # ++arr[i] / --arr[i] — returns the NEW value, mutates the element.
+    assert ev("++arr[0]", sh) == 11
+    assert ev("arr[0]", sh) == 11
+    assert ev("--arr[0]", sh) == 10
+    assert ev("arr[0]", sh) == 10
+
+
+def test_array_element_post_increment(sh):
+    # arr[i]++ / arr[i]-- — returns the OLD value, mutates the element.
+    assert ev("arr[1]++", sh) == 20
+    assert ev("arr[1]", sh) == 21
+    assert ev("arr[1]--", sh) == 21
+    assert ev("arr[1]", sh) == 20
+
+
+def test_array_element_increment_unset_index(sh):
+    # Post-increment of an unset indexed element starts at 0.
+    assert ev("arr[9]++", sh) == 0
+    assert ev("arr[9]", sh) == 1
+
+
+# ---------------------------------------------------------------------------
+# Associative arrays: the subscript is the LITERAL key, not arithmetic.
+# (bash-verified; see fix/assoc-array-arithmetic probe battery.)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def assoc_sh():
+    shell = Shell()
+    shell.run_command("declare -A m")
+    shell.run_command("m[k]=9")
+    shell.run_command("m[a]=99")
+    return shell
+
+
+def test_assoc_read(assoc_sh):
+    # bash: $(( m[k] )) -> 9
+    assert ev("m[k]", assoc_sh) == 9
+
+
+def test_assoc_in_expression(assoc_sh):
+    # bash: $(( m[k] * 2 )) -> 18
+    assert ev("m[k] * 2", assoc_sh) == 18
+
+
+def test_assoc_key_is_literal_not_variable(assoc_sh):
+    # bash: with a=k set, $(( m[a] )) is the value at literal key 'a' (99),
+    # NOT the value at the key named by the variable a.
+    assoc_sh.state.set_variable("a", "k")
+    assert ev("m[a]", assoc_sh) == 99
+
+
+def test_assoc_literal_key_unset_reads_zero(assoc_sh):
+    # bash: $(( m[i] )) with key 'i' unset -> 0 (i is NOT treated as a var).
+    assoc_sh.state.set_variable("i", "k")
+    assert ev("m[i]", assoc_sh) == 0
+
+
+def test_assoc_missing_key_reads_zero(assoc_sh):
+    assert ev("m[missing] + 0", assoc_sh) == 0
+
+
+def test_assoc_compound_assign(assoc_sh):
+    # bash: m[k]=2 then (( m[k] += 5 )) -> 7
+    assoc_sh.run_command("m[k]=2")
+    assert ev("m[k] += 5", assoc_sh) == 7
+    assert ev("m[k]", assoc_sh) == 7
+
+
+def test_assoc_new_key_assign(assoc_sh):
+    # bash: (( m[new]=5 )) on an existing assoc array sets string key 'new'.
+    assert ev("m[new] = 5", assoc_sh) == 5
+    assert ev("m[new]", assoc_sh) == 5
+    assert assoc_sh.state.scope_manager.get_variable_object("m").value.get("new") == "5"
+
+
+def test_assoc_pre_increment(assoc_sh):
+    assoc_sh.run_command("m[x]=4")
+    assert ev("--m[x]", assoc_sh) == 3
+    assert ev("m[x]", assoc_sh) == 3
+
+
+def test_assoc_post_increment(assoc_sh):
+    assoc_sh.run_command("m[x]=4")
+    assert ev("m[x]++", assoc_sh) == 4
+    assert ev("m[x]", assoc_sh) == 5
+
+
+def test_assoc_post_increment_unset_key(assoc_sh):
+    # bash: $(( m[nope]++ )) -> 0, leaves m[nope]=1
+    assert ev("m[nope]++", assoc_sh) == 0
+    assert ev("m[nope]", assoc_sh) == 1
+
+
 # ---------------------------------------------------------------------------
 # Assignment (simple + compound) — persistence checked
 # ---------------------------------------------------------------------------

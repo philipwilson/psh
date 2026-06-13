@@ -622,6 +622,54 @@
   stderr: ""
   exit_code: 0
 
+- name: arith_assoc_array_read
+  command: 'declare -A m; m[k]=9; echo $(( m[k] ))'
+  stdout: "9\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_assoc_array_in_expr
+  command: 'declare -A m; m[k]=9; echo $(( m[k] * 2 ))'
+  stdout: "18\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_assoc_array_literal_key
+  command: 'declare -A m; m[k]=9; m[a]=99; a=k; echo $(( m[a] ))'
+  stdout: "99\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_assoc_array_compound_assign
+  command: 'declare -A m; m[k]=2; (( m[k] += 5 )); echo "${m[k]}"'
+  stdout: "7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_assoc_array_new_key_assign
+  command: 'declare -A m; (( m[new]=5 )); echo "${m[new]}"'
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_indexed_array_post_increment
+  command: 'a=(4); echo $(( a[0]++ )); echo "${a[0]}"'
+  stdout: "4\n5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_assoc_array_post_increment
+  command: 'declare -A m; m[x]=4; echo $(( m[x]++ )); echo "${m[x]}"'
+  stdout: "4\n5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_assoc_array_pre_decrement
+  command: 'declare -A m; m[x]=4; echo $(( --m[x] )); echo "${m[x]}"'
+  stdout: "3\n3\n"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # PIPELINES
 # =============================================================================
