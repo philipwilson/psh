@@ -4,6 +4,15 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.364.0 (2026-06-13) - Test isolation: per-test cwd for file `test`/`[` tests
+- TEST FIX (no production change). `tests/unit/builtins/test_test_builtin.py`'s
+  `TestFileTests` created fixed-name files/dirs (`testdir`, `regular.txt`, …) in
+  the shared cwd and removed them by relative path. Under pytest-xdist these
+  collided across workers (a `testdir` made by one test removed by another →
+  intermittent `FileNotFoundError` on `os.rmdir`). Added an autouse
+  `monkeypatch.chdir(tmp_path)` fixture giving each test its own working
+  directory (CLAUDE.md parallel-safety rule 2). Verified stable under `-n 4`.
+
 ## 0.363.0 (2026-06-13) - Tier T2.3: split ast_nodes.py into a package
 - REFACTOR (zero behavior change, zero import churn). The 766-line
   `psh/ast_nodes.py` became a package `psh/ast_nodes/` with cohesive
