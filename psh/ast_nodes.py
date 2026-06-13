@@ -177,7 +177,45 @@ class Word(ASTNode):
     - "${HOME}/bin" -> [ExpansionPart(ParameterExpansion("HOME")), LiteralPart("/bin")]
     """
     parts: List[WordPart] = field(default_factory=list)
-    quote_type: Optional[str] = None  # None (unquoted), '"' (double), "'" (single)
+
+    @property
+    def quote_type(self) -> Optional[str]:
+        """The whole-word quote character (``'``, ``"``, ``$'``) or None.
+
+        DERIVED from the parts — the parts are the single source of truth
+        for quote context (Tier C-D1, 2026-06-13; previously this was a
+        stored dataclass field duplicating per-part state). A whole-word
+        quote_type exists when every part is quoted with the SAME quote
+        char, and equals that char (``'abc'`` → ``'``, ``"a b"`` → ``"``,
+        ``"a$b c"`` → ``"``, ``$'x'`` → ``$'``, empty ``""`` → ``"``).
+        A word with any unquoted part, or parts with mixed quote chars
+        (``a"b"c``, ``"a"'b'``), has no whole-word quote_type (None).
+        The expansion dispatch (word_expander) reads this property.
+
+        Note: this promotes two shapes the old STORED field left at None to
+        their (uniform) quote char — adjacent same-quote composites
+        (``"a""b"``) and quoted case patterns. Both are verified
+        behavior-neutral: a uniformly double-quoted word expands the same
+        through either dispatch branch, and case patterns are matched via
+        per-part quote context (never via this property). See
+        tests/unit/parser/test_word_quote_derivation.py.
+        """
+        parts = self.parts
+        if not parts:
+            return None
+        first = getattr(parts[0], 'quote_char', None)
+        for part in parts:
+            if not getattr(part, 'quoted', False):
+                return None
+            if getattr(part, 'quote_char', None) != first:
+                return None
+        return first
+
+    def __repr__(self) -> str:
+        # Keep the historical repr shape (``Word(parts=[...],
+        # quote_type=...)``) even though quote_type is now a derived
+        # property, so AST-repr characterization corpora stay byte-identical.
+        return f"Word(parts={self.parts!r}, quote_type={self.quote_type!r})"
 
     def __str__(self):
         # Debug/source rendering only. Semantic code should call the explicit
@@ -229,19 +267,22 @@ class Word(ASTNode):
 
     @property
     def is_quoted(self) -> bool:
-        """True if wholly quoted (single, double, or ANSI-C)."""
+        """True if wholly quoted (single, double, or ANSI-C).
+
+        Derived from the parts: either a whole-word quote (``quote_type``
+        set — every part quoted with the same char) or a single quoted
+        part. The two coincide except that ``quote_type`` also covers
+        uniformly-quoted multi-part words (``"a$b c"``), which were already
+        ``is_quoted`` under the old stored field.
+        """
         if self.quote_type in ("'", '"', "$'"):
             return True
-        # Also true if single-part word with a quoted part
-        if len(self.parts) == 1 and hasattr(self.parts[0], 'quoted') and self.parts[0].quoted:
-            return True
-        return False
+        return (len(self.parts) == 1 and
+                getattr(self.parts[0], 'quoted', False))
 
     @property
     def is_unquoted_literal(self) -> bool:
         """True if plain unquoted word with no expansions (old arg_type == 'WORD')."""
-        if self.quote_type is not None:
-            return False
         if not self.parts:
             return True
         return (len(self.parts) == 1 and
@@ -271,18 +312,31 @@ class Word(ASTNode):
 
     @property
     def effective_quote_char(self) -> Optional[str]:
-        """The dominant quote character, or None."""
-        if self.quote_type is not None:
-            return self.quote_type
-        # Check single-part words for their quote char
-        if len(self.parts) == 1 and hasattr(self.parts[0], 'quote_char'):
-            return self.parts[0].quote_char
+        """The dominant quote character, or None.
+
+        Derived from the parts: the whole-word ``quote_type`` if the word is
+        uniformly quoted (``"a$b c"`` -> ``"``), else a single part's own
+        ``quote_char`` (even when not flagged quoted — preserves the
+        historical single-part fallback). Multi-part words with mixed or no
+        quoting have no dominant quote (None).
+        """
+        qt = self.quote_type
+        if qt is not None:
+            return qt
+        if len(self.parts) == 1:
+            return getattr(self.parts[0], 'quote_char', None)
         return None
 
     @classmethod
     def from_string(cls, text: str, quote_type: Optional[str] = None) -> 'Word':
-        """Create a Word from a literal string."""
-        return cls(parts=[LiteralPart(text)], quote_type=quote_type)
+        """Create a Word from a literal string.
+
+        The quote context lives on the part (the parts are the single
+        source of truth for quote state); ``quote_type`` here is the
+        whole-word quote char to stamp onto the single LiteralPart.
+        """
+        return cls(parts=[LiteralPart(text, quoted=bool(quote_type),
+                                      quote_char=quote_type)])
 
 
 # =============================================================================

@@ -21,15 +21,15 @@ class TestIsQuoted:
     """Tests for Word.is_quoted property."""
 
     def test_single_quoted_word(self):
-        word = Word(parts=[LiteralPart("hello")], quote_type="'")
+        word = Word(parts=[LiteralPart("hello", quoted=True, quote_char="'")])
         assert word.is_quoted is True
 
     def test_double_quoted_word(self):
-        word = Word(parts=[LiteralPart("hello")], quote_type='"')
+        word = Word(parts=[LiteralPart("hello", quoted=True, quote_char='"')])
         assert word.is_quoted is True
 
     def test_ansi_c_quoted_word(self):
-        word = Word(parts=[LiteralPart("hello")], quote_type="$'")
+        word = Word(parts=[LiteralPart("hello", quoted=True, quote_char="$'")])
         assert word.is_quoted is True
 
     def test_unquoted_word(self):
@@ -58,7 +58,7 @@ class TestIsUnquotedLiteral:
         assert word.is_unquoted_literal is True
 
     def test_quoted_word(self):
-        word = Word(parts=[LiteralPart("hello")], quote_type="'")
+        word = Word(parts=[LiteralPart("hello", quoted=True, quote_char="'")])
         assert word.is_unquoted_literal is False
 
     def test_word_with_expansion(self):
@@ -160,15 +160,15 @@ class TestEffectiveQuoteChar:
     """Tests for Word.effective_quote_char property."""
 
     def test_single_quoted(self):
-        word = Word(parts=[LiteralPart("hello")], quote_type="'")
+        word = Word(parts=[LiteralPart("hello", quoted=True, quote_char="'")])
         assert word.effective_quote_char == "'"
 
     def test_double_quoted(self):
-        word = Word(parts=[LiteralPart("hello")], quote_type='"')
+        word = Word(parts=[LiteralPart("hello", quoted=True, quote_char='"')])
         assert word.effective_quote_char == '"'
 
     def test_ansi_c_quoted(self):
-        word = Word(parts=[LiteralPart("hello")], quote_type="$'")
+        word = Word(parts=[LiteralPart("hello", quoted=True, quote_char="$'")])
         assert word.effective_quote_char == "$'"
 
     def test_unquoted(self):
@@ -211,7 +211,7 @@ class TestWordTextMethods:
         assert word.to_literal_string() == "ab$c"
 
     def test_single_quoted_word(self):
-        word = Word(parts=[LiteralPart("a b")], quote_type="'")
+        word = Word(parts=[LiteralPart("a b", quoted=True, quote_char="'")])
         # source_text re-wraps in the single quotes.
         assert word.source_text() == "'a b'"
         assert str(word) == "'a b'"
@@ -221,10 +221,12 @@ class TestWordTextMethods:
         assert word.to_literal_string() == "a b"
 
     def test_double_quoted_word(self):
+        # Uniformly double-quoted: both parts carry the quote, so the
+        # whole-word quote_type derives to '"' (the parsers build it so).
         word = Word(parts=[
             LiteralPart("a ", quoted=True, quote_char='"'),
-            ExpansionPart(VariableExpansion("x")),
-        ], quote_type='"')
+            ExpansionPart(VariableExpansion("x"), quoted=True, quote_char='"'),
+        ])
         # source_text re-wraps in the double quotes.
         assert word.source_text() == '"a $x"'
         assert str(word) == '"a $x"'
@@ -234,5 +236,5 @@ class TestWordTextMethods:
         assert word.to_literal_string() == "a $x"
 
     def test_str_delegates_to_source_text(self):
-        word = Word(parts=[LiteralPart("hi")], quote_type="'")
+        word = Word(parts=[LiteralPart("hi", quoted=True, quote_char="'")])
         assert str(word) == word.source_text()

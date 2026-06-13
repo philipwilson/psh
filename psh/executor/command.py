@@ -243,9 +243,11 @@ class CommandExecutor:
                 new_part = LiteralPart(
                     first_part.text[1:], first_part.quoted, first_part.quote_char
                 )
+                # quote_type is derived from the parts; the rebuilt part list
+                # carries the same per-part quote context as the original
+                # (only the leading backslash of the literal text changed).
                 new_word = Word(
                     parts=[new_part] + list(command_node.words[0].parts[1:]),
-                    quote_type=command_node.words[0].quote_type,
                 )
                 modified_words = [new_word] + list(command_node.words[1:])
         command_node = SimpleCommand(

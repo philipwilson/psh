@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.346.0 | **Tests**: 6,800 total | **POSIX Compliance**: ~98%
+**Current Version**: 0.347.0 | **Tests**: 6,928 total | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -242,7 +242,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~51,100 lines of production code in `psh/` across 213 Python files, plus ~66,200 lines of tests in `tests/` (293 Python files)
-- **Test Coverage**: 6,800 tests in 290 test files
+- **Test Coverage**: 6,928 tests in 291 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -340,6 +340,7 @@ PSH welcomes contributions that maintain its educational focus:
 - **Architecture**: Follow component-based design patterns
 
 ### Recent Development
+- **v0.347.0**: reappraisal #4 Tier C-D1 (quote context in parts only) — `Word.quote_type` is now a derived `@property` (a word is wholly quoted iff all its parts share one quote char) instead of a stored field duplicated against per-part `quoted`/`quote_char`; `is_quoted`/`is_unquoted_literal`/`effective_quote_char` derive purely from parts, and the construction sites drop the redundant `quote_type=` arg. Verified behavior-neutral against bash and pristine main (incl. the adjacent-quote `"a""b"` and quoted-case-pattern shapes whose dispatch path changed); zero behavior change
 - **v0.346.0**: reappraisal #4 Tier C-C3 (operator-debris recognizer) — promotes the lexer's step-4 `_handle_fallback_word` (which collects operator-debris words starting with `]`/`+`/`=`/`[`) into a registered `OperatorDebrisWordRecognizer` at lowest priority, so the recognizer pipeline is uniform with no special fallback step. Token streams byte-identical (frozen characterization); 5 bash probes match; zero behavior change
 - **v0.345.0**: reappraisal #4 Tier C-C2 (command-position drift-lock) — the three command-position machines (lexer pass, keyword normalizer, cmdsub scanner) already share one vocabulary module (`command_position.py`) with documented, irreducible per-stage differences, so a unified machine is intentionally not extracted; instead adds a drift-lock test asserting the documented set relationships and that keyword-valued entries are real keywords, plus behavioral keyword-recognition coverage. Test + doc only
 - **v0.344.0**: reappraisal #4 Tier C-C1 (typed cmdsub scanner state) — the `$()`-extent scanner's `case`-state machine now uses a `CasePhase` enum and a `CaseScanState` dataclass instead of string constants and `[state, depth]` lists (24 access sites). Adds a 61-body scanner-vs-parser agreement test (the scanner's chosen extent matches what the real parser accepts). 103-case characterization byte-identical; zero behavior change

@@ -180,8 +180,7 @@ class TestExpandUnderPolicies:
         # bash: quoted "$@" joins identically in assoc-init context.
         captured_shell.run_command('set -- "a b" c')
         word = Word(parts=[ExpansionPart(VariableExpansion('@'),
-                                         quoted=True, quote_char='"')],
-                    quote_type='"')
+                                         quoted=True, quote_char='"')])
         assert expander.expand(word, ASSOC_INIT_ELEMENT) == 'a b c'
 
     def test_assoc_init_at_join_ignores_ifs(self, captured_shell, expander):

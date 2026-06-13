@@ -51,8 +51,7 @@ def _echo_var_command(name: str) -> SimpleCommand:
         words=[
             Word(parts=[LiteralPart('echo')]),
             Word(parts=[ExpansionPart(VariableExpansion(name),
-                                      quoted=True, quote_char='"')],
-                 quote_type='"'),
+                                      quoted=True, quote_char='"')]),
         ],
     )
 
