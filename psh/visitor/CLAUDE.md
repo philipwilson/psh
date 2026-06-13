@@ -272,8 +272,10 @@ change that added the matrix test):
    `redirects` list just like `SimpleCommand`. A visitor with an explicit
    `visit_WhileLoop` that only visits condition/body silently skips
    `while ...; done >/etc/passwd`. The security, validator, and metrics
-   visitors each have a `_visit_redirects(node)` helper that every such
-   handler calls; the matrix test verifies all redirect carriers
+   visitors share one `_visit_redirects(node)` helper —
+   `RedirectTraversalMixin` in `analysis_helpers.py` (each visitor mixes it
+   in; `EnhancedValidatorVisitor` inherits it via `ValidatorVisitor`) — that
+   every such handler calls; the matrix test verifies all redirect carriers
    behaviorally (parse real source, assert the issue/output/count).
 2. **`BreakStatement`/`ContinueStatement` redirects are unreachable from
    source** (`break >f` parses as two statements); their `redirects`
