@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.339.0 (2026-06-13) - Expected-error taxonomy; strict-errors enabled suite-wide
+- TAXONOMY (B2-R2): the last-resort guard helper `report_internal_defect`
+  (`psh/core/internal_errors.py`) now distinguishes EXPECTED shell errors from
+  INTERNAL DEFECTS. Expected = `PshError ∪ OSError ∪ SyntaxError` (covers
+  redirection failures, fork failures, lexer/parse errors, and arithmetic
+  errors); these are handled normally (message + exit code) even under
+  `strict-errors`. Only genuine Python-bug exceptions (`RuntimeError`,
+  `AttributeError`, `TypeError`, `KeyError`, plain `ValueError`, …) are
+  re-raised under strict.
+- The function-name validation errors in `psh/core/functions.py` (reserved
+  word / invalid name / readonly function) were mistyped as bare `ValueError`
+  (a defect signal); they are now `FunctionDefinitionError(PshError)` with the
+  exact same messages — so they classify as expected shell errors.
+- PAYOFF: `strict-errors` is now ENABLED SUITE-WIDE — `conftest.py` sets
+  `PSH_STRICT_ERRORS=1` for both in-process shells and subprocess `python -m
+  psh`. A genuine internal defect (an unexpected Python exception) now fails
+  the test suite loudly instead of being masked as exit-1; expected shell
+  errors pass through unchanged. This completes the strict-errors program
+  begun in v0.331.0 (B2).
+- ZERO behavior change in non-strict mode (byte-identical messages/exit codes
+  for the representative error paths, verified before/after). Full suite green
+  with strict on (6,268 passed). Added taxonomy unit tests
+  (PshError/OSError/SyntaxError pass through; RuntimeError/AttributeError/…
+  re-raise). ruff + mypy clean.
+
 ## 0.338.0 (2026-06-13) - Behavior fix: $0 inside a function
 - BUG FIX (bash-verified): `$0` inside a function now stays the script/shell
   name, instead of becoming the function name. Run by path,

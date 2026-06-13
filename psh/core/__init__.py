@@ -17,6 +17,7 @@ from .assignment_utils import (
 )
 from .exceptions import (
     ExpansionError,
+    FunctionDefinitionError,
     FunctionReturn,
     LoopBreak,
     LoopContinue,
@@ -40,6 +41,7 @@ __all__ = [
     'ReadonlyVariableError',
     'NamerefCycleError',
     'ExpansionError',
+    'FunctionDefinitionError',
     # Variables
     'Variable',
     'VarAttributes',

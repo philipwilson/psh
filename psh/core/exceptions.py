@@ -62,3 +62,13 @@ class ExpansionError(PshError):
     def __init__(self, message: str, exit_code: int = 1):
         self.exit_code = exit_code
         super().__init__(message)
+
+class FunctionDefinitionError(PshError):
+    """Raised when a function cannot be defined or modified: reserved-word
+    name, invalid name, or redefining/undefining a readonly function.
+
+    A legitimate shell error (exit 1), NOT an internal defect — so the
+    last-resort guard's expected-error taxonomy must never re-raise it,
+    even under strict-errors. (Previously a bare ``ValueError``, which the
+    taxonomy classifies as a defect.)"""
+    exit_code = 1
