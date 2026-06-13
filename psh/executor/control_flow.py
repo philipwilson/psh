@@ -519,14 +519,16 @@ class ControlFlowExecutor:
         ``for i in P=~/x`` like a command argument.
 
         Fallback audit 2026-06-12 — classification (a), kept deliberately:
-        both parsers always populate item_words (parallel to items), but
-        ForLoop/SelectLoop type item_words as Optional with a None default,
-        and manually constructed ASTs (an explicitly supported educational
-        pattern) iterate the items as literal fields. Exercised by
+        both parsers always populate item_words (parallel to items). Since
+        A2 (2026-06-13) item_words is a non-Optional List[Word] defaulting
+        to []; a manually constructed AST that omits it (an explicitly
+        supported educational pattern) therefore has item_words=[], whose
+        length will not match node.items, and falls through to iterating
+        the items as literal fields. Exercised by
         tests/unit/executor/test_legacy_ast_fallbacks.py.
         """
         item_words = getattr(node, 'item_words', None)
-        if item_words is None or len(item_words) != len(node.items):
+        if not item_words or len(item_words) != len(node.items):
             return list(node.items)
 
         from ..expansion.word_expander import LOOP_ITEM

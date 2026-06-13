@@ -271,15 +271,30 @@ class ArrayAssignment(ASTNode):
     pass
 
 
+def _word_element_type(word: 'Word') -> str:
+    """Legacy element-type string DERIVED from a Word's quote context.
+
+    Reproduces the value the parsers used to STORE in
+    ``ArrayInitialization.element_types`` (display/tooling metadata only;
+    the executor never reads it). The recursive-descent parser computed
+    this exact mapping from the element Word; deriving it here keeps the
+    formatter/validator output byte-identical after the stored field was
+    dropped (A2, 2026-06-13).
+    """
+    if word.is_quoted:
+        return 'STRING'
+    if any(getattr(p, 'quoted', False) for p in word.parts):
+        return 'COMPOSITE_QUOTED'
+    if len(word.parts) > 1:
+        return 'COMPOSITE'
+    return 'WORD'
+
+
 @dataclass
 class ArrayInitialization(ArrayAssignment):
     """Array initialization: arr=(one two three) or arr+=(four five)"""
     name: str
     elements: List[str]  # The elements inside parentheses (flat strings)
-    # Legacy string-list metadata retained for validator_visitor and
-    # formatter_visitor only; the executor uses `words` exclusively.
-    element_types: List[str] = field(default_factory=list)  # Track element types (WORD, STRING, etc.)
-    element_quote_types: List[Optional[str]] = field(default_factory=list)  # Track quote types
     is_append: bool = False  # True for += initialization
     # Word AST nodes for each element (REQUIRED, parallel to `elements`).
     # Both parsers always populate this; the executor expands each element
@@ -288,6 +303,20 @@ class ArrayInitialization(ArrayAssignment):
     # raises an internal error on a missing Word (fallback audit 2026-06-12).
     words: List[Word] = field(default_factory=list)
 
+    # Legacy string-list metadata, now DERIVED from `words` rather than
+    # stored. Sole consumers: formatter_visitor / validator_visitor
+    # (the executor uses `words` exclusively). A2 dropped the parallel
+    # stored fields so a node can no longer "claim two truths at once".
+    @property
+    def element_types(self) -> List[str]:
+        """Per-element legacy type string (WORD/STRING/COMPOSITE/…)."""
+        return [_word_element_type(w) for w in self.words]
+
+    @property
+    def element_quote_types(self) -> List[Optional[str]]:
+        """Per-element dominant quote char, derived from each Word."""
+        return [w.effective_quote_char for w in self.words]
+
 
 @dataclass
 class ArrayElementAssignment(ArrayAssignment):
@@ -295,17 +324,24 @@ class ArrayElementAssignment(ArrayAssignment):
     name: str
     index: Union[str, List['Token']]  # The index expression (str for compatibility, List[Token] for late binding)
     value: str  # The value to assign
-    # Legacy string metadata retained for tooling (formatter_visitor
-    # re-quotes the value from these).
-    value_type: str = 'WORD'  # Type of the value
-    value_quote_type: Optional[str] = None  # Quote type if any
+    # Word AST node for the value (REQUIRED — no default). Both parsers
+    # always build it; the executor expands it with bash assignment-value
+    # semantics (all expansions, no word splitting, no pathname expansion,
+    # tilde after '='/':'). The A1 invariant tests enforce population.
+    value_word: Word
     is_append: bool = False  # True for += assignment
-    # Word AST node for the value (REQUIRED). Both parsers always build it;
-    # the executor expands it with bash assignment-value semantics (all
-    # expansions, no word splitting, no pathname expansion, tilde after
-    # '='/':') and raises an internal error when it is None (fallback
-    # audit 2026-06-12).
-    value_word: Optional[Word] = None
+
+    # Legacy string metadata, now DERIVED from `value_word` rather than
+    # stored. Sole consumer: formatter_visitor (re-quotes the value).
+    @property
+    def value_type(self) -> str:
+        """'STRING' if the value Word is quoted, else 'WORD' (derived)."""
+        return 'STRING' if self.value_word.is_quoted else 'WORD'
+
+    @property
+    def value_quote_type(self) -> Optional[str]:
+        """The value Word's dominant quote char (derived)."""
+        return self.value_word.effective_quote_char
 
 
 class Command(ASTNode):
@@ -549,15 +585,12 @@ class ForLoop(UnifiedControlStructure):
     body: StatementList     # Commands to execute for each iteration
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False  # Only used in pipeline context
-    # Legacy quote metadata kept for tooling/back-compat (visitors,
-    # formatters); execution no longer consumes it.
-    item_quote_types: List[Optional[str]] = field(default_factory=list)  # Quote types for items
     # Word AST nodes for the items. The executor expands these through
     # ExpansionManager.expand_word_to_fields() so IFS splitting, globbing,
-    # tilde and quote semantics match simple-command arguments. Parsers
-    # always populate this; None only in manually constructed ASTs (items
-    # are then taken as literal fields).
-    item_words: Optional[List[Word]] = None
+    # tilde and quote semantics match simple-command arguments. Both
+    # parsers always populate this (A1 invariant tests enforce it); the
+    # default empty list is only for manually constructed ASTs.
+    item_words: List[Word] = field(default_factory=list)
 
 
 @dataclass
@@ -599,11 +632,10 @@ class SelectLoop(UnifiedControlStructure):
     body: StatementList
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False
-    # Legacy quote metadata kept for tooling/back-compat (visitors,
-    # formatters); execution no longer consumes it.
-    item_quote_types: List[Optional[str]] = field(default_factory=list)  # Quote types for items
-    # Word AST nodes for the items (see ForLoop.item_words).
-    item_words: Optional[List[Word]] = None
+    # Word AST nodes for the items (see ForLoop.item_words). Both parsers
+    # always populate this; the default empty list is only for manually
+    # constructed ASTs.
+    item_words: List[Word] = field(default_factory=list)
 
 
 @dataclass

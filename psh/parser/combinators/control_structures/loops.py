@@ -4,7 +4,7 @@ This module provides mixin parsers for while, until, for (traditional and
 C-style), select loops, and break/continue statements.
 """
 
-from typing import List, Optional, Tuple, Union
+from typing import List, Tuple, Union
 
 from ....ast_nodes import (
     BreakStatement,
@@ -36,7 +36,7 @@ class LoopParserMixin:
 
     def _build_loop_items(
         self, item_tokens: List[Token],
-    ) -> Tuple[List[str], List[Optional[str]], List[Word]]:
+    ) -> Tuple[List[str], List[Word]]:
         """Build for/select item lists from collected item tokens.
 
         Adjacent tokens are merged into composite words (``pre$x`` is ONE
@@ -46,7 +46,6 @@ class LoopParserMixin:
         from ...recursive_descent.support.word_builder import WordBuilder
 
         items: List[str] = []
-        item_quote_types: List[Optional[str]] = []
         item_words: List[Word] = []
         for group in self.commands._group_adjacent_tokens(item_tokens):
             items.append(''.join(
@@ -56,8 +55,7 @@ class LoopParserMixin:
             else:
                 word = WordBuilder.build_composite_word(group)
             item_words.append(word)
-            item_quote_types.append(word.effective_quote_char)
-        return items, item_quote_types, item_words
+        return items, item_words
 
     def _build_while_loop(self) -> Parser[WhileLoop]:
         """Build parser for while/do/done loops."""
@@ -235,7 +233,6 @@ class LoopParserMixin:
                     pos += 1
 
             items: List[str]
-            item_quote_types: List[Optional[str]]
             item_words: List[Word]
             if has_in_clause:
                 # Collect item tokens (words until 'do' or separator+do)
@@ -255,11 +252,10 @@ class LoopParserMixin:
                         pos += 1
                     else:
                         break
-                items, item_quote_types, item_words = self._build_loop_items(item_tokens)
+                items, item_words = self._build_loop_items(item_tokens)
             else:
                 # No explicit list - default to positional parameters ("$@")
                 items = ['$@']
-                item_quote_types = ['"']
                 item_words = [_positional_params_word()]
 
             # Skip optional separator before 'do'
@@ -297,7 +293,6 @@ class LoopParserMixin:
                     variable=var_name,
                     items=items,
                     body=body_result.value,
-                    item_quote_types=item_quote_types,
                     item_words=item_words,
                     redirects=redirects,
                     background=background,
@@ -443,7 +438,7 @@ class LoopParserMixin:
                     pos += 1
                 else:
                     break
-            items, item_quote_types, item_words = self._build_loop_items(item_tokens)
+            items, item_words = self._build_loop_items(item_tokens)
 
             # Skip separator and 'do'
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
@@ -478,7 +473,6 @@ class LoopParserMixin:
                 value=SelectLoop(
                     variable=var_name,
                     items=items,
-                    item_quote_types=item_quote_types,
                     item_words=item_words,
                     body=body_result.value,
                     redirects=redirects,
