@@ -356,7 +356,12 @@ class OperatorOpsMixin(_Base):
             flags = self._var_attr_flags(var_name)
             assign = f"{var_name}={self._shell_quote(value)}"
             return f"declare -{flags} {assign}" if flags else assign
-        # K/k (associative key/value display) are not implemented.
+        if op in ('K', 'k'):
+            # @K/@k on a scalar (or a single array element) behaves like @Q:
+            # the value is shell-quoted. The whole-array key/value listing
+            # form (${arr[@]@K}) is handled in the array branch of
+            # variable.py / fields.py before reaching here.
+            return self._shell_quote(value)
         return value
 
     @staticmethod

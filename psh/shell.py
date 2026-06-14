@@ -385,7 +385,11 @@ class Shell:
 
         Public entry point so callers do not walk
         interactive_manager.history_manager.add_to_history directly.
+        Honors `set +o history` (the `history` shell option), which
+        disables command-history recording (bash).
         """
+        if not self.state.options.get('history', True):
+            return
         self.interactive_manager.history_manager.add_to_history(command)
 
     def run_command(self, command_string: str, add_to_history: bool = True) -> int:

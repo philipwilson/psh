@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.403.0 (2026-06-14) - Tier R7.8: four feature gaps (M9 !!:-n, @K/@k, read -N, set -o history)
+- BUG FIX (bash-verified; reappraisal #7 M9/L4/L5/L6).
+- M9 `!!:-n` history word designator aborted with "bad word specifier"; it now
+  expands as `:0-n` (word 0 through word n), e.g. `!!:-2` → first three words.
+  (`history_expansion.py`)
+- L4 `${var@K}` / `${var@k}` transforms were silent no-ops; now match bash: `@K`
+  → one string `key "value" …` (keys bare, values @A-escaped+quoted); `@k` →
+  separate unquoted `key value …` fields; scalar/element → the @Q-quoted value.
+  (`operators.py`, `variable.py`, `fields.py`, `arrays.py`) Only residual diff is
+  assoc-array hash-vs-insertion key order (pre-existing, same as `@A`).
+- L5 `read -N count` implemented: reads EXACTLY count chars ignoring the
+  delimiter and IFS (vs `-n`'s at-most-with-delimiter), short EOF → rc 1.
+  (`read_builtin.py`)
+- L6 `set -o history` / `set +o history` were rejected ("invalid option name");
+  now accepted and meaningfully wired — `set +o history` disables history
+  recording, and `set -o` reflects the state. (`state.py`, `shell.py`)
+- Tests: +`test_param_transform_keyvalue_conformance.py` (14),
+  +`test_read_exact_chars_conformance.py` (7), +`test_set_o_history_conformance.py`
+  (4), +M9 unit case. Full gate green: ruff + mypy clean, `run_tests.py
+  --parallel` 7359 passed, `--compare-bash` 461 passed.
+
 ## 0.402.0 (2026-06-14) - Tier R7.7: two syntax-error LOWs (L1 unterminated quote, L2 empty groups)
 - BUG FIX (bash-verified; reappraisal #7 L1/L2) — psh now reports a syntax error
   (exit 2) where bash does.

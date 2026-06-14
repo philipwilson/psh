@@ -74,6 +74,16 @@ class FieldExpansionMixin(_Base):
             # when non-empty, else fall back to the scalar path.
             return base if base else None
 
+        # Whole-array key/value transforms (bash):
+        #   @K -> ONE field: key "value" key "value" ... (values @Q-quoted)
+        #   @k -> SEPARATE fields: key, value, key, value, ... (unquoted)
+        if operator in ('@K', '@k') and param != '@':
+            name = self._resolve_array_name(param[:-3])
+            var = self.state.scope_manager.get_variable_object(name)
+            if operator == '@K':
+                return [self._array_keyvalue_form('K', var)]
+            return self._array_keyvalue_fields(var)
+
         # Per-element value operators (bash applies them to each element)
         array_name = '@' if param == '@' else self._resolve_array_name(param[:-3])
         out = []

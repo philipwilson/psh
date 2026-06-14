@@ -333,6 +333,12 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             if operator == '@A':
                 return True, self._array_assignment_form(array_name, var)
 
+            # Whole-array key/value transforms (bash):
+            #   @K -> one string: key "value" key "value" ... (values @Q-quoted)
+            #   @k -> key value key value ... as SEPARATE fields (unquoted)
+            if operator in ('@K', '@k'):
+                return True, self._array_keyvalue_form(operator[1], var)
+
             # Conditional operators on the whole array (bash): non-empty
             # keeps its elements, otherwise the default text applies.
             joiner = ' ' if index_expr == '@' else self._ifs_star_separator()
