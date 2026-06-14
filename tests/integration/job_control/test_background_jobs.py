@@ -319,3 +319,26 @@ class TestJobControlSignalIntegration:
         # Start a job that creates child processes
         # Send signal and verify all processes in group receive it
         pass
+
+
+class TestSpecialBuiltinBackground:
+    """Backgrounding a POSIX special builtin must not crash.
+
+    Regression: SpecialBuiltinExecutionStrategy delegated to a misnamed
+    method (``_execute_in_background`` instead of
+    ``_execute_builtin_in_background``), so ``: &`` raised AttributeError
+    instead of running the no-op in the background like bash. Run in a
+    subprocess (backgrounds a process; see parallel-safety rules).
+    """
+
+    def test_colon_builtin_background(self):
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', ': &\necho done\nwait'],
+            capture_output=True, text=True)
+        assert result.returncode == 0
+        assert result.stdout == 'done\n'
+        assert 'AttributeError' not in result.stderr
+        assert '_execute_in_background' not in result.stderr

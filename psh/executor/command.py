@@ -476,7 +476,7 @@ class CommandExecutor:
         # Note: The 'command' builtin handles its own bypass logic internally
 
         # Create strategy list based on bypass requirements
-        strategies_to_exclude = []
+        strategies_to_exclude: List[type[ExecutionStrategy]] = []
         if bypass_aliases:
             strategies_to_exclude.append(AliasExecutionStrategy)
         if bypass_functions:

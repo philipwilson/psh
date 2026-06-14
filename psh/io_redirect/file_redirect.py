@@ -292,7 +292,7 @@ class FileRedirector:
         `cmd >a >/bad/x`), the ones already applied are rolled back before
         the exception propagates, so the shell's fds are never left hijacked.
         """
-        saved_fds = []
+        saved_fds: List[Tuple[int, int | None]] = []
         try:
             return self._apply_redirections(redirects, saved_fds)
         except Exception:

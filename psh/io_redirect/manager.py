@@ -59,7 +59,7 @@ the paired try/finally in ``_execute_builtin_with_redirections``.
 import os
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, List, Optional, TextIO, Tuple
+from typing import TYPE_CHECKING, List, Optional, TextIO, Tuple, cast
 
 from ..ast_nodes import Command, Redirect
 from .file_redirect import FileRedirector
@@ -381,8 +381,8 @@ class IOManager:
         target_fd = redirect.fd if redirect.fd is not None else 1
         if target_fd == 1:
             frame.snapshot.note_stdout()
-            f = open(target, mode)
-            frame.opened_streams.append(f)
+            f = open(target, mode)  # text mode ('a'/'w') -> TextIO
+            frame.opened_streams.append(cast(TextIO, f))
             sys.stdout = f
             if self.state.options.get('debug-exec'):
                 print(f"DEBUG IOManager: redirected stdout to '{target}' "
@@ -390,8 +390,8 @@ class IOManager:
                       file=sys.stderr)
         elif target_fd == 2:
             frame.snapshot.note_stderr()
-            f = open(target, mode)
-            frame.opened_streams.append(f)
+            f = open(target, mode)  # text mode ('a'/'w') -> TextIO
+            frame.opened_streams.append(cast(TextIO, f))
             sys.stderr = f
         else:
             self._builtin_redirect_fd_level(redirect, frame)

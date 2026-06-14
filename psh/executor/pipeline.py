@@ -127,8 +127,8 @@ class PipelineExecutor:
             set_terminal_title(command_title(command_string, self.shell))
 
         # Variables to track pgid
-        pgid = None
-        pids = []
+        pgid: Optional[int] = None
+        pids: List[int] = []
 
         # Create new context for pipeline execution
         pipeline_context = context.pipeline_context_enter()
@@ -211,6 +211,10 @@ class PipelineExecutor:
 
             if self.state.options.get('debug-exec'):
                 print(f"DEBUG Pipeline: Process group synchronization complete, pgid={pgid}", file=sys.stderr)
+
+            # The pipeline always has >=2 commands here (single commands take an
+            # earlier path), so the launch loop ran and set pgid to a real pgid.
+            assert pgid is not None
 
             # Per-process command strings for the job table
             proc_entries = [(pid, self._command_to_string(node.commands[i]))

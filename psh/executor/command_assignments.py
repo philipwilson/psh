@@ -35,7 +35,7 @@ POSIX ordering contract (probe-verified against bash 5.2):
 """
 
 import sys
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple, cast
 
 from ..core import (
     NamerefCycleError,
@@ -45,7 +45,7 @@ from ..core import (
 )
 
 if TYPE_CHECKING:
-    from ..ast_nodes import SimpleCommand, Word
+    from ..ast_nodes import SimpleCommand, Word, WordPart
     from ..shell import Shell
 
 # (name, raw value, Word carrying quote structure) — value unexpanded.
@@ -62,7 +62,7 @@ class PrefixOutcome(NamedTuple):
     under ``set -e``.
     """
     saved: Dict[str, dict]
-    applied: List[Tuple[str, str]]
+    applied: List[Tuple[str, object]]  # value is str, or an array object (rare)
     failed: bool
 
 
@@ -189,10 +189,13 @@ class CommandAssignments:
                     ps4 = self.state.get_variable('PS4', '+ ')
                     self.state.stderr.write(ps4 + f"{var}={value}\n")
                     self.state.stderr.flush()
-                var, value = resolve_append_assignment(
+                # resolve_append_assignment may return an array object (scalar
+                # append to an array updates element 0 and returns the array),
+                # so the resolved value is wider than str; set_variable accepts it.
+                var, resolved = resolve_append_assignment(
                     self.state.scope_manager, var, value)
                 try:
-                    self.state.set_variable(var, value)
+                    self.state.set_variable(var, resolved)
                 except ReadonlyVariableError:
                     # bash: assignment to a readonly variable aborts a
                     # non-interactive shell with status 1.
@@ -247,12 +250,16 @@ class CommandAssignments:
         from ..core import VarAttributes
 
         saved_vars: Dict[str, dict] = {}
-        assignments: List[Tuple[str, str]] = []
+        # ``resolved`` is usually a str; resolve_append_assignment can return an
+        # array object for a scalar ``+=`` onto an array variable (rare in
+        # prefix position). It is stored as-is in state/env/the applied list,
+        # exactly as before — hence the wider value type here.
+        assignments: List[Tuple[str, object]] = []
         assignment_error = False
 
         for var, value, value_word in raw_assignments:
             value = self._expand_value(value, value_word)
-            var, value = resolve_append_assignment(
+            var, resolved = resolve_append_assignment(
                 self.state.scope_manager, var, value)
             # Save shell state, environment value, and prior export status
             # (first write wins if the same variable is assigned twice). The
@@ -274,7 +281,7 @@ class CommandAssignments:
                 # prefix variable must reach an external command's (and the
                 # ``env`` builtin's) environment.
                 self.state.scope_manager.set_variable(
-                    var, value, attributes=VarAttributes.EXPORT, local=False)
+                    var, resolved, attributes=VarAttributes.EXPORT, local=False)
             except ReadonlyVariableError:
                 # bash: report and skip; earlier assignments stay applied
                 # (and are later restored), the command still runs.
@@ -284,9 +291,10 @@ class CommandAssignments:
                 continue
             if saved is not None:
                 saved_vars[var] = saved
-            assignments.append((var, value))
-            # Also set in shell.env for external commands
-            self.shell.env[var] = value
+            assignments.append((var, resolved))
+            # Also set in shell.env for external commands (scalar in practice;
+            # see the assignments-list note above for the array corner case).
+            self.shell.env[var] = cast(str, resolved)
 
         return PrefixOutcome(saved_vars, assignments, assignment_error)
 
@@ -359,7 +367,7 @@ class CommandAssignments:
                 # after it plus all following parts
                 eq_pos = part.text.index('=')
                 value_text = part.text[eq_pos + 1:]
-                value_parts = []
+                value_parts: List["WordPart"] = []
                 if value_text:
                     value_parts.append(LiteralPart(
                         value_text, quoted=part.quoted,

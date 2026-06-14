@@ -5,7 +5,7 @@ import os
 import sys
 import termios
 from enum import Enum
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Literal, Optional, Sequence, Tuple, Union, overload
 
 
 def exit_status_from_wait_status(status: int) -> int:
@@ -35,7 +35,7 @@ class Process:
     def __init__(self, pid: int, command: str):
         self.pid = pid
         self.command = command
-        self.status = None  # Will be set by waitpid
+        self.status: Optional[int] = None  # Will be set by waitpid
         self.stopped = False
         self.completed = False
 
@@ -65,7 +65,7 @@ class Job:
         self.state = JobState.RUNNING
         self.foreground = True
         self.notified = False
-        self.tmodes = None  # Terminal modes when suspended
+        self.tmodes: Optional[list] = None  # Terminal modes when suspended
 
     def add_process(self, pid: int, command: str):
         """Add a process to this job."""
@@ -434,7 +434,15 @@ class JobManager:
             if self.shell_state is not None and hasattr(self.shell_state, 'foreground_pgid'):
                 self.shell_state.foreground_pgid = None
 
-    def wait_for_job(self, job: Job, collect_all_statuses: bool = False) -> int:
+    @overload
+    def wait_for_job(self, job: Job,
+                     collect_all_statuses: Literal[False] = ...) -> int: ...
+    @overload
+    def wait_for_job(self, job: Job,
+                     collect_all_statuses: Literal[True]) -> List[int]: ...
+
+    def wait_for_job(self, job: Job,
+                     collect_all_statuses: bool = False) -> Union[int, List[int]]:
         """Wait for a job to complete or stop.
 
         Args:
@@ -442,10 +450,11 @@ class JobManager:
             collect_all_statuses: If True, collect exit codes from all processes
 
         Returns:
-            Exit status (or list of statuses if collect_all_statuses is True)
+            Exit status; a list of per-process statuses when
+            ``collect_all_statuses`` is True.
         """
         exit_status = 0
-        all_exit_statuses = []
+        all_exit_statuses: List[int] = []
 
         while job.any_process_running():
             try:
