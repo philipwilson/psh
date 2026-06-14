@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.383.0 (2026-06-14) - Tier R6.5: four builtin/state small bugs
+- BUG FIX (bash-verified; reappraisal #6 M5/M6/L7/L8).
+- M5 `unset -f NONEXISTENT` now silently returns 0 (was an error + exit 1),
+  matching `unset -v`. (`environment.py`)
+- M6 `test`/`[` gained the `<` / `>` string-comparison operators (ASCII order,
+  not locale): `[ a \< b ]` → 0 (was "binary operator expected", exit 2).
+  (`test_command.py`)
+- L7 `trap -p` now prints the canonical signal name: real signals get the `SIG`
+  prefix (`TERM`→`SIGTERM`, numeric `15`→`SIGTERM`), pseudo-signals
+  (EXIT/ERR/DEBUG/RETURN) stay bare. (`trap_manager.py`)
+- L8 `$-` now matches bash: it no longer includes `s` (stdin) in `-c` or
+  script-file mode, the flag order is bash's (lowercase-then-uppercase
+  alphabetical with invocation flags `c`/`s` appended last), and `H`
+  (histexpand) is interactive-only. E.g. `psh -c 'echo $-'` → `hBc` (was
+  `chsBH`). (`state.py`, `__main__.py`, `script_executor.py`, `shell.py`)
+- Tests: +`test_reappraisal6_builtin_state_conformance.py` (32) +9 golden;
+  updated two tests that pinned the old `$-`/histexpand behavior (verified vs
+  bash). Full gate green: ruff + mypy clean, `run_tests.py --parallel` 7033
+  passed, `--compare-bash` 409 passed.
+
 ## 0.382.0 (2026-06-14) - Tier R6.4: array-element-write bugs
 - BUG FIX (bash-verified; reappraisal #6 M4 + a related follow-up).
 - M4 negative array index was rejected on WRITE (reading already worked):

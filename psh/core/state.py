@@ -426,23 +426,28 @@ class ShellState:
         'B' (braceexpand), and 'H' (histexpand).
         """
         opts = []
-        # Single-letter options in alphabetical order (lowercase first, then uppercase)
+        # Bash $- order: single-letter options (lowercase then uppercase,
+        # alphabetical), with the invocation-mode flags 'c' (-c) and 's'
+        # (stdin) appended LAST. Verified against bash 5.x, e.g.
+        #   bash -c 'echo $-'  -> hBc      bash -ic 'echo $-' -> hiBHc
+        #   echo 'echo $-'|bash -> hBs     set -aefuvx        -> aefhuvxBc
         if self.options.get('allexport'): opts.append('a')
         if self.options.get('notify'): opts.append('b')
-        if self.options.get('command_mode'): opts.append('c')
         if self.options.get('errexit'): opts.append('e')
         if self.options.get('noglob'): opts.append('f')
         if self.options.get('hashcmds'): opts.append('h')
         if self.options.get('interactive'): opts.append('i')
         if self.options.get('monitor'): opts.append('m')
         if self.options.get('noexec'): opts.append('n')
-        if self.options.get('stdin_mode'): opts.append('s')
         if self.options.get('nounset'): opts.append('u')
         if self.options.get('verbose'): opts.append('v')
         if self.options.get('xtrace'): opts.append('x')
         if self.options.get('braceexpand'): opts.append('B')
         if self.options.get('noclobber'): opts.append('C')
         if self.options.get('histexpand'): opts.append('H')
+        # Invocation-mode flags come last in bash's $-.
+        if self.options.get('command_mode'): opts.append('c')
+        if self.options.get('stdin_mode'): opts.append('s')
         return ''.join(opts)
 
     def _detect_terminal_capabilities(self):

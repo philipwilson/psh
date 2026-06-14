@@ -188,6 +188,10 @@ def main():
             # Execute command with -c flag (script mode)
             shell.state.is_script_mode = True
             shell.state.options['command_mode'] = True  # 'c' in $-
+            # bash's `-c` is command mode, NOT stdin-reading mode: $- has 'c'
+            # but not 's'. _init_interactive ran at construction (before this
+            # flag was known), so clear stdin_mode now.
+            shell.state.options['stdin_mode'] = False
             command = sys.argv[2]
             # Set positional parameters from remaining arguments
             shell.state.positional_params = list(sys.argv[3:])

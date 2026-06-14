@@ -17,14 +17,12 @@ class TestDollarDash:
     """Tests for $- special variable expansion."""
 
     def test_dollar_dash_default_flags(self):
-        """$- should include B, H, s flags by default in -c mode."""
+        """In -c mode $- is 'hBc' (bash): braceexpand + command-mode, but
+        NOT 's' (not stdin mode) and NOT 'H' (histexpand is interactive-only)."""
         stdout, stderr, rc = run_psh('-c', 'echo $-')
         assert rc == 0
         flags = stdout.strip()
-        assert 'B' in flags, f"Expected 'B' (braceexpand) in $- but got: {flags}"
-        assert 'H' in flags, f"Expected 'H' (histexpand) in $- but got: {flags}"
-        assert 's' in flags, f"Expected 's' (stdin_mode) in $- but got: {flags}"
-        assert 'i' not in flags, f"Expected no 'i' in $- without -i flag but got: {flags}"
+        assert flags == 'hBc', f"Expected 'hBc' (bash -c) but got: {flags}"
 
     def test_dollar_dash_with_interactive_flag(self):
         """psh -i -c should include 'i' in $-."""
@@ -65,6 +63,15 @@ class TestDollarDash:
         assert 'i' in flags, f"Expected 'i' in $- but got: {flags}"
         assert 's' in flags, f"Expected 's' in $- but got: {flags}"
 
+    def test_dollar_dash_command_mode_no_s_no_h(self):
+        """bash -c 'echo $-' has 'c' (command mode), not 's', and no 'H'."""
+        stdout, stderr, rc = run_psh('-c', 'echo $-')
+        assert rc == 0
+        flags = stdout.strip()
+        assert 'c' in flags, f"Expected 'c' (command mode) but got: {flags}"
+        assert 's' not in flags, f"Did not expect 's' in -c mode but got: {flags}"
+        assert 'H' not in flags, f"Did not expect 'H' in -c mode but got: {flags}"
+
     def test_dollar_dash_in_braces(self):
         """${-} should work the same as $-."""
         stdout, stderr, rc = run_psh('-c', 'echo ${-}')
@@ -80,11 +87,11 @@ class TestDollarDash:
         assert 'B' in flags, f"Expected 'B' in quoted $- but got: {flags}"
 
     def test_dollar_dash_heredoc(self):
-        """$- should expand in heredocs."""
+        """$- should expand in heredocs (the -c shell's flags: 'c', not 's')."""
         stdout, stderr, rc = run_psh('-c', 'cat <<EOF\n$-\nEOF')
         assert rc == 0
         flags = stdout.strip()
-        assert 's' in flags, f"Expected 's' in heredoc $- but got: {flags}"
+        assert 'c' in flags, f"Expected 'c' in heredoc $- but got: {flags}"
 
 
 class TestDashIFlag:

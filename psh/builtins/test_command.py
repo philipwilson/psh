@@ -309,6 +309,13 @@ class TestBuiltin(Builtin):
             return 0 if arg1 == arg2 else 1
         elif op == '!=':
             return 0 if arg1 != arg2 else 1
+        elif op == '<':
+            # bash extension: string sorts before arg2 in ASCII/byte order
+            # (test/[ uses byte order, NOT the locale collation [[ ]] uses)
+            return 0 if arg1 < arg2 else 1
+        elif op == '>':
+            # bash extension: string sorts after arg2 in ASCII/byte order
+            return 0 if arg1 > arg2 else 1
         elif op == '-eq':
             try:
                 return 0 if int(arg1) == int(arg2) else 1

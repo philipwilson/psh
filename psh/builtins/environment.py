@@ -384,13 +384,11 @@ class UnsetBuiltin(Builtin):
             return 0  # bash: unset with no operands succeeds silently
 
         if opts['f']:
-            # Remove functions
-            exit_code = 0
+            # Remove functions. bash: unsetting a non-existent function is a
+            # silent no-op returning 0 (matches `unset -v` on a missing var).
             for arg in names:
-                if not shell.function_manager.undefine_function(arg):
-                    self.error(f"{arg}: not a function", shell)
-                    exit_code = 1
-            return exit_code
+                shell.function_manager.undefine_function(arg)
+            return 0
         else:
             # Remove variables. `-n` unsets the nameref itself; otherwise a
             # nameref name is resolved to its target before unsetting (bash).

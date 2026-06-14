@@ -1331,3 +1331,61 @@
   stdout: "X\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# BUILTIN/STATE FIXES (reappraisal #6)
+# =============================================================================
+
+- name: unset_f_nonexistent_silent
+  command: "unset -f nope; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_v_nonexistent_silent
+  command: "unset -v nope; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: test_string_less_than_true
+  command: "[ a \\< b ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: test_string_less_than_false
+  command: "[ b \\< a ]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: test_string_greater_than_true
+  command: "[ abc \\> ab ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: test_string_compare_ascii_order
+  command: "[ A \\< a ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_p_real_signal_sig_prefix
+  command: "trap '' TERM; trap -p TERM"
+  stdout: "trap -- '' SIGTERM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dash_var_command_mode
+  command: "echo $-"
+  stdout: "hBc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dash_var_order_with_set_options
+  command: "set -ef; echo $-"
+  stdout: "efhBc\n"
+  stderr: ""
+  exit_code: 0
