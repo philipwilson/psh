@@ -7,7 +7,7 @@ import termios
 import time
 import tty
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from .base import Builtin
 from .registry import builtin
@@ -260,8 +260,8 @@ class ReadBuiltin(Builtin):
             c, prot = chars[idx]
             return not prot and c in ifs_non_whitespace
 
-        fields = []
-        current_field = []
+        fields: List[str] = []
+        current_field: List[str] = []
         i = 0
         n = len(chars)
 
@@ -352,7 +352,7 @@ class ReadBuiltin(Builtin):
     _FLAG_OPTS = {'r': 'raw_mode', 's': 'silent'}
     _ARG_OPTS = frozenset('apdnNt')
 
-    def _parse_options(self, args: List[str]) -> Tuple[Dict[str, any], List[str]]:
+    def _parse_options(self, args: List[str]) -> Tuple[Dict[str, Any], List[str]]:
         """Parse read command options getopt-style, matching bash.
 
         Options may be clustered (``-rs``). An option that takes an
@@ -422,7 +422,7 @@ class ReadBuiltin(Builtin):
 
         return options, var_names
 
-    def _apply_arg_option(self, char: str, value: str, options: Dict[str, any]) -> None:
+    def _apply_arg_option(self, char: str, value: str, options: Dict[str, Any]) -> None:
         """Validate and store one argument-taking option."""
         if char == 'a':
             options['array_name'] = value
@@ -438,7 +438,7 @@ class ReadBuiltin(Builtin):
                 timeout = -1.0
             if timeout < 0:
                 err = ValueError(f"{value}: invalid timeout specification")
-                err.rc = 1  # bash exits 1 for bad values (2 for bad options)
+                setattr(err, 'rc', 1)  # bash exits 1 for bad values (2 for bad options)
                 raise err
             options['timeout'] = timeout
         elif char == 'n':
@@ -448,7 +448,7 @@ class ReadBuiltin(Builtin):
                 max_chars = -1
             if max_chars < 0:
                 err = ValueError(f"{value}: invalid number")
-                err.rc = 1
+                setattr(err, 'rc', 1)
                 raise err
             options['max_chars'] = max_chars
         elif char == 'N':
@@ -460,7 +460,7 @@ class ReadBuiltin(Builtin):
                 exact = -1
             if exact < 0:
                 err = ValueError(f"{value}: invalid number")
-                err.rc = 1
+                setattr(err, 'rc', 1)
                 raise err
             options['exact_chars'] = exact
 
@@ -597,7 +597,7 @@ class ReadBuiltin(Builtin):
         # (EOF, exit 1).
         return data if data or delimiter != '\n' else None
 
-    def _read_exact(self, options: Dict[str, any], var_names: List[str],
+    def _read_exact(self, options: Dict[str, Any], var_names: List[str],
                     shell: 'Shell', use_sys_stdin: bool) -> int:
         """Implement ``read -N count`` (read EXACTLY count characters).
 

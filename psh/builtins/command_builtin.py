@@ -68,9 +68,9 @@ class CommandBuiltin(Builtin):
                 shell.env['PATH'] = old_path
         else:
             # Check if it's a builtin first
-            if command_name in shell.builtin_registry:
+            builtin_obj = shell.builtin_registry.get(command_name)
+            if builtin_obj is not None:
                 # Execute builtin directly
-                builtin_obj = shell.builtin_registry[command_name]
                 return builtin_obj.execute(command_args, shell)
             else:
                 # Execute external command

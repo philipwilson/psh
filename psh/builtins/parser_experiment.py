@@ -1,9 +1,12 @@
 """Parser selection builtin."""
 
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from .base import Builtin
 from .registry import builtin
+
+if TYPE_CHECKING:
+    from ..shell import Shell
 
 PARSERS = {
     'recursive_descent': ['rd', 'recursive', 'default'],

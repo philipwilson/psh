@@ -172,6 +172,7 @@ class LocalBuiltin(Builtin):
                     from ..core import AssociativeArray, IndexedArray
                     existing = (shell.state.scope_manager.get_variable_object(var_name)
                                 if append else None)
+                    into: object
                     if attributes & VarAttributes.ASSOC_ARRAY:
                         into = (existing.value
                                 if existing is not None

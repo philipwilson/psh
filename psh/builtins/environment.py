@@ -84,7 +84,9 @@ class ExportBuiltin(Builtin):
             if not print_mode and not unexport:
                 if shell.pending_array_init(arg) is not None:
                     from .registry import registry
-                    rc = registry.get('declare').execute(
+                    declare_builtin = registry.get('declare')
+                    assert declare_builtin is not None
+                    rc = declare_builtin.execute(
                         ['declare', '-x', arg], shell)
                     if rc != 0:
                         status = rc

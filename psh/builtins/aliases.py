@@ -62,10 +62,10 @@ class AliasBuiltin(Builtin):
                     exit_code = 1
             else:
                 # Lookup: print the alias or report it missing.
-                value = shell.alias_manager.get_alias(arg)
-                if value is not None:
+                found = shell.alias_manager.get_alias(arg)
+                if found is not None:
                     self.write_line(
-                        f"alias {arg}={_quote_alias_value(value)}", shell)
+                        f"alias {arg}={_quote_alias_value(found)}", shell)
                 else:
                     self.error(f"{arg}: not found", shell)
                     exit_code = 1
