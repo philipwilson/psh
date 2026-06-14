@@ -1461,3 +1461,40 @@
   stdout: "declare -- Y=\"set\"\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# SETTABLE COMPUTED VARIABLES (SECONDS, RANDOM)
+# Computed on read, but assignment is honored: SECONDS=N resets the
+# elapsed-time baseline; RANDOM=N seeds bash's Park-Miller generator
+# (psh reproduces bash 5.x's sequence value-for-value). Verified vs bash 5.2.
+# =============================================================================
+
+- name: seconds_assignment_honored
+  command: "SECONDS=100; echo $SECONDS"
+  stdout: "100\n"
+  stderr: ""
+  exit_code: 0
+
+- name: seconds_noninteger_is_zero
+  command: "SECONDS=abc; echo $SECONDS"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: seconds_unset_becomes_ordinary
+  command: "unset SECONDS; SECONDS=foo; echo \"[$SECONDS]\""
+  stdout: "[foo]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: random_seed_reproduces_bash_sequence
+  command: "RANDOM=42; echo $RANDOM $RANDOM $RANDOM"
+  stdout: "17772 26794 1435\n"
+  stderr: ""
+  exit_code: 0
+
+- name: random_noninteger_seed_is_zero
+  command: "RANDOM=abc; echo $RANDOM $RANDOM"
+  stdout: "20814 24386\n"
+  stderr: ""
+  exit_code: 0

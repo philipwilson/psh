@@ -8,6 +8,30 @@ from typing import Any, Callable, Dict, List, Optional
 from .exceptions import ReadonlyVariableError
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
+# Variables whose value is computed on read but whose assignment is honored
+# (SECONDS resets the elapsed-time baseline; RANDOM seeds the generator).
+# RANDOM additionally MUTATES generator state on each read, so name-only
+# inspection paths (nameref resolution) must not route through its read.
+_COMPUTED_SPECIAL_VARS = frozenset({'SECONDS', 'RANDOM'})
+
+
+def _intrand32(seed: int) -> int:
+    """Park-Miller minimal-standard generator with Schrage's method.
+
+    This is bash's ``intrand32`` (lib/sh/random.c); combined with the
+    high/low 16-bit XOR fold in the RANDOM read path it reproduces bash
+    5.x's ``$RANDOM`` sequence value-for-value for a given seed.
+    """
+    s = seed & 0xFFFFFFFF
+    if s == 0:
+        s = 123459876  # bash's guard against a zero seed inside the generator
+    h = s // 127773
+    low = s % 127773
+    t = 16807 * low - 2836 * h
+    if t < 0:
+        t += 0x7FFFFFFF
+    return t
+
 
 class VariableScope:
     """Represents a single variable scope with attribute-aware variables."""
@@ -55,6 +79,21 @@ class ScopeManager:
         # Special variable state
         self._shell_start_time = time.time()
         self._current_line_number = 1
+
+        # Settable computed variables (SECONDS, RANDOM). These are computed
+        # on read, but assignment is honored: SECONDS=N resets the baseline,
+        # RANDOM=N seeds the generator (bash behavior). State recorded here:
+        #   _seconds_base / _seconds_assigned_at : if set, SECONDS reads as
+        #       base + (now - assigned_at); otherwise now - shell_start.
+        #   _random_seed : if not None, RANDOM is reproducible from this seed.
+        #   _computed_special_deactivated : names that have been `unset` and
+        #       so lost their special behavior, becoming ordinary variables
+        #       (bash: after `unset SECONDS`, SECONDS is a plain variable).
+        self._seconds_base: Optional[int] = None
+        self._seconds_assigned_at: float = 0.0
+        self._random_seed: Optional[int] = None
+        self._random_last_value: int = 0
+        self._computed_special_deactivated: set = set()
 
     def _notify_path_changed(self, name: str) -> None:
         """Fire the PATH observer when *name* is PATH (post-nameref)."""
@@ -151,6 +190,14 @@ class ScopeManager:
         rejects the write with "circular name reference".
         """
         from .exceptions import NamerefCycleError
+        # Dynamically computed special variables (e.g. RANDOM, SECONDS) are
+        # never namerefs, and probing them through get_variable_object here
+        # would fire their side effects (advancing the RANDOM generator) on
+        # what is meant to be a name-only inspection. Resolve them to
+        # themselves without touching the computed read path.
+        if (name in _COMPUTED_SPECIAL_VARS
+                and name not in self._computed_special_deactivated):
+            return name
         seen = set()
         current = name
         while True:
@@ -231,6 +278,27 @@ class ScopeManager:
                     and not isinstance(value, (IndexedArray, AssociativeArray))):
                 self._shell.expansion_manager.set_var_or_array_element(name, value)
                 return
+
+        # Settable computed variables: SECONDS=N resets the elapsed-time
+        # baseline; RANDOM=N seeds the reproducible generator. bash honors
+        # the assignment without storing a plain variable (the value stays
+        # computed on read). Skipped once the name has been `unset` (it then
+        # behaves as an ordinary variable) and for array assignments.
+        if (name in _COMPUTED_SPECIAL_VARS
+                and name not in self._computed_special_deactivated
+                and not (attributes & VarAttributes.NAMEREF)
+                and not isinstance(value, (IndexedArray, AssociativeArray))):
+            n = self._coerce_computed_special_int(value)
+            if name == 'SECONDS':
+                self._seconds_base = n
+                self._seconds_assigned_at = time.time()
+            else:  # RANDOM
+                self._random_seed = n & 0xFFFFFFFF
+                self._random_last_value = 0
+            # No variable_changed/env-sync notification: these stay computed
+            # (never stored, never exported), and reading them to sync would
+            # spuriously advance the RANDOM generator.
+            return
 
         # Check if variable exists
         existing = self.get_variable_object(name)
@@ -352,6 +420,18 @@ class ScopeManager:
 
     def unset_variable(self, name: str):
         """Unset a variable in the appropriate scope."""
+        # SECONDS/RANDOM lose their special computed behavior once unset and
+        # become ordinary variables (bash: after `unset SECONDS`, a later
+        # `SECONDS=foo` stores the literal string). Record the deactivation
+        # and drop any recorded baseline/seed, then fall through so the name
+        # is also cleared from the scope chain.
+        if name in _COMPUTED_SPECIAL_VARS:
+            self._computed_special_deactivated.add(name)
+            if name == 'SECONDS':
+                self._seconds_base = None
+            else:
+                self._random_seed = None
+
         # Check current scope first
         if name in self.current_scope.variables:
             var = self.current_scope.variables[name]
@@ -391,6 +471,19 @@ class ScopeManager:
                     self._notify_path_changed(name)
                     self._notify_variable_changed(name)
                     return
+
+    def _coerce_computed_special_int(self, value: Any) -> int:
+        """Parse an assignment to SECONDS/RANDOM as a plain integer.
+
+        bash parses these as a simple signed decimal integer, NOT a full
+        arithmetic expression: ``SECONDS=0x10`` and ``RANDOM=x`` both yield
+        0, while ``SECONDS=-5`` is accepted. (``SECONDS=$((2+3))`` works
+        because the arithmetic is expanded to ``5`` before assignment.)
+        """
+        try:
+            return int(str(value).strip())
+        except (ValueError, AttributeError):
+            return 0
 
     def _apply_attributes(self, value: Any, attributes: VarAttributes) -> Any:
         """Apply attribute transformations to value."""
@@ -451,16 +544,36 @@ class ScopeManager:
 
     def _get_special_variable(self, name: str) -> Optional[Variable]:
         """Handle special shell variables that are computed dynamically."""
+        # SECONDS / RANDOM lose their special behavior once `unset`, becoming
+        # ordinary variables (bash). Returning None lets the normal scope
+        # lookup take over.
+        if name in self._computed_special_deactivated:
+            return None
         if name == 'LINENO':
             # Return current line number (simplified implementation)
             return Variable(name='LINENO', value=str(self._current_line_number))
         elif name == 'SECONDS':
-            # Return seconds since shell start
-            elapsed = int(time.time() - self._shell_start_time)
+            # Seconds since shell start, or since the last `SECONDS=N`
+            # assignment reset the baseline (bash: SECONDS=N then reads
+            # return N + elapsed-since-assignment).
+            if self._seconds_base is not None:
+                elapsed = self._seconds_base + int(
+                    time.time() - self._seconds_assigned_at)
+            else:
+                elapsed = int(time.time() - self._shell_start_time)
             return Variable(name='SECONDS', value=str(elapsed))
         elif name == 'RANDOM':
-            # Return random number between 0 and 32767 (bash compatible)
-            return Variable(name='RANDOM', value=str(random.randint(0, 32767)))
+            # Random number in 0..32767. If RANDOM=N seeded the generator,
+            # the sequence is reproducible and matches bash value-for-value
+            # (bash 5.x Park-Miller minimal-standard generator). Otherwise
+            # fall back to Python's RNG for an unpredictable value.
+            if self._random_seed is not None:
+                self._random_seed = _intrand32(self._random_seed)
+                value = ((self._random_seed >> 16)
+                         ^ (self._random_seed & 0xFFFF)) & 0x7FFF
+            else:
+                value = random.randint(0, 32767)
+            return Variable(name='RANDOM', value=str(value))
         elif name == 'EPOCHSECONDS':
             return Variable(name='EPOCHSECONDS', value=str(int(time.time())))
         elif name == 'EPOCHREALTIME':

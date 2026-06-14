@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.395.0 (2026-06-14) - Tier R7.4: SECONDS= / RANDOM= assignment (computed specials)
+- BUG FIX (bash-verified; reappraisal #7 M6/M7). `SECONDS` and `RANDOM` were
+  computed on READ but assignment was silently dropped (the read interceptor
+  shadowed any stored value). Added a settable-computed-variable mechanism in
+  `psh/core/scope.py`: assignment to an active SECONDS/RANDOM is intercepted
+  (coerced to a signed int; non-integer → 0, like bash), records a baseline/seed,
+  and `unset` reverts the name to an ordinary variable.
+- M6 `SECONDS=N` now honored: `SECONDS=100; echo $SECONDS` → `100` (was `0`);
+  `SECONDS=0; sleep 1; echo $SECONDS` → `1`.
+- M7 `RANDOM=N` now seeds — and matches bash VALUE-FOR-VALUE: implemented bash
+  5.x's exact generator (Park-Miller minimal-standard with Schrage; result
+  `((seed>>16) ^ (seed&0xFFFF)) & 0x7FFF`). `RANDOM=1; echo $RANDOM $RANDOM
+  $RANDOM` → `16807 10791 19566`, identical to bash. (Also fixed a latent
+  side effect: `resolve_nameref_name` no longer advances RANDOM when merely
+  inspecting the nameref flag.)
+- Tests: +`TestSecondsAssignment` (8, bounded timing), +`TestRandomSeeding` (9),
+  +`test_computed_special_vars_conformance.py` (`assert_identical_behavior`),
+  +5 golden. Full gate green: ruff + mypy clean, `run_tests.py --parallel` 7255
+  passed, `--compare-bash` 439 passed.
+
 ## 0.394.0 (2026-06-14) - Tier R7.3: signal name/number bugs (kill -l, trap -l)
 - BUG FIX (bash-verified; reappraisal #7 M4/M5). Established a SINGLE SOURCE OF
   TRUTH for signal name↔number in `psh/utils/signal_utils.py`, built from
