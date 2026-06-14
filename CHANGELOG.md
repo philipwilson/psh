@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.391.0 (2026-06-14) - Tier R7: grow mypy scope (arithmetic + executor/io small modules)
+- TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 quality lever).
+  Expanded the mypy `files` list from 85 → **95 source files**, all 100% clean:
+  added the whole `psh/expansion/arithmetic` subpackage (7 files; self-contained,
+  no mixin-self-type problem) plus `psh/io_redirect/planner.py`,
+  `psh/executor/child_policy.py`, `psh/executor/process_launcher.py`.
+- The three executor/io modules were already annotation-clean (zero edits). The
+  arithmetic subpackage needed minor behavior-preserving edits: a real
+  same-name/two-types fix in `parser.py` (a local rebound to both `ArithToken`
+  and `ArithTokenType` → renamed), 3 `cast(...)` narrowings where
+  `ArithToken.value` (`Union[str,int]`) is type-guaranteed, and None-narrowing
+  rewrites of 8 tokenizer scan loops (capture `current_char()` into a local) —
+  identical runtime behavior.
+- Full gate green: mypy clean (95 files), ruff clean, `run_tests.py --parallel`
+  7169 passed.
+
 ## 0.390.0 (2026-06-14) - Tier R7.1: two HIGH expansion bugs (extglob #, nameref arrays)
 - BUG FIX (bash-verified; reappraisal #7 H2/H3).
 - H2 `${var#pat}` shortest-prefix removal was greedy/broken with extglob:
