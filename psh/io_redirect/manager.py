@@ -109,8 +109,7 @@ class BuiltinRedirectFrame:
 
     Process substitutions used as redirect targets are deliberately NOT
     part of the frame — they are owned by the enclosing
-    ``process_sub_scope()`` (see ``_builtin_procsub_target``), which
-    already nests per command.
+    ``process_sub_scope()``, which already nests per command.
     """
 
     def __init__(self):
@@ -193,9 +192,13 @@ class IOManager:
 
         try:
             for redirect in command.redirects:
-                redirect = self.file_redirector._resolved(redirect)
-                target = self.file_redirector._expand_redirect_target(redirect)
-                target = self._builtin_procsub_target(target)
+                plan = self.file_redirector.planner.plan(redirect)
+                redirect = plan.redirect
+                target = plan.target
+                if plan.procsub is not None and plan.procsub.parent_fd is not None:
+                    self.process_sub_handler.active_fds.append(
+                        plan.procsub.parent_fd)
+                    plan.procsub.parent_fd = None
 
                 if redirect.combined:
                     self._builtin_redirect_combined(target, redirect, frame)
@@ -212,20 +215,6 @@ class IOManager:
             raise
 
         return frame
-
-    def _builtin_procsub_target(self, target):
-        """Resolve a process-substitution redirect target to its /dev/fd path.
-
-        Delegates to the handler's resolve_procsub_target(), then transfers
-        ownership of the parent fd to the enclosing process_sub_scope() via
-        active_fds: the builtin's stream half re-opens the /dev/fd path, so
-        the fd must outlive setup. Cleanup belongs to the scope, NOT to
-        restore_builtin_redirections — see its docstring.
-        """
-        target, parent_fd = self.process_sub_handler.resolve_procsub_target(target)
-        if parent_fd is not None:
-            self.process_sub_handler.active_fds.append(parent_fd)
-        return target
 
     def _builtin_redirect_stdin(self, target, redirect,
                                 frame: BuiltinRedirectFrame):
@@ -424,16 +413,13 @@ class IOManager:
         """Set up redirections in child process (after fork) using dup2."""
         for redirect in command.redirects:
             try:
-                redirect = self.file_redirector._resolved(redirect)
+                plan = self.file_redirector.planner.plan(redirect)
             except OSError as e:
                 os.write(2, f"psh: {e}\n".encode('utf-8'))
                 os._exit(1)
-            target = self.file_redirector._expand_redirect_target(redirect)
-
-            # Process substitution as redirect target: this child owns the
-            # parent fd and closes it after dup2 (the finally below).
-            target, proc_sub_fd_to_close = \
-                self.process_sub_handler.resolve_procsub_target(target)
+            redirect = plan.redirect
+            target = plan.target
+            applied = False
 
             try:
                 if redirect.combined:
@@ -478,12 +464,9 @@ class IOManager:
                         os.dup2(redirect.dup_fd, redirect.fd)
                 elif redirect.type in ('>&-', '<&-'):
                     self.file_redirector._redirect_close_fd(redirect)
+                applied = True
             finally:
-                if proc_sub_fd_to_close is not None:
-                    try:
-                        os.close(proc_sub_fd_to_close)
-                    except OSError:
-                        pass
+                plan.close_procsub(applied=applied)
 
     def create_process_substitution_for_expansion(self, direction: str,
                                                   command: str) -> str:
@@ -503,4 +486,3 @@ class IOManager:
         outlives its command and never accumulates zombies.
         """
         return self.process_sub_handler.scope()
-

@@ -4,9 +4,10 @@ import fcntl
 import os
 import stat
 import sys
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Tuple
 
 from ..ast_nodes import Redirect
+from .planner import RedirectPlanner
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -26,6 +27,7 @@ class FileRedirector:
     def __init__(self, shell: 'Shell'):
         self.shell = shell
         self.state = shell.state
+        self.planner = RedirectPlanner(self)
 
     def _noclobber_blocks(self, target) -> bool:
         """True when noclobber forbids `>` to this target (bash semantics).
@@ -250,57 +252,58 @@ class FileRedirector:
                             saved_fds: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
         """Apply redirections, appending (fd, saved_fd) pairs to saved_fds."""
         for redirect in redirects:
-            redirect = self._resolved(redirect)
-            target = self._expand_redirect_target(redirect)
-            target, procsub_fd = self._procsub_handler.resolve_procsub_target(target)
+            plan = self.planner.plan(redirect)
+            redirect = plan.redirect
+            target = plan.target
+            applied = False
 
-            if redirect.combined:
-                # &> or &>> — redirect both stdout and stderr
-                saved_fds.append((1, os.dup(1)))
-                saved_fds.append((2, os.dup(2)))
-                self._redirect_combined(target, redirect)
-            elif redirect.type == '<':
-                in_fd = redirect.fd if redirect.fd is not None else 0
-                saved_fds.append((in_fd, self._save_fd(in_fd)))
-                self._redirect_input_from_file(target, redirect)
-            elif redirect.type == '<>':
-                target_fd = redirect.fd if redirect.fd is not None else 0
-                saved_fds.append((target_fd, self._save_fd(target_fd)))
-                self._redirect_readwrite(target, redirect)
-            elif redirect.type in ('<<', '<<-'):
-                target_fd = self._heredoc_fd(redirect)
-                saved_fds.append((target_fd, self._save_fd(target_fd)))
-                self._redirect_heredoc(redirect)
-            elif redirect.type == '<<<':
-                target_fd = self._heredoc_fd(redirect)
-                saved_fds.append((target_fd, self._save_fd(target_fd)))
-                self._redirect_herestring(redirect)
-            elif redirect.type == '>|':
-                target_fd = redirect.fd if redirect.fd is not None else 1
-                saved_fds.append((target_fd, self._save_fd(target_fd)))
-                self._redirect_clobber(target, redirect)
-            elif redirect.type in ('>', '>>'):
-                target_fd = redirect.fd if redirect.fd is not None else 1
-                saved_fds.append((target_fd, self._save_fd(target_fd)))
-                self._redirect_output_to_file(target, redirect)
-            elif redirect.type in ('>&', '<&'):
-                # Validate dup_fd BEFORE os.dup(redirect.fd), because os.dup
-                # may allocate dup_fd's number as the saved copy, making a
-                # closed fd appear valid.
-                if (redirect.fd is not None and redirect.dup_fd is not None
-                        and not self._dup_fd_valid(redirect.dup_fd)):
-                    raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
-                if redirect.fd is not None and (redirect.dup_fd is not None or redirect.target == '-'):
-                    saved_fds.append((redirect.fd, self._save_fd(redirect.fd)))
-                self._redirect_dup_fd(redirect)
-            elif redirect.type in ('>&-', '<&-'):
-                if redirect.fd is not None:
-                    saved_fds.append((redirect.fd, self._save_fd(redirect.fd)))
-                self._redirect_close_fd(redirect)
-
-            # The redirect's target fd now references the pipe itself;
-            # release the substitution's original parent fd.
-            self._close_procsub_parent_fd(procsub_fd, redirect)
+            try:
+                if redirect.combined:
+                    saved_fds.append((1, os.dup(1)))
+                    saved_fds.append((2, os.dup(2)))
+                    self._redirect_combined(target, redirect)
+                elif redirect.type == '<':
+                    saved_fds.append((plan.target_fd,
+                                      self._save_fd(plan.target_fd)))
+                    self._redirect_input_from_file(target, redirect)
+                elif redirect.type == '<>':
+                    saved_fds.append((plan.target_fd,
+                                      self._save_fd(plan.target_fd)))
+                    self._redirect_readwrite(target, redirect)
+                elif redirect.type in ('<<', '<<-'):
+                    saved_fds.append((plan.target_fd,
+                                      self._save_fd(plan.target_fd)))
+                    self._redirect_heredoc(redirect)
+                elif redirect.type == '<<<':
+                    saved_fds.append((plan.target_fd,
+                                      self._save_fd(plan.target_fd)))
+                    self._redirect_herestring(redirect)
+                elif redirect.type == '>|':
+                    saved_fds.append((plan.target_fd,
+                                      self._save_fd(plan.target_fd)))
+                    self._redirect_clobber(target, redirect)
+                elif redirect.type in ('>', '>>'):
+                    saved_fds.append((plan.target_fd,
+                                      self._save_fd(plan.target_fd)))
+                    self._redirect_output_to_file(target, redirect)
+                elif redirect.type in ('>&', '<&'):
+                    if (redirect.fd is not None and redirect.dup_fd is not None
+                            and not self._dup_fd_valid(redirect.dup_fd)):
+                        raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
+                    if (redirect.fd is not None
+                            and (redirect.dup_fd is not None
+                                 or redirect.target == '-')):
+                        saved_fds.append(
+                            (redirect.fd, self._save_fd(redirect.fd)))
+                    self._redirect_dup_fd(redirect)
+                elif redirect.type in ('>&-', '<&-'):
+                    if redirect.fd is not None:
+                        saved_fds.append(
+                            (redirect.fd, self._save_fd(redirect.fd)))
+                    self._redirect_close_fd(redirect)
+                applied = True
+            finally:
+                plan.close_procsub(applied=applied)
 
         return saved_fds
 
@@ -379,53 +382,44 @@ class FileRedirector:
                 pass
 
         for redirect in redirects:
-            redirect = self._resolved(redirect)
-            target = self._expand_redirect_target(redirect)
-            target, procsub_fd = self._procsub_handler.resolve_procsub_target(target)
+            plan = self.planner.plan(redirect)
+            redirect = plan.redirect
+            target = plan.target
+            applied = False
 
-            if redirect.combined:
-                # &> or &>> — redirect both stdout and stderr permanently.
-                # After _redirect_combined, fd 2 is a dup of fd 1, so the
-                # two rebound streams share one offset with each other and
-                # with external children.
-                self._redirect_combined(target, redirect)
-                self._rebind_output_stream(1)
-                self._rebind_output_stream(2)
-            elif redirect.type == '<':
-                target_fd = self._redirect_input_from_file(target, redirect)
-                # Only rebind the shell's stdin when fd 0 changed —
-                # `exec 5<file` opens fd 5 and must leave stdin alone.
-                self._rebind_input_stream(target_fd)
-            elif redirect.type == '<>':
-                target_fd = self._redirect_readwrite(target, redirect)
-                self._rebind_input_stream(target_fd)
-            elif redirect.type in ('<<', '<<-'):
-                self._redirect_heredoc(redirect)
-                # Only rebind the shell's stdin when fd 0 changed —
-                # `exec 5<<EOF` materializes on fd 5 and must leave
-                # stdin alone.
-                self._rebind_input_stream(self._heredoc_fd(redirect))
-            elif redirect.type == '<<<':
-                self._redirect_herestring(redirect)
-                self._rebind_input_stream(self._heredoc_fd(redirect))
-            elif redirect.type == '>|':
-                target_fd = self._redirect_clobber(target, redirect)
-                self._rebind_output_stream(target_fd)
-            elif redirect.type in ('>', '>>'):
-                target_fd = self._redirect_output_to_file(target, redirect)
-                self._rebind_output_stream(target_fd)
-            elif redirect.type in ('>&', '<&'):
-                self._redirect_dup_fd(redirect)
-                if redirect.fd is not None and redirect.dup_fd is not None:
-                    self._rebind_output_stream(redirect.fd)
-            elif redirect.type in ('>&-', '<&-'):
-                self._redirect_close_fd(redirect)
-
-            # The redirect's target fd now references the pipe itself;
-            # release the substitution's original parent fd (skipped when
-            # the parent fd's number became the permanent target, e.g.
-            # `exec 3< <(cmd)` where the pipe end happened to be fd 3).
-            self._close_procsub_parent_fd(procsub_fd, redirect)
+            try:
+                if redirect.combined:
+                    self._redirect_combined(target, redirect)
+                    self._rebind_output_stream(1)
+                    self._rebind_output_stream(2)
+                elif redirect.type == '<':
+                    target_fd = self._redirect_input_from_file(
+                        target, redirect)
+                    self._rebind_input_stream(target_fd)
+                elif redirect.type == '<>':
+                    target_fd = self._redirect_readwrite(target, redirect)
+                    self._rebind_input_stream(target_fd)
+                elif redirect.type in ('<<', '<<-'):
+                    self._redirect_heredoc(redirect)
+                    self._rebind_input_stream(plan.target_fd)
+                elif redirect.type == '<<<':
+                    self._redirect_herestring(redirect)
+                    self._rebind_input_stream(plan.target_fd)
+                elif redirect.type == '>|':
+                    target_fd = self._redirect_clobber(target, redirect)
+                    self._rebind_output_stream(target_fd)
+                elif redirect.type in ('>', '>>'):
+                    target_fd = self._redirect_output_to_file(target, redirect)
+                    self._rebind_output_stream(target_fd)
+                elif redirect.type in ('>&', '<&'):
+                    self._redirect_dup_fd(redirect)
+                    if redirect.fd is not None and redirect.dup_fd is not None:
+                        self._rebind_output_stream(redirect.fd)
+                elif redirect.type in ('>&-', '<&-'):
+                    self._redirect_close_fd(redirect)
+                applied = True
+            finally:
+                plan.close_procsub(applied=applied)
 
     @property
     def _procsub_handler(self):
@@ -435,26 +429,3 @@ class FileRedirector:
         constructs the FileRedirector before the handler exists.
         """
         return self.shell.io_manager.process_sub_handler
-
-    @staticmethod
-    def _close_procsub_parent_fd(procsub_fd: Optional[int], redirect: Redirect):
-        """Close a redirect-target process substitution's parent fd.
-
-        Skipped when dup2 repurposed the parent fd's NUMBER as the
-        redirect's own target (e.g. `exec 3< <(cmd)` when the pipe end
-        happened to be fd 3) — the number now IS the redirect.
-        """
-        if procsub_fd is None:
-            return
-        if redirect.combined:
-            targets = (1, 2)
-        elif redirect.fd is not None:
-            targets = (redirect.fd,)
-        else:
-            targets = (0,) if redirect.type.startswith('<') else (1,)
-        if procsub_fd in targets:
-            return
-        try:
-            os.close(procsub_fd)
-        except OSError:
-            pass

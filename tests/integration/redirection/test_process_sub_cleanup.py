@@ -178,6 +178,37 @@ class TestProcessSubFdRelease:
         assert result.stdout.strip() == '3', (
             f"fd slots leaked: lowest free fd is {result.stdout.strip()}")
 
+    def test_parent_fd_released_when_later_redirect_fails(self):
+        """A process-substitution fd must be closed even if a later redirect
+        in the same command fails and rolls back the redirection set."""
+        probe = (
+            f'"{sys.executable}" -c '
+            '"import os; print(os.open(\'/dev/null\', os.O_RDONLY))"'
+        )
+        cmd = (
+            'cat < <(echo data) > /nonexistent_zz/out; '
+            + probe
+        )
+        result = run_psh(cmd)
+        assert result.stdout.strip() == '3', (
+            f"fd leaked after failed redirect: lowest free fd is "
+            f"{result.stdout.strip()!r}; stderr={result.stderr!r}")
+
+    def test_permanent_procsub_fd_released_when_later_redirect_fails(self):
+        """The permanent exec path must also release proc-sub fds on failure."""
+        probe = (
+            f'"{sys.executable}" -c '
+            '"import os; print(os.open(\'/dev/null\', os.O_RDONLY))"'
+        )
+        cmd = (
+            'exec < <(echo data) > /nonexistent_zz/out; '
+            + probe
+        )
+        result = run_psh(cmd)
+        assert result.stdout.strip() == '3', (
+            f"fd leaked after failed exec redirect: lowest free fd is "
+            f"{result.stdout.strip()!r}; stderr={result.stderr!r}")
+
 
 class TestProcessSubOutputCorrectness:
     """Cleanup must not close fds or kill children prematurely."""

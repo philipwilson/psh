@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.375.0 (2026-06-14) - Redirection: unified RedirectPlan + ProcessSubstitutionResource
+- REFACTOR + BUG FIX. Introduced a shared redirection "planning" phase so the
+  four dispatch sites (`FileRedirector.apply_redirections`,
+  `apply_permanent_redirections`, `IOManager.setup_builtin_redirections`,
+  `setup_child_redirections`) stop duplicating resolve→expand→procsub logic:
+  - New `psh/io_redirect/planner.py`: `RedirectPlan` (resolved redirect +
+    target + optional procsub resource, with a `target_fd` property and
+    `close_procsub(applied=)`) and `RedirectPlanner.plan()`.
+  - New `ProcessSubstitutionResource` dataclass in `process_sub.py` encapsulates
+    `(path, parent_fd, pid, cleanup_path)` with `register_with(handler)` and
+    `close_parent_fd_for_redirect(redirect, applied=)`. `resolve_procsub_target`
+    (bare tuple) → `resolve_procsub_resource` (object); the static
+    `FileRedirector._close_procsub_parent_fd` and `IOManager.
+    _builtin_procsub_target` are folded in and removed.
+- BUG FIX (fd leak on failure): the old code closed a redirect-target process
+  substitution's parent fd UNCONDITIONALLY after the if/elif chain, so if a
+  LATER redirect in the same command failed (e.g.
+  `cat < <(echo data) > /nonexistent/out`) the close was skipped and the parent
+  fd leaked. Each redirect is now applied under `try/finally:
+  plan.close_procsub(applied=…)`, guaranteeing cleanup on the failure path for
+  both the per-command and permanent (`exec`) paths. +2 regression tests in
+  `test_process_sub_cleanup.py`.
+- `plan.target_fd` faithfully unifies the per-branch target-fd classification
+  (verified identical to the old inline logic and `_heredoc_fd`). No stale
+  callers of the removed methods remain; no runtime import cycle.
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6883 passed.
+
 ## 0.374.0 (2026-06-14) - Lint fix: LinterVisitor now analyzes redirect targets
 - BUG FIX (follow-up recorded during T2.7). `LinterVisitor` never traversed
   `node.redirects` in its explicit handlers and had no `visit_Redirect`, so all
