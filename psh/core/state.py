@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from ..version import __version__
 from .command_hash import CommandHashTable
 from .scope import ScopeManager
+from .stream_bindings import StreamBindings
 from .variables import VarAttributes
 
 
@@ -32,6 +33,13 @@ class ShellState:
     def __init__(self, args=None, script_name=None, debug_ast=False,
                  debug_tokens=False, debug_scopes=False, debug_expansion=False, debug_expansion_detail=False,
                  debug_exec=False, debug_exec_fork=False, norc=False, rcfile=None):
+        # Standard-stream overrides. The three stdin/stdout/stderr
+        # properties below delegate to this one explicit object; each
+        # stream tracks the live sys.* object unless a caller installs an
+        # override (capture buffer, subshell pipe, exec-rebound file), and
+        # snapshot()/restore() own the save/restore of that override state.
+        self.streams = StreamBindings()
+
         # Environment and variables (the ONE read of os.environ — see
         # the class docstring for the environment policy)
         self.env = os.environ.copy()
@@ -265,43 +273,39 @@ class ShellState:
         # Sync all exported variables (including local exports) to environment
         self.scope_manager.sync_exports_to_environment(self.env)
 
+    # stdin/stdout/stderr delegate to the explicit StreamBindings object
+    # (self.streams). Each returns the live sys.* stream unless a caller
+    # has installed an override; setting installs one. Behaviour is
+    # identical to the former dynamic _custom_* attributes.
     @property
     def stdout(self):
-        """Always return current sys.stdout for test compatibility."""
-        # If we have a custom stdout set, use it
-        if hasattr(self, '_custom_stdout'):
-            return self._custom_stdout
-        # Otherwise return current sys.stdout (which pytest might have replaced)
-        return sys.stdout
+        """The shell's output stream (live sys.stdout unless overridden)."""
+        return self.streams.stdout
 
     @stdout.setter
     def stdout(self, value):
-        """Allow setting a custom stdout."""
-        self._custom_stdout = value
+        """Install a custom stdout override."""
+        self.streams.stdout = value
 
     @property
     def stderr(self):
-        """Always return current sys.stderr for test compatibility."""
-        if hasattr(self, '_custom_stderr'):
-            return self._custom_stderr
-        return sys.stderr
+        """The shell's error stream (live sys.stderr unless overridden)."""
+        return self.streams.stderr
 
     @stderr.setter
     def stderr(self, value):
-        """Allow setting a custom stderr."""
-        self._custom_stderr = value
+        """Install a custom stderr override."""
+        self.streams.stderr = value
 
     @property
     def stdin(self):
-        """Always return current sys.stdin for test compatibility."""
-        if hasattr(self, '_custom_stdin'):
-            return self._custom_stdin
-        return sys.stdin
+        """The shell's input stream (live sys.stdin unless overridden)."""
+        return self.streams.stdin
 
     @stdin.setter
     def stdin(self, value):
-        """Allow setting a custom stdin."""
-        self._custom_stdin = value
+        """Install a custom stdin override."""
+        self.streams.stdin = value
 
     @property
     def debug_ast(self):

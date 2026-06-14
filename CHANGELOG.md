@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.412.0 (2026-06-14) - Tier R8.5 (1st increment): StreamBindings on ShellState
+- REFACTOR (zero behavior change; review Ugly 6 / A5 — first increment, streams
+  only). Replaced the ad-hoc dynamic `_custom_stdin`/`_custom_stdout`/
+  `_custom_stderr` attributes on `ShellState` with one explicit typed
+  `StreamBindings` object (`psh/core/stream_bindings.py`) owning the three stream
+  overrides, with an opaque `snapshot()`/`restore(token)` API. `ShellState`'s
+  `stdin`/`stdout`/`stderr` properties delegate to it; the public
+  `shell.stdout`/`state.stdout` facade is byte-for-byte unchanged (no caller
+  changed except the one executor seam that explicitly saves/restores override
+  state — `command.py` `_execute_builtin_with_redirections` now uses
+  `streams.snapshot()`/`restore()` instead of `getattr`/`setattr`/`delattr`
+  juggling).
+- Getter semantics preserved exactly: an override if set, else live `sys.std*`
+  (so pytest's post-construction `sys.*` replacement is still seen). The
+  io_redirect `_BuiltinStreamSnapshot`/`_ClosedStream` swaps (which act on
+  `sys.std*` directly) are unaffected.
+- An 11-scenario characterization harness (builtin redirect+restore, `exec >file`
+  builtin/external interleave, `2>&1`, `1>&-` closed-fd, brace-group closed-fd,
+  subshell/command-sub inheritance, `env` child streams, nested `eval`+`3>&1`)
+  is byte-identical. Rest of `ShellState` (options/history/exec flags/terminal)
+  untouched — later increments.
+- Full gate green: ruff + mypy clean (225 files), `run_tests.py --parallel` 7434
+  passed, `--compare-bash` 461 passed.
+
 ## 0.411.0 (2026-06-14) - Tier R8.4: visitor analysis over the Word AST
 - REFACTOR + tooling-fidelity (review Ugly 8 / A6). The analysis visitors
   (enhanced-validator/linter/security) did variable-reference and word

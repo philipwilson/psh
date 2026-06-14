@@ -669,9 +669,7 @@ class CommandExecutor:
         # (capture buffer, subshell pipe); during the builtin we point them
         # at the (possibly redirected) live streams, then restore the
         # custom-override STATE exactly — no type-sniffing.
-        custom_names = ('_custom_stdin', '_custom_stdout', '_custom_stderr')
-        saved_custom = {n: getattr(self.state, n) for n in custom_names
-                        if hasattr(self.state, n)}
+        saved_streams = self.state.streams.snapshot()
         # The frame records everything this invocation's redirections
         # changed; setup/restore nest (eval/source/trap handlers run
         # further redirected builtins), so the pairing must be by frame,
@@ -704,11 +702,7 @@ class CommandExecutor:
             )
         finally:
             self.io_manager.restore_builtin_redirections(redirect_frame)
-            for n in custom_names:
-                if n in saved_custom:
-                    setattr(self.state, n, saved_custom[n])
-                elif hasattr(self.state, n):
-                    delattr(self.state, n)
+            self.state.streams.restore(saved_streams)
 
     def _collect_array_inits(self, command_node: 'SimpleCommand'):
         """Map each declaration-builtin ``name=(...)`` arg to its structured init.
