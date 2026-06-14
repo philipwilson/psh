@@ -95,8 +95,36 @@ psh$ history
 # Execute command from history
 psh$ !3        # Run command 3
 psh$ !!        # Run last command
+psh$ !-2       # Run the command two back
 psh$ !git      # Run last command starting with 'git'
+psh$ !?log?    # Run last command containing 'log'
 ```
+
+### Word Designators
+
+After an event reference you can select individual words from that
+command's line with a `:word` designator. Words are split on whitespace
+(quoting is respected) and numbered from 0, where word 0 is the command
+itself:
+
+```bash
+psh$ echo alpha beta gamma
+alpha beta gamma
+psh$ echo !$      # Last argument of previous command  -> echo gamma
+psh$ echo !^      # First argument (= !!:1)             -> echo alpha
+psh$ echo !*      # All arguments (words 1..last)       -> echo alpha beta gamma
+psh$ echo !!:0    # The command word                    -> echo echo
+psh$ echo !!:2    # Word 2                               -> echo beta
+psh$ echo !!:1-2  # Words 1 through 2                    -> echo alpha beta
+psh$ echo !!:2*   # Word 2 through the last word         -> echo beta gamma
+psh$ echo !!:2-   # Word 2 through the second-to-last    -> echo beta
+```
+
+The bare shorthands `!$`, `!^` and `!*` operate on the previous command,
+and any word designator can also follow an explicit event
+(`!3:$`, `!git:2`, `!-2:1`). Note: history expansion is only active in
+interactive sessions (as in bash, it is disabled when input is not a
+terminal).
 
 ### History File
 
