@@ -556,3 +556,59 @@ class TestValidatorErrorHandling:
             except Exception:
                 # Parser might reject some cases, which is fine
                 pass
+
+
+class TestFalsePositiveRegressions:
+    """Reappraisal #7 bug L7: false positives the enhanced validator used to
+    emit. Each case asserts the spurious warning is gone while genuine
+    detection still works.
+    """
+
+    @staticmethod
+    def _undefined_warnings(source: str):
+        validator = EnhancedValidatorVisitor(ValidatorConfig())
+        validator.visit(parse(list(tokenize(source))))
+        return [i for i in validator.issues
+                if 'undefined' in i.message.lower()]
+
+    @staticmethod
+    def _all_issues(source: str):
+        validator = EnhancedValidatorVisitor(ValidatorConfig())
+        validator.visit(parse(list(tokenize(source))))
+        return validator.issues
+
+    def test_array_initialization_defines_variable(self):
+        """`x=(1 2 3); echo "${x[@]}"` must not warn that $x is undefined."""
+        assert self._undefined_warnings('x=(1 2 3); echo "${x[@]}"') == []
+
+    def test_array_append_defines_variable(self):
+        assert self._undefined_warnings('x=(1 2); x+=(3 4); echo "${x[@]}"') == []
+
+    def test_array_element_assignment_defines_variable(self):
+        """`arr[0]=v; echo "${arr[0]}"` must not warn that $arr is undefined."""
+        assert self._undefined_warnings('arr[0]=hello; echo "${arr[0]}"') == []
+
+    def test_cstyle_for_loop_init_var_defined(self):
+        """C-style for-loop init var registers, so $i in the body is defined."""
+        assert self._undefined_warnings(
+            'for ((i=0; i<3; i++)); do echo $i; done') == []
+
+    def test_cstyle_for_loop_multiple_init_vars(self):
+        assert self._undefined_warnings(
+            'for ((i=0, j=10; i<j; i++)); do echo $((i+j)); done') == []
+
+    def test_arithmetic_not_classified_as_variable_expansion(self):
+        """`$(( ))` must not be reported as an unquoted *variable* expansion."""
+        issues = self._all_issues('echo $((1+2))')
+        var_split = [i for i in issues
+                     if 'variable expansion' in i.message.lower()]
+        assert var_split == []
+
+    def test_genuine_undefined_still_warns(self):
+        """Real undefined variables must still be reported (no over-suppression)."""
+        assert len(self._undefined_warnings('echo $genuinely_undefined')) > 0
+
+    def test_array_then_genuine_undefined_still_warns(self):
+        """Defining an array must not suppress an unrelated undefined var."""
+        warns = self._undefined_warnings('x=(1 2 3); echo "${x[@]}" $other')
+        assert any('other' in i.message for i in warns)

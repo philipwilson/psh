@@ -192,4 +192,7 @@ class RedirectionParser:
             target=target_value,
             fd=token.fd,
             combined=combined,
+            # Keep the parsed Word so the executor can apply bash's
+            # "ambiguous redirect" rule (unquoted target → ≠1 word is an error).
+            target_word=word,
         )

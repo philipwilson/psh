@@ -12,7 +12,10 @@ from typing import Dict, List, Optional, Set
 
 from ..ast_nodes import (
     # Core nodes
+    ArithmeticExpansion,
     ASTNode,
+    CStyleForLoop,
+    ExpansionPart,
     ForLoop,
     FunctionDef,
     SimpleCommand,
@@ -188,6 +191,11 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         # Call parent validation first
         super().visit_SimpleCommand(node)
 
+        # Array initializations / element assignments define variables and can
+        # appear with NO command word (`x=(1 2 3)` parses to empty args plus an
+        # array_assignments prefix), so record them BEFORE the empty-args guard.
+        self._process_array_assignments(node)
+
         if not node.args:
             return
 
@@ -261,7 +269,60 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         # Call parent implementation
         super().visit_ForLoop(node)
 
+    def visit_CStyleForLoop(self, node: CStyleForLoop) -> None:
+        """Enhanced C-style for loop validation.
+
+        Register the variable(s) assigned in the init expression
+        (`for ((i=0; ...))` defines `i`) so the loop body's use of `$i`
+        is not reported as undefined.
+        """
+        for var_name in self._cstyle_init_vars(node.init_expr):
+            self.var_tracker.define_variable(
+                var_name,
+                VariableInfo(name=var_name, defined_at=self._get_context())
+            )
+
+        # Call parent implementation (traverses body + redirects)
+        super().visit_CStyleForLoop(node)
+
+    @staticmethod
+    def _cstyle_init_vars(init_expr: Optional[str]) -> List[str]:
+        """Variable names assigned in a C-style for init expression.
+
+        `i=0` -> ['i']; `i=0, j=1` (comma operator) -> ['i', 'j']. Only the
+        left-hand identifier of each `=` assignment is taken; comparison/other
+        operators are ignored.
+        """
+        if not init_expr:
+            return []
+        names: List[str] = []
+        for clause in init_expr.split(','):
+            match = re.match(r'\s*([A-Za-z_][A-Za-z0-9_]*)\s*=', clause)
+            if match:
+                names.append(match.group(1))
+        return names
+
     # Helper methods for enhanced validation
+
+    def _process_array_assignments(self, node: SimpleCommand):
+        """Record array names from ``arr=(...)`` / ``arr[i]=...`` as defined.
+
+        Both ``ArrayInitialization`` and ``ArrayElementAssignment`` carry a
+        ``.name``; without this, ``"${arr[@]}"`` later in the script is
+        flagged as an undefined variable (the assignment is an array node, not
+        a ``VAR=value`` string).
+        """
+        for assignment in getattr(node, 'array_assignments', []):
+            name = getattr(assignment, 'name', None)
+            if name:
+                self.var_tracker.define_variable(
+                    name,
+                    VariableInfo(
+                        name=name,
+                        defined_at=self._get_context(),
+                        is_array=True,
+                    )
+                )
 
     def _process_variable_assignments(self, node: SimpleCommand):
         """Process variable assignments in a command."""
@@ -411,7 +472,7 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                 continue
 
             # Check unquoted variables
-            if has_unquoted_expansion(word, arg):
+            if has_unquoted_expansion(word, arg) and not self._is_arithmetic_only(word):
                 # Skip numeric comparisons
                 if i > 0 and node.args[i-1] in NUMERIC_COMPARISON_OPERATORS:
                     continue
@@ -432,6 +493,19 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                         f"Unquoted pattern '{arg}' will undergo pathname expansion",
                         node
                     )
+
+    @staticmethod
+    def _is_arithmetic_only(word) -> bool:
+        """True if the word is a single arithmetic expansion (`$((...))`).
+
+        Arithmetic expansion is not a *variable* expansion; classifying it as
+        "unquoted variable expansion" (word-split risk) is a false positive —
+        bash does not word-split a bare `$((expr))` result the way the message
+        implies, and `$((1+))` is an arithmetic syntax error, not a variable.
+        """
+        return (len(word.parts) == 1
+                and isinstance(word.parts[0], ExpansionPart)
+                and isinstance(word.parts[0].expansion, ArithmeticExpansion))
 
     def _check_security_issues(self, node: SimpleCommand):
         """Check for potential security vulnerabilities."""
