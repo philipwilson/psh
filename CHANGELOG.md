@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.408.0 (2026-06-14) - Tier R8.1: control-flow context helpers (+2 latent bug fixes)
+- REFACTOR (zero behavior change for the extracted scaffolding) + 2 latent bug
+  fixes toward bash. `ControlFlowExecutor` repeated the same boilerplate across
+  while/until/for/case/if/select/C-style. Extracted four helpers:
+  `_compound_redirections(node)` (apply node redirects to the whole body,
+  restore), `_pipeline_context_disabled(context)` (save/reset/restore
+  `in_pipeline`), `_loop_depth(context)` (depth inc/dec), and
+  `_reraise_loop_control(exc, context)` (shared `break N`/`continue N`
+  level-decrement). Each construct now reads as its control logic, not a
+  try/finally maze.
+- A 41-case characterization harness (whole-body redirects, nested break/
+  continue with levels, `set -e` failing-condition vs body, compound-as-pipeline
+  member, exit codes) is byte-identical before/after.
+- LATENT BUGS FIXED (the deliberate uniformity from the R8 review): C-style
+  `for ((;;))` AND `select` omitted the `in_pipeline` reset, so a body with an
+  EXTERNAL command exec-replaced the forked child and the loop ran ONCE when used
+  as a pipeline member. `for ((i=0;i<3;i++)); do /bin/echo q$i; done | cat` was
+  `q0` only, now `q0 q1 q2` (matches bash); same for `select`.
+- Tests: +`test_compound_in_pipeline_conformance.py` (5). Full gate green: ruff
+  + mypy clean (223 files), `run_tests.py --parallel` 7387 passed,
+  `--compare-bash` 461 passed.
+
 ## 0.407.0 (2026-06-14) - Docs: Tier R8 architecture roadmap
 - DOCS ONLY. Added the maintainer's `docs/reviews/fresh_architecture_review_
   2026-06-14.md` (a fresh structural review, inspected at v0.400) and
