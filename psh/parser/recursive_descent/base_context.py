@@ -1,6 +1,6 @@
 """Base parser class using centralized ParserContext."""
 
-from typing import Optional, Set
+from typing import AbstractSet, Optional
 
 from ...lexer.token_types import Token, TokenType
 from ..config import ParsingMode
@@ -78,14 +78,14 @@ class ContextBaseParser:
         """Check if a parsing capability should be allowed."""
         return self.ctx.config.should_allow(capability)
 
-    def require_feature(self, feature: str, error_message: str = None) -> None:
+    def require_feature(self, feature: str, error_message: Optional[str] = None) -> None:
         """Require that a feature is enabled, otherwise raise an error."""
         if not self.is_feature_enabled(feature):
             message = error_message or f"{feature} is not enabled in current parsing mode"
             error = self.error(message)
             self.add_error(error)
 
-    def check_posix_compliance(self, feature: str, alternative: str = None) -> None:
+    def check_posix_compliance(self, feature: str, alternative: Optional[str] = None) -> None:
         """Check POSIX compliance for a feature."""
         if self.ctx.config.parsing_mode == ParsingMode.STRICT_POSIX:
             message = f"{feature} is not POSIX compliant"
@@ -106,7 +106,7 @@ class ContextBaseParser:
         while self.match(TokenType.NEWLINE, TokenType.SEMICOLON):
             self.advance()
 
-    def match_any(self, token_types: Set[TokenType]) -> bool:
+    def match_any(self, token_types: AbstractSet[TokenType]) -> bool:
         """Check if current token matches any in the set."""
         return self.peek().type in token_types
 

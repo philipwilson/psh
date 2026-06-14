@@ -155,7 +155,7 @@ class SExpressionRenderer:
 
     def _get_and_or_list_fields(self, node) -> List[tuple]:
         """Get fields for AndOrList in S-expression format."""
-        fields = []
+        fields: List[tuple] = []
 
         pipelines = getattr(node, 'pipelines', [])
         operators = getattr(node, 'operators', [])
@@ -211,23 +211,23 @@ class SExpressionRenderer:
                 return f":{field_name} ({items})"
             else:
                 # Mixed or complex values - multi-line
-                items = []
+                item_strs = []
                 for item in field_value:
                     if isinstance(item, ASTNode):
-                        items.append(self._render_node(item, indent + 1))
+                        item_strs.append(self._render_node(item, indent + 1))
                     elif isinstance(item, list):
-                        items.append(self._render_sexp_list(item, indent + 1))
+                        item_strs.append(self._render_sexp_list(item, indent + 1))
                     else:
-                        items.append(self._format_simple_value(item))
+                        item_strs.append(self._format_simple_value(item))
 
-                if len(field_value) <= 3 and all(len(str(item)) < 40 for item in items):
+                if len(field_value) <= 3 and all(len(str(item)) < 40 for item in item_strs):
                     # Compact list format
-                    items_str = " ".join(str(item) for item in items)
+                    items_str = " ".join(str(item) for item in item_strs)
                     return f":{field_name} ({items_str})"
                 else:
                     # Multi-line list format
                     indent_str = "  " * indent
-                    items_str = f"\n{indent_str}  ".join(str(item) for item in items)
+                    items_str = f"\n{indent_str}  ".join(str(item) for item in item_strs)
                     return f":{field_name} ({items_str})"
         elif isinstance(field_value, ASTNode):
             node_repr = self._render_node(field_value, indent + 1)

@@ -5,7 +5,7 @@ This module contains the main Parser class that orchestrates parsing by delegati
 to specialized parser modules for different language constructs.
 """
 
-from typing import List, Optional, Union
+from typing import List, Optional, Union, cast
 
 from ...ast_nodes import (
     AndOrList,
@@ -16,6 +16,7 @@ from ...ast_nodes import (
     EnhancedTestStatement,
     Pipeline,
     Statement,
+    StatementList,
     TopLevel,
 )
 from ...lexer.token_types import Token, TokenType
@@ -137,7 +138,7 @@ class Parser(ContextBaseParser):
 
         return self._simplify_result(top_level)
 
-    def _parse_top_level_item(self) -> Optional[Statement]:
+    def _parse_top_level_item(self) -> Optional[Union[Statement, StatementList]]:
         """Parse a single top-level item."""
         if self.functions.is_function_def():
             return self.functions.parse_function_def()
@@ -172,7 +173,10 @@ class Parser(ContextBaseParser):
                 # Parse the rest of the and_or_list
                 return self.statements.parse_and_or_tail(and_or_list)
             else:
-                return control_struct
+                # Every control structure is also a Statement (they inherit
+                # both Statement and CompoundCommand), so it is a valid
+                # top-level item; mypy can't see the intersection.
+                return cast(Statement, control_struct)
         else:
             # Parse commands until we hit a function or control structure
             cmd_list = self.statements.parse_command_list()

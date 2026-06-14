@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import List
 
-from .base import ASTNode, Statement
+from .base import ASTNode, CompoundCommand, Statement
 from .redirects import Redirect
 from .words import Word
 
@@ -68,7 +68,13 @@ class NegatedTestExpression(TestExpression):
 
 
 @dataclass
-class EnhancedTestStatement(Statement):
-    """Enhanced test construct [[ ... ]]."""
+class EnhancedTestStatement(Statement, CompoundCommand):
+    """Enhanced test construct [[ ... ]].
+
+    Inherits both Statement and CompoundCommand: ``[[ ... ]]`` appears at
+    statement level and also as a pipeline component (e.g. ``[[ -n x ]] | cat``),
+    so the parser places it in ``Pipeline.commands`` like other control
+    structures.
+    """
     expression: TestExpression  # The test expression to evaluate
     redirects: List[Redirect] = field(default_factory=list)

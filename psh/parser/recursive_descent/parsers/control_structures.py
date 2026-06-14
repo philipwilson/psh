@@ -11,6 +11,7 @@ from ....ast_nodes import (
     CaseConditional,
     CaseItem,
     CasePattern,
+    CompoundCommand,
     ContinueStatement,
     CStyleForLoop,
     ExpansionPart,
@@ -18,7 +19,6 @@ from ....ast_nodes import (
     IfConditional,
     Redirect,
     SelectLoop,
-    Statement,
     StatementList,
     UntilLoop,
     VariableExpansion,
@@ -43,8 +43,14 @@ class ControlStructureParser:
         """Initialize with reference to main parser."""
         self.parser = main_parser
 
-    def parse_control_structure(self) -> Statement:
-        """Parse any control structure based on current token."""
+    def parse_control_structure(self) -> CompoundCommand:
+        """Parse any control structure based on current token.
+
+        Every control structure is a ``CompoundCommand`` (the unified
+        control structures, break/continue, ``[[ ]]`` and ``(( ))`` all
+        inherit it), so the result can appear both at statement level and
+        as a pipeline component.
+        """
         token_type = self.parser.peek().type
 
         if token_type == TokenType.IF:
@@ -400,10 +406,10 @@ class ControlStructureParser:
         unquoted (glob-active) pattern text; the flattened string is kept
         for display.
         """
-        from ....ast_nodes import LiteralPart, Word
+        from ....ast_nodes import LiteralPart, Word, WordPart
 
         text_parts = []
-        word_parts = []
+        word_parts: List[WordPart] = []
 
         while (not self.parser.match(TokenType.PIPE, TokenType.RPAREN) and
                not self.parser.at_end()):

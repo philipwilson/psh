@@ -1,7 +1,7 @@
 """Graphviz DOT generator for AST visualization."""
 
 import html
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from ...ast_nodes import ASTNode
 from ...visitor import ASTVisitor
@@ -47,7 +47,7 @@ class ASTDotGenerator(ASTVisitor[str]):
             'Redirect': '#FFF8E1',           # Light yellow
         }
 
-    def _make_node_id(self, node: ASTNode = None) -> str:
+    def _make_node_id(self, node: Optional[ASTNode] = None) -> str:
         """Generate unique node ID."""
         self.node_counter += 1
         node_id = f"node{self.node_counter}"
@@ -66,7 +66,7 @@ class ASTDotGenerator(ASTVisitor[str]):
         return self.type_colors.get(node_type, '#F0F0F0')
 
     def _format_node_label(self, node: ASTNode, base_label: str,
-                          fields: Dict[str, any] = None) -> str:
+                          fields: Optional[Dict[str, Any]] = None) -> str:
         """Format a node label with optional fields."""
         label_parts = [base_label]
 
@@ -110,7 +110,7 @@ class ASTDotGenerator(ASTVisitor[str]):
         attrs_str = f' [{", ".join(edge_attrs)}]' if edge_attrs else ""
         self.edges.append(f'{from_id} -> {to_id}{attrs_str};')
 
-    def _process_field(self, parent_id: str, field_name: str, value: any) -> None:
+    def _process_field(self, parent_id: str, field_name: str, value: Any) -> None:
         """Process a field and add appropriate nodes/edges."""
         if value is None:
             return

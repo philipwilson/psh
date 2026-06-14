@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.396.0 (2026-06-14) - Tier R7: grow mypy scope into psh/parser (122 → 153 files)
+- TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 lever). Added 31
+  `psh/parser/` modules to the mypy `files` list: the recursive_descent backend
+  (all 8 sub-parsers + support/context/helpers + the main parser), the AST
+  visualization renderers, and the combinator core/tokens/utils/expansions/
+  special_commands/heredoc. mypy now covers **153 source files**.
+- Real type-bug fixes the wider scope surfaced (behavior-preserving): in
+  `ast_nodes/redirects.py`, `Redirect.target` retyped `Optional[str]` (None is
+  the runtime value for `>&-`/`2>&1` fd-dup/close forms) and the dynamically-set
+  `heredoc_key` made an explicit `Optional[str]` field; `EnhancedTestStatement`
+  now inherits `(Statement, CompoundCommand)` to match its runtime placement in
+  `Pipeline.commands`; `formatter_visitor` guards a `None` close-redirect target
+  (was a latent `TypeError`); `combinators/core.ParseResult.remaining` implicit-
+  Optional fixed.
+- Deferred (too noisy — mixin self-type plumbing): `combinators/commands.py` and
+  `combinators/control_structures/*` (the combinator parser is educational-only,
+  outside the production bar) — a `Protocol` would unlock them later.
+- Full gate green: mypy clean (153 files), ruff clean, `run_tests.py --parallel`
+  7255 passed, `--compare-bash` 439.
+
 ## 0.395.0 (2026-06-14) - Tier R7.4: SECONDS= / RANDOM= assignment (computed specials)
 - BUG FIX (bash-verified; reappraisal #7 M6/M7). `SECONDS` and `RANDOM` were
   computed on READ but assignment was silently dropped (the read interceptor

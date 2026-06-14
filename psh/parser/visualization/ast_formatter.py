@@ -1,6 +1,6 @@
 """AST Pretty Printer for human-readable output."""
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ...ast_nodes import ASTNode
 from ...visitor import ASTVisitor
@@ -70,7 +70,7 @@ class ASTPrettyPrinter(ASTVisitor[str]):
             # Assume it's an AST node
             return f"{self._indent()}{name}:\n{self.visit(value)}"
 
-    def _format_compact_node(self, node_name: str, fields: Dict[str, Any]) -> str:
+    def _format_compact_node(self, node_name: str, fields: Dict[str, Any]) -> Optional[str]:
         """Try to format a simple node in compact form."""
         if not self.compact_mode:
             return None
