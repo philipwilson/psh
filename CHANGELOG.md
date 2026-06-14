@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.380.0 (2026-06-14) - Tier R6.2: read C-escapes + source positionals (HIGH)
+- BUG FIX (bash-verified; reappraisal #6 H3/H4).
+- H4 `source`/`.` with NO args wiped the caller's positional params:
+  `set -- A B C; source f` (f: `echo "$@"`) → was empty, now `A B C`.
+  `source_command.py` only overrides `$@` when extra args are actually given
+  (`len(args) > 2`); `source f X Y` still sets `X Y` inside and restores `A B C`
+  after. `.` (dot) fixed identically.
+- H3 `read` (without `-r`) wrongly did C-style escape translation
+  (`\t`→TAB, `\n`→newline). bash `read` only strips the backslash (next char
+  literal), protects escaped IFS chars from splitting, and treats a trailing
+  `\<newline>` as line continuation. Rewrote `read_builtin._process_escapes` to
+  return (char, protected) pairs; added line-continuation re-reading
+  (`_read_continuations`) and backslash-protected IFS splitting/trimming. `-r`
+  stays fully literal. `a\tb`→`atb`, `a\ b`→one field `a b`, `a\`+newline+`b`→
+  `ab`. Also fixed a related divergence: a defaulted `REPLY` (no var names) must
+  NOT be IFS-whitespace-trimmed, while `read v`/`read REPLY` are.
+- Known remaining follow-up (recorded): `read x < file_without_trailing_newline`
+  returns rc 0 in psh vs 1 in bash (EOF-without-delimiter) — separate from
+  escapes.
+- Tests: +`tests/conformance/bash/test_read_escapes_conformance.py` (19
+  `assert_identical_behavior`), +3 source conformance cases; rewrote one read
+  unit test that pinned the old (wrong) line-continuation behavior. Full gate
+  green: ruff + mypy clean, `run_tests.py --parallel` 6945 passed,
+  `--compare-bash` 375 passed.
+
 ## 0.379.0 (2026-06-14) - Tier R6.1: three expansion bash-divergence bugs
 - BUG FIX (bash-verified; reappraisal #6 H1/H2/L3).
 - H1 `${var#}` (empty removal pattern) returned the LENGTH: `v=abc; echo

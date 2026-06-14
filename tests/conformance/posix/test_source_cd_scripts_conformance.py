@@ -52,6 +52,27 @@ class TestSourceBuiltin(ConformanceTest):
             'v=before; echo "echo saw:\\$v; v=after" > lib.sh; '
             '. ./lib.sh; echo "now:$v"')
 
+    def test_source_no_args_inherits_positionals(self):
+        # H4: `source file` with NO extra args must leave $@/$# unchanged
+        # (the sourced file inherits the caller's positional parameters),
+        # and they stay unchanged afterward.
+        self.assert_identical_behavior(
+            'printf "echo in:[\\$@] n=\\$#\\n" > lib.sh; '
+            'set -- A B C; . ./lib.sh; echo "out:[$@] n=$#"')
+
+    def test_source_with_args_overrides_then_restores(self):
+        # H4: `source file x y` sets $@/$# to x y inside the file, and the
+        # caller's original positionals are restored afterward.
+        self.assert_identical_behavior(
+            'printf "echo in:[\\$@] n=\\$#\\n" > lib.sh; '
+            'set -- A B C; . ./lib.sh X Y; echo "out:[$@] n=$#"')
+
+    def test_dot_no_args_inherits_positionals(self):
+        # Same as the source case but via the `.` (dot) builtin.
+        self.assert_identical_behavior(
+            'printf "echo in:[\\$@] n=\\$#\\n" > lib.sh; '
+            'set -- A B C; source ./lib.sh; echo "out:[$@] n=$#"')
+
 
 class TestCdBuiltin(ConformanceTest):
     """cd semantics: HOME, OLDPWD, cd -, failure status."""

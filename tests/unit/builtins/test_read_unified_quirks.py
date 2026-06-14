@@ -80,12 +80,11 @@ class TestUnifiedReadQuirks:
         r = _psh('read -t 5 v; echo "rc=$? [$v]"', 'ab')
         assert r.stdout == "rc=0 [ab]\n"
 
-    def test_backslash_newline_drops_remainder(self):
-        """psh quirk: a trailing backslash-newline is consumed as line
-        continuation by _process_escapes, but read does NOT fetch the next
-        line at the fd level, so the remainder after the newline is dropped."""
+    def test_backslash_newline_line_continuation(self):
+        """A trailing backslash-newline is line continuation (bash): both are
+        removed and reading continues onto the next line (foo + bar)."""
         r = _psh('read v; echo "rc=$? [$v]"', 'foo\\\nbar\n')
-        assert r.stdout == "rc=0 [foo]\n"
+        assert r.stdout == "rc=0 [foobar]\n"
 
     def test_raw_mode_preserves_backslash(self):
         r = _psh('read -r v; echo "rc=$? [$v]"', 'a\\tb\n')
