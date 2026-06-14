@@ -14,8 +14,9 @@ runs and whether prefix assignments persist (POSIX special builtins).
 
 import os
 import sys
+from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, List, Optional
 
 from ..core import ReadonlyVariableError
 from .command_assignments import CommandAssignments
@@ -69,6 +70,49 @@ class RedirectionMode(Enum):
     BUILTIN_INPROCESS = "builtin_inprocess"
     EXTERNAL_DEFERRED = "external_deferred"
     FD_LEVEL_WINDOW = "fd_level_window"
+
+
+@dataclass
+class CommandResolution:
+    """The result of *resolving* a command name to a strategy.
+
+    Separates "which strategy handles this command, and what policy does
+    that imply" (resolve) from "invoke it" (see :class:`ExecutionResult`).
+    The resolution carries the matched strategy plus the one policy bit the
+    invoke phase and its caller need:
+
+    prefix_assignments_persist
+        True when the command resolved to a POSIX special builtin
+        (``:`` ``.`` ``eval`` ``export`` ``readonly`` ``set`` ``unset`` …),
+        whose ``NAME=value`` prefix assignments persist in the current
+        shell rather than being restored after the command. This replaces
+        the previous ``isinstance(strategy, SpecialBuiltinExecutionStrategy)``
+        check threaded through a positional boolean.
+    """
+
+    strategy: 'ExecutionStrategy'
+    prefix_assignments_persist: bool
+
+
+@dataclass
+class ExecutionResult:
+    """The result of *invoking* a resolved command.
+
+    Replaces the previous ``(exit_code, is_special)`` tuple side-channel.
+    The "do prefix assignments persist?" policy is now a NAMED field rather
+    than a positional boolean, and there is room to grow (job/process
+    metadata) without re-threading every call site.
+
+    status
+        The command's exit status.
+    prefix_assignments_persist
+        True when the invoked command was a POSIX special builtin, so the
+        caller (:meth:`CommandExecutor._run_command`) must NOT restore the
+        prefix assignments — they persist in the current shell.
+    """
+
+    status: int
+    prefix_assignments_persist: bool = False
 
 
 class CommandExecutor:
@@ -227,7 +271,7 @@ class CommandExecutor:
         already extracted by the coordinator.
         """
         tokens_consumed = len(raw_assignments)
-        is_special = False
+        prefix_assignments_persist = False
         saved_vars = None
 
         try:
@@ -323,18 +367,19 @@ class CommandExecutor:
                 self.shell.set_pending_array_inits(pending_inits)
             try:
                 # Execute the command using appropriate strategy
-                exit_code, is_special = self._execute_with_strategy(
+                result = self._execute_with_strategy(
                     cmd_name, cmd_args, node, context,
                     bypass_aliases, bypass_functions
                 )
+                prefix_assignments_persist = result.prefix_assignments_persist
             finally:
                 if set_inits:
                     self.shell.clear_pending_array_inits()
-            return exit_code
+            return result.status
 
         finally:
             # POSIX: assignments before special builtins persist
-            if saved_vars is not None and not is_special:
+            if saved_vars is not None and not prefix_assignments_persist:
                 self.assignments.restore(saved_vars)
 
     def _strip_backslash_bypass(self, command_node: 'SimpleCommand'):
@@ -465,13 +510,49 @@ class CommandExecutor:
     def _execute_with_strategy(self, cmd_name: str, args: List[str],
                               node: 'SimpleCommand', context: 'ExecutionContext',
                               bypass_aliases: bool = False,
-                              bypass_functions: bool = False) -> Tuple[int, bool]:
-        """Execute command using the appropriate strategy.
+                              bypass_functions: bool = False) -> ExecutionResult:
+        """Resolve the command to a strategy, then invoke it.
+
+        Two phases, as typed data:
+
+        1. :meth:`_resolve_command` picks the matching strategy and the
+           prefix-assignment-persistence policy it implies → a
+           :class:`CommandResolution`.
+        2. :meth:`_invoke_resolution` applies the resolved strategy's
+           redirections in the one mode decided by
+           ``_decide_redirection_mode`` and runs it → an
+           :class:`ExecutionResult`.
 
         Returns:
-            A tuple of (exit_code, is_special_builtin).  The second element
-            is True when the command was resolved to a SpecialBuiltinExecutionStrategy,
-            which signals the caller that POSIX prefix-assignment persistence applies.
+            An :class:`ExecutionResult` carrying the exit status and the
+            ``prefix_assignments_persist`` policy (True for POSIX special
+            builtins), which the caller uses to decide whether to restore
+            the prefix assignments.
+        """
+        resolution = self._resolve_command(
+            cmd_name, bypass_aliases, bypass_functions)
+        if resolution is None:
+            # Should never happen: ExternalExecutionStrategy.can_execute
+            # always matches. Preserves the historical 127 fallback.
+            return ExecutionResult(status=127, prefix_assignments_persist=False)
+        return self._invoke_resolution(
+            resolution, cmd_name, args, node, context)
+
+    def _resolve_command(self, cmd_name: str,
+                         bypass_aliases: bool = False,
+                         bypass_functions: bool = False
+                         ) -> Optional[CommandResolution]:
+        """Resolve a command name to the strategy that will run it.
+
+        Walks the priority-ordered strategy list (special builtins >
+        functions > builtins > aliases > external), honoring the ``\\cmd``
+        bypass exclusions, and returns the first match as a
+        :class:`CommandResolution`. The persistence policy — previously the
+        ``isinstance(strategy, SpecialBuiltinExecutionStrategy)`` check —
+        is recorded here as the ``prefix_assignments_persist`` field.
+
+        Returns None only if no strategy matches (unreachable in practice,
+        since ExternalExecutionStrategy is the catch-all).
         """
         # Note: The 'command' builtin handles its own bypass logic internally
 
@@ -491,42 +572,59 @@ class CommandExecutor:
         else:
             strategies_to_use = self.strategies
 
-        # Find the right strategy, then apply its redirections according to
-        # the one mode decided by _decide_redirection_mode.
         for strategy in strategies_to_use:
             if strategy.can_execute(cmd_name, self.shell):
-                is_special = isinstance(strategy, SpecialBuiltinExecutionStrategy)
-                mode = self._decide_redirection_mode(strategy, context)
+                return CommandResolution(
+                    strategy=strategy,
+                    prefix_assignments_persist=isinstance(
+                        strategy, SpecialBuiltinExecutionStrategy),
+                )
+        return None
 
-                if mode is RedirectionMode.BUILTIN_INPROCESS:
-                    exit_code = self._execute_builtin_with_redirections(
-                        cmd_name, args, node, context, strategy
-                    )
-                    return exit_code, is_special
+    def _invoke_resolution(self, resolution: CommandResolution,
+                           cmd_name: str, args: List[str],
+                           node: 'SimpleCommand',
+                           context: 'ExecutionContext') -> ExecutionResult:
+        """Run a resolved command, applying its redirections by mode.
 
-                if mode is RedirectionMode.EXTERNAL_DEFERRED:
-                    # External commands apply their redirections in the
-                    # forked child (setup_child_redirections); see the mode
-                    # docstring for why we must NOT apply them here too.
-                    exit_code = strategy.execute(
-                        cmd_name, args, self.shell, context,
-                        node.redirects, node.background,
-                        visitor=self.visitor,
-                    )
-                    return exit_code, is_special
+        Applies the resolved strategy's redirections according to the one
+        mode decided by :meth:`_decide_redirection_mode`, then executes it.
+        The resolution's ``prefix_assignments_persist`` policy is carried
+        through unchanged to the returned :class:`ExecutionResult`.
+        """
+        strategy = resolution.strategy
+        persist = resolution.prefix_assignments_persist
+        mode = self._decide_redirection_mode(strategy, context)
 
-                # RedirectionMode.FD_LEVEL_WINDOW: functions, aliases,
-                # builtins in pipelines, and builtins in forked children.
-                with self.io_manager.with_redirections(node.redirects):
-                    exit_code = strategy.execute(
-                        cmd_name, args, self.shell, context,
-                        node.redirects, node.background,
-                        visitor=self.visitor,
-                    )
-                    return exit_code, is_special
+        if mode is RedirectionMode.BUILTIN_INPROCESS:
+            status = self._execute_builtin_with_redirections(
+                cmd_name, args, node, context, strategy
+            )
+            return ExecutionResult(status=status,
+                                   prefix_assignments_persist=persist)
 
-        # Should never reach here as ExternalExecutionStrategy handles everything
-        return 127, False
+        if mode is RedirectionMode.EXTERNAL_DEFERRED:
+            # External commands apply their redirections in the
+            # forked child (setup_child_redirections); see the mode
+            # docstring for why we must NOT apply them here too.
+            status = strategy.execute(
+                cmd_name, args, self.shell, context,
+                node.redirects, node.background,
+                visitor=self.visitor,
+            )
+            return ExecutionResult(status=status,
+                                   prefix_assignments_persist=persist)
+
+        # RedirectionMode.FD_LEVEL_WINDOW: functions, aliases,
+        # builtins in pipelines, and builtins in forked children.
+        with self.io_manager.with_redirections(node.redirects):
+            status = strategy.execute(
+                cmd_name, args, self.shell, context,
+                node.redirects, node.background,
+                visitor=self.visitor,
+            )
+            return ExecutionResult(status=status,
+                                   prefix_assignments_persist=persist)
 
     def _decide_redirection_mode(
         self, strategy: 'ExecutionStrategy', context: 'ExecutionContext'

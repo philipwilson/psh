@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.410.0 (2026-06-14) - Tier R8.3: typed command-invocation data flow
+- REFACTOR (zero behavior change; review Ugly 2/3 / A1). Replaced the
+  `(exit_code, is_special)` tuple side-channel in simple-command execution with
+  typed data in `psh/executor/command.py`:
+  - `ExecutionResult(status, prefix_assignments_persist)` — `_execute_with_strategy`
+    now returns this; `_run_command` reads the NAMED field instead of unpacking a
+    positional boolean to decide prefix-assignment persistence.
+  - `CommandResolution(strategy, prefix_assignments_persist)` — `_execute_with_strategy`
+    is now a thin two-phase coordinator: `_resolve_command` (walks the
+    priority-ordered strategies + `\cmd` bypass, computes the persistence policy
+    once — previously an inline `isinstance(SpecialBuiltinExecutionStrategy)`)
+    then `_invoke_resolution`. `strategies.py` untouched; the split sits above it.
+- A 39-case frozen characterization harness (special-vs-normal prefix
+  persistence for `:`/`.`/`eval`/`set`/`unset`/`export`/`readonly` vs normal
+  builtins/functions/externals; normal/127 execution; pure/array assignments;
+  `exec`/`set -e`/xtrace/`$_`/background) is byte-identical before/after.
+- Deferred R8.3b: the deeper `_execute_command` phase pipeline + `SimpleCommandPlan`
+  (extracting a plan risks reordering POSIX-sensitive steps). Noted (pre-existing,
+  out of scope): psh persists `FOO=bar export X=1` where bash `-c` does not.
+- Full gate green: ruff + mypy clean (223 files), `run_tests.py --parallel` 7387
+  passed, `--compare-bash` 461 passed.
+
 ## 0.409.0 (2026-06-14) - Tier R8.2: redirect-primitive boundary (public shared surface)
 - REFACTOR (zero behavior change; review Ugly 7 / A4). The builtin stream-redirect
   backend (`IOManager`) reached into `FileRedirector` PRIVATE methods that are
