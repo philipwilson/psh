@@ -3,7 +3,7 @@
 This module provides mixin parsers for if/elif/else and case statements.
 """
 
-from typing import List, Tuple
+from typing import TYPE_CHECKING, List, Tuple
 
 from ....ast_nodes import (
     CaseConditional,
@@ -16,6 +16,12 @@ from ....lexer.keyword_defs import KeywordGuard, matches_keyword
 from ....lexer.token_types import Token, TokenType
 from ..core import Parser, ParseResult
 from ..utils import format_token_value
+
+if TYPE_CHECKING:
+    from ._protocols import ControlStructureProtocol
+    _Base = ControlStructureProtocol
+else:
+    _Base = object
 
 CASE_TERMINATOR_TOKENS = {
     TokenType.DOUBLE_SEMICOLON: ';;',
@@ -43,7 +49,7 @@ def _parse_case_pattern_value(tokens, pos, pattern_types):
     return None, None, pos
 
 
-class ConditionalParserMixin:
+class ConditionalParserMixin(_Base):
     """Mixin providing conditional parsers for ControlStructureParsers."""
 
     def _make_case_pattern(self, pattern_str, pattern_tok):
@@ -64,7 +70,7 @@ class ConditionalParserMixin:
         def parse_condition_then(tokens: List[Token], pos: int) -> ParseResult[Tuple[CommandList, CommandList]]:
             """Parse a condition-then pair."""
             # Parse condition (statement list until 'then')
-            condition_tokens = []
+            condition_tokens: List[Token] = []
             current_pos = pos
 
             # Collect tokens until we see 'then'
@@ -175,16 +181,18 @@ class ConditionalParserMixin:
             if not main_result.success:
                 return ParseResult(success=False, error=main_result.error, position=pos)
 
+            assert main_result.value is not None
             condition, then_part = main_result.value
             pos = main_result.position
 
             # Parse elif parts
-            elif_parts = []
+            elif_parts: List[Tuple[CommandList, CommandList]] = []
             while pos < len(tokens) and matches_keyword(tokens[pos], 'elif'):
                 pos += 1  # Skip 'elif'
                 elif_result = parse_condition_then(tokens, pos)
                 if not elif_result.success:
                     return ParseResult(success=False, error=elif_result.error, position=pos)
+                assert elif_result.value is not None
                 elif_parts.append(elif_result.value)
                 pos = elif_result.position
 

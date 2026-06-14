@@ -4,7 +4,7 @@ This module provides mixin parsers for while, until, for (traditional and
 C-style), select loops, and break/continue statements.
 """
 
-from typing import List, Tuple, Union
+from typing import TYPE_CHECKING, List, Tuple, Union, cast
 
 from ....ast_nodes import (
     BreakStatement,
@@ -22,6 +22,12 @@ from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ..core import Parser, ParseResult
 
+if TYPE_CHECKING:
+    from ._protocols import ControlStructureProtocol
+    _Base = ControlStructureProtocol
+else:
+    _Base = object
+
 
 def _positional_params_word() -> Word:
     """The implicit ``"$@"`` Word used when for/select has no ``in`` list."""
@@ -30,7 +36,7 @@ def _positional_params_word() -> Word:
                              quoted=True, quote_char='"')])
 
 
-class LoopParserMixin:
+class LoopParserMixin(_Base):
     """Mixin providing loop parsers for ControlStructureParsers."""
 
     def _build_loop_items(
@@ -201,8 +207,11 @@ class LoopParserMixin:
 
     def _build_for_loops(self) -> Parser[Union[ForLoop, CStyleForLoop]]:
         """Build parser for both traditional and C-style for loops."""
-        # Try C-style first, then traditional
-        return self._build_c_style_for_loop().or_else(self._build_traditional_for_loop())
+        # Try C-style first, then traditional.  ``Parser`` is invariant, so the
+        # per-loop parsers are cast to the common union type before composition.
+        c_style = cast("Parser[Union[ForLoop, CStyleForLoop]]", self._build_c_style_for_loop())
+        traditional = cast("Parser[Union[ForLoop, CStyleForLoop]]", self._build_traditional_for_loop())
+        return c_style.or_else(traditional)
 
     def _build_traditional_for_loop(self) -> Parser[ForLoop]:
         """Build parser for traditional for/in loops."""
@@ -315,6 +324,8 @@ class LoopParserMixin:
             pos += 2  # Skip 'for' and '(('
 
             # Handle ';;' (DOUBLE_SEMICOLON) — both init and condition are empty
+            init_tokens: List[Token]
+            cond_tokens: List[Token]
             if pos < len(tokens) and tokens[pos].type.name == 'DOUBLE_SEMICOLON':
                 init_tokens = []
                 cond_tokens = []

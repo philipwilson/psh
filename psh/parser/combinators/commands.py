@@ -230,7 +230,7 @@ class CommandParsers:
                             and word_tokens[-1].value.endswith('=')):
                         arr_prefix = word_tokens.pop()  # remove the 'name=' token
                         pos += 1  # skip '('
-                        items = []
+                        items: List[str] = []
                         while pos < len(tokens) and tokens[pos].type.name != 'RPAREN':
                             tok = tokens[pos]
                             if tok.type.name in _WORD_LIKE_TYPES or tok.type.name in ('LBRACKET', 'RBRACKET'):
@@ -409,7 +409,7 @@ class CommandParsers:
 
         return Parser(parse_pipeline_with_negation)
 
-    def _build_and_or_list_parser(self) -> Parser[AndOrList]:
+    def _build_and_or_list_parser(self) -> Parser[Union[AndOrList, ASTNode]]:
         """Build parser for and-or lists.
 
         Returns:
@@ -426,7 +426,7 @@ class CommandParsers:
 
         return and_or_parser
 
-    def _build_and_or_list_from_parts(self, parse_result: tuple) -> AndOrList:
+    def _build_and_or_list_from_parts(self, parse_result: tuple) -> Union[AndOrList, ASTNode]:
         """Build an AndOrList from parsed components.
 
         Args:
@@ -523,7 +523,7 @@ class CommandParsers:
             if not first_result.success:
                 return first_result
 
-            commands = [first_result.value]
+            commands: List = [first_result.value]
             pipe_stderr_list = []
             pos = first_result.position
 
@@ -618,7 +618,7 @@ def parse_pipeline(command_parser: Parser) -> Parser[Union[Pipeline, ASTNode]]:
         if not first_result.success:
             return first_result
 
-        commands = [first_result.value]
+        commands: List = [first_result.value]
         pipe_stderr_list = []
         pos = first_result.position
 
@@ -627,6 +627,7 @@ def parse_pipeline(command_parser: Parser) -> Parser[Union[Pipeline, ASTNode]]:
             sep_result = pipe_sep.parse(tokens, pos)
             if not sep_result.success:
                 break
+            assert sep_result.value is not None
             is_pipe_stderr = sep_result.value.type.name == 'PIPE_AND'
             pipe_stderr_list.append(is_pipe_stderr)
             pos = sep_result.position

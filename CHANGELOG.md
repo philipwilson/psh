@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.406.0 (2026-06-14) - Tier R7: mypy now covers 100% of psh source files
+- TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 lever — completed).
+  Added the final 10 modules: `psh/__init__.py`, `psh/__main__.py`,
+  `psh/interactive/__init__.py`, and the previously-deferred combinator
+  command/control-structure mixins (`combinators/commands.py`, `parser.py`,
+  `control_structures/{conditionals,loops,structures}.py` + `__init__`s).
+  **mypy now type-checks ALL 222 `psh/` source files** (223 in scope incl. the
+  new Protocol helper).
+- The combinator mixins were unlocked with a `ControlStructureProtocol`
+  (`combinators/control_structures/_protocols.py`) declaring the shared
+  `commands`/`tokens`/`_parse_trailing_redirects`/`_collect_tokens_until_keyword`
+  surface, mixed in ONLY under `if TYPE_CHECKING:` (the `_Base = Protocol if
+  TYPE_CHECKING else object` idiom — zero runtime change), mirroring the
+  expansion-mixin approach; cleared ~50 `attr-defined` errors. The wiring point
+  bridges with a documented `cast` (runtime None-handling unchanged).
+- Remaining type-checking depth (not file coverage): `check_untyped_defs` is
+  still off globally, so untyped function BODIES aren't checked — a possible
+  future per-package deepening.
+- Reappraisal #7 mypy campaign summary: **scope grew 85 → 223 files** across
+  v0.391–v0.406 (lexer, parser, expansion incl. mixins, io_redirect, executor,
+  builtins, interactive, scripting, visitor, utils, core — everything).
+- Full gate green: mypy clean (223 files), ruff clean, `run_tests.py --parallel`
+  7382 passed.
+
 ## 0.405.0 (2026-06-14) - Tier R7: grow mypy scope into all of psh/builtins (177 → 212 files)
 - TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 lever). Added the
   ENTIRE `psh/builtins/` package (all 35 modules) to the mypy `files` list; mypy

@@ -9,7 +9,7 @@ The ControlStructureParsers class inherits from three mixin classes:
 - StructureParserMixin: function definitions, subshell groups, brace groups
 """
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 
 from ....ast_nodes import CommandList, Redirect
 from ....lexer.keyword_defs import matches_keyword
@@ -49,7 +49,12 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
         """
         self.config = config or ParserConfig()
         self.tokens = token_parsers or TokenParsers()
-        self.commands = command_parsers  # May be None initially
+        # The mixins (typed via ControlStructureProtocol) require a non-None
+        # CommandParsers; at construction it may legitimately be None and is
+        # wired later by set_command_parsers(). The dependent-parser builders
+        # that dereference it only run after wiring (guarded in
+        # _initialize_dependent_parsers), so the cast documents that invariant.
+        self.commands = cast("CommandParsers", command_parsers)  # May be None initially
 
         # Forward declaration for statement lists
         self.statement_list_forward = ForwardParser[CommandList]()
