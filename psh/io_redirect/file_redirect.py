@@ -7,7 +7,7 @@ import sys
 from typing import TYPE_CHECKING, List, Tuple
 
 from ..ast_nodes import Redirect
-from .planner import RedirectPlanner
+from .planner import RedirectPlan, RedirectPlanner
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -234,7 +234,58 @@ class FileRedirector:
         except OSError:
             return None
 
-    def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int]]:
+    def _validate_dup_source(self, redirect: Redirect) -> None:
+        """Validate the source fd for >&/<& before saving target fds."""
+        if (redirect.fd is not None and redirect.dup_fd is not None
+                and not self._dup_fd_valid(redirect.dup_fd)):
+            raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
+
+    def saved_fds_for_plan(self, plan: RedirectPlan) -> List[Tuple[int, int | None]]:
+        """Return fd backups needed before applying a temporary plan."""
+        redirect = plan.redirect
+        if redirect.combined:
+            return [(1, os.dup(1)), (2, os.dup(2))]
+        if redirect.type in ('<', '<>', '<<', '<<-', '<<<',
+                             '>|', '>', '>>'):
+            return [(plan.target_fd, self._save_fd(plan.target_fd))]
+        if redirect.type in ('>&', '<&'):
+            self._validate_dup_source(redirect)
+            if (redirect.fd is not None
+                    and (redirect.dup_fd is not None
+                         or redirect.target == '-')):
+                return [(redirect.fd, self._save_fd(redirect.fd))]
+        if redirect.type in ('>&-', '<&-') and redirect.fd is not None:
+            return [(redirect.fd, self._save_fd(redirect.fd))]
+        return []
+
+    def apply_fd_plan(self, plan: RedirectPlan, *,
+                      check_noclobber: bool = True) -> None:
+        """Apply one resolved redirect plan in the fd universe."""
+        redirect = plan.redirect
+        target = plan.target
+
+        if redirect.combined:
+            self._redirect_combined(target, redirect)
+        elif redirect.type == '<':
+            self._redirect_input_from_file(target, redirect)
+        elif redirect.type == '<>':
+            self._redirect_readwrite(target, redirect)
+        elif redirect.type in ('<<', '<<-'):
+            self._redirect_heredoc(redirect)
+        elif redirect.type == '<<<':
+            self._redirect_herestring(redirect)
+        elif redirect.type == '>|':
+            self._redirect_clobber(target, redirect)
+        elif redirect.type in ('>', '>>'):
+            self._redirect_output_to_file(
+                target, redirect, check_noclobber=check_noclobber)
+        elif redirect.type in ('>&', '<&'):
+            self._validate_dup_source(redirect)
+            self._redirect_dup_fd(redirect)
+        elif redirect.type in ('>&-', '<&-'):
+            self._redirect_close_fd(redirect)
+
+    def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int | None]]:
         """Apply redirections and return list of (fd, saved_fd) for restoration.
 
         Transactional: if any redirect fails part-way through (e.g.
@@ -249,65 +300,22 @@ class FileRedirector:
             raise
 
     def _apply_redirections(self, redirects: List[Redirect],
-                            saved_fds: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+                            saved_fds: List[Tuple[int, int | None]]) -> List[Tuple[int, int | None]]:
         """Apply redirections, appending (fd, saved_fd) pairs to saved_fds."""
         for redirect in redirects:
             plan = self.planner.plan(redirect)
-            redirect = plan.redirect
-            target = plan.target
             applied = False
 
             try:
-                if redirect.combined:
-                    saved_fds.append((1, os.dup(1)))
-                    saved_fds.append((2, os.dup(2)))
-                    self._redirect_combined(target, redirect)
-                elif redirect.type == '<':
-                    saved_fds.append((plan.target_fd,
-                                      self._save_fd(plan.target_fd)))
-                    self._redirect_input_from_file(target, redirect)
-                elif redirect.type == '<>':
-                    saved_fds.append((plan.target_fd,
-                                      self._save_fd(plan.target_fd)))
-                    self._redirect_readwrite(target, redirect)
-                elif redirect.type in ('<<', '<<-'):
-                    saved_fds.append((plan.target_fd,
-                                      self._save_fd(plan.target_fd)))
-                    self._redirect_heredoc(redirect)
-                elif redirect.type == '<<<':
-                    saved_fds.append((plan.target_fd,
-                                      self._save_fd(plan.target_fd)))
-                    self._redirect_herestring(redirect)
-                elif redirect.type == '>|':
-                    saved_fds.append((plan.target_fd,
-                                      self._save_fd(plan.target_fd)))
-                    self._redirect_clobber(target, redirect)
-                elif redirect.type in ('>', '>>'):
-                    saved_fds.append((plan.target_fd,
-                                      self._save_fd(plan.target_fd)))
-                    self._redirect_output_to_file(target, redirect)
-                elif redirect.type in ('>&', '<&'):
-                    if (redirect.fd is not None and redirect.dup_fd is not None
-                            and not self._dup_fd_valid(redirect.dup_fd)):
-                        raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
-                    if (redirect.fd is not None
-                            and (redirect.dup_fd is not None
-                                 or redirect.target == '-')):
-                        saved_fds.append(
-                            (redirect.fd, self._save_fd(redirect.fd)))
-                    self._redirect_dup_fd(redirect)
-                elif redirect.type in ('>&-', '<&-'):
-                    if redirect.fd is not None:
-                        saved_fds.append(
-                            (redirect.fd, self._save_fd(redirect.fd)))
-                    self._redirect_close_fd(redirect)
+                saved_fds.extend(self.saved_fds_for_plan(plan))
+                self.apply_fd_plan(plan)
                 applied = True
             finally:
                 plan.close_procsub(applied=applied)
 
         return saved_fds
 
-    def restore_redirections(self, saved_fds: List[Tuple[int, int]]):
+    def restore_redirections(self, saved_fds: List[Tuple[int, int | None]]):
         """Restore file descriptors from saved list.
 
         Restore in REVERSE order: with the same fd redirected twice
@@ -384,39 +392,26 @@ class FileRedirector:
         for redirect in redirects:
             plan = self.planner.plan(redirect)
             redirect = plan.redirect
-            target = plan.target
             applied = False
 
             try:
+                self.apply_fd_plan(plan)
                 if redirect.combined:
-                    self._redirect_combined(target, redirect)
                     self._rebind_output_stream(1)
                     self._rebind_output_stream(2)
-                elif redirect.type == '<':
-                    target_fd = self._redirect_input_from_file(
-                        target, redirect)
-                    self._rebind_input_stream(target_fd)
-                elif redirect.type == '<>':
-                    target_fd = self._redirect_readwrite(target, redirect)
-                    self._rebind_input_stream(target_fd)
+                elif redirect.type in ('<', '<>'):
+                    self._rebind_input_stream(plan.target_fd)
                 elif redirect.type in ('<<', '<<-'):
-                    self._redirect_heredoc(redirect)
                     self._rebind_input_stream(plan.target_fd)
                 elif redirect.type == '<<<':
-                    self._redirect_herestring(redirect)
                     self._rebind_input_stream(plan.target_fd)
                 elif redirect.type == '>|':
-                    target_fd = self._redirect_clobber(target, redirect)
-                    self._rebind_output_stream(target_fd)
+                    self._rebind_output_stream(plan.target_fd)
                 elif redirect.type in ('>', '>>'):
-                    target_fd = self._redirect_output_to_file(target, redirect)
-                    self._rebind_output_stream(target_fd)
+                    self._rebind_output_stream(plan.target_fd)
                 elif redirect.type in ('>&', '<&'):
-                    self._redirect_dup_fd(redirect)
                     if redirect.fd is not None and redirect.dup_fd is not None:
                         self._rebind_output_stream(redirect.fd)
-                elif redirect.type in ('>&-', '<&-'):
-                    self._redirect_close_fd(redirect)
                 applied = True
             finally:
                 plan.close_procsub(applied=applied)
