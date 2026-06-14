@@ -247,6 +247,14 @@ class LiteralRecognizer(ContextualRecognizer):
 
             # --- terminators, with the shape-driven continuations ---
             if self._is_word_terminator(char, context):
+                # '~+' directory-stack tilde prefix: the '+' (a terminator)
+                # right after a leading '~' continues the word so the whole
+                # ~+, ~+N prefix lexes as one WORD (~- and ~N already do,
+                # since '-'/digits are not terminators). Tilde expansion
+                # interprets it; if it isn't a valid prefix it stays literal.
+                if char == '+' and value == '~':
+                    take(char, pos + 1)
+                    continue
                 # '=' continuing an assignment: NAME= / NAME[idx]= / NAME+=
                 if char == '=' and (value.endswith('+')
                                     or shape.can_take_assignment):

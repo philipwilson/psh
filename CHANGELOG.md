@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.397.0 (2026-06-14) - Tier R7.5: ~+/~-/~N tilde + "${!prefix@}" field-split
+- BUG FIX (bash-verified; reappraisal #7 M3/M2).
+- M3 `~+`/`~-`/`~N`/`~+N`/`~-N` tilde forms now expand: `~+`→`$PWD`, `~-`→
+  `$OLDPWD`, `~N`/`~+N`→`dirs +N`, `~-N`→`dirs -N`; out-of-range/invalid stays
+  literal. Two-part fix: the lexer (`recognizers/literal.py`) no longer split
+  `~+` into two words (the `+` terminator broke it into `~`→$HOME + `+`), and
+  `tilde.py` gained dir-stack/PWD/OLDPWD prefix handling. `echo ~+` → was
+  `/Users/pwilson+`, now `$PWD`. Quoted `"~+"` and non-word-start `x~+` stay
+  literal.
+- M2 `"${!prefix@}"` now field-splits (one field per matched name, like `"$@"`):
+  `x1=a x2=b; printf "[%s]" "${!x@}"` → was `[x1 x2]`, now `[x1][x2]`; `set --
+  "${!x@}"; echo $#` → 2. The quoted `@`-form was reaching the scalar
+  (space-joined) path; `fields.py` now routes `!@` through
+  `match_variable_names`, distributing affixes like `"${arr[@]}"`. The `"${!x*}"`
+  join-form and unquoted forms (already correct) are unchanged.
+- Tests: +`test_dirstack_tilde_conformance.py` (13),
+  +`test_prefix_indirection_fields_conformance.py` (10), +4 golden. Full gate
+  green: ruff + mypy clean, `run_tests.py --parallel` 7282 passed,
+  `--compare-bash` 447 passed.
+
 ## 0.396.0 (2026-06-14) - Tier R7: grow mypy scope into psh/parser (122 → 153 files)
 - TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 lever). Added 31
   `psh/parser/` modules to the mypy `files` list: the recursive_descent backend
