@@ -9,6 +9,29 @@ methods use ``self.shell`` / ``self.state`` from the host class.
 class ArrayOpsMixin:
     """Array subscript, slice, length, and assignment operations."""
 
+    def _resolve_array_name(self, array_name: str) -> str:
+        """Resolve the array-name part of a subscript through namerefs.
+
+        ``declare -n r=arr; ${r[1]}`` must access ``arr[1]``: the array-read
+        paths split ``r[1]`` into name ``r`` + subscript ``1``, but the name
+        ``r`` is a nameref and must be followed to its target ``arr`` BEFORE
+        the array lookup (``get_variable_object`` does not follow namerefs).
+        This is the single nameref-aware resolution point every array-read
+        site funnels through.
+
+        A nameref whose target is itself an element reference (``declare -n
+        r=arr[1]``) resolves to that subscripted target name (``arr[1]``); a
+        further array lookup on it finds no variable, yielding empty —
+        matching bash, where ``${r[@]}`` of an element nameref is empty. A
+        cyclic chain resolves to the original name (read as unset).
+        """
+        from ..core import NamerefCycleError
+        try:
+            return self.state.scope_manager.resolve_nameref_name(array_name)
+        except NamerefCycleError as e:
+            self.state.scope_manager.warn_nameref_cycle(e.name)
+            return array_name
+
     def _eval_array_index(self, index_expr: str) -> int:
         """Expand and arithmetically evaluate an indexed-array subscript.
 
@@ -32,7 +55,7 @@ class ArrayOpsMixin:
         from ..core import AssociativeArray, IndexedArray
 
         bracket_pos = subscripted.find('[')
-        array_name = subscripted[:bracket_pos]
+        array_name = self._resolve_array_name(subscripted[:bracket_pos])
 
         var = self.state.scope_manager.get_variable_object(array_name)
 
@@ -55,7 +78,7 @@ class ArrayOpsMixin:
         from ..core import AssociativeArray, IndexedArray
 
         bracket_pos = var_content.find('[')
-        array_name = var_content[:bracket_pos]
+        array_name = self._resolve_array_name(var_content[:bracket_pos])
         index_expr = var_content[bracket_pos + 1:-1]
 
         var = self.state.scope_manager.get_variable_object(array_name)
@@ -101,7 +124,7 @@ class ArrayOpsMixin:
         """
         if '[' in var_name and var_name.endswith(']'):
             bracket_pos = var_name.find('[')
-            array_name = var_name[:bracket_pos]
+            array_name = self._resolve_array_name(var_name[:bracket_pos])
             index_expr = var_name[bracket_pos + 1:-1]
 
             from ..core import AssociativeArray, IndexedArray
@@ -206,7 +229,7 @@ class ArrayOpsMixin:
             if check_content.startswith('!') and '[' in check_content and check_content.endswith(']'):
                 array_part = check_content[1:]  # Remove the !
                 bracket_pos = array_part.find('[')
-                array_name = array_part[:bracket_pos]
+                array_name = self._resolve_array_name(array_part[:bracket_pos])
                 index_expr = array_part[bracket_pos+1:-1]  # Remove [ and ]
 
                 if index_expr == '@' or index_expr == '*':
@@ -231,7 +254,7 @@ class ArrayOpsMixin:
             # Check for array subscript syntax: ${arr[index]}
             if '[' in var_content and var_content.endswith(']'):
                 bracket_pos = var_content.find('[')
-                array_name = var_content[:bracket_pos]
+                array_name = self._resolve_array_name(var_content[:bracket_pos])
                 index_expr = var_content[bracket_pos+1:-1]  # Remove [ and ]
 
                 if index_expr == '@':

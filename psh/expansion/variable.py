@@ -144,7 +144,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         elif '[' in var_name and var_name.endswith(']'):
             # Array element: arr[index]
             bracket_pos = var_name.find('[')
-            array_name = var_name[:bracket_pos]
+            array_name = self._resolve_array_name(var_name[:bracket_pos])
             index_expr = var_name[bracket_pos + 1:-1]
 
             from ..core import AssociativeArray, IndexedArray
@@ -282,7 +282,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         shared operator application in ``expand_parameter_direct``.
         """
         bracket_pos = var_name.find('[')
-        array_name = var_name[:bracket_pos]
+        array_name = self._resolve_array_name(var_name[:bracket_pos])
         index_expr = var_name[bracket_pos+1:-1]
 
         from ..core import AssociativeArray, IndexedArray

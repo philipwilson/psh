@@ -163,7 +163,7 @@ class OperatorOpsMixin:
         if '[' in var_name and var_name.endswith(']'):
             from ..core import AssociativeArray, IndexedArray
             bracket = var_name.find('[')
-            name = var_name[:bracket]
+            name = self._resolve_array_name(var_name[:bracket])
             index_expr = var_name[bracket + 1:-1]
             var = self.state.scope_manager.get_variable_object(name)
             if var is None:

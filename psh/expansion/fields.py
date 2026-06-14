@@ -63,7 +63,7 @@ class FieldExpansionMixin:
             return base if base else None
 
         # Per-element value operators (bash applies them to each element)
-        array_name = '@' if param == '@' else param[:-3]
+        array_name = '@' if param == '@' else self._resolve_array_name(param[:-3])
         out = []
         for value in base:
             new = self._apply_op_per_element(operator, value, operand or '', array_name)
@@ -88,7 +88,7 @@ class FieldExpansionMixin:
                 self._positional_slice_elements(), offset, length)
 
         from ..core import AssociativeArray, IndexedArray
-        name = param[:-3]
+        name = self._resolve_array_name(param[:-3])
         var = self.state.scope_manager.get_variable_object(name)
         if var is not None and isinstance(var.value, IndexedArray):
             # bash slices indexed arrays by INDEX, not by element position
