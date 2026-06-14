@@ -348,7 +348,7 @@ both suppressions are read off the same per-part `quoted` flag.
 
 Note what does NOT happen here: `> out.txt` is not expanded in this
 phase. Redirect targets are flat strings expanded at apply time by
-`FileRedirector._expand_redirect_target`
+`FileRedirector.expand_redirect_target`
 (`psh/io_redirect/file_redirect.py`) — in this case inside `wc`'s
 child, just before the file is opened (§7).
 

@@ -89,7 +89,7 @@ class TestDynamicDupTarget:
     """`>&`/`<&` targets given by an expansion are resolved at runtime.
 
     The lexer emits a bare `N>&`/`>&`/`<&` operator, the parser keeps the
-    expansion as the target, and FileRedirector._resolved expands it to an fd
+    expansion as the target, and FileRedirector.resolve_dynamic_dup expands it to an fd
     number before the dup. See docs / brace_expansion is unrelated.
     """
 

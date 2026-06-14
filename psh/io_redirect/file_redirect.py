@@ -22,14 +22,25 @@ def _dup2_preserve_target(opened_fd: int, target_fd: int):
 
 
 class FileRedirector:
-    """Handles file-based I/O redirections."""
+    """Handles file-based I/O redirections.
+
+    FileRedirector is the fd-universe backend (`apply_fd_plan` and friends),
+    but a subset of its methods are *shared redirect primitives* reused by the
+    builtin stream-redirect backend in ``manager.py`` and by ``planner.py``.
+    Those primitives carry no leading underscore — they are a deliberate,
+    stable public surface (e.g. ``redirect_input_from_file``,
+    ``redirect_heredoc``, ``redirect_herestring``, ``redirect_readwrite``,
+    ``check_noclobber``, ``noclobber_blocks``, ``dup_fd_valid``,
+    ``expand_redirect_target``, ``resolve_dynamic_dup``, ``procsub_handler``).
+    Underscore-prefixed methods remain private to this module.
+    """
 
     def __init__(self, shell: 'Shell'):
         self.shell = shell
         self.state = shell.state
         self.planner = RedirectPlanner(self)
 
-    def _noclobber_blocks(self, target) -> bool:
+    def noclobber_blocks(self, target) -> bool:
         """True when noclobber forbids `>` to this target (bash semantics).
 
         noclobber protects only existing REGULAR files: `> /dev/null` and
@@ -38,8 +49,9 @@ class FileRedirector:
         symlink also blocks — bash opens with O_CREAT|O_EXCL when the stat
         target is missing, and the link itself makes that open fail EEXIST.
 
-        Shared predicate for every redirect path; the response differs (raise in
-        the parent, os._exit in a forked child), but the condition is one place.
+        Shared redirect primitive: used by every redirect path (fd backend and
+        the builtin stream backend); the response differs (raise in the parent,
+        os._exit in a forked child), but the condition is one place.
         """
         if not self.state.options.get('noclobber', False):
             return False
@@ -51,17 +63,23 @@ class FileRedirector:
             return os.path.islink(target)
         return stat.S_ISREG(st.st_mode)
 
-    def _dup_fd_valid(self, dup_fd: int) -> bool:
-        """True when dup_fd is currently an open file descriptor (for >&/<&)."""
+    def dup_fd_valid(self, dup_fd: int) -> bool:
+        """True when dup_fd is currently an open file descriptor (for >&/<&).
+
+        Shared redirect primitive (used by the builtin backend's fd-dup path).
+        """
         try:
             fcntl.fcntl(dup_fd, fcntl.F_GETFD)
             return True
         except OSError:
             return False
 
-    def _check_noclobber(self, target):
-        """Raise OSError if noclobber is set and target exists."""
-        if self._noclobber_blocks(target):
+    def check_noclobber(self, target):
+        """Raise OSError if noclobber is set and target exists.
+
+        Shared redirect primitive (fd backend and builtin stream backend).
+        """
+        if self.noclobber_blocks(target):
             raise OSError(f"cannot overwrite existing file: {target}")
 
     def _is_filename_redirect(self, redirect) -> bool:
@@ -86,8 +104,10 @@ class FileRedirector:
                 and isinstance(word.parts[0], ExpansionPart)
                 and isinstance(word.parts[0].expansion, ProcessSubstitution))
 
-    def _expand_redirect_target(self, redirect):
+    def expand_redirect_target(self, redirect):
         """Expand a redirect target, enforcing bash's "ambiguous redirect" rule.
+
+        Shared redirect primitive: the planner calls this for every backend.
 
         For filename-target redirects (`<`/`>`/`>>`/`<>`/`>|`/`&>`/`&>>`) with
         a parsed Word, expand through the full command-argument pipeline
@@ -127,9 +147,10 @@ class FileRedirector:
             target = self.shell.expansion_manager.expand_tilde(target)
         return target
 
-    def _redirect_input_from_file(self, target, redirect=None):
+    def redirect_input_from_file(self, target, redirect=None):
         """Open file for input and dup2 to the redirect's fd (default 0).
 
+        Shared redirect primitive (fd backend and builtin stream backend).
         Honors an explicit source fd — ``exec 5<file`` must open fd 5,
         not clobber stdin. Returns the target fd.
         """
@@ -165,9 +186,10 @@ class FileRedirector:
         """Target fd for a heredoc/here-string: explicit prefix or stdin (0)."""
         return redirect.fd if redirect.fd is not None else 0
 
-    def _redirect_heredoc(self, redirect):
+    def redirect_heredoc(self, redirect):
         """Point the redirect's fd (default stdin) at the heredoc content.
 
+        Shared redirect primitive (fd backend and builtin stream backend).
         Returns the expanded content."""
         content = redirect.heredoc_content or ''
         if content and not getattr(redirect, 'heredoc_quoted', False):
@@ -175,9 +197,10 @@ class FileRedirector:
         self._content_to_fd(content, self._heredoc_fd(redirect))
         return content
 
-    def _redirect_herestring(self, redirect):
+    def redirect_herestring(self, redirect):
         """Point the redirect's fd (default stdin) at the here-string content.
 
+        Shared redirect primitive (fd backend and builtin stream backend).
         Returns the content."""
         if hasattr(redirect, 'quote_type') and redirect.quote_type == "'":
             expanded = redirect.target
@@ -191,15 +214,17 @@ class FileRedirector:
         """Open file for output and dup2 to target fd. Returns target_fd."""
         target_fd = redirect.fd if redirect.fd is not None else 1
         if redirect.type == '>' and check_noclobber:
-            self._check_noclobber(target)
+            self.check_noclobber(target)
         flags = os.O_WRONLY | os.O_CREAT
         flags |= os.O_TRUNC if redirect.type == '>' else os.O_APPEND
         fd = os.open(target, flags, 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
-    def _resolved(self, redirect):
+    def resolve_dynamic_dup(self, redirect):
         """Resolve a dynamic fd-dup target (e.g. ``>&$fd``, ``2>&$((n+1))``).
+
+        Shared redirect primitive: the planner calls this for every backend.
 
         For ``>&``/``<&`` redirects whose source fd is given by an expansion,
         the parser leaves ``dup_fd=None`` and stores the (expandable) target
@@ -229,7 +254,7 @@ class FileRedirector:
     def _redirect_dup_fd(self, redirect):
         """Handle >&/<& fd duplication. Validates source fd."""
         if redirect.fd is not None and redirect.dup_fd is not None:
-            if not self._dup_fd_valid(redirect.dup_fd):
+            if not self.dup_fd_valid(redirect.dup_fd):
                 raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
             os.dup2(redirect.dup_fd, redirect.fd)
         elif redirect.fd is not None and redirect.target == '-':
@@ -238,8 +263,11 @@ class FileRedirector:
             except OSError:
                 pass
 
-    def _redirect_readwrite(self, target, redirect):
-        """Open file for read-write (<>) and dup2 to target fd."""
+    def redirect_readwrite(self, target, redirect):
+        """Open file for read-write (<>) and dup2 to target fd.
+
+        Shared redirect primitive (fd backend and builtin stream backend).
+        """
         target_fd = redirect.fd if redirect.fd is not None else 0
         fd = os.open(target, os.O_RDWR | os.O_CREAT, 0o644)
         _dup2_preserve_target(fd, target_fd)
@@ -259,7 +287,7 @@ class FileRedirector:
         if is_append:
             flags |= os.O_APPEND
         else:
-            if self._noclobber_blocks(target):
+            if self.noclobber_blocks(target):
                 raise OSError(f"cannot overwrite existing file: {target}")
             flags |= os.O_TRUNC
         fd = os.open(target, flags, 0o644)
@@ -289,7 +317,7 @@ class FileRedirector:
     def _validate_dup_source(self, redirect: Redirect) -> None:
         """Validate the source fd for >&/<& before saving target fds."""
         if (redirect.fd is not None and redirect.dup_fd is not None
-                and not self._dup_fd_valid(redirect.dup_fd)):
+                and not self.dup_fd_valid(redirect.dup_fd)):
             raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
 
     def saved_fds_for_plan(self, plan: RedirectPlan) -> List[Tuple[int, int | None]]:
@@ -319,13 +347,13 @@ class FileRedirector:
         if redirect.combined:
             self._redirect_combined(target, redirect)
         elif redirect.type == '<':
-            self._redirect_input_from_file(target, redirect)
+            self.redirect_input_from_file(target, redirect)
         elif redirect.type == '<>':
-            self._redirect_readwrite(target, redirect)
+            self.redirect_readwrite(target, redirect)
         elif redirect.type in ('<<', '<<-'):
-            self._redirect_heredoc(redirect)
+            self.redirect_heredoc(redirect)
         elif redirect.type == '<<<':
-            self._redirect_herestring(redirect)
+            self.redirect_herestring(redirect)
         elif redirect.type == '>|':
             self._redirect_clobber(target, redirect)
         elif redirect.type in ('>', '>>'):
@@ -469,8 +497,10 @@ class FileRedirector:
                 plan.close_procsub(applied=applied)
 
     @property
-    def _procsub_handler(self):
+    def procsub_handler(self):
         """The shell's ProcessSubstitutionHandler (resolves redirect targets).
+
+        Shared redirect primitive (used by the planner for every backend).
 
         Looked up through shell.io_manager at call time because the IOManager
         constructs the FileRedirector before the handler exists.

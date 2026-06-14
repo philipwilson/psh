@@ -44,9 +44,9 @@ class RedirectPlanner:
         self.file_redirector = file_redirector
 
     def plan(self, redirect: Redirect) -> RedirectPlan:
-        redirect = self.file_redirector._resolved(redirect)
-        target = self.file_redirector._expand_redirect_target(redirect)
+        redirect = self.file_redirector.resolve_dynamic_dup(redirect)
+        target = self.file_redirector.expand_redirect_target(redirect)
         target, procsub = (
-            self.file_redirector._procsub_handler.resolve_procsub_resource(
+            self.file_redirector.procsub_handler.resolve_procsub_resource(
                 target))
         return RedirectPlan(redirect, target, procsub)

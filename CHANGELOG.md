@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.409.0 (2026-06-14) - Tier R8.2: redirect-primitive boundary (public shared surface)
+- REFACTOR (zero behavior change; review Ugly 7 / A4). The builtin stream-redirect
+  backend (`IOManager`) reached into `FileRedirector` PRIVATE methods that are
+  actually shared redirect primitives. Promoted the 10 genuinely-shared ones to
+  a documented public surface (dropping the leading underscore):
+  `redirect_input_from_file`, `redirect_readwrite`, `redirect_heredoc`,
+  `redirect_herestring`, `check_noclobber`, `noclobber_blocks`, `dup_fd_valid`,
+  `expand_redirect_target`, `resolve_dynamic_dup` (was `_resolved`),
+  `procsub_handler`. Methods used only inside `file_redirect.py` stay private; the
+  `RedirectPlan`/`RedirectPlanner`/`apply_fd_plan` layer is untouched.
+- Added a class docstring documenting the public-primitive vs private contract;
+  updated `io_redirect/CLAUDE.md` (helper table split public/private) and the
+  arch docs that named the old private methods.
+- A characterization harness over builtin + external redirect paths (read-from-
+  file, heredoc, here-string, `<>`, noclobber block/clobber/new, `>&-`, fd dup,
+  `&>`, `2>&1`, dynamic dup, ambiguous redirect) is byte-identical before/after.
+- Full gate green: ruff + mypy clean (223 files), `run_tests.py --parallel` 7387
+  passed, `--compare-bash` 461 passed.
+
 ## 0.408.0 (2026-06-14) - Tier R8.1: control-flow context helpers (+2 latent bug fixes)
 - REFACTOR (zero behavior change for the extracted scaffolding) + 2 latent bug
   fixes toward bash. `ControlFlowExecutor` repeated the same boilerplate across

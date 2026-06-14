@@ -3,7 +3,7 @@
 An explicit file-descriptor prefix on an input redirect (`5<file`) must open
 the file on fd N, not clobber stdin — for external commands run through the
 forked-child path too, not just `exec`. psh's child/builtin input paths used
-to call `_redirect_input_from_file(target)` without the redirect, defaulting
+to call `redirect_input_from_file(target)` without the redirect, defaulting
 to fd 0, so `cmd 5<file` left fd 5 closed and an external command reading it
 got "Bad file descriptor". Fixed by passing the redirect through (review:
 redirection/IO architecture, Ugly 2). See fix/explicit-input-fd-child.

@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.408.0
+**Current Version**: 0.409.0
 
 **Note:** For orientation, start with the Quick Map below; for a narrative
 walkthrough of one command through the whole pipeline (with reproducible
@@ -1038,9 +1038,9 @@ def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int]]
 ### 6.2 Here Documents
 **File**: `io_redirect/file_redirect.py` (`FileRedirector`)
 
-Heredoc content is collected at parse time and attached to the redirect node; at execution time `FileRedirector._redirect_heredoc()` expands the content (unless the delimiter was quoted) and points stdin at it via an anonymous temporary file:
+Heredoc content is collected at parse time and attached to the redirect node; at execution time `FileRedirector.redirect_heredoc()` expands the content (unless the delimiter was quoted) and points stdin at it via an anonymous temporary file:
 ```python
-def _redirect_heredoc(self, redirect):
+def redirect_heredoc(self, redirect):
     """Point stdin at the heredoc content. Returns the expanded content."""
     content = redirect.heredoc_content or ''
     if content and not getattr(redirect, 'heredoc_quoted', False):
