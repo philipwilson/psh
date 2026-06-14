@@ -27,10 +27,13 @@ class ScriptExecutor(ScriptComponent):
         # Save current script state
         old_script_name = self.state.script_name
         old_script_mode = self.state.is_script_mode
+        old_stdin_mode = self.state.options.get('stdin_mode')
         old_positional = self.state.positional_params.copy()
 
         self.state.script_name = script_path
         self.state.is_script_mode = True
+        # A script-file shell reads from a file, not stdin: bash's $- has no 's'.
+        self.state.options['stdin_mode'] = False
         self.state.positional_params = script_args
 
         try:
@@ -49,4 +52,6 @@ class ScriptExecutor(ScriptComponent):
         finally:
             self.state.script_name = old_script_name
             self.state.is_script_mode = old_script_mode
+            if old_stdin_mode is not None:
+                self.state.options['stdin_mode'] = old_stdin_mode
             self.state.positional_params = old_positional

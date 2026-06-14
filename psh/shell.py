@@ -254,6 +254,11 @@ class Shell:
         # Interactive: emacs on (for line editing), Non-interactive: emacs off
         self.state.options['emacs'] = is_interactive and not self.state.is_script_mode
 
+        # History expansion ('H' in $-) is interactive-only in bash. A
+        # non-interactive shell (-c, script, piped stdin) has no '!' history
+        # expansion and no 'H' in $-.
+        self.state.options['histexpand'] = is_interactive
+
         if not self.state.is_script_mode and is_interactive and not self.state.norc:
             from .interactive import load_rc_file
             load_rc_file(self)

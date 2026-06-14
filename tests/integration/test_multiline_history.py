@@ -145,6 +145,9 @@ three""")
 
     def test_history_expansion_not_saved(self, clean_shell, capsys):
         """Test that history expansion commands are not saved to history."""
+        # History expansion is interactive-only by default (bash); enable it
+        # explicitly to exercise the !! expansion behavior in this test shell.
+        clean_shell.state.options['histexpand'] = True
         # Execute some commands
         clean_shell.run_command("echo first")
         clean_shell.run_command("echo second")

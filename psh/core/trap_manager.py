@@ -257,9 +257,35 @@ class TrapManager:
                 else:
                     # Quote the action for display
                     action_display = f"'{action}'"
-                output_lines.append(f"trap -- {action_display} {signal_name}")
+                display_name = self._canonical_trap_name(signal_name)
+                output_lines.append(f"trap -- {action_display} {display_name}")
 
         return '\n'.join(output_lines)
+
+    # Pseudo-signals are printed WITHOUT a SIG prefix (bash); real signals
+    # are printed with their canonical SIG-prefixed name.
+    _PSEUDO_SIGNALS = frozenset({'EXIT', 'ERR', 'DEBUG', 'RETURN'})
+
+    def _canonical_trap_name(self, signal_name: str) -> str:
+        """Canonical name for `trap -p` output (bash-compatible).
+
+        Real signals get the ``SIG`` prefix (``TERM`` -> ``SIGTERM``);
+        pseudo-signals (EXIT/ERR/DEBUG/RETURN) are printed bare.
+        """
+        name = signal_name.upper()
+        if name in self._PSEUDO_SIGNALS:
+            return name
+        # A numerically-keyed trap (e.g. set via `trap ... 15`) resolves to
+        # its canonical signal name (bash: SIGTERM, not SIG15).
+        try:
+            num = int(name)
+        except ValueError:
+            pass
+        else:
+            name = self.signal_names.get(num, name)
+        if name.startswith('SIG'):
+            return name
+        return f"SIG{name}"
 
     def execute_exit_trap(self):
         """Execute EXIT trap if set.
