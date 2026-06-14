@@ -92,7 +92,11 @@ files = [
     "psh/scripting",
     # Visitor (whole package)
     "psh/visitor",
+    # Executor (annotation-clean modules)
+    "psh/executor/child_policy.py",
+    "psh/executor/process_launcher.py",
     # Expansion (annotation-clean modules)
+    "psh/expansion/arithmetic",
     "psh/expansion/__init__.py",
     "psh/expansion/pattern.py",
     "psh/expansion/aliases.py",
@@ -108,6 +112,8 @@ files = [
     "psh/expansion/variable.py",
     "psh/expansion/word_expander.py",
     "psh/expansion/word_splitter.py",
+    # I/O redirection (annotation-clean modules)
+    "psh/io_redirect/planner.py",
     # Utils (annotation-clean modules)
     "psh/utils/__init__.py",
     "psh/utils/escapes.py",

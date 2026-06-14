@@ -1,6 +1,6 @@
 """Recursive-descent parser for shell arithmetic expressions."""
 
-from typing import List, Tuple
+from typing import List, Tuple, cast
 
 from .nodes import (
     ArithNode,
@@ -233,11 +233,11 @@ class ArithParser:
 
         # Pre-increment/decrement
         if self.match(ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
-            op = self.advance()
+            inc_op = self.advance()
             if not self.match(ArithTokenType.IDENTIFIER):
-                raise SyntaxError(f"Expected identifier after {op.value}")
-            var_name = self.advance().value
-            is_inc = op.type == ArithTokenType.INCREMENT
+                raise SyntaxError(f"Expected identifier after {inc_op.value}")
+            var_name = cast(str, self.advance().value)
+            is_inc = inc_op.type == ArithTokenType.INCREMENT
             # Array-element lvalue: ++arr[i] / --arr[i]
             if self.match(ArithTokenType.LBRACKET):
                 index, index_text = self._parse_subscript()
@@ -282,12 +282,12 @@ class ArithParser:
         """Parse primary expressions"""
         # Numbers
         if self.match(ArithTokenType.NUMBER):
-            return NumberNode(self.advance().value)
+            return NumberNode(cast(int, self.advance().value))
 
         # Variables (possibly with assignment)
         if self.match(ArithTokenType.IDENTIFIER):
             var_token = self.advance()
-            var_name = var_token.value
+            var_name = cast(str, var_token.value)
 
             # Array subscript: arr[index] (read or assignment target)
             if self.match(ArithTokenType.LBRACKET):
