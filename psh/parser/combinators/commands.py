@@ -10,10 +10,12 @@ from typing import List, Optional, Union
 from ...ast_nodes import (
     AndOrList,
     ArithmeticEvaluation,
+    ArrayAssignment,
     ASTNode,
-    BraceGroup,
+    BreakStatement,
     CaseConditional,
     CommandList,
+    ContinueStatement,
     CStyleForLoop,
     EnhancedTestStatement,
     ForLoop,
@@ -24,12 +26,13 @@ from ...ast_nodes import (
     Redirect,
     SelectLoop,
     SimpleCommand,
-    SubshellGroup,
     WhileLoop,
 )
-from ...lexer.token_types import Token
+from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
+from ..recursive_descent.helpers import ErrorContext, ParseError
 from ..recursive_descent.support.word_builder import WordBuilder
+from .arrays import ArrayParsers
 from .core import ForwardParser, Parser, ParseResult, many, many1, optional, separated_by, sequence, token
 from .expansions import ExpansionParsers
 from .tokens import TokenParsers
@@ -64,6 +67,7 @@ class CommandParsers:
         self.config = config or ParserConfig()
         self.tokens = token_parsers or TokenParsers()
         self.expansions = expansion_parsers or ExpansionParsers(self.config)
+        self.arrays = ArrayParsers(self.tokens)
 
         # Forward declarations for recursive structures
         self.statement_forward = ForwardParser[Union[AndOrList, FunctionDef]]()
@@ -90,6 +94,10 @@ class CommandParsers:
 
         # Build statement list parser
         self.statement_list = self._build_statement_list_parser()
+
+    def _parse_word_as_word(self, tokens: List[Token], pos: int) -> ParseResult:
+        """Parse one word-like shell word, including adjacent composite parts."""
+        return self.arrays.parse_word_as_word(tokens, pos)
 
     def _parse_redirection(self, tokens: List[Token], pos: int) -> ParseResult[Redirect]:
         """Parse I/O redirection.
@@ -136,7 +144,7 @@ class CommandParsers:
         # Handle heredoc operators
         if op_token.type.name in ['HEREDOC', 'HEREDOC_STRIP']:
             # Parse delimiter
-            if pos >= len(tokens):
+            if pos >= len(tokens) or tokens[pos].type.name == 'EOF':
                 return ParseResult(
                     success=False,
                     error="Expected heredoc delimiter",
@@ -152,7 +160,7 @@ class CommandParsers:
         # Handle here string (<<<)
         if op_token.type.name == 'HERE_STRING':
             # Parse the content
-            content_result = self.tokens.word_like.parse(tokens, pos)
+            content_result = self._parse_word_as_word(tokens, pos)
             if not content_result.success:
                 return ParseResult(
                     success=False,
@@ -160,16 +168,18 @@ class CommandParsers:
                     position=pos
                 )
 
-            content_value = content_result.value.value if hasattr(content_result.value, 'value') else str(content_result.value)
+            content_word = content_result.value
+            assert content_word is not None  # success implies a value
+            content_value = content_word.display_text()
 
             redirect = Redirect(
                 type=op_token.value, target=content_value,
-                heredoc_content=content_value, fd=fd,
+                quote_type=content_word.effective_quote_char, fd=fd,
             )
             return ParseResult(success=True, value=redirect, position=content_result.position)
 
         # Normal redirection - needs a target
-        target_result = self.tokens.word_like.parse(tokens, pos)
+        target_result = self._parse_word_as_word(tokens, pos)
         if not target_result.success:
             return ParseResult(
                 success=False,
@@ -177,12 +187,20 @@ class CommandParsers:
                 position=pos
             )
 
-        target_value = target_result.value.value if hasattr(target_result.value, 'value') else str(target_result.value)
+        target_word = target_result.value
+        assert target_word is not None  # success implies a value
+        target_value = target_word.display_text()
 
         # Check for combined redirect (&> or &>>)
         combined = getattr(op_token, 'combined_redirect', False)
 
-        redirect = Redirect(type=op_token.value, target=target_value, fd=fd, combined=combined)
+        redirect = Redirect(
+            type=op_token.value,
+            target=target_value,
+            fd=fd,
+            combined=combined,
+            target_word=target_word,
+        )
         return ParseResult(success=True, value=redirect, position=target_result.position)
 
     def _build_simple_command_parser(self) -> Parser[SimpleCommand]:
@@ -195,6 +213,8 @@ class CommandParsers:
             """Parse a simple command with words, redirections, and FD dups."""
             word_tokens: List[Token] = []
             redirects: List[Redirect] = []
+            array_assignments: List[ArrayAssignment] = []
+            parsed_regular_arg = False
 
             # Collect words, redirections, and FD dup words in any order
             while pos < len(tokens):
@@ -206,66 +226,68 @@ class CommandParsers:
                         pos += 1
                         continue
 
+                if not parsed_regular_arg:
+                    array_result = self.arrays.parse_assignment(tokens, pos)
+                    if array_result.success:
+                        assert array_result.value is not None
+                        array_assignments.append(array_result.value)
+                        pos = array_result.position
+                        continue
+
                 # Try redirection (includes FD-prefixed redirects)
                 redir_result = self.redirection.parse(tokens, pos)
                 if redir_result.success:
                     redirects.append(redir_result.value)
                     pos = redir_result.position
                     continue
+                if pos < len(tokens) and self.tokens.is_redirect_operator(tokens[pos]):
+                    error_pos = min(redir_result.position, len(tokens) - 1)
+                    raise ParseError(ErrorContext(
+                        token=tokens[error_pos],
+                        message=redir_result.error or "Invalid redirection",
+                        position=error_pos,
+                    ))
 
                 # Try a word-like token
                 word_result = self.tokens.word_like.parse(tokens, pos)
                 if word_result.success:
+                    if self.arrays.is_initializer_head(tokens, pos):
+                        init_result = self.arrays.parse_initialization(tokens, pos)
+                        if not init_result.success:
+                            return ParseResult(
+                                success=False,
+                                error=init_result.error,
+                                position=init_result.position,
+                            )
+                        array_init = init_result.value
+                        assert array_init is not None
+                        flat_text = (
+                            array_init.name
+                            + ('+=' if array_init.is_append else '=')
+                            + '('
+                            + ' '.join(array_init.elements)
+                            + ')'
+                        )
+                        array_token = Token(
+                            type=TokenType.WORD,
+                            value=flat_text,
+                            position=getattr(tokens[pos], 'position', 0),
+                        )
+                        setattr(array_token, 'array_init', array_init)
+                        word_tokens.append(array_token)
+                        pos = init_result.position
+                        parsed_regular_arg = True
+                        continue
+
                     word_tokens.append(word_result.value)
                     pos = word_result.position
-
-                    # Check for array assignment: WORD('name=') followed by
-                    # adjacent LPAREN — e.g. `declare -a arr=(one two three)`.
-                    # Collect the parenthesized items and synthesize a single
-                    # WORD token "name=(item1 item2 ...)" that the executor
-                    # recognises as an array initialization.
-                    if (pos < len(tokens)
-                            and tokens[pos].type.name == 'LPAREN'
-                            and getattr(tokens[pos], 'adjacent_to_previous', False)
-                            and word_tokens[-1].value.endswith('=')):
-                        arr_prefix = word_tokens.pop()  # remove the 'name=' token
-                        pos += 1  # skip '('
-                        items: List[str] = []
-                        while pos < len(tokens) and tokens[pos].type.name != 'RPAREN':
-                            tok = tokens[pos]
-                            if tok.type.name in _WORD_LIKE_TYPES or tok.type.name in ('LBRACKET', 'RBRACKET'):
-                                # Preserve quotes around STRING tokens so the executor
-                                # can parse ["key"]="value" for associative arrays.
-                                qt = getattr(tok, 'quote_type', None)
-                                if qt and tok.type.name == 'STRING':
-                                    text = f'{qt}{tok.value}{qt}'
-                                else:
-                                    text = tok.value
-                                # Group adjacent tokens into a single element
-                                # (e.g. ["key"]="value" is one element, not four).
-                                if items and getattr(tok, 'adjacent_to_previous', False):
-                                    items[-1] += text
-                                else:
-                                    items.append(text)
-                            # Skip whitespace/newlines inside array parens
-                            pos += 1
-                        if pos < len(tokens) and tokens[pos].type.name == 'RPAREN':
-                            pos += 1  # skip ')'
-                        # Build a single synthetic token: "name=(item1 item2 ...)"
-                        arr_value = arr_prefix.value + '(' + ' '.join(items) + ')'
-                        synth_token = Token(
-                            type=arr_prefix.type,
-                            value=arr_value,
-                            position=getattr(arr_prefix, 'position', 0),
-                        )
-                        word_tokens.append(synth_token)
-
+                    parsed_regular_arg = True
                     continue
 
                 # Nothing matched — stop collecting
                 break
 
-            if not word_tokens and not redirects:
+            if not word_tokens and not redirects and not array_assignments:
                 return ParseResult(success=False, error="Expected command", position=pos)
 
             # Parse optional background operator
@@ -274,7 +296,12 @@ class CommandParsers:
             pos = background_result.position
 
             # Build the simple command
-            cmd = self._build_simple_command(word_tokens, redirects, background)
+            cmd = self._build_simple_command(
+                word_tokens,
+                redirects,
+                background,
+                array_assignments=array_assignments,
+            )
 
             return ParseResult(
                 success=True,
@@ -305,7 +332,8 @@ class CommandParsers:
 
     def _build_simple_command(self, word_tokens: List[Token],
                              redirects: List[Redirect],
-                             background: bool = False) -> SimpleCommand:
+                             background: bool = False,
+                             array_assignments: Optional[List[ArrayAssignment]] = None) -> SimpleCommand:
         """Build a SimpleCommand with proper token type and quote preservation.
 
         Args:
@@ -316,7 +344,11 @@ class CommandParsers:
         Returns:
             SimpleCommand AST node
         """
-        cmd = SimpleCommand(redirects=redirects, background=background)
+        cmd = SimpleCommand(
+            redirects=redirects,
+            background=background,
+            array_assignments=array_assignments or [],
+        )
 
         # Group adjacent tokens into composite sequences
         groups = self._group_adjacent_tokens(word_tokens)
@@ -328,6 +360,9 @@ class CommandParsers:
                 word = self.expansions.build_word_from_token(group[0])
             else:
                 word = WordBuilder.build_composite_word(group)
+            group_array_init = getattr(group[0], 'array_init', None)
+            if group_array_init is not None:
+                word.array_init = group_array_init
             cmd.words.append(word)
 
         return cmd
@@ -401,8 +436,8 @@ class CommandParsers:
             if len(commands) == 1 and not negated:
                 cmd = commands[0]
                 if isinstance(cmd, (IfConditional, WhileLoop, ForLoop, CaseConditional, SelectLoop,
-                                  SubshellGroup, BraceGroup, CStyleForLoop, ArithmeticEvaluation,
-                                  EnhancedTestStatement)):
+                                  CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement,
+                                  BreakStatement, ContinueStatement)):
                     return ParseResult(success=True, value=cmd, position=pos)
             pipeline = Pipeline(commands=commands, negated=negated, pipe_stderr=pipe_stderr_list) if commands else None
             return ParseResult(success=True, value=pipeline, position=pos)
@@ -449,8 +484,8 @@ class CommandParsers:
             # Single element with no operators - return it directly instead of wrapping
             # This prevents unnecessary AndOrList wrapping for standalone control structures
             if isinstance(first_pipeline, (IfConditional, WhileLoop, ForLoop, CaseConditional, SelectLoop,
-                                         SubshellGroup, BraceGroup, CStyleForLoop, ArithmeticEvaluation,
-                                         EnhancedTestStatement)):
+                                         CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement,
+                                         BreakStatement, ContinueStatement)):
                 return first_pipeline
             return AndOrList(pipelines=[first_pipeline])
 
@@ -545,8 +580,8 @@ class CommandParsers:
             if len(commands) == 1 and not negated:
                 cmd = commands[0]
                 if isinstance(cmd, (IfConditional, WhileLoop, ForLoop, CaseConditional, SelectLoop,
-                                  SubshellGroup, BraceGroup, CStyleForLoop, ArithmeticEvaluation,
-                                  EnhancedTestStatement)):
+                                  CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement,
+                                  BreakStatement, ContinueStatement)):
                     return ParseResult(success=True, value=cmd, position=pos)
             pipeline = Pipeline(commands=commands, negated=negated, pipe_stderr=pipe_stderr_list) if commands else None
             return ParseResult(success=True, value=pipeline, position=pos)
@@ -641,8 +676,8 @@ def parse_pipeline(command_parser: Parser) -> Parser[Union[Pipeline, ASTNode]]:
         if len(commands) == 1 and not negated:
             cmd = commands[0]
             if isinstance(cmd, (IfConditional, WhileLoop, ForLoop, CaseConditional, SelectLoop,
-                              SubshellGroup, BraceGroup, CStyleForLoop, ArithmeticEvaluation,
-                              EnhancedTestStatement)):
+                              CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement,
+                              BreakStatement, ContinueStatement)):
                 return ParseResult(success=True, value=cmd, position=pos)
         pipeline = Pipeline(commands=commands, negated=negated, pipe_stderr=pipe_stderr_list) if commands else None
         return ParseResult(success=True, value=pipeline, position=pos)
@@ -667,8 +702,8 @@ def parse_and_or_list(pipeline_parser: Parser) -> Parser[AndOrList]:
 
         if not rest:
             if isinstance(first, (IfConditional, WhileLoop, ForLoop, CaseConditional, SelectLoop,
-                                SubshellGroup, BraceGroup, CStyleForLoop, ArithmeticEvaluation,
-                                EnhancedTestStatement)):
+                                CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement,
+                                BreakStatement, ContinueStatement)):
                 return first
             return AndOrList(pipelines=[first])
 
