@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.377.0 (2026-06-14) - Behavior fix: extglob inside [[ ]] pattern operands
+- BUG FIX (bash-verified; final recorded follow-up). `[[ abc == a@(b|x)c ]]`
+  raised a parse error (`Expected DOUBLE_RBRACKET, got LPAREN`); psh now matches
+  bash for extended-glob patterns (`?(...)`, `*(...)`, `+(...)`, `@(...)`,
+  `!(...)`) in `[[ ]]` `==`/`!=` operands, including adjacent/nested groups and
+  trailing globs.
+- KEY INSIGHT: extglob in `[[ ]]` is UNCONDITIONAL in bash — it works whether or
+  not `shopt -s extglob` is set (and `shopt` on the same `-c` line is lexed
+  before it runs anyway). Fixes:
+  - Lexer (`recognizers/literal.py`, `operator.py`): new shared predicate
+    `extglob_active(config, context)` = `enable_extglob OR bracket_depth > 0`,
+    used at the four extglob gates, so an unquoted extglob group is tokenized
+    inside `[[ ]]` instead of leaking a stray `LPAREN`.
+  - Evaluator (`enhanced_test_evaluator._pattern_match`): `[[ ]]` `==`/`!=`
+    matches with extglob always enabled; quoted parts stay glob-escaped
+    (`[[ abc == "a@(b|x)c" ]]` remains a literal non-match).
+  - Both parser backends benefit (the lexer is shared).
+- Adjacent paren constructs verified UNAFFECTED vs bash: `=~` regex grouping +
+  `BASH_REMATCH`, `(( ))` arithmetic, `$(...)`, `( subshell )`, `case` patterns,
+  and `[[ ( … ) && ( … ) ]]` test-grouping.
+- Documented divergence left unchanged (low value, high regression risk): LHS
+  extglob `[[ a@(b)c == abc ]]` — bash syntax-errors, psh parses to a non-match.
+- Tests: new `tests/conformance/bash/test_double_bracket_extglob_conformance.py`
+  (12 `assert_identical_behavior`) + 6 golden cases.
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6901 passed,
+  `pytest tests/behavioral --compare-bash` 349 passed.
+
 ## 0.376.0 (2026-06-14) - Docs: sync io_redirect/CLAUDE.md with the planner refactor
 - DOCS ONLY. Updated `psh/io_redirect/CLAUDE.md` for the v0.375.0 planning
   refactor: added `planner.py` to the Key Files table and the architecture

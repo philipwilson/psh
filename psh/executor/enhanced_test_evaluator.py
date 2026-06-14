@@ -270,11 +270,16 @@ class TestExpressionEvaluator:
 
         Delegates to the canonical engine (expansion/pattern.py) so
         [[ == ]] cannot drift from case patterns and ${var#pat}.
+
+        Extended-glob patterns (``a@(b|x)c``) are always honoured here:
+        bash interprets ``?(``/``*(``/``+(``/``@(``/``!(`` in a ``[[ ]]``
+        ``==``/``!=`` pattern operand independent of the ``extglob`` shopt
+        (verified against bash with the option both on and off). The lexer
+        likewise parses these groups unconditionally inside ``[[ ]]``
+        (see ``recognizers/literal.extglob_active``).
         """
         from ..expansion.pattern import match_shell_pattern
-        return match_shell_pattern(
-            string, pattern,
-            extglob_enabled=self.state.options.get('extglob', False))
+        return match_shell_pattern(string, pattern, extglob_enabled=True)
 
     def evaluate_unary_test(self, expr: UnaryTestExpression) -> bool:
         """Evaluate unary test expression."""

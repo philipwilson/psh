@@ -5,6 +5,7 @@ from typing import Optional, Set, Tuple
 from ..state_context import LexerContext
 from ..token_types import Token, TokenType
 from .base import ContextualRecognizer
+from .literal import extglob_active
 
 
 class OperatorRecognizer(ContextualRecognizer):
@@ -263,8 +264,8 @@ class OperatorRecognizer(ContextualRecognizer):
 
                 if candidate in self.OPERATORS[length]:
                     # Extglob: don't match ! as EXCLAMATION when followed by (
-                    if (candidate == '!' and self.config
-                            and self.config.enable_extglob
+                    if (candidate == '!'
+                            and extglob_active(self.config, context)
                             and pos + 1 < len(input_text)
                             and input_text[pos + 1] == '('):
                         return None

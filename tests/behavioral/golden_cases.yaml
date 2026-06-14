@@ -959,6 +959,46 @@
   stderr: ""
   exit_code: 0
 
+# Extended-glob patterns work UNCONDITIONALLY in a [[ ]] ==/!= operand
+# (bash interprets @(...) ?(...) *(...) +(...) !(...) there regardless of the
+# `extglob` shopt). None of these enable extglob, pinning the unconditional
+# behavior.
+- name: enhanced_test_extglob_at_match
+  command: '[[ abc == a@(b|x)c ]]; echo $?'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: enhanced_test_extglob_at_nomatch
+  command: '[[ ayc == a@(b|x)c ]]; echo $?'
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: enhanced_test_extglob_bang
+  command: '[[ abc == a!(z)c ]]; echo $?'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: enhanced_test_extglob_plus
+  command: '[[ aXXc == a+(X)c ]]; echo $?'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: enhanced_test_extglob_trailing_glob
+  command: '[[ foobar == @(foo|bar)* ]]; echo $?'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: enhanced_test_extglob_quoted_literal
+  command: '[[ abc == "a@(b|x)c" ]]; echo $?'
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # BUILTINS
 # =============================================================================

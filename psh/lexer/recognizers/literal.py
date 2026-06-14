@@ -40,6 +40,21 @@ from .word_scanners import (
 )
 
 
+def extglob_active(config, context: LexerContext) -> bool:
+    """Is extglob pattern recognition (``?*+@!(...)``) live at this point?
+
+    True when the ``extglob`` shell option is on (``config.enable_extglob``)
+    OR we are inside a ``[[ ]]`` conditional (``context.bracket_depth > 0``).
+    Bash recognizes extended-glob patterns in a ``[[ ]]`` ``==``/``!=``
+    pattern operand *unconditionally* — independent of the ``extglob`` shopt —
+    so the lexer must accept the ``(`` of a pattern group there even with the
+    option off. (This predicate is shared by the literal and operator
+    recognizers so all the extglob gates agree.)
+    """
+    return bool(
+        (config and config.enable_extglob) or context.bracket_depth > 0)
+
+
 class LiteralRecognizer(ContextualRecognizer):
     """Recognizes literal tokens: words, identifiers, assignments."""
 
@@ -95,7 +110,7 @@ class LiteralRecognizer(ContextualRecognizer):
                 return True  # Can be part of word
             # Extglob: +( should be treated as word start, not operator.
             # ('!' is not in WORD_TERMINATORS; !( is handled below.)
-            if char == '+' and self.config and self.config.enable_extglob:
+            if char == '+' and extglob_active(self.config, context):
                 if pos + 1 < len(input_text) and input_text[pos + 1] == '(':
                     return True  # Start of extglob pattern
             # { and } are operators only when standalone (followed by
@@ -216,7 +231,7 @@ class LiteralRecognizer(ContextualRecognizer):
                 continue
 
             # --- extglob: prefix( opens a balanced pattern group ---
-            if (char == '(' and self.config and self.config.enable_extglob
+            if (char == '(' and extglob_active(self.config, context)
                     and value and value[-1] in '?*+@!'):
                 group = scan_extglob_group(input_text, pos)
                 if group is not None:
@@ -225,7 +240,7 @@ class LiteralRecognizer(ContextualRecognizer):
 
             # Extglob: + and ! are in WORD_TERMINATORS but when extglob is
             # enabled and they are followed by (, they are part of the word
-            if (char in ('+', '!') and self.config and self.config.enable_extglob
+            if (char in ('+', '!') and extglob_active(self.config, context)
                     and pos + 1 < len(input_text) and input_text[pos + 1] == '('):
                 take(char, pos + 1)
                 continue
