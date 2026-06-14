@@ -1,10 +1,14 @@
 """Unified quote parsing with configurable rules and expansion support."""
 
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from . import pure_helpers
 from .position import Position
 from .token_parts import TokenPart
+
+if TYPE_CHECKING:
+    from .expansion_parser import ExpansionParser
+    from .position import PositionTracker
 
 
 class QuoteRules:
@@ -88,7 +92,7 @@ class UnifiedQuoteParser:
         start_pos: int,
         rules: QuoteRules,
         position_tracker: Optional['PositionTracker'] = None,
-        quote_type: str = None
+        quote_type: Optional[str] = None
     ) -> Tuple[List[TokenPart], int, bool]:
         """
         Parse a quoted string according to the given rules.

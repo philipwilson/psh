@@ -6,7 +6,7 @@ allowing the lexer to properly handle multi-line heredoc input.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -26,7 +26,7 @@ class HeredocCollector:
     pending: List[PendingHeredoc] = field(default_factory=list)
 
     # Collected heredoc content
-    collected: Dict[str, Dict[str, any]] = field(default_factory=dict)
+    collected: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     # Counter for unique heredoc keys
     _counter: int = 0
@@ -82,7 +82,7 @@ class HeredocCollector:
         Returns:
             List of (key, complete) tuples for heredocs that were completed
         """
-        completed = []
+        completed: List[Tuple[str, bool]] = []
 
         # Only check the FIRST pending heredoc (heredocs are collected in order)
         if self.pending:
@@ -138,7 +138,7 @@ class HeredocCollector:
                 return content
         return None
 
-    def get_heredoc_info(self, key: str) -> Optional[Dict[str, any]]:
+    def get_heredoc_info(self, key: str) -> Optional[Dict[str, Any]]:
         """Get complete information about a heredoc."""
         if key in self.collected:
             info = self.collected[key].copy()

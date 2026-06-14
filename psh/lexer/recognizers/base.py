@@ -39,7 +39,7 @@ class TokenRecognizer(ABC):
         input_text: str,
         pos: int,
         context: LexerContext
-    ) -> Optional[Tuple[Token, int]]:
+    ) -> Optional[Tuple[Optional[Token], int]]:
         """
         Attempt to recognize a token at the current position.
 
@@ -49,7 +49,9 @@ class TokenRecognizer(ABC):
             context: Current lexer context/state
 
         Returns:
-            Tuple of (token, new_position) if recognized, None otherwise
+            Tuple of (token, new_position) if recognized, None otherwise.
+            The token may itself be None for "skip" recognizers (whitespace,
+            comments) that advance the position without emitting a token.
         """
         pass
 

@@ -46,7 +46,7 @@ class RecognizerRegistry:
         input_text: str,
         pos: int,
         context: LexerContext
-    ) -> Optional[Tuple[Token, int, TokenRecognizer]]:
+    ) -> Optional[Tuple[Optional[Token], int, TokenRecognizer]]:
         """
         Try to recognize a token using registered recognizers.
 

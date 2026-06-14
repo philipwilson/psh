@@ -510,7 +510,8 @@ class _CmdSubScanner:
 
     def _handle_hash(self, ch: str, top) -> Optional[Tuple[int, bool]]:
         if not self.at_word_start:
-            return self._handle_word(ch, top)
+            self._handle_word(ch, top)  # never matches a close; returns None
+            return None
         nl = self.text.find('\n', self.pos)
         if nl == -1:
             return self.n, False  # comment hides the rest of the input

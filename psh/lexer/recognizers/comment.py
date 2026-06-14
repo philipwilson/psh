@@ -63,7 +63,7 @@ class CommentRecognizer(ContextualRecognizer):
         input_text: str,
         pos: int,
         context: LexerContext
-    ) -> Optional[Tuple[Token, int]]:
+    ) -> Optional[Tuple[Optional[Token], int]]:
         """Skip past comment, returning (None, new_pos)."""
         # Advance past all characters until end of line
         while pos < len(input_text) and input_text[pos] != '\n':
