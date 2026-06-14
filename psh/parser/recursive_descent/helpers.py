@@ -94,6 +94,10 @@ class ErrorContext:
     suggestions: List[str] = field(default_factory=list)
     severity: ErrorSeverity = ErrorSeverity.ERROR
     context_tokens: List[str] = field(default_factory=list)  # Surrounding tokens for context
+    # Tokens immediately before / after the error point, kept separate so
+    # the "Context:" line renders them on the correct side of -> HERE <-.
+    context_before: List[str] = field(default_factory=list)
+    context_after: List[str] = field(default_factory=list)
 
     def format_error(self) -> str:
         """Format a detailed error message."""
@@ -132,9 +136,12 @@ class ErrorContext:
             for suggestion in self.suggestions:
                 error_msg += f"\n  • {suggestion}"
 
-        # Add context tokens if available
-        if self.context_tokens:
-            error_msg += f"\n\nContext: {' '.join(self.context_tokens[-3:])} -> HERE <- {' '.join(self.context_tokens[:3])}"
+        # Add context tokens if available: tokens BEFORE the error point go
+        # before "-> HERE <-", tokens AFTER go after it.
+        if self.context_before or self.context_after:
+            before = ' '.join(self.context_before)
+            after = ' '.join(self.context_after)
+            error_msg += f"\n\nContext: {before} -> HERE <- {after}"
 
         return error_msg
 

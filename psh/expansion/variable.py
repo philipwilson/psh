@@ -18,7 +18,7 @@ from .arrays import ArrayOpsMixin
 from .fields import FieldExpansionMixin
 from .operands import OperandOpsMixin
 from .operators import OperatorOpsMixin
-from .param_parser import parse_parameter_expansion
+from .param_parser import parse_parameter_expansion, validate_parameter_expansion
 from .parameter_expansion import ParameterExpansion
 
 if TYPE_CHECKING:
@@ -33,6 +33,18 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         self.shell = shell
         self.state = shell.state
         self.param_expansion = ParameterExpansion(shell)
+
+    def _reject_bad_substitution(self, node, content: str) -> None:
+        """Raise bash's "bad substitution" for an invalid ``${...}`` name.
+
+        Checked at expansion time (bash reports it at runtime). The braces
+        are reattached in the message to match bash exactly.
+        """
+        if not validate_parameter_expansion(node):
+            from ..core.exceptions import BadSubstitutionError
+            print(f"psh: ${{{content}}}: bad substitution", file=sys.stderr)
+            self.state.last_exit_code = 1
+            raise BadSubstitutionError(content)
 
     def expand_variable(self, var_expr: str) -> str:
         """Expand a variable expression starting with $.
@@ -54,6 +66,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         # Handle ${var} syntax
         if var_expr.startswith('{') and var_expr.endswith('}'):
             node = parse_parameter_expansion(var_expr[1:-1])
+            self._reject_bad_substitution(node, var_expr[1:-1])
 
             if node.operator:
                 # Preserve None vs '' for node.word: ${#v} (length) parses to

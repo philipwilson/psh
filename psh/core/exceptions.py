@@ -63,6 +63,17 @@ class ExpansionError(PshError):
         self.exit_code = exit_code
         super().__init__(message)
 
+class BadSubstitutionError(ExpansionError):
+    """Raised at expansion time for a syntactically-invalid ``${...}``
+    parameter name (bash: "${...}: bad substitution", exit 1). Examples:
+    ``${}``, ``${ }``, ``${1abc}``, ``${.foo}``, ``${:-x}``. The braces are
+    included in the message text to match bash's format. Subclasses
+    ExpansionError so the command-error handler treats it as
+    already-printed (message emitted in place) and propagates exit 1."""
+    def __init__(self, content: str, exit_code: int = 1):
+        self.content = content
+        super().__init__(f"${{{content}}}: bad substitution", exit_code=exit_code)
+
 class FunctionDefinitionError(PshError):
     """Raised when a function cannot be defined or modified: reserved-word
     name, invalid name, or redefining/undefining a readonly function.

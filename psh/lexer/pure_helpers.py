@@ -317,6 +317,20 @@ def handle_ansi_c_escape(input_text: str, pos: int) -> Tuple[str, int]:
     if next_char in simple_escapes:
         return simple_escapes[next_char], pos + 2
 
+    # Control-char escape: \cX — bash maps it to (toupper-independent)
+    # `0x7f if X == '?' else ord(X) & 0x1f`. So \cI -> TAB (0x09),
+    # \cA -> 0x01, \c@ -> NUL, \cz/\cZ -> 0x1a, \c? -> 0x7f, \c\ -> 0x1c.
+    # A bare \c at end of input is left literal (matches bash).
+    if next_char == 'c':
+        if pos + 2 >= len(input_text):
+            return '\\c', pos + 2
+        ctrl_char = input_text[pos + 2]
+        if ctrl_char == '?':
+            code = 0x7f
+        else:
+            code = ord(ctrl_char) & 0x1f
+        return chr(code), pos + 3
+
     # Hex escape: \xHH
     if next_char == 'x':
         hex_str = ""

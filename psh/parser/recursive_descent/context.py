@@ -133,21 +133,40 @@ class ParserContext:
 
         return error_context
 
+    @staticmethod
+    def _display_token(tok) -> str:
+        """Human-readable token text for the "Context:" line.
+
+        Renders the token's value when it has one; for valueless tokens
+        (EOF, NEWLINE) show a friendly placeholder rather than leaking a
+        raw ``TokenType.EOF`` repr.
+        """
+        from ...lexer.token_types import TokenType
+        if tok.value:
+            return tok.value
+        if tok.type == TokenType.EOF:
+            return '<EOF>'
+        if tok.type == TokenType.NEWLINE:
+            return '<newline>'
+        return f'<{tok.type.name.lower()}>'
+
     def _enhance_error_context(self, error_context, token):
         """Enhance error context with smart suggestions and context tokens."""
-        # Add context tokens (3 before and after current position)
-        context_tokens = []
-
-        # Preceding tokens
+        # Add context tokens (up to 3 before and after current position),
+        # kept on separate sides so they render correctly around -> HERE <-.
+        context_before = []
         for i in range(max(0, self.current - 3), self.current):
             if i < len(self.tokens):
-                context_tokens.append(self.tokens[i].value or str(self.tokens[i].type))
+                context_before.append(self._display_token(self.tokens[i]))
 
-        # Following tokens
+        context_after = []
         for i in range(self.current + 1, min(len(self.tokens), self.current + 4)):
-            context_tokens.append(self.tokens[i].value or str(self.tokens[i].type))
+            context_after.append(self._display_token(self.tokens[i]))
 
-        error_context.context_tokens = context_tokens
+        error_context.context_before = context_before
+        error_context.context_after = context_after
+        # Flat list retained for backward compatibility (before + after).
+        error_context.context_tokens = context_before + context_after
 
         # Add contextual suggestions based on message
         if "Expected TokenType.THEN" in error_context.message:
