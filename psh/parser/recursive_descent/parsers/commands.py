@@ -502,6 +502,11 @@ class CommandParser:
         statements = self.parser.statements.parse_command_list_until(TokenType.RPAREN)
 
         self.parser.skip_newlines()
+        # Bash requires at least one command inside a subshell: `()`, `( )`,
+        # newline-only or comment-only groups are a syntax error (exit 2).
+        if not statements.statements:
+            raise self.parser.error(
+                f"syntax error near unexpected token '{self.parser.peek().value}'")
         self.parser.expect(TokenType.RPAREN)
         self.parser.ctx.pop_construct()
 
@@ -534,6 +539,11 @@ class CommandParser:
         statements = self.parser.statements.parse_command_list_until(TokenType.RBRACE)
 
         self.parser.skip_newlines()
+        # Bash requires at least one command inside a brace group: `{ }`,
+        # newline-only or comment-only groups are a syntax error (exit 2).
+        if not statements.statements:
+            raise self.parser.error(
+                f"syntax error near unexpected token '{self.parser.peek().value}'")
         self.parser.expect(TokenType.RBRACE)
         self.parser.ctx.pop_construct()
 

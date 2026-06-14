@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.402.0 (2026-06-14) - Tier R7.7: two syntax-error LOWs (L1 unterminated quote, L2 empty groups)
+- BUG FIX (bash-verified; reappraisal #7 L1/L2) — psh now reports a syntax error
+  (exit 2) where bash does.
+- L1 an unterminated quote (`echo 'abc`, `echo "abc`, `echo $'abc`) exited 1 with
+  `unexpected error: Unclosed ' quote` (it was misrouted to the internal-defect
+  handler because `UnclosedQuoteError` subclasses `SyntaxError`, not
+  `ParseError`). `source_processor` now catches `UnclosedQuoteError` → `psh:
+  <loc>: syntax error` exit 2, matching the already-correct `$((`/`$(`/`${`
+  unterminated handling. Interactive multi-line continuation is unaffected.
+- L2 an empty subshell `()` / brace group `{ }` (and whitespace/comment-only
+  variants) silently succeeded (exit 0); bash requires ≥1 command → syntax error
+  exit 2. `parse_subshell_group`/`parse_brace_group` now reject an empty inner
+  command list. Non-empty groups, nested groups, command substitution `$()`
+  (legitimately empty), and arithmetic `(())` are unchanged.
+- Tests: +`test_reappraisal7_syntax_errors_conformance.py` (23, exit-code vs
+  bash); updated `test_empty_subshell` which pinned the old exit-0 behavior;
+  refreshed README Project-Statistics file counts (drifted past the meta-test's
+  10% gate). Full gate green: ruff + mypy clean, `run_tests.py --parallel` 7329
+  passed, `--compare-bash` 461 passed.
+
 ## 0.401.0 (2026-06-14) - Tier R7: mypy scope — all of io_redirect + executor (177 files); +bug fix
 - TYPE-CHECKING SCOPE (reappraisal #7 lever). Added 17 modules so the ENTIRE
   `psh/io_redirect/` and `psh/executor/` packages are now type-checked: mypy
