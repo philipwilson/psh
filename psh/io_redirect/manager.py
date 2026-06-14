@@ -129,7 +129,7 @@ class BuiltinRedirectFrame:
         # Pre-redirect Python streams + dup of fd 0 (first-touch-wins).
         self.snapshot = _BuiltinStreamSnapshot()
         # (fd, saved_fd) pairs from fd-level redirects (fd >= 3, rare dups).
-        self.saved_fds: List[Tuple[int, int]] = []
+        self.saved_fds: List[Tuple[int, int | None]] = []
         # File objects this setup opened; restore closes exactly these
         # (never whatever happens to be in sys.stdout/stderr).
         self.opened_streams: List[TextIO] = []
@@ -170,11 +170,11 @@ class IOManager:
             finally:
                 self.restore_redirections(saved_fds)
 
-    def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int]]:
+    def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int | None]]:
         """Apply redirections and return list of saved FDs for restoration."""
         return self.file_redirector.apply_redirections(redirects)
 
-    def restore_redirections(self, saved_fds: List[Tuple[int, int]]):
+    def restore_redirections(self, saved_fds: List[Tuple[int, int | None]]):
         """Restore file descriptors from saved list."""
         self.file_redirector.restore_redirections(saved_fds)
 
@@ -197,8 +197,11 @@ class IOManager:
         invocation's) are never left hijacked.
         """
         if self.state.options.get('debug-exec'):
-            print("DEBUG IOManager: setup_builtin_redirections called", file=sys.stderr)
-            print(f"DEBUG IOManager: Redirects: {[(r.type, r.target, r.fd) for r in command.redirects]}", file=sys.stderr)
+            print("DEBUG IOManager: setup_builtin_redirections called",
+                  file=sys.stderr)
+            redirects = [(r.type, r.target, r.fd) for r in command.redirects]
+            print(f"DEBUG IOManager: Redirects: {redirects}",
+                  file=sys.stderr)
 
         frame = BuiltinRedirectFrame()
         self._builtin_frame_stack.append(frame)
@@ -435,60 +438,23 @@ class IOManager:
             applied = False
 
             try:
-                if redirect.combined:
-                    # &> or &>> — redirect both stdout and stderr in child
-                    if not redirect.type.endswith('>>') and self.file_redirector._noclobber_blocks(target):
-                        os.write(2, f"psh: cannot overwrite existing file: {target}\n".encode('utf-8'))
-                        os._exit(1)
-                    self.file_redirector._redirect_combined(target, redirect)
-                elif redirect.type == '<':
-                    self.file_redirector._redirect_input_from_file(target, redirect)
-                elif redirect.type == '<>':
-                    self.file_redirector._redirect_readwrite(target, redirect)
-                elif redirect.type in ('<<', '<<-'):
-                    self.file_redirector._redirect_heredoc(redirect)
-                elif redirect.type == '<<<':
-                    self.file_redirector._redirect_herestring(redirect)
-                elif redirect.type == '>|':
-                    self.file_redirector._redirect_clobber(target, redirect)
-                elif redirect.type in ('>', '>>'):
-                    # Child-process noclobber must exit, not raise
-                    if redirect.type == '>' and self.file_redirector._noclobber_blocks(target):
-                        os.write(2, f"psh: cannot overwrite existing file: {target}\n".encode('utf-8'))
-                        os._exit(1)
-                    self.file_redirector._redirect_output_to_file(target, redirect, check_noclobber=False)
-                elif redirect.type == '>&':
-                    # Child-process fd dup: must exit on error, not raise
-                    if redirect.fd is not None and redirect.dup_fd is not None:
-                        if not self.file_redirector._dup_fd_valid(redirect.dup_fd):
-                            os.write(2, f"psh: {redirect.dup_fd}: Bad file descriptor\n".encode('utf-8'))
-                            os._exit(1)
-                        os.dup2(redirect.dup_fd, redirect.fd)
-                    elif redirect.fd is not None and redirect.target == '-':
-                        try:
-                            os.close(redirect.fd)
-                        except OSError:
-                            pass
-                elif redirect.type == '<&':
-                    if redirect.fd is not None and redirect.dup_fd is not None:
-                        if not self.file_redirector._dup_fd_valid(redirect.dup_fd):
-                            os.write(2, f"psh: {redirect.dup_fd}: Bad file descriptor\n".encode('utf-8'))
-                            os._exit(1)
-                        os.dup2(redirect.dup_fd, redirect.fd)
-                elif redirect.type in ('>&-', '<&-'):
-                    self.file_redirector._redirect_close_fd(redirect)
+                self.file_redirector.apply_fd_plan(plan)
                 applied = True
             except OSError as e:
                 # A real syscall failure opening/duping the redirect target
                 # (ENOENT/EISDIR/EACCES). Emit bash's `psh: TARGET: STRERROR`
                 # shape rather than letting the raw OSError repr escape to the
                 # generic child error handler (`psh: error: [Errno N] ...`).
-                # OSErrors with no errno are psh's own custom-message errors
-                # (noclobber/ambiguous/bad-fd) — re-raise to preserve them.
+                # OSErrors with no errno are psh's own custom-message
+                # redirect errors (noclobber/ambiguous/bad-fd).
                 if e.errno is None:
-                    raise
-                name = _redirect_error_name(e, target)
-                os.write(2, f"psh: {name}: {os.strerror(e.errno)}\n".encode('utf-8'))
+                    os.write(2, f"psh: {e}\n".encode('utf-8'))
+                else:
+                    name = _redirect_error_name(e, target)
+                    os.write(
+                        2,
+                        f"psh: {name}: {os.strerror(e.errno)}\n"
+                        .encode('utf-8'))
                 os._exit(1)
             finally:
                 plan.close_procsub(applied=applied)
