@@ -280,7 +280,10 @@ class PwdBuiltin(Builtin):
             self.write_line(cwd, shell)
             return 0
         except OSError as e:
-            self.error(str(e), shell)
+            # The output fd was closed/broken (e.g. after `pwd 1>&-`).
+            # bash reports `pwd: write error: <strerror>` and returns 1.
+            strerror = os.strerror(e.errno) if e.errno else str(e)
+            self.error(f"write error: {strerror}", shell)
             return 1
 
     @property

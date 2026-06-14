@@ -69,6 +69,32 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+class _ClosedStream:
+    """A Python stream stand-in whose every write/flush raises EBADF.
+
+    Installed in ``sys.stdout``/``sys.stderr`` (and ``shell.stdout``/
+    ``shell.stderr``) for a builtin when its own output fd was closed with
+    ``1>&-`` / ``2>&-`` / bare ``>&-``. The fd-level close alone does not
+    reach a builtin, which writes through the Python stream object, so the
+    stream must fail too — matching bash, where ``echo hi 1>&-`` produces no
+    output and a ``write error: Bad file descriptor`` diagnostic. Builtins
+    already translate this OSError into bash's message and exit 1 (see
+    ``execute_builtin_guarded`` and echo/printf's own handlers).
+    """
+
+    def _bad_fd(self):
+        raise OSError(9, os.strerror(9))  # EBADF
+
+    def write(self, _text):
+        self._bad_fd()
+
+    def flush(self):
+        self._bad_fd()
+
+    def writelines(self, _lines):
+        self._bad_fd()
+
+
 def _redirect_error_name(error: OSError, target: Optional[str]) -> str:
     """Pick the name bash prints in `psh: NAME: STRERROR` for a redirect error.
 
@@ -165,10 +191,45 @@ class IOManager:
             return
         with self.process_sub_handler.scope():
             saved_fds = self.apply_redirections(redirects)
+            stream_restore = self._swap_closed_output_streams(redirects)
             try:
                 yield
             finally:
+                stream_restore()
                 self.restore_redirections(saved_fds)
+
+    def _swap_closed_output_streams(self, redirects: List[Redirect]):
+        """For ``>&-`` closing fd 1/2, point the Python stream at a stream
+        that raises EBADF, and return a closure that restores it.
+
+        This is the stream-universe half of an output-fd close in the
+        in-process compound path (brace groups, functions, control flow run
+        via ``with_redirections``). The fd-level close alone does not reach a
+        builtin running inside, which writes through ``sys.stdout`` /
+        ``sys.stderr``; without this it would keep writing to the still-open
+        stream and leak (``{ echo a; } 1>&-`` printing ``a``). Mirrors
+        ``_builtin_redirect_close`` for the simple-command builtin path.
+        """
+        saved: List[Tuple[int, TextIO]] = []
+        for redirect in redirects:
+            if redirect.type != '>&-':
+                continue
+            target_fd = redirect.fd if redirect.fd is not None else 1
+            if target_fd == 1:
+                saved.append((1, sys.stdout))
+                sys.stdout = _ClosedStream()
+            elif target_fd == 2:
+                saved.append((2, sys.stderr))
+                sys.stderr = _ClosedStream()
+
+        def restore():
+            for fd, stream in reversed(saved):
+                if fd == 1:
+                    sys.stdout = stream
+                else:
+                    sys.stderr = stream
+
+        return restore
 
     def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int | None]]:
         """Apply redirections and return list of saved FDs for restoration."""
@@ -206,6 +267,17 @@ class IOManager:
         frame = BuiltinRedirectFrame()
         self._builtin_frame_stack.append(frame)
 
+        # Fd-level closes (`>&-`/`<&-`) are deferred until every other
+        # redirect in this command has been applied: an immediate os.close()
+        # would free a low fd number (e.g. fd 1) that a LATER redirect's
+        # open() in this same command would then reuse — so `cmd 1>&- 2>file`
+        # would open the file ONTO fd 1, then close it on restore and corrupt
+        # the shell's stdout. bash opens redirect targets on high fds for the
+        # same reason; deferring the close gives the same result. The
+        # stream-universe swap (so the builtin's write fails) still happens in
+        # textual order via _builtin_redirect_close.
+        deferred_closes: List[Redirect] = []
+
         try:
             for redirect in command.redirects:
                 plan = self.file_redirector.planner.plan(redirect)
@@ -224,8 +296,15 @@ class IOManager:
                     self._builtin_redirect_output_file(target, redirect, frame)
                 elif redirect.type == '>&':
                     self._builtin_redirect_dup(redirect, frame)
-                elif redirect.type in ('<&', '>&-', '<&-'):
+                elif redirect.type in ('>&-', '<&-'):
+                    self._builtin_redirect_close(redirect, frame)
+                    deferred_closes.append(redirect)
+                elif redirect.type == '<&':
                     self._builtin_redirect_fd_level(redirect, frame)
+
+            # Apply the deferred fd-level closes now that all opens are done.
+            for redirect in deferred_closes:
+                self._builtin_redirect_fd_level(redirect, frame)
         except Exception:
             self.restore_builtin_redirections(frame)
             raise
@@ -354,6 +433,37 @@ class IOManager:
                 sys.stderr = f
         else:
             self._builtin_redirect_fd_level(redirect, frame)
+
+    def _builtin_redirect_close(self, redirect,
+                                frame: BuiltinRedirectFrame):
+        """``>&-`` / ``<&-`` fd close for a builtin.
+
+        The fd is closed at the descriptor level (so children the builtin
+        spawns inherit the closed fd, matching bash). But a builtin writes
+        through the Python stream object, not the raw fd, so closing fd 1/2
+        alone would let the builtin keep writing to the still-open stream and
+        LEAK output (``echo hi 1>&-`` printing ``hi``). When the builtin's
+        OWN output fd is closed — ``1>&-``/bare ``>&-`` (fd 1) or ``2>&-``
+        (fd 2) — also swap the corresponding Python stream to one whose write
+        raises EBADF, so the builtin's write fails exactly as bash's does
+        (empty output + ``write error: Bad file descriptor`` + exit 1).
+
+        ``<&-`` (input close) and closes of fd >= 3 have no output-stream
+        counterpart and stay purely fd level.
+
+        Only the STREAM swap happens here, in textual order; the fd-level
+        close is deferred by setup_builtin_redirections (see the comment
+        there) so a later redirect's open() cannot grab the freed fd number.
+        """
+        if redirect.type != '>&-':
+            return
+        target_fd = redirect.fd if redirect.fd is not None else 1
+        if target_fd == 1:
+            frame.snapshot.note_stdout()
+            sys.stdout = _ClosedStream()
+        elif target_fd == 2:
+            frame.snapshot.note_stderr()
+            sys.stderr = _ClosedStream()
 
     def _builtin_redirect_fd_level(self, redirect,
                                    frame: BuiltinRedirectFrame):
