@@ -95,6 +95,19 @@ files = [
     # Executor (annotation-clean modules)
     "psh/executor/child_policy.py",
     "psh/executor/process_launcher.py",
+    "psh/executor/context.py",
+    "psh/executor/enhanced_test_evaluator.py",
+    "psh/executor/function.py",
+    "psh/executor/core.py",
+    "psh/executor/array.py",
+    "psh/executor/command_assignments.py",
+    "psh/executor/strategies.py",
+    "psh/executor/control_flow.py",
+    "psh/executor/pipeline.py",
+    "psh/executor/subshell.py",
+    "psh/executor/command.py",
+    "psh/executor/job_control.py",
+    "psh/executor/__init__.py",
     # Expansion (annotation-clean modules)
     "psh/expansion/arithmetic",
     "psh/expansion/__init__.py",
@@ -119,6 +132,10 @@ files = [
     "psh/expansion/word_splitter.py",
     # I/O redirection (annotation-clean modules)
     "psh/io_redirect/planner.py",
+    "psh/io_redirect/file_redirect.py",
+    "psh/io_redirect/process_sub.py",
+    "psh/io_redirect/manager.py",
+    "psh/io_redirect/__init__.py",
     # Utils (annotation-clean modules)
     "psh/utils/__init__.py",
     "psh/utils/escapes.py",

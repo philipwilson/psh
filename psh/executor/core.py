@@ -6,6 +6,7 @@ maintaining compatibility with the existing execution engine.
 """
 
 import sys
+from typing import TYPE_CHECKING
 
 from psh.visitor import ASTVisitor
 
@@ -48,6 +49,9 @@ from .control_flow import ControlFlowExecutor
 from .function import FunctionOperationExecutor
 from .pipeline import PipelineExecutor
 from .subshell import SubshellExecutor
+
+if TYPE_CHECKING:
+    from ..shell import Shell
 
 
 class ExecutorVisitor(ASTVisitor[int]):

@@ -5,7 +5,7 @@ This module handles array initialization and element assignment operations,
 including indexed and associative arrays.
 """
 
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from ..core import (
     ArraySubscriptError,
@@ -52,20 +52,20 @@ class ArrayOperationExecutor:
         # arr=([k]=v ...) populates an AssociativeArray, not an IndexedArray.
         var_obj = self.state.scope_manager.get_variable_object(node.name)
         if var_obj and isinstance(var_obj.value, AssociativeArray):
-            array = self.build_associative_array(
+            assoc = self.build_associative_array(
                 node.words, into=(var_obj.value if node.is_append else None))
             self.state.scope_manager.set_variable(
-                node.name, array,
+                node.name, assoc,
                 attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
             return 0
 
         existing = (var_obj.value
                     if node.is_append and var_obj is not None
                     and isinstance(var_obj.value, IndexedArray) else None)
-        array = self.build_indexed_array(node.words, into=existing)
+        indexed = self.build_indexed_array(node.words, into=existing)
 
         # Set array in shell state
-        self.state.scope_manager.set_variable(node.name, array, attributes=VarAttributes.ARRAY)
+        self.state.scope_manager.set_variable(node.name, indexed, attributes=VarAttributes.ARRAY)
         return 0
 
     # ------------------------------------------------------------------ #
@@ -225,6 +225,10 @@ class ArrayOperationExecutor:
                 was_quoted = True
                 cleaned_index = cleaned_index[1:-1]
 
+        # ``index`` is a string key for associative arrays and an int subscript
+        # for indexed arrays; the two stay correlated with ``is_numeric_index``
+        # and the array's concrete type below.
+        index: Union[int, str]
         if was_quoted:
             # Quoted index — treat as string key (associative array).
             # In bash, declare -A is needed for associative arrays, but PSH
@@ -301,25 +305,41 @@ class ArrayOperationExecutor:
         is_integer = var_obj is not None and bool(
             var_obj.attributes & VarAttributes.INTEGER)
 
+        # ``array`` and ``index`` are correlated by construction: an
+        # IndexedArray always pairs with an int subscript, an AssociativeArray
+        # with a string key (kept consistent above). Branch on the concrete
+        # array type so the key type narrows for the union ``get``/``set``
+        # calls. ``_compute_element_value`` is shared so the integer/append
+        # arithmetic is written once — no behavior change.
+        if isinstance(array, IndexedArray):
+            idx = index if isinstance(index, int) else 0
+            array.set(idx, self._compute_element_value(
+                array.get(idx), expanded_value, is_integer, node.is_append))
+        else:
+            akey = str(index)
+            array.set(akey, self._compute_element_value(
+                array.get(akey), expanded_value, is_integer, node.is_append))
+        return 0
+
+    def _compute_element_value(self, current: Optional[str], expanded_value: str,
+                               is_integer: bool, is_append: bool) -> str:
+        """Resolve the final element string for an ``a[i]=`` write.
+
+        Shared by the indexed/associative branches of element assignment.
+        Integer (-i) elements arithmetic-evaluate the RHS and, for ``+=``, do
+        a NUMERIC add against the current element (mirrors scalar ``x+=EXPR``
+        on an -i var); empty RHS = 0. Non-integer ``+=`` is string
+        concatenation onto the current value.
+        """
         if is_integer:
-            # Integer (-i) array element: arithmetic-evaluate the RHS, and for
-            # += do a NUMERIC add against the current element (mirrors scalar
-            # `x+=EXPR` on an -i var), not string concatenation. Empty RHS = 0.
             rhs = evaluate_arithmetic(expanded_value or '0', self.shell)
-            if node.is_append:
-                current = array.get(index)
+            if is_append:
                 base = evaluate_arithmetic(current, self.shell) if current else 0
                 rhs = base + rhs
-            expanded_value = str(rhs)
-        elif node.is_append:
-            # Non-integer append: string concatenation onto the current value.
-            current = array.get(index)
-            if current is not None:
-                expanded_value = current + expanded_value
-
-        # Set element
-        array.set(index, expanded_value)
-        return 0
+            return str(rhs)
+        if is_append and current is not None:
+            return current + expanded_value
+        return expanded_value
 
     # Helper methods
 

@@ -181,7 +181,7 @@ class SpecialBuiltinExecutionStrategy(ExecutionStrategy):
                               redirects: Optional[List['Redirect']]) -> int:
         """Execute special builtin in background (subshell)."""
         # Use same background execution logic as regular builtins
-        return BuiltinExecutionStrategy()._execute_in_background(
+        return BuiltinExecutionStrategy()._execute_builtin_in_background(
             cmd_name, args, shell, context, redirects
         )
 

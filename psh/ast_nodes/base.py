@@ -8,6 +8,10 @@ statement level and as pipeline components.
 """
 
 from abc import ABC
+from typing import TYPE_CHECKING, List
+
+if TYPE_CHECKING:
+    from .redirects import Redirect
 
 
 class ASTNode(ABC):
@@ -21,7 +25,16 @@ class Statement(ASTNode):
 
 class Command(ASTNode):
     """Base class for all executable commands."""
-    pass
+
+    # Every concrete Command subclass is a dataclass that declares its own
+    # ``redirects``/``background`` fields (the Command interface); these bare
+    # annotations only document that contract for type-checkers. They assign
+    # no value, so they create no class attribute and are NOT collected by
+    # subclass ``@dataclass`` decorators (those only inherit fields from
+    # dataclass bases) — zero runtime effect.
+    if TYPE_CHECKING:
+        redirects: List["Redirect"]
+        background: bool
 
 
 class CompoundCommand(Command):

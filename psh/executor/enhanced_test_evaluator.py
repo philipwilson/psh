@@ -129,8 +129,12 @@ class TestExpressionEvaluator:
         # segment by segment (quoted parts are literal, unquoted parts keep
         # their glob/regex power) — bash semantics a whole-operand flag could
         # not express.
+        # ``right`` is the plain expanded RHS for literal/numeric/file
+        # operators. The pattern/regex operators (==, !=, =~) build their RHS
+        # per-part below and never read ``right``; default it to "" so it stays
+        # typed ``str`` (those branches return before using it).
         if expr.operator in ('==', '!=', '=~'):
-            right = None  # built per-operator below
+            right = ""  # built per-operator below; unused by these branches
         else:
             right = self._operand_string(expr.right_word)
 

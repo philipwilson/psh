@@ -1,7 +1,7 @@
 """Shell state management."""
 import os
 import sys
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from ..version import __version__
 from .command_hash import CommandHashTable
@@ -338,8 +338,13 @@ class ShellState:
         # Fall back to environment
         return self.env.get(name, default)
 
-    def set_variable(self, name: str, value: str):
+    def set_variable(self, name: str, value: Any):
         """Set a shell variable.
+
+        ``value`` is usually a string but may be an array object
+        (``IndexedArray``/``AssociativeArray``) — e.g. a scalar append to an
+        array variable resolves to the whole array — which the scope manager
+        stores as-is.
 
         Under ``set -a`` (allexport) the variable gains the EXPORT
         attribute. Either way the scope manager's variable_changed
