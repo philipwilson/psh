@@ -13,6 +13,8 @@ IOManager (orchestrator)
 ↓               ↓
 File          Process
 Redirector    SubHandler
+   ↓
+RedirectPlanner (shared planning phase)
 ```
 
 (Heredocs and here-strings live inside `FileRedirector` — there is no
@@ -26,7 +28,8 @@ The package exports only `IOManager` via `__init__.py`.
 |------|---------|
 | `manager.py` | `IOManager` - central orchestrator for all I/O operations |
 | `file_redirect.py` | `FileRedirector` - file-based redirections (`<`, `>`, `>>`, etc.) |
-| `process_sub.py` | `ProcessSubstitutionHandler` - process substitution (`<()`, `>()`) |
+| `process_sub.py` | `ProcessSubstitutionHandler` + `ProcessSubstitutionResource` - process substitution (`<()`, `>()`) |
+| `planner.py` | `RedirectPlanner`/`RedirectPlan` - the shared resolve→expand→procsub planning phase used by every dispatch site |
 
 ## Core Patterns
 
@@ -40,6 +43,41 @@ class IOManager:
         self.file_redirector = FileRedirector(shell)
         self.process_sub_handler = ProcessSubstitutionHandler(shell)
 ```
+
+### 1a. Shared Planning Phase (`RedirectPlanner` / `RedirectPlan`)
+
+Every dispatch site (`apply_redirections`, `apply_permanent_redirections`,
+`setup_builtin_redirections`, `setup_child_redirections`) begins the SAME
+way: resolve a dynamic fd-dup, expand the target, and create any
+process-substitution resource. That common work lives once in
+`planner.py`:
+
+```python
+plan = self.planner.plan(redirect)        # FileRedirector.planner
+redirect, target = plan.redirect, plan.target
+applied = False
+try:
+    ...                                   # backend applies the redirect
+    applied = True
+finally:
+    plan.close_procsub(applied=applied)   # release procsub parent fd
+```
+
+`RedirectPlan` carries `(redirect, target, procsub)` plus:
+- `target_fd` — the single source of truth for "which fd does this
+  redirect act on" (replaces the per-branch `redirect.fd if … else 0/1`
+  classification).
+- `close_procsub(applied=)` — delegates to the resource; closes the
+  substitution's parent fd UNLESS a successful `dup2` made that fd number
+  the redirect's own target. The `finally` placement is load-bearing: it
+  guarantees the parent fd is released even when a *later* redirect in the
+  same command raises (the pre-v0.375 unconditional close after the
+  if/elif chain leaked on that path).
+
+`ProcessSubstitutionResource` (in `process_sub.py`) owns one substitution's
+`(path, parent_fd, pid, cleanup_path)`; `resolve_procsub_resource()` builds
+it and `register_with(handler)` hands pid/cleanup-path to the enclosing
+`process_sub_scope()`.
 
 ### 2. Context Manager for Temporary Redirections
 
@@ -225,7 +263,11 @@ function (not a method) that wraps `os.dup2()` + `os.close()` safely.
 1. Add a per-type helper on `FileRedirector` in `file_redirect.py`
 
 2. Call the helper from `apply_redirections`, `apply_permanent_redirections`,
-   `setup_child_redirections`, and `setup_builtin_redirections`
+   `setup_child_redirections`, and `setup_builtin_redirections`. Each of these
+   first calls `self.planner.plan(redirect)` (see "Shared Planning Phase"),
+   so read `plan.redirect`/`plan.target`/`plan.target_fd` rather than
+   re-resolving/expanding, and rely on the dispatch site's `try/finally:
+   plan.close_procsub(applied=…)` for process-substitution fd cleanup.
 
 3. Add tests in `tests/unit/io_redirect/` or `tests/integration/redirection/`
 

@@ -4,6 +4,15 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.376.0 (2026-06-14) - Docs: sync io_redirect/CLAUDE.md with the planner refactor
+- DOCS ONLY. Updated `psh/io_redirect/CLAUDE.md` for the v0.375.0 planning
+  refactor: added `planner.py` to the Key Files table and the architecture
+  diagram, documented `ProcessSubstitutionResource` in `process_sub.py`, added a
+  "Shared Planning Phase (`RedirectPlanner`/`RedirectPlan`)" pattern section
+  (including the `try/finally: plan.close_procsub(applied=…)` fd-leak-safety
+  invariant and `plan.target_fd` as the target-fd source of truth), and updated
+  the "Adding a New Redirection Type" steps to go through `planner.plan()`.
+
 ## 0.375.0 (2026-06-14) - Redirection: unified RedirectPlan + ProcessSubstitutionResource
 - REFACTOR + BUG FIX. Introduced a shared redirection "planning" phase so the
   four dispatch sites (`FileRedirector.apply_redirections`,
