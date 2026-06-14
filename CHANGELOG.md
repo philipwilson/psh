@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.407.0 (2026-06-14) - Docs: Tier R8 architecture roadmap
+- DOCS ONLY. Added the maintainer's `docs/reviews/fresh_architecture_review_
+  2026-06-14.md` (a fresh structural review, inspected at v0.400) and
+  `docs/reviews/tier_r8_architecture_roadmap_2026-06-14.md`, which reconciles it
+  with the post-R7 tree and defines Tier R8 — targeted architectural seam work
+  (not bug-fixing): R8.1 control-flow context helpers, R8.2 redirect-primitive
+  boundary, R8.3 typed command-invocation data flow, R8.4 visitor analysis over
+  the Word AST, R8.5 gradual ShellState decomposition, R8.6 resolver/invoker
+  split + alias-at-parse-time (fenced big-bang), R8.7 `check_untyped_defs`
+  deepening.
+- Notes what the review already overtook post-v0.406: mypy file coverage is 100%
+  (Ugly 10/A8 done bar `check_untyped_defs`); validator false positives fixed in
+  R7.9 (Ugly 8 partial); combinator backend typed + declared educational.
+
 ## 0.406.0 (2026-06-14) - Tier R7: mypy now covers 100% of psh source files
 - TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 lever — completed).
   Added the final 10 modules: `psh/__init__.py`, `psh/__main__.py`,
