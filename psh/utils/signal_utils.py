@@ -12,6 +12,87 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+# --------------------------------------------------------------------------
+# Single source of truth for signal name <-> number mapping.
+#
+# Built from Python's signal.Signals enum, which reflects the actual platform
+# signals (including BSD-specific SIGEMT/SIGINFO on macOS). Both `kill -l` and
+# `trap -l` use these helpers so the two listings can never drift apart.
+# --------------------------------------------------------------------------
+
+def _build_number_to_name() -> Dict[int, str]:
+    """Map signal number -> canonical name WITHOUT the SIG prefix.
+
+    Where the platform aliases two names to one number (e.g. SIGABRT/SIGIOT,
+    SIGCHLD/SIGCLD), signal.Signals(num).name gives the canonical member, which
+    matches bash's choice on the common platforms.
+    """
+    mapping: Dict[int, str] = {}
+    for sig in signal.Signals:
+        name = sig.name
+        if name.startswith('SIG') and not name.startswith('SIG_'):
+            mapping[int(sig.value)] = name[3:]
+    return mapping
+
+
+# number -> bare name (e.g. 9 -> "KILL")
+SIGNAL_NUMBER_TO_NAME: Dict[int, str] = _build_number_to_name()
+
+# bare name -> number (e.g. "KILL" -> 9)
+SIGNAL_NAME_TO_NUMBER: Dict[str, int] = {
+    name: num for num, name in SIGNAL_NUMBER_TO_NAME.items()
+}
+
+
+def signal_name_to_number(name: str) -> Optional[int]:
+    """Return the signal number for a name, or None if unknown.
+
+    Accepts names with or without the SIG prefix, case-insensitively
+    ("KILL", "kill", "SIGKILL", "sigkill" -> 9).
+    """
+    if not name:
+        return None
+    upper = name.upper()
+    if upper.startswith('SIG'):
+        upper = upper[3:]
+    return SIGNAL_NAME_TO_NUMBER.get(upper)
+
+
+def signal_number_to_name(num: int, *, with_prefix: bool = False) -> Optional[str]:
+    """Return the bare signal name for a number, or None if unknown.
+
+    With with_prefix=True, the SIG prefix is included ("SIGKILL").
+    """
+    name = SIGNAL_NUMBER_TO_NAME.get(num)
+    if name is None:
+        return None
+    return f"SIG{name}" if with_prefix else name
+
+
+def list_all_signals() -> str:
+    """Render the full signal listing exactly like bash's `kill -l`/`trap -l`.
+
+    Lists real signals numbered 1..N (no pseudo-signals), each as
+    ``NUM) SIGNAME`` with the number right-justified to width 2, five entries
+    per row, tab-separated, trailing newline. Self-adjusts to the platform via
+    signal.Signals.
+    """
+    entries = [
+        f"{num:>2}) SIG{name}"
+        for num, name in sorted(SIGNAL_NUMBER_TO_NAME.items())
+    ]
+    # bash emits each entry followed by a tab; on every 5th column that
+    # trailing tab is replaced by a newline. A partial final row keeps its
+    # trailing tab and a newline is appended. This reproduces `kill -l`
+    # byte-for-byte.
+    out = []
+    for idx, entry in enumerate(entries, start=1):
+        out.append(entry)
+        out.append('\n' if idx % 5 == 0 else '\t')
+    if not out or out[-1] != '\n':
+        out.append('\n')
+    return ''.join(out)
+
 
 class SignalNotifier:
     """Self-pipe pattern for safe signal notification.

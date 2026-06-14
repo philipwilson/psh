@@ -2,6 +2,8 @@
 import signal
 from typing import TYPE_CHECKING, List, Optional
 
+from ..utils.signal_utils import list_all_signals
+
 if TYPE_CHECKING:
     from ..shell import Shell
 
@@ -207,19 +209,14 @@ class TrapManager:
             # Trap execution failed, but don't crash the shell
             print(f"trap: error executing trap for {signal_name}: {e}", file=self.state.stderr)
 
-    def list_signals(self) -> List[str]:
-        """List available signal names."""
-        signals = []
+    def list_signals(self) -> str:
+        """Render the full signal listing for `trap -l`.
 
-        # Add named signals
-        for name, num in self.signal_map.items():
-            if isinstance(num, int):
-                signals.append(f"{num:2d}) SIG{name}")
-            else:
-                # Pseudo-signals
-                signals.append(f" -) {name}")
-
-        return sorted(signals)
+        Identical to `kill -l` (bash): real signals only, NUM) SIGNAME in
+        bash's column layout. Shares the single source of truth in
+        psh.utils.signal_utils so the two listings can never drift apart.
+        """
+        return list_all_signals()
 
     def show_traps(self, signals: Optional[List[str]] = None) -> str:
         """Show current trap settings.
