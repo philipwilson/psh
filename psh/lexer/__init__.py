@@ -8,7 +8,7 @@ The main entry point is the tokenize() function which uses the ModularLexer
 as the single lexer implementation.
 """
 
-from typing import List
+from typing import List, Optional
 
 from .constants import KEYWORDS, SPECIAL_VARIABLES
 from .keyword_normalizer import KeywordNormalizer
@@ -32,7 +32,7 @@ from .unicode_support import (
 )
 
 
-def _make_config(strict: bool, shell_options: dict = None) -> LexerConfig:
+def _make_config(strict: bool, shell_options: Optional[dict] = None) -> LexerConfig:
     """Build the lexer config for an entry point (batch vs interactive,
     shell options like extglob applied)."""
     if strict:
@@ -63,7 +63,7 @@ def _post_lex(tokens: List[Token]) -> List[Token]:
     return TokenBraceExpander().expand(tokens)
 
 
-def tokenize(input_string: str, strict: bool = True, shell_options: dict = None) -> List[Token]:
+def tokenize(input_string: str, strict: bool = True, shell_options: Optional[dict] = None) -> List[Token]:
     """
     Tokenize a shell command string using the unified lexer implementation.
 
@@ -83,7 +83,7 @@ def tokenize(input_string: str, strict: bool = True, shell_options: dict = None)
     return _post_lex(lexer.tokenize())
 
 
-def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options: dict = None):
+def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options: Optional[dict] = None):
     """
     Tokenize a shell command string with heredoc support.
 

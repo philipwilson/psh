@@ -45,7 +45,7 @@ class WhitespaceRecognizer(TokenRecognizer):
         input_text: str,
         pos: int,
         context: LexerContext
-    ) -> Optional[Tuple[Token, int]]:
+    ) -> Optional[Tuple[Optional[Token], int]]:
         """Skip past whitespace, returning (None, new_pos)."""
         # Advance past all consecutive whitespace (except newlines)
         while pos < len(input_text):

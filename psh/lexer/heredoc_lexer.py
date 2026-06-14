@@ -8,7 +8,7 @@ re-lexed each physical line with a fresh lexer, which broke any multi-line
 construct sharing a command with a heredoc.
 """
 
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from .heredoc_collector import HeredocCollector
 from .modular_lexer import ModularLexer
@@ -23,7 +23,7 @@ class HeredocLexer:
         self.config = config
         self.heredoc_collector = HeredocCollector()
 
-    def tokenize_with_heredocs(self) -> Tuple[List[Token], Dict[str, Dict[str, any]]]:
+    def tokenize_with_heredocs(self) -> Tuple[List[Token], Dict[str, Dict[str, Any]]]:
         """Tokenize and return (tokens, heredoc_map).
 
         Algorithm:
@@ -63,7 +63,7 @@ class HeredocLexer:
         tokens = ModularLexer(command_text, config=self.config).tokenize()
         self._mark_heredoc_tokens(tokens)
 
-        heredoc_map: Dict[str, Dict[str, any]] = {}
+        heredoc_map: Dict[str, Dict[str, Any]] = {}
         for key, info in self.heredoc_collector.collected.items():
             if info['complete']:
                 heredoc_map[key] = {
@@ -78,7 +78,7 @@ class HeredocLexer:
         self._collected = heredoc_map
         return tokens
 
-    def get_heredoc_map(self) -> Dict[str, Dict[str, any]]:
+    def get_heredoc_map(self) -> Dict[str, Dict[str, Any]]:
         return getattr(self, '_collected', {}).copy()
 
     # === Heredoc operator discovery ===
@@ -112,11 +112,15 @@ class HeredocLexer:
         for token in tokens:
             if token.type in (TokenType.HEREDOC, TokenType.HEREDOC_STRIP):
                 if idx < len(keys):
-                    token.heredoc_key = keys[idx]
+                    # Dynamic attribute: its *presence* (checked via hasattr
+                    # in KeywordNormalizer / the parser) is the signal that
+                    # heredoc bodies are absent from the token stream, so it
+                    # is intentionally not a declared Token field.
+                    setattr(token, 'heredoc_key', keys[idx])
                     idx += 1
 
 
-def tokenize_with_heredocs(source: str, config=None) -> Tuple[List[Token], Dict[str, Dict[str, any]]]:
+def tokenize_with_heredocs(source: str, config=None) -> Tuple[List[Token], Dict[str, Dict[str, Any]]]:
     """Convenience function to tokenize source with heredoc support."""
     lexer = HeredocLexer(source, config=config)
     return lexer.tokenize_with_heredocs()

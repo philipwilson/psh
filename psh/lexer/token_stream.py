@@ -80,7 +80,7 @@ class TokenStream:
             List of collected tokens (not including the closing delimiter
             unless include_delimiters is True)
         """
-        tokens = []
+        tokens: List[Token] = []
         depth = 1  # Assume we've already seen one open delimiter
         in_quotes = False
 
@@ -105,12 +105,12 @@ class TokenStream:
                     depth -= 1
                     if depth == 0:
                         if include_delimiters:
-                            tokens.append(self.advance())
-                        else:
-                            self.advance()  # consume but don't include
+                            tokens.append(token)
+                        self.advance()  # consume (token already captured above)
                         break
 
-            tokens.append(self.advance())
+            tokens.append(token)
+            self.advance()
 
         return tokens
 
@@ -128,7 +128,7 @@ class TokenStream:
         Returns:
             List of collected tokens
         """
-        tokens = []
+        tokens: List[Token] = []
 
         while not self.at_end():
             token = self.peek()
@@ -141,10 +141,12 @@ class TokenStream:
             # Check for stop token only if not in quotes
             if not in_quotes and token.type in stop_types:
                 if include_stop:
-                    tokens.append(self.advance())
+                    tokens.append(token)
+                    self.advance()
                 break
 
-            tokens.append(self.advance())
+            tokens.append(token)
+            self.advance()
 
         return tokens
 

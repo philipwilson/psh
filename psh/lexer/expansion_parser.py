@@ -1,12 +1,15 @@
 """Expansion parser for variables, command substitution, and arithmetic."""
 
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from . import pure_helpers
 from .cmdsub_scanner import find_command_substitution_end
 from .constants import SPECIAL_VARIABLES
 from .position import Position
 from .token_parts import TokenPart
+
+if TYPE_CHECKING:
+    from .position import LexerConfig, PositionTracker
 
 
 class ExpansionParser:
