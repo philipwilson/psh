@@ -1522,3 +1522,49 @@
   stdout: "20814 24386\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# CLOSED OUTPUT FD (reappraisal #7, M1) — builtin must not leak past 1>&-/>&-
+# =============================================================================
+
+- name: echo_close_stdout_no_leak
+  command: "echo hi 1>&-"
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+- name: echo_bare_close_defaults_stdout
+  command: "echo hi >&-"
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+- name: pwd_close_stdout_no_leak
+  command: "pwd 1>&-"
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+- name: close_stdout_then_restore
+  command: "echo hi 1>&-; echo back"
+  stdout: "back\n"
+  stderr: "write error: Bad file descriptor"
+  exit_code: 0
+
+- name: close_stderr_only_stdout_ok
+  command: "echo hi 2>&-; echo back2"
+  stdout: "hi\nback2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_group_close_stdout_no_leak
+  command: "{ echo a; echo b; } 1>&-"
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+- name: function_close_stdout_no_leak
+  command: "f(){ echo hi;}; f 1>&-"
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1

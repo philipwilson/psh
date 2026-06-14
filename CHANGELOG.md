@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.400.0 (2026-06-14) - Tier R7.6: in-process builtin honors a closed output fd
+- BUG FIX (bash-verified; reappraisal #7 M1). `echo hi 1>&-` leaked `hi` to real
+  stdout (and the brace-group/function paths leaked too): a builtin writes
+  through the Python `sys.stdout`/`shell.stdout` object, but `>&-` only closed
+  fd 1 at the fd level. Now closing fd 1/2 for an in-process builtin swaps the
+  matching Python stream to a `_ClosedStream` (writes raise `OSError(EBADF)`),
+  recorded in the snapshot so restore reinstates the original.
+- Centralized the write-error handling in `executor/strategies.py`
+  `execute_builtin_guarded`: a builtin's `OSError(EBADF/EPIPE)` on write now
+  becomes bash's `NAME: write error: <strerror>` (exit 1) for EVERY builtin
+  (was previously misclassified as an internal defect; `pwd` etc. now correct,
+  not just echo/printf).
+- Also fixed a pre-existing freed-fd-reuse bug: `cmd 1>&- 2>FILE` opened FILE
+  onto the just-freed fd 1 then corrupted the shell's stdout on restore; the
+  fd-level close is now deferred until after the command's other redirects
+  (bash opens targets on high fds for the same reason).
+- `2>&-` (closes only stderr), `<&-` (input close), normal output, and
+  restore-after (`echo hi 1>&-; echo back` → `back`) all verified correct.
+- Tests: +`test_reappraisal7_close_output_fd_conformance.py` (16 subprocess),
+  +7 golden. Full gate green: ruff + mypy clean, `run_tests.py --parallel` 7305
+  passed, `--compare-bash` 461 passed.
+
 ## 0.399.0 (2026-06-14) - Refactor: share the redirect fd-backend application
 - REFACTOR (zero behavior change). Finishes the RedirectPlan work by removing the
   remaining duplication across the three redirect dispatch sites. Two new

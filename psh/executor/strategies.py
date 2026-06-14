@@ -96,6 +96,25 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
     except SystemExit:
         # Some builtins like 'exit' raise SystemExit
         raise
+    except OSError as e:
+        # The builtin's output fd was closed/broken (`pwd 1>&-`, a builtin
+        # writing into a closed pipe), so its write through the Python stream
+        # raised EBADF/EPIPE. bash reports `NAME: write error: <strerror>`
+        # and returns 1 — emit that here so EVERY builtin behaves like bash
+        # without each one needing its own try/except (echo/printf still
+        # catch internally to also cover their own buffering paths). Any other
+        # OSError is a genuine error and falls through to the defect handler.
+        if e.errno in (errno.EBADF, errno.EPIPE):
+            strerror = os.strerror(e.errno)
+            try:
+                print(f"{cmd_name}: write error: {strerror}",
+                      file=shell.stderr)
+            except OSError:
+                # stderr itself was the closed fd (e.g. `cmd 2>&-`); nothing
+                # more we can do — bash is silent here too.
+                pass
+            return 1
+        raise
     except Exception as e:
         # Imports here to avoid circular imports
         from ..core import LoopBreak, LoopContinue, UnboundVariableError
