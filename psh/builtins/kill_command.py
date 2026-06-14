@@ -2,50 +2,18 @@
 
 import os
 import signal
-from typing import TYPE_CHECKING, Dict, List, Tuple
+from typing import TYPE_CHECKING, List, Tuple
 
+from ..utils.signal_utils import (
+    list_all_signals,
+    signal_name_to_number,
+    signal_number_to_name,
+)
 from .base import Builtin
 from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
-
-
-# POSIX signal name to number mapping
-SIGNAL_NAMES: Dict[str, int] = {
-    'HUP': signal.SIGHUP,
-    'INT': signal.SIGINT,
-    'QUIT': signal.SIGQUIT,
-    'ILL': signal.SIGILL,
-    'TRAP': signal.SIGTRAP,
-    'ABRT': signal.SIGABRT,
-    'BUS': signal.SIGBUS,
-    'FPE': signal.SIGFPE,
-    'KILL': signal.SIGKILL,
-    'USR1': signal.SIGUSR1,
-    'SEGV': signal.SIGSEGV,
-    'USR2': signal.SIGUSR2,
-    'PIPE': signal.SIGPIPE,
-    'ALRM': signal.SIGALRM,
-    'TERM': signal.SIGTERM,
-    'CHLD': signal.SIGCHLD,
-    'CONT': signal.SIGCONT,
-    'STOP': signal.SIGSTOP,
-    'TSTP': signal.SIGTSTP,
-    'TTIN': signal.SIGTTIN,
-    'TTOU': signal.SIGTTOU,
-    'URG': signal.SIGURG,
-    'XCPU': signal.SIGXCPU,
-    'XFSZ': signal.SIGXFSZ,
-    'VTALRM': signal.SIGVTALRM,
-    'PROF': signal.SIGPROF,
-    'WINCH': signal.SIGWINCH,
-    'IO': signal.SIGIO,
-    'SYS': signal.SIGSYS,
-}
-
-# Signal number to name mapping (for -l listing)
-SIGNAL_NUMBERS: Dict[int, str] = {v: k for k, v in SIGNAL_NAMES.items()}
 
 
 @builtin
@@ -189,17 +157,11 @@ class KillBuiltin(Builtin):
             except ValueError:
                 raise ValueError(f"invalid signal number: {signal_str}")
 
-        # Parse as signal name
-        signal_name = signal_str.upper()
-
-        # Remove SIG prefix if present
-        if signal_name.startswith('SIG'):
-            signal_name = signal_name[3:]
-
-        if signal_name not in SIGNAL_NAMES:
+        # Parse as signal name (with or without SIG prefix, case-insensitive)
+        num = signal_name_to_number(signal_str)
+        if num is None:
             raise ValueError(f"invalid signal name: {signal_str}")
-
-        return SIGNAL_NAMES[signal_name]
+        return num
 
     def _resolve_targets(self, targets: List[str], shell: 'Shell') -> List[int]:
         """Resolve target specifications to actual PIDs."""
@@ -256,39 +218,44 @@ class KillBuiltin(Builtin):
         # Return 0 if at least one signal was sent successfully
         return 0 if success_count > 0 else 1
 
-    def _list_signals(self, exit_statuses: List[str], shell: 'Shell') -> int:
-        """List signal names, optionally for specific exit statuses."""
-        if not exit_statuses:
-            # List all signals
-            signal_names = []
-            for i in range(1, 32):  # Standard signal range
-                if i in SIGNAL_NUMBERS:
-                    signal_names.append(f"{i}) SIG{SIGNAL_NUMBERS[i]}")
-                else:
-                    signal_names.append(f"{i}) {i}")
+    def _list_signals(self, specs: List[str], shell: 'Shell') -> int:
+        """Implement `kill -l [sigspec...]` (bash-compatible).
 
-            # Print in columns
-            for i in range(0, len(signal_names), 4):
-                row = signal_names[i:i+4]
-                self.write_line('\t'.join(f"{name:<15}" for name in row), shell)
-
+        With no argument, list all signals (NUM) SIGNAME, bash column layout).
+        With a NUMBER N: if N > 128 print the name for signal N-128 (exit-status
+        convention), otherwise print the name for signal N (no SIG prefix).
+        With a NAME (with or without SIG prefix): print its number.
+        """
+        if not specs:
+            # write() (not write_line) — list_all_signals already ends in '\n'
+            self.write(list_all_signals(), shell)
             return 0
 
-        # Show signals for specific exit statuses
-        for exit_str in exit_statuses:
-            try:
-                exit_status = int(exit_str)
-                if exit_status > 128:
-                    # Exit status from signal = 128 + signal_number
-                    signal_num = exit_status - 128
-                    if signal_num in SIGNAL_NUMBERS:
-                        self.write_line(f"SIG{SIGNAL_NUMBERS[signal_num]}", shell)
-                    else:
-                        self.write_line(f"{signal_num}", shell)
+        exit_code = 0
+        for spec in specs:
+            # A numeric spec: print the signal NAME.
+            if spec.lstrip('-').isdigit():
+                num = int(spec)
+                # bash maps the pseudo "signal 0" (the EXIT trap) to EXIT.
+                if num == 0:
+                    self.write_line("EXIT", shell)
+                    continue
+                if num > 128:
+                    num -= 128
+                name = signal_number_to_name(num)
+                if name is None:
+                    self.error(f"{spec}: invalid signal specification", shell)
+                    exit_code = 1
                 else:
-                    self.write_line(f"Exit status {exit_status} not from signal", shell)
-            except ValueError:
-                self.error(f"{exit_str}: invalid exit status", shell)
-                return 1
+                    self.write_line(name, shell)
+                continue
 
-        return 0
+            # A name spec: print the signal NUMBER.
+            num = signal_name_to_number(spec)
+            if num is None:
+                self.error(f"{spec}: invalid signal specification", shell)
+                exit_code = 1
+            else:
+                self.write_line(str(num), shell)
+
+        return exit_code

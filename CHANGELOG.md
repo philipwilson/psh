@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.394.0 (2026-06-14) - Tier R7.3: signal name/number bugs (kill -l, trap -l)
+- BUG FIX (bash-verified; reappraisal #7 M4/M5). Established a SINGLE SOURCE OF
+  TRUTH for signal name↔number in `psh/utils/signal_utils.py`, built from
+  Python's `signal.Signals` enum (platform-correct: SIGEMT=7/SIGINFO=29 on
+  macOS, self-adjusting on Linux), and routed `kill` and `trap` through it; the
+  two divergent hand-maintained tables in `kill_command.py` were deleted.
+- M4 `kill -l N`/`NAME`: `kill -l 9` → was an error, now `KILL`; `kill -l KILL`
+  → was an error, now `9`; `kill -l 15`→`TERM`, `kill -l TERM`→`15`, `kill -l
+  137`→`KILL` (N-128), `kill -l 0`→`EXIT`.
+- M5 `kill -l` / `trap -l` (no arg): were garbled — `kill -l` omitted SIGEMT/
+  SIGINFO (`7) 7`) with a non-bash layout; `trap -l` lexically sorted a map with
+  pseudo-signals + duplicate rows. Both now render byte-identical to bash (and to
+  each other) via `list_all_signals()`. `trap -p` SIG-prefix and signal sending
+  unaffected.
+- Tests: +`test_signal_listing_conformance.py` (12, `assert_identical_behavior`
+  so platform numbers self-adjust). Full gate green: ruff + mypy clean,
+  `run_tests.py --parallel` 7224 passed, `--compare-bash` 429 passed.
+
 ## 0.393.0 (2026-06-14) - Tier R7: grow mypy scope into the whole lexer (94 → 122 files)
 - TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 lever). Added the
   ENTIRE `psh/lexer/` package (28 modules — pure_helpers, position, recognizers,

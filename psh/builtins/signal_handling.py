@@ -84,10 +84,8 @@ EXIT STATUS
 
         # Check for options
         if args[1] == '-l':
-            # List signals
-            signals = shell.trap_manager.list_signals()
-            for signal_info in signals:
-                self.write_line(signal_info, shell)
+            # List signals (string already ends with a newline)
+            self.write(shell.trap_manager.list_signals(), shell)
             return 0
 
         if args[1] == '-p':
