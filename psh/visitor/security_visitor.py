@@ -23,10 +23,11 @@ from ..ast_nodes import (
     TopLevel,
     WhileLoop,
 )
-from .analysis_helpers import RedirectTraversalMixin, has_unquoted_expansion
+from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
 from .constants import DANGEROUS_COMMANDS, SENSITIVE_COMMANDS
 from .traversal import visit_children
+from .word_analysis import has_command_substitution
 
 
 class SecurityIssue:
@@ -103,13 +104,14 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                         node
                     ))
 
-        # Check for unquoted variable expansions in dangerous contexts
+        # Check for variable expansions in dangerous contexts. Inspect each
+        # argument's Word AST: a bare variable expansion (``$CMD`` / ``"$CMD"``)
+        # or any unquoted expansion passed to eval/sh/... is an injection risk.
         if cmd in ['eval', 'sh', 'bash', 'zsh', 'ksh']:
             words = node.words if node.words else []
             if len(words) > 1:
-                for i, (arg, word) in enumerate(zip(node.args[1:], words[1:])):
-                    # Variable expansion or unquoted word with $
-                    if word.is_variable_expansion or has_unquoted_expansion(word, arg):
+                for word in words[1:]:
+                    if word.is_variable_expansion or word.has_unquoted_expansion:
                         self.issues.append(SecurityIssue(
                             'HIGH',
                             'UNQUOTED_EXPANSION',
@@ -117,7 +119,8 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                             node
                         ))
             else:
-                # Fallback: check args directly if no Word info
+                # Fallback for legacy/manually-built ASTs that carry no Word
+                # info: scan the rendered argument strings for a ``$``.
                 for arg in node.args[1:]:
                     if '$' in arg:
                         self.issues.append(SecurityIssue(
@@ -183,9 +186,11 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
     def visit_ForLoop(self, node: ForLoop) -> None:
         """Analyze for loops for security issues."""
-        # Check for iterating over unquoted command substitution
-        for item in node.items:
-            if item.startswith('$(') or item.startswith('`'):
+        # Check for iterating over unquoted command substitution. Read each
+        # item's Word AST: an unquoted ``$(...)``/backtick part is the risk
+        # (the old prefix string test missed ``pre$(cmd)`` and quoted forms).
+        for item_word in node.item_words:
+            if has_command_substitution(item_word) and item_word.has_unquoted_expansion:
                 self.issues.append(SecurityIssue(
                     'MEDIUM',
                     'UNQUOTED_SUBSTITUTION',

@@ -1,9 +1,9 @@
-"""Small shared predicates and traversal for the analysis visitors.
+"""Small shared traversal scaffolding for the analysis visitors.
 
-These name checks that more than one analysis visitor (security, validator,
-linter) would otherwise spell out inline. The visitors keep their own policy —
-which contexts they flag, at what severity, with what message — but share the
-underlying classification here.
+The structured Word-AST inspection the analysis visitors share (variable
+reference extraction, word classification) lives in :mod:`word_analysis`; this
+module keeps only the redirect-traversal mixin, which is about tree shape rather
+than word content.
 """
 
 from ..ast_nodes import ASTNode
@@ -30,13 +30,3 @@ class RedirectTraversalMixin:
         """Dispatch every redirect carried by *node* through ``self.visit``."""
         for redirect in getattr(node, 'redirects', []):
             self.visit(redirect)  # type: ignore[attr-defined]
-
-
-def has_unquoted_expansion(word, arg: str) -> bool:
-    """True if *arg* carries an unquoted ``$`` expansion (word-split risk).
-
-    *word* is the Word AST node for *arg*; *arg* is its expanded-source text.
-    A wholly-quoted word is safe; otherwise a ``$`` in the text indicates an
-    unquoted expansion subject to word splitting / globbing.
-    """
-    return not word.is_quoted and '$' in arg
