@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.390.0 (2026-06-14) - Tier R7.1: two HIGH expansion bugs (extglob #, nameref arrays)
+- BUG FIX (bash-verified; reappraisal #7 H2/H3).
+- H2 `${var#pat}` shortest-prefix removal was greedy/broken with extglob:
+  `shopt -s extglob; v=ooo; echo "${v#+(o)}"` → was empty, now `oo`. Root: a
+  naive `regex.replace('.*','.*?')` never touched extglob quantifiers and
+  `extglob_to_regex(from_start=True)` emitted a `$`-anchored regex, so `#`
+  behaved like `##` (and `##` itself was broken too). Rewrote
+  `remove_shortest_prefix`/`remove_longest_prefix` to mirror the correct suffix
+  path (scan prefix lengths, full-match each candidate). (`parameter_expansion.py`)
+- H3 namerefs didn't dereference on ARRAY reads: `declare -a arr=(10 20 30);
+  declare -n r=arr; echo "${r[@]}"` → was `arr`, now `10 20 30`; `${r[1]}`,
+  `${#r[@]}`, `${!r[@]}`, associative namerefs, and slicing all fixed. Added a
+  single nameref-aware array-name resolution point (`_resolve_array_name` in
+  `ArrayOpsMixin`) and routed every array read/write site through it
+  (`arrays.py`, `variable.py`, `fields.py`, `operators.py`,
+  `executor/array.py`). Element-nameref `declare -n r=arr[1]` matches bash; the
+  write path (`r[3]=x` → `arr[3]`) resolves too; non-nameref arrays unchanged.
+- HYGIENE: added `.claude/` to `.gitignore` (worktrees + agent transcripts must
+  never be committed).
+- Tests: +`test_extglob_parameter_expansion_conformance.py` (33),
+  +`test_nameref_array_conformance.py` (17); removed an obsolete xfail that
+  pinned the old broken extglob behavior. Full gate green: ruff + mypy clean,
+  `run_tests.py --parallel` 7169 passed, `--compare-bash` 415 passed.
+
 ## 0.389.0 (2026-06-14) - Docs: ground-up reappraisal #7 (post-R6 scorecard)
 - DOCS ONLY. Added `docs/reviews/ground_up_reappraisal_7_2026-06-14.md`: a fresh
   five-cluster scorecard taken after the Tier R6 bug-fix campaign.

@@ -150,17 +150,10 @@ class TestAbsentBashFeatures:
         assert_bash_parity(
             'declare -A a=([x]=1 [y]=2); printf "%s\\n" "${a[@]@K}"')
 
-    @pytest.mark.xfail(strict=True, reason=(
-        "SILENT TRAP: extglob inside parameter-expansion patterns is not "
-        "implemented — `shopt -s extglob` reports 'on' (and works for "
-        "pathname globbing), but ${x##+(a)} silently matches nothing and "
-        "returns the string unchanged instead of stripping"))
-    def test_extglob_in_parameter_expansion(self):
-        """bash: with extglob on, `${x##+(a)}` strips the longest run of
-        a's (probe: aaabbb -> bbb). psh: accepts `shopt -s extglob` and
-        `shopt extglob` prints 'on', but the +(a) pattern is inert in
-        parameter expansion and the probe printed aaabbb unchanged."""
-        assert_bash_parity('shopt -s extglob; x=aaabbb; echo "${x##+(a)}"')
+    # extglob inside parameter-expansion patterns IS now implemented
+    # (the former xfail trap was removed when the prefix-removal bug was
+    # fixed). Positive coverage lives in
+    # tests/conformance/bash/test_extglob_parameter_expansion_conformance.py.
 
     @pytest.mark.xfail(strict=True, reason="jobs -x is not implemented")
     def test_jobs_dash_x(self):

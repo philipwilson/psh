@@ -200,8 +200,18 @@ class ArrayOperationExecutor:
         # Expand any remaining variables in the index (e.g., ${var})
         expanded_index = self.expansion_manager.expand_string_variables(index_str)
 
+        # Resolve a nameref array target so ``declare -n r=arr; r[3]=x`` writes
+        # arr[3] (bash). resolve_nameref_name returns the name unchanged for a
+        # plain (non-nameref) variable, so non-nameref arrays are unaffected.
+        from ..core import NamerefCycleError
+        try:
+            name = self.state.scope_manager.resolve_nameref_name(node.name)
+        except NamerefCycleError as e:
+            self.state.scope_manager.warn_nameref_cycle(e.name)
+            name = node.name
+
         # Get the variable to check if it's an associative array
-        var_obj = self.state.scope_manager.get_variable_object(node.name)
+        var_obj = self.state.scope_manager.get_variable_object(name)
 
         # Determine index type - first check if it's numeric or string
         is_numeric_index = False
@@ -270,7 +280,7 @@ class ArrayOperationExecutor:
             try:
                 index = resolver.resolve_write_index(index)
             except ArraySubscriptError as e:
-                print(f"psh: {node.name}[{e.subscript}]: {e}",
+                print(f"psh: {name}[{e.subscript}]: {e}",
                       file=self.state.stderr)
                 return 1
 
@@ -282,11 +292,11 @@ class ArrayOperationExecutor:
             if is_numeric_index:
                 # Numeric index, create indexed array
                 array = IndexedArray()
-                self.state.scope_manager.set_variable(node.name, array, attributes=VarAttributes.ARRAY)
+                self.state.scope_manager.set_variable(name, array, attributes=VarAttributes.ARRAY)
             else:
                 # String index, create associative array
                 array = AssociativeArray()
-                self.state.scope_manager.set_variable(node.name, array, attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
+                self.state.scope_manager.set_variable(name, array, attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
 
         is_integer = var_obj is not None and bool(
             var_obj.attributes & VarAttributes.INTEGER)

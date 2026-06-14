@@ -151,3 +151,5 @@ cython_debug/
 
 # macOS
 .DS_Store
+# Claude Code local state (worktrees, agent transcripts)
+.claude/

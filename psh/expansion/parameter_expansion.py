@@ -74,6 +74,28 @@ class ParameterExpansion:
         return match_extglob('@(' + inner + ')', candidate, full_match=True)
 
     # Pattern removal
+    def _prefix_match_regex(self, pattern: str):
+        """Compiled regex that FULL-matches a candidate prefix.
+
+        Mirrors the suffix path's ``rstrip('$') + '$'`` shaping but anchors
+        at the START: the result must match an entire candidate prefix so the
+        position scan below can pick the shortest / longest matching prefix.
+        Using a per-prefix full match (rather than one greedy/non-greedy pass
+        over the whole value) makes extglob quantifiers behave correctly —
+        the old ``.*`` → ``.*?`` rewrite never touched ``+(o)``/``*(o)`` and
+        the extglob converter additionally ``$``-anchored the pattern, so
+        ``#`` behaved like ``##``.
+        """
+        regex = self.pattern_matcher.shell_pattern_to_regex(
+            pattern, anchored=True, from_start=True,
+            extglob_enabled=self._extglob)
+        # Anchor the END too so the regex matches a WHOLE candidate prefix
+        # (the extglob converter already appends '$'; the plain-glob path
+        # does not — normalise both).
+        if not regex.endswith('$'):
+            regex = regex + '$'
+        return re.compile(regex)
+
     def remove_shortest_prefix(self, value: str, pattern: str) -> str:
         """Remove shortest matching prefix."""
         inner = self._standalone_negation_inner(pattern)
@@ -83,12 +105,11 @@ class ParameterExpansion:
                 if not self._matches_positive(value[:i], inner):
                     return value[i:]
             return value
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=True, extglob_enabled=self._extglob)
-        # Make the regex non-greedy for shortest match
-        regex = regex.replace('.*', '.*?')
-        match = re.match(regex, value)
-        if match:
-            return value[match.end():]
+        compiled = self._prefix_match_regex(pattern)
+        # Shortest matching prefix: scan from the front.
+        for i in range(len(value) + 1):
+            if compiled.match(value[:i]):
+                return value[i:]
         return value
 
     def remove_longest_prefix(self, value: str, pattern: str) -> str:
@@ -100,13 +121,11 @@ class ParameterExpansion:
                 if not self._matches_positive(value[:i], inner):
                     return value[i:]
             return value
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=True, extglob_enabled=self._extglob)
-        # For longest match, use greedy regex (default behavior)
-        # Try to find the longest prefix that matches
-        match = re.match(regex, value)
-        if match:
-            # The regex will naturally find the longest match due to greedy quantifiers
-            return value[match.end():]
+        compiled = self._prefix_match_regex(pattern)
+        # Longest matching prefix: scan from the back.
+        for i in range(len(value), -1, -1):
+            if compiled.match(value[:i]):
+                return value[i:]
         return value
 
     def remove_shortest_suffix(self, value: str, pattern: str) -> str:
