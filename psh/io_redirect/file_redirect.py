@@ -64,10 +64,62 @@ class FileRedirector:
         if self._noclobber_blocks(target):
             raise OSError(f"cannot overwrite existing file: {target}")
 
+    def _is_filename_redirect(self, redirect) -> bool:
+        """True for redirects whose target names a file to open/create.
+
+        These are subject to bash's "ambiguous redirect" rule. Heredoc/
+        here-string/fd-dup forms are NOT (their targets mean something else).
+        """
+        return (redirect.type in ('<', '>', '>>', '<>', '>|')
+                or redirect.combined)
+
+    @staticmethod
+    def _word_is_process_sub(word) -> bool:
+        """True if the Word is a process-substitution target (`<(cmd)`/`>(cmd)`).
+
+        Such a target is resolved to a `/dev/fd/N` path by the
+        ProcessSubstitutionHandler (downstream in the planner), not by
+        field expansion, and is always a single fd path — never ambiguous.
+        """
+        from ..ast_nodes import ExpansionPart, ProcessSubstitution
+        return (len(word.parts) == 1
+                and isinstance(word.parts[0], ExpansionPart)
+                and isinstance(word.parts[0].expansion, ProcessSubstitution))
+
     def _expand_redirect_target(self, redirect):
-        """Expand variables and tilde in a redirect target."""
+        """Expand a redirect target, enforcing bash's "ambiguous redirect" rule.
+
+        For filename-target redirects (`<`/`>`/`>>`/`<>`/`>|`/`&>`/`&>>`) with
+        a parsed Word, expand through the full command-argument pipeline
+        (variable/command/arithmetic expansion, IFS word-splitting of unquoted
+        expansions, and globbing). bash requires the result to be EXACTLY one
+        word: zero words (unset/empty unquoted target) or more than one word
+        (`$v` with v="a b", a glob matching ≥2 files) is an "ambiguous
+        redirect" error — and NOTHING is opened. A quoted target suppresses
+        splitting/globbing, so it always yields one field and is never
+        ambiguous.
+
+        Raised as an OSError with errno=None so the existing redirect-error
+        formatters print it verbatim (`psh: <word>: ambiguous redirect`) in
+        both the parent (raise → exit 1) and child (`os._exit(1)`) paths.
+        """
         target = redirect.target
-        if not target or (redirect.type not in ('<', '>', '>>', '<>', '>|') and not redirect.combined):
+        if not self._is_filename_redirect(redirect):
+            return target
+
+        word = getattr(redirect, 'target_word', None)
+        if word is not None and not self._word_is_process_sub(word):
+            from ..expansion.word_expander import COMMAND_ARGUMENT
+            fields = self.shell.expansion_manager.expand_word_to_fields(
+                word, COMMAND_ARGUMENT)
+            if len(fields) != 1:
+                # bash names the original (pre-expansion) target word.
+                raise OSError(f"{word.source_text()}: ambiguous redirect")
+            return fields[0]
+
+        # Fallback for synthesized redirects without a parsed Word
+        # (e.g. constructed programmatically): legacy string expansion.
+        if not target:
             return target
         if not (hasattr(redirect, 'quote_type') and redirect.quote_type == "'"):
             target = self.shell.expansion_manager.expand_string_variables(target)

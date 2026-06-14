@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.404.0 (2026-06-14) - Tier R7.9: ambiguous redirect + validator false positives (clears R7 bug list)
+- BUG FIX (bash-verified; reappraisal #7 L3 + the recorded ambiguous-redirect
+  follow-up, and L7).
+- L3 a redirect target that (unquoted) expands to zero or more than one word is
+  now an `ambiguous redirect` (exit 1), matching bash — fixing both the doubled
+  `psh: No such file or directory: …` message on an empty target (`> $undef`)
+  and the silently-exit-0 multi-word case (`v="a b"; > $v`). Detection falls out
+  of expansion: a parsed `Redirect.target_word` (new field) is run through
+  `expand_word_to_fields` (full pipeline incl. splitting/globbing); ≠1 field →
+  `OSError("{word.source_text()}: ambiguous redirect", errno=None)` via the
+  existing parent-raise / child-exit error paths. Quoted `> "$v"`, single-word,
+  single-match glob, no-match-literal, and process-substitution targets are
+  unaffected.
+- L7 `--validate`/`EnhancedValidatorVisitor` false positives removed: array
+  assignments (`x=(…)`, `x+=(…)`, `arr[0]=…`) now register the name as defined;
+  C-style `for ((i=0;…))` init vars are registered; `$((…))` arithmetic is no
+  longer misclassified as an unquoted variable expansion. Genuine
+  undefined-variable warnings are retained.
+- Tests: +`test_reappraisal7_ambiguous_redirect_conformance.py` (15, builtin +
+  forked-child),  +`TestFalsePositiveRegressions` (8). Full gate green: ruff +
+  mypy clean, `run_tests.py --parallel` 7382 passed, `--compare-bash` 461 passed.
+- This CLEARS the reappraisal #7 bug list: all 5 HIGH, 9 MEDIUM, 7 LOW fixed
+  except M8 (NUL termination), deferred into the byte-model/surrogateescape work
+  alongside M7-from-#6.
+
 ## 0.403.0 (2026-06-14) - Tier R7.8: four feature gaps (M9 !!:-n, @K/@k, read -N, set -o history)
 - BUG FIX (bash-verified; reappraisal #7 M9/L4/L5/L6).
 - M9 `!!:-n` history word designator aborted with "bad word specifier"; it now

@@ -1,9 +1,12 @@
 """Redirection node."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from .base import ASTNode
+
+if TYPE_CHECKING:
+    from .words import Word
 
 
 @dataclass
@@ -17,3 +20,9 @@ class Redirect(ASTNode):
     heredoc_quoted: bool = False  # Whether heredoc delimiter was quoted (disables variable expansion)
     combined: bool = False  # True for &> and &>> (redirects both stdout and stderr)
     heredoc_key: Optional[str] = None  # Lexer-assigned key linking to collected heredoc content
+    # The parsed Word for a filename-target redirect (`<`/`>`/`>>`/`<>`/`>|`/
+    # `&>`/`&>>`). Carries per-part quote context so the executor can apply
+    # bash's "ambiguous redirect" rule: an unquoted target that expands +
+    # word-splits + globs to ≠1 word is an error. None for fd-dup/close,
+    # heredoc, and here-string forms (their targets are handled differently).
+    target_word: Optional['Word'] = None
