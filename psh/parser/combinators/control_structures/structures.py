@@ -4,7 +4,7 @@ This module provides mixin parsers for function definitions, subshell
 groups, and brace groups.
 """
 
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from ....ast_nodes import (
     BraceGroup,
@@ -17,8 +17,14 @@ from ....lexer.token_types import Token
 from ...recursive_descent.helpers import ErrorContext, ParseError
 from ..core import Parser, ParseResult
 
+if TYPE_CHECKING:
+    from ._protocols import ControlStructureProtocol
+    _Base = ControlStructureProtocol
+else:
+    _Base = object
 
-class StructureParserMixin:
+
+class StructureParserMixin(_Base):
     """Mixin providing structure parsers for ControlStructureParsers."""
 
     def _collect_definition_redirects(self, tokens: List[Token], pos: int):
@@ -170,6 +176,7 @@ class StructureParserMixin:
             if not name_result.success:
                 return ParseResult(success=False, error=name_result.error, position=pos)
 
+            assert name_result.value is not None
             name = name_result.value
             pos = name_result.position
 
@@ -187,6 +194,7 @@ class StructureParserMixin:
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
 
+            assert body_result.value is not None
             redirects, end_pos = self._collect_definition_redirects(
                 tokens, body_result.position)
             return ParseResult(
@@ -211,6 +219,7 @@ class StructureParserMixin:
             if not name_result.success:
                 return ParseResult(success=False, error="Expected function name after 'function'", position=pos)
 
+            assert name_result.value is not None
             name = name_result.value
             pos = name_result.position
 
@@ -223,6 +232,7 @@ class StructureParserMixin:
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
 
+            assert body_result.value is not None
             redirects, end_pos = self._collect_definition_redirects(
                 tokens, body_result.position)
             return ParseResult(
@@ -247,6 +257,7 @@ class StructureParserMixin:
             if not name_result.success:
                 return ParseResult(success=False, error="Expected function name after 'function'", position=pos)
 
+            assert name_result.value is not None
             name = name_result.value
             pos = name_result.position
 
@@ -264,6 +275,7 @@ class StructureParserMixin:
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
 
+            assert body_result.value is not None
             redirects, end_pos = self._collect_definition_redirects(
                 tokens, body_result.position)
             return ParseResult(
@@ -309,7 +321,7 @@ class StructureParserMixin:
                     # Hard error — raise ParseError to prevent fallthrough
                     raise ParseError(ErrorContext(
                         token=tokens[pos],
-                        message=result.error,
+                        message=result.error or "Invalid function definition",
                         position=pos,
                     ))
                 return result

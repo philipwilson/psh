@@ -84,6 +84,8 @@ known-first-party = ["psh"]
 # Grow it module-by-module as annotations are cleaned up; keep new core/ code clean.
 python_version = "3.12"
 files = [
+    "psh/__init__.py",
+    "psh/__main__.py",
     "psh/core",
     "psh/ast_nodes",
     "psh/shell.py",
@@ -147,6 +149,7 @@ files = [
     "psh/utils/token_formatter.py",
     "psh/utils/signal_utils.py",
     # Interactive (annotation-clean modules)
+    "psh/interactive/__init__.py",
     "psh/interactive/line_editor.py",
     "psh/interactive/line_layout.py",
     "psh/interactive/edit_buffer.py",
@@ -228,6 +231,14 @@ files = [
     "psh/parser/combinators/heredoc_processor.py",
     "psh/parser/combinators/expansions.py",
     "psh/parser/combinators/special_commands.py",
+    "psh/parser/combinators/commands.py",
+    "psh/parser/combinators/parser.py",
+    "psh/parser/combinators/__init__.py",
+    "psh/parser/combinators/control_structures/_protocols.py",
+    "psh/parser/combinators/control_structures/loops.py",
+    "psh/parser/combinators/control_structures/conditionals.py",
+    "psh/parser/combinators/control_structures/structures.py",
+    "psh/parser/combinators/control_structures/__init__.py",
     # Builtins (annotation-clean modules)
     "psh/builtins/base.py",
     "psh/builtins/registry.py",

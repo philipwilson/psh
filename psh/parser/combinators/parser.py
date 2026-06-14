@@ -6,7 +6,7 @@ parser for shell commands using functional combinators.
 
 from typing import Dict, List, Optional, Tuple, Union
 
-from ...ast_nodes import ASTNode, CommandList, StatementList, TopLevel
+from ...ast_nodes import ASTNode, CommandList, Statement, StatementList, TopLevel
 from ...lexer.keyword_normalizer import KeywordNormalizer
 from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
@@ -245,10 +245,12 @@ class ParserCombinatorShellParser:
         # Wrap in TopLevel if needed
         if isinstance(ast, CommandList):
             # Convert CommandList to TopLevel by putting statements as items
-            return TopLevel(items=ast.statements)
+            items: List[Union[Statement, StatementList]] = list(ast.statements)
+            return TopLevel(items=items)
         elif isinstance(ast, StatementList):
             # Convert StatementList to TopLevel
-            return TopLevel(items=ast.statements)
+            items = list(ast.statements)
+            return TopLevel(items=items)
         elif isinstance(ast, TopLevel):
             return ast
         else:
