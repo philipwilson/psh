@@ -87,8 +87,10 @@ class ExpansionEvaluator:
         ve = self.expansion_manager.variable_expander
         if expansion.operator:
             return ve.expand_parameter_direct(
+                # Preserve None vs '': ${#v} (length) has word=None,
+                # ${v#} (empty removal pattern) has word=''.
                 expansion.operator, expansion.parameter,
-                expansion.word or ''
+                expansion.word
             )
         else:
             # Plain ${var} / ${arr[idx]} — name resolution only (nounset,

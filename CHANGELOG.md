@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.379.0 (2026-06-14) - Tier R6.1: three expansion bash-divergence bugs
+- BUG FIX (bash-verified; reappraisal #6 H1/H2/L3).
+- H1 `${var#}` (empty removal pattern) returned the LENGTH: `v=abc; echo
+  "${v#}"` → was `3`, now `abc`. The parser already distinguished `${#v}`
+  (operand `None` = length) from `${v#}` (operand `''` = empty pattern), but
+  `node.word or ''` collapsed `None`→`''` at the call sites and the length
+  branches used `not operand`. `None` is now preserved end-to-end and every
+  length-vs-removal test uses `operand is None` (`evaluator.py`, `variable.py`,
+  `operators.py`, `fields.py`). Also fixed a pre-existing `${*#a}` mis-handling.
+- H2 extglob `!(pat)` negation failed when the subject STARTS with the pattern:
+  `[[ foobar == !(foo) ]]` → was `N`, now `Y`; `${v##!(foo)}` on `foobar` → was
+  `foobar`, now empty. A standalone `!(...)` now compiles to a whole-string
+  negative lookahead `(?!(?:alts)$).*` (`extglob.py`), and the removal operators
+  match-and-invert against the positive pattern span-by-span
+  (`parameter_expansion.py`). Embedded `?()/*()/+()/@()` and `a!(b)c` unchanged.
+- L3 zero-width extglob over-substituted in `${v//pat/repl}`: `v=xyz;
+  "${v//*(q)/-}"` → was `-x-y-z-`, now `-x-y-z`. The global-substitution path
+  now suppresses Python `re.sub`'s extra end-of-string empty match (only when
+  the pattern can match empty; ordinary patterns keep the fast path).
+- Known remaining follow-up (recorded): embedded `!()` in REMOVAL operators
+  (`${v#a!(x)}`) still diverges — needs the span-search generalized to embedded
+  position.
+- Tests: +`TestStandaloneNegationExtglob`, +3 POSIX parameter-expansion methods,
+  +13 golden cases. Full gate green: ruff + mypy clean, `run_tests.py
+  --parallel` 6923 passed, `--compare-bash` 375 passed.
+
 ## 0.378.0 (2026-06-14) - Docs: ground-up reappraisal #6 (post-campaign scorecard)
 - DOCS ONLY. Added `docs/reviews/ground_up_reappraisal_6_2026-06-14.md`: a fresh
   five-cluster scorecard taken after the #5 refactor campaign (v0.355–v0.377).

@@ -19,8 +19,10 @@ class FieldExpansionMixin:
         behaviour for ``"${a[@]}"``, ``"${@:2}"``, ``"${a[@]:1:2}"``,
         ``"${a[@]@Q}"``, ``"${a[@]#pat}"`` and friends.
         """
-        # ${#a[@]} / ${#@}: length — scalar
-        if operator == '#' and not operand:
+        # ${#a[@]} / ${#@}: length — scalar. operand is None only for the
+        # length form; ${a[@]#} (empty removal pattern) has operand '' and
+        # must produce per-element fields below.
+        if operator == '#' and operand is None:
             return None
 
         param = parameter

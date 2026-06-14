@@ -98,7 +98,7 @@ def extglob_to_regex(pattern: str, anchored: bool = True,
         from_start: If anchored, anchor at start (True) or just at end (False).
         for_pathname: If True, * and ? do not match '/'.
     """
-    regex = _convert_pattern(pattern, for_pathname)
+    regex = _convert_pattern(pattern, for_pathname, top_level=True)
 
     if anchored:
         if from_start:
@@ -116,10 +116,11 @@ def glob_to_regex_body(pattern: str, for_pathname: bool = False,
     need anchoring add ``^``/``$`` themselves (see ``extglob_to_regex`` and
     ``PatternMatcher.shell_pattern_to_regex``).
     """
-    return _convert_pattern(pattern, for_pathname, extglob)
+    return _convert_pattern(pattern, for_pathname, extglob, top_level=True)
 
 
-def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True) -> str:
+def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,
+                     top_level: bool = False) -> str:
     """Recursively convert a shell pattern to regex.
 
     Args:
@@ -165,8 +166,20 @@ def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True) -> 
                 elif ch == '@':
                     result.append(f'(?:{alt_group})')
                 elif ch == '!':
-                    # Inline negation via per-character negative lookahead
-                    result.append(f'(?:(?!(?:{alt_group}){star}).)*')
+                    # Standalone !(P) (the negation spans the WHOLE pattern):
+                    # bash matches any string that is not P in its entirety,
+                    # so emit a whole-string negative lookahead then consume
+                    # everything (e.g. !(foo) matches foobar, foofoo, "" but
+                    # not foo). The per-character inline form below wrongly
+                    # rejects any string that merely STARTS with an
+                    # alternative.
+                    if top_level and i == 0 and close == len(pattern) - 1:
+                        result.append(f'(?!(?:{alt_group})$){star}')
+                    else:
+                        # Embedded negation (a!(b)c, !(b)c, !(b)*): per-char
+                        # negative lookahead so the rest of the pattern can
+                        # still anchor the negated span.
+                        result.append(f'(?:(?!(?:{alt_group}){star}).)*')
 
                 i = close + 1
                 continue
