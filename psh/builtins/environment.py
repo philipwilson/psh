@@ -348,7 +348,7 @@ class SetBuiltin(Builtin):
         show_all = shell.state.env.get('PSH_SHOW_ALL_OPTIONS', '').lower() in ('1', 'true', 'yes')
         if show_all:
             # Show all options including PSH-specific debug options
-            options_to_show = shell.state.options.keys()
+            options_to_show = list(shell.state.options.keys())
         else:
             # Show only standard bash-compatible options for conformance
             options_to_show = [opt for opt in standard_options if opt in shell.state.options]

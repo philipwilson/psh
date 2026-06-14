@@ -282,3 +282,10 @@ allow_untyped_defs = true
 allow_incomplete_defs = true
 check_untyped_defs = false
 warn_unused_ignores = true
+
+# Per-package deepening: check the BODIES of un-annotated functions for the
+# foundational core/ package (the rest of psh keeps the global default `false`
+# until each package is cleaned up in turn). See Tier R8.7.
+[[tool.mypy.overrides]]
+module = "psh.core.*"
+check_untyped_defs = true

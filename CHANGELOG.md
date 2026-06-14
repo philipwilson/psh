@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.413.0 (2026-06-14) - Tier R8.7: check_untyped_defs for psh.core.* (type depth)
+- TYPE-CHECKING DEPTH (zero behavior change; remaining review Ugly 10). mypy
+  covers 100% of files but `check_untyped_defs` was off globally, so un-annotated
+  function BODIES were unchecked. Enabled it for the foundational package via a
+  `[[tool.mypy.overrides]]` block (`module = "psh.core.*"`,
+  `check_untyped_defs = true`); the global default stays `false`.
+- `psh/core/` was already body-clean (14 previously-unchecked bodies, now all
+  checked — a strong signal of the package's invariants). The deeper checking
+  caught ONE genuine latent type inconsistency, in a caller: `set -o` listing in
+  `builtins/environment.py` assigned `dict_keys` in one branch and `list` in the
+  other; wrapped the first in `list(...)` (both are only iterated/sorted, so
+  runtime is identical).
+- Full gate green: ruff + mypy clean (225 files), `run_tests.py --parallel` 7434
+  passed, `--compare-bash` 461 passed.
+
 ## 0.412.0 (2026-06-14) - Tier R8.5 (1st increment): StreamBindings on ShellState
 - REFACTOR (zero behavior change; review Ugly 6 / A5 — first increment, streams
   only). Replaced the ad-hoc dynamic `_custom_stdin`/`_custom_stdout`/
