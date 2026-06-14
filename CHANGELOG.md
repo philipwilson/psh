@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.389.0 (2026-06-14) - Docs: ground-up reappraisal #7 (post-R6 scorecard)
+- DOCS ONLY. Added `docs/reviews/ground_up_reappraisal_7_2026-06-14.md`: a fresh
+  five-cluster scorecard taken after the Tier R6 bug-fix campaign.
+- Scorecard: overall **A−** (stable). Core/Builtins promoted B+→A− (R6 cleared
+  its read/declare bug density); the other four clusters held A−. All R6 fixes
+  verified clean with no regressions. mypy scope ~85/222 files (~38%).
+- Deeper fresh-eyes probing found a NEW bash-verified bug list (not in #6): 5
+  HIGH (keyword-as-arg `echo if then` parse error; `${var#}` shortest-prefix
+  greedy with extglob; namerefs don't deref on array reads; `psh script.sh`
+  honors a foreign shebang; prefix-assignment not exported to an external
+  command in a pipeline), 9 MEDIUM, 7 LOW — plus the half-finished mypy lever.
+  Defines the "Tier R7" worst-first bug-fix phase.
+
 ## 0.388.0 (2026-06-14) - Tier R6.10: history word designators (clears R6 bug list)
 - BUG FIX (bash-verified; reappraisal #6 L10, the final R6 bug). History
   expansion only handled EVENT designators (`!!`, `!n`, `!string`); word
