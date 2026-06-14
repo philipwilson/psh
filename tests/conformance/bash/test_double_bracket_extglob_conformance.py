@@ -96,3 +96,67 @@ class TestDoubleBracketExtglobQuotingInteraction(ConformanceTest):
         # Unquoted $p is a live extglob pattern; "$p" is literal.
         self.assert_identical_behavior('p="a@(b|x)c"; [[ abc == $p ]]; echo $?')
         self.assert_identical_behavior('p="a@(b|x)c"; [[ abc == "$p" ]]; echo $?')
+
+
+class TestStandaloneNegationExtglob(ConformanceTest):
+    """``!(pat)`` as a WHOLE pattern means "anything that is not pat".
+
+    Regression for the inline per-character negation that wrongly rejected
+    any subject *beginning* with an alternative (e.g. ``[[ foobar == !(foo) ]]``
+    matched in bash but not psh). The negation now matches the entire string
+    against the positive pattern and inverts.
+    """
+
+    def test_standalone_negation_double_bracket(self):
+        # foobar starts with foo but is not foo -> matches !(foo)
+        self.assert_identical_behavior(
+            'shopt -s extglob; [[ foobar == !(foo) ]]; echo $?')
+        self.assert_identical_behavior(
+            'shopt -s extglob; [[ foo == !(foo) ]]; echo $?')
+        self.assert_identical_behavior(
+            'shopt -s extglob; [[ foofoo == !(foo) ]]; echo $?')
+        self.assert_identical_behavior(
+            'shopt -s extglob; [[ "" == !(foo) ]]; echo $?')
+
+    def test_standalone_negation_not_equal(self):
+        self.assert_identical_behavior(
+            'shopt -s extglob; [[ foobar != !(foo) ]]; echo $?')
+
+    def test_standalone_negation_glob_alternative(self):
+        self.assert_identical_behavior(
+            'shopt -s extglob; [[ foobar == !(foo*) ]]; echo $?')
+        self.assert_identical_behavior(
+            'shopt -s extglob; [[ xfoo == !(foo*) ]]; echo $?')
+
+    def test_standalone_negation_alternation(self):
+        self.assert_identical_behavior(
+            'shopt -s extglob; [[ baz == !(foo|bar) ]]; echo $?')
+        self.assert_identical_behavior(
+            'shopt -s extglob; [[ foo == !(foo|bar) ]]; echo $?')
+
+    def test_standalone_negation_in_case(self):
+        script = (
+            'shopt -s extglob\n'
+            'for x in foobar foo bar; do\n'
+            '  case $x in\n'
+            '    !(foo)) echo "$x M";;\n'
+            '    *) echo "$x N";;\n'
+            '  esac\n'
+            'done\n'
+        )
+        self.assert_identical_behavior(script)
+
+    def test_standalone_negation_in_removal(self):
+        # ${v##!(foo)} removes the longest prefix that is not foo -> empty.
+        self.assert_identical_behavior(
+            'shopt -s extglob; v=foobar; echo "${v##!(foo)}"')
+        # ${v#!(foo)} removes the shortest such prefix (empty) -> unchanged.
+        self.assert_identical_behavior(
+            'shopt -s extglob; v=foobar; echo "${v#!(foo)}"')
+        self.assert_identical_behavior(
+            'shopt -s extglob; v=foobar; echo "${v%%!(bar)}"')
+        self.assert_identical_behavior(
+            'shopt -s extglob; v=foobar; echo "${v%!(bar)}"')
+        # value equal to the pattern: longest proper prefix remains.
+        self.assert_identical_behavior(
+            'shopt -s extglob; v=foobar; echo "${v##!(foobar)}"')

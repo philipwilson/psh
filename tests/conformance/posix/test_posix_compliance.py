@@ -110,6 +110,44 @@ class TestPOSIXParameterExpansion(ConformanceTest):
         self.assert_identical_behavior('x=hello.world.txt; echo ${x%.*}')
         self.assert_identical_behavior('x=hello.world.txt; echo ${x%%.*}')
 
+    def test_empty_removal_pattern_is_not_length(self):
+        """${v#} is removal with an empty pattern (no-op), NOT ${#v} (length).
+
+        Regression: the length branch was selected by a falsiness test on the
+        operand, so ${v#} (operand '') wrongly returned the string length.
+        The operand is None only for the true length form ${#v}.
+        """
+        self.assert_identical_behavior('v=abc; echo "${v#}"')
+        self.assert_identical_behavior('v=abc; echo "${v##}"')
+        self.assert_identical_behavior('v=abc; echo "${v%}"')
+        self.assert_identical_behavior('v=abc; echo "${v%%}"')
+        # The genuine length forms still report the length / count.
+        self.assert_identical_behavior('v=abc; echo "${#v}"')
+        self.assert_identical_behavior('a=(x y z); echo "${#a[@]}"')
+        self.assert_identical_behavior('set -- p q r; echo "${#@}"')
+        self.assert_identical_behavior('set -- p q r; echo "${#*}"')
+
+    def test_empty_removal_pattern_arrays_and_positionals(self):
+        """${a[@]#}, ${@#}, ${*#} with an empty pattern leave each element."""
+        self.assert_identical_behavior('a=(x y); echo "${a[@]#}"')
+        self.assert_identical_behavior('a=(x y); echo "${a[@]##}"')
+        self.assert_identical_behavior('set -- aa bb; echo "${@#}"')
+        self.assert_identical_behavior('set -- aa bb; echo "${*#}"')
+        # And a real per-element removal still works on positionals.
+        self.assert_identical_behavior('set -- aa bb; echo "${@#a}"')
+        self.assert_identical_behavior('set -- aa bb; echo "${*#a}"')
+
+    def test_global_substitution_empty_match_at_end(self):
+        """${v//pat/repl} with a zero-width-capable pattern matches bash's
+        empty-match semantics (no extra trailing replacement)."""
+        self.assert_identical_behavior('shopt -s extglob; v=xyz; echo "${v//*(q)/-}"')
+        self.assert_identical_behavior('shopt -s extglob; v=abcabc; echo "${v//*(abc)/X}"')
+        self.assert_identical_behavior('v=abc; echo "${v//*/X}"')
+        self.assert_identical_behavior('shopt -s extglob; v=qqxqq; echo "${v//*(q)/-}"')
+        self.assert_identical_behavior('shopt -s extglob; v=aXbXc; echo "${v//*(X)/-}"')
+        # Empty subject still yields a single replacement.
+        self.assert_identical_behavior('shopt -s extglob; v=; echo "${v//*(q)/-}"')
+
 
 class TestPOSIXCommandSubstitution(ConformanceTest):
     """Test POSIX command substitution compliance."""

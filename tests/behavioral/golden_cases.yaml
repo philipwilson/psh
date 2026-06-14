@@ -1189,3 +1189,93 @@
   stdout: "6\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# PARAMETER EXPANSION: empty removal pattern vs length (reappraisal #6 H1)
+# =============================================================================
+
+- name: empty_prefix_removal_is_noop
+  command: 'v=abc; echo "${v#}"'
+  stdout: "abc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: empty_longest_prefix_removal_is_noop
+  command: 'v=abc; echo "${v##}"'
+  stdout: "abc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: string_length_still_works
+  command: 'v=abc; echo "${#v}"'
+  stdout: "3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: empty_pattern_per_element_array
+  command: 'a=(x y); echo "${a[@]#}"'
+  stdout: "x y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_length_still_works
+  command: 'a=(x y); echo "${#a[@]}"'
+  stdout: "2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: positional_count_still_works
+  command: 'set -- p q r; echo "${#@}"'
+  stdout: "3\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# EXTGLOB: standalone negation !(pat) (reappraisal #6 H2)
+# =============================================================================
+
+- name: standalone_negation_matches_prefix_of_pattern
+  command: 'shopt -s extglob; [[ foobar == !(foo) ]] && echo Y || echo N'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: standalone_negation_rejects_exact
+  command: 'shopt -s extglob; [[ foo == !(foo) ]] && echo Y || echo N'
+  stdout: "N\n"
+  stderr: ""
+  exit_code: 0
+
+- name: standalone_negation_longest_prefix_removal
+  command: 'shopt -s extglob; v=foobar; echo "${v##!(foo)}"'
+  stdout: "\n"
+  stderr: ""
+  exit_code: 0
+
+- name: standalone_negation_shortest_prefix_removal_noop
+  command: 'shopt -s extglob; v=foobar; echo "${v#!(foo)}"'
+  stdout: "foobar\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# GLOBAL SUBSTITUTION: zero-width empty match at end (reappraisal #6 L3)
+# =============================================================================
+
+- name: zero_width_global_sub_no_trailing
+  command: 'shopt -s extglob; v=xyz; echo "${v//*(q)/-}"'
+  stdout: "-x-y-z\n"
+  stderr: ""
+  exit_code: 0
+
+- name: zero_width_global_sub_full_match
+  command: 'shopt -s extglob; v=abcabc; echo "${v//*(abc)/X}"'
+  stdout: "X\n"
+  stderr: ""
+  exit_code: 0
+
+- name: star_global_sub_single_match
+  command: 'v=abc; echo "${v//*/X}"'
+  stdout: "X\n"
+  stderr: ""
+  exit_code: 0

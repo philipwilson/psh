@@ -12,7 +12,7 @@ This module keeps the entry points (string scanning, name resolution,
 special variables, ${!name} indirection) and dispatch.
 """
 import sys
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from .arrays import ArrayOpsMixin
 from .fields import FieldExpansionMixin
@@ -56,8 +56,10 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             node = parse_parameter_expansion(var_expr[1:-1])
 
             if node.operator:
+                # Preserve None vs '' for node.word: ${#v} (length) parses to
+                # word=None, ${v#} (empty removal pattern) parses to word=''.
                 return self.expand_parameter_direct(
-                    node.operator, node.parameter, node.word or '')
+                    node.operator, node.parameter, node.word)
 
             var_name = node.parameter
 
@@ -147,7 +149,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         else:
             return self.state.get_variable(var_name, '')
 
-    def expand_parameter_direct(self, operator: str, var_name: str, operand: str) -> str:
+    def expand_parameter_direct(self, operator: str, var_name: str,
+                                operand: Optional[str]) -> str:
         """Expand a parameter expansion from pre-parsed components.
 
         Called by ExpansionEvaluator for Word AST nodes and by
@@ -185,14 +188,21 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             var_name = ''
 
         # Resolve the variable value
-        if var_name in ('', '#') and operator == '#' and not operand:
+        if var_name in ('', '#') and operator == '#' and operand is None:
             # Special case: ${#} is number of positional params
             # (param_parser emits parameter='', operator='#').
             return str(len(self.state.positional_params))
         elif var_name == '*':
-            if operator == '#':
+            # ${#*} is the positional count; ${*#pat} (operand not None,
+            # including the empty-pattern ${*#}) removes per-element.
+            if operator == '#' and operand is None:
                 return str(len(self.state.positional_params))
+            if operator in ('#', '##', '%', '%%'):
+                return self._ifs_star_separator().join(
+                    self._apply_operator(operator, p, operand, var_name=var_name)
+                    for p in self.state.positional_params)
             if operator == ':':
+                assert operand is not None  # ':' always carries a slice operand
                 return self._ifs_star_separator().join(
                     self._slice_sequence(self._positional_slice_elements(),
                                          operand, what='*'))
@@ -204,9 +214,16 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             # (bash: ``IFS=:; set -- a b; echo "${*-d}"`` → a:b)
             value = self.state.get_special_variable('*')
         elif var_name == '@':
-            if operator == '#':
+            # ${#@} is the positional count; ${@#pat} (operand not None,
+            # including the empty-pattern ${@#}) removes per-element.
+            if operator == '#' and operand is None:
                 return str(len(self.state.positional_params))
+            if operator in ('#', '##', '%', '%%'):
+                return ' '.join(
+                    self._apply_operator(operator, p, operand, var_name=var_name)
+                    for p in self.state.positional_params)
             if operator == ':':
+                assert operand is not None  # ':' always carries a slice operand
                 return ' '.join(
                     self._slice_sequence(self._positional_slice_elements(),
                                          operand, what='@'))
@@ -239,7 +256,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         return self._apply_operator(operator, value, operand, var_name=var_name, is_set=is_set)
 
     def _expand_array_parameter(self, operator: str, var_name: str,
-                                operand: str) -> Tuple[bool, str]:
+                                operand: Optional[str]) -> Tuple[bool, str]:
         """Expand the array-subscript branch of ``${arr[...]<op>...}``.
 
         Handles whole-array ``[@]``/``[*]`` forms (count, slice, conditional
@@ -260,8 +277,10 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
 
         # Handle special indices @ and * for whole-array operations
         if index_expr in ('@', '*'):
-            # ${#arr[@]} / ${#arr[*]} — array element count
-            if operator == '#' and not operand:
+            # ${#arr[@]} / ${#arr[*]} — array element count.
+            # operand is None for the length form; ${arr[@]#} (empty pattern)
+            # has operand '' and must fall through to per-element removal.
+            if operator == '#' and operand is None:
                 if var and isinstance(var.value, (IndexedArray, AssociativeArray)):
                     return True, str(var.value.length())
                 elif var and var.value:
@@ -280,6 +299,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             # by INDEX for sparse indexed arrays), or a string
             # substring when the subscripted variable is a scalar.
             if operator == ':':
+                assert operand is not None  # ':' always carries a slice operand
                 what = f"{array_name}[{index_expr}]"
                 if var and isinstance(var.value, IndexedArray):
                     sliced = self._slice_sequence(

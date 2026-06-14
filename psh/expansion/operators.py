@@ -7,6 +7,7 @@ slicing (:off:len), and @-transforms. Mixed into VariableExpander
 """
 
 import sys
+from typing import Optional
 
 # Sentinel distinguishing an unset variable from one set to the empty
 # string (used by the non-colon operators ${x-}, ${x+}, ...).
@@ -178,7 +179,8 @@ class OperatorOpsMixin:
             return var.value is not None and self._eval_array_index(index_expr) == 0
         return self.state.get_variable(var_name, _UNSET) is not _UNSET
 
-    def _apply_operator(self, operator: str, value: str, operand: str,
+    def _apply_operator(self, operator: str, value: str,
+                        operand: Optional[str],
                         var_name: str = '', is_set: bool = True) -> str:
         """Apply a parameter expansion operator to a resolved value.
 
@@ -233,9 +235,11 @@ class OperatorOpsMixin:
             if value:
                 return self._expand_operand(operand)
             return ''
-        elif operator == '#' and not operand:
+        elif operator == '#' and operand is None:
+            # ${#var} (no operand) is the length; ${var#} (empty pattern)
+            # is prefix removal with a pattern that matches nothing.
             return self.param_expansion.get_length(value)
-        elif operator == '#' and operand:
+        elif operator == '#':
             return self.param_expansion.remove_shortest_prefix(
                 value, self._expand_pattern_operand(operand))
         elif operator == '##':
