@@ -12,7 +12,8 @@ This module handles execution of control structures including:
 """
 
 import sys
-from typing import TYPE_CHECKING, List
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Iterator, List
 
 from ..core import LoopBreak, LoopContinue, ReadonlyVariableError
 from ..expansion.arithmetic import evaluate_arithmetic
@@ -50,6 +51,66 @@ class ControlFlowExecutor:
         self.expansion_manager = shell.expansion_manager
         self.io_manager = shell.io_manager
 
+    # ------------------------------------------------------------------
+    # Shared scaffolding helpers
+    #
+    # Every compound construct (if/while/until/for/c-style-for/case/select)
+    # shares the same boilerplate: apply the node's redirections around the
+    # whole body, neutralize the enclosing pipeline context while running the
+    # body, track loop nesting depth, and translate break/continue level
+    # counts as they unwind through nested loops. These helpers own that
+    # boilerplate so each construct's method reads as its real control logic.
+    # ------------------------------------------------------------------
+
+    @contextmanager
+    def _compound_redirections(self, node) -> Iterator[None]:
+        """Apply the construct's redirections around its whole body.
+
+        Redirects on a compound command apply to every command in the body
+        and are restored when the body finishes (delegates to the io manager's
+        per-block save/restore).
+        """
+        with self.io_manager.with_redirections(node.redirects):
+            yield
+
+    @contextmanager
+    def _pipeline_context_disabled(self, context: 'ExecutionContext') -> Iterator[None]:
+        """Run the body as if it were NOT a pipeline member.
+
+        A compound command can itself be a pipeline member (``for ...; done |
+        cat``); the compound runs in a forked subshell. Inside its body,
+        external commands must fork normally rather than exec-replacing that
+        subshell, so ``in_pipeline`` is cleared for the duration of the body
+        and restored afterward.
+        """
+        old_pipeline = context.in_pipeline
+        context.in_pipeline = False
+        try:
+            yield
+        finally:
+            context.in_pipeline = old_pipeline
+
+    @contextmanager
+    def _loop_depth(self, context: 'ExecutionContext') -> Iterator[None]:
+        """Track loop nesting depth for break/continue level handling."""
+        context.loop_depth += 1
+        try:
+            yield
+        finally:
+            context.loop_depth -= 1
+
+    @staticmethod
+    def _reraise_loop_control(exc, context: 'ExecutionContext') -> None:
+        """Re-raise a break/continue exception decremented one nesting level.
+
+        When a ``break N`` / ``continue N`` (N > 1) reaches a loop that is not
+        the outermost target, it must keep propagating outward with its level
+        count reduced by one. Outside that case nothing is re-raised (the
+        caller handles the local break/continue).
+        """
+        if exc.level > 1 and context.loop_depth > 1:
+            raise type(exc)(exc.level - 1)
+
     def execute_if(self, node: 'IfConditional', context: 'ExecutionContext',
                    visitor: 'ASTVisitor[int]') -> int:
         """
@@ -63,33 +124,28 @@ class ControlFlowExecutor:
         Returns:
             Exit status code
         """
-        # Apply redirections to entire if statement
-        with self.io_manager.with_redirections(node.redirects):
-            # Temporarily disable pipeline context for commands inside control structure
-            old_pipeline = context.in_pipeline
-            context.in_pipeline = False
-            try:
-                # Evaluate main condition (set -e is suppressed in conditions)
+        # Redirects apply to the whole if; pipeline context is neutralized
+        # for commands inside the construct.
+        with self._compound_redirections(node), self._pipeline_context_disabled(context):
+            # Evaluate main condition (set -e is suppressed in conditions)
+            with context.errexit_suppressed():
+                condition_status = visitor.visit(node.condition)
+
+            if condition_status == 0:
+                return visitor.visit(node.then_part)
+
+            # Check elif conditions
+            for elif_condition, elif_then in node.elif_parts:
                 with context.errexit_suppressed():
-                    condition_status = visitor.visit(node.condition)
+                    elif_status = visitor.visit(elif_condition)
+                if elif_status == 0:
+                    return visitor.visit(elif_then)
 
-                if condition_status == 0:
-                    return visitor.visit(node.then_part)
+            # Execute else part if present
+            if node.else_part:
+                return visitor.visit(node.else_part)
 
-                # Check elif conditions
-                for elif_condition, elif_then in node.elif_parts:
-                    with context.errexit_suppressed():
-                        elif_status = visitor.visit(elif_condition)
-                    if elif_status == 0:
-                        return visitor.visit(elif_then)
-
-                # Execute else part if present
-                if node.else_part:
-                    return visitor.visit(node.else_part)
-
-                return 0
-            finally:
-                context.in_pipeline = old_pipeline
+            return 0
 
     def execute_while(self, node: 'WhileLoop', context: 'ExecutionContext',
                       visitor: 'ASTVisitor[int]') -> int:
@@ -105,68 +161,45 @@ class ControlFlowExecutor:
             Exit status code
         """
         exit_status = 0
-        context.loop_depth += 1
-        try:
-            # Apply redirections for entire loop
-            with self.io_manager.with_redirections(node.redirects):
-                # Temporarily disable pipeline context for commands inside control structure
-                old_pipeline = context.in_pipeline
-                context.in_pipeline = False
+        with self._loop_depth(context), self._compound_redirections(node), \
+                self._pipeline_context_disabled(context):
+            while True:
+                # Evaluate condition (set -e is suppressed in conditions)
+                with context.errexit_suppressed():
+                    condition_status = visitor.visit(node.condition)
+                if condition_status != 0:
+                    break
+
+                # Execute body
                 try:
-                    while True:
-                        # Evaluate condition (set -e is suppressed in conditions)
-                        with context.errexit_suppressed():
-                            condition_status = visitor.visit(node.condition)
-                        if condition_status != 0:
-                            break
-
-                        # Execute body
-                        try:
-                            exit_status = visitor.visit(node.body)
-                        except LoopContinue as lc:
-                            if lc.level > 1 and context.loop_depth > 1:
-                                raise LoopContinue(lc.level - 1)
-                            continue
-                        except LoopBreak as lb:
-                            if lb.level > 1 and context.loop_depth > 1:
-                                raise LoopBreak(lb.level - 1)
-                            break
-
-                finally:
-                    context.in_pipeline = old_pipeline
-        finally:
-            context.loop_depth -= 1
+                    exit_status = visitor.visit(node.body)
+                except LoopContinue as lc:
+                    self._reraise_loop_control(lc, context)
+                    continue
+                except LoopBreak as lb:
+                    self._reraise_loop_control(lb, context)
+                    break
         return exit_status
 
     def execute_until(self, node: 'UntilLoop', context: 'ExecutionContext',
                       visitor: 'ASTVisitor[int]') -> int:
         """Execute until loop (runs until condition succeeds)."""
         exit_status = 0
-        context.loop_depth += 1
-        try:
-            with self.io_manager.with_redirections(node.redirects):
-                old_pipeline = context.in_pipeline
-                context.in_pipeline = False
+        with self._loop_depth(context), self._compound_redirections(node), \
+                self._pipeline_context_disabled(context):
+            while True:
+                with context.errexit_suppressed():
+                    condition_status = visitor.visit(node.condition)
+                if condition_status == 0:
+                    break
                 try:
-                    while True:
-                        with context.errexit_suppressed():
-                            condition_status = visitor.visit(node.condition)
-                        if condition_status == 0:
-                            break
-                        try:
-                            exit_status = visitor.visit(node.body)
-                        except LoopContinue as lc:
-                            if lc.level > 1 and context.loop_depth > 1:
-                                raise LoopContinue(lc.level - 1)
-                            continue
-                        except LoopBreak as lb:
-                            if lb.level > 1 and context.loop_depth > 1:
-                                raise LoopBreak(lb.level - 1)
-                            break
-                finally:
-                    context.in_pipeline = old_pipeline
-        finally:
-            context.loop_depth -= 1
+                    exit_status = visitor.visit(node.body)
+                except LoopContinue as lc:
+                    self._reraise_loop_control(lc, context)
+                    continue
+                except LoopBreak as lb:
+                    self._reraise_loop_control(lb, context)
+                    break
         return exit_status
 
     def execute_for(self, node: 'ForLoop', context: 'ExecutionContext',
@@ -183,41 +216,28 @@ class ControlFlowExecutor:
             Exit status code
         """
         exit_status = 0
-        context.loop_depth += 1
-        try:
-            # Expand items - handle all types of expansion, respecting quote types
-            expanded_items = self._expand_loop_items(node)
+        # Expand items - handle all types of expansion, respecting quote types
+        expanded_items = self._expand_loop_items(node)
 
-            # Apply redirections for entire loop
-            with self.io_manager.with_redirections(node.redirects):
-                # Temporarily disable pipeline context for commands inside control structure
-                old_pipeline = context.in_pipeline
-                context.in_pipeline = False
+        with self._loop_depth(context), self._compound_redirections(node), \
+                self._pipeline_context_disabled(context):
+            for item in expanded_items:
+                # Set loop variable
                 try:
-                    for item in expanded_items:
-                        # Set loop variable
-                        try:
-                            self.state.set_variable(node.variable, item)
-                        except ReadonlyVariableError:
-                            print(f"psh: {node.variable}: readonly variable", file=self.state.stderr)
-                            return 1
+                    self.state.set_variable(node.variable, item)
+                except ReadonlyVariableError:
+                    print(f"psh: {node.variable}: readonly variable", file=self.state.stderr)
+                    return 1
 
-                        # Execute body
-                        try:
-                            exit_status = visitor.visit(node.body)
-                        except LoopContinue as lc:
-                            if lc.level > 1 and context.loop_depth > 1:
-                                raise LoopContinue(lc.level - 1)
-                            continue
-                        except LoopBreak as lb:
-                            if lb.level > 1 and context.loop_depth > 1:
-                                raise LoopBreak(lb.level - 1)
-                            break
-
-                finally:
-                    context.in_pipeline = old_pipeline
-        finally:
-            context.loop_depth -= 1
+                # Execute body
+                try:
+                    exit_status = visitor.visit(node.body)
+                except LoopContinue as lc:
+                    self._reraise_loop_control(lc, context)
+                    continue
+                except LoopBreak as lb:
+                    self._reraise_loop_control(lb, context)
+                    break
         return exit_status
 
     def execute_c_style_for(self, node: 'CStyleForLoop', context: 'ExecutionContext',
@@ -234,20 +254,20 @@ class ControlFlowExecutor:
             Exit status code
         """
         exit_status = 0
-        context.loop_depth += 1
+        with self._loop_depth(context):
+            # Evaluate init expression (before redirects, matching prior
+            # behavior: an init error returns 1 without opening redirects).
+            if node.init_expr:
+                try:
+                    evaluate_arithmetic(node.init_expr, self.shell)
+                except (ValueError, ArithmeticError) as e:
+                    print(f"psh: ((: {e}", file=self.state.stderr)
+                    return 1
 
-        # Evaluate init expression
-        if node.init_expr:
-            try:
-                evaluate_arithmetic(node.init_expr, self.shell)
-            except (ValueError, ArithmeticError) as e:
-                print(f"psh: ((: {e}", file=self.state.stderr)
-                context.loop_depth -= 1
-                return 1
-
-        # Apply redirections for entire loop
-        with self.io_manager.with_redirections(node.redirects):
-            try:
+            # Redirects apply to the whole loop; pipeline context is
+            # neutralized for the body (uniform with while/for — see
+            # _pipeline_context_disabled).
+            with self._compound_redirections(node), self._pipeline_context_disabled(context):
                 while True:
                     # Evaluate condition
                     if node.condition_expr:
@@ -260,15 +280,14 @@ class ControlFlowExecutor:
                             exit_status = 1
                             break
 
-                    # Execute body
+                    # Execute body. A continue falls through to the update
+                    # expression (C-style semantics); a break exits the loop.
                     try:
                         exit_status = visitor.visit(node.body)
                     except LoopContinue as lc:
-                        if lc.level > 1 and context.loop_depth > 1:
-                            raise LoopContinue(lc.level - 1)
+                        self._reraise_loop_control(lc, context)
                     except LoopBreak as lb:
-                        if lb.level > 1 and context.loop_depth > 1:
-                            raise LoopBreak(lb.level - 1)
+                        self._reraise_loop_control(lb, context)
                         break
 
                     # Evaluate update expression
@@ -279,9 +298,6 @@ class ControlFlowExecutor:
                             print(f"psh: ((: {e}", file=self.state.stderr)
                             exit_status = 1
                             break
-
-            finally:
-                context.loop_depth -= 1
 
         return exit_status
 
@@ -303,71 +319,66 @@ class ControlFlowExecutor:
         if '$' in expr:
             expr = self.expansion_manager.expand_string_variables(expr)
 
-        # Apply redirections
-        with self.io_manager.with_redirections(node.redirects):
-            # Temporarily disable pipeline context for commands inside control structure
-            old_pipeline = context.in_pipeline
-            context.in_pipeline = False
-            try:
-                # Try each case item
-                fall_through = False
-                for case_item in node.items:
-                    matched = fall_through
-                    if not matched:
-                        # Check if any pattern matches
-                        for pattern_obj in case_item.patterns:
-                            if getattr(pattern_obj, 'word', None) is not None:
-                                # Word AST path: per-part quote context
-                                # (quoted text matches literally).
-                                pat = self.expansion_manager.expand_word_as_pattern(
-                                    pattern_obj.word)
-                                if self._match_shell_pattern(expr, pat):
-                                    matched = True
-                                    break
-                                continue
-
-                            # Fallback audit 2026-06-12 — classification
-                            # (b), parser migration bridge: the combinator
-                            # parser emits CasePattern(word=None) when
-                            # build_word_from_token rejects the pattern
-                            # token (e.g. a $(...) pattern containing a
-                            # function definition), and CasePattern's word
-                            # field defaults to None for manual ASTs.
-                            # Exercised by tests/unit/executor/
-                            # test_legacy_ast_fallbacks.py.
-                            pattern_str = pattern_obj.pattern
-                            expanded_pattern = pattern_str
-                            if '$' in pattern_str:
-                                expanded_pattern = self.expansion_manager.expand_string_variables(pattern_str)
-
-                            if self._match_shell_pattern(expr, expanded_pattern):
+        # Redirects apply to the whole case; pipeline context is neutralized
+        # for commands inside the construct.
+        with self._compound_redirections(node), self._pipeline_context_disabled(context):
+            # Try each case item
+            fall_through = False
+            for case_item in node.items:
+                matched = fall_through
+                if not matched:
+                    # Check if any pattern matches
+                    for pattern_obj in case_item.patterns:
+                        if getattr(pattern_obj, 'word', None) is not None:
+                            # Word AST path: per-part quote context
+                            # (quoted text matches literally).
+                            pat = self.expansion_manager.expand_word_as_pattern(
+                                pattern_obj.word)
+                            if self._match_shell_pattern(expr, pat):
                                 matched = True
                                 break
-
-                    fall_through = False
-
-                    if matched:
-                        # Execute the commands for this case
-                        exit_status = visitor.visit(case_item.commands)
-
-                        # Handle terminator
-                        if case_item.terminator == ';;':
-                            # Normal termination
-                            return exit_status
-                        elif case_item.terminator == ';&':
-                            # Fall through: execute next case unconditionally
-                            fall_through = True
-                            continue
-                        elif case_item.terminator == ';;&':
-                            # Continue testing patterns
                             continue
 
+                        # Fallback audit 2026-06-12 — classification
+                        # (b), parser migration bridge: the combinator
+                        # parser emits CasePattern(word=None) when
+                        # build_word_from_token rejects the pattern
+                        # token (e.g. a $(...) pattern containing a
+                        # function definition), and CasePattern's word
+                        # field defaults to None for manual ASTs.
+                        # Exercised by tests/unit/executor/
+                        # test_legacy_ast_fallbacks.py.
+                        pattern_str = pattern_obj.pattern
+                        expanded_pattern = pattern_str
+                        if '$' in pattern_str:
+                            expanded_pattern = self.expansion_manager.expand_string_variables(pattern_str)
+
+                        if self._match_shell_pattern(expr, expanded_pattern):
+                            matched = True
+                            break
+
+                fall_through = False
+
+                if matched:
+                    # Execute the commands for this case
+                    exit_status = visitor.visit(case_item.commands)
+
+                    # Handle terminator
+                    if case_item.terminator == ';;':
+                        # Normal termination
                         return exit_status
+                    elif case_item.terminator == ';&':
+                        # Fall through: execute next case unconditionally
+                        fall_through = True
+                        continue
+                    elif case_item.terminator == ';;&':
+                        # Continue testing patterns
+                        continue
 
-                # No pattern matched
-                return 0
-            finally:
-                context.in_pipeline = old_pipeline
+                    return exit_status
+
+            # No pattern matched
+            return 0
 
     def execute_select(self, node: 'SelectLoop', context: 'ExecutionContext',
                        visitor: 'ASTVisitor[int]') -> int:
@@ -383,89 +394,82 @@ class ControlFlowExecutor:
             Exit status code
         """
         exit_status = 0
-        context.loop_depth += 1
+        with self._loop_depth(context):
+            # Expand items - handle all types of expansion, respecting quote types
+            expanded_items = self._expand_loop_items(node)
 
-        # Expand items - handle all types of expansion, respecting quote types
-        expanded_items = self._expand_loop_items(node)
+            # Empty list - exit immediately
+            if not expanded_items:
+                return 0
 
-        # Empty list - exit immediately
-        if not expanded_items:
-            context.loop_depth -= 1
-            return 0
+            with self._compound_redirections(node), self._pipeline_context_disabled(context):
+                try:
+                    # Get PS3 prompt (default "#? " if not set)
+                    ps3 = self.state.get_variable("PS3", "#? ")
 
-        # Apply redirections for entire loop
-        with self.io_manager.with_redirections(node.redirects):
-            try:
-                # Get PS3 prompt (default "#? " if not set)
-                ps3 = self.state.get_variable("PS3", "#? ")
+                    while True:
+                        # Display menu to stderr
+                        self._display_select_menu(expanded_items)
 
-                while True:
-                    # Display menu to stderr
-                    self._display_select_menu(expanded_items)
+                        # Show prompt and read input
+                        try:
+                            sys.stderr.write(ps3)
+                            sys.stderr.flush()
 
-                    # Show prompt and read input
-                    try:
-                        sys.stderr.write(ps3)
-                        sys.stderr.flush()
+                            # Read input line
+                            if hasattr(self.shell, 'stdin') and self.shell.stdin:
+                                # Use shell's stdin if available (set by I/O redirection)
+                                reply = self.shell.stdin.readline()
+                            else:
+                                # Use sys.stdin as fallback
+                                if sys.stdin is None or sys.stdin.closed:
+                                    raise EOFError
+                                try:
+                                    reply = sys.stdin.readline()
+                                except (OSError, ValueError):
+                                    # Handle case where stdin is not available in test environment
+                                    raise EOFError
 
-                        # Read input line
-                        if hasattr(self.shell, 'stdin') and self.shell.stdin:
-                            # Use shell's stdin if available (set by I/O redirection)
-                            reply = self.shell.stdin.readline()
-                        else:
-                            # Use sys.stdin as fallback
-                            if sys.stdin is None or sys.stdin.closed:
+                            if not reply:  # EOF
                                 raise EOFError
-                            try:
-                                reply = sys.stdin.readline()
-                            except (OSError, ValueError):
-                                # Handle case where stdin is not available in test environment
-                                raise EOFError
+                            reply = reply.rstrip('\n')
+                        except (EOFError, KeyboardInterrupt):
+                            # Ctrl+D or Ctrl+C exits the loop; bash reports the
+                            # failed read with a non-zero status and prints the
+                            # terminating newline on STDOUT.
+                            print()
+                            exit_status = 1
+                            break
 
-                        if not reply:  # EOF
-                            raise EOFError
-                        reply = reply.rstrip('\n')
-                    except (EOFError, KeyboardInterrupt):
-                        # Ctrl+D or Ctrl+C exits the loop; bash reports the
-                        # failed read with a non-zero status and prints the
-                        # terminating newline on STDOUT.
-                        print()
-                        exit_status = 1
-                        break
+                        # Set REPLY variable
+                        self.state.set_variable("REPLY", reply)
 
-                    # Set REPLY variable
-                    self.state.set_variable("REPLY", reply)
-
-                    # Process selection
-                    if reply.strip().isdigit():
-                        choice = int(reply.strip())
-                        if 1 <= choice <= len(expanded_items):
-                            # Valid selection
-                            selected = expanded_items[choice - 1]
-                            self.state.set_variable(node.variable, selected)
+                        # Process selection
+                        if reply.strip().isdigit():
+                            choice = int(reply.strip())
+                            if 1 <= choice <= len(expanded_items):
+                                # Valid selection
+                                selected = expanded_items[choice - 1]
+                                self.state.set_variable(node.variable, selected)
+                            else:
+                                # Out of range
+                                self.state.set_variable(node.variable, "")
                         else:
-                            # Out of range
+                            # Non-numeric input
                             self.state.set_variable(node.variable, "")
-                    else:
-                        # Non-numeric input
-                        self.state.set_variable(node.variable, "")
 
-                    # Execute loop body
-                    try:
-                        exit_status = visitor.visit(node.body)
-                    except LoopContinue as lc:
-                        if lc.level > 1 and context.loop_depth > 1:
-                            raise LoopContinue(lc.level - 1)
-                        continue
-                    except LoopBreak as lb:
-                        if lb.level > 1 and context.loop_depth > 1:
-                            raise LoopBreak(lb.level - 1)
-                        break
-            except KeyboardInterrupt:
-                sys.stderr.write("\n")
-                exit_status = 130
-            finally:
-                context.loop_depth -= 1
+                        # Execute loop body
+                        try:
+                            exit_status = visitor.visit(node.body)
+                        except LoopContinue as lc:
+                            self._reraise_loop_control(lc, context)
+                            continue
+                        except LoopBreak as lb:
+                            self._reraise_loop_control(lb, context)
+                            break
+                except KeyboardInterrupt:
+                    sys.stderr.write("\n")
+                    exit_status = 130
 
         return exit_status
 
