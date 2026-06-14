@@ -59,3 +59,53 @@ class TestPrefixAssignmentRestore(ConformanceTest):
         self.assert_identical_behavior(
             'f() { local L; unset L; L=1 true; '
             'echo "${L+yes}${L-unset}"; }; f')
+
+
+class TestPrefixAssignmentReachesCommandEnvironment(ConformanceTest):
+    """NAME=value cmd places NAME in cmd's environment (exported for it).
+
+    Pins H5 (reappraisal #7): a prefix assignment was not reaching the
+    environment of a command in a pipeline (nor the ``env`` builtin even
+    outside a pipeline) — psh set the variable as a plain shell var, which
+    ``sync_exports_to_environment`` then dropped from ``shell.env`` because
+    it carried no EXPORT attribute. bash exports the prefix for the command
+    only (the variable is not exported afterwards).
+    """
+
+    def test_prefix_in_environment_of_pipeline_member(self):
+        self.assert_identical_behavior('FOO=bar env | grep "^FOO="')
+
+    def test_multiple_prefixes_in_pipeline_member(self):
+        self.assert_identical_behavior(
+            "A=1 B=2 env | grep -E '^(A|B)=' | sort")
+
+    def test_prefix_in_builtin_pipeline_member(self):
+        self.assert_identical_behavior('FOO=bar printenv FOO | cat')
+
+    def test_prefix_through_two_pipe_stages(self):
+        self.assert_identical_behavior('FOO=bar env | cat | grep "^FOO="')
+
+    def test_prefix_does_not_persist_after_pipeline(self):
+        self.assert_identical_behavior(
+            'FOO=bar env | grep "^FOO=" >/dev/null; echo "[${FOO+set}]"')
+
+    def test_prefix_visible_to_external_no_pipeline(self):
+        self.assert_identical_behavior('FOO=bar env | grep "^FOO="')
+
+    def test_prefix_reaches_explicit_external(self):
+        self.assert_identical_behavior(
+            'X=temp bash -c "echo inchild=$X"; echo "[${X+set}]"')
+
+    def test_previously_unexported_var_stays_unexported(self):
+        """A plain var prefixed onto a command is `declare --` afterwards,
+        not `declare -x` — the temporary export must be taken back off."""
+        self.assert_identical_behavior(
+            'Y=set; Y=tmp true; declare -p Y')
+
+    def test_previously_exported_var_stays_exported(self):
+        self.assert_identical_behavior(
+            'export Z=1; Z=2 true; declare -p Z')
+
+    def test_function_prefix_in_pipeline(self):
+        self.assert_identical_behavior(
+            'f(){ echo "fn sees $V"; }; V=hi f | cat')

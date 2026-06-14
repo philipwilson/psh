@@ -17,8 +17,6 @@ from .token_types import Token, TokenType
 class KeywordNormalizer:
     """Normalize WORD tokens to reserved keyword token types when appropriate."""
 
-    CONTROL_KEYWORDS = {'if', 'for', 'select', 'while', 'until', 'case', 'function'}
-
     # Operators that return us to command position: the basic separators plus
     # case-item terminators (which the normalizer treats as separators).
     STATEMENT_SEPARATORS = _BASE_SEPARATORS | CASE_TERMINATORS
@@ -166,9 +164,9 @@ class KeywordNormalizer:
         }:
             return False
 
-        if token.type == TokenType.WORD and token.value:
-            # Exact (case-sensitive) match, as in bash.
-            if token.value in self.CONTROL_KEYWORDS:
-                return token.value in {'if', 'while', 'until'}
-
+        # NOTE: a WORD whose *value* merely looks like a keyword (`if`, `while`,
+        # …) does NOT keep command position. By the time we reach here a real
+        # control-flow keyword carries its own token type (handled above); a
+        # WORD that still spells `if` is an ordinary argument (`echo if then`),
+        # so the token AFTER it must NOT be promoted to a keyword.
         return False

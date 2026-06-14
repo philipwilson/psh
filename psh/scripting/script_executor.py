@@ -19,10 +19,12 @@ class ScriptExecutor(ScriptComponent):
         if validation_result != 0:
             return validation_result
 
-        # Check for shebang and execute with appropriate interpreter
-        if self.shell.script_manager.shebang_handler.should_execute_with_shebang(script_path):
-            return self.shell.script_manager.shebang_handler.execute_with_shebang(
-                script_path, script_args)
+        # NOTE: a `#!...` first line is a COMMENT here, not a dispatch
+        # instruction. When a shell is invoked to interpret a file
+        # (`psh FILE`), POSIX/bash treat the shebang as an ordinary comment
+        # and run the file as shell. The kernel handles `#!` only when a file
+        # is exec'd directly as a command — which psh supports via the
+        # external-command path (`psh -c './x.sh'`), independent of this code.
 
         # Save current script state
         old_script_name = self.state.script_name

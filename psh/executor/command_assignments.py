@@ -235,7 +235,17 @@ class CommandAssignments:
         value), the OTHER assignments still apply, and the command runs
         with its own exit status. The caller handles ``set -e``, where
         bash makes the assignment error fatal instead.
+
+        The assignment is EXPORTED for the duration of the command (bash:
+        ``FOO=bar cmd`` places FOO in cmd's environment whether or not FOO
+        is otherwise exported). Without the EXPORT attribute the variable
+        would be a plain shell var that ``env``/``sync_exports_to_environment``
+        drops from ``shell.env`` (so ``FOO=bar env`` printed nothing,
+        H5). The prior export status is snapshotted so :meth:`restore`
+        can take it away again for a previously-unexported variable.
         """
+        from ..core import VarAttributes
+
         saved_vars: Dict[str, dict] = {}
         assignments: List[Tuple[str, str]] = []
         assignment_error = False
@@ -244,21 +254,27 @@ class CommandAssignments:
             value = self._expand_value(value, value_word)
             var, value = resolve_append_assignment(
                 self.state.scope_manager, var, value)
-            # Save both shell state and environment values (first write wins
-            # if the same variable is assigned twice). The state snapshot is
-            # scope-aware: None means the variable was UNSET, so restore()
-            # can unset it again — bash restores `W=1 true` to unset, and
-            # ${W+yes} stays empty afterwards. (state.get_variable()'s ''
-            # default could not represent unset; psh left W set-but-empty
-            # until 2026-06-13, Tier B10a.)
+            # Save shell state, environment value, and prior export status
+            # (first write wins if the same variable is assigned twice). The
+            # state snapshot is scope-aware: None means the variable was
+            # UNSET, so restore() can unset it again — bash restores `W=1
+            # true` to unset, and ${W+yes} stays empty afterwards.
+            # (state.get_variable()'s '' default could not represent unset;
+            # psh left W set-but-empty until 2026-06-13, Tier B10a.)
             saved = None
             if var not in saved_vars:
+                existing = self.state.scope_manager.get_variable_object(var)
                 saved = {
                     'state': self.state.scope_manager.get_variable(var),
-                    'env': self.shell.env.get(var)  # May be None if not in env
+                    'env': self.shell.env.get(var),  # May be None if not in env
+                    'was_exported': bool(existing and existing.is_exported),
                 }
             try:
-                self.state.set_variable(var, value)
+                # Export for the command's duration (see docstring): the
+                # prefix variable must reach an external command's (and the
+                # ``env`` builtin's) environment.
+                self.state.scope_manager.set_variable(
+                    var, value, attributes=VarAttributes.EXPORT, local=False)
             except ReadonlyVariableError:
                 # bash: report and skip; earlier assignments stay applied
                 # (and are later restored), the command still runs.
@@ -283,6 +299,8 @@ class CommandAssignments:
         persistence exception is the dispatcher's: it simply does not
         call restore in that case.)
         """
+        from ..core import VarAttributes
+
         for var, saved in saved_vars.items():
             # Restore shell state variable. None means it was UNSET before
             # the prefix applied — restore that, like bash (`W=1 true`
@@ -292,6 +310,14 @@ class CommandAssignments:
                 self.state.scope_manager.unset_variable(var)
             else:
                 self.state.set_variable(var, old_state_value)
+                # apply_prefix exported the variable for the command's
+                # duration; if it was not exported before, take EXPORT back
+                # off (set_variable above merges attributes, so the EXPORT
+                # bit would otherwise linger). For a previously-exported
+                # variable EXPORT stays, as it should.
+                if not saved.get('was_exported'):
+                    self.state.scope_manager.remove_attribute(
+                        var, VarAttributes.EXPORT)
 
             # Restore shell.env
             old_env_value = saved['env']

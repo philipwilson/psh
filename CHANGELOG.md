@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.392.0 (2026-06-14) - Tier R7.2: three HIGH bugs (keyword-as-arg, shebang, pipeline prefix-env)
+- BUG FIX (bash-verified; reappraisal #7 H1/H4/H5).
+- H1 a keyword used as a plain ARGUMENT caused a parse error: `echo if then` →
+  was a parse error, now `if then` (also `echo while do done`, `cat -- if
+  then`). `keyword_normalizer._next_command_position` kept "command position"
+  whenever a WORD's *value* spelled `if`/`while`/`until`; removed that branch
+  (a real control keyword already carries its own token type). Real control
+  structures, `time`, function defs, and post-`;`/`|`/`&&` keyword recognition
+  all unchanged.
+- H4 `psh script.sh` honored the script's `#!shebang` (re-dispatching e.g. to
+  python3) instead of treating it as a comment like bash/sh/dash. Removed the
+  shebang dispatch from the explicit-FILE path and DELETED the now-unused
+  `psh/scripting/shebang_handler.py`. The exec path (`psh -c './x.sh'`) still
+  respects the shebang via the kernel (unaffected).
+- H5 a prefix assignment wasn't in the environment of an external command:
+  `FOO=bar env | grep ^FOO` → was empty, now `FOO=bar`. Root: `apply_prefix`
+  set the var without the EXPORT attribute, so `sync_exports_to_environment`
+  dropped it from `shell.env` (this affected the `env` builtin generally, not
+  just pipelines). `apply_prefix` now sets EXPORT and `restore` removes it for a
+  previously-unexported var; export status of pre-existing vars is preserved.
+- Tests: +`test_keyword_as_argument_conformance.py` (20),
+  +`test_script_shebang_is_comment.py` (6 subprocess), +10 prefix-assignment
+  cases, +7 golden. Full gate green: ruff + mypy clean, `run_tests.py
+  --parallel` 7212 passed, `--compare-bash` 429 passed.
+- Known deferred (pre-existing): `time` before a COMPOUND command still
+  parse-errors (psh only supports `time SIMPLE_COMMAND`).
+
 ## 0.391.0 (2026-06-14) - Tier R7: grow mypy scope (arithmetic + executor/io small modules)
 - TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 quality lever).
   Expanded the mypy `files` list from 85 → **95 source files**, all 100% clean:
