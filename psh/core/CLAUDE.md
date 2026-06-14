@@ -313,8 +313,7 @@ a shell error.
 `os.environ` is read ONCE at startup (`self.env = os.environ.copy()`);
 `state.env` is the live environment from then on and is passed
 EXPLICITLY to every child: `execvpe(args, shell.env)` in
-`executor/strategies.py` and `builtins/core.py`, `env=state.env` for
-shebang re-execution (`scripting/shebang_handler.py`), and
+`executor/strategies.py` and `builtins/core.py`, and
 `Shell.for_subshell(parent)` copies it (via `ShellState.adopt`) for
 subshell-style children.
 Nothing writes `os.environ` after startup — such a write would be

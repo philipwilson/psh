@@ -10,8 +10,8 @@ class ScriptComponent(ABC):
     """Base class for script handling components.
 
     Each concrete component exposes its own domain method (run_script,
-    execute_with_shebang, execute_from_source, validate_script_file); there is
-    no shared polymorphic entry point.
+    execute_from_source, validate_script_file); there is no shared
+    polymorphic entry point.
     """
 
     def __init__(self, shell: 'Shell'):
@@ -29,12 +29,10 @@ class ScriptManager:
         # Initialize script components
         from .script_executor import ScriptExecutor
         from .script_validator import ScriptValidator
-        from .shebang_handler import ShebangHandler
         from .source_processor import SourceProcessor
 
         self.script_executor = ScriptExecutor(shell)
         self.script_validator = ScriptValidator(shell)
-        self.shebang_handler = ShebangHandler(shell)
         self.source_processor = SourceProcessor(shell)
 
     def run_script(self, script_path: str, script_args: Optional[List[str]] = None) -> int:

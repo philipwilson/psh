@@ -1407,3 +1407,57 @@
   stdout: "nocasematch    \toff\n1\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# KEYWORD-AS-ARGUMENT (H1, reappraisal #7)
+# A reserved word spelled in argument position is a plain word, and does not
+# keep the following word in "command position".
+# =============================================================================
+
+- name: keyword_if_then_as_arguments
+  command: "echo if then"
+  stdout: "if then\n"
+  stderr: ""
+  exit_code: 0
+
+- name: keyword_while_do_done_as_arguments
+  command: "echo while do done"
+  stdout: "while do done\n"
+  stderr: ""
+  exit_code: 0
+
+- name: keyword_after_first_arg
+  command: "echo a if then"
+  stdout: "a if then\n"
+  stderr: ""
+  exit_code: 0
+
+- name: keyword_real_if_still_parses
+  command: "if true; then echo y; fi"
+  stdout: "y\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# PREFIX ASSIGNMENT REACHES COMMAND ENVIRONMENT (H5, reappraisal #7)
+# FOO=bar cmd places FOO in cmd's environment, including in a pipeline, and
+# does not persist afterwards.
+# =============================================================================
+
+- name: prefix_assignment_in_pipeline_external
+  command: "FOO=bar env | grep '^FOO='"
+  stdout: "FOO=bar\n"
+  stderr: ""
+  exit_code: 0
+
+- name: prefix_assignment_does_not_persist
+  command: "FOO=bar env | grep '^FOO=' >/dev/null; echo \"[${FOO+set}]\""
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: prefix_assignment_unexported_stays_unexported
+  command: "Y=set; Y=tmp true; declare -p Y"
+  stdout: "declare -- Y=\"set\"\n"
+  stderr: ""
+  exit_code: 0
