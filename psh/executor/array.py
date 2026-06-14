@@ -7,7 +7,12 @@ including indexed and associative arrays.
 
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from ..core import AssociativeArray, IndexedArray, VarAttributes
+from ..core import (
+    ArraySubscriptError,
+    AssociativeArray,
+    IndexedArray,
+    VarAttributes,
+)
 from ..expansion.arithmetic import evaluate_arithmetic
 from ..expansion.word_expander import ARRAY_INIT_ELEMENT, ASSOC_INIT_ELEMENT
 
@@ -247,9 +252,31 @@ class ArrayOperationExecutor:
         expanded_value = self.expansion_manager.expand_assignment_value_word(
             node.value_word)
 
+        # Identify an existing array (None if we'd be creating a fresh one).
+        existing = var_obj.value if (var_obj and isinstance(
+            var_obj.value, (IndexedArray, AssociativeArray))) else None
+
+        # Resolve a negative subscript to a concrete write index up front so
+        # that append-mode reads and the final write target the SAME slot
+        # (bash maps a[-1] to one-past-highest; see IndexedArray docs). For
+        # associative arrays the key is a string and passes through unchanged.
+        # An out-of-range negative index is a shell error (bash:
+        # "NAME[SUB]: bad array subscript"), not an internal defect — and is
+        # resolved BEFORE creating/registering a new array variable, so a
+        # failed `unset b; b[-1]=x` leaves b unset (bash behavior).
+        if is_numeric_index and isinstance(index, int):
+            resolver = existing if isinstance(existing, IndexedArray) \
+                else IndexedArray()
+            try:
+                index = resolver.resolve_write_index(index)
+            except ArraySubscriptError as e:
+                print(f"psh: {node.name}[{e.subscript}]: {e}",
+                      file=self.state.stderr)
+                return 1
+
         # Get or create array
-        if var_obj and (isinstance(var_obj.value, IndexedArray) or isinstance(var_obj.value, AssociativeArray)):
-            array = var_obj.value
+        if existing is not None:
+            array = existing
         else:
             # Create new array based on index type
             if is_numeric_index:
@@ -261,9 +288,21 @@ class ArrayOperationExecutor:
                 array = AssociativeArray()
                 self.state.scope_manager.set_variable(node.name, array, attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
 
-        # Handle append mode
-        if node.is_append:
-            # Get current value and append
+        is_integer = var_obj is not None and bool(
+            var_obj.attributes & VarAttributes.INTEGER)
+
+        if is_integer:
+            # Integer (-i) array element: arithmetic-evaluate the RHS, and for
+            # += do a NUMERIC add against the current element (mirrors scalar
+            # `x+=EXPR` on an -i var), not string concatenation. Empty RHS = 0.
+            rhs = evaluate_arithmetic(expanded_value or '0', self.shell)
+            if node.is_append:
+                current = array.get(index)
+                base = evaluate_arithmetic(current, self.shell) if current else 0
+                rhs = base + rhs
+            expanded_value = str(rhs)
+        elif node.is_append:
+            # Non-integer append: string concatenation onto the current value.
             current = array.get(index)
             if current is not None:
                 expanded_value = current + expanded_value

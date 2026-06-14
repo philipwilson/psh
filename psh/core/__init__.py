@@ -16,6 +16,7 @@ from .assignment_utils import (
     resolve_append_assignment,
 )
 from .exceptions import (
+    ArraySubscriptError,
     ExpansionError,
     FunctionDefinitionError,
     FunctionReturn,
@@ -42,6 +43,7 @@ __all__ = [
     'NamerefCycleError',
     'ExpansionError',
     'FunctionDefinitionError',
+    'ArraySubscriptError',
     # Variables
     'Variable',
     'VarAttributes',

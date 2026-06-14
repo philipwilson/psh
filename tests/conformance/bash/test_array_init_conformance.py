@@ -127,6 +127,96 @@ class TestSeparateBracketIsNotAssignment(ConformanceTest):
         """The valid no-space form still assigns."""
         self.assert_identical_behavior('a[0]=v; echo "${a[0]}"')
 
+
+class TestNegativeIndexWrite(ConformanceTest):
+    """Negative subscripts on indexed-array element WRITES (M4, reappraisal
+    #6). bash maps ``-N`` to ``(highest_index + 1) - N`` — ``-1`` is the
+    last slot, ``-2`` the one before — and errors ("bad array subscript")
+    when the mapped index is still < 0. Associative arrays treat ``-1`` as
+    a literal key (no arithmetic mapping)."""
+
+    def test_neg_one_writes_last(self):
+        self.assert_identical_behavior(
+            'a=(1 2 3); a[-1]=X; ' + _show('a'))
+
+    def test_neg_two_writes_second_to_last(self):
+        self.assert_identical_behavior(
+            'a=(1 2 3); a[-2]=Y; ' + _show('a'))
+
+    def test_neg_resolves_to_index_zero(self):
+        self.assert_identical_behavior(
+            'a=(1 2 3); a[-3]=Z; ' + _show('a'))
+
+    def test_neg_append_to_last(self):
+        self.assert_identical_behavior(
+            'a=(1 2 3); a[-1]+=Q; ' + _show('a'))
+
+    def test_arithmetic_neg_assign(self):
+        """(( a[-1]=9 )) maps the subscript like a literal write."""
+        self.assert_identical_behavior(
+            'a=(1 2 3); (( a[-1]=9 )); ' + _show('a'))
+
+    def test_sparse_neg_uses_highest_plus_one(self):
+        """Sparse array: a[5] set, a[-1] -> index 5, a[-6] -> index 0."""
+        self.assert_identical_behavior(
+            'a=(); a[5]=F; a[-1]=Z; a[-6]=W; ' + _show('a'))
+
+    def test_associative_neg_key_is_literal(self):
+        """declare -A m; m[-1]=v treats -1 as a literal key (no mapping).
+        Single key so assoc hash-vs-insertion ordering is irrelevant."""
+        self.assert_identical_behavior(
+            'declare -A m; m[-1]=v; echo "${m[-1]}" "${!m[@]}" "${#m[@]}"')
+
+    def _assert_bad_subscript(self, command: str):
+        """Out-of-range negative write: bash and psh both fail with exit 1
+        and a 'bad array subscript' message (the shell-name prefix differs,
+        so compare on exit + the shared message, not full stderr)."""
+        result = self.framework.compare_behavior(command)
+        psh, bash = result.psh_result, result.bash_result
+        assert bash.exit_code == 1, f"bash baseline changed: {bash!r}"
+        assert psh.exit_code == bash.exit_code == 1, (
+            f"exit divergence for {command!r}: "
+            f"psh={psh.exit_code} bash={bash.exit_code}")
+        assert "bad array subscript" in psh.stderr, (
+            f"psh stderr lacks 'bad array subscript': {psh.stderr!r}")
+        assert "bad array subscript" in bash.stderr, (
+            f"bash stderr lacks 'bad array subscript': {bash.stderr!r}")
+
+    def test_out_of_range_negative_errors(self):
+        """a[-4] on a 3-element array is out of range (bad subscript)."""
+        self._assert_bad_subscript('a=(1 2 3); a[-4]=W')
+
+    def test_empty_array_negative_errors(self):
+        """unset b; b[-1]=x is out of range on an empty/unset array."""
+        self._assert_bad_subscript('unset b; b[-1]=x')
+
+
+class TestIntegerArrayElementAssignment(ConformanceTest):
+    """An indexed array with the integer (-i) attribute arithmetic-evaluates
+    a subscript assignment's RHS (reappraisal #6 follow-up), mirroring how a
+    scalar -i variable already does. += does a NUMERIC add, not concat."""
+
+    def test_integer_array_element_evaluates_rhs(self):
+        self.assert_identical_behavior(
+            'declare -ia v; v[0]=2+3; v[1]=4*2; ' + _show('v'))
+
+    def test_integer_array_element_append_is_numeric(self):
+        self.assert_identical_behavior(
+            'declare -ia v; v[0]=10; v[0]+=2*3; ' + _show('v'))
+
+    def test_integer_array_negative_index_evaluates(self):
+        self.assert_identical_behavior(
+            'declare -ia v=(1 2 3); v[-1]+=10; ' + _show('v'))
+
+    def test_non_integer_array_element_is_literal(self):
+        """Guard: a plain indexed array stores the RHS literally."""
+        self.assert_identical_behavior(
+            'a=(); a[0]=2+3; ' + _show('a'))
+
+    def test_scalar_integer_still_evaluates(self):
+        """Guard: scalar -i assignment still arithmetic-evaluates."""
+        self.assert_identical_behavior('declare -i s; s=1+1; echo "$s"')
+
     def test_spaces_inside_brackets_unaffected(self):
         """`a[ 0 ]=v` (no space before `[`) still assigns."""
         self.assert_identical_behavior('a[ 0 ]=v; echo "${a[0]}"')

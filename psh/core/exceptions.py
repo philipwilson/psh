@@ -72,3 +72,18 @@ class FunctionDefinitionError(PshError):
     even under strict-errors. (Previously a bare ``ValueError``, which the
     taxonomy classifies as a defect.)"""
     exit_code = 1
+
+
+class ArraySubscriptError(PshError):
+    """Raised for a bad indexed-array subscript on a write (bash:
+    "bad array subscript"). The canonical case is a negative subscript that,
+    after mapping ``-N`` to ``(highest+1)-N``, still falls below 0
+    (out of range). A legitimate shell error (exit 1), NOT an internal
+    defect — must classify as expected so the strict-errors guard does not
+    re-raise it. Carries the offending ``subscript`` so callers can format
+    bash's ``NAME[SUBSCRIPT]: bad array subscript`` form."""
+    exit_code = 1
+
+    def __init__(self, subscript: int, message: str = "bad array subscript"):
+        self.subscript = subscript
+        super().__init__(message)

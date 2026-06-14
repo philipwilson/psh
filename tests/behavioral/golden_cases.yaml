@@ -670,6 +670,58 @@
   stderr: ""
   exit_code: 0
 
+# --- negative subscript on indexed-array WRITES (M4, reappraisal #6) ---
+# bash maps -N to (highest_index + 1) - N: -1 = last, -2 = second-to-last.
+
+- name: array_neg_index_write_last
+  command: 'a=(1 2 3); a[-1]=X; echo "${a[2]}" "${a[-1]}"'
+  stdout: "X X\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_neg_index_write_middle
+  command: 'a=(1 2 3); a[-2]=Y; echo "${a[1]}"'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_neg_index_append
+  command: 'a=(1 2 3); a[-1]+=Q; echo "${a[2]}"'
+  stdout: "3Q\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_neg_index_arithmetic_assign
+  command: 'a=(1 2 3); (( a[-1]=9 )); echo "${a[2]}"'
+  stdout: "9\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_neg_index_out_of_range
+  command: 'a=(1 2 3); a[-4]=W; echo "${a[0]}"'
+  stderr: "bad array subscript"
+  exit_code: 1
+
+# --- integer (-i) array element assignment evaluates RHS arithmetically ---
+
+- name: integer_array_element_evaluates_rhs
+  command: 'declare -ia v; v[0]=2+3; v[1]=4*2; echo "${v[0]}" "${v[1]}"'
+  stdout: "5 8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: integer_array_element_append_numeric
+  command: 'declare -ia v; v[0]=10; v[0]+=2*3; echo "${v[0]}"'
+  stdout: "16\n"
+  stderr: ""
+  exit_code: 0
+
+- name: non_integer_array_element_literal
+  command: 'a=(); a[0]=2+3; echo "${a[0]}"'
+  stdout: "2+3\n"
+  stderr: ""
+  exit_code: 0
+
 # --- separate-bracket "array assignment" is NOT an assignment (matches bash) ---
 # `a [ 0 ] = v` (space BEFORE the bracket) is a simple command: word `a`
 # followed by args `[ 0 ] = v`. bash runs `a` and reports command-not-found.

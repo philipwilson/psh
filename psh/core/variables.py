@@ -125,11 +125,37 @@ class IndexedArray:
         self._elements: Dict[int, str] = {}
         self._max_index = -1
 
+    def resolve_write_index(self, index: int) -> int:
+        """Map a (possibly negative) subscript to a concrete write index.
+
+        bash semantics: a negative subscript ``-N`` on an indexed array
+        refers to ``(highest_index + 1) - N`` — i.e. ``-1`` is the last
+        slot, ``-2`` the one before it. ``highest_index`` is the largest
+        currently-set index (``_max_index``), so this is sparse-aware and
+        matches bash's "offset from one past the top" rule (verified:
+        ``a[5]=F; a[-1]`` → index 5, ``a[-6]`` → index 0). On an empty
+        array ``_max_index`` is -1, so ``a[-1]`` resolves to -1 (out of
+        range). A non-negative subscript is returned unchanged.
+
+        Raises ArraySubscriptError when the mapped index is still < 0
+        (bash: "bad array subscript").
+        """
+        if index >= 0:
+            return index
+        mapped = self._max_index + 1 + index
+        if mapped < 0:
+            from .exceptions import ArraySubscriptError
+            raise ArraySubscriptError(index)
+        return mapped
+
     def set(self, index: int, value: str):
-        """Set element at given index."""
-        # Negative indices not allowed for setting
-        if index < 0:
-            raise ValueError(f"array index must be non-negative: {index}")
+        """Set element at given index.
+
+        Negative indices are mapped bash-style (``-1`` = last element); see
+        ``resolve_write_index``. An out-of-range negative index raises
+        ``ArraySubscriptError``.
+        """
+        index = self.resolve_write_index(index)
         self._elements[index] = str(value)
         self._max_index = max(self._max_index, index)
 
