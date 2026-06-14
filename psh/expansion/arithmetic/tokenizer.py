@@ -28,8 +28,10 @@ class ArithTokenizer:
         self.position += 1
 
     def skip_whitespace(self) -> None:
-        while self.current_char() and self.current_char() in ' \t\n':
+        char = self.current_char()
+        while char is not None and char in ' \t\n':
             self.advance()
+            char = self.current_char()
 
     # -- Number reading ------------------------------------------------------
 
@@ -41,9 +43,11 @@ class ArithTokenizer:
         # an initial run of digits.
         saved_pos = self.position
         base_str = ''
-        while self.current_char() and self.current_char().isdigit():
-            base_str += self.current_char()
+        char = self.current_char()
+        while char is not None and char.isdigit():
+            base_str += char
             self.advance()
+            char = self.current_char()
 
         if self.current_char() == '#' and base_str:
             self.advance()  # Skip #
@@ -52,10 +56,11 @@ class ArithTokenizer:
         # Not base#number, restore position and check other formats.
         self.position = saved_pos
 
-        if self.current_char() == '0' and self.peek_char() and self.peek_char().lower() == 'x':
+        peeked = self.peek_char()
+        if self.current_char() == '0' and peeked is not None and peeked.lower() == 'x':
             return self._read_hex(start_pos)
 
-        if self.current_char() == '0' and self.peek_char() and self.peek_char().isdigit():
+        if self.current_char() == '0' and peeked is not None and peeked.isdigit():
             return self._read_octal(start_pos)
 
         # Regular decimal
@@ -73,13 +78,15 @@ class ArithTokenizer:
 
         result = 0
         num_len = 0
-        while self.current_char():
-            digit_val = self._based_digit_value(self.current_char(), base)
+        char = self.current_char()
+        while char is not None:
+            digit_val = self._based_digit_value(char, base)
             if digit_val is None or digit_val >= base:
                 break
             result = result * base + digit_val
             num_len += 1
             self.advance()
+            char = self.current_char()
 
         if num_len == 0:
             raise SyntaxError(f"Invalid base {base} number at position {start_pos}")
@@ -112,9 +119,11 @@ class ArithTokenizer:
         self.advance()  # Skip 0
         self.advance()  # Skip x
         hex_digits = ''
-        while self.current_char() and self.current_char() in '0123456789abcdefABCDEF':
-            hex_digits += self.current_char()
+        char = self.current_char()
+        while char is not None and char in '0123456789abcdefABCDEF':
+            hex_digits += char
             self.advance()
+            char = self.current_char()
         if not hex_digits:
             raise SyntaxError(f"Invalid hex number at position {start_pos}")
         return int(hex_digits, 16)
@@ -122,15 +131,19 @@ class ArithTokenizer:
     def _read_octal(self, start_pos: int) -> int:
         """Read an octal literal (leading 0); leading 0+digit already detected."""
         octal_digits = ''
-        while self.current_char() and self.current_char() in '01234567':
-            octal_digits += self.current_char()
+        char = self.current_char()
+        while char is not None and char in '01234567':
+            octal_digits += char
             self.advance()
+            char = self.current_char()
         # If we hit 8 or 9, it's an invalid octal digit (bash errors here).
-        if self.current_char() and self.current_char() in '89':
+        char = self.current_char()
+        if char is not None and char in '89':
             # Read the rest of the digits so the error message shows the full token.
-            while self.current_char() and self.current_char().isdigit():
-                octal_digits += self.current_char()
+            while char is not None and char.isdigit():
+                octal_digits += char
                 self.advance()
+                char = self.current_char()
             # octal_digits already includes the leading '0'; don't prepend
             # another one (bash reports e.g. "08", not "008").
             raise SyntaxError(
@@ -141,22 +154,27 @@ class ArithTokenizer:
     def read_decimal(self) -> int:
         """Read a decimal number"""
         num_str = ''
-        while self.current_char() and self.current_char().isdigit():
-            num_str += self.current_char()
+        char = self.current_char()
+        while char is not None and char.isdigit():
+            num_str += char
             self.advance()
+            char = self.current_char()
         return int(num_str) if num_str else 0
 
     def read_identifier(self) -> str:
         """Read an identifier (variable name)"""
         ident = ''
+        char = self.current_char()
         # First character must be letter or underscore
-        if self.current_char() and (self.current_char().isalpha() or self.current_char() == '_'):
-            ident += self.current_char()
+        if char is not None and (char.isalpha() or char == '_'):
+            ident += char
             self.advance()
+            char = self.current_char()
             # Rest can be letters, digits, or underscore
-            while self.current_char() and (self.current_char().isalnum() or self.current_char() == '_'):
-                ident += self.current_char()
+            while char is not None and (char.isalnum() or char == '_'):
+                ident += char
                 self.advance()
+                char = self.current_char()
         return ident
 
     # -- Main loop -----------------------------------------------------------
