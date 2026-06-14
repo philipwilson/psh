@@ -4,9 +4,11 @@ import os
 import signal
 import tempfile
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 if TYPE_CHECKING:
+    from ..ast_nodes import Redirect
     from ..shell import Shell
 
 
@@ -145,6 +147,41 @@ def _create_write_process_substitution(cmd_str: str, shell: 'Shell') -> Tuple[No
     return None, fifo_path, pid, fifo_path
 
 
+@dataclass
+class ProcessSubstitutionResource:
+    """One process substitution created for a redirect target."""
+    path: str
+    parent_fd: Optional[int]
+    pid: int
+    cleanup_path: Optional[str] = None
+
+    def register_with(self, handler: 'ProcessSubstitutionHandler') -> None:
+        handler.active_pids.append(self.pid)
+        if self.cleanup_path is not None:
+            handler.active_paths.append(self.cleanup_path)
+
+    def close_parent_fd_for_redirect(
+            self, redirect: 'Redirect', *, applied: bool) -> None:
+        """Close the parent fd unless successful dup2 made it the target fd."""
+        if self.parent_fd is None:
+            return
+        if applied and self.parent_fd in self._target_fds(redirect):
+            return
+        try:
+            os.close(self.parent_fd)
+        except OSError:
+            pass
+        self.parent_fd = None
+
+    @staticmethod
+    def _target_fds(redirect: 'Redirect') -> Tuple[int, ...]:
+        if redirect.combined:
+            return (1, 2)
+        if redirect.fd is not None:
+            return (redirect.fd,)
+        return (0,) if redirect.type.startswith('<') else (1,)
+
+
 class ProcessSubstitutionHandler:
     """Handles process substitution <(...) and >(...)."""
 
@@ -182,53 +219,26 @@ class ProcessSubstitutionHandler:
         """
         fd, path, pid, cleanup_path = create_process_substitution(
             command, direction, self.shell)
-        if fd is not None:
-            self.active_fds.append(fd)
-        self.active_pids.append(pid)
-        if cleanup_path is not None:
-            self.active_paths.append(cleanup_path)
+        resource = ProcessSubstitutionResource(path, fd, pid, cleanup_path)
+        if resource.parent_fd is not None:
+            self.active_fds.append(resource.parent_fd)
+        resource.register_with(self)
         return path
 
-    def resolve_procsub_target(
-            self, target: Optional[str]) -> Tuple[Optional[str], Optional[int]]:
-        """Resolve a process-substitution redirect target to its /dev/fd path.
-
-        THE single resolver for ``<(cmd)``/``>(cmd)`` appearing as a
-        redirect target. Every redirect dispatch path delegates here: the
-        parent-shell paths (``FileRedirector.apply_redirections`` /
-        ``apply_permanent_redirections``), the forked-child path
-        (``IOManager.setup_child_redirections``), and the builtin stream
-        path (``IOManager._builtin_procsub_target``). Anything that is not
-        a process substitution passes through unchanged.
-
-        For a substitution this forks the child (via
-        ``create_process_substitution``) and registers its pid with this
-        handler, so the enclosing ``scope()`` reaps it non-blockingly.
-
-        Returns:
-            ``(fd_path, parent_fd)`` for a substitution, where fd_path is
-            the ``/dev/fd/N`` path and parent_fd the pipe end backing it;
-            ``(target, None)`` otherwise.
-
-        Ownership: the CALLER owns parent_fd and must close it once the
-        redirect has been applied — after dup2, the redirect's target fd
-        holds its own reference to the pipe (see
-        ``FileRedirector._close_procsub_parent_fd`` for the parent-shell
-        paths and the try/finally in ``setup_child_redirections`` for the
-        forked-child path). The builtin path instead transfers ownership
-        to the enclosing scope() by appending parent_fd to ``active_fds``,
-        keeping the /dev/fd path valid for the builtin's whole run.
-        """
+    def resolve_procsub_resource(
+            self, target: Optional[str]
+            ) -> Tuple[Optional[str], Optional[ProcessSubstitutionResource]]:
+        """Resolve a redirect-target process substitution to a resource."""
         if not (target and target.startswith(('<(', '>('))
                 and target.endswith(')')):
             return target, None
         direction = 'in' if target.startswith('<(') else 'out'
         parent_fd, fd_path, pid, cleanup_path = create_process_substitution(
             target[2:-1], direction, self.shell)
-        self.active_pids.append(pid)
-        if cleanup_path is not None:
-            self.active_paths.append(cleanup_path)
-        return fd_path, parent_fd
+        resource = ProcessSubstitutionResource(
+            fd_path, parent_fd, pid, cleanup_path)
+        resource.register_with(self)
+        return fd_path, resource
 
     @contextmanager
     def scope(self):
