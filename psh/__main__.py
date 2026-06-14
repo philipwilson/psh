@@ -139,8 +139,35 @@ def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
     return options, args
 
 
+def _neutralize_closed_std_streams() -> None:
+    """Stop CPython's shutdown flush from failing on a deliberately closed fd.
+
+    A script may close fd 1/2 itself (`exec 1>&-`). At interpreter shutdown
+    CPython flushes sys.stdout/sys.stderr; flushing a stream whose fd is gone
+    raises, which both prints `Exception ignored while flushing sys.stdout` and
+    makes the process exit 120 (a finalization failure) instead of the shell's
+    real status. Pre-emptively flush here; if the fd is already gone, replace
+    the stream with one writing to os.devnull so the finalizer flush is a no-op.
+    Bash exits with the command's status and no such noise.
+    """
+    import os
+    for name in ('stdout', 'stderr'):
+        stream = getattr(sys, name, None)
+        if stream is None:
+            continue
+        try:
+            stream.flush()
+        except (OSError, ValueError):
+            try:
+                setattr(sys, name, open(os.devnull, 'w'))
+            except OSError:
+                pass
+
+
 def main():
     """Main entry point for psh command."""
+    import atexit
+    atexit.register(_neutralize_closed_std_streams)
     opts, args = parse_args(sys.argv[1:])
 
     # Update sys.argv to remove the flags

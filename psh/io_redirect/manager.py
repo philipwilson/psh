@@ -69,6 +69,19 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+def _redirect_error_name(error: OSError, target: Optional[str]) -> str:
+    """Pick the name bash prints in `psh: NAME: STRERROR` for a redirect error.
+
+    Prefer the expanded redirect target; fall back to the OSError's own
+    filename (set by os.open) when no target is available.
+    """
+    if target:
+        return target
+    if error.filename:
+        return error.filename
+    return str(error.errno)
+
+
 class _BuiltinStreamSnapshot:
     """The Python streams (and the stdin fd) as they were BEFORE the first
     redirect touched them.
@@ -465,6 +478,18 @@ class IOManager:
                 elif redirect.type in ('>&-', '<&-'):
                     self.file_redirector._redirect_close_fd(redirect)
                 applied = True
+            except OSError as e:
+                # A real syscall failure opening/duping the redirect target
+                # (ENOENT/EISDIR/EACCES). Emit bash's `psh: TARGET: STRERROR`
+                # shape rather than letting the raw OSError repr escape to the
+                # generic child error handler (`psh: error: [Errno N] ...`).
+                # OSErrors with no errno are psh's own custom-message errors
+                # (noclobber/ambiguous/bad-fd) — re-raise to preserve them.
+                if e.errno is None:
+                    raise
+                name = _redirect_error_name(e, target)
+                os.write(2, f"psh: {name}: {os.strerror(e.errno)}\n".encode('utf-8'))
+                os._exit(1)
             finally:
                 plan.close_procsub(applied=applied)
 

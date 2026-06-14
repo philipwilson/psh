@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.385.0 (2026-06-14) - Tier R6.7: io_redirect bugs (M9/L2/L4)
+- BUG FIX (bash-verified; reappraisal #6 M9/L2/L4).
+- M9 write-side `>(cmd)` leaked a `$TMPDIR/psh-psub-XXXX/` FIFO dir per run when
+  the consumer ran in a pipeline (the pipeline child execs, so the parent's
+  `process_sub_scope` cleanup never ran in it). The substitution worker now
+  unlinks its own FIFO + temp dir right after opening it for read (an opened
+  FIFO survives unlink — robust to the consumer's `os._exit`/exec). No leak in
+  pipeline / non-pipeline / multiple-`>()` / nested forms; data delivery intact.
+  (`process_sub.py`)
+- L2 redirect-open failures leaked Python's `OSError` repr (`psh: error: [Errno
+  2] ...: 'path'`); now emit bash's `psh: TARGET: STRERROR` (e.g. `psh:
+  /badpath/nope: No such file or directory`) for both the forked-child and
+  builtin redirect paths, exit code unchanged. psh's custom noclobber/ambiguous
+  messages (errno is None) are preserved. (`manager.py`, `command.py`)
+- L4 `exec 1>&-` then writing crashed with exit 120 + an "Exception ignored
+  while flushing sys.stdout" finalizer leak. `echo`/`printf` now catch the
+  write OSError and report `write error: <strerror>` returning 1 (like bash),
+  and an atexit guard rebinds a closed std stream to /dev/null so the shutdown
+  flush is a silent no-op. (`io.py`, `__main__.py`)
+- Tests: +`TestWriteSideFifoFilesystemLeak` (4),
+  +`test_reappraisal6_redirect_errors_conformance.py`. Full gate green: ruff +
+  mypy clean, `run_tests.py --parallel` 7075 passed, `--compare-bash` 409.
+- Noted out-of-scope (recorded): `echo hi > $v` with `v="a b"` (ambiguous
+  redirect) returns 0 in psh vs bash's exit 1.
+
 ## 0.384.0 (2026-06-14) - Tier R6.6: lexer/parser bugs (M8/L1/L9; M7 deferred)
 - BUG FIX (bash-verified; reappraisal #6 M8/L1/L9).
 - M8 ANSI-C `$'\cX'` control-char escape now supported (`$'a\cIb'` → `a<TAB>b`).
