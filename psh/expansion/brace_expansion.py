@@ -33,6 +33,15 @@ from typing import List, Optional, Tuple
 
 from ..core.exceptions import PshError
 
+# Sentinel standing for a character-range element that bash emits as an empty
+# (but KEPT) word. In a cross-case range like ``{Z..a}`` the backslash position
+# (ASCII 92) becomes an empty string in bash, yet — unlike an empty *list* item
+# (``{a,,b}`` drops it) — the empty word is preserved. We generate this private-
+# use sentinel for that position so it survives the empty-list filter, then
+# decode it back to '' when emitting tokens. Chosen at the top of the BMP
+# private-use area, clear of the composite-expansion placeholders (0xE000+).
+_RANGE_EMPTY = ''
+
 
 class BraceExpansionError(PshError):
     """Raised when brace expansion encounters an error."""
@@ -81,13 +90,11 @@ class BraceExpander:
     def _expand_braces(self, text: str) -> List[str]:
         """Expand all brace expressions in ``text``, returning the results.
 
-        Each pass expands the leftmost brace group in every current result;
-        nested braces surface on later passes, so we loop until nothing
-        changes. Unbalanced braces suppress expansion entirely.
+        Each pass expands the leftmost valid brace group in every current
+        result; nested braces surface on later passes, so we loop until nothing
+        changes. Stray/unmatched braces are treated as literal text by
+        ``_find_brace_group`` (so a valid group elsewhere still expands).
         """
-        if not self._are_braces_balanced(text):
-            return [text]
-
         results = [text]
         while True:
             new_results: List[str] = []
@@ -197,20 +204,19 @@ class BraceExpander:
     def _find_brace_group(self, text: str) -> Optional[_BraceGroup]:
         """Find the first valid brace expression in ``text``.
 
-        Walks the string tracking brace depth and escapes. ``${...}`` (a
-        parameter expansion) is skipped, not treated as a brace group. The
-        first balanced ``{...}`` whose content is a valid brace expression is
-        returned; unbalanced braces yield ``None``.
+        Scans left to right for each opening ``{`` and tries to match a valid
+        ``{...}`` group starting there. ``${...}`` (a parameter expansion) is
+        skipped, not treated as a brace group. Stray/unmatched braces are
+        treated as literal text and do not prevent finding a valid group
+        elsewhere in the word (bash: ``}{a,b}{`` -> ``}a{ }b{``); a ``{`` whose
+        content is not a valid brace body, or which has no matching ``}``, is
+        passed over and the search continues from the next ``{``.
         """
-        depth = 0
-        start = -1
-        escaped = False
-
         i = 0
         n = len(text)
+        escaped = False
         while i < n:
             char = text[i]
-
             if escaped:
                 escaped = False
                 i += 1
@@ -221,28 +227,61 @@ class BraceExpander:
                 continue
 
             if char == '{':
-                if depth == 0:
-                    if i > 0 and text[i - 1] == '$':
-                        # Parameter expansion ${...}: skip past its close.
-                        i = self._skip_parameter_expansion(text, i)
-                        continue
-                    start = i
+                if i > 0 and text[i - 1] == '$':
+                    # Parameter expansion ${...}: skip past its close.
+                    i = self._skip_parameter_expansion(text, i)
+                    continue
+                group = self._match_group_at(text, i)
+                if group is not None:
+                    return group
+                # Not the start of a valid group; treat this '{' as literal
+                # and keep scanning from the next character.
+            i += 1
+
+        return None
+
+    def _match_group_at(self, text: str, open_idx: int) -> Optional[_BraceGroup]:
+        """Try to match a valid ``{...}`` group whose ``{`` is at ``open_idx``.
+
+        Tracks nested brace depth (so inner ``{...}`` pair off) and escapes,
+        and locates the matching ``}`` for the opener. Returns a ``_BraceGroup``
+        when one is found and its content is a valid brace body; returns
+        ``None`` when there is no matching ``}`` (unclosed) or the content is
+        not a valid brace expression. A ``$`` immediately before a nested ``{``
+        marks a ``${...}`` whose braces are skipped wholesale.
+        """
+        depth = 0
+        escaped = False
+        i = open_idx
+        n = len(text)
+        while i < n:
+            char = text[i]
+            if escaped:
+                escaped = False
+                i += 1
+                continue
+            if char == '\\':
+                escaped = True
+                i += 1
+                continue
+
+            if char == '{':
+                if depth > 0 and i > 0 and text[i - 1] == '$':
+                    # Nested parameter expansion: skip its braces wholesale so
+                    # a `}` inside it does not close our group.
+                    i = self._skip_parameter_expansion(text, i)
+                    continue
                 depth += 1
             elif char == '}':
                 depth -= 1
-                if depth == 0 and start >= 0:
-                    content = text[start + 1:i]
+                if depth == 0:
+                    content = text[open_idx + 1:i]
                     if self._is_valid_brace_content(content):
-                        return _BraceGroup(start, i + 1, content)
-                    # Not a real brace expression; keep scanning.
-                    start = -1
-                elif depth < 0:
-                    # More closes than opens: malformed, do not expand.
+                        return _BraceGroup(open_idx, i + 1, content)
                     return None
-
             i += 1
 
-        # Unclosed braces (depth > 0) or nothing found.
+        # No matching '}' for the opener.
         return None
 
     @staticmethod
@@ -508,7 +547,11 @@ class BraceExpander:
 
         Both bounds must be single characters and both letters (cross-case
         ranges such as ``A..z`` are allowed and walk straight through the
-        intervening ASCII punctuation).
+        intervening ASCII punctuation). The backslash (ASCII 92) that falls in
+        a cross-case span becomes an empty -- but kept -- word, matching bash
+        (``{Z..a}`` -> ``Z [`` `` ``] ^ _ ` a``); it is emitted as the
+        ``_RANGE_EMPTY`` sentinel so it survives the empty-list filter and is
+        decoded to '' at token-emit time.
         """
         if len(start) != 1 or len(end) != 1:
             return None
@@ -523,7 +566,8 @@ class BraceExpander:
         result: List[str] = []
         current = start_ord
         while (step > 0 and current <= end_ord) or (step < 0 and current >= end_ord):
-            result.append(chr(current))
+            ch = chr(current)
+            result.append(_RANGE_EMPTY if ch == '\\' else ch)
             current += step
         return result
 
@@ -555,26 +599,6 @@ class BraceExpander:
     # ------------------------------------------------------------------ #
     # Misc
     # ------------------------------------------------------------------ #
-
-    @staticmethod
-    def _are_braces_balanced(text: str) -> bool:
-        """Check whether braces in ``text`` are balanced (escapes respected)."""
-        depth = 0
-        escaped = False
-        for char in text:
-            if escaped:
-                escaped = False
-                continue
-            if char == '\\':
-                escaped = True
-                continue
-            if char == '{':
-                depth += 1
-            elif char == '}':
-                depth -= 1
-                if depth < 0:
-                    return False
-        return depth == 0
 
     def _contains_expandable_dollar(self, content: str) -> bool:
         """Check if ``content`` contains a real ``$`` expansion pattern.
@@ -714,8 +738,12 @@ class TokenBraceExpander:
                 if not (len(expansions) == 1 and expansions[0] == tok.value):
                     # bash drops results that expand to the empty string
                     # ({a,,b} -> a b); an empty item fused with a prefix/postfix
-                    # is non-empty and survives (a{,b} -> a ab).
+                    # is non-empty and survives (a{,b} -> a ab). A range backslash
+                    # becomes a KEPT empty word (carried as the _RANGE_EMPTY
+                    # sentinel so it survives this filter), so drop only true
+                    # empties, then decode the sentinel to ''.
                     expansions = [e for e in expansions if e != '']
+                    expansions = [self._decode_range_empty(e) for e in expansions]
                     return self._make_word_tokens(tok, expansions)
             return list(run)
 
@@ -730,6 +758,11 @@ class TokenBraceExpander:
         if composite is not None:
             return composite
         return list(run)
+
+    @staticmethod
+    def _decode_range_empty(value: str) -> str:
+        """Replace any ``_RANGE_EMPTY`` sentinel chars with the empty string."""
+        return value.replace(_RANGE_EMPTY, '')
 
     def _expand_composite(self, run):
         """Expand braces across a composite run of tokens.
@@ -789,10 +822,13 @@ class TokenBraceExpander:
                             and (nxt.isalnum() or nxt == '_'):
                         return None
 
-        # 4. Decode each result and emit tokens.
+        # 4. Decode each result and emit tokens. A range backslash carried as
+        #    the _RANGE_EMPTY sentinel contributes nothing to a composite word
+        #    (x{Z..a}y -> xy), so strip it before emitting.
         out = []
         first_word = True
         for result in results:
+            result = result.replace(_RANGE_EMPTY, '')
             if not result:
                 continue  # bash drops fully-empty results
             leading_adjacent = (

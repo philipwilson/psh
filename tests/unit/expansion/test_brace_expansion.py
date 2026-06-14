@@ -392,3 +392,90 @@ class TestBraceExpansionWithExpansions:
         # model cannot do, so the run is left unexpanded (documented divergence).
         shell.run_command('x=foo; echo $x{1,2}')
         assert capsys.readouterr().out.strip() == "foo{1,2}"
+
+
+class TestCharRangeBackslash:
+    """Cross-case char ranges that span the backslash (ASCII 92).
+
+    bash emits an *empty but kept* word at the backslash position (it does NOT
+    output a literal `\\`), and unlike an empty list item it is not dropped.
+    Verified against bash: `echo {Z..a}` -> `Z [  ] ^ _ ` a` (note the empty
+    word between `[` and `]`).
+    """
+
+    def test_z_to_a_drops_backslash_keeps_empty_word(self, shell, capsys):
+        shell.run_command('set -- {Z..a}; echo "$#"')
+        # 8 words: Z [ <empty> ] ^ _ ` a
+        assert capsys.readouterr().out.strip() == "8"
+
+    def test_z_to_a_backslash_position_is_empty(self, shell, capsys):
+        # Element at the backslash position is empty, not a literal backslash.
+        shell.run_command('a=({Z..a}); printf "[%s]" "${a[2]}"')
+        assert capsys.readouterr().out.strip() == "[]"
+
+    def test_a_to_z_full_span_has_no_backslash(self, shell, capsys):
+        shell.run_command('a=({A..z}); echo "${a[*]}" | tr -d " "')
+        out = capsys.readouterr().out.strip()
+        assert '\\' not in out
+
+    def test_reverse_range_also_drops_backslash(self, shell, capsys):
+        shell.run_command('a=({a..Z}); printf "[%s]" "${a[5]}"')
+        # a ` _ ^ ] <empty> [ Z  -> index 5 is the backslash position
+        assert capsys.readouterr().out.strip() == "[]"
+
+    def test_range_with_step_skips_backslash(self, shell, capsys):
+        # {Z..a..2}: Z(90) \(92 -> empty) ^(94) `(96)
+        shell.run_command('set -- {Z..a..2}; echo "$#"')
+        assert capsys.readouterr().out.strip() == "4"
+
+    def test_backslash_in_composite_contributes_nothing(self, shell, capsys):
+        # x{Z..a}y: the backslash position fuses to "xy" (non-empty, kept).
+        shell.run_command('a=(x{Z..a}y); printf "[%s]" "${a[2]}"')
+        assert capsys.readouterr().out.strip() == "[xy]"
+
+
+class TestStrayBraceNeighbors:
+    """Stray/unmatched braces around a valid group are literal text and do not
+    prevent expanding the valid group (bash: `}{a,b}{` -> `}a{ }b{`)."""
+
+    def test_stray_braces_both_sides(self, shell, capsys):
+        shell.run_command('echo }{a,b}{')
+        assert capsys.readouterr().out.strip() == "}a{ }b{"
+
+    def test_stray_close_then_group(self, shell, capsys):
+        shell.run_command('echo a}{b,c}d')
+        assert capsys.readouterr().out.strip() == "a}bd a}cd"
+
+    def test_leading_stray_close(self, shell, capsys):
+        shell.run_command('echo }{a,b}')
+        assert capsys.readouterr().out.strip() == "}a }b"
+
+    def test_trailing_stray_open(self, shell, capsys):
+        shell.run_command('echo {a,b}{')
+        assert capsys.readouterr().out.strip() == "a{ b{"
+
+    def test_leading_stray_open(self, shell, capsys):
+        shell.run_command('echo {{a,b}')
+        assert capsys.readouterr().out.strip() == "{a {b"
+
+    def test_nested_group_with_stray_neighbors(self, shell, capsys):
+        shell.run_command('echo }{a,{b,c}}{')
+        assert capsys.readouterr().out.strip() == "}a{ }b{ }c{"
+
+    def test_no_group_stays_literal(self, shell, capsys):
+        # Genuinely no valid group: unchanged.
+        shell.run_command('echo {a,b')
+        assert capsys.readouterr().out.strip() == "{a,b"
+        shell.run_command('echo a,b}')
+        assert capsys.readouterr().out.strip() == "a,b}"
+        shell.run_command('echo a}b')
+        assert capsys.readouterr().out.strip() == "a}b"
+
+    def test_valid_group_unaffected(self, shell, capsys):
+        shell.run_command('echo x{a,b}y')
+        assert capsys.readouterr().out.strip() == "xay xby"
+
+    def test_param_expansion_not_treated_as_brace(self, shell, capsys):
+        # ${HOME}/{a,b}: ${...} is skipped; only the trailing group expands.
+        shell.run_command('HOME=/h; echo ${HOME}/{a,b}')
+        assert capsys.readouterr().out.strip() == "/h/a /h/b"

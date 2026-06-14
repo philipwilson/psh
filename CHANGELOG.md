@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.373.0 (2026-06-14) - Behavior fix: two brace-expansion divergences from bash
+- BUG FIX (bash-verified; follow-ups recorded during T3.3). Two brace-expansion
+  cases now match bash:
+  - **Char-range backslash**: `echo {Z..a}` included a literal `\` (ASCII 92);
+    bash emits an EMPTY word at the backslash position instead (kept, not
+    dropped — unlike an empty list item `{a,,b}` which bash drops). Implemented
+    with a private-use sentinel so the single-token path keeps the empty word
+    while the empty-list filter still drops list empties, and the composite path
+    (`x{Z..a}y`) strips it. `{A..z}`, `{a..Z}` (reverse), `{Z..a..2}` (step) all
+    match bash now; pure-letter/pure-digit ranges unaffected.
+  - **Stray-brace neighbors**: `echo }{a,b}{` was left literal; bash finds and
+    expands the inner valid group → `}a{ }b{` (likewise `a}{b,c}d` → `a}bd
+    a}cd`). Removed the all-or-nothing balance bail; the group finder now scans
+    each `{` for its matching `}` (tracking nesting, skipping `${...}`) and
+    treats truly stray/unmatched braces as literal. Valid groups, genuine
+    non-groups (`{a,b` stays literal), `${...}`, and nesting are unchanged.
+- Tests: +`TestCharRangeBackslash` (6) +`TestStrayBraceNeighbors` (9); new
+  `tests/conformance/bash/test_brace_expansion_conformance.py` (17
+  `assert_identical_behavior`); +5 golden cases; updated one relocation test to
+  the corrected word count.
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` 6874 passed,
+  `pytest tests/behavioral --compare-bash` 337 passed.
+
 ## 0.372.0 (2026-06-14) - Tier T3.3: brace_expansion.py clarity refactor
 - REFACTOR (zero behavior change). `psh/expansion/brace_expansion.py` was the
   last large file at the old altitude; reorganized into explicitly-named,
