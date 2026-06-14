@@ -168,11 +168,13 @@ class CommandParsers:
                     position=pos
                 )
 
-            content_value = content_result.value.display_text()
+            content_word = content_result.value
+            assert content_word is not None  # success implies a value
+            content_value = content_word.display_text()
 
             redirect = Redirect(
                 type=op_token.value, target=content_value,
-                quote_type=content_result.value.effective_quote_char, fd=fd,
+                quote_type=content_word.effective_quote_char, fd=fd,
             )
             return ParseResult(success=True, value=redirect, position=content_result.position)
 
@@ -186,6 +188,7 @@ class CommandParsers:
             )
 
         target_word = target_result.value
+        assert target_word is not None  # success implies a value
         target_value = target_word.display_text()
 
         # Check for combined redirect (&> or &>>)
@@ -226,6 +229,7 @@ class CommandParsers:
                 if not parsed_regular_arg:
                     array_result = self.arrays.parse_assignment(tokens, pos)
                     if array_result.success:
+                        assert array_result.value is not None
                         array_assignments.append(array_result.value)
                         pos = array_result.position
                         continue
@@ -250,8 +254,13 @@ class CommandParsers:
                     if self.arrays.is_initializer_head(tokens, pos):
                         init_result = self.arrays.parse_initialization(tokens, pos)
                         if not init_result.success:
-                            return init_result
+                            return ParseResult(
+                                success=False,
+                                error=init_result.error,
+                                position=init_result.position,
+                            )
                         array_init = init_result.value
+                        assert array_init is not None
                         flat_text = (
                             array_init.name
                             + ('+=' if array_init.is_append else '=')
@@ -264,7 +273,7 @@ class CommandParsers:
                             value=flat_text,
                             position=getattr(tokens[pos], 'position', 0),
                         )
-                        array_token.array_init = array_init
+                        setattr(array_token, 'array_init', array_init)
                         word_tokens.append(array_token)
                         pos = init_result.position
                         parsed_regular_arg = True
@@ -351,8 +360,9 @@ class CommandParsers:
                 word = self.expansions.build_word_from_token(group[0])
             else:
                 word = WordBuilder.build_composite_word(group)
-            if getattr(group[0], 'array_init', None) is not None:
-                word.array_init = group[0].array_init
+            group_array_init = getattr(group[0], 'array_init', None)
+            if group_array_init is not None:
+                word.array_init = group_array_init
             cmd.words.append(word)
 
         return cmd

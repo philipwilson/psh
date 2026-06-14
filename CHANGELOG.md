@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.414.0 (2026-06-14) - Combinator parser: parity hardening (PR #149) + differential gates
+- REFACTOR + TEST INFRA (combinator backend only; recursive-descent default
+  parser untouched). Addresses the R8 review's Ugly 9 / A7 (combinator contract)
+  by adding recursive-descent-vs-combinator differential gates and fixing the
+  first AST/error/diagnostic parity gaps they exposed:
+  - New focused combinator array parser `combinators/arrays.py`; bare array
+    assignments route through `SimpleCommand.array_assignments` and
+    `name=(...)` initializers through the shared `ArrayInitialization` contract
+    (parity with the recursive-descent unified array-init), replacing the old
+    synthetic-token hack.
+  - Redirect target `Word` metadata preserved (`target_word=`, parity with the
+    R7.9 ambiguous-redirect work); here-string redirect shape aligned with RD;
+    `[[ ]]` operands built from source tokens (parity with the T3.1 per-part
+    Word model).
+  - Committed parser failures for empty groups, missing redirect operands, and
+    statement lists (a committed loop replaces the failure-swallowing `many()`),
+    so diagnostics aren't lost into generic top-level errors.
+  - New differential suites: `tests/parser_differential/test_combinator_ast_parity.py`,
+    `_error_parity.py`, `_diagnostic_parity.py` (+97 tests); remaining diagnostic
+    drift documented in `docs/reviews/combinator_diagnostic_characterization_2026-06-14.md`.
+- Maintainer-authored (PR #149). Orchestrator added the 10 missing mypy
+  narrowings the PR's new combinator code needed (combinators are in mypy scope:
+  `ParseResult.value` Optional-narrowing via asserts after success-checks, a
+  re-typed init failure result, `setattr`/`getattr` for the dynamic
+  `Token.array_init`) before shipping.
+- Full gate green: ruff + mypy clean (225 files), `run_tests.py --parallel` 7531
+  passed, `--compare-bash` 461 passed.
+
 ## 0.413.0 (2026-06-14) - Tier R8.7: check_untyped_defs for psh.core.* (type depth)
 - TYPE-CHECKING DEPTH (zero behavior change; remaining review Ugly 10). mypy
   covers 100% of files but `check_untyped_defs` was off globally, so un-annotated
