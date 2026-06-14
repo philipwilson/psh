@@ -47,13 +47,17 @@ class PatternMatcher:
 
 
 def match_shell_pattern(string: str, pattern: str,
-                        extglob_enabled: bool = False) -> bool:
+                        extglob_enabled: bool = False,
+                        ignorecase: bool = False) -> bool:
     """Full-match ``string`` against a shell glob ``pattern``.
 
     Honors backslash escapes in the pattern (a ``\\*`` matches a literal
     asterisk — this is how quoted pattern text is kept literal), bracket
-    classes, and extglob operators when enabled.
+    classes, and extglob operators when enabled. When ``ignorecase`` is
+    True (the ``nocasematch`` shopt), matching is case-insensitive — used
+    by ``[[ == ]]`` and ``case`` matching.
     """
     regex = PatternMatcher().shell_pattern_to_regex(
         pattern, extglob_enabled=extglob_enabled)
-    return re.fullmatch(regex, string) is not None
+    flags = re.IGNORECASE if ignorecase else 0
+    return re.fullmatch(regex, string, flags) is not None

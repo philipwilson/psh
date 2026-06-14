@@ -27,12 +27,17 @@ class TestShoptBasic:
             assert line.endswith('off')
 
     def test_shopt_show_specific(self, captured_shell):
-        """Test showing a specific option."""
+        """Test showing a specific (unset) option.
+
+        bash: the query form exits 1 when the named option is unset
+        (the exit code reflects the option's state).
+        """
         shell = captured_shell
         result = shell.run_command('shopt dotglob')
-        assert result == 0
+        assert result == 1
         output = shell.get_stdout().strip()
-        assert output == 'dotglob\toff'
+        # bash left-justifies the option name in a 15-char field before the tab.
+        assert output == f"{'dotglob':<15}\toff"
 
     def test_shopt_invalid_option(self, captured_shell):
         """Test invalid option name."""

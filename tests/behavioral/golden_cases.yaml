@@ -1389,3 +1389,21 @@
   stdout: "efhBc\n"
   stderr: ""
   exit_code: 0
+
+- name: nocasematch_double_bracket
+  command: "shopt -s nocasematch; [[ ABC == abc ]] && echo m || echo no"
+  stdout: "m\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nocasematch_case_statement
+  command: "shopt -s nocasematch; case ABC in abc) echo m;; *) echo no;; esac"
+  stdout: "m\n"
+  stderr: ""
+  exit_code: 0
+
+- name: shopt_query_unset_exit_1
+  command: "shopt nocasematch; echo $?"
+  stdout: "nocasematch    \toff\n1\n"
+  stderr: ""
+  exit_code: 0

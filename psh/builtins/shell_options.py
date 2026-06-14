@@ -23,6 +23,7 @@ class ShoptBuiltin(Builtin):
         'nullglob': 'nullglob',
         'extglob': 'extglob',
         'nocaseglob': 'nocaseglob',
+        'nocasematch': 'nocasematch',
         'globstar': 'globstar',
         'checkhash': 'checkhash',
     }
@@ -107,12 +108,19 @@ class ShoptBuiltin(Builtin):
 
     def _list_specific(self, option_names: List[str], shell: 'Shell',
                        reusable: bool) -> int:
-        """List specific shopt options."""
+        """List specific shopt options.
+
+        Exit status (bash): 0 if every named option is set, 1 if any is
+        unset. This makes ``shopt nocasematch`` usable as a state test.
+        """
+        all_set = True
         for opt in option_names:
             key = self.SHOPT_OPTIONS[opt]
             enabled = shell.state.options.get(key, False)
+            if not enabled:
+                all_set = False
             self._print_option(opt, enabled, shell, reusable)
-        return 0
+        return 0 if all_set else 1
 
     def _print_option(self, name: str, enabled: bool, shell: 'Shell',
                       reusable: bool) -> None:
@@ -121,8 +129,11 @@ class ShoptBuiltin(Builtin):
             flag = '-s' if enabled else '-u'
             self.write_line(f"shopt {flag} {name}", shell)
         else:
+            # bash left-justifies the option name in a 15-char field, then a
+            # tab, then on/off (a name >= 15 chars is not padded — f-string
+            # width never truncates, matching bash).
             status = 'on' if enabled else 'off'
-            self.write_line(f"{name}\t{status}", shell)
+            self.write_line(f"{name:<15}\t{status}", shell)
 
     @property
     def help(self) -> str:
@@ -145,4 +156,5 @@ class ShoptBuiltin(Builtin):
       extglob      Extended pattern matching: ?()|*()|+()|@()|!()
       globstar     '**' matches all files and directories recursively
       nocaseglob   Case-insensitive pathname expansion
+      nocasematch  Case-insensitive matching in [[ ]] (==/!=/=~) and case
       nullglob     Patterns with no matches expand to nothing"""

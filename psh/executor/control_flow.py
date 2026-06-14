@@ -549,7 +549,8 @@ class ControlFlowExecutor:
         from ..expansion.pattern import match_shell_pattern
         return match_shell_pattern(
             string, pattern,
-            extglob_enabled=self.state.options.get('extglob', False))
+            extglob_enabled=self.state.options.get('extglob', False),
+            ignorecase=self.state.options.get('nocasematch', False))
 
     def _display_select_menu(self, items: List[str]) -> None:
         """Display the select menu to stderr."""
