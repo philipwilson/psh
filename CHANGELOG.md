@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.393.0 (2026-06-14) - Tier R7: grow mypy scope into the whole lexer (94 → 122 files)
+- TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 lever). Added the
+  ENTIRE `psh/lexer/` package (28 modules — pure_helpers, position, recognizers,
+  modular_lexer, heredoc, cmdsub_scanner, keyword_normalizer, command_position,
+  …) to the mypy `files` list. The lexer was previously the single largest
+  untyped area; mypy now covers **122 source files**.
+- Mostly annotation-only. Real fixes the wider scope surfaced (behavior-
+  preserving): whitespace/comment recognizers' `(None, pos)` skip sentinel now
+  matches a widened `Optional[Tuple[Optional[Token], int]]` return contract;
+  `Dict[str, any]` (builtin `any`) → `Dict[str, Any]` in the heredoc lexer;
+  Optional defaults and TYPE_CHECKING forward-refs in the quote/expansion
+  parsers; None-narrowing in `token_stream`/`cmdsub_scanner`. The
+  `token.heredoc_key` dynamic-attribute signal was deliberately kept dynamic
+  (its presence is load-bearing) with an explanatory comment.
+- Full gate green: mypy clean (122 files), ruff clean, `run_tests.py --parallel`
+  7212 passed.
+
 ## 0.392.0 (2026-06-14) - Tier R7.2: three HIGH bugs (keyword-as-arg, shebang, pipeline prefix-env)
 - BUG FIX (bash-verified; reappraisal #7 H1/H4/H5).
 - H1 a keyword used as a plain ARGUMENT caused a parse error: `echo if then` →
