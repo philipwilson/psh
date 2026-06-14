@@ -1,0 +1,64 @@
+"""Recursive-descent vs combinator parse-error parity.
+
+This gate is intentionally coarser than diagnostic parity.  It checks that
+both parsers reject the same invalid syntax; message and location parity can
+be tightened later once accept/reject behavior is stable.
+"""
+
+import pytest
+
+from psh.lexer import tokenize
+from psh.parser import Parser
+from psh.parser.combinators.parser import ParserCombinatorShellParser
+
+REJECTION_CORPUS = [
+    pytest.param('()', id='empty-subshell'),
+    pytest.param('( )', id='empty-subshell-spaced'),
+    pytest.param('{ }', id='empty-brace-group'),
+    pytest.param('(', id='unterminated-subshell'),
+    pytest.param('{ echo hi', id='unterminated-brace-group'),
+    pytest.param('if true; then echo yes', id='unterminated-if'),
+    pytest.param('if true echo yes; fi', id='if-missing-then'),
+    pytest.param('while true; do echo x', id='unterminated-while'),
+    pytest.param('for x in a b; do echo $x', id='unterminated-for'),
+    pytest.param('case x in a) echo a', id='unterminated-case'),
+    pytest.param('case a b in x) echo x ;; esac', id='bad-case-subject'),
+    pytest.param('echo >', id='redirect-missing-target-out'),
+    pytest.param('cat <', id='redirect-missing-target-in'),
+    pytest.param('echo 2>&', id='redirect-missing-dup-target'),
+    pytest.param('cat <<', id='heredoc-missing-delimiter'),
+    pytest.param('cat <<<', id='herestring-missing-content'),
+    pytest.param('a=(1 2', id='unterminated-array-init'),
+    pytest.param('f() { echo hi', id='unterminated-function-posix'),
+    pytest.param('function f {', id='unterminated-function-keyword'),
+    pytest.param('function { echo hi; }', id='function-missing-name'),
+    pytest.param('[[ -n $x', id='unterminated-enhanced-test'),
+    pytest.param('[[ $x == ]]', id='enhanced-test-missing-rhs'),
+    pytest.param('for ((i=0; i<3; i++); do echo $i; done',
+                 id='bad-cstyle-for-close'),
+    pytest.param('echo |', id='pipeline-missing-command'),
+    pytest.param('echo &&', id='and-if-missing-rhs'),
+    pytest.param('&& echo', id='and-if-missing-lhs'),
+]
+
+
+def _parse_accepts_recursive_descent(source):
+    try:
+        Parser(tokenize(source), source_text=source).parse()
+    except Exception:
+        return False
+    return True
+
+
+def _parse_accepts_combinator(source):
+    try:
+        ParserCombinatorShellParser().parse(tokenize(source))
+    except Exception:
+        return False
+    return True
+
+
+@pytest.mark.parametrize('source', REJECTION_CORPUS)
+def test_combinator_rejects_recursive_descent_rejections(source):
+    assert _parse_accepts_recursive_descent(source) is False
+    assert _parse_accepts_combinator(source) is False

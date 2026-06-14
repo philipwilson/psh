@@ -156,8 +156,8 @@ class TestCommandParsers:
         redirect = result.value.redirects[0]
         assert redirect.type == "<<<"
         assert redirect.target == "hello"
-        assert redirect.heredoc_content == "hello"
-        # heredoc_quoted would be True but it's not in the AST
+        assert redirect.heredoc_content is None
+        assert redirect.quote_type is None
 
 
 class TestPipelineParsing:

@@ -152,22 +152,44 @@ class ParserCombinatorShellParser:
             .or_else(self.command)
         )
 
-        # Rebuild statement_list parser with the updated statement parser
-        # The statement_list was built with the old statement parser that only had and_or_list
-        from .core import many1, optional, sequence
+        # Rebuild statement_list parser with the updated statement parser.
+        # The statement_list was built with the old statement parser that only
+        # had and_or_list.  Use a committed loop rather than many(...), because
+        # many() intentionally swallows failures; at a real command token that
+        # loses diagnostics and turns syntax errors into generic top-level
+        # "unexpected token after valid input" messages.
+        from .core import Parser as CombinatorParser
+        from .core import ParseResult, many1, optional
         separator = self.tokens.semicolon.or_else(self.tokens.newline)
         separators = many1(separator)
 
-        # Rebuild with simpler logic - use simple many parser
-        # Try parsing statements until we can't parse any more
-        from .core import many
-        self.commands.statement_list = many(
-            sequence(
-                optional(separators),  # Optional leading separators
-                self.commands.statement,  # The statement
-                optional(separators)  # Optional trailing separators
-            ).map(lambda parts: parts[1])  # Extract just the statement
-        ).map(lambda stmts: CommandList(statements=stmts if stmts else []))
+        def parse_statement_list(tokens: List[Token], pos: int):
+            statements = []
+            current_pos = optional(separators).parse(tokens, pos).position
+
+            while current_pos < len(tokens):
+                if tokens[current_pos].type in (
+                    TokenType.EOF, TokenType.RPAREN, TokenType.RBRACE,
+                ):
+                    break
+
+                statement_result = self.commands.statement.parse(tokens, current_pos)
+                if not statement_result.success:
+                    return statement_result
+
+                statements.append(statement_result.value)
+                if statement_result.position == current_pos:
+                    break
+                current_pos = statement_result.position
+                current_pos = optional(separators).parse(tokens, current_pos).position
+
+            return ParseResult(
+                success=True,
+                value=CommandList(statements=statements),
+                position=current_pos,
+            )
+
+        self.commands.statement_list = CombinatorParser(parse_statement_list)
 
         # Build top-level parser (statement list)
         self.top_level = self.commands.statement_list

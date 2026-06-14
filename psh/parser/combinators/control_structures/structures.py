@@ -343,6 +343,12 @@ class StructureParserMixin(_Base):
             body_result = self.commands.statement_list.parse(tokens, pos)
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
+            if not body_result.value.statements:
+                raise ParseError(ErrorContext(
+                    token=tokens[pos],
+                    message=f"syntax error near unexpected token '{tokens[pos].value}'",
+                    position=pos,
+                ))
             pos = body_result.position
 
             # Expect ')'
@@ -379,6 +385,12 @@ class StructureParserMixin(_Base):
             body_result = self.commands.statement_list.parse(tokens, pos)
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
+            if not body_result.value.statements:
+                raise ParseError(ErrorContext(
+                    token=tokens[pos],
+                    message=f"syntax error near unexpected token '{tokens[pos].value}'",
+                    position=pos,
+                ))
             pos = body_result.position
 
             # Expect '}'

@@ -93,7 +93,6 @@ class SpecialCommandParsers:
         self.special_command = (
             self.arithmetic_command
             .or_else(self.enhanced_test_statement)
-            .or_else(self.array_assignment)
             .or_else(self.process_substitution)
         )
 
@@ -250,17 +249,15 @@ class SpecialCommandParsers:
 
         # Handle simple binary operations: operand operator operand
         if len(tokens) == 3:
-            left = self._format_test_operand(tokens[0])
             operator = tokens[1].value
-            right = self._format_test_operand(tokens[2])
 
             # Support basic operators
             if operator in ['==', '!=', '=', '<', '>', '=~',
                           '-eq', '-ne', '-lt', '-le', '-gt', '-ge']:
                 return BinaryTestExpression(
-                    left_word=self._operand_word(left),
+                    left_word=self._operand_word_from_token(tokens[0]),
                     operator=operator,
-                    right_word=self._operand_word(right),
+                    right_word=self._operand_word_from_token(tokens[2]),
                 )
 
         # Handle unary operations: operator operand
@@ -302,6 +299,10 @@ class SpecialCommandParsers:
         (``is_quoted`` is False) — combinator-built test operands are always
         treated as unquoted (glob/regex-active) patterns."""
         return Word(parts=[LiteralPart(text, quoted=False, quote_char=None)])
+
+    def _operand_word_from_token(self, token: Token) -> Word:
+        """Build a test operand Word from its source token."""
+        return self.expansions.build_word_from_token(token)
 
     def _format_test_operand(self, token: Token) -> str:
         """Format a test operand token for proper shell representation.
