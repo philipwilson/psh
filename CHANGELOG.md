@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.388.0 (2026-06-14) - Tier R6.10: history word designators (clears R6 bug list)
+- BUG FIX (bash-verified; reappraisal #6 L10, the final R6 bug). History
+  expansion only handled EVENT designators (`!!`, `!n`, `!string`); word
+  designators were unimplemented, so `!$` returned event-not-found and `!!:1`
+  left a literal `:1` garbage suffix on the command.
+- Implemented bash word designators in `history_expansion.py`: `:0`, `:n`,
+  `:^`, `:$`, `:*`, `:n-m`, `:n-`, `:n*`; the bare shorthands `!$`/`!^`/`!*`
+  (default to the previous command) and `!:n`; attachable to any event
+  (`!1:$`, `!echo:^`, `!-2:2`). Quote-aware word splitting; `!*` with no args →
+  empty; out-of-range → `bad word specifier` — all matching bash. The
+  documented user-guide `!$` example now works; added a "Word Designators"
+  doc subsection.
+- Deferred (recorded follow-up): the `:s/old/new/`, `:p`/`:h`/`:t`/`:r`/`:e`
+  modifiers and `^old^new^` quick-substitution (lower-priority modifier class).
+- Tests: +`tests/unit/interactive/test_history_word_designators.py` (39). Full
+  gate green: ruff + mypy clean, `run_tests.py --parallel` 7135 passed,
+  `--compare-bash` 415 passed.
+- This clears the reappraisal #6 bug list: all 4 HIGH, 9 MEDIUM, and 11 LOW are
+  fixed except M7 (high `\xHH`/`\NNN` byte-vs-codepoint), which remains deferred
+  pending a dedicated output-encoding (surrogateescape) change.
+
 ## 0.387.0 (2026-06-14) - Tier R6.9: shopt nocasematch + query exit code
 - BUG FIX (bash-verified; reappraisal #6 L6).
 - `shopt -s nocasematch` is now supported and fully wired: `[[ ]]` `==`/`!=`/`=~`
