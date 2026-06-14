@@ -128,20 +128,32 @@ class ArithmeticEvaluator:
         ``key`` is a str for associative arrays and an int for indexed
         arrays / a freshly created indexed array.
         """
-        from ...core import AssociativeArray, IndexedArray, VarAttributes
+        from ...core import (
+            ArraySubscriptError,
+            AssociativeArray,
+            IndexedArray,
+            VarAttributes,
+        )
+        from .errors import ShellArithmeticError
         var = self.shell.state.scope_manager.get_variable_object(name)
-        if var is not None and isinstance(var.value, IndexedArray):
-            var.value.set(int(key), str(value))
-        elif var is not None and isinstance(var.value, AssociativeArray):
-            var.value.set(str(key), str(value))
-        else:
-            # No array yet (and not a plain scalar we should clobber as scalar):
-            # create an indexed array, matching `arr[i]=` assignment semantics.
-            arr = IndexedArray()
-            arr.set(int(key), str(value))
-            self.shell.state.scope_manager.set_variable(
-                name, arr, attributes=VarAttributes.ARRAY,
-            )
+        try:
+            if var is not None and isinstance(var.value, IndexedArray):
+                var.value.set(int(key), str(value))
+            elif var is not None and isinstance(var.value, AssociativeArray):
+                var.value.set(str(key), str(value))
+            else:
+                # No array yet (and not a plain scalar to clobber as scalar):
+                # create an indexed array, matching `arr[i]=` semantics.
+                arr = IndexedArray()
+                arr.set(int(key), str(value))
+                self.shell.state.scope_manager.set_variable(
+                    name, arr, attributes=VarAttributes.ARRAY,
+                )
+        except ArraySubscriptError as e:
+            # Surface as an arithmetic error so `(( ))` reports it like bash
+            # ("NAME[SUB]: bad array subscript") rather than as an internal
+            # defect under strict-errors.
+            raise ShellArithmeticError(f"{name}[{e.subscript}]: {e}") from e
 
     def _eval_array_assignment(self, node: 'ArrayAssignmentNode') -> int:
         key = self._array_key(node.name, node.index, node.index_text)

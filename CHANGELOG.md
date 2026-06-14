@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.382.0 (2026-06-14) - Tier R6.4: array-element-write bugs
+- BUG FIX (bash-verified; reappraisal #6 M4 + a related follow-up).
+- M4 negative array index was rejected on WRITE (reading already worked):
+  `a=(1 2 3); a[-1]=X` now maps `-1` to the last element (was an error that even
+  classified as an internal defect under strict-errors). Implemented bash's rule
+  `-N → highest_index + 1 - N` (sparse-aware) in `IndexedArray.resolve_write_index`,
+  covering all write paths: literal `a[-1]=`, `a[-1]+=`, and arithmetic
+  `(( a[-1]=9 ))`. Out-of-range raises a new `ArraySubscriptError(PshError)`
+  (`psh: NAME[SUB]: bad array subscript`, exit 1) instead of an internal defect;
+  a failed `unset b; b[-1]=x` leaves `b` unset like bash. Negative subscripts on
+  ASSOCIATIVE arrays remain literal keys (mapping applies to indexed only).
+- Related follow-up: the integer (`-i`) attribute is now applied on subscript
+  assignment too — `declare -ia v; v[0]=2+3` → `([0]="5")` (was `2+3`); `+=` does
+  a numeric add. (declare-time element eval was fixed in v0.381; this is the
+  later-assignment path.)
+- Also: a bare `a[i]=v` assignment now propagates its exit status and a failed
+  one aborts a non-interactive script (matching bash's assignment fatality).
+- Tests: +`TestNegativeIndexWrite` (10) +`TestIntegerArrayElementAssignment` (5)
+  conformance, +8 golden cases. Full gate green: ruff + mypy clean, `run_tests.py
+  --parallel` 6991 passed, `--compare-bash` 391 passed.
+
 ## 0.381.0 (2026-06-14) - Tier R6.3: four declare/attribute bugs
 - BUG FIX (bash-verified; reappraisal #6 M1/M2/M3/L5).
 - M1 `declare -i` was ignored when combined with `-l`/`-u` (`declare -il v=5+3`

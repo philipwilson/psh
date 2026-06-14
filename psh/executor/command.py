@@ -152,10 +152,15 @@ class CommandExecutor:
             # bash runs the DEBUG trap before each simple command
             self.shell.trap_manager.execute_debug_trap()
 
-            # Handle array assignments first
+            # Handle array assignments first. Their exit status matters when
+            # there is no command word (a bare `a[i]=v` / `a[i]+=v`): bash
+            # reports a failed subscript assignment (e.g. out-of-range
+            # negative index → "bad array subscript") as exit 1.
+            array_assignment_status = 0
             if node.array_assignments:
                 for assignment in node.array_assignments:
-                    self._handle_array_assignment(assignment)
+                    array_assignment_status = self._handle_array_assignment(
+                        assignment)
 
             # Phase 1: Extract raw assignments (before expansion)
             raw_assignments = self.assignments.extract(node)
@@ -172,6 +177,20 @@ class CommandExecutor:
             # Pure assignment (only NAME=value words, no command word)?
             if raw_assignments and len(raw_assignments) == len(node.words):
                 return self._run_pure_assignment(node, raw_assignments)
+
+            # Bare array element assignment(s) with no command word
+            # (`a[i]=v`): the array assignment status IS the command status.
+            # A failed assignment (e.g. out-of-range subscript) aborts a
+            # non-interactive `-c`/script invocation with status 1, exactly
+            # like a readonly assignment error (CommandAssignments.apply_pure)
+            # — but is non-fatal when reading a script from stdin.
+            if node.array_assignments and not node.words:
+                if node.redirects:
+                    with self.io_manager.with_redirections(node.redirects):
+                        pass
+                if array_assignment_status != 0 and self.state.is_script_mode:
+                    sys.exit(array_assignment_status)
+                return array_assignment_status
 
             # Actual command invocation (command word present).
             return self._run_command(node, context, raw_assignments)
