@@ -338,20 +338,20 @@ class IOManager:
         if redirect.type == '<':
             # target_fd is 0 here (the non-zero case returned above); pass the
             # redirect anyway so the fd source stays consistent across paths.
-            self.file_redirector._redirect_input_from_file(target, redirect)
+            self.file_redirector.redirect_input_from_file(target, redirect)
             f = open(target, 'r')
             frame.opened_streams.append(f)
             sys.stdin = f
         elif redirect.type == '<>':
-            self.file_redirector._redirect_readwrite(target, redirect)
+            self.file_redirector.redirect_readwrite(target, redirect)
             f = open(target, 'r+')
             frame.opened_streams.append(f)
             sys.stdin = f
         elif redirect.type in ('<<', '<<-'):
-            content = self.file_redirector._redirect_heredoc(redirect)
+            content = self.file_redirector.redirect_heredoc(redirect)
             sys.stdin = io.StringIO(content)
         else:  # '<<<'
-            content = self.file_redirector._redirect_herestring(redirect)
+            content = self.file_redirector.redirect_herestring(redirect)
             sys.stdin = io.StringIO(content)
 
     def _builtin_redirect_combined(self, target, redirect,
@@ -360,7 +360,7 @@ class IOManager:
         frame.snapshot.note_stdout()
         frame.snapshot.note_stderr()
         is_append = redirect.type.endswith('>>')
-        if not is_append and self.file_redirector._noclobber_blocks(target):
+        if not is_append and self.file_redirector.noclobber_blocks(target):
             raise OSError(f"cannot overwrite existing file: {target}")
         f = open(target, 'a' if is_append else 'w')
         frame.opened_streams.append(f)
@@ -376,7 +376,7 @@ class IOManager:
         counterpart, so the redirect happens at the descriptor level.
         """
         if redirect.type == '>':
-            self.file_redirector._check_noclobber(target)
+            self.file_redirector.check_noclobber(target)
         mode = 'a' if redirect.type == '>>' else 'w'
         target_fd = redirect.fd if redirect.fd is not None else 1
         if target_fd == 1:

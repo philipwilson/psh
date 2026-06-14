@@ -119,7 +119,7 @@ class TestArithmeticIntegrationAdvanced:
 
         `>&$((1+1))` now resolves the dup target at runtime (the lexer emits a
         bare `>&` operator, the parser keeps the expansion as the target, and
-        FileRedirector._resolved expands it to an fd number).
+        FileRedirector.resolve_dynamic_dup expands it to an fd number).
         """
         # Test echo "hello" >&$((1+1))  (redirect to fd 2)
         # This is complex and may cause issues

@@ -192,10 +192,10 @@ expansion happens at apply time in `psh/io_redirect/file_redirect.py`:
 
 | Form | Where | Expansion |
 |---|---|---|
-| `> file`, `< file`, `<>`, `>|`, `&>` | `_expand_redirect_target()` | `expand_string_variables` (skipped if single-quoted) + tilde |
-| `<<EOF` body | `_redirect_heredoc()` | `expand_string_variables` unless `heredoc_quoted` |
-| `<<<word` | `_redirect_herestring()` | `expand_string_variables` unless single-quoted |
-| `>&$fd` (dynamic dup) | `_resolved()` | `expand_string_variables`, must yield an integer |
+| `> file`, `< file`, `<>`, `>|`, `&>` | `expand_redirect_target()` | `expand_string_variables` (skipped if single-quoted) + tilde |
+| `<<EOF` body | `redirect_heredoc()` | `expand_string_variables` unless `heredoc_quoted` |
+| `<<<word` | `redirect_herestring()` | `expand_string_variables` unless single-quoted |
+| `>&$fd` (dynamic dup) | `resolve_dynamic_dup()` | `expand_string_variables`, must yield an integer |
 
 These are the canonical string-context uses of
 `expand_string_variables` — do not "migrate" them to Words without

@@ -236,24 +236,39 @@ with externals like bash's unbuffered writes.
 
 `FileRedirector` provides shared helpers used by all redirect dispatch
 methods (`apply_redirections`, `apply_permanent_redirections`,
-`setup_child_redirections`, `setup_builtin_redirections`):
+`setup_child_redirections`, `setup_builtin_redirections`).
+
+**Public vs private surface (v0.350+):** the helpers reused *outside*
+`file_redirect.py` — by the builtin stream backend in `manager.py` and by
+`planner.py` — are a deliberate **public** surface (no leading underscore);
+they are the shared redirect primitives, not implementation details.
+Helpers used only within `file_redirect.py` stay private.
+
+**Public (shared) primitives:**
 
 | Helper | Used For |
 |--------|----------|
-| `_redirect_input_from_file(target, redirect=None)` | `<` — open + dup2 to the redirect's fd (default 0). Pass `redirect` so explicit fds like `5<file` reach the named fd, not stdin |
-| `_redirect_readwrite(target, redirect)` | `<>` — open O_RDWR + dup2; returns target_fd |
-| `_redirect_heredoc(redirect)` | `<<`/`<<-` — expand + unlinked temp file + dup2; returns content |
-| `_redirect_herestring(redirect)` | `<<<` — expand + unlinked temp file + dup2; returns content |
+| `redirect_input_from_file(target, redirect=None)` | `<` — open + dup2 to the redirect's fd (default 0). Pass `redirect` so explicit fds like `5<file` reach the named fd, not stdin |
+| `redirect_readwrite(target, redirect)` | `<>` — open O_RDWR + dup2; returns target_fd |
+| `redirect_heredoc(redirect)` | `<<`/`<<-` — expand + unlinked temp file + dup2; returns content |
+| `redirect_herestring(redirect)` | `<<<` — expand + unlinked temp file + dup2; returns content |
+| `expand_redirect_target(redirect)` | Variable + tilde expansion for `<`/`>`/`>>`/`<>`/`>|`/`&>`/`&>>` (called by the planner) |
+| `resolve_dynamic_dup(redirect)` | Resolve a dynamic fd-dup target (`>&$fd`, `2>&$((n+1))`); called by the planner |
+| `noclobber_blocks(target)` | Predicate: noclobber set AND target is an existing regular file or dangling symlink (shared by all dispatchers; response differs: raise vs `os._exit`) |
+| `check_noclobber(target)` | Raises OSError if `noclobber_blocks(target)` |
+| `dup_fd_valid(dup_fd)` | Predicate: `dup_fd` is an open fd (for `>&`/`<&` validation) |
+| `procsub_handler` (property) | The shell's `ProcessSubstitutionHandler`; the planner resolves procsub targets through it |
+
+**Private (internal to `file_redirect.py`):**
+
+| Helper | Used For |
+|--------|----------|
 | `_redirect_output_to_file(target, redirect)` | `>`/`>>` — open + dup2; returns target_fd |
 | `_redirect_clobber(target, redirect)` | `>|` — open O_TRUNC (ignore noclobber); returns target_fd |
 | `_redirect_combined(target, redirect)` | `&>`/`&>>` — open + dup2(fd,1) + dup2(1,2) |
 | `_redirect_dup_fd(redirect)` | `>&`/`<&` — validate + dup2 or close |
 | `_redirect_close_fd(redirect)` | `>&-`/`<&-` — close fd |
-| `_expand_redirect_target(redirect)` | Variable + tilde expansion for `<`/`>`/`>>`/`<>`/`>|`/`&>`/`&>>` |
-| `_noclobber_blocks(target)` | Predicate: noclobber set AND target is an existing regular file or dangling symlink (shared by all dispatchers; response differs: raise vs `os._exit`) |
 | `_stream_sharing_fd(fd)` / `_rebind_output_stream(fd)` | `exec >file` — Python stream sharing the redirected fd's open file description |
-| `_check_noclobber(target)` | Raises OSError if `_noclobber_blocks(target)` |
-| `_dup_fd_valid(dup_fd)` | Predicate: `dup_fd` is an open fd (for `>&`/`<&` validation) |
 
 Also: `_dup2_preserve_target(opened_fd, target_fd)` is a module-level
 function (not a method) that wraps `os.dup2()` + `os.close()` safely.
@@ -273,9 +288,9 @@ function (not a method) that wraps `os.dup2()` + `os.close()` safely.
 
 ### Handling noclobber Option
 
-Use the `_check_noclobber` helper on `FileRedirector`:
+Use the `check_noclobber` helper on `FileRedirector`:
 ```python
-self._check_noclobber(target)  # Raises OSError if _noclobber_blocks(target)
+self.check_noclobber(target)  # Raises OSError if noclobber_blocks(target)
 ```
 
 The bash rule (probe-verified): noclobber blocks `>` only when the target
@@ -349,17 +364,17 @@ with the dup2 plumbing above passed as its `io_setup` hook.)
 
 ### Variable Expansion in Targets
 
-Use the `_expand_redirect_target` helper on `FileRedirector`:
+Use the `expand_redirect_target` helper on `FileRedirector`:
 ```python
-target = self._expand_redirect_target(redirect)
+target = self.expand_redirect_target(redirect)
 # or from IOManager:
-target = self.file_redirector._expand_redirect_target(redirect)
+target = self.file_redirector.expand_redirect_target(redirect)
 ```
 
 This expands variables (unless single-quoted) and tilde for all
 file-target redirect types: `<`, `>`, `>>`, `<>`, `>|`, and the combined
 forms `&>`/`&>>` (see the `redirect.type`/`redirect.combined` guard at the
-top of `_expand_redirect_target` in `file_redirect.py`).
+top of `expand_redirect_target` in `file_redirect.py`).
 
 ## Testing
 
