@@ -67,36 +67,54 @@ class ReadBuiltin(Builtin):
             # Decide once whether input comes from sys.stdin or the real fd
             use_sys_stdin = self._should_use_sys_stdin(options['fd'])
 
+            delim = options['delimiter']
+
             # Read input based on options
             if options['timeout'] is not None:
                 line = self._read_with_timeout(
-                    options['fd'], options['timeout'], options['delimiter'],
+                    options['fd'], options['timeout'], delim,
                     options['max_chars'], options['silent'], use_sys_stdin
                 )
                 if line is None:
                     return 142  # Timeout exit code
             elif options['silent'] or options['max_chars'] is not None:
                 line = self._read_special(
-                    options['fd'], options['delimiter'],
+                    options['fd'], delim,
                     options['max_chars'], options['silent'], use_sys_stdin
                 )
             else:
                 line = self._read_normal(
-                    options['fd'], options['delimiter'], use_sys_stdin)
+                    options['fd'], delim, use_sys_stdin)
 
             # Check for EOF
             if line is None:
                 return 1
 
-            # Process backslash escapes unless in raw mode
-            # This must be done BEFORE stripping the delimiter so that
-            # backslash-delimiter line continuation works correctly
-            if not options['raw_mode']:
-                line = self._process_escapes(line)
-
-            # Remove trailing delimiter if present (after escape processing)
-            if line.endswith(options['delimiter']):
+            # Strip the trailing delimiter if present (so the rest of the
+            # logic works on the line content). The normal/newline read path
+            # keeps its delimiter; custom delimiters are already excluded.
+            if line.endswith(delim):
                 line = line[:-1]
+
+            # Backslash processing (bash semantics). Without -r, a backslash
+            # removes the special meaning of the next character (NO C-style
+            # \t/\n translation); a backslash before the delimiter is line
+            # continuation — both are removed and reading continues onto the
+            # next line. -n / -d-with-char / silent / timeout modes use the
+            # raw line as read (continuation only applies to the plain path).
+            line_continuation = (not options['raw_mode']
+                                 and options['max_chars'] is None
+                                 and not options['silent']
+                                 and options['timeout'] is None)
+            if line_continuation:
+                line = self._read_continuations(
+                    line, options['fd'], delim, use_sys_stdin)
+
+            # Decompose into (char, protected) pairs. Protected chars are
+            # backslash-escaped: their backslash is removed and they are
+            # exempt from IFS splitting/trimming (bash behavior). In raw
+            # mode nothing is escaped.
+            chars = self._process_escapes(line, options['raw_mode'])
 
             # Get IFS value (default is space, tab, newline)
             ifs = shell.state.variables.get('IFS', shell.env.get('IFS', ' \t\n'))
@@ -104,23 +122,23 @@ class ReadBuiltin(Builtin):
             # Handle assignment based on array option or number of variables
             if options['array_name']:
                 # Array assignment: always split on IFS
-                fields = self._split_with_ifs(line, ifs)
+                fields = self._split_with_ifs(chars, ifs)
                 self._assign_to_array(fields, options['array_name'], shell)
             elif len(var_names) == 1:
                 # Single variable: trim leading/trailing IFS whitespace only
-                # Don't split the line
-                ifs_whitespace = [c for c in ifs if c in ' \t\n']
-                if ifs_whitespace:
-                    # Trim leading whitespace
-                    while line and line[0] in ifs_whitespace:
-                        line = line[1:]
-                    # Trim trailing whitespace
-                    while line and line[-1] in ifs_whitespace:
-                        line = line[:-1]
-                shell.state.set_variable(var_names[0], line)
+                # (but not backslash-protected whitespace). Don't split.
+                # Exception: a defaulted REPLY (no var names given) keeps the
+                # whole line untrimmed, matching bash.
+                if options.get('default_reply'):
+                    trimmed = chars
+                else:
+                    ifs_whitespace = set(c for c in ifs if c in ' \t\n')
+                    trimmed = self._trim_ifs_whitespace(chars, ifs_whitespace)
+                shell.state.set_variable(
+                    var_names[0], ''.join(c for c, _ in trimmed))
             else:
                 # Multiple variables: split based on IFS
-                fields = self._split_with_ifs(line, ifs)
+                fields = self._split_with_ifs(chars, ifs)
                 self._assign_to_variables(fields, var_names, shell)
 
             return 0
@@ -132,91 +150,130 @@ class ReadBuiltin(Builtin):
             self.error(str(e), shell)
             return 1
 
-    def _process_escapes(self, line: str) -> str:
-        """Process backslash escape sequences.
+    def _read_continuations(self, line: str, fd: int, delim: str,
+                            use_sys_stdin: bool) -> str:
+        """Honor backslash-<delimiter> line continuation (bash, non-raw).
 
-        Handles:
-        - \\ -> \
-        - \n -> newline
-        - \t -> tab
-        - \r -> carriage return
-        - \\<space> -> space (preserves space)
-        - \\<newline> -> line continuation (removes both)
-        - \\<other> -> <other> (backslash removed)
+        ``_read_normal`` stops at the first delimiter, so a line whose
+        content ends in an *unescaped* trailing backslash had its delimiter
+        escaped: drop that backslash and read the next line, repeating until
+        the line does not end in an unescaped backslash or input is
+        exhausted. (An even count of trailing backslashes means the final
+        one is itself escaped — not a continuation.)
         """
-        result = []
+        while self._has_unescaped_trailing_backslash(line):
+            line = line[:-1]  # remove the continuation backslash
+            nxt = self._read_normal(fd, delim, use_sys_stdin)
+            if nxt is None:
+                break  # EOF: nothing more to splice on
+            if nxt.endswith(delim):
+                nxt = nxt[:-1]
+            line += nxt
+        return line
+
+    @staticmethod
+    def _has_unescaped_trailing_backslash(line: str) -> bool:
+        """True if ``line`` ends in an odd run of backslashes."""
+        count = 0
+        i = len(line) - 1
+        while i >= 0 and line[i] == '\\':
+            count += 1
+            i -= 1
+        return count % 2 == 1
+
+    def _process_escapes(self, line: str, raw: bool) -> List[Tuple[str, bool]]:
+        """Decompose a line into (char, protected) pairs (bash semantics).
+
+        In raw mode every character is unprotected and unchanged. Otherwise
+        a backslash removes the special meaning of the next character: the
+        backslash is dropped and that character is emitted as *protected*
+        (literal — so it never acts as an IFS delimiter). There is NO
+        C-style translation (``\\t`` -> ``t``, not a tab). A trailing lone
+        backslash (no following char; can only survive at true EOF) is
+        dropped, as bash does.
+        """
+        if raw:
+            return [(c, False) for c in line]
+
+        result: List[Tuple[str, bool]] = []
         i = 0
-
-        while i < len(line):
-            if line[i] == '\\' and i + 1 < len(line):
-                next_char = line[i + 1]
-                if next_char == '\\':
-                    result.append('\\')
-                elif next_char == 'n':
-                    result.append('\n')
-                elif next_char == 't':
-                    result.append('\t')
-                elif next_char == 'r':
-                    result.append('\r')
-                elif next_char == '\n':
-                    # Line continuation - skip both characters
-                    # Note: This is only for backslash-newline within the line
-                    # A trailing backslash at end of input is different
-                    pass
-                else:
-                    # Other escaped character - just add the character
-                    result.append(next_char)
+        n = len(line)
+        while i < n:
+            if line[i] == '\\' and i + 1 < n:
+                result.append((line[i + 1], True))  # next char, literal
                 i += 2
-            else:
-                result.append(line[i])
+            elif line[i] == '\\':
+                # Trailing lone backslash — drop it (bash).
                 i += 1
+            else:
+                result.append((line[i], False))
+                i += 1
+        return result
 
-        return ''.join(result)
+    @staticmethod
+    def _trim_ifs_whitespace(chars: List[Tuple[str, bool]],
+                             ifs_whitespace: set) -> List[Tuple[str, bool]]:
+        """Trim leading/trailing unprotected IFS-whitespace pairs."""
+        start = 0
+        end = len(chars)
+        while start < end and not chars[start][1] and chars[start][0] in ifs_whitespace:
+            start += 1
+        while end > start and not chars[end - 1][1] and chars[end - 1][0] in ifs_whitespace:
+            end -= 1
+        return chars[start:end]
 
-    def _split_with_ifs(self, line: str, ifs: str) -> List[str]:
-        """Split line based on IFS (Internal Field Separator).
+    def _split_with_ifs(self, chars: List[Tuple[str, bool]], ifs: str) -> List[str]:
+        """Split (char, protected) pairs on IFS (Internal Field Separator).
 
         Rules:
         1. If IFS is empty, no splitting occurs
         2. Leading/trailing IFS whitespace characters are trimmed
         3. Multiple consecutive IFS whitespace characters count as one separator
         4. Non-whitespace IFS characters are always separators
+        5. Backslash-protected characters are never separators (bash)
         """
         if not ifs:
             # No IFS, return entire line as one field
-            return [line]
+            return [''.join(c for c, _ in chars)]
 
         # Separate whitespace and non-whitespace IFS characters
         ifs_whitespace = set(c for c in ifs if c in ' \t\n')
         ifs_non_whitespace = set(c for c in ifs if c not in ' \t\n')
 
+        def is_ws(idx):
+            c, prot = chars[idx]
+            return not prot and c in ifs_whitespace
+
+        def is_nonws(idx):
+            c, prot = chars[idx]
+            return not prot and c in ifs_non_whitespace
+
         fields = []
         current_field = []
         i = 0
+        n = len(chars)
 
         # Skip leading IFS whitespace
-        while i < len(line) and line[i] in ifs_whitespace:
+        while i < n and is_ws(i):
             i += 1
 
-        while i < len(line):
-            char = line[i]
-
-            if char in ifs_non_whitespace:
+        while i < n:
+            if is_nonws(i):
                 # Non-whitespace IFS character - always a separator
                 fields.append(''.join(current_field))
                 current_field = []
                 i += 1
-            elif char in ifs_whitespace:
+            elif is_ws(i):
                 # Whitespace IFS character
                 if current_field:
                     fields.append(''.join(current_field))
                     current_field = []
                 # Skip consecutive IFS whitespace
-                while i < len(line) and line[i] in ifs_whitespace:
+                while i < n and is_ws(i):
                     i += 1
             else:
-                # Regular character
-                current_field.append(char)
+                # Regular (or protected) character
+                current_field.append(chars[i][0])
                 i += 1
 
         # Add last field if any
@@ -340,8 +397,15 @@ class ReadBuiltin(Builtin):
         # Variable names are ignored when using -a option
         if options['array_name']:
             var_names = []  # Array name takes precedence
+            options['default_reply'] = False
+        elif i < len(args):
+            var_names = args[i:]
+            options['default_reply'] = False
         else:
-            var_names = args[i:] if i < len(args) else ['REPLY']
+            # No variable names given: the whole line goes to REPLY *without*
+            # IFS whitespace trimming (bash); an explicit `read REPLY` trims.
+            var_names = ['REPLY']
+            options['default_reply'] = True
 
         return options, var_names
 

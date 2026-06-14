@@ -42,7 +42,11 @@ class SourceBuiltin(Builtin):
             return 1
 
         filename = args[1]
-        source_args = args[2:] if len(args) > 2 else []
+        # POSIX/bash: `source file` with no extra args leaves $@/$# unchanged;
+        # `source file x y` sets them to x y for the duration of the sourced
+        # file (and restores afterward). Only override when args were given.
+        has_source_args = len(args) > 2
+        source_args = args[2:] if has_source_args else []
 
         # Find the script file
         script_path = self._find_source_file(filename, shell)
@@ -61,7 +65,8 @@ class SourceBuiltin(Builtin):
         old_script_mode = shell.state.is_script_mode
 
         # Set new state for sourced script
-        shell.state.positional_params = source_args
+        if has_source_args:
+            shell.state.positional_params = source_args
         shell.state.script_name = script_path
         # Keep current script mode (sourcing inherits mode)
 
