@@ -154,19 +154,20 @@ class ArrayOpsMixin(_Base):
         else:
             self.state.set_variable(var_name, value)
 
+    @staticmethod
+    def _at_a_quote(s: Optional[str]) -> str:
+        """Double-quote a value the way bash's @A/@K declare-form does
+        (escape backslash, double-quote, ``$`` and backtick)."""
+        s = (s or '')
+        s = (s.replace('\\', '\\\\').replace('"', '\\"')
+             .replace('$', '\\$').replace('`', '\\`'))
+        return f'"{s}"'
+
     def _array_assignment_form(self, array_name: str, var) -> str:
         """Build the ${arr[@]@A} declare statement (values double-quoted)."""
         from ..core import AssociativeArray, IndexedArray
         flags = self._var_attr_flags(array_name)
-
-        def dq(s: Optional[str]) -> str:
-            # indices()/items() only yield present elements, so s is a real
-            # string here; the Optional is just to satisfy IndexedArray.get's
-            # declared return type.
-            s = (s or '')
-            s = (s.replace('\\', '\\\\').replace('"', '\\"')
-                 .replace('$', '\\$').replace('`', '\\`'))
-            return f'"{s}"'
+        dq = self._at_a_quote
 
         if var and isinstance(var.value, AssociativeArray):
             # bash emits a trailing space before ')' for associative arrays.
@@ -180,6 +181,46 @@ class ArrayOpsMixin(_Base):
             assign = f"{array_name}={self._shell_quote(str(var.value) if var else '')}"
             return f"declare -{flags} {assign}" if flags else assign
         return f"declare -{flags} {array_name}=({body})"
+
+    def _array_keyvalue_pairs(self, var):
+        """Yield (key, value) pairs for a variable's @K/@k transform.
+
+        Indexed arrays use their (string) indices as keys; associative
+        arrays use their keys; a scalar yields a single ('0', value) pair
+        (bash treats ${scalar@K} like a one-element array indexed at 0).
+        """
+        from ..core import AssociativeArray, IndexedArray
+        if var and isinstance(var.value, AssociativeArray):
+            return list(var.value.items())
+        if var and isinstance(var.value, IndexedArray):
+            return [(str(i), var.value.get(i) or '') for i in var.value.indices()]
+        if var and var.value is not None:
+            return [('0', str(var.value))]
+        return []
+
+    def _array_keyvalue_form(self, op: str, var) -> str:
+        """Build the ${arr[@]@K} string: key "value" key "value" ...
+
+        Values are double-quoted with bash's @A/@K declare-form escaping.
+        Associative arrays get a trailing space (matching bash formatting).
+        """
+        from ..core import AssociativeArray
+        pairs = self._array_keyvalue_pairs(var)
+        body = ' '.join(f'{k} {self._at_a_quote(v)}' for k, v in pairs)
+        if var and isinstance(var.value, AssociativeArray) and body:
+            body += ' '
+        return body
+
+    def _array_keyvalue_fields(self, var):
+        """Build the ${arr[@]@k} field list: [key, value, key, value, ...].
+
+        Each key and each (unquoted) value is a SEPARATE field (bash).
+        """
+        fields = []
+        for k, v in self._array_keyvalue_pairs(var):
+            fields.append(k)
+            fields.append(v)
+        return fields
 
     def expand_assoc_key(self, index_expr: str) -> str:
         """Expand an associative-array subscript and apply quote removal.

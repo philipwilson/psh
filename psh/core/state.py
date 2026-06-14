@@ -115,6 +115,7 @@ class ShellState:
             'emacs': False,        # -o emacs: emacs key bindings (context-dependent)
             'vi': False,           # -o vi: vi key bindings (off for set -o display)
             'histexpand': True,    # -o histexpand: enable history expansion (default on)
+            'history': True,       # -o history: command history enabled (default on)
             'interactive': False,  # -i: interactive mode (set by shell init)
             'stdin_mode': True,    # reading from stdin (no script file; set by shell init)
             # Parser configuration options (enhanced features now standard)

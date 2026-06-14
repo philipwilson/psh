@@ -61,6 +61,20 @@ def test_word_designators_on_previous_command(expander, expr, expected):
     assert _expand(expander, ABG, expr) == expected
 
 
+@pytest.mark.parametrize("expr,expected", [
+    # The `:-n` (== `:0-n`) abbreviation: words 0 through n (bash). M9.
+    ('!!:-0', 'echo'),
+    ('!!:-1', 'echo alpha'),
+    ('!!:-2', 'echo alpha beta'),
+    ('!!:-3', 'echo alpha beta gamma'),
+    ('!!:-$', 'echo alpha beta gamma'),
+])
+def test_leading_dash_range_is_word_zero_through_n(expander, expr, expected):
+    """Regression (M9): `!!:-n` must expand to words 0..n, not abort with a
+    'bad word specifier'. Verified against bash `history -p`."""
+    assert _expand(expander, ABG, expr) == expected
+
+
 def test_designator_garbage_suffix_fixed(expander):
     """Regression: !!:1 must select word 1, not leave ':1' as literal garbage."""
     # Before the fix this produced 'echo alpha beta gamma:1'.

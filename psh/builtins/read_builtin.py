@@ -15,6 +15,11 @@ from .registry import builtin
 if TYPE_CHECKING:
     from ..shell import Shell
 
+# A delimiter that can never equal a single decoded character, so the
+# char-read loop never stops early (used by ``read -N``). os.read(fd, 1)
+# decodes to at most one character, so a two-character marker never matches.
+_NO_DELIM = '\x00\x00'
+
 
 @builtin
 class ReadBuiltin(Builtin):
@@ -26,11 +31,11 @@ class ReadBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "read [-rs] [-a array] [-d delim] [-n chars] [-p prompt] [-t timeout] [var ...]"
+        return "read [-rs] [-a array] [-d delim] [-n nchars] [-N nchars] [-p prompt] [-t timeout] [var ...]"
 
     @property
     def help(self) -> str:
-        return """read: read [-rs] [-a array] [-d delim] [-n chars] [-p prompt] [-t timeout] [var ...]
+        return """read: read [-rs] [-a array] [-d delim] [-n nchars] [-N nchars] [-p prompt] [-t timeout] [var ...]
     Read a line from standard input and assign to variables.
 
     Reads a single line from stdin (or the specified fd) and splits it
@@ -43,7 +48,8 @@ class ReadBuiltin(Builtin):
       -s            Silent mode (do not echo input)
       -a array      Read into indexed array ARRAY
       -d delim      Use DELIM as line delimiter instead of newline
-      -n chars      Read at most CHARS characters
+      -n nchars     Read at most NCHARS characters (delimiter stops early)
+      -N nchars     Read EXACTLY NCHARS characters (ignore delimiter and IFS)
       -p prompt     Display PROMPT on stderr before reading
       -t timeout    Time out after TIMEOUT seconds (exit code 142)
 
@@ -68,6 +74,12 @@ class ReadBuiltin(Builtin):
             use_sys_stdin = self._should_use_sys_stdin(options['fd'])
 
             delim = options['delimiter']
+
+            # -N: read EXACTLY N characters, ignoring the delimiter and IFS.
+            # The result (after backslash processing unless -r) is assigned
+            # whole to the first variable; rc is 1 only if EOF cut it short.
+            if options['exact_chars'] is not None:
+                return self._read_exact(options, var_names, shell, use_sys_stdin)
 
             # Read input based on options
             if options['timeout'] is not None:
@@ -338,7 +350,7 @@ class ReadBuiltin(Builtin):
 
     # Flag options set a boolean; arg options consume a value.
     _FLAG_OPTS = {'r': 'raw_mode', 's': 'silent'}
-    _ARG_OPTS = frozenset('apdnt')
+    _ARG_OPTS = frozenset('apdnNt')
 
     def _parse_options(self, args: List[str]) -> Tuple[Dict[str, any], List[str]]:
         """Parse read command options getopt-style, matching bash.
@@ -359,6 +371,7 @@ class ReadBuiltin(Builtin):
             'prompt': None,
             'timeout': None,
             'max_chars': None,
+            'exact_chars': None,
             'delimiter': '\n',
             'fd': 0,
             'array_name': None
@@ -438,6 +451,18 @@ class ReadBuiltin(Builtin):
                 err.rc = 1
                 raise err
             options['max_chars'] = max_chars
+        elif char == 'N':
+            # -N reads EXACTLY this many chars, ignoring the delimiter and
+            # IFS (the raw chars, with backslash processing unless -r).
+            try:
+                exact = int(value)
+            except ValueError:
+                exact = -1
+            if exact < 0:
+                err = ValueError(f"{value}: invalid number")
+                err.rc = 1
+                raise err
+            options['exact_chars'] = exact
 
     def _should_use_sys_stdin(self, fd: int) -> bool:
         """Decide whether to read from ``sys.stdin`` or the real OS descriptor.
@@ -571,6 +596,49 @@ class ReadBuiltin(Builtin):
         # EOF-with-no-data returns '' (exit 0); with newline it is None
         # (EOF, exit 1).
         return data if data or delimiter != '\n' else None
+
+    def _read_exact(self, options: Dict[str, any], var_names: List[str],
+                    shell: 'Shell', use_sys_stdin: bool) -> int:
+        """Implement ``read -N count`` (read EXACTLY count characters).
+
+        Unlike -n, the delimiter is ignored entirely and IFS does not split
+        or trim the result. Backslash processing still applies unless -r.
+        The full (post-escape) text is assigned to the first variable; any
+        further variables are cleared. Returns 1 when EOF arrived before
+        ``count`` characters were read (bash), 0 otherwise.
+        """
+        count = options['exact_chars']
+        fd = options['fd']
+        if count == 0:
+            # bash: read -N 0 reads nothing and succeeds, clearing the var.
+            data, status = '', 'limit'
+        elif os.isatty(fd):
+            with self._terminal_raw_mode(fd, echo=True):
+                # No delimiter stop: pass a delimiter that cannot appear in a
+                # single decoded char (NUL would still match, so use a marker
+                # that _read_chars never compares true against) — simplest is
+                # to read raw and never treat any char as the delimiter.
+                data, status = self._read_chars(
+                    fd, delimiter=_NO_DELIM, limit=count,
+                    use_sys_stdin=False, echo=True)
+        else:
+            data, status = self._read_chars(
+                fd, delimiter=_NO_DELIM, limit=count, use_sys_stdin=use_sys_stdin)
+
+        # Backslash processing (bash applies it for -N too, unless -r).
+        chars = self._process_escapes(data, options['raw_mode'])
+        text = ''.join(c for c, _ in chars)
+
+        if options['array_name']:
+            # bash assigns the whole result as a single element for -N.
+            self._assign_to_array([text], options['array_name'], shell)
+        else:
+            shell.state.set_variable(var_names[0], text)
+            for name in var_names[1:]:
+                shell.state.set_variable(name, '')
+
+        # rc 1 when input was exhausted before reaching the requested count.
+        return 0 if status == 'limit' else 1
 
     def _read_with_timeout(self, fd: int, timeout: float, delimiter: str,
                            max_chars: Optional[int], silent: bool,

@@ -393,7 +393,14 @@ class HistoryExpander:
             if last < 1:
                 return '', end
             start, stop = 1, last
-        elif '-' in spec and not spec.startswith('-'):
+        elif spec.startswith('-') and len(spec) > 1:
+            # -n (the 0-n abbreviation): words 0 through n (bash). So
+            # :-2 == :0-2, :-$ == :0-$, :-0 == :0 (just word 0).
+            start = 0
+            stop = resolve_index(spec[1:])
+            if stop is None:
+                return _BAD_WORD_SPECIFIER
+        elif '-' in spec:
             # n-m or n-  (range)
             lo, _, hi = spec.partition('-')
             start = resolve_index(lo)
