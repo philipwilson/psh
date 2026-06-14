@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.399.0 (2026-06-14) - Refactor: share the redirect fd-backend application
+- REFACTOR (zero behavior change). Finishes the RedirectPlan work by removing the
+  remaining duplication across the three redirect dispatch sites. Two new
+  `FileRedirector` helpers: `apply_fd_plan(plan, *, check_noclobber=True)` (the
+  single fd-universe application switch over all redirect types) and
+  `saved_fds_for_plan(plan)` (centralized save-fd selection). `apply_redirections`,
+  `apply_permanent_redirections`, and `setup_child_redirections` all route
+  through `apply_fd_plan`, each keeping its own distinct responsibilities — the
+  parent's transactional save/restore, the permanent path's stream rebinds, and
+  the child's `os._exit`-based error reporting (errno-bearing OSErrors →
+  `psh: TARGET: STRERROR`; psh's own `errno=None` noclobber/dup messages →
+  `psh: {e}`). The ~50-line duplicated child block collapses to one call.
+- Saved-fd annotations tightened to `Tuple[int, int | None]` to reflect the
+  high-fd restore case (`7>file`) where the original fd was unopened — already
+  handled by `restore_redirections` (closes what it opened).
+- Net −39 lines. Authored by the maintainer (PR #134); shipped through the
+  release ritual after orchestrator verification: child-path noclobber/bad-fd
+  probes match bash (message body + exit code), ruff + mypy clean (160 files),
+  `run_tests.py --parallel` 7282 passed, `--compare-bash` 447 passed.
+
 ## 0.398.0 (2026-06-14) - Tier R7: mypy scope — expansion mixins + last interactive (160 files)
 - TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 lever). Added 7 more
   modules → mypy now covers **160 source files**:
