@@ -85,6 +85,12 @@ class ExpansionEvaluator:
         so an operator-less node is always a plain parameter.
         """
         ve = self.expansion_manager.variable_expander
+        # Reject syntactically-invalid parameter names (bash "bad
+        # substitution") at expansion time, for both operator and plain
+        # forms. The plain-form path below re-checks via expand_variable,
+        # but the operator path (expand_parameter_direct) bypasses it.
+        content = str(expansion)[2:-1]  # strip the ${ } the str() re-adds
+        ve._reject_bad_substitution(expansion, content)
         if expansion.operator:
             return ve.expand_parameter_direct(
                 # Preserve None vs '': ${#v} (length) has word=None,

@@ -173,6 +173,43 @@ def _scan_operator(content: str):
     return None, -1
 
 
+# Operators that legitimately have an EMPTY parameter (parameter-less
+# special forms): ${#} = positional count, ${!@}/${!*} = name listing of
+# every variable. Every other operator requires a real parameter name.
+_EMPTY_PARAM_OPERATORS = frozenset({'#', '!@', '!*'})
+
+
+def validate_parameter_expansion(node: ParameterExpansion) -> bool:
+    """Whether *node*'s parameter name is syntactically valid (bash).
+
+    bash rejects a ``${...}`` whose parameter is empty (``${}``) or not a
+    valid parameter spec (``${ }``, ``${1abc}``, ``${.foo}``, ``${:-x}``)
+    with "bad substitution". A valid spec is an identifier, digits, a single
+    special-parameter char, or an identifier with a balanced subscript
+    (see _is_param_spec). Returns False for the bad-substitution cases.
+
+    This is checked at EXPANSION time only (bash reports it at runtime, not
+    when the enclosing command is merely parsed), so callers raise
+    BadSubstitutionError; the parser itself never raises here.
+    """
+    param = node.parameter
+    op = node.operator
+    if param == '':
+        # Empty parameter is valid only for the count / name-listing forms.
+        return op in _EMPTY_PARAM_OPERATORS
+    # Indirection (${!name...}): the name may live in the parameter with a
+    # leading '!' (e.g. '!ref' for ${!ref:-d}) or already have been split
+    # off into the '!' operator (param='ref' for ${!ref}). In the leading-'!'
+    # case the remainder must be empty (${!} / ${!:-x} = last-bg-pid) or a
+    # valid spec; ${!@}/${!*} prefix listing accepts any prefix.
+    if op in ('!@', '!*'):
+        return True
+    if param.startswith('!'):
+        rest = param[1:]
+        return rest == '' or _is_param_spec(rest)
+    return _is_param_spec(param)
+
+
 def parse_parameter_expansion(content: str) -> ParameterExpansion:
     """Parse the content of a ``${...}`` expansion (braces removed).
 

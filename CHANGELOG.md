@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.384.0 (2026-06-14) - Tier R6.6: lexer/parser bugs (M8/L1/L9; M7 deferred)
+- BUG FIX (bash-verified; reappraisal #6 M8/L1/L9).
+- M8 ANSI-C `$'\cX'` control-char escape now supported (`$'a\cIb'` → `a<TAB>b`).
+  bash's mapping: `0x7f` for `\c?`, else `ord(X) & 0x1f` (so `\cI`→TAB, `\c@`→
+  NUL, `\cA`→0x01); bare trailing `\c` stays literal. (`lexer/pure_helpers.py`)
+- L1 `${}`/`${ }`/`${1abc}`/`${!.foo}` now correctly raise `bad substitution`
+  (exit 1) at runtime, while valid forms (`${12}`, `${a-x}`, `${#}`, `${-}`,
+  `${arr[0]}`, `${!ref:-d}`) still work. New `BadSubstitutionError`,
+  `validate_parameter_expansion` in `param_parser.py` called at the two runtime
+  expansion chokepoints. (`variable.py`, `evaluator.py`, `exceptions.py`)
+- L9 parser ErrorContext "Context:" line was built backwards (following tokens
+  before `-> HERE <-`, preceding after) and leaked raw `TokenType.EOF`. Now
+  before/after are on the correct sides with `<EOF>`/`<newline>` placeholders.
+  (`parser/recursive_descent/context.py`, `helpers.py`)
+- M7 DEFERRED (documented): high `\xHH`/`\NNN` escapes emit Unicode codepoints
+  not raw bytes (`$'\377'` → 2 UTF-8 bytes, bash 1). A correct fix requires
+  flipping psh's entire output-encoding contract to `surrogateescape` (11
+  encode sites + sys.stdout + file redirects + pytest capture) — deep regression
+  risk; left for a dedicated change.
+- Tests: +`test_ansi_c_control_escape_conformance.py` (11),
+  +`test_bad_substitution_conformance.py`, +`test_error_context_format.py` (4).
+  Full gate green: ruff + mypy clean, `run_tests.py --parallel` 7063 passed,
+  `--compare-bash` 409 passed.
+
 ## 0.383.0 (2026-06-14) - Tier R6.5: four builtin/state small bugs
 - BUG FIX (bash-verified; reappraisal #6 M5/M6/L7/L8).
 - M5 `unset -f NONEXISTENT` now silently returns 0 (was an error + exit 1),
