@@ -152,8 +152,10 @@ class TestExpressionEvaluator:
             # Quoted sub-parts are matched LITERALLY, unquoted parts are live
             # regex source (bash) — built per-part from the operand Word.
             regex_src = self._rhs_regex(expr.right_word)
+            flags = (re.IGNORECASE
+                     if self.state.options.get('nocasematch', False) else 0)
             try:
-                pattern = re.compile(regex_src)
+                pattern = re.compile(regex_src, flags)
             except re.error as e:
                 raise ValueError(f"invalid regex: {e}")
             match = pattern.search(left)
@@ -279,7 +281,9 @@ class TestExpressionEvaluator:
         (see ``recognizers/literal.extglob_active``).
         """
         from ..expansion.pattern import match_shell_pattern
-        return match_shell_pattern(string, pattern, extglob_enabled=True)
+        return match_shell_pattern(
+            string, pattern, extglob_enabled=True,
+            ignorecase=self.state.options.get('nocasematch', False))
 
     def evaluate_unary_test(self, expr: UnaryTestExpression) -> bool:
         """Evaluate unary test expression."""

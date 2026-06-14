@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.387.0 (2026-06-14) - Tier R6.9: shopt nocasematch + query exit code
+- BUG FIX (bash-verified; reappraisal #6 L6).
+- `shopt -s nocasematch` is now supported and fully wired: `[[ ]]` `==`/`!=`/`=~`
+  and `case` matching become case-insensitive (`re.IGNORECASE`) when set.
+  `[[ ABC == abc ]]` → match; case-sensitive behavior unchanged when unset.
+  (`state.py`, `shell_options.py`, `expansion/pattern.py`,
+  `enhanced_test_evaluator.py`, `control_flow.py`)
+- Also fixed the `shopt OPTION` / `shopt -p OPTION` QUERY exit code (was always
+  0; now 1 when a named option is unset, matching bash — affected all options),
+  and padded the option-listing name field to bash's width.
+- Honesty preserved: genuinely-unimplemented bash options (`failglob`,
+  `lastpipe`, `inherit_errexit`, `histappend`, …) still error rather than
+  becoming fake no-ops.
+- Tests: +`test_nocasematch_conformance.py` (14 `assert_identical_behavior`),
+  +3 golden cases; updated one shopt unit test that pinned the old exit-0 query.
+  Full gate green: ruff + mypy clean, `run_tests.py --parallel` 7096 passed,
+  `--compare-bash` 415 passed.
+
 ## 0.386.0 (2026-06-14) - Tier R6.8: metrics pipeline count + version-sync meta-test
 - BUG FIX (reappraisal #6 L11). `MetricsVisitor` counted every `Pipeline` AST
   node, but psh wraps every command in a single-element Pipeline — so a script

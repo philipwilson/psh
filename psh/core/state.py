@@ -108,6 +108,7 @@ class ShellState:
             'nullglob': False,     # nullglob: glob with no matches returns empty
             'extglob': False,      # extglob: extended globbing patterns
             'nocaseglob': False,   # nocaseglob: case-insensitive globbing
+            'nocasematch': False,  # nocasematch: case-insensitive [[ ]]/case matching
             'globstar': False,     # globstar: ** matches recursively
             'checkhash': False,    # checkhash: re-verify hashed paths before exec
             'braceexpand': True,   # -o braceexpand: enable brace expansion (default on)
