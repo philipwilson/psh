@@ -8,8 +8,19 @@ tests pin their observable output and exercise the shared child-traversal
 from psh.ast_nodes import Redirect
 from psh.lexer import tokenize
 from psh.parser import parse
-from psh.visitor import LinterVisitor, MetricsVisitor, SecurityVisitor
+from psh.visitor import (
+    EnhancedValidatorVisitor,
+    LinterVisitor,
+    MetricsVisitor,
+    SecurityVisitor,
+)
 from psh.visitor.traversal import iter_child_nodes, visit_children
+
+
+def _validator_messages(src):
+    v = EnhancedValidatorVisitor()
+    v.visit(parse(tokenize(src)))
+    return [i.message for i in v.issues]
 
 
 def _ast(src):
@@ -214,3 +225,93 @@ class TestLinterRedirectTargets:
         v = LinterVisitor()
         v.visit(r)
         assert not any("may be undefined" in i.message for i in v.issues)
+
+
+class TestWordAnalysisStructuralFindings:
+    """R8.4: the validator/linter/security now read variable references from the
+    Word AST (`word_analysis`) instead of regexing rendered strings. These pin
+    the false positives that removed and the genuinely-correct findings it added.
+    """
+
+    # --- removed false positives -------------------------------------------
+
+    def test_single_quoted_dollar_not_a_variable_use_validator(self):
+        # '$FOO' is a literal string; the old string scan flagged FOO.
+        assert not any(
+            "undefined variable '$FOO'" in m
+            for m in _validator_messages("echo '$FOO'")
+        )
+
+    def test_single_quoted_dollar_not_a_variable_use_linter(self):
+        assert not any(
+            "'FOO' may be undefined" in m for m in _lint_messages("echo '$FOO'")
+        )
+
+    def test_for_over_command_sub_not_undefined_variable(self):
+        # `for f in $(ls)`: $(ls) is a command sub, not a variable named "(ls)".
+        assert not any(
+            "in for loop items" in m
+            for m in _validator_messages("for f in $(ls); do echo $f; done")
+        )
+
+    def test_for_over_backtick_not_undefined_variable(self):
+        assert not any(
+            "in for loop items" in m
+            for m in _validator_messages("for f in `ls`; do echo $f; done")
+        )
+
+    def test_quoted_at_not_advised(self):
+        # "$@" is already correctly quoted — no "Unquoted $@" advisory.
+        assert not any(
+            "Unquoted $@" in m for m in _validator_messages('echo "$@"')
+        )
+
+    # --- new, correct findings ---------------------------------------------
+
+    def test_unquoted_backtick_substitution_is_word_split(self):
+        # Consistent with $(date): an unquoted backtick sub undergoes splitting.
+        assert any(
+            "may cause word splitting" in m
+            for m in _validator_messages("echo `date`")
+        )
+
+    def test_nested_default_word_reference_validator(self):
+        # ${FOO:-${BAR}} references BAR inside the default; BAR is undefined.
+        msgs = _validator_messages("FOO=bar\necho ${FOO:-${BAR}}")
+        assert any("undefined variable '$BAR'" in m for m in msgs)
+
+    def test_nested_default_word_reference_linter(self):
+        msgs = _lint_messages("FOO=bar\necho ${FOO:-${BAR}}")
+        assert any("'BAR' may be undefined" in m for m in msgs)
+
+    # --- preserved correct behavior ----------------------------------------
+
+    def test_array_subscript_name_clean(self):
+        # ${arr[@]} on an undefined array reports the bare name 'arr' in the
+        # undefined-variable warning (the subscript debris no longer leaks into
+        # the name). The separate word-split advisory still echoes the rendered
+        # argument, so we assert on the undefined-variable message specifically.
+        undef = [
+            m for m in _validator_messages("echo ${arr[@]}")
+            if "undefined variable" in m
+        ]
+        assert undef == ["Possible use of undefined variable '$arr'"]
+
+    def test_parameter_default_suppresses_undefined(self):
+        assert not any(
+            "undefined variable" in m
+            for m in _validator_messages("echo ${UNSET:-fallback}")
+        )
+
+    def test_eval_of_variable_flagged(self):
+        types = _security_types("eval $CMD")
+        assert "UNQUOTED_EXPANSION" in types
+
+    def test_eval_of_quoted_variable_still_flagged(self):
+        # Existing behavior: any variable handed to eval is an injection risk.
+        types = _security_types('eval "$CMD"')
+        assert "UNQUOTED_EXPANSION" in types
+
+    def test_for_over_command_sub_security_unquoted_substitution(self):
+        types = _security_types("for f in $(ls); do echo $f; done")
+        assert "UNQUOTED_SUBSTITUTION" in types

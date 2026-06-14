@@ -17,11 +17,16 @@ from ..ast_nodes import (
     Redirect,
     SimpleCommand,
     TopLevel,
+    Word,
 )
 from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
 from .constants import COMMON_COMMANDS, SHELL_BUILTINS, TEST_OPERATORS
 from .traversal import visit_children
+from .word_analysis import (
+    iter_variable_references,
+    iter_variable_references_in_text,
+)
 
 
 class LintLevel(Enum):
@@ -240,10 +245,12 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                     suggestion="Ensure the command exists or use 'command -v' to check"
                 )
 
-        # Visit args for variable usage
-        for arg in node.args[1:]:
-            if '$' in arg:
-                self._check_variable_usage(arg)
+        # Visit args for variable usage. Read references STRUCTURALLY from each
+        # argument's Word AST (parts) rather than regexing the rendered string;
+        # this skips command/arithmetic substitutions and honors quoting and
+        # ``${var:-default}`` defaults through the parsed model.
+        for word in node.words[1:]:
+            self._check_word_variable_usage(word)
 
         # Apply the same checks to redirect targets (e.g. `cmd > $undefined.log`).
         self._visit_redirects(node)
@@ -344,26 +351,47 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         # Rest must be alphanumeric or underscore
         return all(c.isalnum() or c == '_' for c in var_part[1:])
 
-    def _check_variable_usage(self, text: str) -> None:
-        """Check for variable usage in text."""
-        import re
-        # Find all variable references
-        var_pattern = r'\$(?:([A-Za-z_][A-Za-z0-9_]*)|{([A-Za-z_][A-Za-z0-9_]*)[^}]*})'
-        for match in re.finditer(var_pattern, text):
-            var_name = match.group(1) or match.group(2)
-            if var_name:
-                self.used_vars.add(var_name)
+    def _check_word_variable_usage(self, word: Word) -> None:
+        """Register/validate the variable references in a command-argument Word.
 
-                # Check if variable is defined
-                if (self.config.check_undefined_vars and
-                    var_name not in self.defined_vars and
-                    var_name not in ['PATH', 'HOME', 'USER', 'SHELL', 'PWD',
-                                     'OLDPWD', 'IFS', 'PS1', 'PS2', 'PS3', 'PS4']):
-                    self.add_issue(
-                        LintLevel.WARNING,
-                        f"Variable '{var_name}' may be undefined",
-                        suggestion="Define the variable or use ${var:-default}"
-                    )
+        References are read STRUCTURALLY from the Word's parts
+        (:func:`iter_variable_references`): command/arithmetic substitutions are
+        not variable references and are skipped, and ``${a[i]}`` yields the bare
+        name ``a``. Nested operator-word references (``${x:-$y}``) are recovered
+        via the documented string fallback inside ``iter_variable_references``.
+        """
+        for ref in iter_variable_references(word):
+            self._register_variable_use(ref.name)
+
+    def _check_variable_usage(self, text: str) -> None:
+        """Check for variable usage in a raw STRING (redirect target / heredoc body).
+
+        These come from string fields on the ``Redirect`` node, not from a Word,
+        so the documented string fallback is used to recover references.
+        """
+        for ref in iter_variable_references_in_text(text):
+            self._register_variable_use(ref.name)
+
+    def _register_variable_use(self, var_name: str) -> None:
+        """Record a variable use and warn if it is (likely) undefined.
+
+        Only identifier-shaped names are considered: special parameters
+        (``$?``, ``$@``, ``$#``, ...) and positional parameters (``$1``) are
+        always defined and are never user-declared, so they are not tracked or
+        warned on (matching the historical identifier-only scope).
+        """
+        if not (var_name[:1].isalpha() or var_name[:1] == '_'):
+            return
+        self.used_vars.add(var_name)
+        if (self.config.check_undefined_vars and
+                var_name not in self.defined_vars and
+                var_name not in ['PATH', 'HOME', 'USER', 'SHELL', 'PWD',
+                                 'OLDPWD', 'IFS', 'PS1', 'PS2', 'PS3', 'PS4']):
+            self.add_issue(
+                LintLevel.WARNING,
+                f"Variable '{var_name}' may be undefined",
+                suggestion="Define the variable or use ${var:-default}"
+            )
 
     def _check_set_command(self, args: List[str]) -> None:
         """Check set command for error handling."""

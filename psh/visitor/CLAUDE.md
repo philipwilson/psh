@@ -19,7 +19,8 @@ AST → ASTVisitor.visit(node) → visit_NodeType(node) → Result
 |------|---------|
 | `base.py` | `ASTVisitor[T]` base class |
 | `traversal.py` | `iter_child_nodes()` / `visit_children()` - shared dataclass-field child walk used by the analysis visitors' `generic_visit` |
-| `analysis_helpers.py` | Shared predicates for analysis visitors (e.g. `has_unquoted_expansion()`) |
+| `analysis_helpers.py` | Shared redirect-traversal mixin for analysis visitors |
+| `word_analysis.py` | Structured Word-AST inspection (variable references, word classification) used by the validator/linter/security visitors instead of regexing rendered strings |
 | `constants.py` | Shared data: `SHELL_BUILTINS`, `DANGEROUS_COMMANDS`, `COMMON_TYPOS`, etc. |
 | `debug_ast_visitor.py` | Debug/pretty-print AST structure |
 | `validator_visitor.py` | Basic AST validation |

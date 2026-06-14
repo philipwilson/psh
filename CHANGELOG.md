@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.411.0 (2026-06-14) - Tier R8.4: visitor analysis over the Word AST
+- REFACTOR + tooling-fidelity (review Ugly 8 / A6). The analysis visitors
+  (enhanced-validator/linter/security) did variable-reference and word
+  classification by regexing rendered `node.args` strings, even though
+  `Word.parts` is authoritative. New `psh/visitor/word_analysis.py` provides
+  structured helpers — `iter_variable_references(word)` (→ `VariableReference`
+  with name/quoted/braced/array-subscript/default/part), `referenced_variable_
+  names`, and classifiers (`has_command_substitution`/`has_arithmetic_expansion`/
+  `is_arithmetic_only`/`has_unquoted_variable_expansion`/…). The three visitors
+  now inspect the Word AST; regex helpers (`_extract_variable_name`,
+  `var_patterns`, `_check_variable_usage`, the dead string `has_unquoted_expansion`)
+  are deleted. A documented string fallback remains only for operator words
+  (`${x:-$y}`) and `Redirect` target/heredoc strings.
+- Diagnostic-output changes (all justified, ZERO regressions): removed false
+  positives — `echo '$FOO'` (single-quoted, literal), `for f in $(ls)` /
+  `` `ls` `` ("undefined var" on a command sub), bogus "unquoted $@" on
+  `echo "$@"`. New genuinely-correct findings — `` `date` `` now flagged for
+  word-splitting (parity with `$(date)`); `${FOO:-${BAR}}` reports `BAR`
+  undefined.
+- Tests: +`test_word_analysis.py` (34) +`TestWordAnalysisStructuralFindings`
+  (12). Full gate green: ruff + mypy clean (224 files), `run_tests.py --parallel`
+  7434 passed, `--compare-bash` 461 (no runtime regression).
+
 ## 0.410.0 (2026-06-14) - Tier R8.3: typed command-invocation data flow
 - REFACTOR (zero behavior change; review Ugly 2/3 / A1). Replaced the
   `(exit_code, is_special)` tuple side-channel in simple-command execution with

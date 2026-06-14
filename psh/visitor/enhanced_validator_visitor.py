@@ -12,7 +12,6 @@ from typing import Dict, List, Optional, Set
 
 from ..ast_nodes import (
     # Core nodes
-    ArithmeticExpansion,
     ASTNode,
     CStyleForLoop,
     ExpansionPart,
@@ -20,8 +19,8 @@ from ..ast_nodes import (
     FunctionDef,
     SimpleCommand,
     TopLevel,
+    VariableExpansion,
 )
-from .analysis_helpers import has_unquoted_expansion
 from .constants import (
     COMMON_TYPOS,
     DANGEROUS_COMMANDS,
@@ -29,6 +28,12 @@ from .constants import (
     SHELL_BUILTINS,
 )
 from .validator_visitor import ValidatorVisitor
+from .word_analysis import (
+    contains_metacharacters_in_unquoted_expansion,
+    is_arithmetic_only,
+    iter_variable_references,
+    iter_variable_references_in_text,
+)
 
 
 @dataclass
@@ -255,14 +260,20 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
             VariableInfo(name=node.variable, defined_at=self._get_context())
         )
 
-        # Check items for undefined variables
+        # Check items for undefined variables. Read the per-item Word AST
+        # (``item_words``) structurally: a command substitution item like
+        # ``$(ls)`` is NOT a variable reference and is correctly skipped (the
+        # old string scan flagged ``$(ls)`` as undefined variable ``(ls)``).
         if self.config.check_undefined_vars:
-            for item in node.items:
-                if item.startswith('$'):
-                    var_name = self._extract_variable_name(item)
-                    if var_name and not self.var_tracker.is_defined(var_name):
+            for item_word in node.item_words:
+                seen: Set[str] = set()
+                for ref in iter_variable_references(item_word):
+                    if ref.has_default or ref.name in seen:
+                        continue
+                    seen.add(ref.name)
+                    if not self.var_tracker.is_defined(ref.name):
                         self._add_warning(
-                            f"Possible use of undefined variable '${var_name}' in for loop items",
+                            f"Possible use of undefined variable '${ref.name}' in for loop items",
                             node
                         )
 
@@ -405,55 +416,89 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
             self._add_info(deprecated_commands[cmd], node)
 
     def _check_undefined_variables_in_command(self, node: SimpleCommand):
-        """Check for undefined variables in command arguments."""
+        """Check for undefined variables in command arguments.
+
+        Variable references are read STRUCTURALLY from each ``Word``'s parts
+        (:func:`iter_variable_references`) rather than regexed out of the
+        rendered argument string. This drops index/operator debris from the
+        name (``${a[0]}`` → ``a``), honors ``:-``/``:=`` defaults via the
+        parsed operator, and reports each reference exactly once.
+        """
         words = node.words if node.words else []
         for i, (arg, word) in enumerate(zip(node.args, words)):
             # Skip the command itself
             if i == 0:
                 continue
 
-            # Check based on Word structure
-            if word.is_variable_expansion:
-                # Direct variable reference like $VAR
-                var_name = self._extract_variable_name(arg)
-                if var_name and not self.var_tracker.is_defined(var_name):
-                    if not self._has_parameter_default(arg):
-                        self._add_warning(
-                            f"Possible use of undefined variable '${var_name}'",
-                            node
-                        )
-            else:
-                self._check_string_for_undefined_vars(arg, node)
+            # A word that is a single bare variable expansion ($VAR / ${VAR})
+            # warns unconditionally on an undefined name; a variable embedded
+            # in a larger word goes through the context-aware suppression
+            # (existence tests, etc.). This mirrors the historical two-branch
+            # split, now driven by structured references rather than regex.
+            single_var = word.is_variable_expansion
+            seen: Set[str] = set()
+            for ref in iter_variable_references(word):
+                if ref.has_default:
+                    continue
+                if ref.name in seen:
+                    continue
+                seen.add(ref.name)
+                if self.var_tracker.is_defined(ref.name):
+                    continue
+                if single_var or self._should_warn_undefined(ref.name, arg, node):
+                    self._add_warning(
+                        f"Possible use of undefined variable '${ref.name}'",
+                        node
+                    )
+
+            # "Unquoted $@" advisory. Historically only multi-part words (the
+            # old string-scan branch) were checked; preserve that scope but
+            # detect the unquoted ``$@`` STRUCTURALLY (an unquoted @-expansion
+            # part) so an embedded quoted ``"$@"`` is not a false positive.
+            if not single_var and self._has_unquoted_at(word):
+                self._add_info(
+                    "Unquoted $@ should be \"$@\" to preserve arguments correctly",
+                    node
+                )
+
+    @staticmethod
+    def _has_unquoted_at(word) -> bool:
+        """True if the word contains an unquoted ``$@`` expansion part."""
+        return any(
+            isinstance(p, ExpansionPart)
+            and not p.quoted
+            and isinstance(p.expansion, VariableExpansion)
+            and p.expansion.name == '@'
+            for p in word.parts
+        )
 
     def _check_string_for_undefined_vars(self, text: str, node: ASTNode):
-        """Check a string for undefined variable references."""
+        """Check a raw STRING for undefined variable references.
+
+        Used for contexts the Word part model does not cover: assignment
+        values (``FOO=$BAR``) and for-loop item strings. Variable references
+        are recovered with the documented string fallback
+        (:func:`iter_variable_references_in_text`); ``${VAR:-default}`` is
+        suppressed via the parsed ``has_default`` flag.
+        """
         if not text:
             return
 
-        # Pattern to match variable references
-        # Matches $VAR, ${VAR}, ${VAR[index]}, etc.
-        var_patterns = [
-            (r'\$([A-Za-z_][A-Za-z0-9_]*)', 1),  # $VAR
-            (r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}', 1),  # ${VAR}
-            (r'\$\{([A-Za-z_][A-Za-z0-9_]*)\[', 1),  # ${VAR[...]}
-        ]
+        for ref in iter_variable_references_in_text(text):
+            if ref.has_default:
+                continue
+            if self.var_tracker.is_defined(ref.name):
+                continue
+            if self._should_warn_undefined(ref.name, text, node):
+                self._add_warning(
+                    f"Possible use of undefined variable '${ref.name}'",
+                    node
+                )
 
-        for pattern, group in var_patterns:
-            for match in re.finditer(pattern, text):
-                var_name = match.group(group)
+        self._check_unquoted_at(text, node)
 
-                # Check if variable is defined
-                if not self.var_tracker.is_defined(var_name):
-                    # Check if it has a default value (${VAR:-default} or ${VAR:=default})
-                    start_pos = match.start()
-                    if not self._has_default_at_position(text, start_pos):
-                        # Additional context-specific checks
-                        if self._should_warn_undefined(var_name, text, node):
-                            self._add_warning(
-                                f"Possible use of undefined variable '${var_name}'",
-                                node
-                            )
-
+    def _check_unquoted_at(self, text: str, node: ASTNode):
+        """Advise quoting ``$@`` when it appears unquoted (``"$@"`` preserves args)."""
         # Also check for unquoted $@ in non-array context
         if '$@' in text and text.count('"') % 2 == 0:  # Even quotes means not inside quotes
             # Check if we're not in a for loop items list
@@ -471,8 +516,10 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
             if i == 0:
                 continue
 
-            # Check unquoted variables
-            if has_unquoted_expansion(word, arg) and not self._is_arithmetic_only(word):
+            # Check unquoted expansions (word-split risk). Read the part model
+            # directly: any unquoted $-expansion EXCEPT a bare arithmetic
+            # expansion (whose result bash does not word-split).
+            if word.has_unquoted_expansion and not is_arithmetic_only(word):
                 # Skip numeric comparisons
                 if i > 0 and node.args[i-1] in NUMERIC_COMPARISON_OPERATORS:
                     continue
@@ -494,19 +541,6 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                         node
                     )
 
-    @staticmethod
-    def _is_arithmetic_only(word) -> bool:
-        """True if the word is a single arithmetic expansion (`$((...))`).
-
-        Arithmetic expansion is not a *variable* expansion; classifying it as
-        "unquoted variable expansion" (word-split risk) is a false positive —
-        bash does not word-split a bare `$((expr))` result the way the message
-        implies, and `$((1+))` is an arithmetic syntax error, not a variable.
-        """
-        return (len(word.parts) == 1
-                and isinstance(word.parts[0], ExpansionPart)
-                and isinstance(word.parts[0].expansion, ArithmeticExpansion))
-
     def _check_security_issues(self, node: SimpleCommand):
         """Check for potential security vulnerabilities."""
         if not node.args:
@@ -521,18 +555,20 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                 node
             )
 
-        # Check for potential command injection
+        # Check for potential command injection: an unquoted $-expansion sharing
+        # a word with literal shell metacharacters. Detected structurally on the
+        # word's parts (an unquoted expansion part + an unquoted literal metachar
+        # part); normal parsing splits metacharacters into separate words, so
+        # this fires only for quoted-then-stripped or manually-built words.
         if self.config.check_command_injection:
             words = node.words if node.words else []
             for i, arg in enumerate(node.args[1:], 1):
-                # Look for unquoted variable expansions with dangerous characters
-                if '$' in arg and any(char in arg for char in [';', '&&', '||', '|', '`']):
-                    word = words[i] if i < len(words) else None
-                    if word and not word.is_quoted:  # Unquoted
-                        self._add_error(
-                            f"Potential command injection: unquoted expansion '{arg}' contains shell metacharacters",
-                            node
-                        )
+                word = words[i] if i < len(words) else None
+                if word and contains_metacharacters_in_unquoted_expansion(word):
+                    self._add_error(
+                        f"Potential command injection: unquoted expansion '{arg}' contains shell metacharacters",
+                        node
+                    )
 
         # Check file permissions
         if self.config.check_file_permissions and cmd == 'chmod':
@@ -585,23 +621,6 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
 
     # Utility methods
 
-    def _extract_variable_name(self, text: str) -> Optional[str]:
-        """Extract variable name from various formats."""
-        if text.startswith('$'):
-            text = text[1:]
-
-        # Handle ${VAR} format
-        if text.startswith('{') and '}' in text:
-            text = text[1:text.index('}')]
-
-        # Extract just the variable name (before any operators)
-        for op in [':-', ':=', ':+', ':?', '#', '##', '%', '%%', '/', '//', '^', '^^', ',', ',,', '[']:
-            if op in text:
-                text = text[:text.index(op)]
-                break
-
-        return text if text else None
-
     def _has_parameter_default(self, text: str) -> bool:
         """Check if a parameter expansion has a default value.
 
@@ -627,17 +646,6 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                 if ':-' in content or ':=' in content:
                     return True
             i = j
-        return False
-
-    def _has_default_at_position(self, text: str, pos: int) -> bool:
-        """Check if variable at position has a default value."""
-        # Look for ${VAR:-default} or ${VAR:=default} pattern
-        if pos > 0 and text[pos-1:pos+1] == '${':
-            # Find the closing }
-            close_pos = text.find('}', pos)
-            if close_pos > 0:
-                var_content = text[pos+1:close_pos]
-                return ':-' in var_content or ':=' in var_content
         return False
 
     def _should_warn_undefined(self, var_name: str, context: str, node: ASTNode) -> bool:
@@ -698,8 +706,8 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                 next_arg = args[i + 1]
                 next_word = words[i + 1] if i + 1 < len(words) else None
 
-                # If next arg is unquoted and contains variable
-                if next_word and not next_word.is_quoted and '$' in next_arg:
+                # If next arg is an unquoted expansion (word-split risk)
+                if next_word is not None and next_word.has_unquoted_expansion:
                     self._add_warning(
                         f"Unquoted variable '{next_arg}' in test - may fail if value contains spaces",
                         node
@@ -711,7 +719,7 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                 if i > 0:
                     prev_arg = args[i - 1]
                     prev_word = words[i - 1] if i - 1 < len(words) else None
-                    if prev_word and not prev_word.is_quoted and '$' in prev_arg:
+                    if prev_word is not None and prev_word.has_unquoted_expansion:
                         self._add_warning(
                             f"Unquoted variable '{prev_arg}' in test comparison - use quotes",
                             node
@@ -720,7 +728,7 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                 if i + 1 < len(args):
                     next_arg = args[i + 1]
                     next_word = words[i + 1] if i + 1 < len(words) else None
-                    if next_word and not next_word.is_quoted and '$' in next_arg:
+                    if next_word is not None and next_word.has_unquoted_expansion:
                         self._add_warning(
                             f"Unquoted variable '{next_arg}' in test comparison - use quotes",
                             node
