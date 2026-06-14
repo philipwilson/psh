@@ -5,7 +5,7 @@ including the Parser class and basic combinators like many, optional, sequence, 
 """
 
 from dataclasses import dataclass
-from typing import Callable, Generic, List, Optional, Tuple, TypeVar
+from typing import Callable, Generic, List, Optional, Tuple, TypeVar, cast
 
 from ...lexer.keyword_defs import matches_keyword
 from ...lexer.token_types import Token
@@ -28,7 +28,7 @@ class ParseResult(Generic[T]):
     """
     success: bool
     value: Optional[T] = None
-    remaining: List[Token] = None
+    remaining: Optional[List[Token]] = None
     position: int = 0
     error: Optional[str] = None
 
@@ -74,7 +74,7 @@ class Parser(Generic[T]):
             if result.success:
                 return ParseResult(
                     success=True,
-                    value=fn(result.value),
+                    value=fn(cast(T, result.value)),
                     remaining=result.remaining,
                     position=result.position
                 )
@@ -103,7 +103,7 @@ class Parser(Generic[T]):
 
             return ParseResult(
                 success=True,
-                value=(first_result.value, second_result.value),
+                value=(cast(T, first_result.value), cast(U, second_result.value)),
                 position=second_result.position
             )
 
@@ -164,14 +164,14 @@ def many(parser: Parser[T]) -> Parser[List[T]]:
         Parser that returns list of parsed values
     """
     def parse_many(tokens: List[Token], pos: int) -> ParseResult[List[T]]:
-        results = []
+        results: List[T] = []
         current_pos = pos
 
         while True:
             result = parser.parse(tokens, current_pos)
             if not result.success:
                 break
-            results.append(result.value)
+            results.append(cast(T, result.value))
             current_pos = result.position
 
         return ParseResult(
@@ -207,7 +207,7 @@ def optional(parser: Parser[T]) -> Parser[Optional[T]]:
     def parse_optional(tokens: List[Token], pos: int) -> ParseResult[Optional[T]]:
         result = parser.parse(tokens, pos)
         if result.success:
-            return result
+            return cast(ParseResult[Optional[T]], result)
         return ParseResult(success=True, value=None, position=pos)
 
     return Parser(parse_optional)
@@ -259,7 +259,7 @@ def separated_by(parser: Parser[T], separator: Parser) -> Parser[List[T]]:
             # If we can't parse even one item, fail instead of returning empty list
             return ParseResult(success=False, error=first.error, position=pos)
 
-        items = [first.value]
+        items: List[T] = [cast(T, first.value)]
         current_pos = first.position
 
         # Parse remaining items
@@ -272,7 +272,7 @@ def separated_by(parser: Parser[T], separator: Parser) -> Parser[List[T]]:
             if not item_result.success:
                 break
 
-            items.append(item_result.value)
+            items.append(cast(T, item_result.value))
             current_pos = item_result.position
 
         return ParseResult(
@@ -294,12 +294,14 @@ def lazy(parser_factory: Callable[[], Parser[T]]) -> Parser[T]:
     Returns:
         Parser that delays creation until first use
     """
-    cache = [None]  # Use list for mutability
+    cache: List[Optional[Parser[T]]] = [None]  # Use list for mutability
 
     def parse_lazy(tokens: List[Token], pos: int) -> ParseResult[T]:
-        if cache[0] is None:
-            cache[0] = parser_factory()
-        return cache[0].parse(tokens, pos)
+        parser = cache[0]
+        if parser is None:
+            parser = parser_factory()
+            cache[0] = parser
+        return parser.parse(tokens, pos)
 
     return Parser(parse_lazy)
 

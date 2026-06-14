@@ -38,7 +38,7 @@ normal simple-command execution, matching bash.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, Word
 from ....lexer.token_types import Token, TokenType
@@ -243,9 +243,10 @@ class ArrayParser:
             tail = candidate.inline_tail
 
         value, value_word = self._parse_element_value(tail)
+        subscript = candidate.subscript if candidate.subscript is not None else ''
         return ArrayElementAssignment(
             name=candidate.name,
-            index=[Token(TokenType.WORD, candidate.subscript, 0)],
+            index=[Token(TokenType.WORD, subscript, 0)],
             value=value,
             is_append=is_append,
             value_word=value_word,
@@ -260,12 +261,12 @@ class ArrayParser:
         WORD ``a[0]=pre`` + VARIABLE ``x`` + STRING ``y``), which are merged
         here into a single value Word with per-part quote context.
         """
-        from ....ast_nodes import LiteralPart
+        from ....ast_nodes import LiteralPart, WordPart
         has_continuation = (
             self.parser.match_any(TokenGroups.WORD_LIKE)
             and (not tail or self.parser.peek().adjacent_to_previous))
         if tail:
-            parts = [LiteralPart(tail)]
+            parts: List[WordPart] = [LiteralPart(tail)]
             if has_continuation:
                 parts.extend(self.parser.commands.parse_argument_as_word().parts)
             word = Word(parts=parts)

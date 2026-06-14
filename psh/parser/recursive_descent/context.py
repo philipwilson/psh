@@ -95,7 +95,7 @@ class ParserContext:
         """Check if current token matches any of the given types."""
         return self.peek().type in token_types
 
-    def consume(self, token_type: TokenType, error_message: str = None) -> Token:
+    def consume(self, token_type: TokenType, error_message: Optional[str] = None) -> Token:
         """Consume token of expected type or raise error."""
         if self.match(token_type):
             return self.advance()

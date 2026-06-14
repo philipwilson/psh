@@ -224,7 +224,7 @@ class WordBuilder:
             # quote_type is DERIVED from them (single quoted part -> its
             # quote char), so no field to set here.
             word_parts = [WordBuilder.token_part_to_word_part(tp)
-                          for tp in token.parts]
+                          for tp in (token.parts or [])]
             return Word(parts=word_parts)
 
         if token.type in EXPANSION_TYPES:
@@ -252,7 +252,7 @@ class WordBuilder:
             # Check if this STRING token has decomposable parts
             if WordBuilder.has_decomposable_parts(token) and qt == '"':
                 # Flatten decomposed parts into composite
-                for tp in token.parts:
+                for tp in (token.parts or []):
                     parts.append(WordBuilder.token_part_to_word_part(tp))
             elif token.type in EXPANSION_TYPES:
                 is_quoted = qt is not None

@@ -123,7 +123,7 @@ class AsciiTreeRenderer:
 
     def _get_and_or_list_fields(self, node) -> List[Tuple[str, Any]]:
         """Get fields for AndOrList showing pipeline/operator relationships."""
-        fields = []
+        fields: List[Tuple[str, Any]] = []
 
         pipelines = getattr(node, 'pipelines', [])
         operators = getattr(node, 'operators', [])
@@ -268,8 +268,8 @@ class AsciiTreeRenderer:
             return '\n'.join(lines)
 
         # Separate simple and complex fields
-        simple_fields = []
-        complex_fields = []
+        simple_fields: List[Tuple[str, Any]] = []
+        complex_fields: List[Tuple[str, Any]] = []
 
         for name, value in fields:
             if value is None:

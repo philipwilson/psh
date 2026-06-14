@@ -5,7 +5,7 @@ arithmetic commands, enhanced test expressions, array operations,
 and process substitutions.
 """
 
-from typing import List, Optional, Union
+from typing import List, Optional, Union, cast
 
 from ...ast_nodes import (
     # Special commands
@@ -17,10 +17,12 @@ from ...ast_nodes import (
     LiteralPart,
     NegatedTestExpression,
     ProcessSubstitution,
+    Redirect,
     # Test expressions
     TestExpression,
     UnaryTestExpression,
     Word,
+    WordPart,
 )
 from ...lexer.token_types import Token
 from ..config import ParserConfig
@@ -163,7 +165,7 @@ class SpecialCommandParsers:
             expression = re.sub(r'\s+', ' ', expression).strip()
 
             # Parse optional redirections (not common but valid)
-            redirects = []
+            redirects: List[Redirect] = []
             # For now, skip redirection parsing to keep it simple
 
             return ParseResult(
@@ -433,7 +435,7 @@ class SpecialCommandParsers:
 
         Returns (value_word, legacy_value, new_pos).
         """
-        parts = []
+        parts: List[WordPart] = []
         if tail:
             parts.append(LiteralPart(tail))
         allow_nonadjacent = not tail and consume_first
@@ -680,10 +682,11 @@ class SpecialCommandParsers:
             # Detect which pattern we have
             pattern = self._detect_array_pattern(tokens, pos)
 
+            ArrayResult = ParseResult[Union[ArrayInitialization, ArrayElementAssignment]]
             if pattern == 'initialization':
-                return self._build_array_initialization().parse(tokens, pos)
+                return cast(ArrayResult, self._build_array_initialization().parse(tokens, pos))
             elif pattern == 'element_assignment':
-                return self._build_array_element_assignment().parse(tokens, pos)
+                return cast(ArrayResult, self._build_array_element_assignment().parse(tokens, pos))
             else:
                 return ParseResult(success=False, error="No array pattern detected", position=pos)
 

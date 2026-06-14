@@ -143,7 +143,7 @@ class ExpansionParsers:
         if WordBuilder.has_decomposable_parts(token):
             # Parts carry per-part quote context; Word.quote_type is derived.
             word_parts = [WordBuilder.token_part_to_word_part(tp)
-                          for tp in token.parts]
+                          for tp in (token.parts or [])]
             return Word(parts=word_parts)
 
         # Use TokenType enum values

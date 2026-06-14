@@ -187,6 +187,7 @@ class CommandParser:
         is_array_init, word_token = self._check_array_initialization()
 
         if is_array_init:
+            assert word_token is not None  # guaranteed when is_array_init is True
             arg_value, array_init = self._parse_array_initialization(word_token)
             command.words.append(
                 Word(parts=[LiteralPart(arg_value)], array_init=array_init))

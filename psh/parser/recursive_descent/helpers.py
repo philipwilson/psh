@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Set
+from typing import FrozenSet, List, Optional
 
 from ...core.exceptions import PshError
 from ...lexer.token_types import Token, TokenType
@@ -20,7 +20,7 @@ class TokenGroups:
     """Groups of related tokens for cleaner matching."""
 
     # Word-like tokens that can appear as command arguments
-    WORD_LIKE: Set[TokenType] = frozenset({
+    WORD_LIKE: FrozenSet[TokenType] = frozenset({
         TokenType.WORD, TokenType.STRING, TokenType.VARIABLE,
         TokenType.COMMAND_SUB, TokenType.COMMAND_SUB_BACKTICK,
         TokenType.ARITH_EXPANSION, TokenType.PARAM_EXPANSION,
@@ -31,7 +31,7 @@ class TokenGroups:
     })
 
     # Redirect operators
-    REDIRECTS: Set[TokenType] = frozenset({
+    REDIRECTS: FrozenSet[TokenType] = frozenset({
         TokenType.REDIRECT_IN, TokenType.REDIRECT_OUT,
         TokenType.REDIRECT_APPEND, TokenType.HEREDOC,
         TokenType.HEREDOC_STRIP, TokenType.HERE_STRING,
@@ -41,32 +41,32 @@ class TokenGroups:
     })
 
     # Control structure keywords
-    CONTROL_KEYWORDS: Set[TokenType] = frozenset({
+    CONTROL_KEYWORDS: FrozenSet[TokenType] = frozenset({
         TokenType.IF, TokenType.WHILE, TokenType.UNTIL, TokenType.FOR,
         TokenType.CASE, TokenType.SELECT, TokenType.BREAK, TokenType.CONTINUE,
         TokenType.DOUBLE_LBRACKET, TokenType.DOUBLE_LPAREN
     })
 
     # Statement separators
-    STATEMENT_SEPARATORS: Set[TokenType] = frozenset({
+    STATEMENT_SEPARATORS: FrozenSet[TokenType] = frozenset({
         TokenType.SEMICOLON, TokenType.NEWLINE
     })
 
     # Case statement terminators
-    CASE_TERMINATORS: Set[TokenType] = frozenset({
+    CASE_TERMINATORS: FrozenSet[TokenType] = frozenset({
         TokenType.DOUBLE_SEMICOLON, TokenType.SEMICOLON_AMP,
         TokenType.AMP_SEMICOLON
     })
 
     # Command list end tokens
-    COMMAND_LIST_END: Set[TokenType] = frozenset({
+    COMMAND_LIST_END: FrozenSet[TokenType] = frozenset({
         TokenType.EOF, TokenType.FI, TokenType.DONE,
         TokenType.ELSE, TokenType.ELIF, TokenType.ESAC,
         TokenType.RBRACE
     })
 
     # Keywords that can be valid case patterns
-    CASE_PATTERN_KEYWORDS: Set[TokenType] = frozenset({
+    CASE_PATTERN_KEYWORDS: FrozenSet[TokenType] = frozenset({
         TokenType.IF, TokenType.THEN, TokenType.ELSE, TokenType.FI, TokenType.ELIF,
         TokenType.WHILE, TokenType.UNTIL, TokenType.DO, TokenType.DONE, TokenType.FOR, TokenType.IN,
         TokenType.BREAK, TokenType.CONTINUE, TokenType.RETURN, TokenType.CASE, TokenType.ESAC,

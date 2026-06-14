@@ -552,7 +552,7 @@ class FormatterVisitor(ASTVisitor[str]):
 
         if node.dup_fd is not None:
             parts.append(str(node.dup_fd))
-        else:
+        elif node.target is not None:
             parts.append(node.target)
 
         return ''.join(parts)
