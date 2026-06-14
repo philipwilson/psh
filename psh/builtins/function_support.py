@@ -133,11 +133,15 @@ class DeclareBuiltin(Builtin):
                 func = shell.function_manager.get_function(name)
                 if func:
                     if show_names_only:
-                        self.write_line(f"declare -f {name}", shell)
+                        # bash: `declare -F NAME` prints just the bare name
+                        # (the no-name listing form prints `declare -f NAME`
+                        # lines instead — handled in the no-names branch above).
+                        self.write_line(name, shell)
                     else:
                         self._print_function_definition(name, func, shell)
                 else:
-                    self.error(f"{name}: not found", shell)
+                    # bash: `declare -f/-F NAME` for an undefined function is
+                    # SILENT — exit status 1, no error message on stderr.
                     exit_code = 1
             return exit_code
         return 0
@@ -259,8 +263,18 @@ class DeclareBuiltin(Builtin):
                 # x="(1 2)") is a scalar in bash, so it is NOT array-ified.
                 array_init = self._pending_array_init(shell, arg)
                 is_array_init = array_init is not None
+
+                # bash: a SCALAR value combined with -a/-A still creates an
+                # array, storing the value at index 0 (or key "0" for -A).
+                # ``declare -a v=5`` -> ``([0]="5")``; ``declare -A m=foo`` ->
+                # ``([0]="foo")``. The integer/case attrs then apply to the
+                # element (handled by _transform_array_elements below).
+                scalar_into_array = (
+                    not is_array_init
+                    and (options['array'] or options['assoc_array']))
+
                 as_assoc = False
-                if is_array_init and not options['array']:
+                if (is_array_init or scalar_into_array) and not options['array']:
                     existing = self._get_variable_with_attributes(shell, name)
                     as_assoc = options['assoc_array'] or (
                         existing is not None and existing.is_assoc_array)
@@ -275,6 +289,7 @@ class DeclareBuiltin(Builtin):
                             and isinstance(existing.value, AssociativeArray)
                             else None)
                     array: Any = self._build_assoc_array(array_init, into, shell)
+                    self._transform_array_elements(array, attributes, shell)
                     self._set_variable_with_attributes(
                         shell, name, array,
                         attributes | VarAttributes.ASSOC_ARRAY, options['global'])
@@ -289,6 +304,21 @@ class DeclareBuiltin(Builtin):
                             and isinstance(existing.value, IndexedArray)
                             else None)
                     array = self._build_indexed_array(array_init, into, shell)
+                    self._transform_array_elements(array, attributes, shell)
+                    self._set_variable_with_attributes(
+                        shell, name, array,
+                        attributes | VarAttributes.ARRAY, options['global'])
+
+                elif scalar_into_array and as_assoc:
+                    array = AssociativeArray()
+                    array.set("0", self._transform_element(value, attributes, shell))
+                    self._set_variable_with_attributes(
+                        shell, name, array,
+                        attributes | VarAttributes.ASSOC_ARRAY, options['global'])
+
+                elif scalar_into_array:
+                    array = IndexedArray()
+                    array.set(0, self._transform_element(value, attributes, shell))
                     self._set_variable_with_attributes(
                         shell, name, array,
                         attributes | VarAttributes.ARRAY, options['global'])
@@ -421,6 +451,34 @@ class DeclareBuiltin(Builtin):
         from ..executor.array import ArrayOperationExecutor
         return ArrayOperationExecutor(shell).build_associative_array(
             array_init.words, into=into)
+
+    def _transform_element(self, value: str, attributes: VarAttributes,
+                           shell: 'Shell') -> str:
+        """Apply the integer/case-fold attributes to one array ELEMENT value.
+
+        bash applies -i (arithmetic-evaluate) and -l/-u (case-fold) to the
+        elements of an array, not just to scalar variables. We reuse the
+        scope manager's scalar transformer so the rules stay identical.
+        """
+        if not (attributes & (VarAttributes.INTEGER | VarAttributes.LOWERCASE
+                              | VarAttributes.UPPERCASE)):
+            return value
+        return str(shell.state.scope_manager._apply_attributes(value, attributes))
+
+    def _transform_array_elements(self, array: Any, attributes: VarAttributes,
+                                  shell: 'Shell') -> None:
+        """In-place: apply integer/case-fold attributes to every element."""
+        if not (attributes & (VarAttributes.INTEGER | VarAttributes.LOWERCASE
+                              | VarAttributes.UPPERCASE)):
+            return
+        if isinstance(array, IndexedArray):
+            for index in array.indices():
+                array.set(index, self._transform_element(
+                    array.get(index), attributes, shell))
+        elif isinstance(array, AssociativeArray):
+            for key in array.keys():
+                array.set(key, self._transform_element(
+                    array.get(key), attributes, shell))
 
     # Methods to interact with shell's enhanced variable storage
 

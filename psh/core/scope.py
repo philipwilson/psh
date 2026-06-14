@@ -401,21 +401,22 @@ class ScopeManager:
         # Convert to string for transformations
         str_value = str(value) if value is not None else ""
 
-        if attributes & VarAttributes.UPPERCASE:
-            return str_value.upper()
-        elif attributes & VarAttributes.LOWERCASE:
-            return str_value.lower()
-        elif attributes & VarAttributes.INTEGER:
-            # Evaluate arithmetic expressions for integer variables
+        # bash applies these in sequence (they are NOT mutually exclusive):
+        # the INTEGER attribute arithmetic-evaluates the value first, then the
+        # LOWERCASE/UPPERCASE attribute case-folds the resulting string.
+        if attributes & VarAttributes.INTEGER:
             if str_value.strip():
                 try:
-                    # Simple integer evaluation (would need full arithmetic evaluator)
-                    # For now, just try to convert or evaluate simple expressions
-                    result = self._evaluate_integer(str_value)
-                    return str(result)  # Store as string, but evaluated as integer
+                    str_value = str(self._evaluate_integer(str_value))
                 except (ValueError, ArithmeticError):
-                    return "0"
-            return "0"
+                    str_value = "0"
+            else:
+                str_value = "0"
+
+        if attributes & VarAttributes.UPPERCASE:
+            return str_value.upper()
+        if attributes & VarAttributes.LOWERCASE:
+            return str_value.lower()
 
         return str_value
 

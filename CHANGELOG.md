@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.381.0 (2026-06-14) - Tier R6.3: four declare/attribute bugs
+- BUG FIX (bash-verified; reappraisal #6 M1/M2/M3/L5).
+- M1 `declare -i` was ignored when combined with `-l`/`-u` (`declare -il v=5+3`
+  → was `"5+3"`, now `"8"`). `scope.py:_apply_attributes` now evaluates the
+  integer attribute FIRST, then case-folds the result (they were exclusive
+  `if/elif`).
+- M2 `declare -p` attribute-letter order was wrong. Empirically determined
+  bash's order to be `a A i n r t x l u` (case-fold flags last) and fixed
+  `declare_format.py:_FLAG_CHARS`: `declare -ix` now prints `-ix` (was `-xi`),
+  `-ir`→`-ir`, `-irx`→`-irx`.
+- M3 `-a`/`-A` combined with `-i`/`-l`/`-u` didn't actually make the var an array
+  (`declare -ia v=1` → was scalar `="1"`, now `([0]="1")`); array elements now
+  receive the integer/case attributes (`declare -ia v=(1+1 2+2)` → `([0]="2"
+  [1]="4")`, `declare -al v=(ABC)` → `abc`). (`function_support.py`)
+- L5 `declare -F name` printed `declare -f name`; now prints the bare function
+  name (the no-arg `-F` listing form is unchanged). `-f`/`-F NAME` not-found is
+  now silent with exit 1 (was printing an error).
+- Known follow-ups (recorded, separate code paths): assoc-array `declare -p`
+  trailing-space-before-`)`; element-level integer attr on direct subscript
+  assignment (`v[0]=2+3`).
+- Tests: +`tests/conformance/bash/test_declare_attributes_conformance.py` (24
+  `assert_identical_behavior`). Full gate green: ruff + mypy clean, `run_tests.py
+  --parallel` 6969 passed, `--compare-bash` 375 passed.
+
 ## 0.380.0 (2026-06-14) - Tier R6.2: read C-escapes + source positionals (HIGH)
 - BUG FIX (bash-verified; reappraisal #6 H3/H4).
 - H4 `source`/`.` with NO args wiped the caller's positional params:
