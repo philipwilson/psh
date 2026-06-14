@@ -5,9 +5,10 @@ tests pin their observable output and exercise the shared child-traversal
 (`psh/visitor/traversal.py`) that all three now use for `generic_visit`.
 """
 
+from psh.ast_nodes import Redirect
 from psh.lexer import tokenize
 from psh.parser import parse
-from psh.visitor import MetricsVisitor, SecurityVisitor
+from psh.visitor import LinterVisitor, MetricsVisitor, SecurityVisitor
 from psh.visitor.traversal import iter_child_nodes, visit_children
 
 
@@ -25,6 +26,18 @@ def _security_types(src):
     v = SecurityVisitor()
     v.visit(_ast(src))
     return {i.issue_type for i in v.issues}
+
+
+def _lint_messages(src):
+    v = LinterVisitor()
+    v.visit(_ast(src))
+    return [i.message for i in v.issues]
+
+
+def _lint_used_vars(src):
+    v = LinterVisitor()
+    v.visit(_ast(src))
+    return v.used_vars
 
 
 class TestSharedTraversal:
@@ -133,3 +146,64 @@ class TestSecurity:
 
     def test_clean_command_no_issues(self):
         assert _security_types("echo hello") == set()
+
+
+class TestLinterRedirectTargets:
+    """The linter now analyzes redirect targets like ordinary command words.
+
+    Previously its explicit handlers never traversed `node.redirects`, so an
+    expansion inside a redirect target (`cmd > $x`) was invisible to every
+    lint check. These pin the new, correct findings and guard against false
+    positives.
+    """
+
+    def test_undefined_var_in_redirect_target_flagged(self):
+        msgs = _lint_messages("echo hi > $undefined.log")
+        assert any("'undefined' may be undefined" in m for m in msgs)
+
+    def test_redirect_target_var_counts_as_used(self):
+        # A var used only in a redirect target must not be reported unused.
+        assert "outdir" in _lint_used_vars("outdir=/tmp; echo hi > $outdir/out")
+        assert not any(
+            "'outdir' is defined but never used" in m
+            for m in _lint_messages("outdir=/tmp; echo hi > $outdir/out")
+        )
+
+    def test_literal_redirect_target_not_flagged(self):
+        # A plain filename target is not a variable and not a command.
+        msgs = _lint_messages("echo hi > result.txt")
+        assert not any("undefined" in m for m in msgs)
+        assert not any("result.txt" in m for m in msgs)
+
+    def test_dup_fd_redirect_not_flagged(self):
+        # `2>&1` carries a synthetic "&1" target — no expansion, no finding.
+        msgs = _lint_messages("echo hi > out.log 2>&1")
+        assert not any("may be undefined" in m for m in msgs)
+
+    def test_undefined_var_in_compound_redirect_flagged(self):
+        # A loop's own redirect (`done > $x`) reaches visit_Redirect via the
+        # shared generic_visit traversal.
+        msgs = _lint_messages(
+            "while read line; do echo x; done > $outfile"
+        )
+        assert any("'outfile' may be undefined" in m for m in msgs)
+
+    def test_heredoc_body_expansion_flagged(self):
+        # Heredoc bodies undergo expansion; an undefined var in the body is a
+        # variable usage. (Built directly: the CLI tokenizer doesn't always
+        # populate heredoc_content, but in-process parses do.)
+        r = Redirect(type="<<", target="END",
+                     heredoc_content="value is $missing\n",
+                     heredoc_quoted=False)
+        v = LinterVisitor()
+        v.visit(r)
+        assert any("'missing' may be undefined" in i.message for i in v.issues)
+
+    def test_quoted_heredoc_body_not_expanded(self):
+        # A quoted delimiter disables expansion — no variable-usage finding.
+        r = Redirect(type="<<", target="END",
+                     heredoc_content="value is $missing\n",
+                     heredoc_quoted=True)
+        v = LinterVisitor()
+        v.visit(r)
+        assert not any("may be undefined" in i.message for i in v.issues)

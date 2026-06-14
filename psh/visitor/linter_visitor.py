@@ -9,7 +9,16 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Set
 
-from ..ast_nodes import ASTNode, FunctionDef, IfConditional, Pipeline, SimpleCommand, TopLevel
+from ..ast_nodes import (
+    ASTNode,
+    FunctionDef,
+    IfConditional,
+    Pipeline,
+    Redirect,
+    SimpleCommand,
+    TopLevel,
+)
+from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
 from .constants import COMMON_COMMANDS, SHELL_BUILTINS, TEST_OPERATORS
 from .traversal import visit_children
@@ -59,7 +68,7 @@ class LinterConfig:
     prefer_double_brackets: bool = True
 
 
-class LinterVisitor(ASTVisitor[None]):
+class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     """
     Visitor that performs linting checks on shell scripts.
 
@@ -236,6 +245,9 @@ class LinterVisitor(ASTVisitor[None]):
             if '$' in arg:
                 self._check_variable_usage(arg)
 
+        # Apply the same checks to redirect targets (e.g. `cmd > $undefined.log`).
+        self._visit_redirects(node)
+
     def visit_FunctionDef(self, node: FunctionDef) -> None:
         """Visit function definition."""
         self.defined_functions.add(node.name)
@@ -256,6 +268,9 @@ class LinterVisitor(ASTVisitor[None]):
         self.visit(node.body)
         self._in_function = old_in_function
 
+        # A function definition can carry redirects (`f() { ...; } > log`).
+        self._visit_redirects(node)
+
     def visit_IfConditional(self, node: IfConditional) -> None:
         """Visit if statement."""
         # Check condition
@@ -270,6 +285,9 @@ class LinterVisitor(ASTVisitor[None]):
         # Check else
         if node.else_part:
             self.visit(node.else_part)
+
+        # An if statement can carry redirects (`if ...; fi > log`).
+        self._visit_redirects(node)
 
     def visit_Pipeline(self, node: Pipeline) -> None:
         """Visit pipeline."""
@@ -292,6 +310,26 @@ class LinterVisitor(ASTVisitor[None]):
         # Visit all commands
         for cmd in node.commands:
             self.visit(cmd)
+
+    def visit_Redirect(self, node: Redirect) -> None:
+        """Apply word/expansion checks to a redirection's target and body.
+
+        Redirect targets are ordinary words (``cmd > $undefined.log``) and so
+        deserve the same variable-usage analysis as command arguments — they
+        were silently skipped before. ``dup_fd`` redirects (``2>&1``) carry a
+        synthetic ``&N`` target with no expansion and are left alone. Heredoc
+        and here-string bodies undergo expansion unless the delimiter/quote
+        disabled it, so their ``$var`` references count as variable usage too.
+        """
+        # Target word: only meaningful for non-dup redirects (a dup like 2>&1
+        # has dup_fd set and a synthetic "&1" target, not an expandable word).
+        if node.dup_fd is None and node.target and '$' in node.target:
+            self._check_variable_usage(node.target)
+
+        # Heredoc / here-string body: expanded unless quoted.
+        body = node.heredoc_content
+        if body and '$' in body and not node.heredoc_quoted and node.quote_type != "'":
+            self._check_variable_usage(body)
 
     # Helper methods
 
