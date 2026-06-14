@@ -1,6 +1,6 @@
 """Source command builtin."""
 import os
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from .base import Builtin
 from .registry import builtin
@@ -92,7 +92,7 @@ class SourceBuiltin(Builtin):
             shell.state.script_name = old_script_name
             shell.state.is_script_mode = old_script_mode
 
-    def _find_source_file(self, filename: str, shell: 'Shell') -> str:
+    def _find_source_file(self, filename: str, shell: 'Shell') -> Optional[str]:
         """Find a source file, searching PATH if needed."""
         # If filename contains a slash, don't search PATH
         if '/' in filename:

@@ -97,7 +97,7 @@ class KillBuiltin(Builtin):
         Returns:
             Tuple of (signal_number, target_list, list_signals_flag)
         """
-        signal_num = signal.SIGTERM  # Default signal
+        signal_num: int = signal.SIGTERM  # Default signal
         targets = []
         list_signals = False
         i = 0
@@ -251,11 +251,11 @@ class KillBuiltin(Builtin):
                 continue
 
             # A name spec: print the signal NUMBER.
-            num = signal_name_to_number(spec)
-            if num is None:
+            resolved = signal_name_to_number(spec)
+            if resolved is None:
                 self.error(f"{spec}: invalid signal specification", shell)
                 exit_code = 1
             else:
-                self.write_line(str(num), shell)
+                self.write_line(str(resolved), shell)
 
         return exit_code

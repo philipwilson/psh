@@ -46,7 +46,7 @@ def format_declaration(var: Variable) -> str:
 
     if isinstance(var.value, IndexedArray):
         # declare -a name=([0]="val" [1]="val")
-        elements = [f'[{idx}]="{escape_value(var.value.get(idx))}"'
+        elements = [f'[{idx}]="{escape_value(var.value.get(idx) or "")}"'
                     for idx in var.value.indices()]
         value_str = f"=({' '.join(elements)})" if elements else "=()"
     elif isinstance(var.value, AssociativeArray):

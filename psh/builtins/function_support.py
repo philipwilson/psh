@@ -75,7 +75,7 @@ class DeclareBuiltin(Builtin):
 
     def _parse_options(self, args: List[str], shell: 'Shell') -> tuple[Optional[dict], List[str]]:
         """Parse declare options and return (options_dict, positional_args)."""
-        options = {key: False for key in self._FLAG_OPTIONS.values()}
+        options: dict[str, Any] = {key: False for key in self._FLAG_OPTIONS.values()}
         options.update({f'remove_{self._FLAG_OPTIONS[c]}': False
                         for c in self._REMOVABLE_FLAGS})
         # Track last case attribute for "last wins" behavior (-l vs -u)
@@ -130,15 +130,15 @@ class DeclareBuiltin(Builtin):
             # List specific functions
             exit_code = 0
             for name in names:
-                func = shell.function_manager.get_function(name)
-                if func:
+                named_func = shell.function_manager.get_function(name)
+                if named_func:
                     if show_names_only:
                         # bash: `declare -F NAME` prints just the bare name
                         # (the no-name listing form prints `declare -f NAME`
                         # lines instead — handled in the no-names branch above).
                         self.write_line(name, shell)
                     else:
-                        self._print_function_definition(name, func, shell)
+                        self._print_function_definition(name, named_func, shell)
                 else:
                     # bash: `declare -f/-F NAME` for an undefined function is
                     # SILENT — exit status 1, no error message on stderr.
@@ -284,10 +284,10 @@ class DeclareBuiltin(Builtin):
                     # existing array (bash).
                     existing = (self._get_variable_with_attributes(shell, name)
                                 if append else None)
-                    into = (existing.value
-                            if existing is not None
-                            and isinstance(existing.value, AssociativeArray)
-                            else None)
+                    into: Any = (existing.value
+                                 if existing is not None
+                                 and isinstance(existing.value, AssociativeArray)
+                                 else None)
                     array: Any = self._build_assoc_array(array_init, into, shell)
                     self._transform_array_elements(array, attributes, shell)
                     self._set_variable_with_attributes(
@@ -326,11 +326,12 @@ class DeclareBuiltin(Builtin):
                 else:
                     # Regular variable assignment
                     # The enhanced scope manager will apply attribute transformations
+                    final_value: object = value
                     if append:
                         from ..core import resolve_append_assignment
-                        _, value = resolve_append_assignment(
+                        _, final_value = resolve_append_assignment(
                             shell.state.scope_manager, name + '+', value)
-                    self._set_variable_with_attributes(shell, name, value, attributes, options['global'])
+                    self._set_variable_with_attributes(shell, name, final_value, attributes, options['global'])
 
             else:
                 # Just declaring with attributes, no assignment
@@ -358,7 +359,7 @@ class DeclareBuiltin(Builtin):
                         if isinstance(existing.value, IndexedArray):
                             # Copy indexed array elements as string keys
                             for index in existing.value.indices():
-                                new_assoc.set(str(index), existing.value.get(index))
+                                new_assoc.set(str(index), existing.value.get(index) or "")
                         # Completely replace the variable with new associative array
                         # Remove old attributes and set only the new ones
                         shell.state.scope_manager.unset_variable(arg)
@@ -474,11 +475,11 @@ class DeclareBuiltin(Builtin):
         if isinstance(array, IndexedArray):
             for index in array.indices():
                 array.set(index, self._transform_element(
-                    array.get(index), attributes, shell))
+                    array.get(index) or "", attributes, shell))
         elif isinstance(array, AssociativeArray):
             for key in array.keys():
                 array.set(key, self._transform_element(
-                    array.get(key), attributes, shell))
+                    array.get(key) or "", attributes, shell))
 
     # Methods to interact with shell's enhanced variable storage
 
@@ -612,7 +613,9 @@ class ReadonlyBuiltin(Builtin):
         else:
             # readonly NAME[=value]... is declare -r NAME[=value]...;
             # delegate to the registered declare singleton.
-            return registry.get('declare').execute(['declare', '-r'] + names, shell)
+            declare_builtin = registry.get('declare')
+            assert declare_builtin is not None
+            return declare_builtin.execute(['declare', '-r'] + names, shell)
 
     def _parse_readonly_options(self, args: List[str], shell: 'Shell') -> tuple[Optional[dict], List[str]]:
         """Parse readonly options and return (options_dict, function_names)."""
@@ -658,8 +661,7 @@ class ReadonlyBuiltin(Builtin):
         # Set specified functions as readonly
         exit_code = 0
         for name in names:
-            func = shell.function_manager.get_function(name)
-            if func:
+            if shell.function_manager.get_function(name):
                 shell.function_manager.set_function_readonly(name)
             else:
                 self.error(f"{name}: not found", shell)

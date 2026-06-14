@@ -263,7 +263,7 @@ class SignalsBuiltin(Builtin):
             if arg in ('-v', '--verbose'):
                 verbose = True
             elif arg in ('-h', '--help'):
-                self.write_line(self.__doc__, shell)
+                self.write_line(self.__doc__ or "", shell)
                 return 0
             else:
                 self.error(f"unknown option: {arg}", shell)

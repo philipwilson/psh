@@ -22,6 +22,13 @@ class ShellState:
     Python process (the pre-v0.312 ``FOO=bar exec`` leak).
     """
 
+    # Lazily created by the pushd/popd/dirs builtins (directory_stack.py) on
+    # first use via a hasattr() guard, so it has no __init__ assignment.
+    # Declared here (pure annotation, no runtime effect) so the dynamic
+    # attribute type-checks. Typed Any to avoid a core→builtins layering
+    # import for DirectoryStack.
+    directory_stack: Any
+
     def __init__(self, args=None, script_name=None, debug_ast=False,
                  debug_tokens=False, debug_scopes=False, debug_expansion=False, debug_expansion_detail=False,
                  debug_exec=False, debug_exec_fork=False, norc=False, rcfile=None):

@@ -87,7 +87,7 @@ class UmaskBuiltin(Builtin):
 
         for clause in mode.split(','):
             i = 0
-            shifts = set()
+            shifts: set[int] = set()
             while i < len(clause) and clause[i] in who_shifts:
                 shifts.update(who_shifts[clause[i]])
                 i += 1

@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.405.0 (2026-06-14) - Tier R7: grow mypy scope into all of psh/builtins (177 → 212 files)
+- TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 lever). Added the
+  ENTIRE `psh/builtins/` package (all 35 modules) to the mypy `files` list; mypy
+  now covers **212 source files** (~95% of the tree). Nothing deferred.
+- Real bug caught by the wider scope: `read_builtin.py` used `Dict[str, any]`
+  (the builtin `any`, not `typing.Any` — which wasn't even imported) on three
+  method signatures; a meaningless annotation any type checker rejects. Fixed.
+- Behavior-preserving type work: Optional-narrowing on registry/array `.get()`
+  results (keys come from `indices()`/`keys()`, always present), renamed
+  loop/branch vars whose inferred type changed mid-function, `setattr`/`getattr`
+  for the dynamic `err.rc` attribute, a few `TYPE_CHECKING` imports, and a pure
+  class-level `directory_stack: Any` annotation on `ShellState` (no runtime
+  assignment — preserves the lazy hasattr-guarded creation).
+- Full gate green: mypy clean (212 files), ruff clean, `run_tests.py --parallel`
+  7382 passed.
+
 ## 0.404.0 (2026-06-14) - Tier R7.9: ambiguous redirect + validator false positives (clears R7 bug list)
 - BUG FIX (bash-verified; reappraisal #7 L3 + the recorded ambiguous-redirect
   follow-up, and L7).
