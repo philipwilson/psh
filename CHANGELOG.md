@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.374.0 (2026-06-14) - Lint fix: LinterVisitor now analyzes redirect targets
+- BUG FIX (follow-up recorded during T2.7). `LinterVisitor` never traversed
+  `node.redirects` in its explicit handlers and had no `visit_Redirect`, so all
+  lint checks were blind to expansions inside redirect targets and heredoc
+  bodies — `echo hello > $undefined.log` reported "No issues found!".
+- Mixed in the shared `RedirectTraversalMixin` (matching security/validator/
+  metrics), added `self._visit_redirects(node)` to `visit_SimpleCommand`,
+  `visit_FunctionDef`, and `visit_IfConditional` (loops/groups already reach
+  redirects via `generic_visit`), and added a `visit_Redirect` that runs
+  `_check_variable_usage` on the target (skipping dup-fd synthetic `&1`) and on
+  expandable heredoc bodies (skipping quoted heredocs/here-strings).
+- Now correctly warns on undefined vars in redirect targets and records used
+  vars there (no more spurious "defined but never used" for a var used only in a
+  redirect). Verified NO false positives — redirect filenames are treated as
+  words/expansions, never as commands; non-redirect output is unchanged.
+- Added `TestLinterRedirectTargets` (7 tests). Full gate green: ruff + mypy
+  clean, `run_tests.py --parallel` 6881 passed.
+
 ## 0.373.0 (2026-06-14) - Behavior fix: two brace-expansion divergences from bash
 - BUG FIX (bash-verified; follow-ups recorded during T3.3). Two brace-expansion
   cases now match bash:
