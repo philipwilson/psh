@@ -12,8 +12,11 @@ All tests run psh in a subprocess: they exercise fork/wait behavior of the
 whole shell process, which must not touch the test runner's own fds.
 """
 
+import glob
+import os
 import subprocess
 import sys
+import tempfile
 import time
 
 import pytest
@@ -208,6 +211,66 @@ class TestProcessSubFdRelease:
         assert result.stdout.strip() == '3', (
             f"fd leaked after failed exec redirect: lowest free fd is "
             f"{result.stdout.strip()!r}; stderr={result.stderr!r}")
+
+
+def _psub_fifo_dirs() -> set:
+    """The set of write-side `>(...)` FIFO temp dirs currently on disk."""
+    return set(glob.glob(os.path.join(tempfile.gettempdir(), 'psh-psub-*')))
+
+
+class TestWriteSideFifoFilesystemLeak:
+    """Write-side `>(...)` FIFO temp dirs must not orphan on disk.
+
+    A write-side `>(cmd)` creates a `$TMPDIR/psh-psub-XXXX/pipe` named FIFO.
+    Inside a PIPELINE the consuming command (e.g. `tee`) runs in a forked
+    pipeline child that execs the external binary, so the parent's
+    process_sub_scope() finally never runs there — before the fix the FIFO
+    dir orphaned, one per invocation. The substitution child now unlinks its
+    own FIFO dir once it has opened the read end (robust to os._exit/exec).
+    """
+
+    def test_pipeline_write_substitution_no_fifo_dir_leak(self):
+        """`echo data | tee >(...) >/dev/null` must leave no psh-psub dir."""
+        before = _psub_fifo_dirs()
+        for _ in range(3):
+            result = run_psh('echo data | tee >(cat >/dev/null) >/dev/null')
+            assert result.returncode == 0, result.stderr
+        # Give any still-shutting-down child a moment to unlink.
+        time.sleep(0.3)
+        leaked = _psub_fifo_dirs() - before
+        assert leaked == set(), f"pipeline >() leaked FIFO dirs: {leaked!r}"
+
+    def test_non_pipeline_write_substitution_no_fifo_dir_leak(self):
+        """The non-pipeline form must also leave no psh-psub dir."""
+        before = _psub_fifo_dirs()
+        for _ in range(3):
+            result = run_psh('tee >(cat >/dev/null) </dev/null')
+            assert result.returncode == 0, result.stderr
+        time.sleep(0.3)
+        leaked = _psub_fifo_dirs() - before
+        assert leaked == set(), f"non-pipeline >() leaked FIFO dirs: {leaked!r}"
+
+    def test_multiple_write_substitutions_no_fifo_dir_leak(self):
+        """Two `>(...)` in one pipeline command leave no psh-psub dir."""
+        before = _psub_fifo_dirs()
+        result = run_psh(
+            'echo data | tee >(cat >/dev/null) >(cat >/dev/null) >/dev/null')
+        assert result.returncode == 0, result.stderr
+        time.sleep(0.3)
+        leaked = _psub_fifo_dirs() - before
+        assert leaked == set(), f"multi >() leaked FIFO dirs: {leaked!r}"
+
+    def test_pipeline_write_substitution_still_delivers_data(self, tmp_path):
+        """The FIFO cleanup must not break delivery to the consumer."""
+        out = tmp_path / 'got.txt'
+        result = run_psh(f'echo hi | tee >(cat > {out}) >/dev/null')
+        assert result.returncode == 0, result.stderr
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if out.exists() and out.read_text() == 'hi\n':
+                break
+            time.sleep(0.05)
+        assert out.read_text() == 'hi\n'
 
 
 class TestProcessSubOutputCorrectness:

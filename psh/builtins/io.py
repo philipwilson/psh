@@ -53,7 +53,14 @@ class EchoBuiltin(Builtin):
                 suppress_newline = True
 
         # Write output
-        self._write_output(output, suppress_newline, shell)
+        try:
+            self._write_output(output, suppress_newline, shell)
+        except OSError as e:
+            # The output fd was closed/broken (e.g. after `exec 1>&-`).
+            # bash reports `echo: write error: <strerror>` and returns 1.
+            strerror = os.strerror(e.errno) if e.errno else str(e)
+            self.error(f"write error: {strerror}", shell)
+            return 1
         return 0
 
     def _parse_flags(self, args: List[str]) -> Tuple[bool, bool, int]:
@@ -182,7 +189,14 @@ class PrintfBuiltin(Builtin):
             shell.expansion_manager.set_var_or_array_element(
                 target_var, result.output)
         else:
-            self.write(result.output, shell)
+            try:
+                self.write(result.output, shell)
+            except OSError as e:
+                # Output fd closed/broken (e.g. after `exec 1>&-`); bash
+                # reports `printf: write error: <strerror>` and returns 1.
+                strerror = os.strerror(e.errno) if e.errno else str(e)
+                self.error(f"write error: {strerror}", shell)
+                return 1
         return result.exit_code
 
     @property

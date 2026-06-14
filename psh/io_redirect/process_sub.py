@@ -89,6 +89,18 @@ def _execute_process_substitution_body(cmd_str: str, child_shell: 'Shell') -> in
     return child_shell.execute_command_list(ast)
 
 
+def _unlink_fifo_dir(fifo_path: str) -> None:
+    """Remove a write-side FIFO and its temp dir, ignoring missing entries."""
+    try:
+        os.unlink(fifo_path)
+    except OSError:
+        pass
+    try:
+        os.rmdir(os.path.dirname(fifo_path))
+    except OSError:
+        pass
+
+
 def _create_write_process_substitution(cmd_str: str, shell: 'Shell') -> Tuple[None, str, int, str]:
     """Create a FIFO-backed ``>(cmd)`` substitution.
 
@@ -127,6 +139,15 @@ def _create_write_process_substitution(cmd_str: str, shell: 'Shell') -> Tuple[No
                     signal.alarm(0)
                     signal.signal(signal.SIGALRM, old_handler)
                 os.dup2(fd, 0)
+                # Unlink the FIFO and its temp dir now that the read end is
+                # open. The O_RDONLY open above returns only once a writer is
+                # connected (FIFO rendezvous), so the consuming command already
+                # holds its own fd; an opened FIFO survives unlink of its name
+                # (POSIX). This makes cleanup robust to the consumer exiting via
+                # os._exit()/exec — e.g. an external `tee` in a pipeline child
+                # never runs the parent's process_sub_scope() finally. Mirrors
+                # the anonymous-temp-file pattern used for heredocs.
+                _unlink_fifo_dir(fifo_path)
             finally:
                 if fd is not None:
                     try:

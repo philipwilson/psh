@@ -12,6 +12,7 @@ application, restoration, and the POSIX ordering contract) lives in
 runs and whether prefix assignments persist (POSIX special builtins).
 """
 
+import os
 import sys
 from enum import Enum
 from typing import TYPE_CHECKING, List, Tuple
@@ -577,7 +578,20 @@ class CommandExecutor:
         # changed; setup/restore nest (eval/source/trap handlers run
         # further redirected builtins), so the pairing must be by frame,
         # innermost-first — guaranteed here by the try/finally.
-        redirect_frame = self.io_manager.setup_builtin_redirections(node)
+        try:
+            redirect_frame = self.io_manager.setup_builtin_redirections(node)
+        except OSError as e:
+            # A real syscall failure opening/duping the redirect target
+            # (ENOENT/EISDIR/EACCES). Emit bash's `psh: TARGET: STRERROR` shape
+            # instead of letting the raw OSError repr reach the generic handler.
+            # OSErrors raised with a custom message and no errno (noclobber,
+            # ambiguous redirect, bad fd) are NOT syscall errors — re-raise so
+            # their existing `psh: <message>` formatting is preserved.
+            if e.errno is None:
+                raise
+            name = e.filename if e.filename else os.strerror(e.errno)
+            print(f"psh: {name}: {os.strerror(e.errno)}", file=self.state.stderr)
+            return 1
         try:
             # Update shell streams for builtins that might use them
             self.shell.stdout = sys.stdout
