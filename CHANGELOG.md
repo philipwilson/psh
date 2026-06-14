@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.398.0 (2026-06-14) - Tier R7: mypy scope — expansion mixins + last interactive (160 files)
+- TYPE-CHECKING SCOPE (zero behavior change; reappraisal #7 lever). Added 7 more
+  modules → mypy now covers **160 source files**:
+  - The four expansion MIXINS `arrays.py`/`fields.py`/`operands.py`/
+    `operators.py` via a new `psh/expansion/_protocols.py` `VariableExpanderProtocol`
+    (a `typing.Protocol` declaring the shared `state`/`shell`/`param_expansion`
+    surface + cross-mixin methods). Each mixin declares it as a base ONLY under
+    `if TYPE_CHECKING:` (the `_Base = Protocol else object` idiom) — zero runtime
+    MRO/behavior change; cleared ~80 `attr-defined` errors.
+  - `psh/interactive/line_editor.py` and `psh/utils/signal_utils.py` — the last
+    two flagged interactive/util gaps.
+- Real fixes the wider scope surfaced (behavior-preserving): latent
+  `Optional[str]` operand flows in `operators.py` narrowed with `assert operand
+  is not None` (mirrors the existing `variable.py` pattern; `None` only occurs
+  for the separately-handled `${#var}` length); `signal_utils.SIGNAL_NAMES`
+  typed `Dict[int,str]` (was inferred `Dict[Signals,str]`, breaking int-keyed
+  `.get`); `line_editor.key_handler` typed as the binding union.
+- Full gate green: mypy clean (160 files), ruff clean, `run_tests.py --parallel`
+  7282 passed, `--compare-bash` 447.
+
 ## 0.397.0 (2026-06-14) - Tier R7.5: ~+/~-/~N tilde + "${!prefix@}" field-split
 - BUG FIX (bash-verified; reappraisal #7 M3/M2).
 - M3 `~+`/`~-`/`~N`/`~+N`/`~-N` tilde forms now expand: `~+`→`$PWD`, `~-`→

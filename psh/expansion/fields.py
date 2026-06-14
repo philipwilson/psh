@@ -4,10 +4,16 @@ Expansions that yield multiple fields (one per element) rather than a
 single string, including per-element operator application and field
 slicing. Mixed into VariableExpander (variable.py).
 """
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ._protocols import VariableExpanderProtocol
+    _Base = VariableExpanderProtocol
+else:
+    _Base = object
 
 
-
-class FieldExpansionMixin:
+class FieldExpansionMixin(_Base):
     """Multi-field expansion of array/positional parameters."""
 
     def expand_to_fields(self, parameter: str, operator, operand):

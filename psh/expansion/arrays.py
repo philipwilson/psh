@@ -4,9 +4,16 @@ Subscript/index/slice/length access on indexed and associative arrays,
 plus array-aware assignment. Mixed into VariableExpander (variable.py);
 methods use ``self.shell`` / ``self.state`` from the host class.
 """
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from ._protocols import VariableExpanderProtocol
+    _Base = VariableExpanderProtocol
+else:
+    _Base = object
 
 
-class ArrayOpsMixin:
+class ArrayOpsMixin(_Base):
     """Array subscript, slice, length, and assignment operations."""
 
     def _resolve_array_name(self, array_name: str) -> str:
@@ -152,7 +159,11 @@ class ArrayOpsMixin:
         from ..core import AssociativeArray, IndexedArray
         flags = self._var_attr_flags(array_name)
 
-        def dq(s: str) -> str:
+        def dq(s: Optional[str]) -> str:
+            # indices()/items() only yield present elements, so s is a real
+            # string here; the Optional is just to satisfy IndexedArray.get's
+            # declared return type.
+            s = (s or '')
             s = (s.replace('\\', '\\\\').replace('"', '\\"')
                  .replace('$', '\\$').replace('`', '\\`'))
             return f'"{s}"'

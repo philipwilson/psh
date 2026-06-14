@@ -5,9 +5,16 @@ pass: quoted text and quoted expansion results are glob-escaped (match
 literally) while unquoted text stays glob-active — bash semantics
 pinned in v0.266.0. Mixed into VariableExpander (variable.py).
 """
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ._protocols import VariableExpanderProtocol
+    _Base = VariableExpanderProtocol
+else:
+    _Base = object
 
 
-class OperandOpsMixin:
+class OperandOpsMixin(_Base):
     """Expansion of pattern/replacement operands with quote awareness."""
 
     def _expand_operand(self, operand: str) -> str:
@@ -209,8 +216,8 @@ class OperandOpsMixin:
         removed); backslashes inside expansion results stay literal.
         """
         from .parameter_expansion import PATSUB_MATCH
-        parts = []
-        buf = []
+        parts: list = []
+        buf: list = []
 
         def flush():
             if buf:

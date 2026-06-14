@@ -189,7 +189,7 @@ class SignalNotifier:
         Returns:
             List of signal numbers that were notified
         """
-        notifications = []
+        notifications: List[int] = []
         try:
             while True:
                 # Read in chunks for efficiency
@@ -268,7 +268,7 @@ class SignalRegistry:
     """
 
     # Well-known signal names for better reporting
-    SIGNAL_NAMES = {
+    SIGNAL_NAMES: Dict[int, str] = {
         signal.SIGINT: "SIGINT",
         signal.SIGTERM: "SIGTERM",
         signal.SIGHUP: "SIGHUP",

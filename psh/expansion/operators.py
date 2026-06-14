@@ -7,14 +7,20 @@ slicing (:off:len), and @-transforms. Mixed into VariableExpander
 """
 
 import sys
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, cast
+
+if TYPE_CHECKING:
+    from ._protocols import VariableExpanderProtocol
+    _Base = VariableExpanderProtocol
+else:
+    _Base = object
 
 # Sentinel distinguishing an unset variable from one set to the empty
 # string (used by the non-colon operators ${x-}, ${x+}, ...).
 _UNSET = object()
 
 
-class OperatorOpsMixin:
+class OperatorOpsMixin(_Base):
     """Application of ${var...} operators to resolved values."""
 
     def _positional_slice_elements(self) -> list:
@@ -177,7 +183,10 @@ class OperatorOpsMixin:
             if index_expr in ('@', '*'):
                 return var.value is not None
             return var.value is not None and self._eval_array_index(index_expr) == 0
-        return self.state.get_variable(var_name, _UNSET) is not _UNSET
+        # _UNSET is an identity sentinel for "variable absent"; the cast is
+        # type-only (get_variable's default is typed str), the `is not`
+        # identity check is unchanged.
+        return self.state.get_variable(var_name, cast(str, _UNSET)) is not _UNSET
 
     def _apply_operator(self, operator: str, value: str,
                         operand: Optional[str],
@@ -187,17 +196,23 @@ class OperatorOpsMixin:
         ``is_set`` distinguishes unset from set-but-empty and is only consulted
         by the non-colon operators (``-``, ``=``, ``+``, ``?``).
         """
+        # Every operator below carries a non-None operand (the parser emits
+        # operand=None only for ${#var} length, handled in its own branch);
+        # the asserts narrow Optional[str] -> str, matching variable.py.
         if operator == ':-':
             if not value:
+                assert operand is not None
                 return self._expand_operand(operand)
             return value
         elif operator == '-':
             # Unset -> operand; set (even if empty) -> value.
             if not is_set:
+                assert operand is not None
                 return self._expand_operand(operand)
             return value
         elif operator == '=':
             if not is_set:
+                assert operand is not None
                 expanded_default = self._expand_operand(operand)
                 if var_name and not var_name.isdigit():
                     self.set_var_or_array_element(var_name, expanded_default)
@@ -206,6 +221,7 @@ class OperatorOpsMixin:
         elif operator == '+':
             # Set (even if empty) -> operand; unset -> empty.
             if is_set:
+                assert operand is not None
                 return self._expand_operand(operand)
             return ''
         elif operator == '?':
@@ -218,6 +234,7 @@ class OperatorOpsMixin:
             return value
         elif operator == ':=':
             if not value:
+                assert operand is not None
                 expanded_default = self._expand_operand(operand)
                 if var_name and not var_name.isdigit():
                     self.set_var_or_array_element(var_name, expanded_default)
@@ -233,6 +250,7 @@ class OperatorOpsMixin:
             return value
         elif operator == ':+':
             if value:
+                assert operand is not None
                 return self._expand_operand(operand)
             return ''
         elif operator == '#' and operand is None:
@@ -240,24 +258,30 @@ class OperatorOpsMixin:
             # is prefix removal with a pattern that matches nothing.
             return self.param_expansion.get_length(value)
         elif operator == '#':
+            assert operand is not None
             return self.param_expansion.remove_shortest_prefix(
                 value, self._expand_pattern_operand(operand))
         elif operator == '##':
+            assert operand is not None
             return self.param_expansion.remove_longest_prefix(
                 value, self._expand_pattern_operand(operand))
         elif operator == '%%':
+            assert operand is not None
             return self.param_expansion.remove_longest_suffix(
                 value, self._expand_pattern_operand(operand))
         elif operator == '%':
+            assert operand is not None
             return self.param_expansion.remove_shortest_suffix(
                 value, self._expand_pattern_operand(operand))
         elif operator in ('/', '//', '/#', '/%'):
+            assert operand is not None
             return self._substitute(operator, value, operand)
         elif operator == ':':
             # Substring extraction. Offset and length are arithmetic
             # expressions (bash), so support ${x:1+1:2}, ${x:(-3):2}, etc.
             from ..core import ExpansionError
 
+            assert operand is not None
             offset, length = self._parse_slice_operand(operand, var_name or 'var')
             try:
                 return self.param_expansion.extract_substring(value, offset, length)
@@ -278,15 +302,19 @@ class OperatorOpsMixin:
         elif operator == '^':
             # Case mods: an absent pattern (parser emits '') defaults to '?'
             # — every character matches.
+            assert operand is not None
             return self.param_expansion.uppercase_first(
                 value, self._expand_pattern_operand(operand) or '?')
         elif operator == '^^':
+            assert operand is not None
             return self.param_expansion.uppercase_all(
                 value, self._expand_pattern_operand(operand) or '?')
         elif operator == ',':
+            assert operand is not None
             return self.param_expansion.lowercase_first(
                 value, self._expand_pattern_operand(operand) or '?')
         elif operator == ',,':
+            assert operand is not None
             return self.param_expansion.lowercase_all(
                 value, self._expand_pattern_operand(operand) or '?')
         elif len(operator) == 2 and operator[0] == '@':
