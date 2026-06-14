@@ -33,7 +33,7 @@ from .key_decoder import (
     Meta,
     Resize,
 )
-from .keybindings import EditMode, EmacsKeyBindings, ViKeyBindings
+from .keybindings import EditMode, EmacsKeyBindings, KeyBindings, ViKeyBindings
 from .line_renderer import LineRenderer
 from .tab_completion import CompletionEngine, TerminalManager
 
@@ -131,6 +131,7 @@ class LineEditor:
         if edit_mode == self.edit_mode:
             return
         self.edit_mode = edit_mode
+        self.key_handler: KeyBindings
         if edit_mode == 'vi':
             self.key_handler = ViKeyBindings()
             self.mode = EditMode.VI_INSERT
@@ -285,7 +286,8 @@ class LineEditor:
             self._accept_search()
 
         if isinstance(event, Key):
-            action = self.ESCAPE_KEY_ACTIONS.get(event.name)
+            # Key(None) is a complete but unrecognized sequence: no action.
+            action = self.ESCAPE_KEY_ACTIONS.get(event.name) if event.name else None
             return self._execute_action(action, '\x1b') if action else None
 
         if isinstance(event, Escape):
@@ -609,7 +611,7 @@ class LineEditor:
     # Rendering delegation (the renderer owns the terminal)
     # ------------------------------------------------------------------
 
-    def _paint(self, prompt: str = None):
+    def _paint(self, prompt: Optional[str] = None):
         """Paint prompt + buffer from the prompt origin (see
         LineRenderer.paint)."""
         if prompt is None:
@@ -617,7 +619,7 @@ class LineEditor:
         self.renderer.paint(prompt, self.edit_buffer.text,
                             self.edit_buffer.cursor)
 
-    def _redraw(self, prompt: str = None):
+    def _redraw(self, prompt: Optional[str] = None):
         """Repaint after an edit (see LineRenderer.redraw)."""
         if prompt is None:
             prompt = self.current_prompt

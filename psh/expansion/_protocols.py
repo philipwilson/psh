@@ -1,0 +1,58 @@
+"""Type-only Protocol for the VariableExpander mixins.
+
+``VariableExpander`` (variable.py) is composed from four mixins —
+``ArrayOpsMixin`` (arrays.py), ``OperatorOpsMixin`` (operators.py),
+``OperandOpsMixin`` (operands.py), and ``FieldExpansionMixin``
+(fields.py). Each mixin references ``self.state`` / ``self.shell`` /
+``self.param_expansion`` (set in ``VariableExpander.__init__``) and
+methods defined on *sibling* mixins or on ``VariableExpander`` itself.
+mypy cannot see those when checking a mixin in isolation.
+
+``VariableExpanderProtocol`` declares exactly that shared surface so the
+mixins type-check. It is purely a typing artifact: each mixin declares it
+as a base **only** under ``TYPE_CHECKING`` (so there is no runtime MRO or
+behavior change), and ``VariableExpander`` structurally satisfies it.
+"""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from ..core.state import ShellState
+    from ..shell import Shell
+    from .parameter_expansion import ParameterExpansion
+
+
+class VariableExpanderProtocol(Protocol):
+    """The attributes and cross-mixin methods the expander mixins use."""
+
+    # Attributes set in VariableExpander.__init__
+    shell: "Shell"
+    state: "ShellState"
+    param_expansion: "ParameterExpansion"
+
+    # --- variable.py entry points ---
+    def expand_variable(self, var_expr: str) -> str: ...
+    def expand_string_variables(self, text: str) -> str: ...
+
+    # --- arrays.py (ArrayOpsMixin) ---
+    def _resolve_array_name(self, array_name: str) -> str: ...
+    def _eval_array_index(self, index_expr: str) -> int: ...
+    def set_var_or_array_element(self, var_name: str, value: str) -> None: ...
+    def expand_array_index(self, index_expr: str) -> str: ...
+    def expand_array_to_list(self, var_expr: str) -> list: ...
+
+    # --- operands.py (OperandOpsMixin) ---
+    def _expand_operand(self, operand: str) -> str: ...
+    def _expand_pattern_operand(self, operand: str) -> str: ...
+    def _expand_replacement_operand(self, operand: str) -> list: ...
+    def _split_pattern_replacement(self, operand: str): ...
+
+    # --- operators.py (OperatorOpsMixin) ---
+    def _ifs_star_separator(self) -> str: ...
+    def _var_attr_flags(self, var_name: str) -> str: ...
+    def _shell_quote(self, s: str) -> str: ...
+    def _apply_op_per_element(self, operator, value, operand, var_name): ...
+
+    # --- fields.py (FieldExpansionMixin) ---
+    def expand_to_fields(self, parameter: str, operator, operand): ...

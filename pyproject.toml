@@ -110,6 +110,11 @@ files = [
     "psh/expansion/parameter_expansion.py",
     "psh/expansion/tilde.py",
     "psh/expansion/variable.py",
+    "psh/expansion/_protocols.py",
+    "psh/expansion/arrays.py",
+    "psh/expansion/fields.py",
+    "psh/expansion/operands.py",
+    "psh/expansion/operators.py",
     "psh/expansion/word_expander.py",
     "psh/expansion/word_splitter.py",
     # I/O redirection (annotation-clean modules)
@@ -123,7 +128,9 @@ files = [
     "psh/utils/printf_formatter.py",
     "psh/utils/shell_formatter.py",
     "psh/utils/token_formatter.py",
+    "psh/utils/signal_utils.py",
     # Interactive (annotation-clean modules)
+    "psh/interactive/line_editor.py",
     "psh/interactive/line_layout.py",
     "psh/interactive/edit_buffer.py",
     "psh/interactive/line_renderer.py",

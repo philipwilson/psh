@@ -13,7 +13,22 @@ class EditMode(Enum):
 
 
 class KeyBindings:
-    """Base class for key binding implementations."""
+    """Base class for key binding implementations.
+
+    The subclass-specific attribute annotations below are type-only (no
+    assignment): EmacsKeyBindings provides ``meta_bindings``; ViKeyBindings
+    provides ``mode``/``insert_bindings``/``normal_bindings``. Declaring them
+    on the base lets the editor hold either binding type as a single
+    ``KeyBindings`` and access the mode-appropriate attribute (the editor
+    only ever reaches an attribute on the matching mode's binding object).
+    """
+
+    # Emacs-only (set by EmacsKeyBindings.setup_bindings)
+    meta_bindings: Dict[str, str]
+    # Vi-only (set by ViKeyBindings)
+    mode: "EditMode"
+    insert_bindings: Dict[str, str]
+    normal_bindings: Dict[str, str]
 
     # Common control characters
     CTRL_A = '\x01'
