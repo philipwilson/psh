@@ -176,11 +176,15 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
     def visit_Pipeline(self, node: Pipeline) -> None:
         """Visit pipeline."""
-        self.metrics.total_pipelines += 1
-        self.metrics.max_pipeline_length = max(
-            self.metrics.max_pipeline_length,
-            len(node.commands)
-        )
+        # Only count genuine pipelines (with a `|`). psh wraps every command
+        # in a single-element Pipeline node, so counting those would report
+        # "Pipelines: N" for a script that contains no `|` at all.
+        if len(node.commands) > 1:
+            self.metrics.total_pipelines += 1
+            self.metrics.max_pipeline_length = max(
+                self.metrics.max_pipeline_length,
+                len(node.commands)
+            )
 
         for command in node.commands:
             self.visit(command)

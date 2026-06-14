@@ -83,6 +83,13 @@ class TestMetrics:
         assert m.total_commands == 2
         assert m.total_pipelines == 1
 
+    def test_single_command_is_not_a_pipeline(self):
+        # psh wraps every command in a single-element Pipeline node; the
+        # metrics must only count genuine `|` pipelines, not those wrappers.
+        m = _metrics("echo a; echo b; echo c")
+        assert m.total_pipelines == 0
+        assert m.max_pipeline_length == 0
+
     def test_while_loop_counts_condition_and_body(self):
         m = _metrics("while [ -e f ]; do sleep 1; done")
         assert m.total_commands == 2  # [ ... ]  and  sleep
