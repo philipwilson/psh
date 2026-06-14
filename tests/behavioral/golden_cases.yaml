@@ -1108,6 +1108,36 @@
   stderr: ""
   exit_code: 0
 
+- name: brace_char_range_backslash_empty_word
+  command: 'echo {Z..a}'
+  stdout: "Z [  ] ^ _ ` a\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_char_range_backslash_word_count
+  command: 'set -- {Z..a}; echo "$#"'
+  stdout: "8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_stray_braces_both_sides
+  command: 'echo }{a,b}{'
+  stdout: "}a{ }b{\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_stray_close_inside_word
+  command: 'echo a}{b,c}d'
+  stdout: "a}bd a}cd\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_stray_unbalanced_stays_literal
+  command: 'echo {a,b'
+  stdout: "{a,b\n"
+  stderr: ""
+  exit_code: 0
+
 - name: nested_command_sub_in_arith
   command: 'echo $(($(echo 3) + $(echo 4)))'
   stdout: "7\n"

@@ -37,10 +37,12 @@ class TestMetacharRangeNoCrash:
     """#12: a range generating shell metacharacters no longer re-lexes/crashes."""
 
     def test_range_crossing_metachars(self, captured_shell):
-        # Z..a spans [ \ ] ^ _ ` ; previously this raised a parse error.
-        rc = captured_shell.run_command('printf "%s\\n" {Z..a} | tr -d "\\n"')
-        # Just assert it runs without a parse error and emits 8 chars.
+        # Z..a spans [ <empty> ] ^ _ ` ; previously this raised a parse error.
+        # The backslash position (ASCII 92) becomes an empty-but-kept word
+        # (matching bash), so 8 words are produced.
+        rc = captured_shell.run_command('set -- {Z..a}; echo "$#"')
         assert rc == 0
+        assert captured_shell.get_stdout().strip() == "8"
 
 
 class TestNestedBraces:
