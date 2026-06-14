@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.378.0 (2026-06-14) - Docs: ground-up reappraisal #6 (post-campaign scorecard)
+- DOCS ONLY. Added `docs/reviews/ground_up_reappraisal_6_2026-06-14.md`: a fresh
+  five-cluster scorecard taken after the #5 refactor campaign (v0.355–v0.377).
+- Scorecard: Lexer/Parser/AST B+→A−, Executor/io_redirect B+→A−, Expansion A−
+  (held), Interactive/Scripting/Visitor/Tooling A− (held), Core/Builtins B+
+  (held). Overall **A−** — the campaign moved the grade up from #5's B+/A−;
+  mypy scope grew ~21→85 files (~38%).
+- The remaining gap to a clean A is now a concrete, bash-verified BUG LIST (not
+  architecture): 4 HIGH (`${var#}` returns length; extglob `!(pat)` negation;
+  `read` non-raw C-escapes; `source` no-args wipes positionals), 9 MEDIUM, 11
+  LOW — plus finishing mypy coverage (lexer/parser, expansion mixins). Defines
+  the "Tier R6" worst-first bug-fix phase.
+
 ## 0.377.0 (2026-06-14) - Behavior fix: extglob inside [[ ]] pattern operands
 - BUG FIX (bash-verified; final recorded follow-up). `[[ abc == a@(b|x)c ]]`
   raised a parse error (`Expected DOUBLE_RBRACKET, got LPAREN`); psh now matches
