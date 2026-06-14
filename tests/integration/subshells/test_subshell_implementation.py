@@ -515,20 +515,16 @@ class TestSubshellCompatibility:
         assert "Parent:" in output and "Subshell:" in output
 
     def test_empty_subshell(self, isolated_shell_with_temp_dir):
-        """Test empty subshell execution."""
+        """An empty subshell `()` is a syntax error, matching bash.
+
+        Bash requires at least one command inside a subshell; `()` (and
+        whitespace/comment/newline-only variants) report a syntax error and
+        exit 2.
+        """
         shell = isolated_shell_with_temp_dir
 
-        script = '''
-        ()
-        echo "Empty subshell exit status: $?" > output.txt
-        '''
-
-        result = shell.run_command(script)
-        assert result == 0
-
-        with open('output.txt', 'r') as f:
-            output = f.read().strip()
-        assert output == "Empty subshell exit status: 0"
+        result = shell.run_command('()')
+        assert result == 2
 
     def test_whitespace_handling(self, isolated_shell_with_temp_dir):
         """Test various whitespace patterns in subshells."""

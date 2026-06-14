@@ -12,7 +12,7 @@ import sys
 from typing import TYPE_CHECKING, Optional, cast
 
 from ..ast_nodes import StatementList, TopLevel
-from ..lexer import tokenize
+from ..lexer import UnclosedQuoteError, tokenize
 from ..parser import ParseError
 from ..utils import contains_heredoc
 from .base import ScriptComponent
@@ -263,6 +263,16 @@ class SourceProcessor(ScriptComponent):
                 location = f"{input_source.get_name()}:{start_line}" if start_line > 0 else "command"
                 print(f"psh: {location}: {e.message}", file=sys.stderr)
             self.state.last_exit_code = 2  # Bash uses exit code 2 for syntax errors
+            return 2
+        except UnclosedQuoteError as e:
+            # An unterminated quote that survived line-gathering (e.g. an
+            # EOF-flushed buffer like `-c "echo 'abc"`). This is a syntax
+            # error, exactly like the unterminated $((/$( /${ constructs the
+            # parser reports as ParseError above — route it to the same
+            # exit-2 path instead of the "unexpected error" defect handler.
+            location = f"{input_source.get_name()}:{start_line}" if start_line > 0 else "command"
+            print(f"psh: {location}: syntax error: {e}", file=sys.stderr)
+            self.state.last_exit_code = 2
             return 2
         except Exception as e:
             # Control-flow exceptions from nested execution propagate to
