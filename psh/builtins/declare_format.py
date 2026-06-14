@@ -9,16 +9,18 @@ no shell dependency.
 from ..core.variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
 # Attribute → flag char, in the order bash prints them.
+# Empirically verified against bash 5: the order is `a A i n r t x l u`
+# (note the case-fold flags l/u sort LAST, after every other attribute).
 _FLAG_CHARS = (
     (VarAttributes.ARRAY, 'a'),
     (VarAttributes.ASSOC_ARRAY, 'A'),
-    (VarAttributes.READONLY, 'r'),
-    (VarAttributes.EXPORT, 'x'),
     (VarAttributes.INTEGER, 'i'),
+    (VarAttributes.NAMEREF, 'n'),
+    (VarAttributes.READONLY, 'r'),
+    (VarAttributes.TRACE, 't'),
+    (VarAttributes.EXPORT, 'x'),
     (VarAttributes.LOWERCASE, 'l'),
     (VarAttributes.UPPERCASE, 'u'),
-    (VarAttributes.NAMEREF, 'n'),
-    (VarAttributes.TRACE, 't'),
 )
 
 
