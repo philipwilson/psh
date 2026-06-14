@@ -27,6 +27,12 @@ class FieldExpansionMixin:
 
         param = parameter
 
+        # ${!prefix@}: one field per matching variable name (like "$@").
+        # The *-form (!*) keeps scalar IFS-joined semantics, so it is NOT
+        # handled here and falls through to the scalar path.
+        if operator == '!@':
+            return self.param_expansion.match_variable_names(param)
+
         # ${!a[@]}: indices/keys, one field per key (no further operators).
         if operator == '!' and param.endswith('[@]'):
             return self.expand_array_to_list('${!' + param + '}')

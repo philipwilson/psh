@@ -196,6 +196,30 @@
   stderr: ""
   exit_code: 0
 
+- name: prefix_names_quoted_at_field_splits
+  command: 'x1=a; x2=b; set -- "${!x@}"; echo $#'
+  stdout: "2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: prefix_names_quoted_at_printf
+  command: 'x1=a; x2=b; printf "[%s]" "${!x@}"'
+  stdout: "[x1][x2]"
+  stderr: ""
+  exit_code: 0
+
+- name: prefix_names_quoted_star_single_field
+  command: 'x1=a; x2=b; printf "[%s]" "${!x*}"'
+  stdout: "[x1 x2]"
+  stderr: ""
+  exit_code: 0
+
+- name: prefix_names_no_match_no_fields
+  command: 'set -- "${!zzzqqq@}"; echo $#'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
 - name: param_suffix_strip
   command: 'file=archive.tar.gz; echo ${file%.*}'
   stdout: "archive.tar\n"
