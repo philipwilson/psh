@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.401.0 (2026-06-14) - Tier R7: mypy scope — all of io_redirect + executor (177 files); +bug fix
+- TYPE-CHECKING SCOPE (reappraisal #7 lever). Added 17 modules so the ENTIRE
+  `psh/io_redirect/` and `psh/executor/` packages are now type-checked: mypy
+  covers **177 source files** (~80% of the tree). Nothing deferred in these two
+  packages.
+- BUG FIX caught by the wider scope (bash-verified): `_execute_in_background`
+  was called on `BuiltinExecutionStrategy` but the method is named
+  `_execute_builtin_in_background`, so backgrounding a POSIX special builtin
+  (`: &`) raised `AttributeError` instead of running silently (bash: exit 0, no
+  output). Fixed + regression test in `test_background_jobs.py`.
+- Behavior-preserving type work: TYPE_CHECKING-only `redirects`/`background`
+  annotations on the base `Command`; `ShellState.set_variable(value: Any)` (it
+  legitimately receives array objects on scalar-append-to-array); `@overload` on
+  `job_control.wait_for_job`'s dual return; array element-assignment key
+  narrowing (extracted `_compute_element_value`); pipeline `pgid`/`pids`
+  narrowing; assorted local annotations.
+- Full gate green: mypy clean (177 files), ruff clean, `run_tests.py --parallel`
+  7306 passed, `--compare-bash` 461 passed.
+
 ## 0.400.0 (2026-06-14) - Tier R7.6: in-process builtin honors a closed output fd
 - BUG FIX (bash-verified; reappraisal #7 M1). `echo hi 1>&-` leaked `hi` to real
   stdout (and the brace-group/function paths leaked too): a builtin writes
