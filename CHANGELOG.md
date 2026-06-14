@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.386.0 (2026-06-14) - Tier R6.8: metrics pipeline count + version-sync meta-test
+- BUG FIX (reappraisal #6 L11). `MetricsVisitor` counted every `Pipeline` AST
+  node, but psh wraps every command in a single-element Pipeline — so a script
+  with no `|` reported "Pipelines: N". Now only genuine pipelines
+  (`len(node.commands) > 1`) are counted (and contribute to max-pipeline-length).
+  `metrics_visitor.py`; +regression test.
+- TOOLING. Added `tests/unit/tooling/test_version_sync.py`: a meta-test that
+  fails if `psh/version.py`'s `__version__` and the `**Current Version**:` lines
+  in README.md/ARCHITECTURE.md drift apart, or if CHANGELOG.md lacks a `##
+  <version>` entry — closing the one staleness gap the meta-test layer did not
+  guard (CLAUDE.md mandates these match but nothing enforced it).
+- Full gate green: ruff + mypy clean, `run_tests.py --parallel` (all phases).
+
 ## 0.385.0 (2026-06-14) - Tier R6.7: io_redirect bugs (M9/L2/L4)
 - BUG FIX (bash-verified; reappraisal #6 M9/L2/L4).
 - M9 write-side `>(cmd)` leaked a `$TMPDIR/psh-psub-XXXX/` FIFO dir per run when
