@@ -186,8 +186,12 @@ class ExpansionParsers:
                                 return False  # Function definition found
                             break
 
-            # For now, accept if tokenization succeeded
-            # Full validation would require parsing with statement_list
+            # Educational-scope boundary: this is a shallow guard, not a full
+            # parse — it rejects only the one construct that matters here (a
+            # function definition inside command substitution) and otherwise
+            # accepts any content that tokenizes. A full validation would re-run
+            # the statement-list parser on the substring; that is left to the
+            # actual command-substitution execution path.
             return True
         except Exception:
             # If tokenization fails, consider it invalid
