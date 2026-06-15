@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.426.0 (2026-06-15) - Tier R9.B2: extract HistoryState from ShellState
+- ARCHITECTURE (zero behavior change). Second increment of the ShellState
+  decomposition. Grouped the command-history list and its persistence settings
+  (`history`, `history_file`, `max_history_size`) into a new cohesive
+  `psh/core/history_state.py::HistoryState`.
+- `ShellState` now owns `self.history_state = HistoryState()` and exposes the
+  three names as delegating properties (read + write). The `history` getter
+  returns the list by reference, so HistoryManager's in-place
+  `append()`/`clear()` and the tests' `state.history = [...]` reassignments
+  both keep working — every call site is untouched.
+- Added `tests/unit/core/test_history_state.py` (4 tests) pinning defaults,
+  in-place mutation by reference, list reassignment, and file/size delegation.
+- Gate: ruff + mypy clean (`psh.core.*` `check_untyped_defs=true`), full suite
+  8,021 collected / all phases green.
+
 ## 0.425.0 (2026-06-15) - Tier R9.B1: extract TerminalState from ShellState
 - ARCHITECTURE (zero behavior change). First real increment of the ShellState
   god-object decomposition (the headline gap from the reappraisal). Extracted
