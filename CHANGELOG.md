@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.445.0 (2026-06-15) - Tier R11.P3(c): split the combinator commands module into a mixin package
+- REFACTOR (no behavior change). The 816-line `psh/parser/combinators/commands.py`
+  is now a `commands/` PACKAGE of focused mixin modules, mirroring the existing
+  `control_structures/` precedent. `CommandParsers` is composed from four mixins:
+  - `commands/redirections.py` — `RedirectionMixin` (`_parse_redirection`,
+    `_parse_fd_dup_word`, `_parse_word_as_word`)
+  - `commands/simple.py` — `SimpleCommandMixin` (simple-command word/redirect/array
+    collection and Word-AST building)
+  - `commands/pipelines.py` — `PipelineMixin` (pipeline + and-or list)
+  - `commands/statements.py` — `StatementMixin` (statement + the
+    `build_statement_list` recursion engine)
+  - `commands/__init__.py` keeps the `CommandParsers` class shell (`__init__`,
+    `_initialize_parsers`, the `set_command_parser`/`set_function_def` slot setters)
+    and the module-level convenience functions; `commands/_constants.py` holds the
+    shared `_FD_DUP_RE`/`_WORD_LIKE_TYPES`; `commands/_protocols.py` is a
+    TYPE_CHECKING-only `CommandParsersProtocol` so each mixin type-checks in isolation
+    (same pattern as `control_structures/_protocols.py`).
+  - Public API unchanged: `from ..commands import CommandParsers,
+    create_command_parsers, parse_simple_command, parse_pipeline, parse_and_or_list`
+    all still resolve. mypy `files` list updated to the new modules. Methods moved
+    verbatim; `tests/parser_differential` parity suite + whole suite green.
+- Review Ugly #5 (Phase 3) from `docs/reviews/parser_combinator_architecture_review_2026-06-15.md`.
+  This completes Tier R11.P3 (grammar simplification): condition headers (P3.1),
+  function body (P3a), build-once wiring (P3b), and module split (P3c) all shipped —
+  the combinator parser no longer slices tokens, builds its grammar once, and is
+  organized into focused modules.
+
 ## 0.444.0 (2026-06-15) - Tier R11.P3(b): combinator grammar built once (no post-construction patching)
 - REFACTOR (no behavior change). The combinator grammar graph is now built exactly
   ONCE and never rebuilt or patched after construction (review Ugly #4). Net −98 lines.
