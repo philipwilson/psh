@@ -402,7 +402,7 @@ class WordExpander:
                     return ' '.join(ufields) if ufields else []
                 out: List[str] = []
                 for f in ufields:
-                    out.extend(self._split_with_ifs(f, None))
+                    out.extend(self._split_with_ifs(f))
                 if (any(has_glob_metacharacters(f) for f in out)
                         and not self.state.options.get('noglob', False)):
                     return self._glob_words(out)
@@ -864,14 +864,14 @@ class WordExpander:
     # Splitting and globbing helpers
     # ------------------------------------------------------------------
 
-    def _split_with_ifs(self, text: Optional[str],
-                        quote_type: Optional[str]) -> List[str]:
-        """Split text using the current IFS, preserving quoting rules."""
+    def _split_with_ifs(self, text: Optional[str]) -> List[str]:
+        """Split unquoted text using the current IFS.
+
+        Only ever called on already-unquoted field text (quoted segments are
+        kept intact by the segment walk before they reach here).
+        """
         if text is None:
             return []
-
-        if quote_type is not None:
-            return [text]
 
         ifs = self.state.get_variable('IFS', ' \t\n')
         return self.manager.word_splitter.split(text, ifs)

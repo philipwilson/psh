@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.424.0 (2026-06-15) - Tier R9.A: dead-code & vestige sweep
+- CLEANUP (zero behavior change). First tier of the 2026-06-15 ground-up
+  reappraisal (`docs/reviews/ground_up_reappraisal_2026-06-15.md`): removed
+  dead/vestigial code flagged across subsystems, each verified truly
+  unreferenced before removal.
+- Lexer: removed unused `Token.from_basic_token` and `Token.normalized_value`
+  (`psh/lexer/token_types.py`).
+- Executor: removed uncalled `ExecutionContext.in_loop()`/`in_function()`
+  (`context.py`) and the unused `visitor` parameter of
+  `SubshellExecutor.execute_subshell()` (subshells fork a fresh Shell and never
+  use it; updated the lone call site in `core.py`).
+- Expansion: removed dead `AliasManager.save_to_file()`/`load_from_file()`
+  (`aliases.py`) and the always-`None` `quote_type` parameter of
+  `WordExpander._split_with_ifs()` (updated its caller and the subsystem
+  CLAUDE.md doc).
+- Core: removed dead `ShellState.history_index`/`current_line` fields
+  (`state.py`).
+- Interactive: removed the base-class `multi_line_handler = None` field
+  (only `REPLLoop` uses it, and sets its own) and the uncalled
+  `LineEditor.save_undo_state()` wrapper.
+- Parser (recursive descent): fixed a stale comment referencing the
+  `array_init.py` module deleted in v0.349.
+- Gate: ruff + mypy clean (225 files), full suite 8,012 collected / all phases
+  green.
+
 ## 0.423.0 (2026-06-15) - Consolidate combinator nested-terminator helper
 - PARSER (combinator backend, non-default; pure refactor, zero behavior
   change). Folded the three duplicated `_is_missing_nested_terminator()`

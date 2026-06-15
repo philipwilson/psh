@@ -163,8 +163,6 @@ class ShellState:
         self.history = []
         self.history_file = os.path.expanduser("~/.psh_history")
         self.max_history_size = 1000
-        self.history_index = -1
-        self.current_line = ""
 
         # Editor configuration
         self.edit_mode = 'emacs'

@@ -299,7 +299,7 @@ class ExecutorVisitor(ASTVisitor[int]):
     def visit_SubshellGroup(self, node: SubshellGroup) -> int:
         """Execute subshell group (...) in isolated environment."""
         # Delegate to SubshellExecutor
-        return self.subshell_executor.execute_subshell(node, self.context, self)
+        return self.subshell_executor.execute_subshell(node, self.context)
 
     def visit_BraceGroup(self, node: BraceGroup) -> int:
         """Execute brace group {...} in current shell environment."""

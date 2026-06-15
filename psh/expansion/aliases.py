@@ -292,24 +292,3 @@ class AliasManager:
             return False
 
         return True
-
-    def save_to_file(self, filename: str) -> None:
-        """Save aliases to a file."""
-        with open(filename, 'w') as f:
-            for name, value in sorted(self.aliases.items()):
-                # Escape single quotes in value
-                escaped_value = value.replace("'", "'\"'\"'")
-                f.write(f"alias {name}='{escaped_value}'\n")
-
-    def load_from_file(self, filename: str) -> List[str]:
-        """Load aliases from a file. Returns list of commands to execute."""
-        commands = []
-        try:
-            with open(filename, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#'):
-                        commands.append(line)
-        except FileNotFoundError:
-            pass
-        return commands
