@@ -141,20 +141,17 @@ class StructureParserMixin(_Base):
                         raise_committed_error(tokens, len(tokens) - 1, error.message)
                     raise
                 if not stmt_result.success:
-                    # Check if this is a real error or just end of statements
+                    # Check if this is a real error or just end of statements.
+                    # Missing compound terminators (fi/done/esac/then) inside a
+                    # function body now RAISE via raise_committed_error (caught
+                    # above by is_missing_nested_terminator) rather than
+                    # returning a soft failure, so no message remapping by
+                    # substring is needed here.
                     if inner_pos < len(body_tokens):
-                        body_error = stmt_result.error
-                        if "expected 'fi'" in body_error.lower():
-                            body_error = "Syntax error in function body: missing 'fi' to close if statement"
-                        elif "expected 'done'" in body_error.lower():
-                            body_error = "Syntax error in function body: missing 'done' to close loop"
-                        elif "expected 'esac'" in body_error.lower():
-                            body_error = "Syntax error in function body: missing 'esac' to close case statement"
-                        elif "expected 'then'" in body_error.lower():
-                            body_error = "Syntax error in function body: missing 'then' in if statement"
-                        else:
-                            body_error = f"Invalid function body: {body_error}"
-                        return ParseResult(success=False, error=body_error, position=outer_pos)
+                        return ParseResult(
+                            success=False,
+                            error=f"Invalid function body: {stmt_result.error}",
+                            position=outer_pos)
                     break
 
                 statements.append(stmt_result.value)

@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.439.0 (2026-06-15) - Tier R11.P1: combinator parser cleanup (dedup stale parsers, drop dead diagnostics)
+- REFACTOR (no behavior change). Phase 1 of elevating the combinator parser toward
+  textbook quality — pure deletion of stale/duplicate code, parity suites green.
+  Net −415 production lines.
+  - Removed the SECOND (dead) array parser from `special_commands.py`:
+    `_build_array_initialization`, `_build_array_element_assignment`,
+    `_detect_array_pattern`, `_build_array_assignment`, and the
+    `_collect_element_value_word` helper (~370 lines). They were built but never
+    composed into `special_command`, so they never ran in production. `arrays.py`
+    (`ArrayParsers`, used by the live command path in `commands.py`) is now the sole
+    array assignment/initialization parser.
+  - Removed the orphaned process-substitution parser
+    `ExpansionParsers._parse_process_substitution` (+ its `self.process_substitution`
+    instance) — it was not wired into `self.expansion`; the live standalone-procsub
+    parser is `SpecialCommandParsers._build_process_substitution`, and inline procsub
+    goes through the shared WordBuilder path.
+  - Deleted the dead function-body diagnostic remapping in `structures.py`: four
+    `"expected 'fi'/'done'/'esac'/'then'"` substring rewrites that became unreachable
+    after C3 (missing compound terminators inside a function body now RAISE via
+    `raise_committed_error`, caught structurally by `is_missing_nested_terminator`,
+    rather than returning a soft failure to be re-described by string-matching).
+  - Pruned now-unused imports (`ArrayInitialization`/`ArrayElementAssignment`/
+    `WordPart`/`Union`/`cast`/`format_token_value` in special_commands.py,
+    `ProcessSubstitution` in expansions.py) and the corresponding dead tests
+    (`TestArrayOperations` in test_special_commands.py, two procsub tests in
+    test_expansions.py).
+  - Documented `build_statement_list()` as the single compound-body engine in
+    `psh/parser/CLAUDE.md` and corrected the combinator file table (arrays live in
+    `arrays.py`, not `special_commands.py`).
+
 ## 0.438.0 (2026-06-15) - Tier R10.A: reappraisal #9 bug fixes (string-context `\$` escape, builtin I/O convention)
 - BUGFIX (behavior). String-context `\$` now always drops its backslash, matching
   bash and the command-argument Word path. `VariableExpander._process_double_quote_escape`
