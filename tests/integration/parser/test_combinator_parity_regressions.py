@@ -90,6 +90,14 @@ class TestKeywordSpelledArgumentInBody:
     def test_esac_as_argument_in_case_body(self):
         assert_three_way('case x in a) echo esac;; *) echo other;; esac')
 
+    def test_close_brace_as_argument_in_function_body(self):
+        # R11.P3 retired the function-body brace-slicer; a '}' that is an
+        # argument ('echo }') is no longer mis-read as the body's closer.
+        assert_three_way('f() { echo }; }; f')
+
+    def test_nested_brace_group_in_function_body(self):
+        assert_three_way('f() { { echo hi; }; }; f')
+
 
 class TestKeywordSpelledArgumentInCondition:
     """A 'do'/'then' spelled as an argument in a loop/if CONDITION is a word.
