@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.459.0 (2026-06-15) - Tier R12.D.2: dead-code & stale-doc sweep
+- REFACTOR (no behavior change). Removed verified-dead code flagged by reappraisals
+  #9/#10:
+  - RD parser: `TokenGroups.COMMAND_LIST_END` (defined, never used);
+    `WordBuilder.build_word_from_string` (a TODO stub with zero real callers — the
+    similarly-named test exercises `build_word_from_token`, not this).
+  - Visitor: the two `word_analysis` helpers with zero references anywhere
+    (`has_process_substitution`, `expansion_source_text`); documented the remaining
+    `has_*`/`referenced_*`/`is_*` helpers as an intended, tested Word-analysis library
+    surface (review M6). Dropped the unreachable `'777'/'0777'` branch in
+    `security_visitor._is_world_writable_permission` (the digit-regex branch above it
+    already returns for those).
+  - Scripting: the dead `InteractiveInput` class (`input_sources.py`; REPL input is
+    handled by `psh/interactive/`); the write-only `_last_hint` field in
+    `command_accumulator.py` (assigned three times, never read).
+- DOCS. Fixed stale references: `docs/subsystem_internals.md` no longer lists the
+  removed `AliasExecutionStrategy` as a live execution strategy (alias expansion moved to
+  the lex→parse boundary in R8.6b); `psh/core/CLAUDE.md`'s Key Files table now lists the
+  extracted sub-objects (`execution_state`/`history_state`/`terminal_state`/
+  `stream_bindings`) and `internal_errors.py`.
+- Second item of Tier R12.D.
+
 ## 0.458.0 (2026-06-15) - Tier R12.D.1: combinator dedup — drop dead pipeline/and-or duplicates, document the cut channel
 - REFACTOR (no behavior change). Deleted the two dead module-level functions
   `parse_pipeline` / `parse_and_or_list` from `parser/combinators/commands/__init__.py`

@@ -106,7 +106,6 @@ class CommandAccumulator:
         self.shell = shell
         self.state = shell.state
         self._lines: List[str] = []
-        self._last_hint: Optional[Hint] = None
         # Pending heredoc bodies as (delimiter, strip_tabs) pairs. While
         # non-empty, fed lines are body text checked incrementally against
         # these delimiters — never re-scanning (or re-parsing) the whole
@@ -139,7 +138,6 @@ class CommandAccumulator:
     def reset(self) -> None:
         """Drop the buffer and start the next command."""
         self._lines = []
-        self._last_hint = None
         self._open_heredocs = []
 
     def flush(self) -> Complete:
@@ -270,7 +268,6 @@ class CommandAccumulator:
         return ast, tokens
 
     def _need_more(self, hint: Hint) -> NeedMore:
-        self._last_hint = hint
         return NeedMore(hint)
 
     def _complete(self, raw: str, preview: str, ast=None, tokens=None,

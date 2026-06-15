@@ -18,6 +18,15 @@ an unparsed string: the *operator word* of a parameter expansion
 (``${FOO:-$BAR}`` stores ``$BAR`` in ``ParameterExpansion.word`` as raw text) and
 any visitor entry point that still receives a legacy/manually-constructed Word
 with no parts. Both are documented at their call sites.
+
+Intended library surface: the ``has_*`` predicates (``has_command_substitution``,
+``has_arithmetic_expansion``, ``has_parameter_expansion``,
+``has_unquoted_variable_expansion``, ...), ``referenced_variable_names`` and the
+``is_*`` classifiers form a stable structured-Word-analysis API for the analysis
+visitors. Not every predicate currently has a production caller — they are kept
+as a coherent, tested set so a new analysis visitor can ask these questions
+without re-deriving them from rendered strings (rather than each visitor growing
+its own ad-hoc string checks, the original problem this module solved).
 """
 
 from __future__ import annotations
@@ -33,10 +42,8 @@ from ..ast_nodes import (
     ExpansionPart,
     LiteralPart,
     ParameterExpansion,
-    ProcessSubstitution,
     VariableExpansion,
     Word,
-    WordPart,
 )
 
 # Operators whose presence means a parameter expansion supplies a value when the
@@ -199,11 +206,6 @@ def has_arithmetic_expansion(word: Word) -> bool:
     return _has_expansion_of(word, ArithmeticExpansion)
 
 
-def has_process_substitution(word: Word) -> bool:
-    """True if the word contains a ``<(...)`` / ``>(...)`` process substitution."""
-    return _has_expansion_of(word, ProcessSubstitution)
-
-
 def has_parameter_expansion(word: Word) -> bool:
     """True if the word contains a ``${...}`` parameter expansion."""
     return _has_expansion_of(word, ParameterExpansion)
@@ -271,8 +273,3 @@ def contains_metacharacters_in_unquoted_expansion(word: Word) -> bool:
             if any(c in metachars for c in part.text):
                 return True
     return False
-
-
-def expansion_source_text(part: WordPart) -> str:
-    """The ``$``-source rendering of a single expansion/literal part."""
-    return str(part)
