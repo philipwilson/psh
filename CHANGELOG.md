@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.441.0 (2026-06-15) - Tier R11.P2.2: combinator core — farthest-error selection in or_else
+- REFACTOR (improved diagnostics, parity-preserving). `Parser.or_else` no longer
+  blindly returns the alternative's failure when both branches fail recoverably.
+  It now applies the textbook *farthest-error* rule via a new `_farther_failure`
+  helper: keep whichever failure consumed more input (higher `position` — the
+  alternative that matched the most before giving up), and on a positional tie
+  merge the two `expected` label sets (order-preserving, de-duplicated) so the
+  diagnostic can name every token that could have continued the parse. Uses the
+  `expected`/`position` channel added in P2.1.
+- Behaviour is parity-preserving: accept/reject is unchanged (only the surfaced
+  failure among already-failing alternatives changes), and the full
+  `tests/parser_differential` diagnostic-position + exception-type parity suite
+  stays green — the chosen positions still match the recursive-descent parser
+  everywhere they are pinned.
+- +3 core unit tests (farthest wins regardless of try-order; expected-label merge
+  on tie). This is review Phase 2 item 3 (expected labels + farthest-error) from
+  `docs/reviews/parser_combinator_architecture_review_2026-06-15.md`. With P2.1
+  (discriminated union + cut semantics) the review's Phase 2 is substantially done;
+  the remaining item 5 (converting the ~50 `raise_committed_error` exception sites
+  to committed `ParseFailure` returns) is deferred — exception propagation is a
+  legitimate global-cut and a wholesale conversion is high-churn with debatable
+  clarity gains.
+
 ## 0.440.0 (2026-06-15) - Tier R11.P2.1: combinator core — discriminated ParseResult + cut/expected error channel
 - REFACTOR (no behavior change). Phase 2 of elevating the combinator parser to
   textbook FP begins with the result type. `ParseResult` is now a success/failure

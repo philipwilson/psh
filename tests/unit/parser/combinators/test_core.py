@@ -124,6 +124,39 @@ class TestCommitment:
         assert result.value == []
 
 
+class TestFarthestError:
+    """or_else reports the more informative failure (farthest-error rule)."""
+
+    def test_or_else_keeps_failure_that_consumed_more(self):
+        """When both branches fail, keep the one that reached further."""
+        near = Parser(lambda t, p: ParseFailure(p, "near", expected=("A",)))
+        far = Parser(lambda t, p: ParseFailure(p + 2, "far", expected=("B",)))
+        # near is tried first but far reached a higher position -> far wins
+        result = near.or_else(far).parse([], 0)
+        assert result.success is False
+        assert result.error == "far"
+        assert result.position == 2
+
+    def test_or_else_keeps_first_when_it_reached_further(self):
+        """Order-independent: the farther failure wins even if tried first."""
+        far = Parser(lambda t, p: ParseFailure(p + 3, "far", expected=("B",)))
+        near = Parser(lambda t, p: ParseFailure(p, "near", expected=("A",)))
+        result = far.or_else(near).parse([], 0)
+        assert result.success is False
+        assert result.error == "far"
+        assert result.position == 3
+
+    def test_or_else_merges_expected_on_tie(self):
+        """At an equal position the expected-label sets are merged."""
+        a = Parser(lambda t, p: ParseFailure(p, "a", expected=("A", "C")))
+        b = Parser(lambda t, p: ParseFailure(p, "b", expected=("B", "C")))
+        result = a.or_else(b).parse([], 0)
+        assert result.success is False
+        assert result.position == 0
+        # order-preserving, de-duplicated union
+        assert result.expected == ("A", "C", "B")
+
+
 class TestParser:
     """Test the Parser class methods."""
 
