@@ -22,7 +22,7 @@ from ....ast_nodes import (
     WhileLoop,
 )
 from ....lexer.token_types import Token
-from ..core import Parser, ParseResult, optional
+from ..core import Parser, ParseResult, many, optional
 from ..diagnostics import raise_committed_error
 
 if TYPE_CHECKING:
@@ -70,6 +70,9 @@ class PipelineMixin(_Base):
                 is_pipe_stderr = sep_result.value.type.name == 'PIPE_AND'
                 pipe_stderr_list.append(is_pipe_stderr)
                 pos = sep_result.position
+                # bash allows a newline (line continuation) after a pipe
+                # operator before the next stage; skip any.
+                pos = many(self.tokens.newline).parse(tokens, pos).position
 
                 cmd_result = self._pipeline_element.parse(tokens, pos)
                 if not cmd_result.success:
@@ -125,6 +128,9 @@ class PipelineMixin(_Base):
                     break
                 op_token = op_result.value
                 pos = op_result.position
+                # bash allows a newline (line continuation) after && / ||
+                # before the right-hand command; skip any.
+                pos = many(self.tokens.newline).parse(tokens, pos).position
 
                 rhs_result = parse_element(tokens, pos)
                 if not rhs_result.success:
