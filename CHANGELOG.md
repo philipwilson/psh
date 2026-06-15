@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.461.0 (2026-06-15) - Tier R12.D.4: collapse apply_permanent_redirections dispatch (review M7)
+- REFACTOR (no behavior change). `FileRedirector.apply_permanent_redirections` (the
+  `exec`-redirection path) re-enumerated every `redirect.type` to choose a stream rebind
+  even though the planner already computed `plan.target_fd`. Collapsed the seven-branch
+  chain to direction-based dispatch: combined (`&>`) rebinds 1+2; a dup/close
+  (`&` in the type) rebinds its own fd (close → nothing); input forms (`<` prefix)
+  rebind stdin; output forms (`>`/`>>`/`>|`) rebind the target fd. The residual of
+  reappraisal #9 M7. All 245 redirection tests green (including the `exec >&-` close-fd
+  case that a first cut regressed and that now pins the dup-vs-close distinction).
+- Fourth item of Tier R12.D.
+
 ## 0.460.0 (2026-06-15) - Tier R12.D.3: security visitor detects recursive+force rm in all flag spellings
 - IMPROVEMENT (security analysis). `SecurityVisitor`'s dangerous-`rm` check matched only
   the literal `-rf` substring of the joined args, so `rm -r -f /`, `rm -fr /`,
