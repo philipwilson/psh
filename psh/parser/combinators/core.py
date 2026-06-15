@@ -2,6 +2,29 @@
 
 This module provides the fundamental building blocks for parser combinators,
 including the Parser class and basic combinators like many, optional, sequence, etc.
+
+## The result type: a discriminated success/failure union
+
+A parse produces a :class:`ParseResult`, which is one of two shapes:
+
+* :class:`ParseSuccess` — carries the produced ``value`` and the ``position``
+  reached.
+* :class:`ParseFailure` — carries the ``position`` at which the failure was
+  observed plus an FP-style error channel:
+
+  * ``committed`` — a *cut*. The parser consumed input and is certain this is
+    the right production, so :meth:`Parser.or_else` must NOT backtrack to an
+    alternative; the committed failure propagates instead. (Until callers start
+    constructing committed failures, this defaults to ``False`` and ``or_else``
+    behaves exactly as a plain ordered choice.)
+  * ``expected`` — labels describing what would have allowed progress, kept so
+    same-position alternatives can be merged into a richer diagnostic.
+
+``ParseSuccess`` / ``ParseFailure`` are the *discriminated constructors*; both
+are ``ParseResult`` instances and expose the legacy attribute surface
+(``success``/``value``/``position``/``error``) so existing call sites keep
+working while the grammar migrates to constructing the two shapes explicitly
+and branching on ``result.success``.
 """
 
 from dataclasses import dataclass
@@ -17,18 +40,50 @@ U = TypeVar('U')
 
 @dataclass
 class ParseResult(Generic[T]):
-    """Result of a parse operation.
+    """Result of a parse operation — a success/failure discriminated union.
+
+    Prefer the :class:`ParseSuccess` / :class:`ParseFailure` constructors in
+    new code; branch on ``success``. The raw field constructor is retained for
+    back-compatibility with existing call sites.
 
     Attributes:
-        success: Whether the parse succeeded
-        value: The parsed value if successful
-        position: Current position in token stream (where parsing stopped)
-        error: Error message if parse failed
+        success: Whether the parse succeeded (the discriminant).
+        value: The parsed value if successful.
+        position: Position reached (success) or where the failure was observed.
+        error: Error message if the parse failed.
+        committed: Cut flag — a committed failure is not retried by ``or_else``.
+        expected: Labels of what would have allowed progress (for diagnostics).
     """
     success: bool
     value: Optional[T] = None
     position: int = 0
     error: Optional[str] = None
+    committed: bool = False
+    expected: Tuple[str, ...] = ()
+
+
+class ParseSuccess(ParseResult[T]):
+    """A successful parse carrying a value (discriminated constructor)."""
+
+    def __init__(self, value: T, position: int) -> None:
+        super().__init__(success=True, value=value, position=position)
+
+
+class ParseFailure(ParseResult[T]):
+    """A failed parse (discriminated constructor) with the FP error channel.
+
+    Args:
+        position: Where the failure was observed.
+        error: Human-readable message (the one intentionally-unaligned axis vs
+            the recursive-descent parser).
+        expected: Labels of what would have allowed progress.
+        committed: When True, this is a cut — ``or_else`` will not backtrack.
+    """
+
+    def __init__(self, position: int, error: Optional[str] = None, *,
+                 expected: Tuple[str, ...] = (), committed: bool = False) -> None:
+        super().__init__(success=False, value=None, position=position,
+                         error=error, expected=expected, committed=committed)
 
 
 class Parser(Generic[T]):
@@ -70,12 +125,9 @@ class Parser(Generic[T]):
         def mapped_parse(tokens: List[Token], pos: int) -> ParseResult[U]:
             result = self.parse(tokens, pos)
             if result.success:
-                return ParseResult(
-                    success=True,
-                    value=fn(cast(T, result.value)),
-                    position=result.position
-                )
-            return ParseResult(success=False, error=result.error, position=pos)
+                return ParseSuccess(fn(cast(T, result.value)), result.position)
+            return ParseFailure(pos, result.error, expected=result.expected,
+                                committed=result.committed)
 
         return Parser(mapped_parse)
 
@@ -91,25 +143,32 @@ class Parser(Generic[T]):
         def sequence_parse(tokens: List[Token], pos: int) -> ParseResult[Tuple[T, U]]:
             first_result = self.parse(tokens, pos)
             if not first_result.success:
-                return ParseResult(success=False, error=first_result.error, position=pos)
+                return ParseFailure(pos, first_result.error,
+                                    expected=first_result.expected,
+                                    committed=first_result.committed)
 
             second_result = next_parser.parse(tokens, first_result.position)
             if not second_result.success:
                 # Atomic: a failed sequence resets to the start position, the
-                # same backtracking discipline as sequence().
-                return ParseResult(success=False, error=second_result.error,
-                                 position=pos)
+                # same backtracking discipline as sequence(). A committed
+                # failure keeps its cut so or_else upstream won't backtrack.
+                return ParseFailure(pos, second_result.error,
+                                    expected=second_result.expected,
+                                    committed=second_result.committed)
 
-            return ParseResult(
-                success=True,
-                value=(cast(T, first_result.value), cast(U, second_result.value)),
-                position=second_result.position
+            return ParseSuccess(
+                (cast(T, first_result.value), cast(U, second_result.value)),
+                second_result.position,
             )
 
         return Parser(sequence_parse)
 
     def or_else(self, alternative: 'Parser[T]') -> 'Parser[T]':
         """Try this parser, or alternative if it fails.
+
+        Ordered choice with a cut: if this parser fails *committed* (it consumed
+        input and is sure of the production), the failure propagates and the
+        alternative is NOT tried. Otherwise the alternative is attempted.
 
         Args:
             alternative: Parser to try if this one fails
@@ -119,7 +178,7 @@ class Parser(Generic[T]):
         """
         def choice_parse(tokens: List[Token], pos: int) -> ParseResult[T]:
             result = self.parse(tokens, pos)
-            if result.success:
+            if result.success or result.committed:
                 return result
             return alternative.parse(tokens, pos)
 
@@ -138,23 +197,23 @@ def token(token_type: str) -> Parser[Token]:
     """
     def parse_token(tokens: List[Token], pos: int) -> ParseResult[Token]:
         if pos < len(tokens) and tokens[pos].type.name == token_type:
-            return ParseResult(
-                success=True,
-                value=tokens[pos],
-                position=pos + 1
-            )
+            return ParseSuccess(tokens[pos], pos + 1)
         error = f"Expected {token_type}"
         if pos < len(tokens):
             error += f", got {tokens[pos].type.name}"
         else:
             error += ", but reached end of input"
-        return ParseResult(success=False, error=error, position=pos)
+        return ParseFailure(pos, error, expected=(token_type,))
 
     return Parser(parse_token)
 
 
 def many(parser: Parser[T]) -> Parser[List[T]]:
     """Parse zero or more occurrences.
+
+    Stops on the first non-committed failure (returning what was collected). A
+    *committed* failure propagates — it is a real syntax error mid-repetition,
+    not the natural end of the repetition.
 
     Args:
         parser: Parser to repeat
@@ -169,15 +228,13 @@ def many(parser: Parser[T]) -> Parser[List[T]]:
         while True:
             result = parser.parse(tokens, current_pos)
             if not result.success:
+                if result.committed:
+                    return cast(ParseResult[List[T]], result)
                 break
             results.append(cast(T, result.value))
             current_pos = result.position
 
-        return ParseResult(
-            success=True,
-            value=results,
-            position=current_pos
-        )
+        return ParseSuccess(results, current_pos)
 
     return Parser(parse_many)
 
@@ -207,7 +264,7 @@ def optional(parser: Parser[T]) -> Parser[Optional[T]]:
         result = parser.parse(tokens, pos)
         if result.success:
             return cast(ParseResult[Optional[T]], result)
-        return ParseResult(success=True, value=None, position=pos)
+        return ParseSuccess(None, pos)
 
     return Parser(parse_optional)
 
@@ -228,15 +285,13 @@ def sequence(*parsers: Parser) -> Parser[tuple]:
         for parser in parsers:
             result = parser.parse(tokens, current_pos)
             if not result.success:
-                return ParseResult(success=False, error=result.error, position=pos)
+                return ParseFailure(pos, result.error,
+                                    expected=result.expected,
+                                    committed=result.committed)
             results.append(result.value)
             current_pos = result.position
 
-        return ParseResult(
-            success=True,
-            value=tuple(results),
-            position=current_pos
-        )
+        return ParseSuccess(tuple(results), current_pos)
 
     return Parser(parse_sequence)
 
@@ -256,7 +311,8 @@ def separated_by(parser: Parser[T], separator: Parser) -> Parser[List[T]]:
         first = parser.parse(tokens, pos)
         if not first.success:
             # If we can't parse even one item, fail instead of returning empty list
-            return ParseResult(success=False, error=first.error, position=pos)
+            return ParseFailure(pos, first.error, expected=first.expected,
+                                committed=first.committed)
 
         items: List[T] = [cast(T, first.value)]
         current_pos = first.position
@@ -265,20 +321,20 @@ def separated_by(parser: Parser[T], separator: Parser) -> Parser[List[T]]:
         while True:
             sep_result = separator.parse(tokens, current_pos)
             if not sep_result.success:
+                if sep_result.committed:
+                    return cast(ParseResult[List[T]], sep_result)
                 break
 
             item_result = parser.parse(tokens, sep_result.position)
             if not item_result.success:
+                if item_result.committed:
+                    return cast(ParseResult[List[T]], item_result)
                 break
 
             items.append(cast(T, item_result.value))
             current_pos = item_result.position
 
-        return ParseResult(
-            success=True,
-            value=items,
-            position=current_pos
-        )
+        return ParseSuccess(items, current_pos)
 
     return Parser(parse_separated)
 
@@ -320,23 +376,27 @@ def between(open_p: Parser, close_p: Parser, content_p: Parser[T]) -> Parser[T]:
         # Parse opening delimiter
         open_result = open_p.parse(tokens, pos)
         if not open_result.success:
-            return ParseResult(success=False, error=f"Expected opening delimiter: {open_result.error}", position=pos)
+            return ParseFailure(pos, f"Expected opening delimiter: {open_result.error}",
+                                expected=open_result.expected,
+                                committed=open_result.committed)
 
         # Parse content
         content_result = content_p.parse(tokens, open_result.position)
         if not content_result.success:
-            return ParseResult(success=False, error=f"Expected content: {content_result.error}", position=open_result.position)
+            return ParseFailure(open_result.position,
+                                f"Expected content: {content_result.error}",
+                                expected=content_result.expected,
+                                committed=content_result.committed)
 
         # Parse closing delimiter
         close_result = close_p.parse(tokens, content_result.position)
         if not close_result.success:
-            return ParseResult(success=False, error=f"Expected closing delimiter: {close_result.error}", position=content_result.position)
+            return ParseFailure(content_result.position,
+                                f"Expected closing delimiter: {close_result.error}",
+                                expected=close_result.expected,
+                                committed=close_result.committed)
 
-        return ParseResult(
-            success=True,
-            value=content_result.value,
-            position=close_result.position
-        )
+        return ParseSuccess(cast(T, content_result.value), close_result.position)
 
     return Parser(parse_between)
 
@@ -353,8 +413,9 @@ def skip(parser: Parser) -> Parser[None]:
     def parse_skip(tokens: List[Token], pos: int) -> ParseResult[None]:
         result = parser.parse(tokens, pos)
         if result.success:
-            return ParseResult(success=True, value=None, position=result.position)
-        return ParseResult(success=False, error=result.error, position=pos)
+            return ParseSuccess(None, result.position)
+        return ParseFailure(pos, result.error, expected=result.expected,
+                            committed=result.committed)
 
     return Parser(parse_skip)
 
@@ -369,7 +430,7 @@ def fail_with(msg: str) -> Parser[None]:
         Parser that always fails
     """
     def parse_fail(tokens: List[Token], pos: int) -> ParseResult[None]:
-        return ParseResult(success=False, error=msg, position=pos)
+        return ParseFailure(pos, msg)
 
     return Parser(parse_fail)
 
@@ -386,9 +447,9 @@ def try_parse(parser: Parser[T]) -> Parser[Optional[T]]:
     def parse_try(tokens: List[Token], pos: int) -> ParseResult[Optional[T]]:
         result = parser.parse(tokens, pos)
         if result.success:
-            return ParseResult(success=True, value=result.value, position=result.position)
+            return ParseSuccess(result.value, result.position)
         # Return success with None, keeping original position
-        return ParseResult(success=True, value=None, position=pos)
+        return ParseSuccess(None, pos)
 
     return Parser(parse_try)
 
@@ -404,13 +465,15 @@ def keyword(kw: str) -> Parser[Token]:
     """
     def parse_keyword(tokens: List[Token], pos: int) -> ParseResult[Token]:
         if pos >= len(tokens):
-            return ParseResult(success=False, error=f"Expected keyword '{kw}' but reached end of input", position=pos)
+            return ParseFailure(pos, f"Expected keyword '{kw}' but reached end of input",
+                                expected=(kw,))
 
         token = tokens[pos]
         if matches_keyword(token, kw):
-            return ParseResult(success=True, value=token, position=pos + 1)
+            return ParseSuccess(token, pos + 1)
 
-        return ParseResult(success=False, error=f"Expected keyword '{kw}', got {token.value}", position=pos)
+        return ParseFailure(pos, f"Expected keyword '{kw}', got {token.value}",
+                            expected=(kw,))
 
     return Parser(parse_keyword)
 
@@ -426,13 +489,15 @@ def literal(lit: str) -> Parser[Token]:
     """
     def parse_literal(tokens: List[Token], pos: int) -> ParseResult[Token]:
         if pos >= len(tokens):
-            return ParseResult(success=False, error=f"Expected '{lit}' but reached end of input", position=pos)
+            return ParseFailure(pos, f"Expected '{lit}' but reached end of input",
+                                expected=(lit,))
 
         token = tokens[pos]
         if token.value == lit:
-            return ParseResult(success=True, value=token, position=pos + 1)
+            return ParseSuccess(token, pos + 1)
 
-        return ParseResult(success=False, error=f"Expected '{lit}', got {token.value}", position=pos)
+        return ParseFailure(pos, f"Expected '{lit}', got {token.value}",
+                            expected=(lit,))
 
     return Parser(parse_literal)
 

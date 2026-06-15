@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.440.0 (2026-06-15) - Tier R11.P2.1: combinator core — discriminated ParseResult + cut/expected error channel
+- REFACTOR (no behavior change). Phase 2 of elevating the combinator parser to
+  textbook FP begins with the result type. `ParseResult` is now a success/failure
+  discriminated union with two explicit constructors:
+  - `ParseSuccess(value, position)` and `ParseFailure(position, error, *, expected,
+    committed)` (both `ParseResult` subclasses; the legacy
+    `success`/`value`/`position`/`error` attribute surface is preserved so all ~150
+    construction sites and ~400 field reads keep working during the migration).
+  - The failure shape gains an FP error channel: `committed` (a *cut* — a committed
+    failure is NOT retried by `or_else`, so commitment can live inside the combinator
+    algebra instead of being raised as an exception) and `expected` (labels for
+    same-position diagnostic merging, populated by `token`/`keyword`/`literal`).
+  - `or_else`/`many`/`separated_by` now honour the cut: a committed failure
+    propagates instead of being swallowed/retried. This is wired but a NO-OP until
+    P2.2 starts constructing committed failures (every failure is recoverable today),
+    so behavior is identical — verified by the full `tests/parser_differential`
+    parity suite (AST + rejection + diagnostic-position + exception-type) and the
+    whole suite (7712 passed).
+  - The core combinators (`map`/`then`/`sequence`/`between`/`skip`/`token`/…) now
+    construct via `ParseSuccess`/`ParseFailure`; failure-position semantics
+    (atomic reset-to-entry where the old code reset) are preserved exactly.
+  - +8 core unit tests pinning the constructors and the commitment short-circuit.
+- This is review Phase 2 step 1 of
+  `docs/reviews/parser_combinator_architecture_review_2026-06-15.md`. Next (P2.2):
+  convert the `raise_committed_error` sites to committed `ParseFailure`s where
+  practical, moving committed syntax errors out of exceptions.
+
 ## 0.439.0 (2026-06-15) - Tier R11.P1: combinator parser cleanup (dedup stale parsers, drop dead diagnostics)
 - REFACTOR (no behavior change). Phase 1 of elevating the combinator parser toward
   textbook quality — pure deletion of stale/duplicate code, parity suites green.
