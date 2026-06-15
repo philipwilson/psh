@@ -85,7 +85,29 @@ def _parse_accepts_combinator(source):
     return True
 
 
+# Valid constructs that both parsers must ACCEPT.  These guard against
+# over-eager rejection when tightening the empty-body/empty-item diagnostics
+# above: an empty `case` (no patterns) and zero-iteration loops are legal bash,
+# distinct from the empty-*body* forms (`while true; do; done`) bash rejects.
+ACCEPTANCE_CORPUS = [
+    pytest.param('case x in esac', id='empty-case-bare'),
+    pytest.param('case x in\n\nesac', id='empty-case-blank-lines'),
+    pytest.param('case x in\n# c\nesac', id='empty-case-comment-only'),
+    pytest.param('case x in esac; echo after', id='empty-case-trailing-command'),
+    pytest.param('case x in a) echo a;; esac', id='normal-case'),
+    pytest.param('for x in; do echo hi; done', id='for-empty-word-list'),
+    pytest.param('if true; then :; fi', id='if-noop-body'),
+    pytest.param('while false; do :; done', id='while-noop-body'),
+]
+
+
 @pytest.mark.parametrize('source', REJECTION_CORPUS)
 def test_combinator_rejects_recursive_descent_rejections(source):
     assert _parse_accepts_recursive_descent(source) is False
     assert _parse_accepts_combinator(source) is False
+
+
+@pytest.mark.parametrize('source', ACCEPTANCE_CORPUS)
+def test_combinator_accepts_recursive_descent_acceptances(source):
+    assert _parse_accepts_recursive_descent(source) is True
+    assert _parse_accepts_combinator(source) is True

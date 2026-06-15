@@ -28,8 +28,14 @@ The combinator parser now reports the same broad diagnostic shape for:
 - Missing command around binary command operators: `echo |`, `echo |&`,
   `echo &&`, `echo ||`, `&& echo`, `|| echo`
 - Nested missing terminators: nested `if`, `while`, and `case` examples
-- Empty compound bodies/items: `if true; then; fi`, loop `do; done` forms,
-  and `case x in ; esac`
+- Empty compound bodies: `if true; then; fi`, loop `do; done` forms (empty
+  then/do bodies are syntax errors in bash, including their newline variants)
+- Stray separator after `case ... in`: `case x in ; esac` (the `;` is the
+  offending token).  Note the accept/reject boundary: an *empty case* with no
+  patterns — `case x in esac`, including blank/comment-only lines before
+  `esac` — is valid bash and is accepted by both parsers; only the stray `;`
+  is rejected.  This accept side is pinned by `ACCEPTANCE_CORPUS` in
+  `test_combinator_error_parity.py`.
 - Separator edge cases: command operators before/after `;`
 - Missing redirect targets after compound commands and groups
 

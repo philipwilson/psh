@@ -317,10 +317,13 @@ class ConditionalParserMixin(_Base):
 
             pos += 1  # Skip 'in'
 
-            # Skip optional separator
-            empty_case_error_pos = pos
-            if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
-                empty_case_error_pos = pos
+            # bash allows newlines (but not `;`) between `in` and the first
+            # pattern or `esac`.  A `;` here is a syntax error
+            # (`case x in ; esac`), but an empty case (`case x in esac`,
+            # optionally with blank/comment lines) is valid.
+            if pos < len(tokens) and tokens[pos].type.name == 'SEMICOLON':
+                raise_committed_error(tokens, pos, "Expected pattern or 'esac' after 'in'")
+            while pos < len(tokens) and tokens[pos].type.name == 'NEWLINE':
                 pos += 1
 
             # Parse case items until 'esac'
@@ -438,9 +441,7 @@ class ConditionalParserMixin(_Base):
                     terminator=terminator
                 ))
 
-            # Expect 'esac'
-            if not items:
-                raise_committed_error(tokens, empty_case_error_pos, "Expected case pattern")
+            # Expect 'esac' (an empty case — `case x in esac` — is valid bash)
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'esac'):
                 raise_committed_error(tokens, pos, "Expected 'esac' to close case statement")
 
