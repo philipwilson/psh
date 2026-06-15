@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.462.0 (2026-06-15) - Tier R12.D.5: split the 195-line declare `_declare_variables` method (review M4)
+- REFACTOR (no behavior change). `_declare_variables` (builtins/function_support.py) — the
+  longest method in the codebase (~195 lines, reappraisal #9 M4) — is now a small
+  dispatcher over three extracted helpers: `_declare_list_all` (no-argument listing),
+  `_declare_assignment` (`NAME=value`/`NAME+=value`: nameref, array-init, scalar-into-array,
+  regular scalar), and `_declare_bare_name` (declare/modify by name only). The per-argument
+  loop now reads `rc = self._declare_assignment(...)` / `_declare_bare_name(...)` and stops
+  on the first non-zero (an invalid name / nameref self-ref), matching bash. Logic moved
+  verbatim; all 1054 declare/array/builtin tests green.
+- Fifth item of Tier R12.D.
+
 ## 0.461.0 (2026-06-15) - Tier R12.D.4: collapse apply_permanent_redirections dispatch (review M7)
 - REFACTOR (no behavior change). `FileRedirector.apply_permanent_redirections` (the
   `exec`-redirection path) re-enumerated every `redirect.type` to choose a stream rebind
