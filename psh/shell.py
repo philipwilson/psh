@@ -17,7 +17,6 @@ import sys
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO
 
 from .ast_nodes import (
-    EnhancedTestStatement,
     StatementList,
     TopLevel,
 )
@@ -357,21 +356,6 @@ class Shell:
             return executor.visit(node)
         finally:
             self._current_executor = None
-
-    def execute_enhanced_test_statement(self, test_stmt: EnhancedTestStatement) -> int:
-        """Execute an enhanced test statement [[...]]."""
-        from .executor import TestExpressionEvaluator
-
-        # with_redirections also owns any process substitutions used as
-        # redirect targets (cleaned up when the statement finishes).
-        with self.io_manager.with_redirections(test_stmt.redirects):
-            try:
-                evaluator = TestExpressionEvaluator(self)
-                result = evaluator.evaluate(test_stmt.expression)
-                return 0 if result else 1
-            except (ValueError, TypeError, OSError) as e:
-                print(f"psh: [[: {e}", file=sys.stderr)
-                return 2  # Syntax error
 
     @property
     def active_parser(self) -> str:
