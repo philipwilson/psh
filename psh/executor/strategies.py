@@ -7,6 +7,7 @@ providing different strategies for builtins, functions, and external commands.
 
 import errno
 import os
+import shlex
 import sys
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional
@@ -361,13 +362,28 @@ class AliasExecutionStrategy(ExecutionStrategy):
         shell.alias_manager.expanding.add(cmd_name)
 
         try:
-            # Create new command string by expanding the alias
+            # Create new command string by expanding the alias.
+            #
+            # The alias VALUE (`alias_definition`) is kept RAW: an alias is
+            # meant to be parsed as shell source (`alias ll='ls -l'` must
+            # parse `ls -l` as two words, `alias x='a; b'` as two commands).
+            #
+            # The appended `args`, however, are already-expanded DATA — they
+            # have already gone through variable/command/glob expansion and
+            # quote removal. Re-joining them raw and re-lexing would
+            # reinterpret any metacharacters they contain as SYNTAX (a
+            # command-injection-class bug: `e 'a; echo PWNED'` would run a
+            # second command). Shell-quote each arg with shlex.quote so the
+            # re-lexer treats it as a single literal word. (shlex.quote
+            # returns simple/safe words like `x` unquoted, so correct cases
+            # are unchanged.)
+            quoted_args = ' '.join(shlex.quote(a) for a in args)
             # If alias has trailing space, next word can also be expanded
             if alias_definition.endswith(' '):
                 # Handle trailing space for chained alias expansion
-                expanded_command = alias_definition + ' '.join(args)
+                expanded_command = alias_definition + quoted_args
             else:
-                expanded_command = alias_definition + (' ' + ' '.join(args) if args else '')
+                expanded_command = alias_definition + ((' ' + quoted_args) if args else '')
 
             # Re-tokenize and parse the expanded command
             from ..lexer import tokenize
