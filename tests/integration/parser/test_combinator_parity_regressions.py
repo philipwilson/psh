@@ -99,6 +99,28 @@ class TestKeywordSpelledArgumentInBody:
         assert_three_way('f() { { echo hi; }; }; f')
 
 
+class TestLineContinuationAfterOperator:
+    """A newline after a pipe / and-or operator continues the command.
+
+    R12.A: the combinator pipeline/and-or parsers did not skip a NEWLINE after
+    `|`/`|&`/`&&`/`||`, so a command split across a line after the operator
+    (`echo a |\\ncat`) was rejected under --parser combinator while bash and rd
+    accept it. Fixed by skipping NEWLINE tokens after the operator.
+    """
+
+    def test_newline_after_pipe(self):
+        assert_three_way('echo a |\ncat')
+
+    def test_newline_after_and_and(self):
+        assert_three_way('echo a &&\necho b')
+
+    def test_newline_after_or_or(self):
+        assert_three_way('false ||\necho c')
+
+    def test_newline_in_multi_stage_pipe(self):
+        assert_three_way('echo x |\ntr a-z A-Z |\ncat')
+
+
 class TestKeywordSpelledArgumentInCondition:
     """A 'do'/'then' spelled as an argument in a loop/if CONDITION is a word.
 

@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.451.0 (2026-06-15) - BUGFIX: combinator parser rejected line-continuation after a pipe/and-or operator — R12.A
+- BUGFIX (combinator parser only). The combinator pipeline/and-or parsers did not skip
+  a NEWLINE after `|`/`|&`/`&&`/`||`, so a command continued on the next line after the
+  operator (`echo a |⏎cat`, `echo a &&⏎echo b`, `false ||⏎echo c`, multi-stage pipes)
+  was rejected under `--parser combinator` with "Expected command", while bash and the
+  recursive-descent parser accept it. Fix: skip NEWLINE tokens after the pipe operator
+  and after the and-or operator before parsing the right-hand command
+  (`commands/pipelines.py`). Found by reappraisal #10. +4 three-way (bash/rd/combinator)
+  parity regression tests. (The duplicate module-level `parse_pipeline`/`parse_and_or_list`
+  helpers in `commands/__init__.py` still carry the bug but are test-only and slated for
+  removal in R12.D.)
+- Fourth item of Tier R12.A.
+
 ## 0.450.0 (2026-06-15) - BUGFIX: `(( ))`/`[[ ]]` condition header before `then`/`do` with no separator — R12.A
 - BUGFIX (behavior, both parsers). An arithmetic command or `[[ ]]` test used as a
   condition header followed DIRECTLY by `then`/`do` (no `;`/newline) was rejected:
