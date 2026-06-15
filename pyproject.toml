@@ -303,3 +303,19 @@ check_untyped_defs = true
 [[tool.mypy.overrides]]
 module = "psh.executor.*"
 check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "psh.io_redirect.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "psh.lexer.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "psh.visitor.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "psh.builtins.*"
+check_untyped_defs = true

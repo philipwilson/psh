@@ -4,6 +4,15 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.454.0 (2026-06-15) - Tier R12.B: mypy check_untyped_defs for io_redirect/lexer/visitor/builtins (batch 1)
+- TYPING (no behavior change). Enabled `check_untyped_defs = true` for four more
+  packages — `psh.io_redirect.*`, `psh.lexer.*`, `psh.visitor.*`, `psh.builtins.*` —
+  joining core/expansion/executor. mypy now body-checks **7 of ~12** packages and stays
+  clean (these four had zero fallout: the annotation-unchecked notes were just notes,
+  not errors). The clearest A−→A lever from reappraisals #9/#10; remaining:
+  utils/interactive/scripting (small fallout to fix) and parser/ast_nodes.
+- First batch of Tier R12.B.
+
 ## 0.453.0 (2026-06-15) - BUGFIX: sparse-array negative-index reads + `$!` subshell inheritance — R12.A (cluster complete)
 - BUGFIX (behavior). Two core bugs found by reappraisal #10:
   - `IndexedArray.get()` resolved a negative subscript by indexing the list of *set*
