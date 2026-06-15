@@ -57,7 +57,7 @@ def _post_lex(tokens: List[Token]) -> List[Token]:
     Note: misplaced case terminators (`;;` outside case, etc.) are rejected
     by the parser (see parsers/statements.py), not by a lexer pass.
     """
-    from ..expansion.brace_expansion import TokenBraceExpander
+    from ..expansion.brace_expansion_tokens import TokenBraceExpander
 
     tokens = KeywordNormalizer().normalize(tokens)
     return TokenBraceExpander().expand(tokens)

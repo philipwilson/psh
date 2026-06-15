@@ -535,7 +535,7 @@ class ControlFlowExecutor:
         if not item_words or len(item_words) != len(node.items):
             return list(node.items)
 
-        from ..expansion.word_expander import LOOP_ITEM
+        from ..expansion.word_expansion_types import LOOP_ITEM
 
         expanded_items: List[str] = []
         for word in item_words:

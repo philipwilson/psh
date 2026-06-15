@@ -20,7 +20,8 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | File | Purpose |
 |------|---------|
 | `manager.py` | `ExpansionManager` - orchestrator: owns the sub-expanders, declaration-builtin recognition, public entry points |
-| `word_expander.py` | `WordExpander` - THE Word expansion engine (part walkers, IFS split, glob, escapes) + the named `WordExpansionPolicy` table |
+| `word_expander.py` | `WordExpander` - THE Word expansion engine (part walkers, IFS split, glob, escapes) |
+| `word_expansion_types.py` | The expansion data model: `WordExpansionPolicy` + named policy instances (`COMMAND_ARGUMENT`, `LOOP_ITEM`, ...), `ExpandedSegment`, `_WalkState` |
 | `evaluator.py` | `ExpansionEvaluator` - evaluates expansion AST nodes |
 | `param_parser.py` | THE `${...}` content parser (`parse_parameter_expansion()`) — the single grammar shared by WordBuilder (parse time) and `expand_variable` (string contexts); module docstring is the grammar reference |
 | `variable.py` | `VariableExpander` - dispatch, special variables, `${!name}` indirection |
@@ -36,7 +37,8 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `glob.py` | `GlobExpander` - pathname expansion (wildcards) |
 | `word_splitter.py` | `WordSplitter` - splits on IFS (`split()`, `split_with_edges()`) |
 | `arithmetic/` | Arithmetic package: tokenizer/parser/evaluator (`evaluate_arithmetic()`); decomposed from `arithmetic.py` into `tokens.py`/`tokenizer.py`/`nodes.py`/`parser.py`/`evaluator.py`/`errors.py` |
-| `brace_expansion.py` | `BraceExpander`, `TokenBraceExpander` - `{a,b}`, `{1..5}` |
+| `brace_expansion.py` | `BraceExpander` - textual per-word `{a,b}`, `{1..5}` |
+| `brace_expansion_tokens.py` | `TokenBraceExpander` - applies `BraceExpander` across the token stream (post-lex) |
 | `aliases.py` | `AliasManager` - alias storage and expansion |
 
 `VariableExpander` was decomposed in v0.279: it is now a thin facade,

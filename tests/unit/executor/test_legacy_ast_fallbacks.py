@@ -205,7 +205,7 @@ class TestClassCUnreachableBranchesRaise:
             node.args = ['x=1']  # read-only property
 
     def test_expansion_engine_rejects_non_word(self, shell):
-        from psh.expansion.word_expander import COMMAND_ARGUMENT
+        from psh.expansion.word_expansion_types import COMMAND_ARGUMENT
         with pytest.raises(TypeError, match='expects a Word'):
             shell.expansion_manager.expand_word_to_fields(
                 'not a word', COMMAND_ARGUMENT)

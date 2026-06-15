@@ -33,7 +33,7 @@ import os
 
 import pytest
 
-from psh.expansion.word_expander import (
+from psh.expansion.word_expansion_types import (
     ARRAY_INIT_ELEMENT,
     ASSOC_INIT_ELEMENT,
     COMMAND_ARGUMENT,

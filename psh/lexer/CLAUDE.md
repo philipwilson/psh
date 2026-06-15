@@ -21,8 +21,9 @@ token unchanged).
 
 Note: brace expansion runs **after** tokenization (on the token stream), not as
 raw-text preprocessing — so generated characters are never re-lexed and quote /
-command-position context is available. See `psh/expansion/brace_expansion.py`
-(`TokenBraceExpander`).
+command-position context is available. See
+`psh/expansion/brace_expansion_tokens.py` (`TokenBraceExpander`, which delegates
+the per-word algorithm to `BraceExpander` in `brace_expansion.py`).
 
 ## Key Files
 

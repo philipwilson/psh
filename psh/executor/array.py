@@ -14,7 +14,7 @@ from ..core import (
     VarAttributes,
 )
 from ..expansion.arithmetic import evaluate_arithmetic
-from ..expansion.word_expander import ARRAY_INIT_ELEMENT, ASSOC_INIT_ELEMENT
+from ..expansion.word_expansion_types import ARRAY_INIT_ELEMENT, ASSOC_INIT_ELEMENT
 
 if TYPE_CHECKING:
     from ..ast_nodes import ArrayElementAssignment, ArrayInitialization, Word, WordPart
