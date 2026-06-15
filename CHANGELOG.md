@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.446.0 (2026-06-15) - Tier R11.P4: document the combinator [[ ]]/arithmetic sublanguage boundary (R11 complete)
+- DOCS (no behavior change). Final R11 phase: per the architecture review's Phase 4,
+  the combinator parser's intentionally-shallow `(( ))` and `[[ ]]` sublanguages are
+  now documented as a deliberate educational-scope boundary, and the "abandoned-work"
+  comments that read like unfinished TODOs are replaced with honest boundary notes.
+  - `SpecialCommandParsers` class docstring now states the boundary up front:
+    `(( ))`/`[[ ]]` are recognised structurally but their inner grammars are shallow
+    (arithmetic captured as a token string for the runtime evaluator, not an AST;
+    `[[ ]]` handles negation + simple unary/binary/single-operand tests but not
+    `&&`/`||` compounds, parenthesised grouping, per-operand quote context, or trailing
+    redirections), with a pointer to the recursive descent parser as the full
+    implementation.
+  - Replaced `_build_arithmetic_command`'s "For now, skip redirection parsing to keep
+    it simple", `_parse_test_expression`'s "This is simplified - full implementation
+    would parse compound expressions", and `expansions._validate_command_substitution`'s
+    "For now, accept if tokenization succeeded" with explicit educational-scope notes.
+  - No `(( ))`/`[[ ]]` behavior change; full `tests/parser_differential` parity suite
+    and whole suite green.
+- **Tier R11 COMPLETE.** Elevated the combinator parser toward textbook FP across
+  P1 (cleanup) → P2 (discriminated `ParseResult` + cut/farthest-error) → P3 (grammar
+  simplification: recursion-only, build-once, modular) → P4 (documented sublanguage
+  boundary). Source roadmap: `docs/reviews/parser_combinator_architecture_review_2026-06-15.md`.
+
 ## 0.445.0 (2026-06-15) - Tier R11.P3(c): split the combinator commands module into a mixin package
 - REFACTOR (no behavior change). The 816-line `psh/parser/combinators/commands.py`
   is now a `commands/` PACKAGE of focused mixin modules, mirroring the existing
