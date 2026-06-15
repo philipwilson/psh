@@ -74,61 +74,23 @@ class ConditionalParserMixin(_Base):
         """Build parser for if/then/elif/else/fi statements."""
         def parse_condition_then(tokens: List[Token], pos: int) -> ParseResult[Tuple[CommandList, CommandList]]:
             """Parse a condition-then pair."""
-            # Parse condition (statement list until 'then')
-            condition_tokens: List[Token] = []
-            current_pos = pos
+            # Parse the condition by recursion: a statement list up to (but not
+            # consuming) the command-position 'then'. Parsing on the real token
+            # stream — rather than slicing to the first 'then' — means a 'then'
+            # that is merely an argument ('if echo then; then ...') is consumed
+            # as a word, matching bash and the recursive-descent parser.
+            condition_result = self.commands.build_statement_list(
+                frozenset({'then'})).parse(tokens, pos)
+            if not condition_result.success:
+                return ParseResult(success=False, error=condition_result.error,
+                                   position=condition_result.position)
+            assert condition_result.value is not None
+            current_pos = condition_result.position
 
-            # Collect tokens until we see 'then'
-            saw_separator = False
-            while current_pos < len(tokens):
-                token = tokens[current_pos]
-
-                # Check if this is 'then' keyword
-                if matches_keyword(token, 'then'):
-                    # 'then' must be preceded by a separator
-                    if condition_tokens and not saw_separator:
-                        return ParseResult(success=False,
-                                         error="syntax error: expected ';' or newline before 'then'",
-                                         position=current_pos)
-                    break
-
-                if matches_keyword(token, 'fi'):
-                    return ParseResult(success=False,
-                                     error="Unexpected 'fi': expected 'then' in if statement",
-                                     position=current_pos)
-
-                if token.type.name in ['SEMICOLON', 'NEWLINE']:
-                    saw_separator = True
-                    # Check if next token is 'then'
-                    if (current_pos + 1 < len(tokens) and
-                        matches_keyword(tokens[current_pos + 1], 'then')):
-                        # Don't include the separator in condition tokens
-                        break
-
-                condition_tokens.append(token)
-                current_pos += 1
-
-            if current_pos >= len(tokens):
-                return ParseResult(success=False,
-                                 error="Unexpected end of input: expected 'then' in if statement",
-                                 position=current_pos)
-
-            # Skip separator if we're at one
-            if tokens[current_pos].type.name in ['SEMICOLON', 'NEWLINE']:
-                current_pos += 1
-
-            # Verify we actually found 'then'
             if current_pos >= len(tokens) or not matches_keyword(tokens[current_pos], 'then'):
                 return ParseResult(success=False,
-                                 error=f"Expected 'then' in if statement",
+                                 error="Expected 'then' in if statement",
                                  position=current_pos)
-
-            # Parse the condition
-            condition_result = self.commands.statement_list.parse(condition_tokens, 0)
-            if not condition_result.success:
-                return ParseResult(success=False,
-                                 error=f"Failed to parse condition: {condition_result.error}",
-                                 position=pos)
 
             current_pos += 1  # Skip 'then'
 

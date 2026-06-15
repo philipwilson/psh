@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.442.0 (2026-06-15) - Tier R11.P3.1: combinator condition headers parse by recursion (closes H3)
+- REFACTOR (fixes a bash/rd divergence). The `while`/`until`/`if`/`elif` CONDITION
+  headers no longer slice tokens to the first `do`/`then` and re-parse the slice.
+  They now parse on the real token stream via `build_statement_list(frozenset({'do'}))`
+  / `build_statement_list(frozenset({'then'}))` — the same recursion engine the
+  compound bodies use — stopping only at a *command-position* `do`/`then`.
+  - Closes reappraisal #9 bug H3 (the unfinished tail of C3): a `do`/`then` that is
+    merely an argument is now consumed as a word, matching bash and the recursive
+    descent parser. Previously `while echo do; false; do echo body; done` and
+    `if echo then; then echo hi; fi` failed/diverged under `--parser combinator`;
+    all three shells now agree.
+  - Deletes three hand-written condition token-slicer loops (and the special
+    "`then` must be preceded by a separator" / "unexpected `fi`" message checks,
+    which are now emergent from the recursion). The combinator parser no longer
+    slices any compound header or body out of the token stream.
+  - +5 three-way (bash/rd/combinator) parity regression tests in
+    `TestKeywordSpelledArgumentInCondition`; full `tests/parser_differential`
+    parity suite green.
+- Review Phase 3 item 1 from `docs/reviews/parser_combinator_architecture_review_2026-06-15.md`.
+
 ## 0.441.0 (2026-06-15) - Tier R11.P2.2: combinator core — farthest-error selection in or_else
 - REFACTOR (improved diagnostics, parity-preserving). `Parser.or_else` no longer
   blindly returns the alternative's failure when both branches fail recoverably.

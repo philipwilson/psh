@@ -91,6 +91,33 @@ class TestKeywordSpelledArgumentInBody:
         assert_three_way('case x in a) echo esac;; *) echo other;; esac')
 
 
+class TestKeywordSpelledArgumentInCondition:
+    """A 'do'/'then' spelled as an argument in a loop/if CONDITION is a word.
+
+    The R11.P3 condition-header recursion fixed the symmetric slicer bug: the
+    old token-slicer ended the condition at the first ``do``/``then`` by value,
+    so ``while echo do; ...`` (do as an argument to echo) was mis-detected as
+    the loop's ``do`` keyword. Parsing the condition by recursion only stops at
+    a command-position terminator, so such arguments are plain words — matching
+    bash and rd.
+    """
+
+    def test_do_as_argument_in_while_condition(self):
+        assert_three_way('while echo do; false; do echo body; break; done')
+
+    def test_do_as_argument_in_until_condition(self):
+        assert_three_way('until echo do; true; do echo body; done')
+
+    def test_then_as_argument_in_if_condition(self):
+        assert_three_way('if echo then; then echo hi; fi')
+
+    def test_then_as_argument_in_elif_condition(self):
+        assert_three_way('if false; then :; elif echo then; then echo e; fi')
+
+    def test_multi_statement_condition_still_works(self):
+        assert_three_way('while echo a; false; do echo body; break; done')
+
+
 class TestFunctionDefinitionRedirects:
     """Redirects on a definition apply at each call, not at definition."""
 
