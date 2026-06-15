@@ -20,8 +20,8 @@ from ....ast_nodes import (
 )
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
-from ...recursive_descent.helpers import ErrorContext, ParseError
 from ..core import Parser, ParseResult
+from ..diagnostics import raise_committed_error
 
 if TYPE_CHECKING:
     from ._protocols import ControlStructureProtocol
@@ -35,17 +35,6 @@ def _positional_params_word() -> Word:
     return Word(
         parts=[ExpansionPart(expansion=VariableExpansion('@'),
                              quoted=True, quote_char='"')])
-
-
-def _raise_committed_error(tokens: List[Token], pos: int, message: str) -> None:
-    """Raise a hard parse error after a loop opener committed."""
-    error_pos = min(pos, len(tokens) - 1)
-    raise ParseError(ErrorContext(
-        token=tokens[error_pos],
-        message=message,
-        position=error_pos,
-    ))
-
 
 class LoopParserMixin(_Base):
     """Mixin providing loop parsers for ControlStructureParsers."""
@@ -97,7 +86,7 @@ class LoopParserMixin(_Base):
                 pos += 1
 
             if pos >= len(tokens):
-                _raise_committed_error(tokens, pos, "Expected 'do' in while loop")
+                raise_committed_error(tokens, pos, "Expected 'do' in while loop")
 
             condition_result = self.commands.statement_list.parse(condition_tokens, 0)
             if not condition_result.success:
@@ -109,7 +98,7 @@ class LoopParserMixin(_Base):
             if tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
                 pos += 1
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'do'):
-                _raise_committed_error(tokens, pos, "Expected 'do' after while condition")
+                raise_committed_error(tokens, pos, "Expected 'do' after while condition")
             pos += 1  # Skip 'do'
 
             # Skip optional separator after 'do'
@@ -120,7 +109,7 @@ class LoopParserMixin(_Base):
             body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
 
             if done_pos >= len(tokens):
-                _raise_committed_error(tokens, done_pos, "Expected 'done' to close while loop")
+                raise_committed_error(tokens, done_pos, "Expected 'done' to close while loop")
 
             body_result = self.commands.statement_list.parse(body_tokens, 0)
             if not body_result.success:
@@ -170,7 +159,7 @@ class LoopParserMixin(_Base):
                 pos += 1
 
             if pos >= len(tokens):
-                _raise_committed_error(tokens, pos, "Expected 'do' in until loop")
+                raise_committed_error(tokens, pos, "Expected 'do' in until loop")
 
             condition_result = self.commands.statement_list.parse(condition_tokens, 0)
             if not condition_result.success:
@@ -181,7 +170,7 @@ class LoopParserMixin(_Base):
             if tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
                 pos += 1
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'do'):
-                _raise_committed_error(tokens, pos, "Expected 'do' after until condition")
+                raise_committed_error(tokens, pos, "Expected 'do' after until condition")
             pos += 1
 
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
@@ -190,7 +179,7 @@ class LoopParserMixin(_Base):
             body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
 
             if done_pos >= len(tokens):
-                _raise_committed_error(tokens, done_pos, "Expected 'done' to close until loop")
+                raise_committed_error(tokens, done_pos, "Expected 'done' to close until loop")
 
             body_result = self.commands.statement_list.parse(body_tokens, 0)
             if not body_result.success:
@@ -235,7 +224,7 @@ class LoopParserMixin(_Base):
 
             # Parse variable name
             if pos >= len(tokens) or tokens[pos].type.name != 'WORD':
-                _raise_committed_error(tokens, pos, "Expected variable name after 'for'")
+                raise_committed_error(tokens, pos, "Expected variable name after 'for'")
 
             var_name = tokens[pos].value
             pos += 1
@@ -282,7 +271,7 @@ class LoopParserMixin(_Base):
                 pos += 1
 
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'do'):
-                _raise_committed_error(tokens, pos, "Expected 'do' in for loop")
+                raise_committed_error(tokens, pos, "Expected 'do' in for loop")
             pos += 1  # Skip 'do'
 
             # Skip optional separator after 'do'
@@ -293,7 +282,7 @@ class LoopParserMixin(_Base):
             body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
 
             if done_pos >= len(tokens):
-                _raise_committed_error(tokens, done_pos, "Expected 'done' to close for loop")
+                raise_committed_error(tokens, done_pos, "Expected 'done' to close for loop")
 
             body_result = self.commands.statement_list.parse(body_tokens, 0)
             if not body_result.success:
@@ -349,7 +338,7 @@ class LoopParserMixin(_Base):
                     pos += 1
 
                 if pos >= len(tokens):
-                    _raise_committed_error(tokens, pos, "Expected ';' after init expression")
+                    raise_committed_error(tokens, pos, "Expected ';' after init expression")
                 pos += 1  # Skip ';'
 
                 # Parse condition expression (until ';')
@@ -359,7 +348,7 @@ class LoopParserMixin(_Base):
                     pos += 1
 
                 if pos >= len(tokens):
-                    _raise_committed_error(tokens, pos, "Expected ';' after condition expression")
+                    raise_committed_error(tokens, pos, "Expected ';' after condition expression")
                 pos += 1  # Skip ';'
 
             # Parse update expression (until '))')
@@ -369,7 +358,7 @@ class LoopParserMixin(_Base):
                 pos += 1
 
             if pos >= len(tokens):
-                _raise_committed_error(tokens, pos, "Expected '))' to close C-style for")
+                raise_committed_error(tokens, pos, "Expected '))' to close C-style for")
             pos += 1  # Skip '))'
 
             # Skip optional separator and optional 'do' keyword.
@@ -387,7 +376,7 @@ class LoopParserMixin(_Base):
             body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
 
             if done_pos >= len(tokens):
-                _raise_committed_error(tokens, done_pos, "Expected 'done' to close C-style for loop")
+                raise_committed_error(tokens, done_pos, "Expected 'done' to close C-style for loop")
 
             body_result = self.commands.statement_list.parse(body_tokens, 0)
             if not body_result.success:

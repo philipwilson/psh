@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.419.0 (2026-06-15) - Centralize combinator committed-error diagnostics
+- PARSER (combinator backend, non-default; zero behavior change). Consolidated
+  the six duplicated `_raise_committed_error()` helpers (arrays, commands,
+  conditionals, loops, structures, enhanced tests) into one shared primitive,
+  `psh/parser/combinators/diagnostics.py::raise_committed_error()`, so future
+  diagnostic work has a single behavior and type surface to update.
+- The shared helper is typed `-> NoReturn` (an improvement over the old local
+  `-> None` helpers) and takes `Sequence[Token]`; same EOF clamp
+  (`min(pos, len-1)`) and `ErrorContext` construction as before.
+- Specialized direct `ParseError`/`ErrorContext` call sites that emit custom
+  unexpected-token diagnostics are intentionally left intact (e.g. two in
+  `control_structures/structures.py`).
+- Added `tests/unit/parser/combinators/test_diagnostics.py` covering
+  committed-error token selection and EOF clamping. Gate: ruff + mypy clean
+  (225 files), full suite 7,952 collected / all phases green.
+
 ## 0.418.0 (2026-06-15) - Combinator command-operator diagnostic alignment
 - PARSER (combinator backend, non-default). Missing right-hand commands after
   committed binary command operators (`|`, `|&`, `&&`, `||`) now raise a hard

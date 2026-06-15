@@ -34,6 +34,7 @@ from ..recursive_descent.helpers import ErrorContext, ParseError
 from ..recursive_descent.support.word_builder import WordBuilder
 from .arrays import ArrayParsers
 from .core import ForwardParser, Parser, ParseResult, many1, optional, separated_by, sequence, token
+from .diagnostics import raise_committed_error
 from .expansions import ExpansionParsers
 from .tokens import TokenParsers
 
@@ -45,17 +46,6 @@ _WORD_LIKE_TYPES = frozenset({
     'WORD', 'STRING', 'VARIABLE', 'PARAM_EXPANSION', 'COMMAND_SUB',
     'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION', 'PROCESS_SUB_IN', 'PROCESS_SUB_OUT',
 })
-
-
-def _raise_committed_error(tokens: List[Token], pos: int, message: str) -> None:
-    """Raise a hard parse error after a command separator committed."""
-    error_pos = min(pos, len(tokens) - 1)
-    raise ParseError(ErrorContext(
-        token=tokens[error_pos],
-        message=message,
-        position=error_pos,
-    ))
-
 
 class CommandParsers:
     """Parsers for shell commands and command structures.
@@ -439,7 +429,7 @@ class CommandParsers:
 
                 cmd_result = self.simple_command.parse(tokens, pos)
                 if not cmd_result.success:
-                    _raise_committed_error(
+                    raise_committed_error(
                         tokens,
                         cmd_result.position,
                         cmd_result.error or "Expected command after pipe",
@@ -485,7 +475,7 @@ class CommandParsers:
 
                 rhs_result = self.pipeline.parse(tokens, pos)
                 if not rhs_result.success:
-                    _raise_committed_error(
+                    raise_committed_error(
                         tokens,
                         rhs_result.position,
                         rhs_result.error or f"Expected command after {op_token.value}",
@@ -613,7 +603,7 @@ class CommandParsers:
 
                 cmd_result = command_parser.parse(tokens, pos)
                 if not cmd_result.success:
-                    _raise_committed_error(
+                    raise_committed_error(
                         tokens,
                         cmd_result.position,
                         cmd_result.error or "Expected command after pipe",
@@ -654,7 +644,7 @@ class CommandParsers:
 
                 rhs_result = and_or_element.parse(tokens, pos)
                 if not rhs_result.success:
-                    _raise_committed_error(
+                    raise_committed_error(
                         tokens,
                         rhs_result.position,
                         rhs_result.error or f"Expected command after {op_token.value}",
@@ -742,7 +732,7 @@ def parse_pipeline(command_parser: Parser) -> Parser[Union[Pipeline, ASTNode]]:
 
             cmd_result = command_parser.parse(tokens, pos)
             if not cmd_result.success:
-                _raise_committed_error(
+                raise_committed_error(
                     tokens,
                     cmd_result.position,
                     cmd_result.error or "Expected command after pipe",
@@ -811,7 +801,7 @@ def parse_and_or_list(pipeline_parser: Parser) -> Parser[AndOrList]:
 
             rhs_result = pipeline_parser.parse(tokens, pos)
             if not rhs_result.success:
-                _raise_committed_error(
+                raise_committed_error(
                     tokens,
                     rhs_result.position,
                     rhs_result.error or f"Expected command after {op_token.value}",

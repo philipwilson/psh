@@ -11,26 +11,15 @@ from ...ast_nodes import (
 )
 from ...lexer.token_stream import TokenStream
 from ...lexer.token_types import Token, TokenType
-from ..recursive_descent.helpers import ErrorContext, ParseError
 from ..recursive_descent.support.word_builder import WordBuilder
 from .core import ParseResult
+from .diagnostics import raise_committed_error
 from .tokens import TokenParsers
 
 _WORD_LIKE_TYPES = frozenset({
     'WORD', 'STRING', 'VARIABLE', 'PARAM_EXPANSION', 'COMMAND_SUB',
     'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION', 'PROCESS_SUB_IN', 'PROCESS_SUB_OUT',
 })
-
-
-def _raise_committed_error(tokens: List[Token], pos: int, message: str) -> None:
-    """Raise a hard parse error after an array-assignment head committed."""
-    error_pos = min(pos, len(tokens) - 1)
-    raise ParseError(ErrorContext(
-        token=tokens[error_pos],
-        message=message,
-        position=error_pos,
-    ))
-
 
 class ArrayParsers:
     """Parse array assignment forms into the shared AST contract."""
@@ -135,16 +124,16 @@ class ArrayParsers:
                 pos += 1
                 continue
             if tokens[pos].type.name == 'EOF':
-                _raise_committed_error(tokens, pos, "Expected ')' to close array initialization")
+                raise_committed_error(tokens, pos, "Expected ')' to close array initialization")
 
             word_result = self.parse_word_as_word(tokens, pos)
             if not word_result.success:
-                _raise_committed_error(tokens, pos, "Expected array element")
+                raise_committed_error(tokens, pos, "Expected array element")
             words.append(word_result.value)
             pos = word_result.position
 
         if pos >= len(tokens) or tokens[pos].type.name != 'RPAREN':
-            _raise_committed_error(tokens, pos, "Expected ')' to close array initialization")
+            raise_committed_error(tokens, pos, "Expected ')' to close array initialization")
 
         return ParseResult(
             success=True,

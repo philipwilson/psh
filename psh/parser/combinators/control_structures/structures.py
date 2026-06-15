@@ -16,6 +16,7 @@ from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ...recursive_descent.helpers import ErrorContext, ParseError
 from ..core import Parser, ParseResult
+from ..diagnostics import raise_committed_error
 
 if TYPE_CHECKING:
     from ._protocols import ControlStructureProtocol
@@ -26,16 +27,6 @@ else:
 
 class StructureParserMixin(_Base):
     """Mixin providing structure parsers for ControlStructureParsers."""
-
-    @staticmethod
-    def _raise_committed_error(tokens: List[Token], pos: int, message: str) -> None:
-        """Raise a hard parse error after a structure opener committed."""
-        error_pos = min(pos, len(tokens) - 1)
-        raise ParseError(ErrorContext(
-            token=tokens[error_pos],
-            message=message,
-            position=error_pos,
-        ))
 
     def _collect_definition_redirects(self, tokens: List[Token], pos: int):
         """Collect redirections trailing a function body.
@@ -317,7 +308,7 @@ class StructureParserMixin(_Base):
             if result.success:
                 return result
             if pos < len(tokens) and matches_keyword(tokens[pos], 'function'):
-                self._raise_committed_error(
+                raise_committed_error(
                     tokens,
                     result.position,
                     result.error or "Invalid function definition",
@@ -335,7 +326,7 @@ class StructureParserMixin(_Base):
                 result = posix_fn.parse(tokens, pos)
                 if not result.success:
                     # Hard error — raise ParseError to prevent fallthrough
-                    self._raise_committed_error(
+                    raise_committed_error(
                         tokens,
                         result.position,
                         result.error or "Invalid function definition",
@@ -370,7 +361,7 @@ class StructureParserMixin(_Base):
             # Expect ')'
             rparen_result = self.tokens.rparen.parse(tokens, pos)
             if not rparen_result.success:
-                self._raise_committed_error(tokens, pos, "Expected ')'")
+                raise_committed_error(tokens, pos, "Expected ')'")
             pos = rparen_result.position
 
             # Parse trailing redirections and background
@@ -412,7 +403,7 @@ class StructureParserMixin(_Base):
             # Expect '}'
             rbrace_result = self.tokens.rbrace.parse(tokens, pos)
             if not rbrace_result.success:
-                self._raise_committed_error(tokens, pos, "Expected '}'")
+                raise_committed_error(tokens, pos, "Expected '}'")
             pos = rbrace_result.position
 
             # Parse trailing redirections and background

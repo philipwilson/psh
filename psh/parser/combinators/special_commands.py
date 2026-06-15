@@ -5,7 +5,7 @@ arithmetic commands, enhanced test expressions, array operations,
 and process substitutions.
 """
 
-from typing import List, NoReturn, Optional, Union, cast
+from typing import List, Optional, Union, cast
 
 from ...ast_nodes import (
     # Special commands
@@ -26,9 +26,9 @@ from ...ast_nodes import (
 )
 from ...lexer.token_types import Token
 from ..config import ParserConfig
-from ..recursive_descent.helpers import ErrorContext, ParseError
 from .commands import CommandParsers
 from .core import Parser, ParseResult
+from .diagnostics import raise_committed_error
 from .tokens import TokenParsers
 from .utils import format_token_value
 
@@ -182,14 +182,6 @@ class SpecialCommandParsers:
 
     def _build_enhanced_test_statement(self) -> Parser[EnhancedTestStatement]:
         """Build parser for enhanced test statement [[ expression ]] syntax."""
-        def raise_committed_error(tokens: List[Token], pos: int, message: str) -> NoReturn:
-            error_pos = min(pos, len(tokens) - 1)
-            raise ParseError(ErrorContext(
-                token=tokens[error_pos],
-                message=message,
-                position=error_pos,
-            ))
-
         def parse_enhanced_test(tokens: List[Token], pos: int) -> ParseResult[EnhancedTestStatement]:
             """Parse enhanced test expression."""
             # Check for opening [[
