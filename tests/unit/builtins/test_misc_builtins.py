@@ -100,6 +100,60 @@ class TestVersionBuiltin:
         assert exit_code == 0
 
 
+class TestBuiltinForkedChildOutput:
+    """version writes correct output as a pipeline member (forked child).
+
+    Reappraisal #9 H2 aligned history/version onto the v0.284 forked-child
+    I/O helpers (``self.write_line()``) — they were the last two builtins
+    using raw ``print(file=shell.stdout)``. The fix is a consistency fix:
+    in psh's real forks ``shell.stdout`` is already bound to fd 1, so no
+    observable divergence could be produced, but every other builtin uses
+    the helpers and these now match. These run psh in a subprocess so the
+    pipeline genuinely forks and guard that the helper path stays correct.
+    (history records nothing in non-interactive ``-c`` mode, so it cannot be
+    seeded for an output assertion here; it shares the exact same code path.)
+    """
+
+    def _psh(self, script):
+        import subprocess
+        import sys
+        return subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', script],
+            capture_output=True, text=True)
+
+    def test_version_short_through_pipe(self):
+        """``version --short | cat`` reaches the pipe (forked child)."""
+        from psh.version import __version__
+        result = self._psh('version --short | cat')
+        assert result.returncode == 0
+        assert result.stdout.strip() == __version__
+
+    def test_version_full_through_pipe(self):
+        """``version | cat`` reaches the pipe (forked child)."""
+        result = self._psh('version | cat')
+        assert result.returncode == 0
+        assert 'psh' in result.stdout.lower()
+        assert 'version' in result.stdout.lower()
+
+    def test_version_short_pipe_to_file(self):
+        """``version --short | cat > file``: output traverses the pipe to fd 1."""
+        import os
+        import subprocess
+        import sys
+        import tempfile
+
+        from psh.version import __version__
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, 'v.txt')
+            result = subprocess.run(
+                [sys.executable, '-m', 'psh', '-c',
+                 f'version --short | cat > {out}'],
+                capture_output=True, text=True)
+            assert result.returncode == 0
+            with open(out) as f:
+                assert f.read().strip() == __version__
+
+
 class TestEvalBuiltin:
     """Test eval builtin functionality."""
 

@@ -1,6 +1,5 @@
 """Shell state related builtins (history, version, local)."""
 
-import sys
 from typing import TYPE_CHECKING, List
 
 from .base import Builtin
@@ -46,8 +45,7 @@ class HistoryBuiltin(Builtin):
         # Print with line numbers
         start_num = len(history) - len(history_slice) + 1
         for i, cmd in enumerate(history_slice):
-            print(f"{start_num + i:5d}  {cmd}",
-                  file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+            self.write_line(f"{start_num + i:5d}  {cmd}", shell)
 
         return 0
 
@@ -78,12 +76,10 @@ class VersionBuiltin(Builtin):
 
         if len(args) > 1 and args[1] == '--short':
             # Just print version number
-            print(__version__,
-                  file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+            self.write_line(__version__, shell)
         else:
             # Full version info
-            print(get_version_info(),
-                  file=shell.stdout if hasattr(shell, 'stdout') else sys.stdout)
+            self.write_line(get_version_info(), shell)
 
         return 0
 

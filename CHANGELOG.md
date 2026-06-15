@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.438.0 (2026-06-15) - Tier R10.A: reappraisal #9 bug fixes (string-context `\$` escape, builtin I/O convention)
+- BUGFIX (behavior). String-context `\$` now always drops its backslash, matching
+  bash and the command-argument Word path. `VariableExpander._process_double_quote_escape`
+  previously kept the backslash on `\$` unless it was immediately followed by a
+  variable-name character, so double-quoted text in here-strings/documents, redirect
+  targets, `[[ ]]` operands, and `${...}` operands diverged from bash:
+  - `cat <<< "a\$ b"` → was `a\$ b`, now `a$ b` (bash).
+  - `echo "${v:-a\$ b}"` → was `a\$ b`, now `a$ b` (bash).
+  - `\$VAR` still shields the expansion (literal `$VAR`); `\\`, `\"`, `` \` `` and
+    C-style `\n`/`\t` are unchanged. (`\<newline>` line continuation is handled
+    upstream by the lexer and is intentionally not processed here.)
+  - The stale "PS1 compatibility" justification was removed: PS1 expansion routes
+    through `interactive/prompt.py`, not `expand_string_variables` (zero callers).
+  - This is reappraisal #9's bug H1 — the genuine content of the previously deferred
+    "D2" escape-processor item (the two processors differed because the string-context
+    one was buggy, not "by design"). Pinned by the new
+    `tests/conformance/posix/test_escaped_dollar_string_context_conformance.py`.
+- CONSISTENCY (no observable change). `history` and `version` now emit through the
+  v0.284 forked-child-aware `self.write_line()` helper instead of raw
+  `print(file=shell.stdout)` — they were the last two builtins bypassing the
+  error-channel convention every other builtin follows (reappraisal #9 bug H2). In
+  psh's real forks `shell.stdout` is already bound to fd 1, so no divergence could be
+  reproduced; the change removes the inconsistency and the unused `sys` import.
+- DOCS. Reconciled the README test counts (the `**Tests**: total` line and the
+  `**Test Coverage**:` line now agree) — a reappraisal #9 LOW finding.
+
 ## 0.437.0 (2026-06-15) - Tier R9.D6: executor seam fixes (drop [[ ]] backchannel, dedup procsub body)
 - REFACTOR (no behavior change). Two executor/IO seams tidied:
   - `[[ ]]` no longer bounces through the shell. `ExecutorVisitor.visit_EnhancedTestStatement`
