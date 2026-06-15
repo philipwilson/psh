@@ -27,6 +27,16 @@ else:
 class StructureParserMixin(_Base):
     """Mixin providing structure parsers for ControlStructureParsers."""
 
+    @staticmethod
+    def _raise_committed_error(tokens: List[Token], pos: int, message: str) -> None:
+        """Raise a hard parse error after a structure opener committed."""
+        error_pos = min(pos, len(tokens) - 1)
+        raise ParseError(ErrorContext(
+            token=tokens[error_pos],
+            message=message,
+            position=error_pos,
+        ))
+
     def _collect_definition_redirects(self, tokens: List[Token], pos: int):
         """Collect redirections trailing a function body.
 
@@ -192,7 +202,7 @@ class StructureParserMixin(_Base):
             # Parse body
             body_result = self._parse_function_body(tokens, pos)
             if not body_result.success:
-                return ParseResult(success=False, error=body_result.error, position=pos)
+                return ParseResult(success=False, error=body_result.error, position=body_result.position)
 
             assert body_result.value is not None
             redirects, end_pos = self._collect_definition_redirects(
@@ -217,7 +227,7 @@ class StructureParserMixin(_Base):
             # Parse name
             name_result = self._build_function_name().parse(tokens, pos)
             if not name_result.success:
-                return ParseResult(success=False, error="Expected function name after 'function'", position=pos)
+                return ParseResult(success=False, error="Expected function name after 'function'", position=name_result.position)
 
             assert name_result.value is not None
             name = name_result.value
@@ -230,7 +240,7 @@ class StructureParserMixin(_Base):
             # Parse body
             body_result = self._parse_function_body(tokens, pos)
             if not body_result.success:
-                return ParseResult(success=False, error=body_result.error, position=pos)
+                return ParseResult(success=False, error=body_result.error, position=body_result.position)
 
             assert body_result.value is not None
             redirects, end_pos = self._collect_definition_redirects(
@@ -255,7 +265,7 @@ class StructureParserMixin(_Base):
             # Parse name
             name_result = self._build_function_name().parse(tokens, pos)
             if not name_result.success:
-                return ParseResult(success=False, error="Expected function name after 'function'", position=pos)
+                return ParseResult(success=False, error="Expected function name after 'function'", position=name_result.position)
 
             assert name_result.value is not None
             name = name_result.value
@@ -273,7 +283,7 @@ class StructureParserMixin(_Base):
             # Parse body
             body_result = self._parse_function_body(tokens, pos)
             if not body_result.success:
-                return ParseResult(success=False, error=body_result.error, position=pos)
+                return ParseResult(success=False, error=body_result.error, position=body_result.position)
 
             assert body_result.value is not None
             redirects, end_pos = self._collect_definition_redirects(
@@ -306,6 +316,12 @@ class StructureParserMixin(_Base):
             result = keyword_fn.parse(tokens, pos)
             if result.success:
                 return result
+            if pos < len(tokens) and matches_keyword(tokens[pos], 'function'):
+                self._raise_committed_error(
+                    tokens,
+                    result.position,
+                    result.error or "Invalid function definition",
+                )
 
             # For POSIX form: if we see WORD followed by '(' ')', commit to
             # function parsing.  This prevents ``123func()`` from falling
@@ -319,11 +335,11 @@ class StructureParserMixin(_Base):
                 result = posix_fn.parse(tokens, pos)
                 if not result.success:
                     # Hard error — raise ParseError to prevent fallthrough
-                    raise ParseError(ErrorContext(
-                        token=tokens[pos],
-                        message=result.error or "Invalid function definition",
-                        position=pos,
-                    ))
+                    self._raise_committed_error(
+                        tokens,
+                        result.position,
+                        result.error or "Invalid function definition",
+                    )
                 return result
 
             return ParseResult(success=False, error="Not a function definition", position=pos)
@@ -354,7 +370,7 @@ class StructureParserMixin(_Base):
             # Expect ')'
             rparen_result = self.tokens.rparen.parse(tokens, pos)
             if not rparen_result.success:
-                return ParseResult(success=False, error="Expected ')'", position=pos)
+                self._raise_committed_error(tokens, pos, "Expected ')'")
             pos = rparen_result.position
 
             # Parse trailing redirections and background
@@ -396,7 +412,7 @@ class StructureParserMixin(_Base):
             # Expect '}'
             rbrace_result = self.tokens.rbrace.parse(tokens, pos)
             if not rbrace_result.success:
-                return ParseResult(success=False, error="Expected '}'", position=pos)
+                self._raise_committed_error(tokens, pos, "Expected '}'")
             pos = rbrace_result.position
 
             # Parse trailing redirections and background

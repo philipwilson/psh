@@ -353,7 +353,7 @@ class ParserCombinatorShellParser:
                 pos += 1
 
             return pos == len(tokens)
-        except (AttributeError, IndexError, TypeError):
+        except (AttributeError, IndexError, TypeError, ParseError):
             return False
 
     def configure(self, **options):

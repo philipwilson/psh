@@ -15,7 +15,14 @@ starter rejection corpus in `tests/parser_differential`.
 The combinator parser now reports the same broad diagnostic shape for:
 
 - Empty groups: `()`, `( )`, `{ }`
-- Unterminated subshell: `(`
+- Unterminated groups: `(`, `{ echo hi`
+- Unterminated conditionals and loops: `if ...`, `while ...`, `for ...`,
+  `case ...`, C-style `for ((...`
+- Malformed compound headers: missing `then` before `fi`, extra case subject
+  word in `case a b in ...`
+- Unterminated array initializer: `a=(1 2`
+- Unterminated function bodies and missing function names
+- Unterminated / malformed enhanced tests: `[[ -n $x`, `[[ $x == ]]`
 - Missing redirect targets: `echo >`, `cat <`
 - Missing here-doc / here-string operands: `cat <<`, `cat <<<`
 - Missing left-hand command before `&&`: `&& echo`
@@ -26,26 +33,20 @@ positions; the combinator parser often reports token-stream positions.
 
 ## Remaining Diagnostic Drift
 
-Most remaining drift is parser commitment rather than message wording.  The
-combinator parser still commonly falls back to a generic failure at the
-construct's opening token instead of reporting the later missing terminator or
-offending token.
+The remaining drift in the starter rejection corpus is now concentrated in
+missing right-hand command diagnostics after binary command operators:
 
-Representative cases:
+- `echo |`
+- `echo &&`
 
-- Unterminated structures: `if ...`, `while ...`, `for ...`, `case ...`
-- Malformed case header: `case a b in ...`
-- Unterminated array initializer: `a=(1 2`
-- Unterminated function bodies: `f() { echo hi`, `function f {`
-- Function missing name: `function { echo hi; }`
-- Unterminated / malformed `[[ ... ]]`
-- Missing right-hand command after `|` or `&&`
+The recursive-descent parser reports EOF for those cases.  The combinator
+parser still reports the operator token because the command-list level sees the
+operator as the point where parsing stopped.
 
 ## Recommended Next Tightening
 
-1. Add commit-aware failures in control-structure parsers once their opening
-   keyword has been consumed.
-2. Preserve EOF diagnostics for unterminated compound constructs.
-3. Normalize diagnostic position semantics before asserting positions.  Decide
+1. Add command-operator commitment for missing right-hand commands after `|`
+   and `&&`.
+2. Normalize diagnostic position semantics before asserting positions.  Decide
    whether combinator errors should report source-character positions like
    recursive descent, or whether tests should compare token identity only.
