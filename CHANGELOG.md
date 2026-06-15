@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.457.0 (2026-06-15) - Tier R12.C: extract ExecutionState from the ShellState god-object
+- REFACTOR (no behavior change). Lifted the eight per-command execution-scratch fields
+  off `ShellState` into a cohesive `ExecutionState` sub-object
+  (`psh/core/execution_state.py`): `last_exit_code`, `last_bg_pid`, `foreground_pgid`,
+  `command_number`, `pipestatus`, `errexit_eligible`, `last_cmdsub_status`,
+  `in_forked_child`. `ShellState` keeps `self.execution` and exposes all eight as
+  delegating properties, so every existing call site (`shell.state.last_exit_code`, …)
+  is untouched — same "typed sub-object + delegating properties" pattern as
+  `TerminalState`/`HistoryState`/`StreamBindings`. This is the twice-deferred #9 M1 /
+  #10 finding; it shrinks the god-object and makes subshell adoption a single
+  `parent.execution.copy_into(self.execution)` — so a new execution field can no longer
+  be silently omitted from `adopt()` (the structural cause of the v0.453 `$!`-in-subshell
+  bug). +5 unit tests. mypy/ruff clean; full suite green.
+- Tier R12.C.
+
 ## 0.456.0 (2026-06-15) - Tier R12.B batch 3: check_untyped_defs for ast_nodes + recursive-descent parser (R12.B done)
 - TYPING (no behavior change). Enabled `check_untyped_defs = true` for `psh.ast_nodes.*`
   and the PRODUCTION parser `psh.parser.recursive_descent.*` (both zero-fallout). mypy

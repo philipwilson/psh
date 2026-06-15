@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from ..version import __version__
 from .command_hash import CommandHashTable
+from .execution_state import ExecutionState
 from .history_state import HistoryState
 from .scope import ScopeManager
 from .stream_bindings import StreamBindings
@@ -154,11 +155,10 @@ class ShellState:
         self.norc = norc
         self.rcfile = rcfile
 
-        # Execution state
-        self.last_exit_code = 0
-        self.last_bg_pid = None
-        self.foreground_pgid = None
-        self.command_number = 0
+        # Execution state — one cohesive object (last_exit_code / last_bg_pid /
+        # foreground_pgid / command_number / pipestatus / errexit_eligible /
+        # last_cmdsub_status / in_forked_child delegate to it via properties).
+        self.execution = ExecutionState()
 
         # History settings — one cohesive object (history / history_file /
         # max_history_size delegate to it via properties).
@@ -175,10 +175,6 @@ class ShellState:
         # addition to function_stack.
         self.source_depth = 0
 
-        # Exit statuses of the most recently executed foreground pipeline
-        # (PIPESTATUS). A single command records a one-element list.
-        self.pipestatus = []
-
         # The shell's parent process id at startup ($PPID). Subshells
         # inherit it (bash: PPID does not change in subshells).
         self.initial_ppid = os.getppid()
@@ -187,24 +183,6 @@ class ShellState:
         # the ORIGINAL shell's pid in subshells, command substitutions and
         # forked children (POSIX) — never the child's os.getpid().
         self.shell_pid = os.getpid()
-
-        # Whether the most recent command status may trigger set -e.
-        # Maintained by ExecutorVisitor.visit_AndOrList: False for failures
-        # POSIX exempts from errexit (condition contexts, non-final members
-        # of && / || lists, !-negated pipelines).
-        self.errexit_eligible = True
-
-        # Exit status of the most recent command substitution, or None.
-        # CommandExecutor clears it before expanding a pure assignment's
-        # value and uses it as the assignment's exit status (bash: a pure
-        # assignment reports 0 unless a command substitution ran).
-        self.last_cmdsub_status = None
-
-        # Process state. True only inside a forked child (pipeline member,
-        # subshell, command-substitution child, etc.); leaf builtins consult it
-        # to decide between fd-level writes (os.write) and shell.stdout. A real
-        # first-class attribute so callers read it directly, not via hasattr.
-        self.in_forked_child = False
 
         # Terminal capabilities — one cohesive object (is_terminal /
         # terminal_fd / supports_job_control delegate to it via properties);
@@ -269,13 +247,12 @@ class ShellState:
         # bash: subshell-style children inherit the command hash table
         # (probe: `hash ls; (hash)` lists the entry in the subshell).
         self.command_hash = parent.command_hash.copy()
-        self.last_exit_code = parent.last_exit_code
-        # `$!` is inherited by subshell-style children (bash: `sleep 1 & ( echo $! )`
-        # prints the pid). Without this copy it read empty in `( … )`, `$( … )`,
-        # and the env builtin's child.
-        self.last_bg_pid = parent.last_bg_pid
+        # Inherit the per-command execution state as a unit — $? ($last_exit_code),
+        # $! (last_bg_pid; subshells inherit it, bash: `sleep 1 & ( echo $! )`),
+        # PIPESTATUS, errexit eligibility, etc. Copying via the sub-object means a
+        # new execution field can't be silently forgotten here (the v0.453 $! bug).
+        parent.execution.copy_into(self.execution)
         self.is_script_mode = parent.is_script_mode
-        self.pipestatus = list(parent.pipestatus)
         self.initial_ppid = parent.initial_ppid
         self.shell_pid = parent.shell_pid
         # Sync all exported variables (including local exports) to environment
@@ -373,6 +350,80 @@ class ShellState:
     @max_history_size.setter
     def max_history_size(self, value: int) -> None:
         self.history_state.max_size = value
+
+    # Per-command execution state delegates to the explicit ExecutionState
+    # object (self.execution); see execution_state.py.
+    @property
+    def last_exit_code(self) -> int:
+        """Exit status of the last foreground command ($?)."""
+        return self.execution.last_exit_code
+
+    @last_exit_code.setter
+    def last_exit_code(self, value: int) -> None:
+        self.execution.last_exit_code = value
+
+    @property
+    def last_bg_pid(self) -> Optional[int]:
+        """PID of the most recent background command ($!)."""
+        return self.execution.last_bg_pid
+
+    @last_bg_pid.setter
+    def last_bg_pid(self, value: Optional[int]) -> None:
+        self.execution.last_bg_pid = value
+
+    @property
+    def foreground_pgid(self) -> Optional[int]:
+        """Process group currently owning the terminal."""
+        return self.execution.foreground_pgid
+
+    @foreground_pgid.setter
+    def foreground_pgid(self, value: Optional[int]) -> None:
+        self.execution.foreground_pgid = value
+
+    @property
+    def command_number(self) -> int:
+        """Monotonic command counter (prompt \\#/\\!, history numbering)."""
+        return self.execution.command_number
+
+    @command_number.setter
+    def command_number(self, value: int) -> None:
+        self.execution.command_number = value
+
+    @property
+    def pipestatus(self) -> list:
+        """Exit statuses of the most recent foreground pipeline (PIPESTATUS)."""
+        return self.execution.pipestatus
+
+    @pipestatus.setter
+    def pipestatus(self, value: list) -> None:
+        self.execution.pipestatus = value
+
+    @property
+    def errexit_eligible(self) -> bool:
+        """Whether the most recent command status may trigger `set -e`."""
+        return self.execution.errexit_eligible
+
+    @errexit_eligible.setter
+    def errexit_eligible(self, value: bool) -> None:
+        self.execution.errexit_eligible = value
+
+    @property
+    def last_cmdsub_status(self) -> Optional[int]:
+        """Exit status of the most recent command substitution, or None."""
+        return self.execution.last_cmdsub_status
+
+    @last_cmdsub_status.setter
+    def last_cmdsub_status(self, value: Optional[int]) -> None:
+        self.execution.last_cmdsub_status = value
+
+    @property
+    def in_forked_child(self) -> bool:
+        """True only inside a forked child (pipeline member, subshell, ...)."""
+        return self.execution.in_forked_child
+
+    @in_forked_child.setter
+    def in_forked_child(self, value: bool) -> None:
+        self.execution.in_forked_child = value
 
     @property
     def debug_ast(self):
