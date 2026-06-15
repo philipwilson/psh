@@ -195,200 +195,216 @@ class DeclareBuiltin(Builtin):
         return removed
 
     def _declare_variables(self, options: dict, args: List[str], shell: 'Shell', _original_args=None) -> int:
-        """Handle variable declarations."""
+        """Handle variable declarations (list, assignment, or bare-name forms)."""
         attributes = self._attributes_from_options(options)
         remove_attrs = self._removed_attributes_from_options(options)
 
         # If no arguments, list all shell variables (not environment)
         if not args:
-            # Get all variables with their attributes
-            variables = self._get_all_variables_with_attributes(shell)
+            return self._declare_list_all(options, shell)
 
-            # If no special options were given, use simple format
-            simple_format = not any([
-                options['array'], options['assoc_array'], options['export'],
-                options['integer'], options['lowercase'], options['uppercase'],
-                options['readonly'], options['trace'], options['print']
-            ])
-
-            for var in sorted(variables, key=lambda v: v.name):
-                if simple_format:
-                    # Simple format: NAME=value
-                    self._print_simple_declaration(var, shell)
-                else:
-                    # Full format: declare -flags NAME="value"
-                    self._print_declaration(var, shell)
-            return 0
-
-        # Process each argument
+        # Process each argument; an invalid name (or nameref self-ref)
+        # stops immediately with exit 1, matching bash.
         for arg in args:
             if '=' in arg:
-                # Variable assignment (NAME=value or NAME+=value append).
-                # Namerefs take the text verbatim, so '+' stays part of
-                # the (invalid) name there, as in bash.
-                name, value = arg.split('=', 1)
-                append = name.endswith('+') and not options['nameref']
-                if append:
-                    name = name[:-1]
-
-                # Validate variable name
-                if not self._is_valid_identifier(name):
-                    self.error(f"`{arg}': not a valid identifier", shell)
-                    return 1
-
-                # Name reference: store the target name as the value with the
-                # NAMEREF attribute (set_variable writes it raw to `name`).
-                if options['nameref']:
-                    if name == value:
-                        self.error(f"{name}: nameref variable self references not allowed", shell)
-                        return 1
-                    self._set_variable_with_attributes(shell, name, value, attributes, options['global'])
-                    continue
-
-                # Handle array initialization syntax. A parenthesized value
-                # makes an indexed array even WITHOUT -a (bash: ``declare -x
-                # ARR=(a b)`` creates an array — and arrays are never
-                # exported to the environment). -A, or an existing
-                # associative variable, selects the associative form.
-                #
-                # Array initialization is keyed STRICTLY on the parser having
-                # seen literal ``name=(...)`` syntax: it attaches a structured
-                # ArrayInitialization (element Words with full quote context)
-                # to the argument Word, delivered via the shell's explicit
-                # pending-array-init handoff. We expand it through the
-                # SAME structured path the bare ``a=(...)`` form uses
-                # (build_indexed_array / build_associative_array) — no shlex
-                # reparse. A merely paren-shaped VALUE that did NOT come from
-                # array syntax (``declare "a=(1 2)"``, ``declare a=$x`` with
-                # x="(1 2)") is a scalar in bash, so it is NOT array-ified.
-                array_init = self._pending_array_init(shell, arg)
-                is_array_init = array_init is not None
-
-                # bash: a SCALAR value combined with -a/-A still creates an
-                # array, storing the value at index 0 (or key "0" for -A).
-                # ``declare -a v=5`` -> ``([0]="5")``; ``declare -A m=foo`` ->
-                # ``([0]="foo")``. The integer/case attrs then apply to the
-                # element (handled by _transform_array_elements below).
-                scalar_into_array = (
-                    not is_array_init
-                    and (options['array'] or options['assoc_array']))
-
-                as_assoc = False
-                if (is_array_init or scalar_into_array) and not options['array']:
-                    existing = self._get_variable_with_attributes(shell, name)
-                    as_assoc = options['assoc_array'] or (
-                        existing is not None and existing.is_assoc_array)
-
-                if is_array_init and as_assoc:
-                    # Associative array initialization; += merges into the
-                    # existing array (bash).
-                    existing = (self._get_variable_with_attributes(shell, name)
-                                if append else None)
-                    into: Any = (existing.value
-                                 if existing is not None
-                                 and isinstance(existing.value, AssociativeArray)
-                                 else None)
-                    array: Any = self._build_assoc_array(array_init, into, shell)
-                    self._transform_array_elements(array, attributes, shell)
-                    self._set_variable_with_attributes(
-                        shell, name, array,
-                        attributes | VarAttributes.ASSOC_ARRAY, options['global'])
-
-                elif is_array_init:
-                    # Indexed array initialization; += appends after the
-                    # existing array's highest index (bash).
-                    existing = (self._get_variable_with_attributes(shell, name)
-                                if append else None)
-                    into = (existing.value
-                            if existing is not None
-                            and isinstance(existing.value, IndexedArray)
-                            else None)
-                    array = self._build_indexed_array(array_init, into, shell)
-                    self._transform_array_elements(array, attributes, shell)
-                    self._set_variable_with_attributes(
-                        shell, name, array,
-                        attributes | VarAttributes.ARRAY, options['global'])
-
-                elif scalar_into_array and as_assoc:
-                    array = AssociativeArray()
-                    array.set("0", self._transform_element(value, attributes, shell))
-                    self._set_variable_with_attributes(
-                        shell, name, array,
-                        attributes | VarAttributes.ASSOC_ARRAY, options['global'])
-
-                elif scalar_into_array:
-                    array = IndexedArray()
-                    array.set(0, self._transform_element(value, attributes, shell))
-                    self._set_variable_with_attributes(
-                        shell, name, array,
-                        attributes | VarAttributes.ARRAY, options['global'])
-
-                else:
-                    # Regular variable assignment
-                    # The enhanced scope manager will apply attribute transformations
-                    final_value: object = value
-                    if append:
-                        from ..core import resolve_append_assignment
-                        _, final_value = resolve_append_assignment(
-                            shell.state.scope_manager, name + '+', value)
-                    self._set_variable_with_attributes(shell, name, final_value, attributes, options['global'])
-
+                rc = self._declare_assignment(arg, options, attributes, shell)
             else:
-                # Just declaring with attributes, no assignment
-                # Validate variable name
-                if not self._is_valid_identifier(arg):
-                    self.error(f"`{arg}': not a valid identifier", shell)
-                    return 1
-
-                if options['array']:
-                    # Check for array type conflict first
-                    existing = self._get_variable_with_attributes(shell, arg)
-                    if existing and existing.is_assoc_array:
-                        self.error(f"{arg}: cannot convert associative to indexed array", shell)
-                        return 1
-                    # Create empty indexed array
-                    self._set_variable_with_attributes(shell, arg, IndexedArray(), attributes, options['global'])
-                elif options['assoc_array']:
-                    # Check for array type conflict first
-                    existing = self._get_variable_with_attributes(shell, arg)
-                    if existing and existing.is_indexed_array:
-                        # Bash behavior: print error but continue, convert to associative array
-                        self.error(f"{arg}: cannot convert indexed to associative array", shell)
-                        # Convert indexed array content to associative array
-                        new_assoc = AssociativeArray()
-                        if isinstance(existing.value, IndexedArray):
-                            # Copy indexed array elements as string keys
-                            for index in existing.value.indices():
-                                new_assoc.set(str(index), existing.value.get(index) or "")
-                        # Completely replace the variable with new associative array
-                        # Remove old attributes and set only the new ones
-                        shell.state.scope_manager.unset_variable(arg)
-                        self._set_variable_with_attributes(shell, arg, new_assoc, attributes, options['global'])
-                    else:
-                        # Create empty associative array
-                        self._set_variable_with_attributes(shell, arg, AssociativeArray(), attributes, options['global'])
-                else:
-                    # Apply attributes to existing variable or create new one
-                    # (attribute changes fire the scope manager's observer,
-                    # which keeps state.env in sync — no manual export sync)
-                    existing = self._get_variable_with_attributes(shell, arg)
-                    if existing:
-                        if remove_attrs:
-                            shell.state.scope_manager.remove_attribute(arg, remove_attrs)
-                        if attributes:
-                            shell.state.scope_manager.apply_attribute(arg, attributes)
-                    else:
-                        # Declared-but-unset: record the attributes, but the
-                        # name still reads as unset and (for -x) gains no
-                        # environment entry until assigned (bash: ``declare
-                        # -x FOO`` then ``${FOO-u}`` is ``u``, printenv
-                        # fails; assignment makes both appear).
-                        self._set_variable_with_attributes(
-                            shell, arg, "",
-                            attributes | VarAttributes.UNSET, options['global'])
-
+                rc = self._declare_bare_name(arg, options, attributes, remove_attrs, shell)
+            if rc != 0:
+                return rc
         return 0
 
+    def _declare_list_all(self, options: dict, shell: 'Shell') -> int:
+        """List all shell variables (the no-argument `declare` form)."""
+        # Get all variables with their attributes
+        variables = self._get_all_variables_with_attributes(shell)
+
+        # If no special options were given, use simple format
+        simple_format = not any([
+            options['array'], options['assoc_array'], options['export'],
+            options['integer'], options['lowercase'], options['uppercase'],
+            options['readonly'], options['trace'], options['print']
+        ])
+
+        for var in sorted(variables, key=lambda v: v.name):
+            if simple_format:
+                # Simple format: NAME=value
+                self._print_simple_declaration(var, shell)
+            else:
+                # Full format: declare -flags NAME="value"
+                self._print_declaration(var, shell)
+        return 0
+
+    def _declare_assignment(self, arg: str, options: dict, attributes: VarAttributes,
+                            shell: 'Shell') -> int:
+        """Apply one `NAME=value` / `NAME+=value` declaration argument."""
+        # Variable assignment (NAME=value or NAME+=value append).
+        # Namerefs take the text verbatim, so '+' stays part of
+        # the (invalid) name there, as in bash.
+        name, value = arg.split('=', 1)
+        append = name.endswith('+') and not options['nameref']
+        if append:
+            name = name[:-1]
+
+        # Validate variable name
+        if not self._is_valid_identifier(name):
+            self.error(f"`{arg}': not a valid identifier", shell)
+            return 1
+
+        # Name reference: store the target name as the value with the
+        # NAMEREF attribute (set_variable writes it raw to `name`).
+        if options['nameref']:
+            if name == value:
+                self.error(f"{name}: nameref variable self references not allowed", shell)
+                return 1
+            self._set_variable_with_attributes(shell, name, value, attributes, options['global'])
+            return 0
+
+        # Handle array initialization syntax. A parenthesized value
+        # makes an indexed array even WITHOUT -a (bash: ``declare -x
+        # ARR=(a b)`` creates an array — and arrays are never
+        # exported to the environment). -A, or an existing
+        # associative variable, selects the associative form.
+        #
+        # Array initialization is keyed STRICTLY on the parser having
+        # seen literal ``name=(...)`` syntax: it attaches a structured
+        # ArrayInitialization (element Words with full quote context)
+        # to the argument Word, delivered via the shell's explicit
+        # pending-array-init handoff. We expand it through the
+        # SAME structured path the bare ``a=(...)`` form uses
+        # (build_indexed_array / build_associative_array) — no shlex
+        # reparse. A merely paren-shaped VALUE that did NOT come from
+        # array syntax (``declare "a=(1 2)"``, ``declare a=$x`` with
+        # x="(1 2)") is a scalar in bash, so it is NOT array-ified.
+        array_init = self._pending_array_init(shell, arg)
+        is_array_init = array_init is not None
+
+        # bash: a SCALAR value combined with -a/-A still creates an
+        # array, storing the value at index 0 (or key "0" for -A).
+        # ``declare -a v=5`` -> ``([0]="5")``; ``declare -A m=foo`` ->
+        # ``([0]="foo")``. The integer/case attrs then apply to the
+        # element (handled by _transform_array_elements below).
+        scalar_into_array = (
+            not is_array_init
+            and (options['array'] or options['assoc_array']))
+
+        as_assoc = False
+        if (is_array_init or scalar_into_array) and not options['array']:
+            existing = self._get_variable_with_attributes(shell, name)
+            as_assoc = options['assoc_array'] or (
+                existing is not None and existing.is_assoc_array)
+
+        if is_array_init and as_assoc:
+            # Associative array initialization; += merges into the
+            # existing array (bash).
+            existing = (self._get_variable_with_attributes(shell, name)
+                        if append else None)
+            into: Any = (existing.value
+                         if existing is not None
+                         and isinstance(existing.value, AssociativeArray)
+                         else None)
+            array: Any = self._build_assoc_array(array_init, into, shell)
+            self._transform_array_elements(array, attributes, shell)
+            self._set_variable_with_attributes(
+                shell, name, array,
+                attributes | VarAttributes.ASSOC_ARRAY, options['global'])
+
+        elif is_array_init:
+            # Indexed array initialization; += appends after the
+            # existing array's highest index (bash).
+            existing = (self._get_variable_with_attributes(shell, name)
+                        if append else None)
+            into = (existing.value
+                    if existing is not None
+                    and isinstance(existing.value, IndexedArray)
+                    else None)
+            array = self._build_indexed_array(array_init, into, shell)
+            self._transform_array_elements(array, attributes, shell)
+            self._set_variable_with_attributes(
+                shell, name, array,
+                attributes | VarAttributes.ARRAY, options['global'])
+
+        elif scalar_into_array and as_assoc:
+            array = AssociativeArray()
+            array.set("0", self._transform_element(value, attributes, shell))
+            self._set_variable_with_attributes(
+                shell, name, array,
+                attributes | VarAttributes.ASSOC_ARRAY, options['global'])
+
+        elif scalar_into_array:
+            array = IndexedArray()
+            array.set(0, self._transform_element(value, attributes, shell))
+            self._set_variable_with_attributes(
+                shell, name, array,
+                attributes | VarAttributes.ARRAY, options['global'])
+
+        else:
+            # Regular variable assignment
+            # The enhanced scope manager will apply attribute transformations
+            final_value: object = value
+            if append:
+                from ..core import resolve_append_assignment
+                _, final_value = resolve_append_assignment(
+                    shell.state.scope_manager, name + '+', value)
+            self._set_variable_with_attributes(shell, name, final_value, attributes, options['global'])
+        return 0
+
+    def _declare_bare_name(self, arg: str, options: dict, attributes: VarAttributes,
+                           remove_attrs: VarAttributes, shell: 'Shell') -> int:
+        """Declare/modify a variable by NAME only (no assignment)."""
+        # Just declaring with attributes, no assignment
+        # Validate variable name
+        if not self._is_valid_identifier(arg):
+            self.error(f"`{arg}': not a valid identifier", shell)
+            return 1
+
+        if options['array']:
+            # Check for array type conflict first
+            existing = self._get_variable_with_attributes(shell, arg)
+            if existing and existing.is_assoc_array:
+                self.error(f"{arg}: cannot convert associative to indexed array", shell)
+                return 1
+            # Create empty indexed array
+            self._set_variable_with_attributes(shell, arg, IndexedArray(), attributes, options['global'])
+        elif options['assoc_array']:
+            # Check for array type conflict first
+            existing = self._get_variable_with_attributes(shell, arg)
+            if existing and existing.is_indexed_array:
+                # Bash behavior: print error but continue, convert to associative array
+                self.error(f"{arg}: cannot convert indexed to associative array", shell)
+                # Convert indexed array content to associative array
+                new_assoc = AssociativeArray()
+                if isinstance(existing.value, IndexedArray):
+                    # Copy indexed array elements as string keys
+                    for index in existing.value.indices():
+                        new_assoc.set(str(index), existing.value.get(index) or "")
+                # Completely replace the variable with new associative array
+                # Remove old attributes and set only the new ones
+                shell.state.scope_manager.unset_variable(arg)
+                self._set_variable_with_attributes(shell, arg, new_assoc, attributes, options['global'])
+            else:
+                # Create empty associative array
+                self._set_variable_with_attributes(shell, arg, AssociativeArray(), attributes, options['global'])
+        else:
+            # Apply attributes to existing variable or create new one
+            # (attribute changes fire the scope manager's observer,
+            # which keeps state.env in sync — no manual export sync)
+            existing = self._get_variable_with_attributes(shell, arg)
+            if existing:
+                if remove_attrs:
+                    shell.state.scope_manager.remove_attribute(arg, remove_attrs)
+                if attributes:
+                    shell.state.scope_manager.apply_attribute(arg, attributes)
+            else:
+                # Declared-but-unset: record the attributes, but the
+                # name still reads as unset and (for -x) gains no
+                # environment entry until assigned (bash: ``declare
+                # -x FOO`` then ``${FOO-u}`` is ``u``, printenv
+                # fails; assignment makes both appear).
+                self._set_variable_with_attributes(
+                    shell, arg, "",
+                    attributes | VarAttributes.UNSET, options['global'])
+        return 0
     def _print_variables(self, options: dict, names: List[str], shell: 'Shell') -> int:
         """Print variables with attributes using declare -p format."""
         if names:
