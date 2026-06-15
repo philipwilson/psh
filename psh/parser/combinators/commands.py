@@ -805,6 +805,7 @@ def parse_and_or_list(pipeline_parser: Parser) -> Parser[AndOrList]:
             op_result = and_or_operator.parse(tokens, pos)
             if not op_result.success:
                 break
+            assert op_result.value is not None
             op_token = op_result.value
             pos = op_result.position
 
