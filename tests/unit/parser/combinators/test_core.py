@@ -6,8 +6,10 @@ import pytest
 from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.core import (
     ForwardParser,
+    ParseFailure,
     Parser,
     ParseResult,
+    ParseSuccess,
     between,
     fail_with,
     keyword,
@@ -48,6 +50,78 @@ class TestParseResult:
         assert result.value is None
         assert result.position == 2
         assert result.error == "Expected token"
+
+    def test_new_result_defaults(self):
+        """The error channel fields default to non-committed / no labels."""
+        result = ParseResult(success=False, error="x", position=0)
+        assert result.committed is False
+        assert result.expected == ()
+
+
+class TestDiscriminatedConstructors:
+    """The ParseSuccess / ParseFailure discriminated-union constructors."""
+
+    def test_parse_success(self):
+        """ParseSuccess is a successful ParseResult carrying a value."""
+        r = ParseSuccess("v", 3)
+        assert isinstance(r, ParseResult)
+        assert r.success is True
+        assert r.value == "v"
+        assert r.position == 3
+        assert r.error is None
+        assert r.committed is False
+
+    def test_parse_failure(self):
+        """ParseFailure is a failed ParseResult with the FP error channel."""
+        r = ParseFailure(2, "nope", expected=("WORD", "STRING"), committed=True)
+        assert isinstance(r, ParseResult)
+        assert r.success is False
+        assert r.value is None
+        assert r.position == 2
+        assert r.error == "nope"
+        assert r.expected == ("WORD", "STRING")
+        assert r.committed is True
+
+    def test_parse_failure_defaults(self):
+        """ParseFailure defaults to recoverable (not committed), no labels."""
+        r = ParseFailure(1, "soft")
+        assert r.committed is False
+        assert r.expected == ()
+
+
+class TestCommitment:
+    """or_else / many / separated_by honour the cut (committed) flag."""
+
+    def test_or_else_retries_recoverable_failure(self):
+        """A plain (recoverable) failure lets or_else try the alternative."""
+        left = Parser(lambda t, p: ParseFailure(p, "left"))
+        right = Parser(lambda t, p: ParseSuccess("R", p + 1))
+        result = left.or_else(right).parse([], 0)
+        assert result.success is True
+        assert result.value == "R"
+
+    def test_or_else_does_not_retry_committed_failure(self):
+        """A committed failure is a cut: or_else must NOT try the alternative."""
+        left = Parser(lambda t, p: ParseFailure(p, "committed!", committed=True))
+        right = Parser(lambda t, p: ParseSuccess("R", p + 1))
+        result = left.or_else(right).parse([], 0)
+        assert result.success is False
+        assert result.committed is True
+        assert result.error == "committed!"
+
+    def test_many_propagates_committed_failure(self):
+        """many stops-and-succeeds on a recoverable failure but propagates a cut."""
+        committed = Parser(lambda t, p: ParseFailure(p, "boom", committed=True))
+        result = many(committed).parse([], 0)
+        assert result.success is False
+        assert result.committed is True
+
+    def test_many_swallows_recoverable_failure(self):
+        """many returns the collected list on a recoverable failure."""
+        recoverable = Parser(lambda t, p: ParseFailure(p, "done"))
+        result = many(recoverable).parse([], 0)
+        assert result.success is True
+        assert result.value == []
 
 
 class TestParser:
