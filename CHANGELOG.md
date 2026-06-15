@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.463.0 (2026-06-15) - Tier R12.D.6: dedup RD array-initializer head detection (review M4/dedup) — R12.D complete
+- REFACTOR (no behavior change). `CommandParser._check_array_initialization` (argument
+  position, e.g. `declare -a a=(1 2)`) duplicated the `name=(...)`/`name+=(...)` head
+  detection that `ArrayParser._candidate_initializer` (statement position, e.g. `a=(1 2)`)
+  already performs. It now delegates detection to that single peek-only classifier (which
+  reports `head_token_count`), then does its own token-consume + head-Token synthesis. The
+  element-collection loop was already shared (`parse_array_init_elements`); this removes the
+  last copy — head detection now lives in one place. Single-token, split, and spaced
+  (`declare a = (...)`) forms all preserved; 804 array/declare/parser tests green.
+- Sixth item of Tier R12.D. **Tier R12.D complete** (v0.458–463: combinator dedup, dead-code
+  & stale-doc sweep, rm-rf security heuristic, io-redirect dispatch dedup, declare-method
+  split, array-init dedup).
+
 ## 0.462.0 (2026-06-15) - Tier R12.D.5: split the 195-line declare `_declare_variables` method (review M4)
 - REFACTOR (no behavior change). `_declare_variables` (builtins/function_support.py) — the
   longest method in the codebase (~195 lines, reappraisal #9 M4) — is now a small
