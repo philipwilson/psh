@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.415.0 (2026-06-15) - Combinator parser: committed compound diagnostics (PR #150)
+- REFACTOR (combinator backend only; recursive-descent default parser untouched).
+  Follow-on to PR #149. The combinator parser recognized compound openers
+  (if/case, while/until/for/select, function forms, brace/subshell groups,
+  arrays, `[[ ]]`) but then fell back to GENERIC opening-token failures on
+  malformed input. It now raises COMMITTED parse errors after the opener, so its
+  diagnostics match recursive descent: EOF/offending-token errors for
+  unterminated compounds, malformed case headers, missing function names,
+  malformed `[[ … ]]`, and unterminated array initializers.
+- `ParserCombinatorShellParser.can_parse()` stays a boolean probe by treating a
+  committed `ParseError` as a parse failure (added to its caught exceptions).
+- Expanded the RD-vs-combinator diagnostic parity corpus from 9 to 23 stable
+  cases; refreshed `docs/reviews/combinator_diagnostic_characterization_2026-06-14.md`
+  (remaining starter-corpus drift is now just missing-RHS-command after `|`/`&&`).
+- Maintainer-authored (PR #150). Orchestrator added the one mypy narrowing the
+  new code needed: the committed-error helper for `[[ ]]` is now typed
+  `-> NoReturn` so `EnhancedTestStatement`'s expression narrows to non-None.
+- Full gate green: ruff + mypy clean (225 files), `run_tests.py --parallel` 7545
+  passed, `--compare-bash` 461 passed.
+
 ## 0.414.0 (2026-06-14) - Combinator parser: parity hardening (PR #149) + differential gates
 - REFACTOR + TEST INFRA (combinator backend only; recursive-descent default
   parser untouched). Addresses the R8 review's Ugly 9 / A7 (combinator contract)

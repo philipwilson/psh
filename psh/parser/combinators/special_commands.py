@@ -5,7 +5,7 @@ arithmetic commands, enhanced test expressions, array operations,
 and process substitutions.
 """
 
-from typing import List, Optional, Union, cast
+from typing import List, NoReturn, Optional, Union, cast
 
 from ...ast_nodes import (
     # Special commands
@@ -26,6 +26,7 @@ from ...ast_nodes import (
 )
 from ...lexer.token_types import Token
 from ..config import ParserConfig
+from ..recursive_descent.helpers import ErrorContext, ParseError
 from .commands import CommandParsers
 from .core import Parser, ParseResult
 from .tokens import TokenParsers
@@ -181,6 +182,14 @@ class SpecialCommandParsers:
 
     def _build_enhanced_test_statement(self) -> Parser[EnhancedTestStatement]:
         """Build parser for enhanced test statement [[ expression ]] syntax."""
+        def raise_committed_error(tokens: List[Token], pos: int, message: str) -> NoReturn:
+            error_pos = min(pos, len(tokens) - 1)
+            raise ParseError(ErrorContext(
+                token=tokens[error_pos],
+                message=message,
+                position=error_pos,
+            ))
+
         def parse_enhanced_test(tokens: List[Token], pos: int) -> ParseResult[EnhancedTestStatement]:
             """Parse enhanced test expression."""
             # Check for opening [[
@@ -211,14 +220,15 @@ class SpecialCommandParsers:
 
             # Check for closing ]]
             if pos >= len(tokens) or tokens[pos].type.name != 'DOUBLE_RBRACKET':
-                return ParseResult(success=False, error="Expected ']]' to close enhanced test", position=pos)
+                raise_committed_error(tokens, pos, "Expected ']]' to close enhanced test")
 
+            closing_pos = pos
             pos += 1  # Skip ]]
 
             # Parse the test expression from collected tokens
             test_expr = self._parse_test_expression(expr_tokens)
             if test_expr is None:
-                return ParseResult(success=False, error="Invalid test expression", position=pos)
+                raise_committed_error(tokens, closing_pos, "Invalid test expression")
 
             return ParseResult(
                 success=True,

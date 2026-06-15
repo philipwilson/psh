@@ -14,6 +14,7 @@ from ....ast_nodes import (
 )
 from ....lexer.keyword_defs import KeywordGuard, matches_keyword
 from ....lexer.token_types import Token, TokenType
+from ...recursive_descent.helpers import ErrorContext, ParseError
 from ..core import Parser, ParseResult
 from ..utils import format_token_value
 
@@ -28,6 +29,16 @@ CASE_TERMINATOR_TOKENS = {
     TokenType.SEMICOLON_AMP: ';&',
     TokenType.AMP_SEMICOLON: ';;&',
 }
+
+
+def _raise_committed_error(tokens: List[Token], pos: int, message: str) -> None:
+    """Raise a hard parse error after a compound-command opener committed."""
+    error_pos = min(pos, len(tokens) - 1)
+    raise ParseError(ErrorContext(
+        token=tokens[error_pos],
+        message=message,
+        position=error_pos,
+    ))
 
 
 def _parse_case_pattern_value(tokens, pos, pattern_types):
@@ -87,6 +98,11 @@ class ConditionalParserMixin(_Base):
                                          position=current_pos)
                     break
 
+                if matches_keyword(token, 'fi'):
+                    return ParseResult(success=False,
+                                     error="Unexpected 'fi': expected 'then' in if statement",
+                                     position=current_pos)
+
                 if token.type.name in ['SEMICOLON', 'NEWLINE']:
                     saw_separator = True
                     # Check if next token is 'then'
@@ -101,7 +117,7 @@ class ConditionalParserMixin(_Base):
             if current_pos >= len(tokens):
                 return ParseResult(success=False,
                                  error="Unexpected end of input: expected 'then' in if statement",
-                                 position=pos)
+                                 position=current_pos)
 
             # Skip separator if we're at one
             if tokens[current_pos].type.name in ['SEMICOLON', 'NEWLINE']:
@@ -179,7 +195,11 @@ class ConditionalParserMixin(_Base):
             # Parse main condition and then part
             main_result = parse_condition_then(tokens, pos)
             if not main_result.success:
-                return ParseResult(success=False, error=main_result.error, position=pos)
+                _raise_committed_error(
+                    tokens,
+                    main_result.position,
+                    main_result.error or "Invalid if statement",
+                )
 
             assert main_result.value is not None
             condition, then_part = main_result.value
@@ -191,7 +211,11 @@ class ConditionalParserMixin(_Base):
                 pos += 1  # Skip 'elif'
                 elif_result = parse_condition_then(tokens, pos)
                 if not elif_result.success:
-                    return ParseResult(success=False, error=elif_result.error, position=pos)
+                    _raise_committed_error(
+                        tokens,
+                        elif_result.position,
+                        elif_result.error or "Invalid elif clause",
+                    )
                 assert elif_result.value is not None
                 elif_parts.append(elif_result.value)
                 pos = elif_result.position
@@ -225,20 +249,26 @@ class ConditionalParserMixin(_Base):
 
                 else_result = self.commands.statement_list.parse(else_tokens, 0)
                 if not else_result.success:
-                    return ParseResult(success=False,
-                                     error=f"Failed to parse else body: {else_result.error}",
-                                     position=pos)
+                    _raise_committed_error(
+                        tokens,
+                        pos,
+                        f"Failed to parse else body: {else_result.error}",
+                    )
                 else_part = else_result.value
 
             # Expect 'fi'
             if pos >= len(tokens):
-                return ParseResult(success=False,
-                                 error="Unexpected end of input: expected 'fi' to close if statement",
-                                 position=pos)
+                _raise_committed_error(
+                    tokens,
+                    pos,
+                    "Unexpected end of input: expected 'fi' to close if statement",
+                )
             if not matches_keyword(tokens[pos], 'fi'):
-                return ParseResult(success=False,
-                                 error=f"Expected 'fi' to close if statement, got '{tokens[pos].value}'",
-                                 position=pos)
+                _raise_committed_error(
+                    tokens,
+                    pos,
+                    f"Expected 'fi' to close if statement, got '{tokens[pos].value}'",
+                )
 
             pos += 1  # Skip 'fi'
 
@@ -275,7 +305,7 @@ class ConditionalParserMixin(_Base):
                 'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION', 'PARAM_EXPANSION',
             }
             if pos >= len(tokens) or tokens[pos].type.name not in _CASE_EXPR_TYPES:
-                return ParseResult(success=False, error="Expected expression after 'case'", position=pos)
+                _raise_committed_error(tokens, pos, "Expected expression after 'case'")
 
             # Format the expression appropriately
             expr = format_token_value(tokens[pos])
@@ -288,7 +318,7 @@ class ConditionalParserMixin(_Base):
             # Expect 'in' (exactly one subject word before it; a second word
             # here fails the parse, matching bash's rejection of `case a b in`)
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'in'):
-                return ParseResult(success=False, error="Expected 'in' after case expression", position=pos)
+                _raise_committed_error(tokens, pos, "Expected 'in' after case expression")
 
             pos += 1  # Skip 'in'
 
@@ -322,12 +352,12 @@ class ConditionalParserMixin(_Base):
                     pos += 1  # Skip '|'
                     pattern_str, pattern_tok, pos = _parse_case_pattern_value(tokens, pos, _CASE_PATTERN_TYPES)
                     if pattern_str is None:
-                        return ParseResult(success=False, error="Expected pattern after '|'", position=pos)
+                        _raise_committed_error(tokens, pos, "Expected pattern after '|'")
                     patterns.append(self._make_case_pattern(pattern_str, pattern_tok))
 
                 # Expect ')'
                 if pos >= len(tokens) or tokens[pos].value != ')':
-                    return ParseResult(success=False, error="Expected ')' after case pattern(s)", position=pos)
+                    _raise_committed_error(tokens, pos, "Expected ')' after case pattern(s)")
 
                 pos += 1  # Skip ')'
 
@@ -382,9 +412,11 @@ class ConditionalParserMixin(_Base):
                 if command_tokens:
                     commands_result = self.commands.statement_list.parse(command_tokens, 0)
                     if not commands_result.success:
-                        return ParseResult(success=False,
-                                         error=f"Failed to parse case commands: {commands_result.error}",
-                                         position=pos)
+                        _raise_committed_error(
+                            tokens,
+                            pos,
+                            f"Failed to parse case commands: {commands_result.error}",
+                        )
                     commands = commands_result.value
                 else:
                     commands = CommandList(statements=[])
@@ -411,7 +443,7 @@ class ConditionalParserMixin(_Base):
 
             # Expect 'esac'
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'esac'):
-                return ParseResult(success=False, error="Expected 'esac' to close case statement", position=pos)
+                _raise_committed_error(tokens, pos, "Expected 'esac' to close case statement")
 
             pos += 1  # Skip 'esac'
 
