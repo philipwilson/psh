@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.427.0 (2026-06-15) - Tier R9.B4: check_untyped_defs for expansion + executor
+- TYPES (zero behavior change). Enabled `check_untyped_defs = true` for
+  `psh.expansion.*` and `psh.executor.*` (joining `psh.core.*`), so mypy now
+  type-checks the BODIES of un-annotated functions in all three packages — the
+  reappraisal's "highest-leverage type win". Fixed the 13 surfaced errors:
+  - `psh/expansion/_protocols.py`: added the four slice helpers
+    (`_positional_slice_elements`, `_parse_slice_operand`, `_slice_elements`,
+    `_slice_scalar_subscript`, defined on `OperatorOpsMixin`) to
+    `VariableExpanderProtocol` so `FieldExpansionMixin` type-checks.
+  - `psh/expansion/manager.py`: annotated the lazy
+    `_evaluator: Optional['ExpansionEvaluator']`.
+  - `psh/expansion/brace_expansion.py`: made `_emit_word`'s `segments` a
+    uniform `List[Tuple[str, Any, Any]]` (the `'tok'` case is padded with
+    `None`) so the heterogeneous discriminated tuples type-check — no behavior
+    change (the consumer already branches on `seg[0]`).
+  - `psh/executor/pipeline.py`: typed the `visitor` parameters as the concrete
+    `ExecutorVisitor` (they always are) so `visitor.context` resolves.
+  - `psh/shell.py`: initialized `_errexit_suppress_seed: int = 0` (the
+    one-shot set -e suppression seed `SubshellExecutor` sets and
+    `_execute_with_visitor` reads).
+- The two errors that looked like possible latent bugs were verified benign: the
+  brace-expansion tuple is a typing-model artifact (correctly discriminated at
+  runtime), and `_errexit_suppress_seed` is a working dynamic seed (read at
+  `shell.py` via `getattr`), not a dead write.
+- Gate: ruff + mypy clean (227 files), full suite 8,021 collected / all phases
+  green.
+
 ## 0.426.0 (2026-06-15) - Tier R9.B2: extract HistoryState from ShellState
 - ARCHITECTURE (zero behavior change). Second increment of the ShellState
   decomposition. Grouped the command-history list and its persistence settings

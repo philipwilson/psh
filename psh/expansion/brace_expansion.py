@@ -29,7 +29,7 @@ This module is in mypy's checked scope; keep it clean.
 import copy
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from ..core.exceptions import PshError
 
@@ -851,11 +851,12 @@ class TokenBraceExpander:
         from ..lexer.token_parts import TokenPart
         from ..lexer.token_types import TokenType
 
-        # Build segments: ('chars', text, quote_type) or ('tok', token).
-        segments = []
+        # Build segments, uniformly 3-tuples discriminated by [0]:
+        # ('chars', text, quote_type) or ('tok', token, None).
+        segments: List[Tuple[str, Any, Any]] = []
         for c in result:
             if c in tok_map:
-                segments.append(('tok', tok_map[c]))
+                segments.append(('tok', tok_map[c], None))
                 continue
             ch, qt = char_map.get(c, (c, None))
             if segments and segments[-1][0] == 'chars' and segments[-1][2] == qt:

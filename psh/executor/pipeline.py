@@ -13,11 +13,10 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
-    from psh.visitor import ASTVisitor
-
     from ..ast_nodes import ASTNode, Pipeline
     from ..shell import Shell
     from .context import ExecutionContext
+    from .core import ExecutorVisitor
     from .job_control import Job, JobManager
 
 
@@ -79,7 +78,7 @@ class PipelineExecutor:
         self.launcher = shell.process_launcher
 
     def execute(self, node: 'Pipeline', context: 'ExecutionContext',
-                visitor: 'ASTVisitor[int]') -> int:
+                visitor: 'ExecutorVisitor') -> int:
         """
         Execute a pipeline and return exit status.
 
@@ -100,7 +99,7 @@ class PipelineExecutor:
             return self._execute_pipeline(node, context, visitor)
 
     def _execute_pipeline(self, node: 'Pipeline', context: 'ExecutionContext',
-                         visitor: 'ASTVisitor[int]') -> int:
+                         visitor: 'ExecutorVisitor') -> int:
         """Execute pipeline without NOT handling."""
         if len(node.commands) == 1:
             # Single command, no pipeline needed

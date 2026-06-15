@@ -27,6 +27,7 @@ from .word_splitter import WordSplitter
 
 if TYPE_CHECKING:
     from ..shell import Shell
+    from .evaluator import ExpansionEvaluator
 
 #: Builtins whose ``NAME=value`` arguments get bash's declaration-argument
 #: expansion: no word splitting and no pathname expansion of the value
@@ -57,7 +58,7 @@ class ExpansionManager:
         self.word_expander = WordExpander(self)
 
         # Initialize expansion evaluator (lazy import to avoid circular dependencies)
-        self._evaluator = None
+        self._evaluator: Optional['ExpansionEvaluator'] = None
 
     @property
     def evaluator(self):
