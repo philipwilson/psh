@@ -5,7 +5,7 @@ arithmetic commands, enhanced test expressions, array operations,
 and process substitutions.
 """
 
-from typing import List, Optional, Union, cast
+from typing import List, NoReturn, Optional, Union, cast
 
 from ...ast_nodes import (
     # Special commands
@@ -182,7 +182,7 @@ class SpecialCommandParsers:
 
     def _build_enhanced_test_statement(self) -> Parser[EnhancedTestStatement]:
         """Build parser for enhanced test statement [[ expression ]] syntax."""
-        def raise_committed_error(tokens: List[Token], pos: int, message: str) -> None:
+        def raise_committed_error(tokens: List[Token], pos: int, message: str) -> NoReturn:
             error_pos = min(pos, len(tokens) - 1)
             raise ParseError(ErrorContext(
                 token=tokens[error_pos],
