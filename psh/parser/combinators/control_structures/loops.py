@@ -20,9 +20,8 @@ from ....ast_nodes import (
 )
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
-from ...recursive_descent.helpers import ParseError
 from ..core import Parser, ParseResult
-from ..diagnostics import is_missing_nested_terminator, raise_committed_error
+from ..diagnostics import raise_committed_error
 
 if TYPE_CHECKING:
     from ._protocols import ControlStructureProtocol
@@ -109,23 +108,22 @@ class LoopParserMixin(_Base):
                 empty_body_error_pos = pos
                 pos += 1
 
-            # Parse the body (until 'done', handling nested loops)
-            body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
+            # Parse the body by recursion: statements up to (but not consuming)
+            # the matching 'done'. Nested loops consume their own 'done', so the
+            # terminator seen here is this loop's own. No token-slicing required.
+            body_result = self.commands.build_statement_list(frozenset({'done'})).parse(tokens, pos)
+            if not body_result.success:
+                # Past 'do' we are committed to a while loop, so a body failure
+                # is a hard syntax error: raise it (at the offending token) so
+                # or_else cannot swallow it and retry as a simple command.
+                raise_committed_error(tokens, body_result.position,
+                                      body_result.error or "Failed to parse while body")
+            assert body_result.value is not None  # success implies a body
+            done_pos = body_result.position
 
-            if done_pos >= len(tokens):
+            if done_pos >= len(tokens) or not matches_keyword(tokens[done_pos], 'done'):
                 raise_committed_error(tokens, done_pos, "Expected 'done' to close while loop",
                                       terminator='done')
-
-            try:
-                body_result = self.commands.statement_list.parse(body_tokens, 0)
-            except ParseError as error:
-                if done_pos < len(tokens) and is_missing_nested_terminator(error):
-                    raise_committed_error(tokens, done_pos, error.message)
-                raise
-            if not body_result.success:
-                return ParseResult(success=False,
-                                 error=f"Failed to parse while body: {body_result.error}",
-                                 position=pos)
             if not body_result.value.statements:
                 raise_committed_error(tokens, empty_body_error_pos, "Expected command in while body")
 
@@ -190,22 +188,18 @@ class LoopParserMixin(_Base):
                 empty_body_error_pos = pos
                 pos += 1
 
-            body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
+            # Parse the body by recursion up to (not consuming) the matching 'done'.
+            body_result = self.commands.build_statement_list(frozenset({'done'})).parse(tokens, pos)
+            if not body_result.success:
+                # Committed to an until loop past 'do' — raise hard (see while).
+                raise_committed_error(tokens, body_result.position,
+                                      body_result.error or "Failed to parse until body")
+            assert body_result.value is not None  # success implies a body
+            done_pos = body_result.position
 
-            if done_pos >= len(tokens):
+            if done_pos >= len(tokens) or not matches_keyword(tokens[done_pos], 'done'):
                 raise_committed_error(tokens, done_pos, "Expected 'done' to close until loop",
                                       terminator='done')
-
-            try:
-                body_result = self.commands.statement_list.parse(body_tokens, 0)
-            except ParseError as error:
-                if done_pos < len(tokens) and is_missing_nested_terminator(error):
-                    raise_committed_error(tokens, done_pos, error.message)
-                raise
-            if not body_result.success:
-                return ParseResult(success=False,
-                                   error=f"Failed to parse until body: {body_result.error}",
-                                   position=pos)
             if not body_result.value.statements:
                 raise_committed_error(tokens, empty_body_error_pos, "Expected command in until body")
 
@@ -302,23 +296,18 @@ class LoopParserMixin(_Base):
                 empty_body_error_pos = pos
                 pos += 1
 
-            # Parse the body (until 'done', handling nested loops)
-            body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
+            # Parse the body by recursion up to (not consuming) the matching 'done'.
+            body_result = self.commands.build_statement_list(frozenset({'done'})).parse(tokens, pos)
+            if not body_result.success:
+                # Committed to a for loop past 'do' — raise hard (see while).
+                raise_committed_error(tokens, body_result.position,
+                                      body_result.error or "Failed to parse for body")
+            assert body_result.value is not None  # success implies a body
+            done_pos = body_result.position
 
-            if done_pos >= len(tokens):
+            if done_pos >= len(tokens) or not matches_keyword(tokens[done_pos], 'done'):
                 raise_committed_error(tokens, done_pos, "Expected 'done' to close for loop",
                                       terminator='done')
-
-            try:
-                body_result = self.commands.statement_list.parse(body_tokens, 0)
-            except ParseError as error:
-                if done_pos < len(tokens) and is_missing_nested_terminator(error):
-                    raise_committed_error(tokens, done_pos, error.message)
-                raise
-            if not body_result.success:
-                return ParseResult(success=False,
-                                 error=f"Failed to parse for body: {body_result.error}",
-                                 position=pos)
             if not body_result.value.statements:
                 raise_committed_error(tokens, empty_body_error_pos, "Expected command in for body")
 
@@ -408,23 +397,18 @@ class LoopParserMixin(_Base):
             else:
                 empty_body_error_pos = pos
 
-            # Parse the body (until 'done', handling nested loops)
-            body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
+            # Parse the body by recursion up to (not consuming) the matching 'done'.
+            body_result = self.commands.build_statement_list(frozenset({'done'})).parse(tokens, pos)
+            if not body_result.success:
+                # Committed to a for loop past 'do' — raise hard (see while).
+                raise_committed_error(tokens, body_result.position,
+                                      body_result.error or "Failed to parse for body")
+            assert body_result.value is not None  # success implies a body
+            done_pos = body_result.position
 
-            if done_pos >= len(tokens):
+            if done_pos >= len(tokens) or not matches_keyword(tokens[done_pos], 'done'):
                 raise_committed_error(tokens, done_pos, "Expected 'done' to close C-style for loop",
                                       terminator='done')
-
-            try:
-                body_result = self.commands.statement_list.parse(body_tokens, 0)
-            except ParseError as error:
-                if done_pos < len(tokens) and is_missing_nested_terminator(error):
-                    raise_committed_error(tokens, done_pos, error.message)
-                raise
-            if not body_result.success:
-                return ParseResult(success=False,
-                                 error=f"Failed to parse for body: {body_result.error}",
-                                 position=pos)
             if not body_result.value.statements:
                 raise_committed_error(tokens, empty_body_error_pos, "Expected command in for body")
 
@@ -507,22 +491,17 @@ class LoopParserMixin(_Base):
                 empty_body_error_pos = pos
                 pos += 1
 
-            # Parse the body (until 'done', handling nested loops)
-            body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
-
-            if done_pos >= len(tokens):
-                return ParseResult(success=False, error="Expected 'done' to close select loop", position=pos)
-
-            try:
-                body_result = self.commands.statement_list.parse(body_tokens, 0)
-            except ParseError as error:
-                if done_pos < len(tokens) and is_missing_nested_terminator(error):
-                    raise_committed_error(tokens, done_pos, error.message)
-                raise
+            # Parse the body by recursion up to (not consuming) the matching 'done'.
+            body_result = self.commands.build_statement_list(frozenset({'done'})).parse(tokens, pos)
             if not body_result.success:
                 return ParseResult(success=False,
                                  error=f"Failed to parse select body: {body_result.error}",
                                  position=pos)
+            assert body_result.value is not None  # success implies a body
+            done_pos = body_result.position
+
+            if done_pos >= len(tokens) or not matches_keyword(tokens[done_pos], 'done'):
+                return ParseResult(success=False, error="Expected 'done' to close select loop", position=pos)
             if not body_result.value.statements:
                 raise_committed_error(tokens, empty_body_error_pos, "Expected command in select body")
 

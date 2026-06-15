@@ -65,6 +65,29 @@ class TestCasePatternQuoteContext:
             'case "x*" in a|"x*") echo second;; *) echo other;; esac')
 
 
+class TestKeywordSpelledArgumentInBody:
+    """An argument that merely spells like a terminator keyword is a word.
+
+    The R9.C3 recursion-based compound-body parser fixed a slicer bug: the old
+    token-slicer matched ``done``/``fi`` by value across the whole body span, so
+    ``echo done`` inside a loop body was mis-detected as the loop terminator.
+    The recursion only checks for terminators at statement-start position, so
+    such arguments are consumed as plain words — matching bash and rd.
+    """
+
+    def test_done_as_argument_in_while_body(self):
+        assert_three_way('while true; do echo done; break; done')
+
+    def test_done_as_argument_in_for_body(self):
+        assert_three_way('for i in 1 2; do echo done; done')
+
+    def test_fi_as_argument_in_then_body(self):
+        assert_three_way('if true; then echo fi; fi')
+
+    def test_keyword_argument_in_nested_body(self):
+        assert_three_way('for i in 1; do if true; then echo done; fi; done')
+
+
 class TestFunctionDefinitionRedirects:
     """Redirects on a definition apply at each call, not at definition."""
 

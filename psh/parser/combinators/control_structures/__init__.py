@@ -189,54 +189,6 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
 
         return ParseResult(success=True, value=None, position=pos + 1)
 
-    def _collect_tokens_until_keyword(self, tokens: List[Token], start_pos: int,
-                                     end_keyword: str, start_keyword: Optional[str] = None) -> Tuple[List[Token], int]:
-        """Collect tokens until end keyword, handling nested structures.
-
-        If start_keyword is provided, counts nesting levels.
-
-        Args:
-            tokens: List of tokens
-            start_pos: Starting position
-            end_keyword: Keyword that ends collection
-            start_keyword: Optional keyword that increases nesting
-
-        Returns:
-            Tuple of (collected_tokens, position_after_end_keyword)
-        """
-        collected = []
-        pos = start_pos
-        nesting_level = 0
-
-        while pos < len(tokens):
-            token = tokens[pos]
-
-            # Check for start keyword (increases nesting)
-            if start_keyword and matches_keyword(token, start_keyword):
-                nesting_level += 1
-                collected.append(token)
-                pos += 1
-                continue
-
-            # Check for end keyword
-            if matches_keyword(token, end_keyword):
-                if nesting_level == 0:
-                    # Found our end keyword
-                    return collected, pos
-                else:
-                    # This ends a nested structure
-                    nesting_level -= 1
-                    collected.append(token)
-                    pos += 1
-                    continue
-
-            # Regular token
-            collected.append(token)
-            pos += 1
-
-        # Reached end without finding end keyword
-        return collected, pos
-
 
 # Convenience function
 
