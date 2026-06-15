@@ -24,6 +24,7 @@ from .base import ASTVisitor
 from .constants import COMMON_COMMANDS, SHELL_BUILTINS, TEST_OPERATORS
 from .traversal import visit_children
 from .word_analysis import (
+    has_unquoted_variable_expansion,
     iter_variable_references,
     iter_variable_references_in_text,
 )
@@ -227,9 +228,9 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         elif cmd == 'export':
             self._check_export_command(node.args[1:])
         elif cmd == 'test' or cmd == '[':
-            self._check_test_command(node.args[1:])
+            self._check_test_command(node.words[1:])
         elif cmd in ['rm', 'mv', 'cp'] and len(node.args) > 1:
-            self._check_file_command(cmd, node.args[1:])
+            self._check_file_command(cmd, node.words[1:])
 
         # Check for command existence (basic check)
         if self.config.check_command_existence:
@@ -412,44 +413,49 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
             else:
                 self.exported_vars.add(arg)
 
-    def _check_test_command(self, args: List[str]) -> None:
-        """Check test/[ command usage."""
-        if not args:
+    def _check_test_command(self, words: List[Word]) -> None:
+        """Check test/[ command usage (operands, after the command word)."""
+        if not words:
             return
+        rendered = [w.display_text() for w in words]
 
-        # Check for missing quotes on variables
+        # Check for missing quotes on variables — detected structurally from
+        # the Word parts rather than by scanning for a leading '$'.
         if self.config.check_quote_usage:
-            for i, arg in enumerate(args):
-                if arg.startswith('$') and ' ' not in arg:
+            for i, word in enumerate(words):
+                if has_unquoted_variable_expansion(word):
                     # Check if it's in a context where it should be quoted
-                    if i > 0 and args[i-1] in TEST_OPERATORS:
+                    if i > 0 and rendered[i-1] in TEST_OPERATORS:
                         self.add_issue(
                             LintLevel.WARNING,
-                            f"Unquoted variable '{arg}' in test command",
-                            suggestion=f'Use "{arg}" to prevent word splitting'
+                            f"Unquoted variable '{rendered[i]}' in test command",
+                            suggestion=f'Use "{rendered[i]}" to prevent word splitting'
                         )
 
         # Suggest [[ over [
-        if self.config.prefer_double_brackets and args and args[-1] == ']':
+        if self.config.prefer_double_brackets and rendered and rendered[-1] == ']':
             self.add_issue(
                 LintLevel.STYLE,
                 "Consider using [[ ]] instead of [ ]",
                 suggestion="[[ ]] is safer and more feature-rich"
             )
 
-    def _check_file_command(self, cmd: str, args: List[str]) -> None:
-        """Check file manipulation commands."""
-        if cmd == 'rm' and '-f' not in args and '-i' not in args:
+    def _check_file_command(self, cmd: str, words: List[Word]) -> None:
+        """Check file manipulation commands (operands, after the command word)."""
+        rendered = [w.display_text() for w in words]
+        if cmd == 'rm' and '-f' not in rendered and '-i' not in rendered:
             self.add_issue(
                 LintLevel.INFO,
                 f"'{cmd}' without -i flag",
                 suggestion="Consider using 'rm -i' for safety"
             )
 
-        # Check for unquoted variables that might contain spaces
+        # Check for unquoted variables that might contain spaces — read from
+        # the Word parts (catches embedded/braced forms a leading-'$' scan misses).
         if self.config.check_quote_usage:
-            for arg in args:
-                if arg.startswith('$') and not arg.startswith('"$'):
+            for word in words:
+                if has_unquoted_variable_expansion(word):
+                    arg = word.display_text()
                     self.add_issue(
                         LintLevel.WARNING,
                         f"Unquoted variable '{arg}' in {cmd} command",
