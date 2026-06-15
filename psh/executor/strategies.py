@@ -7,7 +7,6 @@ providing different strategies for builtins, functions, and external commands.
 
 import errno
 import os
-import shlex
 import sys
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional
@@ -330,89 +329,6 @@ class FunctionExecutionStrategy(ExecutionStrategy):
             pgid, f"{cmd_name} {' '.join(args)}", [(pid, cmd_name)])
 
         return 0
-
-
-class AliasExecutionStrategy(ExecutionStrategy):
-    """Strategy for executing shell aliases."""
-
-    def can_execute(self, cmd_name: str, shell: 'Shell') -> bool:
-        """Check if command is an alias."""
-        # Check for bypass mechanisms first
-        if cmd_name.startswith('\\'):
-            return False  # Backslash escapes bypass aliases
-        result = shell.alias_manager.has_alias(cmd_name)
-        return result
-
-    def execute(self, cmd_name: str, args: List[str],
-                shell: 'Shell', context: 'ExecutionContext',
-                redirects: Optional[List['Redirect']] = None,
-                background: bool = False,
-                visitor=None) -> int:
-        """Execute an alias by expanding and re-executing."""
-        alias_definition = shell.alias_manager.get_alias(cmd_name)
-        if not alias_definition:
-            return 127  # Should not happen if can_execute returned True
-
-        # Prevent infinite recursion
-        if cmd_name in shell.alias_manager.expanding:
-            # Already expanding this alias, treat as external command
-            return self._execute_as_external(cmd_name, args, shell, context, redirects, background)
-
-        # Mark this alias as being expanded
-        shell.alias_manager.expanding.add(cmd_name)
-
-        try:
-            # Create new command string by expanding the alias.
-            #
-            # The alias VALUE (`alias_definition`) is kept RAW: an alias is
-            # meant to be parsed as shell source (`alias ll='ls -l'` must
-            # parse `ls -l` as two words, `alias x='a; b'` as two commands).
-            #
-            # The appended `args`, however, are already-expanded DATA — they
-            # have already gone through variable/command/glob expansion and
-            # quote removal. Re-joining them raw and re-lexing would
-            # reinterpret any metacharacters they contain as SYNTAX (a
-            # command-injection-class bug: `e 'a; echo PWNED'` would run a
-            # second command). Shell-quote each arg with shlex.quote so the
-            # re-lexer treats it as a single literal word. (shlex.quote
-            # returns simple/safe words like `x` unquoted, so correct cases
-            # are unchanged.)
-            quoted_args = ' '.join(shlex.quote(a) for a in args)
-            # If alias has trailing space, next word can also be expanded
-            if alias_definition.endswith(' '):
-                # Handle trailing space for chained alias expansion
-                expanded_command = alias_definition + quoted_args
-            else:
-                expanded_command = alias_definition + ((' ' + quoted_args) if args else '')
-
-            # Re-tokenize and parse the expanded command
-            from ..lexer import tokenize
-            from ..parser import Parser
-
-            tokens = tokenize(expanded_command)
-            parser = Parser(tokens, source_text=expanded_command)
-            ast = parser.parse()
-
-            # Reuse the caller's visitor to preserve accumulated state;
-            # fall back to creating a new one if not provided.
-            if visitor is None:
-                from .core import ExecutorVisitor
-                visitor = ExecutorVisitor(shell)
-                visitor.context = context
-
-            return visitor.visit(ast)
-
-        finally:
-            # Remove from expanding set
-            shell.alias_manager.expanding.discard(cmd_name)
-
-    def _execute_as_external(self, cmd_name: str, args: List[str],
-                            shell: 'Shell', context: 'ExecutionContext',
-                            redirects: Optional[List['Redirect']] = None,
-                            background: bool = False) -> int:
-        """Execute as external command when alias recursion is detected."""
-        external_strategy = ExternalExecutionStrategy()
-        return external_strategy.execute(cmd_name, args, shell, context, redirects, background)
 
 
 class ExternalExecutionStrategy(ExecutionStrategy):

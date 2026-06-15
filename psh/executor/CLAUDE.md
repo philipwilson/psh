@@ -59,15 +59,21 @@ Commands are dispatched through execution strategies in priority order:
 
 ```python
 # In command.py — POSIX lookup order:
-# special builtins > functions > builtins > aliases > external
+# special builtins > functions > builtins > external
 strategies = [
     SpecialBuiltinExecutionStrategy(),  # : break continue eval exec exit export ...
     FunctionExecutionStrategy(),         # User-defined functions
     BuiltinExecutionStrategy(),          # cd echo pwd test [ ...
-    AliasExecutionStrategy(),            # Aliases
     ExternalExecutionStrategy()          # External programs
 ]
 ```
+
+Aliases are NOT a runtime strategy. They are expanded as a token-stream
+transform at the lex→parse boundary (`AliasManager.expand_aliases`, wired
+in `psh/scripting/source_processor.py` and `command_accumulator.py`), so by
+the time a command reaches the executor its command word is already the
+alias-expanded token. This is the R8.6b architecture (replacing the old
+runtime `AliasExecutionStrategy`).
 
 ### 3. Unified Process Creation
 

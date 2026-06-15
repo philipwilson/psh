@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, List, Optional
 from ..core import ReadonlyVariableError
 from .command_assignments import CommandAssignments
 from .strategies import (
-    AliasExecutionStrategy,
     BuiltinExecutionStrategy,
     ExecutionStrategy,
     ExternalExecutionStrategy,
@@ -146,13 +145,17 @@ class CommandExecutor:
         # ordering contract) lives in its own specialist.
         self.assignments = CommandAssignments(shell)
 
-        # Initialize execution strategies
-        # Order matters: special builtins > functions > builtins > aliases > external (POSIX compliance)
+        # Initialize execution strategies.
+        # Order matters: special builtins > functions > builtins > external
+        # (POSIX lookup order). Aliases are NOT a runtime strategy: they are
+        # expanded as a token-stream transform at the lex→parse boundary
+        # (AliasManager.expand_aliases, wired in scripting/source_processor.py
+        # and command_accumulator.py), so by the time the executor runs the
+        # command word is already the alias-expanded token.
         self.strategies = [
             SpecialBuiltinExecutionStrategy(),
             FunctionExecutionStrategy(),
             BuiltinExecutionStrategy(),
-            AliasExecutionStrategy(),
             ExternalExecutionStrategy()
         ]
 
@@ -545,7 +548,8 @@ class CommandExecutor:
         """Resolve a command name to the strategy that will run it.
 
         Walks the priority-ordered strategy list (special builtins >
-        functions > builtins > aliases > external), honoring the ``\\cmd``
+        functions > builtins > external; aliases are expanded earlier as a
+        token-stream transform, not here), honoring the ``\\cmd``
         bypass exclusions, and returns the first match as a
         :class:`CommandResolution`. The persistence policy — previously the
         ``isinstance(strategy, SpecialBuiltinExecutionStrategy)`` check —
@@ -556,10 +560,14 @@ class CommandExecutor:
         """
         # Note: The 'command' builtin handles its own bypass logic internally
 
-        # Create strategy list based on bypass requirements
+        # Create strategy list based on bypass requirements.
+        # bypass_aliases is now a no-op at this layer: aliases are expanded
+        # at the lex→parse boundary (AliasManager.expand_aliases), so there
+        # is no runtime alias strategy to exclude. The `\\cmd` backslash is
+        # still stripped earlier (_strip_backslash_bypass) and naturally
+        # avoids alias expansion because the leading-backslash WORD never
+        # matches an alias name during the token transform.
         strategies_to_exclude: List[type[ExecutionStrategy]] = []
-        if bypass_aliases:
-            strategies_to_exclude.append(AliasExecutionStrategy)
         if bypass_functions:
             strategies_to_exclude.append(FunctionExecutionStrategy)
             # Note: bypass_functions should NOT exclude special builtins

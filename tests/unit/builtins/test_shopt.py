@@ -18,13 +18,22 @@ class TestShoptBasic:
         assert 'globstar' in output
 
     def test_shopt_all_default_off(self, captured_shell):
-        """Test that all shopt options default to off."""
+        """Test that all shopt options default to off.
+
+        Exception: expand_aliases defaults to ON. psh always expands aliases
+        (a parse-time token transform — the deliberate divergence from bash's
+        interactive-only default), so the recognized expand_aliases no-op gate
+        is reported on.
+        """
         shell = captured_shell
         result = shell.run_command('shopt')
         assert result == 0
         output = shell.get_stdout()
         for line in output.strip().split('\n'):
-            assert line.endswith('off')
+            if line.startswith('expand_aliases'):
+                assert line.endswith('on')
+            else:
+                assert line.endswith('off')
 
     def test_shopt_show_specific(self, captured_shell):
         """Test showing a specific (unset) option.
