@@ -22,13 +22,11 @@ class ParseResult(Generic[T]):
     Attributes:
         success: Whether the parse succeeded
         value: The parsed value if successful
-        remaining: Remaining tokens after parsing
-        position: Current position in token stream
+        position: Current position in token stream (where parsing stopped)
         error: Error message if parse failed
     """
     success: bool
     value: Optional[T] = None
-    remaining: Optional[List[Token]] = None
     position: int = 0
     error: Optional[str] = None
 
@@ -75,7 +73,6 @@ class Parser(Generic[T]):
                 return ParseResult(
                     success=True,
                     value=fn(cast(T, result.value)),
-                    remaining=result.remaining,
                     position=result.position
                 )
             return ParseResult(success=False, error=result.error, position=pos)
@@ -98,8 +95,10 @@ class Parser(Generic[T]):
 
             second_result = next_parser.parse(tokens, first_result.position)
             if not second_result.success:
+                # Atomic: a failed sequence resets to the start position, the
+                # same backtracking discipline as sequence().
                 return ParseResult(success=False, error=second_result.error,
-                                 position=first_result.position)
+                                 position=pos)
 
             return ParseResult(
                 success=True,
