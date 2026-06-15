@@ -211,37 +211,24 @@ class CommandParser:
         if not self.parser.match(TokenType.WORD):
             return False, None
 
-        word_token = self.parser.peek()
+        # Detection is shared with the statement-position path: the same
+        # classifier recognises both the single-token head (``arr=`` / ``arr+=``
+        # followed by ``(``) and the split form (``arr`` + ``=``/``+=`` + ``(``,
+        # incl. the spaced variant). It is peek-only; this argument-position
+        # path then consumes the head tokens and synthesizes one head Token so
+        # the caller's flat-string rebuild and name/append detection work
+        # uniformly across both forms.
+        candidate = self.parser.arrays._candidate_initializer()
+        if candidate is None or not candidate.is_initializer:
+            return False, None
 
-        # `arr=(...)` / `arr+=(...)`: the lexer emits the name and operator
-        # as one WORD ('arr=' or 'arr+=') followed by LPAREN. This is the
-        # form bash accepts.
-        if ((word_token.value.endswith('=')) and
-            self.parser.peek(1) and
-            self.parser.peek(1).type == TokenType.LPAREN):
+        start = self.parser.peek()
+        for _ in range(candidate.head_token_count):
             self.parser.advance()
-            return True, word_token
-
-        # `arr += (...)` / `arr = (...)`: the operator is a separate WORD
-        # token ('+=' or '='). The lexer splits ``a+=`` into ``a`` + ``+=``
-        # (verified), and ``arr = (...)`` (with spaces) into three tokens.
-        # bash rejects the spaced form but accepts ``a+=`` written
-        # together; psh accepts both (the spaced form is pinned behavior).
-        op_token = self.parser.peek(1)
-        if (op_token and op_token.type == TokenType.WORD and
-                op_token.value in ('=', '+=') and
-                self.parser.peek(2) and
-                self.parser.peek(2).type == TokenType.LPAREN):
-            name_token = self.parser.advance()
-            self.parser.advance()  # consume the '=' / '+=' operator
-            # Synthesize a head token carrying name + operator so the
-            # caller's flat-string rebuild and name/append detection work
-            # uniformly with the single-token form.
-            head = Token(TokenType.WORD, name_token.value + op_token.value,
-                         name_token.position)
-            return True, head
-
-        return False, None
+        head = Token(TokenType.WORD,
+                     candidate.name + candidate.operator,
+                     start.position)
+        return True, head
 
     def _parse_array_initialization(
             self, word_token: Token) -> Tuple[str, 'ArrayInitialization']:
