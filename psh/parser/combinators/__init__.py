@@ -27,8 +27,6 @@ session to experiment with it.
 from .commands import (
     CommandParsers,
     create_command_parsers,
-    parse_and_or_list,
-    parse_pipeline,
     # Convenience functions
     parse_simple_command,
 )
@@ -119,6 +117,4 @@ __all__ = [
     'CommandParsers',
     'create_command_parsers',
     'parse_simple_command',
-    'parse_pipeline',
-    'parse_and_or_list',
 ]

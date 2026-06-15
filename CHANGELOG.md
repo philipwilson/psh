@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.458.0 (2026-06-15) - Tier R12.D.1: combinator dedup — drop dead pipeline/and-or duplicates, document the cut channel
+- REFACTOR (no behavior change). Deleted the two dead module-level functions
+  `parse_pipeline` / `parse_and_or_list` from `parser/combinators/commands/__init__.py`
+  — independent reimplementations of the `PipelineMixin` methods that were exported but
+  never called (the live parser uses the mixin; the parity tests use the full parser).
+  Removed from both `__all__` lists. (`parse_simple_command` / `create_command_parsers`
+  are kept — still used by tests / `parser.py`.)
+- DOCS. Documented `ParseResult.committed` as reserved-but-inert: commitment is currently
+  expressed by raising a `ParseError` via `raise_committed_error` (the imperative cut),
+  while the in-algebra `committed` channel (honoured by `or_else`/`many`/`separated_by`)
+  is kept ready for the eventual exception→return migration — wired-but-inert by design,
+  not dead code (a reappraisal-#10 reviewer flag).
+- First item of Tier R12.D (dedup/polish).
+
 ## 0.457.0 (2026-06-15) - Tier R12.C: extract ExecutionState from the ShellState god-object
 - REFACTOR (no behavior change). Lifted the eight per-command execution-scratch fields
   off `ShellState` into a cohesive `ExecutionState` sub-object

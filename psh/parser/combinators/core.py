@@ -14,9 +14,20 @@ A parse produces a :class:`ParseResult`, which is one of two shapes:
 
   * ``committed`` — a *cut*. The parser consumed input and is certain this is
     the right production, so :meth:`Parser.or_else` must NOT backtrack to an
-    alternative; the committed failure propagates instead. (Until callers start
-    constructing committed failures, this defaults to ``False`` and ``or_else``
-    behaves exactly as a plain ordered choice.)
+    alternative; the committed failure propagates instead.
+
+    RESERVED / currently dormant: nothing in the grammar constructs a committed
+    ``ParseFailure`` yet (a repo-wide ``committed=True`` search is empty), so
+    this defaults to ``False`` and ``or_else``/``many``/``separated_by`` behave
+    as a plain ordered choice. Commitment is presently expressed the imperative
+    way — by RAISING a ``ParseError`` via
+    :func:`diagnostics.raise_committed_error` once a construct is past its point
+    of no return (after ``do``/``then``/``|``/``&&`` …), which propagates past
+    every ``or_else``. The ``committed`` field is the in-algebra channel kept
+    ready for the eventual migration of those raise sites to returned failures
+    (the deferred "move committed errors out of exceptions" item); the cut logic
+    in the combinators is already in place so that migration needs no core
+    changes. It is wired-but-inert by design, not dead code.
   * ``expected`` — labels describing what would have allowed progress, kept so
     same-position alternatives can be merged into a richer diagnostic.
 
