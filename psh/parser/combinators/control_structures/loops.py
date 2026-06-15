@@ -72,34 +72,22 @@ class LoopParserMixin(_Base):
 
             pos += 1  # Skip 'while'
 
-            # Parse condition (until 'do')
-            condition_tokens = []
-            while pos < len(tokens):
-                token = tokens[pos]
-                if matches_keyword(token, 'do'):
-                    break
-                if token.type.name in ['SEMICOLON', 'NEWLINE']:
-                    if pos + 1 < len(tokens):
-                        next_token = tokens[pos + 1]
-                        if matches_keyword(next_token, 'do'):
-                            break
-                condition_tokens.append(token)
-                pos += 1
-
-            if pos >= len(tokens):
-                raise_committed_error(tokens, pos, "Expected 'do' in while loop")
-
-            condition_result = self.commands.statement_list.parse(condition_tokens, 0)
+            # Parse the condition by recursion: a statement list up to (but not
+            # consuming) the command-position 'do'. Parsing on the real token
+            # stream — rather than slicing to the first 'do' — means a 'do' that
+            # is merely an argument ('while echo do; ...') is consumed as a word,
+            # matching bash and the recursive-descent parser.
+            condition_result = self.commands.build_statement_list(
+                frozenset({'do'})).parse(tokens, pos)
             if not condition_result.success:
                 return ParseResult(success=False,
                                  error=f"Failed to parse while condition: {condition_result.error}",
-                                 position=pos)
+                                 position=condition_result.position)
+            assert condition_result.value is not None
+            pos = condition_result.position
 
-            # Skip separator and 'do'
-            if tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
-                pos += 1
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'do'):
-                raise_committed_error(tokens, pos, "Expected 'do' after while condition")
+                raise_committed_error(tokens, pos, "Expected 'do' in while loop")
             pos += 1  # Skip 'do'
 
             # Skip optional separator after 'do'
@@ -154,33 +142,19 @@ class LoopParserMixin(_Base):
 
             pos += 1  # Skip 'until'
 
-            # Parse condition until 'do'
-            condition_tokens = []
-            while pos < len(tokens):
-                token = tokens[pos]
-                if matches_keyword(token, 'do'):
-                    break
-                if token.type.name in ['SEMICOLON', 'NEWLINE']:
-                    if pos + 1 < len(tokens):
-                        next_token = tokens[pos + 1]
-                        if matches_keyword(next_token, 'do'):
-                            break
-                condition_tokens.append(token)
-                pos += 1
-
-            if pos >= len(tokens):
-                raise_committed_error(tokens, pos, "Expected 'do' in until loop")
-
-            condition_result = self.commands.statement_list.parse(condition_tokens, 0)
+            # Parse the condition by recursion up to (not consuming) the
+            # command-position 'do' (see _build_while_loop for the rationale).
+            condition_result = self.commands.build_statement_list(
+                frozenset({'do'})).parse(tokens, pos)
             if not condition_result.success:
                 return ParseResult(success=False,
                                    error=f"Failed to parse until condition: {condition_result.error}",
-                                   position=pos)
+                                   position=condition_result.position)
+            assert condition_result.value is not None
+            pos = condition_result.position
 
-            if tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
-                pos += 1
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'do'):
-                raise_committed_error(tokens, pos, "Expected 'do' after until condition")
+                raise_committed_error(tokens, pos, "Expected 'do' in until loop")
             pos += 1
 
             empty_body_error_pos = pos

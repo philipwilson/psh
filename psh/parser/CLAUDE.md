@@ -78,13 +78,17 @@ try it interactively.
 | `utils.py` | Shared combinator helpers |
 | `parser.py` | `ParserCombinatorShellParser` integration class |
 
-**Compound-body engine.** `CommandParsers.build_statement_list(terminators,
-terminator_types)` (in `commands.py`) is the single recursion-based engine for
-every compound body — loops/if/case/function/subshell/brace bodies and the
-top-level list all build terminator-specific variants of it. It parses a
-statement list that stops at (without consuming) its terminator keyword(s);
-nested compounds consume their own `done`/`fi`/`esac`, so the recursion *is* the
-nesting tracker. Prefer it over token-slice-and-reparse for any new body.
+**Compound-body / condition engine.** `CommandParsers.build_statement_list(
+terminators, terminator_types)` (in `commands.py`) is the single recursion-based
+engine for every compound statement list — loops/if/case/function/subshell/brace
+bodies, the `while`/`until`/`if`/`elif` **condition headers** (stopping at
+`do`/`then`), and the top-level list all build terminator-specific variants of
+it. It parses a statement list that stops at (without consuming) its terminator
+keyword(s); nested compounds consume their own `done`/`fi`/`esac`, so the
+recursion *is* the nesting tracker, and a terminator keyword is only ever
+recognised at command-start position (so `while echo do; …` / `if echo then; …`
+treat the keyword-spelled argument as a plain word — matching bash and rd).
+Prefer it over token-slice-and-reparse for any new body or header.
 
 > Note: AST validation/linting/security analysis is performed by the visitor
 > validators in `psh/visitor/` (e.g. `EnhancedValidatorVisitor`), not by the
