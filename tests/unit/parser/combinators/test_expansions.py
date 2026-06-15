@@ -72,26 +72,6 @@ class TestExpansionParsers:
         assert result.success is True
         assert result.value.value == "$((1 + 2))"
 
-    def test_process_substitution_in(self):
-        """Test input process substitution parsing."""
-        parsers = ExpansionParsers()
-
-        tokens = [make_token(TokenType.PROCESS_SUB_IN, "<(ls -la)")]
-        result = parsers.process_substitution.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.direction == 'in'
-        assert result.value.command == 'ls -la'
-
-    def test_process_substitution_out(self):
-        """Test output process substitution parsing."""
-        parsers = ExpansionParsers()
-
-        tokens = [make_token(TokenType.PROCESS_SUB_OUT, ">(tee log.txt)")]
-        result = parsers.process_substitution.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.direction == 'out'
-        assert result.value.command == 'tee log.txt'
-
     def test_combined_expansion_parser(self):
         """Test the combined expansion parser."""
         parsers = ExpansionParsers()

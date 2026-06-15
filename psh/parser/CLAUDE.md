@@ -70,12 +70,21 @@ try it interactively.
 | `core.py` | Combinator primitives (`token`, `many`, `sequence`, etc.) |
 | `tokens.py` | Token-level matchers |
 | `expansions.py` | Expansion parsers and Word AST building |
-| `commands.py` | Simple commands, pipelines, and-or lists |
+| `arrays.py` | `ArrayParsers` — THE array assignment/initialization parser (used by the live command path in `commands.py`) |
+| `commands.py` | Simple commands, pipelines, and-or lists, statement lists |
 | `control_structures/` | Package of mixins: `conditionals.py` (if, case), `loops.py` (while, until, for, select, break/continue), `structures.py` (functions, subshell/brace groups) |
-| `special_commands.py` | `(( ))`, `[[ ]]`, arrays, process substitution |
+| `special_commands.py` | `(( ))`, `[[ ]]`, process substitution (NOT arrays — those live in `arrays.py`) |
 | `heredoc_processor.py` | Post-parse heredoc content population |
 | `utils.py` | Shared combinator helpers |
 | `parser.py` | `ParserCombinatorShellParser` integration class |
+
+**Compound-body engine.** `CommandParsers.build_statement_list(terminators,
+terminator_types)` (in `commands.py`) is the single recursion-based engine for
+every compound body — loops/if/case/function/subshell/brace bodies and the
+top-level list all build terminator-specific variants of it. It parses a
+statement list that stops at (without consuming) its terminator keyword(s);
+nested compounds consume their own `done`/`fi`/`esac`, so the recursion *is* the
+nesting tracker. Prefer it over token-slice-and-reparse for any new body.
 
 > Note: AST validation/linting/security analysis is performed by the visitor
 > validators in `psh/visitor/` (e.g. `EnhancedValidatorVisitor`), not by the

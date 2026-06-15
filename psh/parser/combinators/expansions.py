@@ -11,7 +11,6 @@ from ...ast_nodes import (
     CommandSubstitution,
     ExpansionPart,
     LiteralPart,
-    ProcessSubstitution,
     Word,
 )
 from ...lexer.token_types import Token
@@ -53,9 +52,6 @@ class ExpansionParsers:
         self.process_sub_in = token('PROCESS_SUB_IN')
         self.process_sub_out = token('PROCESS_SUB_OUT')
 
-        # Process substitution needs custom parsing
-        self.process_substitution = Parser(self._parse_process_substitution)
-
         # Combined expansion parser
         self.expansion = (
             self.variable
@@ -65,46 +61,6 @@ class ExpansionParsers:
             .or_else(self.arith_expansion)
             .or_else(self.process_sub_in)
             .or_else(self.process_sub_out)
-        )
-
-    def _parse_process_substitution(self, tokens: List[Token], pos: int) -> ParseResult[ProcessSubstitution]:
-        """Parse <(command) or >(command) syntax.
-
-        Args:
-            tokens: List of tokens
-            pos: Current position
-
-        Returns:
-            ParseResult with ProcessSubstitution node
-        """
-        if pos >= len(tokens):
-            return ParseResult(success=False, error="Expected process substitution", position=pos)
-
-        token = tokens[pos]
-        if token.type.name == 'PROCESS_SUB_IN':
-            direction = 'in'
-        elif token.type.name == 'PROCESS_SUB_OUT':
-            direction = 'out'
-        else:
-            return ParseResult(success=False, error=f"Expected process substitution, got {token.type.name}", position=pos)
-
-        # Extract command from token value
-        # Token value format: "<(command)" or ">(command)"
-        token_value = token.value
-        if len(token_value) >= 3 and token_value.startswith(('<(', '>(')):
-            if token_value.endswith(')'):
-                # Complete process substitution
-                command = token_value[2:-1]  # Remove <( or >( and trailing )
-            else:
-                # Incomplete process substitution (missing closing paren)
-                command = token_value[2:]  # Remove <( or >(
-        else:
-            return ParseResult(success=False, error=f"Invalid process substitution format: {token_value}", position=pos)
-
-        return ParseResult(
-            success=True,
-            value=ProcessSubstitution(direction=direction, command=command),
-            position=pos + 1
         )
 
     def format_token_value(self, token: Token) -> str:
