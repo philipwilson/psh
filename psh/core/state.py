@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from ..version import __version__
 from .command_hash import CommandHashTable
+from .history_state import HistoryState
 from .scope import ScopeManager
 from .stream_bindings import StreamBindings
 from .terminal_state import TerminalState
@@ -159,10 +160,9 @@ class ShellState:
         self.foreground_pgid = None
         self.command_number = 0
 
-        # History settings
-        self.history = []
-        self.history_file = os.path.expanduser("~/.psh_history")
-        self.max_history_size = 1000
+        # History settings — one cohesive object (history / history_file /
+        # max_history_size delegate to it via properties).
+        self.history_state = HistoryState()
 
         # Editor configuration
         self.edit_mode = 'emacs'
@@ -339,6 +339,36 @@ class ShellState:
     @supports_job_control.setter
     def supports_job_control(self, value: bool) -> None:
         self.terminal.supports_job_control = value
+
+    # history/history_file/max_history_size delegate to the explicit
+    # HistoryState object (self.history_state). The list is returned by
+    # reference so in-place append()/clear() still work.
+    @property
+    def history(self) -> list:
+        """The command history list (mutated in place by HistoryManager)."""
+        return self.history_state.entries
+
+    @history.setter
+    def history(self, value: list) -> None:
+        self.history_state.entries = value
+
+    @property
+    def history_file(self) -> str:
+        """Path to the persisted history file."""
+        return self.history_state.file_path
+
+    @history_file.setter
+    def history_file(self, value: str) -> None:
+        self.history_state.file_path = value
+
+    @property
+    def max_history_size(self) -> int:
+        """Maximum number of history entries to keep/persist."""
+        return self.history_state.max_size
+
+    @max_history_size.setter
+    def max_history_size(self, value: int) -> None:
+        self.history_state.max_size = value
 
     @property
     def debug_ast(self):
