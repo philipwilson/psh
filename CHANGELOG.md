@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.450.0 (2026-06-15) - BUGFIX: `(( ))`/`[[ ]]` condition header before `then`/`do` with no separator — R12.A
+- BUGFIX (behavior, both parsers). An arithmetic command or `[[ ]]` test used as a
+  condition header followed DIRECTLY by `then`/`do` (no `;`/newline) was rejected:
+  `if ((1)) then …`, `while ((x)) do …`, `for ((;;)) do …`, `if [[ a = a ]] then …`
+  all errored (`do`/`then` lexed as a plain WORD) where bash accepts them. Root cause:
+  `DOUBLE_RPAREN`/`DOUBLE_RBRACKET` were missing from the lexer's
+  `RESET_TO_COMMAND_POSITION` (command_position.py), so the keyword normalizer never
+  returned to command position after `))`/`]]` and the following `then`/`do` stayed a
+  WORD. Fix: add the two compound-closer token types to that set (a fix in the shared
+  lexer, so it applies to both the recursive-descent and combinator parsers).
+  Separator forms (`if ((1)); then`, `[[ x = x ]] && …`) are unchanged. Found by
+  reappraisal #10. +7 conformance tests + updated the command-position drift-lock tests.
+- Third item of Tier R12.A.
+
 ## 0.449.0 (2026-06-15) - BUGFIX: `exec CMD` ignored its redirections — R12.A
 - BUGFIX (behavior). `exec CMD args [redirects]` (the exec builtin WITH a command)
   silently ignored the redirections — `CommandExecutor._handle_exec_builtin`'s

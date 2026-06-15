@@ -35,6 +35,15 @@ _OPENERS = frozenset({'if', 'while', 'until', 'for', 'case'})
 _INTERMEDIATES = frozenset({'then', 'do', 'else', 'elif'})
 _CLOSERS = frozenset({'fi', 'done', 'esac'})
 
+# Non-keyword entries of RESET_TO_COMMAND_POSITION: the compound-command
+# closers `))` and `]]` are operator token types (not reserved words). They
+# reset command position so `then`/`do` can follow a `(( ))`/`[[ ]]` condition
+# header directly without a separator (`if ((1)) then …`). Documented in
+# command_position.py.
+_COMPOUND_CLOSER_RESET = frozenset({
+    TokenType.DOUBLE_RPAREN, TokenType.DOUBLE_RBRACKET,
+})
+
 
 class TestVocabularyCoherence:
     """Keyword-valued entries across the sets must be real keywords."""
@@ -49,9 +58,15 @@ class TestVocabularyCoherence:
             f"symbol allow-list: {keyword_entries - KEYWORDS}")
 
     def test_reset_types_map_to_keywords(self):
-        for tok_type in RESET_TO_COMMAND_POSITION:
+        # The reserved-word reset types map to keywords; the compound closers
+        # (`))`/`]]`) are operator types and are exempt.
+        for tok_type in RESET_TO_COMMAND_POSITION - _COMPOUND_CLOSER_RESET:
             kw = keyword_from_type(tok_type)
             assert kw in KEYWORDS, f"{tok_type} does not map to a keyword"
+
+    def test_compound_closers_are_reset_types(self):
+        # `))` and `]]` reset command position (condition-header-before-then/do).
+        assert _COMPOUND_CLOSER_RESET <= RESET_TO_COMMAND_POSITION
 
 
 class TestDocumentedAsymmetries:
@@ -68,8 +83,10 @@ class TestDocumentedAsymmetries:
         assert not (_CLOSERS & LEXER_COMMAND_POSITION_WORDS)
 
     def test_reset_types_are_intermediates_and_closers(self):
-        reset_words = {keyword_from_type(t) for t in RESET_TO_COMMAND_POSITION}
-        # The normalizer (typed stage) resets after intermediates AND closers.
+        reset_words = {keyword_from_type(t)
+                       for t in RESET_TO_COMMAND_POSITION - _COMPOUND_CLOSER_RESET}
+        # The normalizer (typed stage) resets after intermediates AND closers
+        # (plus the two compound-command closers, checked separately).
         assert reset_words == _INTERMEDIATES | _CLOSERS
 
     def test_intermediates_shared_by_lexer_and_scanner(self):
