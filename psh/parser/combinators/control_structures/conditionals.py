@@ -14,6 +14,7 @@ from ....ast_nodes import (
 )
 from ....lexer.keyword_defs import KeywordGuard, matches_keyword
 from ....lexer.token_types import Token, TokenType
+from ...recursive_descent.helpers import ParseError
 from ..core import Parser, ParseResult
 from ..diagnostics import raise_committed_error
 from ..utils import format_token_value
@@ -29,6 +30,16 @@ CASE_TERMINATOR_TOKENS = {
     TokenType.SEMICOLON_AMP: ';&',
     TokenType.AMP_SEMICOLON: ';;&',
 }
+
+
+def _is_missing_nested_terminator(error: ParseError) -> bool:
+    message = error.message.lower()
+    return (
+        "expected 'fi' to close" in message
+        or "expected 'done' to close" in message
+        or "expected 'esac' to close" in message
+    )
+
 
 def _parse_case_pattern_value(tokens, pos, pattern_types):
     """Parse a single case pattern value.
@@ -163,7 +174,12 @@ class ConditionalParserMixin(_Base):
                 body_tokens.append(token)
                 current_pos += 1
 
-            body_result = self.commands.statement_list.parse(body_tokens, 0)
+            try:
+                body_result = self.commands.statement_list.parse(body_tokens, 0)
+            except ParseError as error:
+                if current_pos < len(tokens) and _is_missing_nested_terminator(error):
+                    raise_committed_error(tokens, current_pos, error.message)
+                raise
             if not body_result.success:
                 return ParseResult(success=False,
                                  error=f"Failed to parse then body: {body_result.error}",
@@ -242,7 +258,12 @@ class ConditionalParserMixin(_Base):
                     else_tokens.append(token)
                     pos += 1
 
-                else_result = self.commands.statement_list.parse(else_tokens, 0)
+                try:
+                    else_result = self.commands.statement_list.parse(else_tokens, 0)
+                except ParseError as error:
+                    if pos < len(tokens) and _is_missing_nested_terminator(error):
+                        raise_committed_error(tokens, pos, error.message)
+                    raise
                 if not else_result.success:
                     raise_committed_error(
                         tokens,
@@ -410,7 +431,12 @@ class ConditionalParserMixin(_Base):
 
                 # Parse the commands
                 if command_tokens:
-                    commands_result = self.commands.statement_list.parse(command_tokens, 0)
+                    try:
+                        commands_result = self.commands.statement_list.parse(command_tokens, 0)
+                    except ParseError as error:
+                        if pos < len(tokens) and _is_missing_nested_terminator(error):
+                            raise_committed_error(tokens, pos, error.message)
+                        raise
                     if not commands_result.success:
                         raise_committed_error(
                             tokens,

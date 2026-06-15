@@ -25,6 +25,15 @@ else:
     _Base = object
 
 
+def _is_missing_nested_terminator(error: ParseError) -> bool:
+    message = error.message.lower()
+    return (
+        "expected 'fi' to close" in message
+        or "expected 'done' to close" in message
+        or "expected 'esac' to close" in message
+    )
+
+
 class StructureParserMixin(_Base):
     """Mixin providing structure parsers for ControlStructureParsers."""
 
@@ -130,22 +139,27 @@ class StructureParserMixin(_Base):
             # Parse statements
             while inner_pos < len(body_tokens):
                 # Try to parse a statement
-                stmt_result = self.commands.statement.parse(body_tokens, inner_pos)
+                try:
+                    stmt_result = self.commands.statement.parse(body_tokens, inner_pos)
+                except ParseError as error:
+                    if _is_missing_nested_terminator(error):
+                        raise_committed_error(tokens, len(tokens) - 1, error.message)
+                    raise
                 if not stmt_result.success:
                     # Check if this is a real error or just end of statements
                     if inner_pos < len(body_tokens):
-                        error = stmt_result.error
-                        if "expected 'fi'" in error.lower():
-                            error = "Syntax error in function body: missing 'fi' to close if statement"
-                        elif "expected 'done'" in error.lower():
-                            error = "Syntax error in function body: missing 'done' to close loop"
-                        elif "expected 'esac'" in error.lower():
-                            error = "Syntax error in function body: missing 'esac' to close case statement"
-                        elif "expected 'then'" in error.lower():
-                            error = "Syntax error in function body: missing 'then' in if statement"
+                        body_error = stmt_result.error
+                        if "expected 'fi'" in body_error.lower():
+                            body_error = "Syntax error in function body: missing 'fi' to close if statement"
+                        elif "expected 'done'" in body_error.lower():
+                            body_error = "Syntax error in function body: missing 'done' to close loop"
+                        elif "expected 'esac'" in body_error.lower():
+                            body_error = "Syntax error in function body: missing 'esac' to close case statement"
+                        elif "expected 'then'" in body_error.lower():
+                            body_error = "Syntax error in function body: missing 'then' in if statement"
                         else:
-                            error = f"Invalid function body: {error}"
-                        return ParseResult(success=False, error=error, position=outer_pos)
+                            body_error = f"Invalid function body: {body_error}"
+                        return ParseResult(success=False, error=body_error, position=outer_pos)
                     break
 
                 statements.append(stmt_result.value)
