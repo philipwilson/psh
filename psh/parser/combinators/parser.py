@@ -109,61 +109,28 @@ class ParserCombinatorShellParser:
         self.control.set_command_parsers(self.commands)
         self.special.set_command_parsers(self.commands)
 
-        # Wire forward declarations in commands module if needed
-        if hasattr(self.commands, 'set_control_parsers'):
-            self.commands.set_control_parsers(self.control)
-
-        if hasattr(self.commands, 'set_special_parsers'):
-            self.commands.set_special_parsers(self.special)
-
     def _build_complete_parser(self):
-        """Build the complete top-level parser."""
-        # First check if control structures have been initialized
-        if not hasattr(self.control, 'control_structure') or self.control.control_structure is None:
-            # Control structures haven't been initialized yet, use simple commands only
-            self.command = self.commands.and_or_list
-        else:
-            # Build a pipeline-element parser: what can appear as a single
-            # element inside a pipeline.  Control structures and special
-            # commands are included so that e.g.
-            #   for i in 1 2 3; do echo $i; done | grep 2
-            # is parsed correctly.
-            pipeline_element = (
-                self.control.control_structure
-                .or_else(self.special.special_command)
-                .or_else(self.commands.simple_command)
-            )
+        """Wire the recursive references now that every module exists.
 
-            # Update the pipeline/and-or layer to use this element parser.
-            if hasattr(self.commands, 'set_command_parser'):
-                self.commands.set_command_parser(pipeline_element)
+        ``CommandParsers`` built its grammar graph once (pipeline, and-or,
+        statement, statement-list) reading two recursion *slots* at parse time.
+        Here we fill those slots — no parser is rebuilt or reassigned:
 
-            # The top-level command parser is now the and-or list, which
-            # internally uses the pipeline layer (which now accepts compound
-            # commands as elements).
-            self.command = self.commands.and_or_list
-
-        # CRITICAL: Update the statement parser to include control structures
-        # The statement parser was built before control structures were available
-        # Now we need to update it to use the full command parser
-        self.commands.statement = (
-            # Try function definitions first
-            self.control.function_def
-            # Then the full command parser (and-or lists which include pipelines)
-            .or_else(self.command)
+        * the pipeline element widens from a bare simple command to "control
+          structure / special command / simple command" so a compound command
+          can appear inside a pipeline (``for ...; do ...; done | grep``);
+        * the statement head gains function definitions (tried first).
+        """
+        pipeline_element = (
+            self.control.control_structure
+            .or_else(self.special.special_command)
+            .or_else(self.commands.simple_command)
         )
+        self.commands.set_command_parser(pipeline_element)
+        self.commands.set_function_def(self.control.function_def)
 
-        # Rebuild the statement_list parser now that self.commands.statement
-        # includes control structures. This is the single recursion-based
-        # statement-list engine (CommandParsers.build_statement_list): with no
-        # terminator it stops at EOF / ) / }, so it serves both the top level
-        # and brace/subshell groups (which call self.commands.statement_list).
-        # Loops, if, and case build terminator-specific variants of the same
-        # engine. It uses a committed loop, not many(), on purpose — see the
-        # build_statement_list docstring.
-        self.commands.statement_list = self.commands.build_statement_list()
-
-        # Build top-level parser (statement list)
+        # Convenience handles onto the (already-built) command + top-level parsers.
+        self.command = self.commands.and_or_list
         self.top_level = self.commands.statement_list
 
     def _prepare_tokens(self, tokens: List[Token]) -> Tuple[List[Token], int]:

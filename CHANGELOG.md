@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.444.0 (2026-06-15) - Tier R11.P3(b): combinator grammar built once (no post-construction patching)
+- REFACTOR (no behavior change). The combinator grammar graph is now built exactly
+  ONCE and never rebuilt or patched after construction (review Ugly #4). Net −98 lines.
+  - `CommandParsers` builds `pipeline`/`and_or_list`/`statement`/`statement_list` once
+    in `_initialize_parsers`, reading two mutable recursion *slots* at parse time:
+    `_pipeline_element` (a single pipeline element — widened from a bare simple command
+    to control-structure/special/simple during wiring) and `_function_def` (the
+    function-definition head, tried before an ordinary statement). Wiring just fills the
+    slots (`set_command_parser` / new `set_function_def`).
+  - Deleted the ~50-line `set_command_parser` body that REBUILT the pipeline and and-or
+    parsers from scratch (a near-duplicate of `_build_pipeline_parser` /
+    `_build_and_or_list_parser` — also review Ugly #5), and the now-unnecessary
+    reassignment of `commands.statement` / `commands.statement_list` in
+    `parser._build_complete_parser`.
+  - Removed the vestigial `ForwardParser` machinery that was never wired:
+    `statement_forward`/`statement_list_forward` instances (commands.py +
+    control_structures), and the dead `set_control_parsers`/`set_special_parsers`
+    `hasattr` calls in parser.py (no such methods ever existed). The `ForwardParser`
+    primitive itself is kept (a tested, exported combinator building block).
+  - Also retired the separate `separated_by`-based `_build_statement_list_parser`; the
+    top-level list is now `build_statement_list()` like every other statement list.
+  - Full `tests/parser_differential` parity suite + whole suite green; behavior
+    identical (compound-in-pipeline, function defs, and-or, negation all verified).
+- Review Phase 3 item 3 from `docs/reviews/parser_combinator_architecture_review_2026-06-15.md`.
+
 ## 0.443.0 (2026-06-15) - Tier R11.P3(a): function body parses by recursion (last slicer retired)
 - REFACTOR (fixes a bash/rd divergence). `StructureParserMixin._parse_function_body`
   no longer collects the tokens between matching `{ }` by brace-counting and re-parses

@@ -34,7 +34,7 @@ from ..config import ParserConfig
 from ..recursive_descent.helpers import ParseError
 from ..recursive_descent.support.word_builder import WordBuilder
 from .arrays import ArrayParsers
-from .core import ForwardParser, Parser, ParseResult, many1, optional, separated_by, sequence, token
+from .core import Parser, ParseResult, fail_with, many1, optional, token
 from .diagnostics import error_context_for_token, raise_committed_error
 from .expansions import ExpansionParsers
 from .tokens import TokenParsers
@@ -70,19 +70,37 @@ class CommandParsers:
         self.expansions = expansion_parsers or ExpansionParsers(self.config)
         self.arrays = ArrayParsers(self.tokens)
 
-        # Forward declarations for recursive structures
-        self.statement_forward = ForwardParser[Union[AndOrList, FunctionDef]]()
-        self.statement_list_forward = ForwardParser[CommandList]()
-
         self._initialize_parsers()
 
     def _initialize_parsers(self):
-        """Initialize all command-related parsers."""
+        """Initialize all command-related parsers.
+
+        The grammar graph is built exactly ONCE here and never rebuilt. Two
+        recursive references — which can only be resolved after the control and
+        special parsers exist — are held in mutable *slots* that the parsers
+        read at parse time:
+
+        * ``self._pipeline_element`` — what may appear as a single element in a
+          pipeline. It starts as a bare simple command and is widened to
+          "control structure / special command / simple command" by
+          :meth:`set_command_parser` during wiring.
+        * ``self._function_def`` — the function-definition head tried before an
+          ordinary statement. It starts as a never-matching parser and is filled
+          by :meth:`set_function_def` during wiring.
+
+        Because the slots are read inside the parse closures, filling them later
+        takes effect without reassigning ``pipeline``/``and_or_list``/
+        ``statement``/``statement_list`` (the old phase-then-patch wiring).
+        """
         # Build redirection parser
         self.redirection = Parser(self._parse_redirection)
 
         # Build simple command parser
         self.simple_command = self._build_simple_command_parser()
+
+        # Recursion slots (filled once during wiring; read at parse time).
+        self._pipeline_element: Parser = self.simple_command
+        self._function_def: Parser = fail_with("expected a function definition")
 
         # Build pipeline parser
         self.pipeline = self._build_pipeline_parser()
@@ -93,8 +111,9 @@ class CommandParsers:
         # Build statement parser
         self.statement = self._build_statement_parser()
 
-        # Build statement list parser
-        self.statement_list = self._build_statement_list_parser()
+        # Build statement list parser — the recursion-based engine (it reads
+        # self.statement at parse time, so it tracks the wired slots too).
+        self.statement_list = self.build_statement_list()
 
     def _parse_word_as_word(self, tokens: List[Token], pos: int) -> ParseResult:
         """Parse one word-like shell word, including adjacent composite parts."""
@@ -393,14 +412,13 @@ class CommandParsers:
     def _build_pipeline_parser(self) -> Parser[Union[Pipeline, ASTNode]]:
         """Build parser for pipelines.
 
+        Each pipeline element is ``self._pipeline_element`` (read at parse time
+        — a bare simple command until wiring widens it to include control
+        structures and special commands).
+
         Returns:
             Parser that produces Pipeline or unwrapped command nodes
         """
-        # Note: We need a command parser first, but that includes control structures
-        # For now, we'll use simple_command and expect control structures to be added later
-
-        # For initial version, just use simple commands
-        # Control structures will be added when we have a command parser that includes them
         pipe_sep = self.tokens.pipe.or_else(self.tokens.pipe_and)
 
         def parse_pipeline_with_negation(tokens: List[Token], pos: int) -> ParseResult:
@@ -410,11 +428,11 @@ class CommandParsers:
             pos = neg_result.position
 
             # Parse first command
-            first_result = self.simple_command.parse(tokens, pos)
+            first_result = self._pipeline_element.parse(tokens, pos)
             if not first_result.success:
                 return first_result
 
-            commands = [first_result.value]
+            commands: List = [first_result.value]
             pipe_stderr_list = []
             pos = first_result.position
 
@@ -427,7 +445,7 @@ class CommandParsers:
                 pipe_stderr_list.append(is_pipe_stderr)
                 pos = sep_result.position
 
-                cmd_result = self.simple_command.parse(tokens, pos)
+                cmd_result = self._pipeline_element.parse(tokens, pos)
                 if not cmd_result.success:
                     raise_committed_error(
                         tokens,
@@ -457,8 +475,17 @@ class CommandParsers:
         # And-or operator
         and_or_operator = self.tokens.and_if.or_else(self.tokens.or_if)
 
+        def parse_element(tokens: List[Token], pos: int) -> ParseResult:
+            # An and-or element is a pipeline; fall back to a lone element
+            # (e.g. a bare compound command). Reads self._pipeline_element at
+            # parse time so the wired slot is honoured.
+            result = self.pipeline.parse(tokens, pos)
+            if result.success or result.committed:
+                return result
+            return self._pipeline_element.parse(tokens, pos)
+
         def parse_and_or_list(tokens: List[Token], pos: int) -> ParseResult[Union[AndOrList, ASTNode]]:
-            first_result = self.pipeline.parse(tokens, pos)
+            first_result = parse_element(tokens, pos)
             if not first_result.success:
                 return first_result
 
@@ -473,7 +500,7 @@ class CommandParsers:
                 op_token = op_result.value
                 pos = op_result.position
 
-                rhs_result = self.pipeline.parse(tokens, pos)
+                rhs_result = parse_element(tokens, pos)
                 if not rhs_result.success:
                     raise_committed_error(
                         tokens,
@@ -534,38 +561,21 @@ class CommandParsers:
         return AndOrList(pipelines=pipelines, operators=operators)
 
     def _build_statement_parser(self) -> Parser[Union[AndOrList, FunctionDef]]:
-        """Build parser for statements.
+        """Build parser for statements: a function definition, else an and-or list.
+
+        The function-definition head is read from ``self._function_def`` at
+        parse time (a never-matching parser until wiring fills the slot).
 
         Returns:
             Parser that produces statement nodes
         """
-        # For now, just use and-or list
-        # Function definitions and control structures will be added later
-        return self.and_or_list
+        def parse_statement(tokens: List[Token], pos: int) -> ParseResult:
+            fn_result = self._function_def.parse(tokens, pos)
+            if fn_result.success or fn_result.committed:
+                return fn_result
+            return self.and_or_list.parse(tokens, pos)
 
-    def _build_statement_list_parser(self) -> Parser[CommandList]:
-        """Build parser for statement lists.
-
-        Returns:
-            Parser that produces CommandList nodes
-        """
-        # Statement separator
-        separator = self.tokens.semicolon.or_else(self.tokens.newline)
-        separators = many1(separator)
-
-        # Parse optional leading separators, statements separated by separators, and optional trailing separators
-        statement_list_parser = sequence(
-            optional(separators),  # Allow optional leading separators
-            optional(
-                separated_by(
-                    self.statement,
-                    separators
-                )
-            ),
-            optional(separators)  # Allow optional trailing separators
-        ).map(lambda triple: CommandList(statements=triple[1] if triple[1] else []))
-
-        return statement_list_parser
+        return Parser(parse_statement)
 
     # Token-type names that always terminate a statement list, independent of
     # the construct: end-of-input and the closers of an enclosing group.
@@ -632,97 +642,25 @@ class CommandParsers:
         return Parser(parse_statement_list)
 
     def set_command_parser(self, command_parser: Parser):
-        """Set the command parser (includes control structures).
+        """Fill the pipeline-element recursion slot.
 
-        This is called after control structures are initialized to break circular dependency.
+        Called once during wiring (after control structures and special commands
+        exist) with the parser for a single pipeline element. The pipeline and
+        and-or parsers built in ``_initialize_parsers`` read this slot at parse
+        time, so nothing is rebuilt — the grammar graph stays a stable value.
 
         Args:
-            command_parser: Parser that handles both simple commands and control structures
+            command_parser: Parser for one pipeline element (control structure /
+                special command / simple command).
         """
-        # Update pipeline parser to use full command parser with negation support
-        pipe_sep = self.tokens.pipe.or_else(self.tokens.pipe_and)
+        self._pipeline_element = command_parser
 
-        def parse_pipeline_with_negation(tokens: List[Token], pos: int) -> ParseResult:
-            neg_result = optional(self.tokens.exclamation).parse(tokens, pos)
-            negated = neg_result.value is not None
-            pos = neg_result.position
+    def set_function_def(self, function_def_parser: Parser):
+        """Fill the function-definition recursion slot (see set_command_parser).
 
-            # Parse first command
-            first_result = command_parser.parse(tokens, pos)
-            if not first_result.success:
-                return first_result
-
-            commands: List = [first_result.value]
-            pipe_stderr_list = []
-            pos = first_result.position
-
-            # Parse remaining | or |& separated commands
-            while pos < len(tokens):
-                sep_result = pipe_sep.parse(tokens, pos)
-                if not sep_result.success:
-                    break
-                is_pipe_stderr = sep_result.value.type.name == 'PIPE_AND'
-                pipe_stderr_list.append(is_pipe_stderr)
-                pos = sep_result.position
-
-                cmd_result = command_parser.parse(tokens, pos)
-                if not cmd_result.success:
-                    raise_committed_error(
-                        tokens,
-                        cmd_result.position,
-                        cmd_result.error or "Expected command after pipe",
-                    )
-                commands.append(cmd_result.value)
-                pos = cmd_result.position
-
-            if len(commands) == 1 and not negated:
-                cmd = commands[0]
-                if isinstance(cmd, (IfConditional, WhileLoop, ForLoop, CaseConditional, SelectLoop,
-                                  CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement,
-                                  BreakStatement, ContinueStatement)):
-                    return ParseResult(success=True, value=cmd, position=pos)
-            pipeline = Pipeline(commands=commands, negated=negated, pipe_stderr=pipe_stderr_list) if commands else None
-            return ParseResult(success=True, value=pipeline, position=pos)
-
-        self.pipeline = Parser(parse_pipeline_with_negation)
-
-        # Update and-or list parser
-        and_or_element = self.pipeline.or_else(command_parser)
-        and_or_operator = self.tokens.and_if.or_else(self.tokens.or_if)
-
-        def parse_and_or_list(tokens: List[Token], pos: int) -> ParseResult[Union[AndOrList, ASTNode]]:
-            first_result = and_or_element.parse(tokens, pos)
-            if not first_result.success:
-                return first_result
-
-            first = first_result.value
-            rest = []
-            pos = first_result.position
-
-            while pos < len(tokens):
-                op_result = and_or_operator.parse(tokens, pos)
-                if not op_result.success:
-                    break
-                op_token = op_result.value
-                pos = op_result.position
-
-                rhs_result = and_or_element.parse(tokens, pos)
-                if not rhs_result.success:
-                    raise_committed_error(
-                        tokens,
-                        rhs_result.position,
-                        rhs_result.error or f"Expected command after {op_token.value}",
-                    )
-                rest.append((op_token, rhs_result.value))
-                pos = rhs_result.position
-
-            return ParseResult(
-                success=True,
-                value=self._build_and_or_list_from_parts((first, rest)),
-                position=pos,
-            )
-
-        self.and_or_list = Parser(parse_and_or_list)
+        Tried ahead of an ordinary statement by the statement parser.
+        """
+        self._function_def = function_def_parser
 
 
 # Convenience functions
