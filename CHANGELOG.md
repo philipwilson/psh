@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.447.0 (2026-06-15) - BUGFIX: concurrency-safe history persistence (no more multi-terminal clobber)
+- BUGFIX (data loss). Command history was lost when multiple psh sessions shared one
+  history file — e.g. several terminal windows each auto-starting psh (`psh` as the last
+  line of `.zshrc`). `HistoryManager.save_to_file` truncate-rewrote the whole file on
+  exit, so the last shell to exit overwrote every other shell's commands
+  (last-writer-wins). The file stayed near its loaded baseline and the loss appeared
+  intermittent (it depended on exit ordering).
+  - Fix: `save_to_file` now appends only THIS session's new entries under an exclusive
+    `flock`, re-reading the current on-disk history first (picking up entries other
+    shells appended since we loaded), merging, trimming to `max_history_size`, and
+    writing the result back. Concurrent shells serialize on the lock instead of
+    clobbering one another. `HistoryManager` tracks `_file_synced_len` (how many of
+    `state.history`'s entries are already persisted) so only genuinely-new commands are
+    added and loaded entries are never duplicated.
+  - The history file is now created mode `0o600` (private), where the old
+    `open(..., 'w')` left it at the umask default.
+  - This also fixes sequential-session accumulation in non-interactive/piped mode (the
+    merge keeps prior content instead of overwriting it).
+  - +5 regression tests (`tests/unit/interactive/test_history_persistence.py`):
+    roundtrip, sequential accumulation, the concurrent no-clobber case, append-only
+    (no duplication of loaded entries), and max-size trimming.
+
 ## 0.446.0 (2026-06-15) - Tier R11.P4: document the combinator [[ ]]/arithmetic sublanguage boundary (R11 complete)
 - DOCS (no behavior change). Final R11 phase: per the architecture review's Phase 4,
   the combinator parser's intentionally-shallow `(( ))` and `[[ ]]` sublanguages are
