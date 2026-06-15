@@ -65,9 +65,17 @@ class HistoryManager(InteractiveComponent):
         # Don't add duplicates of the immediately previous command
         if not self.state.history or self.state.history[-1] != command:
             self.state.history.append(command)
-            # Trim history if it exceeds max size
+            # Trim history if it exceeds max size. The trim drops entries from
+            # the FRONT, so the persisted-length marker (an index into the list)
+            # must shift by the same amount — otherwise save_to_file's
+            # history[_file_synced_len:] slice would skip genuinely-new entries
+            # (the v0.447 regression: a session exceeding max_history_size before
+            # saving silently lost the commands between the stale index and the
+            # tail).
             if len(self.state.history) > self.state.max_history_size:
+                dropped = len(self.state.history) - self.state.max_history_size
                 self.state.history = self.state.history[-self.state.max_history_size:]
+                self._file_synced_len = max(0, self._file_synced_len - dropped)
 
     def load_from_file(self) -> None:
         """Load command history from file."""

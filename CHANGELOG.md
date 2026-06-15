@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.448.0 (2026-06-15) - BUGFIX: history save dropped new entries after an in-session trim (v0.447 regression) — R12.A
+- BUGFIX (data loss; regression in v0.447). `HistoryManager._file_synced_len` (the
+  count of history entries already persisted) is an index into `state.history`, but
+  `add_to_history` trims the list from the FRONT once it exceeds `max_history_size`
+  (default 1000). The marker was not adjusted for the trim, so after the list shifted,
+  `save_to_file`'s `history[_file_synced_len:]` slice skipped genuinely-new commands
+  (and could re-add already-saved ones). A session that ran more than
+  `max_history_size` commands before exiting silently lost the entries between the
+  stale index and the tail. Fix: when the front-trim drops N entries, decrement
+  `_file_synced_len` by N (clamped at 0) so it keeps pointing at the first unsaved
+  entry. Found by reappraisal #10. +1 regression test
+  (`test_in_session_trim_does_not_lose_new_entries`).
+- First item of Tier R12.A (the reappraisal-#10 bug cluster); memo at
+  `docs/reviews/ground_up_reappraisal_10_2026-06-15.md`.
+
 ## 0.447.0 (2026-06-15) - BUGFIX: concurrency-safe history persistence (no more multi-terminal clobber)
 - BUGFIX (data loss). Command history was lost when multiple psh sessions shared one
   history file — e.g. several terminal windows each auto-starting psh (`psh` as the last

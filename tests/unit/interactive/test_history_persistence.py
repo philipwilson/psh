@@ -103,3 +103,25 @@ def test_save_trims_to_max_history_size(histfile):
         m.add_to_history(f"cmd{i}")
     m.save_to_file()
     assert _read(histfile) == ["cmd2", "cmd3", "cmd4"]
+
+
+def test_in_session_trim_does_not_lose_new_entries(histfile):
+    """Regression for the v0.447 stale-index bug: a session that exceeds
+    max_history_size before saving must still persist ALL of its new commands,
+    not just the tail past the (now-stale) sync index."""
+    with open(histfile, "w") as f:
+        f.write("old1\nold2\nold3\n")
+    m = _manager(histfile)
+    m.state.max_history_size = 4
+    m.load_from_file()  # history=[old1,old2,old3], synced=3
+    # Each add past size 4 trims one entry off the front, shifting the index.
+    m.add_to_history("n1")
+    m.add_to_history("n2")
+    m.add_to_history("n3")
+    m.save_to_file()
+    contents = _read(histfile)
+    # All three new commands survive (pre-fix, n1 and n2 were dropped).
+    for c in ("n1", "n2", "n3"):
+        assert c in contents, f"{c} lost after in-session trim: {contents}"
+    # And the file respects the size cap.
+    assert len(contents) <= 4
