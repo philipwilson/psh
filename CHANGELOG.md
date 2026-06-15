@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.453.0 (2026-06-15) - BUGFIX: sparse-array negative-index reads + `$!` subshell inheritance — R12.A (cluster complete)
+- BUGFIX (behavior). Two core bugs found by reappraisal #10:
+  - `IndexedArray.get()` resolved a negative subscript by indexing the list of *set*
+    indices, which disagreed with the write path (`resolve_write_index`, "highest index
+    + 1 + index") and with bash on SPARSE arrays. `${a[-2]}` on `a[0]=x; a[5]=y` gave
+    `x` (bash: empty, slot 4 unset); `${a[-6]}` gave empty (bash: `x`, slot 0). `get()`
+    now uses the same one-past-the-top mapping as writes, so reads and writes agree
+    (bash-verified against real bash, including the unset-middle case). An out-of-range
+    negative *read* expands to empty (bash warns + expands empty; only a bad *write*
+    subscript is a hard error — that path is unchanged).
+  - `$!` (last background PID) was not inherited by subshell-style children:
+    `ShellState.adopt()` didn't copy `last_bg_pid`, so `$!` read empty inside `( … )`,
+    `$( … )`, and the env builtin's child (bash inherits it). Added the copy.
+  - +8 regression tests (IndexedArray negative-index unit tests; `$!`-in-subshell
+    integration tests).
+- Sixth and final item of Tier R12.A — **the reappraisal-#10 bug cluster is complete**
+  (v0.448–453: history-trim regression, exec redirects, `(( ))`/`[[ ]]`-before-then/do,
+  combinator line-continuation, ANSI-C in operands, and these two core bugs).
+
 ## 0.452.0 (2026-06-15) - BUGFIX: ANSI-C `$'...'` in parameter-expansion operands + full `${var@E}` — R12.A
 - BUGFIX (behavior). Two related ANSI-C-quoting gaps, both fixed by routing through the
   single canonical decoder (`lexer/pure_helpers.handle_ansi_c_escape`):
