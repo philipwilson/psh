@@ -130,14 +130,18 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                             node
                         ))
 
-        # Check for rm -rf on root directories
-        if cmd == 'rm' and '-rf' in ' '.join(node.args):
+        # Check for a recursive+force rm on sensitive directories. Detect the
+        # recursive AND force flags from the actual argv tokens (any spelling:
+        # -rf, -fr, -r -f, -Rf, --recursive --force) rather than matching the
+        # literal substring '-rf' in the joined args (which missed -r -f / -fr
+        # and could false-match a filename containing '-rf').
+        if cmd == 'rm' and self._rm_is_recursive_force(node.args):
             for arg in node.args:
                 if arg in ['/', '/*', '/bin', '/usr', '/etc', '/var', '/home']:
                     self.issues.append(SecurityIssue(
                         'HIGH',
                         'DANGEROUS_RM',
-                        f"rm -rf {arg}: Extremely dangerous operation",
+                        f"rm of {arg} (recursive, force): Extremely dangerous operation",
                         node
                     ))
 
@@ -258,6 +262,29 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self._visit_redirects(node)
 
     # Helper methods
+
+    @staticmethod
+    def _rm_is_recursive_force(args) -> bool:
+        """True if an ``rm`` argv requests BOTH recursive and force.
+
+        Handles every spelling: clustered short flags (``-rf``/``-fr``/``-Rf``/
+        ``-rvf``), separate short flags (``-r -f``), and long options
+        (``--recursive --force``). ``args`` includes argv[0] (``rm``), which is
+        skipped naturally since it doesn't start with ``-``.
+        """
+        recursive = force = False
+        for a in args:
+            if a == '--recursive':
+                recursive = True
+            elif a == '--force':
+                force = True
+            elif a.startswith('-') and not a.startswith('--') and len(a) > 1:
+                flags = a[1:]
+                if 'r' in flags or 'R' in flags:
+                    recursive = True
+                if 'f' in flags:
+                    force = True
+        return recursive and force
 
     def _is_world_writable_permission(self, perm: str) -> bool:
         """Check if a permission string makes files world-writable."""

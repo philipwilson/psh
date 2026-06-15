@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.460.0 (2026-06-15) - Tier R12.D.3: security visitor detects recursive+force rm in all flag spellings
+- IMPROVEMENT (security analysis). `SecurityVisitor`'s dangerous-`rm` check matched only
+  the literal `-rf` substring of the joined args, so `rm -r -f /`, `rm -fr /`,
+  `rm --recursive --force /etc`, and `rm -rvf /var` went unflagged (and a filename
+  containing `-rf` could false-match). It now inspects the actual argv flag tokens via a
+  new `_rm_is_recursive_force` helper — recognising clustered (`-rf`/`-fr`/`-Rf`/`-rvf`),
+  separate (`-r -f`), and long (`--recursive --force`) forms — and only flags a sensitive
+  target (`/`, `/*`, `/bin`, `/usr`, `/etc`, `/var`, `/home`) when BOTH recursive and
+  force are present. Found by reappraisal #10. +7 unit tests.
+- Third item of Tier R12.D.
+
 ## 0.459.0 (2026-06-15) - Tier R12.D.2: dead-code & stale-doc sweep
 - REFACTOR (no behavior change). Removed verified-dead code flagged by reappraisals
   #9/#10:
