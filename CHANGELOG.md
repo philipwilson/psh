@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.431.0 (2026-06-15) - Tier R9.C2: combinator core-library hygiene
+- ARCHITECTURE (combinator backend; zero behavior change). Cleaned up the
+  parser-combinator core (`psh/parser/combinators/core.py`):
+  - Removed the vestigial `ParseResult.remaining` field — it was only ever set
+    (by `map()` propagating it to itself) and never read for any decision.
+  - Unified the backtracking discipline: `Parser.then()` now resets to the
+    start position on second-parser failure (atomic), matching `sequence()`;
+    previously it leaked the first parser's end position. The only grammar use
+    (`many1`) never triggers the branch (its second parser is `many`, which
+    cannot fail), so behavior is unchanged — this removes a latent inconsistency.
+- Added a unit test pinning the unified `then()` reset-on-failure.
+- (Elevate path: the currently-unused combinator primitives — `between`,
+  `lazy`, `literal`, etc. — are intentionally retained for the C3 grammar
+  rewrite to consume.)
+- Gate: ruff + mypy clean, full suite 8,026 collected / all phases green.
+
 ## 0.430.0 (2026-06-15) - Tier R9.C1: structured combinator nested-terminator dispatch
 - ARCHITECTURE (combinator backend; zero behavior change). Replaced the fragile
   message-substring dispatch in `is_missing_nested_terminator()` with a

@@ -110,6 +110,19 @@ class TestParser:
         assert result.success is False
         assert result.error == "Failed"
 
+    def test_then_second_fails_resets_position(self):
+        """A failed then() is atomic: position resets to the start (same
+        backtracking discipline as sequence())."""
+        def parse_ok(tokens, pos):
+            return ParseResult(success=True, value="ok", position=pos + 1)
+
+        def parse_fail(tokens, pos):
+            return ParseResult(success=False, error="boom", position=pos)
+
+        result = Parser(parse_ok).then(Parser(parse_fail)).parse([], 3)
+        assert result.success is False
+        assert result.position == 3  # not 4 (the first parser's end)
+
     def test_or_else(self):
         """Test alternative parsing."""
         def parse_fail(tokens, pos):
