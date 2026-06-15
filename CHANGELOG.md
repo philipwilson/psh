@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.434.0 (2026-06-15) - Tier R9.C3 COMPLETE: case bodies by recursion + unified statement-list engine
+- REFACTOR (combinator parser). Finishes C3. The `case` item command bodies no
+  longer slice tokens until a terminator with a hand-tracked `nesting_depth`
+  (plus pattern/`(`-lookahead heuristics); they now parse by recursion via
+  `build_statement_list(frozenset({'esac'}), <;; ;& ;;& token types>)`, mirroring
+  recursive descent's `parse_command_list_until(*CASE_TERMINATORS, ESAC)`. A
+  nested `case` is parsed whole by `self.statement` and consumes its own `esac`,
+  so no nesting counter is needed.
+- `build_statement_list` gained a `terminator_types` parameter (token-type
+  terminators like `;;`) alongside the keyword `terminators`.
+- CAPSTONE: the top-level statement list (in `parser.py._build_complete_parser`)
+  is now `self.commands.build_statement_list()` — the same engine, with no
+  terminator (stops at EOF / `)` / `}`). Brace and subshell groups reuse it
+  directly. The duplicated committed-loop closure in parser.py is removed, so
+  there is now ONE recursion-based statement-list engine; loops/if/case build
+  terminator-specific variants of it. The reviewer's "central irony" is resolved:
+  the grammar parses every compound body by recursion, not token-slicing.
+- An `esac`-spelled argument in a case body (`a) echo esac;;`) is now a plain
+  word (same statement-start-only terminator check as the loop/if fix); pinned
+  in `test_combinator_parity_regressions.py`.
+- All `tests/parser_differential` parity suites + full suite + ruff + mypy green.
+  Zero change to recursive descent.
+
 ## 0.433.0 (2026-06-15) - Tier R9.C3 (part 1): loops & if parse bodies by recursion, not slicing
 - REFACTOR (combinator parser; the reviewer's "central irony"). The compound-body
   parsers for `while`, `until`, `for`, C-style `for`, `select`, and `if`

@@ -87,6 +87,9 @@ class TestKeywordSpelledArgumentInBody:
     def test_keyword_argument_in_nested_body(self):
         assert_three_way('for i in 1; do if true; then echo done; fi; done')
 
+    def test_esac_as_argument_in_case_body(self):
+        assert_three_way('case x in a) echo esac;; *) echo other;; esac')
+
 
 class TestFunctionDefinitionRedirects:
     """Redirects on a definition apply at each call, not at definition."""

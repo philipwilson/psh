@@ -571,7 +571,8 @@ class CommandParsers:
     # the construct: end-of-input and the closers of an enclosing group.
     _STATEMENT_LIST_STOP_TYPES = frozenset({'EOF', 'RPAREN', 'RBRACE'})
 
-    def build_statement_list(self, terminators: frozenset = frozenset()
+    def build_statement_list(self, terminators: frozenset = frozenset(),
+                             terminator_types: frozenset = frozenset(),
                              ) -> Parser[CommandList]:
         """Build a statement list that stops at (without consuming) a terminator.
 
@@ -583,19 +584,21 @@ class CommandParsers:
         manual ``nesting_level`` bookkeeping is needed — the recursion is the
         nesting tracker.
 
-        ``terminators`` is a set of keyword strings (e.g. ``{'done'}``) that end
-        the list, in addition to EOF and an enclosing ``)``/``}``. Because the
-        terminator is only ever checked at statement-start position, an argument
-        that merely spells like a keyword (``echo done``) is consumed as a word
-        by ``self.statement`` and never mistaken for the terminator — fixing a
-        long-standing slicer bug that mis-detected such arguments.
+        ``terminators`` is a set of keyword strings (e.g. ``{'done'}``) and
+        ``terminator_types`` a set of token-type names (e.g. ``{'DOUBLE_SEMICOLON'}``
+        for case ``;;``); either ends the list, in addition to EOF and an
+        enclosing ``)``/``}``. Because the terminator is only ever checked at
+        statement-start position, an argument that merely spells like a keyword
+        (``echo done``) is consumed as a word by ``self.statement`` and never
+        mistaken for the terminator — fixing a long-standing slicer bug that
+        mis-detected such arguments.
 
         A committed loop (not ``many``) is used deliberately: ``many`` swallows
         failures, which at a real command token would discard the body's own
         diagnostic and surface a generic top-level error instead.
         """
         separators = many1(self.tokens.semicolon.or_else(self.tokens.newline))
-        stop_types = self._STATEMENT_LIST_STOP_TYPES
+        stop_types = self._STATEMENT_LIST_STOP_TYPES | terminator_types
 
         def at_terminator(tokens: List[Token], pos: int) -> bool:
             if pos >= len(tokens):
