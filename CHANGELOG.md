@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.432.0 (2026-06-15) - Tier R9.D: `[` error messages use the `[` prefix (bash parity)
+- BEHAVIOR (bash divergence fix). Errors from the `[` builtin now carry the `[`
+  prefix (e.g. `[: 1: unary operator expected`) instead of `test:`, matching
+  bash; `test` errors still say `test:`. Previously `[` delegated to a fresh
+  `TestBuiltin()` instance, so its errors used that instance's `test` name.
+- `BracketBuiltin` now subclasses `TestBuiltin` and evaluates through `self`
+  (`self.evaluate_test(...)`), so `self.name == '['` flows to every `self.error`
+  prefix. Verified against bash for unary/binary/integer operator errors.
+- Added error-prefix tests to `tests/unit/builtins/test_test_builtin.py`.
+- Gate: ruff + mypy clean, full suite 8,028 collected / all phases green.
+
 ## 0.431.0 (2026-06-15) - Tier R9.C2: combinator core-library hygiene
 - ARCHITECTURE (combinator backend; zero behavior change). Cleaned up the
   parser-combinator core (`psh/parser/combinators/core.py`):

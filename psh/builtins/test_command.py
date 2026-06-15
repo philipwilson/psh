@@ -382,8 +382,13 @@ class TestBuiltin(Builtin):
 
 
 @builtin
-class BracketBuiltin(Builtin):
-    """[ command (alias for test)."""
+class BracketBuiltin(TestBuiltin):
+    """[ command (alias for test).
+
+    Subclasses TestBuiltin and evaluates through ``self`` so error messages
+    carry the ``[`` prefix (its own ``name``) rather than ``test`` — matching
+    bash, which reports e.g. ``[: 1: unary operator expected``.
+    """
 
     @property
     def name(self) -> str:
@@ -413,7 +418,7 @@ class BracketBuiltin(Builtin):
             self.error("missing ']'", shell)
             return 2  # Syntax error
 
-        # Remove [ and ], then evaluate as test
+        # Remove [ and ], then evaluate as test (through self, so errors use
+        # this builtin's '[' name prefix).
         test_args = args[1:-1]
-        test_builtin = TestBuiltin()
-        return test_builtin.evaluate_test(test_args, shell)
+        return self.evaluate_test(test_args, shell)
