@@ -160,18 +160,24 @@ class IndexedArray:
         self._max_index = max(self._max_index, index)
 
     def get(self, index: int) -> Optional[str]:
-        """Get element at given index. Supports negative indices."""
+        """Get element at given index, supporting negative subscripts.
+
+        A negative subscript uses the SAME bash "offset from one past the top"
+        mapping as a write (``-1`` is the highest set index's slot, ``-2`` the
+        one before it, ...), so reads and writes agree on sparse arrays — the
+        old read counted over the list of *set* indices instead, which diverged
+        from both the write path and bash. A mapped slot that is unset reads as
+        None (empty), like any unset slot.
+
+        Unlike a write, an out-of-range negative read does NOT raise: bash
+        treats a bad *read* subscript as a warning and expands to empty (only a
+        bad *write* subscript is a hard error), so we return None here.
+        """
         if index < 0:
-            # Convert negative index to positive
-            # -1 means last element, -2 means second to last, etc.
-            # First, get all indices in order
-            indices = self.indices()
-            if not indices:
-                return None
-            # Convert negative to positive
-            if -index > len(indices):
-                return None  # Out of bounds
-            return self._elements.get(indices[index])
+            mapped = self._max_index + 1 + index
+            if mapped < 0:
+                return None  # out of range: bash warns + expands empty
+            index = mapped
         return self._elements.get(index)
 
     def unset(self, index: int):

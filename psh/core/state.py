@@ -270,6 +270,10 @@ class ShellState:
         # (probe: `hash ls; (hash)` lists the entry in the subshell).
         self.command_hash = parent.command_hash.copy()
         self.last_exit_code = parent.last_exit_code
+        # `$!` is inherited by subshell-style children (bash: `sleep 1 & ( echo $! )`
+        # prints the pid). Without this copy it read empty in `( … )`, `$( … )`,
+        # and the env builtin's child.
+        self.last_bg_pid = parent.last_bg_pid
         self.is_script_mode = parent.is_script_mode
         self.pipestatus = list(parent.pipestatus)
         self.initial_ppid = parent.initial_ppid
