@@ -93,85 +93,48 @@ class StructureParserMixin(_Base):
         return Parser(parse_function_name)
 
     def _parse_function_body(self, tokens: List[Token], pos: int) -> ParseResult[StatementList]:
-        """Parse function body between { }."""
+        """Parse function body between { }.
+
+        Parses the body by recursion on the real token stream — the same engine
+        the compound bodies and brace groups use — rather than slicing the
+        tokens between matching braces. ``build_statement_list`` stops at the
+        ``RBRACE`` token (without consuming it); nested brace groups consume
+        their own ``}``, so the recursion is the nesting tracker and no manual
+        brace-counting is needed. A missing nested terminator (e.g. an ``if``
+        without ``fi``) raises a committed ``ParseError`` from the inner parser,
+        which propagates out unchanged.
+        """
         # Expect {
         if pos >= len(tokens) or tokens[pos].value != '{':
             return ParseResult(success=False, error="Expected '{' to start function body", position=pos)
-        outer_pos = pos + 1  # Track position in outer token stream
+        pos += 1  # Skip '{'
 
-        # Skip optional newline after {
-        if outer_pos < len(tokens) and tokens[outer_pos].type.name == 'NEWLINE':
-            outer_pos += 1
+        # A compound inside the body that misses its own terminator (an `if`
+        # without `fi`, a loop without `done`) raises a committed ParseError
+        # tagged with `missing_terminator`. The recursive descent parser reports
+        # such a body error at end-of-input, so re-raise it there to keep
+        # diagnostic parity.
+        try:
+            body_result = self.commands.build_statement_list().parse(tokens, pos)
+        except ParseError as error:
+            if is_missing_nested_terminator(error):
+                raise_committed_error(tokens, len(tokens) - 1, error.message)
+            raise
+        if not body_result.success:
+            return ParseResult(success=False,
+                               error=f"Invalid function body: {body_result.error}",
+                               position=body_result.position)
+        assert body_result.value is not None
 
-        # Collect tokens until }
-        body_tokens = []
-        brace_count = 1
-
-        while outer_pos < len(tokens) and brace_count > 0:
-            token = tokens[outer_pos]
-            if token.value == '{':
-                brace_count += 1
-            elif token.value == '}':
-                brace_count -= 1
-                if brace_count == 0:
-                    break
-            body_tokens.append(token)
-            outer_pos += 1
-
-        if brace_count > 0:
-            return ParseResult(success=False, error="Unclosed function body", position=outer_pos)
-
-        # Parse the body as a statement list
-        if body_tokens:
-            # For function bodies, we need stricter parsing
-            statements = []
-            inner_pos = 0  # Position within body_tokens
-
-            # Skip leading separators
-            while inner_pos < len(body_tokens) and body_tokens[inner_pos].type.name in ['SEMICOLON', 'NEWLINE']:
-                inner_pos += 1
-
-            # Parse statements
-            while inner_pos < len(body_tokens):
-                # Try to parse a statement
-                try:
-                    stmt_result = self.commands.statement.parse(body_tokens, inner_pos)
-                except ParseError as error:
-                    if is_missing_nested_terminator(error):
-                        raise_committed_error(tokens, len(tokens) - 1, error.message)
-                    raise
-                if not stmt_result.success:
-                    # Check if this is a real error or just end of statements.
-                    # Missing compound terminators (fi/done/esac/then) inside a
-                    # function body now RAISE via raise_committed_error (caught
-                    # above by is_missing_nested_terminator) rather than
-                    # returning a soft failure, so no message remapping by
-                    # substring is needed here.
-                    if inner_pos < len(body_tokens):
-                        return ParseResult(
-                            success=False,
-                            error=f"Invalid function body: {stmt_result.error}",
-                            position=outer_pos)
-                    break
-
-                statements.append(stmt_result.value)
-                inner_pos = stmt_result.position
-
-                # Skip separators
-                while inner_pos < len(body_tokens) and body_tokens[inner_pos].type.name in ['SEMICOLON', 'NEWLINE']:
-                    inner_pos += 1
-
-            body_result = ParseResult(success=True, value=StatementList(statements=statements), position=inner_pos)
-        else:
-            # Empty body
-            body_result = ParseResult(success=True, value=StatementList(statements=[]), position=0)
-
-        outer_pos += 1  # Skip closing }
+        pos = body_result.position
+        if pos >= len(tokens) or tokens[pos].type.name != 'RBRACE':
+            return ParseResult(success=False, error="Unclosed function body", position=pos)
+        pos += 1  # Skip '}'
 
         return ParseResult(
             success=True,
             value=body_result.value,
-            position=outer_pos
+            position=pos,
         )
 
     def _build_posix_function(self) -> Parser[FunctionDef]:

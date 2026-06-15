@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.443.0 (2026-06-15) - Tier R11.P3(a): function body parses by recursion (last slicer retired)
+- REFACTOR (fixes a bash/rd divergence). `StructureParserMixin._parse_function_body`
+  no longer collects the tokens between matching `{ }` by brace-counting and re-parses
+  the slice. It parses the body on the real token stream via
+  `build_statement_list()` (which stops at the `RBRACE` token; nested brace groups
+  consume their own `}`), then expects `}`. This was the LAST place the combinator
+  parser sliced tokens out of the stream — every compound header and body now parses
+  by recursion.
+  - Fixes a slicer divergence: a `}` that is merely an argument (`f() { echo }; }`)
+    was mis-read as the body's closing brace; it is now consumed as a word, matching
+    bash and the recursive-descent parser.
+  - Missing-nested-terminator diagnostics (an `if`/loop inside the body without its
+    `fi`/`done`) are preserved at end-of-input parity with rd by re-raising the
+    committed `ParseError` at the last token (the same handling the old loop used).
+  - +2 three-way parity regression tests (`}`-as-argument, nested brace group in a
+    function body). Full `tests/parser_differential` parity suite green.
+- Review Phase 3 item 2 from `docs/reviews/parser_combinator_architecture_review_2026-06-15.md`.
+
 ## 0.442.0 (2026-06-15) - Tier R11.P3.1: combinator condition headers parse by recursion (closes H3)
 - REFACTOR (fixes a bash/rd divergence). The `while`/`until`/`if`/`elif` CONDITION
   headers no longer slice tokens to the first `do`/`then` and re-parse the slice.
