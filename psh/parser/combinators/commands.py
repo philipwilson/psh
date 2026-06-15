@@ -33,7 +33,7 @@ from ..config import ParserConfig
 from ..recursive_descent.helpers import ErrorContext, ParseError
 from ..recursive_descent.support.word_builder import WordBuilder
 from .arrays import ArrayParsers
-from .core import ForwardParser, Parser, ParseResult, many, many1, optional, separated_by, sequence, token
+from .core import ForwardParser, Parser, ParseResult, many1, optional, separated_by, sequence, token
 from .expansions import ExpansionParsers
 from .tokens import TokenParsers
 
@@ -45,6 +45,16 @@ _WORD_LIKE_TYPES = frozenset({
     'WORD', 'STRING', 'VARIABLE', 'PARAM_EXPANSION', 'COMMAND_SUB',
     'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION', 'PROCESS_SUB_IN', 'PROCESS_SUB_OUT',
 })
+
+
+def _raise_committed_error(tokens: List[Token], pos: int, message: str) -> None:
+    """Raise a hard parse error after a command separator committed."""
+    error_pos = min(pos, len(tokens) - 1)
+    raise ParseError(ErrorContext(
+        token=tokens[error_pos],
+        message=message,
+        position=error_pos,
+    ))
 
 
 class CommandParsers:
@@ -429,7 +439,11 @@ class CommandParsers:
 
                 cmd_result = self.simple_command.parse(tokens, pos)
                 if not cmd_result.success:
-                    return cmd_result
+                    _raise_committed_error(
+                        tokens,
+                        cmd_result.position,
+                        cmd_result.error or "Expected command after pipe",
+                    )
                 commands.append(cmd_result.value)
                 pos = cmd_result.position
 
@@ -453,13 +467,39 @@ class CommandParsers:
         # And-or operator
         and_or_operator = self.tokens.and_if.or_else(self.tokens.or_if)
 
-        # Parse pipeline followed by optional and/or operators and more pipelines
-        and_or_parser = sequence(
-            self.pipeline,
-            many(sequence(and_or_operator, self.pipeline))
-        ).map(self._build_and_or_list_from_parts)
+        def parse_and_or_list(tokens: List[Token], pos: int) -> ParseResult[Union[AndOrList, ASTNode]]:
+            first_result = self.pipeline.parse(tokens, pos)
+            if not first_result.success:
+                return first_result
 
-        return and_or_parser
+            first = first_result.value
+            rest = []
+            pos = first_result.position
+
+            while pos < len(tokens):
+                op_result = and_or_operator.parse(tokens, pos)
+                if not op_result.success:
+                    break
+                op_token = op_result.value
+                pos = op_result.position
+
+                rhs_result = self.pipeline.parse(tokens, pos)
+                if not rhs_result.success:
+                    _raise_committed_error(
+                        tokens,
+                        rhs_result.position,
+                        rhs_result.error or f"Expected command after {op_token.value}",
+                    )
+                rest.append((op_token, rhs_result.value))
+                pos = rhs_result.position
+
+            return ParseResult(
+                success=True,
+                value=self._build_and_or_list_from_parts((first, rest)),
+                position=pos,
+            )
+
+        return Parser(parse_and_or_list)
 
     def _build_and_or_list_from_parts(self, parse_result: tuple) -> Union[AndOrList, ASTNode]:
         """Build an AndOrList from parsed components.
@@ -573,7 +613,11 @@ class CommandParsers:
 
                 cmd_result = command_parser.parse(tokens, pos)
                 if not cmd_result.success:
-                    return cmd_result
+                    _raise_committed_error(
+                        tokens,
+                        cmd_result.position,
+                        cmd_result.error or "Expected command after pipe",
+                    )
                 commands.append(cmd_result.value)
                 pos = cmd_result.position
 
@@ -592,10 +636,39 @@ class CommandParsers:
         and_or_element = self.pipeline.or_else(command_parser)
         and_or_operator = self.tokens.and_if.or_else(self.tokens.or_if)
 
-        self.and_or_list = sequence(
-            and_or_element,
-            many(sequence(and_or_operator, and_or_element))
-        ).map(self._build_and_or_list_from_parts)
+        def parse_and_or_list(tokens: List[Token], pos: int) -> ParseResult[Union[AndOrList, ASTNode]]:
+            first_result = and_or_element.parse(tokens, pos)
+            if not first_result.success:
+                return first_result
+
+            first = first_result.value
+            rest = []
+            pos = first_result.position
+
+            while pos < len(tokens):
+                op_result = and_or_operator.parse(tokens, pos)
+                if not op_result.success:
+                    break
+                op_token = op_result.value
+                pos = op_result.position
+
+                rhs_result = and_or_element.parse(tokens, pos)
+                if not rhs_result.success:
+                    _raise_committed_error(
+                        tokens,
+                        rhs_result.position,
+                        rhs_result.error or f"Expected command after {op_token.value}",
+                    )
+                rest.append((op_token, rhs_result.value))
+                pos = rhs_result.position
+
+            return ParseResult(
+                success=True,
+                value=self._build_and_or_list_from_parts((first, rest)),
+                position=pos,
+            )
+
+        self.and_or_list = Parser(parse_and_or_list)
 
 
 # Convenience functions
@@ -669,7 +742,11 @@ def parse_pipeline(command_parser: Parser) -> Parser[Union[Pipeline, ASTNode]]:
 
             cmd_result = command_parser.parse(tokens, pos)
             if not cmd_result.success:
-                return cmd_result
+                _raise_committed_error(
+                    tokens,
+                    cmd_result.position,
+                    cmd_result.error or "Expected command after pipe",
+                )
             commands.append(cmd_result.value)
             pos = cmd_result.position
 
@@ -715,7 +792,33 @@ def parse_and_or_list(pipeline_parser: Parser) -> Parser[AndOrList]:
 
         return AndOrList(pipelines=pipelines, operators=operators)
 
-    return sequence(
-        pipeline_parser,
-        many(sequence(and_or_operator, pipeline_parser))
-    ).map(build_and_or)
+    def parse_and_or(tokens: List[Token], pos: int) -> ParseResult[AndOrList]:
+        first_result = pipeline_parser.parse(tokens, pos)
+        if not first_result.success:
+            return first_result
+
+        first = first_result.value
+        rest = []
+        pos = first_result.position
+
+        while pos < len(tokens):
+            op_result = and_or_operator.parse(tokens, pos)
+            if not op_result.success:
+                break
+            assert op_result.value is not None
+            op_token = op_result.value
+            pos = op_result.position
+
+            rhs_result = pipeline_parser.parse(tokens, pos)
+            if not rhs_result.success:
+                _raise_committed_error(
+                    tokens,
+                    rhs_result.position,
+                    rhs_result.error or f"Expected command after {op_token.value}",
+                )
+            rest.append((op_token, rhs_result.value))
+            pos = rhs_result.position
+
+        return ParseResult(success=True, value=build_and_or((first, rest)), position=pos)
+
+    return Parser(parse_and_or)

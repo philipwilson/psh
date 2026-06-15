@@ -46,7 +46,12 @@ STABLE_DIAGNOSTIC_CORPUS = [
     pytest.param('cat <', id='redirect-missing-target-in'),
     pytest.param('cat <<', id='heredoc-missing-delimiter'),
     pytest.param('cat <<<', id='herestring-missing-content'),
+    pytest.param('echo |', id='pipeline-missing-rhs'),
+    pytest.param('echo |&', id='pipeline-stderr-missing-rhs'),
+    pytest.param('echo &&', id='and-if-missing-rhs'),
+    pytest.param('echo ||', id='or-if-missing-rhs'),
     pytest.param('&& echo', id='and-if-missing-lhs'),
+    pytest.param('|| echo', id='or-if-missing-lhs'),
 ]
 
 

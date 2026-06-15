@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.418.0 (2026-06-15) - Combinator command-operator diagnostic alignment
+- PARSER (combinator backend, non-default). Missing right-hand commands after
+  committed binary command operators (`|`, `|&`, `&&`, `||`) now raise a hard
+  `ParseError` carrying the EOF/offending-token diagnostic — matching what
+  recursive descent already reports — instead of soft-stopping and letting the
+  statement-list level blame the operator token.
+- Replaced the soft `many(sequence(operator, command))` operator-loops in
+  `psh/parser/combinators/commands.py` with explicit committed loops. Success
+  paths are unchanged: each loop's RHS parser is the same parser as its LHS, as
+  the old `many(sequence(...))` used.
+- Expanded the recursive-descent vs combinator diagnostic-parity corpus with
+  missing-RHS (`echo |`, `echo |&`, `echo &&`, `echo ||`) and missing-LHS
+  (`|| echo`) cases; refreshed
+  `docs/reviews/combinator_diagnostic_characterization_2026-06-14.md` to record
+  that no diagnostic-summary drift remains in the starter rejection corpus.
+- Zero behavior change for the default recursive-descent parser. Gate: ruff +
+  mypy clean (225 files), full suite 7,950 collected / all phases green.
+
 ## 0.417.0 (2026-06-15) - Tier R8.6b: alias expansion moved to a token-stream transform
 - ARCHITECTURE (review Ugly 1 / A2 — the fenced big-bang). Alias expansion no
   longer happens at runtime by re-lexing joined argv; it is now a TOKEN-STREAM
