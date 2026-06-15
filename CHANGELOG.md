@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.452.0 (2026-06-15) - BUGFIX: ANSI-C `$'...'` in parameter-expansion operands + full `${var@E}` — R12.A
+- BUGFIX (behavior). Two related ANSI-C-quoting gaps, both fixed by routing through the
+  single canonical decoder (`lexer/pure_helpers.handle_ansi_c_escape`):
+  - `$'...'` was not decoded inside parameter-expansion operands — default values
+    (`${x:-$'\t'}`), patterns (`${x#$'\t'}`, `${x/$'\t'/X}`), and replacements
+    (`${x/b/$'\t'}`) all left it literal where bash decodes it. The three operand
+    expanders (`operands.py`: `_expand_pattern_operand`, `_expand_replacement_operand`,
+    `_expand_operand`) now decode an inline `$'...'` via the shared `scan_inline_ansi_c`
+    scanner. (`$'...'` is intentionally NOT decoded by `expand_string_variables`, which
+    also serves double-quoted content where it must stay literal — so each operand
+    walker decodes it explicitly.)
+  - `${var@E}` used a third, incomplete ANSI-C decoder (`operators.py:_ansi_c_expand`)
+    missing octal `\NNN`, `\cX`, `\uHHHH`, `\UHHHHHHHH`; it now delegates to the
+    canonical decoder, removing the duplication and the gaps.
+  - Found by reappraisal #10. +9 conformance tests; ordinary operands (no `$'`) take an
+    unchanged fast path.
+- Fifth item of Tier R12.A.
+
 ## 0.451.0 (2026-06-15) - BUGFIX: combinator parser rejected line-continuation after a pipe/and-or operator — R12.A
 - BUGFIX (combinator parser only). The combinator pipeline/and-or parsers did not skip
   a NEWLINE after `|`/`|&`/`&&`/`||`, so a command continued on the next line after the

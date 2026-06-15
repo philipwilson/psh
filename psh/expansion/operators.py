@@ -374,31 +374,22 @@ class OperatorOpsMixin(_Base):
 
     @staticmethod
     def _ansi_c_expand(s: str) -> str:
-        """Expand backslash escapes as in $'...' (bash ${var@E})."""
-        simple = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', "'": "'",
-                  '"': '"', 'a': '\a', 'b': '\b', 'f': '\f', 'v': '\v',
-                  'e': '\x1b', 'E': '\x1b', '0': '\0'}
+        """Expand backslash escapes as in $'...' (bash ${var@E}).
+
+        Delegates to the single canonical ANSI-C decoder
+        (``psh/lexer/pure_helpers.handle_ansi_c_escape``) so every escape form —
+        ``\\n``/``\\t``/``\\r``, ``\\xHH``, octal ``\\NNN``, ``\\cX``,
+        ``\\uHHHH``, ``\\UHHHHHHHH`` — matches ``$'...'`` and the lexer, instead
+        of the previous partial reimplementation (which handled only the simple
+        escapes and ``\\xHH``).
+        """
+        from ..lexer.pure_helpers import handle_ansi_c_escape
         out = []
         i = 0
         while i < len(s):
             if s[i] == '\\' and i + 1 < len(s):
-                nxt = s[i + 1]
-                if nxt in simple:
-                    out.append(simple[nxt])
-                    i += 2
-                    continue
-                if nxt == 'x':
-                    j = i + 2
-                    hexd = ''
-                    while j < len(s) and len(hexd) < 2 and s[j] in '0123456789abcdefABCDEF':
-                        hexd += s[j]
-                        j += 1
-                    if hexd:
-                        out.append(chr(int(hexd, 16)))
-                        i = j
-                        continue
-                out.append(s[i])
-                i += 1
+                decoded, i = handle_ansi_c_escape(s, i)
+                out.append(decoded)
             else:
                 out.append(s[i])
                 i += 1
