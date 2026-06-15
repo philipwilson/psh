@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.433.0 (2026-06-15) - Tier R9.C3 (part 1): loops & if parse bodies by recursion, not slicing
+- REFACTOR (combinator parser; the reviewer's "central irony"). The compound-body
+  parsers for `while`, `until`, `for`, C-style `for`, `select`, and `if`
+  (then/elif/else) no longer slice the body token span out of the stream with a
+  hand-tracked `nesting_level` and re-parse it. They now parse bodies by
+  *recursion* via a new `CommandParsers.build_statement_list(terminators)` —
+  a statement list that stops at (without consuming) its terminator keyword.
+  Nested compounds consume their own `done`/`fi`, so the recursion *is* the
+  nesting tracker. The `_collect_tokens_until_keyword` slicer is deleted.
+- BEHAVIOR (bash divergence fix). An argument that merely spells like a
+  terminator keyword inside a loop/if body is now a plain word, matching bash
+  and the recursive-descent parser. Previously the by-value slicer mis-detected
+  it as the terminator, so `while true; do echo done; break; done` and
+  `if true; then echo fi; fi` failed under `--parser combinator`. New parity
+  regressions in `test_combinator_parity_regressions.py` pin the fix.
+- Once committed past `do`/`then`, a body syntax error now raises at the
+  offending token (so `or_else` cannot swallow it and retry as a simple
+  command), keeping diagnostics aligned with recursive descent — verified by
+  the full `tests/parser_differential` parity suites (AST + error + diagnostic).
+- Two isolated unit tests that fed raw (un-normalized) `WORD` tokens and pinned
+  the old slicer's flattening artifact ("known limitation: 3 statements") were
+  rewritten to parse real source and assert correct nesting (one nested node).
+- Zero change to recursive descent (the default parser) or to `case` and
+  function/brace/subshell bodies (the latter already parsed by recursion).
+  Full suite + ruff + mypy green.
+
 ## 0.432.0 (2026-06-15) - Tier R9.D: `[` error messages use the `[` prefix (bash parity)
 - BEHAVIOR (bash divergence fix). Errors from the `[` builtin now carry the `[`
   prefix (e.g. `[: 1: unary operator expected`) instead of `test:`, matching

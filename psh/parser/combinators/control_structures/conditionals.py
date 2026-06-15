@@ -135,46 +135,18 @@ class ConditionalParserMixin(_Base):
                 empty_body_error_pos = current_pos
                 current_pos += 1
 
-            # Parse the body (until elif/else/fi, handling nested if statements)
-            body_tokens = []
-            nesting_level = 0
-
-            while current_pos < len(tokens):
-                token = tokens[current_pos]
-                guard = KeywordGuard(token)
-
-                # Track nested if statements
-                if guard.matches('if'):
-                    nesting_level += 1
-                    body_tokens.append(token)
-                    current_pos += 1
-                    continue
-
-                # Check for keywords that might end this body
-                if guard.matches_any('elif', 'else', 'fi'):
-                    if nesting_level == 0:
-                        # This ends our current body
-                        break
-                    if guard.matches('fi'):
-                        # This ends a nested if
-                        nesting_level -= 1
-                    body_tokens.append(token)
-                    current_pos += 1
-                    continue
-
-                body_tokens.append(token)
-                current_pos += 1
-
-            try:
-                body_result = self.commands.statement_list.parse(body_tokens, 0)
-            except ParseError as error:
-                if current_pos < len(tokens) and is_missing_nested_terminator(error):
-                    raise_committed_error(tokens, current_pos, error.message)
-                raise
+            # Parse the body by recursion up to (not consuming) elif/else/fi.
+            # Nested if statements consume their own 'fi', so the keyword seen
+            # here ends *this* body. A foreign terminator (e.g. a 'done' when
+            # the matching 'fi' is missing) makes self.statement fail with
+            # "Expected command" at that token — matching recursive descent.
+            body_result = self.commands.build_statement_list(
+                frozenset({'elif', 'else', 'fi'})).parse(tokens, current_pos)
             if not body_result.success:
-                return ParseResult(success=False,
-                                 error=f"Failed to parse then body: {body_result.error}",
-                                 position=current_pos)
+                return ParseResult(success=False, error=body_result.error,
+                                   position=body_result.position)
+            assert body_result.value is not None  # success implies a body
+            current_pos = body_result.position
             if not body_result.value.statements:
                 return ParseResult(success=False,
                                  error="Expected command in then body",
@@ -231,36 +203,16 @@ class ConditionalParserMixin(_Base):
                 if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
                     pos += 1
 
-                # Parse else body (until 'fi', handling nested if statements)
-                else_tokens = []
-                nesting_level = 0
-
-                while pos < len(tokens):
-                    token = tokens[pos]
-
-                    if matches_keyword(token, 'if'):
-                        nesting_level += 1
-                    elif matches_keyword(token, 'fi'):
-                        if nesting_level == 0:
-                            break
-                        else:
-                            nesting_level -= 1
-
-                    else_tokens.append(token)
-                    pos += 1
-
-                try:
-                    else_result = self.commands.statement_list.parse(else_tokens, 0)
-                except ParseError as error:
-                    if pos < len(tokens) and is_missing_nested_terminator(error):
-                        raise_committed_error(tokens, pos, error.message)
-                    raise
+                # Parse else body by recursion up to (not consuming) 'fi'.
+                else_result = self.commands.build_statement_list(
+                    frozenset({'fi'})).parse(tokens, pos)
                 if not else_result.success:
                     raise_committed_error(
                         tokens,
-                        pos,
-                        f"Failed to parse else body: {else_result.error}",
+                        else_result.position,
+                        else_result.error or "Failed to parse else body",
                     )
+                pos = else_result.position
                 else_part = else_result.value
 
             # Expect 'fi'

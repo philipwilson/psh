@@ -15,15 +15,22 @@ from psh.ast_nodes import (
     SubshellGroup,
     WhileLoop,
 )
+from psh.lexer import tokenize
 from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.commands import CommandParsers
 from psh.parser.combinators.control_structures import ControlStructureParsers, create_control_structure_parsers
+from psh.parser.combinators.parser import ParserCombinatorShellParser
 from psh.parser.recursive_descent.helpers import ParseError
 
 
 def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:
     """Helper to create a token with minimal required fields."""
     return Token(type=token_type, value=value, position=position)
+
+
+def parse_combinator(source: str):
+    """Parse source through the full (wired, normalized) combinator parser."""
+    return ParserCombinatorShellParser().parse(tokenize(source))
 
 
 class TestIfStatements:
@@ -116,34 +123,21 @@ class TestIfStatements:
         assert len(elif_body.statements) == 1
 
     def test_nested_if_statements(self):
-        """Test nested if statements."""
-        parsers = ControlStructureParsers()
-        command_parsers = CommandParsers()
-        parsers.set_command_parsers(command_parsers)
+        """A nested if is parsed as a single nested IfConditional.
 
-        tokens = [
-            make_token(TokenType.WORD, "if"),
-            make_token(TokenType.WORD, "test1"),
-            make_token(TokenType.SEMICOLON, ";"),
-            make_token(TokenType.WORD, "then"),
-            make_token(TokenType.WORD, "if"),
-            make_token(TokenType.WORD, "test2"),
-            make_token(TokenType.SEMICOLON, ";"),
-            make_token(TokenType.WORD, "then"),
-            make_token(TokenType.WORD, "echo"),
-            make_token(TokenType.WORD, "nested"),
-            make_token(TokenType.SEMICOLON, ";"),
-            make_token(TokenType.WORD, "fi"),
-            make_token(TokenType.SEMICOLON, ";"),
-            make_token(TokenType.WORD, "fi")
-        ]
-
-        result = parsers.if_statement.parse(tokens, 0)
-        assert result.success is True
-        assert isinstance(result.value, IfConditional)
-        # The nested if/then/fi are parsed as separate commands, not as a nested IfConditional
-        # This is a known limitation - nested control structures aren't recognized
-        assert len(result.value.then_part.statements) == 3  # if test2; then echo nested; fi
+        Goes through the full (wired, keyword-normalized) parser: the then-body
+        is parsed by recursion, so the inner ``if ... fi`` is one statement — a
+        nested ``IfConditional`` — not three flattened tokens-as-commands. The
+        recursion consumes the inner ``fi``, leaving the outer ``fi`` for the
+        outer if.
+        """
+        top = parse_combinator('if true; then if false; then echo nested; fi; fi')
+        outer = top.items[0]
+        assert isinstance(outer, IfConditional)
+        assert len(outer.then_part.statements) == 1
+        inner = outer.then_part.statements[0]
+        assert isinstance(inner, IfConditional)
+        assert len(inner.then_part.statements) == 1
 
 
 class TestWhileLoops:
@@ -174,34 +168,19 @@ class TestWhileLoops:
         assert len(result.value.body.statements) == 1
 
     def test_nested_while_loops(self):
-        """Test nested while loops."""
-        parsers = ControlStructureParsers()
-        command_parsers = CommandParsers()
-        parsers.set_command_parsers(command_parsers)
+        """A nested while is parsed as a single nested WhileLoop.
 
-        tokens = [
-            make_token(TokenType.WORD, "while"),
-            make_token(TokenType.WORD, "outer"),
-            make_token(TokenType.SEMICOLON, ";"),
-            make_token(TokenType.WORD, "do"),
-            make_token(TokenType.WORD, "while"),
-            make_token(TokenType.WORD, "inner"),
-            make_token(TokenType.SEMICOLON, ";"),
-            make_token(TokenType.WORD, "do"),
-            make_token(TokenType.WORD, "echo"),
-            make_token(TokenType.WORD, "nested"),
-            make_token(TokenType.SEMICOLON, ";"),
-            make_token(TokenType.WORD, "done"),
-            make_token(TokenType.SEMICOLON, ";"),
-            make_token(TokenType.WORD, "done")
-        ]
-
-        result = parsers.while_loop.parse(tokens, 0)
-        assert result.success is True
-        assert isinstance(result.value, WhileLoop)
-        # Nested while is parsed as separate commands, not as a nested WhileLoop
-        # This is a known limitation
-        assert len(result.value.body.statements) == 3  # while inner; do echo nested; done
+        Through the full parser, the outer body is parsed by recursion: the
+        inner ``while ... done`` consumes its own ``done`` and is one statement
+        (a nested ``WhileLoop``), leaving the outer ``done`` for the outer loop.
+        """
+        top = parse_combinator('while true; do while false; do echo nested; done; done')
+        outer = top.items[0]
+        assert isinstance(outer, WhileLoop)
+        assert len(outer.body.statements) == 1
+        inner = outer.body.statements[0]
+        assert isinstance(inner, WhileLoop)
+        assert len(inner.body.statements) == 1
 
 
 class TestForLoops:
