@@ -1,12 +1,12 @@
 """Shell state management."""
 import os
-import sys
 from typing import Any, Dict, Optional
 
 from ..version import __version__
 from .command_hash import CommandHashTable
 from .scope import ScopeManager
 from .stream_bindings import StreamBindings
+from .terminal_state import TerminalState
 from .variables import VarAttributes
 
 
@@ -206,10 +206,10 @@ class ShellState:
         # first-class attribute so callers read it directly, not via hasattr.
         self.in_forked_child = False
 
-        # Terminal capabilities (set by _detect_terminal_capabilities)
-        self.terminal_fd: Optional[int] = None
-        self.supports_job_control: bool = False
-        self.is_terminal: bool = False
+        # Terminal capabilities — one cohesive object (is_terminal /
+        # terminal_fd / supports_job_control delegate to it via properties);
+        # populated by terminal.detect() below.
+        self.terminal = TerminalState()
 
         # PS4 prompt for xtrace
         self.scope_manager.set_variable('PS4', '+ ')
@@ -226,7 +226,7 @@ class ShellState:
         self.trap_handlers = {}
 
         # Detect terminal capabilities after initialization
-        self._detect_terminal_capabilities()
+        self.terminal.detect(debug=self.options.get('debug-exec', False))
 
     def _seed_strict_errors(self) -> bool:
         """Default value for the strict-errors option, from the environment.
@@ -310,6 +310,35 @@ class ShellState:
     def stdin(self, value):
         """Install a custom stdin override."""
         self.streams.stdin = value
+
+    # is_terminal/terminal_fd/supports_job_control delegate to the explicit
+    # TerminalState object (self.terminal), detected once at startup.
+    @property
+    def is_terminal(self) -> bool:
+        """True if stdin is a controlling terminal."""
+        return self.terminal.is_terminal
+
+    @is_terminal.setter
+    def is_terminal(self, value: bool) -> None:
+        self.terminal.is_terminal = value
+
+    @property
+    def terminal_fd(self) -> Optional[int]:
+        """The controlling-terminal fd (0 when present), else None."""
+        return self.terminal.terminal_fd
+
+    @terminal_fd.setter
+    def terminal_fd(self, value: Optional[int]) -> None:
+        self.terminal.terminal_fd = value
+
+    @property
+    def supports_job_control(self) -> bool:
+        """True if the terminal supports job control (tcgetpgrp succeeds)."""
+        return self.terminal.supports_job_control
+
+    @supports_job_control.setter
+    def supports_job_control(self, value: bool) -> None:
+        self.terminal.supports_job_control = value
 
     @property
     def debug_ast(self):
@@ -472,43 +501,3 @@ class ShellState:
         if self.options.get('stdin_mode'): opts.append('s')
         return ''.join(opts)
 
-    def _detect_terminal_capabilities(self):
-        """Detect if we have a controlling terminal with job control support.
-
-        This determines whether we can use tcsetpgrp(), tcgetpgrp(), etc.
-        Results are cached in state for efficient checks.
-        """
-        try:
-            # Check if stdin is a TTY
-            if os.isatty(0):
-                self.is_terminal = True
-                self.terminal_fd = 0
-
-                # Check if we can actually do job control
-                # Some TTY environments don't support it (e.g., emacs shell-mode)
-                try:
-                    current_pgid = os.tcgetpgrp(0)
-                    self.supports_job_control = True
-
-                    if self.options.get('debug-exec'):
-                        print(f"DEBUG: Terminal detected, job control available (pgid={current_pgid})",
-                              file=sys.stderr)
-                except OSError as e:
-                    # TTY but no job control available
-                    self.supports_job_control = False
-                    if self.options.get('debug-exec'):
-                        print(f"DEBUG: Terminal detected but job control unavailable: {e}",
-                              file=sys.stderr)
-            else:
-                self.is_terminal = False
-                self.supports_job_control = False
-                if self.options.get('debug-exec'):
-                    print(f"DEBUG: Not running on a terminal (stdin is not a TTY)",
-                          file=sys.stderr)
-        except (OSError, AttributeError):
-            # Platform doesn't support TTY detection
-            self.is_terminal = False
-            self.supports_job_control = False
-            if self.options.get('debug-exec'):
-                print(f"DEBUG: Platform doesn't support TTY detection",
-                      file=sys.stderr)

@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.425.0 (2026-06-15) - Tier R9.B1: extract TerminalState from ShellState
+- ARCHITECTURE (zero behavior change). First real increment of the ShellState
+  god-object decomposition (the headline gap from the reappraisal). Extracted
+  the three controlling-terminal attributes (`is_terminal`, `terminal_fd`,
+  `supports_job_control`) and the detection logic that populates them into a
+  new cohesive `psh/core/terminal_state.py::TerminalState` — the same "typed
+  sub-object" move proven by `StreamBindings`.
+- `ShellState` now owns a `self.terminal = TerminalState()` and exposes the
+  three attributes as delegating properties (read + write), so all ~23 call
+  sites across the codebase are untouched. The old
+  `ShellState._detect_terminal_capabilities()` moved to `TerminalState.detect()`
+  (taking an explicit `debug` flag instead of reaching into `self.options`).
+- Added `tests/unit/core/test_terminal_state.py` (5 tests) pinning the type's
+  defaults, the three `detect()` paths (non-TTY, TTY+job-control, TTY-without),
+  and the ShellState property delegation.
+- Gate: ruff + mypy clean (`psh.core.*` is `check_untyped_defs=true`, so the new
+  module is body-checked), full suite 8,017 collected / all phases green.
+
 ## 0.424.0 (2026-06-15) - Tier R9.A: dead-code & vestige sweep
 - CLEANUP (zero behavior change). First tier of the 2026-06-15 ground-up
   reappraisal (`docs/reviews/ground_up_reappraisal_2026-06-15.md`): removed
