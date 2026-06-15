@@ -71,6 +71,7 @@ class SimpleCommandMixin(_Base):
                 # Try a word-like token
                 word_result = self.tokens.word_like.parse(tokens, pos)
                 if word_result.success:
+                    assert word_result.value is not None
                     if self.arrays.is_initializer_head(tokens, pos):
                         init_result = self.arrays.parse_initialization(tokens, pos)
                         if not init_result.success:

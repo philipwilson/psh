@@ -67,6 +67,7 @@ class PipelineMixin(_Base):
                 sep_result = pipe_sep.parse(tokens, pos)
                 if not sep_result.success:
                     break
+                assert sep_result.value is not None
                 is_pipe_stderr = sep_result.value.type.name == 'PIPE_AND'
                 pipe_stderr_list.append(is_pipe_stderr)
                 pos = sep_result.position
@@ -127,6 +128,7 @@ class PipelineMixin(_Base):
                 if not op_result.success:
                     break
                 op_token = op_result.value
+                assert op_token is not None
                 pos = op_result.position
                 # bash allows a newline (line continuation) after && / ||
                 # before the right-hand command; skip any.

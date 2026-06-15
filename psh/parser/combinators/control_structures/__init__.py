@@ -151,6 +151,7 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
         while pos < len(tokens):
             redir_result = self.commands.redirection.parse(tokens, pos)
             if redir_result.success:
+                assert redir_result.value is not None
                 redirects.append(redir_result.value)
                 pos = redir_result.position
                 continue

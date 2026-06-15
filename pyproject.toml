@@ -336,8 +336,10 @@ check_untyped_defs = true
 module = "psh.ast_nodes.*"
 check_untyped_defs = true
 
-# The PRODUCTION recursive-descent parser is body-checked; the educational
-# combinator parser (psh.parser.combinators.*) is not yet (larger fallout).
 [[tool.mypy.overrides]]
 module = "psh.parser.recursive_descent.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "psh.parser.combinators.*"
 check_untyped_defs = true
