@@ -14,9 +14,9 @@ from ....ast_nodes import (
 )
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
-from ...recursive_descent.helpers import ErrorContext, ParseError
+from ...recursive_descent.helpers import ParseError
 from ..core import Parser, ParseResult
-from ..diagnostics import raise_committed_error
+from ..diagnostics import error_context_for_token, raise_committed_error
 
 if TYPE_CHECKING:
     from ._protocols import ControlStructureProtocol
@@ -351,10 +351,9 @@ class StructureParserMixin(_Base):
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
             if not body_result.value.statements:
-                raise ParseError(ErrorContext(
-                    token=tokens[pos],
-                    message=f"syntax error near unexpected token '{tokens[pos].value}'",
-                    position=pos,
+                raise ParseError(error_context_for_token(
+                    tokens[pos],
+                    f"syntax error near unexpected token '{tokens[pos].value}'",
                 ))
             pos = body_result.position
 
@@ -393,10 +392,9 @@ class StructureParserMixin(_Base):
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
             if not body_result.value.statements:
-                raise ParseError(ErrorContext(
-                    token=tokens[pos],
-                    message=f"syntax error near unexpected token '{tokens[pos].value}'",
-                    position=pos,
+                raise ParseError(error_context_for_token(
+                    tokens[pos],
+                    f"syntax error near unexpected token '{tokens[pos].value}'",
                 ))
             pos = body_result.position
 

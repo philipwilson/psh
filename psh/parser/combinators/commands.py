@@ -30,11 +30,11 @@ from ...ast_nodes import (
 )
 from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
-from ..recursive_descent.helpers import ErrorContext, ParseError
+from ..recursive_descent.helpers import ParseError
 from ..recursive_descent.support.word_builder import WordBuilder
 from .arrays import ArrayParsers
 from .core import ForwardParser, Parser, ParseResult, many1, optional, separated_by, sequence, token
-from .diagnostics import raise_committed_error
+from .diagnostics import error_context_for_token, raise_committed_error
 from .expansions import ExpansionParsers
 from .tokens import TokenParsers
 
@@ -242,10 +242,9 @@ class CommandParsers:
                     continue
                 if pos < len(tokens) and self.tokens.is_redirect_operator(tokens[pos]):
                     error_pos = min(redir_result.position, len(tokens) - 1)
-                    raise ParseError(ErrorContext(
-                        token=tokens[error_pos],
-                        message=redir_result.error or "Invalid redirection",
-                        position=error_pos,
+                    raise ParseError(error_context_for_token(
+                        tokens[error_pos],
+                        redir_result.error or "Invalid redirection",
                     ))
 
                 # Try a word-like token

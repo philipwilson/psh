@@ -10,9 +10,10 @@ from ...ast_nodes import ASTNode, CommandList, Statement, StatementList, TopLeve
 from ...lexer.keyword_normalizer import KeywordNormalizer
 from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
-from ..recursive_descent.helpers import ErrorContext, ParseError
+from ..recursive_descent.helpers import ParseError
 from .commands import create_command_parsers
 from .control_structures import create_control_structure_parsers
+from .diagnostics import error_context_for_token
 from .expansions import create_expansion_parsers
 from .heredoc_processor import create_heredoc_processor
 from .special_commands import create_special_command_parsers
@@ -243,7 +244,7 @@ class ParserCombinatorShellParser:
                 error_msg = f"{error_msg} at position {result.position}: {error_token.type.name} '{error_token.value}'"
             if error_token is None:
                 error_token = tokens[-1] if tokens else Token(type=TokenType.WORD, value='', position=0)
-            raise ParseError(ErrorContext(token=error_token, message=error_msg, position=result.position))
+            raise ParseError(error_context_for_token(error_token, error_msg))
 
         # Get the parsed AST
         ast = result.value
@@ -256,10 +257,9 @@ class ParserCombinatorShellParser:
         if pos < len(tokens):
             # We didn't consume all tokens
             remaining_token = tokens[pos]
-            raise ParseError(ErrorContext(
-                message=f"Unexpected token after valid input: {remaining_token.type.name} '{remaining_token.value}'",
-                position=pos,
-                token=remaining_token,
+            raise ParseError(error_context_for_token(
+                remaining_token,
+                f"Unexpected token after valid input: {remaining_token.type.name} '{remaining_token.value}'",
             ))
 
         self._apply_heredocs(ast)

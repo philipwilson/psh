@@ -2,8 +2,8 @@
 
 This is narrower than full diagnostic equivalence.  It pins the stable subset
 we have intentionally aligned: exception class, EOF signal, and offending
-token identity.  Message text and position formatting still differ for many
-cases and are tracked as follow-up work.
+token identity plus source position.  Message text still differs for many cases
+and is tracked as follow-up work.
 """
 
 from dataclasses import dataclass
@@ -21,6 +21,9 @@ class DiagnosticSummary:
     at_eof: bool
     token_type: str
     token_value: str
+    position: int
+    line: int | None
+    column: int | None
 
 
 STABLE_DIAGNOSTIC_CORPUS = [
@@ -79,6 +82,9 @@ def _summarize(error):
         at_eof=bool(getattr(error, 'at_eof', False)),
         token_type=token.type.name if token else '',
         token_value=token.value if token else '',
+        position=getattr(context, 'position', -1),
+        line=getattr(context, 'line', None),
+        column=getattr(context, 'column', None),
     )
 
 
