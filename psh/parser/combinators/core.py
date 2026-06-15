@@ -86,6 +86,25 @@ class ParseFailure(ParseResult[T]):
                          error=error, expected=expected, committed=committed)
 
 
+def _farther_failure(a: ParseResult, b: ParseResult) -> ParseResult:
+    """Pick the more informative of two recoverable failures.
+
+    The *farthest-error* rule: a failure that consumed more input (higher
+    ``position``) is the better diagnostic — it reflects the alternative that
+    matched the most before giving up. On a positional tie the two
+    ``expected`` label sets are merged (order-preserving, de-duplicated) so the
+    message can list every token that could have continued the parse. Both
+    arguments must be failures; commitment is not involved (committed failures
+    are handled by ``or_else`` before reaching here).
+    """
+    if a.position > b.position:
+        return a
+    if b.position > a.position:
+        return b
+    merged = tuple(dict.fromkeys(a.expected + b.expected))
+    return ParseFailure(a.position, b.error, expected=merged)
+
+
 class Parser(Generic[T]):
     """A parser combinator that produces values of type T.
 
@@ -180,7 +199,12 @@ class Parser(Generic[T]):
             result = self.parse(tokens, pos)
             if result.success or result.committed:
                 return result
-            return alternative.parse(tokens, pos)
+            alt = alternative.parse(tokens, pos)
+            if alt.success or alt.committed:
+                return alt
+            # Both alternatives failed (recoverably): report the more
+            # informative failure by the farthest-error rule.
+            return _farther_failure(result, alt)
 
         return Parser(choice_parse)
 
