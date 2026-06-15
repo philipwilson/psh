@@ -20,6 +20,7 @@ from ....ast_nodes import (
 )
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
+from ...recursive_descent.helpers import ParseError
 from ..core import Parser, ParseResult
 from ..diagnostics import raise_committed_error
 
@@ -35,6 +36,16 @@ def _positional_params_word() -> Word:
     return Word(
         parts=[ExpansionPart(expansion=VariableExpansion('@'),
                              quoted=True, quote_char='"')])
+
+
+def _is_missing_nested_terminator(error: ParseError) -> bool:
+    message = error.message.lower()
+    return (
+        "expected 'fi' to close" in message
+        or "expected 'done' to close" in message
+        or "expected 'esac' to close" in message
+    )
+
 
 class LoopParserMixin(_Base):
     """Mixin providing loop parsers for ControlStructureParsers."""
@@ -113,7 +124,12 @@ class LoopParserMixin(_Base):
             if done_pos >= len(tokens):
                 raise_committed_error(tokens, done_pos, "Expected 'done' to close while loop")
 
-            body_result = self.commands.statement_list.parse(body_tokens, 0)
+            try:
+                body_result = self.commands.statement_list.parse(body_tokens, 0)
+            except ParseError as error:
+                if done_pos < len(tokens) and _is_missing_nested_terminator(error):
+                    raise_committed_error(tokens, done_pos, error.message)
+                raise
             if not body_result.success:
                 return ParseResult(success=False,
                                  error=f"Failed to parse while body: {body_result.error}",
@@ -187,7 +203,12 @@ class LoopParserMixin(_Base):
             if done_pos >= len(tokens):
                 raise_committed_error(tokens, done_pos, "Expected 'done' to close until loop")
 
-            body_result = self.commands.statement_list.parse(body_tokens, 0)
+            try:
+                body_result = self.commands.statement_list.parse(body_tokens, 0)
+            except ParseError as error:
+                if done_pos < len(tokens) and _is_missing_nested_terminator(error):
+                    raise_committed_error(tokens, done_pos, error.message)
+                raise
             if not body_result.success:
                 return ParseResult(success=False,
                                    error=f"Failed to parse until body: {body_result.error}",
@@ -294,7 +315,12 @@ class LoopParserMixin(_Base):
             if done_pos >= len(tokens):
                 raise_committed_error(tokens, done_pos, "Expected 'done' to close for loop")
 
-            body_result = self.commands.statement_list.parse(body_tokens, 0)
+            try:
+                body_result = self.commands.statement_list.parse(body_tokens, 0)
+            except ParseError as error:
+                if done_pos < len(tokens) and _is_missing_nested_terminator(error):
+                    raise_committed_error(tokens, done_pos, error.message)
+                raise
             if not body_result.success:
                 return ParseResult(success=False,
                                  error=f"Failed to parse for body: {body_result.error}",
@@ -394,7 +420,12 @@ class LoopParserMixin(_Base):
             if done_pos >= len(tokens):
                 raise_committed_error(tokens, done_pos, "Expected 'done' to close C-style for loop")
 
-            body_result = self.commands.statement_list.parse(body_tokens, 0)
+            try:
+                body_result = self.commands.statement_list.parse(body_tokens, 0)
+            except ParseError as error:
+                if done_pos < len(tokens) and _is_missing_nested_terminator(error):
+                    raise_committed_error(tokens, done_pos, error.message)
+                raise
             if not body_result.success:
                 return ParseResult(success=False,
                                  error=f"Failed to parse for body: {body_result.error}",
@@ -487,7 +518,12 @@ class LoopParserMixin(_Base):
             if done_pos >= len(tokens):
                 return ParseResult(success=False, error="Expected 'done' to close select loop", position=pos)
 
-            body_result = self.commands.statement_list.parse(body_tokens, 0)
+            try:
+                body_result = self.commands.statement_list.parse(body_tokens, 0)
+            except ParseError as error:
+                if done_pos < len(tokens) and _is_missing_nested_terminator(error):
+                    raise_committed_error(tokens, done_pos, error.message)
+                raise
             if not body_result.success:
                 return ParseResult(success=False,
                                  error=f"Failed to parse select body: {body_result.error}",

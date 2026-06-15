@@ -38,6 +38,7 @@ The combinator parser now reports the same broad diagnostic shape for:
   `test_combinator_error_parity.py`.
 - Separator edge cases: command operators before/after `;`
 - Missing redirect targets after compound commands and groups
+- Crossed `if`/loop terminators in loop, if, and function bodies
 
 The diagnostic-parity test intentionally does not compare message text yet.
 Both parsers now report source-character position, line, and column for this
@@ -52,16 +53,16 @@ token identity, and source position for every representative case in
 
 Known characterized but unpinned follow-ups:
 
-- Crossed nested terminators currently reject in both parsers but can disagree
-  on the exact offending token, for example `while ... if ... done` and
-  `if ... while ... fi`.
-- Malformed case item bodies with missing nested terminators can still disagree
-  on the token selected for the diagnostic.
+- Malformed case item bodies with missing nested `if`/loop terminators still
+  disagree on line/column metadata for case terminators (`;;`), even when the
+  offending token value and source offset match.
+- Missing `esac` inside `if`/loop bodies still disagrees on EOF vs the crossed
+  outer terminator.
 
 ## Recommended Next Tightening
 
-1. Tighten nested terminator collection so crossed `if`/loop/case terminators
-   choose the same offending token as recursive descent.
+1. Tighten case-item terminator diagnostics so `;;` metadata and missing
+   nested terminators align with recursive descent.
 2. Continue broadening diagnostics around malformed case item bodies.
 3. Consider comparing selected message text once position and token identity
    have stayed stable across a larger corpus.
