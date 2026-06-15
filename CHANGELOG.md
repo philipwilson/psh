@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.455.0 (2026-06-15) - Tier R12.B batch 2: check_untyped_defs for utils/interactive/scripting (+ found real declare -f bugs)
+- TYPING + BUGFIX. Enabled `check_untyped_defs = true` for `psh.utils.*`,
+  `psh.interactive.*`, `psh.scripting.*` — mypy now body-checks **10 of ~12** packages.
+  Fixing the fallout surfaced two GENUINE latent bugs in `utils/shell_formatter.py`
+  (the `ShellFormatter` used by `declare -f` / `type` to display function bodies):
+  - **BUGFIX (behavior):** `declare -f` on a function containing a C-style `for ((;;))`
+    loop raised `AttributeError: 'CStyleForLoop' object has no attribute 'init'` — the
+    formatter referenced `.init`/`.condition`/`.update` instead of the real
+    `.init_expr`/`.condition_expr`/`.update_expr`. Likewise `break`/`continue` with a
+    level referenced `.levels` instead of `.level`. Both now format correctly.
+  - The remaining fallout was type-only (annotations / None-guards in
+    `scripting/input_sources.py`, `interactive/signal_manager.py`,
+    `interactive/repl_loop.py`); no behavior change there.
+  - +regression tests: formatter unit tests (C-style for, break/continue level) and
+    `declare -f` integration tests; a `CaseItem`/`str` loop-variable type confusion in
+    the formatter was also cleaned up.
+- Second batch of Tier R12.B. (Remaining un-body-checked: parser + ast_nodes.)
+
 ## 0.454.0 (2026-06-15) - Tier R12.B: mypy check_untyped_defs for io_redirect/lexer/visitor/builtins (batch 1)
 - TYPING (no behavior change). Enabled `check_untyped_defs = true` for four more
   packages — `psh.io_redirect.*`, `psh.lexer.*`, `psh.visitor.*`, `psh.builtins.*` —

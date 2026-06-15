@@ -1,10 +1,15 @@
 """Read-Eval-Print Loop implementation."""
 import sys
+from typing import TYPE_CHECKING, Optional
 
 from .base import InteractiveComponent
 from .line_editor import LineEditor
 from .multiline_handler import MultiLineInputHandler
 from .title import idle_title, set_terminal_title
+
+if TYPE_CHECKING:
+    from .history_manager import HistoryManager
+    from .prompt_manager import PromptManager
 
 
 class REPLLoop(InteractiveComponent):
@@ -12,10 +17,12 @@ class REPLLoop(InteractiveComponent):
 
     def __init__(self, shell):
         super().__init__(shell)
-        self.history_manager = None
-        self.prompt_manager = None
-        self.line_editor = None
-        self.multi_line_handler = None
+        # history_manager/prompt_manager are wired by InteractiveManager;
+        # line_editor/multi_line_handler are built by setup() before run().
+        self.history_manager: Optional["HistoryManager"] = None
+        self.prompt_manager: Optional["PromptManager"] = None
+        self.line_editor: Optional[LineEditor] = None
+        self.multi_line_handler: Optional[MultiLineInputHandler] = None
 
     def setup(self):
         """Set up the REPL environment."""
@@ -35,6 +42,9 @@ class REPLLoop(InteractiveComponent):
     def run(self):
         """Run the main interactive loop."""
         self.setup()
+        # setup() built the handler; InteractiveManager wired the history manager.
+        assert self.multi_line_handler is not None
+        assert self.history_manager is not None
 
         while True:
             try:

@@ -319,3 +319,15 @@ check_untyped_defs = true
 [[tool.mypy.overrides]]
 module = "psh.builtins.*"
 check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "psh.utils.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "psh.interactive.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "psh.scripting.*"
+check_untyped_defs = true

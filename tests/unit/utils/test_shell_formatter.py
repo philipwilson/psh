@@ -44,6 +44,35 @@ def test_no_unknown_node_type(src):
     assert "# Unknown node type" not in _fmt(src)
 
 
+class TestCStyleForAndLoopControl:
+    """Regression (reappraisal #10 R12.B): ShellFormatter referenced AST
+    attributes that don't exist — CStyleForLoop.init/.condition/.update (real:
+    init_expr/condition_expr/update_expr) and Break/Continue.levels (real:
+    .level) — so formatting these (e.g. via `declare -f`) raised AttributeError.
+    check_untyped_defs surfaced it.
+    """
+
+    def test_c_style_for_formats_without_error(self):
+        out = _fmt("for ((i=0; i<3; i++)); do echo $i; done")
+        assert "for ((i=0; i<3; i++))" in out
+        assert "# Unknown node type" not in out
+
+    def test_c_style_for_empty_sections(self):
+        out = _fmt("for ((;;)); do echo x; done")
+        assert "for ((; ; ))" in out
+
+    def test_break_with_level(self):
+        out = _fmt("while true; do break 2; done")
+        assert "break 2" in out
+
+    def test_continue_with_level(self):
+        out = _fmt("while true; do continue 3; done")
+        assert "continue 3" in out
+
+    def test_break_without_level(self):
+        assert "break" in _fmt("while true; do break; done")
+
+
 @pytest.mark.parametrize("src", [
     "( echo a; echo b )",
     "{ echo a; echo b; }",

@@ -1,11 +1,14 @@
 """Signal handling manager for interactive shell."""
 import os
 import signal
-from typing import Callable, Dict
+from typing import TYPE_CHECKING, Callable, Dict
 
 from ..executor.job_control import JobState
 from ..utils import SignalNotifier, get_signal_registry
 from .base import InteractiveComponent
+
+if TYPE_CHECKING:
+    from ..utils.signal_utils import SignalRegistry
 
 
 class SignalManager(InteractiveComponent):
@@ -24,8 +27,11 @@ class SignalManager(InteractiveComponent):
         # Guard against reentrancy in notification processing
         self._in_sigchld_processing = False
 
-        # Get global signal registry for tracking
-        self._signal_registry = get_signal_registry(create=True)
+        # Get global signal registry for tracking (create=True always returns
+        # one; the return type is Optional only for the create=False lookup).
+        registry = get_signal_registry(create=True)
+        assert registry is not None
+        self._signal_registry: "SignalRegistry" = registry
 
     def setup_signal_handlers(self):
         """Configure signal handlers based on shell mode."""
