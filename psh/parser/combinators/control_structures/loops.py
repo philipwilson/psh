@@ -22,7 +22,7 @@ from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ...recursive_descent.helpers import ParseError
 from ..core import Parser, ParseResult
-from ..diagnostics import raise_committed_error
+from ..diagnostics import is_missing_nested_terminator, raise_committed_error
 
 if TYPE_CHECKING:
     from ._protocols import ControlStructureProtocol
@@ -36,15 +36,6 @@ def _positional_params_word() -> Word:
     return Word(
         parts=[ExpansionPart(expansion=VariableExpansion('@'),
                              quoted=True, quote_char='"')])
-
-
-def _is_missing_nested_terminator(error: ParseError) -> bool:
-    message = error.message.lower()
-    return (
-        "expected 'fi' to close" in message
-        or "expected 'done' to close" in message
-        or "expected 'esac' to close" in message
-    )
 
 
 class LoopParserMixin(_Base):
@@ -127,7 +118,7 @@ class LoopParserMixin(_Base):
             try:
                 body_result = self.commands.statement_list.parse(body_tokens, 0)
             except ParseError as error:
-                if done_pos < len(tokens) and _is_missing_nested_terminator(error):
+                if done_pos < len(tokens) and is_missing_nested_terminator(error):
                     raise_committed_error(tokens, done_pos, error.message)
                 raise
             if not body_result.success:
@@ -206,7 +197,7 @@ class LoopParserMixin(_Base):
             try:
                 body_result = self.commands.statement_list.parse(body_tokens, 0)
             except ParseError as error:
-                if done_pos < len(tokens) and _is_missing_nested_terminator(error):
+                if done_pos < len(tokens) and is_missing_nested_terminator(error):
                     raise_committed_error(tokens, done_pos, error.message)
                 raise
             if not body_result.success:
@@ -318,7 +309,7 @@ class LoopParserMixin(_Base):
             try:
                 body_result = self.commands.statement_list.parse(body_tokens, 0)
             except ParseError as error:
-                if done_pos < len(tokens) and _is_missing_nested_terminator(error):
+                if done_pos < len(tokens) and is_missing_nested_terminator(error):
                     raise_committed_error(tokens, done_pos, error.message)
                 raise
             if not body_result.success:
@@ -423,7 +414,7 @@ class LoopParserMixin(_Base):
             try:
                 body_result = self.commands.statement_list.parse(body_tokens, 0)
             except ParseError as error:
-                if done_pos < len(tokens) and _is_missing_nested_terminator(error):
+                if done_pos < len(tokens) and is_missing_nested_terminator(error):
                     raise_committed_error(tokens, done_pos, error.message)
                 raise
             if not body_result.success:
@@ -521,7 +512,7 @@ class LoopParserMixin(_Base):
             try:
                 body_result = self.commands.statement_list.parse(body_tokens, 0)
             except ParseError as error:
-                if done_pos < len(tokens) and _is_missing_nested_terminator(error):
+                if done_pos < len(tokens) and is_missing_nested_terminator(error):
                     raise_committed_error(tokens, done_pos, error.message)
                 raise
             if not body_result.success:
