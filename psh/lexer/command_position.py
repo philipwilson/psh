@@ -56,9 +56,15 @@ CASE_TERMINATORS = frozenset({
     TokenType.AMP_SEMICOLON,
 })
 
-# Reserved-word token types after which the next token is at command position.
-# These types only exist after keyword normalization, so only the normalizer
-# uses them — during tokenization these words are still plain WORD tokens.
+# Token types after which the next token is at command position, consulted by
+# the keyword normalizer. Most are reserved-word types that only exist after
+# keyword normalization (so only the normalizer uses them). The two compound
+# closers — `))` and `]]` — are operator types present during tokenization;
+# they are here because an arithmetic command or `[[ ]]` test used as a
+# condition header may be followed DIRECTLY (no separator) by `then`/`do`
+# (bash: `if ((1)) then …`, `while ((x)) do …`, `for ((;;)) do …`,
+# `if [[ a = a ]] then …`), and those `then`/`do` must still normalize to
+# keywords.
 RESET_TO_COMMAND_POSITION = frozenset({
     TokenType.THEN,
     TokenType.DO,
@@ -67,6 +73,8 @@ RESET_TO_COMMAND_POSITION = frozenset({
     TokenType.FI,
     TokenType.DONE,
     TokenType.ESAC,
+    TokenType.DOUBLE_RPAREN,
+    TokenType.DOUBLE_RBRACKET,
 })
 
 # Structural openers after which the lexer is at command position.
