@@ -1,7 +1,7 @@
 # Parser Combinator Diagnostic Characterization - 2026-06-14
 
 Scope: recursive-descent parser vs parser-combinator implementation on the
-starter rejection corpus in `tests/parser_differential`.
+starter and expanded rejection corpus in `tests/parser_differential`.
 
 ## Current Gates
 
@@ -27,6 +27,17 @@ The combinator parser now reports the same broad diagnostic shape for:
 - Missing here-doc / here-string operands: `cat <<`, `cat <<<`
 - Missing command around binary command operators: `echo |`, `echo |&`,
   `echo &&`, `echo ||`, `&& echo`, `|| echo`
+- Nested missing terminators: nested `if`, `while`, and `case` examples
+- Empty compound bodies: `if true; then; fi`, loop `do; done` forms (empty
+  then/do bodies are syntax errors in bash, including their newline variants)
+- Stray separator after `case ... in`: `case x in ; esac` (the `;` is the
+  offending token).  Note the accept/reject boundary: an *empty case* with no
+  patterns — `case x in esac`, including blank/comment-only lines before
+  `esac` — is valid bash and is accepted by both parsers; only the stray `;`
+  is rejected.  This accept side is pinned by `ACCEPTANCE_CORPUS` in
+  `test_combinator_error_parity.py`.
+- Separator edge cases: command operators before/after `;`
+- Missing redirect targets after compound commands and groups
 
 The diagnostic-parity test intentionally does not compare message text yet.
 Both parsers now report source-character position, line, and column for this
@@ -34,14 +45,23 @@ stable subset.
 
 ## Remaining Diagnostic Drift
 
-No diagnostic-summary drift remains in the starter rejection corpus.  The
-stable gate now matches recursive descent on exception type, EOF signal,
-offending token identity, and source position for every representative case in
+No diagnostic-summary drift remains in the pinned rejection corpus.  The stable
+gate now matches recursive descent on exception type, EOF signal, offending
+token identity, and source position for every representative case in
 `test_combinator_error_parity.py`.
+
+Known characterized but unpinned follow-ups:
+
+- Crossed nested terminators currently reject in both parsers but can disagree
+  on the exact offending token, for example `while ... if ... done` and
+  `if ... while ... fi`.
+- Malformed case item bodies with missing nested terminators can still disagree
+  on the token selected for the diagnostic.
 
 ## Recommended Next Tightening
 
-1. Continue broadening the diagnostic corpus with nested compound structures,
-   separator edge cases, and redirections after compound commands.
-2. Consider comparing selected message text once position and token identity
+1. Tighten nested terminator collection so crossed `if`/loop/case terminators
+   choose the same offending token as recursive descent.
+2. Continue broadening diagnostics around malformed case item bodies.
+3. Consider comparing selected message text once position and token identity
    have stayed stable across a larger corpus.

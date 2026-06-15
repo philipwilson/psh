@@ -19,9 +19,22 @@ REJECTION_CORPUS = [
     pytest.param('{ echo hi', id='unterminated-brace-group'),
     pytest.param('if true; then echo yes', id='unterminated-if'),
     pytest.param('if true echo yes; fi', id='if-missing-then'),
+    pytest.param('if true; then; fi', id='if-empty-then'),
+    pytest.param('if true; then if true; then echo x; fi',
+                 id='nested-if-missing-fi'),
+    pytest.param('if true; then if true echo x; fi; fi',
+                 id='nested-if-missing-then'),
     pytest.param('while true; do echo x', id='unterminated-while'),
+    pytest.param('while true; do while true; do echo x; done',
+                 id='nested-while-missing-done'),
+    pytest.param('while true; do; done', id='while-empty-body'),
+    pytest.param('until true; do; done', id='until-empty-body'),
     pytest.param('for x in a b; do echo $x', id='unterminated-for'),
+    pytest.param('for x in a; do; done', id='for-empty-body'),
     pytest.param('case x in a) echo a', id='unterminated-case'),
+    pytest.param('case x in ; esac', id='case-empty-pattern-list'),
+    pytest.param('case x in a) case y in b) echo b ;; esac',
+                 id='nested-case-missing-esac'),
     pytest.param('case a b in x) echo x ;; esac', id='bad-case-subject'),
     pytest.param('echo >', id='redirect-missing-target-out'),
     pytest.param('cat <', id='redirect-missing-target-in'),
@@ -36,9 +49,23 @@ REJECTION_CORPUS = [
     pytest.param('[[ $x == ]]', id='enhanced-test-missing-rhs'),
     pytest.param('for ((i=0; i<3; i++); do echo $i; done',
                  id='bad-cstyle-for-close'),
+    pytest.param('for ((i=0; i<1; i++)); do; done',
+                 id='cstyle-for-empty-body'),
     pytest.param('echo |', id='pipeline-missing-command'),
     pytest.param('echo &&', id='and-if-missing-rhs'),
     pytest.param('&& echo', id='and-if-missing-lhs'),
+    pytest.param('echo ; && echo', id='and-if-after-separator'),
+    pytest.param('echo ; | cat', id='pipe-after-separator'),
+    pytest.param('echo | ;', id='pipe-before-separator'),
+    pytest.param('echo && ;', id='and-if-before-separator'),
+    pytest.param('if true; then echo x; fi >',
+                 id='if-trailing-redirect-missing-target'),
+    pytest.param('{ echo x; } <',
+                 id='brace-trailing-redirect-missing-target'),
+    pytest.param('while true; do echo x; done 2>',
+                 id='while-trailing-redirect-missing-target'),
+    pytest.param('( echo x ) >',
+                 id='subshell-trailing-redirect-missing-target'),
 ]
 
 
@@ -58,7 +85,29 @@ def _parse_accepts_combinator(source):
     return True
 
 
+# Valid constructs that both parsers must ACCEPT.  These guard against
+# over-eager rejection when tightening the empty-body/empty-item diagnostics
+# above: an empty `case` (no patterns) and zero-iteration loops are legal bash,
+# distinct from the empty-*body* forms (`while true; do; done`) bash rejects.
+ACCEPTANCE_CORPUS = [
+    pytest.param('case x in esac', id='empty-case-bare'),
+    pytest.param('case x in\n\nesac', id='empty-case-blank-lines'),
+    pytest.param('case x in\n# c\nesac', id='empty-case-comment-only'),
+    pytest.param('case x in esac; echo after', id='empty-case-trailing-command'),
+    pytest.param('case x in a) echo a;; esac', id='normal-case'),
+    pytest.param('for x in; do echo hi; done', id='for-empty-word-list'),
+    pytest.param('if true; then :; fi', id='if-noop-body'),
+    pytest.param('while false; do :; done', id='while-noop-body'),
+]
+
+
 @pytest.mark.parametrize('source', REJECTION_CORPUS)
 def test_combinator_rejects_recursive_descent_rejections(source):
     assert _parse_accepts_recursive_descent(source) is False
     assert _parse_accepts_combinator(source) is False
+
+
+@pytest.mark.parametrize('source', ACCEPTANCE_CORPUS)
+def test_combinator_accepts_recursive_descent_acceptances(source):
+    assert _parse_accepts_recursive_descent(source) is True
+    assert _parse_accepts_combinator(source) is True

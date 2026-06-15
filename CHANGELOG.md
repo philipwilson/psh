@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.421.0 (2026-06-15) - Expand combinator diagnostic corpus; reject empty compound bodies
+- PARSER (combinator backend, non-default). The combinator parser now rejects
+  empty compound *bodies* that are syntax errors in bash — empty `then` bodies
+  (`if true; then; fi`), empty loop `do`/`done` bodies (`while`, `until`,
+  `for`, C-style `for`, `select`), and the stray `;` after `case ... in`
+  (`case x in ; esac`) — pointing at the same offending token as recursive
+  descent. (These empty-body forms are bash errors in both their `;` and
+  newline variants; recursive descent is more lenient on the newline form, so
+  the combinator is now the closer match to bash here.)
+- Accept/reject boundary preserved for `case`: an *empty case* with no patterns
+  (`case x in esac`, including blank/comment-only lines before `esac`) is valid
+  bash and remains accepted — only the stray `;` after `in` is rejected. Added
+  an `ACCEPTANCE_CORPUS` parity gate in
+  `tests/parser_differential/test_combinator_error_parity.py` pinning valid
+  empty/zero-iteration constructs for both parsers.
+- Broadened the recursive-descent vs combinator rejection and diagnostic-parity
+  corpora with nested missing-terminator, separator-edge, and
+  compound-trailing-redirection cases; refreshed
+  `docs/reviews/combinator_diagnostic_characterization_2026-06-14.md`.
+- Zero behavior change for the default recursive-descent parser. Gate: ruff +
+  mypy clean (225 files), full suite 7,996 collected / all phases green.
+
 ## 0.420.0 (2026-06-15) - Normalize combinator diagnostic positions to source coordinates
 - PARSER (combinator backend, non-default). Combinator `ParseError` sites now
   report source-character position, line, and column (from token metadata)
