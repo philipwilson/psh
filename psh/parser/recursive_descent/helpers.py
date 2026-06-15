@@ -58,13 +58,6 @@ class TokenGroups:
         TokenType.AMP_SEMICOLON
     })
 
-    # Command list end tokens
-    COMMAND_LIST_END: FrozenSet[TokenType] = frozenset({
-        TokenType.EOF, TokenType.FI, TokenType.DONE,
-        TokenType.ELSE, TokenType.ELIF, TokenType.ESAC,
-        TokenType.RBRACE
-    })
-
     # Keywords that can be valid case patterns
     CASE_PATTERN_KEYWORDS: FrozenSet[TokenType] = frozenset({
         TokenType.IF, TokenType.THEN, TokenType.ELSE, TokenType.FI, TokenType.ELIF,

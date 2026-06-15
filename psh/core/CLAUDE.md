@@ -20,12 +20,17 @@ Manager            (arrays)    State    Manager
 | File | Purpose |
 |------|---------|
 | `state.py` | `ShellState` - central state container for entire shell |
+| `execution_state.py` | `ExecutionState` - per-command execution scratch (`last_exit_code`, `last_bg_pid`, `pipestatus`, `in_forked_child`, ...); ShellState delegates via properties |
+| `history_state.py` | `HistoryState` - command history list + persistence settings (ShellState delegates) |
+| `terminal_state.py` | `TerminalState` - terminal capabilities (`is_terminal`/`supports_job_control`; ShellState delegates) |
+| `stream_bindings.py` | `StreamBindings` - stdin/stdout/stderr overrides (ShellState delegates) |
 | `command_hash.py` | `CommandHashTable` - remembered command locations (`hash` builtin; cleared via `ScopeManager.path_changed` on any PATH write) |
 | `scope.py` | `ScopeManager`, `VariableScope` - hierarchical scope management |
 | `variables.py` | `Variable`, `VarAttributes`, `IndexedArray`, `AssociativeArray` |
 | `options.py` | Shell option handlers (errexit, pipefail, etc.) |
 | `functions.py` | `FunctionManager` - shell function definitions |
 | `exceptions.py` | `PshError` root + error classes, and control-flow signals (`LoopBreak`, etc.) |
+| `internal_errors.py` | Expected-error taxonomy + `report_internal_defect` (strict-errors guard) |
 | `trap_manager.py` | Signal trap handling |
 | `assignment_utils.py` | Shared assignment validation utilities |
 

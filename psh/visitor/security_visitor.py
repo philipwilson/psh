@@ -268,8 +268,6 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         # Check for symbolic permissions
         elif 'o+w' in perm or 'a+w' in perm or 'o=w' in perm:
             return True
-        elif perm == '777' or perm == '0777':
-            return True
         return False
 
     def get_report(self) -> Dict[str, Any]:

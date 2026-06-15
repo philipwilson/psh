@@ -524,9 +524,9 @@ Strategies (`psh/executor/strategies.py:22`) are tried in order:
 
 3. **BuiltinExecutionStrategy**: Regular builtins (`cd`, `echo`, `pwd`, `test`, etc.). Executes in the current shell process.
 
-4. **AliasExecutionStrategy**: Shell aliases. Expands the alias, re-tokenizes and re-parses, then executes. Detects infinite recursion.
+4. **ExternalExecutionStrategy**: External programs. Forks via `ProcessLauncher`, calls `os.execvpe()` in the child.
 
-5. **ExternalExecutionStrategy**: External programs. Forks via `ProcessLauncher`, calls `os.execvpe()` in the child.
+(Aliases are NOT a runtime strategy. Since R8.6b they are expanded as a token-stream transform at the lex→parse boundary — `AliasManager.expand_aliases`, wired in `psh/scripting/source_processor.py` and `command_accumulator.py` — so by the time a command reaches the executor its command word is already alias-expanded. The former `AliasExecutionStrategy` was removed.)
 
 ### 4.4 Pipeline Execution
 

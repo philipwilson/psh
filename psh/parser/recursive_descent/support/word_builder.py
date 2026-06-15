@@ -263,15 +263,3 @@ class WordBuilder:
                 parts.append(LiteralPart(token.value, quoted=is_quoted, quote_char=qt))
 
         return Word(parts=parts)
-
-    @staticmethod
-    def build_word_from_string(text: str, token_type: str = 'WORD',
-                             quote_type: Optional[str] = None) -> Word:
-        """Build a Word from a string, parsing any embedded expansions.
-
-        This is used when we have a string that might contain expansions
-        that weren't tokenized separately (e.g., in quoted strings).
-        """
-        # For now, just create a literal word
-        # TODO: Parse embedded expansions in quoted strings
-        return Word.from_string(text, quote_type)

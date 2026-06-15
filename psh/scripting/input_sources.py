@@ -3,7 +3,8 @@
 This module provides different input sources for the shell:
 - FileInput: Read commands from script files
 - StringInput: Read commands from strings (for -c option)
-- InteractiveInput: Read commands interactively (for REPL)
+
+(Interactive REPL input is handled by psh/interactive/, not here.)
 """
 
 from abc import ABC, abstractmethod
@@ -142,25 +143,3 @@ class StringInput(InputSource):
 
     def get_line_number(self) -> int:
         return self.line_number
-
-
-class InteractiveInput(InputSource):
-    """Input source for interactive shell sessions."""
-
-    def __init__(self, line_editor, prompt_func):
-        self.line_editor = line_editor
-        self.prompt_func = prompt_func
-
-    def read_line(self) -> Optional[str]:
-        """Read the next line interactively."""
-        try:
-            prompt = self.prompt_func()
-            return self.line_editor.read_line(prompt)
-        except (EOFError, KeyboardInterrupt):
-            return None
-
-    def is_interactive(self) -> bool:
-        return True
-
-    def get_name(self) -> str:
-        return "<stdin>"
