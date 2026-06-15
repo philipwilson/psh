@@ -165,6 +165,30 @@ class TestSecurity:
     def test_clean_command_no_issues(self):
         assert _security_types("echo hello") == set()
 
+    # R12.D: recursive+force rm on a sensitive dir is flagged for every flag
+    # spelling, not just the literal -rf token.
+    def test_dangerous_rm_rf(self):
+        assert "DANGEROUS_RM" in _security_types("rm -rf /")
+
+    def test_dangerous_rm_separate_flags(self):
+        assert "DANGEROUS_RM" in _security_types("rm -r -f /etc")
+
+    def test_dangerous_rm_fr_order(self):
+        assert "DANGEROUS_RM" in _security_types("rm -fr /usr")
+
+    def test_dangerous_rm_long_options(self):
+        assert "DANGEROUS_RM" in _security_types("rm --recursive --force /home")
+
+    def test_dangerous_rm_clustered_extra_flags(self):
+        assert "DANGEROUS_RM" in _security_types("rm -rvf /var")
+
+    def test_rm_recursive_force_safe_target_not_flagged(self):
+        assert "DANGEROUS_RM" not in _security_types("rm -rf /tmp/scratch")
+
+    def test_rm_without_force_not_flagged(self):
+        # -r alone (no force) on / is not the DANGEROUS_RM pattern.
+        assert "DANGEROUS_RM" not in _security_types("rm -r /")
+
 
 class TestLinterRedirectTargets:
     """The linter now analyzes redirect targets like ordinary command words.
