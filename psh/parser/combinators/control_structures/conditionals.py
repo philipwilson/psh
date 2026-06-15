@@ -128,7 +128,9 @@ class ConditionalParserMixin(_Base):
             current_pos += 1  # Skip 'then'
 
             # Skip optional separator after 'then'
+            empty_body_error_pos = current_pos
             if current_pos < len(tokens) and tokens[current_pos].type.name in ['SEMICOLON', 'NEWLINE']:
+                empty_body_error_pos = current_pos
                 current_pos += 1
 
             # Parse the body (until elif/else/fi, handling nested if statements)
@@ -166,6 +168,10 @@ class ConditionalParserMixin(_Base):
                 return ParseResult(success=False,
                                  error=f"Failed to parse then body: {body_result.error}",
                                  position=current_pos)
+            if not body_result.value.statements:
+                return ParseResult(success=False,
+                                 error="Expected command in then body",
+                                 position=empty_body_error_pos)
 
             return ParseResult(
                 success=True,
@@ -312,7 +318,9 @@ class ConditionalParserMixin(_Base):
             pos += 1  # Skip 'in'
 
             # Skip optional separator
+            empty_case_error_pos = pos
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
+                empty_case_error_pos = pos
                 pos += 1
 
             # Parse case items until 'esac'
@@ -431,6 +439,8 @@ class ConditionalParserMixin(_Base):
                 ))
 
             # Expect 'esac'
+            if not items:
+                raise_committed_error(tokens, empty_case_error_pos, "Expected case pattern")
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'esac'):
                 raise_committed_error(tokens, pos, "Expected 'esac' to close case statement")
 

@@ -102,7 +102,9 @@ class LoopParserMixin(_Base):
             pos += 1  # Skip 'do'
 
             # Skip optional separator after 'do'
+            empty_body_error_pos = pos
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
+                empty_body_error_pos = pos
                 pos += 1
 
             # Parse the body (until 'done', handling nested loops)
@@ -116,6 +118,8 @@ class LoopParserMixin(_Base):
                 return ParseResult(success=False,
                                  error=f"Failed to parse while body: {body_result.error}",
                                  position=pos)
+            if not body_result.value.statements:
+                raise_committed_error(tokens, empty_body_error_pos, "Expected command in while body")
 
             pos = done_pos + 1  # Skip 'done'
 
@@ -173,7 +177,9 @@ class LoopParserMixin(_Base):
                 raise_committed_error(tokens, pos, "Expected 'do' after until condition")
             pos += 1
 
+            empty_body_error_pos = pos
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
+                empty_body_error_pos = pos
                 pos += 1
 
             body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
@@ -186,6 +192,8 @@ class LoopParserMixin(_Base):
                 return ParseResult(success=False,
                                    error=f"Failed to parse until body: {body_result.error}",
                                    position=pos)
+            if not body_result.value.statements:
+                raise_committed_error(tokens, empty_body_error_pos, "Expected command in until body")
 
             pos = done_pos + 1
 
@@ -275,7 +283,9 @@ class LoopParserMixin(_Base):
             pos += 1  # Skip 'do'
 
             # Skip optional separator after 'do'
+            empty_body_error_pos = pos
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
+                empty_body_error_pos = pos
                 pos += 1
 
             # Parse the body (until 'done', handling nested loops)
@@ -289,6 +299,8 @@ class LoopParserMixin(_Base):
                 return ParseResult(success=False,
                                  error=f"Failed to parse for body: {body_result.error}",
                                  position=pos)
+            if not body_result.value.statements:
+                raise_committed_error(tokens, empty_body_error_pos, "Expected command in for body")
 
             pos = done_pos + 1  # Skip 'done'
 
@@ -369,8 +381,12 @@ class LoopParserMixin(_Base):
             if pos < len(tokens) and matches_keyword(tokens[pos], 'do'):
                 pos += 1  # Skip 'do'
                 # Skip optional separator after 'do'
+                empty_body_error_pos = pos
                 if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
+                    empty_body_error_pos = pos
                     pos += 1
+            else:
+                empty_body_error_pos = pos
 
             # Parse the body (until 'done', handling nested loops)
             body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
@@ -383,6 +399,8 @@ class LoopParserMixin(_Base):
                 return ParseResult(success=False,
                                  error=f"Failed to parse for body: {body_result.error}",
                                  position=pos)
+            if not body_result.value.statements:
+                raise_committed_error(tokens, empty_body_error_pos, "Expected command in for body")
 
             pos = done_pos + 1  # Skip 'done'
 
@@ -458,7 +476,9 @@ class LoopParserMixin(_Base):
             pos += 1  # Skip 'do'
 
             # Skip optional separator after 'do'
+            empty_body_error_pos = pos
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
+                empty_body_error_pos = pos
                 pos += 1
 
             # Parse the body (until 'done', handling nested loops)
@@ -472,6 +492,8 @@ class LoopParserMixin(_Base):
                 return ParseResult(success=False,
                                  error=f"Failed to parse select body: {body_result.error}",
                                  position=pos)
+            if not body_result.value.statements:
+                raise_committed_error(tokens, empty_body_error_pos, "Expected command in select body")
 
             pos = done_pos + 1  # Skip 'done'
 
