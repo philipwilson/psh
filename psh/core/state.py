@@ -126,6 +126,12 @@ class ShellState:
             'nocasematch': False,  # nocasematch: case-insensitive [[ ]]/case matching
             'globstar': False,     # globstar: ** matches recursively
             'checkhash': False,    # checkhash: re-verify hashed paths before exec
+            # expand_aliases: accepted for bash compatibility but effectively
+            # always-on in psh — alias expansion is a parse-time token
+            # transform that runs regardless (the deliberate psh divergence:
+            # aliases expand in interactive AND non-interactive shells). The
+            # option is a recognized no-op gate, defaulting to True.
+            'expand_aliases': True,
             'braceexpand': True,   # -o braceexpand: enable brace expansion (default on)
             'emacs': False,        # -o emacs: emacs key bindings (context-dependent)
             'vi': False,           # -o vi: vi key bindings (off for set -o display)

@@ -171,7 +171,9 @@ class SourceProcessor(ScriptComponent):
                 if not contains_history_reference(command_string):
                     self.shell.add_history(command_string.strip())
 
-            # Note: Alias expansion happens during execution for proper precedence
+            # Alias expansion is a token-stream transform applied at the
+            # lex->parse seam (see the expand_aliases calls below and in
+            # command_accumulator._trial_parse), not a runtime strategy.
 
             # Reuse the accumulator's trial parse when it matches what we
             # are about to execute (recursive-descent parser active and the
@@ -185,12 +187,16 @@ class SourceProcessor(ScriptComponent):
                 from ..lexer import tokenize_with_heredocs
                 tokens, heredoc_map = tokenize_with_heredocs(command_string, strict=self.state.options.get('posix', False),
                                                               shell_options=self.state.options)
+                # Alias expansion is a token-stream transform at the
+                # lex→parse boundary (see AliasManager.expand_aliases).
+                tokens = self.shell.alias_manager.expand_aliases(tokens)
                 self._debug_print_tokens(tokens)
                 # Parse with heredoc map
                 from ..parser import parse_with_heredocs
                 ast = parse_with_heredocs(tokens, heredoc_map)
             else:
                 tokens = tokenize(command_string, shell_options=self.state.options)
+                tokens = self.shell.alias_manager.expand_aliases(tokens)
                 self._debug_print_tokens(tokens)
                 # Parse with source text for better error messages and shell configuration
                 from ..parser import create_parser

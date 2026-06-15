@@ -177,15 +177,22 @@ def test_function_with_background_job(shell):
 
 
 def test_function_vs_alias(shell, capsys):
-    """Test function vs alias precedence."""
-    shell.run_command('alias test_cmd="echo alias"')
-    shell.run_command('test_cmd() { echo "function"; }')
+    """Defining a function whose name is an alias is a syntax error (bash).
 
-    result = shell.run_command('test_cmd')
-    assert result == 0
+    Aliases are expanded at parse time (a token-stream transform), so when
+    `test_cmd` is already an alias, the function definition `test_cmd() {...}`
+    has its name expanded first to `echo alias () {...}`, which is a syntax
+    error. bash behaves identically (verified). The previous expectation
+    (functions win over aliases) pinned the old runtime-strategy behaviour.
+    """
+    shell.run_command('alias test_cmd="echo alias"')
+    result = shell.run_command('test_cmd() { echo "function"; }')
+
+    # The function definition fails to parse (the alias expands in the
+    # function-name position).
+    assert result != 0
     captured = capsys.readouterr()
-    # Function should take precedence over alias
-    assert 'function' in captured.out
+    assert 'error' in captured.err.lower()
 
 
 def test_function_with_glob_patterns(shell, capsys):

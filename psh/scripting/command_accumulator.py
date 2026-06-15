@@ -253,12 +253,17 @@ class CommandAccumulator:
                 preview,
                 strict=self.state.options.get('posix', False),
                 shell_options=self.state.options)
+            # Expand aliases on the token stream (lex→parse boundary) so the
+            # trial AST — which the execution path reuses — matches what the
+            # execution seam produces.
+            tokens = self.shell.alias_manager.expand_aliases(tokens)
             parser = Parser(tokens)
             self._open_constructs = parser.ctx.open_constructs
             ast = parser.parse()
             parser.utils.populate_heredoc_content(ast, heredoc_map)
         else:
             tokens = tokenize(preview, shell_options=self.state.options)
+            tokens = self.shell.alias_manager.expand_aliases(tokens)
             parser = Parser(tokens, source_text=preview)
             self._open_constructs = parser.ctx.open_constructs
             ast = parser.parse()

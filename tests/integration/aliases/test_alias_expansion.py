@@ -195,29 +195,39 @@ class TestAliasPrecedence:
         """Clean up any leftover processes after each test."""
 
     def test_alias_vs_builtin(self):
-        """Test that aliases do NOT override builtins."""
+        """Aliases expand at parse time, BEFORE builtin dispatch (bash).
+
+        `alias echo="echo ALIAS:"; echo test` expands the command word to
+        `echo ALIAS: test`, which then runs the echo builtin → `ALIAS: test`.
+        bash does exactly this (verified): the alias is applied first, so the
+        prefix DOES appear. (The previous expectation pinned non-bash
+        behaviour from the old runtime-strategy implementation.)
+        """
         result = AliasTestHelper.run_psh_command([
             'alias echo="echo ALIAS:"',
             'echo test'
         ])
 
         assert result['success']
-        # Builtins should take precedence - should NOT see "ALIAS:"
-        assert 'ALIAS:' not in result['stdout']
-        assert 'test' in result['stdout']
+        assert 'ALIAS: test' in result['stdout']
 
     def test_alias_vs_function(self):
-        """Test alias vs function precedence."""
+        """Defining a function whose name is an alias is a syntax error (bash).
+
+        Alias expansion is a parse-time token transform, so in
+        `alias test=...; test() { ...; }` the `test` in the function-definition
+        position expands first, yielding `echo alias () { ... }`, which is a
+        syntax error. bash behaves identically (verified). The previous
+        expectation (functions win over aliases) pinned non-bash behaviour.
+        """
         result = AliasTestHelper.run_psh_command([
             'alias test="echo alias"',
             'test() { echo function; }',
             'test'
         ])
 
-        assert result['success']
-        # Functions should take precedence over aliases
-        assert 'function' in result['stdout']
-        assert 'alias' not in result['stdout']
+        # Both psh and bash report a syntax error for the function definition.
+        assert not result['success'] or 'error' in result['stderr'].lower()
 
     def test_alias_vs_external_command(self):
         """Test that aliases override external commands."""
@@ -263,11 +273,14 @@ class TestAliasExpansion:
         """Clean up any leftover processes after each test."""
 
     def test_alias_expansion_timing(self):
-        """Test when alias expansion occurs.
+        """Alias expansion happens at PARSE time, before variable expansion.
 
-        Alias expansion happens at parse time on literal command words.
-        When $VAR expands to an alias name, the alias IS resolved because
-        psh checks aliases during command execution (after expansion).
+        `VAR=myalias; $VAR` does NOT run the alias: alias expansion is a
+        token-stream transform that sees the literal `$VAR` token (not an
+        alias name) at parse time, and by the time `$VAR` expands to
+        `myalias` at runtime there is no alias dispatch left. bash behaves
+        identically (verified): `myalias: command not found`. The previous
+        expectation pinned the old runtime-strategy behaviour.
         """
         result = AliasTestHelper.run_psh_command([
             'alias myalias="echo expanded"',
@@ -275,8 +288,9 @@ class TestAliasExpansion:
             '$VAR'
         ])
 
-        assert result['success']
-        assert 'expanded' in result['stdout']
+        # The alias does not fire; 'myalias' is run as a command (not found).
+        assert 'expanded' not in result['stdout']
+        assert 'myalias' in result['stderr'] or 'not found' in result['stderr']
 
     def test_alias_recursive_prevention(self):
         """Test prevention of recursive alias expansion."""

@@ -1568,3 +1568,73 @@
   stdout: ""
   stderr: "write error: Bad file descriptor"
   exit_code: 1
+
+# =============================================================================
+# ALIASES (token-stream transform, R8.6b)
+# psh always expands aliases (interactive AND non-interactive) — a deliberate
+# divergence from bash, whose `-c` defers definitions to the next line — so
+# the same-line cases are psh_only.
+# =============================================================================
+
+- name: alias_basic
+  command: "alias g='echo G'; g"
+  stdout: "G\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: alias_with_args
+  command: "alias e='echo'; e hi there"
+  stdout: "hi there\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: alias_arg_injection_is_literal
+  command: "alias e='echo'; e 'a; echo PWNED'"
+  stdout: "a; echo PWNED\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: alias_quoted_command_word_not_expanded
+  command: "alias g='echo G'; 'g' 2>/dev/null; echo rc=$?"
+  stdout: "rc=127\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: alias_trailing_space_chain
+  command: "alias a='echo '; alias b='B'; a b"
+  stdout: "B\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: alias_in_if_then
+  command: "alias g='echo G'; if true; then g; fi"
+  stdout: "G\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: alias_case_selector_not_expanded
+  command: "alias g='echo G'; case g in g) echo matched;; esac"
+  stdout: "matched\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: alias_self_recursion_guard
+  command: "alias echo='echo wrapped'; echo hi"
+  stdout: "wrapped hi\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: shopt_expand_aliases_accepted
+  command: "shopt -s expand_aliases; echo ok"
+  stdout: "ok\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true

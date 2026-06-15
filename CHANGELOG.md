@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.417.0 (2026-06-15) - Tier R8.6b: alias expansion moved to a token-stream transform
+- ARCHITECTURE (review Ugly 1 / A2 — the fenced big-bang). Alias expansion no
+  longer happens at runtime by re-lexing joined argv; it is now a TOKEN-STREAM
+  transform at the lex→parse boundary, structurally eliminating the
+  injection class (args are never reconstructed as source).
+- `shell.alias_manager.expand_aliases(tokens)` runs immediately after
+  tokenization at the two seams every path converges on:
+  `scripting/source_processor.py` (execution parse) and
+  `scripting/command_accumulator.py` (trial/completeness parse). Both parser
+  backends are covered (transform is parser-agnostic; `-c`/script/stdin/REPL/
+  `eval`/`source` all route through `SourceProcessor`).
+- `AliasExecutionStrategy` fully removed from `strategies.py` and the
+  `command.py` strategy list (no shim needed). The dead `AliasManager.
+  expand_aliases` token transform is now live, with `_is_command_position`
+  hardened to be keyword-aware so aliases expand in command position inside
+  if/while/until/for/case/subshell/brace-group/`&&`/`||`/`|`/`;` and NOT as
+  plain args, loop items, case patterns, or the loop var / case selector
+  (verified vs bash).
+- Decided behaviors (per maintainer): same-line `alias x=…; x` still expands
+  (psh divergence kept, via a same-stream definition overlay); `shopt -s/-u
+  expand_aliases` now ACCEPTED (recognized no-op gate; psh keeps always-expand);
+  quoted command words (`'ll'`) are NOT expanded (bash parity); trailing-space
+  chaining now works (bash parity). The deliberate always-expand-non-interactively
+  divergence is preserved (pinned `assert_psh_extension` tests stay green).
+- Tests: +`test_alias_token_transform_conformance.py` (29),
+  +`test_alias_token_transform.py` (17), +9 golden; 3 stale tests that pinned the
+  old runtime-strategy behavior updated (each verified vs bash first); the R8.6a
+  injection conformance test still passes. Full gate green: ruff + mypy clean
+  (225 files), `run_tests.py --parallel` 7613 passed, `--compare-bash` 470.
+
 ## 0.416.0 (2026-06-15) - Tier R8.6a: fix the alias-argument injection bug
 - BUG FIX (bash-verified; SECURITY-relevant; interim fix ahead of the full
   alias-at-parse-time move). `AliasExecutionStrategy` expanded an alias at

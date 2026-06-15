@@ -26,6 +26,11 @@ class ShoptBuiltin(Builtin):
         'nocasematch': 'nocasematch',
         'globstar': 'globstar',
         'checkhash': 'checkhash',
+        # Accepted for bash compatibility. psh always expands aliases (a
+        # parse-time token transform), so this is a recognized no-op gate;
+        # `shopt -s/-u expand_aliases` toggles the flag for display but does
+        # not actually disable expansion. See ShellState.options.
+        'expand_aliases': 'expand_aliases',
     }
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
