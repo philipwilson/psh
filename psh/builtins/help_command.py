@@ -28,36 +28,14 @@ class HelpBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the help builtin."""
-        # Parse options
-        show_descriptions = False
-        show_synopsis_only = False
-        show_manpage = False
-        patterns = []
-
-        i = 1
-        while i < len(args):
-            arg = args[i]
-            if arg.startswith('-') and len(arg) > 1 and not arg.startswith('--'):
-                # Parse option flags
-                for flag in arg[1:]:
-                    if flag == 'd':
-                        show_descriptions = True
-                    elif flag == 's':
-                        show_synopsis_only = True
-                    elif flag == 'm':
-                        show_manpage = True
-                    else:
-                        self.error(f"invalid option -- '{flag}'", shell)
-                        self._show_usage(shell)
-                        return 2
-            elif arg == '--':
-                # End of options
-                patterns.extend(args[i+1:])
-                break
-            else:
-                # Pattern argument
-                patterns.append(arg)
-            i += 1
+        # -d/-s/-m are boolean flags (clusterable, e.g. -dm); patterns are
+        # operands. The shared helper matches bash's invalid-option message.
+        opts, patterns = self.parse_flags(args, shell, flags='dsm')
+        if opts is None:
+            return 2
+        show_descriptions = opts['d']
+        show_synopsis_only = opts['s']
+        show_manpage = opts['m']
 
         # Get all builtin instances (no duplicates from aliases)
         registry = shell.builtin_registry
@@ -101,14 +79,6 @@ class HelpBuiltin(Builtin):
             self._show_default_listing(builtins_to_show, shell)
 
         return 0
-
-    def _show_usage(self, shell: 'Shell') -> None:
-        """Show usage information."""
-        self.write_error_line(f"Usage: {self.synopsis}", shell)
-        self.write_error_line("Options:", shell)
-        self.write_error_line("  -d    output short description for each topic", shell)
-        self.write_error_line("  -m    display usage in pseudo-manpage format", shell)
-        self.write_error_line("  -s    output only a short usage synopsis for each topic", shell)
 
     def _show_default_listing(self, builtins: List[Builtin], shell: 'Shell') -> None:
         """Show default help listing similar to bash."""

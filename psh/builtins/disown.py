@@ -27,36 +27,14 @@ class DisownBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute disown command."""
-        # Parse options
-        mark_no_hup = False
-        disown_all = False
-        running_only = False
-        job_specs = []
-
-        i = 1
-        while i < len(args):
-            arg = args[i]
-            if arg.startswith('-') and len(arg) > 1:
-                # Parse option flags
-                for flag in arg[1:]:
-                    if flag == 'h':
-                        mark_no_hup = True
-                    elif flag == 'a':
-                        disown_all = True
-                    elif flag == 'r':
-                        running_only = True
-                    else:
-                        self.error(f"invalid option: -{flag}", shell)
-                        return 1
-            elif arg == '--':
-                # End of options
-                i += 1
-                job_specs.extend(args[i:])
-                break
-            else:
-                # Job specification or PID
-                job_specs.append(arg)
-            i += 1
+        # -h/-a/-r are boolean flags (clusterable, e.g. -ar); job specs and
+        # PIDs are operands and never start with '-'.
+        opts, job_specs = self.parse_flags(args, shell, flags='har')
+        if opts is None:
+            return 2
+        mark_no_hup = opts['h']
+        disown_all = opts['a']
+        running_only = opts['r']
 
         # Get job manager
         job_manager = shell.job_manager

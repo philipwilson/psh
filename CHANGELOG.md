@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.435.0 (2026-06-15) - Tier R9.D1: converge getopt-shaped builtins onto parse_flags
+- REFACTOR + BEHAVIOR (bash parity). `command`, `disown`, and `help` now parse
+  their boolean options through the shared `Builtin.parse_flags` helper instead
+  of hand-rolled loops. Two consequences match bash:
+  - Clustered flags work: `command -vp`, `disown -ar`, `help -dm` (previously
+    rejected as a single invalid token).
+  - Invalid-option diagnostics match bash's format and exit code: e.g.
+    `command: -x: invalid option` followed by `command: usage: command [-pVv]
+    command [arg ...]`, exit 2 (`disown` previously exited 1 with
+    `invalid option: -x`; `help` previously printed `invalid option -- 'x'` and
+    a bespoke multi-line usage block).
+- Removed the now-dead `HelpBuiltin._show_usage`.
+- The other hand-rolled flag parsers are deliberate exceptions, not holdouts:
+  `kill` (`-SIGNAL`/`-NUMBER`), `pushd`/`popd`/`dirs` (`+N`/`-N` stack indices),
+  `read`/`mapfile`/`print` (many value flags), `getopts`/`shift`/`shopt`/`trap`/
+  `set` (own option models) — their `-N`/`-NAME`/value-flag shapes conflict with
+  getopt clustering.
+- Pinned by new tests; full suite + ruff + mypy green. Zero change to recursive
+  descent or any other subsystem.
+
 ## 0.434.0 (2026-06-15) - Tier R9.C3 COMPLETE: case bodies by recursion + unified statement-list engine
 - REFACTOR (combinator parser). Finishes C3. The `case` item command bodies no
   longer slice tokens until a terminator with a hand-tracked `nesting_depth`
