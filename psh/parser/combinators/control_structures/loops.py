@@ -113,7 +113,8 @@ class LoopParserMixin(_Base):
             body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
 
             if done_pos >= len(tokens):
-                raise_committed_error(tokens, done_pos, "Expected 'done' to close while loop")
+                raise_committed_error(tokens, done_pos, "Expected 'done' to close while loop",
+                                      terminator='done')
 
             try:
                 body_result = self.commands.statement_list.parse(body_tokens, 0)
@@ -192,7 +193,8 @@ class LoopParserMixin(_Base):
             body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
 
             if done_pos >= len(tokens):
-                raise_committed_error(tokens, done_pos, "Expected 'done' to close until loop")
+                raise_committed_error(tokens, done_pos, "Expected 'done' to close until loop",
+                                      terminator='done')
 
             try:
                 body_result = self.commands.statement_list.parse(body_tokens, 0)
@@ -304,7 +306,8 @@ class LoopParserMixin(_Base):
             body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
 
             if done_pos >= len(tokens):
-                raise_committed_error(tokens, done_pos, "Expected 'done' to close for loop")
+                raise_committed_error(tokens, done_pos, "Expected 'done' to close for loop",
+                                      terminator='done')
 
             try:
                 body_result = self.commands.statement_list.parse(body_tokens, 0)
@@ -409,7 +412,8 @@ class LoopParserMixin(_Base):
             body_tokens, done_pos = self._collect_tokens_until_keyword(tokens, pos, 'done', 'do')
 
             if done_pos >= len(tokens):
-                raise_committed_error(tokens, done_pos, "Expected 'done' to close C-style for loop")
+                raise_committed_error(tokens, done_pos, "Expected 'done' to close C-style for loop",
+                                      terminator='done')
 
             try:
                 body_result = self.commands.statement_list.parse(body_tokens, 0)

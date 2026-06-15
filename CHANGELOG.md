@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.430.0 (2026-06-15) - Tier R9.C1: structured combinator nested-terminator dispatch
+- ARCHITECTURE (combinator backend; zero behavior change). Replaced the fragile
+  message-substring dispatch in `is_missing_nested_terminator()` with a
+  structured `ParseError.missing_terminator` field (the closing keyword
+  'fi'/'done'/'esac'), following the existing `at_eof`/`unclosed_expansion`
+  structured-signal pattern. First step of elevating the combinator parser to
+  first-class.
+- `raise_committed_error()` gains a `terminator=` keyword that tags the raised
+  `ParseError`; the six fi/done/esac raise sites (if/case in conditionals.py,
+  the four loop forms in loops.py) pass it. `is_missing_nested_terminator()` now
+  reads the tag instead of lower-casing and substring-matching the message, so a
+  message reword can no longer silently break nested-error remapping.
+- Updated `test_diagnostics.py` to pin the structured contract (tagged → True,
+  untagged → False) rather than message text. Nested-terminator position parity
+  with recursive descent is unchanged (verified end-to-end).
+- Gate: ruff + mypy clean, full suite 8,025 collected / all phases green.
+
 ## 0.429.0 (2026-06-15) - Tier R9.B5: de-duplicate the array-init element loop
 - REFACTOR (zero behavior change). The recursive-descent parser had two copies
   of the `name=(...)` element-collection loop — one for statement position
