@@ -19,43 +19,25 @@ class CommandBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute command with options or bypass functions/aliases."""
-        # Default options
-        use_default_path = False
-        show_description = False
-        verbose_description = False
-
-        # Parse options
-        i = 1
-        while i < len(args):
-            arg = args[i]
-            if arg == '-p':
-                use_default_path = True
-                i += 1
-            elif arg == '-v':
-                show_description = True
-                i += 1
-            elif arg == '-V':
-                verbose_description = True
-                i += 1
-            elif arg == '--':
-                i += 1
-                break
-            elif arg.startswith('-'):
-                self.error(f"invalid option: {arg}", shell)
-                return 2
-            else:
-                break
+        # -p/-v/-V are boolean flags (clusterable, e.g. -vp); the shared
+        # getopt-style helper also matches bash's invalid-option message.
+        opts, operands = self.parse_flags(args, shell, flags='pvV')
+        if opts is None:
+            return 2
+        use_default_path = opts['p']
+        show_description = opts['v']
+        verbose_description = opts['V']
 
         # bash: bare `command` (or `command -v` with no names) succeeds
-        if i >= len(args):
+        if not operands:
             return 0
 
-        command_name = args[i]
-        command_args = args[i:]
+        command_name = operands[0]
+        command_args = operands
 
         # Handle description modes (-v and -V)
         if show_description or verbose_description:
-            return self._show_command_info(args[i:], verbose_description, shell)
+            return self._show_command_info(operands, verbose_description, shell)
 
         # Execute the command, bypassing aliases and functions
         if use_default_path:

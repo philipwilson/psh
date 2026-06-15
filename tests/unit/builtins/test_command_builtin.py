@@ -246,3 +246,20 @@ class TestCommandVLookup:
         result = captured_shell.run_command('command -v')
         assert result == 0
         assert captured_shell.get_stdout() == ""
+
+
+class TestCommandFlagParsing:
+    """parse_flags convergence (R9.D): clustered flags + bash-aligned errors."""
+
+    def test_clustered_flags_accepted(self, captured_shell):
+        # bash accepts clustered -vp / -pv; -v wins (prints the name).
+        result = captured_shell.run_command('command -vp true')
+        assert result == 0
+        assert captured_shell.get_stdout() == "true\n"
+
+    def test_invalid_option_message_and_rc(self, captured_shell):
+        result = captured_shell.run_command('command -x true')
+        assert result == 2
+        err = captured_shell.get_stderr()
+        assert 'command: -x: invalid option' in err
+        assert 'command: usage: command [-pVv] command [arg ...]' in err

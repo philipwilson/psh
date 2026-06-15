@@ -116,11 +116,17 @@ class TestWriteHelpers:
         assert captured_shell.get_stdout() == ''
 
     def test_help_usage_error_on_stderr(self, captured_shell):
-        """help -x: usage diagnostics go to stderr with rc 2 (bash parity)."""
+        """help -x: usage diagnostics go to stderr with rc 2 (bash parity).
+
+        Matches bash's two-line format: ``help: -x: invalid option`` followed
+        by ``help: usage: help [-dms] [pattern ...]`` (via the shared
+        parse_flags helper).
+        """
         rc = captured_shell.run_command('help -x')
         assert rc == 2
         err = captured_shell.get_stderr()
-        assert 'Usage: help' in err
+        assert 'help: -x: invalid option' in err
+        assert 'help: usage: help [-dms] [pattern ...]' in err
         assert captured_shell.get_stdout() == ''
 
     def test_forked_child_paths_via_pipeline(self):
