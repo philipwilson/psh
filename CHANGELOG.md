@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.416.0 (2026-06-15) - Tier R8.6a: fix the alias-argument injection bug
+- BUG FIX (bash-verified; SECURITY-relevant; interim fix ahead of the full
+  alias-at-parse-time move). `AliasExecutionStrategy` expanded an alias at
+  runtime by joining the already-expanded, quote-removed argv into a source
+  string and re-lexing it — so any alias argument containing a shell
+  metacharacter was reinterpreted as SYNTAX. `alias e=echo; e 'a; echo PWNED'`
+  ran `echo PWNED` as a second command; `e '$(echo X)'`/`e '$FOO'`/`e '*.md'`
+  re-expanded the data; `e '>zz'`/`e '|cat'`/`e 'a & b'` turned data into a
+  redirect/pipe/background; `e 'a"b'` crashed with a syntax error; quoted
+  spaces/tabs split into multiple args.
+- Fix: `shlex.quote` each already-expanded argument before the join, so the
+  re-lexer treats each as a single literal word. The alias VALUE stays raw (it
+  is meant to be parsed as shell). All 10 injection cases now match bash exactly;
+  value-is-shell aliases (`alias x='echo a; echo b'`, pipe/redirect in the value),
+  recursion guard, bypasses, chains, and the deliberate always-expand behavior
+  are unchanged.
+- Known still-divergent (deferred to the full token-stream move): trailing-space
+  chaining, same-line `alias x=…; x`, quoted-command-word bypass, `shopt -s
+  expand_aliases`. The probe battery confirmed these are unchanged (not
+  regressed).
+- Tests: +`test_alias_argument_injection_conformance.py` (13, bash-pinned). Full
+  gate green: ruff + mypy clean (225 files), `run_tests.py --parallel` 7558
+  passed, `--compare-bash` 461 passed.
+
 ## 0.415.0 (2026-06-15) - Combinator parser: committed compound diagnostics (PR #150)
 - REFACTOR (combinator backend only; recursive-descent default parser untouched).
   Follow-on to PR #149. The combinator parser recognized compound openers
