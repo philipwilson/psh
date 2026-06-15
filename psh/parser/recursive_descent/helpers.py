@@ -175,4 +175,10 @@ class ParseError(PshError):
         # unclosed-expansion error. Set by the raise site; a structured
         # signal for continuation hints (no message string-matching).
         self.unclosed_expansion: Optional[str] = None
+        # The closing keyword a compound construct failed to find ('fi',
+        # 'done', 'esac'), when this is a missing-nested-terminator error.
+        # Set by the raise site; a structured signal the combinator parser
+        # uses to remap a nested-body error onto the outer terminator token
+        # so no caller has to string-match the message.
+        self.missing_terminator: Optional[str] = None
         super().__init__(error_context.format_error())

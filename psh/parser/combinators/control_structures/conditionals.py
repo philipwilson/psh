@@ -269,12 +269,14 @@ class ConditionalParserMixin(_Base):
                     tokens,
                     pos,
                     "Unexpected end of input: expected 'fi' to close if statement",
+                    terminator='fi',
                 )
             if not matches_keyword(tokens[pos], 'fi'):
                 raise_committed_error(
                     tokens,
                     pos,
                     f"Expected 'fi' to close if statement, got '{tokens[pos].value}'",
+                    terminator='fi',
                 )
 
             pos += 1  # Skip 'fi'
@@ -460,7 +462,8 @@ class ConditionalParserMixin(_Base):
 
             # Expect 'esac' (an empty case — `case x in esac` — is valid bash)
             if pos >= len(tokens) or not matches_keyword(tokens[pos], 'esac'):
-                raise_committed_error(tokens, pos, "Expected 'esac' to close case statement")
+                raise_committed_error(tokens, pos, "Expected 'esac' to close case statement",
+                                      terminator='esac')
 
             pos += 1  # Skip 'esac'
 

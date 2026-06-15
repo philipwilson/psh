@@ -4,7 +4,6 @@ import pytest
 
 from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.diagnostics import (
-    error_context_for_token,
     is_missing_nested_terminator,
     raise_committed_error,
 )
@@ -52,26 +51,30 @@ def test_raise_committed_error_clamps_to_eof_token():
     assert exc_info.value.at_eof is True
 
 
-def _error_with_message(message: str) -> ParseError:
-    token = make_token(TokenType.WORD, "x", position=0, line=1, column=1)
-    return ParseError(error_context_for_token(token, message))
+def _raise_and_capture(terminator):
+    """Raise via raise_committed_error and return the ParseError."""
+    tokens = [
+        make_token(TokenType.WORD, "x", position=0, line=1, column=1),
+        make_token(TokenType.EOF, "", position=1, line=1, column=2),
+    ]
+    try:
+        raise_committed_error(tokens, 1, "Expected something to close", terminator=terminator)
+    except ParseError as exc:
+        return exc
+    raise AssertionError("raise_committed_error did not raise")
 
 
-@pytest.mark.parametrize("message", [
-    "Expected 'fi' to close if statement",
-    "Expected 'done' to close while loop",
-    "Expected 'esac' to close case statement",
-    "expected 'done' to close FOR LOOP",  # case-insensitive
-])
-def test_is_missing_nested_terminator_true(message):
-    assert is_missing_nested_terminator(_error_with_message(message)) is True
+@pytest.mark.parametrize("terminator", ["fi", "done", "esac"])
+def test_is_missing_nested_terminator_true_when_tagged(terminator):
+    """The structured tag (not message text) drives the classification."""
+    err = _raise_and_capture(terminator)
+    assert err.missing_terminator == terminator
+    assert is_missing_nested_terminator(err) is True
 
 
-@pytest.mark.parametrize("message", [
-    "Expected 'then' in if statement",
-    "Expected command after pipe",
-    "Expected 'do' in while loop",
-    "Unexpected token after valid input",
-])
-def test_is_missing_nested_terminator_false(message):
-    assert is_missing_nested_terminator(_error_with_message(message)) is False
+def test_is_missing_nested_terminator_false_when_untagged():
+    # An error that merely *mentions* a terminator keyword in its message but
+    # carries no structured tag is NOT classified as a missing terminator.
+    err = _raise_and_capture(None)
+    assert err.missing_terminator is None
+    assert is_missing_nested_terminator(err) is False
