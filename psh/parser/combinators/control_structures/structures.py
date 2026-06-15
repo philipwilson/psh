@@ -319,6 +319,7 @@ class StructureParserMixin(_Base):
             body_result = self.commands.statement_list.parse(tokens, pos)
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
+            assert body_result.value is not None
             if not body_result.value.statements:
                 raise ParseError(error_context_for_token(
                     tokens[pos],
@@ -360,6 +361,7 @@ class StructureParserMixin(_Base):
             body_result = self.commands.statement_list.parse(tokens, pos)
             if not body_result.success:
                 return ParseResult(success=False, error=body_result.error, position=pos)
+            assert body_result.value is not None
             if not body_result.value.statements:
                 raise ParseError(error_context_for_token(
                     tokens[pos],

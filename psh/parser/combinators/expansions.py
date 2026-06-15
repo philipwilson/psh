@@ -207,6 +207,7 @@ class ExpansionParsers:
             """Parse an expansion token and convert to Word."""
             result = self.expansion.parse(tokens, pos)
             if result.success:
+                assert result.value is not None
                 word = self.build_word_from_token(result.value)
                 return ParseResult(
                     success=True,

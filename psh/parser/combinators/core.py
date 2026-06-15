@@ -193,12 +193,19 @@ class Parser(Generic[T]):
 
         return Parser(sequence_parse)
 
-    def or_else(self, alternative: 'Parser[T]') -> 'Parser[T]':
+    def or_else(self, alternative: 'Parser') -> 'Parser':
         """Try this parser, or alternative if it fails.
 
         Ordered choice with a cut: if this parser fails *committed* (it consumed
         input and is sure of the production), the failure propagates and the
         alternative is NOT tried. Otherwise the alternative is attempted.
+
+        The alternative may produce a *different* value type than this parser —
+        the shell grammar composes ordered choice over heterogeneous productions
+        (e.g. ``arithmetic_command.or_else(enhanced_test_statement)`` yields an
+        ``ArithmeticEvaluation`` OR an ``EnhancedTestStatement``). The result
+        type is therefore the loose ``Parser`` (a value of either branch) rather
+        than a single ``Parser[T]``.
 
         Args:
             alternative: Parser to try if this one fails
@@ -206,7 +213,7 @@ class Parser(Generic[T]):
         Returns:
             Parser that tries both options
         """
-        def choice_parse(tokens: List[Token], pos: int) -> ParseResult[T]:
+        def choice_parse(tokens: List[Token], pos: int) -> ParseResult:
             result = self.parse(tokens, pos)
             if result.success or result.committed:
                 return result

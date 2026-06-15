@@ -184,8 +184,9 @@ class ParserCombinatorShellParser:
                 error_token = tokens[-1] if tokens else Token(type=TokenType.WORD, value='', position=0)
             raise ParseError(error_context_for_token(error_token, error_msg))
 
-        # Get the parsed AST
+        # Get the parsed AST (success was checked above, so value is set)
         ast = result.value
+        assert ast is not None
 
         # Ensure we consumed all tokens (allowing trailing whitespace/newlines and EOF)
         pos = result.position
@@ -253,8 +254,10 @@ class ParserCombinatorShellParser:
         if start_pos >= len(tokens):
             return None, start_pos
 
-        # Try parsers from broadest to narrowest
-        for parser in [self.top_level, self.commands.statement, self.command]:
+        # Try parsers from broadest to narrowest (heterogeneous Parser types,
+        # so the list is loosely typed).
+        candidates: list = [self.top_level, self.commands.statement, self.command]
+        for parser in candidates:
             result = parser.parse(tokens, start_pos)
             if result.success:
                 self._apply_heredocs(result.value)

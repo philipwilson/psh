@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.464.0 (2026-06-16) - Tier R12.B finale: check_untyped_defs for the combinator parser (12/12 packages)
+- TYPING (no behavior change). Enabled `check_untyped_defs = true` for the last package,
+  `psh.parser.combinators.*` — mypy now body-checks **every package (12/12)**. Fixing the
+  ~34 fallout errors was two kinds of change, both type-only:
+  - `Parser.or_else` now types its alternative/result as the loose `Parser` rather than
+    `Parser[T]`: the shell grammar composes ordered choice over *heterogeneous*
+    productions (`arithmetic_command.or_else(enhanced_test_statement)` yields one node
+    type OR another), which `Parser[T]` cannot express. Runtime behavior unchanged
+    (the parity suite confirms).
+  - Added `assert … is not None` narrowing after the `result.success` checks where the
+    code reads `result.value.<attr>` (redirections, pipelines, simple-command, subshell/
+    brace bodies, expansion-to-word, top-level wrap) — the same idiom used elsewhere; and
+    loosely typed one heterogeneous parser list.
+- Completes the Tier R12.B typing rollout (3/12 → 12/12) AND the last open thread from
+  reappraisal #10. `tests/parser_differential` parity + full suite green.
+
 ## 0.463.0 (2026-06-15) - Tier R12.D.6: dedup RD array-initializer head detection (review M4/dedup) — R12.D complete
 - REFACTOR (no behavior change). `CommandParser._check_array_initialization` (argument
   position, e.g. `declare -a a=(1 2)`) duplicated the `name=(...)`/`name+=(...)` head

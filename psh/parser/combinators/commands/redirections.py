@@ -41,6 +41,7 @@ class RedirectionMixin(_Base):
             return ParseResult(success=False, error=op_result.error, position=pos)
 
         op_token = op_result.value
+        assert op_token is not None  # success implies a token
         pos = op_result.position
 
         # Propagate fd from token metadata (set by lexer for fd-prefixed
