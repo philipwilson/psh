@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.456.0 (2026-06-15) - Tier R12.B batch 3: check_untyped_defs for ast_nodes + recursive-descent parser (R12.B done)
+- TYPING (no behavior change). Enabled `check_untyped_defs = true` for `psh.ast_nodes.*`
+  and the PRODUCTION parser `psh.parser.recursive_descent.*` (both zero-fallout). mypy
+  now body-checks **all production code**; the only package still not body-checked is the
+  educational combinator parser `psh.parser.combinators.*` (~43 errors — deferred to a
+  dedicated pass, since it's outside the production quality bar).
+- **Tier R12.B substantially complete** (v0.454–456): the `check_untyped_defs` rollout
+  went from 3/12 to 11/12 packages — every production subsystem is now body-checked — and
+  along the way caught real `declare -f` formatter bugs (v0.455). The clearest A−→A lever
+  from reappraisals #9/#10 is realized.
+
 ## 0.455.0 (2026-06-15) - Tier R12.B batch 2: check_untyped_defs for utils/interactive/scripting (+ found real declare -f bugs)
 - TYPING + BUGFIX. Enabled `check_untyped_defs = true` for `psh.utils.*`,
   `psh.interactive.*`, `psh.scripting.*` — mypy now body-checks **10 of ~12** packages.
