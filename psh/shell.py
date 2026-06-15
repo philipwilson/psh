@@ -162,6 +162,12 @@ class Shell:
         # into the nested commands — `eval break` must break the outer loop.
         self._current_executor: Optional['ExecutorVisitor'] = None
 
+        # One-shot set -e suppression seed: SubshellExecutor sets this on a
+        # freshly forked subshell Shell so that _execute_with_visitor seeds the
+        # subshell's first ExecutorVisitor context (the errexit exemption must
+        # cross the fork, as in bash). 0 = not suppressed.
+        self._errexit_suppress_seed: int = 0
+
         # Structured array initializers (argv element → ArrayInitialization)
         # for the declaration builtin currently being dispatched. This is an
         # explicit, single-owner handoff from the executor to the declaration
