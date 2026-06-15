@@ -17,6 +17,24 @@ else:
 class OperandOpsMixin(_Base):
     """Expansion of pattern/replacement operands with quote awareness."""
 
+    @staticmethod
+    def _inline_ansi_c(operand: str, i: int):
+        """Decode an inline ANSI-C ``$'...'`` at ``operand[i]``.
+
+        ``operand[i]`` is ``$`` and ``operand[i+1]`` is ``'``. Returns
+        ``(decoded_text, new_index)`` using the single canonical scanner
+        (``scan_inline_ansi_c`` → ``handle_ansi_c_escape``). If the quote never
+        closes, the ``$`` is treated as a literal character. ANSI-C quoting is
+        decoded in operand/word contexts but NOT by ``expand_string_variables``
+        (which also serves double-quoted content, where ``$'...'`` is literal),
+        so each operand walker decodes it explicitly.
+        """
+        from ..lexer.recognizers.word_scanners import scan_inline_ansi_c
+        res = scan_inline_ansi_c(operand, i)
+        if res is None:
+            return operand[i], i + 1
+        return res
+
     def _expand_operand(self, operand: str) -> str:
         """Expand a conditional-operator operand (${x:-OPERAND}).
 
@@ -27,7 +45,38 @@ class OperandOpsMixin(_Base):
             return operand[1:-1]
         if len(operand) >= 2 and operand[0] == '"' and operand[-1] == '"':
             return self.expand_string_variables(operand[1:-1])
-        return self._expand_tilde_in_operand(self.expand_string_variables(operand))
+        if "$'" not in operand:
+            return self._expand_tilde_in_operand(self.expand_string_variables(operand))
+        # The operand contains an inline ANSI-C $'...' segment, which
+        # expand_string_variables does not decode. Decode the $'...' segments
+        # here and string-expand the gaps between them (skipping over ordinary
+        # quotes so a $' inside them isn't mistaken for an ANSI-C quote).
+        out = []
+        i = gap = 0
+        n = len(operand)
+        while i < n:
+            ch = operand[i]
+            if ch == '$' and i + 1 < n and operand[i + 1] == "'":
+                from ..lexer.recognizers.word_scanners import scan_inline_ansi_c
+                res = scan_inline_ansi_c(operand, i)
+                if res is not None:
+                    if i > gap:
+                        out.append(self.expand_string_variables(operand[gap:i]))
+                    seg, i = res
+                    out.append(seg)
+                    gap = i
+                    continue
+                i += 1
+            elif ch == "'":
+                end = operand.find("'", i + 1)
+                i = n if end == -1 else end + 1
+            elif ch == '"':
+                i = self._skip_double_quote(operand, i + 1)
+            else:
+                i += 1
+        if gap < n:
+            out.append(self.expand_string_variables(operand[gap:]))
+        return self._expand_tilde_in_operand(''.join(out))
 
     def _expand_tilde_in_operand(self, text: str) -> str:
         """Apply tilde expansion to parameter expansion operand values."""
@@ -198,6 +247,10 @@ class OperandOpsMixin(_Base):
             elif c == '\\' and i + 1 < n:
                 out.append(operand[i:i + 2])
                 i += 2
+            elif c == '$' and i + 1 < n and operand[i + 1] == "'":
+                # Inline ANSI-C $'...': decoded content matches literally.
+                seg, i = self._inline_ansi_c(operand, i)
+                out.append(self.glob_escape(seg))
             elif c in '$`':
                 expanded, i = self._expand_one_dollar(operand, i)
                 out.append(expanded)
@@ -258,6 +311,11 @@ class OperandOpsMixin(_Base):
                 flush()
                 parts.append(PATSUB_MATCH)
                 i += 1
+            elif c == '$' and i + 1 < n and operand[i + 1] == "'":
+                # Inline ANSI-C $'...': decoded content is literal (a '&' inside
+                # it is not the match placeholder).
+                seg, i = self._inline_ansi_c(operand, i)
+                buf.append(seg)
             elif c in '$`':
                 expanded, i = self._expand_one_dollar(operand, i)
                 add_active(expanded)
