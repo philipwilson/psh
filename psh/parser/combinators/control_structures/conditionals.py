@@ -12,11 +12,10 @@ from ....ast_nodes import (
     CommandList,
     IfConditional,
 )
-from ....lexer.keyword_defs import KeywordGuard, matches_keyword
+from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token, TokenType
-from ...recursive_descent.helpers import ParseError
 from ..core import Parser, ParseResult
-from ..diagnostics import is_missing_nested_terminator, raise_committed_error
+from ..diagnostics import raise_committed_error
 from ..utils import format_token_value
 
 if TYPE_CHECKING:
@@ -30,6 +29,10 @@ CASE_TERMINATOR_TOKENS = {
     TokenType.SEMICOLON_AMP: ';&',
     TokenType.AMP_SEMICOLON: ';;&',
 }
+
+# Token-type names that end a case-item command body (the ;; / ;& / ;;&
+# terminators), for build_statement_list's terminator_types.
+_CASE_BODY_TERMINATOR_TYPES = frozenset(t.name for t in CASE_TERMINATOR_TOKENS)
 
 
 def _parse_case_pattern_value(tokens, pos, pattern_types):
@@ -331,66 +334,24 @@ class ConditionalParserMixin(_Base):
                 if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
                     pos += 1
 
-                # Parse commands until case terminator
-                # Track nesting depth to handle nested case statements correctly
-                command_tokens = []
-                nesting_depth = 0
-                while pos < len(tokens):
-                    token = tokens[pos]
-
-                    # Track nesting for case statements
-                    if KeywordGuard(token).matches('case'):
-                        nesting_depth += 1
-                        command_tokens.append(token)
-                        pos += 1
-                        continue
-                    elif KeywordGuard(token).matches('esac'):
-                        if nesting_depth > 0:
-                            # This esac closes a nested case
-                            nesting_depth -= 1
-                            command_tokens.append(token)
-                            pos += 1
-                            continue
-                        else:
-                            # This esac closes the outer case - stop collecting
-                            break
-
-                    # Only check for terminators when not in a nested case
-                    if nesting_depth == 0:
-                        # Check for case terminators
-                        if token.type in CASE_TERMINATOR_TOKENS:
-                            break
-                        # Check if next token is a pattern (word/expansion followed by ')')
-                        if (pos + 1 < len(tokens) and
-                            token.type.name in _CASE_PATTERN_TYPES and
-                            tokens[pos + 1].value == ')'):
-                            break
-                        # Check for '(' starting a new pattern group
-                        if (token.value == '(' and
-                            pos + 1 < len(tokens) and
-                            tokens[pos + 1].type.name in _CASE_PATTERN_TYPES):
-                            break
-
-                    command_tokens.append(token)
-                    pos += 1
-
-                # Parse the commands
-                if command_tokens:
-                    try:
-                        commands_result = self.commands.statement_list.parse(command_tokens, 0)
-                    except ParseError as error:
-                        if pos < len(tokens) and is_missing_nested_terminator(error):
-                            raise_committed_error(tokens, pos, error.message)
-                        raise
-                    if not commands_result.success:
-                        raise_committed_error(
-                            tokens,
-                            pos,
-                            f"Failed to parse case commands: {commands_result.error}",
-                        )
-                    commands = commands_result.value
-                else:
-                    commands = CommandList(statements=[])
+                # Parse commands by recursion up to (not consuming) a case
+                # terminator (;; ;& ;;&) or 'esac'. A nested case statement is
+                # parsed whole by self.statement and consumes its own 'esac', so
+                # no manual nesting_depth bookkeeping is needed. An empty body
+                # (e.g. ``a) ;;``) is allowed — build_statement_list returns an
+                # empty list.
+                body_result = self.commands.build_statement_list(
+                    frozenset({'esac'}), _CASE_BODY_TERMINATOR_TYPES,
+                ).parse(tokens, pos)
+                if not body_result.success:
+                    raise_committed_error(
+                        tokens,
+                        body_result.position,
+                        body_result.error or "Failed to parse case commands",
+                    )
+                assert body_result.value is not None  # success implies a body
+                commands = body_result.value
+                pos = body_result.position
 
                 # Get terminator
                 terminator = ';;'  # Default
