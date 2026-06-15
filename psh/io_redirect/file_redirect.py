@@ -476,22 +476,26 @@ class FileRedirector:
 
             try:
                 self.apply_fd_plan(plan)
+                # Rebind the Python-level stream onto the redirected fd. Dispatch
+                # by direction using the planner's target_fd (the single source
+                # of truth for which fd this redirect acts on) rather than
+                # re-enumerating every redirect.type: input forms (`<`, `<>`,
+                # `<<`, `<<-`, `<<<`) rebind stdin; output forms (`>`, `>>`,
+                # `>|`) rebind the target fd; `&>`/`&>>` rebind both 1 and 2;
+                # a `>&`/`<&` duplication rebinds its own fd (a close has no
+                # stream to rebind).
                 if redirect.combined:
                     self._rebind_output_stream(1)
                     self._rebind_output_stream(2)
-                elif redirect.type in ('<', '<>'):
-                    self._rebind_input_stream(plan.target_fd)
-                elif redirect.type in ('<<', '<<-'):
-                    self._rebind_input_stream(plan.target_fd)
-                elif redirect.type == '<<<':
-                    self._rebind_input_stream(plan.target_fd)
-                elif redirect.type == '>|':
-                    self._rebind_output_stream(plan.target_fd)
-                elif redirect.type in ('>', '>>'):
-                    self._rebind_output_stream(plan.target_fd)
-                elif redirect.type in ('>&', '<&'):
+                elif '&' in redirect.type:  # >& <& (dup) or >&- <&- (close)
+                    # A duplication rebinds its own fd; a close (dup_fd is None)
+                    # has no stream to rebind.
                     if redirect.fd is not None and redirect.dup_fd is not None:
                         self._rebind_output_stream(redirect.fd)
+                elif redirect.type.startswith('<'):
+                    self._rebind_input_stream(plan.target_fd)
+                else:  # '>', '>>', '>|'
+                    self._rebind_output_stream(plan.target_fd)
                 applied = True
             finally:
                 plan.close_procsub(applied=applied)
