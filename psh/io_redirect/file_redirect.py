@@ -129,7 +129,7 @@ class FileRedirector:
 
         word = getattr(redirect, 'target_word', None)
         if word is not None and not self._word_is_process_sub(word):
-            from ..expansion.word_expander import COMMAND_ARGUMENT
+            from ..expansion.word_expansion_types import COMMAND_ARGUMENT
             fields = self.shell.expansion_manager.expand_word_to_fields(
                 word, COMMAND_ARGUMENT)
             if len(fields) != 1:

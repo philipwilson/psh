@@ -13,7 +13,7 @@ import dataclasses
 import pytest
 
 from psh.ast_nodes import ExpansionPart, LiteralPart, VariableExpansion, Word
-from psh.expansion.word_expander import (
+from psh.expansion.word_expansion_types import (
     ARRAY_INIT_ELEMENT,
     ASSOC_INIT_ELEMENT,
     COMMAND_ARGUMENT,

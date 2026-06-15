@@ -17,10 +17,10 @@ from .command_sub import CommandSubstitution
 from .glob import GlobExpander
 from .tilde import TildeExpander
 from .variable import VariableExpander
-from .word_expander import (
+from .word_expander import WordExpander
+from .word_expansion_types import (
     COMMAND_ARGUMENT,
     DECLARATION_ASSIGNMENT,
-    WordExpander,
     WordExpansionPolicy,
 )
 from .word_splitter import WordSplitter

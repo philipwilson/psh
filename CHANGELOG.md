@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.436.0 (2026-06-15) - Tier R9.D4: split the two ~900-line expansion files
+- REFACTOR (no behavior change). Decomposed the two largest expansion modules
+  along their natural seams:
+  - `brace_expansion.py` (903 lines) → keeps `BraceExpander` (the textual
+    per-word algorithm, now 629 lines); `TokenBraceExpander` (the token-stream
+    pass that delegates to it) moves to the new `brace_expansion_tokens.py`.
+  - `word_expander.py` (898 lines) → keeps the `WordExpander` engine (762
+    lines); its data model — `WordExpansionPolicy` + the named policy instances
+    (`COMMAND_ARGUMENT`, `LOOP_ITEM`, `DECLARATION_ASSIGNMENT`,
+    `ARRAY_INIT_ELEMENT`, `ASSOC_INIT_ELEMENT`), `ExpandedSegment`, `_WalkState`
+    — moves to the new `word_expansion_types.py` (pure data, no shell/AST deps).
+- Importers updated to the canonical new locations (no re-export shims): the
+  lexer's `TokenBraceExpander` import, and the policy imports in
+  `expansion/manager.py`, `io_redirect/file_redirect.py`, `executor/array.py`,
+  `executor/control_flow.py`, plus the affected tests.
+- Pure code movement: every symbol kept verbatim. Full suite + ruff + mypy green.
+
 ## 0.435.0 (2026-06-15) - Tier R9.D1: converge getopt-shaped builtins onto parse_flags
 - REFACTOR + BEHAVIOR (bash parity). `command`, `disown`, and `help` now parse
   their boolean options through the shared `Builtin.parse_flags` helper instead
