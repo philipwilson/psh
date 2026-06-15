@@ -786,5 +786,17 @@ class CommandExecutor:
                 # No redirections, just succeed
                 return 0
         else:
-            # exec with command - use the builtin's execute method
+            # exec with command - apply redirections PERMANENTLY first. exec
+            # replaces the process image, so redirected fds carry into the new
+            # program (and if the exec fails, they stay in effect — matching
+            # bash, where `exec /no/such 2>/dev/null` is silent). Then hand off
+            # to the builtin's execute (which performs the execvpe).
+            if node.redirects:
+                try:
+                    self.io_manager.apply_permanent_redirections(node.redirects)
+                except OSError as e:
+                    # bash format: "bash: FILE: No such file or directory"
+                    print(f"psh: {e.filename or 'exec'}: {e.strerror}",
+                          file=self.state.stderr)
+                    return 1
             return exec_builtin.execute(['exec'] + args, self.shell)

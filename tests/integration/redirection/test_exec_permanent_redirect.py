@@ -167,3 +167,36 @@ class TestExecStdinRedirect:
             temp_dir)
         assert result.returncode == 0
         assert result.stdout == 'fd5:custom-fd\nstdin-ok\n'
+
+
+class TestExecWithCommandRedirect:
+    """`exec CMD args redirects` — redirects apply to the exec'd program.
+
+    Regression for reappraisal #10 R12.A: the with-command branch of
+    `_handle_exec_builtin` ignored the node's redirections entirely (only the
+    no-command branch applied them). Since exec replaces the process image, the
+    redirections are applied permanently before the execvpe and carry into the
+    new program; if the exec fails, they stay in effect (bash-verified).
+    """
+
+    def test_exec_command_stdout_to_file(self, temp_dir):
+        # printf is an external here; output must land in the file, not stdout.
+        result = run_psh('exec printf "hi\\n" > out.txt; echo unreached',
+                         temp_dir)
+        assert result.returncode == 0
+        assert result.stdout == ''  # printf went to the file; exec replaced psh
+        assert read(os.path.join(temp_dir, 'out.txt')) == 'hi\n'
+
+    def test_exec_failure_diagnostic_is_redirected(self, temp_dir):
+        # bash: `exec /no/such 2>/dev/null` is silent (the redirect applies even
+        # though the exec fails), exit 127.
+        result = run_psh('exec /no/such 2>/dev/null; echo after', temp_dir)
+        assert result.returncode == 127
+        assert result.stderr == ''
+        assert result.stdout == ''  # 'after' is unreachable: exec consumed the line
+
+    def test_exec_external_failure_stderr_redirected(self, temp_dir):
+        result = run_psh('exec ls /nonexistent_xyz 2>err.txt', temp_dir)
+        assert result.returncode != 0
+        assert result.stderr == ''
+        assert 'nonexistent_xyz' in read(os.path.join(temp_dir, 'err.txt'))
