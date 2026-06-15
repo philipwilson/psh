@@ -357,3 +357,19 @@ class TestSpecialCases:
                 os.remove('file1')
             if os.path.exists('file2'):
                 os.remove('file2')
+
+
+class TestErrorPrefix:
+    """Error messages carry the invocation name, matching bash (R9.D).
+
+    bash reports `[: 1: unary operator expected` when invoked as `[` and
+    `test: 1: unary operator expected` when invoked as `test`.
+    """
+
+    def test_bracket_errors_use_bracket_prefix(self, captured_shell):
+        captured_shell.run_command('[ 1 -eq ]')
+        assert captured_shell.get_stderr().startswith('[: ')
+
+    def test_test_errors_use_test_prefix(self, captured_shell):
+        captured_shell.run_command('test 1 -eq')
+        assert captured_shell.get_stderr().startswith('test: ')
