@@ -11,12 +11,12 @@ The ControlStructureParsers class inherits from three mixin classes:
 
 from typing import List, Optional, Tuple, cast
 
-from ....ast_nodes import CommandList, Redirect
+from ....ast_nodes import Redirect
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ...config import ParserConfig
 from ..commands import CommandParsers
-from ..core import ForwardParser, Parser, ParseResult, keyword
+from ..core import Parser, ParseResult, keyword
 from ..tokens import TokenParsers
 from .conditionals import ConditionalParserMixin
 from .loops import LoopParserMixin
@@ -55,9 +55,6 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
         # that dereference it only run after wiring (guarded in
         # _initialize_dependent_parsers), so the cast documents that invariant.
         self.commands = cast("CommandParsers", command_parsers)  # May be None initially
-
-        # Forward declaration for statement lists
-        self.statement_list_forward = ForwardParser[CommandList]()
 
         self._initialize_parsers()
 
