@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.449.0 (2026-06-15) - BUGFIX: `exec CMD` ignored its redirections — R12.A
+- BUGFIX (behavior). `exec CMD args [redirects]` (the exec builtin WITH a command)
+  silently ignored the redirections — `CommandExecutor._handle_exec_builtin`'s
+  with-command branch handed off to the builtin's execvpe without applying
+  `node.redirects` (only the no-command `exec >file` branch applied them). Probes vs
+  bash: `exec printf out >file` wrote to the terminal instead of the file;
+  `exec /no/such 2>/dev/null` printed the not-found error to the un-redirected stderr
+  (bash is silent). Both exited with bash's code, so exit-code-only checks missed it.
+  Fix: apply `node.redirects` permanently (via `apply_permanent_redirections`) before
+  the exec — exec replaces the process image, so the redirected fds carry into the new
+  program, and if the exec fails they stay in effect (matching bash). Found by
+  reappraisal #10. +3 regression tests (`TestExecWithCommandRedirect`).
+- Second item of Tier R12.A.
+
 ## 0.448.0 (2026-06-15) - BUGFIX: history save dropped new entries after an in-session trim (v0.447 regression) — R12.A
 - BUGFIX (data loss; regression in v0.447). `HistoryManager._file_synced_len` (the
   count of history entries already persisted) is an index into `state.history`, but
