@@ -262,9 +262,8 @@ class CommandParser:
           explicit ``[i]=v`` indices, bare assoc keys, and ``+=`` append.
 
         The flat string's elements are still serialized from the source
-        TOKENS (not the element Words) so the legacy fallback path
-        (``array_init.py``, used only when no structured init is present)
-        keeps its verbatim quoting; the structured path never re-reads it.
+        TOKENS (not the element Words) so any consumer that wants the
+        verbatim source quoting has it; the structured path never re-reads it.
 
         Args:
             word_token: Head token whose value is ``arr=`` or ``arr+=``.

@@ -13,7 +13,6 @@ class InteractiveComponent(ABC):
         self.shell = shell
         self.state = shell.state
         self.job_manager = shell.job_manager
-        self.multi_line_handler = None  # Set by REPLLoop.setup()
 
 
 class InteractiveManager:

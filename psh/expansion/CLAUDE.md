@@ -260,10 +260,11 @@ errors surface as arithmetic errors.
 ### IFS Word Splitting
 
 ```python
-def _split_with_ifs(self, text: Optional[str], quote_type: Optional[str]) -> List[str]:
-    if quote_type is not None:
-        return [text]  # Quoted - no splitting
-
+def _split_with_ifs(self, text: Optional[str]) -> List[str]:
+    # Only ever called on already-unquoted field text; quoted segments are
+    # kept intact by the segment walk before they reach here.
+    if text is None:
+        return []
     ifs = self.state.get_variable('IFS', ' \t\n')
     return self.word_splitter.split(text, ifs)
 ```

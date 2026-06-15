@@ -67,11 +67,3 @@ class ExecutionContext:
             current_function=self.current_function,
             errexit_suppress=self.errexit_suppress,
         )
-
-    def in_loop(self) -> bool:
-        """Check if we're currently inside a loop."""
-        return self.loop_depth > 0
-
-    def in_function(self) -> bool:
-        """Check if we're currently inside a function."""
-        return self.current_function is not None

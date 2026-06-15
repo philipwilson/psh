@@ -38,15 +38,17 @@ class SubshellExecutor:
         # The launcher applies the unified child signal policy on fork
         self.launcher = shell.process_launcher
 
-    def execute_subshell(self, node: 'SubshellGroup', context: 'ExecutionContext',
-                        visitor: 'ASTVisitor[int]') -> int:
+    def execute_subshell(self, node: 'SubshellGroup', context: 'ExecutionContext') -> int:
         """
         Execute subshell group (...) in isolated environment.
+
+        Unlike ``execute_brace_group``, this needs no visitor: a subshell forks
+        a fresh ``Shell`` and runs its statements there, rather than re-entering
+        the current visitor.
 
         Args:
             node: The SubshellGroup AST node
             context: Current execution context
-            visitor: Visitor for executing child nodes
 
         Returns:
             Exit status code

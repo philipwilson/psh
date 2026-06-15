@@ -740,10 +740,6 @@ class LineEditor:
     # Undo/redo triggering (the stacks live in EditBuffer)
     # ------------------------------------------------------------------
 
-    def save_undo_state(self):
-        """Save current buffer state for undo."""
-        self.edit_buffer.save_undo_state()
-
     def undo(self):
         """Undo last change."""
         if self.edit_buffer.undo():
