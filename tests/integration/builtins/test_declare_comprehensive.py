@@ -360,6 +360,24 @@ class TestDeclareFunctionSupport:
         assert "greet" in output
         assert "echo Hello World" in output
 
+    def test_declare_f_function_with_c_style_for(self, shell, capsys):
+        """declare -f must not crash on a C-style for loop (R12.B regression:
+        ShellFormatter referenced CStyleForLoop.init/.condition/.update which
+        don't exist, raising AttributeError)."""
+        shell.run_command("cf() { for ((i=0;i<2;i++)); do echo $i; done; }")
+        result = shell.run_command("declare -f cf")
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "for ((i=0; i<2; i++))" in out
+
+    def test_declare_f_function_with_break_level(self, shell, capsys):
+        """declare -f must not crash on break/continue with a level (R12.B:
+        Break/Continue.levels -> .level)."""
+        shell.run_command("bf() { while true; do break 2; done; }")
+        result = shell.run_command("declare -f bf")
+        assert result == 0
+        assert "break 2" in capsys.readouterr().out
+
     def test_declare_F_function_names_only(self, shell, capsys):
         """Test declare -F lists function names only."""
         # Define functions

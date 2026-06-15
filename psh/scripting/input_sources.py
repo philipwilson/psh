@@ -7,7 +7,7 @@ This module provides different input sources for the shell:
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, TextIO
 
 
 class InputSource(ABC):
@@ -49,7 +49,7 @@ class FileInput(InputSource):
 
     def __init__(self, file_path: str):
         self.file_path = file_path
-        self.file = None
+        self.file: Optional[TextIO] = None
         self.line_number = 0
         self.processed_lines: List[str] = []
         self.current_line = 0
@@ -68,7 +68,9 @@ class FileInput(InputSource):
         if self.preprocessed:
             return
 
-        # Read entire file content
+        # Read entire file content (only reached inside the `with` block,
+        # so self.file has been opened by __enter__).
+        assert self.file is not None
         content = self.file.read()
 
         # Process line continuations

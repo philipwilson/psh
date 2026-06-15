@@ -150,14 +150,14 @@ class ShellFormatter:
 
         elif isinstance(node, CStyleForLoop):
             result = "for (("
-            if node.init:
-                result += node.init
+            if node.init_expr:
+                result += node.init_expr
             result += "; "
-            if node.condition:
-                result += node.condition
+            if node.condition_expr:
+                result += node.condition_expr
             result += "; "
-            if node.update:
-                result += node.update
+            if node.update_expr:
+                result += node.update_expr
             result += ")); do\n"
             result += ShellFormatter.format(node.body, indent_level + 1)
             result += f"\n{indent}done"
@@ -188,8 +188,8 @@ class ShellFormatter:
 
         elif isinstance(node, CaseConditional):
             result = f"case {node.expr} in\n"
-            for item in node.items:
-                result += ShellFormatter._format_case_item(item, indent_level + 1)
+            for case_item in node.items:
+                result += ShellFormatter._format_case_item(case_item, indent_level + 1)
             result += f"{indent}esac"
 
             # Add redirections if present
@@ -222,13 +222,13 @@ class ShellFormatter:
             return result
 
         elif isinstance(node, BreakStatement):
-            if node.levels and node.levels != 1:
-                return f"break {node.levels}"
+            if node.level and node.level != 1:
+                return f"break {node.level}"
             return "break"
 
         elif isinstance(node, ContinueStatement):
-            if node.levels and node.levels != 1:
-                return f"continue {node.levels}"
+            if node.level and node.level != 1:
+                return f"continue {node.level}"
             return "continue"
 
         elif isinstance(node, SubshellGroup):
