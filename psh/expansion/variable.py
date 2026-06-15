@@ -478,36 +478,23 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
     def _process_double_quote_escape(self, text: str, i: int) -> Tuple[str, int]:
         """Apply double-quote backslash-escape rules at ``text[i] == '\\'``.
 
-        Only a backslash before a shell-special character (``\\``, ``"``,
-        ``$``, `````) is processed; C escapes like ``\\n``/``\\t`` stay
-        literal (prompt-expansion compatibility). For ``\\$`` the backslash
-        is removed only when it actually shields a variable expansion;
-        otherwise it is kept (PS1 compatibility). For an unrecognized
-        following character the backslash itself is emitted verbatim.
+        In double-quoted contexts (here-strings/documents, redirect targets,
+        ``[[ ]]`` operands, ``${...}`` operands) only a backslash before a
+        shell-special character (``\\``, ``"``, ``$``, `````) is processed,
+        and there the backslash is always removed — ``\\$`` becomes a literal
+        ``$`` regardless of what follows (the following text is NOT re-scanned
+        as an expansion). This matches bash and the command-argument Word path
+        (``WordExpander.process_dquote_escapes``). C escapes like
+        ``\\n``/``\\t`` stay literal; an unrecognized following character keeps
+        its backslash verbatim. (``\\<newline>`` line continuation is handled
+        upstream by the lexer, so it is intentionally not processed here.)
 
         Returns ``(piece, new_i)`` — the text to append and the index to
         resume scanning from.
         """
         next_char = text[i + 1]
-        # Note: Standard C escape sequences like \n, \t are NOT processed in shell strings
-        # They remain as literal \n, \t for compatibility with prompt expansion
-        # Only backslash before special shell characters is processed
-        if next_char == '\\':
-            return '\\', i + 2
-        elif next_char in '"$`':
-            # In double quotes, these characters can be escaped
-            # But for $ and `, we need to check if they're actually escaping something
-            if next_char == '$':
-                # Check if this is escaping a variable expansion
-                if i + 2 < len(text) and (text[i + 2].isalnum() or text[i + 2] in '_${(@#*!?'):
-                    # This is escaping a variable expansion, remove the backslash
-                    return next_char, i + 2
-                else:
-                    # Not escaping a variable, keep the backslash (for PS1 compatibility)
-                    return text[i], i + 1
-            else:
-                # For " and `, always remove the backslash
-                return next_char, i + 2
+        if next_char in '\\"$`':
+            return next_char, i + 2
 
         # Unrecognized escape — emit the backslash verbatim.
         return text[i], i + 1
