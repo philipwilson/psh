@@ -16,22 +16,17 @@ from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ...recursive_descent.helpers import ParseError
 from ..core import Parser, ParseResult
-from ..diagnostics import error_context_for_token, raise_committed_error
+from ..diagnostics import (
+    error_context_for_token,
+    is_missing_nested_terminator,
+    raise_committed_error,
+)
 
 if TYPE_CHECKING:
     from ._protocols import ControlStructureProtocol
     _Base = ControlStructureProtocol
 else:
     _Base = object
-
-
-def _is_missing_nested_terminator(error: ParseError) -> bool:
-    message = error.message.lower()
-    return (
-        "expected 'fi' to close" in message
-        or "expected 'done' to close" in message
-        or "expected 'esac' to close" in message
-    )
 
 
 class StructureParserMixin(_Base):
@@ -142,7 +137,7 @@ class StructureParserMixin(_Base):
                 try:
                     stmt_result = self.commands.statement.parse(body_tokens, inner_pos)
                 except ParseError as error:
-                    if _is_missing_nested_terminator(error):
+                    if is_missing_nested_terminator(error):
                         raise_committed_error(tokens, len(tokens) - 1, error.message)
                     raise
                 if not stmt_result.success:

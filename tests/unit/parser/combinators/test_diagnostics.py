@@ -3,7 +3,11 @@
 import pytest
 
 from psh.lexer.token_types import Token, TokenType
-from psh.parser.combinators.diagnostics import raise_committed_error
+from psh.parser.combinators.diagnostics import (
+    error_context_for_token,
+    is_missing_nested_terminator,
+    raise_committed_error,
+)
 from psh.parser.recursive_descent.helpers import ParseError
 
 
@@ -46,3 +50,28 @@ def test_raise_committed_error_clamps_to_eof_token():
     assert exc_info.value.error_context.position == 4
     assert exc_info.value.error_context.column == 5
     assert exc_info.value.at_eof is True
+
+
+def _error_with_message(message: str) -> ParseError:
+    token = make_token(TokenType.WORD, "x", position=0, line=1, column=1)
+    return ParseError(error_context_for_token(token, message))
+
+
+@pytest.mark.parametrize("message", [
+    "Expected 'fi' to close if statement",
+    "Expected 'done' to close while loop",
+    "Expected 'esac' to close case statement",
+    "expected 'done' to close FOR LOOP",  # case-insensitive
+])
+def test_is_missing_nested_terminator_true(message):
+    assert is_missing_nested_terminator(_error_with_message(message)) is True
+
+
+@pytest.mark.parametrize("message", [
+    "Expected 'then' in if statement",
+    "Expected command after pipe",
+    "Expected 'do' in while loop",
+    "Unexpected token after valid input",
+])
+def test_is_missing_nested_terminator_false(message):
+    assert is_missing_nested_terminator(_error_with_message(message)) is False

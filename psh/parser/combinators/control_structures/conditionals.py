@@ -16,7 +16,7 @@ from ....lexer.keyword_defs import KeywordGuard, matches_keyword
 from ....lexer.token_types import Token, TokenType
 from ...recursive_descent.helpers import ParseError
 from ..core import Parser, ParseResult
-from ..diagnostics import raise_committed_error
+from ..diagnostics import is_missing_nested_terminator, raise_committed_error
 from ..utils import format_token_value
 
 if TYPE_CHECKING:
@@ -30,15 +30,6 @@ CASE_TERMINATOR_TOKENS = {
     TokenType.SEMICOLON_AMP: ';&',
     TokenType.AMP_SEMICOLON: ';;&',
 }
-
-
-def _is_missing_nested_terminator(error: ParseError) -> bool:
-    message = error.message.lower()
-    return (
-        "expected 'fi' to close" in message
-        or "expected 'done' to close" in message
-        or "expected 'esac' to close" in message
-    )
 
 
 def _parse_case_pattern_value(tokens, pos, pattern_types):
@@ -177,7 +168,7 @@ class ConditionalParserMixin(_Base):
             try:
                 body_result = self.commands.statement_list.parse(body_tokens, 0)
             except ParseError as error:
-                if current_pos < len(tokens) and _is_missing_nested_terminator(error):
+                if current_pos < len(tokens) and is_missing_nested_terminator(error):
                     raise_committed_error(tokens, current_pos, error.message)
                 raise
             if not body_result.success:
@@ -261,7 +252,7 @@ class ConditionalParserMixin(_Base):
                 try:
                     else_result = self.commands.statement_list.parse(else_tokens, 0)
                 except ParseError as error:
-                    if pos < len(tokens) and _is_missing_nested_terminator(error):
+                    if pos < len(tokens) and is_missing_nested_terminator(error):
                         raise_committed_error(tokens, pos, error.message)
                     raise
                 if not else_result.success:
@@ -434,7 +425,7 @@ class ConditionalParserMixin(_Base):
                     try:
                         commands_result = self.commands.statement_list.parse(command_tokens, 0)
                     except ParseError as error:
-                        if pos < len(tokens) and _is_missing_nested_terminator(error):
+                        if pos < len(tokens) and is_missing_nested_terminator(error):
                             raise_committed_error(tokens, pos, error.message)
                         raise
                     if not commands_result.success:

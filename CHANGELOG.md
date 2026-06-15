@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.423.0 (2026-06-15) - Consolidate combinator nested-terminator helper
+- PARSER (combinator backend, non-default; pure refactor, zero behavior
+  change). Folded the three duplicated `_is_missing_nested_terminator()`
+  copies (conditionals, loops, structures) into a single public
+  `is_missing_nested_terminator()` in
+  `psh/parser/combinators/diagnostics.py`, the shared home for the sibling
+  `raise_committed_error()`/`error_context_for_token()` helpers. All
+  compound-body parse boundaries now import the one definition.
+- Added focused unit tests in
+  `tests/unit/parser/combinators/test_diagnostics.py` pinning the helper's
+  positive (`fi`/`done`/`esac` "to close") and negative (`then`, `do`,
+  pipe, etc.) classifications, including case-insensitivity.
+- Gate: ruff + mypy clean (225 files), full suite 8,012 collected / all
+  phases green.
+
 ## 0.422.0 (2026-06-15) - Align combinator nested-terminator diagnostics
 - PARSER (combinator backend, non-default; diagnostics only — accept/reject
   behavior unchanged). For crossed nested terminators (e.g.
