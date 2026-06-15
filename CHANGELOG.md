@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.420.0 (2026-06-15) - Normalize combinator diagnostic positions to source coordinates
+- PARSER (combinator backend, non-default). Combinator `ParseError` sites now
+  report source-character position, line, and column (from token metadata)
+  instead of token-stream indexes, matching the recursive-descent parser.
+- Added `error_context_for_token()` to `psh/parser/combinators/diagnostics.py`
+  to build `ErrorContext` from a token's source coordinates; routed committed
+  diagnostics, top-level combinator parser errors, and the remaining custom
+  combinator `ParseError` sites (simple-command redirect, subshell/brace empty
+  body) through it.
+- Strengthened the recursive-descent vs combinator diagnostic-parity gate to
+  assert position, line, and column in addition to exception type, EOF signal,
+  and offending-token identity. Message text remains the only intentionally
+  unaligned dimension (tracked as follow-up).
+- Zero behavior change for the default recursive-descent parser. Gate: ruff +
+  mypy clean (225 files), full suite 7,952 collected / all phases green.
+
 ## 0.419.0 (2026-06-15) - Centralize combinator committed-error diagnostics
 - PARSER (combinator backend, non-default; zero behavior change). Consolidated
   the six duplicated `_raise_committed_error()` helpers (arrays, commands,

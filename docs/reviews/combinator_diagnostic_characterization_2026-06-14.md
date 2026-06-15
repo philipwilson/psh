@@ -8,7 +8,7 @@ starter rejection corpus in `tests/parser_differential`.
 - `test_combinator_error_parity.py`: both parsers reject the same invalid
   inputs.
 - `test_combinator_diagnostic_parity.py`: a stable low-risk subset also matches
-  exception type, EOF signal, and offending token identity.
+  exception type, EOF signal, offending token identity, and source position.
 
 ## Aligned Diagnostic Subset
 
@@ -28,21 +28,20 @@ The combinator parser now reports the same broad diagnostic shape for:
 - Missing command around binary command operators: `echo |`, `echo |&`,
   `echo &&`, `echo ||`, `&& echo`, `|| echo`
 
-The diagnostic-parity test intentionally does not compare message text or
-position formatting yet.  Recursive descent generally reports source-character
-positions; the combinator parser often reports token-stream positions.
+The diagnostic-parity test intentionally does not compare message text yet.
+Both parsers now report source-character position, line, and column for this
+stable subset.
 
 ## Remaining Diagnostic Drift
 
 No diagnostic-summary drift remains in the starter rejection corpus.  The
-stable gate now matches recursive descent on exception type, EOF signal, and
-offending token identity for every representative case in
+stable gate now matches recursive descent on exception type, EOF signal,
+offending token identity, and source position for every representative case in
 `test_combinator_error_parity.py`.
 
 ## Recommended Next Tightening
 
-1. Normalize diagnostic position semantics before asserting positions.  Decide
-   whether combinator errors should report source-character positions like
-   recursive descent, or whether tests should compare token identity only.
-2. Consider consolidating local committed-error helpers into a shared
-   parser-combinator diagnostic primitive.
+1. Continue broadening the diagnostic corpus with nested compound structures,
+   separator edge cases, and redirections after compound commands.
+2. Consider comparing selected message text once position and token identity
+   have stayed stable across a larger corpus.
