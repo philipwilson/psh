@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.428.0 (2026-06-15) - Tier R9.B3: complete the visitor Word-layer migration
+- ARCHITECTURE. Finished routing the analysis visitors through the structured
+  Word model (`word_analysis.py`) instead of regexing rendered argument
+  strings — the subsystem's stated thesis, previously ~80% true.
+- `metrics_visitor.py`: the `SimpleCommand`, `ForLoop`, and `SelectLoop` call
+  sites now use a new `_analyze_word_features(word)` that reads the Word parts:
+  each `CommandSubstitution` part counts once (so backtick subs no longer
+  double-count and `$((...))` is correctly NOT counted as a command sub), and
+  variable names come from `iter_variable_references`. `_analyze_string_features`
+  is retained only for `CaseConditional.expr` (a plain string in the AST).
+  `_count_commands_in_node` now reuses `traversal.iter_child_nodes` instead of a
+  hand-rolled `__dict__` walk.
+- `linter_visitor.py`: `_check_test_command`/`_check_file_command` take Words and
+  detect unquoted variables via `has_unquoted_variable_expansion(word)` rather
+  than `arg.startswith('$')` — more accurate (an embedded `pre$f` is now caught;
+  quoted `"$f"` correctly is not). Behavior for recognized test operators is
+  unchanged.
+- These counts/warnings are not pinned by any prior test; the new behavior is
+  strictly more accurate. Added `tests/unit/visitor/test_word_layer_migration.py`
+  (8 tests) pinning it.
+- Gate: ruff + mypy clean, full suite 8,029 collected / all phases green.
+
 ## 0.427.0 (2026-06-15) - Tier R9.B4: check_untyped_defs for expansion + executor
 - TYPES (zero behavior change). Enabled `check_untyped_defs = true` for
   `psh.expansion.*` and `psh.executor.*` (joining `psh.core.*`), so mypy now

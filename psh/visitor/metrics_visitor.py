@@ -16,9 +16,11 @@ from ..ast_nodes import (
     ASTNode,
     BreakStatement,
     CaseConditional,
+    CommandSubstitution,
     ContinueStatement,
     CStyleForLoop,
     EnhancedTestStatement,
+    ExpansionPart,
     ForLoop,
     FunctionDef,
     IfConditional,
@@ -31,11 +33,13 @@ from ..ast_nodes import (
     TopLevel,
     UntilLoop,
     WhileLoop,
+    Word,
 )
 from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
 from .constants import SHELL_BUILTINS
-from .traversal import visit_children
+from .traversal import iter_child_nodes, visit_children
+from .word_analysis import iter_variable_references
 
 
 class CodeMetrics:
@@ -239,9 +243,10 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                 var_name = arg.split('=', 1)[0]
                 self.metrics.variable_names.add(var_name)
 
-        # Look for variable expansions and command substitutions
-        for arg in node.args:
-            self._analyze_string_features(arg)
+        # Look for variable expansions and command substitutions, read
+        # structurally from the Word parts (not by regexing rendered args).
+        for word in node.words:
+            self._analyze_word_features(word)
 
     def visit_FunctionDef(self, node: FunctionDef) -> None:
         """Visit function definition."""
@@ -352,15 +357,14 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
             self.current_nesting_depth
         )
 
-        # Analyze items for features
-        for item in node.items:
-            # Items might contain variables without $
+        # Analyze items for features. A bare literal item (no expansions) that
+        # looks like a name is recorded as a potential variable; otherwise the
+        # item's Word parts are inspected structurally.
+        for item, word in zip(node.items, node.item_words):
             if self._is_valid_varname(item):
-                # This could be a variable name
                 self.metrics.variable_names.add(item)
             else:
-                # Or it might contain $ variables
-                self._analyze_string_features(item)
+                self._analyze_word_features(word)
 
         self.visit(node.body)
 
@@ -407,9 +411,9 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
             self.current_nesting_depth
         )
 
-        # Analyze items
-        for item in node.items:
-            self._analyze_string_features(item)
+        # Analyze items structurally from their Word parts
+        for word in node.item_words:
+            self._analyze_word_features(word)
 
         self.visit(node.body)
 
@@ -483,8 +487,30 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
             return False
         return var_name[0].isalpha() or var_name[0] == '_'
 
+    def _analyze_word_features(self, word: Word) -> None:
+        """Count command substitutions and collect variable names from a Word.
+
+        Reads the Word's parts directly (the authoritative model) instead of
+        regexing the rendered text: each ``CommandSubstitution`` part counts
+        once (``$(...)`` and backticks alike — no double-counting, and
+        ``$((...))`` arithmetic is correctly NOT counted as a command sub), and
+        every structurally-discovered variable reference with a valid name is
+        recorded.
+        """
+        for part in word.parts:
+            if isinstance(part, ExpansionPart) and isinstance(part.expansion, CommandSubstitution):
+                self.metrics.command_substitutions += 1
+        for ref in iter_variable_references(word):
+            if self._is_valid_varname(ref.name):
+                self.metrics.variable_names.add(ref.name)
+
     def _analyze_string_features(self, text: str) -> None:
-        """Analyze string for command substitutions and variables."""
+        """Analyze a raw string for command substitutions and variables.
+
+        Retained only for ``CaseConditional.expr``, which the AST stores as a
+        plain string (no Word). Word-bearing call sites use
+        :meth:`_analyze_word_features` instead.
+        """
         # Simple heuristic - count $(...) and `...`
         self.metrics.command_substitutions += text.count('$(')
         self.metrics.command_substitutions += text.count('`')
@@ -513,33 +539,19 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                 self.metrics.variable_names.add(var)
 
     def _count_commands_in_node(self, node: ASTNode) -> int:
-        """Count total commands in a node subtree."""
+        """Count total commands (SimpleCommand leaves) in a node subtree."""
         # Avoid infinite recursion with visited set
-        visited = set()
+        visited: set = set()
 
-        def count_recursive(n):
+        def count_recursive(n: ASTNode) -> int:
             if id(n) in visited:
                 return 0
             visited.add(id(n))
-
             if isinstance(n, SimpleCommand):
                 return 1
-
-            count = 0
-            if hasattr(n, '__dict__'):
-                for attr_name, value in n.__dict__.items():
-                    # Skip private attributes and known non-node attributes
-                    if attr_name.startswith('_') or attr_name == 'background':
-                        continue
-
-                    if isinstance(value, list):
-                        for item in value:
-                            if isinstance(item, ASTNode):
-                                count += count_recursive(item)
-                    elif isinstance(value, ASTNode):
-                        count += count_recursive(value)
-
-            return count
+            # Reuse the canonical dataclass-field child walk rather than a
+            # hand-rolled __dict__ inspection.
+            return sum(count_recursive(child) for child in iter_child_nodes(n))
 
         return count_recursive(node)
 
