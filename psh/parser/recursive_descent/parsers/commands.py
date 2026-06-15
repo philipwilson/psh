@@ -4,7 +4,7 @@ Command parsing for PSH shell.
 This module handles parsing of commands, pipelines, and command arguments.
 """
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ....ast_nodes import (
     AndOrList,
@@ -279,44 +279,12 @@ class CommandParser:
 
         self.parser.advance()  # consume LPAREN
 
-        elements: list = []        # flat-string fragments (token-faithful)
-        element_words: list = []   # structured element Words
-        element_start_pos = self.parser.current
+        # Shared element-collection loop (also used by the bare ``a=(...)``
+        # statement path in arrays.py); element_strings are token-faithful so
+        # the argument keeps verbatim source quoting in its flat Word text.
+        element_words, element_strings = self.parse_array_init_elements()
 
-        while not self.parser.match(TokenType.RPAREN) and not self.parser.at_end():
-            if self.parser.match(TokenType.NEWLINE):
-                # Newlines between elements are allowed (as in bash).
-                self.parser.advance()
-                element_start_pos = self.parser.current
-            elif self.parser.match_any(TokenGroups.WORD_LIKE):
-                word = self.parse_argument_as_word()  # consume element
-                element_words.append(word)
-
-                # Serialize the element from the tokens just consumed
-                element_end_pos = self.parser.current
-                original_tokens = self.parser.tokens[element_start_pos:element_end_pos]
-
-                original_repr_parts = []
-                for token in original_tokens:
-                    if token.type == TokenType.STRING and token.quote_type:
-                        original_repr_parts.append(token.quote_type + token.value + token.quote_type)
-                    elif token.type == TokenType.VARIABLE:
-                        # VARIABLE token values carry the name without the
-                        # leading '$' ('x' or '{x}') — restore it so the
-                        # consuming builtin can expand the element.
-                        original_repr_parts.append('$' + token.value)
-                    else:
-                        original_repr_parts.append(token.value)
-
-                elements.append(''.join(original_repr_parts))
-                element_start_pos = self.parser.current
-            else:
-                raise self.parser.error("Expected array element")
-
-        if not self.parser.consume_if(TokenType.RPAREN):
-            raise self.parser.error("Expected ')' to close array initialization")
-
-        flat_string = name + ('+=' if is_append else '=') + '(' + ' '.join(elements) + ')'
+        flat_string = name + ('+=' if is_append else '=') + '(' + ' '.join(element_strings) + ')'
         array_init = ArrayInitialization(
             name=name,
             elements=[w.display_text() for w in element_words],
@@ -324,6 +292,54 @@ class CommandParser:
             words=element_words,
         )
         return flat_string, array_init
+
+    def parse_array_init_elements(self) -> Tuple[List['Word'], List[str]]:
+        """Parse an array initializer body up to and including the closing ``)``.
+
+        The opening ``(`` must already be consumed. Returns
+        ``(element_words, element_strings)``: the structured per-element Words
+        (full per-part quote context) and a token-faithful source string for
+        each element (so a caller can rebuild the verbatim ``(...)`` text).
+        Newlines between elements are allowed, as in bash. Shared by the
+        argument-position (`declare a=(...)`) and statement-position
+        (`a=(...)`) array-init parsers.
+        """
+        element_words: List['Word'] = []
+        element_strings: List[str] = []
+        element_start_pos = self.parser.current
+
+        while not self.parser.match(TokenType.RPAREN) and not self.parser.at_end():
+            if self.parser.match(TokenType.NEWLINE):
+                self.parser.advance()
+                element_start_pos = self.parser.current
+            elif self.parser.match_any(TokenGroups.WORD_LIKE):
+                word = self.parse_argument_as_word()  # consume element
+                element_words.append(word)
+                element_strings.append(
+                    self._serialize_array_element(element_start_pos, self.parser.current))
+                element_start_pos = self.parser.current
+            else:
+                raise self.parser.error("Expected array element")
+
+        if not self.parser.consume_if(TokenType.RPAREN):
+            raise self.parser.error("Expected ')' to close array initialization")
+
+        return element_words, element_strings
+
+    def _serialize_array_element(self, start_pos: int, end_pos: int) -> str:
+        """Token-faithful source rendering of one array element's tokens."""
+        parts = []
+        for token in self.parser.tokens[start_pos:end_pos]:
+            if token.type == TokenType.STRING and token.quote_type:
+                parts.append(token.quote_type + token.value + token.quote_type)
+            elif token.type == TokenType.VARIABLE:
+                # VARIABLE token values carry the name without the leading '$'
+                # ('x' or '{x}') — restore it so the consuming builtin can
+                # expand the element.
+                parts.append('$' + token.value)
+            else:
+                parts.append(token.value)
+        return ''.join(parts)
 
     def parse_pipeline(self) -> Pipeline:
         """Parse a pipeline (commands connected by | or |&)."""
