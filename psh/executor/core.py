@@ -341,8 +341,18 @@ class ExecutorVisitor(ASTVisitor[int]):
 
     def visit_EnhancedTestStatement(self, node: EnhancedTestStatement) -> int:
         """Execute enhanced test: [[ expression ]]"""
-        # Delegate to shell's existing implementation
-        return self.shell.execute_enhanced_test_statement(node)
+        from .enhanced_test_evaluator import TestExpressionEvaluator
+
+        # with_redirections also owns any process substitutions used as
+        # redirect targets (cleaned up when the statement finishes).
+        with self.io_manager.with_redirections(node.redirects):
+            try:
+                evaluator = TestExpressionEvaluator(self.shell)
+                result = evaluator.evaluate(node.expression)
+                return 0 if result else 1
+            except (ValueError, TypeError, OSError) as e:
+                print(f"psh: [[: {e}", file=sys.stderr)
+                return 2  # Syntax error
 
     # Array operations
 

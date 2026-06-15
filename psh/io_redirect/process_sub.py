@@ -58,11 +58,7 @@ def create_process_substitution(
             os.close(child_fd)
 
         def _body(child_shell: 'Shell') -> int:
-            from ..lexer import tokenize
-            from ..parser import parse
-            tokens = tokenize(cmd_str)
-            ast = parse(tokens)
-            return child_shell.execute_command_list(ast)
+            return _execute_process_substitution_body(cmd_str, child_shell)
 
         run_child_shell(
             shell, _body,

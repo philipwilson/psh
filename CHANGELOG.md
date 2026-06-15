@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.437.0 (2026-06-15) - Tier R9.D6: executor seam fixes (drop [[ ]] backchannel, dedup procsub body)
+- REFACTOR (no behavior change). Two executor/IO seams tidied:
+  - `[[ ]]` no longer bounces through the shell. `ExecutorVisitor.visit_EnhancedTestStatement`
+    now owns the evaluation directly (constructs the in-package
+    `TestExpressionEvaluator`, applies redirections via its own `io_manager`).
+    The `Shell.execute_enhanced_test_statement` method — which existed only to
+    serve the executor — is removed, eliminating the executor→shell→evaluator
+    backchannel (the executor already holds everything it needs).
+  - Process substitution: the read-side `<(cmd)` child body inlined the same
+    tokenize/parse/execute that the write-side already routed through the shared
+    `_execute_process_substitution_body` helper. Both sides now call the helper.
+- Full suite + ruff + mypy green. Completes Tier R9.D (and the reappraisal-#8
+  R9 roadmap: A/B/C/D all shipped).
+
 ## 0.436.0 (2026-06-15) - Tier R9.D4: split the two ~900-line expansion files
 - REFACTOR (no behavior change). Decomposed the two largest expansion modules
   along their natural seams:
