@@ -278,28 +278,17 @@ class ArrayParser:
         return value, word
 
     def _parse_array_initialization(self, name: str, is_append: bool = False) -> ArrayInitialization:
-        """Parse array initialization: name=(elements)"""
+        """Parse array initialization: name=(elements)
+
+        Uses the shared element-collection loop on the command parser (the same
+        one the argument-position ``declare a=(...)`` path uses); the
+        token-faithful element strings it also returns aren't needed here.
+        """
         self.parser.expect(TokenType.LPAREN)
-
-        elements = []
-        words = []
-
-        # Parse array elements (newlines between elements are allowed, as in bash)
-        while not self.parser.match(TokenType.RPAREN) and not self.parser.at_end():
-            if self.parser.match(TokenType.NEWLINE):
-                self.parser.advance()
-            elif self.parser.match_any(TokenGroups.WORD_LIKE):
-                word = self.parser.commands.parse_argument_as_word()
-                elements.append(word.display_text())
-                words.append(word)
-            else:
-                break
-
-        self.parser.expect(TokenType.RPAREN)
-
+        words, _ = self.parser.commands.parse_array_init_elements()
         return ArrayInitialization(
             name=name,
-            elements=elements,
+            elements=[w.display_text() for w in words],
             is_append=is_append,
             words=words
         )

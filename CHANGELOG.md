@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.429.0 (2026-06-15) - Tier R9.B5: de-duplicate the array-init element loop
+- REFACTOR (zero behavior change). The recursive-descent parser had two copies
+  of the `name=(...)` element-collection loop — one for statement position
+  (`arrays.py`) and one for argument position (`commands.py`, e.g.
+  `declare a=(...)`). Extracted the shared loop into
+  `CommandParser.parse_array_init_elements()` (plus `_serialize_array_element()`
+  for the token-faithful flat-string fragments); both call sites now use it.
+- Both paths already built an identical `ArrayInitialization`
+  (`elements=[w.display_text() ...]`, `words=<element words>`); the only
+  remaining difference (the argument path also rebuilds a token-faithful flat
+  string for the argument's literal Word text) is preserved.
+- Verified by bash-parity probes across statement/argument position, quoted
+  elements, empty arrays, `+=` append, and `$`-expansions. Completes Tier R9.B.
+- Gate: ruff + mypy clean, full suite 8,029 collected / all phases green.
+
 ## 0.428.0 (2026-06-15) - Tier R9.B3: complete the visitor Word-layer migration
 - ARCHITECTURE. Finished routing the analysis visitors through the structured
   Word model (`word_analysis.py`) instead of regexing rendered argument
