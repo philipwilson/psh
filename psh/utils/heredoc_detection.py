@@ -81,16 +81,46 @@ def _inside_closed_cmdsub(line: str, position: int) -> bool:
     return False
 
 
+def _inside_param_expansion(line: str, position: int) -> bool:
+    """True if *position* is inside a ``${…}`` parameter expansion (where a
+    ``<<`` is an arithmetic left-shift in a subscript, e.g. ``${arr[1<<1]}``,
+    not a heredoc). Tracks brace nesting (``${a${b}}``). An unclosed ``${``
+    returns False so the line gatherer keeps reading, mirroring the cmdsub case.
+    """
+    i, n = 0, len(line)
+    while i < n and i <= position:
+        if line.startswith('${', i):
+            depth, j = 0, i + 1
+            while j < n:
+                if line[j] == '{':
+                    depth += 1
+                elif line[j] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            if j < n:  # found the matching close brace
+                if i <= position <= j:
+                    return True
+                i = j + 1
+                continue
+            return False  # unclosed ${ — let the gatherer keep reading
+        i += 1
+    return False
+
+
 def is_inside_expansion(line: str, position: int) -> bool:
     """True if *position* on *line* is inside an expansion where ``<<`` is not
     a heredoc: ``$((…))`` / bare ``((…))`` arithmetic, ``$(…)`` command
-    substitution, or ``` `…` ``` backticks.
+    substitution, ``${…}`` parameter expansion, or ``` `…` ``` backticks.
     """
     if _scan_arith_or_cmdsub(line, position, '$((', 2):
         return True
     if _inside_closed_cmdsub(line, position):
         return True
     if _scan_arith_or_cmdsub(line, position, '((', 2):
+        return True
+    if _inside_param_expansion(line, position):
         return True
 
     # Backtick command substitution

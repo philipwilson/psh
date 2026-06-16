@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.480.0 (2026-06-16) - Tier R14.B (expansion): set -u operators + ${arr[i<<j]} heredoc misdetect
+- BUGFIX (behavior). `set -u` (nounset) is now enforced for VALUE-substituting parameter
+  operators on an unset variable, matching bash: `${#x}`, `${x#p}`, `${x%p}`, `${x/a/b}`,
+  `${x^^}`, `${x,,}`, `${x:0:1}`, `${x@Q}`, etc. all raise "unbound variable" (exit 127)
+  when `x` is unset. The set-testing operators (`${x-d}`, `${x:-d}`, `${x=d}`, `${x:=d}`,
+  `${x+d}`, `${x:+d}`) remain exempt, a set-but-empty variable is fine, and an unset ARRAY
+  ELEMENT (`${#arr[5]}`) stays exempt (bash's deliberate exception). Previously nounset was
+  only checked on the plain `${x}` form, so every operator form silently treated unset as
+  empty — this also backs the user-guide "set -u | Full support" claim with a proving test.
+- BUGFIX (behavior). `${arr[i<<j]}` (a left-shift in an arithmetic array subscript) was
+  misdetected as a heredoc operator by the line gatherer, silently swallowing the rest of
+  the input. `is_inside_expansion` now recognizes `${...}` parameter expansions (with brace
+  nesting), so `<<`/`>>` inside a subscript are arithmetic, not heredocs.
+- Found by reappraisal #12. Tier R14.B (correctness cluster), batch 4. +13 tests.
+
 ## 0.479.0 (2026-06-16) - Tier R14.B (core): declare -i error propagation + declare -p assoc re-parseable
 - BUGFIX (behavior). An `-i` (integer) assignment with a malformed RHS or division by zero
   now FAILS with the arithmetic-error message and status 1, instead of silently storing 0.
