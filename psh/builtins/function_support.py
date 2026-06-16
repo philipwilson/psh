@@ -360,16 +360,30 @@ class DeclareBuiltin(Builtin):
             return 1
 
         if options['array']:
-            # Check for array type conflict first
-            existing = self._get_variable_with_attributes(shell, arg)
+            # Check for array type conflict first. Use the scope declare writes
+            # to, so a local `declare -a` in a function doesn't convert an
+            # outer-scope scalar.
+            existing = self._existing_in_target_scope(shell, arg, options['global'])
             if existing and existing.is_assoc_array:
                 self.error(f"{arg}: cannot convert associative to indexed array", shell)
                 return 1
-            # Create empty indexed array
-            self._set_variable_with_attributes(shell, arg, IndexedArray(), attributes, options['global'])
+            if existing and existing.is_indexed_array:
+                # Re-declaring an existing indexed array keeps its elements (bash).
+                value: Any = existing.value
+            elif (existing is not None
+                  and not self._declare_target_is_local(shell, options['global'])):
+                # Converting a GLOBAL scalar to an indexed array preserves the
+                # old value at index 0 (bash: `x=foo; declare -a x` ->
+                # ([0]="foo")). A LOCAL scalar is NOT preserved — bash empties
+                # it (`f(){ local x=hi; declare -a x; }` -> ()).
+                value = IndexedArray()
+                value.set(0, existing.as_string())
+            else:
+                value = IndexedArray()
+            self._set_variable_with_attributes(shell, arg, value, attributes, options['global'])
         elif options['assoc_array']:
-            # Check for array type conflict first
-            existing = self._get_variable_with_attributes(shell, arg)
+            # Check for array type conflict first (scope declare writes to).
+            existing = self._existing_in_target_scope(shell, arg, options['global'])
             if existing and existing.is_indexed_array:
                 # Bash behavior: print error but continue, convert to associative array
                 self.error(f"{arg}: cannot convert indexed to associative array", shell)
@@ -382,6 +396,17 @@ class DeclareBuiltin(Builtin):
                 # Completely replace the variable with new associative array
                 # Remove old attributes and set only the new ones
                 shell.state.scope_manager.unset_variable(arg)
+                self._set_variable_with_attributes(shell, arg, new_assoc, attributes, options['global'])
+            elif existing and existing.is_assoc_array:
+                # Re-declaring an existing associative array keeps its keys (bash).
+                self._set_variable_with_attributes(shell, arg, existing.value, attributes, options['global'])
+            elif (existing is not None
+                  and not self._declare_target_is_local(shell, options['global'])):
+                # Converting a GLOBAL scalar to an associative array preserves
+                # the old value at key "0" (bash). A LOCAL scalar is not
+                # preserved (bash empties it).
+                new_assoc = AssociativeArray()
+                new_assoc.set("0", existing.as_string())
                 self._set_variable_with_attributes(shell, arg, new_assoc, attributes, options['global'])
             else:
                 # Create empty associative array
@@ -508,6 +533,24 @@ class DeclareBuiltin(Builtin):
     def _get_variable_with_attributes(self, shell: 'Shell', name: str) -> Optional[Variable]:
         """Get variable with its attributes."""
         return shell.state.scope_manager.get_variable_object(name)
+
+    def _declare_target_is_local(self, shell: 'Shell', global_flag: bool) -> bool:
+        """True if a bare `declare` here writes a function-local variable."""
+        return bool(shell.state.function_stack) and not global_flag
+
+    def _existing_in_target_scope(self, shell: 'Shell', name: str,
+                                  global_flag: bool) -> Optional[Variable]:
+        """The variable `declare` would modify, looked up in the scope it
+        writes to. A bare `declare -a/-A` inside a function creates a LOCAL
+        variable, so it must NOT pull in / convert an outer-scope scalar
+        (bash); at global scope (or with -g) it sees the global. Tombstones
+        (declared-unset) count as absent.
+        """
+        sm = shell.state.scope_manager
+        if self._declare_target_is_local(shell, global_flag):
+            var = sm.current_scope.variables.get(name)
+            return var if (var is not None and not var.is_unset) else None
+        return sm.get_variable_object(name)
 
     def _get_all_variables_with_attributes(self, shell: 'Shell') -> List[Variable]:
         """Get all variables with their attributes."""
