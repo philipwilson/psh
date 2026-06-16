@@ -236,24 +236,25 @@ def test_echo_E_flag(shell, capsys):
 
 
 def test_echo_double_dash(shell, capsys):
-    """Test -- stops flag parsing."""
-    # -- stops flag parsing
+    """`echo` has NO `--` option terminator (bash): `--` is a literal word."""
+    # `--` prints literally; echo simply stops flag-scanning at the first
+    # non-flag, so -n that follows is also printed as text.
     result = shell.run_command("echo -- -n hello")
     assert result == 0
     captured = capsys.readouterr()
-    assert captured.out == "-n hello\n"
+    assert captured.out == "-- -n hello\n"
 
-    # Flags before -- are processed
+    # Flags before the first non-flag are processed; `--` then prints literally.
     result = shell.run_command("echo -n -- hello")
     assert result == 0
     captured = capsys.readouterr()
-    assert captured.out == "hello"
+    assert captured.out == "-- hello"
 
-    # -e with --
+    # -e processed, then `--` is literal text.
     result = shell.run_command("echo -e -- 'hello\\nworld'")
     assert result == 0
     captured = capsys.readouterr()
-    assert captured.out == "hello\nworld\n"
+    assert captured.out == "-- hello\nworld\n"
 
 
 def test_echo_invalid_flags(shell, capsys):

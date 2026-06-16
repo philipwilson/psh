@@ -83,8 +83,14 @@ class TypeBuiltin(Builtin):
                     # Path only mode doesn't show functions
                     pass
                 else:
+                    # Print the body too (bash; same as `command -V`).
+                    from ..utils.shell_formatter import ShellFormatter
+                    func = shell.function_manager.get_function(name)
                     self.write_line(f"{name} is a function", shell)
-                    # TODO: Could show function definition here
+                    if func is not None:
+                        self.write_line(
+                            f"{name} () " + ShellFormatter.format_function_body(func),
+                            shell)
                 found = True
                 if not show_all:
                     continue
