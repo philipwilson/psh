@@ -446,8 +446,11 @@ class OperatorOpsMixin(_Base):
         """Apply a ${x/pat/repl} family operator to one value."""
         raw_pattern, raw_replacement = self._split_pattern_replacement(operand)
         pattern = self._expand_pattern_operand(raw_pattern)
-        if not pattern:
-            # ${x//} and ${x///y}: an empty pattern replaces nothing (bash).
+        if not pattern and operator in ('/', '//'):
+            # ${x/} and ${x//y}: an unanchored empty pattern replaces nothing
+            # (bash). The anchored forms /# and /% with an empty pattern DO
+            # match the empty string at the start/end, so they fall through to
+            # substitute_prefix/substitute_suffix and prepend/append.
             return value
         replacement = self._expand_replacement_operand(raw_replacement)
         fn = {'/': self.param_expansion.substitute_first,
