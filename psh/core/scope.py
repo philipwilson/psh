@@ -506,10 +506,14 @@ class ScopeManager:
             else:
                 str_value = "0"
 
-        if attributes & VarAttributes.UPPERCASE:
-            return str_value.upper()
-        if attributes & VarAttributes.LOWERCASE:
-            return str_value.lower()
+        # -u and -l are mutually exclusive; if both bits are somehow set,
+        # bash applies NEITHER (declare -ul leaves the value unfolded).
+        both_case = VarAttributes.UPPERCASE | VarAttributes.LOWERCASE
+        if (attributes & both_case) != both_case:
+            if attributes & VarAttributes.UPPERCASE:
+                return str_value.upper()
+            if attributes & VarAttributes.LOWERCASE:
+                return str_value.lower()
 
         return str_value
 
@@ -697,6 +701,20 @@ class ScopeManager:
         # Update environment
         env.update(exported_vars)
 
+    def _find_variable_for_mutation(self, name: str) -> Optional[Variable]:
+        """Find a Variable for in-place ATTRIBUTE mutation, including
+        declared-but-unset tombstones.
+
+        Unlike get_variable_object (which hides UNSET variables), attribute
+        changes must reach declared-but-unset names: ``declare -u y;
+        declare -l y`` must let the second declaration flip y's case
+        attribute even though y still reads as unset.
+        """
+        for scope in reversed(self.scope_stack):
+            if name in scope.variables:
+                return scope.variables[name]
+        return None
+
     def apply_attribute(self, name: str, attributes: VarAttributes):
         """Apply additional attributes to an existing variable.
 
@@ -705,7 +723,7 @@ class ScopeManager:
         ``readonly R=1; export R`` and ``readonly R=1; declare -i R``
         both succeed; only a value assignment fails).
         """
-        var = self.get_variable_object(name)
+        var = self._find_variable_for_mutation(name)
         if var:
             # Handle mutually exclusive attributes
             new_attributes = var.attributes
@@ -726,7 +744,7 @@ class ScopeManager:
 
     def remove_attribute(self, name: str, attributes: VarAttributes):
         """Remove attributes from an existing variable."""
-        var = self.get_variable_object(name)
+        var = self._find_variable_for_mutation(name)
         if var:
             # Cannot remove readonly attribute
             if attributes & VarAttributes.READONLY and var.is_readonly:

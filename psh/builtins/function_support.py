@@ -78,8 +78,6 @@ class DeclareBuiltin(Builtin):
         options: dict[str, Any] = {key: False for key in self._FLAG_OPTIONS.values()}
         options.update({f'remove_{self._FLAG_OPTIONS[c]}': False
                         for c in self._REMOVABLE_FLAGS})
-        # Track last case attribute for "last wins" behavior (-l vs -u)
-        options['last_case_attr'] = None
         positional = []
 
         i = 0
@@ -96,8 +94,6 @@ class DeclareBuiltin(Builtin):
                         self.error(f"invalid option: -{flag}", shell)
                         return None, []
                     options[key] = True
-                    if flag in 'lu':
-                        options['last_case_attr'] = key
             elif arg.startswith('+') and len(arg) > 1:
                 # Attribute-removal flags (clusterable: +ix)
                 for flag in arg[1:]:
@@ -171,27 +167,32 @@ class DeclareBuiltin(Builtin):
     }
 
     def _attributes_from_options(self, options: dict) -> VarAttributes:
-        """Attributes the -flags select, with -l/-u "last wins" (bash)."""
+        """Attributes the -flags select.
+
+        -l and -u are mutually exclusive; when BOTH appear in a single
+        declaration bash applies NEITHER (``declare -ul y; y=HeLLo`` leaves
+        $y unfolded). Set no case bit here — _removed_attributes_from_options
+        also clears any pre-existing case attribute so the cancellation
+        applies even when the name was already -u/-l.
+        """
         attributes = VarAttributes.NONE
         for key, attr in self._OPTION_ATTRIBUTES.items():
             if options[key]:
                 attributes |= attr
         if options['lowercase'] and options['uppercase']:
-            # Mutually exclusive: keep only the last one seen
             attributes &= ~(VarAttributes.LOWERCASE | VarAttributes.UPPERCASE)
-            last = options['last_case_attr']
-            if last == 'lowercase':
-                attributes |= VarAttributes.LOWERCASE
-            elif last == 'uppercase':
-                attributes |= VarAttributes.UPPERCASE
         return attributes
 
     def _removed_attributes_from_options(self, options: dict) -> VarAttributes:
-        """Attributes the +flags remove."""
+        """Attributes the +flags remove (plus the -u/-l mutual cancellation)."""
         removed = VarAttributes.NONE
         for key, attr in self._OPTION_ATTRIBUTES.items():
             if options.get(f'remove_{key}', False):
                 removed |= attr
+        if options['lowercase'] and options['uppercase']:
+            # Both case flags in one declaration cancel — and clear any
+            # case attribute the name already carried (bash).
+            removed |= VarAttributes.LOWERCASE | VarAttributes.UPPERCASE
         return removed
 
     def _declare_variables(self, options: dict, args: List[str], shell: 'Shell', _original_args=None) -> int:
@@ -388,8 +389,13 @@ class DeclareBuiltin(Builtin):
         else:
             # Apply attributes to existing variable or create new one
             # (attribute changes fire the scope manager's observer,
-            # which keeps state.env in sync — no manual export sync)
+            # which keeps state.env in sync — no manual export sync).
+            # A declared-but-unset name (``declare -u y``) reads as unset
+            # but must still accept later attribute changes (``declare -l
+            # y`` flips its case), so route those through the mutators too.
             existing = self._get_variable_with_attributes(shell, arg)
+            if existing is None:
+                existing = shell.state.scope_manager.get_declared_variable_object(arg)
             if existing:
                 if remove_attrs:
                     shell.state.scope_manager.remove_attribute(arg, remove_attrs)

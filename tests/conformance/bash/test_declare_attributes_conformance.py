@@ -117,3 +117,38 @@ class TestDeclareFunctionNames(ConformanceTest):
     def test_declare_f_missing_name_silent_exit_1(self):
         self.assert_identical_behavior(
             'f() { :; }; declare -f nonexist; echo "exit=$?"')
+
+
+class TestDeclareCaseFlagMutualExclusion(ConformanceTest):
+    """R13.A: -u and -l are mutually exclusive.
+
+    Both in ONE declaration cancel (apply neither, and clear any case
+    attribute the name already carried); across SEPARATE declarations the
+    last one wins. Previously psh kept both flags and folded by flag order.
+    """
+
+    def test_both_flags_one_declaration_cancel(self):
+        self.assert_identical_behavior('declare -ul y; y=HeLLo; echo $y')
+
+    def test_both_flags_reversed_order_cancel(self):
+        self.assert_identical_behavior('declare -lu y; y=HeLLo; echo $y')
+
+    def test_upper_then_lower_last_wins(self):
+        self.assert_identical_behavior(
+            'declare -u y; declare -l y; y=HeLLo; echo $y')
+
+    def test_lower_then_upper_last_wins(self):
+        self.assert_identical_behavior(
+            'declare -l y; declare -u y; y=HeLLo; echo $y')
+
+    def test_both_flags_clear_preexisting_case(self):
+        self.assert_identical_behavior(
+            'declare -u y=X; declare -ul y; y=HeLLo; echo $y')
+
+    def test_both_flags_clear_preexisting_on_unset(self):
+        self.assert_identical_behavior(
+            'declare -u y; declare -ul y; y=HeLLo; echo $y')
+
+    def test_plus_flag_removes_case_on_unset(self):
+        self.assert_identical_behavior(
+            'declare -u y; declare +u y; y=HeLLo; echo $y')
