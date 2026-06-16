@@ -69,9 +69,24 @@ class ReadBuiltin(Builtin):
             sys.stderr.write(options['prompt'])
             sys.stderr.flush()
 
+        # `read -u FD`: the fd must be open, else bash errors with status 1.
+        if options['fd_from_u']:
+            try:
+                os.fstat(options['fd'])
+            except OSError:
+                self.error(
+                    f"{options['fd']}: invalid file descriptor", shell)
+                return 1
+
         try:
             # Decide once whether input comes from sys.stdin or the real fd
             use_sys_stdin = self._should_use_sys_stdin(options['fd'])
+
+            # `read -t 0` is a non-consuming poll: success (0) if the fd is
+            # readable (data ready OR at EOF), 1 if a read would block. It
+            # reads nothing and assigns no variables (bash).
+            if options['timeout'] == 0:
+                return self._poll_input(options['fd'], use_sys_stdin)
 
             delim = options['delimiter']
 
@@ -357,7 +372,7 @@ class ReadBuiltin(Builtin):
 
     # Flag options set a boolean; arg options consume a value.
     _FLAG_OPTS = {'r': 'raw_mode', 's': 'silent'}
-    _ARG_OPTS = frozenset('apdnNt')
+    _ARG_OPTS = frozenset('apdnNtu')
 
     def _parse_options(self, args: List[str]) -> Tuple[Dict[str, Any], List[str]]:
         """Parse read command options getopt-style, matching bash.
@@ -381,6 +396,7 @@ class ReadBuiltin(Builtin):
             'exact_chars': None,
             'delimiter': '\n',
             'fd': 0,
+            'fd_from_u': False,
             'array_name': None
         }
 
@@ -433,6 +449,19 @@ class ReadBuiltin(Builtin):
         """Validate and store one argument-taking option."""
         if char == 'a':
             options['array_name'] = value
+        elif char == 'u':
+            # Read from file descriptor FD instead of stdin (bash `read -u N`).
+            try:
+                fd = int(value)
+                if fd < 0:
+                    raise ValueError
+            except ValueError:
+                err = ValueError(
+                    f"{value}: invalid file descriptor specification")
+                setattr(err, 'rc', 1)
+                raise err
+            options['fd'] = fd
+            options['fd_from_u'] = True
         elif char == 'p':
             options['prompt'] = value
         elif char == 'd':
@@ -495,6 +524,19 @@ class ReadBuiltin(Builtin):
             return False
         except (OSError, AttributeError, ValueError):
             return True
+
+    def _poll_input(self, fd: int, use_sys_stdin: bool) -> int:
+        """`read -t 0`: return 0 if input is available on the fd (data ready
+        or EOF — both are "readable" to select), 1 if a read would block.
+        Consumes nothing."""
+        if use_sys_stdin:
+            # StringIO/test stdin can't be select()'d; treat as readable.
+            return 0
+        try:
+            ready, _, _ = select.select([fd], [], [], 0)
+        except (OSError, ValueError):
+            return 1
+        return 0 if ready else 1
 
     def _read_chars(self, fd: int, *, delimiter: str, limit: Optional[int],
                     use_sys_stdin: bool, echo: bool = False,

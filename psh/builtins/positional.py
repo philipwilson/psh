@@ -101,63 +101,63 @@ class GetoptsBuiltin(Builtin):
         except (ValueError, TypeError):
             opterr = 1
 
-        # Determine which arguments to parse
+        # Determine which arguments to parse. NEVER mutate the positional
+        # parameters: the old code rewrote argv[i] to track cluster progress,
+        # which corrupted $1 (`set -- -abc; getopts ab o` left $1 as -bc).
+        # Take a copy and track the within-cluster character position
+        # out-of-band on shell.state, the way bash's internal cursor does.
         if len(args) > 3:
-            # Parse provided arguments
-            argv = args[3:]
+            argv = list(args[3:])
         else:
-            # Parse positional parameters
-            argv = shell.state.positional_params
+            argv = list(shell.state.positional_params)
+
+        arg_index = optind - 1  # 0-based index of the current arg
+
+        # Within-arg character cursor: 1 = first char after the leading '-'.
+        # Reset to 1 whenever OPTIND moves to a different argument (which
+        # includes a user `OPTIND=1` reset between calls).
+        sp = getattr(shell.state, '_getopts_charpos', 1)
+        if getattr(shell.state, '_getopts_charpos_optind', None) != optind:
+            sp = 1
+
+        def advance(new_optind: int, new_sp: int) -> None:
+            shell.state.set_variable('OPTIND', str(new_optind))
+            shell.state._getopts_charpos = new_sp
+            shell.state._getopts_charpos_optind = new_optind
 
         # Check if we've processed all arguments
-        arg_index = optind - 1  # Convert to 0-based
         if arg_index >= len(argv):
-            # No more arguments to process
             shell.state.set_variable(varname, '?')
             return 1
 
-        # Get current argument
         current_arg = argv[arg_index]
 
-        # Check if it's an option
+        # Not an option (or a lone '-') — done.
         if not current_arg.startswith('-') or current_arg == '-':
-            # Not an option, we're done
             shell.state.set_variable(varname, '?')
             return 1
 
         # Handle -- (end of options)
         if current_arg == '--':
-            shell.state.set_variable('OPTIND', str(arg_index + 2))
+            advance(arg_index + 2, 1)
             shell.state.set_variable(varname, '?')
             return 1
 
-        # Get the option character(s) after the dash
-        opt_chars = current_arg[1:]
-
-        # Handle option character position within clustered options
-        # OPTIND can have a subindex for clustered options (not implemented here for simplicity)
-        # For now, we'll process one option at a time
-
-        if len(opt_chars) > 1:
-            # Clustered options like -abc
-            # Process the first character and adjust for next call
-            opt_char = opt_chars[0]
-            # Reconstruct the argument with remaining options
-            remaining = '-' + opt_chars[1:]
-            argv[arg_index] = remaining
-        else:
-            # Single option
-            opt_char = opt_chars[0]
-            # Move to next argument for next call
-            shell.state.set_variable('OPTIND', str(arg_index + 2))
+        opt_char = current_arg[sp]
+        # More option chars remain in THIS arg after the current one?
+        more_in_cluster = (sp + 1) < len(current_arg)
 
         # Check if this option is in optstring
         opt_pos = optstring.find(opt_char)
 
         if opt_pos == -1:
-            # Invalid option. Silent mode (optstring starts with ':') records the
-            # offending char in OPTARG; non-silent mode prints an error and leaves
-            # OPTARG UNSET (bash) — same split as the missing-argument branch below.
+            # Invalid option. Advance past this char — within the cluster if
+            # more remain, else to the next arg. Silent mode records the bad
+            # char in OPTARG; non-silent prints an error and unsets OPTARG.
+            if more_in_cluster:
+                advance(optind, sp + 1)
+            else:
+                advance(arg_index + 2, 1)
             shell.state.set_variable(varname, '?')
             if silent_mode:
                 shell.state.set_variable('OPTARG', opt_char)
@@ -171,17 +171,17 @@ class GetoptsBuiltin(Builtin):
         requires_arg = opt_pos + 1 < len(optstring) and optstring[opt_pos + 1] == ':'
 
         if requires_arg:
-            # Option requires an argument
-            if len(opt_chars) > 1:
-                # Argument is the rest of the clustered options
-                arg_value = opt_chars[1:]
-                shell.state.set_variable('OPTIND', str(arg_index + 2))
+            if more_in_cluster:
+                # Argument is the rest of this arg (e.g. -dVALUE).
+                arg_value = current_arg[sp + 1:]
+                advance(arg_index + 2, 1)
             elif arg_index + 1 < len(argv):
-                # Argument is the next argv element
+                # Argument is the next argv element.
                 arg_value = argv[arg_index + 1]
-                shell.state.set_variable('OPTIND', str(arg_index + 3))
+                advance(arg_index + 3, 1)
             else:
-                # Missing required argument
+                # Missing required argument: still advance past the option.
+                advance(arg_index + 2, 1)
                 if silent_mode:
                     shell.state.set_variable(varname, ':')
                     shell.state.set_variable('OPTARG', opt_char)
@@ -191,13 +191,15 @@ class GetoptsBuiltin(Builtin):
                     shell.state.set_variable(varname, '?')
                     shell.state.scope_manager.unset_variable('OPTARG')
                 return 0
-
             shell.state.set_variable('OPTARG', arg_value)
         else:
-            # Option doesn't require an argument
+            # Option without an argument: advance the cursor within/past the arg.
+            if more_in_cluster:
+                advance(optind, sp + 1)
+            else:
+                advance(arg_index + 2, 1)
             shell.state.scope_manager.unset_variable('OPTARG')
 
-        # Set the variable to the option character
         shell.state.set_variable(varname, opt_char)
         return 0
 

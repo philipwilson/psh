@@ -103,3 +103,39 @@ class TestUnifiedReadQuirks:
     def test_raw_mode_preserves_backslash(self):
         r = _psh('read -r v; echo "rc=$? [$v]"', 'a\\tb\n')
         assert r.stdout == "rc=0 [a\\tb]\n"
+
+
+class TestReadFdAndPoll:
+    """R14.A: `read -u FD` reads from a file descriptor; `read -t 0` polls."""
+
+    def test_read_u_from_file_fd(self, tmp_path):
+        f = tmp_path / "data.txt"
+        f.write_text("line-from-fd\nsecond\n")
+        r = _psh(f'exec 3< {f}; read -u 3 x; read -u 3 y; echo "$x/$y"', '')
+        assert r.stdout == "line-from-fd/second\n"
+
+    def test_read_u_redirect_on_command(self, tmp_path):
+        f = tmp_path / "data.txt"
+        f.write_text("via-redirect\n")
+        r = _psh(f'read -u 3 x 3< {f}; echo "[$x]"', '')
+        assert r.stdout == "[via-redirect]\n"
+
+    def test_read_u_invalid_spec_rc1(self):
+        r = _psh('read -u abc x', '')
+        assert r.returncode == 1
+        assert 'invalid file descriptor specification' in r.stderr
+
+    def test_read_u_unopened_fd_rc1(self):
+        r = _psh('read -u 9 x', '')
+        assert r.returncode == 1
+        assert 'invalid file descriptor' in r.stderr
+
+    def test_read_t0_input_available(self):
+        # Data on stdin -> poll succeeds, reads nothing (x stays empty).
+        r = _psh('read -t 0 x; echo "rc=$? [$x]"', 'data-here')
+        assert r.stdout == "rc=0 []\n"
+
+    def test_read_t0_eof_is_readable(self):
+        # /dev/null is at EOF, which select reports readable -> rc 0 (bash).
+        r = _psh('read -t 0 x </dev/null; echo "rc=$?"', '')
+        assert r.stdout == "rc=0\n"

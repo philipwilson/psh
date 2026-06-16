@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.476.0 (2026-06-16) - Tier R14.A: getopts positional-clobber fix + read -u/-t 0 (R14.A complete)
+- BUGFIX (behavior). `getopts` no longer corrupts the positional parameters while parsing a
+  clustered option. The old code rewrote `argv[i]` in place to track cluster progress, which
+  aliased `state.positional_params` and left `$1` as `-bc` after `set -- -abc; getopts ab o`.
+  The within-cluster character position is now tracked out-of-band on `ShellState` (like the
+  shell's internal getopts cursor), so a cluster spans calls without mutating `$1..$n`.
+- FEATURE. `read -u FD` reads from file descriptor FD (bash); an invalid spec or unopened fd
+  reports an error with status 1.
+- FEATURE. `read -t 0` is a non-consuming poll: status 0 if the fd is readable (data ready or
+  at EOF), 1 if a read would block. Reads nothing, assigns no variables.
+- Found by reappraisal #12. Completes Tier R14.A (the common-idiom Builtins cluster). +8 tests.
+- KNOWN (separate, pre-existing, NOT R14.A): here-strings/heredocs redirected to an explicit
+  non-zero fd (`3<<<x`, `exec 3<<<x`) do not materialize that fd — affects external commands
+  too; `read -u 3` works with file-backed fds (`exec 3< file`). Noted for a future tier.
+
 ## 0.475.0 (2026-06-16) - Tier R14.A: exit status semantics + cd -L/-P
 - BUGFIX (behavior). `exit` now matches bash on three points: (a) bare `exit` uses `$?`
   (the last command's status), not 0 — `false; exit` now exits 1; (b) a numeric argument
