@@ -1,6 +1,6 @@
 """Array parsers for the parser combinator implementation."""
 
-from typing import List
+from typing import List, cast
 
 from ...ast_nodes import (
     ArrayAssignment,
@@ -8,6 +8,7 @@ from ...ast_nodes import (
     ArrayInitialization,
     LiteralPart,
     Word,
+    WordPart,
 )
 from ...lexer.token_stream import TokenStream
 from ...lexer.token_types import Token, TokenType
@@ -43,6 +44,7 @@ class ArrayParsers:
             return ParseResult(success=False, error=token_result.error, position=pos)
 
         token_value = token_result.value
+        assert token_value is not None  # success implies a value
         quote_type = token_value.quote_type if token_value.type.name == 'STRING' else None
         return ParseResult(
             success=True,
@@ -91,10 +93,14 @@ class ArrayParsers:
 
     def parse_assignment(self, tokens: List[Token], pos: int) -> ParseResult[ArrayAssignment]:
         """Parse a prefix array assignment for SimpleCommand.array_assignments."""
+        # ArrayInitialization / ArrayElementAssignment both subclass
+        # ArrayAssignment; ParseResult is invariant, so widen explicitly.
         if self.is_initializer_head(tokens, pos):
-            return self.parse_initialization(tokens, pos)
+            return cast('ParseResult[ArrayAssignment]',
+                        self.parse_initialization(tokens, pos))
         if self.is_element_head(tokens, pos):
-            return self.parse_element_assignment(tokens, pos)
+            return cast('ParseResult[ArrayAssignment]',
+                        self.parse_element_assignment(tokens, pos))
         return ParseResult(success=False, error="No array assignment", position=pos)
 
     def parse_initialization(self, tokens: List[Token], pos: int) -> ParseResult[ArrayInitialization]:
@@ -116,7 +122,7 @@ class ArrayParsers:
             return ParseResult(success=False, error="Expected '(' for array initialization", position=pos)
         pos += 1
 
-        words = []
+        words: List[Word] = []
         while pos < len(tokens):
             if tokens[pos].type.name == 'RPAREN':
                 break
@@ -129,7 +135,9 @@ class ArrayParsers:
             word_result = self.parse_word_as_word(tokens, pos)
             if not word_result.success:
                 raise_committed_error(tokens, pos, "Expected array element")
-            words.append(word_result.value)
+            word = word_result.value
+            assert word is not None  # success implies a value
+            words.append(word)
             pos = word_result.position
 
         if pos >= len(tokens) or tokens[pos].type.name != 'RPAREN':
@@ -207,7 +215,7 @@ class ArrayParsers:
 
     def _collect_element_value(self, tokens: List[Token], pos: int, tail: str):
         """Collect literal tail plus adjacent value tokens into a Word."""
-        parts = []
+        parts: List[WordPart] = []
         if tail:
             parts.append(LiteralPart(tail))
 
@@ -216,7 +224,9 @@ class ArrayParsers:
             if not consume_first and not getattr(tokens[pos], 'adjacent_to_previous', False):
                 break
             word_result = self.parse_word_as_word(tokens, pos)
-            parts.extend(word_result.value.parts)
+            inner = word_result.value
+            assert inner is not None  # success implies a value
+            parts.extend(inner.parts)
             pos = word_result.position
             consume_first = False
 

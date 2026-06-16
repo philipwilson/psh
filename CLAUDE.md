@@ -95,11 +95,13 @@ ruff check psh tests
 **Type checking**
 
 A non-strict mypy config lives in `pyproject.toml` (`[tool.mypy]`); the `files`
-list defines the checked scope (currently `psh/core/`, `psh/ast_nodes.py`,
-`psh/version.py`, and a few small pure modules). Run `mypy` (no arguments) and
-keep it passing — CI enforces it. The scope is intended to grow over time:
-keep new `psh/core/` code mypy-clean and add modules to the `files` list as
-they are cleaned up rather than loosening the config.
+list defines the checked scope, which is now the **entire `psh/` source tree**
+(238 files as of v0.483.0) with `check_untyped_defs = true` enabled per-package.
+Run `mypy` (no arguments) and keep it passing. The **local** release gate and
+the nightly run enforce it — per-PR CI (`tests.yml`) is intentionally disabled
+(see the release-workflow note below), so a green `mypy` is your responsibility
+before merging. New modules are picked up by the package globs automatically;
+keep new code mypy-clean rather than loosening the config.
 
 ## Critical Information
 
@@ -207,6 +209,17 @@ retired to `docs/archive/` in v0.311.0.)
      still-running background jobs and reaps them. Tests may freely start
      `sleep 30 &` without an explicit `kill`. (Teardown used to *wait* for these
      jobs, which made the serial phase ~12× slower — fixed 2026-06-06.)
+
+5. **The local gate runs on macOS; only the nightly runs on Linux.** Conformance
+   tests compare psh against *live bash on the same host*, so any behavior that
+   differs by platform is exercised on macOS-vs-bash locally and on Linux-vs-bash
+   only in the nightly. Linux-specific code paths therefore are NOT covered by the
+   local gate. Known platform-divergent spots: real-time signals (`SIGRTMIN+n`,
+   absent on macOS — the v0.472 `kill -l` bug surfaced only on the Linux nightly),
+   the macOS-only `/dev/fd` FIFO fallback in `process_sub.py`, glob/case-range
+   locale collation, and signal-name aliases (`SIGCHLD`/`SIGCLD`). When touching
+   signals, process substitution, or fd/locale behavior, reason about Linux too —
+   the nightly is the backstop, not the gate.
 
 ## Architecture Quick Reference
 
