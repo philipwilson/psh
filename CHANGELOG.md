@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.465.0 (2026-06-16) - Tier R13.A (builtins): test -v, getopts OPTARG, lone `test !` (reappraisal #11)
+- BUGFIX (behavior). Three genuine bash divergences in the test/getopts builtins, found by
+  reappraisal #11:
+  - **`test -v VAR` / `[ -v VAR ]` now works** — it had NEVER worked (`evaluate_unary`
+    returned the sentinel exit 2 for every name). Implemented via a shared `variable_is_set`
+    helper (`test_command.py`) that the `[[ -v ]]` evaluator now also delegates to (dedup);
+    supports `name` and `array[key]` (indexed/associative). `x=5; test -v x` → 0; unset → 1.
+  - **`getopts` non-silent invalid option leaves `OPTARG` unset** (was set to the bad char);
+    silent mode (`:abc`) still records the char — matching bash and the missing-arg branch.
+  - **A lone `test !` / `[ ! ]` is the one-argument non-empty-string test (exit 0)**, not
+    negation-of-empty (was exit 1); `!` still negates a following operand.
+  - +regression tests (test_test_builtin: -v scalar/array, lone-bang; getopts conformance:
+    loud-mode OPTARG-unset). Removed the now-obsolete `test_absent_features::test_test_dash_v`
+    (was a strict-xfail "absent feature").
+- First builtins batch of Tier R13.A. (Deferred within R13.A: `declare -p` on a bare empty
+  array prints `=()` — the correct fix needs an UNSET-array-state model so a bare
+  `declare -a a` is distinguished from `a=()`, which touches array set/unset semantics.)
+
 ## 0.464.0 (2026-06-16) - Tier R12.B finale: check_untyped_defs for the combinator parser (12/12 packages)
 - TYPING (no behavior change). Enabled `check_untyped_defs = true` for the last package,
   `psh.parser.combinators.*` — mypy now body-checks **every package (12/12)**. Fixing the

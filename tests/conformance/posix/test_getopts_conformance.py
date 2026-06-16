@@ -54,6 +54,13 @@ class TestGetoptsErrors(ConformanceTest):
         self.assert_identical_behavior(
             'set -- -x; while getopts "ab" opt 2>/dev/null; do echo "o:$opt"; done; echo done')
 
+    def test_loud_mode_invalid_option_unsets_optarg(self):
+        # R13.A: in non-silent (loud) mode, an invalid option leaves OPTARG
+        # UNSET (bash); psh previously set it to the bad char. stderr suppressed.
+        self.assert_identical_behavior(
+            'set -- -x; getopts "ab" opt 2>/dev/null; '
+            'echo "opt:$opt optarg:${OPTARG-UNSET}"')
+
 
 class TestGetoptsState(ConformanceTest):
     def test_local_optind_resets_per_function(self):

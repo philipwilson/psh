@@ -155,12 +155,16 @@ class GetoptsBuiltin(Builtin):
         opt_pos = optstring.find(opt_char)
 
         if opt_pos == -1:
-            # Invalid option
-            if not silent_mode and opterr:
-                self.write_error_line(f"getopts: illegal option -- {opt_char}", shell)
-
+            # Invalid option. Silent mode (optstring starts with ':') records the
+            # offending char in OPTARG; non-silent mode prints an error and leaves
+            # OPTARG UNSET (bash) — same split as the missing-argument branch below.
             shell.state.set_variable(varname, '?')
-            shell.state.set_variable('OPTARG', opt_char)
+            if silent_mode:
+                shell.state.set_variable('OPTARG', opt_char)
+            else:
+                if opterr:
+                    self.write_error_line(f"getopts: illegal option -- {opt_char}", shell)
+                shell.state.scope_manager.unset_variable('OPTARG')
             return 0
 
         # Check if option requires an argument

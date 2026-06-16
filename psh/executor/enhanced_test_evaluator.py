@@ -324,35 +324,7 @@ class TestExpressionEvaluator:
             raise ValueError(f"unknown compound operator: {expr.operator}")
 
     def _is_variable_set(self, var_ref: str) -> bool:
-        """Check if a variable is set, including array element syntax.
-
-        Supports:
-        - var: check if variable is set
-        - array[key]: check if array element exists
-        """
-        if '[' in var_ref and var_ref.endswith(']'):
-            var_name = var_ref[:var_ref.index('[')]
-            key_expr = var_ref[var_ref.index('[') + 1:-1]
-
-            # Expand the key expression
-            key = self.expansion_manager.expand_string_variables(key_expr)
-
-            # Get the array variable
-            var_obj = self.state.scope_manager.get_variable_object(var_name)
-            if not var_obj:
-                return False
-
-            from ..core import AssociativeArray, IndexedArray
-            if isinstance(var_obj.value, AssociativeArray):
-                return key in var_obj.value
-            elif isinstance(var_obj.value, IndexedArray):
-                try:
-                    index = int(key)
-                    return index in var_obj.value
-                except ValueError:
-                    return False
-            else:
-                return False
-        else:
-            var_obj = self.state.scope_manager.get_variable_object(var_ref)
-            return var_obj is not None
+        """Check if a variable (or array element) is set — shared with the
+        ``test``/``[`` builtin's ``-v`` operator."""
+        from ..builtins.test_command import variable_is_set
+        return variable_is_set(self.shell, var_ref)
