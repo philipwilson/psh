@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.474.0 (2026-06-16) - Tier R14.A: pwd logical default, type -p/-P bare-path output
+- BUGFIX (behavior). `pwd` now prints the LOGICAL path by default (and with `-L`) — the
+  shell's `$PWD`, which preserves the symlink-named path you cd'd through — matching bash;
+  previously it always printed the physical (resolved) path. `-P` prints the physical path.
+  Falls back to physical when `$PWD` is stale (no longer names the cwd). `pwd -L`/`-P` flags
+  are now parsed (were previously treated as directory operands → error).
+- BUGFIX (behavior). `type -p` / `type -P` now print the BARE path (`/bin/ls`) instead of
+  the `ls is /bin/ls` banner, matching bash — `type -p NAME` is a common "get the path"
+  idiom. `-p` still prints nothing for builtins/functions/keywords; `-P` forces PATH search.
+- Found by reappraisal #12. +4 regression tests; the prior weak `type -p` test
+  (`endswith('/ls')`, which the buggy banner also satisfied) was strengthened to pin the
+  bare-path format.
+
 ## 0.473.0 (2026-06-16) - Tier R14.A: test/[ `==` synonym and 3-arg `-a`/`-o`
 - BUGFIX (behavior). `test`/`[` now accepts `==` as a synonym for `=` (bash extension;
   literal string equality, NO globbing — unlike `[[ ]]`). `[ "$x" == foo ]` — an

@@ -108,6 +108,12 @@ class TypeBuiltin(Builtin):
             if paths:
                 if type_only:
                     self.write_line("file", shell)
+                elif path_only or force_path:
+                    # -p / -P print ONLY the path (no "name is " banner), bash.
+                    for path in paths:
+                        self.write_line(path, shell)
+                        if not show_all:
+                            break
                 else:
                     for path in paths:
                         self.write_line(f"{name} is {path}", shell)
