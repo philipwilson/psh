@@ -10,6 +10,32 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+def variable_is_set(shell: 'Shell', var_ref: str) -> bool:
+    """True if ``var_ref`` names a set variable or an existing array element.
+
+    Supports ``name`` and ``array[key]`` (indexed or associative). Shared by
+    the ``test``/``[`` builtin's ``-v`` operator and the ``[[ -v ... ]]`` test
+    evaluator so both answer identically.
+    """
+    if '[' in var_ref and var_ref.endswith(']'):
+        var_name = var_ref[:var_ref.index('[')]
+        key_expr = var_ref[var_ref.index('[') + 1:-1]
+        key = shell.expansion_manager.expand_string_variables(key_expr)
+        var_obj = shell.state.scope_manager.get_variable_object(var_name)
+        if not var_obj:
+            return False
+        from ..core import AssociativeArray, IndexedArray
+        if isinstance(var_obj.value, AssociativeArray):
+            return key in var_obj.value
+        if isinstance(var_obj.value, IndexedArray):
+            try:
+                return int(key) in var_obj.value
+            except ValueError:
+                return False
+        return False
+    return shell.state.scope_manager.get_variable_object(var_ref) is not None
+
+
 @builtin
 class TestBuiltin(Builtin):
     """Test command for conditionals."""
@@ -76,13 +102,13 @@ class TestBuiltin(Builtin):
         if not args:
             return 1  # False
 
-        # Check for leading ! (negation)
+        # Check for leading ! (negation). A LONE `!` is not negation — it is
+        # the one-argument "non-empty string" test (bash/POSIX: `test !` → 0),
+        # so only treat `!` as negation when an operand follows.
         negate = False
-        if args[0] == '!':
+        if args[0] == '!' and len(args) > 1:
             negate = True
             args = args[1:]  # Remove the !
-            if not args:
-                return 1  # ! with no args is false
 
         # Evaluate the expression
         result = self._evaluate_expression(args, shell)
@@ -295,10 +321,8 @@ class TestBuiltin(Builtin):
             except (ValueError, OSError):
                 return 1
         elif op == '-v':
-            # True if variable is set (bash nameref support)
-            # This requires access to shell state to check variables
-            # For now, we'll need to handle this specially in the shell
-            return 2  # Indicate special handling needed
+            # True if the named variable (or array element) is set.
+            return 0 if variable_is_set(shell, arg) else 1
         else:
             self.error(f"{op}: unary operator expected", shell)
             return 2  # Unknown operator

@@ -170,14 +170,9 @@ class TestAbsentBashFeatures:
         interactively). psh: 'type: suspend: not found', exit 1."""
         assert_bash_parity('type suspend; echo rc=$?')
 
-    @pytest.mark.xfail(strict=True, reason="test -v (variable-is-set) is not "
-                                           "implemented in test/[ ]")
-    def test_test_dash_v(self):
-        """bash: `test -v NAME` is true iff NAME is set (probe: t1=0 t2=1).
-        psh: returns 2 (invalid operator) for both set and unset names.
-        NOTE: [[ -v NAME ]] DOES work in psh — only test/[ lacks -v."""
-        assert_bash_parity('x=1; test -v x; echo t1=$?; '
-                           'test -v unset_var_xyz; echo t2=$?')
+    # `test -v NAME` (variable-is-set) is now IMPLEMENTED in test/[ ] (R13.A,
+    # v0.465) — no longer an absent feature. Parity is pinned by
+    # tests/unit/builtins/test_test_builtin.py (test_v_variable_is_set / array).
 
     @pytest.mark.skip(reason=(
         "history expansion (!!, !n, !string) is a documented WONTFIX, not a "

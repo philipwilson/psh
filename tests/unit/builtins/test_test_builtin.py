@@ -318,6 +318,30 @@ class TestSpecialCases:
         exit_code = shell.run_command('[ "x" ]')
         assert exit_code == 0
 
+    def test_lone_bang_is_nonempty_string(self, shell, capsys):
+        """R13.A: a lone `!` is the one-argument non-empty-string test (exit 0),
+        not negation-of-empty (bash/POSIX)."""
+        assert shell.run_command('test !') == 0
+        assert shell.run_command('[ ! ]') == 0
+        # `!` still negates a following operand
+        assert shell.run_command('test ! -e /nonexistent_xyz_psh') == 0
+        assert shell.run_command("test ! ''") == 0
+
+    def test_v_variable_is_set(self, shell, capsys):
+        """R13.A: `test -v VAR` / `[ -v VAR ]` reports whether a variable is set
+        (previously always returned the sentinel exit 2)."""
+        shell.run_command('vv=5')
+        assert shell.run_command('test -v vv') == 0
+        assert shell.run_command('[ -v vv ]') == 0
+        shell.run_command('unset nope_xyz')
+        assert shell.run_command('test -v nope_xyz') == 1
+
+    def test_v_array_element(self, shell, capsys):
+        """`test -v arr[i]` checks element existence."""
+        shell.run_command('arr=(a b c)')
+        assert shell.run_command('test -v "arr[1]"') == 0
+        assert shell.run_command('test -v "arr[9]"') == 1
+
     def test_bracket_spacing(self, shell, capsys):
         """Test [ requires spaces."""
         # Correct spacing
