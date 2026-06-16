@@ -159,6 +159,16 @@ class TestSecurity:
     def test_world_writable_chmod_flagged(self):
         assert "WORLD_WRITABLE" in _security_types("chmod 777 file")
 
+    def test_world_writable_non_777_modes_flagged(self):
+        # R14.C: octal modes with the other-write bit set — not just 777/666 —
+        # are world-writable. SecurityVisitor and the validator now share one
+        # bit-check, so both catch 757/776/737/etc.
+        for mode in ("757", "776", "737", "666"):
+            assert "WORLD_WRITABLE" in _security_types(f"chmod {mode} f"), mode
+            assert any("world-writable" in m for m in _validator_messages(f"chmod {mode} f")), mode
+        for safe in ("755", "644", "640"):
+            assert "WORLD_WRITABLE" not in _security_types(f"chmod {safe} f"), safe
+
     def test_sensitive_command_flagged(self):
         assert "SENSITIVE_COMMAND" in _security_types("rm -rf $dir")
 

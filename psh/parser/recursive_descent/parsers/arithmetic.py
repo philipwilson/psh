@@ -39,28 +39,29 @@ class ArithmeticParser:
             background=False
         )
 
+    @staticmethod
+    def _double_rparen_stop(stream):
+        """A ``collect_arithmetic_expression`` stop condition that fires at
+        ``))`` — a single DOUBLE_RPAREN token, or two consecutive RPARENs at
+        paren-depth 0. Shared by both arithmetic-section collectors."""
+        def stop_at_double_rparen(token, paren_depth):
+            if paren_depth == 0 and token.type == TokenType.DOUBLE_RPAREN:
+                return True
+            if paren_depth == 0 and token.type == TokenType.RPAREN:
+                next_token = stream.peek(1)
+                if next_token and next_token.type == TokenType.RPAREN:
+                    return True
+            return False
+        return stop_at_double_rparen
+
     def _parse_arithmetic_expression_until_double_rparen(self) -> str:
         """Parse arithmetic expression until )) is found."""
         # Create TokenStream from current position
         stream = TokenStream(self.parser.tokens, self.parser.current)
 
-        # Define stop condition for double RPAREN
-        def stop_at_double_rparen(token, paren_depth):
-            # Check for DOUBLE_RPAREN token (new tokenization)
-            if paren_depth == 0 and token.type == TokenType.DOUBLE_RPAREN:
-                return True
-            # Check for two consecutive RPAREN tokens (old tokenization)
-            if paren_depth == 0 and token.type == TokenType.RPAREN:
-                # Peek ahead to see if next is also RPAREN
-                next_token = stream.peek(1)
-                if next_token and next_token.type == TokenType.RPAREN:
-                    # Found ))
-                    return True
-            return False
-
         # Collect arithmetic expression (no redirect transformation needed here)
         tokens, expr_string = stream.collect_arithmetic_expression(
-            stop_condition=stop_at_double_rparen,
+            stop_condition=self._double_rparen_stop(stream),
             transform_redirects=False
         )
 
@@ -103,23 +104,9 @@ class ArithmeticParser:
         # Create TokenStream from current position
         stream = TokenStream(self.parser.tokens, self.parser.current)
 
-        # Define stop condition for double RPAREN
-        def stop_at_double_rparen(token, paren_depth):
-            # Check for DOUBLE_RPAREN token (new tokenization)
-            if paren_depth == 0 and token.type == TokenType.DOUBLE_RPAREN:
-                return True
-            # Check for two consecutive RPAREN tokens (old tokenization)
-            if paren_depth == 0 and token.type == TokenType.RPAREN:
-                # Peek ahead to see if next is also RPAREN
-                next_token = stream.peek(1)
-                if next_token and next_token.type == TokenType.RPAREN:
-                    # Found ))
-                    return True
-            return False
-
         # Collect arithmetic expression
         tokens, expr_string = stream.collect_arithmetic_expression(
-            stop_condition=stop_at_double_rparen,
+            stop_condition=self._double_rparen_stop(stream),
             transform_redirects=True
         )
 

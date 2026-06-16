@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.484.0 (2026-06-16) - Tier R14.C: dedup — visitor world-writable check + RD arith helper
+- BUGFIX (analysis) + DEDUP. The `EnhancedValidatorVisitor` chmod check was a substring
+  scan (`777`/`666`/`a+w`/`o+w`) that MISSED most world-writable octal modes (757, 776,
+  737, ...). It now shares a single `is_world_writable_permission` helper (constants.py)
+  with `SecurityVisitor` — an octal mode is world-writable iff the other-write bit is set in
+  its last digit. Both visitors now flag the same set; the permission logic is single-sourced.
+- DEDUP. The recursive-descent arithmetic parser defined the `))` stop-condition closure
+  identically in two methods; extracted to one `_double_rparen_stop(stream)` helper.
+- Found by reappraisal #12 (carry-over dedup items). Tier R14.C, batch 2. +1 test.
+- Completes Tier R14.C.
+
 ## 0.483.0 (2026-06-16) - Tier R14.C: complete the mypy scope (truth-up) + docs + xfail_strict
 - TYPING. `check_untyped_defs` / the mypy `files` scope now genuinely covers the WHOLE
   `psh/` tree (238/238 files). R13.C's "tree-complete" claim was overstated — four live
