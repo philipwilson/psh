@@ -85,7 +85,7 @@ class EmacsKeyBindings(KeyBindings):
             self.CTRL_H: 'backward_delete_char',
             self.BACKSPACE: 'backward_delete_char',
             self.CTRL_K: 'kill_line',
-            self.CTRL_U: 'kill_whole_line',
+            self.CTRL_U: 'kill_to_beginning',  # readline unix-line-discard
             self.CTRL_W: 'kill_word_backward',
             self.CTRL_Y: 'yank',
             self.CTRL_T: 'transpose_chars',
@@ -136,7 +136,7 @@ class ViKeyBindings(KeyBindings):
             self.BACKSPACE: 'backward_delete_char',
             self.CTRL_H: 'backward_delete_char',
             self.CTRL_W: 'kill_word_backward',
-            self.CTRL_U: 'kill_whole_line',
+            self.CTRL_U: 'kill_to_beginning',  # readline unix-line-discard
             self.TAB: 'complete',
             self.ENTER: 'accept_line',
         }

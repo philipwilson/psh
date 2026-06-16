@@ -143,12 +143,24 @@ class EditBuffer:
         return True
 
     def kill_whole_line(self) -> None:
-        """Kill the entire line (Ctrl-U). Unconditional: an empty kill
-        still pushes '' onto the ring, as it always has."""
+        """Kill the entire line. Unconditional: an empty kill still pushes ''
+        onto the ring, as it always has."""
         self.save_undo_state()
         self.kill_ring.append(''.join(self.chars))
         self.chars = []
         self.cursor = 0
+
+    def kill_to_beginning(self) -> bool:
+        """Kill from the cursor back to the start of the line (readline
+        ``unix-line-discard`` / Ctrl-U). Text after the cursor is preserved
+        (this is NOT kill-whole-line)."""
+        if self.cursor <= 0:
+            return False
+        self.save_undo_state()
+        self.kill_ring.append(''.join(self.chars[:self.cursor]))
+        self.chars = self.chars[self.cursor:]
+        self.cursor = 0
+        return True
 
     def kill_word_backward(self) -> bool:
         """Kill spaces then the word before the cursor (Ctrl-W)."""
@@ -196,27 +208,21 @@ class EditBuffer:
     # ------------------------------------------------------------------
 
     def transpose(self) -> bool:
-        """Transpose characters around the cursor (Ctrl-T semantics)."""
-        if len(self.chars) < 2:
+        """Transpose characters around the cursor (readline ``transpose-chars``
+        / Ctrl-T). bash semantics: at beginning-of-line it is a no-op (readline
+        rings the bell); at end-of-line it transposes the two characters BEFORE
+        point (point unchanged); otherwise it drags the char before point
+        forward over the char at point, advancing point by one."""
+        if len(self.chars) < 2 or self.cursor == 0:
             return False
         self.save_undo_state()
-        if self.cursor == 0:
-            # At beginning: swap the first two characters.
-            self.chars[0], self.chars[1] = self.chars[1], self.chars[0]
-            self.cursor = 1
-        elif self.cursor >= len(self.chars):
-            # At or past end: swap the last two characters.
+        if self.cursor >= len(self.chars):
+            # End-of-line: swap the last two characters; point stays at end.
             pos = len(self.chars) - 1
             self.chars[pos - 1], self.chars[pos] = (
                 self.chars[pos], self.chars[pos - 1])
-            self.cursor = pos + 1
-        elif self.cursor < len(self.chars) - 1:
-            # Normal case: swap char at cursor with the next one.
-            self.chars[self.cursor], self.chars[self.cursor + 1] = (
-                self.chars[self.cursor + 1], self.chars[self.cursor])
-            self.cursor += 2
         else:
-            # Exactly one char after the cursor: swap with the one before.
+            # Swap the char before point with the char at point, advance point.
             self.chars[self.cursor - 1], self.chars[self.cursor] = (
                 self.chars[self.cursor], self.chars[self.cursor - 1])
             self.cursor += 1
