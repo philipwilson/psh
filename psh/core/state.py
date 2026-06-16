@@ -89,6 +89,12 @@ class ShellState:
         self.script_name = script_name or "psh"
         self.is_script_mode = script_name is not None and script_name != "psh"
 
+        # getopts within-argument cursor (the character position inside a
+        # clustered option arg, e.g. -abc). Tracked here — like OPTIND — so a
+        # cluster spans calls WITHOUT mutating the positional parameters.
+        self._getopts_charpos: int = 1
+        self._getopts_charpos_optind: Optional[int] = None
+
         # Centralized shell options dictionary
         self.options = {
             # Debug options (existing)

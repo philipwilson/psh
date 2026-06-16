@@ -22,6 +22,18 @@ class TestGetoptsBasics(ConformanceTest):
         self.assert_identical_behavior(
             'set -- -ab val; while getopts "ab:" opt; do echo "o:$opt:$OPTARG"; done')
 
+    def test_cluster_does_not_clobber_positional_params(self):
+        # R14.A: parsing a clustered option must NOT rewrite $1 (the old impl
+        # mutated the positional params, leaving $1 as "-bc").
+        self.assert_identical_behavior(
+            'set -- -abc x; getopts abc o; echo "o=$o 1=$1"; '
+            'getopts abc o; echo "o=$o 1=$1"')
+
+    def test_full_cluster_loop_preserves_positionals(self):
+        self.assert_identical_behavior(
+            'set -- -abc tail; while getopts abc o; do echo "got:$o"; done; '
+            'echo "ind:$OPTIND first:$1"')
+
     def test_option_argument_attached(self):
         self.assert_identical_behavior(
             'set -- -bval; while getopts "ab:" opt; do echo "o:$opt:$OPTARG"; done')
