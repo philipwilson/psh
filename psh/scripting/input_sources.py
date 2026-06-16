@@ -57,7 +57,11 @@ class FileInput(InputSource):
         self.preprocessed = False
 
     def __enter__(self):
-        self.file = open(self.file_path, 'r', encoding='utf-8')
+        # Use surrogateescape so a non-UTF-8 byte in a script does not crash
+        # the shell with an uncaught UnicodeDecodeError — bash processes script
+        # bytes leniently (a stray byte just becomes a "command not found").
+        self.file = open(self.file_path, 'r', encoding='utf-8',
+                         errors='surrogateescape')
         return self
 
     def __exit__(self, exc_type, _exc_val, _exc_tb):

@@ -65,3 +65,34 @@ def test_matches_bash(script):
     s = script(body)
     # Identical output from both shells (the script path in every position).
     assert _psh(s) == _run([BASH], s)
+
+
+@pytest.mark.skipif(BASH is None, reason="bash not available")
+def test_dash_c_name_is_dollar_zero():
+    """R14.B: `sh -c CMD name a b` sets $0=name, $1=a, $#=2 (POSIX) — psh used
+    to make name $1. Comparable across shells because $0 is the operand here."""
+    cmd = 'echo "0=$0 1=$1 2=$2 #=$#"'
+    psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd, 'myname', 'a', 'b'],
+                         capture_output=True, text=True).stdout
+    bash = subprocess.run([BASH, '-c', cmd, 'myname', 'a', 'b'],
+                          capture_output=True, text=True).stdout
+    assert psh == bash == '0=myname 1=a 2=b #=2\n'
+
+
+@pytest.mark.skipif(BASH is None, reason="bash not available")
+def test_non_utf8_script_does_not_crash(tmp_path):
+    """R14.B: a stray non-UTF-8 byte in a script must not crash psh with an
+    uncaught traceback — bash treats it as a (not-found) command and continues.
+    Both shells run the surrounding commands and exit 0."""
+    s = tmp_path / "badenc.sh"
+    s.write_bytes(b'echo before\n\xe9\necho after\n')
+    # errors='replace' on the capture: the diagnostic legitimately contains the
+    # raw non-UTF-8 byte (round-tripped), which a strict text decode can't read.
+    psh = subprocess.run([sys.executable, '-m', 'psh', str(s)],
+                         capture_output=True, text=True, errors='replace')
+    bash = subprocess.run([BASH, str(s)], capture_output=True, text=True,
+                          errors='replace')
+    assert psh.stdout == bash.stdout == 'before\nafter\n'
+    assert psh.returncode == bash.returncode == 0
+    assert 'Traceback' not in psh.stderr
+    assert 'command not found' in psh.stderr

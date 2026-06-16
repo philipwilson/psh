@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.477.0 (2026-06-16) - Tier R14.B: -c name args $0 + non-UTF-8 script no longer crashes
+- BUGFIX (behavior). `psh -c COMMAND name arg1 arg2` now follows POSIX: the first operand
+  after the command string is `$0` (the command name), and the rest are `$1`, `$2`, …
+  (`-c '...' myname a b` → `$0=myname`, `$1=a`, `$#=2`). Previously psh made the name `$1`,
+  corrupting `$0`/`$@`/`$#` together and breaking the `sh -c '...' progname` idiom.
+- BUGFIX (robustness). A script containing a non-UTF-8 byte no longer crashes psh with an
+  uncaught `UnicodeDecodeError` traceback (which also tripped the strict-errors guard).
+  Script files are read with `errors='surrogateescape'` and the command-not-found
+  diagnostic encodes leniently, so a stray byte becomes a clean "command not found" and
+  execution continues — matching bash structurally (both run the surrounding commands,
+  exit 0; only the byte's rendering differs, `$'\351'` vs the raw byte).
+- Found by reappraisal #12. Tier R14.B (correctness cluster), batch 1. +3 tests.
+
 ## 0.476.0 (2026-06-16) - Tier R14.A: getopts positional-clobber fix + read -u/-t 0 (R14.A complete)
 - BUGFIX (behavior). `getopts` no longer corrupts the positional parameters while parsing a
   clustered option. The old code rewrote `argv[i]` in place to track cluster progress, which

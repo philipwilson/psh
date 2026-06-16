@@ -230,8 +230,15 @@ def main():
             # flag was known), so clear stdin_mode now.
             shell.state.options['stdin_mode'] = False
             command = sys.argv[2]
-            # Set positional parameters from remaining arguments
-            shell.state.positional_params = list(sys.argv[3:])
+            # POSIX `sh -c command_string [name [args...]]`: the FIRST operand
+            # after the command string is $0 (the command name), and the rest
+            # are $1, $2, ... (bash: `-c '...' name a b` → $0=name, $1=a, $#=2).
+            operands = sys.argv[3:]
+            if operands:
+                shell.state.script_name = operands[0]
+                shell.state.positional_params = list(operands[1:])
+            else:
+                shell.state.positional_params = []
 
             # Handle visitor modes for -c commands
             if visitor_mode:

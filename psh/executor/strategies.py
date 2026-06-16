@@ -65,14 +65,19 @@ def report_exec_failure(cmd_name: str, exc: OSError,
     PATH unless `shopt -s checkhash` — the re-verify happens parent-side
     in ExternalExecutionStrategy, before the fork).
     """
+    # surrogateescape on the diagnostics: a command name carrying non-UTF-8
+    # bytes (from a non-UTF-8 script, read with surrogateescape) must not make
+    # the error message itself raise UnicodeEncodeError — the byte round-trips
+    # back out unchanged, and the command is still reported as not found.
     if isinstance(exc, FileNotFoundError):
         if resolved_path is not None:
             os.write(2, f"psh: {resolved_path}: No such file or directory\n"
-                     .encode('utf-8'))
+                     .encode('utf-8', errors='surrogateescape'))
         else:
-            os.write(2, f"psh: {cmd_name}: command not found\n".encode('utf-8'))
+            os.write(2, f"psh: {cmd_name}: command not found\n"
+                     .encode('utf-8', errors='surrogateescape'))
         return 127
-    os.write(2, f"psh: {cmd_name}: {exc}\n".encode('utf-8'))
+    os.write(2, f"psh: {cmd_name}: {exc}\n".encode('utf-8', errors='surrogateescape'))
     return 126
 
 
