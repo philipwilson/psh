@@ -283,38 +283,37 @@ class ReadBuiltin(Builtin):
             return not prot and c in ifs_non_whitespace
 
         fields: List[str] = []
-        current_field: List[str] = []
         i = 0
         n = len(chars)
 
-        # Skip leading IFS whitespace
-        while i < n and is_ws(i):
+        # POSIX field splitting: a single delimiter is a run of IFS whitespace
+        # with AT MOST ONE IFS non-whitespace character embedded in it — so IFS
+        # whitespace ADJACENT to a non-whitespace delimiter is absorbed into it
+        # (`IFS=": "` on `a : b` => [a, b], not [a, '', b]). Leading/trailing
+        # IFS whitespace is ignored; a non-whitespace delimiter still produces
+        # empty fields when it is leading or doubled (`:x` => ['', x];
+        # `x::y` => [x, '', y]) but NOT a trailing empty (`x:` => [x]).
+        while i < n and is_ws(i):  # strip leading IFS whitespace
             i += 1
 
         while i < n:
-            if is_nonws(i):
-                # Non-whitespace IFS character - always a separator
-                fields.append(''.join(current_field))
-                current_field = []
+            # Accumulate a field up to the next unprotected IFS character.
+            field: List[str] = []
+            while i < n and not is_ws(i) and not is_nonws(i):
+                field.append(chars[i][0])
                 i += 1
-            elif is_ws(i):
-                # Whitespace IFS character
-                if current_field:
-                    fields.append(''.join(current_field))
-                    current_field = []
-                # Skip consecutive IFS whitespace
+            fields.append(''.join(field))
+
+            # Consume ONE delimiter: surrounding IFS whitespace plus at most one
+            # IFS non-whitespace character (whitespace absorbed on both sides).
+            while i < n and is_ws(i):
+                i += 1
+            if i < n and is_nonws(i):
+                i += 1
                 while i < n and is_ws(i):
                     i += 1
-            else:
-                # Regular (or protected) character
-                current_field.append(chars[i][0])
-                i += 1
 
-        # Add last field if any
-        if current_field:
-            fields.append(''.join(current_field))
-
-        # If no fields were found, return empty string
+        # No fields (empty / all-whitespace input) reads as one empty field.
         if not fields:
             fields = ['']
 

@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.497.0 (2026-06-16) - read mixed-IFS field splitting (Tier R15.B)
+- BUGFIX (read, reappraisal #13 MED). With a MIXED IFS (whitespace + non-whitespace), `read`
+  did not fold IFS whitespace adjacent to a non-whitespace delimiter into one delimiter, so it
+  emitted a spurious empty field: `IFS=": "` on `a : b` gave `[a, '', b]` instead of `[a, b]`.
+  (psh's general word-splitter was already correct; only `read`'s splitter was wrong.)
+- Fix (`builtins/read_builtin.py` `_split_with_ifs`): rewrote to the POSIX algorithm — a single
+  delimiter is a run of IFS whitespace with at most ONE embedded IFS non-whitespace character,
+  so whitespace is absorbed on both sides of a non-ws delimiter. Leading/doubled non-ws
+  delimiters still produce empty fields (`:x`→['',x]; `x::y`→[x,'',y]); a trailing one does not
+  (`x:`→[x]); pure-whitespace runs and leading/trailing whitespace trimming are unchanged.
+- Verified value-for-value vs bash 5.2 across a 15-case battery (key:value, comma-space CSV,
+  tabs, read -a counts, leftover-to-last-var, backslash protection).
+- TESTS: new `tests/conformance/bash/test_read_ifs_split_conformance.py` (12 cases).
+- KNOWN pre-existing (unchanged, out of scope): `read -a a <<< ":"` yields 0 fields vs bash 1
+  (a single-empty-field `read -a` edge predating this fix).
+
 ## 0.496.0 (2026-06-16) - exec-failure messages match bash strerror (Tier R15.B)
 - BUGFIX (executor, reappraisal #13 MED). A failed exec leaked Python's OSError repr —
   `psh: ./x: [Errno 13] Permission denied: './x'` — where bash prints the bare strerror
