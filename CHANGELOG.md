@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.489.0 (2026-06-16) - analysis modes parse heredocs (Tier R15.A — heredoc cluster, visitors)
+- BUGFIX (analysis modes, reappraisal #13 HIGH). The CLI analysis modes (`--validate`,
+  `--format`, `--metrics`, `--security`, `--lint`) parsed input with a bare tokenize/parse
+  that skips heredoc collection, so a heredoc BODY was analyzed as separate shell commands.
+  A script with `rm -rf /` inside heredoc DATA was reported as a HIGH security risk (false
+  positive); `--metrics` inflated command counts; `--validate` flagged heredoc-body variables
+  as undefined.
+- Fix: `scripting/visitor_modes.py` gains `_parse_for_analysis()`, which tokenizes/parses WITH
+  heredoc collection (`tokenize_with_heredocs` + `parse_with_heredocs`) when the input contains
+  a heredoc — mirroring the execution path — so a heredoc body is attached to its redirect.
+  Both analysis entry points (`-c` command and script file) route through it.
+- Verified: `--security` on a heredoc whose body is `rm -rf /` now reports no issues; `--metrics`
+  counts only the real commands; a REAL `rm -rf /` (not in a heredoc) still flags. Completes
+  the R15.A heredoc cluster (lexer + oracle landed in v0.488.0; this is the analysis half).
+- TESTS: new `tests/system/test_visitor_heredoc.py` (4 cases, real CLI entry points).
+
 ## 0.488.0 (2026-06-16) - heredoc delimiter recognition (Tier R15.A — heredoc cluster, lexer + oracle)
 - BUGFIX (lexer + completeness oracle, reappraisal #13). Escaped/quoted heredoc delimiters
   were mis-handled, and the terminator match was too loose:

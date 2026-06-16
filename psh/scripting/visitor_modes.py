@@ -13,15 +13,33 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+def _parse_for_analysis(shell: 'Shell', content: str) -> Any:
+    """Parse *content* into an AST for analysis, heredoc-aware.
+
+    Mirrors the execution path's parsing: when the input contains a heredoc,
+    tokenize/parse WITH heredoc collection so a heredoc BODY is attached to its
+    redirect instead of being parsed as separate commands. (Bare tokenize/parse
+    skips heredoc collection, which made --security/--validate/--metrics/--lint/
+    --format mis-analyze every heredoc body — e.g. `rm -rf /` in heredoc data
+    reported as a real command.)
+    """
+    from ..utils import contains_heredoc
+    if contains_heredoc(content):
+        from ..lexer import tokenize_with_heredocs
+        from ..parser import parse_with_heredocs
+        tokens, heredoc_map = tokenize_with_heredocs(
+            content, strict=shell.state.options.get('posix', False),
+            shell_options=shell.state.options)
+        return parse_with_heredocs(tokens, heredoc_map)
+    from ..lexer import tokenize
+    from ..parser import parse
+    return parse(tokenize(content))
+
+
 def handle_visitor_mode_for_command(shell: 'Shell', command: str) -> int:
     """Run the selected analysis mode over a ``-c`` command string."""
     try:
-        from ..lexer import tokenize
-        from ..parser import parse
-
-        tokens = tokenize(command)
-        ast = parse(tokens)
-
+        ast = _parse_for_analysis(shell, command)
         return apply_visitor_mode(shell, ast)
     except (ValueError, TypeError) as e:
         print(f"Error parsing command: {e}", file=sys.stderr)
@@ -35,12 +53,7 @@ def handle_visitor_mode_for_script(shell: 'Shell', script_path: str) -> int:
         with open(script_path, 'r') as f:
             content = f.read()
 
-        from ..lexer import tokenize
-        from ..parser import parse
-
-        tokens = tokenize(content)
-        ast = parse(tokens)
-
+        ast = _parse_for_analysis(shell, content)
         return apply_visitor_mode(shell, ast)
     except FileNotFoundError:
         print(f"psh: {script_path}: No such file or directory", file=sys.stderr)
