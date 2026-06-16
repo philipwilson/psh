@@ -8,10 +8,11 @@ accumulator already trial-parsed the command, so when the recursive-descent
 parser is active the execution path reuses its AST instead of parsing the
 same text twice.
 """
+import dataclasses
 import sys
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
-from ..ast_nodes import StatementList, TopLevel
+from ..ast_nodes import ASTNode, StatementList, TopLevel
 from ..lexer import UnclosedQuoteError, tokenize
 from ..parser import ParseError
 from ..utils import contains_heredoc
@@ -20,6 +21,28 @@ from .command_accumulator import CommandAccumulator, Complete, NeedMore
 
 if TYPE_CHECKING:
     from ..visitor import EnhancedValidatorVisitor
+
+
+def _offset_line_numbers(obj: Any, delta: int) -> None:
+    """Add *delta* to every stamped ``.line`` in an AST subtree, in place.
+
+    The parser stamps statement nodes with buffer-relative lines; this
+    converts them to absolute source lines (offset by where the buffer
+    began) once, before execution — so a function body bakes in its
+    definition-site lines rather than its call-site line. Recurses through
+    ASTNode dataclass fields and list/tuple containers (e.g.
+    ``IfConditional.elif_parts``, a list of StatementList tuples). See
+    ``ASTNode.line``.
+    """
+    if isinstance(obj, ASTNode):
+        if obj.line is not None:
+            obj.line += delta
+        if dataclasses.is_dataclass(obj):
+            for field in dataclasses.fields(obj):
+                _offset_line_numbers(getattr(obj, field.name, None), delta)
+    elif isinstance(obj, (list, tuple)):
+        for item in obj:
+            _offset_line_numbers(item, delta)
 
 
 class SourceProcessor(ScriptComponent):
@@ -206,6 +229,13 @@ class SourceProcessor(ScriptComponent):
                     source_text=command_string,
                 )
                 ast = parser.parse()
+
+            # Convert the parser's buffer-relative $LINENO stamps to absolute
+            # source lines (offset by where this buffer began). Done once here
+            # so a function body bakes in its definition-site lines. See
+            # ASTNode.line and _offset_line_numbers.
+            if start_line > 1:
+                _offset_line_numbers(ast, start_line - 1)
 
             # Debug: Print AST if requested
             if self.state.debug_ast:

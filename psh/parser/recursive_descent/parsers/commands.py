@@ -331,6 +331,9 @@ class CommandParser:
     def parse_pipeline(self) -> Pipeline:
         """Parse a pipeline (commands connected by | or |&)."""
         pipeline = Pipeline()
+        # Stamp the pipeline's first-token line so $LINENO tracks per pipeline
+        # within a multi-line && / || chain (see ASTNode.line).
+        pipeline.line = self.parser.peek().line
 
         # Check for leading ! (negation)
         if self.parser.consume_if(TokenType.EXCLAMATION):

@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.485.0 (2026-06-16) - $LINENO per statement (absolute source lines)
+- BUGFIX (scripting). `$LINENO` was set ONCE per buffered command to the construct's
+  START line, so it was wrong in EVERY multi-line construct: statements inside
+  `if`/`for`/`while`/`until`/`case` bodies, brace/subshell groups, and later pipelines
+  of a multi-line `&&`/`||` chain all reported the construct's first line; statements
+  inside a function reported the CALL-SITE line instead of the definition line; `-c`
+  multi-line text, `eval`, and `source` were similarly off. Now each statement carries
+  its absolute source line and `$LINENO` is re-stamped per statement (and per pipeline
+  in an and-or chain) right before it runs. Verified value-for-value against bash 5.2.
+- Mechanism: `ASTNode` gains an inert `line` class attribute (not a dataclass field —
+  AST equality/repr are unaffected). The recursive-descent parser stamps each statement
+  and pipeline with its first token's (buffer-relative) line; the source processor offsets
+  those to absolute file/`-c`/`eval` lines once per buffer, recursing into function bodies
+  so a body bakes in its DEFINITION-site lines (a call-site base would be wrong — a
+  function defined in one buffer and called from another must report its def lines). The
+  executor re-stamps `$LINENO` per statement in `visit_StatementList`/`visit_TopLevel`
+  and per pipeline in `visit_AndOrList`; `source`/function-return restoration of `$LINENO`
+  to the caller's line then falls out for free (the next statement re-stamps).
+- Function `$LINENO` is now constant across call sites, `LINENO=N` reassignment still
+  tracks from N, and `$((LINENO))` agrees — all matching bash.
+- TESTS: 29 new (first-ever `$LINENO` coverage) — `tests/conformance/bash/
+  test_lineno_conformance.py` (25 cases vs live bash: top-level, all compounds, and-or
+  chains, function def-site, nested/mutually-recursive functions, eval, source
+  reset+restore, reassignment) and `tests/system/test_lineno_script_file.py` (4 cases
+  pinning the FileInput path incl. shebang-comment line accounting).
+- KNOWN remaining divergences (pre-existing, orthogonal, NOT fixed here): command
+  substitution does not inherit the enclosing line (`x=$(echo $LINENO)` → psh 1, bash 2);
+  the physical line counter under-counts after a backslash-newline line continuation
+  (continuations are collapsed before line counting). The combinator parser (educational)
+  does not stamp lines, so `$LINENO` there falls back to the buffer's start line.
+
 ## 0.484.0 (2026-06-16) - Tier R14.C: dedup — visitor world-writable check + RD arith helper
 - BUGFIX (analysis) + DEDUP. The `EnhancedValidatorVisitor` chmod check was a substring
   scan (`777`/`666`/`a+w`/`o+w`) that MISSED most world-writable octal modes (757, 776,

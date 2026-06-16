@@ -20,13 +20,26 @@ class StatementParser:
         self.parser = main_parser
 
     def parse_statement(self) -> Optional[Statement]:
-        """Parse a statement."""
+        """Parse a statement.
+
+        Stamps the parsed node with the (buffer-relative) line of its first
+        token for ``$LINENO``. This is the single chokepoint every nested
+        statement list funnels through (loop/if/case/function bodies), so it
+        covers them all; the source processor later offsets the stamp to an
+        absolute line. See ``ASTNode.line``.
+        """
+        start_line = self.parser.peek().line
+
         # Check for function definition first
         if self.parser.functions.is_function_def():
-            return self.parser.functions.parse_function_def()
+            stmt: Optional[Statement] = self.parser.functions.parse_function_def()
+        else:
+            # Otherwise parse an and_or_list
+            stmt = self.parse_and_or_list()
 
-        # Otherwise parse an and_or_list
-        return self.parse_and_or_list()
+        if stmt is not None and stmt.line is None:
+            stmt.line = start_line
+        return stmt
 
     def parse_command_list(self) -> CommandList:
         """Parse a command list (statements separated by ; or newline)."""
