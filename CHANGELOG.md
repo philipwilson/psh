@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.500.0 (2026-06-17) - prompts expand $()/$VAR/$(()) (Tier R15.B)
+- BUGFIX (interactive, reappraisal #13 MED). PS1/PS2 (and the `${var@P}` operator) decoded only
+  backslash escapes — `$(...)`, `$VAR`, and `$((...))` in a prompt were left literal. Now a prompt
+  undergoes parameter / command / arithmetic expansion after escape decoding (bash's default
+  `promptvars`), so `PS1='[\$(echo HI)]\$ '`... see below.
+- Order & protection match bash (verified via `${var@P}`): escapes are decoded FIRST, then the
+  `$`-pass runs, but escape output is PROTECTED — a `\$`-produced `$` does not start a command
+  substitution (`\$(echo HI)` stays literal) and an escape's (or a variable's) value is not
+  re-interpreted as a prompt escape (`X='\w'; PS1='$X'` → literal `\w`).
+- Fix: `PromptExpander.expand_full` decodes escapes into protected/raw segments, replaces each
+  escape-produced segment with a NUL sentinel, runs `expand_string_variables`, then restores the
+  sentinels. PS1/PS2 (`prompt_manager`) AND the `@P` operator (`expansion/operators.py`) now share
+  this one implementation, so they agree. A prompt expansion error never aborts the caller.
+- TESTS: `tests/conformance/bash/test_prompt_expansion_conformance.py` (10 cases via `${var@P}`)
+  + `tests/unit/interactive/test_prompt_dollar_expansion.py` (7 cases incl. the `\[`/`\]`
+  readline markers, which `@P` omits).
+
 ## 0.499.0 (2026-06-16) - formatter preserves [[ ]] operand quoting (Tier R15.B)
 - BUGFIX (formatter visitor, reappraisal #13 MED). `--format` dropped quoting on `[[ ]]` binary
   test operands because it emitted the derived (unquoted) display strings (`node.left`/`.right`)
