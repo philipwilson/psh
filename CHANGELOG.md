@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.499.0 (2026-06-16) - formatter preserves [[ ]] operand quoting (Tier R15.B)
+- BUGFIX (formatter visitor, reappraisal #13 MED). `--format` dropped quoting on `[[ ]]` binary
+  test operands because it emitted the derived (unquoted) display strings (`node.left`/`.right`)
+  instead of the operand Words. This CHANGED MEANING: `[[ $x == "*.txt" ]]` (literal compare)
+  became `[[ $x == *.txt ]]` (glob match), and `[[ $x == "a b" ]]` no longer re-parsed.
+- Fix (`visitor/formatter_visitor.py` `visit_BinaryTestExpression`): format the operand Word
+  nodes (`left_word`/`right_word`, which carry per-part quote context) via `_format_word`, so
+  quotes are preserved and the output round-trips. Unary test operands are stored only as plain
+  strings (no Word/quote context), but inside `[[ ]]` operands are not word-split, so a dropped
+  quote there is cosmetic, not semantic (documented).
+- TESTS: new `tests/unit/visitor/test_formatter_test_quoting.py` (7 cases, incl. round-trip
+  stability).
+
 ## 0.498.0 (2026-06-16) - set -e brace-group exemption (Tier R15.B)
 - BUGFIX (executor, reappraisal #13 MED). Under `set -e`, a brace group whose last statement
   was an `&&`/`||` list with an exempt failing member wrongly aborted: `set -e; { false && true; }`
