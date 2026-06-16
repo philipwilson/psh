@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.473.0 (2026-06-16) - Tier R14.A: test/[ `==` synonym and 3-arg `-a`/`-o`
+- BUGFIX (behavior). `test`/`[` now accepts `==` as a synonym for `=` (bash extension;
+  literal string equality, NO globbing — unlike `[[ ]]`). `[ "$x" == foo ]` — an
+  extremely common idiom — previously errored `[: ==: binary operator expected` (exit 2).
+- BUGFIX (behavior). The 3-argument XSI binary primaries `-a`/`-o` now work:
+  `[ s1 -a s2 ]` is the AND of the two operands' string non-emptiness, `[ s1 -o s2 ]`
+  the OR (`[ a -a b ]` → 0, `[ "" -a b ]` → 1, `[ a -o "" ]` → 0). Previously errored
+  `[: -a: binary operator expected`. The multi-arg `-a`/`-o` that combine whole
+  expressions (`[ -f x -a -d y ]`) are unaffected (separate dispatch path).
+- Found by reappraisal #12 (the two highest-impact common-idiom bugs). +11 conformance
+  tests. (README test count corrected to the true collected total, 8,161 — reappraisal
+  #12 noted a prior drift.)
+
 ## 0.472.0 (2026-06-16) - Fix: real-time signal listing on Linux (kill -l / trap -l)
 - BUGFIX (behavior, Linux). `kill -l` and `trap -l` listed only `SIGRTMIN` (34) and
   `SIGRTMAX` (64), omitting the 29 intermediate real-time signals bash enumerates

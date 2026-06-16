@@ -329,10 +329,21 @@ class TestBuiltin(Builtin):
 
     def _evaluate_binary(self, arg1: str, op: str, arg2: str, shell: 'Shell') -> int:
         """Evaluate binary operators."""
-        if op == '=':
+        if op == '=' or op == '==':
+            # bash accepts == as a synonym for = in test/[ (literal string
+            # equality — no globbing, unlike [[ ]]).
             return 0 if arg1 == arg2 else 1
         elif op == '!=':
             return 0 if arg1 != arg2 else 1
+        elif op == '-a':
+            # 3-argument form `[ s1 -a s2 ]`: AND of the operands' string
+            # non-emptiness (POSIX XSI binary primary). Distinct from the
+            # multi-arg -a that combines whole expressions (handled in
+            # _evaluate_expression's logical scan, which only runs for len>3).
+            return 0 if (arg1 and arg2) else 1
+        elif op == '-o':
+            # 3-argument form `[ s1 -o s2 ]`: OR of string non-emptiness.
+            return 0 if (arg1 or arg2) else 1
         elif op == '<':
             # bash extension: string sorts before arg2 in ASCII/byte order
             # (test/[ uses byte order, NOT the locale collation [[ ]] uses)
