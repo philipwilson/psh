@@ -268,3 +268,15 @@ class TestPatternBracketClasses:
             'x="path/to/file"; echo "${x##*/}" "${x%/*}" "${x//\\//-}"'
         )
         assert capsys.readouterr().out.strip() == "file path/to path-to-file"
+
+    def test_anchored_empty_pattern_prepends_and_appends(self, shell, capsys):
+        """R13.A: ${x/#/PRE} and ${x/%/SUF} with an EMPTY pattern match the
+        empty string at start/end (bash prepends/appends); the unanchored
+        ${x/} and ${x//} with an empty pattern stay no-ops."""
+        shell.run_command(
+            'x=hello; echo "${x/#/PRE}" "${x/%/SUF}" "[${x/}]" "[${x//}]"')
+        assert capsys.readouterr().out.strip() == "PREhello helloSUF [hello] [hello]"
+
+    def test_anchored_empty_pattern_on_empty_value(self, shell, capsys):
+        shell.run_command('x=; echo "[${x/#/PRE}][${x/%/SUF}]"')
+        assert capsys.readouterr().out.strip() == "[PRE][SUF]"

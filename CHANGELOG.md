@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.466.0 (2026-06-16) - Tier R13.A (expansion): anchored empty-pattern substitution ${x/#/…}/${x/%/…}
+- BUGFIX (behavior). `${x/#/PRE}` and `${x/%/SUF}` (anchored substitution with an EMPTY
+  pattern) were no-ops; bash matches the empty string at the start/end and
+  prepends/appends the replacement (`x=hello; ${x/#/PRE}` → `PREhello`,
+  `${x/%/SUF}` → `helloSUF`, and on an empty value `${x/#/PRE}` → `PRE`).
+  `operators._substitute` short-circuited `if not pattern: return value` for ALL four
+  operators; the early-return is now gated to the unanchored `/` and `//` (which DO no-op
+  on an empty pattern), so `/#` and `/%` fall through to substitute_prefix/substitute_suffix
+  (already correct). Found by reappraisal #11. +2 regression tests.
+- Second batch of Tier R13.A.
+
 ## 0.465.0 (2026-06-16) - Tier R13.A (builtins): test -v, getopts OPTARG, lone `test !` (reappraisal #11)
 - BUGFIX (behavior). Three genuine bash divergences in the test/getopts builtins, found by
   reappraisal #11:
