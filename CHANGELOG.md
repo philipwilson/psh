@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.492.0 (2026-06-16) - array nameref += appends (Tier R15.A — attribute uniformity)
+- BUGFIX (executor, reappraisal #13 HIGH). Whole-array append through a nameref replaced the
+  target instead of appending: `a=(1 2 3); declare -n r=a; r+=(4)` gave `a=([0]="4")` instead
+  of `([0]="1" [1]="2" [2]="3" [3]="4")`. `execute_array_initialization` used `node.name` (the
+  nameref `r`) for the existing-contents lookup — whose value is the target NAME string, not an
+  array — so `+=` started from a fresh array; the WRITE resolved the nameref, so the fresh
+  array landed on the target.
+- Fix (`executor/array.py`): resolve the nameref target up front (with cycle handling, the same
+  pattern the element-write path already uses) and use the resolved name for both the existing-
+  contents read and the write. The readonly-array error now names the variable as written (the
+  nameref), matching bash.
+- Verified value-for-value vs bash 5.2: indexed/associative append through a nameref appends;
+  whole-array replace (`r=(...)`), element write (`r[i]=`), append to an empty target, and
+  plain non-nameref append are unchanged.
+- TESTS: new `tests/conformance/bash/test_nameref_array_append_conformance.py` (8 cases).
+- KNOWN follow-up (separate code path, not this fix): scalar append through a nameref
+  (`s=hi; declare -n r=s; r+=more`) does not resolve the target either — it goes through
+  `resolve_append_assignment` in command_assignments, to be addressed separately.
+
 ## 0.491.0 (2026-06-16) - declare -a/-A preserves content (Tier R15.A — attribute uniformity)
 - BUGFIX (declare/typeset, reappraisal #13 HIGH). A bare `declare -a`/`-A` installed a fresh
   EMPTY array, so it both DISCARDED an existing scalar's value (`x=foo; declare -a x` gave

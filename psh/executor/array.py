@@ -48,15 +48,28 @@ class ArrayOperationExecutor:
         Returns:
             Exit status code (0 for success)
         """
+        # Resolve a nameref target so ``declare -n r=arr; r+=(x)`` / ``r=(...)``
+        # read AND write the real array (bash). Without this the existing-
+        # contents lookup used the nameref's value (the target NAME string), so
+        # ``+=`` started from a fresh array and REPLACED instead of appending.
+        # resolve_nameref_name returns the name unchanged for a non-nameref.
+        from ..core import NamerefCycleError
+        try:
+            name = self.state.scope_manager.resolve_nameref_name(node.name)
+        except NamerefCycleError as e:
+            self.state.scope_manager.warn_nameref_cycle(e.name)
+            name = node.name
+
         # A variable declared associative (declare -A) keeps string keys:
         # arr=([k]=v ...) populates an AssociativeArray, not an IndexedArray.
-        var_obj = self.state.scope_manager.get_variable_object(node.name)
+        var_obj = self.state.scope_manager.get_variable_object(name)
 
         # A readonly array rejects whole-array reassignment AND ``+=`` append
         # (bash: ``a=(1 2); readonly a; a+=(9)`` errors). Gate BEFORE building,
         # because append builds in-place into the existing array — set_variable
         # would raise afterwards but the in-place mutation would already persist.
         if var_obj is not None and var_obj.is_readonly:
+            # bash names the variable as written (the nameref), not its target.
             print(f"psh: {node.name}: readonly variable", file=self.state.stderr)
             return 1
 
@@ -64,7 +77,7 @@ class ArrayOperationExecutor:
             assoc = self.build_associative_array(
                 node.words, into=(var_obj.value if node.is_append else None))
             self.state.scope_manager.set_variable(
-                node.name, assoc,
+                name, assoc,
                 attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
             return 0
 
@@ -74,7 +87,7 @@ class ArrayOperationExecutor:
         indexed = self.build_indexed_array(node.words, into=existing)
 
         # Set array in shell state
-        self.state.scope_manager.set_variable(node.name, indexed, attributes=VarAttributes.ARRAY)
+        self.state.scope_manager.set_variable(name, indexed, attributes=VarAttributes.ARRAY)
         return 0
 
     # ------------------------------------------------------------------ #
