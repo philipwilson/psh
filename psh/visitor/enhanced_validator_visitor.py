@@ -572,17 +572,16 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                         node
                     )
 
-        # Check file permissions
+        # Check file permissions. Use the shared bit-check (constants.py) so
+        # ALL world-writable octal modes are caught (757, 776, 737, ... — the
+        # old substring scan only matched 777/666/a+w/o+w), single-sourced
+        # with SecurityVisitor.
         if self.config.check_file_permissions and cmd == 'chmod':
+            from .constants import is_world_writable_permission
             for arg in node.args[1:]:
-                if any(perm in arg for perm in ['777', 'a+w', 'o+w']):
+                if is_world_writable_permission(arg):
                     self._add_warning(
                         "Security: Creating world-writable files is a security risk",
-                        node
-                    )
-                elif '666' in arg:
-                    self._add_warning(
-                        "Security: Mode 666 makes files writable by everyone",
                         node
                     )
 

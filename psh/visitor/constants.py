@@ -1,5 +1,21 @@
 """Shared constants for AST visitor implementations."""
 
+import re
+
+
+def is_world_writable_permission(perm: str) -> bool:
+    """True if a chmod permission argument makes a file world-writable.
+
+    Shared by SecurityVisitor and EnhancedValidatorVisitor so the check is
+    single-sourced and correct: an octal mode is world-writable iff the
+    other-write bit (2) is set in its last digit (757, 776, 737, ... — not
+    just 777/666), and the symbolic forms add other/all the write bit.
+    """
+    if re.match(r'^\d{3,4}$', perm):
+        return int(perm[-1]) & 2 != 0
+    return 'o+w' in perm or 'a+w' in perm or 'o=w' in perm
+
+
 # test/[ ] operator operand classification, shared by the analysis visitors so
 # the "an operand after this operator need not be quoted / is compared a certain
 # way" knowledge lives in one place.

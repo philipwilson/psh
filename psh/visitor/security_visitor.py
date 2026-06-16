@@ -5,7 +5,6 @@ This visitor analyzes AST for potential security vulnerabilities and
 dangerous patterns in shell scripts.
 """
 
-import re
 from typing import Any, Dict, List
 
 from ..ast_nodes import (
@@ -287,15 +286,10 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         return recursive and force
 
     def _is_world_writable_permission(self, perm: str) -> bool:
-        """Check if a permission string makes files world-writable."""
-        # Check for octal permissions
-        if re.match(r'^\d{3,4}$', perm):
-            # Check if other-write bit is set (xx2, xx3, xx6, xx7)
-            return int(perm[-1]) & 2 != 0
-        # Check for symbolic permissions
-        elif 'o+w' in perm or 'a+w' in perm or 'o=w' in perm:
-            return True
-        return False
+        """Check if a permission string makes files world-writable
+        (delegates to the shared, single-sourced helper in constants.py)."""
+        from .constants import is_world_writable_permission
+        return is_world_writable_permission(perm)
 
     def get_report(self) -> Dict[str, Any]:
         """Get a security report."""
