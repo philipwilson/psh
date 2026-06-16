@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.503.0 (2026-06-17) - [[ -v ]] on arrays tests element 0 (Tier R15.B)
+- BUGFIX (test, reappraisal #13 MED). `[[ -v name ]]` / `test -v name` returned true whenever
+  the array variable merely existed. bash's `-v name` on an array tests element 0
+  (`-v name[0]`), so an EMPTY array — declared `declare -a a` or even assigned `=()` — is
+  "unset", an indexed array with no `a[0]` (`a=([5]=z)`) is unset, and an associative array is
+  keyed on `"0"`.
+- Fix (`builtins/test_command.py` `variable_is_set`): for a bare array name, check element 0
+  (index 0 / key "0") rather than the variable's existence. Scalars and explicit `name[key]`
+  refs are unchanged.
+- Verified value-for-value vs bash 5.2 (12 cases: declared/assigned-empty, populated, [5]-only,
+  unset a[0], assoc key x vs 0, scalar set/unset, element present/absent, test-builtin form).
+- TESTS: new `tests/conformance/bash/test_v_array_conformance.py` (12 cases).
+- DEFERRED (separate, architectural, cosmetic): `declare -p` of a never-assigned array printing
+  `declare -a a` vs an assigned-empty `declare -a a=()` needs an UNSET-array-state model (the
+  item deferred since reappraisal #12).
+
 ## 0.502.0 (2026-06-17) - history word modifiers + quick substitution (Tier R15.B)
 - FEATURE/BUGFIX (interactive, reappraisal #13 MED). History expansion now supports the `:`
   word modifiers and `^old^new` quick substitution; before, `!!:h`/`!!:s/...` etc. errored with
