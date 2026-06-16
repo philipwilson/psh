@@ -330,34 +330,42 @@ class ArrayOperationExecutor:
                 array = AssociativeArray()
                 self.state.scope_manager.set_variable(name, array, attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
 
-        is_integer = var_obj is not None and bool(
-            var_obj.attributes & VarAttributes.INTEGER)
+        attrs = var_obj.attributes if var_obj is not None else VarAttributes.NONE
+        is_integer = bool(attrs & VarAttributes.INTEGER)
+        is_upper = bool(attrs & VarAttributes.UPPERCASE)
+        is_lower = bool(attrs & VarAttributes.LOWERCASE)
 
         # ``array`` and ``index`` are correlated by construction: an
         # IndexedArray always pairs with an int subscript, an AssociativeArray
         # with a string key (kept consistent above). Branch on the concrete
         # array type so the key type narrows for the union ``get``/``set``
-        # calls. ``_compute_element_value`` is shared so the integer/append
-        # arithmetic is written once — no behavior change.
+        # calls. ``_compute_element_value`` is shared so the integer/case/append
+        # logic is written once.
         if isinstance(array, IndexedArray):
             idx = index if isinstance(index, int) else 0
             array.set(idx, self._compute_element_value(
-                array.get(idx), expanded_value, is_integer, node.is_append))
+                array.get(idx), expanded_value, is_integer, node.is_append,
+                is_upper, is_lower))
         else:
             akey = str(index)
             array.set(akey, self._compute_element_value(
-                array.get(akey), expanded_value, is_integer, node.is_append))
+                array.get(akey), expanded_value, is_integer, node.is_append,
+                is_upper, is_lower))
         return 0
 
     def _compute_element_value(self, current: Optional[str], expanded_value: str,
-                               is_integer: bool, is_append: bool) -> str:
+                               is_integer: bool, is_append: bool,
+                               is_upper: bool = False,
+                               is_lower: bool = False) -> str:
         """Resolve the final element string for an ``a[i]=`` write.
 
         Shared by the indexed/associative branches of element assignment.
         Integer (-i) elements arithmetic-evaluate the RHS and, for ``+=``, do
         a NUMERIC add against the current element (mirrors scalar ``x+=EXPR``
         on an -i var); empty RHS = 0. Non-integer ``+=`` is string
-        concatenation onto the current value.
+        concatenation onto the current value. The uppercase (-u) / lowercase
+        (-l) attribute then case-folds the result, exactly like a scalar write
+        (bash applies the case attribute to array elements too).
         """
         if is_integer:
             rhs = evaluate_arithmetic(expanded_value or '0', self.shell)
@@ -366,8 +374,14 @@ class ArrayOperationExecutor:
                 rhs = base + rhs
             return str(rhs)
         if is_append and current is not None:
-            return current + expanded_value
-        return expanded_value
+            value = current + expanded_value
+        else:
+            value = expanded_value
+        if is_upper:
+            return value.upper()
+        if is_lower:
+            return value.lower()
+        return value
 
     # Helper methods
 

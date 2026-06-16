@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.493.0 (2026-06-16) - case attributes on array elements (Tier R15.A — attribute uniformity)
+- BUGFIX (executor, reappraisal #13). The uppercase (-u) / lowercase (-l) attribute was applied
+  to scalar writes and the integer (-i) attribute was applied to array elements, but case
+  folding was NOT applied to array ELEMENT writes: `declare -au a; a[0]=foo` left `foo` instead
+  of `FOO` (and `declare -al a; a[0]=HELLO` left `HELLO` instead of `hello`).
+- Fix (`executor/array.py` `_compute_element_value`): after the integer/append computation,
+  fold the element by the variable's UPPERCASE/LOWERCASE attribute — exactly like a scalar
+  write. Integer (-i) still takes precedence (numeric value), `+=` folds the whole concatenated
+  element, and array INITIALIZATION (which already folded) plus scalars are unchanged.
+- Verified value-for-value vs bash 5.2: indexed/associative -u/-l element writes, -u append,
+  -i precedence, -u/-l initializers, and the no-attribute case.
+- TESTS: new `tests/conformance/bash/test_array_case_attr_conformance.py` (9 cases).
+- This completes the R15.A attribute-uniformity cluster (set -u array elements v0.490,
+  declare -a/-A content v0.491, array nameref += v0.492, case attrs here).
+
 ## 0.492.0 (2026-06-16) - array nameref += appends (Tier R15.A — attribute uniformity)
 - BUGFIX (executor, reappraisal #13 HIGH). Whole-array append through a nameref replaced the
   target instead of appending: `a=(1 2 3); declare -n r=a; r+=(4)` gave `a=([0]="4")` instead
