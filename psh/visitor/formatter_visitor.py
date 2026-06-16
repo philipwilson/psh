@@ -484,11 +484,25 @@ class FormatterVisitor(ASTVisitor[str]):
         return result
 
     def visit_BinaryTestExpression(self, node: BinaryTestExpression) -> str:
-        """Format a binary test expression."""
-        return f"{node.left} {node.operator} {node.right}"
+        """Format a binary test expression.
+
+        Format the operand Words (which carry per-part quote context), NOT the
+        derived ``.left``/``.right`` display strings — otherwise quoting is
+        dropped and the meaning changes: ``[[ $x == "*.txt" ]]`` (literal
+        compare) would become ``[[ $x == *.txt ]]`` (glob match), and
+        ``[[ $x == "a b" ]]`` would no longer re-parse.
+        """
+        left = self._format_word(node.left_word)
+        right = self._format_word(node.right_word)
+        return f"{left} {node.operator} {right}"
 
     def visit_UnaryTestExpression(self, node: UnaryTestExpression) -> str:
-        """Format a unary test expression."""
+        """Format a unary test expression.
+
+        ``operand`` is a plain string (no stored Word/quote context); inside
+        ``[[ ]]`` the operand is not word-split, so a dropped quote here is
+        cosmetic (``[[ -n "$y" ]]`` vs ``[[ -n $y ]]`` mean the same).
+        """
         return f"{node.operator} {node.operand}"
 
     def visit_CompoundTestExpression(self, node: CompoundTestExpression) -> str:
