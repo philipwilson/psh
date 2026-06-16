@@ -220,9 +220,17 @@ class ExecutorVisitor(ASTVisitor[int]):
             else:
                 status = self.visit(pipeline)
             # Record whether this (possibly failing) status may trigger
-            # set -e; read by the statement-level checks.
-            self.state.errexit_eligible = (
-                not exempt and self.context.errexit_suppress == 0)
+            # set -e; read by the statement-level checks. A brace group is
+            # TRANSPARENT to errexit (unlike a subshell or function): the
+            # eligibility its body's last command established propagates out,
+            # so `set -e; { false && true; }` does NOT abort (the inner
+            # non-final && member's exemption carries through). Keep what the
+            # body set rather than re-marking the whole group eligible.
+            if not exempt and self._pipeline_is_brace_group(pipeline):
+                pass
+            else:
+                self.state.errexit_eligible = (
+                    not exempt and self.context.errexit_suppress == 0)
             # The ERR trap fires under exactly the errexit conditions (bash);
             # $? must already be the failing status inside the action.
             if status != 0 and self.state.errexit_eligible:
@@ -247,6 +255,18 @@ class ExecutorVisitor(ASTVisitor[int]):
             self.state.last_exit_code = exit_status
 
         return exit_status
+
+    @staticmethod
+    def _pipeline_is_brace_group(pipeline) -> bool:
+        """True if *pipeline* is a single brace group `{ ...; }` (no `|`).
+
+        Brace groups run in the current shell and are transparent to errexit;
+        subshells `( )` and functions are not (handled normally).
+        """
+        from ..ast_nodes import BraceGroup
+        cmds = getattr(pipeline, 'commands', None)
+        return (cmds is not None and len(cmds) == 1
+                and isinstance(cmds[0], BraceGroup))
 
     def _execute_background_list(self, node: AndOrList) -> int:
         """Run a whole and-or list (or a backgrounded compound command) in
