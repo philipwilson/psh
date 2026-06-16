@@ -76,9 +76,10 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
 
             var_name = node.parameter
 
-            # Plain ${arr[index]} / ${arr[@]} / ${arr[*]} subscript.
+            # Plain ${arr[index]} / ${arr[@]} / ${arr[*]} subscript. This is the
+            # bare form (no operator), so an absent element honors nounset.
             if '[' in var_name and var_name.endswith(']') and var_name.find('[') > 0:
-                return self._expand_array_subscript(var_name)
+                return self._expand_array_subscript(var_name, check_nounset=True)
 
             # Plain ${var}. Honor nounset. The error already carries bash's
             # message format; do not re-wrap (a "psh: " prefix here doubled
