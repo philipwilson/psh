@@ -82,6 +82,45 @@ def test_pushd_updates_pwd_logically(captured_shell):
     assert pwd_output in ['/tmp', '/private/tmp']
 
 
+def test_pwd_default_is_logical(captured_shell, temp_dir):
+    """R14.A: bare `pwd` prints the LOGICAL path ($PWD, symlink-named), not the
+    resolved physical path (bash default)."""
+    symlink_path = os.path.join(temp_dir, 'mylink')
+    target_dir = os.path.join(temp_dir, 'target')
+    os.mkdir(target_dir)
+    os.symlink(target_dir, symlink_path)
+
+    captured_shell.run_command(f'cd {symlink_path}')
+    captured_shell.clear_output()
+
+    result = captured_shell.run_command('pwd')
+    assert result == 0
+    assert captured_shell.get_stdout().strip() == symlink_path
+
+    # -L is the explicit logical form (same as default)
+    captured_shell.clear_output()
+    captured_shell.run_command('pwd -L')
+    assert captured_shell.get_stdout().strip() == symlink_path
+
+    # -P resolves the symlink to the physical path
+    captured_shell.clear_output()
+    captured_shell.run_command('pwd -P')
+    assert captured_shell.get_stdout().strip() == os.path.realpath(target_dir)
+
+
+def test_pwd_falls_back_to_physical_when_pwd_stale(captured_shell, temp_dir):
+    """If $PWD no longer names the current directory, `pwd` falls back to the
+    physical cwd rather than printing a stale logical path."""
+    real = os.path.join(temp_dir, 'realcwd')
+    os.mkdir(real)
+    captured_shell.run_command(f'cd {real}')
+    # Corrupt $PWD to an unrelated absolute path.
+    captured_shell.run_command('PWD=/definitely/not/here')
+    captured_shell.clear_output()
+    captured_shell.run_command('pwd')
+    assert captured_shell.get_stdout().strip() == os.path.realpath(real)
+
+
 def test_dirs_shows_logical_paths(captured_shell):
     """Test that dirs command shows logical paths."""
     # Clear any existing directory stack

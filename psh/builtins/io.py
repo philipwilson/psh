@@ -274,9 +274,25 @@ class PwdBuiltin(Builtin):
         return "Print the current working directory"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        """Print the current working directory."""
+        """Print the current working directory.
+
+        Default (and ``-L``) is the LOGICAL path — the shell's ``$PWD``, which
+        preserves the symlink-named path you cd'd through — falling back to the
+        physical path if ``$PWD`` is stale. ``-P`` prints the physical path
+        (symlinks resolved). Matches bash.
+        """
+        opts, operands = self.parse_flags(args, shell, flags='LP')
+        if opts is None:
+            return 2
+        if operands:
+            # bash ignores extra operands silently for pwd; keep that.
+            pass
         try:
-            cwd = os.getcwd()
+            physical = os.getcwd()
+            if opts['P']:
+                cwd = physical
+            else:
+                cwd = self._logical_cwd(shell, physical)
             self.write_line(cwd, shell)
             return 0
         except OSError as e:
@@ -285,6 +301,19 @@ class PwdBuiltin(Builtin):
             strerror = os.strerror(e.errno) if e.errno else str(e)
             self.error(f"write error: {strerror}", shell)
             return 1
+
+    @staticmethod
+    def _logical_cwd(shell: 'Shell', physical: str) -> str:
+        """The logical cwd: $PWD when it is an absolute path that still names
+        the current directory (possibly via symlinks), else the physical path."""
+        pwd = shell.state.get_variable('PWD')
+        if isinstance(pwd, str) and pwd.startswith('/'):
+            try:
+                if os.path.samefile(pwd, physical):
+                    return pwd
+            except OSError:
+                pass
+        return physical
 
     @property
     def help(self) -> str:

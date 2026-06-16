@@ -108,18 +108,22 @@ class TestTypeBuiltin:
 
         captured_shell.clear_output()
 
-        # But should show path for external command
+        # But should show path for external command — R14.A: the BARE path,
+        # with no "ls is " banner (the old format wrongly printed "ls is /…").
         result = captured_shell.run_command('type -p ls')
         assert result == 0
-        assert captured_shell.get_stdout().strip().endswith('/ls')
+        out = captured_shell.get_stdout().strip()
+        assert out.endswith('/ls')
+        assert ' is ' not in out and out.startswith('/')
 
     def test_type_P_option(self, captured_shell):
         """Test type -P option to force PATH search."""
-        # Even for builtins, -P forces PATH search
+        # Even for builtins, -P forces PATH search, printing the BARE path.
         result = captured_shell.run_command('type -P echo')
         assert result == 0
-        # Should find external echo
-        assert '/echo' in captured_shell.get_stdout()
+        out = captured_shell.get_stdout().strip()
+        assert out.endswith('/echo')
+        assert ' is ' not in out and out.startswith('/')
 
     def test_type_f_option(self, captured_shell):
         """Test type -f option to suppress function lookup."""
