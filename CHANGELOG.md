@@ -4,6 +4,28 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.468.0 (2026-06-16) - Tier R13.A (core/io/executor): readonly array writes, noclobber message, exec diagnostic
+- BUGFIX (behavior). Writing an ELEMENT of a readonly array silently succeeded
+  (`a=(1 2); readonly a; a[0]=X` set the element; bash errors with status 1 and
+  leaves the array unchanged). `execute_array_element_assignment` now gates on
+  `var_obj.is_readonly` before the write; the nameref/`set_var_or_array_element`
+  path is gated too. Indexed and associative arrays both covered.
+- BUGFIX (behavior). `+=` append to a readonly array printed the error but STILL
+  mutated the array (`a=(1 2); readonly a; a+=(9)` left `a` as `1 2 9`). The append
+  builds in-place into the existing array, so the mutation persisted before
+  `set_variable` raised. `execute_array_initialization` now gates on readonly up
+  front, before building.
+- BUGFIX (cosmetic). noclobber diagnostic word order now matches bash:
+  `TARGET: cannot overwrite existing file` (was `cannot overwrite existing file:
+  TARGET`). All three raise sites (file/builtin/child backends) updated.
+- BUGFIX (cosmetic). `exec >FILE` failing on an errno-less redirect error
+  (noclobber/ambiguous/bad-fd) printed `psh: exec: None`; it now prints psh's own
+  complete message (mirrors `setup_child_redirections`), e.g. `psh: FILE: cannot
+  overwrite existing file`.
+- Found by reappraisal #11. +4 regression tests (readonly array element/assoc/append,
+  exec noclobber diagnostic).
+- Fourth batch of Tier R13.A.
+
 ## 0.467.0 (2026-06-16) - Tier R13.A (core): declare -u/-l mutual exclusion + tombstone attribute mutation
 - BUGFIX (behavior). `declare -u` and `declare -l` are mutually exclusive; psh kept both
   flags and folded by flag order. bash has two rules, all now matched (13/13 probes):

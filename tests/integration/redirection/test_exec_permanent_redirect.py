@@ -200,3 +200,16 @@ class TestExecWithCommandRedirect:
         assert result.returncode != 0
         assert result.stderr == ''
         assert 'nonexistent_xyz' in read(os.path.join(temp_dir, 'err.txt'))
+
+    def test_exec_noclobber_diagnostic_is_complete(self, temp_dir):
+        """R13.A: an errno-less redirect OSError (noclobber) carries psh's own
+        complete message. The exec handler previously printed the filename/
+        strerror pair, which for these custom errors yielded 'psh: exec: None'.
+        Now it prints the message verbatim (bash: 'TARGET: cannot overwrite
+        existing file')."""
+        result = run_psh(
+            'set -C; echo a > ec.txt; exec > ec.txt', temp_dir)
+        assert result.returncode == 1
+        assert 'cannot overwrite existing file' in result.stderr
+        assert 'None' not in result.stderr
+        assert 'ec.txt' in result.stderr

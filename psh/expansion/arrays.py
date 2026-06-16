@@ -137,6 +137,13 @@ class ArrayOpsMixin(_Base):
             from ..core import AssociativeArray, IndexedArray
             var = self.state.scope_manager.get_variable_object(array_name)
 
+            # A readonly array forbids element writes too (bash: ``a=(1 2);
+            # readonly a; a[0]=X`` errors). The gate is the array variable,
+            # not the subscript, so report the array name.
+            if var is not None and var.is_readonly:
+                from ..core import ReadonlyVariableError
+                raise ReadonlyVariableError(array_name)
+
             if var and isinstance(var.value, IndexedArray):
                 var.value.set(self._eval_array_index(index_expr), value)
             elif var and isinstance(var.value, AssociativeArray):

@@ -778,9 +778,15 @@ class CommandExecutor:
                     self.io_manager.apply_permanent_redirections(node.redirects)
                     return 0
                 except OSError as e:
-                    # bash format: "bash: FILE: No such file or directory"
-                    print(f"psh: {e.filename or 'exec'}: {e.strerror}",
-                          file=self.state.stderr)
+                    # bash format: "bash: FILE: No such file or directory".
+                    # errno-less OSErrors carry psh's own complete message
+                    # (noclobber/ambiguous/bad-fd) — print it verbatim rather
+                    # than "exec: None" (mirrors setup_child_redirections).
+                    if e.errno is None:
+                        print(f"psh: {e}", file=self.state.stderr)
+                    else:
+                        print(f"psh: {e.filename or 'exec'}: {e.strerror}",
+                              file=self.state.stderr)
                     return 1
             else:
                 # No redirections, just succeed
@@ -795,8 +801,14 @@ class CommandExecutor:
                 try:
                     self.io_manager.apply_permanent_redirections(node.redirects)
                 except OSError as e:
-                    # bash format: "bash: FILE: No such file or directory"
-                    print(f"psh: {e.filename or 'exec'}: {e.strerror}",
-                          file=self.state.stderr)
+                    # bash format: "bash: FILE: No such file or directory".
+                    # errno-less OSErrors carry psh's own complete message
+                    # (noclobber/ambiguous/bad-fd) — print it verbatim rather
+                    # than "exec: None" (mirrors setup_child_redirections).
+                    if e.errno is None:
+                        print(f"psh: {e}", file=self.state.stderr)
+                    else:
+                        print(f"psh: {e.filename or 'exec'}: {e.strerror}",
+                              file=self.state.stderr)
                     return 1
             return exec_builtin.execute(['exec'] + args, self.shell)
