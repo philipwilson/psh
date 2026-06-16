@@ -222,14 +222,10 @@ class ShellFormatter:
             return result
 
         elif isinstance(node, BreakStatement):
-            if node.level and node.level != 1:
-                return f"break {node.level}"
-            return "break"
+            return ShellFormatter._format_loop_control("break", node)
 
         elif isinstance(node, ContinueStatement):
-            if node.level and node.level != 1:
-                return f"continue {node.level}"
-            return "continue"
+            return ShellFormatter._format_loop_control("continue", node)
 
         elif isinstance(node, SubshellGroup):
             result = f"( {ShellFormatter.format(node.statements, indent_level)} )"
@@ -264,6 +260,21 @@ class ShellFormatter:
 
             # Fallback
             return f"# Unknown node type: {type(node).__name__}"
+
+    @staticmethod
+    def _format_loop_control(name: str, node) -> str:
+        """Render a break/continue statement with its optional level argument.
+
+        Prefers the raw argument words (``break $n``, ``break 2``); falls back
+        to the literal int level for hand-built/combinator nodes that set only
+        the int field.
+        """
+        words = getattr(node, 'level_words', None)
+        if words:
+            return ' '.join([name] + [w.source_text() for w in words])
+        if node.level and node.level != 1:
+            return f"{name} {node.level}"
+        return name
 
     @staticmethod
     def _format_test_expression(expr) -> str:

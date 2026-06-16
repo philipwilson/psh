@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.469.0 (2026-06-16) - Tier R13.A (parser/executor): break/continue argument validation
+- BUGFIX (behavior). `break`/`continue` silently dropped any non-digit argument: the
+  parser only consumed the level token when it was `.isdigit()`, so `break foo` parsed
+  as `break` plus a stray `foo` command, and `break $n` ignored the variable entirely
+  (always broke one level). The level is now captured as argument Words and validated at
+  RUNTIME, matching bash (16 probes):
+  - non-numeric (`break foo`, `break ""`) → "break: ARG: numeric argument required",
+    exit 128, and a non-interactive shell ABORTS (break/continue are POSIX special
+    builtins);
+  - `break $n` / `break "$n"` → expanded then applied (now breaks N levels);
+  - `break 0` / negative → "loop count out of range", exits one loop level, status 0
+    (bash quirk: `continue 0` also exits the loop);
+  - `break 1 2` or a variable that word-splits to two fields → "too many arguments",
+    exit 1, aborts;
+  - a NEVER-EXECUTED bad argument (`if false; then break foo; fi`) is NOT an error
+    (validation is at runtime, not parse time — bash-matched).
+- AST: BreakStatement/ContinueStatement gain `level_words: List[Word]` (the int `level`
+  field is kept for hand-built/combinator nodes); a shared `literal_loop_control_level`
+  helper feeds the validator and the pretty-printers. The RD parser, executor
+  (`_resolve_loop_control_level`), shell_formatter, formatter/validator/debug_ast visitors
+  were updated; combinator parser behavior unchanged (educational).
+- Found by reappraisal #11. +13 regression tests (TestBreakContinueArgumentValidation).
+- Fifth batch of Tier R13.A.
+
 ## 0.468.0 (2026-06-16) - Tier R13.A (core/io/executor): readonly array writes, noclobber message, exec diagnostic
 - BUGFIX (behavior). Writing an ELEMENT of a readonly array silently succeeded
   (`a=(1 2); readonly a; a[0]=X` set the element; bash errors with status 1 and

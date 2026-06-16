@@ -81,3 +81,76 @@ class TestBreakContinueLevels:
         out, err, rc = run_psh('until false; do break 2; done; echo rc=$?')
         assert out == 'rc=0\n'
         assert err == ''
+
+
+class TestBreakContinueArgumentValidation:
+    """R13.A: break/continue validate their level argument at RUNTIME.
+
+    bash reference (bash 5.2). Previously psh silently dropped a non-numeric
+    or variable argument (parsing ``break foo`` as ``break`` + a stray
+    ``foo`` command), so ``break $n`` and ``break foo`` misbehaved.
+    """
+
+    def test_nonnumeric_argument_aborts_with_128(self):
+        """break foo: 'numeric argument required', exit 128, shell aborts."""
+        out, err, rc = run_psh(
+            'for i in 1 2; do break foo; echo $i; done; echo AFTER')
+        assert rc == 128
+        assert 'numeric argument required' in err
+        assert out == ''
+
+    def test_continue_nonnumeric_argument_aborts_with_128(self):
+        out, err, rc = run_psh(
+            'for i in 1 2; do continue foo; echo $i; done; echo AFTER')
+        assert rc == 128
+        assert 'numeric argument required' in err
+
+    def test_empty_string_argument_is_nonnumeric(self):
+        """break "" is one (empty) field, not a missing argument."""
+        out, err, rc = run_psh('for i in 1 2; do break ""; done; echo AFTER')
+        assert rc == 128
+        assert 'numeric argument required' in err
+
+    def test_variable_level_argument_is_expanded(self):
+        """break $n expands and breaks that many levels (was silently 1)."""
+        out, err, rc = run_psh(
+            'n=2; for i in 1 2; do for j in a b; do break $n; echo $i$j; done; '
+            'done; echo AFTER')
+        assert out == 'AFTER\n'
+        assert rc == 0
+
+    def test_zero_argument_out_of_range_exits_one_level(self):
+        """break 0: 'loop count out of range', exits the loop, status 0."""
+        out, err, rc = run_psh(
+            'for i in 1 2; do break 0; echo $i; done; echo AFTER')
+        assert out == 'AFTER\n'
+        assert 'loop count out of range' in err
+        assert rc == 0
+
+    def test_negative_argument_out_of_range(self):
+        out, err, rc = run_psh(
+            'for i in 1 2; do break -1; echo $i; done; echo AFTER')
+        assert out == 'AFTER\n'
+        assert 'loop count out of range' in err
+
+    def test_too_many_arguments(self):
+        """break 1 2: 'too many arguments', exit 1, shell aborts."""
+        out, err, rc = run_psh('for i in 1 2; do break 1 2; done; echo AFTER')
+        assert rc == 1
+        assert 'too many arguments' in err
+        assert 'AFTER' not in out
+
+    def test_word_split_argument_is_too_many(self):
+        """An unquoted variable splitting to two fields is 'too many'."""
+        out, err, rc = run_psh(
+            'm="1 2"; for i in 1 2; do break $m; done; echo AFTER')
+        assert rc == 1
+        assert 'too many arguments' in err
+
+    def test_never_executed_bad_argument_is_not_an_error(self):
+        """Validation is at runtime: a never-taken break foo must not error."""
+        out, err, rc = run_psh(
+            'for i in 1 2 3; do if false; then break foo; fi; echo $i; done')
+        assert out == '1\n2\n3\n'
+        assert err == ''
+        assert rc == 0

@@ -422,17 +422,20 @@ class FormatterVisitor(ASTVisitor[str]):
 
     def visit_BreakStatement(self, node: BreakStatement) -> str:
         """Format a break statement."""
-        if node.level == 1:
-            return self._indent() + 'break'
-        else:
-            return f"{self._indent()}break {node.level}"
+        return self._indent() + self._format_loop_control('break', node)
 
     def visit_ContinueStatement(self, node: ContinueStatement) -> str:
         """Format a continue statement."""
-        if node.level == 1:
-            return self._indent() + 'continue'
-        else:
-            return f"{self._indent()}continue {node.level}"
+        return self._indent() + self._format_loop_control('continue', node)
+
+    @staticmethod
+    def _format_loop_control(name: str, node) -> str:
+        """Render break/continue with its argument words (or literal level)."""
+        if node.level_words:
+            return ' '.join([name] + [w.source_text() for w in node.level_words])
+        if node.level != 1:
+            return f"{name} {node.level}"
+        return name
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> str:
         """Format an arithmetic command."""

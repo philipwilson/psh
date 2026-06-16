@@ -319,11 +319,19 @@ class DebugASTVisitor(ASTVisitor[str]):
 
     def visit_BreakStatement(self, node: BreakStatement) -> str:
         """Format break statement."""
-        return self._format_header(f"BreakStatement (level: {node.level})")
+        return self._format_header(f"BreakStatement (level: {self._loop_level(node)})")
 
     def visit_ContinueStatement(self, node: ContinueStatement) -> str:
         """Format continue statement."""
-        return self._format_header(f"ContinueStatement (level: {node.level})")
+        return self._format_header(f"ContinueStatement (level: {self._loop_level(node)})")
+
+    @staticmethod
+    def _loop_level(node) -> str:
+        """Describe a break/continue level for debug output: the raw argument
+        words when present (``$n``, ``foo``), else the literal int level."""
+        if node.level_words:
+            return ' '.join(w.source_text() for w in node.level_words)
+        return str(node.level)
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> str:
         """Format arithmetic command."""
