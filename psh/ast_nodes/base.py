@@ -8,14 +8,23 @@ statement level and as pipeline components.
 """
 
 from abc import ABC
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from .redirects import Redirect
 
 
 class ASTNode(ABC):
-    pass
+    # Source line of this node's first token, for the ``$LINENO`` special
+    # variable. The parser stamps it buffer-relative; the source processor
+    # then offsets it to an absolute file/-c/eval line once per buffer (so a
+    # function body bakes in its DEFINITION-site lines). ``None`` until
+    # stamped. This is a plain class attribute, NOT a dataclass field —
+    # ASTNode is not a dataclass, so concrete @dataclass subclasses neither
+    # collect it as a field nor include it in their generated
+    # ``__init__``/``__eq__``/``__repr__``. Setting ``node.line = N`` creates
+    # an instance attribute; equality/repr of AST nodes is unaffected.
+    line: Optional[int] = None
 
 
 class Statement(ASTNode):

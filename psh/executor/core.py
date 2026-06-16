@@ -111,6 +111,11 @@ class ExecutorVisitor(ASTVisitor[int]):
         for item in node.items:
             try:
                 self.shell.trap_manager.run_pending_traps()
+                # Track $LINENO: each statement carries its absolute source
+                # line (see ASTNode.line). Re-stamping per item also restores
+                # LINENO after a function/source call returns to this list.
+                if item.line is not None:
+                    self.state.scope_manager.set_current_line_number(item.line)
                 exit_status = self.visit(item)
                 # Update $? after each top-level item
                 self.state.last_exit_code = exit_status
@@ -151,6 +156,11 @@ class ExecutorVisitor(ASTVisitor[int]):
         for statement in node.statements:
             try:
                 self.shell.trap_manager.run_pending_traps()
+                # Track $LINENO: each statement carries its absolute source
+                # line (see ASTNode.line). Re-stamping per statement also
+                # restores LINENO after a function/source call returns here.
+                if statement.line is not None:
+                    self.state.scope_manager.set_current_line_number(statement.line)
                 exit_status = self.visit(statement)
                 # Update $? after each statement
                 self.state.last_exit_code = exit_status
@@ -200,6 +210,9 @@ class ExecutorVisitor(ASTVisitor[int]):
 
         def run_pipeline(idx: int) -> int:
             pipeline = node.pipelines[idx]
+            # $LINENO tracks per pipeline within a multi-line && / || chain.
+            if pipeline.line is not None:
+                self.state.scope_manager.set_current_line_number(pipeline.line)
             exempt = idx != last or getattr(pipeline, 'negated', False)
             if exempt:
                 with self.context.errexit_suppressed():

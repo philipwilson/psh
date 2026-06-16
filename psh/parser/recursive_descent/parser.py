@@ -119,8 +119,17 @@ class Parser(ContextBaseParser):
         self.skip_newlines()
 
         while not self.at_end():
+            # Capture the first token's (buffer-relative) line before parsing
+            # so a top-level control structure / function def — which bypass
+            # parse_statement — also gets a $LINENO stamp. parse_command_list
+            # items stamp their own inner statements; stamping the wrapper too
+            # is harmless (re-stamped per inner statement at execution). See
+            # ASTNode.line.
+            item_line = self.peek().line
             item = self._parse_top_level_item()
             if item:
+                if item.line is None:
+                    item.line = item_line
                 top_level.items.append(item)
             self.skip_separators()
 
