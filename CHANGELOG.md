@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.479.0 (2026-06-16) - Tier R14.B (core): declare -i error propagation + declare -p assoc re-parseable
+- BUGFIX (behavior). An `-i` (integer) assignment with a malformed RHS or division by zero
+  now FAILS with the arithmetic-error message and status 1, instead of silently storing 0.
+  `declare -i n; n=1/0` → error + exit 1 (was `n=0`, exit 0); `n=2+` likewise. The integer
+  evaluator stopped swallowing `ShellArithmeticError`, so the `-i` path now behaves exactly
+  like `$((...))`. An undefined variable (`n=abc`) still resolves to 0 (not an error), matching bash.
+- BUGFIX (behavior). `declare -p` of an associative array is now re-parseable: keys that need
+  quoting (spaces, `$`, etc.) are double-quoted with escaping (`["a b"]="v"`) — a bare
+  `[a b]=` was not re-parseable — and bash's trailing space before `)` is emitted. Simple keys
+  (`x`, `a.b`, `1`) stay bare, matching bash. (psh iterates keys sorted; bash uses hash order —
+  an accepted deterministic divergence, so multi-key output is verified by round-trip.)
+- Found by reappraisal #12. Tier R14.B (correctness cluster), batch 3. +8 tests.
+- DEFERRED (separate follow-up): an associative-array key containing a literal `=` or `]`
+  (`m["a=b"]=v`) is mis-split at parse time — the lexer's subscript map is correct, but a
+  parser consumer splits on the inner `=`. Needs parser-level array-element-assignment work.
+
 ## 0.478.0 (2026-06-16) - Tier R14.B: history -c no longer drops post-clear commands
 - BUGFIX (behavior). `history -c` cleared `state.history` directly, leaving the
   HistoryManager's file-sync marker (`_file_synced_len`) stale. Commands added AFTER the
