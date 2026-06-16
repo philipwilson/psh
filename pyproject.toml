@@ -88,6 +88,12 @@ files = [
     "psh/__main__.py",
     "psh/core",
     "psh/ast_nodes",
+    # R14.C: the last modules outside the type-checked scope (R13.C's
+    # "tree-complete" claim was overstated). Now genuinely complete.
+    "psh/parser/combinators/arrays.py",
+    "psh/parser/combinators/diagnostics.py",
+    "psh/expansion/brace_expansion_tokens.py",
+    "psh/expansion/word_expansion_types.py",
     "psh/shell.py",
     "psh/version.py",
     # Scripting (whole package)

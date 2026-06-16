@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.483.0 (2026-06-16) - Tier R14.C: complete the mypy scope (truth-up) + docs + xfail_strict
+- TYPING. `check_untyped_defs` / the mypy `files` scope now genuinely covers the WHOLE
+  `psh/` tree (238/238 files). R13.C's "tree-complete" claim was overstated — four live
+  modules sat outside scope: `parser/combinators/arrays.py` (which had 9 real type errors,
+  now fixed via None-narrowing asserts, a `cast` around `ParseResult`'s invariance, and
+  typed `words`/`parts` lists), `parser/combinators/diagnostics.py`,
+  `expansion/brace_expansion_tokens.py`, `expansion/word_expansion_types.py`. Zero behavior
+  change. Caught by reappraisal #12.
+- DOCS. Corrected the CLAUDE.md type-checking section (it referenced the long-gone
+  `psh/ast_nodes.py`, described the scope as "core/ + a few modules", and claimed "CI
+  enforces it" when per-PR CI is disabled). Documented the macOS-local-gate vs Linux-nightly
+  platform gap in "Known Test Issues" (the v0.472 RT-signal bug is the canonical case).
+- TESTS. Enabled `xfail_strict = true`: a strict-xfail that unexpectedly XPASSES now fails
+  the suite, so a feature implemented behind an xfail auto-flags its stale marker.
+- Tier R14.C (typing/hygiene truth-up), batch 1.
+
 ## 0.482.0 (2026-06-16) - Tier R14.B (interactive): transpose-chars + Ctrl-U match readline
 - BUGFIX (behavior). Ctrl-T (`transpose-chars`) now matches readline/bash: it drags the
   character BEFORE point forward over the character AT point and advances point (`abc` with
