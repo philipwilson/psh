@@ -33,7 +33,18 @@ def variable_is_set(shell: 'Shell', var_ref: str) -> bool:
             except ValueError:
                 return False
         return False
-    return shell.state.scope_manager.get_variable_object(var_ref) is not None
+
+    # Bare name. For an array, bash's `-v name` tests element 0 (`-v name[0]`),
+    # so an empty array — even one explicitly assigned `=()` — is "unset".
+    var_obj = shell.state.scope_manager.get_variable_object(var_ref)
+    if var_obj is None:
+        return False
+    from ..core import AssociativeArray, IndexedArray
+    if isinstance(var_obj.value, IndexedArray):
+        return 0 in var_obj.value
+    if isinstance(var_obj.value, AssociativeArray):
+        return "0" in var_obj.value
+    return True
 
 
 @builtin
