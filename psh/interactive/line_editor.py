@@ -344,6 +344,7 @@ class LineEditor:
             'backward_delete_char': op(self._backspace),
             'kill_line': op(self._kill_line),
             'kill_whole_line': op(self._kill_whole_line),
+            'kill_to_beginning': op(self._kill_to_beginning),
             'kill_word_backward': op(self._kill_word_backward),
             'kill_word_forward': op(self._kill_word_forward),
             'yank': op(self._yank),
@@ -471,6 +472,11 @@ class LineEditor:
         """Kill the entire line."""
         self.edit_buffer.kill_whole_line()
         self._redraw()
+
+    def _kill_to_beginning(self):
+        """Kill from the cursor back to the start of the line (unix-line-discard)."""
+        if self.edit_buffer.kill_to_beginning():
+            self._redraw()
 
     def _kill_word_backward(self):
         """Kill the word before cursor."""

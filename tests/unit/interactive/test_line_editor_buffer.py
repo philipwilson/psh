@@ -80,6 +80,25 @@ class TestBufferEditing:
         editor._yank()
         assert line(editor) == "ls -la"
 
+    def test_kill_to_beginning_preserves_text_after_cursor(self, editor):
+        # R14.B: Ctrl-U is unix-line-discard — kill from the cursor back to the
+        # start, KEEPING text after the cursor (not kill-whole-line).
+        set_line(editor, "ls -la", cursor=3)
+        editor._kill_to_beginning()
+        assert line(editor) == "-la"
+        assert editor.edit_buffer.cursor == 0
+        assert editor.edit_buffer.kill_ring[-1] == "ls "
+
+    def test_kill_to_beginning_at_bol_is_noop(self, editor):
+        set_line(editor, "abc", cursor=0)
+        assert editor.edit_buffer.kill_to_beginning() is False
+        assert line(editor) == "abc"
+
+    def test_ctrl_u_is_bound_to_kill_to_beginning(self):
+        from psh.interactive.keybindings import EmacsKeyBindings
+        kb = EmacsKeyBindings()
+        assert kb.bindings[kb.CTRL_U] == 'kill_to_beginning'
+
     def test_yank_inserts_at_cursor_mid_line(self, editor):
         editor.edit_buffer.kill_ring.append("XY")
         set_line(editor, "abcd", cursor=2)
@@ -94,16 +113,20 @@ class TestBufferEditing:
         assert editor.edit_buffer.cursor == 2
 
     def test_transpose_mid_line(self, editor):
+        # readline: drag the char BEFORE point over the char AT point, advance
+        # point. "abcd" with point at 1 -> "bacd", point 2 (bash). (psh used to
+        # swap at-point with the next char, giving "acbd".)
         set_line(editor, "abcd", cursor=1)
         editor._transpose_chars()
-        assert line(editor) == "acbd"
-        assert editor.edit_buffer.cursor == 3
+        assert line(editor) == "bacd"
+        assert editor.edit_buffer.cursor == 2
 
-    def test_transpose_at_start(self, editor):
+    def test_transpose_at_start_is_noop(self, editor):
+        # readline rings the bell at beginning-of-line — no change.
         set_line(editor, "ab", cursor=0)
         editor._transpose_chars()
-        assert line(editor) == "ba"
-        assert editor.edit_buffer.cursor == 1
+        assert line(editor) == "ab"
+        assert editor.edit_buffer.cursor == 0
 
     def test_transpose_single_char_is_noop(self, editor):
         set_line(editor, "a", cursor=1)

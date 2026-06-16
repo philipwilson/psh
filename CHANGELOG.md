@@ -4,6 +4,18 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.482.0 (2026-06-16) - Tier R14.B (interactive): transpose-chars + Ctrl-U match readline
+- BUGFIX (behavior). Ctrl-T (`transpose-chars`) now matches readline/bash: it drags the
+  character BEFORE point forward over the character AT point and advances point (`abc` with
+  point at 1 → `bac`, point 2); at end-of-line it transposes the two characters before point
+  (`abc`→`acb`); at beginning-of-line it is a no-op (readline rings the bell). psh previously
+  swapped the char at point with the next one and mishandled the BOL case.
+- BUGFIX (behavior). Ctrl-U is now `unix-line-discard` (kill from the cursor back to the
+  start of the line, KEEPING the text after the cursor), matching bash; it was bound to
+  kill-whole-line. New `EditBuffer.kill_to_beginning()`; rebound in both emacs and vi-insert.
+- Found by reappraisal #12. Tier R14.B (correctness cluster), batch 6. Updated the 2 tests
+  that pinned the old transpose behavior; +3 tests.
+
 ## 0.481.0 (2026-06-16) - Tier R14.B (executor): break 0 / continue 0 exit all loops, status 1
 - BUGFIX (behavior). `break 0`, `continue 0`, and negative counts now report "loop count
   out of range" AND exit ALL enclosing loops with status 1, matching bash. Previously psh
