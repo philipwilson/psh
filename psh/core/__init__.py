@@ -20,6 +20,7 @@ from .exceptions import (
     ExpansionError,
     FunctionDefinitionError,
     FunctionReturn,
+    GlobNoMatchError,
     LoopBreak,
     LoopContinue,
     NamerefCycleError,
@@ -42,6 +43,7 @@ __all__ = [
     'ReadonlyVariableError',
     'NamerefCycleError',
     'ExpansionError',
+    'GlobNoMatchError',
     'FunctionDefinitionError',
     'ArraySubscriptError',
     # Variables

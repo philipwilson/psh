@@ -446,12 +446,25 @@ class CommandExecutor:
           alive, print a generic message (traceback under --debug-exec).
         """
         # Import these here to avoid circular imports
-        from ..core import ExpansionError, LoopBreak, LoopContinue, UnboundVariableError
+        from ..core import (
+            ExpansionError,
+            GlobNoMatchError,
+            LoopBreak,
+            LoopContinue,
+            UnboundVariableError,
+        )
         from ..core.exceptions import FunctionReturn
 
         # Re-raise control flow exceptions
         if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue, SystemExit)):
             raise
+
+        if isinstance(e, GlobNoMatchError):
+            # shopt -s failglob: a no-match glob fails THIS command (status 1)
+            # but does NOT abort a non-interactive shell (bash) — so, unlike a
+            # parameter ExpansionError, never sys.exit here.
+            print(f"psh: {e}", file=self.state.stderr)
+            return 1
 
         # Handle other exceptions
         if isinstance(e, ReadonlyVariableError):

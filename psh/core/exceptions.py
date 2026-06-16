@@ -63,6 +63,16 @@ class ExpansionError(PshError):
         self.exit_code = exit_code
         super().__init__(message)
 
+class GlobNoMatchError(PshError):
+    """Raised when pathname expansion matches nothing under ``shopt -s
+    failglob``. Unlike a parameter ExpansionError this is NOT fatal to a
+    non-interactive shell — bash fails only the current command (status 1)
+    and continues to the next — so the command-error handler reports it and
+    returns 1 without exiting."""
+    def __init__(self, pattern: str):
+        self.pattern = pattern
+        super().__init__(f"no match: {pattern}")
+
 class BadSubstitutionError(ExpansionError):
     """Raised at expansion time for a syntactically-invalid ``${...}``
     parameter name (bash: "${...}: bad substitution", exit 1). Examples:

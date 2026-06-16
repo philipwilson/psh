@@ -21,6 +21,7 @@ class ShoptBuiltin(Builtin):
     SHOPT_OPTIONS = {
         'dotglob': 'dotglob',
         'nullglob': 'nullglob',
+        'failglob': 'failglob',
         'extglob': 'extglob',
         'nocaseglob': 'nocaseglob',
         'nocasematch': 'nocasematch',
@@ -162,4 +163,5 @@ class ShoptBuiltin(Builtin):
       globstar     '**' matches all files and directories recursively
       nocaseglob   Case-insensitive pathname expansion
       nocasematch  Case-insensitive matching in [[ ]] (==/!=/=~) and case
-      nullglob     Patterns with no matches expand to nothing"""
+      nullglob     Patterns with no matches expand to nothing
+      failglob     Patterns with no matches fail the command"""

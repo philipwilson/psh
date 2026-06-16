@@ -103,7 +103,14 @@ class ArrayOpsMixin(_Base):
 
         # Regular indexed access
         if var and isinstance(var.value, IndexedArray):
-            result = var.value.get(self._eval_array_index(index_expr))
+            idx = self._eval_array_index(index_expr)
+            if var.value.negative_out_of_range(idx):
+                # bash warns on an out-of-range negative READ subscript and
+                # expands to empty (the exit status is unaffected).
+                print(f"psh: {array_name}: bad array subscript",
+                      file=self.state.stderr)
+                return ''
+            result = var.value.get(idx)
             return result if result is not None else ''
         elif var and isinstance(var.value, AssociativeArray):
             expanded_key = self.expand_assoc_key(index_expr)

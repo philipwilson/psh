@@ -431,6 +431,37 @@ class TestGlobOptions:
         captured = capsys.readouterr()
         # Might be empty or unchanged depending on shell
 
+    def test_failglob_no_match_fails_command(self, shell, capsys):
+        """R13.B: shopt -s failglob makes a no-match glob fail the command
+        (status 1) and print 'no match', instead of passing the pattern
+        through (bash). The shell continues to the next command."""
+        shell.run_command('shopt -s failglob')
+        result = shell.run_command('echo /nonexistent_xyz_dir_*')
+        captured = capsys.readouterr()
+        assert result == 1
+        assert 'no match' in captured.err
+        # The pattern is NOT printed (the command did not run).
+        assert '/nonexistent_xyz_dir_' not in captured.out
+
+    def test_failglob_with_match_still_expands(self, shell, capsys):
+        """failglob only affects no-match globs; a matching glob expands."""
+        shell.run_command('touch fgmatch1.dat fgmatch2.dat')
+        shell.run_command('shopt -s failglob')
+        result = shell.run_command('echo fgmatch*.dat')
+        captured = capsys.readouterr()
+        assert result == 0
+        assert 'fgmatch1.dat' in captured.out and 'fgmatch2.dat' in captured.out
+        shell.run_command('rm -f fgmatch*.dat')
+
+    def test_failglob_does_not_affect_assignment(self, shell, capsys):
+        """A no-match glob in an assignment RHS is not globbed, so failglob
+        does not fire (bash: x=/nonex_* keeps the literal pattern)."""
+        shell.run_command('shopt -s failglob')
+        result = shell.run_command('fgvar=/nonexistent_xyz_*')
+        assert result == 0
+        shell.run_command('echo "[$fgvar]"')
+        assert capsys.readouterr().out.strip() == '[/nonexistent_xyz_*]'
+
     def test_dotglob_behavior(self, shell, capsys):
         """Test dotglob option for hidden files."""
         # Create test files
