@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.490.0 (2026-06-16) - set -u for array elements (Tier R15.A — attribute uniformity)
+- BUGFIX (expansion, reappraisal #13 HIGH). `set -u` (nounset) was not enforced for array
+  element reads: a bare `${arr[i]}` / `${arr[key]}` on an ABSENT element returned '' with
+  exit 0, where bash errors `arr[idx]: unbound variable`. This is the array analog of the
+  scalar `${var}` nounset bug fixed in v0.480 — the scalar path checked nounset, the array
+  element path did not.
+- Fix: `_expand_array_subscript` (expansion/arrays.py) now raises `UnboundVariableError`
+  (`arr[idx]: unbound variable`) for an absent element when nounset is set — gated by a
+  `check_nounset` flag that is True only for the BARE form. The value-substituting operator
+  forms (`${a[i]:-d}`, `${a[i]:+s}`) and the length form (`${#a[i]}`) reuse the same evaluator
+  to fetch the base value and stay exempt (False), and `${a[@]}`/`${a[*]}` on an unset array
+  remain non-erroring — all matching bash.
+- Verified value-for-value vs bash 5.2 (14 cases): absent indexed/assoc element errors with the
+  right exit code; present (incl. empty) elements read fine; operator/length/whole-array forms
+  exempt; no error without nounset.
+- TESTS: new `tests/conformance/bash/test_nounset_array_conformance.py` (14 cases).
+
 ## 0.489.0 (2026-06-16) - analysis modes parse heredocs (Tier R15.A — heredoc cluster, visitors)
 - BUGFIX (analysis modes, reappraisal #13 HIGH). The CLI analysis modes (`--validate`,
   `--format`, `--metrics`, `--security`, `--lint`) parsed input with a bare tokenize/parse

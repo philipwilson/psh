@@ -76,11 +76,17 @@ class ArrayOpsMixin(_Base):
             return '0'
         return ''
 
-    def _expand_array_subscript(self, var_content: str) -> str:
+    def _expand_array_subscript(self, var_content: str,
+                                check_nounset: bool = False) -> str:
         """Handle ${arr[index]}, ${arr[@]}, ${arr[*]}.
 
         Returns the result string, or None if this is not a subscript
         expansion (so the caller can fall through).
+
+        ``check_nounset`` is True only for the BARE ``${arr[i]}`` form (so an
+        absent element errors under ``set -u``); the operator path
+        (``${arr[i]:-d}``, ``${#arr[i]}``) reuses this to fetch the base value
+        and must stay exempt, so it leaves it False.
         """
         from ..core import AssociativeArray, IndexedArray
 
@@ -111,21 +117,44 @@ class ArrayOpsMixin(_Base):
                       file=self.state.stderr)
                 return ''
             result = var.value.get(idx)
-            return result if result is not None else ''
+            if result is None:
+                self._check_nounset_element(array_name, index_expr, check_nounset)
+                return ''
+            return result
         elif var and isinstance(var.value, AssociativeArray):
             expanded_key = self.expand_assoc_key(index_expr)
             result = var.value.get(expanded_key)
-            return result if result is not None else ''
+            if result is None:
+                self._check_nounset_element(array_name, index_expr, check_nounset)
+                return ''
+            return result
         elif var and var.value:
             expanded_index = self.expand_array_index(index_expr)
             try:
                 index = int(expanded_index)
                 if index == 0:
                     return str(var.value)
-                return ''
             except ValueError:
                 return ''
+            self._check_nounset_element(array_name, index_expr, check_nounset)
+            return ''
+        # No such array variable at all (unset / tombstone).
+        self._check_nounset_element(array_name, index_expr, check_nounset)
         return ''
+
+    def _check_nounset_element(self, array_name: str, index_expr: str,
+                               check_nounset: bool) -> None:
+        """Under ``set -u``, reading an absent array element is an error.
+
+        Mirrors the scalar nounset check for the bare ``${arr[i]}`` /
+        ``${arr[key]}`` forms only (``check_nounset`` is False for the operator
+        path, which is exempt; ``${arr[@]}``/``${arr[*]}`` returned earlier).
+        bash's message names the full subscript, e.g. ``a[5]: unbound variable``.
+        """
+        if check_nounset and self.state.options.get('nounset', False):
+            from ..core import UnboundVariableError
+            raise UnboundVariableError(
+                f"{array_name}[{index_expr}]: unbound variable")
 
     def set_var_or_array_element(self, var_name: str, value: str):
         """Set a variable or array element (public).
