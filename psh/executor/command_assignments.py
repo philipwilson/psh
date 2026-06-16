@@ -196,10 +196,12 @@ class CommandAssignments:
                     self.state.scope_manager, var, value)
                 try:
                     self.state.set_variable(var, resolved)
-                except ReadonlyVariableError:
+                except ReadonlyVariableError as e:
                     # bash: assignment to a readonly variable aborts a
-                    # non-interactive shell with status 1.
-                    print(f"psh: {var}: readonly variable", file=self.state.stderr)
+                    # non-interactive shell with status 1. Use e.name so a
+                    # readonly array element write reports the array name
+                    # (``a[0]=X`` → ``a: readonly variable``), like bash.
+                    print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
                     if self.shell.state.is_script_mode:
                         sys.exit(1)
                     return 1
@@ -282,10 +284,12 @@ class CommandAssignments:
                 # ``env`` builtin's) environment.
                 self.state.scope_manager.set_variable(
                     var, resolved, attributes=VarAttributes.EXPORT, local=False)
-            except ReadonlyVariableError:
+            except ReadonlyVariableError as e:
                 # bash: report and skip; earlier assignments stay applied
-                # (and are later restored), the command still runs.
-                print(f"psh: {var}: readonly variable",
+                # (and are later restored), the command still runs. Use
+                # e.name so a readonly array element write reports the
+                # array name (``a[0]=X cmd`` → ``a: readonly variable``).
+                print(f"psh: {e.name}: readonly variable",
                       file=self.state.stderr)
                 assignment_error = True
                 continue

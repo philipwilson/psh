@@ -80,7 +80,7 @@ class FileRedirector:
         Shared redirect primitive (fd backend and builtin stream backend).
         """
         if self.noclobber_blocks(target):
-            raise OSError(f"cannot overwrite existing file: {target}")
+            raise OSError(f"{target}: cannot overwrite existing file")
 
     def _is_filename_redirect(self, redirect) -> bool:
         """True for redirects whose target names a file to open/create.
@@ -288,7 +288,7 @@ class FileRedirector:
             flags |= os.O_APPEND
         else:
             if self.noclobber_blocks(target):
-                raise OSError(f"cannot overwrite existing file: {target}")
+                raise OSError(f"{target}: cannot overwrite existing file")
             flags |= os.O_TRUNC
         fd = os.open(target, flags, 0o644)
         _dup2_preserve_target(fd, 1)   # stdout

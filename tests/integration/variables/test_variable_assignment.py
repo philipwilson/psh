@@ -204,6 +204,45 @@ def test_assignment_readonly_variable_error(shell, capsys):
     assert "[value]" in capsys.readouterr().out
 
 
+def test_readonly_array_element_write_rejected(shell, capsys):
+    """R13.A: writing an ELEMENT of a readonly array errors and leaves the
+    array unchanged (bash: `a=(1 2); readonly a; a[0]=X` → readonly
+    variable). Previously the element write silently succeeded."""
+    shell.run_command("ro_arr=(1 2)")
+    shell.run_command("readonly ro_arr")
+    result = shell.run_command("ro_arr[0]=X")
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "readonly variable" in captured.err
+    shell.run_command('echo "[${ro_arr[0]}]"')
+    assert "[1]" in capsys.readouterr().out
+
+
+def test_readonly_assoc_element_write_rejected(shell, capsys):
+    """R13.A: same gate for associative-array element writes."""
+    shell.run_command("declare -A ro_map=([k]=1)")
+    shell.run_command("readonly ro_map")
+    result = shell.run_command("ro_map[k]=X")
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "readonly variable" in captured.err
+    shell.run_command('echo "[${ro_map[k]}]"')
+    assert "[1]" in capsys.readouterr().out
+
+
+def test_readonly_array_append_rejected(shell, capsys):
+    """R13.A: `+=` append to a readonly array errors and must NOT mutate
+    the array (the in-place append previously persisted despite the error)."""
+    shell.run_command("ro_app=(1 2)")
+    shell.run_command("readonly ro_app")
+    result = shell.run_command("ro_app+=(9)")
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "readonly variable" in captured.err
+    shell.run_command('echo "[${ro_app[*]}]"')
+    assert "[1 2]" in capsys.readouterr().out
+
+
 def test_assignment_with_function_call(shell, capsys):
     """Test assignment before function call."""
     shell.run_command('test_func() { echo "VAR is: $VAR"; }')

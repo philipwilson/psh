@@ -51,6 +51,15 @@ class ArrayOperationExecutor:
         # A variable declared associative (declare -A) keeps string keys:
         # arr=([k]=v ...) populates an AssociativeArray, not an IndexedArray.
         var_obj = self.state.scope_manager.get_variable_object(node.name)
+
+        # A readonly array rejects whole-array reassignment AND ``+=`` append
+        # (bash: ``a=(1 2); readonly a; a+=(9)`` errors). Gate BEFORE building,
+        # because append builds in-place into the existing array — set_variable
+        # would raise afterwards but the in-place mutation would already persist.
+        if var_obj is not None and var_obj.is_readonly:
+            print(f"psh: {node.name}: readonly variable", file=self.state.stderr)
+            return 1
+
         if var_obj and isinstance(var_obj.value, AssociativeArray):
             assoc = self.build_associative_array(
                 node.words, into=(var_obj.value if node.is_append else None))
@@ -212,6 +221,12 @@ class ArrayOperationExecutor:
 
         # Get the variable to check if it's an associative array
         var_obj = self.state.scope_manager.get_variable_object(name)
+
+        # A readonly array forbids element writes (bash: ``a=(1 2);
+        # readonly a; a[0]=X`` errors with status 1 and leaves a unchanged).
+        if var_obj is not None and var_obj.is_readonly:
+            print(f"psh: {name}: readonly variable", file=self.state.stderr)
+            return 1
 
         # Determine index type - first check if it's numeric or string
         is_numeric_index = False
