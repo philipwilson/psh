@@ -65,20 +65,15 @@ class TrapManager:
             Exit code (0 for success, 1 for error)
         """
         for signal_spec in signals:
-            signal_spec = signal_spec.upper()
-
-            # Validate signal
-            if signal_spec not in self.signal_map:
-                try:
-                    # Try as number
-                    signal_num = int(signal_spec)
-                    if signal_num not in self.signal_names:
-                        print(f"trap: {signal_spec}: invalid signal specification", file=self.state.stderr)
-                        return 1
-                    signal_spec = str(signal_num)
-                except ValueError:
-                    print(f"trap: {signal_spec}: invalid signal specification", file=self.state.stderr)
-                    return 1
+            # Normalize to one canonical key (SIGINT / 2 / INT all -> INT) so
+            # every path — storage here and the name-keyed SignalManager
+            # dispatch — agrees on the key.
+            canonical = self._canonical_signal_key(signal_spec)
+            if canonical is None:
+                print(f"trap: {signal_spec}: invalid signal specification",
+                      file=self.state.stderr)
+                return 1
+            signal_spec = canonical
 
             if action == '-':
                 # Reset to default
@@ -110,6 +105,28 @@ class TrapManager:
             return int(signal_spec)
         except (TypeError, ValueError):
             return None
+
+    def _canonical_signal_key(self, signal_spec: str) -> Optional[str]:
+        """Canonical ``trap_handlers`` key for a user signal spec.
+
+        Resolves a ``SIG``-prefixed name (``SIGINT``) and a signal number
+        (``2``) to the bare signal name (``INT``) — the single key every
+        path uses, so a trap set as ``SIGINT`` or ``2`` is found by the
+        name-keyed dispatch in SignalManager (which the raw-spec keying used
+        to miss: ``trap … SIGINT`` was rejected and ``trap … 2`` for a
+        managed signal never fired). The real pseudo-signals EXIT/DEBUG/ERR
+        pass through unchanged (RETURN is deliberately not accepted, matching
+        bash here). Returns ``None`` for a spec that is not a valid signal.
+        """
+        spec = signal_spec.upper()
+        if spec in ('EXIT', 'DEBUG', 'ERR'):
+            return spec
+        if spec.startswith('SIG') and len(spec) > 3:
+            spec = spec[3:]
+        signum = self._signum(spec)
+        if signum is None or signum not in self.signal_names:
+            return None
+        return self.signal_names[signum]
 
     def _set_signal_handler(self, signal_spec: str, action: str):
         """Set a signal handler for the given signal."""
@@ -240,19 +257,14 @@ class TrapManager:
             # Show all traps
             signals_to_show = list(self.state.trap_handlers.keys())
         else:
-            # Show specific signals
+            # Show specific signals — canonicalize each query spec to the same
+            # key traps are stored under (so `trap -p SIGINT` / `trap -p 2`
+            # find a trap set on INT).
             signals_to_show = []
             for sig in signals:
-                sig = sig.upper()
-                if sig in self.signal_map:
-                    signals_to_show.append(sig)
-                else:
-                    try:
-                        signal_num = int(sig)
-                        if signal_num in self.signal_names:
-                            signals_to_show.append(str(signal_num))
-                    except ValueError:
-                        pass
+                canonical = self._canonical_signal_key(sig)
+                if canonical is not None:
+                    signals_to_show.append(canonical)
 
         output_lines = []
         for signal_name in sorted(signals_to_show):
