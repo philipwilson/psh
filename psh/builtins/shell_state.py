@@ -22,7 +22,17 @@ class HistoryBuiltin(Builtin):
         if len(args) > 1:
             # Check for -c flag to clear history
             if args[1] == '-c':
-                shell.state.history.clear()
+                # Route through the HistoryManager so the file-sync marker
+                # (_file_synced_len) is reset too. Clearing state.history
+                # directly left the marker stale, so commands added AFTER the
+                # clear were dropped from HISTFILE on save (data loss).
+                hist_mgr = getattr(
+                    getattr(shell, 'interactive_manager', None),
+                    'history_manager', None)
+                if hist_mgr is not None:
+                    hist_mgr.clear_history()
+                else:
+                    shell.state.history.clear()
                 return 0
 
             try:
