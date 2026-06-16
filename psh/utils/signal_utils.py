@@ -20,6 +20,25 @@ from typing import Any, Dict, List, Optional
 # `trap -l` use these helpers so the two listings can never drift apart.
 # --------------------------------------------------------------------------
 
+def _rt_signal_name(num: int, rtmin: int, rtmax: int) -> str:
+    """bash's real-time signal name (WITHOUT the SIG prefix) for a number in
+    [rtmin, rtmax].
+
+    bash names each RT signal from whichever end is closer: ``RTMIN+n`` while
+    ``n <= (rtmax-rtmin)//2``, otherwise ``RTMAX-n``; the endpoints are the
+    bare ``RTMIN``/``RTMAX``. (Verified against bash 5.2 on Linux, where
+    rtmin=34, rtmax=64.)
+    """
+    offset = num - rtmin
+    if offset == 0:
+        return "RTMIN"
+    if num == rtmax:
+        return "RTMAX"
+    if offset <= (rtmax - rtmin) // 2:
+        return f"RTMIN+{offset}"
+    return f"RTMAX-{rtmax - num}"
+
+
 def _build_number_to_name() -> Dict[int, str]:
     """Map signal number -> canonical name WITHOUT the SIG prefix.
 
@@ -32,6 +51,19 @@ def _build_number_to_name() -> Dict[int, str]:
         name = sig.name
         if name.startswith('SIG') and not name.startswith('SIG_'):
             mapping[int(sig.value)] = name[3:]
+
+    # Fill in the real-time signal range (Linux). Python's signal.Signals only
+    # exposes SIGRTMIN/SIGRTMAX as enum members, not the intermediate RT
+    # signals, but bash's `kill -l`/`trap -l` enumerate every number in
+    # [SIGRTMIN, SIGRTMAX]. Self-adjusts to the platform; absent on macOS/BSD
+    # (no SIGRTMIN), so those listings are unchanged.
+    rtmin = getattr(signal, 'SIGRTMIN', None)
+    rtmax = getattr(signal, 'SIGRTMAX', None)
+    if rtmin is not None and rtmax is not None:
+        rtmin, rtmax = int(rtmin), int(rtmax)
+        for num in range(rtmin, rtmax + 1):
+            mapping[num] = _rt_signal_name(num, rtmin, rtmax)
+
     return mapping
 
 

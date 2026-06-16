@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.472.0 (2026-06-16) - Fix: real-time signal listing on Linux (kill -l / trap -l)
+- BUGFIX (behavior, Linux). `kill -l` and `trap -l` listed only `SIGRTMIN` (34) and
+  `SIGRTMAX` (64), omitting the 29 intermediate real-time signals bash enumerates
+  (`SIGRTMIN+1`..`SIGRTMIN+15`, `SIGRTMAX-14`..`SIGRTMAX-1`, numbers 35–63). Root cause:
+  `signal_utils._build_number_to_name()` is built from Python's `signal.Signals` enum,
+  which on Linux exposes only the two RT endpoints as members. The mapping now fills the
+  whole `[SIGRTMIN, SIGRTMAX]` range using bash's `SIGRTMIN+n`/`SIGRTMAX-n` naming (names
+  from whichever end is closer; tie → RTMIN side), so both listings (and name→number
+  lookups like `kill SIGRTMIN+5`) match bash byte-for-byte. Guarded by `hasattr`, so
+  macOS/BSD (no real-time signals) are unaffected.
+- Caught by the nightly full+bash run on Linux (the local gate runs on macOS, where RT
+  signals don't exist). +6 unit tests (RT-naming arithmetic pinned platform-independently;
+  Linux-conditional table check).
+
 ## 0.471.0 (2026-06-16) - Tier R13.C: complete check_untyped_defs + dead-code/dup polish
 - TYPING. `check_untyped_defs` now covers the LAST 11 in-scope modules (psh, __main__,
   shell, version, parser config/__init__/visualization), completing it across the entire
