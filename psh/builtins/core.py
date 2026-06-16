@@ -27,14 +27,20 @@ class ExitBuiltin(Builtin):
         return "Exit the shell"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        """Exit the shell with optional exit code."""
-        exit_code = 0
-        if len(args) > 1:
+        """Exit the shell with optional exit code (bash semantics)."""
+        if len(args) > 2:
+            # bash: "too many arguments" is an error that does NOT exit the
+            # shell — it reports and returns 1, the shell keeps running.
+            self.error("too many arguments", shell)
+            return 1
+
+        # Bare `exit` uses the status of the last command ($?), not 0.
+        exit_code = shell.state.last_exit_code
+        if len(args) == 2:
             try:
-                exit_code = int(args[1])
-                if exit_code < 0 or exit_code > 255:
-                    self.error(f"{args[1]}: numeric argument required", shell)
-                    exit_code = 2
+                # bash wraps the code modulo 256 (so `exit 257` -> 1,
+                # `exit -1` -> 255); & 0xFF matches for negatives too.
+                exit_code = int(args[1]) & 0xFF
             except ValueError:
                 self.error(f"{args[1]}: numeric argument required", shell)
                 exit_code = 2

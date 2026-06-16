@@ -29,8 +29,31 @@ class CdBuiltin(Builtin):
             # Handle case where shell.state is a mock or doesn't exist
             current_dir = os.getcwd()
 
-        if len(args) > 1:
-            path = args[1]
+        # Parse the -L (logical, default) / -P (physical) options. A bare '-'
+        # is NOT an option — it is the "previous directory" operand — and '--'
+        # ends option parsing (both handled by the len>1 guard / explicit check).
+        physical = False
+        i = 1
+        while (i < len(args) and args[i].startswith('-')
+               and len(args[i]) > 1 and args[i] != '--'):
+            flag = args[i]
+            if all(c in 'LP' for c in flag[1:]):
+                physical = flag[-1] == 'P'  # clustered/repeated: last wins
+            else:
+                self.error(f"{flag}: invalid option", shell)
+                self.write_error_line("cd: usage: cd [-L|-P] [dir]", shell)
+                return 2
+            i += 1
+        if i < len(args) and args[i] == '--':
+            i += 1
+        operands = args[i:]
+        if len(operands) > 1:
+            # bash: `cd a b` is an error and does not change directory.
+            self.error("too many arguments", shell)
+            return 1
+
+        if operands:
+            path = operands[0]
 
             # Handle cd - (change to previous directory)
             if path == '-':
@@ -97,6 +120,11 @@ class CdBuiltin(Builtin):
 
             # Change to the actual directory
             os.chdir(actual_path)
+
+            # cd -P records the PHYSICAL location (symlinks resolved) as PWD,
+            # rather than the logical symlink-named path (bash).
+            if physical:
+                logical_new_dir = os.getcwd()
 
             # If found via CDPATH, print the full path (bash behavior)
             if found_in_cdpath:
