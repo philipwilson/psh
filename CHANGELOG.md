@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.487.0 (2026-06-16) - trap signal-spec normalization (Tier R15.A — trap cluster)
+- BUGFIX (trap, reappraisal #13 — two HIGH bugs). `trap` keyed handlers by the raw user
+  spec, while the signal dispatch (SignalManager) looks them up by canonical name, so:
+  (1) `trap 'cleanup' SIGINT` — the most common trap idiom — was REJECTED with "invalid
+  signal specification" (the map keys are bare names like INT, and `int("SIGINT")` fails);
+  (2) `trap 'handler' 2` (or 15/1/3) for a MANAGED signal (INT/TERM/HUP/QUIT) was accepted
+  but NEVER FIRED — the shell died on the default action — because the handler was stored
+  under key "2" while dispatch looked up `signal_names[2]` → "INT".
+- Fix: a single `TrapManager._canonical_signal_key(spec)` resolves a `SIG`-prefixed name,
+  a number, or a bare name to the one canonical key (the bare signal name, e.g. INT), used
+  by `set_trap` (storage) and `show_traps` (queries). So `SIGINT`, `INT`, and `2` set, fire,
+  and query interchangeably, and `trap -p SIGINT` / `trap -p 2` now find a trap set on INT.
+- Verified value-for-value vs bash 5.2 (11 cases): SIG-prefixed names accepted (SIGINT,
+  SIGUSR1, SIGTERM); numbered managed traps 2/15 fire; `trap -p` query by SIG-name / number /
+  bare name; reset-then-query. `trap RETURN` still errors (psh does not implement RETURN
+  traps — a documented, pinned limitation) and an unknown signal is still rejected.
+- TESTS: new `tests/conformance/bash/test_trap_signal_spec_conformance.py` (11 cases).
+
 ## 0.486.0 (2026-06-16) - $LINENO in eval and trap actions (Tier R15.A — nested execution)
 - BUGFIX (scripting, reappraisal #13 HIGH). `$LINENO` inside `eval` and inside DEBUG/ERR
   trap actions reset to 1 instead of anchoring at the invoking command's line. `eval` on
