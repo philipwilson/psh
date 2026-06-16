@@ -217,16 +217,20 @@ class TestHistoryExpansion:
         # Exact behavior depends on implementation
 
     def test_history_expansion_in_quotes(self):
-        """Test history expansion behavior inside quotes."""
+        """Non-interactive runs don't perform history expansion (histexpand is
+        off), so `echo "!!"` prints `!!` literally regardless of quoting. (When
+        histexpand IS on, bash — and now psh — DO expand `!!` inside double
+        quotes; only single quotes/backslash suppress. See
+        test_history_modifiers for the with-histexpand behavior.)"""
         commands = [
             'echo test',
-            'echo "!!"'  # Should not expand inside double quotes
+            'echo "!!"'
         ]
 
         result = HistoryTestHelper.run_psh_with_history(commands, self.history_file)
         assert result['success']
 
-        # Should print literal "!!" not expand it
+        # No expansion in this non-interactive path: the literal !! is printed.
         assert '!!' in result['stdout']
 
 

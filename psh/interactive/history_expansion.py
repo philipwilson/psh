@@ -67,33 +67,42 @@ class HistoryExpander:
         expanded = False
         result = []
         i = 0
+        # History IS expanded inside double quotes (bash); only single quotes
+        # and a preceding backslash suppress it. Track double-quote state so a
+        # single quote inside "..." is treated as literal text, not a span.
+        in_dquote = False
 
         # Process the command character by character to handle quotes properly
         while i < len(command):
             char = command[i]
 
-            # Handle single quotes - no expansion inside
-            if char == "'":
-                # Find the closing quote
+            # Single quotes suppress history expansion — but NOT when already
+            # inside double quotes (a ' inside "..." is literal text, bash).
+            if char == "'" and not in_dquote:
+                # Consume the single-quoted span verbatim.
                 j = i + 1
                 while j < len(command) and command[j] != "'":
                     j += 1
-                # Include the entire quoted string
                 result.append(command[i:j+1] if j < len(command) else command[i:])
                 i = j + 1
                 continue
 
-            # Handle double quotes - no history expansion inside
+            # Double quotes do NOT suppress history expansion (bash) — just
+            # toggle the state and keep scanning for ! references inside.
             elif char == '"':
-                # Find the closing quote, handling escapes
-                j = i + 1
-                while j < len(command):
-                    if command[j] == '"' and (j == i + 1 or command[j-1] != '\\'):
-                        break
-                    j += 1
-                # Include the entire quoted string
-                result.append(command[i:j+1] if j < len(command) else command[i:])
-                i = j + 1
+                in_dquote = not in_dquote
+                result.append(char)
+                i += 1
+                continue
+
+            # A backslash quotes the next character for history expansion: \!
+            # is a literal ! (no expansion). The backslash is KEPT verbatim
+            # (bash's history -p keeps it; the lexer removes it later); keeping
+            # \" intact also stops that " from toggling the double-quote state.
+            elif char == '\\' and i + 1 < len(command):
+                result.append(char)
+                result.append(command[i + 1])
+                i += 2
                 continue
 
             # Handle history expansion
