@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.475.0 (2026-06-16) - Tier R14.A: exit status semantics + cd -L/-P
+- BUGFIX (behavior). `exit` now matches bash on three points: (a) bare `exit` uses `$?`
+  (the last command's status), not 0 — `false; exit` now exits 1; (b) a numeric argument
+  wraps modulo 256 (`exit 257`→1, `exit -1`→255, `exit 300`→44) instead of erroring on
+  out-of-range; (c) too many arguments reports "too many arguments" and does NOT terminate
+  the shell (status 1, execution continues). A non-numeric argument still errors + exits 2.
+- BUGFIX (behavior). `cd` now accepts the `-L` (logical, default) / `-P` (physical) options
+  — previously a leading `-P`/`-L` was treated as a directory operand (`cd: -P: No such
+  file or directory`). `cd -P` records the symlink-resolved physical path as `$PWD`. And
+  `cd a b` is now "too many arguments" (status 1, no chdir) instead of silently cd-ing to
+  the first operand.
+- Found by reappraisal #12. +12 conformance tests.
+
 ## 0.474.0 (2026-06-16) - Tier R14.A: pwd logical default, type -p/-P bare-path output
 - BUGFIX (behavior). `pwd` now prints the LOGICAL path by default (and with `-L`) — the
   shell's `$PWD`, which preserves the symlink-named path you cd'd through — matching bash;
