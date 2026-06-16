@@ -40,6 +40,7 @@ from ..ast_nodes import (
     UntilLoop,
     # Control structures
     WhileLoop,
+    literal_loop_control_level,
 )
 from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
@@ -426,9 +427,11 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         """Validate a break statement."""
         if self.in_loop == 0:
             self._add_error("break: only meaningful in a `for', `while', or `until' loop", node)
-        elif node.level > self.in_loop:
+            return
+        level = literal_loop_control_level(node)
+        if level is not None and level > self.in_loop:
             self._add_error(
-                f"break: loop count {node.level} exceeds maximum nesting level {self.in_loop}",
+                f"break: loop count {level} exceeds maximum nesting level {self.in_loop}",
                 node
             )
 
@@ -436,9 +439,11 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         """Validate a continue statement."""
         if self.in_loop == 0:
             self._add_error("continue: only meaningful in a `for', `while', or `until' loop", node)
-        elif node.level > self.in_loop:
+            return
+        level = literal_loop_control_level(node)
+        if level is not None and level > self.in_loop:
             self._add_error(
-                f"continue: loop count {node.level} exceeds maximum nesting level {self.in_loop}",
+                f"continue: loop count {level} exceeds maximum nesting level {self.in_loop}",
                 node
             )
 

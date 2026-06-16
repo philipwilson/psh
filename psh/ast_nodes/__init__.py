@@ -66,6 +66,7 @@ from .control import (
     SelectLoop,
     UntilLoop,
     WhileLoop,
+    literal_loop_control_level,
 )
 from .redirects import Redirect
 from .tests import (
@@ -158,6 +159,7 @@ __all__ = [
     'CompoundTestExpression',
     'NegatedTestExpression',
     'EnhancedTestStatement',
+    'literal_loop_control_level',
     # unified control structures
     'UnifiedControlStructure',
     'WhileLoop',

@@ -475,18 +475,24 @@ class ControlStructureParser:
     def parse_break_statement(self) -> BreakStatement:
         """Parse break statement with optional level."""
         self.parser.expect(TokenType.BREAK)
-        level = self._parse_loop_control_level()
-        return BreakStatement(level=level)
+        return BreakStatement(level_words=self._parse_loop_control_arguments())
 
     def parse_continue_statement(self) -> ContinueStatement:
         """Parse continue statement with optional level."""
         self.parser.expect(TokenType.CONTINUE)
-        level = self._parse_loop_control_level()
-        return ContinueStatement(level=level)
+        return ContinueStatement(level_words=self._parse_loop_control_arguments())
 
-    def _parse_loop_control_level(self) -> int:
-        """Parse optional loop control level (default 1)."""
-        if self.parser.match(TokenType.WORD) and self.parser.peek().value.isdigit():
-            level_token = self.parser.advance()
-            return int(level_token.value)
-        return 1
+    def _parse_loop_control_arguments(self) -> List[Word]:
+        """Consume the break/continue argument words.
+
+        The level is validated at RUNTIME, not here (bash: a never-executed
+        ``break foo`` is fine, the level may be a non-literal expansion like
+        ``break $n``, and ``break 1 2`` is a runtime "too many arguments"
+        error). So every argument-like token — not just a digit — is captured
+        as a Word and handed to the executor. Returns [] when there is no
+        argument.
+        """
+        words: List[Word] = []
+        while self.parser.match_any(TokenGroups.WORD_LIKE):
+            words.append(self.parser.commands.parse_argument_as_word())
+        return words
