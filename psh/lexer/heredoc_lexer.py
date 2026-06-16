@@ -15,6 +15,37 @@ from .modular_lexer import ModularLexer
 from .token_types import Token, TokenType
 
 
+def normalize_heredoc_delimiter(parts: List[Token]) -> Tuple[str, bool]:
+    """Recover a heredoc's literal delimiter text and whether it was quoted.
+
+    The body terminator line must equal this literal exactly, and any quoting
+    or backslash in the delimiter makes the body literal (no expansion). The
+    delimiter may arrive as one token or several adjacent ones:
+
+      ``<<EOF``      -> ("EOF",  False)   plain word, body expands
+      ``<<\\EOF``    -> ("EOF",  True)    backslash-quoted word
+      ``<<EO\\F``    -> ("EOF",  True)    backslash mid-word
+      ``<<'EOF'``    -> ("EOF",  True)    fully quoted (already a STRING token)
+      ``<<"E F"``    -> ("E F",  True)    quoted, may contain non-word chars
+      ``<<E"O"F``    -> ("EOF",  True)    composite of adjacent WORD/STRING
+
+    A STRING part is already unquoted by the lexer; a WORD part with a
+    backslash is unescaped here. Any quoted/escaped part sets ``quoted``.
+    """
+    literal_parts: List[str] = []
+    quoted = False
+    for part in parts:
+        if part.type == TokenType.STRING:
+            literal_parts.append(part.value)
+            quoted = True
+        elif '\\' in part.value:
+            literal_parts.append(part.value.replace('\\', ''))
+            quoted = True
+        else:
+            literal_parts.append(part.value)
+    return ''.join(literal_parts), quoted
+
+
 class HeredocLexer:
     """Lexer with heredoc collection support."""
 
@@ -92,11 +123,18 @@ class HeredocLexer:
                 if seen <= registered:
                     continue
                 if i + 1 < len(toks):
-                    delim_tok = toks[i + 1]
+                    # Recover the literal delimiter from the single token after
+                    # << (the delimiter the parser also consumes): \EOF -> EOF
+                    # (quoted), EO\F -> EOF, "E F" -> "E F" (quoted), 'EOF' ->
+                    # EOF. A composite multi-token delimiter (E"O"F) is not
+                    # recovered here — the parser only consumes one token — and
+                    # is an accepted limitation (very rare).
+                    delimiter, quoted = normalize_heredoc_delimiter(
+                        [toks[i + 1]])
                     self.heredoc_collector.register_heredoc(
-                        delimiter=delim_tok.value,
+                        delimiter=delimiter,
                         strip_tabs=(token.type == TokenType.HEREDOC_STRIP),
-                        quoted=(delim_tok.type == TokenType.STRING),
+                        quoted=quoted,
                         line=0, col=0,
                     )
         return max(seen, registered)

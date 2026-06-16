@@ -9,14 +9,46 @@ both the script/`-c`/stdin path and the interactive multiline path drive.
 
 import re
 
-# A heredoc start: ``<<WORD``, ``<<-WORD``, ``<< WORD``, ``<< 'WORD'``,
-# ``<< \WORD``. The look-around rejects a third ``<`` on either side so a
-# here-string (``<<<WORD``) is not mistaken for a heredoc.
+# A heredoc start: ``<<WORD``, ``<<-WORD``, ``<< WORD``, plus every quoted /
+# escaped / composite delimiter spelling bash accepts — ``<<'EOF'``,
+# ``<<"E F"``, ``<<\EOF``, ``<<EO\F``, ``<<E"O"F``. The look-around rejects a
+# third ``<`` so a here-string (``<<<WORD``) is not mistaken for a heredoc.
 #   group(1): '-' for <<- (strip leading tabs)
-#   group(2): surrounding quote, if the delimiter is quoted
-#   group(3): a leading backslash on the delimiter (escaped delimiter)
-#   group(4): the delimiter word
-HEREDOC_MARKER_RE = re.compile(r'(?<!<)<<(?!<)(-?)\s*([\'"]?)(\\\s*)?(\w+)\2')
+#   group(2): the RAW delimiter — a run of word chars, backslash-escaped chars,
+#             and single/double-quoted segments (quotes/escapes still present).
+# Use heredoc_delimiter_word(match) for the literal terminator text. ``$`` is
+# deliberately excluded so ``<<$VAR`` does not match here (psh does not yet
+# support a $-delimiter; matching it would mis-gather, not help).
+HEREDOC_MARKER_RE = re.compile(
+    r'(?<!<)<<(?!<)(-?)\s*((?:\\.|"[^"]*"|\'[^\']*\'|[A-Za-z0-9_])+)')
+
+
+def heredoc_delimiter_word(match: 're.Match') -> str:
+    """The literal terminator text for a HEREDOC_MARKER_RE match.
+
+    Normalizes the raw delimiter (group 2) the way the body terminator is
+    written: each ``\\x`` becomes ``x`` and quoted segments contribute their
+    contents — so ``\\EOF``/``EO\\F``/``E"O"F`` all yield ``EOF`` and ``"E F"``
+    yields ``E F`` (mirrors the lexer's normalize_heredoc_delimiter).
+    """
+    raw = match.group(2)
+    out: list = []
+    i, n = 0, len(raw)
+    while i < n:
+        c = raw[i]
+        if c == '\\' and i + 1 < n:
+            out.append(raw[i + 1])
+            i += 2
+        elif c in ('"', "'"):
+            j = raw.find(c, i + 1)
+            if j < 0:
+                j = n
+            out.append(raw[i + 1:j])
+            i = j + 1
+        else:
+            out.append(c)
+            i += 1
+    return ''.join(out)
 
 
 def _scan_arith_or_cmdsub(line: str, position: int, opener: str, open_len: int) -> bool:
@@ -199,8 +231,10 @@ def open_heredoc_delimiters(command: str) -> list:
             # Inside an open heredoc: does this line close one?
             for d in delimiters:
                 if not d['closed']:
+                    # Exact match (bash); only <<- strips leading tabs. A line
+                    # with trailing whitespace is body, not the terminator.
                     check = line.lstrip('\t') if d['strip_tabs'] else line
-                    if check.rstrip() == d['word']:
+                    if check == d['word']:
                         d['closed'] = True
                         break
         else:
@@ -211,7 +245,7 @@ def open_heredoc_delimiters(command: str) -> list:
                 if match.start() < len(flags) and flags[match.start()]:
                     continue  # quoted "<<WORD" is not a heredoc
                 delimiters.append({
-                    'word': match.group(4),
+                    'word': heredoc_delimiter_word(match),
                     'strip_tabs': bool(match.group(1)),
                     'closed': False,
                 })

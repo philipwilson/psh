@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.488.0 (2026-06-16) - heredoc delimiter recognition (Tier R15.A — heredoc cluster, lexer + oracle)
+- BUGFIX (lexer + completeness oracle, reappraisal #13). Escaped/quoted heredoc delimiters
+  were mis-handled, and the terminator match was too loose:
+  - `<<\EOF` (and `<<-\EOF`, `<<EO\F`) recorded the delimiter verbatim WITH the backslash,
+    so the body terminator `EOF` never matched — the heredoc swallowed everything to EOF and
+    produced EMPTY output. The backslash should quote the delimiter (literal body) and be
+    removed. (real-lexer bug)
+  - `<<"E F"` (a quoted delimiter containing a non-word char) was not recognized by the
+    line-gathering completeness oracle (its regex captured only `\w+`), so the heredoc body
+    was fed to the shell as separate commands. (oracle bug — the real lexer handled it)
+  - the terminator line was compared after `.rstrip()`, so a body line like `EOF ` (trailing
+    whitespace) wrongly ended the heredoc; bash requires an EXACT match (only `<<-` strips
+    leading tabs).
+- Fix: a new `lexer.heredoc_lexer.normalize_heredoc_delimiter()` recovers the literal
+  delimiter text + quoted flag from the delimiter token (`\EOF`/`EO\F` → `EOF` quoted;
+  `"E F"`/`'EOF'` → contents, quoted). The oracle's `HEREDOC_MARKER_RE` now captures the full
+  delimiter (word chars, backslash escapes, and quoted segments) with a matching
+  `heredoc_delimiter_word()` normalizer. Both the real lexer (`heredoc_collector`) and the
+  oracle (`heredoc_detection`) compare the terminator EXACTLY (only `<<-` strips leading tabs).
+- Verified value-for-value vs bash 5.2: `<<\EOF`, `<<-\EOF`, `<<EO\F`, `<<"E F"`, `<<'EOF'`,
+  `<<"EOF"` all literal; trailing-whitespace terminator is body; plain `<<EOF` still expands;
+  pipes/strip-tabs unaffected. 207 existing heredoc/detection tests still pass.
+- TESTS: new `tests/conformance/bash/test_heredoc_delimiter_conformance.py` (10 cases).
+- KNOWN limitation (rare, documented): a COMPOSITE multi-token delimiter spliced from quote
+  segments in an unquoted word (`<<E"O"F`) is still not recovered — the parser consumes only
+  one delimiter token. All single-token spellings work.
+
 ## 0.487.0 (2026-06-16) - trap signal-spec normalization (Tier R15.A — trap cluster)
 - BUGFIX (trap, reappraisal #13 — two HIGH bugs). `trap` keyed handlers by the raw user
   spec, while the signal dispatch (SignalManager) looks them up by canonical name, so:
