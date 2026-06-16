@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.467.0 (2026-06-16) - Tier R13.A (core): declare -u/-l mutual exclusion + tombstone attribute mutation
+- BUGFIX (behavior). `declare -u` and `declare -l` are mutually exclusive; psh kept both
+  flags and folded by flag order. bash has two rules, all now matched (13/13 probes):
+  - Both flags in ONE declaration cancel — apply NEITHER, and clear any case attribute the
+    name already carried (`declare -ul y; y=HeLLo` → `HeLLo`; `declare -u y=X; declare -ul y`
+    → unfolded). `_attributes_from_options` no longer does "last-wins"; both-flags now also
+    add LOWERCASE|UPPERCASE to the removed set so a pre-existing case attr is cleared.
+  - Across SEPARATE declarations the last wins (`declare -u y; declare -l y; y=HeLLo` →
+    `hello`).
+- BUGFIX (behavior). Attribute mutation silently no-op'd on declared-but-unset variables.
+  `apply_attribute`/`remove_attribute` looked up the target via `get_variable_object`, which
+  hides UNSET tombstones, so `declare -u y; declare -l y` (and even `declare -u y; declare
+  +u y`) left the original flag stuck. New `ScopeManager._find_variable_for_mutation()` is
+  tombstone-aware and used by both mutators; the declare dispatch now routes declared-but-unset
+  names through them (via `get_declared_variable_object`). `_apply_attributes` also treats a
+  both-case-bits value as a no-op defensively.
+- Found by reappraisal #11. +7 conformance tests (TestDeclareCaseFlagMutualExclusion).
+- Third batch of Tier R13.A.
+
 ## 0.466.0 (2026-06-16) - Tier R13.A (expansion): anchored empty-pattern substitution ${x/#/…}/${x/%/…}
 - BUGFIX (behavior). `${x/#/PRE}` and `${x/%/SUF}` (anchored substitution with an EMPTY
   pattern) were no-ops; bash matches the empty string at the start/end and
