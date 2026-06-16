@@ -77,7 +77,16 @@ def report_exec_failure(cmd_name: str, exc: OSError,
             os.write(2, f"psh: {cmd_name}: command not found\n"
                      .encode('utf-8', errors='surrogateescape'))
         return 127
-    os.write(2, f"psh: {cmd_name}: {exc}\n".encode('utf-8', errors='surrogateescape'))
+    # Report bash's strerror ("Permission denied", "Is a directory"), not
+    # Python's OSError repr ("[Errno 13] Permission denied: './x'"). exec of a
+    # directory returns EACCES on macOS, but bash reports "Is a directory" — so
+    # special-case a directory target to match.
+    target = resolved_path or cmd_name
+    if os.path.isdir(target):
+        detail = os.strerror(errno.EISDIR)
+    else:
+        detail = exc.strerror or str(exc)
+    os.write(2, f"psh: {cmd_name}: {detail}\n".encode('utf-8', errors='surrogateescape'))
     return 126
 
 

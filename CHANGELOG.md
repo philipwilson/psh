@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.496.0 (2026-06-16) - exec-failure messages match bash strerror (Tier R15.B)
+- BUGFIX (executor, reappraisal #13 MED). A failed exec leaked Python's OSError repr —
+  `psh: ./x: [Errno 13] Permission denied: './x'` — where bash prints the bare strerror
+  `./x: Permission denied`. `report_exec_failure` (strategies.py) now emits `exc.strerror`
+  (falling back to `str(exc)`), and special-cases a directory target as "Is a directory"
+  (exec of a directory returns EACCES on macOS, but bash reports EISDIR). Exit codes are
+  unchanged (126 not-executable / 127 not-found).
+- Verified vs bash 5.2 (exit code + stderr substring; the `bash: line N:` prefix differs from
+  psh's by design, and psh no longer leaks the `[Errno N] ...: '...'` repr).
+- TESTS: new `tests/conformance/bash/test_exec_error_message_conformance.py` (3 cases).
+
 ## 0.495.0 (2026-06-16) - echo has no --, type prints function body (Tier R15.B)
 - BUGFIX (echo, reappraisal #13 MED). bash's `echo` has NO `--` option terminator; psh treated
   `--` as end-of-options and dropped it, so `echo -- hi` printed `hi` instead of `-- hi`. Removed
