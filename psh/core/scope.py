@@ -616,6 +616,15 @@ class ScopeManager:
         """Update the current line number for LINENO variable."""
         self._current_line_number = line_number
 
+    def get_current_line_number(self) -> int:
+        """Current line number backing $LINENO.
+
+        Used to anchor nested executions (eval, trap actions) at the line
+        of the command that invoked them, instead of resetting to 1 — see
+        Shell.run_command's ``base_line``.
+        """
+        return self._current_line_number
+
     def is_in_function(self) -> bool:
         """Check if we're currently in a function scope."""
         return len(self.scope_stack) > 1

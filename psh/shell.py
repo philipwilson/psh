@@ -382,10 +382,19 @@ class Shell:
             return
         self.interactive_manager.history_manager.add_to_history(command)
 
-    def run_command(self, command_string: str, add_to_history: bool = True) -> int:
-        """Execute a command string using the unified input system."""
+    def run_command(self, command_string: str, add_to_history: bool = True,
+                    base_line: int = 1) -> int:
+        """Execute a command string using the unified input system.
+
+        ``base_line`` is the absolute source line the command text begins at,
+        for ``$LINENO``. It defaults to 1 (a fresh context). Nested executions
+        that bash anchors at the invoking command's line — ``eval`` and trap
+        actions — pass ``scope_manager.get_current_line_number()`` so $LINENO
+        inside reflects that line rather than resetting to 1.
+        """
         from .scripting.input_sources import StringInput
 
         # Use the unified execution system for consistency
         input_source = StringInput(command_string, "<command>")
-        return self.script_manager.execute_from_source(input_source, add_to_history)
+        return self.script_manager.execute_from_source(
+            input_source, add_to_history, base_line=base_line)
