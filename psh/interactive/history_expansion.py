@@ -27,6 +27,7 @@ def contains_history_reference(text: str) -> bool:
 # "no such event" and "malformed word designator" from a normal string result.
 _EVENT_NOT_FOUND = object()
 _BAD_WORD_SPECIFIER = object()
+_NOT_QUICK_SUB = object()  # leading text is not a ^old^new quick substitution
 
 
 class HistoryExpander:
@@ -35,6 +36,10 @@ class HistoryExpander:
     def __init__(self, shell):
         self.shell = shell
         self.state = shell.state
+        # Last :s/old/new/ substitution, for the :& (repeat) modifier.
+        self._last_sub = None
+        # Set by a :p modifier during one expand_history call: print, don't run.
+        self._print_only = False
 
     def expand_history(
         self,
@@ -62,6 +67,17 @@ class HistoryExpander:
 
         # Get history from the shell
         history = self.state.history
+
+        # ^old^new[^] quick substitution: only when it is the FIRST char of the
+        # line (bash). Equivalent to !!:s/old/new/. Handled before the scanner.
+        if command.startswith('^'):
+            quick = self._expand_quick_substitution(command, history,
+                                                     report_errors)
+            if quick is not _NOT_QUICK_SUB:
+                return quick
+
+        # Per-call print-only flag (set by a :p modifier).
+        self._print_only = False
 
         # Track if we made any expansions
         expanded = False
@@ -188,8 +204,12 @@ class HistoryExpander:
                                       file=sys.stderr)
                             return None
 
-                        # Apply an optional word designator to the event text.
+                        # Apply an optional word designator, then any :modifiers
+                        # (:h/:t/:r/:e, :s/:gs/:&, :p) to the event text.
                         selected = self._apply_word_designator(command, j, event_text)
+                        if selected is not _BAD_WORD_SPECIFIER:
+                            text, j = selected
+                            selected = self.apply_modifiers(text, command, j)
                         if selected is _BAD_WORD_SPECIFIER:
                             if report_errors:
                                 spec = command[j:self._word_designator_end(command, j)]
@@ -212,11 +232,49 @@ class HistoryExpander:
 
         final_result = ''.join(result)
 
+        # A :p modifier prints the expansion and suppresses execution (bash):
+        # print it (always, like bash) and return the empty string so the
+        # caller runs nothing.
+        if self._print_only:
+            print(final_result, file=self.shell.stdout)
+            return ''
+
         # If we made expansions, print the expanded command (only when print_expansion is True)
         if expanded and print_expansion and sys.stdin.isatty():
             print(final_result)
 
         return final_result
+
+    def _expand_quick_substitution(self, command: str, history, report_errors: bool):
+        """Expand a ``^old^new[^]`` quick substitution on the previous command.
+
+        Returns the expanded string, ``None`` on error (no history / no match),
+        or the ``_NOT_QUICK_SUB`` sentinel if this is not actually a quick sub
+        (so the normal scanner runs — e.g. a bare ``^`` with no second ``^``).
+        """
+        # ^old^new^   (the final ^ is optional; old must be non-empty)
+        rest = command[1:]
+        sep = rest.find('^')
+        if sep < 0:
+            return _NOT_QUICK_SUB
+        old = rest[:sep]
+        tail = rest[sep + 1:]
+        end = tail.find('^')
+        new = tail if end < 0 else tail[:end]
+        suffix = '' if end < 0 else tail[end + 1:]
+        if not old:
+            return _NOT_QUICK_SUB
+        if not history:
+            if report_errors:
+                print("psh: :s: substitution failed", file=sys.stderr)
+            return None
+        last = history[-1]
+        if old not in last:
+            if report_errors:
+                print(f"psh: {command}: substitution failed", file=sys.stderr)
+            return None
+        self._last_sub = (old, new)
+        return last.replace(old, new, 1) + suffix
 
     def _resolve_event(self, command: str, i: int, history):
         """Resolve the event designator beginning at ``command[i]`` (a ``!``).
@@ -373,14 +431,16 @@ class HistoryExpander:
             # Bare sigil shorthand: !$ !^ !*
             spec = command[j]
             end = j + 1
-        elif j < n and command[j] == ':':
+        elif (j < n and command[j] == ':' and j + 1 < n
+              and (command[j + 1].isdigit() or command[j + 1] in '-*$^')):
             k = j + 1
             while k < n and (command[k].isdigit() or command[k] in '-*$^'):
                 k += 1
             spec = command[j + 1:k]
             end = k
         else:
-            # No word designator: whole line.
+            # No word designator (a ':' here introduces a :modifier, applied by
+            # the caller via _apply_modifiers): the whole event line.
             return event_text, j
 
         # Resolve the designator to a (start, stop) inclusive word range.
@@ -443,6 +503,116 @@ class HistoryExpander:
             return _BAD_WORD_SPECIFIER
 
         return ' '.join(words[start:stop + 1]), end
+
+    # --- :modifiers (h/t/r/e/s/g&/p) applied after an event[:word] selection ---
+
+    def apply_modifiers(self, text: str, command: str, k: int):
+        """Apply a chain of ``:`` modifiers at ``command[k]`` to ``text``.
+
+        Returns ``(new_text, end_index)``, or ``_BAD_WORD_SPECIFIER`` on a
+        malformed/failed modifier (e.g. ``:&`` with no previous substitution,
+        or an unknown modifier letter). Supported: ``:h`` ``:t`` ``:r`` ``:e``
+        (pathname head/tail/root/ext on the whole selection), ``:s/old/new/``
+        and ``:gs//`` global, ``:&`` (repeat last sub, ``:g&`` global), and
+        ``:p`` (print, don't execute — sets a flag the caller honors).
+        """
+        n = len(command)
+        while k < n and command[k] == ':':
+            m = k + 1
+            glob = False
+            if m < n and command[m] in 'ga':  # global prefix for s / &
+                glob = True
+                m += 1
+            mod = command[m] if m < n else ''
+            if mod == 'h':
+                text = self._mod_head(text); k = m + 1
+            elif mod == 't':
+                text = self._mod_tail(text); k = m + 1
+            elif mod == 'r':
+                text = self._mod_root(text); k = m + 1
+            elif mod == 'e':
+                text = self._mod_ext(text); k = m + 1
+            elif mod == 'p':
+                self._print_only = True; k = m + 1
+            elif mod in ('s', '&'):
+                result = self._mod_subst(text, command, m, glob)
+                if result is _BAD_WORD_SPECIFIER:
+                    return _BAD_WORD_SPECIFIER
+                text, k = result
+            else:
+                return _BAD_WORD_SPECIFIER
+        return text, k
+
+    @staticmethod
+    def _mod_head(text: str) -> str:
+        """``:h`` — strip a trailing pathname component (head/dirname)."""
+        idx = text.rfind('/')
+        return text[:idx] if idx > 0 else (text if idx < 0 else text[:idx])
+
+    @staticmethod
+    def _mod_tail(text: str) -> str:
+        """``:t`` — the trailing pathname component (tail/basename)."""
+        idx = text.rfind('/')
+        return text[idx + 1:] if idx >= 0 else text
+
+    @staticmethod
+    def _mod_root(text: str) -> str:
+        """``:r`` — remove a trailing ``.suffix`` (in the basename)."""
+        dot = text.rfind('.')
+        slash = text.rfind('/')
+        return text[:dot] if dot > slash else text
+
+    @staticmethod
+    def _mod_ext(text: str) -> str:
+        """``:e`` — keep only a trailing ``.suffix`` (in the basename)."""
+        dot = text.rfind('.')
+        slash = text.rfind('/')
+        return text[dot:] if dot > slash else text
+
+    def _mod_subst(self, text: str, command: str, m: int, glob: bool):
+        """Apply ``s<delim>old<delim>new<delim>`` (at ``command[m]=='s'``) or
+        ``&`` (repeat the last substitution). Returns ``(text, end)`` or
+        ``_BAD_WORD_SPECIFIER``."""
+        n = len(command)
+        if command[m] == '&':
+            if self._last_sub is None:
+                return _BAD_WORD_SPECIFIER
+            old, new = self._last_sub
+            k = m + 1
+        else:
+            # s<delim>old<delim>new[<delim>]
+            d = m + 1
+            if d >= n:
+                return _BAD_WORD_SPECIFIER
+            delim = command[d]
+            # old<delim>new[<delim>] — _scan_until returns the index PAST the
+            # delimiter, so `new` resumes exactly where `old` left off.
+            old, p = self._scan_until(command, d + 1, delim)
+            new, k = self._scan_until(command, p, delim)
+            if not old:
+                return _BAD_WORD_SPECIFIER
+            self._last_sub = (old, new)
+        if old not in text:
+            # bash treats a non-matching substitution as a failed expansion.
+            return _BAD_WORD_SPECIFIER
+        replaced = text.replace(old, new) if glob else text.replace(old, new, 1)
+        return replaced, k
+
+    @staticmethod
+    def _scan_until(command: str, i: int, delim: str):
+        """Scan from ``i`` to the next unescaped ``delim`` (or end). Returns
+        ``(text, index_past_delim)``; a ``\\<delim>`` contributes a literal delim."""
+        out = []
+        n = len(command)
+        while i < n and command[i] != delim:
+            if command[i] == '\\' and i + 1 < n and command[i + 1] == delim:
+                out.append(delim)
+                i += 2
+                continue
+            out.append(command[i])
+            i += 1
+        # i is at delim (consume it) or at end
+        return ''.join(out), (i + 1 if i < n else i)
 
     def is_history_expansion_char(self, char: str) -> bool:
         """Check if a character might start a history expansion."""

@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.502.0 (2026-06-17) - history word modifiers + quick substitution (Tier R15.B)
+- FEATURE/BUGFIX (interactive, reappraisal #13 MED). History expansion now supports the `:`
+  word modifiers and `^old^new` quick substitution; before, `!!:h`/`!!:s/...` etc. errored with
+  "bad word specifier".
+  - `:h` (head/dirname), `:t` (tail/basename), `:r` (root — remove `.suffix`), `:e` (ext) —
+    operate on the whole selected text as a pathname and CHAIN (`:t:r`).
+  - `:s/old/new/` (first match), `:gs/old/new/` global, any delimiter (`:s|o|0|`), `:&`
+    (repeat the last substitution), chained subs.
+  - `^old^new[^]` quick substitution on the previous command (`!!:s/old/new/`).
+  - `:p` prints the expansion and suppresses execution (returns empty, like bash).
+- Fix (`interactive/history_expansion.py`): `_apply_word_designator` now leaves a `:`-modifier
+  for the new `apply_modifiers` engine instead of mis-parsing it as a (bad) word designator.
+- Verified value-for-value vs bash's `history -p` across 19 modifier/quick-sub cases (pathname
+  ops on slash/dot/leading-dot inputs, first/global/alt-delimiter subs, word-designator +
+  modifier, chained subs, `^a^b`).
+- TESTS: `tests/unit/interactive/test_history_modifiers.py` grew to 32 cases (+ `:p` print/
+  no-execute, `:&` repeat, bad-modifier error). Completes R15.B item B6.
+
 ## 0.501.0 (2026-06-17) - history expansion in double quotes + backslash escape (Tier R15.B)
 - BUGFIX (interactive, reappraisal #13 MED). History expansion (`!!`, `!n`, ...) was skipped
   inside double quotes and a backslash-escaped `!` was still expanded. bash expands `!` inside
