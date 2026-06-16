@@ -20,9 +20,15 @@ class PshError(Exception):
 # --- Control-flow signals (NOT errors) ---------------------------------
 
 class LoopBreak(Exception):
-    """Exception used to implement break statement."""
-    def __init__(self, level=1):
+    """Exception used to implement break statement.
+
+    ``exit_status`` is normally None (the loop keeps the body's status); it is
+    set only for the bash ``break 0``/negative "loop count out of range" case,
+    where the loop must report status 1.
+    """
+    def __init__(self, level=1, exit_status=None):
         self.level = level
+        self.exit_status = exit_status
         super().__init__()
 
 class LoopContinue(Exception):
