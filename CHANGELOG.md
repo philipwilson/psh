@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.498.0 (2026-06-16) - set -e brace-group exemption (Tier R15.B)
+- BUGFIX (executor, reappraisal #13 MED). Under `set -e`, a brace group whose last statement
+  was an `&&`/`||` list with an exempt failing member wrongly aborted: `set -e; { false && true; }`
+  exited 1 instead of continuing. A brace group `{ ...; }` is TRANSPARENT to errexit — the
+  exemption of a non-final `&&`/`||` member inside it carries out — but `visit_AndOrList`
+  re-marked the whole single-member group eligible, clobbering the inner exemption.
+- Fix (`executor/core.py`): `run_pipeline` now preserves the errexit eligibility the brace
+  group's body established (via a new `_pipeline_is_brace_group` helper) instead of re-setting
+  it. Subshells `( )` and functions are NOT transparent (a fresh errexit context — only the
+  final status counts) and still abort, matching bash. The ERR trap fires under exactly the
+  same conditions.
+- Verified value-for-value vs bash 5.2 across a 14-case battery (subshell/function still abort,
+  nested braces, ERR-trap exempt/fires, brace-then-real-failure, brace in a pipeline).
+- TESTS: new `tests/conformance/bash/test_errexit_brace_group_conformance.py` (12 cases).
+
 ## 0.497.0 (2026-06-16) - read mixed-IFS field splitting (Tier R15.B)
 - BUGFIX (read, reappraisal #13 MED). With a MIXED IFS (whitespace + non-whitespace), `read`
   did not fold IFS whitespace adjacent to a non-whitespace delimiter into one delimiter, so it
