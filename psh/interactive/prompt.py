@@ -55,33 +55,91 @@ class PromptExpander:
         Background: 40-47 (same color order)
         Attributes: 0=reset, 1=bold, 2=dim, 4=underline, 5=blink, 7=reverse
         """
-        if not prompt:
-            return prompt
+        return ''.join(text for text, _ in self.expand_prompt_segments(prompt))
 
-        result = []
+    def expand_full(self, prompt: str) -> str:
+        """Full prompt expansion: backslash escapes, THEN parameter / command /
+        arithmetic expansion (bash's default ``promptvars``), with escape output
+        protected from the second pass.
+
+        Used for PS1/PS2 rendering and the ``${var@P}`` operator, so both agree.
+        A ``\\$``-produced ``$`` must not start a command substitution, and an
+        escape's value must not be re-interpreted — so each escape-produced
+        segment is replaced by a NUL sentinel before the ``$``-pass and restored
+        after (verified against bash via ``${var@P}``).
+        """
+        segments = self.expand_prompt_segments(prompt)
+
+        protected: dict = {}
+        parts = []
+        for idx, (text, from_escape) in enumerate(segments):
+            if from_escape:
+                key = f"\x00{idx}\x00"
+                protected[key] = text
+                parts.append(key)
+            else:
+                parts.append(text)
+        combined = ''.join(parts)
+
+        if '$' in combined or '`' in combined:
+            try:
+                combined = self.shell.expansion_manager.expand_string_variables(combined)
+            except Exception:
+                # A prompt must never abort the caller; fall back to the
+                # escape-decoded form on any expansion error.
+                pass
+
+        for key, text in protected.items():
+            combined = combined.replace(key, text)
+        return combined
+
+    def expand_prompt_segments(self, prompt: str):
+        """Decode prompt escapes into ``(text, from_escape)`` segments.
+
+        ``from_escape`` is True for text produced by a ``\\``-escape (``\\w``,
+        ``\\$``, ``\\nnn``, ...) and False for raw pass-through text. The caller
+        (PromptManager) uses the flag to PROTECT escape output from the
+        subsequent ``$``-expansion — bash decodes escapes first, then expands,
+        but a ``\\$``-produced ``$`` must not start a command substitution and
+        an escape's value must not be re-interpreted (verified via ``${var@P}``).
+        """
+        if not prompt:
+            return []
+
+        segments = []
+        raw: list = []
+
+        def flush_raw():
+            if raw:
+                segments.append((''.join(raw), False))
+                raw.clear()
+
         i = 0
         while i < len(prompt):
             if prompt[i] == '\\' and i + 1 < len(prompt):
                 next_char = prompt[i + 1]
                 expanded = self._expand_escape(next_char)
                 if expanded is not None:
-                    result.append(expanded)
+                    flush_raw()
+                    segments.append((expanded, True))
                     i += 2
                 else:
                     # Check for octal sequence
                     if i + 3 < len(prompt) and all(c in '01234567' for c in prompt[i+1:i+4]):
                         octal_value = int(prompt[i+1:i+4], 8)
-                        result.append(chr(octal_value))
+                        flush_raw()
+                        segments.append((chr(octal_value), True))
                         i += 4
                     else:
-                        # Not a recognized escape, keep the backslash
-                        result.append(prompt[i])
+                        # Not a recognized escape, keep the backslash (raw).
+                        raw.append(prompt[i])
                         i += 1
             else:
-                result.append(prompt[i])
+                raw.append(prompt[i])
                 i += 1
 
-        return ''.join(result)
+        flush_raw()
+        return segments
 
     def _expand_escape(self, char: str) -> Optional[str]:
         """Expand a single escape character."""

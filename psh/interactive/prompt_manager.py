@@ -21,9 +21,13 @@ class PromptManager(InteractiveComponent):
         return self.expand_prompt(ps2)
 
     def expand_prompt(self, prompt_string: str) -> str:
-        """Expand prompt escape sequences."""
-        # Use the existing prompt expansion function
-        return self.prompt_expander.expand_prompt(prompt_string)
+        """Expand a prompt: backslash escapes, then parameter / command /
+        arithmetic expansion (bash's default ``promptvars``).
+
+        Delegates to ``PromptExpander.expand_full`` so PS1/PS2 and the
+        ``${var@P}`` operator share one implementation.
+        """
+        return self.prompt_expander.expand_full(prompt_string)
 
     def set_prompt(self, prompt_type: str, value: str) -> None:
         """Set a prompt value."""
