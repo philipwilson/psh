@@ -105,6 +105,29 @@ def test_save_trims_to_max_history_size(histfile):
     assert _read(histfile) == ["cmd2", "cmd3", "cmd4"]
 
 
+def test_history_dash_c_does_not_lose_subsequent_commands(histfile):
+    """R14.B: `history -c` must reset the file-sync marker (via
+    HistoryManager.clear_history), so commands added AFTER the clear are still
+    persisted. The builtin used to clear state.history directly, leaving the
+    marker stale — new commands fell outside the save slice and were lost."""
+    shell = Shell()
+    shell.state.history_file = histfile
+    m = shell.interactive_manager.history_manager
+    for c in ("echo a", "echo b", "echo c"):
+        m.add_to_history(c)
+    m.save_to_file()
+    assert m._file_synced_len == 3
+
+    shell.run_command("history -c")
+    assert len(shell.state.history) == 0
+    assert m._file_synced_len == 0  # marker reset (the fix)
+
+    m.add_to_history("echo x")
+    m.save_to_file()
+    # The post-clear command survives (pre-fix it was dropped entirely).
+    assert "echo x" in _read(histfile)
+
+
 def test_in_session_trim_does_not_lose_new_entries(histfile):
     """Regression for the v0.447 stale-index bug: a session that exceeds
     max_history_size before saving must still persist ALL of its new commands,

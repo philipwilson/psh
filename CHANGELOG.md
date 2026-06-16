@@ -4,6 +4,15 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.478.0 (2026-06-16) - Tier R14.B: history -c no longer drops post-clear commands
+- BUGFIX (behavior). `history -c` cleared `state.history` directly, leaving the
+  HistoryManager's file-sync marker (`_file_synced_len`) stale. Commands added AFTER the
+  clear then fell outside the save slice (`history[_file_synced_len:]`) and were silently
+  dropped from HISTFILE — data loss. The builtin now routes through
+  `HistoryManager.clear_history()`, which resets the marker, so post-clear commands persist.
+  (Same stale-index class as the v0.447 trim-path bug; the `-c` path was the remaining gap.)
+- Found by reappraisal #12. Tier R14.B (correctness cluster), batch 2. +1 regression test.
+
 ## 0.477.0 (2026-06-16) - Tier R14.B: -c name args $0 + non-UTF-8 script no longer crashes
 - BUGFIX (behavior). `psh -c COMMAND name arg1 arg2` now follows POSIX: the first operand
   after the command string is `$0` (the command name), and the rest are `$1`, `$2`, …
