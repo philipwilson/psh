@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.470.0 (2026-06-16) - Tier R13.B: failglob, read EOF status, negative-array-read warning
+- FEATURE. `shopt -s failglob` is now implemented: a pathname pattern with no matches
+  fails the command with "no match: PATTERN" on stderr (status 1) instead of passing the
+  pattern through, matching bash. It does not abort the shell (per-command failure) and
+  does not affect assignment RHS (which is never globbed). New non-fatal `GlobNoMatchError`
+  raised from the single `_glob_words` choke point; obsolete xfail ledger entry removed.
+- BUGFIX (behavior). `read` now reports EOF-before-delimiter as failure (exit 1) on ALL
+  paths while still assigning whatever was read, matching bash — previously only the
+  empty-newline case returned 1, and a partial last line (`printf 'abc' | read x`), a
+  custom `-d` delimiter, or `-n` hitting EOF all wrongly returned 0. Empty EOF now also
+  CLEARS the target variable (bash) instead of leaving its prior value. The three readers
+  were refactored to a shared `(data, status)` contract; timeout (142) is reserved for the
+  budget actually expiring. 4 pinned-quirk tests updated to the bash-correct results.
+- BUGFIX (behavior). An out-of-range NEGATIVE array read (`a=(1 2 3); ${a[-5]}`) now warns
+  "bad array subscript" on stderr and expands to empty (exit status unaffected), matching
+  bash; psh was silent. New `IndexedArray.negative_out_of_range` predicate gates the warning
+  at the `${arr[i]}` expansion site (a positive out-of-range index stays a silent unset read).
+- Found by reappraisal #11. +9 regression tests (failglob ×3, read EOF ×4 incl. var-clear/
+  multivar, negative-array ×2).
+
 ## 0.469.0 (2026-06-16) - Tier R13.A (parser/executor): break/continue argument validation
 - BUGFIX (behavior). `break`/`continue` silently dropped any non-digit argument: the
   parser only consumed the level token when it was `.isdigit()`, so `break foo` parsed

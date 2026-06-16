@@ -123,6 +123,7 @@ class ShellState:
             # Bash compatibility options (shopt)
             'dotglob': False,      # dotglob: glob matches dotfiles
             'nullglob': False,     # nullglob: glob with no matches returns empty
+            'failglob': False,     # failglob: glob with no matches fails the command
             'extglob': False,      # extglob: extended globbing patterns
             'nocaseglob': False,   # nocaseglob: case-insensitive globbing
             'nocasematch': False,  # nocasematch: case-insensitive [[ ]]/case matching

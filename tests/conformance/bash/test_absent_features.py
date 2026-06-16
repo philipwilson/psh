@@ -129,15 +129,10 @@ class TestAbsentBashFeatures:
         a LOUD rejection, not a silent trap."""
         assert_bash_parity('shopt -s lastpipe; echo hi | read x; echo got:$x')
 
-    @pytest.mark.xfail(strict=True, reason="shopt -s failglob is not implemented "
-                                           "(shopt rejects the option name honestly)")
-    def test_shopt_failglob(self):
-        """bash: with failglob set, a glob with no matches makes the command
-        FAIL with 'no match' on stderr instead of passing the pattern
-        through (probe: echo suppressed, after_1). psh: rejects the option
-        name, the glob passes through literally, after_0."""
-        assert_bash_parity(
-            'shopt -s failglob; echo /nonexistent_xyz_dir_*; echo after_$?')
+    # `shopt -s failglob` is now IMPLEMENTED (R13.B): a no-match glob fails the
+    # command with "no match" on stderr instead of passing the pattern through.
+    # Coverage lives in tests/unit/expansion/test_glob_expansion.py
+    # (TestGlobOptions.test_failglob_*).
 
     @pytest.mark.xfail(strict=True, reason=(
         "SILENT TRAP: ${assoc[@]@K} is not implemented and degrades to the "

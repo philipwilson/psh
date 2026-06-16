@@ -180,6 +180,16 @@ class IndexedArray:
             index = mapped
         return self._elements.get(index)
 
+    def negative_out_of_range(self, index: int) -> bool:
+        """True if ``index`` is a negative subscript that maps below slot 0.
+
+        bash treats such a READ as a "bad array subscript" warning (it still
+        expands to empty); callers that want to emit the diagnostic check this
+        before ``get`` (which silently returns None for it). Mirrors the
+        out-of-range condition in ``resolve_write_index``/``get``.
+        """
+        return index < 0 and (self._max_index + 1 + index) < 0
+
     def unset(self, index: int):
         """Remove element at given index."""
         if index in self._elements:

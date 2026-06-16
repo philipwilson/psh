@@ -53,6 +53,16 @@ def test_out_of_range_negative_write_raises():
         a.set(-7, "z")
 
 
+def test_negative_out_of_range_predicate():
+    """R13.B: negative_out_of_range flags exactly the reads bash warns on."""
+    a = _sparse()                      # _max_index == 5
+    assert a.negative_out_of_range(-7) is True   # maps to -1
+    assert a.negative_out_of_range(-6) is False  # maps to slot 0
+    assert a.negative_out_of_range(-1) is False  # in range
+    assert a.negative_out_of_range(2) is False   # non-negative never flagged
+    assert a.negative_out_of_range(99) is False  # positive out of range is unset, not bad
+
+
 def test_unset_middle_then_negative_read():
     a = IndexedArray()
     for i, v in enumerate("pqrst"):

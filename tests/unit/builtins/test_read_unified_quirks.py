@@ -17,16 +17,27 @@ def _psh(script, stdin):
 
 
 class TestUnifiedReadQuirks:
-    def test_eof_partial_line_succeeds(self):
-        """psh quirk: newline delimiter with partial input and no trailing
-        newline keeps the data AND exits 0 (bash would exit 1). Only a
-        truly-empty EOF reports exit 1 (see below)."""
+    def test_eof_partial_line_reports_failure(self):
+        """R13.B: newline delimiter with a partial last line (no trailing
+        newline) keeps the data but exits 1, matching bash — EOF before the
+        delimiter is a read failure even though the variable is assigned."""
         r = _psh('read v; echo "rc=$? [$v]"', 'abc')
-        assert r.stdout == "rc=0 [abc]\n"
+        assert r.stdout == "rc=1 [abc]\n"
 
     def test_eof_empty_exit_1(self):
         r = _psh('read v; echo "rc=$? [$v]"', '')
         assert r.stdout == "rc=1 []\n"
+
+    def test_empty_eof_clears_variable(self):
+        """R13.B: at empty EOF read still ASSIGNS (clears) the variable and
+        exits 1 (bash); previously psh left a preset value untouched."""
+        r = _psh('v=PRESET; read v; echo "rc=$? [$v]"', '')
+        assert r.stdout == "rc=1 []\n"
+
+    def test_partial_multivar_reports_failure(self):
+        """R13.B: a partial last line splits across the variables but exits 1."""
+        r = _psh('read x y; echo "rc=$? [$x][$y]"', 'a b')
+        assert r.stdout == "rc=1 [a][b]\n"
 
     def test_plain_custom_delim_eof_empty_exit_1(self):
         """Plain -d (no -n/-s) with empty input reports EOF (exit 1), like the
@@ -34,16 +45,18 @@ class TestUnifiedReadQuirks:
         r = _psh('read -d : v; echo "rc=$? [$v]"', '')
         assert r.stdout == "rc=1 []\n"
 
-    def test_n_custom_delim_eof_no_data_succeeds(self):
-        """Quirk: -n with a custom delimiter and empty input exits 0 (not 1),
-        routing through the _read_special branch which returns '' for a
-        non-newline delimiter rather than None."""
+    def test_n_custom_delim_eof_no_data_reports_failure(self):
+        """R13.B: -n with a custom delimiter and empty input now exits 1
+        (EOF before the delimiter / char limit), matching bash. Previously a
+        psh quirk returned 0 for a non-newline delimiter."""
         r = _psh('read -n 3 -d : v; echo "rc=$? [$v]"', '')
-        assert r.stdout == "rc=0 []\n"
+        assert r.stdout == "rc=1 []\n"
 
-    def test_custom_delim_partial_eof_succeeds(self):
+    def test_custom_delim_partial_eof_reports_failure(self):
+        """R13.B: custom delimiter, partial input, EOF before delimiter →
+        keep data, exit 1 (bash)."""
         r = _psh('read -d : v; echo "rc=$? [$v]"', 'foo')
-        assert r.stdout == "rc=0 [foo]\n"
+        assert r.stdout == "rc=1 [foo]\n"
 
     def test_n_limit_stops_exactly(self):
         r = _psh('read -n 2 v; echo "rc=$? [$v]"', 'abcd')
@@ -74,11 +87,12 @@ class TestUnifiedReadQuirks:
         r = _psh('read -t 5 -n 2 v; echo "rc=$? [$v]"', 'abcd\n')
         assert r.stdout == "rc=0 [ab]\n"
 
-    def test_timeout_partial_eof_succeeds(self):
-        """Quirk: under -t, once input is ready the plain (no -n) path reads to
-        EOF and a partial line still exits 0."""
+    def test_timeout_partial_eof_reports_failure(self):
+        """R13.B: under -t, once input is ready the plain (no -n) path reads to
+        EOF; a partial line keeps the data but exits 1 (bash) — timeout 142 is
+        reserved for the budget actually expiring."""
         r = _psh('read -t 5 v; echo "rc=$? [$v]"', 'ab')
-        assert r.stdout == "rc=0 [ab]\n"
+        assert r.stdout == "rc=1 [ab]\n"
 
     def test_backslash_newline_line_continuation(self):
         """A trailing backslash-newline is line continuation (bash): both are

@@ -173,6 +173,15 @@ class TestArrayElementAccess:
             content = f.read()
         assert 'third' in content
 
+    def test_negative_out_of_range_read_warns(self, captured_shell):
+        """R13.B: an out-of-range negative read warns 'bad array subscript' on
+        stderr and expands to empty, with the exit status unaffected (bash)."""
+        shell = captured_shell
+        result = shell.run_command('a=(1 2 3); echo "[${a[-5]}]"')
+        assert result == 0
+        assert shell.get_stdout() == "[]\n"
+        assert 'bad array subscript' in shell.get_stderr()
+
 
 class TestArrayExpansion:
     """Test array expansion patterns."""
