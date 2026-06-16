@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.501.0 (2026-06-17) - history expansion in double quotes + backslash escape (Tier R15.B)
+- BUGFIX (interactive, reappraisal #13 MED). History expansion (`!!`, `!n`, ...) was skipped
+  inside double quotes and a backslash-escaped `!` was still expanded. bash expands `!` inside
+  `"..."` (only single quotes and a preceding backslash suppress it).
+- Fix (`interactive/history_expansion.py`): the scanner now tracks double-quote state instead of
+  consuming `"..."` spans verbatim — `!` expands inside double quotes, a single quote inside
+  `"..."` is literal (not a span start), single-quoted spans still suppress, and a backslash
+  quotes the next char (`\!` is a literal `!`, no expansion; the backslash is kept, as bash's
+  `history -p` does, and removed later by the lexer).
+- Verified against bash's `history -p` (expand-and-print) as a live oracle across 10 cases:
+  `echo "see !!"`, `echo "it's !!"`, `echo '!!'`, `echo \!!`, `echo "a\!b"`, `a!=b`, `${x} !!`.
+- TESTS: new `tests/unit/interactive/test_history_modifiers.py` (10 parametrized cases vs
+  `history -p`). Corrected a misleading comment in test_history_expansion_in_quotes (its
+  non-interactive run has histexpand off, so it never exercised the quote path).
+
 ## 0.500.0 (2026-06-17) - prompts expand $()/$VAR/$(()) (Tier R15.B)
 - BUGFIX (interactive, reappraisal #13 MED). PS1/PS2 (and the `${var@P}` operator) decoded only
   backslash escapes — `$(...)`, `$VAR`, and `$((...))` in a prompt were left literal. Now a prompt
