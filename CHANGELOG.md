@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.486.0 (2026-06-16) - $LINENO in eval and trap actions (Tier R15.A — nested execution)
+- BUGFIX (scripting, reappraisal #13 HIGH). `$LINENO` inside `eval` and inside DEBUG/ERR
+  trap actions reset to 1 instead of anchoring at the invoking command's line. `eval` on
+  line 3 reported 1/2 instead of 3/4; `trap 'echo at $LINENO' ERR` reported `at 1` instead
+  of the failing command's line. Root cause: `eval`/trap actions run via `Shell.run_command`,
+  whose `StringInput("<command>")` line counter always started at 1, so the per-statement
+  absolute-line offset (v0.485) never fired for nested execution.
+- This also corrects a FALSE POSITIVE in the v0.485 test suite: the eval `$LINENO`
+  conformance case ran eval on line 1 (offset 0), so it passed by luck while the bug shipped.
+- Fix: `Shell.run_command`/`ScriptManager.execute_from_source` gain a `base_line` parameter
+  (default 1 = a fresh context, unchanged for normal sources). `eval` and ERR/DEBUG trap
+  actions pass `scope_manager.get_current_line_number()`, so the nested text's line 1 anchors
+  at the invoking command's line and subsequent lines increment from there — matching bash.
+- Trap semantics verified value-for-value vs bash 5.2: ERR/DEBUG (synchronous, tied to a
+  command) anchor at the current command line; EXIT and signal traps (asynchronous, no
+  invoking command) count from the action's own line 1 — so those keep reporting 1, unchanged.
+- TESTS: +7 conformance cases — eval at line 1 / eval anchored at the invoking line / eval
+  multi-line string / eval inside a function, and a new `TestLinenoTrapConformance` (ERR,
+  DEBUG, EXIT single + multi-line action). The old single-line-1 eval case was replaced.
+- KNOWN remaining (separate, pre-existing — NOT this fix): the ERR trap fires INSIDE functions
+  in psh (reporting a function-body line) where bash without `errtrace` fires it for the
+  failing call-site command; command substitution still does not inherit the enclosing line.
+
 ## 0.485.0 (2026-06-16) - $LINENO per statement (absolute source lines)
 - BUGFIX (scripting). `$LINENO` was set ONCE per buffered command to the construct's
   START line, so it was wrong in EVERY multi-line construct: statements inside

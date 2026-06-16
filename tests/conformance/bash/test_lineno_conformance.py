@@ -135,14 +135,53 @@ class TestLinenoFunctionConformance(ConformanceTest):
 class TestLinenoEvalSourceConformance(ConformanceTest):
     """eval and source count their own lines and restore on return."""
 
-    def test_eval_multiline(self):
+    def test_eval_at_line_1(self):
+        # eval on line 1: its string's line 1 anchors at 1, line 2 at 2.
         self.assert_identical_behavior("eval $'echo $LINENO\\necho $LINENO'")
+
+    def test_eval_anchors_at_invoking_line(self):
+        # eval is NOT a fresh context: bash anchors the eval string's line 1 at
+        # the line eval was invoked on (here line 3), not 1. This is the case
+        # the original single-line-1 test missed (it passed at offset 0).
+        self.assert_identical_behavior(
+            "echo a\necho b\neval 'echo p=$LINENO; echo q=$LINENO'")
+
+    def test_eval_multiline_string_increments(self):
+        self.assert_identical_behavior(
+            "echo a\necho b\neval $'echo x=$LINENO\\necho y=$LINENO'")
+
+    def test_eval_inside_function_uses_def_line(self):
+        self.assert_identical_behavior(
+            "f() {\n  eval 'echo $LINENO'\n}\necho x\nf")
 
     def test_source_resets_and_restores(self):
         # Build the sourced file in the (isolated, temp) cwd, then source it.
         self.assert_identical_behavior(
             "printf 'echo src $LINENO\\necho src $LINENO\\n' > f.sh\n"
             "echo pre $LINENO\nsource ./f.sh\necho post $LINENO")
+
+
+class TestLinenoTrapConformance(ConformanceTest):
+    """Trap action $LINENO: ERR/DEBUG see the current command line; EXIT and
+    signal traps fire asynchronously and count from the action's own line 1."""
+
+    def test_err_trap_reports_failing_command_line(self):
+        self.assert_identical_behavior(
+            "trap 'echo ERR at $LINENO' ERR\necho a\nfalse")
+
+    def test_debug_trap_reports_command_line(self):
+        self.assert_identical_behavior(
+            "trap 'echo DEBUG at $LINENO' DEBUG\necho a\necho b")
+
+    def test_exit_trap_counts_from_action_line_1(self):
+        # bash runs the EXIT trap with $LINENO counting from the action's own
+        # line, regardless of where the trap was defined or the last line run.
+        self.assert_identical_behavior(
+            "trap 'echo E$LINENO' EXIT\necho a\necho b")
+
+    def test_exit_trap_multiline_action(self):
+        self.assert_identical_behavior(
+            "trap $'echo E$LINENO\\necho E$LINENO' EXIT\necho a")
 
 
 class TestLinenoAssignmentConformance(ConformanceTest):

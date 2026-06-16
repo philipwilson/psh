@@ -197,8 +197,17 @@ class TrapManager:
             # Save current exit code
             saved_exit_code = self.state.last_exit_code
 
-            # Execute trap command
-            self.shell.run_command(action, add_to_history=False)
+            # Execute trap command. ERR and DEBUG fire synchronously, tied to a
+            # command, so bash runs their actions with $LINENO = that command's
+            # current line. EXIT and signal traps fire asynchronously (no
+            # invoking command) and bash runs them with $LINENO counting from
+            # the action's own line 1. See Shell.run_command's base_line.
+            if signal_name in ('ERR', 'DEBUG'):
+                base_line = self.state.scope_manager.get_current_line_number()
+            else:
+                base_line = 1
+            self.shell.run_command(action, add_to_history=False,
+                                   base_line=base_line)
 
             # For most signals, restore the exit code
             # EXIT trap should preserve the exit code it sets

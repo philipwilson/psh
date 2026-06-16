@@ -48,8 +48,15 @@ def _offset_line_numbers(obj: Any, delta: int) -> None:
 class SourceProcessor(ScriptComponent):
     """Processes input from various sources (files, strings, stdin)."""
 
-    def execute_from_source(self, input_source, add_to_history: bool = True) -> int:
-        """Execute commands from an input source with enhanced processing."""
+    def execute_from_source(self, input_source, add_to_history: bool = True,
+                            base_line: int = 1) -> int:
+        """Execute commands from an input source with enhanced processing.
+
+        ``base_line`` offsets the source's own line numbers onto absolute
+        lines for ``$LINENO`` (default 1 = no shift). It is >1 only for nested
+        executions anchored at an invoking command's line (eval, trap actions);
+        see Shell.run_command.
+        """
         exit_code = 0
         command_start_line = 0
         accumulator = CommandAccumulator(self.shell)
@@ -99,7 +106,10 @@ class SourceProcessor(ScriptComponent):
                 # tokenization.
                 if line.strip().startswith('#') and '\n' not in line.strip():
                     continue
-                command_start_line = input_source.get_line_number()
+                # Offset the source's own line number onto an absolute line
+                # for $LINENO. base_line is 1 for normal sources (no shift);
+                # for eval / trap actions it is the invoking command's line.
+                command_start_line = base_line + input_source.get_line_number() - 1
 
             result = accumulator.feed(line)
             if isinstance(result, NeedMore):

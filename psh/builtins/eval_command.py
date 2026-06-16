@@ -38,5 +38,9 @@ class EvalBuiltin(Builtin):
 
         # Execute using shell's run_command method
         # This ensures full processing: tokenization, parsing, execution
-        # add_to_history=False prevents eval commands from polluting history
-        return shell.run_command(command_string, add_to_history=False)
+        # add_to_history=False prevents eval commands from polluting history.
+        # Anchor $LINENO at the eval command's own line (bash behavior): the
+        # eval string's line 1 reports the line eval was invoked on, not 1.
+        base_line = shell.state.scope_manager.get_current_line_number()
+        return shell.run_command(command_string, add_to_history=False,
+                                 base_line=base_line)

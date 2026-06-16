@@ -39,6 +39,12 @@ class ScriptManager:
         """Execute a script file with optional arguments."""
         return self.script_executor.run_script(script_path, script_args)
 
-    def execute_from_source(self, input_source, add_to_history: bool = True) -> int:
-        """Execute commands from an input source."""
-        return self.source_processor.execute_from_source(input_source, add_to_history)
+    def execute_from_source(self, input_source, add_to_history: bool = True,
+                            base_line: int = 1) -> int:
+        """Execute commands from an input source.
+
+        ``base_line`` offsets the source onto absolute $LINENO lines (default
+        1); >1 only for eval/trap nested executions — see Shell.run_command.
+        """
+        return self.source_processor.execute_from_source(
+            input_source, add_to_history, base_line=base_line)
