@@ -499,10 +499,11 @@ class ScopeManager:
         # LOWERCASE/UPPERCASE attribute case-folds the resulting string.
         if attributes & VarAttributes.INTEGER:
             if str_value.strip():
-                try:
-                    str_value = str(self._evaluate_integer(str_value))
-                except (ValueError, ArithmeticError):
-                    str_value = "0"
+                # _evaluate_integer raises ShellArithmeticError on a malformed
+                # RHS / division by zero; let it propagate so the assignment
+                # fails like bash (status 1 + message), rather than masking it
+                # as 0. The plain-int (shell-less) fallback still returns 0.
+                str_value = str(self._evaluate_integer(str_value))
             else:
                 str_value = "0"
 
@@ -530,11 +531,13 @@ class ScopeManager:
 
         if self._shell is not None:
             from ..expansion.arithmetic import evaluate_arithmetic
-            try:
-                return evaluate_arithmetic(expr, self._shell)
-            except (ValueError, ArithmeticError):
-                # If evaluation fails, return 0
-                return 0
+            # Do NOT swallow arithmetic errors here: an -i assignment whose RHS
+            # is a malformed expression or divides by zero must fail loudly with
+            # the arithmetic-error message and status 1, exactly like $((...)).
+            # (An undefined variable like `n=abc` is NOT an error — the
+            # evaluator resolves it to 0 — so this only raises on genuine
+            # syntax/division errors, matching bash.)
+            return evaluate_arithmetic(expr, self._shell)
 
         try:
             return int(expr)

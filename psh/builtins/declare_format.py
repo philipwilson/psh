@@ -34,6 +34,21 @@ def escape_value(value: str) -> str:
     return value
 
 
+# Characters that force an associative-array KEY to be double-quoted in
+# `declare -p` output (bash leaves "plain" keys — alnum plus -._/:@+ — bare).
+_KEY_NEEDS_QUOTE = set(' \t\n"\'\\$`*?[]{}()<>|&;~#!=')
+
+
+def format_assoc_key(key: str) -> str:
+    """Render an associative-array key for reusable `declare -p` output:
+    bare when it has no shell-special characters (matching bash), else
+    double-quoted with the same escaping as a value. Without this, a key
+    containing a space/`$`/etc. produced non-re-parseable output."""
+    if key and not any(c in _KEY_NEEDS_QUOTE for c in key):
+        return key
+    return f'"{escape_value(key)}"'
+
+
 def format_declaration(var: Variable) -> str:
     """Format one variable as a reusable ``declare`` command."""
     flags = [char for attr, char in _FLAG_CHARS if var.attributes & attr]
@@ -50,10 +65,13 @@ def format_declaration(var: Variable) -> str:
                     for idx in var.value.indices()]
         value_str = f"=({' '.join(elements)})" if elements else "=()"
     elif isinstance(var.value, AssociativeArray):
-        # declare -A name=([key]="val" [key2]="val2")
-        elements = [f'[{key}]="{escape_value(val)}"'
+        # declare -A name=([key]="val" [key2]="val2" )  — note bash's trailing
+        # space before ')' for associative arrays, and keys quoted only when
+        # needed. (psh iterates sorted; bash uses hash order — an accepted,
+        # deterministic divergence since bash's order is unspecified.)
+        elements = [f'[{format_assoc_key(key)}]="{escape_value(val)}"'
                     for key, val in sorted(var.value.items())]
-        value_str = f"=({' '.join(elements)})" if elements else "=()"
+        value_str = f"=({' '.join(elements)} )" if elements else "=()"
     else:
         value_str = f'="{escape_value(str(var.value))}"'
 

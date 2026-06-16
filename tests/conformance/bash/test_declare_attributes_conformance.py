@@ -152,3 +152,56 @@ class TestDeclareCaseFlagMutualExclusion(ConformanceTest):
     def test_plus_flag_removes_case_on_unset(self):
         self.assert_identical_behavior(
             'declare -u y; declare +u y; y=HeLLo; echo $y')
+
+
+class TestIntegerAttributeArithmeticErrors(ConformanceTest):
+    """R14.B: an -i assignment with a malformed RHS / division by zero fails
+    (status 1 + message) instead of silently storing 0; an undefined variable
+    still resolves to 0 (not an error). Driven via script files (bash's `-c
+    'a;b'` form abandons the rest of the line on the error — a separate quirk —
+    so the standalone exit code is compared here)."""
+
+    def _assert_arith_error(self, cmd):
+        # exit 1 + something on stderr in both; the message WORDING differs
+        # (bash "division by 0" vs psh "Division by zero"), so not compared.
+        import subprocess
+        import sys
+        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
+                             capture_output=True, text=True)
+        bash = subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)
+        assert psh.returncode == bash.returncode == 1
+        assert psh.stderr and bash.stderr
+
+    def test_division_by_zero_fails(self):
+        self._assert_arith_error('declare -i n; n=1/0')
+
+    def test_syntax_error_fails(self):
+        self._assert_arith_error('declare -i n; n=2+')
+
+    def test_undefined_variable_is_zero_not_error(self):
+        self.assert_identical_behavior('declare -i n; n=abc; echo "n=$n"')
+
+    def test_valid_arithmetic_still_works(self):
+        self.assert_identical_behavior('declare -i n; n=3+4*2; echo "n=$n"')
+
+
+class TestDeclarePAssocReparseable(ConformanceTest):
+    """R14.B: `declare -p` of an associative array quotes keys that need it
+    and adds bash's trailing space, so the output is re-parseable. Single-key
+    cases are byte-comparable to bash (multi-key order is bash hash order vs
+    psh sorted — an accepted divergence, so those are tested for round-trip)."""
+
+    def test_space_key_is_quoted(self):
+        self.assert_identical_behavior('declare -A h=(["a b"]=v); declare -p h')
+
+    def test_simple_key_stays_bare(self):
+        self.assert_identical_behavior('declare -A h=([x]=1); declare -p h')
+
+    def test_dotted_key_stays_bare(self):
+        self.assert_identical_behavior('declare -A h=([a.b]=1); declare -p h')
+
+    def test_roundtrip_reparseable(self):
+        # psh-only: declare -p output evals back to the same array.
+        self.assert_identical_behavior(
+            'declare -A h=(["a b"]="v1" [k]="v2"); eval "$(declare -p h)"; '
+            'echo "${h[a b]}|${h[k]}"')
