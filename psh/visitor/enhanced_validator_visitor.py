@@ -24,8 +24,10 @@ from ..ast_nodes import (
 from .constants import (
     COMMON_TYPOS,
     DANGEROUS_COMMANDS,
+    FILE_TEST_OPERATORS,
     NUMERIC_COMPARISON_OPERATORS,
     SHELL_BUILTINS,
+    STRING_COMPARISON_OPERATORS,
 )
 from .validator_visitor import ValidatorVisitor
 from .word_analysis import (
@@ -696,9 +698,11 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         args = node.args[1:]  # Skip the command itself
         words = node.words[1:] if node.words else []
 
-        # Look for file test operators followed by unquoted variables
-        file_ops = ['-f', '-d', '-e', '-r', '-w', '-x', '-s', '-L', '-h']
-        string_ops = ['=', '==', '!=', '<', '>']
+        # Look for file test operators followed by unquoted variables.
+        # Derive from the shared constants (no re-listing of the same
+        # operators) plus the extra forms this quoting heuristic covers.
+        file_ops = FILE_TEST_OPERATORS | {'-L', '-h'}
+        string_ops = STRING_COMPARISON_OPERATORS | {'==', '<', '>'}
 
         for i, (arg, word) in enumerate(zip(args, words)):
             # Check if this is a file test operator

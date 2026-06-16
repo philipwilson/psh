@@ -146,3 +146,26 @@ class TestTokenizeKeywordCase:
         tokens = tokenize("IF=3")
         assert tokens[0].type == TokenType.WORD
         assert tokens[0].value == "IF=3"
+
+
+class TestKeywordTablesInSync:
+    """R13.C meta-test: the two keyword tables must stay aligned.
+
+    KEYWORDS (lexer/constants.py) is the set the docs and normalizer treat as
+    reserved words; KEYWORD_TYPE_MAP (lexer/keyword_defs.py) maps each to its
+    TokenType. Adding a keyword to one without the other silently breaks
+    normalization or context checking, so pin that they describe the SAME set.
+    """
+
+    def test_keywords_set_matches_type_map(self):
+        from psh.lexer.constants import KEYWORDS
+        from psh.lexer.keyword_defs import KEYWORD_TYPE_MAP
+        assert set(KEYWORDS) == set(KEYWORD_TYPE_MAP), (
+            "KEYWORDS and KEYWORD_TYPE_MAP disagree: "
+            f"only in KEYWORDS={set(KEYWORDS) - set(KEYWORD_TYPE_MAP)}, "
+            f"only in KEYWORD_TYPE_MAP={set(KEYWORD_TYPE_MAP) - set(KEYWORDS)}")
+
+    def test_reverse_map_is_bijective(self):
+        """Each keyword maps to a distinct TokenType (KEYWORD_BY_TYPE round-trips)."""
+        from psh.lexer.keyword_defs import KEYWORD_BY_TYPE, KEYWORD_TYPE_MAP
+        assert len(KEYWORD_BY_TYPE) == len(KEYWORD_TYPE_MAP)

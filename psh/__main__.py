@@ -177,17 +177,27 @@ def main():
                         opts["security_only"], opts["lint_only"],
                         opts["validate_only"]])
 
-    shell = Shell(debug_ast=opts["debug_ast"], debug_tokens=opts["debug_tokens"],
-                  debug_scopes=opts["debug_scopes"],
-                  debug_expansion=opts["debug_expansion"],
-                  debug_expansion_detail=opts["debug_expansion_detail"],
-                  debug_exec=opts["debug_exec"], debug_exec_fork=opts["debug_exec_fork"],
-                  norc=opts["norc"], rcfile=opts["rcfile"],
-                  validate_only=opts["validate_only"],
-                  format_only=opts["format_only"], metrics_only=opts["metrics_only"],
-                  security_only=opts["security_only"], lint_only=opts["lint_only"],
-                  ast_format=opts["ast_format"],
-                  force_interactive=opts["force_interactive"]
+    # opts is Dict[str, object] (its build loop assigns by dynamic key, so it
+    # cannot be a TypedDict); convert each value to the concrete type Shell's
+    # constructor declares.
+    def _flag(key: str) -> bool:
+        return bool(opts[key])
+
+    def _opt_str(key: str) -> "str | None":
+        value = opts[key]
+        return None if value is None else str(value)
+
+    shell = Shell(debug_ast=_flag("debug_ast"), debug_tokens=_flag("debug_tokens"),
+                  debug_scopes=_flag("debug_scopes"),
+                  debug_expansion=_flag("debug_expansion"),
+                  debug_expansion_detail=_flag("debug_expansion_detail"),
+                  debug_exec=_flag("debug_exec"), debug_exec_fork=_flag("debug_exec_fork"),
+                  norc=_flag("norc"), rcfile=_opt_str("rcfile"),
+                  validate_only=_flag("validate_only"),
+                  format_only=_flag("format_only"), metrics_only=_flag("metrics_only"),
+                  security_only=_flag("security_only"), lint_only=_flag("lint_only"),
+                  ast_format=_opt_str("ast_format"),
+                  force_interactive=_flag("force_interactive")
                   )
 
     # This process IS psh: install process-global signal handlers (trap

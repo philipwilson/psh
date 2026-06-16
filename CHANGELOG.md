@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.471.0 (2026-06-16) - Tier R13.C: complete check_untyped_defs + dead-code/dup polish
+- TYPING. `check_untyped_defs` now covers the LAST 11 in-scope modules (psh, __main__,
+  shell, version, parser config/__init__/visualization), completing it across the entire
+  mypy-checked tree. This surfaced a real latent type smell in `__main__.py` — argparse
+  options live in a `Dict[str, object]` (its build loop assigns by dynamic key, so it
+  cannot be a TypedDict) and were passed straight to `Shell`'s typed constructor params;
+  fixed with explicit `_flag`/`_opt_str` converters at the call site.
+- DEAD CODE. Removed unused lexer constants `VARIABLE_START_CHARS`/`VARIABLE_CHARS`
+  (lexer/constants.py) and unused recursive-descent methods `Parser.create_with_config`,
+  `Parser.from_context`, and `ContextBaseParser.previous` (no production or test callers —
+  the similarly-named test exercises `create_context`, not the classmethod).
+- DEDUP. `EnhancedValidatorVisitor`'s test-operator quoting heuristic now derives its
+  `file_ops`/`string_ops` from the shared `FILE_TEST_OPERATORS`/`STRING_COMPARISON_OPERATORS`
+  constants (plus its extra forms) instead of re-listing the operators.
+- META-TEST. Added a `KEYWORDS` (lexer/constants.py) ↔ `KEYWORD_TYPE_MAP` (lexer/keyword_defs.py)
+  sync test: adding a keyword to one table without the other now fails the suite.
+- Found by reappraisal #11. Zero behavior change. +2 meta-tests. Completes Tier R13 (A+B+C).
+
 ## 0.470.0 (2026-06-16) - Tier R13.B: failglob, read EOF status, negative-array-read warning
 - FEATURE. `shopt -s failglob` is now implemented: a pathname pattern with no matches
   fails the command with "no match: PATTERN" on stderr (status 1) instead of passing the
