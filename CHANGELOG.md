@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.491.0 (2026-06-16) - declare -a/-A preserves content (Tier R15.A — attribute uniformity)
+- BUGFIX (declare/typeset, reappraisal #13 HIGH). A bare `declare -a`/`-A` installed a fresh
+  EMPTY array, so it both DISCARDED an existing scalar's value (`x=foo; declare -a x` gave
+  `()` instead of `([0]="foo")`) and WIPED an existing array's elements on re-declaration
+  (`a=(1 2 3); declare -a a` gave `()`).
+- Fix (`builtins/function_support.py` `_declare_bare_name`): match bash's actual rules —
+  re-declaring an existing array (indexed or associative) keeps its elements; converting a
+  GLOBAL scalar preserves its value at index 0 / key "0". Scoping is honored via two new
+  helpers (`_existing_in_target_scope`, `_declare_target_is_local`): a bare `declare -a` in a
+  function creates a fresh LOCAL array without pulling in an outer-scope variable, and a
+  function-local scalar is NOT preserved (bash empties it) — only a global scalar is.
+- Verified value-for-value vs bash 5.2: global scalar→indexed/assoc preserved (incl. empty
+  string and integer attr); re-declared indexed/assoc arrays (local + global) keep contents;
+  local scalar emptied; bare declare in a function doesn't capture an outer scalar.
+- TESTS: new `tests/conformance/bash/test_declare_array_convert_conformance.py` (11 cases;
+  empty-array cases checked by value, since rendering a never-assigned array as `declare -a a`
+  vs `declare -a a=()` is a separate, still-open difference).
+
 ## 0.490.0 (2026-06-16) - set -u for array elements (Tier R15.A — attribute uniformity)
 - BUGFIX (expansion, reappraisal #13 HIGH). `set -u` (nounset) was not enforced for array
   element reads: a bare `${arr[i]}` / `${arr[key]}` on an ABSENT element returned '' with
