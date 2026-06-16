@@ -71,10 +71,10 @@ class EchoBuiltin(Builtin):
 
         while arg_index < len(args):
             arg = args[arg_index]
-            if arg == '--':
-                arg_index += 1
-                break
-            elif arg.startswith('-') and len(arg) > 1 and all(c in 'neE' for c in arg[1:]):
+            # bash's `echo` has NO `--` option terminator: `echo -- hi` prints
+            # "-- hi". Only -n/-e/-E (and clusters) are flags; the first
+            # non-flag argument (including `--`) ends option scanning.
+            if arg.startswith('-') and len(arg) > 1 and all(c in 'neE' for c in arg[1:]):
                 # Process flag characters
                 for flag in arg[1:]:
                     if flag == 'n':

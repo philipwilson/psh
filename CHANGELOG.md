@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.495.0 (2026-06-16) - echo has no --, type prints function body (Tier R15.B)
+- BUGFIX (echo, reappraisal #13 MED). bash's `echo` has NO `--` option terminator; psh treated
+  `--` as end-of-options and dropped it, so `echo -- hi` printed `hi` instead of `-- hi`. Removed
+  the `--` handling from echo's flag scan (io.py) — only -n/-e/-E (and clusters) are flags, and
+  the first non-flag argument (including `--`) ends scanning and prints literally.
+- BUGFIX (type, reappraisal #13 MED). `type <function>` printed only "NAME is a function" (a
+  literal TODO), not the body. It now prints the body via the same `ShellFormatter` path
+  `command -V` uses (type_builtin.py), so `type f` and `command -V f` agree. (psh's function-
+  print brace placement still differs from bash's — a separate, pre-existing cosmetic shared by
+  `command -V`/`declare -f`.)
+- TESTS: `tests/conformance/bash/test_echo_double_dash_conformance.py` (echo `--`, value-for-value
+  vs bash) + `tests/unit/builtins/test_type_function_body.py` (body content + consistency with
+  `command -V`). Updated `test_echo_double_dash` which pinned the old (non-bash) `--`-as-terminator
+  behavior, after re-verifying against bash 5.2.
+
 ## 0.494.0 (2026-06-16) - wait no-operand returns 0 + unset function fallback (Tier R15.A — standalones)
 - BUGFIX (job control, reappraisal #13 HIGH). `wait` with no operands returned the last
   background job's exit status, so a failing background job leaked into `$?` and broke the
