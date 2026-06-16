@@ -90,8 +90,11 @@ class HeredocCollector:
             # Check if this line is the delimiter. For <<- the delimiter line
             # may itself be tab-indented; strip leading tabs before comparing,
             # the same way content lines are stripped (bash does this too).
+            # bash requires the terminator line to equal the delimiter exactly
+            # (only <<- strips leading tabs); a line like "EOF " with trailing
+            # whitespace is body content, not the terminator.
             delimiter_line = line.lstrip('\t') if heredoc.strip_tabs else line
-            if delimiter_line.rstrip() == heredoc.delimiter:
+            if delimiter_line == heredoc.delimiter:
                 # Find the key for this heredoc
                 for key, info in self.collected.items():
                     if (info['delimiter'] == heredoc.delimiter and
