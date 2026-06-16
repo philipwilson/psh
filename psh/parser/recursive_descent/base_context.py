@@ -110,10 +110,4 @@ class ContextBaseParser:
         """Check if current token matches any in the set."""
         return self.peek().type in token_types
 
-    def previous(self) -> Token:
-        """Get the previous token."""
-        if self.ctx.current > 0:
-            return self.ctx.tokens[self.ctx.current - 1]
-        return self.ctx.tokens[0] if self.ctx.tokens else Token(TokenType.EOF, "", 0)
-
 

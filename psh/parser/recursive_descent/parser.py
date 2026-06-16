@@ -97,18 +97,6 @@ class Parser(ContextBaseParser):
 
         return Parser(tokens=[], ctx=ctx)
 
-    @classmethod
-    def from_context(cls, ctx: ParserContext) -> 'Parser':
-        """Create parser from existing context."""
-        return cls(tokens=[], ctx=ctx)
-
-    @classmethod
-    def create_with_config(cls, tokens: List[Token], config: ParserConfig,
-                          source_text: Optional[str] = None) -> 'Parser':
-        """Create parser with specific configuration."""
-        ctx = create_context(tokens, config, source_text)
-        return cls.from_context(ctx)
-
     @property
     def tokens(self) -> List[Token]:
         """Access to token list (stored in context)."""

@@ -3,8 +3,6 @@
 import string
 
 # Constants for character sets
-VARIABLE_START_CHARS = set(string.ascii_letters + '_')
-VARIABLE_CHARS = set(string.ascii_letters + string.digits + '_')
 SPECIAL_VARIABLES = set('?$!#@*-') | set(string.digits)
 
 # Keywords that need context checking

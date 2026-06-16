@@ -343,3 +343,14 @@ check_untyped_defs = true
 [[tool.mypy.overrides]]
 module = "psh.parser.combinators.*"
 check_untyped_defs = true
+
+# Top-level package modules and the remaining parser modules (config,
+# package __init__, visualization). Completes check_untyped_defs across the
+# whole in-scope tree (R13.C).
+[[tool.mypy.overrides]]
+module = ["psh", "psh.__main__", "psh.shell", "psh.version"]
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["psh.parser", "psh.parser.config", "psh.parser.visualization", "psh.parser.visualization.*"]
+check_untyped_defs = true
