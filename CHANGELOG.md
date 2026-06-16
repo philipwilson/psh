@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.481.0 (2026-06-16) - Tier R14.B (executor): break 0 / continue 0 exit all loops, status 1
+- BUGFIX (behavior). `break 0`, `continue 0`, and negative counts now report "loop count
+  out of range" AND exit ALL enclosing loops with status 1, matching bash. Previously psh
+  exited only ONE loop and left status 0. `LoopBreak` gained an optional `exit_status`
+  (None for ordinary breaks, which keep the body status); the out-of-range case raises
+  `LoopBreak(loop_depth, exit_status=1)` so it propagates through every enclosing loop and
+  the loop reports 1.
+- Found by reappraisal #12. Tier R14.B (correctness cluster), batch 5. Updated the two R13
+  tests that pinned the old one-level/status-0 behavior + added a nested-loops test.
+
 ## 0.480.0 (2026-06-16) - Tier R14.B (expansion): set -u operators + ${arr[i<<j]} heredoc misdetect
 - BUGFIX (behavior). `set -u` (nounset) is now enforced for VALUE-substituting parameter
   operators on an unset variable, matching bash: `${#x}`, `${x#p}`, `${x%p}`, `${x/a/b}`,

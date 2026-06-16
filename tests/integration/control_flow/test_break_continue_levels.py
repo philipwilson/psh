@@ -119,18 +119,28 @@ class TestBreakContinueArgumentValidation:
         assert out == 'AFTER\n'
         assert rc == 0
 
-    def test_zero_argument_out_of_range_exits_one_level(self):
-        """break 0: 'loop count out of range', exits the loop, status 0."""
+    def test_zero_argument_out_of_range_status_1(self):
+        """R14.B: break 0 reports 'loop count out of range' and the loop's
+        status is 1 (bash) — captured immediately, before any command resets
+        $?. (The loop body's `echo $i` does not run: the loop exited.)"""
         out, err, rc = run_psh(
-            'for i in 1 2; do break 0; echo $i; done; echo AFTER')
-        assert out == 'AFTER\n'
+            'for i in 1 2; do break 0; echo $i; done; echo "rc=$?"')
+        assert out == 'rc=1\n'
         assert 'loop count out of range' in err
-        assert rc == 0
 
-    def test_negative_argument_out_of_range(self):
+    def test_negative_argument_out_of_range_status_1(self):
         out, err, rc = run_psh(
-            'for i in 1 2; do break -1; echo $i; done; echo AFTER')
-        assert out == 'AFTER\n'
+            'for i in 1 2; do break -1; echo $i; done; echo "rc=$?"')
+        assert out == 'rc=1\n'
+        assert 'loop count out of range' in err
+
+    def test_zero_argument_exits_all_enclosing_loops(self):
+        """R14.B: break 0 / continue 0 exit ALL enclosing loops (bash), not
+        just one — the outer loop body after the inner loop does not run."""
+        out, err, rc = run_psh(
+            'for i in 1 2; do for j in a b; do break 0; done; echo "in$i"; '
+            'done; echo "D=$?"')
+        assert out == 'D=1\n'  # neither 'in1' nor 'in2'
         assert 'loop count out of range' in err
 
     def test_too_many_arguments(self):

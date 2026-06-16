@@ -106,10 +106,19 @@ class ControlFlowExecutor:
         When a ``break N`` / ``continue N`` (N > 1) reaches a loop that is not
         the outermost target, it must keep propagating outward with its level
         count reduced by one. Outside that case nothing is re-raised (the
-        caller handles the local break/continue).
+        caller handles the local break/continue). A LoopBreak's exit_status
+        (the out-of-range case) is carried forward through the propagation.
         """
         if exc.level > 1 and context.loop_depth > 1:
+            if isinstance(exc, LoopBreak):
+                raise LoopBreak(exc.level - 1, exit_status=exc.exit_status)
             raise type(exc)(exc.level - 1)
+
+    @staticmethod
+    def _break_status(lb: 'LoopBreak', current: int) -> int:
+        """The loop's exit status after catching a LoopBreak: the break's own
+        status when set (out-of-range `break 0` → 1), else the body status."""
+        return lb.exit_status if lb.exit_status is not None else current
 
     def execute_if(self, node: 'IfConditional', context: 'ExecutionContext',
                    visitor: 'ASTVisitor[int]') -> int:
@@ -177,6 +186,7 @@ class ControlFlowExecutor:
                     self._reraise_loop_control(lc, context)
                     continue
                 except LoopBreak as lb:
+                    exit_status = self._break_status(lb, exit_status)
                     self._reraise_loop_control(lb, context)
                     break
         return exit_status
@@ -198,6 +208,7 @@ class ControlFlowExecutor:
                     self._reraise_loop_control(lc, context)
                     continue
                 except LoopBreak as lb:
+                    exit_status = self._break_status(lb, exit_status)
                     self._reraise_loop_control(lb, context)
                     break
         return exit_status
@@ -236,6 +247,7 @@ class ControlFlowExecutor:
                     self._reraise_loop_control(lc, context)
                     continue
                 except LoopBreak as lb:
+                    exit_status = self._break_status(lb, exit_status)
                     self._reraise_loop_control(lb, context)
                     break
         return exit_status
@@ -287,6 +299,7 @@ class ControlFlowExecutor:
                     except LoopContinue as lc:
                         self._reraise_loop_control(lc, context)
                     except LoopBreak as lb:
+                        exit_status = self._break_status(lb, exit_status)
                         self._reraise_loop_control(lb, context)
                         break
 
@@ -465,6 +478,7 @@ class ControlFlowExecutor:
                             self._reraise_loop_control(lc, context)
                             continue
                         except LoopBreak as lb:
+                            exit_status = self._break_status(lb, exit_status)
                             self._reraise_loop_control(lb, context)
                             break
                 except KeyboardInterrupt:
@@ -490,6 +504,10 @@ class ControlFlowExecutor:
         level = self._resolve_loop_control_level(node, 'break')
         if level is None:
             return self.state.last_exit_code
+        if level == 0:
+            # Out-of-range (break 0/negative): bash exits ALL enclosing loops
+            # with status 1 (error already reported by the resolver).
+            raise LoopBreak(context.loop_depth, exit_status=1)
         raise LoopBreak(level)
 
     def execute_continue(self, node: 'ContinueStatement', context: 'ExecutionContext') -> int:
@@ -507,9 +525,9 @@ class ControlFlowExecutor:
         if level is None:
             return self.state.last_exit_code
         if level == 0:
-            # _resolve_loop_control_level returns 0 only for the out-of-range
-            # case (it already printed the error); bash exits the loop.
-            raise LoopBreak(1)
+            # Out-of-range (continue 0/negative): bash quirk — like break 0, it
+            # exits ALL enclosing loops with status 1 (not "continue").
+            raise LoopBreak(context.loop_depth, exit_status=1)
         raise LoopContinue(level)
 
     def _resolve_loop_control_level(self, node, name: str) -> Optional[int]:
@@ -549,7 +567,8 @@ class ControlFlowExecutor:
             return None
 
         if level <= 0:
-            # bash: report and exit one loop level (status stays 0).
+            # bash: report "loop count out of range" and (the caller then)
+            # exits ALL enclosing loops with status 1. Signalled by returning 0.
             print(f"{name}: {arg}: loop count out of range",
                   file=self.shell.stderr)
             return 0
