@@ -5,7 +5,7 @@ See CHANGELOG.md for detailed version history.
 """
 
 # Semantic versioning: MAJOR.MINOR.PATCH
-__version__ = "0.492.0"
+__version__ = "0.493.0"
 
 
 def get_version():
