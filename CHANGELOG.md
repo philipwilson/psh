@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.494.0 (2026-06-16) - wait no-operand returns 0 + unset function fallback (Tier R15.A — standalones)
+- BUGFIX (job control, reappraisal #13 HIGH). `wait` with no operands returned the last
+  background job's exit status, so a failing background job leaked into `$?` and broke the
+  common `cmd & …; wait; <check $?>` idiom (`(exit 42) & wait; echo $?` gave 42). POSIX/bash:
+  a no-operand `wait` returns 0 once all children finish. Fix (`builtins/job_control.py`
+  `_wait_for_all`): still reap/clean up every job, but return 0; only the operand form
+  `wait PID`/`wait %job` reports a waited job's status (unchanged). Two existing tests pinned
+  the old (non-bash) behavior and were updated after re-verifying against bash 5.2.
+- BUGFIX (unset, reappraisal #13 HIGH). A bare `unset NAME` (no -v/-f) only ever unset a
+  variable; it never fell back to unsetting a FUNCTION of that name (`f(){ :; }; unset f` left
+  `f` callable). bash: `unset NAME` unsets the variable if one exists, else the function. Fix
+  (`builtins/environment.py`): in the no-flag path, when no variable (or env entry) exists but
+  a function does, undefine the function. An explicit `-v` restricts to variables (never falls
+  back), and a variable still wins when both a variable and a function share the name.
+- Verified value-for-value vs bash 5.2 (11 conformance cases). This is the LAST batch of Tier
+  R15.A — every HIGH bug from reappraisal #13 is now fixed.
+- TESTS: new `tests/conformance/bash/test_wait_unset_conformance.py` (11 cases).
+
 ## 0.493.0 (2026-06-16) - case attributes on array elements (Tier R15.A — attribute uniformity)
 - BUGFIX (executor, reappraisal #13). The uppercase (-u) / lowercase (-l) attribute was applied
   to scalar writes and the integer (-i) attribute was applied to array elements, but case

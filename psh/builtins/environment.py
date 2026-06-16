@@ -410,6 +410,16 @@ class UnsetBuiltin(Builtin):
                 if '[' in var and var.endswith(']'):
                     if not self._unset_array_element(var, shell):
                         exit_code = 1
+                elif (not opts['v']
+                      and shell.state.scope_manager.get_variable_object(var) is None
+                      and var not in shell.env
+                      and shell.function_manager.get_function(var) is not None):
+                    # Bash: a bare `unset NAME` (no -v/-f) unsets the variable if
+                    # one exists, else falls back to unsetting a FUNCTION of that
+                    # name. With both present the variable wins (handled by the
+                    # variable branch below, which runs when a variable exists);
+                    # an explicit `-v` restricts to variables and never falls back.
+                    shell.function_manager.undefine_function(var)
                 else:
                     # Regular variable unset
                     try:

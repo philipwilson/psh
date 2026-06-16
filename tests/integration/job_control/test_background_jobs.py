@@ -72,19 +72,22 @@ class TestBackgroundJobCreation:
         # Jobs output verification would need shell output capture
 
     def test_background_job_exit_status(self, shell):
-        """Test that background jobs track exit status correctly."""
+        """A background job's exit status is reported by `wait PID`; a bare
+        `wait` (no operands) returns 0 (POSIX/bash) — a failing background
+        job does NOT leak into a no-operand wait."""
         # First, wait for any lingering jobs from previous tests
         shell.run_command('wait')
 
-        # Start a background job that will fail
-        result = shell.run_command('false &')
-        assert result == 0  # & should return 0 immediately
+        # & returns 0 immediately
+        assert shell.run_command('false &') == 0
 
-        # Wait for job to complete
-        # Use wait with no arguments to wait for all jobs
-        wait_result = shell.run_command('wait')
-        # wait should return the exit status of the background job
-        assert wait_result != 0  # false should return non-zero
+        # `wait PID` reports the specific job's status
+        assert shell.run_command('false & wait $!') != 0
+        assert shell.run_command('true & wait $!') == 0
+
+        # A bare `wait` always returns 0, even after a failed background job.
+        shell.run_command('false &')
+        assert shell.run_command('wait') == 0
 
 
 class TestJobStatusTracking:
@@ -186,21 +189,19 @@ class TestJobCompletion:
         # Output should be empty or show no running jobs
 
     def test_wait_exit_status(self, shell):
-        """Test that wait returns the exit status of background job.
+        """`wait PID` returns the waited job's status; a bare `wait` returns 0.
 
-        This test was previously marked xfail due to flakiness, but is now
-        reliable thanks to executor improvements (H4/H5) that fixed job control
-        and terminal restoration.
+        POSIX/bash: `wait` with no operands always returns 0 once children
+        finish — a failing background job does not leak into it. Only the
+        operand form `wait PID`/`wait %job` reports a job's exit status.
         """
-        # Start background job that succeeds
-        shell.run_command('true &')
-        wait_result = shell.run_command('wait')
-        assert wait_result == 0
+        # Operand form reports the job's own status.
+        assert shell.run_command('true & wait $!') == 0
+        assert shell.run_command('false & wait $!') != 0
 
-        # Start background job that fails
+        # No-operand wait returns 0 regardless of a failed background job.
         shell.run_command('false &')
-        wait_result = shell.run_command('wait')
-        assert wait_result != 0
+        assert shell.run_command('wait') == 0
 
     def test_automatic_job_cleanup(self, shell):
         """Test that completed jobs are eventually cleaned up."""
