@@ -262,6 +262,16 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         else:
             # Use _get_var_or_positional to handle special variables (#, ?, $, etc.)
             value = self._get_var_or_positional(var_name)
+            # set -u (nounset): a VALUE-substituting operator on an UNSET scalar
+            # is an "unbound variable" error (bash) — ${#x}, ${x#p}, ${x/.../},
+            # ${x^^}, ${x:0:1}, ${x@Q}, etc. The set-testing operators
+            # (-, =, +, ?) handle unset themselves and are exempt; array-element
+            # reads (${#arr[5]}) are handled earlier and are exempt per bash.
+            if (self.state.options.get('nounset', False)
+                    and operator not in ('-', ':-', '=', ':=', '+', ':+', '?', ':?')
+                    and not self._param_is_set(var_name)):
+                from ..core import UnboundVariableError
+                raise UnboundVariableError(f"{var_name}: unbound variable")
 
         needs_is_set = (operator in ('-', '=', '+', '?')
                         or (len(operator) == 2 and operator[0] == '@'))
