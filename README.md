@@ -12,7 +12,7 @@ Python Shell (psh) is a POSIX-compliant shell written entirely in Python, design
 
 ```bash
 # Install
-git clone https://github.com/philipwilsonTHG/psh.git
+git clone https://github.com/philipwilson/psh.git
 cd psh && pip install -e .
 
 # Run interactively
