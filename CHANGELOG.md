@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.507.0 (2026-06-19) - Unify top-level parsing onto one grammar path (review 2026-06-18, Finding #3)
+- REFACTOR (parser; zero behavior change). `Parser._parse_top_level_item()` no
+  longer special-cases control structures: it special-parsed a top-level
+  `while`/`if`/`case`/... then hand-built `Pipeline`/`AndOrList` wrappers when one
+  was followed by `|`/`&&`/`||`/`&` — a second grammar path for the same syntax.
+  It now delegates to `parse_command_list`, so a control structure is just a
+  pipeline component (`parse_pipeline_component`) like any other. `parser.py`
+  builds no `Pipeline`/`AndOrList` by hand, and the now-dead
+  `CommandParser.parse_pipeline_with_initial_component()` is deleted.
+- Fixes an order-dependent grouping asymmetry: `while …; done; echo a` now groups
+  the same as `echo a; while …; done` (one `CommandList` of two and-or lists);
+  previously the former became `TopLevel[WhileLoop, CommandList]`.
+- Root shape preserved (Option A): `_simplify_result` / the new
+  `_bare_top_level_compound` keep the historical `TopLevel`-rooted shape for a
+  program that is exactly one bare compound / function definition, so callers,
+  the combinator-parity tests, and `$LINENO` stamping are unaffected. Spike
+  measurement: the unwrap-free variant (everything `CommandList`) failed 18
+  tests — 13 of them combinator-parity, because the combinator parser also emits
+  unwrapped bare compounds — so preserving the shape is the low-cost path.
+- Decision recorded in `docs/reviews/parser_top_level_control_structure_refactor_plan_2026-06-19.md`.
+- TESTS: new `tests/unit/parser/test_top_level_control_structure_grammar.py` —
+  root-shape characterization (bare compounds/function defs stay `TopLevel`;
+  groups/simple commands stay `CommandList`), operator forms route through the
+  normal and-or/pipeline machinery, the order-asymmetry regression, execution
+  preservation (pipe/`&&`/`||`/background/redirection), and guardrails (parser.py
+  builds no `Pipeline`/`AndOrList`; the special helper is gone). Full suite green,
+  ruff + mypy clean.
+
 ## 0.506.0 (2026-06-19) - Subshell-style children no longer source rc files (review 2026-06-18, Finding #1)
 - BEHAVIOR FIX (correctness + bash divergence). In an INTERACTIVE shell, a
   child shell built by `Shell.for_subshell(...)` whose stdin was still the

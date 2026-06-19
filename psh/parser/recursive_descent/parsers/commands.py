@@ -7,7 +7,6 @@ This module handles parsing of commands, pipelines, and command arguments.
 from typing import List, Optional, Tuple
 
 from ....ast_nodes import (
-    AndOrList,
     ArrayInitialization,
     BraceGroup,
     BreakStatement,
@@ -16,7 +15,6 @@ from ....ast_nodes import (
     LiteralPart,
     Pipeline,
     SimpleCommand,
-    Statement,
     SubshellGroup,
     Word,
 )
@@ -355,39 +353,6 @@ class CommandParser:
 
         return pipeline
 
-
-    def parse_pipeline_with_initial_component(self, initial_component: Command) -> Statement:
-        """Parse a pipeline starting with an already-parsed component."""
-        # Create pipeline and add initial component
-        pipeline = Pipeline()
-        pipeline.commands.append(initial_component)
-
-        # Must have at least one pipe since we were called due to seeing a pipe
-        # Accept either | or |&
-        if self.parser.match(TokenType.PIPE, TokenType.PIPE_AND):
-            is_pipe_stderr = self.parser.peek().type == TokenType.PIPE_AND
-            self.parser.advance()
-            pipeline.pipe_stderr.append(is_pipe_stderr)
-        else:
-            self.parser.expect(TokenType.PIPE)
-
-        # Parse remaining pipeline components
-        while True:
-            command = self.parse_pipeline_component()
-            pipeline.commands.append(command)
-
-            if not self.parser.match(TokenType.PIPE, TokenType.PIPE_AND):
-                break
-            is_pipe_stderr = self.parser.peek().type == TokenType.PIPE_AND
-            self.parser.advance()
-            pipeline.pipe_stderr.append(is_pipe_stderr)
-
-        # Wrap pipeline in AndOrList for consistency
-        and_or_list = AndOrList()
-        and_or_list.pipelines.append(pipeline)
-
-        # Check for && or || continuation
-        return self.parser.statements.parse_and_or_tail(and_or_list)
 
     def parse_pipeline_component(self) -> Command:
         """Parse a single component of a pipeline (simple or compound command)."""

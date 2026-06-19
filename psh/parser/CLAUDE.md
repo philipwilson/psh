@@ -177,15 +177,30 @@ class TokenGroups:
 
 ### Top-Level Parsing
 
+There is ONE grammar path. `_parse_top_level_item()` delegates straight to
+`parse_command_list` — it does NOT special-case control structures. A control
+structure at command position is just a pipeline component (see
+`parse_pipeline_component`), so `while …; done | cat`, `… && …`, `… &`, etc.
+flow through the same `and_or_list`/`pipeline` machinery as a simple command,
+and the top level builds no `Pipeline`/`AndOrList` by hand. (This is enforced
+by `tests/unit/parser/test_top_level_control_structure_grammar.py`.)
+
 ```python
 def parse(self) -> Union[CommandList, TopLevel]:
     top_level = TopLevel()
     while not self.at_end():
-        item = self._parse_top_level_item()  # Function def or statement
+        item = self._parse_top_level_item()  # delegates to parse_command_list
         if item:
             top_level.items.append(item)
     return self._simplify_result(top_level)
 ```
+
+Root-shape policy is separate from grammar parsing: `_simplify_result`
+(via `_bare_top_level_compound`) keeps the historical `TopLevel`-rooted shape
+for a program that is exactly one bare compound / function definition, while
+multi-statement programs stay a `CommandList`. So `while …; done; echo a`
+groups the same way as `echo a; while …; done` (the old top-level special
+case did not).
 
 ### Statement Parsing
 
