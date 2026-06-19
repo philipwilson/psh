@@ -62,7 +62,12 @@ class EnvBuiltin(Builtin):
         from ..core import VarAttributes
         from ..shell import Shell
 
-        child_shell = Shell.for_subshell(shell, norc=False)
+        # norc=True: env's child runs one command, like a subshell — it must
+        # not source ~/.pshrc. With norc=False, `env cmd` in an interactive
+        # shell (tty stdin → child looks interactive) sourced the rc file,
+        # leaking its output; bash's env never does. Matches for_subshell's
+        # default and the substitution children.
+        child_shell = Shell.for_subshell(shell, norc=True)
         child_shell.state.options.update(shell.state.options)
         child_shell.stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
         child_shell.stderr = shell.stderr if hasattr(shell, 'stderr') else sys.stderr
