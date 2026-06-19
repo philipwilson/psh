@@ -5,25 +5,31 @@ This module contains the main Parser class that orchestrates parsing by delegati
 to specialized parser modules for different language constructs.
 """
 
-from typing import List, Optional, Union, cast
+from typing import List, Optional, Union
 
 from ...ast_nodes import (
     AndOrList,
     ArithmeticEvaluation,
     BreakStatement,
+    CaseConditional,
     CommandList,
     ContinueStatement,
+    CStyleForLoop,
     EnhancedTestStatement,
-    Pipeline,
+    ForLoop,
+    FunctionDef,
+    IfConditional,
+    SelectLoop,
     Statement,
     StatementList,
     TopLevel,
+    UntilLoop,
+    WhileLoop,
 )
-from ...lexer.token_types import Token, TokenType
+from ...lexer.token_types import Token
 from ..config import ParserConfig
 from .base_context import ContextBaseParser
 from .context import ParserContext
-from .helpers import TokenGroups
 from .parsers.arithmetic import ArithmeticParser
 from .parsers.arrays import ArrayParser
 from .parsers.commands import CommandParser
@@ -136,48 +142,19 @@ class Parser(ContextBaseParser):
         return self._simplify_result(top_level)
 
     def _parse_top_level_item(self) -> Optional[Union[Statement, StatementList]]:
-        """Parse a single top-level item."""
-        if self.functions.is_function_def():
-            return self.functions.parse_function_def()
-        elif self.match_any(TokenGroups.CONTROL_KEYWORDS):
-            # Check if control structure is part of a pipeline
-            control_struct = self.control_structures.parse_control_structure()
+        """Parse the top-level program via the ordinary statement path.
 
-            # Check if followed by pipe or logical operators
-            if self.match(TokenType.PIPE, TokenType.PIPE_AND):
-                # Parse as pipeline with control structure as first component
-                return self.commands.parse_pipeline_with_initial_component(control_struct)
-            elif self.match(TokenType.AMPERSAND):
-                # control structure backgrounded: while ...; done &
-                self.advance()
-                if self.match(TokenType.AND_AND, TokenType.OR_OR):
-                    raise self.error(
-                        f"syntax error near unexpected token '{self.peek().value}'")
-                pipeline = Pipeline()
-                pipeline.commands.append(control_struct)
-                and_or_list = AndOrList()
-                and_or_list.pipelines.append(pipeline)
-                and_or_list.background = True
-                return and_or_list
-            elif self.match(TokenType.AND_AND, TokenType.OR_OR):
-                # Create pipeline with control structure and wrap in and_or_list
-                pipeline = Pipeline()
-                pipeline.commands.append(control_struct)
-
-                and_or_list = AndOrList()
-                and_or_list.pipelines.append(pipeline)
-
-                # Parse the rest of the and_or_list
-                return self.statements.parse_and_or_tail(and_or_list)
-            else:
-                # Every control structure is also a Statement (they inherit
-                # both Statement and CompoundCommand), so it is a valid
-                # top-level item; mypy can't see the intersection.
-                return cast(Statement, control_struct)
-        else:
-            # Parse commands until we hit a function or control structure
-            cmd_list = self.statements.parse_command_list()
-            return cmd_list if cmd_list.statements else None
+        Top-level parsing uses the SAME grammar as a nested command list —
+        ``parse_command_list`` → ``parse_statement`` → ``parse_pipeline_component``
+        already handles function definitions and every control structure,
+        including a control structure followed by ``|``/``&&``/``||``/``&``. So
+        there is no separate top-level grammar: a control structure at command
+        position is just a pipeline component like any other. ``_simplify_result``
+        restores the historical ``TopLevel``-rooted shape for a program that is a
+        single bare compound / function definition.
+        """
+        cmd_list = self.statements.parse_command_list()
+        return cmd_list if cmd_list.statements else None
 
     def _simplify_result(self, top_level: TopLevel) -> Union[CommandList, TopLevel]:
         """Simplify single-item TopLevel to CommandList when possible."""
@@ -186,6 +163,15 @@ class Parser(ContextBaseParser):
         elif len(top_level.items) == 1:
             item = top_level.items[0]
             if isinstance(item, CommandList):
+                # A program that is exactly one bare compound / function
+                # definition keeps its historical TopLevel root (see
+                # _bare_top_level_compound). Multi-statement programs stay a
+                # CommandList — so `while ...; done; echo a` groups the same
+                # way as `echo a; while ...; done`, which the old top-level
+                # special case did not.
+                bare = self._bare_top_level_compound(item)
+                if bare is not None:
+                    return TopLevel(items=[bare])
                 return item
             elif isinstance(item, (BreakStatement, ContinueStatement)):
                 # Convert to CommandList for compatibility
@@ -197,6 +183,41 @@ class Parser(ContextBaseParser):
                 return top_level
         else:
             return top_level
+
+    # Compound-command nodes that the old top-level parser returned bare (as a
+    # direct TopLevel item) rather than wrapped in a CommandList: the
+    # CONTROL_KEYWORDS-headed structures plus `[[ ]]`/`(( ))`. Subshell/brace
+    # groups and simple commands were always CommandList-wrapped and stay so.
+    _BARE_TOP_LEVEL_TYPES = (
+        WhileLoop, UntilLoop, ForLoop, CStyleForLoop, IfConditional,
+        CaseConditional, SelectLoop, EnhancedTestStatement, ArithmeticEvaluation,
+    )
+
+    def _bare_top_level_compound(
+            self, cmd_list: CommandList) -> Optional[Statement]:
+        """The lone compound/function-def of a single-statement program.
+
+        Returns the unwrapped node when *cmd_list* is exactly one bare compound
+        command (one and-or list, one pipeline, no ``&&``/``||``, not
+        backgrounded, not negated, one command) or one function definition —
+        the shapes the previous top-level parser returned directly under
+        ``TopLevel``. Returns ``None`` otherwise, so the program stays a
+        ``CommandList``.
+        """
+        if len(cmd_list.statements) != 1:
+            return None
+        stmt = cmd_list.statements[0]
+        if isinstance(stmt, FunctionDef):
+            return stmt
+        if not isinstance(stmt, AndOrList):
+            return None
+        if stmt.operators or stmt.background or len(stmt.pipelines) != 1:
+            return None
+        pipeline = stmt.pipelines[0]
+        if pipeline.negated or len(pipeline.commands) != 1:
+            return None
+        command = pipeline.commands[0]
+        return command if isinstance(command, self._BARE_TOP_LEVEL_TYPES) else None
 
     # === Delegation Methods ===
     # These methods delegate to specialized parsers, adding feature checks where needed.
