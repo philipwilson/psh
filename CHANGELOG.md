@@ -4,6 +4,40 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.504.0 (2026-06-19) - Doc-drift cleanup + runnable examples (review 2026-06-18, Finding #2)
+- DOCS/TESTS (no production change). Acts on the highest-value finding of the
+  2026-06-18 code/architecture/teaching-quality review: the first-contact docs
+  were not as trustworthy as the internals (drifted stats, a referenced
+  `examples/` tree that did not exist, a `tests/README.md` naming directories
+  that were renamed away, and a testing doc that contradicted `CLAUDE.md`).
+- NEW `examples/` tree — five curated, runnable, instructive scripts plus an
+  index (`examples/README.md`): `shell_basics.sh` (expansion tour),
+  `fibonacci.sh` (functions/recursion/iteration — the script the README's
+  `--metrics` block prints), `control_structures.sh` (if/while/for/case, rich
+  AST), `text_stats.sh` (a realistic `getopts`/`read`/`set -u` utility), and
+  `security_demo.sh` (deliberately insecure input for `--security`/`--lint`).
+  Every referenced analysis command was verified to produce the documented
+  output; the flagship `fibonacci.sh` is `--validate`-clean.
+- README: reconciled THREE conflicting test counts (`8,439` / `5,500+` /
+  `4,235 passing`) — free-form mentions are now a rounded `8,400+`, the single
+  machine-pinned exact count stays in Project Statistics; refreshed stale file
+  counts (psh 229→238 files, tests 342→373 files) and the `--metrics` example
+  block to real output; replaced the stale, 87-line "Recent Development"
+  changelog dump (ended at v0.354, referenced the deleted
+  `psh/expansion/arithmetic.py`) with a pointer to `CHANGELOG.md`/`docs/reviews/`.
+- `docs/testing_source_of_truth.md`: rewritten to match reality — the gate is
+  LOCAL (`run_tests.py --parallel` + `ruff` + `mypy`; per-PR CI disabled, nightly
+  is a backstop), not the previously-claimed `run_tests.py --quick` "CI gate".
+- `tests/README.md`: regenerated from the actual tree (it had named missing
+  dirs/docs and omitted `behavioral/`, `framework/`, `parser_differential/`,
+  `regression/`).
+- NEW meta-tests in `tests/unit/tooling/`: `test_examples.py` (every example
+  parses; the safe ones run clean; `--metrics` matches the README numbers;
+  `--security` flags the demo) and `test_user_doc_links.py` (backticked
+  repo-paths and Markdown links in README/tests-README/testing-doc/examples-README
+  must resolve — the check the existing doc-pointer test skipped for these
+  high-traffic docs, and which immediately caught the dead `arithmetic.py` link).
+
 ## 0.503.0 (2026-06-17) - [[ -v ]] on arrays tests element 0 (Tier R15.B)
 - BUGFIX (test, reappraisal #13 MED). `[[ -v name ]]` / `test -v name` returned true whenever
   the array variable merely existed. bash's `-v name` on an array tests element 0
