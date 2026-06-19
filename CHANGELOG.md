@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.506.0 (2026-06-19) - Subshell-style children no longer source rc files (review 2026-06-18, Finding #1)
+- BEHAVIOR FIX (correctness + bash divergence). In an INTERACTIVE shell, a
+  child shell built by `Shell.for_subshell(...)` whose stdin was still the
+  parent tty looked interactive and sourced `~/.pshrc`. Two call sites passed
+  `norc=False` (command substitution already used the `norc=True` default):
+  - **Input process substitution `<(cmd)`** (`io_redirect/process_sub.py`): only
+    stdout is rewired, so the child's stdin stayed the tty; worse, `run_child_shell`
+    runs the pipe plumbing BEFORE building the child, so the rc file's output was
+    captured INTO the substitution — `cat <(echo HI)` returned the user's `.pshrc`
+    banner as data. (Both the input-pipe and write-FIFO paths fixed.)
+  - **The `env CMD` builtin's in-process child** (`builtins/env_command.py`):
+    `env echo hi` in an interactive shell sourced `~/.pshrc` once.
+- bash sources rc once, at startup — never per subshell — but DOES keep the
+  interactive flag in `$-` inside substitutions. Fix is `norc=True` at both
+  sites (matching command substitution and `for_subshell`'s documented default):
+  no rc sourcing, while `$-` still carries `i` inside `<(...)` (verified vs bash).
+- Verified value-for-value vs bash (rc sourced 0× in the children; `$-` keeps
+  `i`; `env X=1 sh -c 'echo $X'` still prints `1`).
+- TESTS: new `tests/integration/test_interactive_child_rc_leak.py` (a tty-on-fd-0
+  subprocess harness; asserts neither `<(cmd)` nor `env cmd` sources `~/.pshrc`,
+  the substitution output isn't polluted, and `$-` keeps `i`). Confirmed to fail
+  before the fix (rc sourced 3×) and pass after.
+
 ## 0.505.0 (2026-06-19) - Fix --format defects (control-structure indentation + lossy redirects)
 - BEHAVIOR FIX (`psh --format` / `FormatterVisitor`). The formatter produced
   broken, sometimes non-re-parseable output. Found while adding runnable

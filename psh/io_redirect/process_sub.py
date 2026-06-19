@@ -62,7 +62,12 @@ def create_process_substitution(
 
         run_child_shell(
             shell, _body,
-            norc=False,
+            # Substitution children never source rc files (bash sources rc
+            # once, at startup — not per subshell). Without this, an
+            # interactive `<(cmd)` builds an interactive child (stdin is
+            # still the parent tty) that sourced ~/.pshrc, leaking its
+            # output into the substitution. Matches command_sub's default.
+            norc=True,
             io_setup=_io_setup,
             error_label='process substitution',
         )
@@ -156,7 +161,12 @@ def _create_write_process_substitution(cmd_str: str, shell: 'Shell') -> Tuple[No
 
         run_child_shell(
             shell, _body,
-            norc=False,
+            # Substitution children never source rc files (bash sources rc
+            # once, at startup — not per subshell). Without this, an
+            # interactive `<(cmd)` builds an interactive child (stdin is
+            # still the parent tty) that sourced ~/.pshrc, leaking its
+            # output into the substitution. Matches command_sub's default.
+            norc=True,
             io_setup=_io_setup,
             error_label='process substitution',
         )
