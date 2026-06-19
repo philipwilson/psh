@@ -377,7 +377,8 @@ def test_round_trip_all_redirect_carriers(src):
 def test_until_loop_formats_as_shell_not_unknown_node():
     out = FormatterVisitor().visit(_ast('until false; do echo hi; done'))
     assert 'Unknown node' not in out
-    assert out.splitlines()[0] == 'until'
+    # Header keeps the condition and `do` on one line (bash `declare -f` style).
+    assert out.splitlines()[0] == 'until false; do'
     assert out.splitlines()[-1] == 'done'
 
 

@@ -43,7 +43,13 @@ class ParserUtils:
 
         # Recursively process child nodes
         if hasattr(node, 'statements') and node.statements:
-            for stmt in node.statements:
+            statements = node.statements
+            # A group node's `.statements` is a StatementList wrapper, not a
+            # bare list (unlike a StatementList node, whose `.statements` IS
+            # the list); unwrap before iterating, as the `commands` branch does.
+            if hasattr(statements, 'statements'):
+                statements = statements.statements
+            for stmt in statements:
                 self.populate_heredoc_content(stmt, heredoc_map)
 
         if hasattr(node, 'commands') and node.commands:

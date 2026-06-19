@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.505.0 (2026-06-19) - Fix --format defects (control-structure indentation + lossy redirects)
+- BEHAVIOR FIX (`psh --format` / `FormatterVisitor`). The formatter produced
+  broken, sometimes non-re-parseable output. Found while adding runnable
+  examples in v0.504.0. Fixes, with behavior-preservation pinned by new
+  round-trip tests:
+- Control-structure headers: `if`/`while`/`until` put the condition on its own
+  line with a bare `then`/`do` (`if\n  cond\nthen`); now joined on one line
+  (`if cond; then`, `while cond; do`), matching bash `declare -f`. `for`/C-style
+  `for`/`select` likewise join `do` (`for x in …; do`).
+- Nested indentation: every statement is wrapped `AndOrList → Pipeline → cmd`,
+  and `visit_Pipeline` reset the indent to 0, stripped, then re-prepended indent
+  to only the FIRST line — so a nested compound's inner lines (`else`/`fi`/
+  `done`) collapsed to column 0. A single-command pipeline is now transparent
+  (delegates to the command), preserving each block's indentation.
+- Lossy redirects (formatted output silently changed/broke the script):
+  - heredoc bodies were dropped entirely (`cat <<EOF` with no body/terminator);
+    now emitted after the command (at column 0, where heredoc bodies must sit),
+    including on compound commands (`while …; done <<EOF`) and groups;
+  - a quoted heredoc delimiter `<<'EOF'` collapsed to `<<EOF` (re-enabling
+    expansion); now preserved;
+  - a quoted file target `> "my file"` lost its quotes (`>my file`); now formats
+    the target Word with quoting;
+  - a here-string `<<< "a b"` lost its quotes (`<<<a b`); now re-quoted.
+  The 9 duplicated compound-redirect blocks are unified in one
+  `_append_redirects` helper.
+- BUGFIX (parser, pre-existing; surfaced by the above). `populate_heredoc_content`
+  iterated a group node's `.statements` directly, but for a subshell/brace group
+  that field is a `StatementList` wrapper, not a list — so `{ …; } <<EOF` (and
+  `( … ) <<EOF`) raised `TypeError: 'StatementList' object is not iterable` at
+  parse time, breaking BOTH execution and analysis. Now unwrapped like the
+  sibling `commands` branch; `{ read a; read b; …; } <<EOF` matches bash.
+- TESTS: new `tests/unit/visitor/test_formatter_roundtrip.py` (header shapes,
+  nested-indent, idempotence, and behavior-preservation incl. heredocs/
+  here-strings/quoted targets); updated the until-loop pin in
+  `test_ast_coverage_matrix.py` to the corrected header.
+
 ## 0.504.0 (2026-06-19) - Doc-drift cleanup + runnable examples (review 2026-06-18, Finding #2)
 - DOCS/TESTS (no production change). Acts on the highest-value finding of the
   2026-06-18 code/architecture/teaching-quality review: the first-contact docs

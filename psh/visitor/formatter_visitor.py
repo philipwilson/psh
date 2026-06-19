@@ -86,6 +86,25 @@ class FormatterVisitor(ASTVisitor[str]):
         """Decrease indentation level."""
         self.level = max(0, self.level - 1)
 
+    def _format_inline(self, node) -> str:
+        """Render a node on one line, with no leading indent.
+
+        Used for control-structure headers, where the loop/conditional
+        keyword, its condition list, and the following ``then``/``do``
+        share a single line (``if cmd; then``, ``while cmd; do``). A
+        multi-command condition (``if a; b; then``) renders its statements
+        joined with ``; ``.
+        """
+        saved = self.level
+        self.level = 0
+        try:
+            if isinstance(node, StatementList):
+                parts = [self.visit(s).strip() for s in node.statements]
+                return '; '.join(p for p in parts if p)
+            return self.visit(node).strip()
+        finally:
+            self.level = saved
+
     @staticmethod
     def _format_word(word) -> str:
         """Format a Word by reconstructing from its parts with quoting.
@@ -160,19 +179,29 @@ class FormatterVisitor(ASTVisitor[str]):
         if node.background:
             parts.append('&')
 
-        return self._indent() + ' '.join(parts)
+        return self._indent() + ' '.join(parts) + self._heredoc_trailer(node.redirects)
 
     def visit_Pipeline(self, node: Pipeline) -> str:
-        """Format a pipeline."""
-        parts = []
+        """Format a pipeline.
 
-        # Save indent level for pipeline components
+        A single-command pipeline is the AST's transparent wrapper around
+        every statement — including compound commands (``if``/``while``/
+        ``case``/groups), which render across multiple lines. Delegate to
+        the command so it keeps its own indentation; only a true multi-stage
+        pipeline flattens its stages onto one line joined by ``' | '`` (which
+        is why the inline path resets the indent level to 0).
+        """
+        if len(node.commands) == 1:
+            result = self.visit(node.commands[0])
+            if node.negated:
+                stripped = result.lstrip(' ')
+                indent = result[:len(result) - len(stripped)]
+                result = f"{indent}! {stripped}"
+            return result
+
         saved_level = self.level
         self.level = 0
-
-        for cmd in node.commands:
-            parts.append(self.visit(cmd).strip())
-
+        parts = [self.visit(cmd).strip() for cmd in node.commands]
         self.level = saved_level
 
         result = ' | '.join(parts)
@@ -204,22 +233,14 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format a while loop."""
         lines = []
 
-        lines.append(self._indent() + 'while')
-        self._increase_indent()
-        lines.append(self.visit(node.condition))
-        self._decrease_indent()
-
-        lines.append(self._indent() + 'do')
+        lines.append(f"{self._indent()}while {self._format_inline(node.condition)}; do")
         self._increase_indent()
         lines.append(self.visit(node.body))
         self._decrease_indent()
 
         lines.append(self._indent() + 'done')
 
-        # Add redirections
-        if node.redirects:
-            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
-            lines[-1] += ' ' + redirect_str
+        self._append_redirects(lines, node.redirects)
 
         return '\n'.join(lines)
 
@@ -227,22 +248,14 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format an until loop."""
         lines = []
 
-        lines.append(self._indent() + 'until')
-        self._increase_indent()
-        lines.append(self.visit(node.condition))
-        self._decrease_indent()
-
-        lines.append(self._indent() + 'do')
+        lines.append(f"{self._indent()}until {self._format_inline(node.condition)}; do")
         self._increase_indent()
         lines.append(self.visit(node.body))
         self._decrease_indent()
 
         lines.append(self._indent() + 'done')
 
-        # Add redirections
-        if node.redirects:
-            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
-            lines[-1] += ' ' + redirect_str
+        self._append_redirects(lines, node.redirects)
 
         return '\n'.join(lines)
 
@@ -258,8 +271,8 @@ class FormatterVisitor(ASTVisitor[str]):
             else:
                 items.append(item)
 
-        lines.append(f"{self._indent()}for {node.variable} in {' '.join(items)}")
-        lines.append(self._indent() + 'do')
+        header = f"for {node.variable} in {' '.join(items)}".rstrip()
+        lines.append(f"{self._indent()}{header}; do")
 
         self._increase_indent()
         lines.append(self.visit(node.body))
@@ -267,10 +280,7 @@ class FormatterVisitor(ASTVisitor[str]):
 
         lines.append(self._indent() + 'done')
 
-        # Add redirections
-        if node.redirects:
-            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
-            lines[-1] += ' ' + redirect_str
+        self._append_redirects(lines, node.redirects)
 
         return '\n'.join(lines)
 
@@ -282,8 +292,7 @@ class FormatterVisitor(ASTVisitor[str]):
         cond = node.condition_expr or ''
         update = node.update_expr or ''
 
-        lines.append(f"{self._indent()}for (({init}; {cond}; {update}))")
-        lines.append(self._indent() + 'do')
+        lines.append(f"{self._indent()}for (({init}; {cond}; {update})); do")
 
         self._increase_indent()
         lines.append(self.visit(node.body))
@@ -291,10 +300,7 @@ class FormatterVisitor(ASTVisitor[str]):
 
         lines.append(self._indent() + 'done')
 
-        # Add redirections
-        if node.redirects:
-            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
-            lines[-1] += ' ' + redirect_str
+        self._append_redirects(lines, node.redirects)
 
         return '\n'.join(lines)
 
@@ -302,24 +308,14 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format an if statement."""
         lines = []
 
-        lines.append(self._indent() + 'if')
-        self._increase_indent()
-        lines.append(self.visit(node.condition))
-        self._decrease_indent()
-
-        lines.append(self._indent() + 'then')
+        lines.append(f"{self._indent()}if {self._format_inline(node.condition)}; then")
         self._increase_indent()
         lines.append(self.visit(node.then_part))
         self._decrease_indent()
 
         # elif parts
         for condition, then_part in node.elif_parts:
-            lines.append(self._indent() + 'elif')
-            self._increase_indent()
-            lines.append(self.visit(condition))
-            self._decrease_indent()
-
-            lines.append(self._indent() + 'then')
+            lines.append(f"{self._indent()}elif {self._format_inline(condition)}; then")
             self._increase_indent()
             lines.append(self.visit(then_part))
             self._decrease_indent()
@@ -333,10 +329,7 @@ class FormatterVisitor(ASTVisitor[str]):
 
         lines.append(self._indent() + 'fi')
 
-        # Add redirections
-        if node.redirects:
-            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
-            lines[-1] += ' ' + redirect_str
+        self._append_redirects(lines, node.redirects)
 
         return '\n'.join(lines)
 
@@ -353,10 +346,7 @@ class FormatterVisitor(ASTVisitor[str]):
 
         lines.append(self._indent() + 'esac')
 
-        # Add redirections
-        if node.redirects:
-            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
-            lines[-1] += ' ' + redirect_str
+        self._append_redirects(lines, node.redirects)
 
         return '\n'.join(lines)
 
@@ -384,8 +374,8 @@ class FormatterVisitor(ASTVisitor[str]):
         lines = []
 
         items = ' '.join(f'"{item}"' if ' ' in item else item for item in node.items)
-        lines.append(f"{self._indent()}select {node.variable} in {items}")
-        lines.append(self._indent() + 'do')
+        header = f"select {node.variable} in {items}".rstrip()
+        lines.append(f"{self._indent()}{header}; do")
 
         self._increase_indent()
         lines.append(self.visit(node.body))
@@ -393,10 +383,7 @@ class FormatterVisitor(ASTVisitor[str]):
 
         lines.append(self._indent() + 'done')
 
-        # Add redirections
-        if node.redirects:
-            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
-            lines[-1] += ' ' + redirect_str
+        self._append_redirects(lines, node.redirects)
 
         return '\n'.join(lines)
 
@@ -414,9 +401,7 @@ class FormatterVisitor(ASTVisitor[str]):
         lines.append(self._indent() + '}')
 
         # Redirections on the definition apply at each call: f() { ...; } > file
-        if node.redirects:
-            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
-            lines[-1] += ' ' + redirect_str
+        self._append_redirects(lines, node.redirects)
 
         return '\n'.join(lines)
 
@@ -467,6 +452,9 @@ class FormatterVisitor(ASTVisitor[str]):
             lines[-1] += ' ' + ' '.join(self.visit(r) for r in node.redirects)
         if node.background:
             lines[-1] += ' &'
+        # Heredoc bodies follow the whole line, after any trailing `&`.
+        if node.redirects:
+            lines[-1] += self._heredoc_trailer(node.redirects)
         return '\n'.join(lines)
 
     # Test expressions
@@ -553,26 +541,85 @@ class FormatterVisitor(ASTVisitor[str]):
 
     # Redirections
 
+    @staticmethod
+    def _quote_scalar(text: str, quote_type) -> str:
+        """Re-wrap a scalar (here-string word) in its original quotes."""
+        if not quote_type:
+            return text
+        if quote_type == "$'":
+            return f"$'{text}'"
+        return f"{quote_type}{text}{quote_type}"
+
+    @staticmethod
+    def _heredoc_trailer(redirects) -> str:
+        """Body + closing delimiter for any heredocs on a command.
+
+        Heredoc bodies and their closing delimiter sit at column 0 on the
+        lines *after* the command (they cannot be indented — for ``<<`` an
+        indented delimiter would not terminate the document), so they are
+        appended by the command formatter rather than emitted inline by
+        ``visit_Redirect``. Returns '' when the command has no heredocs.
+        """
+        out = []
+        for r in redirects:
+            if r.type in ('<<', '<<-') and r.heredoc_content is not None:
+                body = r.heredoc_content
+                if body and not body.endswith('\n'):
+                    body += '\n'
+                out.append('\n' + body + (r.target or ''))
+        return ''.join(out)
+
+    def _append_redirects(self, lines: list, redirects) -> None:
+        """Append a compound command's redirects to its closing line.
+
+        The inline operators (``>f``, ``<<EOF``) go on the last line; any
+        heredoc bodies follow it (see ``_heredoc_trailer``). Shared by every
+        compound formatter so ``done <<EOF`` / ``fi >out`` render uniformly.
+        """
+        if not redirects:
+            return
+        lines[-1] += ' ' + ' '.join(self.visit(r) for r in redirects)
+        lines[-1] += self._heredoc_trailer(redirects)
+
     def visit_Redirect(self, node: Redirect) -> str:
-        """Format a redirection."""
-        parts = []
+        """Format a redirection (the inline operator + target).
 
-        # Check if fd is already encoded in the type (like 2>, 2>>)
+        Heredoc *bodies* are emitted separately by ``_heredoc_trailer`` —
+        this renders only the ``<<DELIM`` operator that stays on the
+        command line.
+        """
+        # Operator with any explicit fd prefix. '2>'-style types already
+        # encode their fd; everything else prepends node.fd when present.
         if node.type.startswith('2') and node.fd == 2:
-            # fd is already part of the type, don't duplicate it
-            parts.append(node.type)
+            op = node.type
+        elif node.fd is not None:
+            op = f"{node.fd}{node.type}"
         else:
-            # For other redirections, prepend fd if specified
-            if node.fd is not None:
-                parts.append(str(node.fd))
-            parts.append(node.type)
+            op = node.type
 
+        # Here document: keep the delimiter's quoting so re-parsing keeps the
+        # same expansion behavior (`<<'EOF'` must not become `<<EOF`).
+        if node.type in ('<<', '<<-'):
+            delim = node.target or ''
+            if node.heredoc_quoted:
+                delim = f"'{delim}'"
+            return f"{op}{delim}"
+
+        # Here string: re-quote the word so spaces/specials survive.
+        if node.type == '<<<':
+            return f"{op}{self._quote_scalar(node.target or '', node.quote_type)}"
+
+        # fd duplication/close (2>&1, >&-).
         if node.dup_fd is not None:
-            parts.append(str(node.dup_fd))
-        elif node.target is not None:
-            parts.append(node.target)
+            return f"{op}{node.dup_fd}"
 
-        return ''.join(parts)
+        # Filename target: format the Word to preserve quoting (`> "a b"`);
+        # fall back to the bare target string for forms with no Word.
+        if node.target_word is not None:
+            return f"{op}{self._format_word(node.target_word)}"
+        if node.target is not None:
+            return f"{op}{node.target}"
+        return op
 
     def visit_ProcessSubstitution(self, node: ProcessSubstitution) -> str:
         """Format a process substitution."""
