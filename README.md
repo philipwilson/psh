@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.508.0 | **Tests**: 8,400+ | **POSIX Compliance**: ~98%
+**Current Version**: 0.509.0 | **Tests**: 8,400+ | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -356,6 +356,11 @@ that work, see [`docs/reviews/`](docs/reviews/).
 MIT License - see LICENSE file for details.
 
 ## Educational Value
+
+**Start here:** [`docs/learning_path.md`](docs/learning_path.md) is the
+recommended route through the codebase — from this README through the
+architecture, the end-to-end internals tour, the `Word` AST data model, and the
+per-subsystem notes.
 
 PSH serves as an excellent learning resource for:
 - **Shell Implementation**: Understanding lexing, parsing, and execution

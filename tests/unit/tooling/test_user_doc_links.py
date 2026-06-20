@@ -28,6 +28,8 @@ DOCS = [
     PROJECT_ROOT / "tests" / "README.md",
     PROJECT_ROOT / "docs" / "testing_source_of_truth.md",
     PROJECT_ROOT / "examples" / "README.md",
+    PROJECT_ROOT / "docs" / "learning_path.md",
+    PROJECT_ROOT / "docs" / "reviews" / "README.md",
 ]
 
 FENCE_RE = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)

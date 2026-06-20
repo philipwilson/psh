@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.509.0 (2026-06-20) - Curate docs for students: learning path + reviews index (review 2026-06-18, Finding #6)
+- DOCS. Closes the 2026-06-18 review's Finding #6 ("curate the documentation set
+  for students, not only maintainers") — a student no longer has to infer which
+  documents are current.
+- NEW `docs/learning_path.md`: the canonical reading route — README → run the
+  `examples/` with the debug flags → `ARCHITECTURE.md` Quick Map → the end-to-end
+  internals tour → the `Word` AST data-flow model → the per-subsystem `CLAUDE.md`
+  notes → user guide / testing. Linked from `README.md` and `ARCHITECTURE.md`.
+- NEW `docs/reviews/README.md`: a status index over the 40 review/design docs
+  (Live / Completed / Historical), so the handful of live references stand out and
+  the rest are clearly labeled development history (not a tutorial). Indexed in
+  place rather than moved, to preserve the references from `CLAUDE.md`/`CHANGELOG`.
+- `test_user_doc_links.py` now also guards `docs/learning_path.md` and
+  `docs/reviews/README.md` (every backticked repo-path and Markdown link must
+  resolve). Full suite green, ruff + mypy clean.
+
 ## 0.508.0 (2026-06-20) - Shell options: one registry, validated container (review 2026-06-18, Finding #4)
 - REFACTOR (core; zero behavior change). `ShellState.options` was a bare 41-key
   `dict`, and "what options exist + how each behaves" was duplicated across the
