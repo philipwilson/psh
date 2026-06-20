@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING, List
 
+from ..core.option_registry import SHOPT_OPTION_NAMES
 from .base import Builtin
 from .registry import builtin
 
@@ -17,22 +18,10 @@ class ShoptBuiltin(Builtin):
     def name(self) -> str:
         return "shopt"
 
-    # Map of shopt option names to their state.options keys
-    SHOPT_OPTIONS = {
-        'dotglob': 'dotglob',
-        'nullglob': 'nullglob',
-        'failglob': 'failglob',
-        'extglob': 'extglob',
-        'nocaseglob': 'nocaseglob',
-        'nocasematch': 'nocasematch',
-        'globstar': 'globstar',
-        'checkhash': 'checkhash',
-        # Accepted for bash compatibility. psh always expands aliases (a
-        # parse-time token transform), so this is a recognized no-op gate;
-        # `shopt -s/-u expand_aliases` toggles the flag for display but does
-        # not actually disable expansion. See ShellState.options.
-        'expand_aliases': 'expand_aliases',
-    }
+    # shopt option name -> state.options key (identity), derived from the
+    # option registry (the single source of truth; see
+    # psh/core/option_registry.py — including the `expand_aliases` no-op note).
+    SHOPT_OPTIONS = {name: name for name in SHOPT_OPTION_NAMES}
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         # Parse flags

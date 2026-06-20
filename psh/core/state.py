@@ -6,6 +6,7 @@ from ..version import __version__
 from .command_hash import CommandHashTable
 from .execution_state import ExecutionState
 from .history_state import HistoryState
+from .option_registry import ShellOptions
 from .scope import ScopeManager
 from .stream_bindings import StreamBindings
 from .terminal_state import TerminalState
@@ -96,8 +97,13 @@ class ShellState:
         self._getopts_charpos_optind: Optional[int] = None
 
         # Centralized shell options dictionary
-        self.options = {
-            # Debug options (existing)
+        # Shell options live in a registry-backed, dict-compatible container
+        # (psh/core/option_registry.py is the single source of truth for every
+        # option's default, short flag, $- letter, and category). Only the
+        # values that differ from the registry defaults at construction —
+        # the CLI debug flags and the PSH_STRICT_ERRORS seed — are passed as
+        # overrides; everything else takes its registry default.
+        self.options = ShellOptions(overrides={
             'debug-ast': debug_ast,
             'debug-tokens': debug_tokens,
             'debug-scopes': debug_scopes,
@@ -105,54 +111,8 @@ class ShellState:
             'debug-expansion-detail': debug_expansion_detail,
             'debug-exec': debug_exec,
             'debug-exec-fork': debug_exec_fork,
-            # Re-raise unexpected internal exceptions instead of swallowing
-            # them to status 1, so a test harness surfaces internal defects.
-            # Seeded from PSH_STRICT_ERRORS below; toggle with
-            # set -o strict-errors / set +o strict-errors.
             'strict-errors': self._seed_strict_errors(),
-            # Shell options (existing)
-            'errexit': False,      # -e: exit on error
-            'nounset': False,      # -u: error on undefined variables
-            'xtrace': False,       # -x: print commands before execution
-            'pipefail': False,     # -o pipefail: pipeline fails if any command fails
-            # New POSIX options
-            'allexport': False,    # -a: auto-export all variables
-            'notify': False,       # -b: async job completion notifications
-            'noclobber': False,    # -C: prevent file overwriting with >
-            'noglob': False,       # -f: disable pathname expansion
-            'hashcmds': True,      # -h: hash command locations (bash default ON)
-            'monitor': False,      # -m: job control mode (default for interactive)
-            'noexec': False,       # -n: read commands but don't execute
-            'verbose': False,      # -v: echo input lines as read
-            'ignoreeof': False,    # -o ignoreeof: don't exit on EOF
-            'nolog': False,        # -o nolog: don't log function definitions
-            # Bash compatibility options (shopt)
-            'dotglob': False,      # dotglob: glob matches dotfiles
-            'nullglob': False,     # nullglob: glob with no matches returns empty
-            'failglob': False,     # failglob: glob with no matches fails the command
-            'extglob': False,      # extglob: extended globbing patterns
-            'nocaseglob': False,   # nocaseglob: case-insensitive globbing
-            'nocasematch': False,  # nocasematch: case-insensitive [[ ]]/case matching
-            'globstar': False,     # globstar: ** matches recursively
-            'checkhash': False,    # checkhash: re-verify hashed paths before exec
-            # expand_aliases: accepted for bash compatibility but effectively
-            # always-on in psh — alias expansion is a parse-time token
-            # transform that runs regardless (the deliberate psh divergence:
-            # aliases expand in interactive AND non-interactive shells). The
-            # option is a recognized no-op gate, defaulting to True.
-            'expand_aliases': True,
-            'braceexpand': True,   # -o braceexpand: enable brace expansion (default on)
-            'emacs': False,        # -o emacs: emacs key bindings (context-dependent)
-            'vi': False,           # -o vi: vi key bindings (off for set -o display)
-            'histexpand': True,    # -o histexpand: enable history expansion (default on)
-            'history': True,       # -o history: command history enabled (default on)
-            'interactive': False,  # -i: interactive mode (set by shell init)
-            'stdin_mode': True,    # reading from stdin (no script file; set by shell init)
-            # Parser configuration options (enhanced features now standard)
-            'posix': False,        # -o posix: strict POSIX mode
-            'collect_errors': False,  # -o collect_errors: collect multiple parse errors
-            'parser-mode': 'balanced', # -o parser-mode: performance mode (performance/balanced/development)
-        }
+        })
 
         # Enable debug mode on scope manager if debug-scopes is set
         if self.options['debug-scopes']:
@@ -562,34 +522,7 @@ class ShellState:
         return ''
 
     def get_option_string(self) -> str:
-        """Get string representation of set options for $- special variable.
-
-        Returns flags matching bash's $- format. Includes both options set via
-        'set' builtin and implicit flags like 'i' (interactive), 's' (stdin mode),
-        'B' (braceexpand), and 'H' (histexpand).
-        """
-        opts = []
-        # Bash $- order: single-letter options (lowercase then uppercase,
-        # alphabetical), with the invocation-mode flags 'c' (-c) and 's'
-        # (stdin) appended LAST. Verified against bash 5.x, e.g.
-        #   bash -c 'echo $-'  -> hBc      bash -ic 'echo $-' -> hiBHc
-        #   echo 'echo $-'|bash -> hBs     set -aefuvx        -> aefhuvxBc
-        if self.options.get('allexport'): opts.append('a')
-        if self.options.get('notify'): opts.append('b')
-        if self.options.get('errexit'): opts.append('e')
-        if self.options.get('noglob'): opts.append('f')
-        if self.options.get('hashcmds'): opts.append('h')
-        if self.options.get('interactive'): opts.append('i')
-        if self.options.get('monitor'): opts.append('m')
-        if self.options.get('noexec'): opts.append('n')
-        if self.options.get('nounset'): opts.append('u')
-        if self.options.get('verbose'): opts.append('v')
-        if self.options.get('xtrace'): opts.append('x')
-        if self.options.get('braceexpand'): opts.append('B')
-        if self.options.get('noclobber'): opts.append('C')
-        if self.options.get('histexpand'): opts.append('H')
-        # Invocation-mode flags come last in bash's $-.
-        if self.options.get('command_mode'): opts.append('c')
-        if self.options.get('stdin_mode'): opts.append('s')
-        return ''.join(opts)
+        """The ``$-`` flag string. Order and letters are owned by the option
+        registry (see ``ShellOptions.option_string``)."""
+        return self.options.option_string()
 

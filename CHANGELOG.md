@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.508.0 (2026-06-20) - Shell options: one registry, validated container (review 2026-06-18, Finding #4)
+- REFACTOR (core; zero behavior change). `ShellState.options` was a bare 41-key
+  `dict`, and "what options exist + how each behaves" was duplicated across the
+  defaults dict (`state.py`), the `$-` letter map (`get_option_string`),
+  `SetBuiltin.short_to_long`, and `ShoptBuiltin.SHOPT_OPTIONS`.
+- NEW `psh/core/option_registry.py`: `OPTION_REGISTRY` is now the single source of
+  truth (each option: default, value type, category, short flag, `$-` letter). The
+  defaults, `SHORT_TO_LONG`, `SHOPT_OPTION_NAMES`, and the `$-` string are all
+  derived from it; the duplicated maps in `state.py`/`environment.py`/
+  `shell_options.py` are deleted.
+- `ShellState.options` is now a `ShellOptions` — a registry-backed, dict-compatible
+  (`MutableMapping`) container: the ~280 `state.options['key']`/`.get(...)` call
+  sites are unchanged, but a write with an unregistered name now raises (typos fail
+  loudly). A spike confirmed the swap is zero-call-site-churn and zero-behavior-change
+  (full suite green); the reject-on-unknown policy proved the registry is complete
+  (nothing writes an unregistered name). A few additive typed accessors
+  (`options.errexit`, ...) were added for hot reads.
+- The previously ad-hoc `command_mode` key (set in `__main__.py`, read by `$-`) is
+  now a declared `INTERNAL` option.
+- Note: this is NOT the "field-per-option dataclass" the review literally suggested —
+  options are a dynamic, string-keyed surface (`set -o $name`, `shopt`, `$-`) with
+  hyphenated names, so a registry-backed validated container is the right typed shape.
+  Rationale recorded in `docs/reviews/options_typing_refactor_plan_2026-06-19.md`.
+- TESTS: new `tests/unit/core/test_option_registry.py` (registry defaults/short-map/
+  shopt-set/`$-`-order pins, ShellOptions dict-compatibility + reject-unknown, typed
+  accessors, and a drift-lock enumerating the known option set). Full suite green,
+  ruff + mypy clean.
+
 ## 0.507.0 (2026-06-19) - Unify top-level parsing onto one grammar path (review 2026-06-18, Finding #3)
 - REFACTOR (parser; zero behavior change). `Parser._parse_top_level_item()` no
   longer special-cases control structures: it special-parsed a top-level

@@ -8,6 +8,7 @@ process-fd binding helpers.
 from typing import TYPE_CHECKING, List
 
 from ..core import ReadonlyVariableError
+from ..core.option_registry import SHORT_TO_LONG
 from .base import Builtin
 from .declare_format import escape_value
 from .registry import builtin
@@ -186,20 +187,9 @@ class SetBuiltin(Builtin):
                 self.write_line(f"{var}={value}", shell)
             return 0
 
-        # Map short options to long names
-        short_to_long = {
-            'a': 'allexport',
-            'b': 'notify',
-            'C': 'noclobber',
-            'e': 'errexit',
-            'f': 'noglob',
-            'h': 'hashcmds',
-            'm': 'monitor',
-            'n': 'noexec',
-            'u': 'nounset',
-            'v': 'verbose',
-            'x': 'xtrace',
-        }
+        # Short option (-e, -u, ...) → long name, from the option registry
+        # (the single source of truth; see psh/core/option_registry.py).
+        short_to_long = SHORT_TO_LONG
 
         # Process arguments. Option arguments do NOT stop processing — bash
         # accepts e.g. `set -o errexit -o pipefail -x`; the first non-option
