@@ -27,7 +27,8 @@ Manager            (arrays)    State    Manager
 | `command_hash.py` | `CommandHashTable` - remembered command locations (`hash` builtin; cleared via `ScopeManager.path_changed` on any PATH write) |
 | `scope.py` | `ScopeManager`, `VariableScope` - hierarchical scope management |
 | `variables.py` | `Variable`, `VarAttributes`, `IndexedArray`, `AssociativeArray` |
-| `options.py` | Shell option handlers (errexit, pipefail, etc.) |
+| `option_registry.py` | `OPTION_REGISTRY` (single source of truth for all shell options) + `ShellOptions` (registry-backed, dict-compatible container; `ShellState.options`) |
+| `options.py` | `OptionHandler` - option *behavior* helpers (nounset check, xtrace print) |
 | `functions.py` | `FunctionManager` - shell function definitions |
 | `exceptions.py` | `PshError` root + error classes, and control-flow signals (`LoopBreak`, etc.) |
 | `internal_errors.py` | Expected-error taxonomy + `report_internal_defect` (strict-errors guard) |
@@ -186,25 +187,28 @@ assoc.keys()         # ['key1']
 
 ### Adding a New Shell Option
 
-1. Add to `state.py` options dictionary:
+`psh/core/option_registry.py` is the SINGLE source of truth for every option's
+default, value type, category, short flag, and `$-` letter. The defaults dict,
+`SetBuiltin.short_to_long`, `ShoptBuiltin.SHOPT_OPTIONS`, and the `$-` string
+are all derived from it — do NOT re-add a parallel map.
+
+1. Add one `_spec(...)` to `_SPECS` in `option_registry.py`:
 ```python
-self.options = {
-    ...
-    'myoption': False,  # -o myoption: description
-}
+_spec("myoption", False, OptionCategory.SET, short_flag="M", dollar_dash="M"),
 ```
 
-2. Add to short-to-long mapping in `builtins/environment.py` `SetBuiltin`:
-```python
-short_to_long = {
-    'M': 'myoption',  # if single-letter option
-    ...
-}
-```
+2. Add the name to `EXPECTED_OPTIONS` in
+   `tests/unit/core/test_option_registry.py` (the drift-lock meta-test fails
+   until you do — adding/removing an option is a deliberate edit).
 
-3. Implement behavior where needed (executor, expansion, etc.)
+3. Implement behavior where needed (executor, expansion, etc.). Read it via
+   `state.options.get('myoption')` / `state.options['myoption']` as usual.
 
-4. Add tests in `tests/unit/builtins/`
+4. Add behavioral tests in `tests/unit/builtins/`.
+
+`ShellState.options` is a `ShellOptions` (a registry-backed,
+dict-compatible container): reads/writes use the same `['key']`/`.get()` API,
+but a write with an unregistered name raises (typos fail loudly).
 
 ### Adding a New Variable Attribute
 
