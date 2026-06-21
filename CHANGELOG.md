@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.530.0 (2026-06-21) - Fix: support the deprecated `$[expr]` arithmetic form (appraisal Tier 3, M3)
+- BUGFIX (MED). ``$[expr]`` — bash's deprecated spelling of ``$((expr))`` — was
+  passed through verbatim (``echo $[1+2]`` printed ``$[1+2]``). The lexer's
+  expansion dispatch and the literal recogniser's ``can_start_expansion`` did not
+  recognise ``$[``. Both now do: the expansion parser rewrites ``$[expr]`` to the
+  canonical ``$((expr))`` token (balancing ``[]`` so subscripts like
+  ``$[a[0]+1]`` work, and recursively rewriting nested ``$[...]`` so
+  ``$[2*$[3]]`` works), so the whole arithmetic pipeline downstream is unchanged.
+  ``psh/lexer/expansion_parser.py`` + ``recognizers/word_scanners.py``.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, M3). New
+  ``tests/unit/expansion/test_dollar_bracket_arithmetic.py`` (12 cases) and a
+  bash-compared golden case.
+
 ## 0.529.0 (2026-06-21) - Fix: three builtin/array bugs — read -p tty, declare -i array, unset arr[@] (appraisal Tier 3)
 - BUGFIX (MED, M9). ``read -p`` wrote its prompt unconditionally, so a
   ``read -p`` from a pipe / here-string / redirected file leaked the prompt into

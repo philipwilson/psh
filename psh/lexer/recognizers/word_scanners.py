@@ -282,14 +282,15 @@ class UnmatchedBracketTracker:
 
 def can_start_expansion(text: str, pos: int, posix_mode: bool = False) -> bool:
     """True when the ``$`` at ``pos`` can start a valid expansion
-    (``$(...)``, ``${...}``, ``$'...'``, ``$"..."``, ``$VAR``, ``$?`` …).
+    (``$(...)``, ``${...}``, ``$[...]``, ``$'...'``, ``$"..."``, ``$VAR``, ``$?`` …).
     A ``$`` that cannot is a literal word character."""
     if pos >= len(text) or text[pos] != '$':
         return False
     if pos + 1 >= len(text):
         return False  # lone $ at end of input
     next_char = text[pos + 1]
-    if next_char in '({\'"':
+    # '[' is the deprecated `$[expr]` arithmetic form (== `$((expr))`).
+    if next_char in '([{\'"':
         return True
     from ..constants import SPECIAL_VARIABLES
     if next_char in SPECIAL_VARIABLES:

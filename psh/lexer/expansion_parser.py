@@ -56,8 +56,87 @@ class ExpansionParser:
             return self._parse_command_or_arithmetic(input_text, start_pos, quote_context)
         elif next_char == '{':
             return self._parse_brace_expansion(input_text, start_pos, quote_context)
+        elif next_char == '[':
+            return self._parse_dollar_bracket_arithmetic(input_text, start_pos, quote_context)
         else:
             return self._parse_simple_variable(input_text, start_pos, quote_context)
+
+    def _parse_dollar_bracket_arithmetic(
+        self,
+        input_text: str,
+        start_pos: int,
+        quote_context: Optional[str]
+    ) -> Tuple[TokenPart, int]:
+        """Parse the deprecated ``$[expr]`` arithmetic form.
+
+        ``$[expr]`` is exactly ``$((expr))`` (bash, deprecated). We rewrite it to
+        the canonical ``$((...))`` token value so the whole arithmetic pipeline
+        downstream is unchanged; the inner ``[``/``]`` are balanced so subscripts
+        like ``$[a[0]+1]`` work.
+        """
+        depth = 0
+        i = start_pos + 1  # at '['
+        close = None
+        while i < len(input_text):
+            ch = input_text[i]
+            if ch == '[':
+                depth += 1
+            elif ch == ']':
+                depth -= 1
+                if depth == 0:
+                    close = i
+                    break
+            i += 1
+
+        if close is None:
+            # Unclosed $[ ... : take what we have (parser reports the error).
+            return TokenPart(
+                value=input_text[start_pos:], quote_type=quote_context,
+                is_expansion=True, expansion_type='arithmetic_unclosed',
+                start_pos=Position(start_pos, 0, 0),
+                end_pos=Position(len(input_text), 0, 0)
+            ), len(input_text)
+
+        # Rewrite any NESTED `$[...]` in the body too, so `$[2*$[3]]` works.
+        inner = self._rewrite_dollar_brackets(input_text[start_pos + 2:close])
+        end_pos = close + 1
+        return TokenPart(
+            value=f'$(({inner}))',           # canonical arithmetic form
+            quote_type=quote_context,
+            is_expansion=True,
+            expansion_type='arithmetic',
+            start_pos=Position(start_pos, 0, 0),
+            end_pos=Position(end_pos, 0, 0)
+        ), end_pos
+
+    @staticmethod
+    def _rewrite_dollar_brackets(text: str) -> str:
+        """Rewrite every ``$[expr]`` in *text* to ``$((expr))``, recursively."""
+        result: list = []
+        i = 0
+        n = len(text)
+        while i < n:
+            if text[i] == '$' and i + 1 < n and text[i + 1] == '[':
+                depth = 0
+                j = i + 1
+                close = None
+                while j < n:
+                    if text[j] == '[':
+                        depth += 1
+                    elif text[j] == ']':
+                        depth -= 1
+                        if depth == 0:
+                            close = j
+                            break
+                    j += 1
+                if close is not None:
+                    inner = ExpansionParser._rewrite_dollar_brackets(text[i + 2:close])
+                    result.append(f'$(({inner}))')
+                    i = close + 1
+                    continue
+            result.append(text[i])
+            i += 1
+        return ''.join(result)
 
     def _parse_command_or_arithmetic(
         self,
