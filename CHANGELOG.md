@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.517.0 (2026-06-21) - Fix: embedded extglob negation `!(...)` matches per-span (appraisal H5)
+- BUGFIX (HIGH). Embedded extglob negation — ``a!(P)b`` (anything other than a
+  standalone top-level ``!(P)``) — matched per-CHARACTER instead of per-SPAN, so
+  it over-rejected any span that merely CONTAINED a character starting an
+  alternative. ``[[ xfoox == x!(o)x ]]`` was false, ``case xfoox in x!(o)x)``
+  didn't match, ``${s/x!(o)y/_}`` didn't replace, and ``echo !(foo).txt`` dropped
+  files like ``xfoox.txt``. One root, wide blast radius: ``case``, ``[[ == ]]``,
+  the ``${v#pat}``/``${v/pat/r}`` operators, and pathname globbing all funnel
+  through the same converter.
+- Root cause: ``extglob.py`` emitted ``(?:(?!(?:alt).*).)*`` for embedded
+  negation. Python's ``re`` fundamentally CANNOT express this — the negation is a
+  property of the whole consumed span ("the span is not P"), which needs a
+  variable-width lookbehind ``re`` lacks. Fix: a small backtracking matcher
+  (``_extglob_consume`` / ``extglob_fullmatch`` / ``extglob_match_at``) that is
+  correct for standalone AND embedded negation, validated against a 39-case bash
+  truth table plus operator semantics. All matching paths (``pattern.py`` for
+  ``case``/``[[ ]]``, the removal/substitution operators in
+  ``parameter_expansion.py``, and ``expand_extglob`` for globbing) route negation
+  patterns to the matcher; the fast regex path is unchanged for the ~99% of
+  patterns without ``!()``. The substitution matcher reproduces bash's
+  empty-match-suppressed-at-end semantics. The now-dead
+  ``_is_standalone_negation`` helper was removed.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, finding H5). New
+  ``tests/unit/expansion/test_extglob_negation.py`` (37 cases incl. the existing
+  false-positive shape that masked the bug) and five bash-compared golden cases.
+
 ## 0.516.0 (2026-06-21) - Fix: reject empty compound bodies/conditions at parse time (appraisal H1)
 - BUGFIX (HIGH). The recursive-descent parser silently accepted empty
   compound-command bodies and conditions that bash rejects as a syntax error

@@ -1700,3 +1700,38 @@
   stdout: ""
   stderr: "syntax error near unexpected token"
   exit_code: 2
+
+# =============================================================================
+# EXTGLOB — embedded negation matches per-span, not per-char (appraisal H5)
+# (case/glob forms need extglob at parse time; covered by the unit test.)
+# =============================================================================
+
+- name: extglob_embedded_negation_match
+  command: "shopt -s extglob; [[ xfoox == x!(o)x ]] && echo y || echo n"
+  stdout: "y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: extglob_embedded_negation_reject
+  command: "shopt -s extglob; [[ xox == x!(o)x ]] && echo y || echo n"
+  stdout: "n\n"
+  stderr: ""
+  exit_code: 0
+
+- name: extglob_nested_negation
+  command: "shopt -s extglob; [[ acd == a@(b|!(c))d ]] && echo y || echo n"
+  stdout: "n\n"
+  stderr: ""
+  exit_code: 0
+
+- name: extglob_negation_patsub
+  command: "shopt -s extglob; s=xfooy; echo \"${s/x!(o)y/_}\""
+  stdout: "_\n"
+  stderr: ""
+  exit_code: 0
+
+- name: extglob_negation_prefix_removal
+  command: "shopt -s extglob; v=xfooxER; echo \"${v#x!(o)x}\""
+  stdout: "ER\n"
+  stderr: ""
+  exit_code: 0
