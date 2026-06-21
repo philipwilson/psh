@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.512.0 (2026-06-21) - Process-substitution fd ownership lives in RedirectPlan (reassessment 2026-06-20, #3)
+- REFACTOR (io_redirect; zero behavior change). The in-process builtin redirect
+  setup (`io_redirect/manager.py`) manually transferred a redirect-target process
+  substitution's parent fd to the handler — `process_sub_handler.active_fds.append(...)`
+  + nulling `plan.procsub.parent_fd` — while every other dispatch site used
+  `plan.close_procsub(applied=)`. Two ownership models for the same resource.
+- A redirect-target substitution's parent fd has exactly two fates, and both are
+  now owned by `RedirectPlan`/`ProcessSubstitutionResource`:
+  - **close after the redirect** — `close_procsub` → `close_parent_fd_for_redirect`
+    (external/permanent paths, unless the dup2 made that fd the target); or
+  - **hand to the enclosing `process_sub_scope()`** for deferred close — the NEW
+    `RedirectPlan.hand_procsub_to_scope(handler)` → `ProcessSubstitutionResource.hand_off_to_scope()`
+    (the builtin path, where the in-process builtin reads `/dev/fd/N`, and word
+    expansion). `hand_off_to_scope` is now the SINGLE place that appends to
+    `active_fds`; the word-expansion path (`create_for_expansion`) routes through
+    it too, and `manager.py` no longer references `active_fds` at all.
+- TESTS: new `tests/unit/io_redirect/test_procsub_ownership.py` (guards that
+  `manager.py` doesn't poke `active_fds`, that the resource is the single
+  appender, that `RedirectPlan` owns both transfer and close, and a builtin
+  `< <(cmd)` fd-leak regression). Full suite green, ruff + mypy clean.
+
 ## 0.511.0 (2026-06-21) - Array-init handoff is an explicit BuiltinContext, not shell state (reassessment 2026-06-20, #1)
 - REFACTOR (executor/builtins; zero behavior change). The structured array
   initializers the parser attaches to ``name=(...)`` arguments were delivered to

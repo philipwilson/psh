@@ -200,6 +200,21 @@ class ProcessSubstitutionResource:
             pass
         self.parent_fd = None
 
+    def hand_off_to_scope(self, handler: 'ProcessSubstitutionHandler') -> None:
+        """Transfer the parent fd to the enclosing ``process_sub_scope()`` for
+        deferred close, relinquishing this resource's ownership of it.
+
+        Used where the fd must outlive a single redirect rather than being
+        closed right after the dup2 (the alternative,
+        ``close_parent_fd_for_redirect``): word-expansion substitutions, and
+        the in-process builtin redirect path (the builtin reads ``/dev/fd/N``,
+        so the read end must stay open until the consuming command finishes).
+        The scope closes it on exit.
+        """
+        if self.parent_fd is not None:
+            handler.active_fds.append(self.parent_fd)
+            self.parent_fd = None
+
     @staticmethod
     def _target_fds(redirect: 'Redirect') -> Tuple[int, ...]:
         if redirect.combined:
@@ -247,8 +262,9 @@ class ProcessSubstitutionHandler:
         fd, path, pid, cleanup_path = create_process_substitution(
             command, direction, self.shell)
         resource = ProcessSubstitutionResource(path, fd, pid, cleanup_path)
-        if resource.parent_fd is not None:
-            self.active_fds.append(resource.parent_fd)
+        # The consuming command reads /dev/fd/N, so the parent fd must outlive
+        # this expansion — hand it to the scope for deferred close.
+        resource.hand_off_to_scope(self)
         resource.register_with(self)
         return path
 
