@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.521.0 (2026-06-21) - Fix: ~/.pshrc no longer sourced for -c / scripts under a tty (appraisal H8)
+- BUGFIX (HIGH). ``_init_interactive`` decides at construction whether to source
+  ``~/.pshrc`` (and load history / enable line editing), gating on
+  ``is_script_mode`` — but ``__main__`` set ``is_script_mode`` / ``command_mode``
+  AFTER constructing the shell. So whenever stdin was a terminal (the normal case
+  at a prompt), EVERY ``psh -c '...'`` and ``psh script.sh`` sourced the user's rc
+  file first, polluting the command/script with the user's aliases, functions and
+  exports. bash never sources rc for ``-c`` or scripts.
+- Fix: ``__main__`` determines the run-mode from argv BEFORE constructing the
+  shell and passes it in (new ``Shell(command_mode=...)`` parameter; script files
+  pass ``script_name``). ``_init_interactive`` now computes a single
+  ``noninteractive_mode`` (script OR command) and only sources rc / loads history /
+  enables emacs+histexpand for a genuinely interactive shell. (This also corrects
+  history-loading and ``$-`` ``H``/emacs flags for ``psh -c`` under a tty, which
+  had the same root.)
+- The pre-existing ``test_rc_file_not_loaded_in_script_mode`` gave false
+  confidence: it constructs ``Shell(script_name=...)`` directly (a path that sets
+  the flag early, which the real entry points never take). New
+  ``tests/system/initialization/test_rc_not_loaded_for_command_or_script.py``
+  drives the REAL ``python -m psh`` entry point with a real tty on fd 0, covering
+  ``-c``, a script file, and the rc-IS-sourced interactive direction.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, finding H8).
+
 ## 0.520.0 (2026-06-21) - Fix: --format round-trip losses + analysis-mode crash on syntax error (appraisal H10/H11)
 - BUGFIX (HIGH). ``--format`` was lossy in four behavior-changing ways (distinct
   from the four fixed in v0.505): each produced output that re-parsed to
