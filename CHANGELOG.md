@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.518.0 (2026-06-21) - Fix: break/continue/return don't cross function or pipeline-subshell scope (appraisal H3/H4)
+- BUGFIX (HIGH, two related). A function body and each pipeline component are a
+  fresh control-flow scope, but ``loop_depth`` was inherited across both
+  boundaries.
+  - H3: a function called from inside a loop saw the caller's loop nesting, so a
+    ``break``/``continue`` in the function body (POSIX: "not meaningful")
+    terminated the CALLER's loop. ``f() { break; }; for i in 1 2 3; do echo $i;
+    f; done`` printed only ``1`` instead of ``1 2 3``. ``execute_function_call``
+    also explicitly re-raised ``LoopBreak``/``LoopContinue`` into the caller.
+  - H4: ``return`` (or a ``break N`` exceeding the subshell's own loops) inside a
+    pipelined compound leaked the control-flow exception out of the forked
+    pipeline child to the generic handler, printing a spurious ``psh: error:``
+    and forcing exit 1. ``f() { echo a | while read x; do return 5; done; echo
+    "after=$?"; }; f`` printed ``psh: error:`` + ``after=1`` instead of
+    ``after=5``.
+- Fix: ``execute_function_call`` (``function.py``) saves/resets ``loop_depth`` to
+  0 around the body (in-function loops re-increment) and no longer re-raises
+  break/continue across the boundary; the forked pipeline child (``pipeline.py``)
+  resets ``loop_depth`` to 0 and converts an escaping ``FunctionReturn`` to the
+  subshell's exit code and ``LoopBreak``/``LoopContinue`` to a clean subshell
+  exit — matching the plain-subshell path and bash. (The error-MESSAGE prefix
+  for out-of-loop break/continue still differs from bash — that's the separate
+  script-error-prefix finding.)
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, findings H3/H4). New
+  ``tests/integration/control_flow/test_loop_control_scope_boundary.py`` (9
+  cases) and five bash-compared golden cases.
+
 ## 0.517.0 (2026-06-21) - Fix: embedded extglob negation `!(...)` matches per-span (appraisal H5)
 - BUGFIX (HIGH). Embedded extglob negation — ``a!(P)b`` (anything other than a
   standalone top-level ``!(P)``) — matched per-CHARACTER instead of per-SPAN, so

@@ -74,10 +74,16 @@ class FunctionOperationExecutor:
         # Save current context
         old_function = context.current_function
         old_positional_params = self.shell.state.positional_params[:]
-
+        old_loop_depth = context.loop_depth
 
         # Set up function context
         context.current_function = name
+
+        # A function body is a fresh control-flow scope: the caller's loop
+        # nesting is not visible inside it, so `break`/`continue` in the body
+        # (with no loop of its own) is "not meaningful" and must not terminate
+        # the CALLER's loop (bash). Reset to 0; in-function loops re-increment.
+        context.loop_depth = 0
 
         # Push new variable scope for the function
         self.shell.state.scope_manager.push_scope(name)
@@ -110,8 +116,12 @@ class FunctionOperationExecutor:
             # Handle return statement
             return fr.exit_code
         except (LoopBreak, LoopContinue):
-            # Let break/continue exceptions propagate to calling loop context
-            raise
+            # break/continue must NOT cross the function boundary (bash). With
+            # loop_depth reset to 0 on entry, an in-function loop always catches
+            # its own and `break`/`continue` with no enclosing loop returns 0
+            # without raising — so this is unreachable in practice; swallow
+            # defensively rather than leak into the caller's loop.
+            return self.shell.state.last_exit_code
         except UnboundVariableError:
             # Let unbound variable errors propagate
             raise
@@ -134,4 +144,5 @@ class FunctionOperationExecutor:
             # Restore context (restoring positional_params restores
             # $#/$@/$* with it — they are derived, never stored)
             context.current_function = old_function
+            context.loop_depth = old_loop_depth
             self.shell.state.positional_params = old_positional_params
