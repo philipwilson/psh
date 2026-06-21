@@ -173,6 +173,23 @@ def main():
     # Update sys.argv to remove the flags
     sys.argv = [sys.argv[0]] + args
 
+    # Determine the run-mode from the (flag-stripped) argv BEFORE constructing
+    # the shell. bash sources ~/.pshrc, loads history, and enables line editing
+    # only for an INTERACTIVE shell — never for `-c` or a script file. The
+    # shell decides this at construction (in _init_interactive), so it must know
+    # the mode now; passing it after construction (as the dispatch below still
+    # does for other state) is too late and sourced rc into every `psh -c` /
+    # `psh script.sh` run from a terminal. Mirrors the dispatch conditions.
+    _rest = sys.argv[1:]
+    command_mode = len(_rest) >= 2 and _rest[0] == "-c"
+    init_script_name: "str | None" = None
+    if not command_mode and _rest:
+        _first = _rest[0]
+        if _first == "--" and len(_rest) >= 2:
+            init_script_name = _rest[1]
+        elif _first not in ("--version", "-V", "--help", "-h") and not _first.startswith("-"):
+            init_script_name = _first
+
     visitor_mode = any([opts["format_only"], opts["metrics_only"],
                         opts["security_only"], opts["lint_only"],
                         opts["validate_only"]])
@@ -197,7 +214,8 @@ def main():
                   format_only=_flag("format_only"), metrics_only=_flag("metrics_only"),
                   security_only=_flag("security_only"), lint_only=_flag("lint_only"),
                   ast_format=_opt_str("ast_format"),
-                  force_interactive=_flag("force_interactive")
+                  force_interactive=_flag("force_interactive"),
+                  script_name=init_script_name, command_mode=command_mode,
                   )
 
     # This process IS psh: install process-global signal handlers (trap

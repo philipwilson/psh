@@ -43,10 +43,16 @@ class Shell:
                  format_only: bool = False, metrics_only: bool = False,
                  security_only: bool = False, lint_only: bool = False,
                  parent_shell: Optional['Shell'] = None, ast_format: Optional[str] = None,
-                 force_interactive: bool = False) -> None:
+                 force_interactive: bool = False, command_mode: bool = False) -> None:
         self._create_state(args, script_name, debug_ast, debug_tokens, debug_scopes,
                            debug_expansion, debug_expansion_detail, debug_exec,
                            debug_exec_fork, norc, rcfile)
+
+        # `-c command` mode ('c' in $-). Set BEFORE _init_interactive so the
+        # rc/history/line-editing decision sees it (bash never sources rc for
+        # -c). __main__ determines this from argv before constructing us.
+        if command_mode:
+            self.state.options['command_mode'] = True
 
         # CLI analysis-mode flags (--validate/--format/--metrics/--security/
         # --lint) and AST debug format. Stored verbatim for the callers that
@@ -200,25 +206,32 @@ class Shell:
         is_interactive = force_interactive or sys.stdin.isatty()
         self.state.options['interactive'] = is_interactive
 
-        # stdin_mode: True when reading from stdin (no script file argument)
-        # Will be set to False by __main__.py when a script file is given
-        self.state.options['stdin_mode'] = not self.state.is_script_mode
+        # Running a script FILE or a -c COMMAND string is non-interactive even
+        # when stdin happens to be a terminal: bash sources rc, loads history,
+        # and enables line editing only for a genuinely interactive shell —
+        # never for -c or a script. BOTH mode flags are now known at
+        # construction (__main__ passes script_name / command_mode in), so this
+        # decision is finally correct. Previously it read is_script_mode BEFORE
+        # __main__ had set it, sourcing ~/.pshrc (and loading history) into every
+        # `psh -c '...'` and `psh script.sh` invoked from a terminal.
+        noninteractive_mode = (self.state.is_script_mode
+                               or self.state.options.get('command_mode', False))
+        live_interactive = is_interactive and not noninteractive_mode
 
-        # Load history only for interactive shells (bash doesn't load
-        # history in non-interactive mode)
-        if is_interactive:
+        # stdin_mode: reading commands interactively from stdin (no -c, no script)
+        self.state.options['stdin_mode'] = not noninteractive_mode
+
+        # Load history only for a live interactive shell (bash never loads it
+        # for -c / scripts).
+        if live_interactive:
             self.interactive_manager.load_history()
 
-        # Set emacs mode based on interactive status (bash behavior)
-        # Interactive: emacs on (for line editing), Non-interactive: emacs off
-        self.state.options['emacs'] = is_interactive and not self.state.is_script_mode
+        # emacs line-editing and '!' history expansion ('H' in $-) are
+        # interactive-only (bash).
+        self.state.options['emacs'] = live_interactive
+        self.state.options['histexpand'] = live_interactive
 
-        # History expansion ('H' in $-) is interactive-only in bash. A
-        # non-interactive shell (-c, script, piped stdin) has no '!' history
-        # expansion and no 'H' in $-.
-        self.state.options['histexpand'] = is_interactive
-
-        if not self.state.is_script_mode and is_interactive and not self.state.norc:
+        if live_interactive and not self.state.norc:
             from .interactive import load_rc_file
             load_rc_file(self)
 
