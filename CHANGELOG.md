@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.528.0 (2026-06-21) - Test: serial-mark the signal-delivering trap conformance suite
+- TEST-INFRA (no psh change). ``tests/conformance/bash/test_trap_signal_spec_conformance.py``
+  traps AND delivers signals (``kill -N $$``) while comparing against live bash,
+  but was not ``serial``-marked, so it ran in the xdist parallel phase where the
+  signal dispositions race with sibling workers — it flaked intermittently in the
+  parallel phase while always passing in isolation / serially. Added it to
+  ``conftest.py``'s ``serial_path_markers`` so it runs in the serial phase, like
+  the other signal/job-control suites. (The other occasionally-seen flakes —
+  ``test_signal_killed_exit_status.py`` and ``test_reappraisal6...`` — are already
+  serial via the ``job_control`` path marker and a module ``pytestmark``; their
+  earlier failures were from concurrent test invocations, not a marking gap.)
+  Keeps the local ``--parallel`` gate (the release gate) reliable.
+
 ## 0.527.0 (2026-06-21) - Docs: correct the `[ < ]` / `[[ < ]]` collation comments (appraisal Tier 4)
 - TRUTH-UP (comments only; zero behavior change). The ``[ < ]`` comment in
   ``builtins/test_command.py`` claimed psh's ``[[ ]]`` "uses locale collation" —
