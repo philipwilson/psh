@@ -8,7 +8,7 @@ from ..core import AssociativeArray, IndexedArray, ReadonlyVariableError, VarAtt
 # historically import it from this module.
 from ..core.exceptions import FunctionReturn  # noqa: F401
 from ..utils import ShellFormatter
-from .base import Builtin
+from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .declare_format import format_declaration, matches_filter
 from .registry import builtin, registry
 
@@ -25,7 +25,15 @@ class DeclareBuiltin(Builtin):
         return "declare"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        """Execute the declare builtin."""
+        return self.execute_in_context(args, shell, EMPTY_BUILTIN_CONTEXT)
+
+    def execute_in_context(self, args: List[str], shell: 'Shell',
+                           context: BuiltinContext) -> int:
+        """Execute the declare builtin.
+
+        ``context`` carries the structured array initializers the executor
+        collected for any ``name=(...)`` argument (see BuiltinContext).
+        """
         # Parse options
         options, positional = self._parse_options(args[1:], shell)
         if options is None:
@@ -51,7 +59,7 @@ class DeclareBuiltin(Builtin):
             return self._print_variables(options, positional, shell)
         else:
             # Pass original args for mutually exclusive attribute handling
-            return self._declare_variables(options, positional, shell, args[1:])
+            return self._declare_variables(options, positional, shell, context, args[1:])
 
     # Flag char → option key (set with `-c`; `+c` sets 'remove_' + key for
     # the chars in _REMOVABLE_FLAGS). declare cannot use Builtin.parse_flags
@@ -195,7 +203,8 @@ class DeclareBuiltin(Builtin):
             removed |= VarAttributes.LOWERCASE | VarAttributes.UPPERCASE
         return removed
 
-    def _declare_variables(self, options: dict, args: List[str], shell: 'Shell', _original_args=None) -> int:
+    def _declare_variables(self, options: dict, args: List[str], shell: 'Shell',
+                           context: BuiltinContext, _original_args=None) -> int:
         """Handle variable declarations (list, assignment, or bare-name forms)."""
         attributes = self._attributes_from_options(options)
         remove_attrs = self._removed_attributes_from_options(options)
@@ -208,7 +217,7 @@ class DeclareBuiltin(Builtin):
         # stops immediately with exit 1, matching bash.
         for arg in args:
             if '=' in arg:
-                rc = self._declare_assignment(arg, options, attributes, shell)
+                rc = self._declare_assignment(arg, options, attributes, shell, context)
             else:
                 rc = self._declare_bare_name(arg, options, attributes, remove_attrs, shell)
             if rc != 0:
@@ -237,7 +246,7 @@ class DeclareBuiltin(Builtin):
         return 0
 
     def _declare_assignment(self, arg: str, options: dict, attributes: VarAttributes,
-                            shell: 'Shell') -> int:
+                            shell: 'Shell', context: BuiltinContext) -> int:
         """Apply one `NAME=value` / `NAME+=value` declaration argument."""
         # Variable assignment (NAME=value or NAME+=value append).
         # Namerefs take the text verbatim, so '+' stays part of
@@ -277,7 +286,7 @@ class DeclareBuiltin(Builtin):
         # reparse. A merely paren-shaped VALUE that did NOT come from
         # array syntax (``declare "a=(1 2)"``, ``declare a=$x`` with
         # x="(1 2)") is a scalar in bash, so it is NOT array-ified.
-        array_init = self._pending_array_init(shell, arg)
+        array_init = context.array_init(arg)
         is_array_init = array_init is not None
 
         # bash: a SCALAR value combined with -a/-A still creates an
@@ -473,17 +482,6 @@ class DeclareBuiltin(Builtin):
         (shared formatter: declare_format.format_declaration)."""
         self.write_line(format_declaration(var), shell)
 
-    def _pending_array_init(self, shell: 'Shell', arg: str):
-        """Look up the structured ArrayInitialization the parser attached to
-        this ``name=(...)`` argument, or None.
-
-        The executor installs the structured inits (argv element →
-        ArrayInitialization) for the duration of this builtin call only
-        (scoped; cleared in its finally). Keyed by the full argv element so
-        each array-init argument resolves to its own structured node.
-        """
-        return shell.pending_array_init(arg)
-
     def _build_indexed_array(self, array_init, into, shell: 'Shell') -> IndexedArray:
         """Build an IndexedArray from the structured init via the shared
         ArrayOperationExecutor engine — the SAME path the bare ``a=(...)``
@@ -658,7 +656,15 @@ class ReadonlyBuiltin(Builtin):
         return "readonly"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        """Execute the readonly builtin."""
+        return self.execute_in_context(args, shell, EMPTY_BUILTIN_CONTEXT)
+
+    def execute_in_context(self, args: List[str], shell: 'Shell',
+                           context: BuiltinContext) -> int:
+        """Execute the readonly builtin.
+
+        ``context`` carries any structured array initializers for
+        ``readonly name=(...)`` arguments; they are forwarded to ``declare -r``.
+        """
         # Parse options
         options, names = self._parse_readonly_options(args[1:], shell)
         if options is None:
@@ -677,10 +683,12 @@ class ReadonlyBuiltin(Builtin):
             return 0
         else:
             # readonly NAME[=value]... is declare -r NAME[=value]...;
-            # delegate to the registered declare singleton.
+            # delegate to the registered declare singleton, forwarding the
+            # same context so an array-init argument resolves.
             declare_builtin = registry.get('declare')
             assert declare_builtin is not None
-            return declare_builtin.execute(['declare', '-r'] + names, shell)
+            return declare_builtin.execute_in_context(
+                ['declare', '-r'] + names, shell, context)
 
     def _parse_readonly_options(self, args: List[str], shell: 'Shell') -> tuple[Optional[dict], List[str]]:
         """Parse readonly options and return (options_dict, function_names)."""

@@ -144,11 +144,12 @@ string-reparse. The RD parser (`CommandParser._parse_array_initialization`
 in `commands.py`) attaches a structured `ArrayInitialization` (element
 Words with full quote context) to the argument `Word.array_init`, keeping
 the flat literal text for `.args`/display. The executor (`command.py`
-`_collect_array_inits`) hands these to the declaration builtin via the
-scoped `shell._pending_array_inits` map (set/cleared around the single
-builtin call), and the builtin calls `ArrayOperationExecutor.
-build_indexed_array` / `build_associative_array` — the shared value
-computation the bare path also uses. The old serialize-then-shlex-reparse
+`_collect_array_inits`) hands these to the declaration builtin as an
+explicit `BuiltinContext` parameter (threaded through `execute_builtin_guarded`
+to `Builtin.execute_in_context`; no mutable handoff state on the shell), and
+the builtin calls `ArrayOperationExecutor.build_indexed_array` /
+`build_associative_array` — the shared value computation the bare path also
+uses. The old serialize-then-shlex-reparse
 module (the former psh/builtins/array_init.py) was DELETED; array-ification
 now keys strictly on the parser having seen `name=(...)` syntax (a merely
 paren-shaped value like `declare "a=(1 2)"` stays a scalar, matching bash).

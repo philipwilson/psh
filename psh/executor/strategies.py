@@ -15,6 +15,7 @@ from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
     from ..ast_nodes import Redirect
+    from ..builtins.base import BuiltinContext
     from ..shell import Shell
     from .context import ExecutionContext
 
@@ -91,7 +92,8 @@ def report_exec_failure(cmd_name: str, exc: OSError,
 
 
 def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
-                            shell: 'Shell') -> int:
+                            shell: 'Shell',
+                            invocation: Optional['BuiltinContext'] = None) -> int:
     """Run a builtin, converting unexpected exceptions to exit status 1.
 
     Shared by the special-builtin and regular-builtin strategies:
@@ -104,9 +106,14 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
       return 1, surfacing the traceback under --debug-exec so the bug
       isn't hidden behind the generic message.
     """
+    if invocation is None:
+        from ..builtins.base import EMPTY_BUILTIN_CONTEXT
+        invocation = EMPTY_BUILTIN_CONTEXT
     try:
-        # Builtins expect the command name as the first argument
-        return builtin.execute([cmd_name] + args, shell)
+        # Builtins expect the command name as the first argument. Invoke
+        # through execute_in_context so declaration builtins receive their
+        # structured array initializers (BuiltinContext) explicitly.
+        return builtin.execute_in_context([cmd_name] + args, shell, invocation)
     except SystemExit:
         # Some builtins like 'exit' raise SystemExit
         raise
@@ -154,7 +161,8 @@ class ExecutionStrategy(ABC):
                 shell: 'Shell', context: 'ExecutionContext',
                 redirects: Optional[List['Redirect']] = None,
                 background: bool = False,
-                visitor=None) -> int:
+                visitor=None,
+                invocation: Optional['BuiltinContext'] = None) -> int:
         """Execute the command and return exit status."""
         pass
 
@@ -178,7 +186,8 @@ class SpecialBuiltinExecutionStrategy(ExecutionStrategy):
                 shell: 'Shell', context: 'ExecutionContext',
                 redirects: Optional[List['Redirect']] = None,
                 background: bool = False,
-                visitor=None) -> int:
+                visitor=None,
+                invocation: Optional['BuiltinContext'] = None) -> int:
         """Execute a special builtin command."""
         if background:
             # Special builtins can run in background with subshell
@@ -188,7 +197,7 @@ class SpecialBuiltinExecutionStrategy(ExecutionStrategy):
         if not builtin:
             return 127  # Command not found
 
-        return execute_builtin_guarded(builtin, cmd_name, args, shell)
+        return execute_builtin_guarded(builtin, cmd_name, args, shell, invocation)
 
     def _execute_in_background(self, cmd_name: str, args: List[str],
                               shell: 'Shell', context: 'ExecutionContext',
@@ -212,7 +221,8 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
                 shell: 'Shell', context: 'ExecutionContext',
                 redirects: Optional[List['Redirect']] = None,
                 background: bool = False,
-                visitor=None) -> int:
+                visitor=None,
+                invocation: Optional['BuiltinContext'] = None) -> int:
         """Execute a builtin command."""
         if background:
             # Run builtin in background by forking a subshell (bash compatibility)
@@ -231,7 +241,7 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
 
         # The builtin will check shell.state.in_forked_child to determine its
         # output method.
-        return execute_builtin_guarded(builtin, cmd_name, args, shell)
+        return execute_builtin_guarded(builtin, cmd_name, args, shell, invocation)
 
     def _execute_builtin_in_background(self, cmd_name: str, args: List[str],
                                      shell: 'Shell', context: 'ExecutionContext',
@@ -281,7 +291,8 @@ class FunctionExecutionStrategy(ExecutionStrategy):
                 shell: 'Shell', context: 'ExecutionContext',
                 redirects: Optional[List['Redirect']] = None,
                 background: bool = False,
-                visitor=None) -> int:
+                visitor=None,
+                invocation: Optional['BuiltinContext'] = None) -> int:
         """Execute a shell function."""
         if background:
             # bash runs `f &` in a forked subshell
@@ -391,7 +402,8 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                 shell: 'Shell', context: 'ExecutionContext',
                 redirects: Optional[List['Redirect']] = None,
                 background: bool = False,
-                visitor=None) -> int:
+                visitor=None,
+                invocation: Optional['BuiltinContext'] = None) -> int:
         """Execute an external command."""
         full_args = [cmd_name] + args
         # Resolve through the command hash table BEFORE forking, so the

@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.511.0 (2026-06-21) - Array-init handoff is an explicit BuiltinContext, not shell state (reassessment 2026-06-20, #1)
+- REFACTOR (executor/builtins; zero behavior change). The structured array
+  initializers the parser attaches to ``name=(...)`` arguments were delivered to
+  the declaration builtins through a mutable shell side channel
+  (``shell._pending_array_inits`` + ``set_/clear_/pending_array_init``, set/cleared
+  around each builtin dispatch). The reassessment's #1 next step: make this an
+  explicit parameter.
+- NEW ``BuiltinContext`` (``psh/builtins/base.py``): a small per-invocation object
+  carrying the array initializers (keyed by argv element). The executor builds it
+  in ``CommandExecutor`` and threads it through ``execute_builtin_guarded`` to a
+  new ``Builtin.execute_in_context`` hook; the default hook ignores it and calls
+  ``execute()``, so ordinary builtins are untouched. The five declaration builtins
+  (declare/typeset/local/export/readonly) override it and read
+  ``context.array_init(arg)``. The ``export``→``declare`` and ``readonly``→``declare``
+  delegations forward the same context explicitly (previously they relied on the
+  shared shell map).
+- The three side-channel methods and the ``_pending_array_inits`` field are
+  removed from ``Shell`` — no mutable handoff state on the shell object. A spike
+  confirmed the data flow is identical (``export e=(p q)`` etc. match bash).
+- TESTS: new ``tests/unit/builtins/test_builtin_context.py`` (context lookup, the
+  default-hook delegation, all five declaration builtins array-init via the
+  context, and a guard that the shell side channel cannot be reintroduced). Full
+  suite green, ruff + mypy clean.
+
 ## 0.510.0 (2026-06-21) - Command-position transition-table diagram (review 2026-06-18, Finding #5)
 - DOCS. Closes the actionable part of the review's Finding #5. (The finding's
   refactor claims — "duplicated" command-position machines, "monolithic" literal

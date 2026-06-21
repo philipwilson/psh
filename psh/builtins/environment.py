@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, List
 
 from ..core import ReadonlyVariableError
 from ..core.option_registry import SHORT_TO_LONG
-from .base import Builtin
+from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .declare_format import escape_value
 from .registry import builtin
 
@@ -26,7 +26,16 @@ class ExportBuiltin(Builtin):
         return "export"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        """Export variables to environment."""
+        return self.execute_in_context(args, shell, EMPTY_BUILTIN_CONTEXT)
+
+    def execute_in_context(self, args: List[str], shell: 'Shell',
+                           context: BuiltinContext) -> int:
+        """Export variables to environment.
+
+        ``context`` carries any structured array initializers for
+        ``export name=(...)`` arguments (see BuiltinContext); they are
+        forwarded to ``declare -x`` so the array logic stays in one place.
+        """
         # Parse options: -p (print), -n (unexport), -- (end of options)
         print_mode = False
         unexport = False
@@ -77,18 +86,20 @@ class ExportBuiltin(Builtin):
             # ``export NAME=(...)`` makes an indexed array with the export
             # attribute (bash; arrays are never written to the environment).
             # The parser attaches a structured ArrayInitialization to the arg
-            # Word, delivered via the shell's explicit pending-array-init
-            # handoff; expand it through the SAME structured path the bare
-            # ``a=(...)`` form uses (no shlex reparse). Delegating to declare
-            # keeps the array attribute logic in one place — and because the
-            # handoff is a non-consuming peek, declare re-reads the same map.
+            # Word, delivered via the BuiltinContext the executor passed in;
+            # expand it through the SAME structured path the bare ``a=(...)``
+            # form uses (no shlex reparse). Delegating to declare keeps the
+            # array attribute logic in one place — we forward the same context
+            # so declare resolves the same structured init.
             if not print_mode and not unexport:
-                if shell.pending_array_init(arg) is not None:
+                if context.array_init(arg) is not None:
                     from .registry import registry
                     declare_builtin = registry.get('declare')
                     assert declare_builtin is not None
-                    rc = declare_builtin.execute(
-                        ['declare', '-x', arg], shell)
+                    # Forward the SAME context so declare sees the structured
+                    # init for this argument (it reads context.array_init(arg)).
+                    rc = declare_builtin.execute_in_context(
+                        ['declare', '-x', arg], shell, context)
                     if rc != 0:
                         status = rc
                     continue

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
 
+from ..builtins.base import EMPTY_BUILTIN_CONTEXT, BuiltinContext
 from ..core import ReadonlyVariableError
 from .command_assignments import CommandAssignments
 from .strategies import (
@@ -353,31 +354,25 @@ class CommandExecutor:
                 return self._handle_exec_builtin(node, expanded_args, prefix.applied)
 
             # Deliver structured array initializers to declaration
-            # builtins (declare/typeset/local/export/readonly). The
-            # parser attaches an ArrayInitialization (element Words with
-            # full quote context) to each ``name=(...)`` argument Word;
-            # we hand them to the builtin keyed by their flat-string view
-            # (which is exactly the argv element the builtin sees, since
-            # declaration-builtin values are never word-split). The
-            # builtin expands them through the SAME structured path the
-            # bare ``a=(...)`` form uses — no shlex reparse. The handoff is
-            # an explicit, single-owner API on the shell (set here, peeked
-            # by the builtin, cleared in finally) — never a globally mutable
-            # attribute; see the array-init seam note below.
+            # builtins (declare/typeset/local/export/readonly). The parser
+            # attaches an ArrayInitialization (element Words with full quote
+            # context) to each ``name=(...)`` argument Word; we hand them to
+            # the builtin keyed by their flat-string view (exactly the argv
+            # element the builtin sees, since declaration-builtin values are
+            # never word-split). The builtin expands them through the SAME
+            # structured path the bare ``a=(...)`` form uses — no shlex
+            # reparse. Delivery is an explicit ``BuiltinContext`` PARAMETER
+            # threaded to the builtin (see strategies.execute_builtin_guarded),
+            # not mutable state on the shell object.
             pending_inits = self._collect_array_inits(command_node)
-            set_inits = pending_inits is not None
-            if set_inits:
-                self.shell.set_pending_array_inits(pending_inits)
-            try:
-                # Execute the command using appropriate strategy
-                result = self._execute_with_strategy(
-                    cmd_name, cmd_args, node, context,
-                    bypass_aliases, bypass_functions
-                )
-                prefix_assignments_persist = result.prefix_assignments_persist
-            finally:
-                if set_inits:
-                    self.shell.clear_pending_array_inits()
+            invocation = (BuiltinContext(array_inits=pending_inits)
+                          if pending_inits else EMPTY_BUILTIN_CONTEXT)
+            # Execute the command using the appropriate strategy
+            result = self._execute_with_strategy(
+                cmd_name, cmd_args, node, context,
+                bypass_aliases, bypass_functions, invocation,
+            )
+            prefix_assignments_persist = result.prefix_assignments_persist
             return result.status
 
         finally:
@@ -526,7 +521,9 @@ class CommandExecutor:
     def _execute_with_strategy(self, cmd_name: str, args: List[str],
                               node: 'SimpleCommand', context: 'ExecutionContext',
                               bypass_aliases: bool = False,
-                              bypass_functions: bool = False) -> ExecutionResult:
+                              bypass_functions: bool = False,
+                              invocation: BuiltinContext = EMPTY_BUILTIN_CONTEXT
+                              ) -> ExecutionResult:
         """Resolve the command to a strategy, then invoke it.
 
         Two phases, as typed data:
@@ -552,7 +549,7 @@ class CommandExecutor:
             # always matches. Preserves the historical 127 fallback.
             return ExecutionResult(status=127, prefix_assignments_persist=False)
         return self._invoke_resolution(
-            resolution, cmd_name, args, node, context)
+            resolution, cmd_name, args, node, context, invocation)
 
     def _resolve_command(self, cmd_name: str,
                          bypass_aliases: bool = False,
@@ -605,7 +602,9 @@ class CommandExecutor:
     def _invoke_resolution(self, resolution: CommandResolution,
                            cmd_name: str, args: List[str],
                            node: 'SimpleCommand',
-                           context: 'ExecutionContext') -> ExecutionResult:
+                           context: 'ExecutionContext',
+                           invocation: BuiltinContext = EMPTY_BUILTIN_CONTEXT
+                           ) -> ExecutionResult:
         """Run a resolved command, applying its redirections by mode.
 
         Applies the resolved strategy's redirections according to the one
@@ -619,7 +618,7 @@ class CommandExecutor:
 
         if mode is RedirectionMode.BUILTIN_INPROCESS:
             status = self._execute_builtin_with_redirections(
-                cmd_name, args, node, context, strategy
+                cmd_name, args, node, context, strategy, invocation
             )
             return ExecutionResult(status=status,
                                    prefix_assignments_persist=persist)
@@ -631,7 +630,7 @@ class CommandExecutor:
             status = strategy.execute(
                 cmd_name, args, self.shell, context,
                 node.redirects, node.background,
-                visitor=self.visitor,
+                visitor=self.visitor, invocation=invocation,
             )
             return ExecutionResult(status=status,
                                    prefix_assignments_persist=persist)
@@ -642,7 +641,7 @@ class CommandExecutor:
             status = strategy.execute(
                 cmd_name, args, self.shell, context,
                 node.redirects, node.background,
-                visitor=self.visitor,
+                visitor=self.visitor, invocation=invocation,
             )
             return ExecutionResult(status=status,
                                    prefix_assignments_persist=persist)
@@ -676,7 +675,9 @@ class CommandExecutor:
 
     def _execute_builtin_with_redirections(self, cmd_name: str, args: List[str],
                                           node: 'SimpleCommand', context: 'ExecutionContext',
-                                          strategy: ExecutionStrategy) -> int:
+                                          strategy: ExecutionStrategy,
+                                          invocation: BuiltinContext = EMPTY_BUILTIN_CONTEXT
+                                          ) -> int:
         """Execute builtin with special redirection handling."""
         # DEBUG: Log builtin redirection setup
         if self.state.options.get('debug-exec'):
@@ -719,7 +720,7 @@ class CommandExecutor:
             return strategy.execute(
                 cmd_name, args, self.shell, context,
                 node.redirects, node.background,
-                visitor=self.visitor,
+                visitor=self.visitor, invocation=invocation,
             )
         finally:
             self.io_manager.restore_builtin_redirections(redirect_frame)

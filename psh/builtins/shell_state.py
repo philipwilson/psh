@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, List
 
-from .base import Builtin
+from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -110,7 +110,15 @@ class LocalBuiltin(Builtin):
         return "local"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        """Create local variables in function scope."""
+        return self.execute_in_context(args, shell, EMPTY_BUILTIN_CONTEXT)
+
+    def execute_in_context(self, args: List[str], shell: 'Shell',
+                           context: BuiltinContext) -> int:
+        """Create local variables in function scope.
+
+        ``context`` carries any structured array initializers for
+        ``local name=(...)`` arguments (see BuiltinContext).
+        """
         # Check if we're in a function
         if not shell.state.scope_manager.is_in_function():
             self.error("can only be used in a function", shell)
@@ -171,7 +179,7 @@ class LocalBuiltin(Builtin):
                 # shlex reparse). A merely paren-shaped VALUE that did NOT
                 # come from array syntax (``local "a=(1 2)"``) is a scalar in
                 # bash, so it is NOT array-ified.
-                array_init = self._pending_array_init(shell, arg)
+                array_init = context.array_init(arg)
                 if array_init is not None:
                     # Parse array initialization; += appends to/merges with
                     # an existing array of the same kind (bash).
@@ -223,13 +231,6 @@ class LocalBuiltin(Builtin):
                     shell.state.scope_manager.create_local(arg, None, attributes)
 
         return 0
-
-    def _pending_array_init(self, shell: 'Shell', arg: str):
-        """Look up the structured ArrayInitialization the parser attached to
-        this ``name=(...)`` argument, or None (installed on shell by the
-        executor for the duration of this builtin call). Keyed by argv
-        element."""
-        return shell.pending_array_init(arg)
 
     def _build_indexed_array(self, array_init, into, shell: 'Shell'):
         """Build an IndexedArray from the structured init via the shared
