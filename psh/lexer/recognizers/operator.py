@@ -197,6 +197,64 @@ class OperatorRecognizer(ContextualRecognizer):
 
         return None
 
+    def _try_var_fd_redirect(
+        self,
+        input_text: str,
+        pos: int,
+        context: LexerContext
+    ) -> Optional[Tuple[Token, int]]:
+        """Try to parse a named-fd redirect prefix: ``{NAME}>``, ``{NAME}<``,
+        ``{NAME}>>``, ``{NAME}<>``, ``{NAME}>|``, ``{NAME}>&...``, ``{NAME}<&...``.
+
+        Called when ``pos`` is at ``{``. Recognized ONLY when ``{`` is
+        immediately followed by a valid identifier, a ``}``, and a redirect
+        operator, with no spaces — matching bash. Anything else (``{ cmd; }``,
+        ``{a,b}``, ``{fd}`` with no operator) returns None so the normal
+        brace-group / brace-expansion / literal handling applies.
+
+        The emitted token's value is the BARE operator (``>``, ``>&1``, ...) —
+        no ``{NAME}`` prefix — with the variable name carried in ``var_fd`` and
+        the token span covering the whole ``{NAME}op``. So the parser's existing
+        fd-dup / standard-redirect logic reads the value unchanged.
+        """
+        n = len(input_text)
+        i = pos + 1
+        if i >= n or not (input_text[i].isalpha() or input_text[i] == '_'):
+            return None
+        j = i
+        while j < n and (input_text[j].isalnum() or input_text[j] == '_'):
+            j += 1
+        if j >= n or input_text[j] != '}':
+            return None
+        name = input_text[i:j]
+        after = j + 1  # just past the '}'
+        if after >= n or input_text[after] not in '<>':
+            return None
+
+        # Dup / close forms: {NAME}>&...  {NAME}<&...
+        if after + 1 < n and input_text[after + 1] == '&':
+            result = self._parse_dup_operator_and_target(input_text, after, after)
+            if result is None:
+                return None
+            tok, end = result
+            return Token(tok.type, tok.value, pos, end, var_fd=name), end
+
+        # Standard / prefixed forms (longest first so >> beats >, <> beats <).
+        for op, tok_type in (
+            ('>>', TokenType.REDIRECT_APPEND),
+            ('<>', TokenType.REDIRECT_READWRITE),
+            ('>|', TokenType.REDIRECT_CLOBBER),
+            ('>', TokenType.REDIRECT_OUT),
+            ('<', TokenType.REDIRECT_IN),
+        ):
+            if input_text[after:after + len(op)] == op:
+                if not self.is_valid_in_context(op, context):
+                    return None
+                end = after + len(op)
+                return Token(tok_type, op, pos, end, var_fd=name), end
+
+        return None
+
     @property
     def priority(self) -> int:
         """High priority for operators."""
@@ -254,6 +312,14 @@ class OperatorRecognizer(ContextualRecognizer):
         # already handles N>&M as a single token.
         if input_text[pos].isdigit():
             result = self._try_fd_prefixed_redirect(input_text, pos, context)
+            if result is not None:
+                return result
+
+        # Detect named-fd redirects: {NAME}>, {NAME}<&-, ... (bash). Tried
+        # before the general '{' handling so a true brace group / brace
+        # expansion / literal still falls through when the pattern doesn't fit.
+        if input_text[pos] == '{':
+            result = self._try_var_fd_redirect(input_text, pos, context)
             if result is not None:
                 return result
 

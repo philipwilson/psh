@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.539.0 (2026-06-21) - Feature: named file descriptors {varname}>file (appraisal Tier 3, M2)
+- FEATURE (MED). Implemented bash's named-file-descriptor redirections:
+  ``{varname}>file``, ``{varname}<file``, ``{varname}>>file``,
+  ``{varname}<>file``, ``{varname}>|file``, and the dup/close forms
+  ``{varname}>&N`` / ``{varname}<&N`` / ``{varname}>&-``. The shell allocates a
+  free file descriptor >= 10, performs the redirect onto it, and stores the
+  number in the variable (e.g. ``exec {fd}>log; echo hi >&$fd``). Spans lexer,
+  AST, parser, and executor:
+  - **Lexer** (``recognizers/operator.py``): ``{NAME}`` followed by a redirect
+    operator is recognized as a named-fd prefix ONLY at word-start, with a
+    valid identifier and no spaces — so brace groups ``{ cmd; }``, brace
+    expansion ``{a,b}``, a literal ``{fd}``, and a prefixed ``a{fd}`` are all
+    untouched (bash-pinned). The variable name rides on a new ``var_fd`` token
+    field; ``Redirect`` gets a matching ``var_fd``.
+  - **Executor** (``io_redirect``): a new ``FileRedirector.apply_var_fd_redirect``
+    allocates the fd via ``fcntl(F_DUPFD, 10)`` (or closes the fd named by the
+    variable for ``>&-``) and assigns the variable. Each redirect-application
+    path applies it in the right process: parent-side and PERSISTENT for
+    non-forked commands (builtins, functions, ``exec``, compound groups — the fd
+    is not auto-closed, matching bash); child-side for forked commands (external
+    programs, subshells), so the parent's variable stays unset and no fd leaks,
+    exactly as bash behaves.
+
 ## 0.538.0 (2026-06-21) - Fix: heredoc inside process substitution (appraisal Tier 3, M8)
 - BUGFIX (MED). A heredoc inside ``<(...)`` / ``>(...)`` —
   ``cat <(cat <<EOF`` … ``EOF`` … ``)`` — failed two ways: the outer parse

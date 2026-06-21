@@ -257,6 +257,63 @@ class FileRedirector:
         resolved.dup_fd = fd
         return resolved
 
+    def apply_var_fd_redirect(self, redirect):
+        """Allocate (or close) a named file descriptor for ``{varname}>...``.
+
+        bash semantics: the shell allocates a free fd >= 10, performs the
+        redirect onto it, and stores the number in ``redirect.var_fd``. The
+        allocation is PERMANENT (parent-side, not part of any command's
+        save/restore window) — the user closes it with ``{varname}>&-``, which
+        closes the fd named by the variable (the variable keeps its value).
+        Called once per command from IOManager.apply_var_fd_redirects.
+        """
+        name = redirect.var_fd
+        rtype = redirect.type
+
+        # Close form: {fd}>&- / {fd}<&- — close the fd named by the variable.
+        if rtype in ('>&-', '<&-'):
+            try:
+                fdnum = int(self.shell.state.get_variable(name))
+            except (TypeError, ValueError):
+                return
+            try:
+                os.close(fdnum)
+            except OSError:
+                pass
+            return
+
+        # Duplicate form: {fd}>&N / {fd}<&N (incl. dynamic {fd}>&$x).
+        if rtype in ('>&', '<&'):
+            dup_fd = self.resolve_dynamic_dup(redirect).dup_fd
+            if dup_fd is None or not self.dup_fd_valid(dup_fd):
+                raise OSError(f"{dup_fd}: Bad file descriptor")
+            newfd = fcntl.fcntl(dup_fd, fcntl.F_DUPFD, 10)
+            self.shell.state.set_variable(name, str(newfd))
+            return
+
+        # Open-a-file forms: allocate the lowest free fd >= 10 (F_DUPFD).
+        target = self.expand_redirect_target(redirect)
+        if rtype == '>':
+            self.check_noclobber(target)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        elif rtype == '>|':
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        elif rtype == '>>':
+            flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+        elif rtype == '<':
+            flags = os.O_RDONLY
+        elif rtype == '<>':
+            flags = os.O_RDWR | os.O_CREAT
+        else:
+            raise OSError(f"{rtype}: unsupported named-fd redirect")
+
+        opened = os.open(target, flags, 0o644)
+        try:
+            newfd = fcntl.fcntl(opened, fcntl.F_DUPFD, 10)
+        finally:
+            os.close(opened)
+        self.shell.state.set_variable(name, str(newfd))
+
     def _redirect_dup_fd(self, redirect):
         """Handle >&/<& fd duplication. Validates source fd."""
         if redirect.fd is not None and redirect.dup_fd is not None:
@@ -389,6 +446,13 @@ class FileRedirector:
                             saved_fds: List[Tuple[int, int | None]]) -> List[Tuple[int, int | None]]:
         """Apply redirections, appending (fd, saved_fd) pairs to saved_fds."""
         for redirect in redirects:
+            if redirect.var_fd:
+                # Named-fd redirect ({fd}>file): allocate a persistent fd >= 10
+                # in THIS process and store its number in the variable. Not
+                # added to saved_fds — it is never restored after the command
+                # (bash keeps it open; the user closes it with {fd}>&-).
+                self.apply_var_fd_redirect(redirect)
+                continue
             plan = self.planner.plan(redirect)
             applied = False
 
@@ -476,6 +540,11 @@ class FileRedirector:
                 pass
 
         for redirect in redirects:
+            if redirect.var_fd:
+                # Named-fd redirect under `exec`: same persistent allocation
+                # (already permanent, so no stream rebind needed).
+                self.apply_var_fd_redirect(redirect)
+                continue
             plan = self.planner.plan(redirect)
             redirect = plan.redirect
             applied = False

@@ -104,6 +104,7 @@ class Token:
     is_keyword: bool = False  # True when keyword normalizer marks this as a keyword
     parts: Optional[List['TokenPart']] = field(default=None)  # Token parts (imported from lexer.token_parts)
     fd: Optional[int] = None  # File descriptor prefix (e.g., 2 in 2>file)
+    var_fd: Optional[str] = None  # Named-fd prefix var (e.g. 'fd' in {fd}>file)
     combined_redirect: bool = False  # True for &> and &>> (stdout+stderr)
 
     def __post_init__(self):

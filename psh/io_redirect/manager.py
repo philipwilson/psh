@@ -212,6 +212,8 @@ class IOManager:
         """
         saved: List[Tuple[int, TextIO]] = []
         for redirect in redirects:
+            if redirect.var_fd:
+                continue  # named-fd close ({v}>&-) acts on $v, not stdout/stderr
             if redirect.type != '>&-':
                 continue
             target_fd = redirect.fd if redirect.fd is not None else 1
@@ -280,6 +282,11 @@ class IOManager:
 
         try:
             for redirect in command.redirects:
+                if redirect.var_fd:
+                    # Named fd: persistent allocation in this process (the
+                    # builtin runs in-process), stored in the variable.
+                    self.file_redirector.apply_var_fd_redirect(redirect)
+                    continue
                 plan = self.file_redirector.planner.plan(redirect)
                 redirect = plan.redirect
                 target = plan.target
@@ -540,6 +547,17 @@ class IOManager:
     def setup_child_redirections(self, command: Command):
         """Set up redirections in child process (after fork) using dup2."""
         for redirect in command.redirects:
+            if redirect.var_fd:
+                # Named fd for a forked command (external / subshell): bash
+                # allocates it INSIDE the child, so the variable is set in the
+                # child (lost on exit) and the parent neither gets the variable
+                # nor leaks the fd.
+                try:
+                    self.file_redirector.apply_var_fd_redirect(redirect)
+                except OSError as e:
+                    os.write(2, f"psh: {e}\n".encode('utf-8'))
+                    os._exit(1)
+                continue
             try:
                 plan = self.file_redirector.planner.plan(redirect)
             except OSError as e:
