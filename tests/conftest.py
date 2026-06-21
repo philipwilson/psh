@@ -430,6 +430,10 @@ def pytest_collection_modifyitems(config, items):
         "job_control",            # integration/job_control/* + test_job_control_builtins
         "test_disown",
         "test_signal_builtins",
+        # Traps and DELIVERS signals (kill -N $$) while comparing against live
+        # bash; concurrently the signal dispositions race across xdist workers
+        # (flaked in the parallel phase, always passes serially / in isolation).
+        "test_trap_signal_spec_conformance",
         "test_pty",
         # The redirection suite forks for heredocs / here-strings / process
         # substitution and manipulates fds; concurrently these clobber the xdist
