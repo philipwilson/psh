@@ -1890,3 +1890,36 @@
   stdout: "1\n2\n3\n"
   stderr: ""
   exit_code: 0
+
+# Named file descriptors {varname}>... (Tier 3 M2). bash allocates a free
+# fd >= 10 into the variable; persists for non-forked commands, child-local
+# for external/subshell; {NAME}> only at word-start with a valid identifier.
+- name: named_fd_exec_allocates_ge_10
+  command: "exec {fd}>/dev/null; echo \"$fd\""
+  stdout: "10\n"
+  stderr: ""
+  exit_code: 0
+
+- name: named_fd_builtin_persists_in_parent
+  command: "true {fd}>/dev/null; echo \"[$fd]\""
+  stdout: "[10]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: named_fd_external_does_not_set_parent_var
+  command: "cat </dev/null {fd}>/dev/null; echo \"[$fd]\""
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: named_fd_close_keeps_var_value
+  command: "exec {fd}>/dev/null; exec {fd}>&-; echo \"[$fd]\""
+  stdout: "[10]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: named_fd_lone_brace_word_is_literal
+  command: "echo {fd}"
+  stdout: "{fd}\n"
+  stderr: ""
+  exit_code: 0

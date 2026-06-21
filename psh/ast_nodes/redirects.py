@@ -20,6 +20,11 @@ class Redirect(ASTNode):
     heredoc_quoted: bool = False  # Whether heredoc delimiter was quoted (disables variable expansion)
     combined: bool = False  # True for &> and &>> (redirects both stdout and stderr)
     heredoc_key: Optional[str] = None  # Lexer-assigned key linking to collected heredoc content
+    # Named file descriptor: the variable from a `{varname}>file` prefix. The
+    # shell allocates a free fd >= 10, opens onto it, and stores the number in
+    # this variable (bash). The allocation is PERMANENT (not auto-closed after
+    # the command) and parent-side; `{varname}>&-` closes the fd in the var.
+    var_fd: Optional[str] = None
     # The parsed Word for a filename-target redirect (`<`/`>`/`>>`/`<>`/`>|`/
     # `&>`/`&>>`). Carries per-part quote context so the executor can apply
     # bash's "ambiguous redirect" rule: an unquoted target that expands +

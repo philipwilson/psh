@@ -138,6 +138,7 @@ class RedirectionParser(ParserSubcomponent):
 
     def _parse_dup_redirect(self, token: Token) -> Redirect:
         """Parse file descriptor duplication redirect."""
+        var_fd = getattr(token, 'var_fd', None)
         # Bare operator forms whose target is a separate token: ">& 2", "<& 0",
         # and the dynamic forms ">&$fd", "2>&$((n+1))". The lexer emits the
         # operator (with any fd prefix) as one token and the target separately.
@@ -156,15 +157,16 @@ class RedirectionParser(ParserSubcomponent):
             dup_part = word.display_text()
 
             if dup_part == '-':
-                return Redirect(type=direction + '&-', target=None, fd=fd)
+                return Redirect(type=direction + '&-', target=None, fd=fd,
+                                var_fd=var_fd)
             if dup_part.isdigit():
                 # Static numeric fd — resolve now (e.g. ">& 2").
                 return Redirect(type=direction + '&', target=dup_part,
-                                fd=fd, dup_fd=int(dup_part))
+                                fd=fd, dup_fd=int(dup_part), var_fd=var_fd)
             # Dynamic target: keep the (expandable) string; dup_fd resolved at
             # execution time by FileRedirector._resolve_dup_fd.
             return Redirect(type=direction + '&', target=dup_part,
-                            fd=fd, dup_fd=None)
+                            fd=fd, dup_fd=None, var_fd=var_fd)
 
         # Handle single-token forms containing >&  or <&  (e.g., "2>&1", "3<&0", "3>&-", "3<&-")
         match = _FD_DUP_RE.match(token.value)
@@ -177,14 +179,16 @@ class RedirectionParser(ParserSubcomponent):
                 return Redirect(
                     type=direction + '&-',
                     target=None,
-                    fd=fd
+                    fd=fd,
+                    var_fd=var_fd,
                 )
             else:
                 return Redirect(
                     type=direction + '&',
                     target=None,
                     fd=fd,
-                    dup_fd=int(target)
+                    dup_fd=int(target),
+                    var_fd=var_fd,
                 )
 
         raise self.parser.error(f"Invalid redirection operator: {token.value}")
@@ -206,6 +210,7 @@ class RedirectionParser(ParserSubcomponent):
             target=target_value,
             fd=token.fd,
             combined=combined,
+            var_fd=getattr(token, 'var_fd', None),
             # Keep the parsed Word so the executor can apply bash's
             # "ambiguous redirect" rule (unquoted target → ≠1 word is an error).
             target_word=word,
