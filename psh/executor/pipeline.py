@@ -10,6 +10,8 @@ import signal
 import sys
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from ..core import LoopBreak, LoopContinue
+from ..core.exceptions import FunctionReturn
 from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
@@ -158,8 +160,13 @@ class PipelineExecutor:
                     This closure captures the command index and node for execution.
                     """
                     def execute_fn():
-                        # Create forked context
+                        # Create forked context. Each pipeline component runs in
+                        # its OWN subshell, so it is a fresh control-flow scope:
+                        # the enclosing loop nesting is not visible (a `break N`
+                        # here can't escape into the parent's loop), matching the
+                        # plain-subshell path and bash.
                         child_context = pipeline_context.fork_context()
+                        child_context.loop_depth = 0
 
                         # Set up pipeline redirections (stdin/stdout, and stderr for |&)
                         self._setup_pipeline_redirections(
@@ -175,9 +182,19 @@ class PipelineExecutor:
                         # Execute command with pipeline context
                         # IMPORTANT: Update visitor's context to use the child_context
                         visitor.context = child_context
-                        exit_status = visitor.visit(cmd_node)
-
-                        return exit_status
+                        try:
+                            return visitor.visit(cmd_node)
+                        except FunctionReturn as fr:
+                            # `return` inside a pipelined compound exits THIS
+                            # subshell with the return code (bash: it cannot
+                            # return from the enclosing function — the function
+                            # body is in the parent process).
+                            return fr.exit_code
+                        except (LoopBreak, LoopContinue):
+                            # A break/continue that escapes the subshell's own
+                            # loops just ends the subshell (status 0); it must
+                            # not surface as an internal "psh: error:".
+                            return 0
 
                     return execute_fn
 

@@ -1735,3 +1735,30 @@
   stdout: "ER\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# LOOP-CONTROL SCOPE BOUNDARY — break/continue/return don't cross function or
+# pipeline-subshell scope (appraisal H3/H4). stderr wording differs by shell
+# (separate finding), so these pin stdout + exit code only.
+# =============================================================================
+
+- name: break_in_function_does_not_break_caller_loop
+  command: "f() { break; }; for i in 1 2 3; do echo $i; f; done; echo end"
+  stdout: "1\n2\n3\nend\n"
+  stderr: "break: only meaningful"
+  exit_code: 0
+
+- name: break_level_in_function_loop_stays_in_function
+  command: "f(){ for j in a b; do break 2; done; }; for i in 1 2 3; do f; echo $i; done; echo end"
+  stdout: "1\n2\n3\nend\n"
+  exit_code: 0
+
+- name: return_in_pipelined_while_exits_subshell
+  command: "f() { echo a | while read x; do return 5; done; echo \"after=$?\"; }; f"
+  stdout: "after=5\n"
+  exit_code: 0
+
+- name: break_level_in_pipelined_while_no_leak
+  command: "for i in 1 2; do echo x | while read y; do break 2; done; echo i=$i; done"
+  stdout: "i=1\ni=2\n"
+  exit_code: 0
