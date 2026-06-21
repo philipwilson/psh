@@ -97,10 +97,11 @@ def test_unbound_variable_unaffected_by_strict(captured_shell):
     normal behavior under strict mode — it is not an internal defect."""
     captured_shell.state.options['strict-errors'] = True
     captured_shell.run_command("set -u")
-    # Unbound variable under set -u: status 127 in script mode, with the
-    # usual diagnostic — NOT a propagated Python exception.
+    # Unbound variable under set -u: a non-interactive non-`-c` shell exits 1
+    # (bash; `-c` would be 127), with the usual diagnostic — NOT a propagated
+    # Python exception.
     rc = captured_shell.run_command("echo $THIS_IS_UNSET")
-    assert rc == 127
+    assert rc == 1
     assert "unbound variable" in captured_shell.get_stderr()
 
 
