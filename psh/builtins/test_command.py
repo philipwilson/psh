@@ -356,11 +356,14 @@ class TestBuiltin(Builtin):
             # 3-argument form `[ s1 -o s2 ]`: OR of string non-emptiness.
             return 0 if (arg1 or arg2) else 1
         elif op == '<':
-            # bash extension: string sorts before arg2 in ASCII/byte order
-            # (test/[ uses byte order, NOT the locale collation [[ ]] uses)
+            # bash extension: string sorts before arg2. psh compares by Unicode
+            # codepoint order here AND in `[[ < ]]` (enhanced_test_evaluator);
+            # bash's `[ < ]` is byte order while its `[[ < ]]` honours
+            # LC_COLLATE, so psh's `[[ < ]]` diverges from bash in a non-C
+            # locale (a known limitation — NOT "the locale collation [[ ]] uses").
             return 0 if arg1 < arg2 else 1
         elif op == '>':
-            # bash extension: string sorts after arg2 in ASCII/byte order
+            # bash extension: string sorts after arg2; codepoint order (see '<').
             return 0 if arg1 > arg2 else 1
         elif op == '-eq':
             try:

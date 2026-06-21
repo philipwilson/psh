@@ -147,6 +147,9 @@ class TestExpressionEvaluator:
             return not self._pattern_match(
                 left, self._rhs_pattern(expr.right_word))
         elif expr.operator == '<':
+            # Unicode codepoint order. bash's `[[ < ]]` honours LC_COLLATE, so
+            # this diverges from bash in a non-C locale (a known limitation —
+            # `[ < ]`/test uses codepoint order too; see builtins/test_command.py).
             return left < right
         elif expr.operator == '>':
             return left > right
