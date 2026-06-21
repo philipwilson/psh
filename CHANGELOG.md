@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.526.0 (2026-06-21) - Refactor: one background-launch helper for cmd & (appraisal Tier 4)
+- REFACTOR (executor; zero behavior change). The four ``cmd &`` paths —
+  backgrounded builtins and functions (``strategies.py``) and backgrounded
+  subshells and brace groups (``subshell.py``) — each repeated the same launch
+  boilerplate: build ``ProcessConfig(SINGLE, foreground=False[, is_shell_process])``,
+  ``launcher.launch(...)``, ``job_manager.launch_background(...)``, ``return 0``.
+  Hoisted that into one ``ProcessLauncher.launch_background_job(execute_fn,
+  command_string, proc_label, *, is_shell_process=False)`` helper the four sites
+  now call; only the per-case ``execute_fn`` and the ``is_shell_process`` flag
+  differ.
+- Zero behavior change: full suite green (8,389, unchanged); backgrounded
+  builtin/function/subshell/brace-group all still set ``$!``, register as jobs,
+  and are reaped by ``wait`` identically. Addresses elegance finding E-Exec in
+  the 2026-06-21 appraisal (``docs/reviews/ground_up_appraisal_2026-06-21.md``,
+  Tier 4).
+
 ## 0.525.0 (2026-06-21) - Refactor: lexer dead-field + can_start_expansion name collision (appraisal Tier 4)
 - REFACTOR (lexer; zero behavior change). Two elegance cleanups from finding
   E-Lexer:

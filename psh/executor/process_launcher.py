@@ -137,6 +137,24 @@ class ProcessLauncher:
         pgid = self._parent_setup(pid, config)
         return pid, pgid
 
+    def launch_background_job(self, execute_fn: Callable[[], int],
+                             command_string: str, proc_label: str, *,
+                             is_shell_process: bool = False) -> int:
+        """Fork *execute_fn* as a background job and register it.
+
+        The single launch+register sequence shared by every ``cmd &`` path —
+        backgrounded builtins, functions, subshells and brace groups: launch a
+        non-foreground SINGLE process, then register it as a job (which prints
+        the interactive ``[N] PID`` notice and sets ``$!``). Returns 0 (a
+        backgrounded command's own status is always success).
+        """
+        config = ProcessConfig(role=ProcessRole.SINGLE, foreground=False,
+                               is_shell_process=is_shell_process)
+        pid, pgid = self.launch(execute_fn, config)
+        self.job_manager.launch_background(pgid, command_string,
+                                           [(pid, proc_label)])
+        return 0
+
     def _child_setup_and_exec(self, execute_fn: Callable[[], int],
                               config: ProcessConfig):
         """Child process setup and execution.

@@ -265,19 +265,8 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
             else:
                 return 127
 
-        # Configure as background job
-        config = ProcessConfig(
-            role=ProcessRole.SINGLE,
-            foreground=False
-        )
-
-        pid, pgid = launcher.launch(execute_fn, config)
-
-        # Register the job and print the interactive "[N] PID" notice
-        shell.job_manager.launch_background(
-            pgid, f"{cmd_name} {' '.join(args)}", [(pid, cmd_name)])
-
-        return 0
+        return launcher.launch_background_job(
+            execute_fn, f"{cmd_name} {' '.join(args)}", cmd_name)
 
 
 class FunctionExecutionStrategy(ExecutionStrategy):
@@ -341,19 +330,9 @@ class FunctionExecutionStrategy(ExecutionStrategy):
 
         # The child keeps running shell code (the function body may start
         # pipelines or manage terminal control), so mark it a shell process.
-        config = ProcessConfig(
-            role=ProcessRole.SINGLE,
-            foreground=False,
-            is_shell_process=True
-        )
-
-        pid, pgid = launcher.launch(execute_fn, config)
-
-        # Register the job and print the interactive "[N] PID" notice
-        shell.job_manager.launch_background(
-            pgid, f"{cmd_name} {' '.join(args)}", [(pid, cmd_name)])
-
-        return 0
+        return launcher.launch_background_job(
+            execute_fn, f"{cmd_name} {' '.join(args)}", cmd_name,
+            is_shell_process=True)
 
 
 class ExternalExecutionStrategy(ExecutionStrategy):
