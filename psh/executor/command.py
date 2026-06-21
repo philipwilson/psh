@@ -201,6 +201,22 @@ class CommandExecutor:
             # bash runs the DEBUG trap before each simple command
             self.shell.trap_manager.execute_debug_trap()
 
+            # Phase 1: Extract raw assignments (before expansion)
+            raw_assignments = self.assignments.extract(node)
+
+            # A backgrounded pure / bare-array assignment (`x=5 &`, `a[0]=v &`)
+            # runs in a forked SUBSHELL (bash): the assignment mutates the child
+            # (which then exits), never the parent, and a background job / $! is
+            # created. Without this, `x=5 & wait; echo $x` wrongly printed 5.
+            # This is checked BEFORE applying any array assignment below, so the
+            # parent is never touched.
+            is_pure_assignment = (
+                raw_assignments and len(raw_assignments) == len(node.words))
+            is_bare_array_assignment = (
+                node.array_assignments and not node.words)
+            if node.background and (is_pure_assignment or is_bare_array_assignment):
+                return self._run_background_assignment(node, raw_assignments)
+
             # Handle array assignments first. Their exit status matters when
             # there is no command word (a bare `a[i]=v` / `a[i]+=v`): bash
             # reports a failed subscript assignment (e.g. out-of-range
@@ -210,9 +226,6 @@ class CommandExecutor:
                 for assignment in node.array_assignments:
                     array_assignment_status = self._handle_array_assignment(
                         assignment)
-
-            # Phase 1: Extract raw assignments (before expansion)
-            raw_assignments = self.assignments.extract(node)
 
             # Track command substitutions run while expanding assignment
             # values: a pure assignment's exit status is 0 unless a command
@@ -224,7 +237,7 @@ class CommandExecutor:
             self.state.last_cmdsub_status = None
 
             # Pure assignment (only NAME=value words, no command word)?
-            if raw_assignments and len(raw_assignments) == len(node.words):
+            if is_pure_assignment:
                 return self._run_pure_assignment(node, raw_assignments)
 
             # Bare array element assignment(s) with no command word
@@ -233,7 +246,7 @@ class CommandExecutor:
             # non-interactive `-c`/script invocation with status 1, exactly
             # like a readonly assignment error (CommandAssignments.apply_pure)
             # — but is non-fatal when reading a script from stdin.
-            if node.array_assignments and not node.words:
+            if is_bare_array_assignment:
                 if node.redirects:
                     with self.io_manager.with_redirections(node.redirects):
                         pass
@@ -259,6 +272,29 @@ class CommandExecutor:
         non-interactive shell).
         """
         return self.assignments.apply_pure(node, raw_assignments)
+
+    def _run_background_assignment(self, node: 'SimpleCommand',
+                                   raw_assignments: List['RawAssignment']) -> int:
+        """Run a backgrounded pure/array assignment in a forked subshell (bash).
+
+        ``x=5 &`` applies the assignment in the child (which immediately exits),
+        so the PARENT's variables are untouched; a background job is registered
+        and ``$!`` is set. Returns 0 (a backgrounded command's status is success).
+        """
+        launcher = self.shell.process_launcher
+        command_string = " ".join(str(a) for a in node.args) or "assignment"
+
+        def execute_fn() -> int:
+            # In the forked child only: apply the assignment(s), then exit.
+            if node.array_assignments:
+                for assignment in node.array_assignments:
+                    self._handle_array_assignment(assignment)
+            if raw_assignments:
+                self._run_pure_assignment(node, raw_assignments)
+            return 0
+
+        return launcher.launch_background_job(
+            execute_fn, command_string, command_string, is_shell_process=True)
 
     def _run_command(self, node: 'SimpleCommand', context: 'ExecutionContext',
                      raw_assignments: List['RawAssignment']) -> int:

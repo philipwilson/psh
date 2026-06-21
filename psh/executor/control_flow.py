@@ -233,6 +233,10 @@ class ControlFlowExecutor:
         with self._loop_depth(context), self._compound_redirections(node), \
                 self._pipeline_context_disabled(context):
             for item in expanded_items:
+                # bash runs the DEBUG trap before binding the loop variable on
+                # EACH iteration (so `trap d DEBUG; for i in 1 2; do echo x;
+                # done` fires d before every `i=…` and every `echo`).
+                self.shell.trap_manager.execute_debug_trap()
                 # Set loop variable
                 try:
                     self.state.set_variable(node.variable, item)
@@ -267,6 +271,11 @@ class ControlFlowExecutor:
         """
         exit_status = 0
         with self._loop_depth(context):
+            # bash runs the DEBUG trap before each arithmetic step of a C-style
+            # for: the init, every condition test, and every update (plus the
+            # body commands fire their own). So `for ((i=0;i<1;i++)); do echo w;
+            # done` fires D before init, cond, echo, update, then the final cond.
+            self.shell.trap_manager.execute_debug_trap()
             # Evaluate init expression (before redirects, matching prior
             # behavior: an init error returns 1 without opening redirects).
             if node.init_expr:
@@ -282,6 +291,7 @@ class ControlFlowExecutor:
             with self._compound_redirections(node), self._pipeline_context_disabled(context):
                 while True:
                     # Evaluate condition
+                    self.shell.trap_manager.execute_debug_trap()
                     if node.condition_expr:
                         try:
                             result = evaluate_arithmetic(node.condition_expr, self.shell)
@@ -304,6 +314,7 @@ class ControlFlowExecutor:
                         break
 
                     # Evaluate update expression
+                    self.shell.trap_manager.execute_debug_trap()
                     if node.update_expr:
                         try:
                             evaluate_arithmetic(node.update_expr, self.shell)
@@ -327,6 +338,9 @@ class ControlFlowExecutor:
         Returns:
             Exit status code
         """
+        # bash runs the DEBUG trap before the `case` command (the subject eval).
+        self.shell.trap_manager.execute_debug_trap()
+
         # Expand the expression
         expr = node.expr
         if '$' in expr:

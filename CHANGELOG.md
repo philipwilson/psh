@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.531.0 (2026-06-21) - Fix: backgrounded assignment runs in a subshell; DEBUG trap before loops/case (appraisal Tier 3, M4/M5)
+- BUGFIX (MED, M4). A backgrounded pure or bare-array assignment (``x=5 &``,
+  ``a[0]=v &``) mutated the PARENT shell (``x=5 & wait; echo $x`` printed ``5``).
+  bash runs ``x=5 &`` in a forked subshell, so the assignment is discarded with
+  the child and the parent is untouched; ``$!`` is still set and a job
+  registered. The assignment is now routed to a background subshell BEFORE any
+  array element is applied to the parent (``executor/command.py``,
+  ``_run_background_assignment`` via ``ProcessLauncher.launch_background_job``).
+- BUGFIX (MED, M5). The DEBUG trap did not fire before ``for`` / C-style-``for``
+  iterations or before a ``case`` statement (it fired only for the body's simple
+  commands). bash fires DEBUG before binding each ``for`` loop variable, before
+  the ``case`` subject, and before each arithmetic step (init/cond/update) of a
+  C-style ``for``. Added those firing points (``executor/control_flow.py``); the
+  counts now match bash exactly for ``for``/``while``/``until``/``if``/``case``/
+  C-style-``for``. (``select`` + DEBUG, an exotic combination, is left as a known
+  minor gap.)
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, M4/M5). New
+  ``tests/integration/control_flow/test_tier3_executor_fixes.py`` (14 cases) and
+  three bash-compared golden cases.
+
 ## 0.530.0 (2026-06-21) - Fix: support the deprecated `$[expr]` arithmetic form (appraisal Tier 3, M3)
 - BUGFIX (MED). ``$[expr]`` — bash's deprecated spelling of ``$((expr))`` — was
   passed through verbatim (``echo $[1+2]`` printed ``$[1+2]``). The lexer's

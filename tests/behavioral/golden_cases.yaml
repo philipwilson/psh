@@ -1830,3 +1830,22 @@
   stdout: "3 6\n"
   stderr: ""
   exit_code: 0
+
+# Backgrounded assignment runs in a subshell; DEBUG trap before loops/case (Tier 3 M4/M5)
+- name: backgrounded_assignment_subshell
+  command: "x=5 & wait; echo \"x=[$x]\""
+  stdout: "x=[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: debug_trap_before_for_iterations
+  command: "trap 'echo D' DEBUG; for i in 1 2; do echo x; done"
+  stdout: "D\nD\nx\nD\nD\nx\n"
+  stderr: ""
+  exit_code: 0
+
+- name: debug_trap_before_case
+  command: "trap 'echo D' DEBUG; case x in x) echo c;; esac"
+  stdout: "D\nD\nc\n"
+  stderr: ""
+  exit_code: 0
