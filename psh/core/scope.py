@@ -602,10 +602,16 @@ class ScopeManager:
                 return Variable(name='PIPESTATUS', value=arr,
                                 attributes=VarAttributes.ARRAY)
         elif name == 'FUNCNAME':
-            # Return current function name if in function
+            # FUNCNAME is an ARRAY (bash): [0] is the current function, [1] the
+            # caller, ... — the call stack, innermost first. function_stack is
+            # pushed on entry (last = current), so reverse it.
             if self._shell and hasattr(self._shell, 'state') and self._shell.state.function_stack:
-                func_name = self._shell.state.function_stack[-1]
-                return Variable(name='FUNCNAME', value=func_name)
+                from .variables import IndexedArray, VarAttributes
+                arr = IndexedArray()
+                for i, fname in enumerate(reversed(self._shell.state.function_stack)):
+                    arr.set(i, fname)
+                return Variable(name='FUNCNAME', value=arr,
+                                attributes=VarAttributes.ARRAY)
             else:
                 # Not in a function, return empty string (bash behavior)
                 return Variable(name='FUNCNAME', value='')
