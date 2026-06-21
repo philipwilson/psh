@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.516.0 (2026-06-21) - Fix: reject empty compound bodies/conditions at parse time (appraisal H1)
+- BUGFIX (HIGH). The recursive-descent parser silently accepted empty
+  compound-command bodies and conditions that bash rejects as a syntax error
+  (exit 2). The worst case was an INFINITE LOOP: ``while true; do done`` (an
+  empty ``do`` body with a true condition) hung forever; ``until false; do done``
+  likewise. Empty ``then``/``elif``/``else`` bodies (``if true; then fi``),
+  empty loop/if conditions (``if then echo x; fi``, ``while do echo x; done``),
+  empty ``for``/``select``/C-style-``for`` bodies, and empty function bodies
+  (``f() { }``) were silently accepted as no-ops.
+- Root cause: ``StatementParser.parse_command_list_until`` returns an empty
+  ``CommandList`` when the terminator is already current, and no required-body
+  caller checked for emptiness; ``functions.py`` re-implemented brace parsing
+  without the empty-body guard that ``CommandParser.parse_brace_group`` already
+  had. Fix: a new ``parse_required_command_list_until`` (the required-position
+  twin, mirroring the brace-group guard) is used at every loop/if body and
+  condition site and the function brace body. Empty ``case`` (``case x in esac``)
+  and empty ``case`` branches (``a) ;;``) stay legal, matching bash. Separator-
+  only bodies (``do ; done``) were already rejected.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, finding H1). New
+  ``tests/unit/parser/test_empty_compound_body_rejection.py`` (12 rejections +
+  8 acceptances), no-separator forms added to the combinator error-parity
+  corpus, two false-confidence function tests corrected to the bash-true
+  behavior, and five bash-compared golden cases. The educational combinator
+  parser still accepts a few of these (empty conditions/else/function body) — a
+  documented out-of-scope gap, not a tracked defect.
+
 ## 0.515.0 (2026-06-21) - Fix: $-expansions corrupted in (( )) / C-for / while (( )) (appraisal H2)
 - BUGFIX (HIGH). In the arithmetic COMMAND/loop forms — ``(( expr ))``,
   ``for ((init;cond;upd))``, and ``while (( expr ))`` — every ``$``-expansion was

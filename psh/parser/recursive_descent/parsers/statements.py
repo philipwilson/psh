@@ -67,7 +67,13 @@ class StatementParser(ParserSubcomponent):
         return command_list
 
     def parse_command_list_until(self, *end_tokens: TokenType) -> CommandList:
-        """Parse a command list until one of the end tokens is encountered."""
+        """Parse a command list until one of the end tokens is encountered.
+
+        May return an EMPTY list when the end token is already current (e.g. an
+        empty ``case`` branch ``a) ;;``, which bash allows). For positions where
+        bash requires at least one command — every loop/if body and condition —
+        use :meth:`parse_required_command_list_until` instead.
+        """
         command_list = CommandList()
         self.parser.skip_newlines()
 
@@ -82,6 +88,24 @@ class StatementParser(ParserSubcomponent):
                 if self.parser.match(*end_tokens):
                     break
 
+        return command_list
+
+    def parse_required_command_list_until(self, *end_tokens: TokenType) -> CommandList:
+        """Parse a command list that must contain at least one statement.
+
+        bash rejects empty compound-command bodies and conditions at PARSE
+        time, not at runtime: ``while ...; do done`` and ``if then ...; fi`` are
+        syntax errors (an empty ``do`` body would otherwise be an infinite loop,
+        an empty ``then`` body a silent no-op). This is the required-position
+        twin of :meth:`parse_command_list_until`; the guard mirrors
+        ``CommandParser.parse_brace_group``. (Separator-only bodies like
+        ``do ; done`` are already rejected earlier, when ``parse_statement``
+        fails on the leading separator.)
+        """
+        command_list = self.parse_command_list_until(*end_tokens)
+        if not command_list.statements:
+            raise self.parser.error(
+                f"syntax error near unexpected token '{self.parser.peek().value}'")
         return command_list
 
     def parse_and_or_list(self) -> Union[AndOrList, BreakStatement, ContinueStatement]:

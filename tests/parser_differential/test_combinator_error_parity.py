@@ -33,8 +33,20 @@ REJECTION_CORPUS = [
                  id='while-body-if-missing-fi'),
     pytest.param('while true; do; done', id='while-empty-body'),
     pytest.param('until true; do; done', id='until-empty-body'),
+    # No-separator empty bodies (`do done`, not `do; done`): the form that
+    # actually hung the RD parser (appraisal H1) until v0.516. Both parsers
+    # must reject; an empty `do` body would be an infinite loop.
+    pytest.param('while true; do done', id='while-empty-body-no-sep'),
+    pytest.param('until true; do done', id='until-empty-body-no-sep'),
+    pytest.param('if true; then fi', id='if-empty-then-no-sep'),
+    pytest.param('select x in a; do done', id='select-empty-body-no-sep'),
+    pytest.param('for ((i=0; i<1; i++)); do done',
+                 id='cstyle-for-empty-body-no-sep'),
+    pytest.param('if true; then echo y; elif true; then fi',
+                 id='if-empty-elif-body'),
     pytest.param('for x in a b; do echo $x', id='unterminated-for'),
     pytest.param('for x in a; do; done', id='for-empty-body'),
+    pytest.param('for x in a; do done', id='for-empty-body-no-sep'),
     pytest.param('case x in a) echo a', id='unterminated-case'),
     pytest.param('case x in ; esac', id='case-empty-pattern-list'),
     pytest.param('case x in a) case y in b) echo b ;; esac',

@@ -80,7 +80,9 @@ class FunctionParser(ParserSubcomponent):
             self.parser.ctx.push_construct('brace')
             self.parser.skip_newlines()
 
-            statements = self.parser.statements.parse_command_list_until(TokenType.RBRACE)
+            # bash rejects an empty function body `f() { }` (syntax error),
+            # exactly as for a standalone brace group `{ }`.
+            statements = self.parser.statements.parse_required_command_list_until(TokenType.RBRACE)
 
             self.parser.expect(TokenType.RBRACE)
             self.parser.ctx.pop_construct()

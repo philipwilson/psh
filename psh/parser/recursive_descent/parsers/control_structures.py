@@ -99,7 +99,7 @@ class ControlStructureParser(ParserSubcomponent):
             self.parser.advance()
             self.parser.ctx.retitle_construct('else')
             self.parser.skip_newlines()
-            else_part = self.parser.statements.parse_command_list_until(TokenType.FI)
+            else_part = self.parser.statements.parse_required_command_list_until(TokenType.FI)
 
         self.parser.expect(TokenType.FI)
         self.parser.ctx.pop_construct()
@@ -117,11 +117,11 @@ class ControlStructureParser(ParserSubcomponent):
     def _parse_condition_then_block(self) -> Tuple[StatementList, StatementList]:
         """Parse a condition followed by THEN and a command list."""
         self.parser.skip_newlines()
-        condition = self.parser.statements.parse_command_list_until(TokenType.THEN)
+        condition = self.parser.statements.parse_required_command_list_until(TokenType.THEN)
         self.parser.expect(TokenType.THEN)
         self.parser.ctx.retitle_construct('then')
         self.parser.skip_newlines()
-        body = self.parser.statements.parse_command_list_until(TokenType.ELIF, TokenType.ELSE, TokenType.FI)
+        body = self.parser.statements.parse_required_command_list_until(TokenType.ELIF, TokenType.ELSE, TokenType.FI)
         return condition, body
 
     # === While Statement Parsing ===
@@ -157,12 +157,12 @@ class ControlStructureParser(ParserSubcomponent):
         self.parser.ctx.push_construct(start.name.lower())
         self.parser.skip_newlines()
 
-        condition = self.parser.statements.parse_command_list_until(body_start)
+        condition = self.parser.statements.parse_required_command_list_until(body_start)
 
         self.parser.expect(body_start)
         self.parser.skip_newlines()
 
-        body = self.parser.statements.parse_command_list_until(body_end)
+        body = self.parser.statements.parse_required_command_list_until(body_end)
 
         self.parser.expect(body_end)
         self.parser.ctx.pop_construct()
@@ -212,7 +212,7 @@ class ControlStructureParser(ParserSubcomponent):
         self.parser.expect(TokenType.DO)
         self.parser.skip_newlines()
 
-        body = self.parser.statements.parse_command_list_until(TokenType.DONE)
+        body = self.parser.statements.parse_required_command_list_until(TokenType.DONE)
         self.parser.expect(TokenType.DONE)
         self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
@@ -284,7 +284,7 @@ class ControlStructureParser(ParserSubcomponent):
             self.parser.advance()
             self.parser.skip_newlines()
 
-        body = self.parser.statements.parse_command_list_until(TokenType.DONE)
+        body = self.parser.statements.parse_required_command_list_until(TokenType.DONE)
         self.parser.expect(TokenType.DONE)
         self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
@@ -454,7 +454,7 @@ class ControlStructureParser(ParserSubcomponent):
         self.parser.expect(TokenType.DO)
         self.parser.skip_newlines()
 
-        body = self.parser.statements.parse_command_list_until(TokenType.DONE)
+        body = self.parser.statements.parse_required_command_list_until(TokenType.DONE)
         self.parser.expect(TokenType.DONE)
         self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
