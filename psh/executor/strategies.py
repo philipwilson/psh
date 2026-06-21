@@ -510,8 +510,8 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             exit_status = shell.job_manager.wait_for_job(job)
 
             # Reclaim the terminal (if we handed it over) and clear
-            # foreground-job bookkeeping
-            shell.job_manager.finish_foreground_job(original_pgid is not None)
+            # foreground-job bookkeeping (a stopped job stays as %+).
+            shell.job_manager.finish_foreground_job(original_pgid is not None, job)
 
             # Clean up
             from .job_control import JobState

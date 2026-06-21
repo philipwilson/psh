@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.522.0 (2026-06-21) - Fix: a Ctrl-Z'd foreground job stays the current job (%+) (appraisal H9)
+- BUGFIX (HIGH). A foreground job stopped by Ctrl-Z (SIGTSTP) was demoted out of
+  ``%+``: the foreground teardown called ``set_foreground_job(None)``, which
+  pushed the still-current stopped job to ``%-`` and cleared ``%+``. So the stop
+  notice printed ``[1]-  Stopped`` instead of bash's ``[1]+``, and a bare ``bg``
+  or ``fg`` (which resolve ``%+``) failed with ``%+: no such job``. bash keeps a
+  stopped foreground job as the current job so it resumes with no argument.
+- Fix: ``JobManager.finish_foreground_job`` takes the job and, when it is
+  ``STOPPED``, re-promotes it to ``%+`` after the teardown — keeping the job that
+  was current before it as ``%-`` (``job_control.py``; both the external-command
+  and pipeline foreground paths pass the job through). Completed jobs are
+  unaffected (they are removed by the caller).
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, finding H9). New
+  ``tests/integration/job_control/test_stopped_job_current_marker.py`` (4 cases:
+  single stop → ``%+``, the ``+`` notice marker, a second stop demoting the first
+  to ``%-``, and completion not becoming current).
+
 ## 0.521.0 (2026-06-21) - Fix: ~/.pshrc no longer sourced for -c / scripts under a tty (appraisal H8)
 - BUGFIX (HIGH). ``_init_interactive`` decides at construction whether to source
   ``~/.pshrc`` (and load history / enable line editing), gating on
