@@ -482,6 +482,25 @@ class UnsetBuiltin(Builtin):
         var_obj = shell.state.scope_manager.get_variable_object(array_name)
         expander = shell.expansion_manager.variable_expander
 
+        if index_expr in ('@', '*'):
+            # `unset 'arr[@]'` / `'arr[*]'` removes the ENTIRE array — but only
+            # for an INDEXED array (bash). For an associative array @/* is a
+            # literal key (fall through); for a scalar bash reports "not an
+            # array variable"; for an absent name it is a silent no-op success.
+            value = getattr(var_obj, 'value', None)
+            if isinstance(value, IndexedArray):
+                try:
+                    shell.state.scope_manager.unset_variable(array_name)
+                    shell.env.pop(array_name, None)
+                except ReadonlyVariableError:
+                    self.error(f"{array_name}: readonly variable", shell)
+                    return False
+                return True
+            if not isinstance(value, AssociativeArray):
+                if var_obj is not None:
+                    self.error(f"{array_name}: not an array variable", shell)
+                return True
+
         if var_obj is None:
             # bash: unsetting an element of a nonexistent variable succeeds
             return True

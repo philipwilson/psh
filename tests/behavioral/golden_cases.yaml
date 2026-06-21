@@ -1796,3 +1796,31 @@
   stdout: "rc=1\n"
   stderr: "not a function"
   exit_code: 0
+
+# =============================================================================
+# BUILTIN/ARRAY CORRECTNESS (appraisal Tier 3: read -p, declare -i, unset arr[@])
+# =============================================================================
+
+- name: read_p_no_prompt_from_pipe
+  command: "echo data | { read -p 'PROMPT: ' x; echo \"[$x]\"; }"
+  stdout: "[data]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: declare_integer_first_array_element
+  command: "declare -i a; a[0]=2+3; a[1]=4*2; echo \"${a[@]}\""
+  stdout: "5 8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_indexed_array_at
+  command: "arr=(1 2 3); unset 'arr[@]'; echo \"n=${#arr[@]}\""
+  stdout: "n=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_assoc_at_is_literal_key
+  command: "declare -A m=([a]=1 [b]=2); unset 'm[@]'; echo \"n=${#m[@]}\""
+  stdout: "n=2\n"
+  stderr: ""
+  exit_code: 0
