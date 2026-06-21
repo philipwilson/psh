@@ -4,6 +4,17 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.527.0 (2026-06-21) - Docs: correct the `[ < ]` / `[[ < ]]` collation comments (appraisal Tier 4)
+- TRUTH-UP (comments only; zero behavior change). The ``[ < ]`` comment in
+  ``builtins/test_command.py`` claimed psh's ``[[ ]]`` "uses locale collation" —
+  it does NOT: ``[[ < ]]`` (``enhanced_test_evaluator``) compares by Unicode
+  codepoint order, exactly like ``[ < ]``. Corrected both comments to state the
+  real behavior and the resulting known divergence (bash's ``[[ < ]]`` honours
+  LC_COLLATE in a non-C locale; psh does not). No code changed. Addresses the
+  misleading-comment half of elegance finding E-Builtins/correctness-#7 in the
+  2026-06-21 appraisal (``docs/reviews/ground_up_appraisal_2026-06-21.md``,
+  Tier 4); implementing locale collation itself remains a deferred LOW item.
+
 ## 0.526.0 (2026-06-21) - Refactor: one background-launch helper for cmd & (appraisal Tier 4)
 - REFACTOR (executor; zero behavior change). The four ``cmd &`` paths —
   backgrounded builtins and functions (``strategies.py``) and backgrounded
