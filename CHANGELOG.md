@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.529.0 (2026-06-21) - Fix: three builtin/array bugs — read -p tty, declare -i array, unset arr[@] (appraisal Tier 3)
+- BUGFIX (MED, M9). ``read -p`` wrote its prompt unconditionally, so a
+  ``read -p`` from a pipe / here-string / redirected file leaked the prompt into
+  the captured stream. bash writes the prompt only when the input is a terminal;
+  the prompt is now gated on the read source being a tty
+  (``read_builtin.py``, new ``_read_input_is_tty``).
+- BUGFIX (MED, M10). ``declare -i a`` (integer attribute on a not-yet-existing
+  array) left the FIRST element assignment UNEVALUATED — ``a[0]=2+3`` stored the
+  literal ``2+3`` while later elements evaluated. The ``declare -i a`` tombstone
+  reads as unset (so the pre-creation lookup was ``None``); the element writer
+  now reads the attribute from the variable AS IT EXISTS after the array is
+  created, where set_variable has merged the declared INTEGER attribute
+  (``executor/array.py``). Applies to ``-i``/``-u``/``-l`` and indexed/assoc.
+- BUGFIX (MED, M11). ``unset 'arr[@]'`` / ``'arr[*]'`` removed a single element
+  (subscript ``@`` evaluated as index 0) instead of the WHOLE array. It now
+  removes the whole INDEXED array; for an ASSOCIATIVE array ``@``/``*`` is a
+  literal key (bash — the array is not cleared), and a scalar reports
+  "not an array variable" (``builtins/environment.py``).
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, M9/M10/M11). New
+  ``tests/unit/builtins/test_tier3_builtin_array_fixes.py`` (11 cases) and four
+  bash-compared golden cases.
+
 ## 0.528.0 (2026-06-21) - Test: serial-mark the signal-delivering trap conformance suite
 - TEST-INFRA (no psh change). ``tests/conformance/bash/test_trap_signal_spec_conformance.py``
   traps AND delivers signals (``kill -N $$``) while comparing against live bash,

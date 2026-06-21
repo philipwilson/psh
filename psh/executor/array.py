@@ -330,7 +330,15 @@ class ArrayOperationExecutor:
                 array = AssociativeArray()
                 self.state.scope_manager.set_variable(name, array, attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
 
-        attrs = var_obj.attributes if var_obj is not None else VarAttributes.NONE
+        # Read the attributes from the variable AS IT EXISTS NOW, after the
+        # array was (created and) populated above. The pre-creation var_obj
+        # (fetched ~line 236) is None for a `declare -i a` tombstone — using it
+        # would skip integer evaluation on the FIRST element (``a[0]=2+3`` would
+        # store the literal text); set_variable merged the declared INTEGER/case
+        # attribute onto the new array, so the re-read sees it. bash evaluates
+        # the first element.
+        attr_var = self.state.scope_manager.get_variable_object(name)
+        attrs = attr_var.attributes if attr_var is not None else VarAttributes.NONE
         is_integer = bool(attrs & VarAttributes.INTEGER)
         is_upper = bool(attrs & VarAttributes.UPPERCASE)
         is_lower = bool(attrs & VarAttributes.LOWERCASE)

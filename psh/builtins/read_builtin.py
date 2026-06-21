@@ -64,8 +64,10 @@ class ReadBuiltin(Builtin):
             self.error(str(e), shell)
             return getattr(e, 'rc', 2)
 
-        # Display prompt if specified
-        if options['prompt']:
+        # Display the -p prompt, but ONLY when the input is a terminal (bash):
+        # a `read -p` from a pipe / here-string / redirected file writes no
+        # prompt, so it stays out of captured output.
+        if options['prompt'] and self._read_input_is_tty(shell, options['fd']):
             sys.stderr.write(options['prompt'])
             sys.stderr.flush()
 
@@ -498,6 +500,21 @@ class ReadBuiltin(Builtin):
                 setattr(err, 'rc', 1)
                 raise err
             options['exact_chars'] = exact
+
+    def _read_input_is_tty(self, shell: 'Shell', fd: int) -> bool:
+        """Whether the read source is a terminal (gates the ``-p`` prompt).
+
+        Mirrors the source selection in ``_should_use_sys_stdin``: check the
+        shell's Python-level stdin when that is what we read from, else the real
+        OS descriptor. Any error (no ``isatty``, closed fd) means "not a tty".
+        """
+        try:
+            if self._should_use_sys_stdin(fd):
+                stdin = getattr(shell, 'stdin', sys.stdin)
+                return bool(stdin.isatty())
+            return os.isatty(fd)
+        except (OSError, ValueError, AttributeError):
+            return False
 
     def _should_use_sys_stdin(self, fd: int) -> bool:
         """Decide whether to read from ``sys.stdin`` or the real OS descriptor.
