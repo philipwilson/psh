@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.534.0 (2026-06-21) - Fix: honor $HISTFILE / $HISTSIZE (appraisal Tier 3, M14)
+- BUGFIX (MED). psh hardcoded ``~/.psh_history`` and a 1000-entry cap and ignored
+  the ``HISTFILE`` / ``HISTSIZE`` shell variables — even though the user guide
+  tells users to set them. ``ShellState.history_file`` / ``max_history_size`` now
+  read those variables DYNAMICALLY (bash): ``HISTFILE`` (tilde-expanded) overrides
+  the file path, ``HISTSIZE`` (a non-negative integer) the entry cap; invalid /
+  unset values fall back to the defaults. The setters still work for the
+  default fallback, so a script setting ``HISTSIZE=50`` now actually trims what
+  ``HistoryManager`` persists. ``core/state.py``.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, M14). New
+  ``tests/unit/core/test_histfile_histsize_vars.py`` (8 cases).
+
 ## 0.533.0 (2026-06-21) - Fix: FUNCNAME is the full call stack, not just the current function (appraisal Tier 3)
 - BUGFIX (MED). ``FUNCNAME`` is an ARRAY in bash — ``[0]`` is the running
   function, ``[1]`` its caller, and so on — but psh returned only a SCALAR (the

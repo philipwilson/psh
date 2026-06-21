@@ -302,7 +302,15 @@ class ShellState:
 
     @property
     def history_file(self) -> str:
-        """Path to the persisted history file."""
+        """Path to the persisted history file.
+
+        Honors ``$HISTFILE`` (bash) when set, else the HistoryState default
+        (``~/.psh_history``). Read dynamically so a script setting ``HISTFILE``
+        takes effect.
+        """
+        histfile = self.get_variable('HISTFILE')
+        if histfile:
+            return os.path.expanduser(histfile)
         return self.history_state.file_path
 
     @history_file.setter
@@ -311,7 +319,19 @@ class ShellState:
 
     @property
     def max_history_size(self) -> int:
-        """Maximum number of history entries to keep/persist."""
+        """Maximum number of history entries to keep/persist.
+
+        Honors ``$HISTSIZE`` (bash) when set to a non-negative integer, else the
+        HistoryState default. Read dynamically.
+        """
+        histsize = self.get_variable('HISTSIZE')
+        if histsize:
+            try:
+                n = int(histsize)
+            except (ValueError, TypeError):
+                n = -1
+            if n >= 0:
+                return n
         return self.history_state.max_size
 
     @max_history_size.setter
