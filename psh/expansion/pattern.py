@@ -57,6 +57,11 @@ def match_shell_pattern(string: str, pattern: str,
     True (the ``nocasematch`` shopt), matching is case-insensitive — used
     by ``[[ == ]]`` and ``case`` matching.
     """
+    from .extglob import _contains_negation, extglob_fullmatch
+    if extglob_enabled and _contains_negation(pattern):
+        # Negation isn't expressible as a Python regex; use the matcher.
+        return extglob_fullmatch(pattern, string, ignorecase=ignorecase)
+
     regex = PatternMatcher().shell_pattern_to_regex(
         pattern, extglob_enabled=extglob_enabled)
     flags = re.IGNORECASE if ignorecase else 0

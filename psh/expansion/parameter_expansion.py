@@ -50,28 +50,18 @@ class ParameterExpansion:
         """Get the length of a string."""
         return str(len(value))
 
-    def _standalone_negation_inner(self, pattern: str) -> Optional[str]:
-        """If *pattern* is exactly ``!(...)`` (extglob on), return the inner
-        alternative list; otherwise None.
+    def _neg(self, pattern: str) -> bool:
+        """Whether *pattern* needs the backtracking matcher rather than a regex.
 
-        Standalone negation in the removal operators (``${v#!(p)}`` etc.)
-        needs match-and-invert against the POSITIVE pattern: a regex cannot
-        express "the longest prefix that is NOT p" in one anchored pass.
+        Extglob negation ``!(...)`` — standalone OR embedded (``${v#x!(o)}``,
+        ``${v/a!(b)c/r}``) — cannot be expressed as a Python regex (see
+        ``extglob._extglob_consume``), so those operators match span-by-span via
+        the matcher. Non-negation patterns keep the fast regex path unchanged.
         """
         if not self._extglob:
-            return None
-        from .extglob import _find_matching_paren
-        if not pattern.startswith('!('):
-            return None
-        close = _find_matching_paren(pattern, 1)
-        if close is None or close != len(pattern) - 1:
-            return None
-        return pattern[2:close]
-
-    def _matches_positive(self, candidate: str, inner: str) -> bool:
-        """Whether *candidate* fully matches the positive pattern @(inner)."""
-        from .extglob import match_extglob
-        return match_extglob('@(' + inner + ')', candidate, full_match=True)
+            return False
+        from .extglob import _contains_negation
+        return _contains_negation(pattern)
 
     # Pattern removal
     def _prefix_match_regex(self, pattern: str):
@@ -98,13 +88,10 @@ class ParameterExpansion:
 
     def remove_shortest_prefix(self, value: str, pattern: str) -> str:
         """Remove shortest matching prefix."""
-        inner = self._standalone_negation_inner(pattern)
-        if inner is not None:
-            # Shortest prefix that does NOT match the positive pattern.
-            for i in range(len(value) + 1):
-                if not self._matches_positive(value[:i], inner):
-                    return value[i:]
-            return value
+        if self._neg(pattern):
+            from .extglob import _extglob_consume
+            lengths = _extglob_consume(pattern, value)
+            return value[min(lengths):] if lengths else value
         compiled = self._prefix_match_regex(pattern)
         # Shortest matching prefix: scan from the front.
         for i in range(len(value) + 1):
@@ -114,13 +101,10 @@ class ParameterExpansion:
 
     def remove_longest_prefix(self, value: str, pattern: str) -> str:
         """Remove longest matching prefix."""
-        inner = self._standalone_negation_inner(pattern)
-        if inner is not None:
-            # Longest prefix that does NOT match the positive pattern.
-            for i in range(len(value), -1, -1):
-                if not self._matches_positive(value[:i], inner):
-                    return value[i:]
-            return value
+        if self._neg(pattern):
+            from .extglob import _extglob_consume
+            lengths = _extglob_consume(pattern, value)
+            return value[max(lengths):] if lengths else value
         compiled = self._prefix_match_regex(pattern)
         # Longest matching prefix: scan from the back.
         for i in range(len(value), -1, -1):
@@ -130,11 +114,12 @@ class ParameterExpansion:
 
     def remove_shortest_suffix(self, value: str, pattern: str) -> str:
         """Remove shortest matching suffix."""
-        inner = self._standalone_negation_inner(pattern)
-        if inner is not None:
-            # Shortest suffix that does NOT match the positive pattern.
+        if self._neg(pattern):
+            from .extglob import extglob_fullmatch
+            # Shortest suffix removed = the largest start index whose suffix
+            # matches the pattern.
             for i in range(len(value), -1, -1):
-                if not self._matches_positive(value[i:], inner):
+                if extglob_fullmatch(pattern, value[i:]):
                     return value[:i]
             return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob)
@@ -149,11 +134,12 @@ class ParameterExpansion:
 
     def remove_longest_suffix(self, value: str, pattern: str) -> str:
         """Remove longest matching suffix."""
-        inner = self._standalone_negation_inner(pattern)
-        if inner is not None:
-            # Longest suffix that does NOT match the positive pattern.
+        if self._neg(pattern):
+            from .extglob import extglob_fullmatch
+            # Longest suffix removed = the smallest start index whose suffix
+            # matches the pattern.
             for i in range(len(value) + 1):
-                if not self._matches_positive(value[i:], inner):
+                if extglob_fullmatch(pattern, value[i:]):
                     return value[:i]
             return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob)
@@ -170,6 +156,16 @@ class ParameterExpansion:
     def substitute_first(self, value: str, pattern: str,
                          replacement: Union[str, list]) -> str:
         """Replace first match."""
+        if self._neg(pattern):
+            from .extglob import extglob_match_at
+            n = len(value)
+            for p in range(n + 1):
+                length = extglob_match_at(pattern, value, p)
+                if length is not None and not (length == 0 and p == n):
+                    return (value[:p]
+                            + self.render_replacement(replacement, value[p:p + length])
+                            + value[p + length:])
+            return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
         return re.sub(regex,
                       lambda m: self.render_replacement(replacement, m.group(0)),
@@ -178,6 +174,8 @@ class ParameterExpansion:
     def substitute_all(self, value: str, pattern: str,
                        replacement: Union[str, list]) -> str:
         """Replace all matches."""
+        if self._neg(pattern):
+            return self._substitute_all_negation(value, pattern, replacement)
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
         compiled = re.compile(regex)
         # Patterns that can match the empty string (e.g. extglob *(q), ?(q))
@@ -222,9 +220,42 @@ class ParameterExpansion:
                 pos += 1
         return ''.join(out)
 
+    def _substitute_all_negation(self, value: str, pattern: str,
+                                 replacement: Union[str, list]) -> str:
+        """Global substitution for negation patterns (matcher, not regex).
+
+        Same left-to-right, leftmost-longest, empty-match-suppressed-at-end
+        semantics as ``_substitute_all_empty_aware``, but using the extglob
+        backtracking matcher because negation can't be a regex.
+        """
+        from .extglob import extglob_match_at
+        out: List[str] = []
+        pos = 0
+        n = len(value)
+        while pos < n:
+            length = extglob_match_at(pattern, value, pos)
+            if length is None:
+                out.append(value[pos])
+                pos += 1
+            elif length == 0:
+                out.append(self.render_replacement(replacement, ''))
+                out.append(value[pos])
+                pos += 1
+            else:
+                out.append(self.render_replacement(replacement, value[pos:pos + length]))
+                pos += length
+        return ''.join(out)
+
     def substitute_prefix(self, value: str, pattern: str,
                           replacement: Union[str, list]) -> str:
         """Replace prefix match."""
+        if self._neg(pattern):
+            from .extglob import extglob_match_at
+            length = extglob_match_at(pattern, value, 0)
+            if length is not None:
+                return (self.render_replacement(replacement, value[:length])
+                        + value[length:])
+            return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=True, extglob_enabled=self._extglob)
         match = re.match(regex, value)
         if match:
@@ -235,6 +266,14 @@ class ParameterExpansion:
     def substitute_suffix(self, value: str, pattern: str,
                           replacement: Union[str, list]) -> str:
         """Replace suffix match."""
+        if self._neg(pattern):
+            from .extglob import extglob_fullmatch
+            # Longest suffix that matches = smallest start index.
+            for i in range(len(value) + 1):
+                if extglob_fullmatch(pattern, value[i:]):
+                    return (value[:i]
+                            + self.render_replacement(replacement, value[i:]))
+            return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob)
         # Convert to end-anchored regex
         regex = regex.rstrip('$') + '$'
@@ -290,6 +329,9 @@ class ParameterExpansion:
     # Case modification. bash matches the pattern against individual
     # characters: ${v^^pat} examines each char, ${v^pat} only the first.
     def _char_matches(self, char: str, pattern: str) -> bool:
+        if self._neg(pattern):
+            from .extglob import extglob_fullmatch
+            return extglob_fullmatch(pattern, char)
         regex = self.pattern_matcher.shell_pattern_to_regex(
             pattern, anchored=False, extglob_enabled=self._extglob)
         return re.fullmatch(regex, char) is not None
