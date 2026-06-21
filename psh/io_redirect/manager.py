@@ -283,10 +283,12 @@ class IOManager:
                 plan = self.file_redirector.planner.plan(redirect)
                 redirect = plan.redirect
                 target = plan.target
-                if plan.procsub is not None and plan.procsub.parent_fd is not None:
-                    self.process_sub_handler.active_fds.append(
-                        plan.procsub.parent_fd)
-                    plan.procsub.parent_fd = None
+                # A builtin runs in-process and reads /dev/fd/N, so its
+                # process-substitution read end must outlive this single
+                # redirect: hand it to the enclosing process_sub_scope() for
+                # deferred close rather than closing it after the dup2 (the
+                # close_procsub() path the external/permanent backends use).
+                plan.hand_procsub_to_scope(self.process_sub_handler)
 
                 if redirect.combined:
                     self._builtin_redirect_combined(target, redirect, frame)

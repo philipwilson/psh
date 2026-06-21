@@ -72,12 +72,24 @@ finally:
   the redirect's own target. The `finally` placement is load-bearing: it
   guarantees the parent fd is released even when a *later* redirect in the
   same command raises (the pre-v0.375 unconditional close after the
-  if/elif chain leaked on that path).
+  if/elif chain leaked on that path). Used by the external/permanent paths.
+- `hand_procsub_to_scope(handler)` — the *other* fate of a procsub parent
+  fd: instead of closing it after the redirect, hand it to the enclosing
+  `process_sub_scope()` for deferred close. Used by the in-process builtin
+  redirect path, where the builtin reads `/dev/fd/N` and the read end must
+  outlive the single redirect.
+
+A redirect-target substitution's parent fd has exactly these two fates, and
+**both are owned by `RedirectPlan`/`ProcessSubstitutionResource`** — a
+dispatch site never pokes `handler.active_fds` itself.
 
 `ProcessSubstitutionResource` (in `process_sub.py`) owns one substitution's
 `(path, parent_fd, pid, cleanup_path)`; `resolve_procsub_resource()` builds
 it and `register_with(handler)` hands pid/cleanup-path to the enclosing
-`process_sub_scope()`.
+`process_sub_scope()`. `close_parent_fd_for_redirect()` and
+`hand_off_to_scope()` are the close-vs-transfer primitives the plan delegates
+to (the latter is the single place that appends to `active_fds`, shared by
+word-expansion substitutions and the builtin path).
 
 ### 2. Context Manager for Temporary Redirections
 
