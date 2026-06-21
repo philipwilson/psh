@@ -80,14 +80,30 @@ class RedirectionParser(ParserSubcomponent):
 
     def _parse_heredoc(self, token: Token) -> Redirect:
         """Parse here document redirect."""
-        if not self.parser.match(TokenType.WORD, TokenType.STRING):
+        # The delimiter word may START with an expansion-shaped token taken
+        # literally (``<<$VAR`` → terminator ``$VAR``), not just WORD/STRING.
+        if not self.parser.match(TokenType.WORD, TokenType.STRING,
+                                 TokenType.VARIABLE):
             raise self.parser.error("Expected delimiter after here document operator")
 
         delimiter_token = self.parser.advance()
         delimiter = delimiter_token.value
 
-        # Determine if delimiter was quoted (disables variable expansion)
-        heredoc_quoted = delimiter_token.type == TokenType.STRING
+        # Determine if delimiter was quoted (disables variable expansion).
+        heredoc_quoted = (delimiter_token.type == TokenType.STRING
+                          or '\\' in delimiter_token.value)
+
+        # A composite delimiter spans several ADJACENT word-like tokens
+        # (`<<E"O"F`, `<<E$X`). Consume them all so the trailing parts are not
+        # parsed as command arguments, and quote the body if any part was
+        # quoted/escaped (matches HeredocLexer._delimiter_from_source, which
+        # recovers the body terminator from the same source span).
+        while (self.parser.peek().type in TokenGroups.WORD_LIKE
+               and getattr(self.parser.peek(), 'adjacent_to_previous', False)):
+            part = self.parser.advance()
+            delimiter += part.value
+            if part.type == TokenType.STRING or '\\' in part.value:
+                heredoc_quoted = True
 
         redirect = Redirect(
             type=token.value,

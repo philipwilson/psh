@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.536.0 (2026-06-21) - Fix: composite / $-containing heredoc delimiters (appraisal Tier 3, M1)
+- BUGFIX (MED). A heredoc delimiter that spans several tokens — ``<<E$X``,
+  ``<<E"O"F``, ``<<$VAR`` — was truncated to its LEADING token, so the body never
+  terminated (``<<E$X`` returned empty) and the trailing parts were parsed as
+  command arguments (``<<E"O"F`` ran ``cat OF``). bash takes the whole delimiter
+  word LITERALLY (no expansion). Now the three places that recover a heredoc
+  delimiter agree on the full word:
+  - the lexer (body terminator) recovers it from the raw source span of the
+    delimiter's adjacent tokens (``HeredocLexer._delimiter_from_source``);
+  - the parser consumes ALL adjacent word/expansion tokens (so trailing parts
+    are not command args) and sets ``heredoc_quoted`` from any quoted/escaped
+    part (``_parse_heredoc``, now also accepting a ``$VAR``-leading delimiter);
+  - the line-gathering detector's ``HEREDOC_MARKER_RE`` now includes ``$`` as a
+    literal delimiter char (``utils/heredoc_detection.py``).
+- A subtle bug found and fixed along the way: the lexer recovers the delimiter
+  from the body-STRIPPED command text the tokens came from, NOT ``self.source``
+  (whose offsets include the removed body lines) — otherwise a SECOND heredoc's
+  delimiter was sliced from the wrong offset.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, M1). New
+  ``tests/integration/redirection/test_heredoc_composite_delimiter.py`` (14
+  cases, bash-compared).
+
 ## 0.535.0 (2026-06-21) - Fix: set -u exit status is 1 for a script file, 127 only for -c (appraisal Tier 3, M13)
 - BUGFIX (MED). A ``set -u`` unbound-variable abort exited with status 127 in
   EVERY non-interactive mode, but bash uses 127 only for ``-c`` — a script file

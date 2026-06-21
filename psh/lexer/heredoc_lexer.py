@@ -14,6 +14,15 @@ from .heredoc_collector import HeredocCollector
 from .modular_lexer import ModularLexer
 from .token_types import Token, TokenType
 
+# Token types that can be ADJACENT parts of one heredoc delimiter word
+# (`<<E"O"F`, `<<E$X`). Operators (`;`, `|`, redirects) end the word even when
+# they touch it (`<<EOF;`), so they are excluded.
+_DELIMITER_PART_TYPES = frozenset({
+    TokenType.WORD, TokenType.STRING, TokenType.VARIABLE,
+    TokenType.COMMAND_SUB, TokenType.COMMAND_SUB_BACKTICK,
+    TokenType.ARITH_EXPANSION, TokenType.PARAM_EXPANSION,
+})
+
 
 def normalize_heredoc_delimiter(parts: List[Token]) -> Tuple[str, bool]:
     """Recover a heredoc's literal delimiter text and whether it was quoted.
@@ -84,7 +93,7 @@ class HeredocLexer:
                 # command CONTINUATION — heredoc bodies only begin once the
                 # command itself tokenizes completely.
                 continue
-            registered = self._register_from_tokens(toks, registered)
+            registered = self._register_from_tokens(toks, registered, text)
 
         command_text = '\n'.join(command_lines)
         if self.source.endswith('\n'):
@@ -114,8 +123,50 @@ class HeredocLexer:
 
     # === Heredoc operator discovery ===
 
-    def _register_from_tokens(self, toks: List[Token], registered: int) -> int:
-        """Register heredocs for operator tokens beyond ``registered``."""
+    @staticmethod
+    def _delimiter_from_source(raw: str) -> Tuple[str, bool]:
+        """Quote/escape-remove a raw heredoc delimiter word.
+
+        Returns (literal_terminator, quoted). The body terminator line must
+        equal the literal exactly; ANY quote or backslash in the delimiter makes
+        the body literal (no expansion). An unquoted ``$`` is just a literal
+        terminator char (``<<E$X`` → terminator ``E$X``, body still expands).
+        """
+        literal: List[str] = []
+        quoted = False
+        i = 0
+        n = len(raw)
+        while i < n:
+            c = raw[i]
+            if c == '\\' and i + 1 < n:
+                quoted = True
+                literal.append(raw[i + 1])
+                i += 2
+            elif c in ('"', "'"):
+                quoted = True
+                quote = c
+                i += 1
+                while i < n and raw[i] != quote:
+                    if quote == '"' and raw[i] == '\\' and i + 1 < n:
+                        literal.append(raw[i + 1])
+                        i += 2
+                    else:
+                        literal.append(raw[i])
+                        i += 1
+                i += 1  # skip the closing quote
+            else:
+                literal.append(c)
+                i += 1
+        return ''.join(literal), quoted
+
+    def _register_from_tokens(self, toks: List[Token], registered: int,
+                              text: str) -> int:
+        """Register heredocs for operator tokens beyond ``registered``.
+
+        ``text`` is the command text ``toks`` were tokenized from (heredoc
+        bodies already stripped), so token positions index INTO ``text`` — NOT
+        ``self.source`` (whose offsets include the removed body lines).
+        """
         seen = 0
         for i, token in enumerate(toks):
             if token.type in (TokenType.HEREDOC, TokenType.HEREDOC_STRIP):
@@ -123,14 +174,23 @@ class HeredocLexer:
                 if seen <= registered:
                     continue
                 if i + 1 < len(toks):
-                    # Recover the literal delimiter from the single token after
-                    # << (the delimiter the parser also consumes): \EOF -> EOF
-                    # (quoted), EO\F -> EOF, "E F" -> "E F" (quoted), 'EOF' ->
-                    # EOF. A composite multi-token delimiter (E"O"F) is not
-                    # recovered here — the parser only consumes one token — and
-                    # is an accepted limitation (very rare).
-                    delimiter, quoted = normalize_heredoc_delimiter(
-                        [toks[i + 1]])
+                    # Recover the FULL delimiter word from the raw SOURCE span of
+                    # its adjacent tokens. The delimiter is taken LITERALLY (no
+                    # expansion), so a `$X`/`$(...)` in it (`<<E$X`) is part of
+                    # the terminator, and a composite (`E"O"F`, `<<E$X`) spans
+                    # several tokens. Reconstructing from individual token
+                    # *values* drops a VARIABLE part's `$` or a STRING's quotes;
+                    # the source slice preserves them. Quote/escape removal then
+                    # yields the literal terminator (and whether the body is
+                    # quoted = not expanded).
+                    delim_toks = [toks[i + 1]]
+                    j = i + 2
+                    while (j < len(toks) and toks[j].adjacent_to_previous
+                           and toks[j].type in _DELIMITER_PART_TYPES):
+                        delim_toks.append(toks[j])
+                        j += 1
+                    raw = text[delim_toks[0].position:delim_toks[-1].end_position]
+                    delimiter, quoted = self._delimiter_from_source(raw)
                     self.heredoc_collector.register_heredoc(
                         delimiter=delimiter,
                         strip_tabs=(token.type == TokenType.HEREDOC_STRIP),
