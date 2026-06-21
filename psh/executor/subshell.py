@@ -223,19 +223,8 @@ class SubshellExecutor:
 
             return exit_code
 
-        # Configure launch
-        config = ProcessConfig(
-            role=ProcessRole.SINGLE,
-            foreground=False,
-            is_shell_process=True
-        )
-
-        pid, pgid = self.launcher.launch(execute_fn, config)
-
-        # Register the job and print the interactive "[N] PID" notice
-        self.job_manager.launch_background(pgid, "<subshell>", [(pid, "subshell")])
-
-        return 0
+        return self.launcher.launch_background_job(
+            execute_fn, "<subshell>", "subshell", is_shell_process=True)
 
     def _execute_background_brace_group(self, node: 'BraceGroup',
                                        visitor: 'ASTVisitor[int]') -> int:
@@ -261,16 +250,5 @@ class SubshellExecutor:
 
             return exit_code
 
-        # Configure launch
-        config = ProcessConfig(
-            role=ProcessRole.SINGLE,
-            foreground=False,
-            is_shell_process=True
-        )
-
-        pid, pgid = self.launcher.launch(execute_fn, config)
-
-        # Register the job and print the interactive "[N] PID" notice
-        self.job_manager.launch_background(pgid, "<brace-group>", [(pid, "brace-group")])
-
-        return 0
+        return self.launcher.launch_background_job(
+            execute_fn, "<brace-group>", "brace-group", is_shell_process=True)
