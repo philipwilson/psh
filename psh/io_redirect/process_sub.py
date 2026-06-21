@@ -83,11 +83,12 @@ def create_process_substitution(
 
 
 def _execute_process_substitution_body(cmd_str: str, child_shell: 'Shell') -> int:
-    from ..lexer import tokenize
-    from ..parser import parse
-    tokens = tokenize(cmd_str)
-    ast = parse(tokens)
-    return child_shell.execute_command_list(ast)
+    # Route through the unified input path (like command substitution's
+    # child.run_command) so the body gets heredoc-aware lexing, line
+    # continuations, etc. A bare tokenize()/parse() here has no heredoc
+    # support, so a heredoc inside the substitution (`<(cat <<EOF ... EOF)`)
+    # leaked its body lines as separate commands.
+    return child_shell.run_command(cmd_str, add_to_history=False)
 
 
 def _unlink_fifo_dir(fifo_path: str) -> None:

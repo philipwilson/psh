@@ -76,7 +76,8 @@ class CommandParser(ParserSubcomponent):
         # Check tokens that might contain expansions
         if token.type not in [TokenType.WORD, TokenType.COMPOSITE, TokenType.COMMAND_SUB,
                               TokenType.COMMAND_SUB_BACKTICK, TokenType.ARITH_EXPANSION, TokenType.VARIABLE,
-                              TokenType.PARAM_EXPANSION]:
+                              TokenType.PARAM_EXPANSION,
+                              TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT]:
             return
 
         # Check token parts for unclosed expansions
@@ -111,6 +112,16 @@ class CommandParser(ParserSubcomponent):
             self._raise_syntax_error(
                 f"syntax error: unclosed parameter expansion '{token.value}'", token,
                 at_eof=True, unclosed='parameter')
+        elif token.type in (TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT) \
+                and not token.value.endswith(')'):
+            # An unclosed `<(`/`>(` swallows everything to end of input (so a
+            # `<<EOF` inside it stays nested, like $(...)). Treat it as
+            # incomplete input — interactive/script line-gathering reads more
+            # lines until the matching ')' arrives (multi-line process subs,
+            # including heredocs inside them).
+            self._raise_syntax_error(
+                f"syntax error: unclosed process substitution '{token.value}'", token,
+                at_eof=True, unclosed='command')
 
     def parse_command(self) -> SimpleCommand:
         """Parse a single command with its arguments and redirections."""

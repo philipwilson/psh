@@ -64,8 +64,16 @@ class ProcessSubstitutionRecognizer(TokenRecognizer):
         from ..cmdsub_scanner import find_command_substitution_end
         pos, found = find_command_substitution_end(input_text, pos)
         if not found:
-            # Unclosed parentheses
-            return None
+            # Unclosed: take everything to end of input as one (incomplete)
+            # process-substitution token — mirroring how $( marks
+            # 'command_unclosed' rather than returning None. Degrading to a
+            # bare '<' redirect here would let an inner `<<EOF` leak out as a
+            # SEPARATE top-level heredoc, whose body the heredoc lexer would
+            # then strip — breaking the later full-state tokenization once the
+            # closing ')' arrives (`cat <(cat <<EOF ... EOF\n)`). Keeping the
+            # whole span inside this token leaves the heredoc nested where it
+            # belongs, exactly as it is inside $(...).
+            pos = len(input_text)
 
         # Create token with the entire process substitution
         value = input_text[start_pos:pos]

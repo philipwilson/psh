@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.538.0 (2026-06-21) - Fix: heredoc inside process substitution (appraisal Tier 3, M8)
+- BUGFIX (MED). A heredoc inside ``<(...)`` / ``>(...)`` —
+  ``cat <(cat <<EOF`` … ``EOF`` … ``)`` — failed two ways: the outer parse
+  errored ("Expected file name"), and once that was past, the heredoc body
+  lines leaked out as top-level commands (``hello: command not found``). Three
+  fixes, all so the inner heredoc stays nested exactly as it does inside
+  ``$(...)``:
+  - **Lexer** (``recognizers/process_sub.py``): an unclosed ``<(``/``>(`` now
+    takes everything to end of input as one (incomplete) process-substitution
+    token, instead of returning ``None`` and degrading to a bare ``<`` redirect
+    — which let the inner ``<<EOF`` escape as a SEPARATE top-level heredoc whose
+    body the heredoc lexer then stripped, breaking the later full tokenization.
+  - **Parser** (``recursive_descent/parsers/commands.py``): an unclosed
+    process-substitution token (value not ending in ``)``) raises an
+    incomplete-input (``at_eof``) error, so interactive/script line-gathering
+    keeps reading until the matching ``)`` arrives — mirroring ``$(``'s
+    ``command_unclosed`` handling. A genuinely unclosed ``<(`` at EOF now
+    reports a clean "unclosed process substitution" error instead of a runaway.
+  - **Executor** (``io_redirect/process_sub.py``): the substitution body now
+    runs through the unified ``child.run_command`` path (heredoc-aware), like
+    command substitution, instead of a bare ``tokenize``/``parse`` with no
+    heredoc support.
+
 ## 0.537.0 (2026-06-21) - Fix: interactive PS1/PS2 perform $-expansion (appraisal Tier 3, M12)
 - BUGFIX (MED). In the interactive REPL, PS1/PS2 were rendered through the
   escape-ONLY path (``\u``, ``\h``, ``\w``…), so ``$``/``$(...)``/``$((...))`` in a

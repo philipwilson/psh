@@ -1876,3 +1876,17 @@
   stdout: "5\n"
   stderr: ""
   exit_code: 0
+
+# Heredoc inside process substitution (Tier 3 M8): the whole <(...) spans
+# multiple lines and contains a <<EOF whose body must stay nested.
+- name: heredoc_inside_process_substitution
+  command: "cat <(cat <<EOF\nhello\nEOF\n)"
+  stdout: "hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_inside_process_substitution_filtered
+  command: "cat <(sort <<EOF\n3\n1\n2\nEOF\n)"
+  stdout: "1\n2\n3\n"
+  stderr: ""
+  exit_code: 0
