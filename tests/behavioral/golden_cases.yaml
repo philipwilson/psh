@@ -1664,3 +1664,39 @@
   stderr: ""
   exit_code: 0
   psh_only: true
+
+# =============================================================================
+# PARSE ERRORS — empty compound bodies/conditions (appraisal H1)
+# bash rejects these at parse time (exit 2); an empty `do` body would hang.
+# stdout/exit are bash-comparable; stderr text differs by shell, so a substring.
+# =============================================================================
+
+- name: empty_while_body_rejected
+  command: "while true; do done"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2
+
+- name: empty_then_body_rejected
+  command: "if true; then fi"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2
+
+- name: empty_for_body_rejected
+  command: "for i in 1 2; do done"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2
+
+- name: empty_function_body_rejected
+  command: "f() { }"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2
+
+- name: empty_if_condition_rejected
+  command: "if then echo x; fi"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2

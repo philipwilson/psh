@@ -58,14 +58,25 @@ class TestFunctionDefinition:
         assert shell.function_manager.get_function('greet') is not None
 
     def test_empty_function_definition(self, shell_with_temp_dir):
-        """Test empty function definition."""
+        """An empty-bodied function uses `:` (bash rejects a literally empty body)."""
         shell = shell_with_temp_dir
 
-        result = shell.run_command('noop() { }')
+        result = shell.run_command('noop() { :; }')
         assert result == 0
 
         # Verify function was defined
         assert shell.function_manager.get_function('noop') is not None
+
+    def test_literally_empty_function_body_is_syntax_error(self, shell_with_temp_dir):
+        """`f() { }` with no command is a syntax error, exactly as in bash."""
+        shell = shell_with_temp_dir
+
+        # bash: "syntax error near unexpected token `}'" (exit 2); the body must
+        # contain at least one command. PSH parses, so the definition fails and
+        # the function is never created.
+        result = shell.run_command('noop() { }')
+        assert result != 0
+        assert shell.function_manager.get_function('noop') is None
 
     def test_function_with_complex_body(self, shell_with_temp_dir):
         """Test function with complex command structures."""
@@ -157,10 +168,10 @@ class TestFunctionReturnValues:
         assert result == 1  # false returns 1
 
     def test_function_empty_body_return(self, shell_with_temp_dir):
-        """Test empty function returns 0."""
+        """A no-op function body (`:`) returns 0."""
         shell = shell_with_temp_dir
 
-        shell.run_command('noop() { }')
+        shell.run_command('noop() { :; }')
         result = shell.run_command('noop')
         assert result == 0
 
