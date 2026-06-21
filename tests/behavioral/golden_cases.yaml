@@ -1855,3 +1855,9 @@
   stdout: "fd3body\n"
   stderr: ""
   exit_code: 0
+
+- name: funcname_caller_in_array
+  command: "outer(){ inner; }; inner(){ echo \"${FUNCNAME[0]}<-${FUNCNAME[1]}\"; }; outer"
+  stdout: "inner<-outer\n"
+  stderr: ""
+  exit_code: 0

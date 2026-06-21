@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.533.0 (2026-06-21) - Fix: FUNCNAME is the full call stack, not just the current function (appraisal Tier 3)
+- BUGFIX (MED). ``FUNCNAME`` is an ARRAY in bash — ``[0]`` is the running
+  function, ``[1]`` its caller, and so on — but psh returned only a SCALAR (the
+  current function), so ``${FUNCNAME[1]}`` (the caller's name) and
+  ``${#FUNCNAME[@]}`` beyond 1 were empty. It is now built as an indexed array
+  from ``function_stack`` reversed (innermost first), in
+  ``ScopeManager`` special-variable resolution (``core/scope.py``). ``$FUNCNAME``
+  and ``${FUNCNAME[0]}`` are unchanged; outside a function it is still empty.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``). New
+  ``tests/unit/core/test_funcname_call_stack.py`` (12 cases) and a bash-compared
+  golden case.
+
 ## 0.532.0 (2026-06-21) - Fix: explicit-fd heredoc/here-string no longer self-closes (appraisal Tier 3, M6)
 - BUGFIX (MED). An explicit-fd heredoc / here-string (``cat 3<<EOF <&3``,
   ``cat 5<<<word <&5``) lost its body with ``Bad file descriptor`` whenever the
