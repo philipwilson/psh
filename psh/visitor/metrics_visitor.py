@@ -29,8 +29,6 @@ from ..ast_nodes import (
     Redirect,
     SelectLoop,
     SimpleCommand,
-    StatementList,
-    TopLevel,
     UntilLoop,
     WhileLoop,
     Word,
@@ -154,21 +152,14 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self.current_function = None
         self.in_command_substitution = False
 
-    def visit_TopLevel(self, node: TopLevel) -> None:
-        """Visit top-level statements."""
-        for item in node.items:
-            self.visit(item)
+    # TopLevel / StatementList carry no metrics of their own; the
+    # generic_visit -> visit_children default descends into their children.
 
     def visit_Redirect(self, node: Redirect) -> None:
         """Count a redirection (and here-documents)."""
         self.metrics.total_redirections += 1
         if node.type in ['<<', '<<-']:
             self.metrics.here_documents += 1
-
-    def visit_StatementList(self, node: StatementList) -> None:
-        """Visit statement list."""
-        for statement in node.statements:
-            self.visit(statement)
 
     def visit_AndOrList(self, node: AndOrList) -> None:
         """Visit and/or list."""

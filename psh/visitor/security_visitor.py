@@ -8,7 +8,6 @@ dangerous patterns in shell scripts.
 from typing import Any, Dict, List
 
 from ..ast_nodes import (
-    AndOrList,
     ArithmeticEvaluation,
     ASTNode,
     CaseConditional,
@@ -18,8 +17,6 @@ from ..ast_nodes import (
     Pipeline,
     Redirect,
     SimpleCommand,
-    StatementList,
-    TopLevel,
     WhileLoop,
 )
 from .analysis_helpers import RedirectTraversalMixin
@@ -227,19 +224,10 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
         self._visit_redirects(node)
 
-    # Visit methods for other nodes that just traverse
-    def visit_TopLevel(self, node: TopLevel) -> None:
-        for item in node.items:
-            self.visit(item)
-
-    def visit_StatementList(self, node: StatementList) -> None:
-        for stmt in node.statements:
-            self.visit(stmt)
-
-    def visit_AndOrList(self, node: AndOrList) -> None:
-        for pipeline in node.pipelines:
-            self.visit(pipeline)
-
+    # TopLevel / StatementList / AndOrList need no explicit handler: the
+    # generic_visit -> visit_children default descends into exactly their
+    # ASTNode children (items / statements / pipelines). Only nodes that add
+    # per-node analysis or carry redirects keep an explicit method below.
     def visit_IfConditional(self, node: IfConditional) -> None:
         self.visit(node.condition)
         self.visit(node.then_part)
