@@ -177,9 +177,15 @@ class FileRedirector:
         tmp.write(content.encode())
         tmp.flush()
         tmp.seek(0)
-        if tmp.fileno() != target_fd:
-            os.dup2(tmp.fileno(), target_fd)
-        tmp.close()  # target_fd keeps the underlying file open
+        # Hand the body to target_fd through the shared fd-preserving primitive.
+        # os.dup() FIRST gives an `opened` fd distinct from the temp object's own
+        # fd, so closing the temp object can never reclaim target_fd — the bug
+        # when tempfile happened to land ON target_fd (e.g. `cat 3<<EOF <&3`),
+        # where the old "skip dup2 when fds match, then tmp.close()" closed the
+        # very fd holding the body.
+        opened = os.dup(tmp.fileno())
+        tmp.close()
+        _dup2_preserve_target(opened, target_fd)
 
     @staticmethod
     def _heredoc_fd(redirect) -> int:

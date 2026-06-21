@@ -1849,3 +1849,9 @@
   stdout: "D\nD\nc\n"
   stderr: ""
   exit_code: 0
+
+- name: explicit_fd_heredoc_no_self_close
+  command: "cat 3<<EOF <&3\nfd3body\nEOF"
+  stdout: "fd3body\n"
+  stderr: ""
+  exit_code: 0
