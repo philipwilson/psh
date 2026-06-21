@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.520.0 (2026-06-21) - Fix: --format round-trip losses + analysis-mode crash on syntax error (appraisal H10/H11)
+- BUGFIX (HIGH). ``--format`` was lossy in four behavior-changing ways (distinct
+  from the four fixed in v0.505): each produced output that re-parsed to
+  DIFFERENT — sometimes INVALID — shell.
+  - A bare ``$var`` before a name-continuation char dropped its disambiguating
+    braces: ``echo ${x}there`` → ``echo $xthere`` (references a different
+    variable); ``${x}0`` → ``$x0``.
+  - ``case`` patterns lost their quotes: ``"a b")`` → ``a b)`` (a quoted literal
+    silently became two glob words). Root: ``visit_CaseItem`` used the flat
+    ``pattern`` string instead of the quote-preserving ``CasePattern.word``.
+  - The ``case`` subject lost its quotes: ``case "a b" in`` → ``case a b in``
+    (a SYNTAX ERROR on re-parse). The subject is a flat quote-stripped string;
+    it is now re-quoted when it contains whitespace.
+  - Embedded quotes/backticks in a double-quoted literal were not re-escaped:
+    ``echo "say \"hi\""`` → ``echo "say "hi""``. ``_format_word`` now re-escapes
+    ``\``/``"``/`` ` `` when re-wrapping a double-quoted literal.
+- BUGFIX (HIGH). All five analysis modes (``--validate``/``--format``/
+  ``--metrics``/``--security``/``--lint``) crashed with an uncaught Python
+  traceback on a syntax error — defeating the whole point of ``--validate``.
+  ``visitor_modes.py`` caught only ``(ValueError, TypeError)``, but
+  ``ParseError``/``LexerError``/``UnclosedQuoteError`` derive from
+  ``PshError``/``SyntaxError``. They are now caught and reported as a one-line
+  ``psh: <loc>: <message>`` diagnostic with exit 2 (matching bash ``-n`` and the
+  execution path).
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, findings H10/H11). New
+  ``tests/unit/visitor/test_formatter_losses_and_analysis_crash.py`` (21 cases,
+  incl. behavior-preservation round-trips and all five modes on parse+lexer
+  errors).
+
 ## 0.519.0 (2026-06-21) - Fix: readonly -a/-A and export -f accepted (appraisal H6/H7)
 - BUGFIX (HIGH, two related). Two declaration builtins hand-rolled incomplete
   flag parsers that rejected everyday attribute/function flags bash accepts —

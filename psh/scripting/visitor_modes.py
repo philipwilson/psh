@@ -36,11 +36,29 @@ def _parse_for_analysis(shell: 'Shell', content: str) -> Any:
     return parse(tokenize(content))
 
 
+def _report_syntax_error(location: str, exc: Exception) -> int:
+    """Print a one-line syntax-error diagnostic (like the execution path) and
+    return 2 (bash's exit status for a syntax error under ``-n``).
+
+    A lex/parse failure must NOT escape as an uncaught Python traceback — that
+    defeats the entire purpose of ``--validate`` and friends.
+    """
+    from ..parser import ParseError
+    message = exc.message if isinstance(exc, ParseError) else f"syntax error: {exc}"
+    print(f"psh: {location}: {message}", file=sys.stderr)
+    return 2
+
+
 def handle_visitor_mode_for_command(shell: 'Shell', command: str) -> int:
     """Run the selected analysis mode over a ``-c`` command string."""
+    from ..core.exceptions import PshError
     try:
         ast = _parse_for_analysis(shell, command)
         return apply_visitor_mode(shell, ast)
+    except (PshError, SyntaxError) as e:
+        # ParseError (PshError), LexerError (PshError+SyntaxError), and
+        # UnclosedQuoteError (SyntaxError) are all expected syntax errors.
+        return _report_syntax_error("-c", e)
     except (ValueError, TypeError) as e:
         print(f"Error parsing command: {e}", file=sys.stderr)
         return 1
@@ -48,6 +66,7 @@ def handle_visitor_mode_for_command(shell: 'Shell', command: str) -> int:
 
 def handle_visitor_mode_for_script(shell: 'Shell', script_path: str) -> int:
     """Run the selected analysis mode over a script file."""
+    from ..core.exceptions import PshError
     try:
         # Read and parse the script file
         with open(script_path, 'r') as f:
@@ -58,6 +77,8 @@ def handle_visitor_mode_for_script(shell: 'Shell', script_path: str) -> int:
     except FileNotFoundError:
         print(f"psh: {script_path}: No such file or directory", file=sys.stderr)
         return 1
+    except (PshError, SyntaxError) as e:
+        return _report_syntax_error(script_path, e)
     except (ValueError, TypeError, OSError) as e:
         print(f"Error processing script: {e}", file=sys.stderr)
         return 1

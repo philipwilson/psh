@@ -106,33 +106,75 @@ class FormatterVisitor(ASTVisitor[str]):
             self.level = saved
 
     @staticmethod
+    def _needs_brace_disambiguation(part, next_part) -> bool:
+        """Whether a bare ``$name`` must be written ``${name}`` to round-trip.
+
+        ``$x`` immediately followed by an UNQUOTED name-continuation char
+        (``${x}there`` parsed to VariableExpansion(x) + literal "there") would
+        re-emit as ``$xthere`` — a different variable. A following QUOTE or
+        ``$`` already delimits the name, so braces are needed only before an
+        unquoted literal that starts with ``[A-Za-z0-9_]``.
+        """
+        if not (isinstance(part, ExpansionPart)
+                and isinstance(part.expansion, VariableExpansion)):
+            return False
+        if not isinstance(next_part, LiteralPart) or getattr(next_part, 'quoted', False):
+            return False
+        return bool(next_part.text) and (next_part.text[0].isalnum()
+                                         or next_part.text[0] == '_')
+
+    @staticmethod
+    def _escape_double_quoted(text: str) -> str:
+        """Re-escape a literal that will be re-wrapped in double quotes.
+
+        The lexer stored the UNESCAPED text (``\\"`` -> ``"``), so the chars
+        that are special inside ``"..."`` must be re-escaped or the quote would
+        terminate early / the text would re-parse differently. ``$`` is left
+        alone: a literal ``$`` in a double-quoted LiteralPart is never followed
+        by an expansion-forming char (the lexer would have split that off as an
+        ExpansionPart), so it round-trips as-is.
+        """
+        return text.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`')
+
+    @staticmethod
     def _format_word(word) -> str:
         """Format a Word by reconstructing from its parts with quoting.
 
         Groups consecutive parts that share the same quote context so
         that ``"$HOME/bin"`` is emitted as one quoted region rather than
-        ``"$HOME""/bin"``.
+        ``"$HOME""/bin"``. Preserves brace-disambiguation (``${x}there``) and
+        re-escapes double-quoted literals so the output re-parses identically.
         """
-        # Group consecutive parts by their quote context
-        groups: list = []  # [(quote_char_or_None, [text, ...])]
-        for part in word.parts:
+        parts = word.parts
+        # Group consecutive parts by their quote context, keeping each part so
+        # literals can be re-escaped (only literals; an expansion is live text).
+        groups: list = []  # [(quote_char_or_None, [(part, text), ...])]
+        for i, part in enumerate(parts):
             qc = getattr(part, 'quote_char', None) if getattr(part, 'quoted', False) else None
-            text = str(part)
-            if groups and groups[-1][0] == qc:
-                groups[-1][1].append(text)
+            next_part = parts[i + 1] if i + 1 < len(parts) else None
+            if FormatterVisitor._needs_brace_disambiguation(part, next_part):
+                text = '${' + part.expansion.name + '}'
             else:
-                groups.append((qc, [text]))
+                text = str(part)
+            if groups and groups[-1][0] == qc:
+                groups[-1][1].append((part, text))
+            else:
+                groups.append((qc, [(part, text)]))
 
         result: list = []
-        for qc, texts in groups:
-            content = ''.join(texts)
-            if qc:
-                if qc == "$'":
-                    result.append(f"$'{content}'")
-                else:
-                    result.append(f'{qc}{content}{qc}')
+        for qc, items in groups:
+            if qc == '"':
+                content = ''.join(
+                    FormatterVisitor._escape_double_quoted(text)
+                    if isinstance(part, LiteralPart) else text
+                    for part, text in items)
+                result.append(f'"{content}"')
+            elif qc == "$'":
+                result.append("$'" + ''.join(t for _, t in items) + "'")
+            elif qc:  # single quote (literal content, no escaping)
+                result.append(f"{qc}{''.join(t for _, t in items)}{qc}")
             else:
-                result.append(content)
+                result.append(''.join(t for _, t in items))
         return ''.join(result)
 
     # Top-level nodes
@@ -337,7 +379,14 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format a case statement."""
         lines = []
 
-        lines.append(f"{self._indent()}case {node.expr} in")
+        # The case subject is stored as a flat, quote-stripped string (it has
+        # no Word to consult). If it contains whitespace it MUST have been
+        # quoted in the source (`case "a b" in`), so re-quote it — otherwise
+        # the reformatted `case a b in` is a syntax error.
+        subject = node.expr
+        if any(c.isspace() for c in subject):
+            subject = f'"{subject}"'
+        lines.append(f"{self._indent()}case {subject} in")
 
         self._increase_indent()
         for item in node.items:
@@ -354,8 +403,11 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format a case item."""
         lines = []
 
-        # Format patterns
-        patterns = [p.pattern for p in node.patterns]
+        # Format patterns — use the quote-preserving Word path so a quoted
+        # literal pattern (`"a b")`) keeps its quotes instead of degrading to
+        # two glob words.
+        patterns = [self._format_word(p.word) if p.word is not None else p.pattern
+                    for p in node.patterns]
         lines.append(f"{self._indent()}{' | '.join(patterns)})")
 
         # Format commands
