@@ -71,10 +71,12 @@ class TestAbsentBashFeatures:
         the stderr-emptiness check)."""
         assert_bash_parity('sleep 0.05 & wait -f $!; echo rc=$?')
 
-    @pytest.mark.xfail(strict=True, reason="read -u FD is not implemented")
     def test_read_dash_u(self):
-        """bash: `read -u 3` reads from fd 3 (probe: got:fd_data_xyz).
-        psh: 'read: -u: invalid option'."""
+        """`read -u 3` reads from fd 3 — now matches bash (got:fd_data_xyz).
+
+        Was xfail: it relied on a here-string on an explicit fd
+        (``3<<< fd_data_xyz``), which mis-delivered the body until the M6
+        explicit-fd heredoc/here-string self-close fix (v0.532). Now parity."""
         assert_bash_parity('read -u 3 line 3<<< fd_data_xyz; echo got:$line')
 
     @pytest.mark.xfail(strict=True, reason="bind builtin is not implemented")

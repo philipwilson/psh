@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.532.0 (2026-06-21) - Fix: explicit-fd heredoc/here-string no longer self-closes (appraisal Tier 3, M6)
+- BUGFIX (MED). An explicit-fd heredoc / here-string (``cat 3<<EOF <&3``,
+  ``cat 5<<<word <&5``) lost its body with ``Bad file descriptor`` whenever the
+  anonymous temp file ``_content_to_fd`` used happened to land ON the target fd
+  (the lowest free fd). The old code skipped the ``dup2`` when the fds matched
+  and then ``tmp.close()`` closed the very fd holding the body. The existing
+  conformance test used fds 5/10 (too high to collide), so it never caught it.
+- Fix: deliver the body through the shared fd-preserving primitive — ``os.dup``
+  the temp fd FIRST, so closing the temp object can never reclaim the target fd
+  (``io_redirect/file_redirect.py``, addressing elegance finding E-IO's
+  ``_content_to_fd`` / ``_dup2_preserve_target`` duplication at the same time).
+- Side effect: ``read -u 3 line 3<<< data`` now matches bash (it relied on a
+  here-string on an explicit fd), so its strict-xfail conformance test was
+  converted to a passing parity test.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, M6). New
+  ``tests/integration/redirection/test_explicit_fd_heredoc_no_self_close.py``
+  (6 cases, fds 3/4/5 that collide) and a bash-compared golden case. (M7 — the
+  builtin ``>&2`` stream-object aliasing — is deferred: its fix is entangled with
+  the in-process stream-vs-fd capture model.)
+
 ## 0.531.0 (2026-06-21) - Fix: backgrounded assignment runs in a subshell; DEBUG trap before loops/case (appraisal Tier 3, M4/M5)
 - BUGFIX (MED, M4). A backgrounded pure or bare-array assignment (``x=5 &``,
   ``a[0]=v &``) mutated the PARENT shell (``x=5 & wait; echo $x`` printed ``5``).
