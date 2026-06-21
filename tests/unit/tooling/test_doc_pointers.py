@@ -51,6 +51,7 @@ DOC_FILES = sorted(
         PROJECT_ROOT / "ARCHITECTURE.md",
         PROJECT_ROOT / "docs" / "architecture" / "ast_data_flow.md",
         PROJECT_ROOT / "docs" / "architecture" / "tour_of_psh_internals.md",
+        PROJECT_ROOT / "docs" / "architecture" / "command_position.md",
     ]
     + list((PROJECT_ROOT / "psh").rglob("CLAUDE.md"))
 )
