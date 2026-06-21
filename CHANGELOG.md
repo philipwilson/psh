@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.523.0 (2026-06-21) - Refactor: one source of truth for value-level ${...} operators (appraisal Tier 4)
+- REFACTOR (expansion; zero behavior change). The value-level parameter
+  operators (``#``/``##``/``%``/``%%``, ``/``/``//``/``/#``/``/%``, ``^``/``^^``/
+  ``,``/``,,``) were spelled out TWICE — once in the scalar dispatch
+  (``_apply_operator``) and once in the per-element array dispatch
+  (``_apply_op_per_element``), so adding/changing one meant editing both (the
+  embedded-extglob patsub fix had to be re-checked in both ladders). They now
+  live in one ``_value_op`` table (keyed by ``_VALUE_OPERATORS``) that both
+  drivers consume. ``psh/expansion/operators.py``.
+- REFACTOR (expansion). Dropped a redundant ``sorted()`` in
+  ``word_expander._glob_words``: ``glob_expander.expand()`` already returns
+  sorted results, so the results were sorted twice.
+- Zero behavior change: full suite green (8,389, unchanged) and a
+  bash-comparison battery over scalar + per-element operator forms is identical.
+  Addresses the elegance finding E-Expansion in the 2026-06-21 appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, Tier 4).
+
 ## 0.522.0 (2026-06-21) - Fix: a Ctrl-Z'd foreground job stays the current job (%+) (appraisal H9)
 - BUGFIX (HIGH). A foreground job stopped by Ctrl-Z (SIGTSTP) was demoted out of
   ``%+``: the foreground teardown called ``set_foreground_job(None)``, which
