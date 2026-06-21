@@ -1824,3 +1824,9 @@
   stdout: "n=2\n"
   stderr: ""
   exit_code: 0
+
+- name: dollar_bracket_arithmetic
+  command: "echo $[1+2] $[2*$[3]]"
+  stdout: "3 6\n"
+  stderr: ""
+  exit_code: 0
