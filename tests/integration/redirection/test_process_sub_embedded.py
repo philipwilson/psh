@@ -299,5 +299,39 @@ class TestEmbeddedCombinatorParser:
         assert re.fullmatch(r'/dev/fd/\d+\n', result.stdout), result.stdout
 
 
+class TestHeredocInsideProcessSubstitution:
+    """A heredoc inside ``<(...)``/``>(...)`` (appraisal M8).
+
+    The whole ``<(...)`` spans several physical lines and contains a
+    ``<<EOF`` whose body lines were (a) leaking out as top-level commands
+    and (b) breaking the outer parse with "Expected file name". Both the
+    nesting (lexer/parser) and the body executor (which used a bare
+    tokenize/parse with no heredoc support) are fixed. Bash-pinned.
+    """
+
+    def test_read_side_heredoc(self):
+        result = run_psh('cat <(cat <<EOF\nhello\nEOF\n)')
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == 'hello\n'
+
+    def test_read_side_heredoc_filtered(self):
+        result = run_psh('cat <(sort <<EOF\n3\n1\n2\nEOF\n)')
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == '1\n2\n3\n'
+
+    def test_two_procsubs_one_with_heredoc(self):
+        result = run_psh('diff <(cat <<A\nx\nA\n) <(echo x); echo "rc=$?"')
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == 'rc=0\n'
+
+    def test_unclosed_procsub_is_clean_error_not_runaway(self):
+        # A genuinely unclosed `<(` at EOF must report incomplete input,
+        # not spin (the earlier fix's first cut recursed on /dev/fd).
+        result = run_psh('cat <(echo hi', timeout=10)
+        assert result.returncode != 0
+        assert 'process substitution' in result.stderr
+        assert 'Permission denied' not in result.stderr
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
