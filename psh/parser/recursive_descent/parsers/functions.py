@@ -4,16 +4,16 @@ Function parsing for PSH shell.
 This module handles parsing of function definitions.
 """
 
-from ....ast_nodes import CommandList, FunctionDef
+from typing import cast
+
+from ....ast_nodes import CommandList, FunctionDef, Statement
 from ....lexer.token_types import TokenType
+from .base import ParserSubcomponent
 
 
-class FunctionParser:
+class FunctionParser(ParserSubcomponent):
     """Parser for function constructs."""
 
-    def __init__(self, main_parser):
-        """Initialize with reference to main parser."""
-        self.parser = main_parser
 
     def is_function_def(self) -> bool:
         """Check if current position starts a function definition."""
@@ -90,15 +90,18 @@ class FunctionParser:
             # (f() (cd /; ...) must not change the caller's state — bash).
             subshell = self.parser.commands.parse_subshell_group()
             cmd_list = CommandList()
-            cmd_list.statements.append(subshell)
+            # A subshell group is a CompoundCommand AND a Statement at runtime;
+            # mypy can't see the intersection from the parse method's type.
+            cmd_list.statements.append(cast(Statement, subshell))
             return cmd_list
         elif self.parser.match(TokenType.IF, TokenType.WHILE, TokenType.UNTIL, TokenType.FOR, TokenType.CASE,
                               TokenType.SELECT, TokenType.DOUBLE_LPAREN, TokenType.DOUBLE_LBRACKET):
             # Control structure
             stmt = self.parser.control_structures.parse_control_structure()
-            # Wrap in command list
+            # Wrap in command list (a control structure is both a
+            # CompoundCommand and a Statement; mypy can't see the intersection).
             cmd_list = CommandList()
-            cmd_list.statements.append(stmt)
+            cmd_list.statements.append(cast(Statement, stmt))
             return cmd_list
         else:
             # Missing function body

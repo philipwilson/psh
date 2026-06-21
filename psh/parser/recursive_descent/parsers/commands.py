@@ -22,6 +22,7 @@ from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import Token, TokenType
 from ..helpers import ErrorContext, ParseError, TokenGroups
 from ..support.word_builder import WordBuilder
+from .base import ParserSubcomponent
 from .redirections import _FD_DUP_RE
 
 # Mapping from expansion_type to (description, prefix, chars_to_skip)
@@ -33,12 +34,9 @@ _UNCLOSED_EXPANSION_MSGS = {
 }
 
 
-class CommandParser:
+class CommandParser(ParserSubcomponent):
     """Parser for command-level constructs."""
 
-    def __init__(self, main_parser):
-        """Initialize with reference to main parser."""
-        self.parser = main_parser
 
     def _is_fd_duplication(self, value: str) -> bool:
         """Check if a WORD token is actually a file descriptor duplication."""

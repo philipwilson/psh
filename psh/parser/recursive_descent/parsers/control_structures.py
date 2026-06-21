@@ -27,6 +27,7 @@ from ....ast_nodes import (
 )
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups
+from .base import ParserSubcomponent
 
 
 def _positional_params_word() -> Word:
@@ -36,12 +37,9 @@ def _positional_params_word() -> Word:
                              quoted=True, quote_char='"')])
 
 
-class ControlStructureParser:
+class ControlStructureParser(ParserSubcomponent):
     """Parser for control structure constructs."""
 
-    def __init__(self, main_parser):
-        """Initialize with reference to main parser."""
-        self.parser = main_parser
 
     def parse_control_structure(self) -> CompoundCommand:
         """Parse any control structure based on current token.

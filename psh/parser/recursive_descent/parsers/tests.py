@@ -21,6 +21,7 @@ from ....ast_nodes import (
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups
 from ..support.word_builder import WordBuilder
+from .base import ParserSubcomponent
 
 #: Token types that are an embedded expansion rather than literal text.
 #: In a [[ ]] operand each becomes its own ExpansionPart so the evaluator
@@ -35,12 +36,9 @@ _EXPANSION_TOKENS = frozenset({
 })
 
 
-class TestParser:
+class TestParser(ParserSubcomponent):
     """Parser for test expression constructs."""
 
-    def __init__(self, main_parser):
-        """Initialize with reference to main parser."""
-        self.parser = main_parser
 
     def parse_enhanced_test_statement(self) -> EnhancedTestStatement:
         """Parse [[ ... ]] enhanced test statement."""
