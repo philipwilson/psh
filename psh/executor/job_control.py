@@ -419,20 +419,34 @@ class JobManager:
         if self.shell_state is not None and hasattr(self.shell_state, 'foreground_pgid'):
             self.shell_state.foreground_pgid = None
 
-    def finish_foreground_job(self, terminal_transferred: bool):
-        """Tear down foreground-job state after a foreground job completes.
+    def finish_foreground_job(self, terminal_transferred: bool,
+                              job: Optional['Job'] = None):
+        """Tear down foreground-job state after a foreground job completes OR stops.
 
         When terminal control was handed to the job, restore it to the shell
         (which also clears the foreground bookkeeping). Otherwise (e.g. under
         pytest, where control was never transferred) just clear the
         bookkeeping. Shared by the pipeline and external-command paths.
+
+        A foreground job STOPPED by Ctrl-Z (SIGTSTP) stays in the job table and
+        becomes the CURRENT job (``%+``) so a bare ``fg``/``bg`` resumes it
+        (bash). The teardown clears foreground tracking — which demotes the
+        stopped job to ``%-`` — so re-promote it to ``%+``, keeping the job that
+        was current before it as ``%-``.
         """
+        # During foreground execution current_job IS this job; previous_job is
+        # whatever was current before it (set by set_foreground_job at launch).
+        prior_previous = self.previous_job
         if terminal_transferred:
             self.restore_shell_foreground()
         else:
             self.set_foreground_job(None)
             if self.shell_state is not None and hasattr(self.shell_state, 'foreground_pgid'):
                 self.shell_state.foreground_pgid = None
+
+        if job is not None and job.state == JobState.STOPPED:
+            self.current_job = job
+            self.previous_job = prior_previous if prior_previous is not job else None
 
     @overload
     def wait_for_job(self, job: Job,

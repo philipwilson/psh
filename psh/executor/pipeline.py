@@ -306,8 +306,8 @@ class PipelineExecutor:
             exit_status = all_statuses[-1]
 
         # Reclaim the terminal (if we handed it over) and clear
-        # foreground-job bookkeeping
-        self.job_manager.finish_foreground_job(original_pgid is not None)
+        # foreground-job bookkeeping (a stopped job stays as %+).
+        self.job_manager.finish_foreground_job(original_pgid is not None, job)
 
         # Remove completed job
         from .job_control import JobState
