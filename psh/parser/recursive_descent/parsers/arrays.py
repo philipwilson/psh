@@ -43,6 +43,7 @@ from typing import List, Optional
 from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, Word
 from ....lexer.token_types import Token, TokenType
 from ..helpers import TokenGroups
+from .base import ParserSubcomponent
 
 
 @dataclass
@@ -69,12 +70,9 @@ class AssignmentCandidate:
     head_token_count: int = 1
 
 
-class ArrayParser:
+class ArrayParser(ParserSubcomponent):
     """Parser for array constructs."""
 
-    def __init__(self, main_parser):
-        """Initialize with reference to main parser."""
-        self.parser = main_parser
 
     # ------------------------------------------------------------------ #
     # Normalization: one place that absorbs tokenization-shape variance.

@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.513.0 (2026-06-21) - Parser sub-parsers share a formal ParserSubcomponent base (reassessment 2026-06-20, #4)
+- REFACTOR (parser; zero behavior change). The 8 recursive-descent sub-parsers
+  (statements/commands/control_structures/tests/arithmetic/functions/redirections/
+  arrays) followed an unwritten convention — each defined an identical
+  ``__init__(self, main_parser)`` storing ``self.parser``. DECISION (the
+  reassessment's #4 asked to make one and record it in code): formalize it with a
+  ``ParserSubcomponent`` base (``recursive_descent/parsers/base.py``); all 8 now
+  extend it and drop their duplicate ``__init__``.
+- The base is deliberately minimal — it adds NO token-access delegation (no
+  ``self.peek()`` forwarding); sub-parsers keep referencing ``self.parser.X``
+  explicitly so the one shared ``Parser`` is always visible. The rationale lives
+  in the base's module docstring (in code, not only in `CLAUDE.md`).
+- Typing the base's ``main_parser: Parser`` (it was an untyped ``Any`` per
+  sub-parser before) tightened ``self.parser`` to a concrete type, which surfaced
+  a latent imprecision in ``functions.py`` (a subshell group / control structure —
+  both ``CompoundCommand`` AND ``Statement`` at runtime — appended to a
+  ``List[Statement]``); fixed with the same ``cast(Statement, …)`` the top-level
+  parser already uses.
+- TESTS: new ``tests/unit/parser/test_subparser_contract.py`` (all 8 extend the
+  base, none re-rolls ``__init__``, the base stores the main parser, and it adds no
+  token delegation). `psh/parser/CLAUDE.md` updated. Full suite green, ruff + mypy
+  clean.
+
 ## 0.512.0 (2026-06-21) - Process-substitution fd ownership lives in RedirectPlan (reassessment 2026-06-20, #3)
 - REFACTOR (io_redirect; zero behavior change). The in-process builtin redirect
   setup (`io_redirect/manager.py`) manually transferred a redirect-target process

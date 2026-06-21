@@ -10,6 +10,7 @@ from typing import List
 from ....ast_nodes import Redirect
 from ....lexer.token_types import Token, TokenType
 from ..helpers import TokenGroups
+from .base import ParserSubcomponent
 
 # Pre-compiled regex for fd duplication (e.g. "2>&1", ">&-")
 _FD_DUP_RE = re.compile(r'^(\d*)([><])&(-|\d+)$')
@@ -18,12 +19,9 @@ _FD_DUP_RE = re.compile(r'^(\d*)([><])&(-|\d+)$')
 _FD_DUP_BARE_RE = re.compile(r'^(\d*)([><])&$')
 
 
-class RedirectionParser:
+class RedirectionParser(ParserSubcomponent):
     """Parser for redirection constructs."""
 
-    def __init__(self, main_parser):
-        """Initialize with reference to main parser."""
-        self.parser = main_parser
 
     def parse_redirects(self) -> List[Redirect]:
         """Parse zero or more redirections."""

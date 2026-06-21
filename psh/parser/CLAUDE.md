@@ -116,11 +116,15 @@ class Parser(ContextBaseParser):
 
 ### 2. Sub-Parser Contract
 
-All 8 sub-parsers follow the same implicit contract:
+All 8 sub-parsers extend `ParserSubcomponent`
+(`recursive_descent/parsers/base.py`), which holds the shared contract:
 
-- **Initialization**: `__init__(self, main_parser)` stores `self.parser`
-  (the main `Parser` instance). There is no shared base class enforcing
-  this -- it is a convention.
+- **Initialization**: the base's `__init__(self, main_parser)` stores
+  `self.parser` (the main `Parser` instance) — sub-parsers no longer repeat
+  it. The base is deliberately minimal: it adds NO token-access delegation
+  (no `self.peek()` forwarding), so sub-parsers reference `self.parser.X`
+  explicitly and a reader always sees that token state lives on the one
+  shared `Parser`. (See the base's module docstring for the rationale.)
 - **State access**: Use `self.parser.peek()`, `.advance()`, `.match()`,
   `.expect()`, `.consume_if()`, etc. (methods inherited from
   `ContextBaseParser`).

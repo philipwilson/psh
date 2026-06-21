@@ -9,14 +9,12 @@ from typing import Optional
 from ....ast_nodes import ArithmeticEvaluation
 from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import TokenType
+from .base import ParserSubcomponent
 
 
-class ArithmeticParser:
+class ArithmeticParser(ParserSubcomponent):
     """Parser for arithmetic expressions and commands."""
 
-    def __init__(self, main_parser):
-        """Initialize with reference to main parser."""
-        self.parser = main_parser
 
     def parse_arithmetic_command(self) -> ArithmeticEvaluation:
         """Parse arithmetic command: ((expression))"""

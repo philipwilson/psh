@@ -10,14 +10,12 @@ from typing import Optional, Union
 from ....ast_nodes import AndOrList, BreakStatement, CommandList, ContinueStatement, Statement
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups
+from .base import ParserSubcomponent
 
 
-class StatementParser:
+class StatementParser(ParserSubcomponent):
     """Parser for statement-level constructs."""
 
-    def __init__(self, main_parser):
-        """Initialize with reference to main parser."""
-        self.parser = main_parser
 
     def parse_statement(self) -> Optional[Statement]:
         """Parse a statement.
