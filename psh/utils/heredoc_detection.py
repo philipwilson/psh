@@ -11,16 +11,18 @@ import re
 
 # A heredoc start: ``<<WORD``, ``<<-WORD``, ``<< WORD``, plus every quoted /
 # escaped / composite delimiter spelling bash accepts — ``<<'EOF'``,
-# ``<<"E F"``, ``<<\EOF``, ``<<EO\F``, ``<<E"O"F``. The look-around rejects a
-# third ``<`` so a here-string (``<<<WORD``) is not mistaken for a heredoc.
+# ``<<"E F"``, ``<<\EOF``, ``<<EO\F``, ``<<E"O"F``, ``<<E$X``. The look-around
+# rejects a third ``<`` so a here-string (``<<<WORD``) is not mistaken for a
+# heredoc.
 #   group(1): '-' for <<- (strip leading tabs)
-#   group(2): the RAW delimiter — a run of word chars, backslash-escaped chars,
-#             and single/double-quoted segments (quotes/escapes still present).
-# Use heredoc_delimiter_word(match) for the literal terminator text. ``$`` is
-# deliberately excluded so ``<<$VAR`` does not match here (psh does not yet
-# support a $-delimiter; matching it would mis-gather, not help).
+#   group(2): the RAW delimiter — a run of word chars (``$`` included, taken
+#             LITERALLY like bash), backslash-escaped chars, and single/double-
+#             quoted segments (quotes/escapes still present).
+# Use heredoc_delimiter_word(match) for the literal terminator text. ``$`` is a
+# plain delimiter character here (``<<E$X`` → terminator ``E$X``); this MUST
+# agree with HeredocLexer._delimiter_from_source and the parser's _parse_heredoc.
 HEREDOC_MARKER_RE = re.compile(
-    r'(?<!<)<<(?!<)(-?)\s*((?:\\.|"[^"]*"|\'[^\']*\'|[A-Za-z0-9_])+)')
+    r'(?<!<)<<(?!<)(-?)\s*((?:\\.|"[^"]*"|\'[^\']*\'|[A-Za-z0-9_$])+)')
 
 
 def heredoc_delimiter_word(match: 're.Match') -> str:
