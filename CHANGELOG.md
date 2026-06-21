@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.524.0 (2026-06-21) - Refactor: drop hand-rolled traversal the visitor base provides (appraisal Tier 4)
+- REFACTOR (visitor; zero behavior change). The security and metrics analysis
+  visitors hand-rolled ``visit_TopLevel``/``visit_StatementList``/
+  ``visit_AndOrList`` methods that just re-implemented the descent the shared
+  ``generic_visit`` -> ``visit_children`` default already provides (the
+  dataclass-field walk in ``traversal.py``). Deleted the 5 pure-traversal
+  duplicates (3 in ``security_visitor.py``, 2 in ``metrics_visitor.py``);
+  ``MetricsVisitor.visit_AndOrList`` and ``LinterVisitor.visit_TopLevel`` are
+  kept because they add real per-node work (cyclomatic count, unused-var check).
+- Zero behavior change: full suite green (8,389, unchanged), the AST coverage
+  matrix test still passes, and ``--security``/``--metrics`` over a nested
+  ``for``/``if``/pipeline/``&&`` script produce identical findings and counts.
+  Addresses elegance finding E-Visitor in the 2026-06-21 appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, Tier 4). (The
+  ``CaseConditional`` pattern-traversal asymmetry noted there is left as-is — it
+  would change analysis output, so it is a correctness item, not Tier 4.)
+
 ## 0.523.0 (2026-06-21) - Refactor: one source of truth for value-level ${...} operators (appraisal Tier 4)
 - REFACTOR (expansion; zero behavior change). The value-level parameter
   operators (``#``/``##``/``%``/``%%``, ``/``/``//``/``/#``/``/%``, ``^``/``^^``/
