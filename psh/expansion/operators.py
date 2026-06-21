@@ -257,25 +257,15 @@ class OperatorOpsMixin(_Base):
             # ${#var} (no operand) is the length; ${var#} (empty pattern)
             # is prefix removal with a pattern that matches nothing.
             return self.param_expansion.get_length(value)
-        elif operator == '#':
+        elif operator in self._VALUE_OPERATORS:
+            # Prefix/suffix removal, substitution and case-mod operators —
+            # these have identical per-element semantics, so the single
+            # _value_op table is the source of truth for both the scalar and
+            # the "${arr[@]#pat}" per-element drivers.
             assert operand is not None
-            return self.param_expansion.remove_shortest_prefix(
-                value, self._expand_pattern_operand(operand))
-        elif operator == '##':
-            assert operand is not None
-            return self.param_expansion.remove_longest_prefix(
-                value, self._expand_pattern_operand(operand))
-        elif operator == '%%':
-            assert operand is not None
-            return self.param_expansion.remove_longest_suffix(
-                value, self._expand_pattern_operand(operand))
-        elif operator == '%':
-            assert operand is not None
-            return self.param_expansion.remove_shortest_suffix(
-                value, self._expand_pattern_operand(operand))
-        elif operator in ('/', '//', '/#', '/%'):
-            assert operand is not None
-            return self._substitute(operator, value, operand)
+            result = self._value_op(operator, value, operand, var_name)
+            assert result is not None
+            return result
         elif operator == ':':
             # Substring extraction. Offset and length are arithmetic
             # expressions (bash), so support ${x:1+1:2}, ${x:(-3):2}, etc.
@@ -299,24 +289,6 @@ class OperatorOpsMixin(_Base):
             # ${!prefix@}: names joined with spaces
             names = self.param_expansion.match_variable_names(var_name)
             return ' '.join(names)
-        elif operator == '^':
-            # Case mods: an absent pattern (parser emits '') defaults to '?'
-            # — every character matches.
-            assert operand is not None
-            return self.param_expansion.uppercase_first(
-                value, self._expand_pattern_operand(operand) or '?')
-        elif operator == '^^':
-            assert operand is not None
-            return self.param_expansion.uppercase_all(
-                value, self._expand_pattern_operand(operand) or '?')
-        elif operator == ',':
-            assert operand is not None
-            return self.param_expansion.lowercase_first(
-                value, self._expand_pattern_operand(operand) or '?')
-        elif operator == ',,':
-            assert operand is not None
-            return self.param_expansion.lowercase_all(
-                value, self._expand_pattern_operand(operand) or '?')
         elif len(operator) == 2 and operator[0] == '@':
             # An unset parameter transforms to nothing (bash: ${unset@Q} -> '').
             if not is_set:
@@ -408,14 +380,23 @@ class OperatorOpsMixin(_Base):
                 flags.append(letter)
         return ''.join(flags)
 
-    def _apply_op_per_element(self, operator, value, operand, var_name):
-        """Apply one value-level parameter-expansion operator to a single
-        element. Returns None for operators without per-element semantics.
+    # Value-level operators that apply identically to a scalar and to each
+    # element of "${arr[@]<op>...}". The single source of truth is _value_op;
+    # both _apply_operator (scalar) and _apply_op_per_element consume it.
+    _VALUE_OPERATORS = frozenset({
+        '#', '##', '%', '%%', '/', '//', '/#', '/%', '^', '^^', ',', ',,',
+    })
 
-        Mirrors the scalar dispatch in expand_parameter_direct so quoted
-        array expansion ("${a[@]#pat}") behaves like bash's per-element
-        application.
-        """
+    def _value_op(self, operator: str, value: str, operand: Optional[str],
+                  var_name: str) -> Optional[str]:
+        """Apply a value-level operator (prefix/suffix removal, substitution,
+        case modification) to a single value. Returns None if *operator* is not
+        a value-level operator."""
+        if operator not in self._VALUE_OPERATORS:
+            return None
+        # Every value-level operator carries an operand (the operand-less
+        # ${#var} length form is split off by the scalar caller before here).
+        assert operand is not None
         pe = self.param_expansion
         if operator == '#':
             return pe.remove_shortest_prefix(value, self._expand_pattern_operand(operand))
@@ -427,6 +408,8 @@ class OperatorOpsMixin(_Base):
             return pe.remove_longest_suffix(value, self._expand_pattern_operand(operand))
         if operator in ('/', '//', '/#', '/%'):
             return self._substitute(operator, value, operand)
+        # Case mods: an absent pattern (parser emits '') defaults to '?' —
+        # every character matches.
         if operator == '^':
             return pe.uppercase_first(value, self._expand_pattern_operand(operand) or '?')
         if operator == '^^':
@@ -435,6 +418,18 @@ class OperatorOpsMixin(_Base):
             return pe.lowercase_first(value, self._expand_pattern_operand(operand) or '?')
         if operator == ',,':
             return pe.lowercase_all(value, self._expand_pattern_operand(operand) or '?')
+        return None
+
+    def _apply_op_per_element(self, operator, value, operand, var_name):
+        """Apply one value-level operator to a single element. Returns None for
+        operators without per-element semantics.
+
+        Mirrors the scalar dispatch in expand_parameter_direct so quoted array
+        expansion ("${a[@]#pat}") behaves like bash's per-element application.
+        """
+        result = self._value_op(operator, value, operand, var_name)
+        if result is not None:
+            return result
         if len(operator) == 2 and operator[0] == '@':
             if operator[1] == 'A':
                 # @A produces one whole-array assignment statement, not a

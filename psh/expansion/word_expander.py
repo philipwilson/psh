@@ -752,7 +752,8 @@ class WordExpander:
             if is_glob:
                 matches = self.manager.glob_expander.expand(w)
                 if matches:
-                    result.extend(sorted(matches))
+                    # glob_expander.expand() already returns sorted results.
+                    result.extend(matches)
                 elif self.state.options.get('failglob', False):
                     # failglob: a no-match glob fails the command (bash). Not
                     # fatal to the shell — the command-error handler returns 1.
