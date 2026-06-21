@@ -3,10 +3,38 @@
 import os
 import sys
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, List, Mapping, Optional, Tuple
 
 if TYPE_CHECKING:
+    from ..ast_nodes import ArrayInitialization
     from ..shell import Shell
+
+
+@dataclass(frozen=True)
+class BuiltinContext:
+    """Per-invocation data the executor passes to a builtin beyond its argv.
+
+    Today this carries the structured array initializers the parser attaches
+    to ``name=(...)`` arguments (keyed by the exact argv element). The
+    declaration builtins (``declare``/``typeset``/``local``/``export``/
+    ``readonly``) read them through :meth:`Builtin.execute_in_context` to
+    build arrays via the same structured path as the bare ``a=(...)`` form —
+    this replaces the former ``shell._pending_array_inits`` side channel, so
+    the data flow is an explicit parameter rather than mutable shell state.
+    Ordinary builtins never look at it.
+    """
+    array_inits: Mapping[str, "ArrayInitialization"] = field(default_factory=dict)
+
+    def array_init(self, arg: str) -> Optional["ArrayInitialization"]:
+        """The ``ArrayInitialization`` for argv element ``arg``, or None."""
+        return self.array_inits.get(arg)
+
+
+# Shared empty context for direct builtin calls (registry lookups, the
+# export→declare delegation's fallback, tests) — a builtin invoked outside the
+# executor has no pending array initializers.
+EMPTY_BUILTIN_CONTEXT = BuiltinContext()
 
 
 class Builtin(ABC):
@@ -48,6 +76,18 @@ class Builtin(ABC):
             Exit code (0 for success, non-zero for failure)
         """
         pass
+
+    def execute_in_context(self, args: List[str], shell: 'Shell',
+                           context: BuiltinContext) -> int:
+        """Execute with the per-invocation :class:`BuiltinContext`.
+
+        The executor invokes builtins through THIS method (not ``execute``),
+        so a builtin that needs invocation data beyond argv — the declaration
+        builtins, which consume ``context.array_init(...)`` — overrides it.
+        The default ignores the context and runs ``execute()``, so ordinary
+        builtins need not know it exists.
+        """
+        return self.execute(args, shell)
 
     @property
     def synopsis(self) -> str:

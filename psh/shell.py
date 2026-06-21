@@ -31,7 +31,6 @@ from .io_redirect import IOManager
 from .scripting.base import ScriptManager
 
 if TYPE_CHECKING:
-    from .ast_nodes import ArrayInitialization
     from .executor.core import ExecutorVisitor
 
 
@@ -166,51 +165,6 @@ class Shell:
         # subshell's first ExecutorVisitor context (the errexit exemption must
         # cross the fork, as in bash). 0 = not suppressed.
         self._errexit_suppress_seed: int = 0
-
-        # Structured array initializers (argv element → ArrayInitialization)
-        # for the declaration builtin currently being dispatched. This is an
-        # explicit, single-owner handoff from the executor to the declaration
-        # builtins (declare/typeset/local/export/readonly): the executor calls
-        # set_pending_array_inits() just before the builtin runs and
-        # clear_pending_array_inits() in a finally afterwards; the builtin
-        # peeks with pending_array_init(arg). See the array-init seam note in
-        # CommandExecutor._run_command and psh/builtins/CLAUDE.md.
-        self._pending_array_inits: Optional[Dict[str, 'ArrayInitialization']] = None
-
-    # --- Pending array-init handoff (executor → declaration builtins) ------
-    # The parser attaches an ArrayInitialization (element Words with full
-    # quote context) to each ``name=(...)`` argument Word. The executor
-    # collects them keyed by the flat argv element and hands them to the
-    # declaration builtin for the duration of its dispatch via this small
-    # explicit API, which replaces a former ad-hoc attribute side channel.
-    #
-    # Lifetime invariant: set_pending_array_inits()/clear_pending_array_inits()
-    # are called ONLY by CommandExecutor._run_command, set immediately before
-    # the builtin runs and cleared in a finally afterwards. pending_array_init()
-    # is a non-consuming peek, so a nested re-read works (``export NAME=(...)``
-    # delegates to ``declare``, which peeks the same map). Outside that window
-    # the map is None.
-
-    def set_pending_array_inits(
-            self, inits: Dict[str, 'ArrayInitialization']) -> None:
-        """Install the structured array initializers for the builtin about to
-        run. Caller (the executor) must pair this with
-        clear_pending_array_inits() in a finally."""
-        self._pending_array_inits = inits
-
-    def clear_pending_array_inits(self) -> None:
-        """Drop the pending array initializers after the builtin has run."""
-        self._pending_array_inits = None
-
-    def pending_array_init(self, arg: str):
-        """Peek the ArrayInitialization for argv element ``arg``, or None.
-
-        Non-consuming: the map stays installed for the whole builtin call
-        (including a nested ``export``→``declare`` re-read).
-        """
-        if self._pending_array_inits is None:
-            return None
-        return self._pending_array_inits.get(arg)
 
     def _select_parser(self, parent_shell: Optional['Shell']) -> None:
         """Phase 5: choose the active parser implementation.

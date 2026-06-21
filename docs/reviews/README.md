@@ -19,7 +19,8 @@ The few documents worth reading as current truth:
 | Document | Why it's live |
 |----------|---------------|
 | [parallel_test_safety_2026-06-06](parallel_test_safety_2026-06-06.md) | The authoritative rationale for the `serial` marker and xdist test safety — cited by the root `CLAUDE.md`. |
-| [code_architecture_teaching_quality_review_2026-06-18](code_architecture_teaching_quality_review_2026-06-18.md) | The most recent whole-repo review; its Findings #1–#6 drove releases v0.504–v0.508. |
+| [code_architecture_teaching_quality_reassessment_2026-06-20](code_architecture_teaching_quality_reassessment_2026-06-20.md) | The newest review: re-grades the 2026-06-18 findings after the v0.504–510 work and lists the remaining prioritized next steps. |
+| [code_architecture_teaching_quality_review_2026-06-18](code_architecture_teaching_quality_review_2026-06-18.md) | The whole-repo review whose Findings #1–#6 drove releases v0.504–v0.510. |
 | [ground_up_reappraisal_13_2026-06-16](ground_up_reappraisal_13_2026-06-16.md) | The latest ground-up audit (@ v0.485); the newest of the reappraisal series. |
 
 ## Completed plans & roadmaps
