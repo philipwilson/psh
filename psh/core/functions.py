@@ -10,10 +10,15 @@ from .exceptions import FunctionDefinitionError
 class Function:
     """Represents a shell function definition."""
     def __init__(self, name: str, body: CommandList, readonly: bool = False,
-                 redirects: Optional[List] = None):
+                 redirects: Optional[List] = None, exported: bool = False):
         self.name = name
         self.body = body
         self.readonly = readonly
+        # `export -f` attribute. psh does not serialise functions into the
+        # environment for external children, so this is observable only via
+        # the `export -f` / `declare -Fx` listing — but it makes the attribute
+        # round-trip and matches bash's exit status.
+        self.exported = exported
         # Redirections from the definition (f() { ...; } > file),
         # applied at each call (bash).
         self.redirects = redirects or []
@@ -49,9 +54,11 @@ class FunctionManager:
         if existing and existing.readonly:
             raise FunctionDefinitionError(f"'{name}': readonly function")
 
-        # Preserve readonly status if redefining
+        # Preserve readonly/export status if redefining
         readonly = existing.readonly if existing else False
-        self.functions[name] = Function(name, body, readonly, redirects)
+        exported = existing.exported if existing else False
+        self.functions[name] = Function(name, body, readonly, redirects,
+                                        exported=exported)
 
     def get_function(self, name: str) -> Optional[Function]:
         """Get a function by name."""
@@ -76,6 +83,17 @@ class FunctionManager:
         """Check if a function is readonly."""
         func = self.functions.get(name)
         return func.readonly if func else False
+
+    def set_function_exported(self, name: str, exported: bool = True) -> bool:
+        """Set/clear a function's export attribute (`export -f`/`export -fn`).
+
+        Returns True if the function exists, False otherwise.
+        """
+        func = self.functions.get(name)
+        if func:
+            func.exported = exported
+            return True
+        return False
 
     def list_functions(self) -> List[Tuple[str, Function]]:
         """List all defined functions."""

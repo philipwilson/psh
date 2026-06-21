@@ -1762,3 +1762,37 @@
   command: "for i in 1 2; do echo x | while read y; do break 2; done; echo i=$i; done"
   stdout: "i=1\ni=2\n"
   exit_code: 0
+
+# =============================================================================
+# DECLARATION FLAGS — readonly -a/-A, export -f (appraisal H6/H7)
+# =============================================================================
+
+- name: readonly_indexed_array
+  command: "readonly -a arr=(1 2 3); echo \"${arr[@]}\""
+  stdout: "1 2 3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: readonly_associative_array
+  command: "readonly -A m=([k]=v); echo \"${m[k]}\""
+  stdout: "v\n"
+  stderr: ""
+  exit_code: 0
+
+- name: readonly_array_declare_p
+  command: "readonly -a arr=(x y); declare -p arr"
+  stdout: "declare -ar arr=([0]=\"x\" [1]=\"y\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: export_function_succeeds
+  command: "myfn() { echo hi; }; export -f myfn; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: export_function_nonexistent_is_error
+  command: "export -f nope; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "not a function"
+  exit_code: 0
