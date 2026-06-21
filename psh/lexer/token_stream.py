@@ -251,14 +251,23 @@ class TokenStream:
             tokens.append(token)
             self.advance()
 
-            # Build expression string with transformations
-            if transform_redirects:
-                if token.type == TokenType.REDIRECT_IN:
-                    expr_parts.append('<')
-                elif token.type == TokenType.REDIRECT_OUT:
-                    expr_parts.append('>')
-                else:
-                    expr_parts.append(token.value)
+            # Build expression string with transformations.
+            #
+            # The lexer strips the leading '$' from VARIABLE tokens
+            # ('$1' -> '1', '$#' -> '#', '${#a[@]}' -> '{#a[@]}'). This string is
+            # frozen onto the ArithmeticEvaluation node and re-parsed later by the
+            # arithmetic evaluator, so we must re-add the '$' here — otherwise '$1'
+            # collapses to the literal integer 1 and '${#a[@]}' fails to parse.
+            # (The '$((...))' *expansion* form keeps its own single token and never
+            # reaches this path, which is why only the command/loop forms were
+            # affected.) Mirrors the subscript reconstruction in
+            # psh/parser/combinators/arrays.py.
+            if transform_redirects and token.type == TokenType.REDIRECT_IN:
+                expr_parts.append('<')
+            elif transform_redirects and token.type == TokenType.REDIRECT_OUT:
+                expr_parts.append('>')
+            elif token.type == TokenType.VARIABLE:
+                expr_parts.append(f'${token.value}')
             else:
                 expr_parts.append(token.value)
 

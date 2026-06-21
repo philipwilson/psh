@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.515.0 (2026-06-21) - Fix: $-expansions corrupted in (( )) / C-for / while (( )) (appraisal H2)
+- BUGFIX (HIGH). In the arithmetic COMMAND/loop forms — ``(( expr ))``,
+  ``for ((init;cond;upd))``, and ``while (( expr ))`` — every ``$``-expansion was
+  silently corrupted, because ``TokenStream.collect_arithmetic_expression``
+  (``psh/lexer/token_stream.py``) rebuilt the expression text from raw
+  ``token.value`` and the lexer strips the leading ``$`` from VARIABLE tokens
+  (``$1`` → ``1``, ``$#`` → ``#``, ``${#a[@]}`` → ``{#a[@]}``). The reconstructed
+  text therefore lost the expansion: ``(( $1 == 5 ))`` compared the literal ``1``,
+  ``(( ${#arr[@]} > 0 ))`` raised ``((: Unexpected character '{'``, and
+  ``((c[$w]++))`` incremented the key ``w`` instead of ``$w``'s value. The string
+  is frozen onto the ``ArithmeticEvaluation`` node before evaluation, so the loss
+  was permanent.
+- The fix re-adds the ``$`` for VARIABLE tokens during reconstruction — mirroring
+  the array-subscript reconstruction already in
+  ``psh/parser/combinators/arrays.py``. The ``$((...))`` *expansion* form was never
+  affected (it keeps its own single ARITH_EXPANSION token and a separate path),
+  which is why the bug hid; the combinator parser was already correct.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, finding H2 — ~12 everyday
+  idiom forms collapsed to this one locus). New regression tests
+  (``tests/unit/expansion/test_arithmetic_command_form_dollar.py``) plus four
+  bash-compared golden cases in ``tests/behavioral/golden_cases.yaml``.
+
 ## 0.514.0 (2026-06-21) - Lexer stops guessing ${...} token kind (reassessment 2026-06-20, #2)
 - REFACTOR (lexer; zero behavior change). The lexer classified a braced
   ``${...}`` as a ``VARIABLE`` or ``PARAM_EXPANSION`` token by scanning the whole

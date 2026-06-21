@@ -652,6 +652,32 @@
   stderr: ""
   exit_code: 0
 
+# Command/loop arithmetic forms reconstruct expression text token-by-token and
+# must re-add the '$' the lexer strips from VARIABLE tokens (appraisal H2).
+- name: arith_command_form_positional
+  command: 'set -- 5; (( $1 == 5 )) && echo Y || echo N'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_command_form_array_length
+  command: 'arr=(a b c); (( ${#arr[@]} > 0 )) && echo y || echo n'
+  stdout: "y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_cstyle_for_array_length_bound
+  command: 'arr=(x y z); for ((i=0;i<${#arr[@]};i++)); do printf "%s " "${arr[i]}"; done; echo'
+  stdout: "x y z \n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_assoc_increment_uses_key_value
+  command: 'declare -A c; w=foo; ((c[$w]++)); ((c[$w]++)); echo "${!c[@]}=${c[foo]}"'
+  stdout: "foo=2\n"
+  stderr: ""
+  exit_code: 0
+
 - name: arith_assoc_array_in_expr
   command: 'declare -A m; m[k]=9; echo $(( m[k] * 2 ))'
   stdout: "18\n"
