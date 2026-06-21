@@ -36,9 +36,11 @@ class ExportBuiltin(Builtin):
         ``export name=(...)`` arguments (see BuiltinContext); they are
         forwarded to ``declare -x`` so the array logic stays in one place.
         """
-        # Parse options: -p (print), -n (unexport), -- (end of options)
+        # Parse options: -p (print), -n (unexport), -f (functions),
+        # -- (end of options)
         print_mode = False
         unexport = False
+        functions = False
         i = 1
         while i < len(args):
             arg = args[i]
@@ -51,6 +53,8 @@ class ExportBuiltin(Builtin):
                         print_mode = True
                     elif ch == 'n':
                         unexport = True
+                    elif ch == 'f':
+                        functions = True
                     else:
                         self.error(f"-{ch}: invalid option", shell)
                         return 2
@@ -58,6 +62,9 @@ class ExportBuiltin(Builtin):
             else:
                 break
         names = args[i:]
+
+        if functions:
+            return self._export_functions(names, shell, unexport=unexport)
 
         if not names:
             # `export` / `export -p`: print all exported variables
@@ -142,6 +149,32 @@ class ExportBuiltin(Builtin):
                 key, "", attributes=VarAttributes.EXPORT | VarAttributes.UNSET,
                 local=False)
 
+    def _export_functions(self, names: List[str], shell: 'Shell', *,
+                          unexport: bool) -> int:
+        """Handle ``export -f`` / ``export -fn`` (function export attribute).
+
+        With no names, lists the exported functions in ``declare -fx`` form.
+        With names, marks (or with -n unmarks) each named function; a name that
+        is not a function is a bash usage error (status 1). psh does not
+        serialise functions into the environment for EXTERNAL children, so the
+        attribute is observable via this listing rather than in subprocesses.
+        """
+        fm = shell.function_manager
+        if not names:
+            for name, func in fm.list_functions():
+                if func.exported:
+                    self.write_line(f'declare -fx {name}', shell)
+            return 0
+
+        status = 0
+        for name in names:
+            if fm.get_function(name) is None:
+                self.error(f"{name}: not a function", shell)
+                status = 1
+                continue
+            fm.set_function_exported(name, not unexport)
+        return status
+
     def _is_valid_identifier(self, name: str) -> bool:
         """Check if a name is a valid shell identifier."""
         if not name:
@@ -170,7 +203,7 @@ class ExportBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """export: export [-n] [-p] [name[=value] ...]
+        return """export: export [-fn] [-p] [name[=value] ...]
 
     Export variables to the environment.
     With no arguments or -p, print all exported variables.
@@ -178,6 +211,7 @@ class ExportBuiltin(Builtin):
     With just name, export an existing shell variable.
 
     Options:
+      -f    Refer to shell functions
       -n    Remove the export attribute from each name
       -p    Print exported variables in declare -x format"""
 

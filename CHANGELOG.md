@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.519.0 (2026-06-21) - Fix: readonly -a/-A and export -f accepted (appraisal H6/H7)
+- BUGFIX (HIGH, two related). Two declaration builtins hand-rolled incomplete
+  flag parsers that rejected everyday attribute/function flags bash accepts —
+  fatal under ``set -e``.
+  - H6: ``readonly -a`` / ``readonly -A`` printed ``readonly: invalid option:
+    -a`` (exit 2); the "readonly array" idiom (``readonly -a arr=(1 2 3)``)
+    failed outright. ``readonly`` now forwards ``-a``/``-A`` to the ``declare
+    -r`` delegation it already uses (``ReadonlyBuiltin._parse_readonly_options``,
+    ``function_support.py``), so the array is created readonly.
+  - H7: ``export -f funcname`` printed ``export: -f: invalid option`` (exit 2);
+    scripts that export functions broke. ``export`` now accepts ``-f``: a named
+    function gains an export attribute (exit 0); a non-function name is a usage
+    error (exit 1, "not a function"), and ``export -fn`` clears it. (psh does
+    not serialise functions into the environment for EXTERNAL children, so the
+    attribute is observable via ``export -f`` listing rather than in
+    subprocesses — a documented limitation, not the bug being fixed.) New
+    ``Function.exported`` attribute + ``FunctionManager.set_function_exported``.
+- Both shared one root (elegance finding E-Builtins): three divergent
+  declaration-flag parsers, two silently incomplete. ``declare`` (the complete,
+  table-driven one) is unchanged.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, findings H6/H7). New
+  ``tests/unit/builtins/test_readonly_export_attribute_flags.py`` (12 cases) and
+  five bash-compared golden cases.
+
 ## 0.518.0 (2026-06-21) - Fix: break/continue/return don't cross function or pipeline-subshell scope (appraisal H3/H4)
 - BUGFIX (HIGH, two related). A function body and each pipeline component are a
   fresh control-flow scope, but ``loop_depth`` was inherited across both

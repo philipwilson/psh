@@ -684,17 +684,24 @@ class ReadonlyBuiltin(Builtin):
         else:
             # readonly NAME[=value]... is declare -r NAME[=value]...;
             # delegate to the registered declare singleton, forwarding the
-            # same context so an array-init argument resolves.
+            # same context so an array-init argument resolves. Attribute flags
+            # (-a/-A) are passed through to declare so `readonly -a arr=(...)`
+            # creates a readonly array.
             declare_builtin = registry.get('declare')
             assert declare_builtin is not None
             return declare_builtin.execute_in_context(
-                ['declare', '-r'] + names, shell, context)
+                ['declare', '-r'] + options['declare_flags'] + names,
+                shell, context)
+
+    # readonly attribute flags forwarded to `declare -r` (bash accepts -aA).
+    _READONLY_FORWARD_FLAGS = {'a': '-a', 'A': '-A'}
 
     def _parse_readonly_options(self, args: List[str], shell: 'Shell') -> tuple[Optional[dict], List[str]]:
         """Parse readonly options and return (options_dict, function_names)."""
-        options = {
-            'functions': False,  # -f
-            'print': False,      # -p
+        options: dict = {
+            'functions': False,    # -f
+            'print': False,        # -p
+            'declare_flags': [],   # -a/-A forwarded to declare -r
         }
         names = []
 
@@ -711,6 +718,9 @@ class ReadonlyBuiltin(Builtin):
                         options['functions'] = True
                     elif flag == 'p':
                         options['print'] = True
+                    elif flag in self._READONLY_FORWARD_FLAGS:
+                        options['declare_flags'].append(
+                            self._READONLY_FORWARD_FLAGS[flag])
                     else:
                         self.error(f"invalid option: -{flag}", shell)
                         return None, []
@@ -744,7 +754,7 @@ class ReadonlyBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """readonly: readonly [-f] [-p] [name[=value] ...]
+        return """readonly: readonly [-aAf] [-p] [name[=value] ...]
 
     Mark variables or functions as readonly.
 
@@ -753,6 +763,8 @@ class ReadonlyBuiltin(Builtin):
     marking as readonly.
 
     Options:
+      -a    Refer to indexed arrays
+      -A    Refer to associative arrays
       -f    Mark functions as readonly (cannot be redefined)
       -p    Display all readonly variables in declare format
 
