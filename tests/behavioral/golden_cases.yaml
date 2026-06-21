@@ -1861,3 +1861,18 @@
   stdout: "inner<-outer\n"
   stderr: ""
   exit_code: 0
+
+# Prompt-style $-expansion (Tier 3 M12): PS1/PS2 render via the same expand_full
+# path as ${var@P}, bash's promptvars. Pinned here through @P (bash-comparable;
+# the live PS1/PS2 render is interactive-only and covered by unit tests).
+- name: promptvars_var_and_command_sub
+  command: "FOO=barval; PS=\"[\\$FOO-\\$(echo CMD)]\"; echo \"${PS@P}\""
+  stdout: "[barval-CMD]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: promptvars_arithmetic
+  command: "X=\"\\$((2+3))\"; echo \"${X@P}\""
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0

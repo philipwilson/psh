@@ -131,6 +131,25 @@ class TestPromptHandling:
         prompt = handler._get_prompt()
         assert 'test$' in prompt  # May be expanded
 
+    def test_primary_prompt_expands_dollar(self, shell):
+        """PS1 gets bash's full promptvars expansion ($, $(...), $((...)))
+        in the live REPL, not the escape-only pass (reappraisal M12)."""
+        _, handler = make_handler(shell)
+
+        shell.state.set_variable('FOO', 'barval')
+        shell.state.set_variable('PS1', '[$FOO-$(echo CMD)-$((1+2))]$ ')
+        assert handler._get_prompt() == '[barval-CMD-3]$ '
+
+    def test_continuation_prompt_expands_dollar(self, shell):
+        """PS2 also undergoes $-expansion when no construct hint is active."""
+        _, handler = make_handler(shell)
+
+        shell.state.set_variable('BAR', 'cont')
+        shell.state.set_variable('PS2', '<$BAR> ')
+        handler.accumulator.feed('echo "one')  # NeedMore: unclosed quote
+        handler._hint = None
+        assert handler._get_prompt() == '<cont> '
+
     def test_get_continuation_prompt(self, shell):
         """Mid-command without a construct hint (e.g. unclosed quote),
         the continuation prompt is PS2."""
