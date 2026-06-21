@@ -32,6 +32,10 @@ differences are irreducible. Instead, the documented relationships between
 these sets (and that their keyword-valued entries are real keywords) are
 locked by ``tests/unit/lexer/test_command_position_consistency.py`` so the
 vocabulary cannot silently drift apart.
+
+For the transition tables of all three machines side by side, the
+deliberate asymmetries between the sets, and worked examples, see
+``docs/architecture/command_position.md``.
 """
 
 from .token_types import TokenType

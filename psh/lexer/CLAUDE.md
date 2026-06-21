@@ -32,7 +32,7 @@ the per-word algorithm to `BraceExpander` in `brace_expansion.py`).
 | `__init__.py` | Entry point: `tokenize()` and `tokenize_with_heredocs()` (shared `_post_lex` pipeline) |
 | `modular_lexer.py` | Core tokenization engine (~650 lines) |
 | `state_context.py` | `LexerContext` - unified state management |
-| `command_position.py` | Command-position vocabulary for all THREE tracking machines (lexer pass, normalizer, cmdsub scanner) |
+| `command_position.py` | Command-position vocabulary for all THREE tracking machines (lexer pass, normalizer, cmdsub scanner). Transition tables + asymmetries diagram: `docs/architecture/command_position.md` |
 | `cmdsub_scanner.py` | Grammar-aware `$(...)` extent scanner (`find_command_substitution_end` + maintenance contract) |
 | `constants.py` | Keywords and special variables (operators live in `OperatorRecognizer.OPERATORS`) |
 | `position.py` | Position tracking, `LexerConfig`, error classes |

@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.510.0 (2026-06-21) - Command-position transition-table diagram (review 2026-06-18, Finding #5)
+- DOCS. Closes the actionable part of the review's Finding #5. (The finding's
+  refactor claims — "duplicated" command-position machines, "monolithic" literal
+  recognizer — were overstated: the three machines already share one vocabulary
+  module drift-locked by a test, and the literal recognizer already delegates to
+  named scanners. What was genuinely missing was a single map of how the three
+  command-position machines relate.)
+- NEW `docs/architecture/command_position.md`: a pipeline-stage diagram plus a
+  transition table for each of the three machines (cmdsub extent scanner, lexer
+  pass, keyword normalizer), a table of the deliberate per-stage asymmetries
+  between their vocabulary sets (the thing the review asked to make visible), and
+  four worked examples (each verified against bash). Linked from
+  `psh/lexer/CLAUDE.md` and the `command_position.py` module docstring, and added
+  to the doc-pointer meta-test so its symbol/path references stay accurate.
+
 ## 0.509.0 (2026-06-20) - Curate docs for students: learning path + reviews index (review 2026-06-18, Finding #6)
 - DOCS. Closes the 2026-06-18 review's Finding #6 ("curate the documentation set
   for students, not only maintainers") — a student no longer has to infer which
