@@ -256,16 +256,15 @@ class ExpansionParser:
             end_pos=Position(pos, 0, 0)
         ), pos
 
-    def can_start_expansion(self, input_text: str, pos: int) -> bool:
-        """
-        Check if position can start an expansion.
+    def is_expansion_sigil(self, input_text: str, pos: int) -> bool:
+        """Whether the char at *pos* is an expansion sigil (``$`` or backtick).
 
-        Args:
-            input_text: The input string
-            pos: Position to check
-
-        Returns:
-            True if an expansion can start at this position
+        This is only the cheap "does an expansion sigil start here" test — NOT
+        the precise "is this a VALID expansion" check (a lone ``$`` passes here
+        and the expansion parser later renders it literal). The stricter
+        validation lives in ``recognizers/word_scanners.can_start_expansion``,
+        which the literal recognizer uses for word-boundary decisions; the two
+        are deliberately different and now have distinct names.
         """
         if pos >= len(input_text):
             return False
@@ -331,5 +330,5 @@ class ExpansionContext:
 
     def is_expansion_start(self, pos: int) -> bool:
         """Check if position starts an expansion."""
-        return self.parser.can_start_expansion(self.input_text, pos)
+        return self.parser.is_expansion_sigil(self.input_text, pos)
 
