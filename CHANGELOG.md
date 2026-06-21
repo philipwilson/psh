@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.537.0 (2026-06-21) - Fix: interactive PS1/PS2 perform $-expansion (appraisal Tier 3, M12)
+- BUGFIX (MED). In the interactive REPL, PS1/PS2 were rendered through the
+  escape-ONLY path (``\u``, ``\h``, ``\w``…), so ``$``/``$(...)``/``$((...))`` in a
+  prompt were printed literally instead of expanded. bash applies its default
+  ``promptvars`` — backslash escapes THEN parameter / command / arithmetic
+  expansion. ``MultiLineInputHandler._get_prompt`` now renders through the shared
+  ``PromptManager`` (``expand_full``), so ``PS1='[$FOO-$(echo CMD)]\$ '`` expands
+  exactly as in bash. The non-printing markers (``\[``/``\]``) and escape-output
+  protection are preserved (a ``\$``-produced ``$`` does not start a command
+  substitution; an escape's value is not re-interpreted).
+- ELEGANCE (paired). ``PromptManager`` was constructed and wired to
+  ``repl_loop.prompt_manager`` but never used for rendering — the REPL rendered via
+  a second, escape-only ``PromptExpander`` owned by ``MultiLineInputHandler``. The
+  handler now delegates to the shared ``PromptManager``, making it the single
+  live prompt-rendering authority and removing the duplicate expander instance.
+
 ## 0.536.0 (2026-06-21) - Fix: composite / $-containing heredoc delimiters (appraisal Tier 3, M1)
 - BUGFIX (MED). A heredoc delimiter that spans several tokens — ``<<E$X``,
   ``<<E"O"F``, ``<<$VAR`` — was truncated to its LEADING token, so the body never

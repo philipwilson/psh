@@ -17,7 +17,6 @@ from typing import Callable, Optional
 
 from ..scripting.command_accumulator import CommandAccumulator, Complete, Hint
 from .line_editor import LineEditor
-from .prompt import PromptExpander
 
 
 class MultiLineInputHandler:
@@ -27,7 +26,6 @@ class MultiLineInputHandler:
         self.line_editor = line_editor
         self.shell = shell
         self.accumulator = CommandAccumulator(shell)
-        self.prompt_expander = PromptExpander(shell)
         # last NeedMore hint, drives the continuation prompt
         self._hint: Optional[Hint] = None
 
@@ -76,11 +74,18 @@ class MultiLineInputHandler:
         self._hint = None
 
     def _get_prompt(self) -> str:
-        """Get the appropriate prompt based on current state."""
+        """Get the appropriate prompt based on current state.
+
+        Rendering goes through the shared ``PromptManager`` (the one the
+        interactive manager wires up), so PS1/PS2 get bash's full ``promptvars``
+        expansion — backslash escapes THEN parameter / command / arithmetic
+        expansion — not the escape-only pass.
+        """
+        prompt_manager = self.shell.interactive_manager.prompt_manager
         if self.accumulator.is_empty:
             # Primary prompt
             ps1 = self.shell.state.variables.get('PS1', '\\u@\\h:\\w\\$ ')
-            return self.prompt_expander.expand_prompt(ps1)
+            return prompt_manager.expand_prompt(ps1)
 
         # Continuation prompt. When the parser told us which constructs are
         # still open, show them ("if> ", "for then> "); otherwise (heredoc
@@ -88,4 +93,4 @@ class MultiLineInputHandler:
         if self._hint is not None and self._hint.constructs:
             return ' '.join(self._hint.constructs) + '> '
         ps2 = self.shell.state.variables.get('PS2', '> ')
-        return self.prompt_expander.expand_prompt(ps2)
+        return prompt_manager.expand_prompt(ps2)
