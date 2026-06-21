@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.525.0 (2026-06-21) - Refactor: lexer dead-field + can_start_expansion name collision (appraisal Tier 4)
+- REFACTOR (lexer; zero behavior change). Two elegance cleanups from finding
+  E-Lexer:
+  - Removed ``QuoteRules.allows_nested_quotes`` — a field set on all four quote
+    rules but never read anywhere (``quote_parser.py``).
+  - Two different functions were both named ``can_start_expansion``: the weak
+    ``ExpansionParser.can_start_expansion`` (just ``char in ('$', '`')``) and the
+    strict ``word_scanners.can_start_expansion`` (validates the ``$`` actually
+    begins an expansion). Same name, different semantics, different callers — a
+    teaching trap. Renamed the weak one to ``ExpansionParser.is_expansion_sigil``
+    and documented the distinction; the strict one (used by the literal
+    recognizer for word boundaries) keeps the name.
+- Zero behavior change: full suite green (8,389, unchanged), 656 lexer tests
+  pass, ``ruff`` + ``mypy`` clean. Addresses elegance finding E-Lexer in the
+  2026-06-21 appraisal (``docs/reviews/ground_up_appraisal_2026-06-21.md``,
+  Tier 4). (The three expansion-extent scanners and the position-setter
+  backward branch noted there are left for a follow-up — unifying the scanners is
+  behavior-adjacent, not a pure cleanup.)
+
 ## 0.524.0 (2026-06-21) - Refactor: drop hand-rolled traversal the visitor base provides (appraisal Tier 4)
 - REFACTOR (visitor; zero behavior change). The security and metrics analysis
   visitors hand-rolled ``visit_TopLevel``/``visit_StatementList``/

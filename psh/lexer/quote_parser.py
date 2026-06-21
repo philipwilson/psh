@@ -20,7 +20,6 @@ class QuoteRules:
         allow_expansions: bool,
         processes_escapes: bool,
         allows_newlines: bool = True,
-        allows_nested_quotes: bool = False
     ):
         """
         Initialize quote rules.
@@ -32,13 +31,11 @@ class QuoteRules:
                 The actual escape semantics per context live in
                 pure_helpers.handle_escape_sequence; this flag only gates it.
             allows_newlines: Whether newlines are allowed in quoted strings
-            allows_nested_quotes: Whether the same quote can be nested (with escaping)
         """
         self.quote_char = quote_char
         self.allow_expansions = allow_expansions
         self.processes_escapes = processes_escapes
         self.allows_newlines = allows_newlines
-        self.allows_nested_quotes = allows_nested_quotes
 
 
 # Predefined quote rules for shell contexts
@@ -48,28 +45,24 @@ QUOTE_RULES = {
         allow_expansions=True,
         processes_escapes=True,   # \$ \\ \" \` (handle_escape_sequence)
         allows_newlines=True,
-        allows_nested_quotes=True
     ),
     "'": QuoteRules(
         quote_char="'",
         allow_expansions=False,
         processes_escapes=False,  # No escapes in single quotes
         allows_newlines=True,
-        allows_nested_quotes=False
     ),
     '`': QuoteRules(
         quote_char='`',
         allow_expansions=False,  # Backticks are command substitution, not string quotes
         processes_escapes=True,
         allows_newlines=True,
-        allows_nested_quotes=True
     ),
     "$'": QuoteRules(
         quote_char="'",  # Closing quote is just '
         allow_expansions=False,  # No variable expansion in ANSI-C quotes
         processes_escapes=True,  # C escapes, \xHH, \0NNN, \uHHHH, \UHHHHHHHH
         allows_newlines=True,
-        allows_nested_quotes=False
     )
 }
 
