@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.535.0 (2026-06-21) - Fix: set -u exit status is 1 for a script file, 127 only for -c (appraisal Tier 3, M13)
+- BUGFIX (MED). A ``set -u`` unbound-variable abort exited with status 127 in
+  EVERY non-interactive mode, but bash uses 127 only for ``-c`` — a script file
+  (and a non-interactive shell otherwise) exits 1. The status is now
+  command-mode-dependent (``executor/command.py``): ``-c`` → 127, script file →
+  1. Both still abort the shell.
+- Found by the 2026-06-21 ground-up appraisal
+  (``docs/reviews/ground_up_appraisal_2026-06-21.md``, M13). New
+  ``tests/integration/scripting/test_set_u_exit_code.py`` (5 cases); a
+  conformance test that pinned the old 127 was corrected to the bash-true 1.
+  (Two related M13 sub-items remain: a piped-stdin shell should ABORT on the
+  violation rather than continue, and script-mode shell errors still lack the
+  ``scriptname: line N:`` prefix.)
+
 ## 0.534.0 (2026-06-21) - Fix: honor $HISTFILE / $HISTSIZE (appraisal Tier 3, M14)
 - BUGFIX (MED). psh hardcoded ``~/.psh_history`` and a 1000-entry cap and ignored
   the ``HISTFILE`` / ``HISTSIZE`` shell variables — even though the user guide
