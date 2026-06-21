@@ -4,6 +4,27 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.514.0 (2026-06-21) - Lexer stops guessing ${...} token kind (reassessment 2026-06-20, #2)
+- REFACTOR (lexer; zero behavior change). The lexer classified a braced
+  ``${...}`` as a ``VARIABLE`` or ``PARAM_EXPANSION`` token by scanning the whole
+  text for operator substrings (``:-``, ``#``, ``/``, ...) — a heuristic the code
+  itself labelled "FRAGILE" (``${x:-a/b}`` false-matched ``/``) and which was
+  redundant: the parser's ``WordBuilder`` re-classifies a braced value precisely
+  anyway (simple name → ``VariableExpansion``; operators → the shared
+  ``param_parser``). The lexer now emits ONE ``VARIABLE`` token for every
+  ``$``-variable form (braced value = the ``{...}`` text); the WordBuilder owns the
+  classification. The substring scan is deleted.
+- A spike confirmed this is behavior-preserving: 0 parser/executor/conformance
+  failures, AST shapes unchanged, bash parity verified; only 12 lexer token-shape
+  assertions (which pinned the old token kind) needed updating to the new contract.
+- The ``PARAM_EXPANSION`` token type is now emit-dead (kept for the parser's
+  acceptance lists); retiring it (and the combinator-parser matchers + the
+  WordBuilder branch) is a documented follow-up.
+- TESTS: updated `test_expansion_tokens.py` / `test_tokenizer_migration.py` to the
+  new contract (braced ``${...}`` → one ``VARIABLE`` token, value ``{...}``); the
+  precise classification stays covered by `test_param_parser.py`. Full suite green,
+  ruff + mypy clean.
+
 ## 0.513.0 (2026-06-21) - Parser sub-parsers share a formal ParserSubcomponent base (reassessment 2026-06-20, #4)
 - REFACTOR (parser; zero behavior change). The 8 recursive-descent sub-parsers
   (statements/commands/control_structures/tests/arithmetic/functions/redirections/

@@ -96,10 +96,11 @@ class TestTokenizerMigration:
         assert tokens[1].type == TokenType.VARIABLE
         assert tokens[1].value == "{HOME}"
 
-        # Parameter expansion with default
+        # Parameter expansion with default — braced ${...} emits one VARIABLE
+        # token (value {...}); the parser's WordBuilder classifies it.
         tokens = list(tokenize("echo ${FOO:-default}"))
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${FOO:-default}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{FOO:-default}"
 
         # Multiple variables
         tokens = list(tokenize("echo ${VAR1} ${VAR2}"))

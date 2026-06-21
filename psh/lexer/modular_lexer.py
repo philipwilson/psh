@@ -408,28 +408,22 @@ class ModularLexer:
 
         # Emit token based on expansion type
         if expansion_part.is_variable:
-            if expansion_part.expansion_type == 'parameter':
-                # For parameter expansion, check if it's a complex form
-                value = expansion_part.value
-                # FRAGILE: classification by substring scan over the WHOLE
-                # ${...} text. An operator character appearing anywhere —
-                # including inside a default value or a quoted/nested part
-                # (e.g. ${x:-a/b} matched by '/') — classifies the token as
-                # PARAM_EXPANSION rather than VARIABLE. The parser accepts
-                # both token types, so misclassification is currently
-                # harmless, but don't rely on the distinction being precise.
-                if any(op in value for op in [':-', ':=', ':?', ':+', '##', '#', '%%', '%', '//', '/']):
-                    # Complex parameter expansion - use PARAM_EXPANSION token
-                    self.emit_token(TokenType.PARAM_EXPANSION, value, start_pos)
-                else:
-                    # Simple ${var} form - treat as VARIABLE
-                    # Strip the $ but keep the {} wrapper for parameter expansion
-                    value = expansion_part.value[1:] if expansion_part.value.startswith('$') else expansion_part.value
-                    self.emit_token(TokenType.VARIABLE, value, start_pos)
-            else:
-                # For simple variables, the value should already be just the variable name
-                value = expansion_part.value
-                self.emit_token(TokenType.VARIABLE, value, start_pos)
+            # Every $-variable form — simple `$var` and braced `${...}` alike —
+            # emits ONE `VARIABLE` token. The WordBuilder classifies a braced
+            # value precisely (`WordBuilder.parse_expansion_token`: a simple
+            # name → `VariableExpansion`, anything with operators → the shared
+            # `param_parser`). The lexer used to guess VARIABLE-vs-PARAM_EXPANSION
+            # by scanning the whole `${...}` text for operator substrings — a
+            # heuristic with false positives (`${x:-a/b}` matched `/`) that the
+            # WordBuilder re-classified anyway. (`PARAM_EXPANSION` is now an
+            # emit-dead token type, kept for the parser's acceptance lists; a
+            # follow-up could retire it.)
+            value = expansion_part.value
+            if expansion_part.expansion_type == 'parameter' and value.startswith('$'):
+                # Braced `${...}`: strip the leading `$` to the `{...}` shape
+                # (matching what simple `${var}` already produced).
+                value = value[1:]
+            self.emit_token(TokenType.VARIABLE, value, start_pos)
         else:
             # Command substitution or arithmetic
             if expansion_part.expansion_type == 'arithmetic':

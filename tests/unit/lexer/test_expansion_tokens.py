@@ -52,7 +52,15 @@ class TestCommandSubstitution:
 
 
 class TestParameterExpansion:
-    """Test parameter expansion tokenization."""
+    """Test parameter expansion tokenization.
+
+    The lexer emits ONE ``VARIABLE`` token for every ``$``-variable form,
+    including braced ``${...}`` (value = the ``{...}`` text, leading ``$``
+    stripped). It no longer guesses VARIABLE-vs-PARAM_EXPANSION by scanning
+    for operator substrings; the precise classification (simple name vs
+    parameter-expansion operators) happens in the parser's WordBuilder /
+    ``param_parser`` (see tests/unit/expansion/test_param_parser.py).
+    """
 
     def test_simple_variable(self):
         """Test simple $VAR variable."""
@@ -75,72 +83,72 @@ class TestParameterExpansion:
         tokens = tokenize("echo ${USER:-nobody}")
 
         assert len(tokens) == 3
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${USER:-nobody}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{USER:-nobody}"
 
     def test_param_expansion_assign_default(self):
         """Test parameter expansion with assign default."""
         tokens = tokenize("echo ${USER:=nobody}")
 
         assert len(tokens) == 3
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${USER:=nobody}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{USER:=nobody}"
 
     def test_param_expansion_error(self):
         """Test parameter expansion with error."""
         tokens = tokenize("echo ${USER:?User not set}")
 
         assert len(tokens) == 3
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${USER:?User not set}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{USER:?User not set}"
 
     def test_param_expansion_alternate(self):
         """Test parameter expansion with alternate value."""
         tokens = tokenize("echo ${USER:+logged in}")
 
         assert len(tokens) == 3
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${USER:+logged in}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{USER:+logged in}"
 
     def test_param_expansion_length(self):
         """Test parameter expansion for length."""
         tokens = tokenize("echo ${#USER}")
 
         assert len(tokens) == 3
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${#USER}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{#USER}"
 
     def test_param_expansion_prefix_remove(self):
         """Test parameter expansion with prefix removal."""
         tokens = tokenize("echo ${PATH#/usr}")
 
         assert len(tokens) == 3
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${PATH#/usr}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{PATH#/usr}"
 
     def test_param_expansion_suffix_remove(self):
         """Test parameter expansion with suffix removal."""
         tokens = tokenize("echo ${FILE%.txt}")
 
         assert len(tokens) == 3
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${FILE%.txt}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{FILE%.txt}"
 
     def test_param_expansion_replace(self):
         """Test parameter expansion with replacement."""
         tokens = tokenize("echo ${PATH/bin/sbin}")
 
         assert len(tokens) == 3
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${PATH/bin/sbin}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{PATH/bin/sbin}"
 
     def test_param_expansion_replace_all(self):
         """Test parameter expansion with replace all."""
         tokens = tokenize("echo ${PATH//bin/sbin}")
 
         assert len(tokens) == 3
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${PATH//bin/sbin}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{PATH//bin/sbin}"
 
 
 class TestMixedExpansions:
@@ -151,8 +159,8 @@ class TestMixedExpansions:
         tokens = tokenize("echo ${VAR:-$(date)}")
 
         assert len(tokens) == 3
-        assert tokens[1].type == TokenType.PARAM_EXPANSION
-        assert tokens[1].value == "${VAR:-$(date)}"
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "{VAR:-$(date)}"
         assert "$(date)" in tokens[1].value
 
     def test_param_expansion_in_command_sub(self):
@@ -173,8 +181,8 @@ class TestMixedExpansions:
         assert tokens[1].value == "USER"
         assert tokens[2].type == TokenType.COMMAND_SUB
         assert tokens[2].value == "$(date)"
-        assert tokens[3].type == TokenType.PARAM_EXPANSION
-        assert tokens[3].value == "${HOME:-/tmp}"
+        assert tokens[3].type == TokenType.VARIABLE
+        assert tokens[3].value == "{HOME:-/tmp}"
 
     def test_expansions_in_string(self):
         """Test expansions inside double-quoted string."""
