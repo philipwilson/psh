@@ -208,10 +208,17 @@ class FileRedirector:
 
         Shared redirect primitive (fd backend and builtin stream backend).
         Returns the content."""
-        if hasattr(redirect, 'quote_type') and redirect.quote_type == "'":
+        quote_type = getattr(redirect, 'quote_type', None)
+        if quote_type == "'":
             expanded = redirect.target
         else:
-            expanded = self.shell.expansion_manager.expand_string_variables(redirect.target)
+            target = redirect.target
+            # An UNQUOTED here-string tilde-expands like a value (start + after
+            # each ':'), BEFORE variable expansion (POSIX order). A double-quoted
+            # here-string does not tilde-expand (`<<<"~"` stays literal).
+            if not quote_type:
+                target = self.shell.expansion_manager.expand_string_tildes(target)
+            expanded = self.shell.expansion_manager.expand_string_variables(target)
         content = expanded + '\n'
         self._content_to_fd(content, self._heredoc_fd(redirect))
         return content

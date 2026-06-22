@@ -469,6 +469,17 @@ class WordExpander:
 
         return ''.join(result_parts)
 
+    def expand_value_tildes(self, text: str) -> str:
+        """Value-context tilde expansion of a raw string (public).
+
+        Expands an unquoted ``~``/``~user`` prefix at the START and after each
+        ``:`` (``~:~`` -> both, ``a:~`` -> the second, ``x~y`` -> unchanged) —
+        bash's assignment-value rule. Used for here-strings, which tilde-expand
+        like a value but are not word-split.
+        """
+        return self._expand_assignment_value_tildes(
+            text, first_trigger=True, parts_follow=False)
+
     def _expand_assignment_value_tildes(self, text: str, first_trigger: bool,
                                         parts_follow: bool) -> str:
         """Expand tilde prefixes inside a chunk of an assignment value.

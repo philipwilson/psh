@@ -242,6 +242,14 @@ class ExpansionManager:
         """
         return self.variable_expander.expand_string_variables(text)
 
+    def expand_string_tildes(self, text: str) -> str:
+        """Value-context tilde expansion of a raw string: an unquoted ``~``/
+        ``~user`` prefix at the start and after each ``:`` is expanded
+        (``~:~`` -> both, ``x~y`` -> unchanged). Used by unquoted here-strings,
+        which tilde-expand like an assignment value but are not word-split.
+        Apply BEFORE variable expansion (POSIX order)."""
+        return self.word_expander.expand_value_tildes(text)
+
     def set_var_or_array_element(self, name: str, value) -> None:
         """Assign to a plain variable or an ``arr[index]`` element.
 
