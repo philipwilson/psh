@@ -44,19 +44,20 @@ class FunctionReturn(Exception):
         super().__init__()
 
 
-class AssignmentAbort(BaseException):
-    """A fatal variable-assignment error (readonly variable, circular nameref)
-    that aborts the CURRENT top-level command but does NOT exit the shell.
-
-    bash reports the error and unwinds the whole current top-level command —
-    skipping the rest of the command list, and any enclosing ``if``/loop/
-    function/brace group on the same logical input — then resumes at the NEXT
-    top-level command (next input line). So::
+class TopLevelAbort(BaseException):
+    """A fatal runtime condition that aborts the CURRENT top-level command but
+    does NOT exit the shell — bash reports the error, unwinds the whole current
+    top-level command (the rest of the command list and any enclosing
+    ``if``/loop/function/brace group on the same logical input), then resumes at
+    the NEXT top-level command (next input line). So::
 
         readonly r=1; r=2; echo X      # one line  -> X skipped (whole list aborts)
         readonly r=1
         r=2                            # own line  -> aborts here ...
         echo X                         # ... resumes: X prints
+
+    Raised for a fatal variable-assignment error (readonly variable, circular
+    nameref) and for exceeding ``FUNCNEST`` (maximum function nesting).
 
     Derives from ``BaseException`` (like ``SystemExit``) so it unwinds past the
     executor's ``except Exception`` guards without being mistaken for an

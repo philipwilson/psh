@@ -306,7 +306,7 @@ class SourceProcessor(ScriptComponent):
             # Increment command number for successful parse
             self.state.command_number += 1
 
-            from ..core import AssignmentAbort, LoopBreak, LoopContinue
+            from ..core import LoopBreak, LoopContinue, TopLevelAbort
             try:
                 # Handle TopLevel AST node (functions + commands)
                 if isinstance(ast, TopLevel):
@@ -329,7 +329,7 @@ class SourceProcessor(ScriptComponent):
                         print(f"{stmt_name}: only meaningful in a `for' or `while' loop",
                               file=sys.stderr)
                         return 1
-            except AssignmentAbort as e:
+            except TopLevelAbort as e:
                 # A fatal assignment error (readonly/nameref-cycle) unwound the
                 # whole current top-level command (the rest of the command list
                 # and any enclosing if/loop/function on the same input). The

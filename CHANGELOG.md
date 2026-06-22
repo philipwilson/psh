@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.556.0 (2026-06-23) - Fix: FUNCNEST limits function-call nesting (appraisal #14 Tier 2)
+- FIX (MED). ``FUNCNEST`` was ignored — deep/infinite recursion ran to Python's
+  recursion limit (caught as a generic defect) instead of bash's clean nesting
+  limit. Now a function call is refused once the call stack is already
+  ``FUNCNEST`` deep: the body does not run, ``NAME: maximum function nesting
+  level exceeded (N)`` is reported, and the current top-level command is aborted
+  (execution resumes at the next input line, status 1). ``FUNCNEST`` unset or
+  ``<= 0`` means no limit. Found in ground-up reappraisal #14; verified against
+  bash 5.2.
+  - **Implementation:** ``FunctionOperationExecutor._check_funcnest`` raises the
+    command-abort signal on entry. That signal — added for the H6 assignment-error
+    abort — is **generalized and renamed ``AssignmentAbort`` → ``TopLevelAbort``**
+    (it now serves both readonly/nameref-cycle assignment errors and FUNCNEST),
+    keeping its BaseException unwind-to-the-top-level-command behavior and its
+    catch sites (``_execute_buffered_command``, subshell ``execute_fn``,
+    ``run_child_shell``).
+
 ## 0.555.0 (2026-06-23) - Fix: `"${!ref}"` indirection to an `[@]` array yields fields (appraisal #14 Tier 2)
 - FIX (MED). A quoted indirect expansion whose reference names an
   ``[@]``-subscripted array (``ref="a[@]"; "${!ref}"``) collapsed to a single

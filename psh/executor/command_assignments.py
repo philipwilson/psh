@@ -37,9 +37,9 @@ POSIX ordering contract (probe-verified against bash 5.2):
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple, cast
 
 from ..core import (
-    AssignmentAbort,
     NamerefCycleError,
     ReadonlyVariableError,
+    TopLevelAbort,
     is_valid_assignment,
     resolve_append_assignment,
 )
@@ -205,12 +205,12 @@ class CommandAssignments:
                     # write reports the array name (``a[0]=X`` → ``a: readonly
                     # variable``), like bash.
                     print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
-                    raise AssignmentAbort(1)
+                    raise TopLevelAbort(1)
                 except NamerefCycleError as e:
                     # bash: writing through a circular nameref warns and aborts
                     # the current top-level command (same scope as above).
                     self.state.scope_manager.warn_nameref_cycle(e.name)
-                    raise AssignmentAbort(1)
+                    raise TopLevelAbort(1)
 
             # bash: a pure assignment's status is 0, unless a command
             # substitution ran while expanding the value — then it is the

@@ -100,15 +100,15 @@ class TestApplyPure:
 
     def test_readonly_raises_assignment_abort(self, assignments):
         # A readonly-variable assignment error aborts the current top-level
-        # command (bash) — apply_pure prints the error and raises AssignmentAbort
+        # command (bash) — apply_pure prints the error and raises TopLevelAbort
         # (caught at the source-processor boundary), rather than returning 1.
-        from psh.core import AssignmentAbort
+        from psh.core import TopLevelAbort
         ca, shell = assignments
         shell.run_command('readonly RO=1')
         shell.clear_output()
         node = first_simple_command('RO=2')
         shell.state.last_cmdsub_status = None
-        with pytest.raises(AssignmentAbort) as exc_info:
+        with pytest.raises(TopLevelAbort) as exc_info:
             ca.apply_pure(node, ca.extract(node))
         assert exc_info.value.status == 1
         assert 'readonly variable' in shell.get_stderr()

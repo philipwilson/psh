@@ -17,7 +17,6 @@ from .assignment_utils import (
 )
 from .exceptions import (
     ArraySubscriptError,
-    AssignmentAbort,
     ExpansionError,
     FunctionDefinitionError,
     FunctionReturn,
@@ -27,6 +26,7 @@ from .exceptions import (
     NamerefCycleError,
     PshError,
     ReadonlyVariableError,
+    TopLevelAbort,
     UnboundVariableError,
 )
 from .internal_errors import report_internal_defect
@@ -40,7 +40,7 @@ __all__ = [
     # Exceptions
     'LoopBreak',
     'LoopContinue',
-    'AssignmentAbort',
+    'TopLevelAbort',
     'UnboundVariableError',
     'ReadonlyVariableError',
     'NamerefCycleError',
