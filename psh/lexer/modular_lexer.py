@@ -5,6 +5,7 @@ from typing import List, Optional
 from .command_position import (
     COMMAND_GROUP_OPENERS,
     LEXER_COMMAND_POSITION_WORDS,
+    PIPELINE_PREFIX_TOKENS,
     STATEMENT_SEPARATORS,
 )
 from .expansion_parser import ExpansionContext, ExpansionParser
@@ -203,7 +204,8 @@ class ModularLexer:
         # value-based check against LEXER_COMMAND_POSITION_WORDS below (the
         # lexer never sees keyword token TYPES here; see command_position.py
         # for the three machines that track command position).
-        command_starting_tokens = STATEMENT_SEPARATORS | COMMAND_GROUP_OPENERS
+        command_starting_tokens = (
+            STATEMENT_SEPARATORS | COMMAND_GROUP_OPENERS | PIPELINE_PREFIX_TOKENS)
 
         neutral_tokens = {
             TokenType.REDIRECT_IN, TokenType.REDIRECT_OUT,

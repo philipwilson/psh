@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.548.0 (2026-06-22) - Fix: `!` before a compound command keeps command position (appraisal #14 Tier 2)
+- FIX (MED). A ``!`` (pipeline negation) before a compound command reset the
+  lexer's command position, so the following reserved word lexed as a plain
+  WORD and the parser reported ``Expected command`` (or ``[[: command not
+  found``): ``! while false; do echo x; done``, ``! if ...; fi``, ``! case ...
+  esac``, ``! for ...``, ``! [[ -z x ]]`` all failed (bash accepts them). Found
+  in ground-up reappraisal #14; affected BOTH parsers. Verified against bash 5.2.
+  - **Fix:** a new ``PIPELINE_PREFIX_TOKENS`` vocabulary (``command_position.py``,
+    currently ``EXCLAMATION``) is consulted by both command-position machines —
+    the lexer pass (``modular_lexer._update_command_position_context``) and the
+    keyword normalizer (``keyword_normalizer._next_command_position``) — so the
+    token after ``!`` stays at command position and its keyword / ``[[`` is
+    recognized. ``! { ... }``, ``! ( ... )`` and ``! pipeline`` (already correct)
+    are unaffected. (``time`` is the other pipeline prefix, but it is a
+    WORD-keyword the parser does not yet consume; it is handled with the ``time``
+    reserved-word implementation.)
+
 ## 0.547.0 (2026-06-22) - Fix: `--format` round-trip fidelity on 8 constructs (appraisal #14 Tier 1, H8)
 - FIX (HIGH). The ``--format`` pretty-printer was lossy on a cluster of
   constructs — several re-parsed to a DIFFERENT program or a parse error. Found

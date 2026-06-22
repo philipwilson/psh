@@ -87,6 +87,19 @@ COMMAND_GROUP_OPENERS = frozenset({
     TokenType.LBRACE,
 })
 
+# Operator tokens that PREFIX a pipeline and keep the FOLLOWING token at command
+# position, so a compound keyword (`while`/`if`/`case`/...) or the `[[` test
+# operator right after them is still recognized: `! while ...; do ...; done`,
+# `! if ...; fi`, `! [[ -z x ]]`. Without this the lexer/normalizer reset
+# command position after `!`, so the next reserved word lexed as a plain WORD
+# and the parser hit "Expected command". (`time` is a pipeline prefix too, but
+# it is a WORD-valued keyword the parser does not yet consume as a time-node, so
+# it is handled when the `time` reserved word is implemented — see
+# CMDPOS_KEEPING_WORDS, which already lists both for the cmdsub scanner.)
+PIPELINE_PREFIX_TOKENS = frozenset({
+    TokenType.EXCLAMATION,
+})
+
 # WORD values the lexer pass treats as command-position setters during
 # tokenization (before keywords have types). Two deliberate asymmetries
 # against RESET_TO_COMMAND_POSITION:

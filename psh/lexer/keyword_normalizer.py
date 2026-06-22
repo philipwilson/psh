@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from .command_position import (
     CASE_TERMINATORS,
+    PIPELINE_PREFIX_TOKENS,
     RESET_TO_COMMAND_POSITION,
 )
 from .command_position import (
@@ -137,6 +138,12 @@ class KeywordNormalizer:
             return True
 
         if token_type in self.RESET_TO_COMMAND_POSITION:
+            return True
+
+        # A pipeline-prefix operator (`!`) keeps the next token at command
+        # position, so `! while ...`, `! if ...`, `! [[ ... ]]` recognize their
+        # reserved word / test operator.
+        if token_type in PIPELINE_PREFIX_TOKENS:
             return True
 
         if token_type in {TokenType.IF, TokenType.WHILE, TokenType.UNTIL}:
