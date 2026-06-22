@@ -4,6 +4,14 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.550.0 (2026-06-22) - Test: isolate flaky `test_if_with_file_test` (xdist filename collision)
+- TEST-ONLY. ``test_if_with_file_test`` created fixed-name ``testfile``/``testdir``
+  in the shared cwd via the plain ``shell`` fixture, so two xdist workers running
+  it (or a sibling) concurrently raced on those names — an intermittent
+  ``'file exists' in 'is directory'`` failure surfaced once during the Tier 2
+  campaign. Switched it to ``isolated_shell_with_temp_dir`` (per-test cwd), per
+  the parallel-safety rule for file-creating tests. No source/behavior change.
+
 ## 0.549.0 (2026-06-22) - Fix: `${...}` extent stops at the first `}` (literal `{` no longer nests) (appraisal #14 Tier 2)
 - FIX (MED). A bare ``{`` inside a ``${...}`` body was counted toward brace
   nesting depth, so the lexer ran past the intended closing ``}``:

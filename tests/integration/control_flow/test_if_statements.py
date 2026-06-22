@@ -212,8 +212,14 @@ class TestIfStatements:
         assert "EMPTY is empty" in captured.out
         assert "VAR equals hello" in captured.out
 
-    def test_if_with_file_test(self, shell, capsys):
-        """Test if with file test operators."""
+    def test_if_with_file_test(self, isolated_shell_with_temp_dir, capsys):
+        """Test if with file test operators.
+
+        Uses isolated_shell_with_temp_dir (per-test cwd) so the fixed-name
+        `testfile`/`testdir` can't collide with another xdist worker creating
+        the same names in a shared cwd (that race made this flaky).
+        """
+        shell = isolated_shell_with_temp_dir
         cmd = '''
         touch testfile
         mkdir testdir
