@@ -149,6 +149,16 @@ class TestNamerefBashParity:
         'arr=(p q r); declare -n e=arr[1]; echo "$e"',
         'arr=(p q r); declare -n e=arr[1]; e=Q; echo "${arr[@]}"',
         'declare -A m=([k]=v); declare -n e=m[k]; echo "$e"',
+        # reappraisal #14 H5: `+=` through a nameref must append to the
+        # TARGET's value/attributes, not the nameref's own value (the target
+        # name). Previously `n=5; declare -n r=n; r+=3` gave "n3".
+        'n=5; declare -n r=n; r+=3; echo "$n"',
+        'declare -i n=5; declare -n r=n; r+=3; echo "$n"',
+        'declare -u u=x; declare -n r=u; r+=world; echo "$u"',
+        'arr=(a b); declare -n r=arr; r+=x; echo "${arr[@]}"',
+        'n=1; declare -n s=n; declare -n r=s; r+=9; echo "$n"',
+        'g=5; f(){ declare -n r=g; r+=3; }; f; echo "$g"',
+        'declare -A m=([0]=ab); declare -n r=m; r+=cd; echo "${m[0]}"',
     ])
     def test_matches_bash(self, script):
         psh = _run(script)
