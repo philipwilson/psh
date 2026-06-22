@@ -427,19 +427,21 @@ class DeclareBuiltin(Builtin):
             # A declared-but-unset name (``declare -u y``) reads as unset
             # but must still accept later attribute changes (``declare -l
             # y`` flips its case), so route those through the mutators too.
-            existing = self._get_variable_with_attributes(shell, arg)
-            if existing is None:
-                existing = shell.state.scope_manager.get_declared_variable_object(arg)
+            # Look only in the scope declare WRITES to: inside a function a
+            # bare ``declare NAME`` is local (== ``local NAME``), so an
+            # outer-scope variable is invisible and must not be mutated — a
+            # fresh local shadow is created instead (bash).
+            existing = self._declared_in_target_scope(shell, arg, options['global'])
             if existing:
                 if remove_attrs:
                     shell.state.scope_manager.remove_attribute(arg, remove_attrs)
                 if attributes:
                     shell.state.scope_manager.apply_attribute(arg, attributes)
             else:
-                # Declared-but-unset: record the attributes, but the
-                # name still reads as unset and (for -x) gains no
-                # environment entry until assigned (bash: ``declare
-                # -x FOO`` then ``${FOO-u}`` is ``u``, printenv
+                # Create the variable in the target scope (a local shadow
+                # inside a function). Declared-but-unset: the name reads as
+                # unset and (for -x) gains no environment entry until assigned
+                # (bash: ``declare -x FOO`` then ``${FOO-u}`` is ``u``, printenv
                 # fails; assignment makes both appear).
                 self._set_variable_with_attributes(
                     shell, arg, "",
@@ -549,6 +551,19 @@ class DeclareBuiltin(Builtin):
             var = sm.current_scope.variables.get(name)
             return var if (var is not None and not var.is_unset) else None
         return sm.get_variable_object(name)
+
+    def _declared_in_target_scope(self, shell: 'Shell', name: str,
+                                  global_flag: bool) -> Optional[Variable]:
+        """Like ``_existing_in_target_scope`` but INCLUDING a declared-but-unset
+        tombstone, so repeated attribute-only declares accumulate (``declare -u
+        y; declare -l y``). Inside a function (no -g) only the current scope is
+        consulted — an outer-scope variable is invisible, so ``declare NAME``
+        creates a fresh LOCAL shadow rather than mutating the outer (bash).
+        """
+        sm = shell.state.scope_manager
+        if self._declare_target_is_local(shell, global_flag):
+            return sm.current_scope.variables.get(name)
+        return sm.get_declared_variable_object(name)
 
     def _get_all_variables_with_attributes(self, shell: 'Shell') -> List[Variable]:
         """Get all variables with their attributes."""
