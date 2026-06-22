@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.551.0 (2026-06-22) - Fix: a literal `}`/`]` suffix on a brace group attaches (appraisal #14 Tier 2)
+- FIX (MED). A literal ``}``/``]`` immediately after a brace group was treated
+  as a detachable shell operator, so the items were space-joined instead of
+  carrying the suffix: ``echo arr[{1,2}]`` gave ``arr[1 2]`` (bash:
+  ``arr[1] arr[2]``); likewise ``[{1,2}]``, ``{a,b}]``, ``{{a,b}}``,
+  ``x{1..3}]``. Found in ground-up reappraisal #14; verified against bash 5.2.
+  - **Root cause / fix:** a vestigial "detach" mechanism
+    (``_split_detachable_suffix``/``_combine`` + ``_DETACH_*`` operator sets in
+    ``brace_expansion.py``) left over from before brace expansion moved onto the
+    token stream. Brace expansion now runs per-WORD, so a real operator
+    (``;``/``|``/``)``/...) is always a SEPARATE token and can never be a word
+    suffix — the mechanism only ever mis-fired on legitimate literal-brace
+    suffixes. Deleted it; ``_expand_one_brace`` now always attaches the whole
+    suffix to each item (an escaped operator like ``{a,b}\;`` correctly attaches
+    too, matching bash). The fix removes code.
+
 ## 0.550.0 (2026-06-22) - Test: isolate flaky `test_if_with_file_test` (xdist filename collision)
 - TEST-ONLY. ``test_if_with_file_test`` created fixed-name ``testfile``/``testdir``
   in the shared cwd via the plain ``shell`` fixture, so two xdist workers running

@@ -25,7 +25,7 @@ This module is in mypy's checked scope; keep it clean.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from ..core.exceptions import PshError
 
@@ -51,13 +51,6 @@ class _BraceGroup:
     start: int   # index of the opening '{'
     end: int     # index one past the closing '}'
     content: str  # text between the braces (exclusive)
-
-
-# Shell operators that, when they immediately follow a brace expansion, are NOT
-# attached to each expanded item; instead the items are space-joined and the
-# operator follows the whole group (e.g. ``{a,b};`` is handled specially).
-_DETACH_MULTI_CHAR_OPERATORS = ('&&', '||', '>>', '<<')
-_DETACH_SINGLE_CHAR_OPERATORS = ';|&)]}'
 
 
 class BraceExpander:
@@ -135,14 +128,19 @@ class BraceExpander:
 
         prefix = text[:group.start]
         suffix = text[group.end:]
-        attach_suffix, detached_suffix = self._split_detachable_suffix(suffix)
 
         items = self._generate_items(group.content)
         if items is None:
             # Recognized as a group but not actually expandable; leave literal.
             return [text]
 
-        return self._combine(prefix, items, attach_suffix, detached_suffix)
+        # Each item carries the prefix and the WHOLE suffix; the caller re-runs
+        # expansion on each result so a following group (`{a,b}{c,d}`) or a
+        # literal-brace suffix (`{a,b}]` -> `a] b]`) is handled. The suffix is
+        # never a real shell operator here: brace expansion runs per-WORD on the
+        # token stream, so `;`/`|`/`)`/... are already separate tokens — only an
+        # escaped/quoted operator can sit in a word, and that attaches (bash).
+        return [prefix + item + suffix for item in items]
 
     def _generate_items(self, content: str) -> Optional[List[str]]:
         """Produce the items a brace group's ``content`` expands to.
@@ -157,41 +155,6 @@ class BraceExpander:
             return self._expand_sequence(content)
         # Neither a list nor a sequence: not a valid brace expression.
         return None
-
-    @staticmethod
-    def _split_detachable_suffix(suffix: str) -> Tuple[str, str]:
-        """Split a brace group's suffix into (attached, detached) parts.
-
-        Most suffix text attaches to each expanded item. But when the suffix
-        begins with a shell operator (``;``, ``|``, ``&&`` ...) that operator
-        must NOT be glued onto every item; it is detached so the items are
-        space-joined and the operator trails the whole group instead.
-
-        Returns ``(attach_suffix, detached_suffix)``; at most one is non-empty.
-        """
-        if not suffix:
-            return suffix, ""
-
-        for op in _DETACH_MULTI_CHAR_OPERATORS:
-            if suffix.startswith(op):
-                return "", suffix
-        if suffix[0] in _DETACH_SINGLE_CHAR_OPERATORS:
-            return "", suffix
-
-        return suffix, ""
-
-    @staticmethod
-    def _combine(prefix: str, items: List[str],
-                 attach_suffix: str, detached_suffix: str) -> List[str]:
-        """Recombine expanded ``items`` with their prefix/suffix.
-
-        Normally each item becomes ``prefix + item + attach_suffix``. When a
-        suffix was detached (a trailing shell operator), the items are joined
-        with spaces and the operator follows the whole group as one string.
-        """
-        if detached_suffix:
-            return [prefix + ' '.join(items) + detached_suffix]
-        return [prefix + item + attach_suffix for item in items]
 
     # ------------------------------------------------------------------ #
     # Phase 3: locate a brace group
