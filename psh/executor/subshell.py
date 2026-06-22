@@ -214,6 +214,12 @@ class SubshellExecutor:
             finally:
                 if saved_fds:
                     subshell.io_manager.restore_redirections(saved_fds)
+                # A backgrounded subshell is still a subshell: it runs its own
+                # EXIT trap when it finishes, exactly like the foreground path.
+                try:
+                    subshell.trap_manager.execute_exit_trap()
+                except Exception:
+                    pass
                 # Flush output streams before returning
                 try:
                     subshell.stdout.flush()

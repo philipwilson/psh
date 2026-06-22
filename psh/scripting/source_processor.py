@@ -48,6 +48,34 @@ def _offset_line_numbers(obj: Any, delta: int) -> None:
 class SourceProcessor(ScriptComponent):
     """Processes input from various sources (files, strings, stdin)."""
 
+    def execute_as_main(self, input_source, add_to_history: bool = True) -> int:
+        """Run an input source as the TOP-LEVEL shell input, firing the EXIT trap.
+
+        This is the single chokepoint for every non-interactive whole-shell run
+        (`-c`, a script file, piped stdin). The EXIT trap must fire exactly once
+        when the shell finishes, no matter HOW it finishes:
+
+        * normal end-of-input — ``execute_from_source`` returns and we fire here;
+        * ``set -e`` abort — the executor raises ``SystemExit`` (script mode), so
+          we recover the status and still fire here;
+        * explicit ``exit`` — the ``exit`` builtin already fired the trap, then
+          raised ``SystemExit``; ``execute_exit_trap`` is idempotent so this is a
+          no-op, and we recover the status.
+
+        Firing happens AFTER recovering ``exit_code`` but is NOT swallowed: if the
+        trap body itself runs ``exit N``, that ``SystemExit`` propagates and
+        overrides the status (bash). The trap runs while the run's state ($?, $0,
+        positionals) is still in place.
+        """
+        try:
+            exit_code = self.execute_from_source(
+                input_source, add_to_history=add_to_history)
+        except SystemExit as exc:
+            code = exc.code
+            exit_code = code if isinstance(code, int) else (0 if code is None else 1)
+        self.shell.trap_manager.execute_exit_trap()
+        return exit_code
+
     def execute_from_source(self, input_source, add_to_history: bool = True,
                             base_line: int = 1) -> int:
         """Execute commands from an input source with enhanced processing.
