@@ -44,6 +44,32 @@ class FunctionReturn(Exception):
         super().__init__()
 
 
+class AssignmentAbort(BaseException):
+    """A fatal variable-assignment error (readonly variable, circular nameref)
+    that aborts the CURRENT top-level command but does NOT exit the shell.
+
+    bash reports the error and unwinds the whole current top-level command —
+    skipping the rest of the command list, and any enclosing ``if``/loop/
+    function/brace group on the same logical input — then resumes at the NEXT
+    top-level command (next input line). So::
+
+        readonly r=1; r=2; echo X      # one line  -> X skipped (whole list aborts)
+        readonly r=1
+        r=2                            # own line  -> aborts here ...
+        echo X                         # ... resumes: X prints
+
+    Derives from ``BaseException`` (like ``SystemExit``) so it unwinds past the
+    executor's ``except Exception`` guards without being mistaken for an
+    internal defect; it is caught explicitly at the top-level command boundary
+    (``SourceProcessor._execute_buffered_command``) and at child-shell
+    boundaries (subshell ``execute_fn``, ``run_child_shell``). The error message
+    is printed at the raise site (bash prints it before unwinding).
+    """
+    def __init__(self, status: int = 1):
+        self.status = status
+        super().__init__()
+
+
 # --- Errors -------------------------------------------------------------
 
 class UnboundVariableError(PshError):
