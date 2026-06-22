@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.554.0 (2026-06-22) - Fix: here-string performs tilde expansion (appraisal #14 Tier 2)
+- FIX (MED). An unquoted here-string (``<<<``) expanded variables, command
+  substitution and arithmetic but NOT tilde, so ``cat <<<~`` produced ``~``
+  instead of the home directory (``cat <<<~/foo``, ``cat <<<~root`` likewise).
+  Found in ground-up reappraisal #14; verified against bash 5.2.
+  - **Fix:** ``redirect_herestring`` (``io_redirect/file_redirect.py``) now
+    applies bash's value-context tilde rule to an UNQUOTED here-string before
+    variable expansion (POSIX order) — a ``~``/``~user`` prefix at the start and
+    after each ``:`` (``<<<~:~`` -> both), leaving a mid-word ``~`` (``x~y``)
+    untouched. A double- or single-quoted here-string stays literal. Exposed via
+    new ``ExpansionManager.expand_string_tildes`` /
+    ``WordExpander.expand_value_tildes`` (reusing the existing assignment-value
+    tilde engine).
+
 ## 0.553.0 (2026-06-22) - Fix: `export -p` lists declared-but-unset exports (appraisal #14 Tier 2)
 - FIX (MED). ``export -p`` (and bare ``export``) iterated the live environment
   dict, so an exported-but-unset variable — ``export NOVAL`` with no value, which
