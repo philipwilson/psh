@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.555.0 (2026-06-23) - Fix: `"${!ref}"` indirection to an `[@]` array yields fields (appraisal #14 Tier 2)
+- FIX (MED). A quoted indirect expansion whose reference names an
+  ``[@]``-subscripted array (``ref="a[@]"; "${!ref}"``) collapsed to a single
+  IFS-joined field instead of one field per element: ``for w in "${!ref}"``
+  saw ``<p q r>`` rather than ``<p> <q> <r>``, and ``set -- "${!ref}"`` gave
+  ``$#`` = 1 not 3. Found in ground-up reappraisal #14; verified against bash 5.2.
+  - **Fix:** ``FieldExpansionMixin.expand_to_fields`` (``expansion/fields.py``)
+    now handles plain ``!`` indirection: when ``ref`` is a plain variable whose
+    value is ``name[@]``-shaped, it expands the named array to fields. A scalar
+    or ``[*]`` target, a positional/special source, an invalid name
+    (``${!1abc}`` → bad substitution), or an unset ref all return ``None`` so
+    the scalar path handles them — the error-raising resolver is deliberately
+    NOT called here (it would mis-report and could double-print). An
+    associative ``[@]`` target also now yields fields (its element order follows
+    the same non-portable hash/insertion order as ``${m[@]}``).
+
 ## 0.554.0 (2026-06-22) - Fix: here-string performs tilde expansion (appraisal #14 Tier 2)
 - FIX (MED). An unquoted here-string (``<<<``) expanded variables, command
   substitution and arithmetic but NOT tilde, so ``cat <<<~`` produced ``~``
