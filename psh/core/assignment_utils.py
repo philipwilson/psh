@@ -62,7 +62,14 @@ def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str,
     if not var.endswith('+'):
         return var, value
     name = var[:-1]
-    var_obj = scope_manager.get_variable_object(name)
+    # Resolve a nameref to its target BEFORE reading the old value/attributes:
+    # `n=5; declare -n r=n; r+=3` must append to n's VALUE (-> "53"), not to r's
+    # own value (the literal target name "n", which gave "n3"); the integer/array
+    # attributes likewise belong to the target. A plain (non-nameref) name
+    # resolves to itself, so this is a no-op for the common case. The write side
+    # (set_variable, below) re-resolves the nameref, so we still return `name`.
+    target = scope_manager.resolve_nameref_name(name)
+    var_obj = scope_manager.get_variable_object(target)
     if var_obj is not None and isinstance(var_obj.value, IndexedArray):
         indexed = var_obj.value
         indexed.set(0, (indexed.get(0) or '') + value)

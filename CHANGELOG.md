@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.544.0 (2026-06-22) - Fix: scalar/integer `+=` through a nameref appends to the target's value (appraisal #14 Tier 1, H5)
+- FIX (HIGH). A scalar or integer ``+=`` append through a name reference
+  appended to the nameref's OWN value — the literal target name — instead of
+  the target variable's value:
+  - ``n=5; declare -n r=n; r+=3; echo $n`` gave ``n3`` (bash: ``53``);
+  - ``declare -i n=5; declare -n r=n; r+=3`` gave ``0`` (bash: ``8``);
+  - ``declare -u u=x; declare -n r=u; r+=world`` gave ``UWORLD`` (bash: ``XWORLD``).
+  (Array nameref ``+=(...)`` already worked.) Found in ground-up reappraisal #14;
+  verified against bash 5.2.
+  - **Fix:** ``resolve_append_assignment`` now resolves the nameref to its final
+    target (``resolve_nameref_name``) BEFORE reading the old value and the
+    integer/array attributes, so the append uses the target's value and the
+    target's attributes. A non-nameref name resolves to itself (no change to the
+    common case); the write side still re-resolves the nameref.
+
 ## 0.543.0 (2026-06-22) - Fix: bare `declare NAME` inside a function is local (appraisal #14 Tier 1, H4)
 - FIX (HIGH). A bare ``declare NAME`` (or ``declare -ATTR NAME``, no value)
   inside a function found and mutated an OUTER-scope variable instead of
