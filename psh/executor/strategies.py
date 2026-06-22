@@ -16,6 +16,7 @@ from .process_launcher import ProcessConfig, ProcessRole
 if TYPE_CHECKING:
     from ..ast_nodes import Redirect
     from ..builtins.base import BuiltinContext
+    from ..core.state import ShellState
     from ..shell import Shell
     from .context import ExecutionContext
 
@@ -89,6 +90,23 @@ def report_exec_failure(cmd_name: str, exc: OSError,
         detail = exc.strerror or str(exc)
     os.write(2, f"psh: {cmd_name}: {detail}\n".encode('utf-8', errors='surrogateescape'))
     return 126
+
+
+def report_unbound_variable(state: 'ShellState', exc: Exception) -> int:
+    """Report a ``set -u`` violation (UnboundVariableError) the bash way.
+
+    Prints once, then a non-interactive shell ABORTS — exit 127 for ``-c``,
+    1 for a script file. Shared by the simple-command path and the arithmetic
+    command / C-style-for paths so every set -u violation behaves identically
+    (a bare ``$undef``, ``$(( undef ))``, ``(( undef ))`` and ``for ((i=undef;``
+    all abort the same way). Raises ``SystemExit`` in script mode; otherwise
+    returns the exit code.
+    """
+    print(f"psh: {exc}", file=state.stderr)
+    exit_code = 127 if state.options.get('command_mode') else 1
+    if state.is_script_mode:
+        sys.exit(exit_code)
+    return exit_code
 
 
 def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],

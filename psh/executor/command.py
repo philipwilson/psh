@@ -513,13 +513,9 @@ class CommandExecutor:
 
         if isinstance(e, UnboundVariableError):
             # set -u violation: print once and, like bash, abort a
-            # non-interactive shell. The status is 127 for `-c` but 1 for a
-            # script file (and a non-interactive shell otherwise — bash).
-            print(f"psh: {e}", file=self.state.stderr)
-            exit_code = 127 if self.state.options.get('command_mode') else 1
-            if self.shell.state.is_script_mode:
-                sys.exit(exit_code)
-            return exit_code
+            # non-interactive shell (shared with the arithmetic-command paths).
+            from .strategies import report_unbound_variable
+            return report_unbound_variable(self.state, e)
 
         if isinstance(e, ExpansionError):
             # Error message already printed by the expansion code
