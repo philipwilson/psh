@@ -60,9 +60,35 @@ class FileInput(InputSource):
         # Use surrogateescape so a non-UTF-8 byte in a script does not crash
         # the shell with an uncaught UnicodeDecodeError — bash processes script
         # bytes leniently (a stray byte just becomes a "command not found").
-        self.file = open(self.file_path, 'r', encoding='utf-8',
-                         errors='surrogateescape')
+        raw = open(self.file_path, 'r', encoding='utf-8',
+                   errors='surrogateescape')
+        # Relocate the script-reading descriptor out of the user-visible range.
+        # A plain open() lands on the lowest free fd (typically 3), so a script
+        # doing `exec 3>&-` or the classic `exec 3>&1 1>&2 2>&3 3>&-` swap would
+        # clobber the fd we read the script from — at close that raised a
+        # spurious "[Errno 9] Bad file descriptor" + exit 1. bash keeps its
+        # script fd >= 10; do the same via F_DUPFD_CLOEXEC (lowest free fd >= 10,
+        # close-on-exec set so it does not leak to child processes).
+        self.file = self._relocate_high(raw)
         return self
+
+    @staticmethod
+    def _relocate_high(raw: TextIO) -> TextIO:
+        """Move *raw*'s descriptor to the lowest free fd >= 10 (close-on-exec).
+
+        Returns a new file object on the relocated fd; falls back to *raw*
+        unchanged if relocation is unsupported (e.g. a non-fd stream).
+        """
+        import fcntl
+        import os
+        try:
+            dup_flag = getattr(fcntl, 'F_DUPFD_CLOEXEC', fcntl.F_DUPFD)
+            high_fd = fcntl.fcntl(raw.fileno(), dup_flag, 10)
+        except (OSError, ValueError, AttributeError):
+            return raw
+        raw.close()  # release the low fd; the dup at high_fd stays open
+        return os.fdopen(high_fd, 'r', encoding='utf-8',
+                         errors='surrogateescape')
 
     def __exit__(self, exc_type, _exc_val, _exc_tb):
         if self.file:

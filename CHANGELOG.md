@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.542.0 (2026-06-22) - Fix: exec on fd 3 no longer corrupts the script-reading fd (appraisal #14 Tier 1, H3)
+- FIX (HIGH). In script/``source`` mode a plain ``open()`` landed the script
+  file on the lowest free descriptor (typically fd 3), so a script doing
+  ``exec 3>&-`` — or the classic ``exec 3>&1 1>&2 2>&3 3>&-`` stdout/stderr
+  swap idiom — clobbered the very fd psh was reading the script from. At
+  end-of-file ``FileInput.__exit__`` then failed to close it and printed a
+  spurious ``psh: <script>: [Errno 9] Bad file descriptor`` with exit 1.
+  (``-c`` was immune; only fd 3 broke — ``exec 4>&-`` … ``9>&-`` were fine.)
+  Found in ground-up reappraisal #14; verified against bash 5.2.
+  - **Fix:** ``FileInput.__enter__`` now relocates the script-reading
+    descriptor to the lowest free fd ``>= 10`` via ``fcntl(F_DUPFD_CLOEXEC,
+    10)`` (close-on-exec set, so it does not leak to child processes), exactly
+    as bash keeps its own script fd out of the user-visible 0–9 range. A script
+    can now freely ``exec`` on fds 3–9.
+
 ## 0.541.0 (2026-06-22) - Fix: ERR/DEBUG traps no longer over-fire inside functions; add errtrace/functrace (appraisal #14 Tier 1, H2)
 - FIX (HIGH). ERR and DEBUG traps were inherited into function bodies and
   re-fired through every brace-group layer, with no notion of bash's
