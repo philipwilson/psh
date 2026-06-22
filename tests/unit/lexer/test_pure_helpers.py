@@ -78,11 +78,21 @@ class TestDelimiterMatching:
         assert pos == 4
         assert found is True
 
-    def test_validate_brace_expansion_nested(self):
-        """Test nested brace expansion validation."""
+    def test_validate_brace_expansion_bare_brace_does_not_nest(self):
+        """A bare `{` in the body is literal and does NOT raise nesting depth:
+        `${...}` ends at the FIRST unescaped `}` (bash). Previously the bare `{`
+        was counted, so the extent ran to the second `}` — corrupting
+        `${x:-/path/{a,b}/c}` and turning `"[${u:-a{b}]"` into an unclosed-quote
+        parse error (reappraisal #14)."""
         content, pos, found = pure_helpers.validate_brace_expansion("var{inner}}", 0)
-        assert content == "var{inner}"
-        assert pos == 11
+        assert content == "var{inner"
+        assert pos == 10
+        assert found is True
+
+    def test_validate_brace_expansion_nested_dollar_brace(self):
+        """A nested `${...}` IS skipped, so its `}` doesn't end the outer one."""
+        content, pos, found = pure_helpers.validate_brace_expansion("x:-${a}}", 0)
+        assert content == "x:-${a}"
         assert found is True
 
     def test_validate_brace_expansion_unclosed(self):

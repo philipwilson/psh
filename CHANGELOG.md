@@ -4,6 +4,20 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.549.0 (2026-06-22) - Fix: `${...}` extent stops at the first `}` (literal `{` no longer nests) (appraisal #14 Tier 2)
+- FIX (MED). A bare ``{`` inside a ``${...}`` body was counted toward brace
+  nesting depth, so the lexer ran past the intended closing ``}``:
+  ``echo "${x:-/path/{a,b}/c}"`` printed ``/path/{a,b}/c`` instead of bash's
+  ``/path/{a,b/c}``, and ``echo "[${u:-a{b}]"`` ran off the end into a spurious
+  ``syntax error: Unclosed " quote``. bash ends a ``${...}`` at the first
+  unescaped ``}`` that is not inside a NESTED expansion. Found in ground-up
+  reappraisal #14; verified against bash 5.2.
+  - **Fix:** ``validate_brace_expansion`` (``lexer/pure_helpers.py``) now skips a
+    nested ``${...}`` via a recursive call (the only way ``}`` nests, alongside
+    the existing ``$(...)``/``$((...))`` skips) and no longer increments depth on
+    a bare ``{`` — so the first unescaped ``}`` closes. Nested
+    ``${a:-${b:-${c:-x}}}`` and ``${x:-$(echo hi)}`` still parse correctly.
+
 ## 0.548.0 (2026-06-22) - Fix: `!` before a compound command keeps command position (appraisal #14 Tier 2)
 - FIX (MED). A ``!`` (pipeline negation) before a compound command reset the
   lexer's command position, so the following reserved word lexed as a plain

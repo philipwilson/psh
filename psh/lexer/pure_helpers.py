@@ -477,7 +477,6 @@ def validate_brace_expansion(
     """
     pos = start_pos
     n = len(input_text)
-    brace_depth = 1
 
     while pos < n:
         char = input_text[pos]
@@ -509,6 +508,17 @@ def validate_brace_expansion(
                 break
             pos = end
             continue
+        if input_text.startswith('${', pos):
+            # Nested parameter expansion: skip its FULL extent so its closing
+            # `}` does not end the outer one. This is the ONLY way `}` nests:
+            # bash ends a `${...}` at the first unescaped `}` that is not inside
+            # a nested expansion — a BARE `{` in the body (`${x:-/p/{a,b}/c}`)
+            # is ordinary literal text and does NOT raise nesting depth.
+            _, end, found = validate_brace_expansion(input_text, pos + 2)
+            if not found:
+                break
+            pos = end
+            continue
         if input_text.startswith('$(', pos):
             # Command substitution: skip its full grammar-aware extent (a
             # case pattern inside may contain an unmatched ')' and a '}').
@@ -519,12 +529,8 @@ def validate_brace_expansion(
                 break
             pos = end
             continue
-        if char == '{':
-            brace_depth += 1
-        elif char == '}':
-            brace_depth -= 1
-            if brace_depth == 0:
-                return input_text[start_pos:pos], pos + 1, True
+        if char == '}':
+            return input_text[start_pos:pos], pos + 1, True
 
         pos += 1
 
