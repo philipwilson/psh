@@ -138,6 +138,28 @@ BEHAVIOR_CASES = [
     "cat <<< 'a b c'",
     # Quoted redirect target with a space
     "echo hi > 'out file'; cat 'out file'; rm 'out file'",
+    # --- reappraisal #14 H8: previously-lossy --format constructs ---
+    # Subscripted variable expansion must keep its braces (${arr[@]} not $arr[@])
+    "arr=(a b c); echo ${arr[@]}",
+    "arr=(a b c); echo ${arr[0]} ${arr[2]}",
+    # Process substitution as a redirect target needs a space after the operator
+    "echo hi > >(cat)",
+    "read line < <(echo deep); echo \"$line\"",
+    # |& must not downgrade to |
+    "ls /nonexistent |& grep -c nonexistent",
+    # Escaped $ inside double quotes must stay literal
+    'echo "a\\$b"',
+    # ANSI-C $'...' must be re-escaped (embedded quote / tab)
+    "printf '%s.' $'a\\tb'",
+    "printf '%s.' $'q\\'x'",
+    # Named file descriptor prefix must survive
+    "echo hi {out}>/dev/null; echo done",
+    # for-loop list items with metacharacters must round-trip (not parse-error)
+    'for x in "a;b" "c|d"; do echo "[$x]"; done',
+    # glob list items must stay UNQUOTED so they still glob
+    "for x in *.md; do echo item; done",
+    # Heredoc inside a multi-stage pipeline
+    "cat <<EOF | grep h\nhello\nhi\nEOF",
 ]
 
 
@@ -157,3 +179,36 @@ def test_formatted_output_reparses(src):
     """The formatted script must be valid (re-parseable) shell."""
     formatted_src = _format_via_psh(src)
     assert _psh("--validate", "-c", formatted_src).returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# Reappraisal #14 H8: explicit output-shape assertions for the fixes
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("src,expected_substr", [
+    ("arr=(a b c); echo ${arr[@]}", "${arr[@]}"),
+    ("arr=(a b c); echo ${arr[0]}", "${arr[0]}"),
+    ("echo hi > >(cat)", "> >(cat)"),
+    ("read x < <(echo y)", "< <(echo y)"),
+    ("ls |& grep x", "|&"),
+    ('echo "a\\$b"', '"a\\$b"'),
+    ("echo hi {fd}>/dev/null", "{fd}>"),
+])
+def test_format_emits_expected_token(src, expected_substr):
+    assert expected_substr in _fmt(src)
+
+
+def test_format_does_not_double_escaped_dollar():
+    # The old bug doubled the backslash: "a\$b" -> "a\\$b" (live expansion).
+    assert "\\\\$" not in _fmt('echo "a\\$b"')
+
+
+def test_format_for_glob_item_unquoted():
+    # A glob item must NOT be quoted (else globbing is suppressed).
+    assert 'for x in *.md' in _fmt("for x in *.md; do :; done")
+
+
+def test_format_for_metachar_item_quoted():
+    # An item with an operator metacharacter MUST be quoted (else parse error).
+    out = _fmt('for x in "a;b"; do :; done')
+    assert '"a;b"' in out
