@@ -27,6 +27,7 @@ EXPECTED_OPTIONS = {
     # set -o / short-flag
     "strict-errors", "errexit", "nounset", "xtrace", "allexport", "notify",
     "noclobber", "noglob", "hashcmds", "monitor", "noexec", "verbose",
+    "errtrace", "functrace",
     "pipefail", "ignoreeof", "nolog", "posix", "collect_errors", "braceexpand",
     "histexpand", "history", "emacs", "vi", "parser-mode",
     # shopt
@@ -57,7 +58,8 @@ def test_defaults_match_history():
 def test_short_to_long_map():
     assert SHORT_TO_LONG == {
         "a": "allexport", "b": "notify", "C": "noclobber", "e": "errexit",
-        "f": "noglob", "h": "hashcmds", "m": "monitor", "n": "noexec",
+        "E": "errtrace", "f": "noglob", "h": "hashcmds", "m": "monitor",
+        "n": "noexec", "T": "functrace",
         "u": "nounset", "v": "verbose", "x": "xtrace",
     }
 

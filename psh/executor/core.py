@@ -232,8 +232,13 @@ class ExecutorVisitor(ASTVisitor[int]):
                 self.state.errexit_eligible = (
                     not exempt and self.context.errexit_suppress == 0)
             # The ERR trap fires under exactly the errexit conditions (bash);
-            # $? must already be the failing status inside the action.
-            if status != 0 and self.state.errexit_eligible:
+            # $? must already be the failing status inside the action. A brace
+            # group is transparent: the failing leaf command inside it already
+            # fired ERR, so firing again as the status re-surfaces through the
+            # enclosing brace-group pipeline would double-count (bash fires
+            # once). Skip the brace-group level — the body owns the fire.
+            if (status != 0 and self.state.errexit_eligible
+                    and not self._pipeline_is_brace_group(pipeline)):
                 self.state.last_exit_code = status
                 self.shell.trap_manager.execute_err_trap(status)
             return status

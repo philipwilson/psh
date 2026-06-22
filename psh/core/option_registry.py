@@ -80,6 +80,11 @@ _SPECS = [
     _spec("monitor", False, OptionCategory.SET, short_flag="m", dollar_dash="m"),
     _spec("noexec", False, OptionCategory.SET, short_flag="n", dollar_dash="n"),
     _spec("verbose", False, OptionCategory.SET, short_flag="v", dollar_dash="v"),
+    # Trap inheritance into functions/subshells: errtrace (-E) propagates the
+    # ERR trap, functrace (-T) the DEBUG and RETURN traps. Off by default —
+    # bash does NOT run those traps inside a function body unless these are set.
+    _spec("errtrace", False, OptionCategory.SET, short_flag="E", dollar_dash="E"),
+    _spec("functrace", False, OptionCategory.SET, short_flag="T", dollar_dash="T"),
     # set -o options without a short flag.
     _spec("pipefail", False, OptionCategory.SET),
     _spec("ignoreeof", False, OptionCategory.SET),
@@ -125,7 +130,7 @@ SHOPT_OPTION_NAMES = tuple(
 # $- letter order, bash-pinned: lowercase set flags, then uppercase, then the
 # invocation flags c/s last (see ShellOptions.option_string).
 DOLLAR_DASH_ORDER = ("a", "b", "e", "f", "h", "i", "m", "n", "u", "v", "x",
-                     "B", "C", "H", "c", "s")
+                     "B", "C", "E", "H", "T", "c", "s")
 _DOLLAR_LETTER_TO_NAME: Dict[str, str] = {
     s.dollar_dash: s.name for s in _SPECS if s.dollar_dash is not None
 }
