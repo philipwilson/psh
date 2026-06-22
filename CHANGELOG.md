@@ -4,6 +4,19 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.557.0 (2026-06-23) - Feature: `wait -n` / `wait -p VAR` (appraisal #14 Tier 2)
+- FEATURE (MED). ``wait -n`` was rejected as ``-n: not a valid process id``.
+  Implemented bash's ``wait -n``: return when the NEXT single job completes,
+  reporting that job's exit status (the FIRST to finish, not the first started);
+  with operands, wait for the first of those jobs/PIDs; with nothing to wait for,
+  return 127. ``-p VAR`` stores the finished job's PID. Found in ground-up
+  reappraisal #14; verified against bash 5.2.
+  - **Implementation:** ``WaitBuiltin`` parses leading ``-n``/``-p VAR`` options
+    and a new ``_wait_for_next`` reaps children via ``waitpid(-1)`` until a
+    matching JOB completes (an already-reaped DONE job counts as the next to
+    report). Removed the now-stale ``wait -n`` entry from the absent-feature
+    ledger; coverage moved to ``tests/integration/functions/test_wait_n.py``.
+
 ## 0.556.0 (2026-06-23) - Fix: FUNCNEST limits function-call nesting (appraisal #14 Tier 2)
 - FIX (MED). ``FUNCNEST`` was ignored — deep/infinite recursion ran to Python's
   recursion limit (caught as a generic defect) instead of bash's clean nesting

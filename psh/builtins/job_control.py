@@ -200,12 +200,105 @@ class WaitBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the wait builtin."""
-        if len(args) == 1:
+        # Parse leading options: -n (return when the NEXT job finishes) and
+        # -p VAR (store the finished job's PID in VAR). Options precede operands.
+        wait_n = False
+        pid_var = None
+        i = 1
+        while i < len(args):
+            a = args[i]
+            if a == '-n':
+                wait_n = True
+                i += 1
+            elif a == '-p':
+                if i + 1 >= len(args):
+                    self.error("-p: option requires an argument", shell)
+                    return 2
+                pid_var = args[i + 1]
+                i += 2
+            elif a == '--':
+                i += 1
+                break
+            else:
+                break
+        operands = args[i:]
+
+        if wait_n:
+            return self._wait_for_next(operands, pid_var, shell)
+        if not operands:
             # No arguments - wait for all children
             return self._wait_for_all(shell)
-        else:
-            # Wait for specific processes/jobs
-            return self._wait_for_specific(args[1:], shell)
+        # Wait for specific processes/jobs
+        return self._wait_for_specific(operands, shell)
+
+    def _wait_for_next(self, operands: List[str], pid_var, shell: 'Shell') -> int:
+        """`wait -n`: return when the NEXT single job completes (bash).
+
+        With no operands, wait for any one of the shell's jobs; with operands,
+        wait for the first of those jobs/PIDs. Returns that job's exit status,
+        or 127 when there is nothing (left) to wait for. With ``-p VAR`` the
+        completed job's PID is stored in VAR.
+        """
+        import os
+
+        from ..executor.job_control import JobState
+        jm = shell.job_manager
+
+        # Restrict to the requested jobs (operands), or all jobs when none.
+        target_pids = self._resolve_wait_pids(operands, shell) if operands else None
+
+        def matches(job) -> bool:
+            return target_pids is None or any(p.pid in target_pids for p in job.processes)
+
+        def finish(job) -> int:
+            if pid_var is not None and job.processes:
+                shell.state.set_variable(pid_var, str(job.processes[-1].pid))
+            status = 0
+            if job.processes and job.processes[-1].status is not None:
+                status = self._extract_exit_status(job.processes[-1].status)
+            jm.remove_job(job.job_id)
+            return status
+
+        # A job already reaped by the SIGCHLD path counts as the next to report.
+        for job in list(jm.jobs.values()):
+            if job.state == JobState.DONE and matches(job):
+                return finish(job)
+
+        # Nothing left to wait for -> 127 (bash).
+        if not any(job.state == JobState.RUNNING and matches(job)
+                   for job in jm.jobs.values()):
+            return 127
+
+        # Reap children until a matching JOB completes (the first to finish).
+        while True:
+            try:
+                pid, status = os.waitpid(-1, os.WUNTRACED)
+            except (ChildProcessError, OSError):
+                return 127
+            if pid == 0:
+                continue
+            reaped = jm.get_job_by_pid(pid)
+            if reaped is None:
+                continue  # orphan not tracked as a job
+            reaped.update_process_status(pid, status)
+            reaped.update_state()
+            if reaped.state == JobState.DONE and matches(reaped):
+                return finish(reaped)
+
+    def _resolve_wait_pids(self, operands: List[str], shell: 'Shell') -> set:
+        """The set of process PIDs named by wait operands (PIDs and %jobspecs)."""
+        pids: set = set()
+        for spec in operands:
+            if spec.startswith('%'):
+                job = shell.job_manager.parse_job_spec(spec)
+                if job is not None:
+                    pids.update(p.pid for p in job.processes)
+            else:
+                try:
+                    pids.add(int(spec))
+                except ValueError:
+                    pass
+        return pids
 
     def _wait_for_all(self, shell: 'Shell') -> int:
         """Wait for all child processes to complete.

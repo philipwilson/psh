@@ -57,11 +57,8 @@ class TestAbsentBashFeatures:
             'coproc CAT { cat; }; echo hi >&${CAT[1]}; '
             'read line <&${CAT[0]}; echo got:$line')
 
-    @pytest.mark.xfail(strict=True, reason="wait -n is not implemented")
-    def test_wait_dash_n(self):
-        """bash: `wait -n` waits for the next job to finish and returns its
-        status (probe: rc=0). psh: rejects -n as 'not a valid process id'."""
-        assert_bash_parity('sleep 0.05 & wait -n; echo rc=$?')
+    # `wait -n` was implemented in v0.557.0 (appraisal #14 Tier 2); its
+    # conformance coverage moved to tests/integration/functions/test_wait_n.py.
 
     @pytest.mark.xfail(strict=True, reason="wait -f is not implemented")
     def test_wait_dash_f(self):
