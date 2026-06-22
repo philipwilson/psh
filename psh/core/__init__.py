@@ -17,6 +17,7 @@ from .assignment_utils import (
 )
 from .exceptions import (
     ArraySubscriptError,
+    AssignmentAbort,
     ExpansionError,
     FunctionDefinitionError,
     FunctionReturn,
@@ -39,6 +40,7 @@ __all__ = [
     # Exceptions
     'LoopBreak',
     'LoopContinue',
+    'AssignmentAbort',
     'UnboundVariableError',
     'ReadonlyVariableError',
     'NamerefCycleError',

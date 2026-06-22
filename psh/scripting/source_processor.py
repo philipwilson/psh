@@ -306,27 +306,40 @@ class SourceProcessor(ScriptComponent):
             # Increment command number for successful parse
             self.state.command_number += 1
 
-            # Handle TopLevel AST node (functions + commands)
-            if isinstance(ast, TopLevel):
-                return self.shell.execute_toplevel(ast)
-            else:
-                from ..core import LoopBreak, LoopContinue
-                try:
-                    # Heredoc content is now pre-populated during parsing.
-                    # The parser returns a StatementList here (TopLevel handled
-                    # above); the cast records that runtime invariant.
-                    exit_code = self.shell.execute_command_list(cast(StatementList, ast))
-                    return exit_code
-                except (LoopBreak, LoopContinue) as e:
-                    # Break/continue outside of any loop is an error. Catch only
-                    # these — any other exception propagates to its own handler.
-                    if nested:
-                        # e.g. `eval break` inside a loop — let the loop handle it
-                        raise
-                    stmt_name = "break" if isinstance(e, LoopBreak) else "continue"
-                    print(f"{stmt_name}: only meaningful in a `for' or `while' loop",
-                          file=sys.stderr)
-                    return 1
+            from ..core import AssignmentAbort, LoopBreak, LoopContinue
+            try:
+                # Handle TopLevel AST node (functions + commands)
+                if isinstance(ast, TopLevel):
+                    return self.shell.execute_toplevel(ast)
+                else:
+                    try:
+                        # Heredoc content is now pre-populated during parsing.
+                        # The parser returns a StatementList here (TopLevel
+                        # handled above); the cast records that invariant.
+                        exit_code = self.shell.execute_command_list(cast(StatementList, ast))
+                        return exit_code
+                    except (LoopBreak, LoopContinue) as e:
+                        # Break/continue outside of any loop is an error. Catch
+                        # only these — any other exception propagates to its own
+                        # handler.
+                        if nested:
+                            # e.g. `eval break` inside a loop — let the loop handle it
+                            raise
+                        stmt_name = "break" if isinstance(e, LoopBreak) else "continue"
+                        print(f"{stmt_name}: only meaningful in a `for' or `while' loop",
+                              file=sys.stderr)
+                        return 1
+            except AssignmentAbort as e:
+                # A fatal assignment error (readonly/nameref-cycle) unwound the
+                # whole current top-level command (the rest of the command list
+                # and any enclosing if/loop/function on the same input). The
+                # error was already printed at the raise site; resume at the next
+                # top-level command (bash). When nested (eval) let it keep
+                # unwinding to the real top-level command boundary.
+                if nested:
+                    raise
+                self.state.last_exit_code = e.status
+                return e.status
         except ParseError as e:
             # Check if error already has context, otherwise add location
             if e.error_context and e.error_context.source_line:

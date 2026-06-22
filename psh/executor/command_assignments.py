@@ -34,10 +34,10 @@ POSIX ordering contract (probe-verified against bash 5.2):
    the caller makes the assignment error fatal instead.
 """
 
-import sys
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple, cast
 
 from ..core import (
+    AssignmentAbort,
     NamerefCycleError,
     ReadonlyVariableError,
     is_valid_assignment,
@@ -197,21 +197,20 @@ class CommandAssignments:
                 try:
                     self.state.set_variable(var, resolved)
                 except ReadonlyVariableError as e:
-                    # bash: assignment to a readonly variable aborts a
-                    # non-interactive shell with status 1. Use e.name so a
-                    # readonly array element write reports the array name
-                    # (``a[0]=X`` → ``a: readonly variable``), like bash.
+                    # bash: a readonly-variable assignment error aborts the
+                    # whole CURRENT top-level command (the rest of the command
+                    # list, and any enclosing if/loop/function on the same input)
+                    # but does NOT exit the shell — execution resumes at the next
+                    # top-level command. Use e.name so a readonly array element
+                    # write reports the array name (``a[0]=X`` → ``a: readonly
+                    # variable``), like bash.
                     print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
-                    if self.shell.state.is_script_mode:
-                        sys.exit(1)
-                    return 1
+                    raise AssignmentAbort(1)
                 except NamerefCycleError as e:
-                    # bash: writing through a circular nameref warns and
-                    # aborts a non-interactive shell with status 1.
+                    # bash: writing through a circular nameref warns and aborts
+                    # the current top-level command (same scope as above).
                     self.state.scope_manager.warn_nameref_cycle(e.name)
-                    if self.shell.state.is_script_mode:
-                        sys.exit(1)
-                    return 1
+                    raise AssignmentAbort(1)
 
             # bash: a pure assignment's status is 0, unless a command
             # substitution ran while expanding the value — then it is the

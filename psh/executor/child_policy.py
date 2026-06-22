@@ -183,12 +183,18 @@ def run_child_shell(parent_shell: 'Shell',
             io_setup()
 
         # Import here to avoid a circular import (shell -> executor).
+        from ..core.exceptions import AssignmentAbort
         from ..shell import Shell
         child_shell = Shell.for_subshell(parent_shell, norc=norc)
         child_shell.state.in_forked_child = True
 
         try:
             exit_code = body(child_shell)
+        except AssignmentAbort as e:
+            # A fatal assignment error (readonly/nameref-cycle) aborts the
+            # substitution child with its status — it must not unwind past the
+            # fork into the parent.
+            exit_code = e.status
         except SystemExit as e:
             # exit in a substitution terminates the child, not the parent.
             code = e.code

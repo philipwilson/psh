@@ -139,8 +139,14 @@ class SubshellExecutor:
             if redirects:
                 subshell.io_manager.apply_redirections(redirects)
 
-            # Execute statements in isolated environment
-            exit_code = subshell.execute_command_list(statements)
+            # Execute statements in isolated environment. A fatal assignment
+            # error (readonly/nameref-cycle) aborts the whole subshell body with
+            # status 1 (bash) — it must not unwind past the fork.
+            from ..core import AssignmentAbort
+            try:
+                exit_code = subshell.execute_command_list(statements)
+            except AssignmentAbort as e:
+                exit_code = e.status
 
             # A subshell runs its own EXIT trap when it finishes (bash):
             # (trap 'echo bye' EXIT; ...) prints bye on subshell exit.
@@ -207,10 +213,13 @@ class SubshellExecutor:
 
             exit_code = 0
             saved_fds = []
+            from ..core import AssignmentAbort
             try:
                 if redirects:
                     saved_fds = subshell.io_manager.apply_redirections(redirects)
                 exit_code = subshell.execute_command_list(statements)
+            except AssignmentAbort as e:
+                exit_code = e.status
             finally:
                 if saved_fds:
                     subshell.io_manager.restore_redirections(saved_fds)

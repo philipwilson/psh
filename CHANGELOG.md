@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.545.0 (2026-06-22) - Fix: fatal assignment error aborts the current command, not the whole shell (appraisal #14 Tier 1, H6a)
+- FIX (HIGH). A readonly-variable or circular-nameref assignment error did
+  ``sys.exit(1)`` in script mode, killing the entire shell — so a script that
+  hit such an error mid-way silently died and lost every subsequent line. bash
+  reports the error, unwinds the WHOLE current top-level command (the rest of
+  the command list and any enclosing ``if``/loop/function/subshell on the same
+  input), then RESUMES at the next top-level command. Found in ground-up
+  reappraisal #14; verified against bash 5.2 across one-line, multi-line,
+  if-body, loop-body, function-body, subshell, command-substitution, and
+  two-consecutive-errors cases.
+  - **Fix:** a new ``AssignmentAbort`` control-flow signal (derives from
+    ``BaseException`` like ``SystemExit``, so it unwinds past the executor's
+    ``except Exception`` guards without being mistaken for an internal defect).
+    ``CommandAssignments.apply_pure`` raises it (after printing the error)
+    instead of ``sys.exit``/``return 1``; it is caught at the top-level command
+    boundary (``SourceProcessor._execute_buffered_command``, which resumes the
+    next command) and at the child-shell boundaries (subshell ``execute_fn`` and
+    ``run_child_shell``, which exit the child with status 1). The one-liner
+    ``readonly r=1; r=2; echo X`` still aborts the whole list (X skipped, rc=1)
+    exactly like bash.
+  - DEFERRED (H6b/H6c): the integer-arithmetic assignment-error ``-c``-vs-script
+    fatality nuance, and the misleading ``unexpected error:`` prefix on a
+    ``readonly -f`` function redefinition, remain follow-ups.
+
 ## 0.544.0 (2026-06-22) - Fix: scalar/integer `+=` through a nameref appends to the target's value (appraisal #14 Tier 1, H5)
 - FIX (HIGH). A scalar or integer ``+=`` append through a name reference
   appended to the nameref's OWN value — the literal target name — instead of
