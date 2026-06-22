@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.543.0 (2026-06-22) - Fix: bare `declare NAME` inside a function is local (appraisal #14 Tier 1, H4)
+- FIX (HIGH). A bare ``declare NAME`` (or ``declare -ATTR NAME``, no value)
+  inside a function found and mutated an OUTER-scope variable instead of
+  creating a function-local shadow, so ``g=glob; f(){ declare g; g=x; }; f``
+  leaked ``g=x`` to the global scope (bash keeps the outer ``g=glob`` — a bare
+  ``declare NAME`` is equivalent to ``local NAME``). ``declare -i g`` /
+  ``declare -x g`` / ``declare -r g`` inside a function likewise wrongly changed
+  the outer variable's attributes/value. Only the no-value forms were affected;
+  ``declare g=value`` and ``local g`` were already correct. Found in ground-up
+  reappraisal #14; verified against bash 5.2.
+  - **Fix:** the bare-name scalar path now resolves the variable in the scope
+    ``declare`` writes to (a new ``_declared_in_target_scope`` helper — current
+    scope only inside a function, mirroring the array path's
+    ``_existing_in_target_scope`` but INCLUDING declared-but-unset tombstones so
+    repeated attribute declares still accumulate). When the name is not present
+    in that scope, a fresh local declared-but-unset shadow is created instead of
+    reaching up to the outer variable.
+
 ## 0.542.0 (2026-06-22) - Fix: exec on fd 3 no longer corrupts the script-reading fd (appraisal #14 Tier 1, H3)
 - FIX (HIGH). In script/``source`` mode a plain ``open()`` landed the script
   file on the lowest free descriptor (typically fd 3), so a script doing
