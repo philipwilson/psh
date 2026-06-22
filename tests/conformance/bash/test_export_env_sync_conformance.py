@@ -169,3 +169,33 @@ class TestAllexportAndPrefixInterplay(ConformanceTest):
     def test_declare_unset_reads_as_unset_then_keeps_attribute(self):
         self.assert_identical_behavior(
             'declare -i NUMBER; echo "${NUMBER-u}"; NUMBER=2+3; echo "$NUMBER"')
+
+
+class TestExportPrintListing(ConformanceTest):
+    """`export -p` (and bare `export`) list exported variables, INCLUDING a
+    declared-but-unset export as `declare -x NAME` with no value — the old
+    env-dict iteration dropped it (reappraisal #14)."""
+
+    def test_valueless_export_listed(self):
+        self.assert_identical_behavior('export NOVAL; export -p | grep NOVAL')
+
+    def test_valueless_export_bare_export(self):
+        self.assert_identical_behavior('export NOVAL2; export | grep NOVAL2')
+
+    def test_valued_export_listed(self):
+        self.assert_identical_behavior('export V=1; export -p | grep "^declare -x V="')
+
+    def test_multi_attribute_export(self):
+        self.assert_identical_behavior('declare -ix N=5; export -p | grep " N="')
+
+    def test_valueless_then_assigned(self):
+        self.assert_identical_behavior(
+            'export FOO; FOO=bar; export -p | grep "^declare -x FOO="')
+
+    def test_export_p_escapes_value(self):
+        self.assert_identical_behavior(
+            "export Q='a\"b'; export -p | grep '^declare -x Q='")
+
+    def test_named_export_p_prints_nothing(self):
+        # `export -p NAME` treats NAME as an export operand, not a print target.
+        self.assert_identical_behavior('export ZZQ; export -p ZZQ; echo end')

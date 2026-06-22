@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.553.0 (2026-06-22) - Fix: `export -p` lists declared-but-unset exports (appraisal #14 Tier 2)
+- FIX (MED). ``export -p`` (and bare ``export``) iterated the live environment
+  dict, so an exported-but-unset variable — ``export NOVAL`` with no value, which
+  has the EXPORT attribute but no env entry — was omitted, even though
+  ``declare -p NOVAL`` correctly showed ``declare -x NOVAL``. Found in ground-up
+  reappraisal #14; verified against bash 5.2.
+  - **Fix:** a new ``ScopeManager.all_exported_variables()`` returns the exported
+    Variable OBJECTS (shadow-resolved), including an ``EXPORT|UNSET``
+    declared-but-unset export (a plain ``UNSET`` tombstone — ``unset`` in a
+    function — instead hides an outer export; arrays are excluded, as bash does
+    not list them). ``export -p`` now renders each via the shared
+    ``format_declaration`` (the same formatter ``declare -p`` uses), so valueless
+    exports show as ``declare -x NAME`` and multi-attribute exports keep their
+    full flags (``declare -ix N="5"``).
+
 ## 0.552.0 (2026-06-22) - Fix: `set -u` is enforced inside arithmetic (appraisal #14 Tier 2)
 - FIX (MED). With ``set -u`` an unset variable referenced in an arithmetic
   context silently evaluated to 0 instead of erroring like a bare ``$undef``:

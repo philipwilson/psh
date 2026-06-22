@@ -677,6 +677,22 @@ class ScopeManager:
 
         return list(all_vars.values())
 
+    def all_exported_variables(self) -> List['Variable']:
+        """Exported Variable objects across all scopes, shadow-resolved.
+
+        Includes a declared-but-unset export (``export FOO`` with no value —
+        EXPORT|UNSET, which bash shows as ``declare -x FOO``); a plain UNSET
+        tombstone (``unset`` inside a function — UNSET without EXPORT) instead
+        shadows any outer exported variable rather than appearing. Arrays are
+        excluded (bash does not list them via ``export -p``). Used by
+        ``export -p`` / bare ``export``.
+        """
+        effective: Dict[str, 'Variable'] = {}
+        for scope in self.scope_stack:  # global first, inner scopes override
+            for name, var in scope.variables.items():
+                effective[name] = var
+        return [v for v in effective.values() if v.is_exported and not v.is_array]
+
     def has_variable(self, name: str) -> bool:
         """Check if a variable exists in any scope."""
         for scope in reversed(self.scope_stack):
