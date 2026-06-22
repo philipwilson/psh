@@ -4,6 +4,43 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.547.0 (2026-06-22) - Fix: `--format` round-trip fidelity on 8 constructs (appraisal #14 Tier 1, H8)
+- FIX (HIGH). The ``--format`` pretty-printer was lossy on a cluster of
+  constructs — several re-parsed to a DIFFERENT program or a parse error. Found
+  in ground-up reappraisal #14; each is now a behavior-preserving round-trip,
+  pinned in ``tests/unit/visitor/test_formatter_roundtrip.py``:
+  - **Subscripted variable expansion** ``${arr[@]}`` / ``${arr[0]}`` rendered as
+    ``$arr[@]`` (braces dropped → element 0 + literal ``[@]``).
+    ``VariableExpansion.__str__`` now emits ``${name}`` when the name is not a
+    bare identifier / special parameter.
+  - **Process-substitution redirect target** ``> >(cat)`` / ``< <(cmd)`` glued
+    to ``>>(cat)`` / ``<<(cmd)`` (append-operator + parse error). ``visit_Redirect``
+    now emits a space before a ``<(``/``>(`` target.
+  - **``|&``** silently downgraded to ``|`` — ``visit_Pipeline`` honors
+    ``Pipeline.pipe_stderr`` and joins those stages with ``|&``.
+  - **Escaped ``$`` in double quotes** ``"a\\$b"`` became a live expansion: the
+    re-escaper no longer blanket-doubles backslashes (which turned the kept
+    ``\\$`` into ``\\`` + ``$expansion``); it only doubles a backslash that would
+    pair with the following emitted character.
+  - **ANSI-C ``$'...'``** was re-emitted from its DECODED value (so ``$'q\\'x'``
+    became ``$'q'x'`` — an unclosed quote); a new ``_escape_ansi_c`` re-encodes
+    backslash, ``'`` and control characters.
+  - **Named file descriptor** ``{fd}>file`` (the v0.539 feature) was dropped;
+    ``visit_Redirect`` now emits the ``{var_fd}`` prefix.
+  - **for/select ``in`` list items**: items with operator metacharacters
+    (``"a;b"``) were emitted unquoted → parse error, while glob items (``*.md``)
+    were quoted → globbing suppressed. A shared ``_format_word_list_item`` now
+    quotes only metacharacter/whitespace items and leaves glob/expansion items
+    unquoted.
+  - **Heredoc inside a multi-stage pipeline** ``cat <<EOF | grep h`` placed the
+    ``| grep h`` on the ``EOF`` terminator line (breaking termination →
+    re-running printed nothing); ``visit_Pipeline`` now renders the full
+    pipeline header first and appends the heredoc bodies after it.
+  - DEFERRED: ``for x in '$lit'`` (single-quoted literal vs ``$expansion``)
+    cannot be distinguished from the flat-string ``ForLoop.items`` and still
+    round-trips as an expansion — fixing it needs migrating the loop-item field
+    to the Word layer (a follow-up, as flagged in the reappraisal report).
+
 ## 0.546.0 (2026-06-22) - Feature: HISTCONTROL / HISTIGNORE; history dedup matches bash (appraisal #14 Tier 1, H7)
 - FIX/FEATURE (HIGH). psh had no ``HISTCONTROL``/``HISTIGNORE`` support and
   UNCONDITIONALLY dropped a command equal to the immediately previous one —

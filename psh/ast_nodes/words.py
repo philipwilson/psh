@@ -7,10 +7,17 @@ context. The expansion nodes (``$var``, ``${...}``, ``$(...)``, ``$((...))``,
 :class:`Expansion` directly.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 from .base import ASTNode
+
+# A name renderable as a bare ``$name``: a plain identifier, a single special
+# parameter ($?, $@, $*, $#, $$, $!, $-, $0), or a single positional digit.
+# Anything else (notably an array subscript like ``arr[@]``) needs ``${...}``.
+_BARE_VAR_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*\Z')
+_SPECIAL_PARAM_CHARS = set('?@*#$!-0123456789')
 
 # =============================================================================
 # EXPANSION NODES
@@ -72,7 +79,13 @@ class VariableExpansion(Expansion):
     name: str  # Variable name without $
 
     def __str__(self):
-        return f"${self.name}"
+        # A subscripted reference (``arr[@]``, ``arr[0]``) or any name with
+        # non-identifier characters must render as ``${name}`` — a bare
+        # ``$arr[@]`` parses as ``${arr}[@]`` (element 0 + literal "[@]").
+        name = self.name
+        if _BARE_VAR_NAME.match(name) or (len(name) == 1 and name in _SPECIAL_PARAM_CHARS):
+            return f"${name}"
+        return f"${{{name}}}"
 
 
 @dataclass

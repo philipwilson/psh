@@ -125,16 +125,59 @@ class FormatterVisitor(ASTVisitor[str]):
 
     @staticmethod
     def _escape_double_quoted(text: str) -> str:
-        """Re-escape a literal that will be re-wrapped in double quotes.
+        """Re-escape a stored literal that will be re-wrapped in double quotes.
 
-        The lexer stored the UNESCAPED text (``\\"`` -> ``"``), so the chars
-        that are special inside ``"..."`` must be re-escaped or the quote would
-        terminate early / the text would re-parse differently. ``$`` is left
-        alone: a literal ``$`` in a double-quoted LiteralPart is never followed
-        by an expansion-forming char (the lexer would have split that off as an
-        ExpansionPart), so it round-trips as-is.
+        Inside ``"..."`` the lexer unescapes only ``\\"``, ``\\``` and ``\\\\``
+        (storing ``"``, `` ` ``, ``\\``); it KEEPS the backslash before ``$``
+        (``"a\\$b"`` stores ``a\\$b``) so the expansion phase can treat it as a
+        literal ``$``. So the stored text is essentially source-form, and the
+        OLD blanket ``\\`` -> ``\\\\`` doubling corrupted ``\\$`` into a live
+        ``\\`` + ``$expansion``. Re-emit so re-lexing yields the SAME stored
+        text: escape a bare ``"`` and `` ` ``, and double a backslash only when
+        it would otherwise pair with the following emitted char (another
+        backslash, a `` ` ``/``"`` we are escaping, or the closing quote) into
+        an unintended escape. A backslash before ``$`` (or any ordinary char)
+        stays single — the lexer keeps it verbatim.
         """
-        return text.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`')
+        out = []
+        n = len(text)
+        for i, ch in enumerate(text):
+            if ch == '"':
+                out.append('\\"')
+            elif ch == '`':
+                out.append('\\`')
+            elif ch == '\\':
+                nxt = text[i + 1] if i + 1 < n else ''
+                if nxt in ('`', '"', '\\', ''):
+                    out.append('\\\\')   # would form an escape with what follows
+                else:
+                    out.append('\\')     # \$ , \n , ... kept verbatim by the lexer
+            else:
+                out.append(ch)
+        return ''.join(out)
+
+    @staticmethod
+    def _escape_ansi_c(text: str) -> str:
+        """Re-escape a decoded ``$'...'`` value for re-emission as ``$'...'``.
+
+        The lexer DECODES the ANSI-C escapes into the stored value (``$'a\\tb'``
+        -> ``a<TAB>b``; ``$'q\\'x'`` -> ``q'x``), so re-wrapping the raw value in
+        ``$'...'`` would change it (a literal tab happens to survive, but a
+        literal ``'`` closes the quote early). Re-encode backslash, single quote
+        and control characters.
+        """
+        simple = {'\\': '\\\\', "'": "\\'", '\t': '\\t', '\n': '\\n',
+                  '\r': '\\r', '\a': '\\a', '\b': '\\b', '\f': '\\f',
+                  '\v': '\\v', '\x1b': '\\E'}
+        out = []
+        for ch in text:
+            if ch in simple:
+                out.append(simple[ch])
+            elif ord(ch) < 32 or ord(ch) == 127:
+                out.append(f'\\x{ord(ch):02x}')
+            else:
+                out.append(ch)
+        return ''.join(out)
 
     @staticmethod
     def _format_word(word) -> str:
@@ -170,7 +213,11 @@ class FormatterVisitor(ASTVisitor[str]):
                     for part, text in items)
                 result.append(f'"{content}"')
             elif qc == "$'":
-                result.append("$'" + ''.join(t for _, t in items) + "'")
+                content = ''.join(
+                    FormatterVisitor._escape_ansi_c(text)
+                    if isinstance(part, LiteralPart) else text
+                    for part, text in items)
+                result.append("$'" + content + "'")
             elif qc:  # single quote (literal content, no escaping)
                 result.append(f"{qc}{''.join(t for _, t in items)}{qc}")
             else:
@@ -243,14 +290,34 @@ class FormatterVisitor(ASTVisitor[str]):
 
         saved_level = self.level
         self.level = 0
-        parts = [self.visit(cmd).strip() for cmd in node.commands]
+        # Render each stage's command LINE, separating any heredoc body+delim
+        # so the whole pipeline header stays on one line and the heredoc bodies
+        # follow it — otherwise `cat <<EOF | grep h` formats the `| grep h` onto
+        # the EOF terminator line, which breaks heredoc termination on re-parse.
+        headers = []
+        trailers = []
+        for cmd in node.commands:
+            rendered = self.visit(cmd)
+            trailer = self._heredoc_trailer(getattr(cmd, 'redirects', []) or [])
+            if trailer and rendered.endswith(trailer):
+                rendered = rendered[:-len(trailer)]
+                trailers.append(trailer)
+            headers.append(rendered.strip())
         self.level = saved_level
 
-        result = ' | '.join(parts)
+        # Join stages with ' | ' or ' |& ' (pipe_stderr[i] marks the |& between
+        # commands[i] and commands[i+1]).
+        pipe_stderr = node.pipe_stderr or []
+        pieces = [headers[0]]
+        for i in range(1, len(headers)):
+            stderr_piped = (i - 1) < len(pipe_stderr) and pipe_stderr[i - 1]
+            pieces.append(' |& ' if stderr_piped else ' | ')
+            pieces.append(headers[i])
+        result = ''.join(pieces)
         if node.negated:
             result = '! ' + result
 
-        return self._indent() + result
+        return self._indent() + result + ''.join(trailers)
 
     def visit_AndOrList(self, node: AndOrList) -> str:
         """Format an and/or list."""
@@ -301,18 +368,26 @@ class FormatterVisitor(ASTVisitor[str]):
 
         return '\n'.join(lines)
 
+    # Chars that force-quote a for/select list item: whitespace and the
+    # operators/quotes that would otherwise re-parse as syntax. Glob chars
+    # (`*?[]`), braces and `$` are deliberately NOT here — quoting them would
+    # suppress the globbing / brace / expansion the unquoted form performs.
+    _WORD_LIST_FORCE_QUOTE = set(" \t\n;|&<>()'\"`")
+
+    @classmethod
+    def _format_word_list_item(cls, item: str) -> str:
+        """Quote a for/select ``in`` list item only when needed (bash)."""
+        if item == '':
+            return '""'
+        if any(c in cls._WORD_LIST_FORCE_QUOTE for c in item):
+            return '"' + cls._escape_double_quoted(item) + '"'
+        return item
+
     def visit_ForLoop(self, node: ForLoop) -> str:
         """Format a for loop."""
         lines = []
 
-        # Format items with proper quoting
-        items = []
-        for item in node.items:
-            if ' ' in item or any(c in item for c in '*?[]'):
-                items.append(f'"{item}"')
-            else:
-                items.append(item)
-
+        items = [self._format_word_list_item(item) for item in node.items]
         header = f"for {node.variable} in {' '.join(items)}".rstrip()
         lines.append(f"{self._indent()}{header}; do")
 
@@ -425,7 +500,7 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format a select loop."""
         lines = []
 
-        items = ' '.join(f'"{item}"' if ' ' in item else item for item in node.items)
+        items = ' '.join(self._format_word_list_item(item) for item in node.items)
         header = f"select {node.variable} in {items}".rstrip()
         lines.append(f"{self._indent()}{header}; do")
 
@@ -640,9 +715,12 @@ class FormatterVisitor(ASTVisitor[str]):
         this renders only the ``<<DELIM`` operator that stays on the
         command line.
         """
-        # Operator with any explicit fd prefix. '2>'-style types already
-        # encode their fd; everything else prepends node.fd when present.
-        if node.type.startswith('2') and node.fd == 2:
+        # Operator with any explicit fd prefix. A named-fd redirect
+        # (``{var}>file``) prefixes ``{var}``; '2>'-style types already encode
+        # their fd; everything else prepends node.fd when present.
+        if node.var_fd is not None:
+            op = f"{{{node.var_fd}}}{node.type}"
+        elif node.type.startswith('2') and node.fd == 2:
             op = node.type
         elif node.fd is not None:
             op = f"{node.fd}{node.type}"
@@ -666,12 +744,17 @@ class FormatterVisitor(ASTVisitor[str]):
             return f"{op}{node.dup_fd}"
 
         # Filename target: format the Word to preserve quoting (`> "a b"`);
-        # fall back to the bare target string for forms with no Word.
+        # fall back to the bare target string for forms with no Word. A process
+        # substitution target (`> >(cat)`, `< <(cmd)`) needs a space after the
+        # operator, else `> >(...)` glues to `>>(...)` (append + parse error).
         if node.target_word is not None:
-            return f"{op}{self._format_word(node.target_word)}"
-        if node.target is not None:
-            return f"{op}{node.target}"
-        return op
+            target = self._format_word(node.target_word)
+        elif node.target is not None:
+            target = node.target
+        else:
+            return op
+        sep = ' ' if target[:2] in ('<(', '>(') else ''
+        return f"{op}{sep}{target}"
 
     def visit_ProcessSubstitution(self, node: ProcessSubstitution) -> str:
         """Format a process substitution."""
