@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.540.0 (2026-06-22) - Fix: EXIT trap fires on every shell-exit path (appraisal #14 Tier 1, H1)
+- FIX (HIGH). The EXIT trap was wired only into the ``exit`` builtin, so it was
+  silently DROPPED on three other ways the shell (or a subshell) finishes — a
+  silent failure of the universal ``trap cleanup EXIT`` idiom. Found
+  independently by three subsystem auditors in ground-up reappraisal #14
+  (``docs/reviews/ground_up_reappraisal_14_2026-06-22.md``). Verified against
+  bash 5.2.
+  - **Script reaching EOF** — the guard at ``script_executor.py`` was
+    ``old_script_mode != True``, but ``Shell(script_name=...)`` sets
+    ``is_script_mode`` at construction, so the captured ``old_script_mode`` was
+    already ``True`` and the trap never fired. (e.g. ``trap "echo BYE" EXIT;
+    true`` in a script printed nothing.)
+  - **``set -e`` abort** — the executor raises ``SystemExit`` directly
+    (``core.py``), a ``BaseException`` that propagated past the trap-firing call
+    sites. (e.g. ``trap cleanup EXIT; set -e; false`` skipped cleanup.)
+  - **Background subshell** — ``( trap ... EXIT; ... ) &`` omitted the
+    ``execute_exit_trap()`` that the foreground subshell path already had.
+  - **Fix:** a single chokepoint, ``SourceProcessor.execute_as_main``, now
+    fronts every non-interactive whole-shell run (``-c``, script file, piped
+    stdin): it recovers the status from a ``SystemExit`` and fires the EXIT trap
+    exactly once (the existing ``_exit_trap_executed`` idempotency guard means
+    the ``exit`` builtin's own firing is not double-counted). Firing is NOT
+    swallowed, so ``exit N`` inside the trap still overrides the status, and the
+    trap reads the correct ``$?``. The background-subshell body fires its own
+    EXIT trap, mirroring the foreground path. This removes two redundant
+    trap-firing call sites in ``__main__.py``.
+
 ## 0.539.0 (2026-06-21) - Feature: named file descriptors {varname}>file (appraisal Tier 3, M2)
 - FEATURE (MED). Implemented bash's named-file-descriptor redirections:
   ``{varname}>file``, ``{varname}<file``, ``{varname}>>file``,
