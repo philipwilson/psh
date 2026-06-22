@@ -43,6 +43,22 @@ class FieldExpansionMixin(_Base):
         if operator == '!' and param.endswith('[@]'):
             return self.expand_array_to_list('${!' + param + '}')
 
+        # ${!ref}: plain indirection. If ref is a plain variable whose VALUE
+        # names an [@]-subscripted array (ref="a[@]"), the indirection produces
+        # that array's fields ("${!ref}" -> one field per element), like bash.
+        # Everything else (scalar/[*] target, positional/special source, an
+        # invalid name like ${!1abc}, an unset ref) returns None so the scalar
+        # path handles it AND reports any error exactly as before — we must not
+        # call the error-raising resolver here (it would mis-report and could
+        # double-print). (param can't end in [@] here — keys form returned above.)
+        if operator == '!':
+            if param.isidentifier():
+                target = self.state.get_variable(param)
+                if (target is not None and target.endswith('[@]')
+                        and not target.startswith(('!', '#'))):
+                    return self.expand_array_to_list('${' + target + '}')
+            return None
+
         slice_operand = operand if operator == ':' else None
 
         # Resolve the base fields
