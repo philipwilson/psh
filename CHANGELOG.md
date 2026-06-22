@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.541.0 (2026-06-22) - Fix: ERR/DEBUG traps no longer over-fire inside functions; add errtrace/functrace (appraisal #14 Tier 1, H2)
+- FIX (HIGH). ERR and DEBUG traps were inherited into function bodies and
+  re-fired through every brace-group layer, with no notion of bash's
+  ``errtrace``/``functrace`` options. Found in ground-up reappraisal #14.
+  Verified against bash 5.2 with a side-effect counter.
+  - ``trap 'c=$((c+1))' ERR; f(){ false; }; f`` fired the ERR trap **twice**
+    (once for the inner ``false``, once for ``f`` returning non-zero at top
+    level); bash fires it **once** — the ERR trap is not run inside a function
+    unless ``set -o errtrace`` (``set -E``).
+  - ``trap 'echo E' ERR; { { false; }; }`` fired **three** times (once per
+    enclosing brace group) where bash fires once — a brace group is transparent,
+    so the failing leaf command owns the single fire.
+  - DEBUG fired before every command inside a function body; bash does not run
+    DEBUG inside a function unless ``set -o functrace`` (``set -T``).
+  - **New options** ``errtrace`` (``-E``) and ``functrace`` (``-T``) added to the
+    option registry, including their ``$-`` letters (``E``/``T``) and ``set -o``
+    listing. Off by default (bash default).
+  - **Fix:** ``TrapManager`` now gates ERR firing on ``errtrace`` and DEBUG
+    firing on ``functrace`` while ``function_stack`` is non-empty (a single
+    ``_inherited_into_function`` helper covers the one ERR and six DEBUG firing
+    sites). The executor skips the redundant ERR fire at a brace-group pipeline
+    level, since the failing leaf inside already fired. Top-level firing is
+    unchanged.
+  - NOTE: ``trap … RETURN`` and exact ``functrace=on`` DEBUG fire-counts remain
+    follow-ups (see H2 in the reappraisal report).
+
 ## 0.540.0 (2026-06-22) - Fix: EXIT trap fires on every shell-exit path (appraisal #14 Tier 1, H1)
 - FIX (HIGH). The EXIT trap was wired only into the ``exit`` builtin, so it was
   silently DROPPED on three other ways the shell (or a subshell) finishes — a

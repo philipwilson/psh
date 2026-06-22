@@ -318,9 +318,24 @@ class TrapManager:
             self._exit_trap_executed = True
             self.execute_trap('EXIT')
 
+    def _inherited_into_function(self, trace_option: str) -> bool:
+        """Whether a DEBUG/ERR/RETURN trap fires while inside a function body.
+
+        bash does NOT run these traps inside a function (or its sub-calls)
+        unless the relevant trace option is set: ``errtrace`` (``set -E``) for
+        ERR, ``functrace`` (``set -T``) for DEBUG/RETURN. At top level the trap
+        always fires. ``function_stack`` is non-empty exactly while a function
+        body is executing.
+        """
+        if not self.state.function_stack:
+            return True
+        return bool(self.state.options.get(trace_option))
+
     def execute_debug_trap(self):
         """Execute DEBUG trap if set (called before each simple command)."""
         if self._in_debug_err_trap:
+            return
+        if not self._inherited_into_function('functrace'):
             return
         if self.state.trap_handlers.get('DEBUG'):
             self._in_debug_err_trap = True
@@ -336,6 +351,8 @@ class TrapManager:
             exit_code: Exit code of the failed command
         """
         if self._in_debug_err_trap:
+            return
+        if not self._inherited_into_function('errtrace'):
             return
         if self.state.trap_handlers.get('ERR') and exit_code != 0:
             self._in_debug_err_trap = True
