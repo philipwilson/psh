@@ -51,6 +51,48 @@ class HistoryManager(InteractiveComponent):
         # (entries loaded from it at startup, plus whatever we've since saved).
         self._file_synced_len = 0
 
+    def _histcontrol_options(self) -> set:
+        """The effective HISTCONTROL value set (``ignoreboth`` expanded)."""
+        raw = self.state.get_variable('HISTCONTROL', '') or ''
+        opts = {o for o in raw.split(':') if o}
+        if 'ignoreboth' in opts:
+            opts.update({'ignorespace', 'ignoredups'})
+        return opts
+
+    def _histignore_matches(self, command: str) -> bool:
+        """True if *command* matches any HISTIGNORE pattern (bash).
+
+        HISTIGNORE is a colon-separated list of glob patterns; a pattern must
+        match the WHOLE line (no implicit ``*``). ``&`` matches the previous
+        history line. Checked after the HISTCONTROL filters.
+        """
+        import fnmatch
+        raw = self.state.get_variable('HISTIGNORE', '') or ''
+        patterns = [p for p in raw.split(':') if p]
+        if not patterns:
+            return False
+        prev = self.state.history[-1] if self.state.history else None
+        for pat in patterns:
+            if pat == '&':
+                if command == prev:
+                    return True
+            elif fnmatch.fnmatchcase(command, pat):
+                return True
+        return False
+
+    def _erase_duplicates(self, command: str) -> None:
+        """Remove every prior occurrence of *command* (HISTCONTROL erasedups).
+
+        Adjusts the persisted-length marker by however many removed entries
+        were before it, so save_to_file's ``history[_file_synced_len:]`` slice
+        still starts at a genuinely-new entry (the file is append-only, so the
+        on-disk copies of erased dups remain — erasedups is in-session here)."""
+        hist = self.state.history
+        removed_before_sync = sum(
+            1 for i, h in enumerate(hist) if h == command and i < self._file_synced_len)
+        self.state.history = [h for h in hist if h != command]
+        self._file_synced_len = max(0, self._file_synced_len - removed_before_sync)
+
     def add_to_history(self, command: str) -> None:
         """Add a command to history.
 
@@ -58,24 +100,42 @@ class HistoryManager(InteractiveComponent):
         single-line ``; `` form like bash's cmdhist option — except
         that newlines inside quoted strings or heredocs are preserved
         verbatim, also matching bash.
+
+        HISTCONTROL / HISTIGNORE filtering matches bash: by default EVERY line
+        is recorded (no dedup); ``ignorespace`` drops a line beginning with a
+        space, ``ignoredups`` drops a line equal to the previous entry,
+        ``erasedups`` removes all prior copies first, and HISTIGNORE drops lines
+        matching its glob patterns.
         """
+        histcontrol = self._histcontrol_options()
+        # ignorespace: a line beginning with a space is not recorded (checked on
+        # the raw line, before the multi-line join).
+        if 'ignorespace' in histcontrol and command[:1] == ' ':
+            return
         if '\n' in command:
             if not _newline_inside_quotes(command) and not contains_heredoc(command):
                 command = convert_multiline_to_single(command)
-        # Don't add duplicates of the immediately previous command
-        if not self.state.history or self.state.history[-1] != command:
-            self.state.history.append(command)
-            # Trim history if it exceeds max size. The trim drops entries from
-            # the FRONT, so the persisted-length marker (an index into the list)
-            # must shift by the same amount — otherwise save_to_file's
-            # history[_file_synced_len:] slice would skip genuinely-new entries
-            # (the v0.447 regression: a session exceeding max_history_size before
-            # saving silently lost the commands between the stale index and the
-            # tail).
-            if len(self.state.history) > self.state.max_history_size:
-                dropped = len(self.state.history) - self.state.max_history_size
-                self.state.history = self.state.history[-self.state.max_history_size:]
-                self._file_synced_len = max(0, self._file_synced_len - dropped)
+        # HISTIGNORE: drop lines matching any colon-separated glob pattern.
+        if self._histignore_matches(command):
+            return
+        if 'erasedups' in histcontrol:
+            self._erase_duplicates(command)
+        elif 'ignoredups' in histcontrol:
+            # Drop a line identical to the immediately previous entry.
+            if self.state.history and self.state.history[-1] == command:
+                return
+        self.state.history.append(command)
+        # Trim history if it exceeds max size. The trim drops entries from
+        # the FRONT, so the persisted-length marker (an index into the list)
+        # must shift by the same amount — otherwise save_to_file's
+        # history[_file_synced_len:] slice would skip genuinely-new entries
+        # (the v0.447 regression: a session exceeding max_history_size before
+        # saving silently lost the commands between the stale index and the
+        # tail).
+        if len(self.state.history) > self.state.max_history_size:
+            dropped = len(self.state.history) - self.state.max_history_size
+            self.state.history = self.state.history[-self.state.max_history_size:]
+            self._file_synced_len = max(0, self._file_synced_len - dropped)
 
     def load_from_file(self) -> None:
         """Load command history from file."""
