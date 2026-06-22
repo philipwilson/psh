@@ -184,11 +184,18 @@ class ExportBuiltin(Builtin):
         return all(c.isalnum() or c == '_' for c in name[1:])
 
     def _print_exports(self, shell: 'Shell') -> None:
-        """Print all exported variables in declare -x format (values
-        escaped like declare -p, via the shared escaper — bash escapes
-        here too: ``export -p`` shows ``declare -x FOO="a\\"b"``)."""
-        for key, value in sorted(shell.env.items()):
-            self.write_line(f'declare -x {key}="{escape_value(value)}"', shell)
+        """Print all exported variables in ``declare -x`` format.
+
+        Iterates exported VARIABLE OBJECTS (not the live env dict) so a
+        declared-but-unset export (``export FOO``) is shown as ``declare -x FOO``
+        with no ``=value`` — bash does, and the old env-dict iteration dropped it
+        (it has no env entry). Uses the shared ``format_declaration`` so the full
+        attribute set is shown (``declare -ix N="5"``) and values are escaped,
+        matching ``declare -p``."""
+        from .declare_format import format_declaration
+        exported = shell.state.scope_manager.all_exported_variables()
+        for var in sorted(exported, key=lambda v: v.name):
+            self.write_line(format_declaration(var), shell)
 
     def _remove_export(self, name: str, shell: 'Shell') -> None:
         """Remove the export attribute from a variable (export -n)."""
