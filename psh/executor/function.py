@@ -47,6 +47,29 @@ class FunctionOperationExecutor:
                                               redirects=node.redirects)
         return 0
 
+    def _check_funcnest(self, name: str) -> None:
+        """Enforce bash's FUNCNEST limit on function-call depth.
+
+        A call is refused once the function stack is already ``FUNCNEST`` deep —
+        the body does not run; bash reports ``NAME: maximum function nesting
+        level exceeded (N)`` and aborts the current top-level command (it
+        resumes at the next input line, status 1). ``FUNCNEST`` unset or <= 0
+        means no limit.
+        """
+        funcnest = self.shell.state.get_variable('FUNCNEST')
+        if not funcnest:
+            return
+        try:
+            limit = int(funcnest)
+        except ValueError:
+            return
+        if limit > 0 and len(self.shell.state.function_stack) >= limit:
+            from ..core import TopLevelAbort
+            print(f"psh: {name}: maximum function nesting level exceeded ({limit})",
+                  file=self.shell.state.stderr)
+            self.shell.state.last_exit_code = 1
+            raise TopLevelAbort(1)
+
     def execute_function_call(self, name: str, args: List[str],
                              context: 'ExecutionContext',
                              visitor: 'ASTVisitor[int]',
@@ -67,6 +90,8 @@ class FunctionOperationExecutor:
         func = self.function_manager.get_function(name)
         if not func:
             return 127  # Command not found
+
+        self._check_funcnest(name)
 
         # Extract the actual body from the Function object
         func_body = func.body
