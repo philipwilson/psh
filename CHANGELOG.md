@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.552.0 (2026-06-22) - Fix: `set -u` is enforced inside arithmetic (appraisal #14 Tier 2)
+- FIX (MED). With ``set -u`` an unset variable referenced in an arithmetic
+  context silently evaluated to 0 instead of erroring like a bare ``$undef``:
+  ``set -u; echo $(( undefined + 1 ))`` printed ``1``, ``(( z + 1 ))`` ran, and
+  ``for ((i=n;...))`` looped — all should abort with ``NAME: unbound variable``
+  (bash). Found in ground-up reappraisal #14; verified against bash 5.2.
+  - **Fix:** the arithmetic evaluator's ``get_variable``/``get_array_element``
+    (``expansion/arithmetic/evaluator.py``) now call the shared
+    ``OptionHandler.check_unset_variable`` before defaulting, raising
+    ``UnboundVariableError`` for an unset name (at each step of a reference
+    chain). A set-but-empty variable and an unset element of a SET array stay
+    exempt (bash).
+  - The arithmetic-COMMAND paths now report this uniformly: a new
+    ``report_unbound_variable`` helper (``executor/strategies.py``) centralizes
+    the bash-faithful "print once, abort non-interactive shell (127 for ``-c``,
+    1 for a script)" handling, shared by the simple-command path
+    (``command.py``), the ``(( ))`` command (``core.py``), and the C-style
+    ``for`` loop — so ``(( undef ))`` no longer surfaced as
+    ``unexpected error:``.
+
 ## 0.551.0 (2026-06-22) - Fix: a literal `}`/`]` suffix on a brace group attaches (appraisal #14 Tier 2)
 - FIX (MED). A literal ``}``/``]`` immediately after a brace group was treated
   as a detachable shell operator, so the items were space-joined instead of

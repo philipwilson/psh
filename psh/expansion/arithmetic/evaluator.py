@@ -44,9 +44,14 @@ class ArithmeticEvaluator:
         honoured. A cycle guard / recursion limit prevents infinite loops from
         circular references.
         """
+        from ...core import OptionHandler
         seen: set = set()
         var = name
         while True:
+            # set -u: a reference to an unset variable inside arithmetic is an
+            # error (bash), not a silent 0 — same as a plain `$var` reference.
+            # Applied at each step of the reference chain (`a=b` with b unset).
+            OptionHandler.check_unset_variable(self.shell.state, var)
             value = self.shell.state.get_variable(var, '0')
 
             if not value:
@@ -110,9 +115,11 @@ class ArithmeticEvaluator:
         ``key`` is a str for associative arrays and an int for indexed
         arrays / scalars (see :meth:`_array_key`).
         """
-        from ...core import AssociativeArray, IndexedArray
+        from ...core import AssociativeArray, IndexedArray, OptionHandler
         var = self.shell.state.scope_manager.get_variable_object(name)
         if var is None:
+            # set -u: an unset array/scalar referenced here is an error (bash).
+            OptionHandler.check_unset_variable(self.shell.state, name)
             return 0
         value = var.value
         if isinstance(value, IndexedArray):

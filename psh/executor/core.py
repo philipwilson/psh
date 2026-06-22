@@ -353,6 +353,7 @@ class ExecutorVisitor(ASTVisitor[int]):
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> int:
         """Execute arithmetic command: ((expression))"""
+        from ..core import UnboundVariableError
         from ..expansion.arithmetic import evaluate_arithmetic
 
         try:
@@ -362,14 +363,26 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # Bash behavior: exit 0 if expression is true (non-zero)
                 # exit 1 if expression is false (zero)
                 return 0 if result != 0 else 1
+        except UnboundVariableError as e:
+            # set -u: an unset variable in `(( ))` aborts the shell (bash),
+            # handled identically to a bare `$undef`.
+            from .strategies import report_unbound_variable
+            return report_unbound_variable(self.state, e)
         except (ValueError, ArithmeticError) as e:
             print(f"psh: ((: {e}", file=self.state.stderr)
             return 1
 
     def visit_CStyleForLoop(self, node: CStyleForLoop) -> int:
         """Execute C-style for loop: for ((init; cond; update))"""
-        # Delegate to ControlFlowExecutor
-        return self.control_flow_executor.execute_c_style_for(node, self.context, self)
+        from ..core import UnboundVariableError
+        try:
+            # Delegate to ControlFlowExecutor
+            return self.control_flow_executor.execute_c_style_for(node, self.context, self)
+        except UnboundVariableError as e:
+            # set -u: an unset variable in the init/condition/update arithmetic
+            # aborts the shell (bash), like a bare `$undef`.
+            from .strategies import report_unbound_variable
+            return report_unbound_variable(self.state, e)
 
     def visit_SelectLoop(self, node: SelectLoop) -> int:
         """Execute select loop for interactive menu selection."""
