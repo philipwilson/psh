@@ -4,6 +4,26 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.546.0 (2026-06-22) - Feature: HISTCONTROL / HISTIGNORE; history dedup matches bash (appraisal #14 Tier 1, H7)
+- FIX/FEATURE (HIGH). psh had no ``HISTCONTROL``/``HISTIGNORE`` support and
+  UNCONDITIONALLY dropped a command equal to the immediately previous one —
+  but bash records EVERY line by default (no dedup) and only filters when these
+  variables ask. Found in ground-up reappraisal #14. ``HistoryManager.add_to_history``
+  now matches bash:
+  - default (``HISTCONTROL`` unset): every line recorded, including consecutive
+    duplicates (the previous always-dedup was the divergence);
+  - ``ignorespace``: a line beginning with a space is not recorded;
+  - ``ignoredups``: a line equal to the previous entry is not recorded;
+  - ``ignoreboth``: shorthand for both of the above;
+  - ``erasedups``: all prior copies of the line are removed before it is added
+    (in-session; the append-only history file is not rewritten);
+  - ``HISTIGNORE``: colon-separated glob patterns (whole-line match, ``&`` =
+    the previous line); a matching line is not recorded, checked after
+    HISTCONTROL.
+  Unknown HISTCONTROL tokens are ignored (bash). The concurrency-safe
+  persistence marker (``_file_synced_len``) is adjusted when ``erasedups``
+  removes already-persisted entries, preserving the v0.447 append-only invariant.
+
 ## 0.545.0 (2026-06-22) - Fix: fatal assignment error aborts the current command, not the whole shell (appraisal #14 Tier 1, H6a)
 - FIX (HIGH). A readonly-variable or circular-nameref assignment error did
   ``sys.exit(1)`` in script mode, killing the entire shell — so a script that
