@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.559.0 (2026-06-23) - Fix: `set -x` quotes args & traces compound headers (appraisal #14 Tier 2)
+- FIX (MED). ``set -x`` joined trace words unquoted and omitted compound-command
+  headers. Now matches bash. Found in ground-up reappraisal #14; verified vs bash 5.2.
+  - **Arg quoting:** a traced word that is empty or contains a shell
+    metacharacter is single-quoted — ``echo "a b" c`` traces ``+ echo 'a b' c``,
+    ``[ 0 -lt 2 ]`` traces ``+ '[' 0 -lt 2 ']'``, ``echo ""`` traces ``+ echo ''``.
+    A new ``xtrace_quote`` helper (``core/options.py``) implements bash's
+    safe-character rule, shared by the command trace and the assignment traces.
+  - **Compound headers:** ``for`` re-traces ``+ for VAR in WORDS`` each iteration
+    and ``case`` traces ``+ case WORD in`` (``while``/``until``/``if`` get no
+    header — only their condition commands, which were already traced, now quoted).
+  - **Assignments:** pure (``x=v``) and command-prefix (``x=5 cmd``) assignments
+    trace with the VALUE quoted (``+ x='a;b'``); the prefix form is now traced at
+    all (``+ x=5`` before ``+ cmd``).
+  - DEFERRED (flat-string AST limitations): the ``[[ ... ]]`` test command is not
+    traced, and a QUOTED ``for``/``case`` item is shown single-quoted (``'a b'``)
+    where bash echoes the source double-quote style (``"a b"``) — both
+    semantically equivalent.
+
 ## 0.558.0 (2026-06-23) - Feature: `time` reserved word (appraisal #14 Tier 2)
 - FEATURE (MED). ``time`` was not a reserved word — ``time cmd`` became
   ``argv[0]`` and ran the external ``/usr/bin/time`` (BSD format, couldn't time
