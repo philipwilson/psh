@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.558.0 (2026-06-23) - Feature: `time` reserved word (appraisal #14 Tier 2)
+- FEATURE (MED). ``time`` was not a reserved word — ``time cmd`` became
+  ``argv[0]`` and ran the external ``/usr/bin/time`` (BSD format, couldn't time
+  pipelines/compounds/builtins). Implemented bash's ``time`` keyword. Found in
+  ground-up reappraisal #14; verified against bash 5.2.
+  - **`time [-p] PIPELINE`** times the WHOLE pipeline and reports real/user/sys
+    to stderr — bash's default ``\nreal\t<m>m<s>.<ms>s`` format, or the
+    space-separated 2-decimal POSIX format with ``-p``. user/sys include forked
+    children's CPU (``os.times()`` deltas). ``time`` with no command times an
+    empty pipeline (status 0); ``time ! cmd`` and a multi-stage ``time a | b``
+    work; the timed pipeline's status flows to ``$?``.
+  - **Lexer/parser:** ``time`` is now a reserved word (``TokenType.TIME``,
+    KEYWORDS, KEYWORD_TYPE_MAP) recognized only at command position — so
+    ``echo time``, ``time=5``, ``for time in …`` keep ``time`` literal (bash).
+    It is a pipeline prefix (``parse_pipeline``) and keeps command position
+    (``PIPELINE_PREFIX_TOKENS`` / ``LEXER_COMMAND_POSITION_WORDS``), which also
+    resolves the deferred ``time while …`` / ``time [[ … ]]`` parse from M1.
+    ``Pipeline`` gained ``timed`` / ``time_posix`` fields (the array-assignment
+    characterization corpus was regenerated for the new repr — only those fields
+    changed). ``TIMEFORMAT`` is not yet honored (default & ``-p`` only).
+  - Doc: the differences-from-bash table now marks ``time`` Partial and ``wait
+    -n`` supported.
+
 ## 0.557.0 (2026-06-23) - Feature: `wait -n` / `wait -p VAR` (appraisal #14 Tier 2)
 - FEATURE (MED). ``wait -n`` was rejected as ``-n: not a valid process id``.
   Implemented bash's ``wait -n``: return when the NEXT single job completes,

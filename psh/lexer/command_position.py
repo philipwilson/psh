@@ -87,17 +87,16 @@ COMMAND_GROUP_OPENERS = frozenset({
     TokenType.LBRACE,
 })
 
-# Operator tokens that PREFIX a pipeline and keep the FOLLOWING token at command
-# position, so a compound keyword (`while`/`if`/`case`/...) or the `[[` test
-# operator right after them is still recognized: `! while ...; do ...; done`,
-# `! if ...; fi`, `! [[ -z x ]]`. Without this the lexer/normalizer reset
-# command position after `!`, so the next reserved word lexed as a plain WORD
-# and the parser hit "Expected command". (`time` is a pipeline prefix too, but
-# it is a WORD-valued keyword the parser does not yet consume as a time-node, so
-# it is handled when the `time` reserved word is implemented — see
-# CMDPOS_KEEPING_WORDS, which already lists both for the cmdsub scanner.)
+# Reserved-word / operator tokens that PREFIX a pipeline and keep the FOLLOWING
+# token at command position, so a compound keyword (`while`/`if`/`case`/...) or
+# the `[[` test operator right after them is still recognized: `! while ...; do
+# ...; done`, `! if ...; fi`, `! [[ -z x ]]`, `time while ...`, `time [[ ... ]]`.
+# Without this the lexer/normalizer reset command position after `!`/`time`, so
+# the next reserved word lexed as a plain WORD and the parser hit "Expected
+# command".
 PIPELINE_PREFIX_TOKENS = frozenset({
     TokenType.EXCLAMATION,
+    TokenType.TIME,
 })
 
 # WORD values the lexer pass treats as command-position setters during
@@ -115,6 +114,9 @@ PIPELINE_PREFIX_TOKENS = frozenset({
 LEXER_COMMAND_POSITION_WORDS = frozenset({
     'if', 'while', 'until', 'for', 'case',
     'then', 'do', 'else', 'elif',
+    # `time` prefixes a pipeline: keep command position so `time while`/
+    # `time [[ ... ]]` recognize the following keyword/operator.
+    'time',
 })
 
 # Plain word strings that keep the cmdsub extent scanner "at command

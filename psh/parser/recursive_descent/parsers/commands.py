@@ -342,6 +342,20 @@ class CommandParser(ParserSubcomponent):
         # within a multi-line && / || chain (see ASTNode.line).
         pipeline.line = self.parser.peek().line
 
+        # `time [-p]` prefix: times the whole following pipeline (bash). It
+        # precedes the optional `!` negation.
+        if self.parser.consume_if(TokenType.TIME):
+            pipeline.timed = True
+            # `-p` (POSIX output format), only as the immediate next word.
+            tok = self.parser.peek()
+            if tok.type == TokenType.WORD and tok.value == '-p':
+                self.parser.advance()
+                pipeline.time_posix = True
+            # `time` with no following command (`time`, `time -p`) is valid:
+            # it times an empty pipeline. Detect end-of-pipeline now.
+            if self._at_pipeline_end():
+                return pipeline
+
         # Check for leading ! (negation)
         if self.parser.consume_if(TokenType.EXCLAMATION):
             pipeline.negated = True
@@ -362,6 +376,21 @@ class CommandParser(ParserSubcomponent):
 
         return pipeline
 
+    # Tokens that terminate a pipeline: a bare `time`/`time -p` with one of
+    # these next is a complete (empty) timed pipeline (bash times nothing).
+    _PIPELINE_END_TOKENS = frozenset({
+        TokenType.SEMICOLON, TokenType.NEWLINE, TokenType.AMPERSAND,
+        TokenType.AND_AND, TokenType.OR_OR, TokenType.PIPE, TokenType.PIPE_AND,
+        TokenType.RPAREN, TokenType.RBRACE,
+        TokenType.DOUBLE_SEMICOLON, TokenType.SEMICOLON_AMP, TokenType.AMP_SEMICOLON,
+        TokenType.THEN, TokenType.DO, TokenType.DONE, TokenType.FI,
+        TokenType.ELSE, TokenType.ELIF, TokenType.ESAC, TokenType.EOF,
+    })
+
+    def _at_pipeline_end(self) -> bool:
+        """True if the current token terminates the pipeline (so `time` alone
+        is a complete, empty timed pipeline)."""
+        return self.parser.at_end() or self.parser.peek().type in self._PIPELINE_END_TOKENS
 
     def parse_pipeline_component(self) -> Command:
         """Parse a single component of a pipeline (simple or compound command)."""

@@ -286,8 +286,54 @@ class ExecutorVisitor(ASTVisitor[int]):
 
     def visit_Pipeline(self, node: Pipeline) -> int:
         """Execute a pipeline of commands."""
-        # Delegate to PipelineExecutor
-        return self.pipeline_executor.execute(node, self.context, self)
+        if not node.timed:
+            # Delegate to PipelineExecutor
+            return self.pipeline_executor.execute(node, self.context, self)
+        return self._execute_timed_pipeline(node)
+
+    def _execute_timed_pipeline(self, node: Pipeline) -> int:
+        """Run a `time`-prefixed pipeline, reporting real/user/sys afterwards.
+
+        Times the WHOLE pipeline (bash). user/sys include forked children's CPU
+        (``os.times()`` children deltas). ``time`` with no command times an empty
+        pipeline (status 0). The report goes to the shell's stderr.
+        """
+        import os
+        import time
+        start_real = time.monotonic()
+        start = os.times()
+        status = 0
+        try:
+            if node.commands:
+                status = self.pipeline_executor.execute(node, self.context, self)
+        finally:
+            real = time.monotonic() - start_real
+            end = os.times()
+            user = (end.user - start.user) + (end.children_user - start.children_user)
+            system = (end.system - start.system) + (end.children_system - start.children_system)
+            self._report_time(node, real, user, system)
+        return status
+
+    @staticmethod
+    def _format_time_long(seconds: float) -> str:
+        """bash default `%lR` style: `<min>m<sec>.<ms>s` (e.g. 0m0.003s)."""
+        minutes = int(seconds // 60)
+        return f"{minutes}m{seconds - minutes * 60:.3f}s"
+
+    def _report_time(self, node: Pipeline, real: float, user: float, system: float) -> None:
+        if node.time_posix:
+            # `time -p`: POSIX format, seconds with 2 decimals.
+            text = f"real {real:.2f}\nuser {user:.2f}\nsys {system:.2f}\n"
+        else:
+            # bash default TIMEFORMAT: a leading blank line, then m/s form.
+            text = (f"\nreal\t{self._format_time_long(real)}"
+                    f"\nuser\t{self._format_time_long(user)}"
+                    f"\nsys\t{self._format_time_long(system)}\n")
+        try:
+            self.state.stderr.write(text)
+            self.state.stderr.flush()
+        except (OSError, ValueError):
+            pass
 
     # Simple command execution
 

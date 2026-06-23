@@ -350,11 +350,11 @@ read -u 3 var           # Error: invalid option (read from a specific fd)
 
 ```bash
 # wait -n (wait for any single job)
-wait -n                 # Not supported
+wait -n                 # Waits for the next background job to finish
 
-# time keyword (external /usr/bin/time works)
-time echo hello         # Uses external time, not the shell keyword
-                        # (so it cannot time pipelines or builtins)
+# time keyword (reserved word; times pipelines/compounds, default & -p formats)
+time echo hello         # Times the command; `time while ...; done`, `time { ...; }` work too
+                        # (TIMEFORMAT is not yet honored)
 
 # Call-stack introspection arrays
 echo ${BASH_SOURCE[0]}  # Not available (empty)
@@ -607,8 +607,8 @@ fi
 | caller builtin | Yes | No | Not implemented |
 | BASH_SOURCE / BASH_LINENO | Yes | No | Not populated |
 | FUNCNAME | Yes | Partial | [0] only; full call stack not populated |
-| wait -n | Yes | No | Not implemented |
-| time keyword | Yes | No | External /usr/bin/time only |
+| wait -n | Yes | Yes | Waits for the next job; `-n` / `-p VAR` |
+| time keyword | Yes | Partial | Times pipelines (default & `-p` formats); `TIMEFORMAT` not honored |
 | ${!prefix*} name matching | Yes | No | Lists all variables (bug) |
 | **PSH-Specific** |
 | --debug-ast | No | Yes | Multiple output formats |
@@ -741,8 +741,6 @@ grep -E '!!|![0-9]' script.sh                 # history expansion
 # - Programmable completion (complete, compgen)
 # - caller builtin
 # - read -u (read from a specific fd)
-# - wait -n
-# - time keyword (external /usr/bin/time only)
 # - BASH_SOURCE/BASH_LINENO; FUNCNAME beyond [0]
 # - ${!prefix*} variable-name prefix matching
 # - Very deep recursion (Python stack limits)
@@ -773,7 +771,7 @@ PSH v0.221.0 provides near-complete Bash compatibility for everyday shell progra
 
 1. **Comprehensive Feature Support**: Arrays, associative arrays, trap, wait, disown, all control structures, all expansions, extended globs, `=~` with BASH_REMATCH
 2. **Full Shell Options**: errexit, nounset, xtrace, pipefail, noclobber, allexport, and many more
-3. **Remaining Gaps**: `${var@K}`/`@k` associative transforms, `${!prefix*}` name matching, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `caller`, `wait -n`, the `time` keyword, `read -u`
+3. **Remaining Gaps**: `${var@K}`/`@k` associative transforms, `${!prefix*}` name matching, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `caller`, `read -u`
 4. **Educational Tools**: Debug flags, script analysis, multiple parser implementations
 5. **High Compatibility**: Most Bash scripts run without modification
 
