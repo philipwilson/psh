@@ -79,6 +79,8 @@ class Pipeline(ASTNode):
     commands: List[Command] = field(default_factory=list)  # Now accepts both SimpleCommand and CompoundCommand
     negated: bool = False  # True if pipeline is prefixed with !
     pipe_stderr: List[bool] = field(default_factory=list)  # pipe_stderr[i] True if |& between commands[i] and commands[i+1]
+    timed: bool = False        # True if prefixed with the `time` reserved word
+    time_posix: bool = False   # True for `time -p` (POSIX timing output format)
 
 
 @dataclass

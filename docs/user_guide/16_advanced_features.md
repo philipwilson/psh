@@ -994,8 +994,9 @@ psh$ for file in *.txt; do
 > done
 > wait  # Wait for all background jobs
 
-# Note: wait -n is not supported in PSH.
-# Use wait (all jobs) or wait with specific PIDs:
+# wait -n waits for the NEXT single background job to finish and returns its
+# status (wait -n -p VAR also stores that job's PID in VAR).
+# wait (all jobs) and wait with specific PIDs also work:
 psh$ cmd1 &
 psh$ pid1=$!
 psh$ cmd2 &

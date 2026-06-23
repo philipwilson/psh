@@ -72,6 +72,7 @@ class TokenType(Enum):
     CASE = auto()
     ESAC = auto()
     SELECT = auto()
+    TIME = auto()              # `time` pipeline-timing reserved word
 
     # Case terminators
     DOUBLE_SEMICOLON = auto()  # ;;

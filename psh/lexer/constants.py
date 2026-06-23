@@ -13,5 +13,6 @@ KEYWORDS = {
     'case', 'esac',
     'select',
     'function',
+    'time',
     'break', 'continue', 'return'
 }
