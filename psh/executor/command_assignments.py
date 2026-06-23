@@ -186,8 +186,10 @@ class CommandAssignments:
             for var, value, value_word in raw_assignments:
                 value = self._expand_value(value, value_word)
                 if xtrace:
+                    from ..core.options import xtrace_quote
                     ps4 = self.state.get_variable('PS4', '+ ')
-                    self.state.stderr.write(ps4 + f"{var}={value}\n")
+                    # bash quotes the assignment VALUE (`x='a;b'`), not `x=`.
+                    self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
                     self.state.stderr.flush()
                 # resolve_append_assignment may return an array object (scalar
                 # append to an array updates element 0 and returns the array),
@@ -258,8 +260,15 @@ class CommandAssignments:
         assignments: List[Tuple[str, object]] = []
         assignment_error = False
 
+        xtrace = self.state.options.get('xtrace')
         for var, value, value_word in raw_assignments:
             value = self._expand_value(value, value_word)
+            if xtrace:
+                # set -x: a command-prefix assignment (`x=5 cmd`) is traced
+                # before the command itself (bash), value-quoted like a pure one.
+                from ..core.options import xtrace_quote
+                ps4 = self.state.get_variable('PS4', '+ ')
+                self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
             var, resolved = resolve_append_assignment(
                 self.state.scope_manager, var, value)
             # Save shell state, environment value, and prior export status

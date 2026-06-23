@@ -1,11 +1,30 @@
 """Shell option handlers."""
 
+import string
 from typing import TYPE_CHECKING
 
 from .exceptions import UnboundVariableError
 
 if TYPE_CHECKING:
     from .state import ShellState
+
+# Characters that need no quoting in `set -x` trace output. Anything else (a
+# space, an empty word, or a shell metacharacter such as ;, |, (, ), [, ], *,
+# ?, $, quotes, ...) makes bash single-quote the word: `echo "a b"` traces as
+# `+ echo 'a b'`, `[ 0 -lt 2 ]` as `+ '[' 0 -lt 2 ']'`.
+_XTRACE_SAFE_CHARS = frozenset(string.ascii_letters + string.digits + '_-./,:=@%+')
+
+
+def xtrace_quote(word: str) -> str:
+    """Quote a word for `set -x` output the way bash does.
+
+    A word that is non-empty and made only of unquoted-safe characters is
+    emitted as-is; otherwise it is single-quoted, with embedded single quotes
+    rendered as the usual ``'\\''`` close-reopen.
+    """
+    if word and all(c in _XTRACE_SAFE_CHARS for c in word):
+        return word
+    return "'" + word.replace("'", "'\\''") + "'"
 
 
 class OptionHandler:
@@ -72,6 +91,6 @@ class OptionHandler:
             return
 
         ps4 = state.get_variable('PS4', '+ ')
-        trace_line = ps4 + ' '.join(str(part) for part in command_parts)
+        trace_line = ps4 + ' '.join(xtrace_quote(str(part)) for part in command_parts)
         print(trace_line, file=state.stderr)
         state.stderr.flush()  # Ensure trace appears before command output

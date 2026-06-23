@@ -233,6 +233,14 @@ class ControlFlowExecutor:
         with self._loop_depth(context), self._compound_redirections(node), \
                 self._pipeline_context_disabled(context):
             for item in expanded_items:
+                # set -x: bash re-traces the `for VAR in WORDS` header on EACH
+                # iteration (the expanded word list, quoted).
+                if self.state.options.get('xtrace'):
+                    from ..core.options import xtrace_quote
+                    ps4 = self.state.get_variable('PS4', '+ ')
+                    words = ' '.join(xtrace_quote(w) for w in expanded_items)
+                    header = f"{ps4}for {node.variable} in {words}".rstrip()
+                    self.state.stderr.write(header + "\n")
                 # bash runs the DEBUG trap before binding the loop variable on
                 # EACH iteration (so `trap d DEBUG; for i in 1 2; do echo x;
                 # done` fires d before every `i=…` and every `echo`).
@@ -345,6 +353,12 @@ class ControlFlowExecutor:
         expr = node.expr
         if '$' in expr:
             expr = self.expansion_manager.expand_string_variables(expr)
+
+        # set -x: bash traces the `case WORD in` header (expanded subject, quoted).
+        if self.state.options.get('xtrace'):
+            from ..core.options import xtrace_quote
+            ps4 = self.state.get_variable('PS4', '+ ')
+            self.state.stderr.write(f"{ps4}case {xtrace_quote(expr)} in\n")
 
         # Redirects apply to the whole case; pipeline context is neutralized
         # for commands inside the construct.
