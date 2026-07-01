@@ -11,8 +11,6 @@ from .scripting.visitor_modes import (
 from .shell import Shell
 
 # Flags that take no value: flag → settings applied when present.
-# Each flag is removed from the argument list at most once (matching the
-# historical args.remove() behavior).
 _FLAG_TABLE: Dict[str, List[Tuple[str, object]]] = {
     "--debug-ast": [("debug_ast", True)],
     "--debug-ast=pretty": [("debug_ast", True), ("ast_format", "pretty")],
@@ -46,6 +44,7 @@ Python Shell (psh) - An educational Unix shell implementation
 Options:
   -c command       Execute command and exit
   -i               Force interactive mode (load rc, set $- 'i' flag)
+  --               End of options; remaining arguments are operands
   -h, --help       Show this help message and exit
   -V, --version    Show version information and exit
   --norc           Do not read ~/.pshrc on startup
@@ -82,29 +81,29 @@ def print_help() -> None:
     print(HELP_TEXT)
 
 
-def _extract_value_option(args: List[str], name: str) -> Tuple[object, List[str]]:
-    """Extract ``name VALUE`` or ``name=VALUE`` from args (first match).
+def _value_option(argv: List[str], i: int, name: str) -> Tuple[str, int]:
+    """Read the value of ``name VALUE`` or ``name=VALUE`` at position *i*.
 
-    Returns (value_or_None, remaining_args).  Exits with status 2 if the
+    Returns (value, next_index).  Exits with status 2 if the
     space-separated form is missing its argument.
     """
-    for i, arg in enumerate(args):
-        if arg == name:
-            if i + 1 < len(args):
-                return args[i + 1], args[:i] + args[i + 2:]
-            print(f"psh: {name} requires an argument", file=sys.stderr)
-            sys.exit(2)
-        elif arg.startswith(name + "="):
-            return arg[len(name) + 1:], args[:i] + args[i + 1:]
-    return None, args
+    if argv[i].startswith(name + "="):
+        return argv[i][len(name) + 1:], i + 1
+    if i + 1 < len(argv):
+        return argv[i + 1], i + 2
+    print(f"psh: {name} requires an argument", file=sys.stderr)
+    sys.exit(2)
 
 
 def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
-    """Strip psh's own option flags out of *argv*.
+    """Parse psh's option flags from *argv*, left to right.
 
-    Returns (options, remaining_args).  Unknown arguments (the script
-    name, -c and its command, --, ...) are left in remaining_args for
-    main() to interpret positionally.
+    Returns (options, operands).  Like bash, option parsing STOPS at the
+    first non-option argument — the script name, or the command string
+    after ``-c`` — so everything from there on belongs to the script
+    untouched (``psh script.sh -i foo`` passes both args through as
+    $1/$2).  ``--`` (or the historical lone ``-``) ends options
+    explicitly; an unknown option in flag position exits with status 2.
     """
     options: Dict[str, object] = {
         "debug_ast": False,
@@ -124,19 +123,42 @@ def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
         "lint_only": False,
         "force_interactive": False,
         "ast_format": None,
+        "command_mode": False,
+        "help": False,
+        "version": False,
     }
 
-    args = list(argv)
-    for flag, settings in _FLAG_TABLE.items():
-        if flag in args:
-            for key, value in settings:
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("--", "-"):
+            i += 1
+            break
+        if not arg.startswith("-"):
+            break
+        if arg in _FLAG_TABLE:
+            for key, value in _FLAG_TABLE[arg]:
                 options[key] = value
-            args.remove(flag)
+            i += 1
+        elif arg == "-c":
+            options["command_mode"] = True
+            i += 1
+        elif arg in ("--help", "-h"):
+            options["help"] = True
+            i += 1
+        elif arg in ("--version", "-V"):
+            options["version"] = True
+            i += 1
+        elif arg == "--rcfile" or arg.startswith("--rcfile="):
+            options["rcfile"], i = _value_option(argv, i, "--rcfile")
+        elif arg == "--parser" or arg.startswith("--parser="):
+            options["parser_type"], i = _value_option(argv, i, "--parser")
+        else:
+            print(f"psh: {arg}: invalid option", file=sys.stderr)
+            print("Try 'psh --help' for more information.", file=sys.stderr)
+            sys.exit(2)
 
-    options["rcfile"], args = _extract_value_option(args, "--rcfile")
-    options["parser_type"], args = _extract_value_option(args, "--parser")
-
-    return options, args
+    return options, argv[i:]
 
 
 def _neutralize_closed_std_streams() -> None:
@@ -168,27 +190,29 @@ def main():
     """Main entry point for psh command."""
     import atexit
     atexit.register(_neutralize_closed_std_streams)
-    opts, args = parse_args(sys.argv[1:])
+    opts, operands = parse_args(sys.argv[1:])
 
-    # Update sys.argv to remove the flags
-    sys.argv = [sys.argv[0]] + args
+    # --version wins over --help regardless of order (bash does the same);
+    # both exit before a Shell is constructed (no rc sourcing, no history).
+    if opts["version"]:
+        from .version import get_version_info
+        print(get_version_info())
+        sys.exit(0)
+    if opts["help"]:
+        print_help()
+        sys.exit(0)
 
-    # Determine the run-mode from the (flag-stripped) argv BEFORE constructing
-    # the shell. bash sources ~/.pshrc, loads history, and enables line editing
-    # only for an INTERACTIVE shell — never for `-c` or a script file. The
-    # shell decides this at construction (in _init_interactive), so it must know
-    # the mode now; passing it after construction (as the dispatch below still
-    # does for other state) is too late and sourced rc into every `psh -c` /
-    # `psh script.sh` run from a terminal. Mirrors the dispatch conditions.
-    _rest = sys.argv[1:]
-    command_mode = len(_rest) >= 2 and _rest[0] == "-c"
-    init_script_name: "str | None" = None
-    if not command_mode and _rest:
-        _first = _rest[0]
-        if _first == "--" and len(_rest) >= 2:
-            init_script_name = _rest[1]
-        elif _first not in ("--version", "-V", "--help", "-h") and not _first.startswith("-"):
-            init_script_name = _first
+    # POSIX `sh -c command_string [name [args...]]`: the command string is the
+    # first operand, the next is $0, and the rest are $1, $2, ...
+    command_mode = bool(opts["command_mode"])
+    if command_mode and not operands:
+        print("psh: -c: option requires an argument", file=sys.stderr)
+        sys.exit(2)
+
+    # The shell must know its run-mode at construction: bash sources ~/.pshrc,
+    # loads history, and enables line editing only for an INTERACTIVE shell —
+    # never for `-c` or a script file (_init_interactive decides this).
+    init_script_name = operands[0] if operands and not command_mode else None
 
     visitor_mode = any([opts["format_only"], opts["metrics_only"],
                         opts["security_only"], opts["lint_only"],
@@ -238,72 +262,45 @@ def main():
             sys.exit(2)
         shell.active_parser = target
 
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "-c" and len(sys.argv) > 2:
-            # Execute command with -c flag (script mode)
-            shell.state.is_script_mode = True
-            shell.state.options['command_mode'] = True  # 'c' in $-
-            # bash's `-c` is command mode, NOT stdin-reading mode: $- has 'c'
-            # but not 's'. _init_interactive ran at construction (before this
-            # flag was known), so clear stdin_mode now.
-            shell.state.options['stdin_mode'] = False
-            command = sys.argv[2]
-            # POSIX `sh -c command_string [name [args...]]`: the FIRST operand
-            # after the command string is $0 (the command name), and the rest
-            # are $1, $2, ... (bash: `-c '...' name a b` → $0=name, $1=a, $#=2).
-            operands = sys.argv[3:]
-            if operands:
-                shell.state.script_name = operands[0]
-                shell.state.positional_params = list(operands[1:])
-            else:
-                shell.state.positional_params = []
-
-            # Handle visitor modes for -c commands
-            if visitor_mode:
-                exit_code = handle_visitor_mode_for_command(shell, command)
-                sys.exit(exit_code)
-
-            # Use StringInput with script mode to process line-by-line like bash -c
-            from .scripting.input_sources import StringInput
-            input_source = StringInput(command, "-c")
-            exit_code = shell.script_manager.source_processor.execute_as_main(
-                input_source, add_to_history=False)
-            sys.exit(exit_code)
-        elif sys.argv[1] in ("--version", "-V"):
-            # Show version
-            from .version import get_version_info
-            print(get_version_info())
-            sys.exit(0)
-        elif sys.argv[1] in ("--help", "-h"):
-            print_help()
-            sys.exit(0)
-        elif sys.argv[1] == "--":
-            # End of options marker
-            if len(sys.argv) > 2:
-                script_path = sys.argv[2]
-                script_args = sys.argv[3:]
-                exit_code = shell.script_manager.run_script(script_path, script_args)
-                sys.exit(exit_code)
-            else:
-                # No script after --, start interactive mode
-                shell.interactive_manager.run_interactive_loop()
-        elif sys.argv[1].startswith("-"):
-            # Unknown option
-            print(f"psh: {sys.argv[1]}: invalid option", file=sys.stderr)
-            print("Try 'psh --help' for more information.", file=sys.stderr)
-            sys.exit(2)
+    if command_mode:
+        # Execute command with -c flag (script mode)
+        shell.state.is_script_mode = True
+        shell.state.options['command_mode'] = True  # 'c' in $-
+        # bash's `-c` is command mode, NOT stdin-reading mode: $- has 'c'
+        # but not 's'. _init_interactive ran at construction (before this
+        # flag was known), so clear stdin_mode now.
+        shell.state.options['stdin_mode'] = False
+        command = operands[0]
+        # `-c '...' name a b` → $0=name, $1=a, $#=2 (bash).
+        if len(operands) > 1:
+            shell.state.script_name = operands[1]
+            shell.state.positional_params = list(operands[2:])
         else:
-            # Script file execution
-            script_path = sys.argv[1]
-            script_args = sys.argv[2:]
+            shell.state.positional_params = []
 
-            # Handle visitor modes for script files
-            if visitor_mode:
-                exit_code = handle_visitor_mode_for_script(shell, script_path)
-                sys.exit(exit_code)
-
-            exit_code = shell.script_manager.run_script(script_path, script_args)
+        # Handle visitor modes for -c commands
+        if visitor_mode:
+            exit_code = handle_visitor_mode_for_command(shell, command)
             sys.exit(exit_code)
+
+        # Use StringInput with script mode to process line-by-line like bash -c
+        from .scripting.input_sources import StringInput
+        input_source = StringInput(command, "-c")
+        exit_code = shell.script_manager.source_processor.execute_as_main(
+            input_source, add_to_history=False)
+        sys.exit(exit_code)
+    elif operands:
+        # Script file execution
+        script_path = operands[0]
+        script_args = operands[1:]
+
+        # Handle visitor modes for script files
+        if visitor_mode:
+            exit_code = handle_visitor_mode_for_script(shell, script_path)
+            sys.exit(exit_code)
+
+        exit_code = shell.script_manager.run_script(script_path, script_args)
+        sys.exit(exit_code)
     else:
         if sys.stdin.isatty():
             # Interactive REPL (TTY attached)
