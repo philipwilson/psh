@@ -4,6 +4,45 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.561.0 (2026-07-01) - Fix: ShellState.adopt() completeness — subshell state inheritance (appraisal #15 Tier 1, E1)
+- FIX (HIGH). Reappraisal #15 cluster E1 — seven `ShellState.__init__` fields
+  were never copied to subshell-style children (`( )`, `$( )`, `<( )`, the env
+  builtin's child), so a whole family of state silently vanished across the
+  boundary. Fixed at one chokepoint in `ShellState.adopt()`; verified against
+  bash 5.2 (48/48 truth-table probes).
+  - **What adopt() now copies:** `script_name` — `$0` in subshells/command
+    substitutions (headline: `$(dirname "$0")` returned `.`);
+    `function_stack` — `FUNCNAME` was empty in children; `source_depth` —
+    `(return N)` in a sourced file/function errored instead of exiting N
+    (child `FunctionReturn` now maps to the exit status); trap handlers;
+    `directory_stack` (new `DirectoryStack.copy` — `(dirs)` sees pushd state);
+    `history_state` (new `HistoryState.copy`; child appends don't leak back);
+    the getopts cursor (`_getopts_charpos`/`_optind` — a child getopts no
+    longer restarts a cluster walk); and ScopeManager SECONDS state via a new
+    `adopt_special_state` (`SECONDS=500; (echo $SECONDS)` printed 0; RANDOM
+    deliberately stays fresh — bash reseeds in children).
+  - **Faithful bash trap model:** inherited traps are LISTABLE (`saved=$(trap)`
+    idiom, `trap -p`) but never FIRE; the child's first trap modification drops
+    all inherited entries; empty-action (`''`) ignores are genuinely in effect
+    and survive; ERR/DEBUG stay live under `set -E`/`set -T`;
+    process-substitution children carry no listing (`cat <(trap)` prints
+    nothing, per bash); trap listing order now matches bash (EXIT, signals by
+    number, DEBUG, ERR). Substitution children now fire their OWN EXIT trap
+    (`x=$(trap 'echo bye' EXIT)` captures `bye`).
+  - **Forked-child disposition sync is explicit at fork sites** (repair for a
+    pid-inference regression found on-branch): `TrapManager` no longer infers
+    forked-ness from `os.getpid()`; the fork sites (SubshellExecutor fg/bg,
+    `child_policy.run_child_shell`) call `sync_forked_child_dispositions()`
+    directly, so an in-process child Shell (env builtin inside a subshell)
+    can't reset the enclosing forked shell's live handlers to SIG_DFL.
+  - **Drift-lock:** `tests/unit/core/test_state_adopt_completeness.py` fails
+    if a new `__init__` field is neither handled in `adopt()` nor justified on
+    an explicit exclusion list — new state can't silently skip adopt() again.
+  - Tests: `tests/unit/core/test_state_adopt.py` (unit),
+    `tests/integration/subshells/test_state_inheritance.py` (integration incl.
+    the regression probes), 13 behavioral golden cases pinning the bash
+    comparison.
+
 ## 0.560.0 (2026-07-01) - Fix: parser statement-separator guard + and-or-level backgrounding (appraisal #15 Tier 1, A1+A3)
 - FIX (HIGH). Reappraisal #15 cluster A1+A3 — two statement-boundary holes in
   the recursive-descent parser. Verified against bash 5.2.
