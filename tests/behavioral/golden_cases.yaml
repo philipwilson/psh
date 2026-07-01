@@ -2378,3 +2378,62 @@
   stdout: "x=inner\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# COMMAND POSITION AFTER '&' (reappraisal #15 A2): '&' and '|&' are statement
+# separators — reserved words, [[, and ! keep command position after them
+# =============================================================================
+
+- name: amp_then_if_statement
+  command: "true & if true; then echo B; fi; wait"
+  stdout: "B\n"
+  stderr: ""
+  exit_code: 0
+
+- name: amp_then_case_statement
+  command: "true & case x in x) echo C;; esac; wait"
+  stdout: "C\n"
+  stderr: ""
+  exit_code: 0
+
+- name: amp_then_double_bracket
+  command: "true & [[ -n x ]] && echo X; wait"
+  stdout: "X\n"
+  stderr: ""
+  exit_code: 0
+
+- name: amp_then_bang_negation
+  command: "true & ! false && echo NOT; wait"
+  stdout: "NOT\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipe_amp_then_if_statement
+  command: "true |& if true; then echo PA; fi"
+  stdout: "PA\n"
+  stderr: ""
+  exit_code: 0
+
+- name: amp_directly_before_closing_fi
+  command: "if true; then echo hi & fi; wait"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: amp_directly_before_closing_brace
+  command: "{ echo a & }; wait"
+  stdout: "a\n"
+  stderr: ""
+  exit_code: 0
+
+- name: amp_directly_before_esac
+  command: "case x in x) echo m & esac; wait"
+  stdout: "m\n"
+  stderr: ""
+  exit_code: 0
+
+- name: amp_then_keyword_value_as_argument
+  command: "true & echo if; wait"
+  stdout: "if\n"
+  stderr: ""
+  exit_code: 0

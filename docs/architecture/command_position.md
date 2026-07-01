@@ -88,7 +88,7 @@ Alphabet: token types + WORD values (keywords are still `WORD`).
 
 | Input | Next position |
 |-------|---------------|
-| `STATEMENT_SEPARATORS` (`;` `\n` `&&` `\|\|` `\|`) | **set** |
+| `STATEMENT_SEPARATORS` (`;` `&` `\n` `&&` `\|\|` `\|` `\|&`) | **set** |
 | `COMMAND_GROUP_OPENERS` (`(` `{`) | **set** |
 | `WORD` whose value ∈ `LEXER_COMMAND_POSITION_WORDS` | **set** |
 | redirection operators (`<` `>` `>>` `<<` `<<-` `<<<`) — *neutral* | **keep** |
@@ -104,7 +104,7 @@ Alphabet: token types (keywords are now typed).
 
 | Input | Next position |
 |-------|---------------|
-| `STATEMENT_SEPARATORS` ∪ `CASE_TERMINATORS` (`;` `\n` `&&` `\|\|` `\|` `;;` `;&` `&;`) | **command** |
+| `STATEMENT_SEPARATORS` ∪ `CASE_TERMINATORS` (`;` `&` `\n` `&&` `\|\|` `\|` `\|&` `;;` `;&` `&;`) | **command** |
 | `RESET_TO_COMMAND_POSITION` (`then` `do` `else` `elif` `fi` `done` `esac` `))` `]]`) | **command** |
 | `if` `while` `until` (condition is itself a command list) | **command** |
 | `(` `{`, and `)` (closing a case pattern) | **command** |
