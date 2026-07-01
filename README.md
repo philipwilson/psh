@@ -334,7 +334,9 @@ While PSH implements most shell features, some limitations remain:
 - **Deep Recursion**: Recursive functions hit Python stack limits
 - **Some Advanced Features**: Minor gaps in specialized POSIX utilities
 
-See [CHANGELOG.md](CHANGELOG.md) and `docs/reviews/` for recent fixes and remaining work.
+See [CHANGELOG.md](CHANGELOG.md) and `docs/reviews/` for recent fixes, and
+[`docs/missing_features.md`](docs/missing_features.md) for design notes on the
+larger deferred features (`BASH_SOURCE`/`BASH_LINENO`, programmable completion).
 
 ## Development & Contributing
 
