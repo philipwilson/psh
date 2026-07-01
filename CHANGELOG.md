@@ -4,6 +4,47 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.564.0 (2026-07-01) - Fix: CLI arg parsing stops at first operand; non-seekable scripts run (appraisal #15 Tier 1, I1+I2)
+- FIX (HIGH). Reappraisal #15 cluster I1 — `parse_args` stripped psh's own
+  flags from ANYWHERE in argv via `args.remove`: `psh script.sh -i --norc foo`
+  handed the script only `foo`; `--parser bar` as a `-c` operand killed psh
+  itself with exit 2; `--debug-ast` as a script argument silently activated
+  AST debugging; even `psh -- script.sh -i` lost the `-i`.
+  - `parse_args` is now a single left-to-right chokepoint that stops at the
+    first non-option operand, exactly like bash: flags before the operand are
+    psh's own (value flags consume the next token only there), `--` or the
+    historical lone `-` ends options explicitly, an unknown option in flag
+    position exits 2, and the first operand plus everything after it pass
+    through untouched as the script/command operands.
+  - The rewrite deletes `main()`'s duplicated pre-construction mode sniffing
+    and the `sys.argv` mutation hack; `--version`/`--help` exit before a Shell
+    is constructed (no rc sourcing just to print a version); `psh -c` with no
+    command string reports "option requires an argument" like bash; a piped
+    bare `psh --` reads stdin like bash instead of starting the interactive
+    loop without a tty.
+- FIX (HIGH). Reappraisal #15 cluster I2 — script validation pre-read 1KB for
+  a binary sniff before `FileInput` re-opened the file, consuming non-seekable
+  sources: `psh <(echo cmd)`, piped `psh /dev/stdin`, `source /dev/stdin`, and
+  `source <(...)` (the completion-loading idiom) all silently no-oped rc=0,
+  and a FIFO script deadlocked. It also counted every byte >= 0x80 as
+  non-printable, so a CJK-comment UTF-8 script was rejected as "cannot execute
+  binary file" rc=126.
+  - Only regular files are sniffed now (via stat, so a writer-less FIFO is
+    never even opened), and binary means bash's rule exactly: a NUL byte
+    before the first newline. High bytes are not binary markers. The sniff
+    rewinds after reading because a macOS `/dev/fd` path opens as a dup()
+    sharing the original descriptor's offset.
+  - Truth table: 34/34 bash-5.2 cases match (procsub/pipe/`/dev/stdin`/fifo
+    execution and sourcing, CJK, NUL binary 126, missing 127, directory 126,
+    unreadable 126). Documented divergences by design: psh's option SET
+    differs from bash's (`psh -c -x cmd` rejects `-x`), psh does not strip NUL
+    words from executed input, and psh's `source` still applies the binary
+    check.
+  - Tests: `tests/system/test_cli_argument_parsing.py`,
+    `tests/unit/test_main_parse_args.py`,
+    `tests/system/test_script_input_sources.py`, and new cases in
+    `tests/unit/scripting/test_script_validator.py`.
+
 ## 0.563.0 (2026-07-01) - Fix: declare -f via the maintained formatter; delete rotted shell_formatter (appraisal #15 Tier 1, D3)
 - FIX (HIGH). Reappraisal #15 cluster D3 — `psh/utils/shell_formatter.py` was a
   rotted duplicate of the maintained `FormatterVisitor`: it crashed
