@@ -97,9 +97,13 @@ EXIT STATUS
             return 0
 
         if args[1] == '-p':
-            # Show traps (all, or the specific signals queried)
-            specs = args[2:] if len(args) > 2 else None
-            output, invalid = shell.trap_manager.show_traps(specs)
+            # Show traps (all, or the specific signals queried). POSIX: a
+            # leading -- ends option processing on this path too (`trap -p
+            # -- INT`); bare `trap -p --` shows all traps, like `trap -p`.
+            specs = args[2:]
+            if specs and specs[0] == '--':
+                specs = specs[1:]
+            output, invalid = shell.trap_manager.show_traps(specs or None)
             if output:
                 self.write_line(output, shell)
             for spec in invalid:

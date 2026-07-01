@@ -389,6 +389,48 @@ def test_trap_p_invalid_among_valid_still_lists(shell, capsys):
     shell.run_command('trap - INT')
 
 
+def test_trap_p_double_dash_before_spec(shell, capsys):
+    """`trap -p -- INT` consumes the option terminator (bash: rc=0)."""
+    shell.run_command('trap "echo x" INT')
+    result = shell.run_command('trap -p -- INT')
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "trap -- 'echo x' SIGINT" in captured.out
+    assert captured.err == ""
+    shell.run_command('trap - INT')
+
+
+def test_trap_p_double_dash_alone_shows_all(shell, capsys):
+    """Bare `trap -p --` behaves like `trap -p`: show all traps, rc=0."""
+    shell.run_command('trap "echo x" INT')
+    result = shell.run_command('trap -p --')
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "trap -- 'echo x' SIGINT" in captured.out
+    assert captured.err == ""
+    shell.run_command('trap - INT')
+
+
+def test_trap_p_double_dash_before_zero(shell, capsys):
+    """`trap -p -- 0` finds the EXIT trap (bash: rc=0, no stderr)."""
+    shell.run_command('trap "echo bye" EXIT')
+    result = shell.run_command('trap -p -- 0')
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "trap -- 'echo bye' EXIT" in captured.out
+    assert captured.err == ""
+    shell.run_command('trap - 0')
+
+
+def test_trap_p_spec_after_terminator_is_validated(shell, capsys):
+    """Only ONE -- is consumed: `trap -p -- --` queries the spec `--` (bash rc=1)."""
+    result = shell.run_command('trap -p -- --')
+    assert result == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert '--: invalid signal specification' in captured.err
+
+
 def test_trap_listing_orders_by_signal_number(shell, capsys):
     """bash lists EXIT first, real signals by number, DEBUG/ERR last."""
     shell.run_command('trap true CHLD')
