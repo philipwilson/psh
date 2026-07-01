@@ -64,6 +64,12 @@ class TrapManager:
         Returns:
             Exit code (0 for success, 1 for error)
         """
+        # The first trap modification in a subshell-style child drops ALL
+        # of the parent's inherited-for-listing entries (bash probe:
+        # `trap A USR1; (trap - TERM; trap)` lists nothing). Ignored ('')
+        # traps are genuinely in effect, not inherited, and stay.
+        self.drop_inherited_traps()
+
         for signal_spec in signals:
             # Normalize to one canonical key (SIGINT / 2 / INT all -> INT) so
             # every path — storage here and the name-keyed SignalManager
@@ -189,13 +195,59 @@ class TrapManager:
         """Remove trap handlers (same as set_trap with action '-')."""
         return self.set_trap('-', signals)
 
-    def get_handler(self, signal_spec: str) -> Optional[str]:
-        """Return the trap action set for a signal.
+    def drop_inherited_traps(self) -> None:
+        """Discard parent traps kept only for listing (see ShellState.adopt).
 
-        Returns None if no trap is set; the empty string means the signal is
-        ignored; otherwise the command string to run. Public accessor so callers
-        need not reach into ``state.trap_handlers``.
+        Called by set_trap (bash: a subshell's first trap modification drops
+        them all) and for process-substitution children, which never list
+        them (bash probe: `trap A USR1; cat <(trap)` prints nothing).
         """
+        for name in self.state.inherited_traps:
+            self.state.trap_handlers.pop(name, None)
+        self.state.inherited_traps.clear()
+
+    def sync_forked_child_dispositions(self) -> None:
+        """Align OS signal dispositions with adopted trap state after a fork.
+
+        Ignored ('') traps stay SIG_IGN — bash keeps ignored signals ignored
+        in subshell-style children. A parent's non-ignored trap is reset to
+        the DEFAULT action: the fork copied the parent's queueing handler,
+        which would otherwise swallow the signal (bash: the child dies).
+        Managed signals were already reset by apply_child_signal_policy.
+
+        Called EXPLICITLY by the fork sites (SubshellExecutor's forked
+        children and child_policy.run_child_shell) right after the child
+        Shell is built — forked-ness must never be inferred (a pid check
+        also matches an IN-PROCESS child built inside a forked child, e.g.
+        the env builtin's child Shell in a subshell, and would clobber the
+        enclosing shell's live handlers process-wide). An in-process child
+        must NOT call this: no fork happened, and the hosting process's
+        dispositions belong to the enclosing shell.
+        """
+        for name, action in self.state.trap_handlers.items():
+            signum = self._signum(name)
+            if signum is None:
+                continue  # pseudo-signals (EXIT/DEBUG/ERR): no OS handler
+            try:
+                if action == '':
+                    signal.signal(signum, signal.SIG_IGN)
+                elif (name in self.state.inherited_traps
+                      and signum not in self._MANAGED_SIGNALS):
+                    signal.signal(signum, signal.SIG_DFL)
+            except (OSError, ValueError):
+                pass  # uncatchable (KILL/STOP) or not in main thread
+
+    def get_handler(self, signal_spec: str) -> Optional[str]:
+        """Return the LIVE trap action for a signal.
+
+        Returns None if no trap is set — including for an inherited-for-listing
+        entry (a parent's trap in a subshell-style child never fires; it is
+        visible only to show_traps). The empty string means the signal is
+        ignored; otherwise the command string to run. Public accessor so
+        callers need not reach into ``state.trap_handlers``.
+        """
+        if signal_spec in self.state.inherited_traps:
+            return None
         return self.state.trap_handlers.get(signal_spec)
 
     def execute_trap(self, signal_name: str):
@@ -204,9 +256,10 @@ class TrapManager:
         Args:
             signal_name: Name of the signal that was received
         """
-        action = self.state.trap_handlers.get(signal_name)
+        action = self.get_handler(signal_name)
         if not action:
-            # No trap set, or empty action ('' = signal ignored)
+            # No trap set, empty action ('' = signal ignored), or an
+            # inherited-for-listing entry (never fires in this shell)
             return
 
         # Execute the trap command in the current shell context
@@ -267,7 +320,7 @@ class TrapManager:
                     signals_to_show.append(canonical)
 
         output_lines = []
-        for signal_name in sorted(signals_to_show):
+        for signal_name in sorted(signals_to_show, key=self._trap_sort_key):
             if signal_name in self.state.trap_handlers:
                 action = self.state.trap_handlers[signal_name]
                 if action == '':
@@ -279,6 +332,17 @@ class TrapManager:
                 output_lines.append(f"trap -- {action_display} {display_name}")
 
         return '\n'.join(output_lines)
+
+    def _trap_sort_key(self, signal_name: str) -> int:
+        """bash's trap-listing order: EXIT (signal 0) first, real signals
+        by number, then the pseudo-signals DEBUG and ERR after them all."""
+        if signal_name == 'EXIT':
+            return 0
+        if signal_name == 'DEBUG':
+            return signal.NSIG + 1
+        if signal_name == 'ERR':
+            return signal.NSIG + 2
+        return self._signum(signal_name) or 0
 
     # Pseudo-signals are printed WITHOUT a SIG prefix (bash); real signals
     # are printed with their canonical SIG-prefixed name.
@@ -314,7 +378,7 @@ class TrapManager:
         """
         if getattr(self, '_exit_trap_executed', False):
             return
-        if 'EXIT' in self.state.trap_handlers:
+        if self.get_handler('EXIT'):
             self._exit_trap_executed = True
             self.execute_trap('EXIT')
 
@@ -337,7 +401,7 @@ class TrapManager:
             return
         if not self._inherited_into_function('functrace'):
             return
-        if self.state.trap_handlers.get('DEBUG'):
+        if self.get_handler('DEBUG'):
             self._in_debug_err_trap = True
             try:
                 self.execute_trap('DEBUG')
@@ -354,7 +418,7 @@ class TrapManager:
             return
         if not self._inherited_into_function('errtrace'):
             return
-        if self.state.trap_handlers.get('ERR') and exit_code != 0:
+        if self.get_handler('ERR') and exit_code != 0:
             self._in_debug_err_trap = True
             try:
                 self.execute_trap('ERR')

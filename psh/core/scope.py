@@ -95,6 +95,24 @@ class ScopeManager:
         self._random_last_value: int = 0
         self._computed_special_deactivated: set = set()
 
+    def adopt_special_state(self, parent: 'ScopeManager') -> None:
+        """Copy the special-variable bookkeeping a subshell-style child
+        inherits (called from ``ShellState.adopt``): the shell start time
+        and SECONDS baseline (bash: ``SECONDS=500; (echo $SECONDS)``
+        prints 500), the deactivated-specials set (after ``unset SECONDS``
+        it stays a plain variable in children too), and the current line
+        number. RANDOM's generator state (_random_seed/_random_last_value)
+        is deliberately NOT copied: bash reseeds the generator in subshell
+        children (the child's sequence is unrelated to the parent's), and
+        a fresh unseeded state reproduces that; seeding inside the child
+        (``(RANDOM=42; echo $RANDOM)``) is still deterministic.
+        """
+        self._shell_start_time = parent._shell_start_time
+        self._seconds_base = parent._seconds_base
+        self._seconds_assigned_at = parent._seconds_assigned_at
+        self._computed_special_deactivated = set(parent._computed_special_deactivated)
+        self._current_line_number = parent._current_line_number
+
     def _notify_path_changed(self, name: str) -> None:
         """Fire the PATH observer when *name* is PATH (post-nameref)."""
         if name == 'PATH' and self.path_changed is not None:

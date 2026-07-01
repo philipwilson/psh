@@ -143,6 +143,7 @@ def run_child_shell(parent_shell: 'Shell',
                     *,
                     norc: bool = True,
                     io_setup: Optional[Callable[[], None]] = None,
+                    inherit_traps: bool = True,
                     error_label: str = 'forked child') -> NoReturn:
     """Run the body of a forked substitution child; never returns.
 
@@ -160,12 +161,27 @@ def run_child_shell(parent_shell: 'Shell',
        shell must see the post-plumbing world.
     3. Shell.for_subshell(parent_shell, norc=norc) — the child Shell,
        with state.in_forked_child set so builtins use fd-level I/O.
+       Then trap_manager.sync_forked_child_dispositions() — this process
+       IS a fresh fork, so the parent's non-ignored traps take the
+       default OS action and ignored ('') ones stay ignored. The call is
+       explicit at the fork site (never inferred, e.g. from pids): an
+       in-process child Shell such as the env builtin's must not reset
+       the hosting shell's live handlers. With inherit_traps=False the
+       parent's inherited-for-listing trap entries are then dropped:
+       process-substitution children never list them (bash:
+       `trap A USR1; cat <(trap)` prints nothing), unlike
+       command-substitution children (the POSIX saved=$(trap) idiom).
     4. exit_code = body(child_shell) — what THIS child does. A
        SystemExit (the exit builtin) maps to its code: substitutions
        run in a subshell, so exit must not unwind the parent's stack.
-    5. flush_child_streams() over the child shell's streams and the
+       A FunctionReturn (return in an inherited function/sourced-file
+       context) likewise maps to its status.
+    5. the child's own EXIT trap, if the body set one (bash:
+       x=$(trap 'echo bye' EXIT) captures "bye"). Idempotent — the exit
+       builtin already fired it on the SystemExit path.
+    6. flush_child_streams() over the child shell's streams and the
        process-wide sys streams (see its docstring).
-    6. os._exit(exit_code).
+    7. os._exit(exit_code).
 
     Any other exception escaping steps 1-6 is reported on fd 2 as
     ``psh: {error_label} error: ...`` followed by os._exit(1) — a
@@ -183,10 +199,16 @@ def run_child_shell(parent_shell: 'Shell',
             io_setup()
 
         # Import here to avoid a circular import (shell -> executor).
-        from ..core.exceptions import TopLevelAbort
+        from ..core.exceptions import FunctionReturn, TopLevelAbort
         from ..shell import Shell
         child_shell = Shell.for_subshell(parent_shell, norc=norc)
         child_shell.state.in_forked_child = True
+        # This process is a fresh fork: align OS dispositions with the
+        # adopted trap state BEFORE any drop (a procsub child must still
+        # reset the parent's queueing handlers copied by the fork).
+        child_shell.trap_manager.sync_forked_child_dispositions()
+        if not inherit_traps:
+            child_shell.trap_manager.drop_inherited_traps()
 
         try:
             exit_code = body(child_shell)
@@ -195,10 +217,24 @@ def run_child_shell(parent_shell: 'Shell',
             # substitution child with its status — it must not unwind past the
             # fork into the parent.
             exit_code = e.status
+        except FunctionReturn as e:
+            # `return` in a child that inherited a function/sourced-file
+            # context ends the child with its status (bash:
+            # f() { x=$(return 3); } leaves $? = 3).
+            exit_code = e.exit_code
         except SystemExit as e:
             # exit in a substitution terminates the child, not the parent.
             code = e.code
             exit_code = code if isinstance(code, int) else (0 if code is None else 1)
+
+        # A substitution child runs its own EXIT trap when it finishes,
+        # exactly like a subshell (idempotent: the exit builtin's
+        # SystemExit path already fired it; inherited EXIT traps never
+        # fire — see TrapManager.get_handler).
+        try:
+            child_shell.trap_manager.execute_exit_trap()
+        except Exception:
+            pass
 
         flush_child_streams(child_shell.stdout, child_shell.stderr,
                             sys.stdout, sys.stderr)

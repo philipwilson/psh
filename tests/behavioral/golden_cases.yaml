@@ -1976,3 +1976,91 @@
   stdout: "a\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# SUBSHELL STATE INHERITANCE (reappraisal #15 E1: ShellState.adopt())
+# =============================================================================
+# $0, FUNCNAME, traps, source context, getopts cursor, SECONDS and the
+# directory stack must survive into ( ) / $( ) / <( ) children.
+# NOTE: $0 defaults to the shell's own name ("psh" vs "bash"), so the
+# $0 cases here are psh_only; the bash equivalence was probed with an
+# explicit name argument (tmp/e1_truth_table.sh, c-mode-$0-named).
+
+- name: subshell_inherits_dollar_zero
+  command: "(echo $0); echo $(echo $0)"
+  stdout: "psh\npsh\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: subshell_inherits_funcname
+  command: 'f() { (echo "sub=${FUNCNAME[0]}"); echo "cs=$(echo ${FUNCNAME[0]})"; }; f'
+  stdout: "sub=f\ncs=f\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cmdsub_lists_parent_traps_saved_idiom
+  command: 'trap "echo hi" USR1; saved=$(trap); echo "[$saved]"'
+  stdout: "[trap -- 'echo hi' SIGUSR1]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subshell_trap_modification_drops_inherited_keeps_ignored
+  command: 'trap "echo A" USR1; trap "" USR2; (trap "echo C" TERM; trap)'
+  stdout: "trap -- 'echo C' SIGTERM\ntrap -- '' SIGUSR2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: procsub_does_not_list_parent_traps
+  command: 'trap "echo hi" USR1; cat <(trap); echo done'
+  stdout: "done\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parent_exit_trap_not_fired_at_subshell_exit
+  command: 'trap "echo pexit" EXIT; (echo sub); echo done'
+  stdout: "sub\ndone\npexit\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subshell_own_exit_trap_fires
+  command: '(trap "echo cexit" EXIT; echo body); echo after'
+  stdout: "body\ncexit\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cmdsub_own_exit_trap_fires
+  command: 'x=$(trap "echo bye" EXIT; echo inner); echo "x=[$x]"'
+  stdout: "x=[inner\nbye]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: seconds_baseline_inherited_by_subshell
+  command: "SECONDS=500; (echo $SECONDS)"
+  stdout: "500\n"
+  stderr: ""
+  exit_code: 0
+
+- name: getopts_cluster_cursor_continues_in_cmdsub
+  command: 'set -- -ab; getopts ab o; echo "first=$o"; echo "sub=$(getopts ab o; echo $o)"'
+  stdout: "first=a\nsub=b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dirs_in_subshell_sees_parent_stack
+  command: "cd /; pushd /tmp >/dev/null; (dirs)"
+  stdout: "/tmp /\n"
+  stderr: ""
+  exit_code: 0
+
+- name: return_in_subshell_of_function
+  command: "f() { (return 5); echo in=$?; }; f"
+  stdout: "in=5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_listing_order_matches_bash
+  command: "trap : EXIT; trap : DEBUG; trap : ERR; trap : USR1; trap : HUP; trap -p"
+  stdout: "trap -- ':' EXIT\ntrap -- ':' SIGHUP\ntrap -- ':' SIGUSR1\ntrap -- ':' DEBUG\ntrap -- ':' ERR\n"
+  stderr: ""
+  exit_code: 0

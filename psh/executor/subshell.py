@@ -125,6 +125,12 @@ class SubshellExecutor:
             # This is critical for output redirection to work correctly in subshells
             subshell.state.in_forked_child = True
 
+            # This process is a fresh fork: align OS signal dispositions with
+            # the adopted trap state (parent's non-ignored traps take the
+            # default action, ignored ones stay ignored). Explicit at the
+            # fork site — see TrapManager.sync_forked_child_dispositions.
+            subshell.trap_manager.sync_forked_child_dispositions()
+
             # Inherit the parent's set -e suppression: a subshell that is
             # e.g. an if-condition or a non-final && / || member must not
             # errexit internally (bash).
@@ -141,12 +147,16 @@ class SubshellExecutor:
 
             # Execute statements in isolated environment. A fatal assignment
             # error (readonly/nameref-cycle) aborts the whole subshell body with
-            # status 1 (bash) — it must not unwind past the fork.
-            from ..core import TopLevelAbort
+            # status 1 (bash) — it must not unwind past the fork. `return` in a
+            # subshell that inherited a function/sourced-file context ends the
+            # subshell with its status (bash: f() { (return 5); } → $? = 5).
+            from ..core import FunctionReturn, TopLevelAbort
             try:
                 exit_code = subshell.execute_command_list(statements)
             except TopLevelAbort as e:
                 exit_code = e.status
+            except FunctionReturn as e:
+                exit_code = e.exit_code
 
             # A subshell runs its own EXIT trap when it finishes (bash):
             # (trap 'echo bye' EXIT; ...) prints bye on subshell exit.
@@ -206,6 +216,11 @@ class SubshellExecutor:
 
             subshell = Shell.for_subshell(self.shell)
 
+            # This process is a fresh fork (launch_background_job): align OS
+            # signal dispositions with the adopted trap state, exactly like
+            # the foreground path.
+            subshell.trap_manager.sync_forked_child_dispositions()
+
             # Share I/O streams for consistent output handling
             subshell.stdout = self.shell.stdout
             subshell.stderr = self.shell.stderr
@@ -213,13 +228,17 @@ class SubshellExecutor:
 
             exit_code = 0
             saved_fds = []
-            from ..core import TopLevelAbort
+            from ..core import FunctionReturn, TopLevelAbort
             try:
                 if redirects:
                     saved_fds = subshell.io_manager.apply_redirections(redirects)
                 exit_code = subshell.execute_command_list(statements)
             except TopLevelAbort as e:
                 exit_code = e.status
+            except FunctionReturn as e:
+                # `return` in a backgrounded subshell that inherited a
+                # function/sourced-file context (bash: (return 5) & → 5).
+                exit_code = e.exit_code
             finally:
                 if saved_fds:
                     subshell.io_manager.restore_redirections(saved_fds)

@@ -1,6 +1,6 @@
 """Shell state management."""
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 from ..version import __version__
 from .command_hash import CommandHashTable
@@ -168,7 +168,13 @@ class ShellState:
 
         # Trap handlers: signal -> command string
         # Maps signal names (e.g., 'INT', 'TERM', 'EXIT') to trap command strings
-        self.trap_handlers = {}
+        self.trap_handlers: Dict[str, str] = {}
+
+        # Names in trap_handlers that came from a parent shell and are kept
+        # for LISTING only (the POSIX ``saved=$(trap)`` idiom): they never
+        # fire in this shell, and the first trap modification drops them.
+        # Populated by adopt(); semantics live in TrapManager.
+        self.inherited_traps: Set[str] = set()
 
         # Detect terminal capabilities after initialization
         self.terminal.detect(debug=self.options.get('debug-exec', False))
@@ -192,13 +198,22 @@ class ShellState:
         ``Shell._inherit_from_parent``). It copies the live environment,
         every variable scope (whole ``Variable`` objects, preserving
         attributes), positional parameters, shell options (set -e,
-        pipefail, ...), ``$?``, script mode, PIPESTATUS, ``$PPID`` and
-        ``$$``, then re-syncs exported variables (including local
-        exports) into the environment.
+        pipefail, ...), ``$?``, script mode, ``$0``, PIPESTATUS, ``$PPID``
+        and ``$$``, the function/source context (FUNCNAME, ``return`` in
+        a sourced file), traps (listing-only — see below), the directory
+        stack, command history, the getopts cursor and the scope
+        manager's computed-special state (SECONDS baseline), then
+        re-syncs exported variables (including local exports) into the
+        environment.
 
         Mode flags ('interactive', 'stdin_mode', 'emacs') are recomputed
         afterwards by ``Shell._init_interactive`` and overwrite their
         copies. Jobs are never copied — those are shell-specific.
+
+        Every ``__init__`` field must be handled here or justified on the
+        exclusion list in tests/unit/core/test_state_adopt_completeness.py
+        (the drift-lock for the seven silently-uncopied fields
+        reappraisal #15 found).
         """
         self.env = parent.env.copy()
         # Copy global variables as whole Variable objects to preserve
@@ -219,9 +234,45 @@ class ShellState:
         # PIPESTATUS, errexit eligibility, etc. Copying via the sub-object means a
         # new execution field can't be silently forgotten here (the v0.453 $! bug).
         parent.execution.copy_into(self.execution)
+        self.script_name = parent.script_name
         self.is_script_mode = parent.is_script_mode
         self.initial_ppid = parent.initial_ppid
         self.shell_pid = parent.shell_pid
+        # Function/source context: ${FUNCNAME[@]} is visible in subshells
+        # (bash: f() { (echo ${FUNCNAME[0]}); }; f prints f), and `return`
+        # is legal in a child of a function or sourced-file context.
+        self.function_stack = parent.function_stack.copy()
+        self.source_depth = parent.source_depth
+        # getopts cursor: a clustered-option walk (-ab) spans into children
+        # (bash: set -- -ab; getopts ab o; $(getopts ab o; echo $o) sees b).
+        self._getopts_charpos = parent._getopts_charpos
+        self._getopts_charpos_optind = parent._getopts_charpos_optind
+        # Command history: the child sees the parent's entries, but its own
+        # additions must not leak back (fresh list, shared settings).
+        self.history_state = parent.history_state.copy()
+        # pushd/popd stack ((dirs) shows the parent's stack). Created
+        # lazily by the directory-stack builtins, hence the guard.
+        if hasattr(parent, 'directory_stack'):
+            self.directory_stack = parent.directory_stack.copy()
+        # Traps: bash RESETS non-ignored traps in a subshell-style child —
+        # they never fire there — but keeps them LISTABLE (the POSIX
+        # saved=$(trap) idiom) until the child's first trap modification
+        # (TrapManager.drop_inherited_traps). Ignored ('') traps remain
+        # genuinely in effect. ERR/DEBUG escape the reset under
+        # set -E (errtrace) / set -T (functrace), as in bash.
+        self.trap_handlers = dict(parent.trap_handlers)
+        live = set()
+        if self.options.get('errtrace'):
+            live.add('ERR')
+        if self.options.get('functrace'):
+            live.add('DEBUG')
+        self.inherited_traps = {
+            name for name, action in self.trap_handlers.items()
+            if action != '' and name not in live
+        }
+        # SECONDS baseline, deactivated specials, current line number
+        # (RANDOM's generator state deliberately stays fresh — see method).
+        self.scope_manager.adopt_special_state(parent.scope_manager)
         # Sync all exported variables (including local exports) to environment
         self.scope_manager.sync_exports_to_environment(self.env)
 

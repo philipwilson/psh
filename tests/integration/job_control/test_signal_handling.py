@@ -153,29 +153,29 @@ class TestSignalDelivery:
 class TestSignalHandlingInSubshells:
     """Test signal handling behavior in subshells."""
 
-    def test_trap_inheritance_in_subshells(self, shell):
-        """Test that traps are inherited by subshells."""
-        # Set a trap in main shell
-        shell.run_command('trap "echo main trap" USR1')
+    def test_trap_inheritance_in_subshells(self):
+        """Subshells LIST parent traps (the POSIX saved=$(trap) idiom)
+        without firing them; bash-5.2-verified (reappraisal #15 E1)."""
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c',
+             'trap "echo main trap" USR1; (trap)'],
+            capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0
+        assert result.stdout == "trap -- 'echo main trap' SIGUSR1\n"
 
-        # Check trap in subshell
-        result = shell.run_command('(trap)')
-        assert result == 0
-        # Subshell should inherit the trap
-
-    def test_trap_modification_in_subshells(self, shell):
-        """Test trap modifications in subshells don't affect parent."""
-        # Set trap in main shell
-        shell.run_command('trap "echo parent trap" USR1')
-
-        # Modify trap in subshell
-        subshell_result = shell.run_command('(trap "echo subshell trap" USR1; trap)')
-        assert subshell_result == 0
-
-        # Check that parent trap is unchanged
-        parent_trap = shell.run_command('trap')
-        assert parent_trap == 0
-        # Should still show original trap
+    def test_trap_modification_in_subshells(self):
+        """A subshell's trap modification replaces the inherited listing
+        and never leaks back to the parent (bash 5.2)."""
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c',
+             'trap "echo parent trap" USR1; '
+             '(trap "echo subshell trap" USR1; trap); trap'],
+            capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0
+        assert result.stdout == ("trap -- 'echo subshell trap' SIGUSR1\n"
+                                 "trap -- 'echo parent trap' SIGUSR1\n")
 
     def test_signal_delivery_to_subshell_group(self, shell):
         """Test signal delivery to subshell process groups."""

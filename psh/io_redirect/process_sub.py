@@ -69,6 +69,9 @@ def create_process_substitution(
             # output into the substitution. Matches command_sub's default.
             norc=True,
             io_setup=_io_setup,
+            # bash does not keep parent traps listable in a
+            # process-substitution child (unlike $(trap)).
+            inherit_traps=False,
             error_label='process substitution',
         )
 
@@ -169,6 +172,9 @@ def _create_write_process_substitution(cmd_str: str, shell: 'Shell') -> Tuple[No
             # output into the substitution. Matches command_sub's default.
             norc=True,
             io_setup=_io_setup,
+            # bash does not keep parent traps listable in a
+            # process-substitution child (unlike $(trap)).
+            inherit_traps=False,
             error_label='process substitution',
         )
 
