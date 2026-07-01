@@ -13,7 +13,7 @@ from ..core import (
     IndexedArray,
     VarAttributes,
 )
-from ..expansion.arithmetic import evaluate_arithmetic
+from ..expansion.arithmetic import ArithmeticError, evaluate_arithmetic
 from ..expansion.word_expansion_types import ARRAY_INIT_ELEMENT, ASSOC_INIT_ELEMENT
 
 if TYPE_CHECKING:
@@ -99,6 +99,24 @@ class ArrayOperationExecutor:
     # bare path always used — no string re-parsing.
     # ------------------------------------------------------------------ #
 
+    def _eval_subscript_fatal(self, index_text: str) -> int:
+        """Arithmetic-evaluate an indexed-array WRITE subscript.
+
+        An unset name evaluates cleanly to 0 (``a[junk]=v`` writes a[0],
+        bash); a subscript that fails to evaluate (``a[08]=v``: "value too
+        great for base", ``a[1//]=v``: syntax error) is a fatal expansion
+        error in bash — it must abort the whole command, never silently
+        address index 0. Mirrors ``VariableExpander._eval_array_index``
+        (the read-path chokepoint).
+        """
+        from ..core import ExpansionError
+        try:
+            return evaluate_arithmetic(index_text, self.shell)
+        except ArithmeticError as e:
+            print(f"psh: {e}", file=self.state.stderr)
+            self.state.last_exit_code = 1
+            raise ExpansionError(str(e), exit_code=1)
+
     def build_indexed_array(self, words: List['Word'],
                             into: Optional[IndexedArray] = None) -> IndexedArray:
         """Resolve indexed-array initializer element Words into an IndexedArray.
@@ -125,14 +143,8 @@ class ArrayOperationExecutor:
                 index_parts, value_word, elem_append = explicit
                 # bash always evaluates indexed-array subscripts as arithmetic
                 index_text = ''.join(str(p) for p in index_parts)
-                try:
-                    expanded_index = self.expansion_manager.expand_string_variables(index_text)
-                    evaluated_index = evaluate_arithmetic(expanded_index, self.shell)
-                except (ValueError, Exception):
-                    # If index evaluation fails, treat as regular sequential element
-                    next_sequential_index = self._add_word_fields_to_array(
-                        array, word, next_sequential_index)
-                    continue
+                expanded_index = self.expansion_manager.expand_string_variables(index_text)
+                evaluated_index = self._eval_subscript_fatal(expanded_index)
                 value = self.expansion_manager.expand_assignment_value_word(value_word)
                 if elem_append:
                     current = array.get(evaluated_index)
@@ -257,28 +269,26 @@ class ArrayOperationExecutor:
         # for indexed arrays; the two stay correlated with ``is_numeric_index``
         # and the array's concrete type below.
         index: Union[int, str]
-        if was_quoted:
+        if var_obj and isinstance(var_obj.value, AssociativeArray):
+            # Existing associative array: the subscript is the literal string
+            # key, never arithmetic (bash — `h[08]=v` is the key "08").
+            index = cleaned_index
+            is_numeric_index = False
+        elif was_quoted:
             # Quoted index — treat as string key (associative array).
             # In bash, declare -A is needed for associative arrays, but PSH
             # uses quoting to infer associative intent.
             index = cleaned_index
             is_numeric_index = False
         else:
-            # Unquoted index — always evaluate in arithmetic context (bash behavior).
-            # evaluate_arithmetic handles bare variable names, expressions, and literals.
-            try:
-                index = evaluate_arithmetic(cleaned_index, self.shell)
-                is_numeric_index = True
-            except (ValueError, ArithmeticError, TypeError):
-                # Arithmetic eval failed — treat as string key (associative array)
-                index = cleaned_index
-                is_numeric_index = False
+            # Unquoted index — always evaluate in arithmetic context (bash).
+            # An unset NAME evaluates cleanly to 0 (`a[junk]=v` writes a[0]);
+            # a subscript that fails to EVALUATE (`a[08]=v`, `a[1//]=v`) is a
+            # fatal expansion error, never a silent fallback key.
+            index = self._eval_subscript_fatal(cleaned_index)
+            is_numeric_index = True
 
-        # Handle existing arrays
-        if var_obj and isinstance(var_obj.value, AssociativeArray):
-            # Already an associative array, use string index
-            index = cleaned_index
-        elif var_obj and isinstance(var_obj.value, IndexedArray):
+        if var_obj and isinstance(var_obj.value, IndexedArray):
             # Already an indexed array
             if not is_numeric_index:
                 # Bash compatibility: string index on indexed array uses 0

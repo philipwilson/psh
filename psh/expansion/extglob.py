@@ -200,39 +200,16 @@ def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,
         elif ch == '?':
             result.append(dot)
         elif ch == '[':
-            # Bracket expression: find the closing ']', skipping over
-            # POSIX class names like [:alpha:] whose ']' does not close
-            # the set ([[:alpha:]] is ONE bracket expression).
-            j = i + 1
-            if j < len(pattern) and pattern[j] in ('!', '^'):
-                j += 1
-            if j < len(pattern) and pattern[j] == ']':
-                j += 1  # ] right after [ or [! is literal
-            while j < len(pattern) and pattern[j] != ']':
-                if pattern.startswith('[:', j):
-                    close = pattern.find(':]', j + 2)
-                    if close != -1:
-                        j = close + 2
-                        continue
-                j += 1
-            if j < len(pattern):
-                class_content = pattern[i + 1:j]
-                # Translate POSIX classes to Python-re ranges
-                # ([[:digit:]] -> [0-9]); re has no [:name:] syntax.
-                from .glob import _POSIX_CLASS_RE, _POSIX_CLASSES
-                class_content = _POSIX_CLASS_RE.sub(
-                    lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)),
-                    class_content)
-                if class_content.startswith('!'):
-                    result.append(f'[^{class_content[1:]}]')
-                elif class_content.startswith('^'):
-                    result.append(f'[^{class_content[1:]}]')
-                else:
-                    result.append(f'[{class_content}]')
-                i = j + 1
+            # Bracket expression: _bracket_end (shared with the backtracking
+            # matcher) finds the closing ']' — skipping POSIX class names
+            # like [:alpha:] and escaped members like \] — and
+            # _bracket_to_regex translates the content for Python's re.
+            end = _bracket_end(pattern, i)
+            if end is not None:
+                result.append(_bracket_to_regex(pattern[i + 1:end - 1]))
+                i = end
                 continue
-            else:
-                result.append(re.escape('['))
+            result.append(re.escape('['))  # unterminated: '[' is literal
         else:
             result.append(re.escape(ch))
 
@@ -299,13 +276,17 @@ def _contains_negation(pattern: str) -> bool:
 
 def _bracket_end(pattern: str, i: int) -> Optional[int]:
     """Given ``pattern[i] == '['``, return the index just past the matching
-    ``]`` (POSIX ``[:class:]`` aware), or None if unterminated."""
+    ``]`` (POSIX ``[:class:]`` aware; a backslash-escaped ``\\]`` is a
+    member, not the terminator), or None if unterminated."""
     j = i + 1
     if j < len(pattern) and pattern[j] in ('!', '^'):
         j += 1
     if j < len(pattern) and pattern[j] == ']':
-        j += 1  # a ']' right after '[' / '[!' is a literal member
+        j += 1  # a ']' right after '[' or '[!' is a literal member
     while j < len(pattern) and pattern[j] != ']':
+        if pattern[j] == '\\' and j + 1 < len(pattern):
+            j += 2
+            continue
         if pattern.startswith('[:', j):
             close = pattern.find(':]', j + 2)
             if close != -1:
@@ -315,20 +296,66 @@ def _bracket_end(pattern: str, i: int) -> Optional[int]:
     return j + 1 if j < len(pattern) else None
 
 
-def _bracket_match(cls: str, ch: str, ic: bool) -> bool:
-    """Whether single char *ch* is in bracket-class content *cls* (no ``[]``)."""
-    neg = False
-    if cls[:1] in ('!', '^'):
-        neg = True
-        cls = cls[1:]
+def _bracket_to_regex(content: str) -> str:
+    """Convert raw bracket-expression CONTENT (the text between ``[`` and
+    ``]``) to a Python-re character class.
+
+    Handles negation (``!`` or ``^``), backslash-escaped members
+    (``[a\\]b]`` is the three-member set a ] b — bash honors ``\\`` inside a
+    set, Python's re needs ``\\x`` rewritten to a valid escape), a literal
+    ``]`` first member, and POSIX ``[:name:]`` classes (re has no
+    ``[:name:]`` syntax). A set that cannot compile (e.g. the reversed
+    range ``[z-a]``) yields a valid substitute matching what bash matches:
+    nothing — or, negated (``[!z-a]``), any one character. The returned
+    class always compiles, so an invalid set inside a larger pattern
+    can never crash it.
+    """
+    negate = ''
+    if content[:1] in ('!', '^'):
+        negate = '^'
+        content = content[1:]
+    out = []
+    i = 0
+    while i < len(content):
+        ch = content[i]
+        if ch == '\\' and i + 1 < len(content):
+            out.append(re.escape(content[i + 1]))
+            i += 2
+            continue
+        if content.startswith('[:', i):
+            close = content.find(':]', i + 2)
+            if close != -1:
+                out.append(content[i:close + 2])
+                i = close + 2
+                continue
+        if ch == ']' and i == 0:
+            out.append('\\]')  # leading ']' is a literal member
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
     from .glob import _POSIX_CLASS_RE, _POSIX_CLASSES
     body = _POSIX_CLASS_RE.sub(
-        lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)), cls)
+        lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)), ''.join(out))
+    regex = f'[{negate}{body}]'
     try:
-        matched = re.match(f'[{body}]', ch, re.IGNORECASE if ic else 0) is not None
+        re.compile(regex)
     except re.error:
-        matched = ch in cls
-    return (not matched) if neg else matched
+        # bash (verified 5.2): an invalid set matches nothing; a NEGATED
+        # invalid set matches any one character.
+        return r'[\s\S]' if negate else r'[^\s\S]'
+    return regex
+
+
+def _bracket_match(cls: str, ch: str, ic: bool) -> bool:
+    """Whether single char *ch* is in bracket-class content *cls* (no ``[]``).
+
+    ``_bracket_to_regex`` guarantees a compilable class (an invalid set
+    becomes its bash-verified match-nothing / match-any substitute), so no
+    ``re.error`` guard is needed here.
+    """
+    return re.match(_bracket_to_regex(cls), ch,
+                    re.IGNORECASE if ic else 0) is not None
 
 
 def _eq(a: str, b: str, ic: bool) -> bool:

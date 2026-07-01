@@ -14,14 +14,6 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
-def to_int(value: str) -> int:
-    """Convert string to integer for numeric comparisons."""
-    try:
-        return int(value)
-    except ValueError:
-        raise ValueError(f"integer expression expected: {value}")
-
-
 class TestExpressionEvaluator:
     """Evaluates [[ ]] test expressions using shell state for expansions."""
 
@@ -169,17 +161,17 @@ class TestExpressionEvaluator:
             self._set_bash_rematch(match)
             return bool(match)
         elif expr.operator == '-eq':
-            return to_int(left) == to_int(right)
+            return self._arith_operand(left) == self._arith_operand(right)
         elif expr.operator == '-ne':
-            return to_int(left) != to_int(right)
+            return self._arith_operand(left) != self._arith_operand(right)
         elif expr.operator == '-lt':
-            return to_int(left) < to_int(right)
+            return self._arith_operand(left) < self._arith_operand(right)
         elif expr.operator == '-le':
-            return to_int(left) <= to_int(right)
+            return self._arith_operand(left) <= self._arith_operand(right)
         elif expr.operator == '-gt':
-            return to_int(left) > to_int(right)
+            return self._arith_operand(left) > self._arith_operand(right)
         elif expr.operator == '-ge':
-            return to_int(left) >= to_int(right)
+            return self._arith_operand(left) >= self._arith_operand(right)
         elif expr.operator == '-nt':
             from ..utils.file_tests import file_newer_than
             return file_newer_than(left, right)
@@ -191,6 +183,21 @@ class TestExpressionEvaluator:
             return files_same(left, right)
         else:
             raise ValueError(f"unknown binary operator: {expr.operator}")
+
+    def _arith_operand(self, value: str) -> int:
+        """Arithmetic-evaluate a ``-eq``/``-lt``/... operand.
+
+        bash runs FULL arithmetic on numeric-operator operands —
+        ``[[ 1+1 -eq 2 ]]``, ``x=3+4; [[ $x -eq 7 ]]``, recursive name
+        resolution (``x=y; y=5; [[ x -eq 5 ]]``), base literals, array
+        elements, even assignment side effects. The operand string is
+        already $-expanded, so no rescan (``expand=False``): a residual
+        literal ``$`` is a syntax error, like bash. Evaluation failures
+        (``ShellArithmeticError``) surface as status 1 with a message —
+        see ``visit_EnhancedTestStatement``.
+        """
+        from ..expansion.arithmetic import evaluate_arithmetic
+        return evaluate_arithmetic(value, self.shell, expand=False)
 
     def _rhs_pattern(self, word) -> str:
         """Build the glob pattern for a ``==``/``!=`` RHS from its Word parts.

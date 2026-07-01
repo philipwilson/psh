@@ -44,15 +44,21 @@ class ArrayOpsMixin(_Base):
 
         This is THE canonical subscript evaluation (every indexed-array
         access funnels through it): variables expand first, then the
-        result is evaluated as arithmetic; an unevaluable subscript
-        counts as 0, matching bash (``a[junk]`` addresses ``a[0]``).
+        result is evaluated as arithmetic. ``a[junk]`` with junk unset
+        addresses ``a[0]`` because the NAME evaluates cleanly to 0 (bash);
+        a subscript that fails to EVALUATE (``a[08]``, ``a[1//]``) is a
+        fatal expansion error aborting the whole command (bash), not a
+        silent index 0.
         """
+        from ..core import ExpansionError
         from .arithmetic import ArithmeticError, evaluate_arithmetic
         expanded = self.expand_array_index(index_expr)
         try:
             return evaluate_arithmetic(expanded, self.shell)
-        except ArithmeticError:
-            return 0
+        except ArithmeticError as e:
+            print(f"psh: {e}", file=self.state.stderr)
+            self.state.last_exit_code = 1
+            raise ExpansionError(str(e), exit_code=1)
 
     def _expand_array_indices(self, subscripted: str) -> str:
         """Handle ${!arr[@]} and ${!arr[*]} — *subscripted* is ``arr[@]``.

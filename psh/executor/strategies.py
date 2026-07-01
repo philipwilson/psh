@@ -156,10 +156,18 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
         raise
     except Exception as e:
         # Imports here to avoid circular imports
-        from ..core import LoopBreak, LoopContinue, UnboundVariableError
+        from ..core import (
+            ExpansionError,
+            LoopBreak,
+            LoopContinue,
+            UnboundVariableError,
+        )
         from ..core.exceptions import FunctionReturn
+        # ExpansionError propagates to _handle_execution_error, which knows
+        # a fatal expansion (message already printed at the raise site, e.g.
+        # `unset "a[08]"`) aborts a non-interactive shell like bash.
         if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue,
-                          UnboundVariableError)):
+                          UnboundVariableError, ExpansionError)):
             raise
         from ..core import report_internal_defect
         return report_internal_defect(shell.state, e, prefix=f"{cmd_name}: ",

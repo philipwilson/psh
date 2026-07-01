@@ -25,24 +25,32 @@ class PatternMatcher:
             anchored: If True, pattern must match from start or end
             from_start: If anchored, whether to anchor at start (True) or end (False)
             extglob_enabled: If True and pattern contains extglob, use extglob converter
+
+        A pattern whose regex cannot compile (e.g. the reversed range
+        ``[z-a]``) yields the never-matching ``(?!)`` — bash quietly
+        matches NOTHING for such patterns; a crash must never escape.
+        This validation is the single chokepoint for every caller
+        (parameter operators, ``case``, ``[[ == ]]``).
         """
         from .extglob import contains_extglob, extglob_to_regex, glob_to_regex_body
         if extglob_enabled and contains_extglob(pattern):
-            return extglob_to_regex(pattern, anchored=anchored,
-                                    from_start=from_start)
-
-        # Plain glob: reuse the shared converter (extglob operators are literal
-        # here). This also handles a leading ']' in a class (e.g. [], [!]]),
-        # which the former inline loop produced an invalid empty class for.
-        regex = glob_to_regex_body(pattern, for_pathname=False, extglob=False)
-
-        if anchored:
-            if from_start:
+            regex = extglob_to_regex(pattern, anchored=anchored,
+                                     from_start=from_start)
+        else:
+            # Plain glob: reuse the shared converter (extglob operators are
+            # literal here). This also handles a leading ']' in a class
+            # (e.g. [], [!]]), which the former inline loop produced an
+            # invalid empty class for.
+            regex = glob_to_regex_body(pattern, for_pathname=False,
+                                       extglob=False)
+            if anchored and from_start:
                 regex = '^' + regex
-            else:
-                # For suffix matching, we'll add $ later
-                pass
+                # (suffix matching: callers add the '$' themselves)
 
+        try:
+            re.compile(regex)
+        except re.error:
+            return '(?!)'
         return regex
 
 
