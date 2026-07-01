@@ -153,16 +153,19 @@ class ExportBuiltin(Builtin):
                           unexport: bool) -> int:
         """Handle ``export -f`` / ``export -fn`` (function export attribute).
 
-        With no names, lists the exported functions in ``declare -fx`` form.
-        With names, marks (or with -n unmarks) each named function; a name that
-        is not a function is a bash usage error (status 1). psh does not
-        serialise functions into the environment for EXTERNAL children, so the
-        attribute is observable via this listing rather than in subprocesses.
+        With no names, lists each exported function as its full definition
+        followed by a ``declare -fx`` line (bash). With names, marks (or with
+        -n unmarks) each named function; a name that is not a function is a
+        bash usage error (status 1). psh does not serialise functions into the
+        environment for EXTERNAL children, so the attribute is observable via
+        this listing rather than in subprocesses.
         """
+        from ..visitor import format_function_definition
         fm = shell.function_manager
         if not names:
             for name, func in fm.list_functions():
                 if func.exported:
+                    self.write_line(format_function_definition(name, func), shell)
                     self.write_line(f'declare -fx {name}', shell)
             return 0
 

@@ -3,7 +3,6 @@ PSH Utils Package
 
 Utility modules supporting shell infrastructure:
 - signal_utils: Signal handling with self-pipe pattern and registry
-- shell_formatter: Reconstruct shell syntax from AST nodes
 - heredoc_detection: Distinguish heredocs from bit-shift operators
 - ast_debug: AST visualization for debugging
 - file_tests: File comparison utilities for test expressions
@@ -19,14 +18,12 @@ from .heredoc_detection import (
     is_inside_expansion,
     open_heredoc_delimiters,
 )
-from .shell_formatter import ShellFormatter
 from .signal_utils import SignalNotifier, get_signal_registry
 from .token_formatter import TokenFormatter
 
 __all__ = [
     'SignalNotifier',
     'get_signal_registry',
-    'ShellFormatter',
     'contains_heredoc',
     'has_unclosed_heredoc',
     'open_heredoc_delimiters',

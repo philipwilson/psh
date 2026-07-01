@@ -805,3 +805,17 @@ class FormatterVisitor(ASTVisitor[str]):
         by tests/unit/visitor/test_ast_coverage_matrix.py).
         """
         return f"{self._indent()}# Unknown node: {node.__class__.__name__}"
+
+
+def format_function_definition(name: str, func) -> str:
+    """Render a stored function as re-executable source.
+
+    The single chokepoint behind ``declare -f``, ``type``, and
+    ``command -V``: wraps a runtime ``Function`` (duck-typed: ``.body``,
+    ``.redirects``) back into a FunctionDef node and formats it. The text
+    is FormatterVisitor's canonical style rather than bash's, but it must
+    re-parse to the same program — ``src=$(declare -f f); eval "$src"``
+    is the contract.
+    """
+    node = FunctionDef(name=name, body=func.body, redirects=func.redirects)
+    return FormatterVisitor().visit(node)

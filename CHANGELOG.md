@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.563.0 (2026-07-01) - Fix: declare -f via the maintained formatter; delete rotted shell_formatter (appraisal #15 Tier 1, D3)
+- FIX (HIGH). Reappraisal #15 cluster D3 — `psh/utils/shell_formatter.py` was a
+  rotted duplicate of the maintained `FormatterVisitor`: it crashed
+  (`AttributeError`) on any function containing `case`, dropped heredoc bodies
+  and definition-attached redirects, and emitted nested function definitions
+  without braces — so the canonical serialization idiom
+  `src=$(declare -f f); unset -f f; eval "$src"` failed for whole families of
+  functions. `type f` and `command -V f` crashed the same way.
+  - **Deleted the module** (and its unit-test file); `declare -f`/`typeset -f`,
+    `type`, `command -V`, and `export -f` now all route through one maintained
+    chokepoint: `format_function_definition()` in
+    `psh/visitor/formatter_visitor.py`. Output is the canonical `f() {` form —
+    re-parses to the same program (the contract the tests pin), though not
+    byte-identical to bash's `f ()` layout by design.
+  - **Adjacent (bash-verified):** `export -f` with no names now lists each
+    exported function's full definition followed by its `declare -fx` line, so
+    `saved=$(export -f); eval "$saved"` restores exported functions;
+    `declare -fx`/`-fr NAME` now applies the export/readonly attribute to the
+    named function instead of printing it; no-name `-f`/`-F` listings carry
+    per-function attribute flag strings and `-fx`/`-Fr` filter on the attribute.
+  - Truth table: 61 bash-vs-psh cases, 41/56 → 59/61 matching (the 2 remaining
+    divergences are one pre-existing `[ ... ] && break` exit-status bug in the
+    break/continue cluster, identical before/after round-trip).
+  - Tests: new round-trip suite
+    `tests/integration/functions/test_declare_f_roundtrip.py` (case arms, 4
+    heredoc forms, ANSI-C quoting, nested defs, attached redirects), attribute
+    flag coverage in `test_readonly_export_attribute_flags.py`, 4 probes
+    promoted to `tests/behavioral/golden_cases.yaml`, unique old-formatter
+    coverage ported to `tests/unit/visitor/test_formatter_visitor.py`; mypy
+    files list updated for the deleted module.
+
 ## 0.562.0 (2026-07-01) - Fix: brace expansion preserves adjacent quoted expansions + bash-order name fusion (appraisal #15 Tier 1, B1+B2)
 - FIX (HIGH). Reappraisal #15 cluster B1+B2 — composite brace words destroyed
   adjacent quoted expansions, and an over-broad name-fusion guard left common

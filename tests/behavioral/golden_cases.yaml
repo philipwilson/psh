@@ -2176,3 +2176,34 @@
   stdout: "trap -- ':' EXIT\ntrap -- ':' SIGHUP\ntrap -- ':' SIGUSR1\ntrap -- ':' DEBUG\ntrap -- ':' ERR\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# DECLARE -F ROUND TRIP (reappraisal #15, D3) — `src=$(declare -f f);
+# unset -f f; eval "$src"` must rebuild the same function. The old duplicate
+# formatter crashed on case arms and dropped heredoc bodies and
+# definition-attached redirects.
+# =============================================================================
+
+- name: declare_f_roundtrip_case_arm
+  command: 'f() { case $1 in a|b) echo AB;; *) echo O;; esac; }; src=$(declare -f f); unset -f f; eval "$src"; f a; f z'
+  stdout: "AB\nO\n"
+  stderr: ""
+  exit_code: 0
+
+- name: declare_f_roundtrip_heredoc_body
+  command: "f() { x=world; cat <<EOF\nhello $x\nEOF\n}\nsrc=$(declare -f f); unset -f f; eval \"$src\"; f"
+  stdout: "hello world\n"
+  stderr: ""
+  exit_code: 0
+
+- name: declare_f_roundtrip_quoted_heredoc_delim
+  command: "f() { cat <<'EOF'\nliteral $x\nEOF\n}\nsrc=$(declare -f f); unset -f f; eval \"$src\"; f"
+  stdout: "literal $x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: type_function_with_case_no_crash
+  command: 'f() { case $1 in a) echo A;; esac; }; type f >/dev/null 2>&1; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0

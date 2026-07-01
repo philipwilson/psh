@@ -55,3 +55,60 @@ def test_brace_group_uses_braces():
     assert out.startswith("{")
     assert out.rstrip().endswith("}")
     assert "echo hi" in out
+
+
+class TestCStyleForAndLoopControl:
+    """Ported from the deleted ShellFormatter tests (R12.B): the formatter
+    behind `declare -f` must render C-style for headers and break/continue
+    levels from the real AST field names (init_expr/condition_expr/
+    update_expr, .level)."""
+
+    def test_c_style_for_formats_without_error(self):
+        out = _fmt("for ((i=0; i<3; i++)); do echo $i; done")
+        assert "for ((i=0; i<3; i++))" in out
+        assert "# Unknown node" not in out
+
+    def test_c_style_for_empty_sections(self):
+        out = _fmt("for ((;;)); do echo x; done")
+        assert "for ((; ; ))" in out
+
+    def test_break_with_level(self):
+        assert "break 2" in _fmt("while true; do break 2; done")
+
+    def test_continue_with_level(self):
+        assert "continue 3" in _fmt("while true; do continue 3; done")
+
+
+class TestFormatFunctionDefinition:
+    """format_function_definition() is the chokepoint behind declare -f /
+    type / command -V (R15 D3: the rotted duplicate ShellFormatter crashed
+    on case arms and dropped heredoc bodies)."""
+
+    @staticmethod
+    def _via_shell(src, name='f'):
+        from psh.shell import Shell
+        from psh.visitor import format_function_definition
+        sh = Shell()
+        assert sh.run_command(src) == 0
+        return format_function_definition(
+            name, sh.function_manager.get_function(name))
+
+    def test_case_arm_renders_patterns(self):
+        out = self._via_shell(
+            'f() { case $1 in a|b) echo AB;; *) echo O;; esac; }')
+        assert 'a | b)' in out
+        assert 'esac' in out
+
+    def test_heredoc_body_and_delimiter_survive(self):
+        out = self._via_shell('f() { cat <<EOF\nhello $x\nEOF\n}')
+        # Body and delimiter at column 0 so the text re-parses.
+        assert '\nhello $x\nEOF' in out
+
+    def test_definition_attached_redirect_survives(self):
+        out = self._via_shell('f() { echo hi; } > out.txt')
+        assert out.rstrip().endswith('>out.txt')
+
+    def test_output_reparses(self):
+        out = self._via_shell(
+            'f() { case $1 in a) echo A;; esac; g() { echo inner; }; }')
+        assert parse(tokenize(out)) is not None

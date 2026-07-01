@@ -7,7 +7,7 @@ from ..core import AssociativeArray, IndexedArray, ReadonlyVariableError, VarAtt
 # core/exceptions.py; re-exported here because many call sites
 # historically import it from this module.
 from ..core.exceptions import FunctionReturn  # noqa: F401
-from ..utils import ShellFormatter
+from ..visitor import format_function_definition
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .declare_format import format_declaration, matches_filter
 from .registry import builtin, registry
@@ -118,23 +118,49 @@ class DeclareBuiltin(Builtin):
     def _handle_functions(self, options: dict, names: List[str], shell: 'Shell') -> int:
         """Handle function-related options (-f, -F)."""
         show_names_only = options['function_names']
+        fm = shell.function_manager
+
+        # Attribute flags combined with -f/-F APPLY the attribute to the
+        # named functions rather than printing them (bash: `declare -fx f`
+        # exports f, `declare -fr f` makes it readonly; an undefined name is
+        # silent with status 1, like `declare -f NAME`).
+        if names and (options['export'] or options['remove_export']
+                      or options['readonly']):
+            exit_code = 0
+            for name in names:
+                if fm.get_function(name) is None:
+                    exit_code = 1
+                    continue
+                if options['export'] or options['remove_export']:
+                    fm.set_function_exported(name, options['export'])
+                if options['readonly']:
+                    fm.set_function_readonly(name)
+            return exit_code
 
         if not names:
-            # List all functions
-            functions = shell.function_manager.list_functions()
-            if show_names_only:
-                # -F flag: show only function names
-                for name, _ in sorted(functions):
-                    self.write_line(f"declare -f {name}", shell)
-            else:
-                # -f flag: show full definitions
-                for name, func in sorted(functions):
+            # List all functions; `declare -fx`/-Fr etc. filter on the attribute.
+            functions = sorted(fm.list_functions())
+            if options['export']:
+                functions = [(n, f) for n, f in functions if f.exported]
+            if options['readonly']:
+                functions = [(n, f) for n, f in functions if f.readonly]
+            for name, func in functions:
+                if show_names_only:
+                    # -F flag: names only, with each function's attribute flags
+                    self.write_line(f"declare -{self._function_flags(func)} {name}",
+                                    shell)
+                else:
+                    # -f flag: full definitions; readonly/exported functions get
+                    # a `declare -fr/-fx NAME` attribute line after the body (bash)
                     self._print_function_definition(name, func, shell)
+                    if func.readonly or func.exported:
+                        self.write_line(
+                            f"declare -{self._function_flags(func)} {name}", shell)
         else:
             # List specific functions
             exit_code = 0
             for name in names:
-                named_func = shell.function_manager.get_function(name)
+                named_func = fm.get_function(name)
                 if named_func:
                     if show_names_only:
                         # bash: `declare -F NAME` prints just the bare name
@@ -149,6 +175,11 @@ class DeclareBuiltin(Builtin):
                     exit_code = 1
             return exit_code
         return 0
+
+    @staticmethod
+    def _function_flags(func) -> str:
+        """The flag string for a function's attribute line (f, fr, fx, frx)."""
+        return 'f' + ('r' if func.readonly else '') + ('x' if func.exported else '')
 
     def _is_valid_identifier(self, name: str) -> bool:
         """Check if a name is a valid shell identifier."""
@@ -589,7 +620,7 @@ class DeclareBuiltin(Builtin):
 
     def _print_function_definition(self, name, func, shell: 'Shell'):
         """Print a function definition in a format that can be re-executed."""
-        self.write_line(f"{name} () " + ShellFormatter.format_function_body(func), shell)
+        self.write_line(format_function_definition(name, func), shell)
 
     @property
     def help(self) -> str:

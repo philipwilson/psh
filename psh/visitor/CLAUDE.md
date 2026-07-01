@@ -25,7 +25,7 @@ AST → ASTVisitor.visit(node) → visit_NodeType(node) → Result
 | `debug_ast_visitor.py` | Debug/pretty-print AST structure |
 | `validator_visitor.py` | Basic AST validation |
 | `enhanced_validator_visitor.py` | Extended validation with semantic checks |
-| `formatter_visitor.py` | Format/pretty-print shell code |
+| `formatter_visitor.py` | Format/pretty-print shell code; also `format_function_definition()`, the single chokepoint behind `declare -f` / `type` / `command -V` / `export -f` (output must re-parse to the same program) |
 | `linter_visitor.py` | Style and best practice checking |
 | `metrics_visitor.py` | Code complexity and metrics analysis |
 | `security_visitor.py` | Security vulnerability detection |
