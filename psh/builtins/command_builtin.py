@@ -92,11 +92,10 @@ class CommandBuiltin(Builtin):
             func = shell.function_manager.get_function(name)
             if func is not None:
                 if verbose:
-                    from ..utils.shell_formatter import ShellFormatter
+                    from ..visitor import format_function_definition
                     self.write_line(f"{name} is a function", shell)
                     self.write_line(
-                        f"{name} () " + ShellFormatter.format_function_body(func),
-                        shell)
+                        format_function_definition(name, func), shell)
                 else:
                     self.write_line(name, shell)
                 any_found = True

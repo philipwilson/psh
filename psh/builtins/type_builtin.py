@@ -84,13 +84,12 @@ class TypeBuiltin(Builtin):
                     pass
                 else:
                     # Print the body too (bash; same as `command -V`).
-                    from ..utils.shell_formatter import ShellFormatter
+                    from ..visitor import format_function_definition
                     func = shell.function_manager.get_function(name)
                     self.write_line(f"{name} is a function", shell)
                     if func is not None:
                         self.write_line(
-                            f"{name} () " + ShellFormatter.format_function_body(func),
-                            shell)
+                            format_function_definition(name, func), shell)
                 found = True
                 if not show_all:
                     continue

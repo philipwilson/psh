@@ -151,7 +151,6 @@ files = [
     "psh/utils/file_tests.py",
     "psh/utils/heredoc_detection.py",
     "psh/utils/printf_formatter.py",
-    "psh/utils/shell_formatter.py",
     "psh/utils/token_formatter.py",
     "psh/utils/signal_utils.py",
     # Interactive (annotation-clean modules)

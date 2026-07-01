@@ -80,3 +80,56 @@ class TestExportFunctionFlag:
     def test_export_function_survives_redefinition(self, captured_shell):
         captured_shell.run_command('f() { echo a; }; export -f f; f() { echo b; }')
         assert captured_shell.function_manager.get_function('f').exported
+
+    def test_export_f_listing_prints_body(self, captured_shell):
+        """bash `export -f` lists the full definition + the attribute line,
+        so `saved=$(export -f); eval "$saved"` restores exported functions."""
+        captured_shell.run_command('g() { echo body; }; export -f g')
+        captured_shell.clear_output()
+        captured_shell.run_command('export -f')
+        out = captured_shell.get_stdout()
+        assert 'echo body' in out
+        assert out.rstrip().endswith('declare -fx g')
+
+
+class TestDeclareFunctionAttributeFlags:
+    """`declare -fx/-fr NAME` applies the attribute to the function instead
+    of printing it (bash); needed so the `export -f` listing evals back
+    cleanly (reappraisal #15, D3 adjacent)."""
+
+    def test_declare_fx_sets_export_silently(self, captured_shell):
+        captured_shell.run_command('f() { echo hi; }')
+        captured_shell.clear_output()
+        assert captured_shell.run_command('declare -fx f') == 0
+        assert captured_shell.get_stdout() == ''
+        assert captured_shell.function_manager.get_function('f').exported
+
+    def test_declare_fx_missing_name_silent_status_1(self, captured_shell):
+        assert captured_shell.run_command('declare -fx nosuch') == 1
+        assert captured_shell.get_stdout() == ''
+        assert captured_shell.get_stderr() == ''
+
+    def test_declare_fr_makes_function_readonly(self, captured_shell):
+        captured_shell.run_command('f() { :; }')
+        assert captured_shell.run_command('declare -fr f') == 0
+        assert captured_shell.run_command('unset -f f') != 0
+
+    def test_declare_F_shows_attribute_flags(self, captured_shell):
+        captured_shell.run_command('f() { :; }; g() { :; }; export -f f')
+        captured_shell.clear_output()
+        captured_shell.run_command('declare -F')
+        assert captured_shell.get_stdout() == 'declare -fx f\ndeclare -f g\n'
+
+    def test_declare_Fx_filters_to_exported(self, captured_shell):
+        captured_shell.run_command('f() { :; }; g() { :; }; export -f f')
+        captured_shell.clear_output()
+        assert captured_shell.run_command('declare -Fx') == 0
+        assert captured_shell.get_stdout() == 'declare -fx f\n'
+
+    def test_declare_f_listing_appends_attribute_line(self, captured_shell):
+        captured_shell.run_command('f() { echo hi; }; export -f f')
+        captured_shell.clear_output()
+        captured_shell.run_command('declare -f')
+        out = captured_shell.get_stdout()
+        assert 'echo hi' in out
+        assert out.rstrip().endswith('declare -fx f')

@@ -1,9 +1,9 @@
 """`type <function>` prints the function body, like `command -V` (reappraisal
 #13). psh previously stopped at "NAME is a function" (a literal TODO).
 
-The body is checked for content + consistency with `command -V` (psh's own
-function-print format differs from bash's brace placement — a separate,
-pre-existing cosmetic shared by `command -V`/`declare -f`, not this fix).
+The body is checked for content + consistency with `command -V`. The text is
+FormatterVisitor's canonical `name() {` style (R15 D3) — not bash's brace
+placement, but it re-parses to the same function.
 """
 
 
@@ -14,7 +14,7 @@ def test_type_prints_function_body(captured_shell):
     out = captured_shell.get_stdout()
     assert 'myfn is a function' in out
     assert 'echo hello' in out          # the body, not just the header
-    assert 'myfn () ' in out
+    assert 'myfn() {' in out
 
 
 def test_type_matches_command_dash_v(captured_shell):
