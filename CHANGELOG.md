@@ -4,6 +4,43 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.562.0 (2026-07-01) - Fix: brace expansion preserves adjacent quoted expansions + bash-order name fusion (appraisal #15 Tier 1, B1+B2)
+- FIX (HIGH). Reappraisal #15 cluster B1+B2 — composite brace words destroyed
+  adjacent quoted expansions, and an over-broad name-fusion guard left common
+  brace-delimited forms unexpanded. One chokepoint fix in
+  `psh/expansion/brace_expansion_tokens.py`.
+  - **B1 — quoted expansions survive brace adjacency:**
+    `TokenBraceExpander._expand_composite` encoded quoted STRING tokens
+    char-by-char from `.value` and rebuilt them as plain literal TokenParts,
+    destroying expansion-part metadata — `cp "$f"{,.bak}` passed a LITERAL
+    `$f` to cp, and `"$f"{1,2}` printed `$f1 $f2`. Quoted tokens are now
+    encoded per TokenPart (literal parts char-by-char as before, each
+    expansion part as ONE opaque placeholder), so the rebuilt STRING tokens
+    carry the original expansion metadata and downstream expansion still sees
+    `"$f"`, `"$(...)"`, `"$((...))"`, `"$@"`. Bonus: a quoted token that
+    encodes to nothing gets a quoted-empty marker, so `{a,""}` keeps its
+    empty word (bash-verified).
+  - **B2 — bash-order name fusion instead of the documented bail:** the old
+    guard bailed on ANY variable followed by a name char, so forms that can
+    never fuse (`${v}{1,2}`, `${a[0]}{x,y}`, `{a,${f}}b`, `${v:-D}{1,2}`)
+    stayed unexpanded. Bash brace-expands BEFORE parameter expansion, so
+    unquoted `$v{1,2}` re-forms the names `v1`/`v2` — psh now implements that
+    fusion for simple-name VARIABLE tokens (folding trailing unquoted name
+    chars), while delimited forms (`${v}`, `$?`, `$1`, subscripts, operators)
+    never fuse and simply participate in adjacency. The unit test that pinned
+    the old documented divergence now pins the bash-verified fusion.
+  - **Backticks and process substitutions glue too:** `COMMAND_SUB_BACKTICK`
+    and `PROCESS_SUB_IN/OUT` joined the word-like set — `` `echo x`{1,2} ``
+    and `<(cmd){a,b}` previously split the brace word into its own run
+    (producing `x1 2`).
+  - **Verification:** 62-probe truth table vs bash 5.2 (was 21 pass / 30 fail
+    before the fix, 11 probes added after) now 62/62; 18 key probes promoted
+    to `tests/behavioral/golden_cases.yaml`; unit coverage for the
+    quoted-adjacency / delimited-adjacency / fusion classes in
+    `tests/unit/expansion/test_brace_expansion.py`; integration coverage for
+    the `cp "$f"{,.bak}` idiom in
+    `tests/integration/test_brace_adjacency_idioms.py`.
+
 ## 0.561.0 (2026-07-01) - Fix: ShellState.adopt() completeness — subshell state inheritance (appraisal #15 Tier 1, E1)
 - FIX (HIGH). Reappraisal #15 cluster E1 — seven `ShellState.__init__` fields
   were never copied to subshell-style children (`( )`, `$( )`, `<( )`, the env

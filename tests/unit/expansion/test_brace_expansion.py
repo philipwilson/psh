@@ -387,11 +387,135 @@ class TestBraceExpansionWithExpansions:
         shell.run_command('s=1; e=3; echo {$s..$e}')
         assert capsys.readouterr().out.strip() == "{1..3}"
 
-    def test_variable_name_fusion_left_unexpanded(self, shell, capsys):
-        # `$x{1,2}` would require re-forming the names $x1/$x2, which the token
-        # model cannot do, so the run is left unexpanded (documented divergence).
+    def test_variable_name_fusion_reforms_names(self, shell, capsys):
+        # Brace expansion precedes parameter expansion: `$x{1,2}` becomes the
+        # parameters $x1/$x2, NOT $x with suffixes (bash-verified).
+        shell.run_command('x=foo; x1=A; x2=B; echo $x{1,2}')
+        assert capsys.readouterr().out.strip() == "A B"
+
+    def test_variable_name_fusion_unset_names_empty(self, shell, capsys):
         shell.run_command('x=foo; echo $x{1,2}')
-        assert capsys.readouterr().out.strip() == "foo{1,2}"
+        assert capsys.readouterr().out.strip() == ""
+
+    def test_no_fusion_for_special_or_positional(self, shell, capsys):
+        # `$?`/`$1` are delimited parameters; adjacent chars stay literal.
+        shell.run_command('false; echo $?{a,b}')
+        assert capsys.readouterr().out.strip() == "1a 1b"
+        shell.run_command('set -- P; echo $1{a,b}')
+        assert capsys.readouterr().out.strip() == "Pa Pb"
+
+    def test_quoted_char_blocks_fusion(self, shell, capsys):
+        # A quote boundary ends the name, exactly as in bash.
+        shell.run_command('v=V; echo $v"1"{2,3}')
+        assert capsys.readouterr().out.strip() == "V12 V13"
+
+
+class TestBraceExpansionQuotedAdjacency:
+    """Quoted expansions adjacent to braces keep their expansion metadata.
+
+    `"$f"{1,2}` rewrites the token stream, but the rebuilt STRING tokens must
+    still carry the `$f` expansion part (reappraisal #15 B1) — all cases
+    bash-verified (tmp/brace_truth_table.sh).
+    """
+
+    def test_quoted_variable_with_brace_suffix(self, shell, capsys):
+        shell.run_command('f=F; echo "$f"{1,2}')
+        assert capsys.readouterr().out.strip() == "F1 F2"
+
+    def test_quoted_variable_inside_brace_item(self, shell, capsys):
+        shell.run_command('f=F; echo {1,"$f"2}')
+        assert capsys.readouterr().out.strip() == "1 F2"
+
+    def test_multi_part_quoted_string(self, shell, capsys):
+        shell.run_command('f=F; echo "${f}bar"{1,2}')
+        assert capsys.readouterr().out.strip() == "Fbar1 Fbar2"
+
+    def test_quoted_command_sub(self, shell, capsys):
+        shell.run_command('echo "$(echo x)"{1,2}')
+        assert capsys.readouterr().out.strip() == "x1 x2"
+
+    def test_quoted_arithmetic(self, shell, capsys):
+        shell.run_command('echo "$((1+1))"{a,b}')
+        assert capsys.readouterr().out.strip() == "2a 2b"
+
+    def test_nested_braces_with_quoted_var(self, shell, capsys):
+        shell.run_command('f=F; echo {a,{b,c}}"$f"')
+        assert capsys.readouterr().out.strip() == "aF bF cF"
+
+    def test_single_quoted_dollar_stays_literal(self, shell, capsys):
+        shell.run_command("f=F; echo '$f'{1,2}")
+        assert capsys.readouterr().out.strip() == "$f1 $f2"
+
+    def test_quoted_value_not_field_split(self, shell, capsys):
+        shell.run_command('f="a b"; printf "<%s>" "$f"{1,2}')
+        assert capsys.readouterr().out.strip() == "<a b1><a b2>"
+
+    def test_quoted_value_not_globbed(self, shell, capsys):
+        shell.run_command('f="*"; printf "<%s>" "$f"{1,2}')
+        assert capsys.readouterr().out.strip() == "<*1><*2>"
+
+    def test_empty_alternative_keeps_expansion(self, shell, capsys):
+        shell.run_command('f=F; printf "<%s>" "$f"{,}')
+        assert capsys.readouterr().out.strip() == "<F><F>"
+
+    def test_quoted_at_distributes(self, shell, capsys):
+        shell.run_command('set -- p q; printf "<%s>" "$@"{1,2}')
+        assert capsys.readouterr().out.strip() == "<p><q1><p><q2>"
+
+    def test_quoted_var_with_range(self, shell, capsys):
+        shell.run_command('f=F; echo "$f"{1..3}')
+        assert capsys.readouterr().out.strip() == "F1 F2 F3"
+
+    def test_quoted_empty_string_item_survives(self, shell, capsys):
+        shell.run_command('printf "<%s>" {a,""}')
+        assert capsys.readouterr().out.strip() == "<a><>"
+
+    def test_assignment_word_still_suppressed(self, shell, capsys):
+        shell.run_command('f=F; x="$f"{1,2}; echo "$x"')
+        assert capsys.readouterr().out.strip() == "F{1,2}"
+
+    def test_in_eval(self, shell, capsys):
+        shell.run_command("f=F; eval 'echo \"$f\"{1,2}'")
+        assert capsys.readouterr().out.strip() == "F1 F2"
+
+    def test_in_command_substitution(self, shell, capsys):
+        shell.run_command('f=F; echo $(echo "$f"{1,2})')
+        assert capsys.readouterr().out.strip() == "F1 F2"
+
+    def test_in_function(self, shell, capsys):
+        shell.run_command('f=F; g() { echo "$f"{1,2}; }; g')
+        assert capsys.readouterr().out.strip() == "F1 F2"
+
+
+class TestBraceExpansionDelimitedAdjacency:
+    """Brace-delimited expansions participate in brace adjacency.
+
+    `${v}`, `${a[0]}`, `${v:-d}`, backticks, and process subs are delimited —
+    they can never fuse with adjacent text, so `${v}{1,2}` must expand
+    (reappraisal #15 B2) — all cases bash-verified.
+    """
+
+    def test_braced_variable_with_brace_suffix(self, shell, capsys):
+        shell.run_command('v=V; echo ${v}{1,2}')
+        assert capsys.readouterr().out.strip() == "V1 V2"
+
+    def test_array_element_with_brace_suffix(self, shell, capsys):
+        shell.run_command('a=(1 2); echo ${a[0]}{x,y}')
+        assert capsys.readouterr().out.strip() == "1x 1y"
+
+    def test_unquoted_braced_var_inside_item(self, shell, capsys):
+        shell.run_command('f=F; echo {a,${f}}b')
+        assert capsys.readouterr().out.strip() == "ab Fb"
+
+    def test_operator_form_with_brace_suffix(self, shell, capsys):
+        shell.run_command('v=V; echo ${v:-D}{1,2}')
+        assert capsys.readouterr().out.strip() == "V1 V2"
+        shell.run_command('echo ${unset_zz:-D}{1,2}')
+        assert capsys.readouterr().out.strip() == "D1 D2"
+
+    def test_backtick_with_brace_suffix(self, shell, capsys):
+        shell.run_command('echo `echo x`{1,2}')
+        assert capsys.readouterr().out.strip() == "x1 x2"
 
 
 class TestCharRangeBackslash:

@@ -1280,6 +1280,118 @@
   stderr: ""
   exit_code: 0
 
+# Brace expansion adjacent to other expansions (reappraisal #15 B1/B2):
+# quoted expansions must survive the token rewrite, and brace-delimited
+# forms (${v}, ${a[0]}, ${v:-d}, `...`) must participate in adjacency.
+
+- name: brace_adjacent_quoted_var
+  command: 'f=F; echo "$f"{1,2}'
+  stdout: "F1 F2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_adjacent_quoted_var_backup_pair
+  command: 'f=F; printf "<%s>" "$f"{,.bak}'
+  stdout: "<F><F.bak>"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_item_contains_quoted_var
+  command: 'f=F; echo {1,"$f"2}'
+  stdout: "1 F2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_adjacent_quoted_multi_part_string
+  command: 'f=F; echo "${f}bar"{1,2}'
+  stdout: "Fbar1 Fbar2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_adjacent_quoted_command_sub
+  command: 'echo "$(echo x)"{1,2}'
+  stdout: "x1 x2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_adjacent_quoted_arith
+  command: 'echo "$((1+1))"{a,b}'
+  stdout: "2a 2b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_adjacent_single_quote_stays_literal
+  command: "f=F; echo '$f'{1,2}"
+  stdout: "$f1 $f2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_adjacent_quoted_var_no_split
+  command: 'f="a b"; printf "<%s>" "$f"{1,2}'
+  stdout: "<a b1><a b2>"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_adjacent_braced_var
+  command: 'v=V; echo ${v}{1,2}'
+  stdout: "V1 V2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_adjacent_array_element
+  command: 'a=(1 2); echo ${a[0]}{x,y}'
+  stdout: "1x 1y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_item_unquoted_braced_var
+  command: 'f=F; echo {a,${f}}b'
+  stdout: "ab Fb\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_adjacent_operator_form
+  command: 'v=V; echo ${v:-D}{1,2}'
+  stdout: "V1 V2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_adjacent_backtick
+  command: 'echo `echo x`{1,2}'
+  stdout: "x1 x2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_variable_name_fusion
+  command: 'v1=X1; v2=X2; echo $v{1,2}'
+  stdout: "X1 X2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_variable_name_fusion_continues
+  command: 'v1x=A; v2x=B; echo $v{1,2}x'
+  stdout: "A B\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_no_fusion_special_var
+  command: 'false; echo $?{a,b}'
+  stdout: "1a 1b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_quoted_empty_item_survives
+  command: 'printf "<%s>" {a,""}'
+  stdout: "<a><>"
+  stderr: ""
+  exit_code: 0
+
+- name: brace_assignment_word_stays_literal
+  command: 'f=F; x="$f"{1,2}; echo "$x"'
+  stdout: "F{1,2}\n"
+  stderr: ""
+  exit_code: 0
+
 - name: nested_command_sub_in_arith
   command: 'echo $(($(echo 3) + $(echo 4)))'
   stdout: "7\n"
