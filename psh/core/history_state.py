@@ -24,3 +24,13 @@ class HistoryState:
         self.entries: List[str] = []
         self.file_path: str = os.path.expanduser("~/.psh_history")
         self.max_size: int = 1000
+
+    def copy(self) -> "HistoryState":
+        """Independent copy for a subshell-style child (ShellState.adopt):
+        the child sees the parent's entries, but appends must not leak back.
+        """
+        new = HistoryState()
+        new.entries = list(self.entries)
+        new.file_path = self.file_path
+        new.max_size = self.max_size
+        return new

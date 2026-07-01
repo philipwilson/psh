@@ -38,6 +38,14 @@ class DirectoryStack:
         """Initialize stack with current directory."""
         self.stack = [current_dir]
 
+    def copy(self) -> 'DirectoryStack':
+        """Independent copy for a subshell-style child (ShellState.adopt):
+        (dirs) shows the parent's stack; a child's pushd must not leak back.
+        """
+        new = DirectoryStack()
+        new.stack = list(self.stack)
+        return new
+
     def push(self, directory: str) -> str:
         """Push directory onto stack and return new current directory."""
         self.stack.insert(0, directory)

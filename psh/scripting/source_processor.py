@@ -306,7 +306,7 @@ class SourceProcessor(ScriptComponent):
             # Increment command number for successful parse
             self.state.command_number += 1
 
-            from ..core import LoopBreak, LoopContinue, TopLevelAbort
+            from ..core import FunctionReturn, LoopBreak, LoopContinue, TopLevelAbort
             try:
                 # Handle TopLevel AST node (functions + commands)
                 if isinstance(ast, TopLevel):
@@ -340,6 +340,18 @@ class SourceProcessor(ScriptComponent):
                     raise
                 self.state.last_exit_code = e.status
                 return e.status
+            except FunctionReturn as e:
+                # `return` reaching a NON-nested top level only happens in a
+                # subshell-style child that inherited a function/sourced-file
+                # context (ShellState.adopt copies function_stack and
+                # source_depth): the child's input stops with that status,
+                # like end-of-sourced-file (bash: x=$(return 3; echo x)
+                # leaves x empty, $? = 3). Nested (eval, trap action) it
+                # propagates to the enclosing function/source handler.
+                if nested:
+                    raise
+                self.state.last_exit_code = e.exit_code
+                return e.exit_code
         except ParseError as e:
             # Check if error already has context, otherwise add location
             if e.error_context and e.error_context.source_line:
