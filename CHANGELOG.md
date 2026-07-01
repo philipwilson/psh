@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.560.0 (2026-07-01) - Fix: parser statement-separator guard + and-or-level backgrounding (appraisal #15 Tier 1, A1+A3)
+- FIX (HIGH). Reappraisal #15 cluster A1+A3 — two statement-boundary holes in
+  the recursive-descent parser. Verified against bash 5.2.
+  - **A1 missing separator validation:** after parsing a statement the parser
+    never checked what came next, so junk between statements was silently
+    treated as a new statement — ``echo (ls)`` EXECUTED both ``echo`` and the
+    ``(ls)`` subshell (bash: syntax error, rc=2). Fixed at one chokepoint:
+    ``StatementParser._require_statement_boundary`` requires a separator
+    (``;``/newline/``&``), the enclosing construct's terminator, or end of
+    input after every statement, raising bash's ``syntax error near
+    unexpected token '...'`` (rc=2) otherwise. (``break >f``'s established
+    trailing-redirect shape remains exempt, matching the pinned
+    REDIRECT_EXEMPT behavior.)
+  - **A3 `&` consumed at the wrong grammar level:** subshell and brace groups
+    consumed a trailing ``&`` themselves, so ``(a) && (b) &`` backgrounded
+    only ``(b)`` instead of the whole and-or list, and junk after ``&``
+    (``(a) & | cat``, ``a & ; b``) parsed instead of erroring. ``&`` is now
+    owned exclusively by the and-or-list level (POSIX grammar):
+    ``(a) && (b) &`` backgrounds the entire list, and ``&`` followed by
+    ``&&``/``||``/``|``/``|&``/``;`` is a syntax error while legal
+    continuations (``a & b``, ``& fi``, ``& }``, ``;;``) still parse.
+  - Tests: new ``tests/integration/parsing/test_statement_separators.py``
+    (12 tests) plus 8 behavioral golden cases pinning the bash comparison.
+
 ## 0.559.0 (2026-06-23) - Fix: `set -x` quotes args & traces compound headers (appraisal #14 Tier 2)
 - FIX (MED). ``set -x`` joined trace words unquoted and omitted compound-command
   headers. Now matches bash. Found in ground-up reappraisal #14; verified vs bash 5.2.
