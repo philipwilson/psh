@@ -57,11 +57,16 @@ class LineEditor:
 
     def __init__(self, history: Optional[List[str]] = None, edit_mode: str = 'emacs'):
         # The components: the buffer model, the renderer, and the
-        # history navigator (which keeps the injected list reference —
-        # it aliases shell state and grows between reads).
+        # history navigator, which keeps the injected list reference —
+        # it aliases shell state and grows between reads. The identity
+        # check (not truthiness) matters: a session starts with an EMPTY
+        # state.history, and `history or []` would silently substitute a
+        # private list, leaving up-arrow/Ctrl-R blind to every command
+        # recorded afterwards (reappraisal #15 K1).
         self.edit_buffer = EditBuffer()
         self.renderer = LineRenderer()
-        self.history_nav = HistoryNavigator(history or [])
+        self.history_nav = HistoryNavigator(
+            history if history is not None else [])
 
         self.completion_engine = CompletionEngine()
         self.terminal = TerminalManager()
