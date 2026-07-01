@@ -19,7 +19,8 @@ class TrapBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "trap [action] [condition...]"
+        # bash's exact usage string (also printed on usage errors).
+        return "trap [-lp] [[arg] signal_spec ...]"
 
     @property
     def description(self) -> str:
@@ -31,6 +32,7 @@ class TrapBuiltin(Builtin):
 
 SYNOPSIS
     trap [action] [condition...]
+    trap [condition...]
     trap -l
     trap -p [condition...]
 
@@ -47,18 +49,24 @@ ACTIONS
     ''      Ignore the signal
     -       Reset signal to default behavior
 
+    With no action — a single signal spec, or conditions led by a signal
+    number (POSIX `trap 2 15`) — each condition is reset to default.
+
 CONDITIONS
-    Signal names (HUP, INT, QUIT, TERM, USR1, USR2, etc.)
+    Signal names (HUP, INT, QUIT, TERM, USR1, WINCH, etc.),
+    with or without the SIG prefix, case-insensitive
     Signal numbers (1, 2, 3, 9, 15, etc.)
-    EXIT    Execute when shell exits
+    EXIT (or 0)   Execute when shell exits
     DEBUG   Execute before each command (bash extension)
     ERR     Execute when command returns non-zero (bash extension)
 
 EXAMPLES
     trap 'echo "Interrupted"' INT         # Catch Ctrl+C
     trap 'cleanup; exit' EXIT             # Run cleanup on exit
+    trap 'cleanup' 0                      # Same, POSIX numeric form
     trap '' QUIT                          # Ignore SIGQUIT
     trap - TERM                           # Reset SIGTERM to default
+    trap 2 15                             # Reset SIGINT and SIGTERM
     trap -l                               # List all signals
     trap -p                               # Show all current traps
     trap -p INT EXIT                      # Show specific traps
@@ -77,7 +85,7 @@ EXIT STATUS
         # Parse options
         if len(args) == 1:
             # No arguments - show all traps (same as trap -p)
-            output = shell.trap_manager.show_traps()
+            output, _ = shell.trap_manager.show_traps()
             if output:
                 self.write_line(output, shell)
             return 0
@@ -89,16 +97,14 @@ EXIT STATUS
             return 0
 
         if args[1] == '-p':
-            # Show traps
-            if len(args) == 2:
-                # Show all traps
-                output = shell.trap_manager.show_traps()
-            else:
-                # Show specific traps
-                output = shell.trap_manager.show_traps(args[2:])
+            # Show traps (all, or the specific signals queried)
+            specs = args[2:] if len(args) > 2 else None
+            output, invalid = shell.trap_manager.show_traps(specs)
             if output:
                 self.write_line(output, shell)
-            return 0
+            for spec in invalid:
+                self.error(f"{spec}: invalid signal specification", shell)
+            return 1 if invalid else 0
 
         # POSIX: -- ends option processing; the next argument is the action.
         # This is the standard defensive idiom: trap -- 'action' SIGNAL
@@ -107,17 +113,25 @@ EXIT STATUS
             arg_start += 1
             if len(args) == arg_start:
                 # Bare `trap --` behaves like bare `trap`: show all traps
-                output = shell.trap_manager.show_traps()
+                output, _ = shell.trap_manager.show_traps()
                 if output:
                     self.write_line(output, shell)
                 return 0
 
-        # Parse action and signals
-        if len(args) < arg_start + 2:
+        operands = args[arg_start:]
+
+        # Reset forms take NO action operand: POSIX says a first operand
+        # that is an unsigned decimal integer (and a valid signal) makes
+        # ALL operands conditions to reset (`trap 2 15`, `trap 0`); bash
+        # additionally resets for a single operand naming any signal
+        # (`trap INT`). Anything else is action + conditions.
+        first = operands[0]
+        if ((first.isdecimal() or len(operands) == 1)
+                and shell.trap_manager.is_signal_spec(first)):
+            return shell.trap_manager.remove_trap(operands)
+
+        if len(operands) < 2:
             self.error(f"usage: {self.synopsis}", shell)
             return 2
 
-        action = args[arg_start]
-        signals = args[arg_start + 1:]
-
-        return shell.trap_manager.set_trap(action, signals)
+        return shell.trap_manager.set_trap(operands[0], operands[1:])

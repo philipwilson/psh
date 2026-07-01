@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Callable, Dict
 
 from ..executor.job_control import JobState
 from ..utils import SignalNotifier, get_signal_registry
+from ..utils.signal_utils import signal_number_to_name
 from .base import InteractiveComponent
 
 if TYPE_CHECKING:
@@ -105,10 +106,11 @@ class SignalManager(InteractiveComponent):
 
     def _handle_signal_with_trap_check(self, signum, frame):
         """Handle signals with trap checking."""
-        # Get signal name from number
+        # Trap handlers are keyed by canonical bare signal name (the same
+        # signal_utils table TrapManager canonicalizes specs through).
         signal_name = None
         if hasattr(self.shell, 'trap_manager'):
-            signal_name = self.shell.trap_manager.signal_names.get(signum)
+            signal_name = signal_number_to_name(signum)
 
         # Check if there's a user-defined trap for this signal
         if signal_name and hasattr(self.shell, 'trap_manager'):

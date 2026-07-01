@@ -126,3 +126,34 @@ class TestExitTrapSubshell:
     def test_nested_subshell_traps(self):
         r = run_psh_c('( trap "echo outer" EXIT; ( trap "echo inner" EXIT; echo deep ) ); echo top')
         assert r.stdout == "deep\ninner\nouter\ntop\n"
+
+
+class TestExitTrapSubstitutionChildren:
+    """Substitution children are subshells: each runs its own EXIT trap
+    (reappraisal #15, adjacent to F2 — the run_child_shell exit path
+    dropped it while ( ... ) subshells fired theirs)."""
+
+    def test_command_substitution_runs_own_exit_trap(self):
+        r = run_psh_c('x=$(trap "echo inner" EXIT); echo "x=$x"')
+        assert r.stdout == "x=inner\n"
+
+    def test_command_substitution_posix_trap_0(self):
+        r = run_psh_c('x=$(trap "echo inner" 0); echo "x=$x"')
+        assert r.stdout == "x=inner\n"
+
+    def test_command_substitution_exit_n_keeps_status(self):
+        r = run_psh_c('x=$(trap "echo bye" EXIT; exit 5); echo "x=$x rc=$?"')
+        assert r.stdout == "x=bye rc=5\n"
+
+    def test_exit_inside_exit_trap_sets_child_status(self):
+        r = run_psh_c('x=$(trap "echo bye; exit 7" EXIT; exit 5); echo "x=$x rc=$?"')
+        assert r.stdout == "x=bye rc=7\n"
+
+    def test_process_substitution_runs_own_exit_trap(self):
+        r = run_psh_c('cat <(trap "echo bye" EXIT; echo body); echo after')
+        assert r.stdout == "body\nbye\nafter\n"
+
+    def test_parent_exit_trap_not_fired_in_child(self):
+        # Subshells reset inherited traps; only the parent fires "parent".
+        r = run_psh_c('trap "echo parent" EXIT; x=$(echo hi); echo "x=$x"')
+        assert r.stdout == "x=hi\nparent\n"

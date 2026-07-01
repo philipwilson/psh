@@ -2327,3 +2327,54 @@
   stdout: "rc=0 Q y z\n"
   stderr: ""
   exit_code: 0
+
+# trap POSIX numeric forms (0 == EXIT; leading number = reset) and full
+# signal-name coverage (reappraisal #15 F2). Only platform-stable signal
+# numbers (2=INT, 15=TERM) appear literally.
+- name: trap_zero_sets_exit_trap
+  command: "trap 'echo bye' 0; echo rc=$?"
+  stdout: "rc=0\nbye\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_zero_alone_resets_exit_trap
+  command: "trap 'echo bye' 0; trap 0; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_leading_number_resets_all_operands
+  command: "trap 'echo A' INT; trap 'echo B' TERM; trap 2 15; trap -p; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_single_name_operand_resets
+  command: "trap 'echo X' INT; trap INT; trap -p; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_winch_registers_lists_resets
+  command: "trap 'echo w' WINCH; trap -p; trap - WINCH; trap -p; echo done"
+  stdout: "trap -- 'echo w' SIGWINCH\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_p_unknown_signal_errors
+  command: "trap -p NOSUCHSIG; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "invalid signal specification"
+  exit_code: 0
+
+- name: trap_listing_numeric_order
+  command: "trap true CHLD; trap true INT; trap true EXIT; trap"
+  stdout: "trap -- 'true' EXIT\ntrap -- 'true' SIGINT\ntrap -- 'true' SIGCHLD\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cmdsub_child_runs_own_exit_trap
+  command: "x=$(trap 'echo inner' 0); echo \"x=$x\""
+  stdout: "x=inner\n"
+  stderr: ""
+  exit_code: 0
