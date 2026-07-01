@@ -125,6 +125,12 @@ class SubshellExecutor:
             # This is critical for output redirection to work correctly in subshells
             subshell.state.in_forked_child = True
 
+            # This process is a fresh fork: align OS signal dispositions with
+            # the adopted trap state (parent's non-ignored traps take the
+            # default action, ignored ones stay ignored). Explicit at the
+            # fork site — see TrapManager.sync_forked_child_dispositions.
+            subshell.trap_manager.sync_forked_child_dispositions()
+
             # Inherit the parent's set -e suppression: a subshell that is
             # e.g. an if-condition or a non-final && / || member must not
             # errexit internally (bash).
@@ -209,6 +215,11 @@ class SubshellExecutor:
             from ..shell import Shell
 
             subshell = Shell.for_subshell(self.shell)
+
+            # This process is a fresh fork (launch_background_job): align OS
+            # signal dispositions with the adopted trap state, exactly like
+            # the foreground path.
+            subshell.trap_manager.sync_forked_child_dispositions()
 
             # Share I/O streams for consistent output handling
             subshell.stdout = self.shell.stdout

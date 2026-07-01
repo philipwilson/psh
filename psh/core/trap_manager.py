@@ -1,5 +1,4 @@
 """Trap management for PSH shell."""
-import os
 import signal
 from typing import TYPE_CHECKING, List, Optional
 
@@ -54,16 +53,6 @@ class TrapManager:
                 self.signal_map[str(signum)] = signum
             if signum not in self.signal_names:
                 self.signal_names[signum] = str(signum)
-
-        # A forked child adopted the parent's trap entries (ShellState.adopt)
-        # and the fork copied the parent's OS handlers; align dispositions
-        # with the inherited state (ignored signals stay ignored, a parent's
-        # non-ignored trap takes the default action). Forked-ness is detected
-        # by pid: adopt copies the ORIGINAL shell's pid ($$), so a differing
-        # os.getpid() means this shell is being built inside a forked child
-        # (state.in_forked_child is only set AFTER construction).
-        if os.getpid() != self.state.shell_pid and self.state.trap_handlers:
-            self._sync_forked_child_dispositions()
 
     def set_trap(self, action: str, signals: List[str]) -> int:
         """Set trap handler for signals.
@@ -217,7 +206,7 @@ class TrapManager:
             self.state.trap_handlers.pop(name, None)
         self.state.inherited_traps.clear()
 
-    def _sync_forked_child_dispositions(self) -> None:
+    def sync_forked_child_dispositions(self) -> None:
         """Align OS signal dispositions with adopted trap state after a fork.
 
         Ignored ('') traps stay SIG_IGN — bash keeps ignored signals ignored
@@ -225,6 +214,15 @@ class TrapManager:
         the DEFAULT action: the fork copied the parent's queueing handler,
         which would otherwise swallow the signal (bash: the child dies).
         Managed signals were already reset by apply_child_signal_policy.
+
+        Called EXPLICITLY by the fork sites (SubshellExecutor's forked
+        children and child_policy.run_child_shell) right after the child
+        Shell is built — forked-ness must never be inferred (a pid check
+        also matches an IN-PROCESS child built inside a forked child, e.g.
+        the env builtin's child Shell in a subshell, and would clobber the
+        enclosing shell's live handlers process-wide). An in-process child
+        must NOT call this: no fork happened, and the hosting process's
+        dispositions belong to the enclosing shell.
         """
         for name, action in self.state.trap_handlers.items():
             signum = self._signum(name)

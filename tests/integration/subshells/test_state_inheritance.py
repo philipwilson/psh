@@ -162,11 +162,34 @@ class TestOtherAdoptedState:
         assert result.stdout == "/tmp /\n"
 
 
-class TestPidBasedForkDetection:
+class TestInProcessChildShells:
+    """The env builtin builds an IN-PROCESS child Shell (no fork): the
+    forked-child disposition sync must never run for it — forked-ness is
+    passed explicitly from the fork sites, never inferred (a pid check
+    also matches an in-process child built inside a forked child)."""
+
     def test_env_builtin_in_process_child_keeps_parent_traps_working(self):
-        # The env builtin's child Shell is built IN-PROCESS (no fork):
-        # TrapManager's forked-child disposition sync (pid-gated) must not
-        # run there, and the parent's trap still fires afterwards.
+        # env's child Shell at top level: the disposition sync must not
+        # run, and the parent's trap still fires afterwards.
         result = run_psh('trap "echo T" USR1; env true >/dev/null; '
                          f'{KILL_PARENT} USR1; :; echo done')
         assert result.stdout == "T\ndone\n"
+
+    def test_env_inside_subshell_keeps_enclosing_live_traps(self):
+        # REGRESSION PIN: env's in-process child built INSIDE a forked
+        # subshell. Inferring forked-ness from os.getpid() != shell_pid
+        # matched here too and reset the enclosing subshell's live USR1
+        # handler to SIG_DFL process-wide — the subshell died with
+        # 128+SIGUSR1 instead of running its own trap (bash: own/after/0).
+        result = run_psh(f"( trap 'echo own' USR1; env true >/dev/null; "
+                         f"{KILL_PARENT} USR1; echo after ); echo rc=$?")
+        assert result.stdout == "own\nafter\nrc=0\n"
+
+    def test_env_inside_cmdsub_keeps_enclosing_live_traps(self):
+        # Same regression, command-substitution variant (bash: x captures
+        # "own after", overall rc 0; the broken branch captured nothing).
+        result = run_psh(f"x=$(trap 'echo own' USR1; env true >/dev/null; "
+                         f"{KILL_PARENT} USR1; echo after); "
+                         'echo "x=[$x]"')
+        assert result.returncode == 0
+        assert result.stdout == "x=[own\nafter]\n"

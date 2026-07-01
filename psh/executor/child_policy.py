@@ -161,9 +161,15 @@ def run_child_shell(parent_shell: 'Shell',
        shell must see the post-plumbing world.
     3. Shell.for_subshell(parent_shell, norc=norc) — the child Shell,
        with state.in_forked_child set so builtins use fd-level I/O.
-       With inherit_traps=False the parent's inherited-for-listing trap
-       entries are dropped: process-substitution children never list
-       them (bash: `trap A USR1; cat <(trap)` prints nothing), unlike
+       Then trap_manager.sync_forked_child_dispositions() — this process
+       IS a fresh fork, so the parent's non-ignored traps take the
+       default OS action and ignored ('') ones stay ignored. The call is
+       explicit at the fork site (never inferred, e.g. from pids): an
+       in-process child Shell such as the env builtin's must not reset
+       the hosting shell's live handlers. With inherit_traps=False the
+       parent's inherited-for-listing trap entries are then dropped:
+       process-substitution children never list them (bash:
+       `trap A USR1; cat <(trap)` prints nothing), unlike
        command-substitution children (the POSIX saved=$(trap) idiom).
     4. exit_code = body(child_shell) — what THIS child does. A
        SystemExit (the exit builtin) maps to its code: substitutions
@@ -197,6 +203,10 @@ def run_child_shell(parent_shell: 'Shell',
         from ..shell import Shell
         child_shell = Shell.for_subshell(parent_shell, norc=norc)
         child_shell.state.in_forked_child = True
+        # This process is a fresh fork: align OS dispositions with the
+        # adopted trap state BEFORE any drop (a procsub child must still
+        # reset the parent's queueing handlers copied by the fork).
+        child_shell.trap_manager.sync_forked_child_dispositions()
         if not inherit_traps:
             child_shell.trap_manager.drop_inherited_traps()
 
