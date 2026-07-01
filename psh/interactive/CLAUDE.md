@@ -284,7 +284,8 @@ The joiner is lexer/parser-driven (reappraisal #15 K2): each newline is
 decided per-position — verbatim inside quotes, heredocs and unclosed
 expansions, spliced for backslash continuations, a space after tokens
 that reject a following `;` (`then`, `do`, `;;`, a case pattern's `)`,
-`f()`, ...), `; ` otherwise — pinned byte-for-byte to bash 5.2 by
+function-definition parens, ...), `; ` otherwise — pinned byte-for-byte
+to bash 5.2 by
 `tests/unit/test_line_editor_helpers.py`. Recording happens before
 parsing, so syntactically invalid commands are still recallable for
 editing.
