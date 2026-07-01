@@ -521,16 +521,9 @@ class CommandParser(ParserSubcomponent):
         # Parse any redirections after the subshell
         redirects = self.parser.redirections.parse_redirects()
 
-        # Check for background operator
-        background = self.parser.match(TokenType.AMPERSAND)
-        if background:
-            self.parser.advance()
-
-        return SubshellGroup(
-            statements=statements,
-            redirects=redirects,
-            background=background
-        )
+        # NOTE: '&' is parsed at the and-or-list level (POSIX grammar), not
+        # here — `(a) && (b) &` backgrounds the whole list.
+        return SubshellGroup(statements=statements, redirects=redirects)
 
     def parse_brace_group(self) -> BraceGroup:
         """Parse brace group {...} that executes in current environment.
@@ -558,13 +551,6 @@ class CommandParser(ParserSubcomponent):
         # Parse any redirections after the brace group
         redirects = self.parser.redirections.parse_redirects()
 
-        # Check for background operator
-        background = self.parser.match(TokenType.AMPERSAND)
-        if background:
-            self.parser.advance()
-
-        return BraceGroup(
-            statements=statements,
-            redirects=redirects,
-            background=background
-        )
+        # NOTE: '&' is parsed at the and-or-list level (POSIX grammar), not
+        # here — `{ a; } && { b; } &` backgrounds the whole list.
+        return BraceGroup(statements=statements, redirects=redirects)

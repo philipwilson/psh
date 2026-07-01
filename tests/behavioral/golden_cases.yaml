@@ -1923,3 +1923,56 @@
   stdout: "{fd}\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# STATEMENT BOUNDARIES (reappraisal #15 A1+A3): a statement must end at a
+# separator/terminator, and '&' backgrounds the whole and-or list
+# =============================================================================
+
+- name: missing_separator_paren_rejected
+  command: "echo (ls)"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2
+
+- name: missing_separator_assignment_subshell_rejected
+  command: "x=1 (echo sub)"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2
+
+- name: missing_separator_in_then_body_rejected
+  command: "if true; then echo hi (uname); fi"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2
+
+- name: missing_separator_adjacent_groups_rejected
+  command: "(echo a)(echo b)"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2
+
+- name: group_ampersand_then_pipe_rejected
+  command: "(echo a) & | cat"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2
+
+- name: ampersand_then_semicolon_rejected
+  command: "echo a & ; echo b"
+  stdout: ""
+  stderr: "syntax error near unexpected token"
+  exit_code: 2
+
+- name: andor_list_of_groups_backgrounds_whole_list
+  command: "(sleep 0.3; echo a) && (echo b) & echo fg; wait"
+  stdout: "fg\na\nb\n"
+  stderr: ""
+  exit_code: 0
+
+- name: case_body_ampersand_terminator_allowed
+  command: "case x in x) echo a & ;; esac; wait"
+  stdout: "a\n"
+  stderr: ""
+  exit_code: 0

@@ -51,6 +51,7 @@ class StatementParser(ParserSubcomponent):
         statement = self.parse_statement()
         if statement:
             command_list.statements.append(statement)
+        self._require_statement_boundary()
 
         # Parse additional statements
         while self.parser.match_any(TokenGroups.STATEMENT_SEPARATORS):
@@ -63,6 +64,7 @@ class StatementParser(ParserSubcomponent):
             statement = self.parse_statement()
             if statement:
                 command_list.statements.append(statement)
+            self._require_statement_boundary()
 
         return command_list
 
@@ -81,6 +83,7 @@ class StatementParser(ParserSubcomponent):
             statement = self.parse_statement()
             if statement:
                 command_list.statements.append(statement)
+            self._require_statement_boundary(*end_tokens)
 
             # Handle separators but stop at end tokens
             while self.parser.match_any(TokenGroups.STATEMENT_SEPARATORS):
@@ -89,6 +92,34 @@ class StatementParser(ParserSubcomponent):
                     break
 
         return command_list
+
+    def _require_statement_boundary(self, *end_tokens: TokenType) -> None:
+        """Require the statement just parsed to have ended at a legal boundary.
+
+        bash validates statement boundaries at parse time: after a statement
+        only a separator (``;``/newline — or the ``&`` parse_and_or_list
+        already consumed), the enclosing construct's terminator, or end of
+        input may come next. Anything else is a syntax error — ``echo (ls)``
+        is NOT ``echo`` followed by a subshell to silently execute.
+        """
+        if (self.parser.at_end()
+                or self.parser.match_any(TokenGroups.STATEMENT_SEPARATORS)
+                or (end_tokens and self.parser.match(*end_tokens))):
+            return
+        # A statement that consumed a trailing '&' is already delimited; the
+        # next token legitimately starts a new statement (`echo a & echo b`).
+        if self.parser.tokens[self.parser.current - 1].type == TokenType.AMPERSAND:
+            return
+        # break/continue are the one statement kind that leaves its trailing
+        # redirections unconsumed (`break >f` — legal in bash); the redirect
+        # parses as a separate, unreachable empty command — the established
+        # shape pinned by test_ast_coverage_matrix's REDIRECT_EXEMPT. Every
+        # other statement parser consumes its own redirects, so a redirect
+        # here cannot be anything else.
+        if self.parser.match_any(TokenGroups.REDIRECTS):
+            return
+        raise self.parser.error(
+            f"syntax error near unexpected token '{self.parser.peek().value}'")
 
     def parse_required_command_list_until(self, *end_tokens: TokenType) -> CommandList:
         """Parse a command list that must contain at least one statement.
@@ -125,10 +156,15 @@ class StatementParser(ParserSubcomponent):
         # Handle && and || operators
         self.parse_and_or_tail(and_or_list)
 
-        # POSIX: a trailing '&' backgrounds the whole and-or list
+        # POSIX: a trailing '&' backgrounds the whole and-or list. '&' is
+        # itself a separator, so another operator right after it ('&& b',
+        # '| cat', '; c') is a syntax error in bash — while ';;' (case) and
+        # closing keywords ('& fi', '& }') remain legal.
         if self.parser.match(TokenType.AMPERSAND):
             self.parser.advance()
-            if self.parser.match(TokenType.AND_AND, TokenType.OR_OR):
+            if self.parser.match(TokenType.AND_AND, TokenType.OR_OR,
+                                 TokenType.PIPE, TokenType.PIPE_AND,
+                                 TokenType.SEMICOLON):
                 raise self.parser.error(
                     f"syntax error near unexpected token '{self.parser.peek().value}'")
             self._apply_background(and_or_list)
