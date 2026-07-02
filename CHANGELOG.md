@@ -4,6 +4,49 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.567.0 (2026-07-02) - Fix: evaluation engines — [[ ]] arithmetic operands, bracket-pattern crashes, integer division, fatal subscripts (appraisal #15 Tier 1, Cluster H)
+- FIX (HIGH). Reappraisal #15 cluster H — four bash-5.2-pinned fixes to the
+  evaluation engines, verified by a 94-case bash-vs-psh truth table
+  (18/70 matched at baseline, 93/94 after).
+  - H1: `[[ ]]` numeric operators (`-eq` etc.) now ARITHMETIC-EVALUATE their
+    operands through the real engine: `[[ 1+1 -eq 2 ]]`, recursive name
+    resolution (`x=y; y=5; [[ x -eq 5 ]]`), base/hex literals (`2#101`,
+    `0x10`), array elements (`a[0]`), and assignment side effects all work.
+    Uses a new `expand=False` mode of `evaluate_arithmetic` so
+    already-expanded text is not rescanned (a literal `$` stays a syntax
+    error, as in bash). Evaluation failures (`[[ 08 -eq 8 ]]`) print the
+    arithmetic error and fail with status 1 (previously status 2 as
+    "integer expression expected"). The `test`/`[` builtin is deliberately
+    unchanged — bash does not evaluate arithmetic there.
+  - H2: invalid bracket patterns (`[z-a]`, `[a\]b]`, `[\x]`) no longer crash
+    as internal defects (uncaught `re.error`) — they quietly match/not-match
+    like bash across `[[ ]]`, `case`, `${v#pat}`, `${v/pat}`, and globs. The
+    two duplicated bracket scanners are consolidated (`_bracket_end` +
+    shared `_bracket_to_regex`); a set that cannot compile matches NOTHING,
+    or negated (`[!z-a]`) matches ANY one char (both probed in bash 5.2),
+    with `shell_pattern_to_regex` validating its final regex as the
+    last-resort chokepoint.
+  - H3: arithmetic `/` and `%` use exact integer math with C
+    truncate-toward-zero semantics (new `_trunc_div` replaces
+    `int(left/right)`, which lost precision beyond 2**53 —
+    `$((9223372036854775807/3))` was off by 170). Identical across `$(( ))`,
+    `(( ))`, `let`, and `declare -i`.
+  - MED: bad array subscripts are FATAL like bash instead of silently
+    corrupting index 0 — `a[08]=Q` used to OVERWRITE `a[0]`; now it prints
+    "value too great for base" and aborts the command (read, write, and
+    init-list paths all raise `ExpansionError`). Associative arrays still
+    take the literal key; an evaluable unset-name subscript still addresses
+    index 0 (`a[junk]`).
+  - Deliberate remaining divergence: `[[ a[08] -eq 7 ]]` fails with status 1
+    but does not abort the script (bash aborts); distinguishing it needs
+    subscript context inside the arithmetic tokenizer.
+  - Tests: `tests/unit/expansion/test_arithmetic_division_semantics.py`,
+    `tests/unit/expansion/test_bracket_pattern_edge_cases.py`,
+    `tests/integration/test_enhanced_test_arith_operands.py`; the old
+    `test_array_index_arith_errors.py` pinned the broken index-0 fallback
+    and was rewritten with bash-verified pins; 13 golden bash-compare cases
+    in `tests/behavioral/golden_cases.yaml`.
+
 ## 0.566.0 (2026-07-02) - Fix: read gives the last variable the raw remainder (appraisal #15 Tier 1, B4)
 - FIX (HIGH). Reappraisal #15 cluster B4 — with more fields than variables,
   `read` re-joined the leftover fields with IFS[0], collapsing interior
