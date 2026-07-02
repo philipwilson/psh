@@ -554,3 +554,52 @@ matrices, source basics, EXIT-trap on 6 normal exit paths, rc-loading
 matrix, alias lex-boundary architecture. The known-deferred M8
 (heredoc-in-procsub) was **verified fixed** and is removed from the deferred
 ledger.
+
+---
+
+## Tier-1 Fix Campaign — COMPLETE (2026-07-02/03, v0.560–v0.580)
+
+All HIGH-severity clusters (A–L) plus the M-cluster test-infrastructure hygiene are fixed, bash-verified against 5.2.26, and released across 21 tagged releases. Method: per-cluster development in isolated git worktrees (bash truth-table first) → independent adversarial verifier → strictly-serial integration train (rebase → full parallel gate → version/CHANGELOG/README-stats/ARCHITECTURE ceremony → PR → merge). Suite grew ~9,100 → ~10,300 tests; every release passed the full gate + ruff + mypy. Six fix-introduced defects were caught by verifiers and repaired before merge; several sibling bugs beyond the report were found and fixed in passing.
+
+| Release | Cluster | Fix |
+|---|---|---|
+| v0.560 | A1+A3 | statement-separator guard (`echo (ls)` no longer runs both) + and-or-level `&` |
+| v0.561 | E1 | `ShellState.adopt()` 7-field drift + drift-lock meta-test |
+| v0.562 | B1+B2 | brace expansion preserves adjacent quoted expansions + bash-order name fusion |
+| v0.563 | D3 | `declare -f` via the maintained formatter (deleted the rotted duplicate) |
+| v0.564 | I1+I2 | CLI arg parsing stops at first operand; non-seekable scripts run |
+| v0.565 | K1+K2 | interactive history alias contract + lexer-driven cmdhist joining |
+| v0.566 | B4 | `read` gives the last variable the raw remainder |
+| v0.567 | H | `[[ -eq ]]` arithmetic, bracket-pattern crash guards, integer division, fatal `a[08]` subscripts |
+| v0.568 | F2 | `trap` accepts POSIX numeric forms + all signal names |
+| v0.569 | A2 | `&`/`\|&` set command position |
+| v0.570 | A4 | unclosed `$((` falls back to `$( (subshell)` |
+| v0.571 | L | combinator parser parity (time, heredocs, and-or backgrounding) |
+| v0.572 | F1 | command substitution resets `set -e` (+ `inherit_errexit` shopt) |
+| v0.573 | A5 | line-continuation preprocessing is comment/heredoc/backtick-aware |
+| v0.574 | D2 | bash-valid function names + `break`/`continue`/`return` de-keyworded |
+| v0.575 | D1 | `unset` follows bash dynamic-scope value-stack semantics |
+| v0.576 | C | redirect visibility on in-process builtins + compound redirect-failure chokepoint |
+| v0.577 | G1 | flat-string AST sweep: case subject, `[[ ]]` unary operand, here-string carry Words |
+| v0.578 | J | formatter round-trip tier (time, heredoc trailers, arrays, `[[ ]]` parens, for-no-in, `$'..'`) |
+| v0.579 | F3 | EXIT trap runs on untrapped fatal-signal death |
+| v0.580 | M | conformance meta-test tightened + no-op test debt cleared |
+
+### Follow-up ledger — pre-existing bugs surfaced during the campaign (NOT yet fixed)
+
+These were found by the fix/verify agents while probing adjacents; each is pre-existing on the pre-campaign baseline (not a regression from this work). Candidates for a Tier-2 pass or reappraisal #16:
+
+1. **`true | [[ -n y ]]` crashes** with an internal `AttributeError` (`.background` read on an `EnhancedTestStatement` pipeline component) — a strict-errors internal-defect; reachable via plain `|` into a `[[ ]]`.
+2. **Combinator parser + `--validate` reject digit-first/dotted function names** (`123func`, `.dot`) that the RD default now accepts post-D2 — a parser-parity gap.
+3. **Bare `in` at command position** diverges from bash (bash syntax-errors; psh treats it as a command).
+4. **`((echo a); echo b)`** — the `((`-command-vs-nested-subshell parser gap (bash re-reads as nested subshells; psh errors).
+5. **`${1:=default}` on an unset positional silently succeeds** (bash: `$1: cannot assign in this way`, rc 1). Matches expansion-auditor finding F13.
+6. **`readonly x=v` / readonly-array-element unset inside a function** localize/silently-remove (pre-existing scope bugs, D1-adjacent).
+7. **Exported-local-`unset` in its own declaring scope** doesn't re-expose the exported global's env entry to a child (D1-adjacent, pre-existing).
+8. **SIGINT during a foreground external command isn't masked** by psh as bash masks it (deeper job-control item; surfaced when F3 stopped hiding it).
+9. **Three simple-command redirect-failure sub-paths** (`>f` alone, `X=v >f`, `a[0]=v >f`) still emit the old raw-OSError message instead of the unified `psh: TARGET: STRERROR` (C-cluster left the strategy path unified but not these).
+10. **External-command redirect after a closed std fd** (`exec 1>&-; /bin/echo hi > out`) writes nothing / `Bad file descriptor` where bash writes the file.
+11. **`a+b(){ :; }`** is a psh parse error (lexer `a+=` split); **`{ break; } | cat` / `{ break; } &` inside a loop** are silent where bash warns.
+
+### Deferred within Tier-1 (documented deliberate divergences, per-cluster PRs/CHANGELOG)
+Combinator composite-word parity gaps (educational parser); no-argument `declare -p` shadow-listing; `time` combinator edges matching the RD parity bar; unterminated-heredoc-at-EOF and trailing-backslash-at-EOF policies; a signal-trap body calling `exit` not additionally firing EXIT; untrapped SIGUSR1/USR2 not firing EXIT (handlers installed only for INT/TERM/HUP/QUIT).
