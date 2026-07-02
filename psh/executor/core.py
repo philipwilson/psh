@@ -438,6 +438,8 @@ class ExecutorVisitor(ASTVisitor[int]):
 
     def visit_EnhancedTestStatement(self, node: EnhancedTestStatement) -> int:
         """Execute enhanced test: [[ expression ]]"""
+        from ..core import UnboundVariableError
+        from ..expansion.arithmetic import ShellArithmeticError
         from .enhanced_test_evaluator import TestExpressionEvaluator
 
         # with_redirections also owns any process substitutions used as
@@ -447,6 +449,17 @@ class ExecutorVisitor(ASTVisitor[int]):
                 evaluator = TestExpressionEvaluator(self.shell)
                 result = evaluator.evaluate(node.expression)
                 return 0 if result else 1
+            except UnboundVariableError as e:
+                # set -u: an unset variable in a numeric-operator operand
+                # aborts the shell (bash), like a bare `$undef`.
+                from .strategies import report_unbound_variable
+                return report_unbound_variable(self.state, e)
+            except ShellArithmeticError as e:
+                # A -eq/-lt/... operand that fails to evaluate ([[ 08 -eq 8 ]],
+                # [[ @@ -eq 2 ]]): bash reports the error and the statement
+                # fails with status 1 — execution continues.
+                print(f"psh: [[: {e}", file=self.state.stderr)
+                return 1
             except (ValueError, TypeError, OSError) as e:
                 print(f"psh: [[: {e}", file=sys.stderr)
                 return 2  # Syntax error

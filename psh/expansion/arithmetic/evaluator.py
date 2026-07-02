@@ -29,6 +29,15 @@ from .tokens import ArithTokenType
 _PLAIN_DECIMAL_RE = re.compile(r'[+-]?(?:0|[1-9][0-9]*)$')
 
 
+def _trunc_div(left: int, right: int) -> int:
+    """C-style integer division: truncate toward zero (Python's ``//``
+    floors, and ``int(left/right)`` loses precision beyond 2**53)."""
+    quotient = left // right
+    if quotient < 0 and quotient * right != left:
+        quotient += 1
+    return quotient
+
+
 class ArithmeticEvaluator:
     """Evaluate arithmetic AST nodes"""
 
@@ -319,12 +328,12 @@ class ArithmeticEvaluator:
         if op == ArithTokenType.DIVIDE:
             if right == 0:
                 raise ShellArithmeticError("Division by zero")
-            return _to_signed64(int(left / right))
+            return _to_signed64(_trunc_div(left, right))
         if op == ArithTokenType.MODULO:
             if right == 0:
                 raise ShellArithmeticError("Division by zero")
             # C-style truncated remainder (sign matches dividend).
-            return _to_signed64(left - int(left / right) * right)
+            return _to_signed64(left - _trunc_div(left, right) * right)
         if op == ArithTokenType.POWER:
             if right < 0:
                 raise ShellArithmeticError("exponent less than 0")
@@ -366,11 +375,17 @@ class ArithmeticEvaluator:
         raise ValueError(f"Unknown binary operator: {op}")
 
 
-def evaluate_arithmetic(expr: str, shell) -> int:
-    """Evaluate an arithmetic expression with the given shell context"""
+def evaluate_arithmetic(expr: str, shell, expand: bool = True) -> int:
+    """Evaluate an arithmetic expression with the given shell context.
+
+    ``expand=False`` skips the $-construct pass for text that is ALREADY
+    expanded (e.g. a ``[[ -eq ]]`` operand): a residual literal ``$`` is
+    then a syntax error, matching bash, which never rescans expanded text.
+    """
     try:
         # First, expand all shell variables and parameter expansions
-        expanded_expr = shell.expansion_manager.expand_string_variables(expr)
+        expanded_expr = (shell.expansion_manager.expand_string_variables(expr)
+                         if expand else expr)
 
         # Tokenize the expanded expression
         tokenizer = ArithTokenizer(expanded_expr)
