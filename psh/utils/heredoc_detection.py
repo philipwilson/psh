@@ -202,6 +202,62 @@ def _quote_flags(line: str, quote):
     return flags, quote
 
 
+def _comment_start(line: str, flags) -> int:
+    """Position where a comment starts on *line*, or ``len(line)`` if none.
+
+    Uses the lexer's shared comment-start predicate on the first unquoted
+    ``#`` (*flags* are the per-char in-quote flags from ``_quote_flags``).
+    One raw-text refinement: the ``#`` of ``${#...}`` is rejected here —
+    the lexer never consults the predicate there because the expansion
+    parser consumes ``${...}`` whole.
+    """
+    from ..lexer.recognizers.comment import is_comment_start
+    for pos, char in enumerate(line):
+        if char != '#' or (pos < len(flags) and flags[pos]):
+            continue
+        if pos >= 2 and line[pos - 1] == '{' and line[pos - 2] == '$':
+            continue
+        if is_comment_start(line, pos):
+            return pos
+    return len(line)
+
+
+def scan_line_heredoc_markers(line: str, quote=None):
+    """The heredocs one COMMAND line opens, in order, with the carried
+    quote state.
+
+    Returns ``(markers, quote_after)`` where each marker is a
+    ``(delimiter, strip_tabs, quoted)`` triple — ``quoted`` True when any
+    part of the raw delimiter is quoted or escaped (the body is then
+    literal, like bash) — and ``quote_after`` is the quote state at end
+    of line for multi-line strings. Markers inside quotes, expansions, or
+    a comment are not heredocs; comment text is also excluded from the
+    carried quote state (an apostrophe in ``# don't`` is not a quote).
+    """
+    flags, _ = _quote_flags(line, quote)
+    comment_at = _comment_start(line, flags)
+    _, quote_after = _quote_flags(line[:comment_at], quote)
+    markers = []
+    for match in HEREDOC_MARKER_RE.finditer(line, 0, comment_at):
+        if is_inside_expansion(line, match.start()):
+            continue
+        if match.start() < len(flags) and flags[match.start()]:
+            continue  # quoted "<<WORD" is not a heredoc
+        raw = match.group(2)
+        markers.append((heredoc_delimiter_word(match), bool(match.group(1)),
+                        any(c in raw for c in '\'"\\')))
+    return markers, quote_after
+
+
+def eol_backslash_is_literal(line: str, quote=None) -> bool:
+    """True when a backslash ending command line *line* is literal text —
+    single-quoted or comment content — rather than a line continuation.
+    *quote* is the carried-in quote state (see ``_quote_flags``). The
+    line-continuation preprocessing consults this before joining."""
+    flags, quote_after = _quote_flags(line, quote)
+    return quote_after == "'" or _comment_start(line, flags) < len(line)
+
+
 def has_unclosed_heredoc(command: str) -> bool:
     """True if *command* opens a heredoc whose delimiter has not yet appeared.
 
@@ -240,15 +296,11 @@ def open_heredoc_delimiters(command: str) -> list:
                         d['closed'] = True
                         break
         else:
-            flags, quote_state = _quote_flags(line, quote_state)
-            for match in HEREDOC_MARKER_RE.finditer(line):
-                if is_inside_expansion(line, match.start()):
-                    continue
-                if match.start() < len(flags) and flags[match.start()]:
-                    continue  # quoted "<<WORD" is not a heredoc
+            markers, quote_state = scan_line_heredoc_markers(line, quote_state)
+            for word, strip_tabs, _quoted in markers:
                 delimiters.append({
-                    'word': heredoc_delimiter_word(match),
-                    'strip_tabs': bool(match.group(1)),
+                    'word': word,
+                    'strip_tabs': strip_tabs,
                     'closed': False,
                 })
     return [(d['word'], d['strip_tabs']) for d in delimiters if not d['closed']]
