@@ -4,6 +4,47 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.576.0 (2026-07-02) - Fix: redirect visibility on in-process builtins + redirect-failure on compounds (appraisal #15 Tier 1, Cluster C)
+- FIX (HIGH). Reappraisal #15 cluster C — three related redirect defects,
+  fixed as one family so every redirect-visibility and redirect-failure site
+  behaves like bash 5.2.
+  - **C1 — redirections on in-process builtins were invisible to the children
+    they spawn.** A `> file` / `2> file` / `2>&1` on `eval`/`source`/`command`
+    was applied as a Python-stream swap ONLY, so a child the builtin spawned
+    (an external command, a pipeline, a sourced file's commands) inherited the
+    shell's real fd 1/2 and leaked. stdin already got the fd-level treatment
+    for exactly this; fd 1/2 now do too — a per-command `dup2` that shares the
+    opened file's open description (no re-truncation) and is saved/restored on
+    the builtin frame. New `IOManager._dup_output_fd_for_children`, wired into
+    `_builtin_redirect_output_file`, `_builtin_redirect_combined`, and
+    `_builtin_redirect_dup`. `command ls / > /dev/null` is now silent,
+    `eval "cmd | cmd" > f` fills `f`, and `source f 2>/dev/null` matches bash.
+  - **C2 — `command`/`builtin` inner invocations now route through
+    `execute_builtin_guarded`** (uniform broken-pipe/OSError/defect handling)
+    instead of a raw `.execute()`; the C1 fd-level fix already cures the
+    observable `command EXT > f` symptom (the outer builtin's redirect now
+    reaches the forked external rather than being dropped).
+  - **C3 — a redirect-setup failure on any of the 9 in-process COMPOUND
+    commands** (`{ }`, `if`, `for`, `while`, `until`, `case`, `select`,
+    `[[ ]]`, `(( ))`) raised an uncaught `OSError` that reached the generic
+    "unexpected error" handler, so `|| fallback` was skipped. One new
+    chokepoint `IOManager.guarded_redirections` prints bash's diagnostic, does
+    not run the body, and returns 1 (so `|| fallback` runs and `set -e` still
+    aborts). The `OSError` message shape is now unified across the simple-,
+    compound-, forked-subshell and function-call redirect-failure sites via a
+    shared `format_redirect_error` (`psh: TARGET: STRERROR`). Also fixes a raw
+    `os.dup` in the combined `&>` save path (`exec 1>&-; { echo a; } &> f` used
+    to crash `EBADF`; the fd-2 backup now dups to a high fd so the redirect's
+    own low-fd open cannot clobber it).
+  - Verified with a 29/29 bash-parity truth table across every C1 reproducer,
+    each compound type with a bad target under `|| fallback` / if-conditions /
+    `set -e` / `exec 1>&-`, and the simple-command / function / subshell paths.
+    Regression tests in `tests/integration/redirection/` and 11 golden cases
+    in `tests/behavioral/golden_cases.yaml` (verified via `--compare-bash`).
+  - Known follow-ups (deliberate, out of scope here): three simple-command
+    redirect-failure sub-paths still emit the older raw message shape; and a
+    separate pre-existing external-command redirect-after-closed-fd bug.
+
 ## 0.575.0 (2026-07-02) - Fix: unset follows bash dynamic-scope value-stack semantics (appraisal #15 Tier 1, Cluster D1)
 - FIX (HIGH). Reappraisal #15 cluster D1 — `unset` did not honor bash's
   per-name dynamic-scope value stack. `unset_variable` (`psh/core/scope.py`)

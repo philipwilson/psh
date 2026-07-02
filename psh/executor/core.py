@@ -401,8 +401,11 @@ class ExecutorVisitor(ASTVisitor[int]):
         from ..expansion.arithmetic import evaluate_arithmetic
 
         try:
-            # Apply redirections if any
-            with self.io_manager.with_redirections(node.redirects):
+            # Apply redirections if any (a bad target prints bash's diagnostic
+            # and yields False, so the arithmetic does not run — status 1).
+            with self.io_manager.guarded_redirections(node.redirects) as applied:
+                if not applied:
+                    return 1
                 result = evaluate_arithmetic(node.expression, self.shell)
                 # Bash behavior: exit 0 if expression is true (non-zero)
                 # exit 1 if expression is false (zero)
@@ -440,9 +443,13 @@ class ExecutorVisitor(ASTVisitor[int]):
         from ..expansion.arithmetic import ShellArithmeticError
         from .enhanced_test_evaluator import TestExpressionEvaluator
 
-        # with_redirections also owns any process substitutions used as
-        # redirect targets (cleaned up when the statement finishes).
-        with self.io_manager.with_redirections(node.redirects):
+        # guarded_redirections also owns any process substitutions used as
+        # redirect targets (cleaned up when the statement finishes). A bad
+        # redirect target prints bash's diagnostic and yields False, so the
+        # test does not run — status 1, `|| fallback` runs.
+        with self.io_manager.guarded_redirections(node.redirects) as applied:
+            if not applied:
+                return 1
             try:
                 evaluator = TestExpressionEvaluator(self.shell)
                 result = evaluator.evaluate(node.expression)

@@ -104,6 +104,16 @@ def with_redirections(self, redirects: List[Redirect]):
         self.restore_redirections(saved_fds)
 ```
 
+`guarded_redirections` is the redirect-error chokepoint for the in-process
+COMPOUND commands (brace group, `if`/`for`/`while`/`until`/`case`, `[[ ]]`,
+`(( ))`). It wraps `with_redirections` but turns a redirect SETUP failure
+into bash's `psh: TARGET: STRERROR` diagnostic and yields `False` (so the
+caller skips the body and returns 1 — `|| fallback` runs, `set -e` still
+aborts). The one message shape is `format_redirect_error()`, shared by the
+simple-command, subshell and function-call redirect-failure sites too, so
+they no longer diverge (appraisal #15 C3). Only the setup is guarded — a
+body exception is not misreported as a redirect error.
+
 ### 3. File Descriptor Backup/Restore
 
 ```python
@@ -196,11 +206,17 @@ universe — the full design rationale is the module docstring of
 
 | Redirect | Universe | Helper |
 |----------|----------|--------|
-| `>`, `>>`, `>|`, `&>` to fd 1/2 | stream swap | `_builtin_redirect_output_file`, `_builtin_redirect_combined` |
-| `2>&1`, `1>&2` | stream swap (`sys.stderr = sys.stdout`) | `_builtin_redirect_dup` |
+| `>`, `>>`, `>|`, `&>` to fd 1/2 | BOTH (stream swap for the builtin's own writes, dup2 of fd 1/2 sharing the file's description for children it spawns — `eval`/`source`/`command` running an external) | `_builtin_redirect_output_file`, `_builtin_redirect_combined` (fd half via `_dup_output_fd_for_children`) |
+| `2>&1`, `1>&2` | BOTH (`sys.stderr = sys.stdout` for the builtin, dup2 of fd 2/1 for children) | `_builtin_redirect_dup` |
 | `<`, `<>`, heredoc, here-string | BOTH (stream for the builtin, dup2 of fd 0 for children it spawns) | `_builtin_redirect_stdin` |
 | `1>&m`, `2>&m` (m >= 3), e.g. `echo x >&3` | BOTH (dup2 for children, stream onto a dup of m's description for the builtin — sys.stdout may be a swapped file object not backed by fd 1) | `_builtin_redirect_dup` |
 | dups of fd >= 3 (`3>&1`), `>&-` | fd level | `_builtin_redirect_fd_level` |
+
+The fd-level half is per-command (dup saved on the frame, restored when the
+command finishes); only `exec` rewrites fds permanently. This is why
+`command ls > /dev/null`, `eval "cmd | cmd" > f`, and `source f 2>/dev/null`
+now redirect the children the builtin spawns, not just the builtin's own
+Python-stream writes (appraisal #15 C1).
 
 ```
 1. frame = setup_builtin_redirections()

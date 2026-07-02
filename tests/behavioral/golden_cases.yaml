@@ -1035,6 +1035,77 @@
   stderr: "hello"
   exit_code: 0
 
+# Cluster C1 (appraisal #15): a redirect on an in-process builtin reaches
+# the children it spawns (external command / pipeline / sourced file).
+- name: redirect_command_external_devnull_no_leak
+  command: 'command ls / > /dev/null; echo done'
+  stdout: "done\n"
+  stderr: ""
+  exit_code: 0
+
+- name: redirect_eval_external_stderr_suppressed
+  command: 'eval "ls /nonexistent_zz" 2>/dev/null; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: redirect_command_builtin_pipe
+  command: 'command echo hi | cat'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# Cluster C3 (appraisal #15): a bad redirect target on a compound command
+# prints a diagnostic, does NOT run the body, fails with status 1 (so
+# `|| fallback` runs) and restores the shell's fds — matching bash.
+- name: redirect_compound_brace_bad_fallback
+  command: '{ echo a; } > /nonexistent_zz/x || echo fallback'
+  stdout: "fallback\n"
+  stderr: "/nonexistent_zz/x"
+  exit_code: 0
+
+- name: redirect_compound_if_bad_fallback
+  command: 'if true; then echo a; fi > /nonexistent_zz/x || echo fallback'
+  stdout: "fallback\n"
+  stderr: "/nonexistent_zz/x"
+  exit_code: 0
+
+- name: redirect_compound_for_bad_fallback
+  command: 'for i in 1 2; do echo $i; done > /nonexistent_zz/x || echo fallback'
+  stdout: "fallback\n"
+  stderr: "/nonexistent_zz/x"
+  exit_code: 0
+
+- name: redirect_compound_dbracket_bad_fallback
+  command: '[[ 1 == 1 ]] > /nonexistent_zz/x || echo fallback'
+  stdout: "fallback\n"
+  stderr: "/nonexistent_zz/x"
+  exit_code: 0
+
+- name: redirect_compound_arith_bad_fallback
+  command: '(( 1 + 1 )) > /nonexistent_zz/x || echo fallback'
+  stdout: "fallback\n"
+  stderr: "/nonexistent_zz/x"
+  exit_code: 0
+
+- name: redirect_compound_case_bad_fallback
+  command: 'case x in x) echo a;; esac > /nonexistent_zz/x || echo fallback'
+  stdout: "fallback\n"
+  stderr: "/nonexistent_zz/x"
+  exit_code: 0
+
+- name: redirect_compound_brace_bad_status_one
+  command: '{ echo a; } > /nonexistent_zz/x; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: "/nonexistent_zz/x"
+  exit_code: 0
+
+- name: redirect_compound_bad_in_if_condition
+  command: 'if { echo a; } > /nonexistent_zz/x; then echo then; else echo else; fi'
+  stdout: "else\n"
+  stderr: "/nonexistent_zz/x"
+  exit_code: 0
+
 # =============================================================================
 # TEST EXPRESSIONS
 # =============================================================================

@@ -52,8 +52,15 @@ class CommandBuiltin(Builtin):
             # Check if it's a builtin first
             builtin_obj = shell.builtin_registry.get(command_name)
             if builtin_obj is not None:
-                # Execute builtin directly
-                return builtin_obj.execute(command_args, shell)
+                # Run the builtin through the shared guard (uniform
+                # broken-pipe / OSError / defect handling and BuiltinContext),
+                # bypassing only the function lookup `command` is meant to skip.
+                # Any `> file` redirect on the `command ...` word is already
+                # applied around this builtin by the executor (fd + stream), so
+                # the guarded builtin — and anything it spawns — sees it.
+                from ..executor.strategies import execute_builtin_guarded
+                return execute_builtin_guarded(
+                    builtin_obj, command_name, command_args[1:], shell)
             else:
                 # Execute external command
                 return self._execute_external_command(command_name, command_args, shell)
@@ -196,8 +203,12 @@ class BuiltinBuiltin(Builtin):
         if target is None:
             self.error(f"{name}: not a shell builtin", shell)
             return 1
-        # Run with the builtin's own name as argv[0]
-        return target.execute(args[1:], shell)
+        # Run through the shared guard (uniform broken-pipe / OSError / defect
+        # handling), with the builtin's own name as argv[0]. Any redirect on
+        # the `builtin ...` word is already applied around this builtin by the
+        # executor.
+        from ..executor.strategies import execute_builtin_guarded
+        return execute_builtin_guarded(target, name, args[2:], shell)
 
     @property
     def help(self) -> str:
