@@ -2494,3 +2494,69 @@
   stdout: "if\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# COMMAND SUBSTITUTION vs ERREXIT (reappraisal #15 F1)
+# bash clears set -e in $( ) / ` ` children unless POSIX mode or
+# shopt -s inherit_errexit; ( ) subshells and <(...) inherit it.
+# =============================================================================
+
+- name: cmdsub_resets_errexit
+  command: 'set -e; x=$(false; echo hi); echo "x=$x after"'
+  stdout: "x=hi after\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cmdsub_backticks_reset_errexit
+  command: 'set -e; x=`false; echo hi`; echo "x=$x after"'
+  stdout: "x=hi after\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cmdsub_child_dollar_dash_loses_e
+  command: 'set -e; x=$(echo $-); case $x in *e*) echo has_e;; *) echo no_e;; esac'
+  stdout: "no_e\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cmdsub_status_still_drives_parent_errexit
+  command: 'set -e; x=$(false; echo hi; exit 5); echo "x=$x after"'
+  stdout: ""
+  stderr: ""
+  exit_code: 5
+
+- name: cmdsub_inherit_errexit_child_aborts
+  command: 'shopt -s inherit_errexit; set -e; x=$(false; echo hi); echo "x=$x after"'
+  stdout: ""
+  stderr: ""
+  exit_code: 1
+
+- name: cmdsub_posix_mode_keeps_errexit
+  command: 'set -o posix; set -e; x=$(false; echo hi); echo "x=$x after"'
+  stdout: ""
+  stderr: ""
+  exit_code: 1
+
+- name: cmdsub_errexit_suppression_crosses_fork
+  command: 'set -e; if x=$(set -e; false; echo no); then echo "t:$x"; else echo f; fi; echo after'
+  stdout: "t:no\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subshell_still_inherits_errexit
+  command: 'set -e; (false; echo no); echo after'
+  stdout: ""
+  stderr: ""
+  exit_code: 1
+
+- name: procsub_still_inherits_errexit
+  command: 'set -e; cat <(false; echo hi); echo after'
+  stdout: "after\n"
+  stderr: ""
+  exit_code: 0
+
+- name: procsub_errexit_suppression_crosses_fork
+  command: 'set -e; if cat <(false; echo hi); then echo t; fi; echo after'
+  stdout: "hi\nt\nafter\n"
+  stderr: ""
+  exit_code: 0

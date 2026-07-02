@@ -32,7 +32,7 @@ EXPECTED_OPTIONS = {
     "histexpand", "history", "emacs", "vi", "parser-mode",
     # shopt
     "dotglob", "nullglob", "failglob", "extglob", "nocaseglob", "nocasematch",
-    "globstar", "checkhash", "expand_aliases",
+    "globstar", "inherit_errexit", "checkhash", "expand_aliases",
     # internal (shell-set)
     "interactive", "stdin_mode", "command_mode",
 }
@@ -67,7 +67,8 @@ def test_short_to_long_map():
 def test_shopt_option_names():
     assert set(SHOPT_OPTION_NAMES) == {
         "dotglob", "nullglob", "failglob", "extglob", "nocaseglob",
-        "nocasematch", "globstar", "checkhash", "expand_aliases",
+        "nocasematch", "globstar", "inherit_errexit", "checkhash",
+        "expand_aliases",
     }
 
 

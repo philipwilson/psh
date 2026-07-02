@@ -84,10 +84,17 @@ class CommandSubstitution:
             # Child: run_child_shell owns the generic child-process work
             # (signal policy, child Shell, exception -> exit-code mapping,
             # stream flush, os._exit). We supply the fd plumbing and body.
+            # bash clears set -e in command-substitution children (unlike
+            # ( ) subshells and process substitutions, which inherit it)
+            # unless POSIX mode or `shopt -s inherit_errexit` asks
+            # otherwise: `set -e; x=$(false; echo hi)` sets x=hi.
+            opts = self.state.options
             run_child_shell(
                 self.shell,
                 lambda child: child.run_command(command, add_to_history=False),
                 io_setup=lambda: self._child_io_setup(read_fd, write_fd),
+                reset_errexit=not (opts.get('inherit_errexit')
+                                   or opts.get('posix')),
                 error_label='command substitution',
             )
         else:
