@@ -2207,3 +2207,37 @@
   stdout: "rc=0\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# READ REMAINDER — last variable gets the raw rest of the line (appraisal #15 B4)
+# =============================================================================
+
+- name: read_remainder_preserves_interior_whitespace
+  command: "printf '  a  b  c \\n' | { read x y; echo \"[$x][$y]\"; }"
+  stdout: "[a][b  c]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: read_remainder_keeps_trailing_double_delim
+  command: "printf 'x:y::\\n' | { IFS=: read a b; echo \"[$a][$b]\"; }"
+  stdout: "[x][y::]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: read_remainder_drops_single_trailing_delim
+  command: "printf 'x:y:\\n' | { IFS=: read a b; echo \"[$a][$b]\"; }"
+  stdout: "[x][y]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: read_remainder_single_var_drops_lone_trailing_delim
+  command: "printf 'x:\\n' | { IFS=: read a; echo \"[$a]\"; }"
+  stdout: "[x]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: read_remainder_mixed_ifs_verbatim
+  command: "printf 'a  :  b  :  c\\n' | { IFS=': ' read x y; echo \"[$x][$y]\"; }"
+  stdout: "[a][b  :  c]\n"
+  stderr: ""
+  exit_code: 0

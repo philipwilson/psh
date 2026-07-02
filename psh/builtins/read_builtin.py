@@ -154,21 +154,16 @@ class ReadBuiltin(Builtin):
                 # Array assignment: always split on IFS
                 fields = self._split_with_ifs(chars, ifs)
                 self._assign_to_array(fields, options['array_name'], shell)
-            elif len(var_names) == 1:
-                # Single variable: trim leading/trailing IFS whitespace only
-                # (but not backslash-protected whitespace). Don't split.
-                # Exception: a defaulted REPLY (no var names given) keeps the
-                # whole line untrimmed, matching bash.
-                if options.get('default_reply'):
-                    trimmed = chars
-                else:
-                    ifs_whitespace = set(c for c in ifs if c in ' \t\n')
-                    trimmed = self._trim_ifs_whitespace(chars, ifs_whitespace)
+            elif options.get('default_reply'):
+                # A defaulted REPLY (no var names given) gets the whole
+                # line, untrimmed and unsplit, matching bash.
                 shell.state.set_variable(
-                    var_names[0], ''.join(c for c, _ in trimmed))
+                    var_names[0], ''.join(c for c, _ in chars))
             else:
-                # Multiple variables: split based on IFS
-                fields = self._split_with_ifs(chars, ifs)
+                # Split into at most len(var_names) fields; the last field
+                # is the raw remainder of the line (bash read semantics).
+                fields = self._split_with_ifs(
+                    chars, ifs, max_fields=len(var_names))
                 self._assign_to_variables(fields, var_names, shell)
 
             # Exit 1 when input ended before the delimiter (bash), even though
@@ -246,19 +241,8 @@ class ReadBuiltin(Builtin):
                 i += 1
         return result
 
-    @staticmethod
-    def _trim_ifs_whitespace(chars: List[Tuple[str, bool]],
-                             ifs_whitespace: set) -> List[Tuple[str, bool]]:
-        """Trim leading/trailing unprotected IFS-whitespace pairs."""
-        start = 0
-        end = len(chars)
-        while start < end and not chars[start][1] and chars[start][0] in ifs_whitespace:
-            start += 1
-        while end > start and not chars[end - 1][1] and chars[end - 1][0] in ifs_whitespace:
-            end -= 1
-        return chars[start:end]
-
-    def _split_with_ifs(self, chars: List[Tuple[str, bool]], ifs: str) -> List[str]:
+    def _split_with_ifs(self, chars: List[Tuple[str, bool]], ifs: str,
+                        max_fields: Optional[int] = None) -> List[str]:
         """Split (char, protected) pairs on IFS (Internal Field Separator).
 
         Rules:
@@ -267,6 +251,14 @@ class ReadBuiltin(Builtin):
         3. Multiple consecutive IFS whitespace characters count as one separator
         4. Non-whitespace IFS characters are always separators
         5. Backslash-protected characters are never separators (bash)
+
+        With ``max_fields`` (variable assignment, as opposed to ``read -a``),
+        at most that many fields are produced and the LAST one is the raw
+        remainder of the line — interior delimiters and spacing preserved
+        verbatim, trailing unprotected IFS whitespace stripped. Exception,
+        exactly as in bash's read builtin: when extracting one more word plus
+        its delimiter would consume the remainder entirely, the last field is
+        just that word (so ``x:y:`` gives ``y`` but ``x:y::`` gives ``y::``).
         """
         if not ifs:
             # No IFS, return entire line as one field
@@ -299,6 +291,8 @@ class ReadBuiltin(Builtin):
             i += 1
 
         while i < n:
+            field_start = i
+
             # Accumulate a field up to the next unprotected IFS character.
             field: List[str] = []
             while i < n and not is_ws(i) and not is_nonws(i):
@@ -315,6 +309,16 @@ class ReadBuiltin(Builtin):
                 while i < n and is_ws(i):
                     i += 1
 
+            # Last variable with input left over: it takes the raw remainder
+            # (from the start of its word, minus trailing unprotected IFS
+            # whitespace) instead of just the word extracted above.
+            if max_fields is not None and len(fields) == max_fields and i < n:
+                end = n
+                while end > field_start and is_ws(end - 1):
+                    end -= 1
+                fields[-1] = ''.join(c for c, _ in chars[field_start:end])
+                break
+
         # No fields (empty / all-whitespace input) reads as one empty field.
         if not fields:
             fields = ['']
@@ -322,30 +326,14 @@ class ReadBuiltin(Builtin):
         return fields
 
     def _assign_to_variables(self, fields: List[str], var_names: List[str], shell: 'Shell'):
-        """Assign fields to variables.
+        """Assign fields to variables positionally.
 
-        Rules:
-        1. Each field is assigned to corresponding variable
-        2. If more fields than variables, last variable gets all remaining fields
-        3. If fewer fields than variables, extra variables are set to empty string
+        The splitter (called with ``max_fields``) already folded any extra
+        input into the last field as the raw remainder; variables beyond
+        the available fields are set to the empty string.
         """
         for i, var_name in enumerate(var_names):
-            if i < len(fields):
-                if i == len(var_names) - 1 and i < len(fields) - 1:
-                    # Last variable - assign all remaining fields joined by first IFS char
-                    ifs = shell.state.variables.get('IFS', shell.env.get('IFS', ' \t\n'))
-                    if ifs:
-                        sep = ifs[0]
-                    else:
-                        sep = ' '
-                    value = sep.join(fields[i:])
-                else:
-                    # Normal assignment
-                    value = fields[i]
-            else:
-                # No more fields - set to empty
-                value = ''
-
+            value = fields[i] if i < len(fields) else ''
             shell.state.set_variable(var_name, value)
 
     def _assign_to_array(self, fields: List[str], array_name: str, shell: 'Shell'):
