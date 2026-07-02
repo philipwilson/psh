@@ -4,6 +4,49 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.578.0 (2026-07-02) - Fix: formatter round-trip cluster J — time, heredoc trailers, arrays, [[ ]] parens, for-no-in, $'..' in assignment (appraisal #15 Tier 1, Cluster J)
+- FIX (HIGH). Reappraisal #15 cluster J closes six ways `--format` silently
+  emitted a DIFFERENT program. All now round-trip (verified vs bash 5.2 over a
+  truth table + corpus: `--format` succeeds, output reparses, formatting is
+  idempotent, and original/formatted scripts produce identical stdout/stderr/rc).
+  - **J1 `time`/`time -p` dropped.** `visit_Pipeline` never read
+    `Pipeline.timed`/`time_posix`, and `--format -c time` crashed (IndexError on
+    the empty timed pipeline). Emit the `time [-p]` prefix (bash order
+    `[time [-p]] [!]`), handle the empty-commands case, and surface the fields in
+    the debug AST visitor.
+  - **J2 heredoc trailers misplaced/dropped.** The five scattered trailer
+    rendering sites are consolidated into ONE seam: a command REGISTERS its
+    heredoc body+delimiter (`_register_heredocs`) and the physical-line boundary
+    FLUSHES them (`_flush_line`). Fixes `cat <<EOF && echo x` (was `EOF && echo x`
+    on the delimiter line), if/while conditions (was `EOF; then`), and heredocs on
+    `[[ ]]`/`(( ))` (were dropped — now route through the shared
+    `_append_redirects`). The v0.547 pipeline cases stay fixed.
+  - **J3 array assignments corrupted values.** `visit_ArrayInitialization`/
+    `visit_ArrayElementAssignment` re-wrapped flat element strings in the legacy
+    quote sidecar. Render from the Word layer via `_format_word`, so `a=($'x\ty')`,
+    `a[3]=$'x\ty'`, `a=("x\"y")`, and `m=([k]="v 1")` round-trip; argument-position
+    `declare -A m=(...)` renders from its array_init element Words too.
+  - **J4 `[[ ]]` grouping parens never re-emitted.** `[[ ( a || b ) && c ]]`
+    flattened to `[[ a || b && c ]]`, flipping the rc. Parenthesize a compound
+    operand whose operator binds looser than the context.
+  - **J5 `for x; do`/`select x; do` implicit list rendered UNQUOTED** (`in $@`),
+    changing word splitting. Render the item Words the parser already stores (the
+    implicit `"$@"`), preserving quoting.
+  - **J6 (lexer root) `$'...'` lost quote context in assignment/concatenation.**
+    The literal recognizer decoded it inline into a flat, quote-less WORD, so
+    `v=$'l1\nl2'` formatted to a value that re-ran `l2` as a command. Removing the
+    inline ANSI-C special case lets `$'...'` end the literal like any quote — it
+    lexes as its own `$'`-typed STRING token and the parser re-joins adjacent
+    tokens into one composite Word (mirroring `"..."`). Runtime value is unchanged;
+    only the lost metadata is restored. Bonus: a quote in an assignment NAME
+    (`v$'a'=x`) now correctly makes the word a command, not an assignment.
+  - Probes pinned in `tests/behavioral/golden_cases.yaml` (`--compare-bash`
+    clean); the lexer-stream corpus rows affected by J6 were re-verified against
+    bash and regenerated. Deliberate remaining divergences (Tier 2 parser
+    findings): `! time cmd` is a psh parse error, and sole-statement
+    `time <compound>` drops timing at runtime — the formatter round-trips whatever
+    AST it is given.
+
 ## 0.577.0 (2026-07-02) - Fix: flat-string AST sweep — case subject, [[ ]] unary operand, here-string carry Words (appraisal #15 Tier 1, Cluster G1)
 - FIX (HIGH). Reappraisal #15 cluster G1 retires the flat-string-AST defect
   family: three sites that flattened a parsed Word into a string and then
