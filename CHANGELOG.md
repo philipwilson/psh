@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.579.0 (2026-07-02) - Fix: run EXIT trap on untrapped fatal-signal death (appraisal #15 Tier 1, Cluster F3)
+- FIX (HIGH). Reappraisal #15 cluster F3. A non-interactive psh dying from an
+  untrapped fatal signal (SIGTERM/SIGHUP/SIGINT/SIGQUIT) now runs its EXIT trap
+  before dying, then restores the default disposition and re-raises the signal
+  so the parent sees a true 128+N wait status — matching bash. Previously psh
+  died silently at rc=143 (etc.) without running the trap.
+  - **Routed through the existing idempotent EXIT-trap chokepoint.** The
+    signal-death path now reuses `TrapManager.execute_exit_trap()` — the same
+    firing `SourceProcessor.execute_as_main` uses on the EOF / `set -e` / `exit`
+    paths — so the trap fires exactly once with no duplicated logic. Buffered
+    stdout/stderr are flushed before the `os.kill` re-raise (which bypasses
+    CPython's atexit flush and would otherwise drop the trap's output).
+  - **Non-interactive disposition matches bash.** SIGQUIT is ignored (bash's
+    default disposition for a non-interactive shell); INT/TERM/HUP terminate and
+    fire the EXIT trap. The interactive REPL keeps its own fatal-signal behavior.
+  - **Signal death always wins over the EXIT trap body.** A follow-up ensures
+    that when the EXIT trap itself calls `exit N`, the escaping `SystemExit` (or
+    any other exception from the body) is swallowed so it can no longer bypass
+    the restore-default + re-raise — the parent still sees the 128+N signal
+    death, as in bash. The trap still fires exactly once (idempotency flag is
+    set before the body runs).
+  - Covers script, `-c`, and piped-stdin modes; substitution/subshell children
+    continue to fire their own EXIT traps.
+  - **Deliberate remaining divergences (all pre-existing / out of scope):**
+    (a) a signal-trap whose body calls `exit` does not additionally fire the
+    EXIT trap (bash runs both); (b) untrapped SIGUSR1/USR2 do not fire the EXIT
+    trap (psh installs non-interactive handlers only for INT/TERM/HUP/QUIT);
+    (c) SIGINT delivered while a foreground external command runs is not masked
+    by psh as bash masks it (a deeper pre-existing job-control item).
+
 ## 0.578.0 (2026-07-02) - Fix: formatter round-trip cluster J — time, heredoc trailers, arrays, [[ ]] parens, for-no-in, $'..' in assignment (appraisal #15 Tier 1, Cluster J)
 - FIX (HIGH). Reappraisal #15 cluster J closes six ways `--format` silently
   emitted a DIFFERENT program. All now round-trip (verified vs bash 5.2 over a
