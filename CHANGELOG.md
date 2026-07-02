@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.566.0 (2026-07-02) - Fix: read gives the last variable the raw remainder (appraisal #15 Tier 1, B4)
+- FIX (HIGH). Reappraisal #15 cluster B4 — with more fields than variables,
+  `read` re-joined the leftover fields with IFS[0], collapsing interior
+  whitespace runs (`read x y` on `  a  b  c ` gave y=`b c` instead of
+  `b  c`) and dropping repeated non-whitespace delimiters (`IFS=: read a b`
+  on `x:y::` gave b=`y:` instead of `y::`).
+  - Now the last variable receives the raw remainder of the line per bash
+    read.def (`get_word_from_string`) semantics: interior delimiters and
+    spacing verbatim, trailing unprotected IFS whitespace stripped — EXCEPT
+    when extracting one more word plus its delimiter would consume the
+    remainder entirely, in which case the last variable gets just that word
+    (`x:y:` -> y=`y`, but `x:y::` -> y=`y::`).
+  - Chokepoint fix: `_split_with_ifs` grows a `max_fields` parameter and
+    `_assign_to_variables` becomes plain positional assignment. Unifying the
+    single-variable path through the same splitter also fixed the latent
+    single-variable analog (`IFS=: read a` on `x:` kept the trailing colon;
+    bash drops it) and retired the now-unused `_trim_ifs_whitespace` helper.
+    `read -a` and the `-d`/`-n`/`-N`/`-t` machinery are untouched.
+  - Verified against a 39-case bash 5.2 truth table (27/39 -> 39/39, no
+    deliberate divergences). Tests: 34 new unit tests
+    (`tests/unit/builtins/test_read_remainder.py`) + 5 golden bash-compare
+    pins in `tests/behavioral/golden_cases.yaml`.
+
 ## 0.565.0 (2026-07-01) - Fix: interactive history alias contract + lexer-driven cmdhist joining (appraisal #15 Tier 1, K1+K2)
 - FIX (HIGH). Reappraisal #15 cluster K1 — up-arrow/Ctrl-R were dead for any
   session starting with an EMPTY history (every fresh install): LineEditor did
