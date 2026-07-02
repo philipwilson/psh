@@ -124,6 +124,62 @@ class TestMultilineCommandSub:
         assert 'unclosed command substitution' in r.stderr
 
 
+class TestArithCmdsubDisambiguation:
+    """A `$((` with no matching `))` executes as `$(` + subshell (POSIX
+    disambiguation, bash parse.y): `echo $((echo a); echo b)` prints a b."""
+
+    def test_headline_fallback(self):
+        r = run_psh('echo $((echo a); echo b)')
+        assert r.returncode == 0 and r.stdout == 'a b\n' and r.stderr == ''
+
+    def test_headline_fallback_combinator_parser(self):
+        r = run_psh('echo $((echo a); echo b)', parser='combinator')
+        assert r.returncode == 0 and r.stdout == 'a b\n' and r.stderr == ''
+
+    def test_fallback_with_pipeline(self):
+        r = run_psh('echo $((echo one two) | wc -w)')
+        assert r.returncode == 0 and r.stdout.split() == ['2']
+
+    def test_fallback_in_assignment(self):
+        r = run_psh('x=$((echo u); echo host); echo $x')
+        assert r.returncode == 0 and r.stdout == 'u host\n'
+
+    def test_fallback_inside_double_quotes(self):
+        r = run_psh('echo "$((echo a); echo b)"')
+        assert r.returncode == 0 and r.stdout == 'a\nb\n'
+
+    def test_fallback_in_param_default(self):
+        r = run_psh('unset v; echo "${v:-$((echo a); echo b)}"')
+        assert r.returncode == 0 and r.stdout == 'a\nb\n'
+
+    def test_fallback_in_array_subscript(self):
+        r = run_psh('unset a; a[$((echo 3) )]=v; echo ${a[3]}')
+        assert r.returncode == 0 and r.stdout == 'v\n'
+
+    def test_true_arithmetic_unaffected(self):
+        r = run_psh('echo $((1+2)) $(( (1+2) * 3 )) $(( $((1+1)) + 1 ))')
+        assert r.returncode == 0 and r.stdout == '3 9 3\n'
+
+    def test_arithmetic_error_content_stays_arithmetic(self):
+        # Matching '))' means arithmetic even when evaluation fails (bash).
+        r = run_psh('echo $((echo a))')
+        assert r.returncode == 1 and r.stdout == '' and r.stderr != ''
+
+    def test_multiline_fallback_stdin(self):
+        # `$((echo a)` + newline: the next line decides — here it makes
+        # the construct a command substitution containing a subshell.
+        r = subprocess.run([sys.executable, '-m', 'psh'],
+                           input='echo $((echo a)\n)\n',
+                           capture_output=True, text=True)
+        assert r.returncode == 0 and r.stdout == 'a\n'
+
+    def test_multiline_arithmetic_still_gathers(self):
+        r = subprocess.run([sys.executable, '-m', 'psh'],
+                           input='echo $(( 1 +\n2 ))\n',
+                           capture_output=True, text=True)
+        assert r.returncode == 0 and r.stdout == '3\n'
+
+
 class TestUnsupportedFormsStillRejected:
     """Degenerate inputs keep failing (bash rejects them too)."""
 

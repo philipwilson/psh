@@ -652,6 +652,63 @@
   stderr: ""
   exit_code: 0
 
+# POSIX `$((` disambiguation (reappraisal #15 A4): arithmetic only when a
+# matching `))` closes it; otherwise re-read as `$(` command substitution
+# whose body starts with a subshell.
+- name: arith_fallback_subshell_cmdsub
+  command: 'echo $((echo a); echo b)'
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_fallback_pipeline
+  command: 'echo $((echo one two) | wc -w)'
+  stdout: null
+  stderr: ""
+  exit_code: 0
+
+- name: arith_fallback_in_double_quotes
+  command: 'echo "$((echo a); echo b)"'
+  stdout: "a\nb\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_fallback_in_assignment
+  command: 'x=$((echo u); echo host); echo $x'
+  stdout: "u host\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_fallback_nested_cmdsub
+  command: 'echo $(echo $((echo a); echo b))'
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_fallback_param_default
+  command: 'unset v; echo "${v:-$((echo a); echo b)}"'
+  stdout: "a\nb\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_fallback_array_subscript
+  command: 'unset a; a[$((echo 3) )]=v; echo ${a[3]}'
+  stdout: "v\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_matching_parens_stay_arithmetic
+  command: 'echo $((ls)) $(( (1+2) * 3 )) $(( $((1+1)) + 1 ))'
+  stdout: "0 9 3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_explicit_space_subshell_form
+  command: 'echo $( (echo x) )'
+  stdout: "x\n"
+  stderr: ""
+  exit_code: 0
+
 # Command/loop arithmetic forms reconstruct expression text token-by-token and
 # must re-add the '$' the lexer strips from VARIABLE tokens (appraisal H2).
 - name: arith_command_form_positional
