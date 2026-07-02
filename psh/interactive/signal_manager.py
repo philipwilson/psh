@@ -126,25 +126,67 @@ class SignalManager(InteractiveComponent):
                     self.shell.trap_manager.queue_trap(signal_name)
                     return
 
-        # No trap set, use default behavior
+        # No trap set. In a non-interactive shell, match bash's default
+        # disposition for the signal; a live interactive REPL keeps its own.
         if signum == signal.SIGINT:
             self._handle_sigint(signum, frame)
+        elif self._in_noninteractive_shell():
+            # bash never terminates a non-interactive shell on an untrapped
+            # SIGQUIT (its default disposition there is "ignore"); every other
+            # signal here terminates it — run the EXIT trap, then re-raise.
+            if signum != signal.SIGQUIT:
+                self._terminate_from_signal(signum)
         else:
-            # For other signals, use default behavior
+            # Interactive REPL: preserve existing re-raise behavior.
             self._signal_registry.register(signum, signal.SIG_DFL, "SignalManager:default")
             os.kill(os.getpid(), signum)
 
+    def _in_noninteractive_shell(self) -> bool:
+        """True for a non-interactive whole-shell run (script file, ``-c``
+        string, or piped stdin) — everything that runs through
+        ``execute_as_main`` rather than the live interactive REPL.
+
+        ``is_script_mode`` covers script files and ``-c``; piped stdin has it
+        unset but is still non-interactive, so also treat "not interactive" as
+        non-interactive. The interactive REPL (``interactive`` set,
+        ``is_script_mode`` clear) is the one case that keeps its own
+        fatal-signal behavior (out of scope for the EXIT-trap-on-signal fix).
+        """
+        return (self.state.is_script_mode
+                or not self.state.options.get('interactive', False))
+
     def _handle_sigint(self, signum, frame):
         """Handle Ctrl-C (SIGINT) default behavior."""
-        if self.state.is_script_mode:
-            # In script mode, SIGINT should terminate the script
-            self._signal_registry.register(signum, signal.SIG_DFL, "SignalManager:default")
-            os.kill(os.getpid(), signum)
+        if self._in_noninteractive_shell():
+            # Non-interactive: SIGINT terminates the shell — run the EXIT trap,
+            # then re-raise so the parent sees a true signal death.
+            self._terminate_from_signal(signum)
         else:
             # In interactive mode, just print a newline - the command loop will handle the rest
             print()
             # The signal will be delivered to the foreground process group
             # which is set in execute_pipeline
+
+    def _terminate_from_signal(self, signum: int) -> None:
+        """Die from an untrapped fatal signal the way bash does (non-interactive).
+
+        Runs the EXIT trap exactly once — reusing the idempotent firing in
+        TrapManager, the same one ``execute_as_main`` uses on the EOF /
+        ``set -e`` / ``exit`` paths, so there is no duplicate logic and no
+        double firing. Then flush buffered output (the ``os.kill`` below
+        bypasses CPython's atexit flush, which would otherwise drop the
+        trap's stdout), restore the signal's default disposition, and
+        re-raise it so the parent's wait status is a genuine signal death
+        (128+N) rather than a normal exit.
+        """
+        self.shell.trap_manager.execute_exit_trap()
+        for stream in (self.state.stdout, self.state.stderr):
+            try:
+                stream.flush()
+            except (OSError, ValueError, AttributeError):
+                pass
+        self._signal_registry.register(signum, signal.SIG_DFL, "SignalManager:default")
+        os.kill(os.getpid(), signum)
 
     def _handle_sigchld(self, signum, frame):
         """Minimal signal handler - just notify main loop.

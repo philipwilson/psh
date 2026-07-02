@@ -10,10 +10,20 @@ Three other exit paths silently dropped it:
 Now a single chokepoint (`SourceProcessor.execute_as_main`) fires it on EOF and
 on a recovered SystemExit, and the background-subshell body fires its own.
 Verified against bash 5.2.
+
+reappraisal #15 F3 adds the FOURTH dropped path: death from an untrapped fatal
+signal (SIGTERM/SIGHUP/SIGINT). The script-mode signal handler used to re-raise
+the signal without running the EXIT trap, so `psh script.sh &; kill %1` died
+silently while bash ran the trap. `SignalManager._terminate_from_signal` now
+reuses the same idempotent chokepoint before re-raising. See
+`TestExitTrapOnFatalSignal`.
 """
 
+import os
+import signal
 import subprocess
 import sys
+import time
 
 
 def _run(argv, stdin=None):
@@ -157,3 +167,159 @@ class TestExitTrapSubstitutionChildren:
         # Subshells reset inherited traps; only the parent fires "parent".
         r = run_psh_c('trap "echo parent" EXIT; x=$(echo hi); echo "x=$x"')
         assert r.stdout == "x=hi\nparent\n"
+
+
+def _spawn_and_signal(argv, sig, delay=1.0, timeout=20):
+    """Start a shell, deliver `sig` to its PID once it is in the sleep, and
+    return (stdout, stderr, returncode). A negative returncode is -signum
+    (WIFSIGNALED); >=0 is a normal exit code.
+
+    The signal goes to the shell PID only (not its process group), so the
+    foreground `sleep` child is untouched — exactly the F3 probe: a fatal
+    signal aimed at the shell itself. `communicate` blocks until EOF, which
+    the orphaned sleep releases when it finishes; the shell's own death is
+    captured in `returncode`.
+    """
+    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True)
+    time.sleep(delay)
+    try:
+        os.kill(proc.pid, sig)
+    except ProcessLookupError:
+        pass
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        out, err = proc.communicate()
+        out += "\n[TIMEOUT]"
+    return out, err, proc.returncode
+
+
+def _psh_script_signal(tmp_path, script, sig, **kw):
+    path = tmp_path / "sig.sh"
+    path.write_text(script)
+    return _spawn_and_signal([sys.executable, '-m', 'psh', str(path)], sig, **kw)
+
+
+def _bash_script_signal(tmp_path, script, sig, **kw):
+    path = tmp_path / "sig_bash.sh"
+    path.write_text(script)
+    return _spawn_and_signal(['bash', str(path)], sig, **kw)
+
+
+class TestExitTrapOnFatalSignal:
+    """reappraisal #15 F3: an untrapped fatal signal must run the EXIT trap
+    before the shell dies, and the shell must still die BY the signal
+    (128+N wait status) so its parent sees a genuine signal death.
+
+    Regression: psh used to die silently on SIGTERM/SIGHUP/SIGINT — the
+    v0.540 EXIT-trap chokepoint covered EOF/`set -e`/`exit` but not the
+    signal path. Pinned to bash 5.2. (Signals are delivered to a live
+    process, so these cannot be golden_cases entries — that harness only
+    diffs command stdout/exit codes.)
+
+    Auto-marked ``serial`` by the ``job_control/`` path (kills/waits on
+    processes — xdist-unsafe).
+    """
+
+    def test_sigterm_fires_exit_trap_then_dies_by_signal(self, tmp_path):
+        out, err, rc = _psh_script_signal(
+            tmp_path, 'trap "echo EXIT-TRAP-FIRED" EXIT\nsleep 3\n',
+            signal.SIGTERM)
+        assert out == "EXIT-TRAP-FIRED\n"
+        assert rc == -signal.SIGTERM  # WIFSIGNALED -> parent sees 128+15
+
+    def test_matches_bash_for_sigterm(self, tmp_path):
+        script = 'trap "echo EXIT-TRAP-FIRED" EXIT\nsleep 3\n'
+        p = _psh_script_signal(tmp_path, script, signal.SIGTERM)
+        b = _bash_script_signal(tmp_path, script, signal.SIGTERM)
+        assert (p[0], p[2]) == (b[0], b[2])
+
+    def test_sighup_fires_exit_trap_then_dies_by_signal(self, tmp_path):
+        out, err, rc = _psh_script_signal(
+            tmp_path, 'trap "echo BYE" EXIT\nsleep 3\n', signal.SIGHUP)
+        assert out == "BYE\n"
+        assert rc == -signal.SIGHUP
+
+    def test_dollar_question_inside_trap(self, tmp_path):
+        # $? inside the EXIT trap is 0 here (bash): the pending signal does
+        # not itself set $?, and the last-run command was the trap builtin.
+        out, err, rc = _psh_script_signal(
+            tmp_path, "trap 'echo status=$?' EXIT\nsleep 3\n", signal.SIGTERM)
+        assert out == "status=0\n"
+        assert rc == -signal.SIGTERM
+
+    def test_exit_trap_fires_exactly_once(self, tmp_path):
+        # The signal handler and execute_as_main share one idempotent
+        # chokepoint — the trap body must appear exactly once.
+        out, err, rc = _psh_script_signal(
+            tmp_path, 'trap "echo ONCE" EXIT\nsleep 3\n', signal.SIGTERM)
+        assert out.count("ONCE") == 1
+        assert rc == -signal.SIGTERM
+
+    def test_command_mode_fires_exit_trap(self, tmp_path):
+        # -c shares execute_as_main, so the same chokepoint fires.
+        out, err, rc = _spawn_and_signal(
+            [sys.executable, '-m', 'psh', '-c',
+             'trap "echo CBYE" EXIT; sleep 3'],
+            signal.SIGTERM)
+        assert out == "CBYE\n"
+        assert rc == -signal.SIGTERM
+
+    def test_stdin_mode_fires_exit_trap(self, tmp_path):
+        # Piped stdin is non-interactive too (is_script_mode is unset there),
+        # so the fatal-signal path must fire the EXIT trap for it as well.
+        script = 'trap "echo SBYE" EXIT\nsleep 3\n'
+        proc = subprocess.Popen(
+            [sys.executable, '-m', 'psh'], stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc.stdin.write(script)
+        proc.stdin.flush()
+        proc.stdin.close()
+        time.sleep(1.0)
+        os.kill(proc.pid, signal.SIGTERM)
+        out, err = proc.communicate(timeout=20)
+        assert out == "SBYE\n"
+        assert proc.returncode == -signal.SIGTERM
+
+    def test_signal_trap_takes_precedence_over_exit(self, tmp_path):
+        # A trap ON the signal runs and does NOT terminate the shell; the EXIT
+        # trap fires only at the eventual normal exit. Regression pin: this
+        # already worked and must keep working after the F3 fix.
+        script = ('trap "echo got-term" TERM\n'
+                  'trap "echo EXIT" EXIT\n'
+                  'sleep 3\n')
+        p = _psh_script_signal(tmp_path, script, signal.SIGTERM)
+        b = _bash_script_signal(tmp_path, script, signal.SIGTERM)
+        assert p[0] == "got-term\nEXIT\n"
+        assert p[2] == 0  # normal exit, NOT a signal death
+        assert (p[0], p[2]) == (b[0], b[2])
+
+    def test_signal_death_in_subshell_fires_both_exit_traps(self, tmp_path):
+        # The parent's EXIT trap AND the subshell's own EXIT trap both fire;
+        # the shell still dies by the signal (wave-1 e-adopt subshell-exit
+        # semantics preserved under a fatal signal).
+        script = ('trap "echo OUTER" EXIT\n'
+                  '( trap "echo INNER" EXIT; sleep 3 )\n'
+                  'echo after\n')
+        p = _psh_script_signal(tmp_path, script, signal.SIGTERM)
+        b = _bash_script_signal(tmp_path, script, signal.SIGTERM)
+        assert "OUTER" in p[0] and "INNER" in p[0]
+        assert "after" not in p[0]
+        assert p[2] == -signal.SIGTERM
+        assert (p[0], p[2]) == (b[0], b[2])
+
+    def test_sigint_running_own_code_fires_exit_trap(self, tmp_path):
+        # SIGINT delivered while the shell runs its OWN code (a builtin loop,
+        # no foreground external command) terminates it, running the EXIT trap
+        # and dying by SIGINT — matching bash. (During a foreground external
+        # command SIGINT is instead ignored by bash; psh does not yet
+        # replicate that fg-child masking — deeper job-control, out of F3.)
+        script = 'trap "echo INT-TRAP" EXIT\ni=0\nwhile :; do i=$((i+1)); done\n'
+        p = _psh_script_signal(tmp_path, script, signal.SIGINT, delay=0.6)
+        b = _bash_script_signal(tmp_path, script, signal.SIGINT, delay=0.6)
+        assert p[0] == "INT-TRAP\n"
+        assert p[2] == -signal.SIGINT
+        assert (p[0], p[2]) == (b[0], b[2])
