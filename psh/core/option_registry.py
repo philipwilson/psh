@@ -106,6 +106,9 @@ _SPECS = [
     _spec("nocaseglob", False, OptionCategory.SHOPT),
     _spec("nocasematch", False, OptionCategory.SHOPT),
     _spec("globstar", False, OptionCategory.SHOPT),
+    _spec("inherit_errexit", False, OptionCategory.SHOPT,
+          notes="command-substitution children keep set -e instead of "
+                "clearing it (bash 4.4+; POSIX mode also keeps it)"),
     _spec("checkhash", False, OptionCategory.SHOPT),
     _spec("expand_aliases", True, OptionCategory.SHOPT,
           notes="recognized no-op gate: psh always expands aliases (parse-time)"),

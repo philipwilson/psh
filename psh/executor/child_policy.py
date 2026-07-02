@@ -144,6 +144,7 @@ def run_child_shell(parent_shell: 'Shell',
                     norc: bool = True,
                     io_setup: Optional[Callable[[], None]] = None,
                     inherit_traps: bool = True,
+                    reset_errexit: bool = False,
                     error_label: str = 'forked child') -> NoReturn:
     """Run the body of a forked substitution child; never returns.
 
@@ -171,6 +172,15 @@ def run_child_shell(parent_shell: 'Shell',
        process-substitution children never list them (bash:
        `trap A USR1; cat <(trap)` prints nothing), unlike
        command-substitution children (the POSIX saved=$(trap) idiom).
+       Then the errexit policy: the errexit-IGNORED state of the forking
+       context (if/while condition, non-final && / || member, `!`)
+       crosses into the child — in bash the child is a memory copy, so
+       even `set -e` inside the body cannot re-arm aborting there —
+       seeded exactly as SubshellExecutor does for ( ) subshells. With
+       reset_errexit the errexit OPTION itself is additionally cleared:
+       bash resets set -e in command-substitution children (unless POSIX
+       mode or `shopt -s inherit_errexit`), while ( ) subshells and
+       process substitutions inherit it.
     4. exit_code = body(child_shell) — what THIS child does. A
        SystemExit (the exit builtin) maps to its code: substitutions
        run in a subshell, so exit must not unwind the parent's stack.
@@ -209,6 +219,15 @@ def run_child_shell(parent_shell: 'Shell',
         child_shell.trap_manager.sync_forked_child_dispositions()
         if not inherit_traps:
             child_shell.trap_manager.drop_inherited_traps()
+
+        # errexit across the fork (see docstring): the forking context's
+        # suppression count seeds the child's first executor, and command
+        # substitution additionally clears the option itself.
+        executor = parent_shell._current_executor
+        if executor is not None:
+            child_shell._errexit_suppress_seed = executor.context.errexit_suppress
+        if reset_errexit:
+            child_shell.state.options['errexit'] = False
 
         try:
             exit_code = body(child_shell)

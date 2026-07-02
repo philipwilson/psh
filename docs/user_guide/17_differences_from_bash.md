@@ -591,7 +591,7 @@ fi
 | getopts builtin | Yes | Yes | Full support |
 | printf builtin | Yes | Yes | Full support (incl. %q) |
 | pushd/popd/dirs | Yes | Yes | Full support |
-| shopt options | Yes | Partial | dotglob, nullglob, globstar, nocaseglob, extglob |
+| shopt options | Yes | Partial | dotglob, nullglob, globstar, nocaseglob, extglob, inherit_errexit |
 | Extended glob patterns | Yes | Yes | ?() *() +() @() !() (enable extglob before the line) |
 | read options | Yes | Partial | -r -d -p -t -n -s supported; -u not |
 | command history (`history`) | Yes | Yes | Listing past commands (interactive) |
@@ -675,6 +675,9 @@ set -euo pipefail
 # errexit honours the POSIX exemptions exactly as bash does:
 # if/while/until conditions, non-final && / || members, and ! negation
 # do not trigger an exit; subshells inherit set -e and $?.
+# Command substitutions clear set -e in the child, as in bash:
+# `set -e; x=$(false; echo hi)` sets x=hi. Use `shopt -s inherit_errexit`
+# (or POSIX mode) to keep set -e inside $(...).
 ```
 
 ## 17.7 Migration Guide
@@ -724,7 +727,7 @@ grep -E '!!|![0-9]' script.sh                 # history expansion
 # - Subshells with variable isolation
 # - Control structures in pipelines
 # - Here documents and here strings
-# - shopt: dotglob, nullglob, globstar, nocaseglob, extglob
+# - shopt: dotglob, nullglob, globstar, nocaseglob, extglob, inherit_errexit
 # - pushd, popd, dirs
 # - history builtin (interactive)
 # - mapfile / readarray (-d/-n/-O/-s/-t/-u)
