@@ -353,6 +353,34 @@ class TestPtyHistory:
         psh.send('\r')
         psh.expect('m_7')         # re-runs fully (old code recalled 'done')
 
+    def test_empty_history_up_arrow_recalls_first_command(self, tmp_path):
+        """A session that STARTS with an empty history (fresh HOME, no
+        .psh_history) must still wire up-arrow to commands recorded
+        during the session. Reappraisal #15 K1: ``history or []`` handed
+        the editor a PRIVATE list whenever state.history began empty, so
+        recall stayed dead all session on every fresh install (the
+        sibling recall test above is masked by the shared /tmp history
+        file)."""
+        env = {
+            'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
+            'HOME': str(tmp_path), 'TERM': 'xterm', 'PS1': 'PSH$ ',
+            'PYTHONUNBUFFERED': '1', 'PYTHONPATH': PSH_ROOT,
+        }
+        child = pexpect.spawn(
+            sys.executable, ['-u', '-m', 'psh', '--norc', '--force-interactive'],
+            timeout=10, encoding='utf-8', env=env)
+        try:
+            child.send('\r')
+            child.expect(PROMPT)
+            child.send('echo fresh_$((20+3))\r')
+            child.expect('fresh_23')
+            child.expect(PROMPT)
+            child.send('\x1b[A')      # up arrow: recall the only entry
+            child.send('\r')
+            child.expect('fresh_23')  # re-executed
+        finally:
+            child.close(force=True)
+
     def test_quoted_multiline_string_preserves_newline(self, psh):
         # bash keeps newlines that fall inside quotes verbatim in history
         psh.send('echo "one\r')

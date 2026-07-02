@@ -279,9 +279,22 @@ History has exactly ONE writer (v0.283): the source processor
 (`psh/scripting/source_processor.py`) calls `shell.add_history()` with the
 complete logical command — the line editor records nothing itself.
 `HistoryManager.add_to_history()` joins a multi-line command into its
-single-line `; ` form (bash cmdhist), except newlines inside quotes or
-heredocs are preserved verbatim. Recording happens before parsing, so
-syntactically invalid commands are still recallable for editing.
+single-line `; ` form via `convert_multiline_to_single()` (bash cmdhist).
+The joiner is lexer/parser-driven (reappraisal #15 K2): each newline is
+decided per-position — verbatim inside quotes, heredocs and unclosed
+expansions, spliced for backslash continuations, a space after tokens
+that reject a following `;` (`then`, `do`, `;;`, a case pattern's `)`,
+function-definition parens, ...), `; ` otherwise — pinned byte-for-byte
+to bash 5.2 by
+`tests/unit/test_line_editor_helpers.py`. Recording happens before
+parsing, so syntactically invalid commands are still recallable for
+editing.
+
+ALIAS CONTRACT (reappraisal #15 K1): the editor's `HistoryNavigator`
+holds the `state.history` list OBJECT for the whole session — every
+HistoryManager operation mutates it in place (slice assignment / `del`),
+never rebinds it, and the editor never substitutes a private list for an
+empty one. Pinned by `tests/unit/interactive/test_history_alias_contract.py`.
 
 ### Signal Handling
 

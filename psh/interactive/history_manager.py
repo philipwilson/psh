@@ -3,30 +3,11 @@ import fcntl
 import os
 from typing import TYPE_CHECKING, List
 
-from ..utils import contains_heredoc
 from .base import InteractiveComponent
 from .line_editor_helpers import convert_multiline_to_single
 
 if TYPE_CHECKING:
     from ..shell import Shell
-
-
-def _newline_inside_quotes(command: str) -> bool:
-    """True if any newline in *command* falls inside a quoted string."""
-    quote = None
-    escaped = False
-    for ch in command:
-        if escaped:
-            escaped = False
-        elif ch == '\\' and quote != "'":
-            escaped = True
-        elif quote is None and ch in ('"', "'"):
-            quote = ch
-        elif ch == quote:
-            quote = None
-        elif ch == '\n' and quote is not None:
-            return True
-    return False
 
 
 class HistoryManager(InteractiveComponent):
@@ -35,6 +16,13 @@ class HistoryManager(InteractiveComponent):
     The SOLE history writer is shell.add_history → add_to_history, fed by
     the source processor with the complete logical command (the line
     editor records nothing itself).
+
+    ALIAS CONTRACT: the line editor's HistoryNavigator holds a reference
+    to the ``state.history`` LIST OBJECT for the whole session, so every
+    operation here must mutate it in place — rebinding ``state.history``
+    to a new list silently disconnects up-arrow/Ctrl-R from all further
+    commands (reappraisal #15 K1). Pinned by
+    tests/unit/interactive/test_history_alias_contract.py.
 
     Persistence is concurrency-safe (v0.447): ``save_to_file`` appends only
     THIS session's new entries under an exclusive file lock, merging with
@@ -90,16 +78,16 @@ class HistoryManager(InteractiveComponent):
         hist = self.state.history
         removed_before_sync = sum(
             1 for i, h in enumerate(hist) if h == command and i < self._file_synced_len)
-        self.state.history = [h for h in hist if h != command]
+        hist[:] = [h for h in hist if h != command]
         self._file_synced_len = max(0, self._file_synced_len - removed_before_sync)
 
     def add_to_history(self, command: str) -> None:
         """Add a command to history.
 
         A multi-line command becomes ONE entry, joined into its
-        single-line ``; `` form like bash's cmdhist option — except
-        that newlines inside quoted strings or heredocs are preserved
-        verbatim, also matching bash.
+        single-line ``; `` form like bash's cmdhist option (the joiner
+        itself preserves newlines inside quoted strings, heredocs and
+        command substitutions verbatim, also matching bash).
 
         HISTCONTROL / HISTIGNORE filtering matches bash: by default EVERY line
         is recorded (no dedup); ``ignorespace`` drops a line beginning with a
@@ -113,8 +101,7 @@ class HistoryManager(InteractiveComponent):
         if 'ignorespace' in histcontrol and command[:1] == ' ':
             return
         if '\n' in command:
-            if not _newline_inside_quotes(command) and not contains_heredoc(command):
-                command = convert_multiline_to_single(command)
+            command = convert_multiline_to_single(command)
         # HISTIGNORE: drop lines matching any colon-separated glob pattern.
         if self._histignore_matches(command):
             return
@@ -134,7 +121,7 @@ class HistoryManager(InteractiveComponent):
         # tail).
         if len(self.state.history) > self.state.max_history_size:
             dropped = len(self.state.history) - self.state.max_history_size
-            self.state.history = self.state.history[-self.state.max_history_size:]
+            del self.state.history[:dropped]
             self._file_synced_len = max(0, self._file_synced_len - dropped)
 
     def load_from_file(self) -> None:
@@ -148,7 +135,7 @@ class HistoryManager(InteractiveComponent):
                             self.state.history.append(line)
                 # Trim to max size
                 if len(self.state.history) > self.state.max_history_size:
-                    self.state.history = self.state.history[-self.state.max_history_size:]
+                    del self.state.history[:-self.state.max_history_size]
         except OSError:
             # Silently ignore history file errors
             pass
