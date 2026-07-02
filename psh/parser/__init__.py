@@ -46,8 +46,21 @@ def parse(tokens, config=None):
     return Parser(tokens, config=config).parse()
 
 
-def parse_with_heredocs(tokens, heredoc_map):
-    """Parse tokens with heredoc content."""
+def parse_with_heredocs(tokens, heredoc_map, active_parser='rd'):
+    """Parse tokens with heredoc content using the selected implementation.
+
+    Args:
+        tokens: List of tokens (heredoc bodies absent; operator tokens carry
+            ``heredoc_key`` attributes linking them to ``heredoc_map``).
+        heredoc_map: Map of heredoc keys to ``{'content', 'quoted'}`` entries.
+        active_parser: ``'rd'`` for recursive descent (default),
+            ``'combinator'`` for the combinator parser.
+    """
+    if active_parser == 'combinator':
+        from .combinators.parser import ParserCombinatorShellParser
+
+        return ParserCombinatorShellParser(ParserConfig()).parse_with_heredocs(
+            tokens, heredoc_map)
     return utils_parse_with_heredocs(tokens, heredoc_map)
 
 

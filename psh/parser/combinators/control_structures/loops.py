@@ -117,8 +117,8 @@ class LoopParserMixin(_Base):
 
             pos = done_pos + 1  # Skip 'done'
 
-            # Parse trailing redirections and background
-            redirects, background, pos = self._parse_trailing_redirects(tokens, pos)
+            # Parse trailing redirections ('&' is handled at and-or level)
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
 
             return ParseResult(
                 success=True,
@@ -126,7 +126,6 @@ class LoopParserMixin(_Base):
                     condition=condition_result.value,
                     body=body_result.value,
                     redirects=redirects,
-                    background=background,
                 ),
                 position=pos
             )
@@ -179,8 +178,8 @@ class LoopParserMixin(_Base):
 
             pos = done_pos + 1
 
-            # Parse trailing redirections and background
-            redirects, background, pos = self._parse_trailing_redirects(tokens, pos)
+            # Parse trailing redirections ('&' is handled at and-or level)
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
 
             return ParseResult(
                 success=True,
@@ -188,7 +187,6 @@ class LoopParserMixin(_Base):
                     condition=condition_result.value,
                     body=body_result.value,
                     redirects=redirects,
-                    background=background,
                 ),
                 position=pos
             )
@@ -287,8 +285,8 @@ class LoopParserMixin(_Base):
 
             pos = done_pos + 1  # Skip 'done'
 
-            # Parse trailing redirections and background
-            redirects, background, pos = self._parse_trailing_redirects(tokens, pos)
+            # Parse trailing redirections ('&' is handled at and-or level)
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
 
             return ParseResult(
                 success=True,
@@ -298,7 +296,6 @@ class LoopParserMixin(_Base):
                     body=body_result.value,
                     item_words=item_words,
                     redirects=redirects,
-                    background=background,
                 ),
                 position=pos
             )
@@ -388,8 +385,8 @@ class LoopParserMixin(_Base):
 
             pos = done_pos + 1  # Skip 'done'
 
-            # Parse trailing redirections and background
-            redirects, background, pos = self._parse_trailing_redirects(tokens, pos)
+            # Parse trailing redirections ('&' is handled at and-or level)
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
 
             # Convert token lists to strings
             init_expr = ' '.join(t.value for t in init_tokens) if init_tokens else None
@@ -404,7 +401,6 @@ class LoopParserMixin(_Base):
                     update_expr=update_expr,
                     body=body_result.value,
                     redirects=redirects,
-                    background=background,
                 ),
                 position=pos
             )
@@ -481,8 +477,8 @@ class LoopParserMixin(_Base):
 
             pos = done_pos + 1  # Skip 'done'
 
-            # Parse trailing redirections and background
-            redirects, background, pos = self._parse_trailing_redirects(tokens, pos)
+            # Parse trailing redirections ('&' is handled at and-or level)
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
 
             return ParseResult(
                 success=True,
@@ -492,7 +488,6 @@ class LoopParserMixin(_Base):
                     item_words=item_words,
                     body=body_result.value,
                     redirects=redirects,
-                    background=background,
                 ),
                 position=pos
             )

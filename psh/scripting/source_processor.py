@@ -252,9 +252,10 @@ class SourceProcessor(ScriptComponent):
                 # lex→parse boundary (see AliasManager.expand_aliases).
                 tokens = self.shell.alias_manager.expand_aliases(tokens)
                 self._debug_print_tokens(tokens)
-                # Parse with heredoc map
+                # Parse with heredoc map, honoring the active parser
                 from ..parser import parse_with_heredocs
-                ast = parse_with_heredocs(tokens, heredoc_map)
+                ast = parse_with_heredocs(tokens, heredoc_map,
+                                          active_parser=self.shell.active_parser)
             else:
                 tokens = tokenize(command_string, shell_options=self.state.options)
                 tokens = self.shell.alias_manager.expand_aliases(tokens)

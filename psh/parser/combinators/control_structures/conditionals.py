@@ -198,8 +198,8 @@ class ConditionalParserMixin(_Base):
 
             pos += 1  # Skip 'fi'
 
-            # Parse trailing redirections and background
-            redirects, background, pos = self._parse_trailing_redirects(tokens, pos)
+            # Parse trailing redirections ('&' is handled at and-or level)
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
 
             return ParseResult(
                 success=True,
@@ -209,7 +209,6 @@ class ConditionalParserMixin(_Base):
                     elif_parts=elif_parts,
                     else_part=else_part,
                     redirects=redirects,
-                    background=background,
                 ),
                 position=pos
             )
@@ -342,8 +341,8 @@ class ConditionalParserMixin(_Base):
 
             pos += 1  # Skip 'esac'
 
-            # Parse trailing redirections and background
-            redirects, background, pos = self._parse_trailing_redirects(tokens, pos)
+            # Parse trailing redirections ('&' is handled at and-or level)
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
 
             return ParseResult(
                 success=True,
@@ -351,7 +350,6 @@ class ConditionalParserMixin(_Base):
                     expr=expr,
                     items=items,
                     redirects=redirects,
-                    background=background,
                 ),
                 position=pos
             )

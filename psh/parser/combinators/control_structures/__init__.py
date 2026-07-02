@@ -16,7 +16,7 @@ from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ...config import ParserConfig
 from ..commands import CommandParsers
-from ..core import Parser, ParseResult, keyword
+from ..core import Parser, ParseResult, fail_with, keyword
 from ..tokens import TokenParsers
 from .conditionals import ConditionalParserMixin
 from .loops import LoopParserMixin
@@ -70,6 +70,16 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
         # Re-initialize parsers that depend on commands
         self._initialize_dependent_parsers()
 
+    def set_special_command_parser(self, special_command: Parser):
+        """Fill the compound-function-body recursion slot.
+
+        A function body may be any compound command (bash). The control
+        structures live here, but the `(( ))` arithmetic command lives in the
+        sibling special-commands module, so the composed parser is injected
+        during wiring (after both modules exist).
+        """
+        self._compound_body = self.control_structure.or_else(special_command)
+
     def _initialize_parsers(self):
         """Initialize parsers that don't depend on command parsers."""
         # Keywords
@@ -90,6 +100,11 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
 
         # Statement terminators
         self.statement_terminator = self.tokens.semicolon.or_else(self.tokens.newline)
+
+        # Recursion slot for non-brace function bodies (any compound command,
+        # including the sibling module's `(( ))`); filled once during wiring
+        # by set_special_command_parser, read at parse time.
+        self._compound_body = fail_with("expected a compound command")
 
         # Helper parsers for control structures
         self.do_separator = Parser(lambda tokens, pos: self._parse_do_separator(tokens, pos))
@@ -136,17 +151,18 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
     # === Shared helper methods ===
 
     def _parse_trailing_redirects(self, tokens: List[Token], pos: int
-                                  ) -> Tuple[List[Redirect], bool, int]:
-        """Parse trailing redirections and background operator after a compound command.
+                                  ) -> Tuple[List[Redirect], int]:
+        """Parse trailing redirections after a compound command.
 
         Called after the closing keyword (done, fi, esac, }, )) to collect any
-        redirections like ``done > file`` or background operator like ``done &``.
+        redirections like ``done > file``. A trailing ``&`` is NOT consumed
+        here: backgrounding applies to the whole and-or list and is handled
+        at that level (POSIX).
 
         Returns:
-            Tuple of (redirects, background, new_pos)
+            Tuple of (redirects, new_pos)
         """
         redirects: List[Redirect] = []
-        background = False
 
         while pos < len(tokens):
             redir_result = self.commands.redirection.parse(tokens, pos)
@@ -157,11 +173,7 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
                 continue
             break
 
-        if pos < len(tokens) and tokens[pos].type.name == 'AMPERSAND':
-            background = True
-            pos += 1
-
-        return redirects, background, pos
+        return redirects, pos
 
     def _parse_do_separator(self, tokens: List[Token], pos: int) -> ParseResult[None]:
         """Parse separator followed by 'do' keyword."""

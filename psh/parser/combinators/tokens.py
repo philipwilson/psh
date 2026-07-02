@@ -124,6 +124,9 @@ class TokenParsers:
         # Function keyword
         self.function_kw = keyword('function')
 
+        # Pipeline-timing keyword
+        self.time_kw = keyword('time')
+
         # Flow control keywords
         self.break_kw = keyword('break')
         self.continue_kw = keyword('continue')

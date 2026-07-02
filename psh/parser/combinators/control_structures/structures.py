@@ -32,6 +32,11 @@ else:
 class StructureParserMixin(_Base):
     """Mixin providing structure parsers for ControlStructureParsers."""
 
+    # Keywords that may open a non-brace function body (bash accepts any
+    # compound command as the body; mirrors the recursive descent parser's
+    # parse_compound_command).
+    _COMPOUND_BODY_KEYWORDS = ('if', 'while', 'until', 'for', 'case', 'select')
+
     def _collect_definition_redirects(self, tokens: List[Token], pos: int):
         """Collect redirections trailing a function body.
 
@@ -93,17 +98,41 @@ class StructureParserMixin(_Base):
         return Parser(parse_function_name)
 
     def _parse_function_body(self, tokens: List[Token], pos: int) -> ParseResult[StatementList]:
-        """Parse function body between { }.
+        """Parse a function body: a brace group or any other compound command.
 
-        Parses the body by recursion on the real token stream — the same engine
-        the compound bodies and brace groups use — rather than slicing the
-        tokens between matching braces. ``build_statement_list`` stops at the
-        ``RBRACE`` token (without consuming it); nested brace groups consume
-        their own ``}``, so the recursion is the nesting tracker and no manual
-        brace-counting is needed. A missing nested terminator (e.g. an ``if``
-        without ``fi``) raises a committed ``ParseError`` from the inner parser,
-        which propagates out unchanged.
+        A brace-group body is parsed by recursion on the real token stream —
+        the same engine the compound bodies and brace groups use — rather
+        than slicing the tokens between matching braces.
+        ``build_statement_list`` stops at the ``RBRACE`` token (without
+        consuming it); nested brace groups consume their own ``}``, so the
+        recursion is the nesting tracker and no manual brace-counting is
+        needed. A missing nested terminator (e.g. an ``if`` without ``fi``)
+        raises a committed ``ParseError`` from the inner parser, which
+        propagates out unchanged.
+
+        Any other compound command (subshell, control structure, ``(( ))``)
+        is also a valid body (bash); it is wrapped in a one-statement list —
+        mirroring the recursive descent parser's parse_compound_command.
         """
+        if pos < len(tokens) and tokens[pos].value != '{':
+            tok = tokens[pos]
+            if (tok.type.name in ('LPAREN', 'DOUBLE_LPAREN')
+                    or any(matches_keyword(tok, kw)
+                           for kw in self._COMPOUND_BODY_KEYWORDS)):
+                body_result = self._compound_body.parse(tokens, pos)
+                if not body_result.success:
+                    return ParseResult(
+                        success=False,
+                        error=f"Invalid function body: {body_result.error}",
+                        position=body_result.position,
+                    )
+                assert body_result.value is not None
+                return ParseResult(
+                    success=True,
+                    value=StatementList(statements=[body_result.value]),
+                    position=body_result.position,
+                )
+
         # Expect {
         if pos >= len(tokens) or tokens[pos].value != '{':
             return ParseResult(success=False, error="Expected '{' to start function body", position=pos)
@@ -333,15 +362,14 @@ class StructureParserMixin(_Base):
                 raise_committed_error(tokens, pos, "Expected ')'")
             pos = rparen_result.position
 
-            # Parse trailing redirections and background
-            redirects, background, pos = self._parse_trailing_redirects(tokens, pos)
+            # Parse trailing redirections ('&' is handled at and-or level)
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
 
             return ParseResult(
                 success=True,
                 value=SubshellGroup(
                     statements=body_result.value,
                     redirects=redirects,
-                    background=background,
                 ),
                 position=pos,
             )
@@ -375,15 +403,14 @@ class StructureParserMixin(_Base):
                 raise_committed_error(tokens, pos, "Expected '}'")
             pos = rbrace_result.position
 
-            # Parse trailing redirections and background
-            redirects, background, pos = self._parse_trailing_redirects(tokens, pos)
+            # Parse trailing redirections ('&' is handled at and-or level)
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
 
             return ParseResult(
                 success=True,
                 value=BraceGroup(
                     statements=body_result.value,
                     redirects=redirects,
-                    background=background,
                 ),
                 position=pos,
             )

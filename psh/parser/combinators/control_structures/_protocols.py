@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from ....ast_nodes import Redirect
     from ....lexer.token_types import Token
     from ..commands import CommandParsers
+    from ..core import Parser
     from ..tokens import TokenParsers
 
 
@@ -31,8 +32,9 @@ class ControlStructureProtocol(Protocol):
     # Attributes set in ControlStructureParsers.__init__ / wiring
     commands: "CommandParsers"
     tokens: "TokenParsers"
+    _compound_body: "Parser"
 
     # Shared helpers defined on ControlStructureParsers (__init__.py)
     def _parse_trailing_redirects(
         self, tokens: List["Token"], pos: int
-    ) -> Tuple[List["Redirect"], bool, int]: ...
+    ) -> Tuple[List["Redirect"], int]: ...

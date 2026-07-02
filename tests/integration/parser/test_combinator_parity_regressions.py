@@ -188,3 +188,186 @@ class TestFunctionDefinitionRedirects:
         bash = run_bash(cmd, cwd=bash_dir)
         comb = run_psh(cmd, 'combinator', cwd=comb_dir)
         assert comb.stdout == bash.stdout
+
+
+class TestTimePrefix:
+    """`time [-p]` prefixes a pipeline (reappraisal #15 L1).
+
+    The v0.558 `time` reserved word never reached the combinator parser:
+    every `time ...` command was rc=2 "Expected command". The combinator now
+    mirrors the RD grammar: TIME (with optional `-p`) precedes `!` and times
+    the whole following pipeline; `time` with no command times an empty
+    pipeline. stderr carries the timing output, so only stdout/rc compare.
+    """
+
+    def test_time_simple_command(self):
+        assert_three_way('time echo hi')
+
+    def test_time_p_flag(self):
+        assert_three_way('time -p true')
+
+    def test_time_whole_pipeline(self):
+        assert_three_way('time sleep 0 | cat')
+
+    def test_time_subshell(self):
+        assert_three_way('time (echo sub)')
+
+    def test_time_brace_group(self):
+        assert_three_way('time { echo grp; }')
+
+    def test_time_no_command(self):
+        assert_three_way('time')
+
+    def test_time_p_no_command(self):
+        assert_three_way('time -p')
+
+    def test_time_preserves_exit_status(self):
+        assert_three_way('time false; echo rc=$?')
+
+    def test_time_while_loop(self):
+        assert_three_way('time while false; do :; done')
+
+    def test_time_in_and_or_chain(self):
+        assert_three_way('time echo a && echo b')
+
+    def test_time_inside_function(self):
+        assert_three_way('f() { time echo infn; }; f')
+
+    def test_time_in_command_substitution(self):
+        assert_three_way('echo $(time echo cs 2>/dev/null)')
+
+
+class TestHeredocsUnderCombinator:
+    """Heredocs execute under --parser combinator (reappraisal #15 L2).
+
+    The combinator's redirection builder dropped ``token.heredoc_key``, so
+    bodies could never populate — masked because the source processor
+    silently routed ALL heredoc input to the RD parser. The key now flows
+    through and heredoc input parses with the ACTIVE parser.
+    """
+
+    def test_body_expands_variables(self):
+        assert_three_way('x=42; cat <<EOF\nvalue $x\nEOF')
+
+    def test_quoted_delimiter_suppresses_expansion(self):
+        assert_three_way("x=42; cat <<'EOF'\nvalue $x\nEOF")
+
+    def test_backslash_delimiter_suppresses_expansion(self):
+        assert_three_way('x=42; cat <<\\EOF\nvalue $x\nEOF')
+
+    def test_dash_variant_strips_tabs(self):
+        assert_three_way('cat <<-EOF\n\tindented\n\tEOF')
+
+    def test_two_heredocs_one_line(self):
+        assert_three_way('cat <<A; cat <<B\nfirst\nA\nsecond\nB')
+
+    def test_heredoc_in_pipeline(self):
+        assert_three_way('cat <<EOF | tr a-z A-Z\nshout\nEOF')
+
+    def test_heredoc_feeds_while_read(self):
+        # Trailing redirect on a compound (`done <<EOF`): populated by the
+        # processor's single per-node redirect chokepoint.
+        assert_three_way(
+            'while read line; do echo "got: $line"; done <<EOF\none\ntwo\nEOF')
+
+    def test_heredoc_in_if_body(self):
+        assert_three_way('if true; then cat <<EOF\nin-if\nEOF\nfi')
+
+    def test_heredoc_in_function_body(self):
+        assert_three_way('f() { cat <<EOF\nin-fn\nEOF\n}; f')
+
+    def test_composite_delimiter(self):
+        assert_three_way('x=1; cat <<E"O"F\ncomposite $x\nEOF')
+
+
+class TestBackgroundAndOrList:
+    """A trailing '&' backgrounds the whole and-or list (reappraisal #15 L3).
+
+    The combinator consumed '&' per simple command / per compound, so
+    `a && b &` ran `a` in the FOREGROUND and backgrounded only `b`. The '&'
+    now lives at the and-or level, mirroring the RD parser's
+    parse_and_or_list/_apply_background.
+    """
+
+    def test_whole_chain_backgrounds(self):
+        # With the left side foreground, 'a' printed BEFORE 'fg'.
+        assert_three_way('sleep 0.4 && echo a & echo fg; wait')
+
+    def test_simple_background(self):
+        assert_three_way('echo a & wait')
+
+    def test_subshell_background(self):
+        assert_three_way('(echo a) & wait')
+
+    def test_brace_group_background(self):
+        assert_three_way('{ echo a; } & wait')
+
+    def test_failed_left_skips_right(self):
+        assert_three_way('false && echo x & wait; echo done')
+
+    def test_loop_background(self):
+        assert_three_way('for i in 1 2; do echo $i; done & wait')
+
+    def test_background_ordering_deterministic(self):
+        assert_three_way('{ sleep 0.2; echo one; } & echo two; wait')
+
+    def test_amp_then_pipe_rejected(self):
+        assert_three_way('(echo a) & | cat')
+
+    def test_amp_then_and_and_rejected(self):
+        assert_three_way('(echo a) & && echo b')
+
+    def test_amp_then_semicolon_rejected(self):
+        assert_three_way('echo a & ; echo b')
+
+
+class TestFunctionCompoundBodies:
+    """A function body may be any compound command, not only { } (bash)."""
+
+    def test_if_body(self):
+        assert_three_way('f() if true; then echo ifbody; fi; f')
+
+    def test_subshell_body(self):
+        assert_three_way('f() (echo subbody); f')
+
+    def test_for_body(self):
+        assert_three_way('f() for i in 1 2; do echo $i; done; f')
+
+    def test_while_body(self):
+        assert_three_way('f() while false; do :; done; echo rc=$?')
+
+    def test_until_body(self):
+        assert_three_way('f() until false; do break; done; f; echo rc=$?')
+
+    def test_case_body(self):
+        assert_three_way('f() case x in x) echo cx;; esac; f')
+
+    def test_arithmetic_body(self):
+        assert_three_way('f() ((1+1)); f; echo rc=$?')
+
+    def test_compound_body_definition_redirect(self):
+        assert_three_way('f() if true; then echo r; fi > /dev/null; f')
+
+    def test_plain_word_body_still_rejected(self):
+        assert_three_way('f() break')
+
+
+class TestUnclosedExpansionsRejected:
+    """Unclosed expansions are syntax errors, not literal words (bash rc=2).
+
+    The combinator accepted `echo ${` as a variable literally named '${'
+    (and the other four unclosed forms similarly); it now rejects them at
+    word-consumption time like the RD parser.
+    """
+
+    def test_unclosed_parameter_expansion(self):
+        assert_three_way('echo ${')
+
+    def test_unclosed_command_substitution(self):
+        assert_three_way('echo $(foo')
+
+    def test_unclosed_backtick(self):
+        assert_three_way('echo `foo')
+
+    def test_unclosed_arithmetic(self):
+        assert_three_way('echo $((1+')

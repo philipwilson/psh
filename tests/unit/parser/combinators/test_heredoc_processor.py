@@ -674,3 +674,68 @@ class TestHeredocProcessor:
 
         # Verify content was populated
         assert redirect.heredoc_content == 'Convenience data\n'
+
+
+class TestRealHeredocSeam:
+    """Drive the REAL seam: tokenize_with_heredocs -> combinator parse -> AST.
+
+    The manual-key tests above pin the processor in isolation; these pin the
+    live path (reappraisal #15 L2): the lexer's ``heredoc_key`` must survive
+    the combinator's redirection builder, and the lexer's
+    ``{'content', 'quoted'}`` map entries must populate both fields.
+    """
+
+    @staticmethod
+    def _parse(source):
+        from psh.lexer import tokenize_with_heredocs
+        from psh.parser.combinators.parser import ParserCombinatorShellParser
+        tokens, heredoc_map = tokenize_with_heredocs(source)
+        return ParserCombinatorShellParser().parse_with_heredocs(tokens, heredoc_map)
+
+    def test_body_populates_through_real_tokens(self):
+        ast = self._parse('cat <<EOF\nhello seam\nEOF\n')
+        redirect = ast.items[0].pipelines[0].commands[0].redirects[0]
+        assert redirect.heredoc_key
+        assert redirect.heredoc_content == 'hello seam\n'
+        assert redirect.heredoc_quoted is False
+
+    def test_quoted_delimiter_sets_quoted_flag(self):
+        ast = self._parse("cat <<'EOF'\nvalue $x\nEOF\n")
+        redirect = ast.items[0].pipelines[0].commands[0].redirects[0]
+        assert redirect.heredoc_content == 'value $x\n'
+        assert redirect.heredoc_quoted is True
+
+    def test_two_heredocs_populate_independently(self):
+        ast = self._parse('cat <<A; cat <<B\nfirst\nA\nsecond\nB\n')
+        first = ast.items[0].pipelines[0].commands[0].redirects[0]
+        second = ast.items[1].pipelines[0].commands[0].redirects[0]
+        assert first.heredoc_content == 'first\n'
+        assert second.heredoc_content == 'second\n'
+
+    def test_compound_trailing_heredoc_populates(self):
+        ast = self._parse('while read x; do echo $x; done <<EOF\nbody\nEOF\n')
+        loop = ast.items[0]
+        assert loop.redirects[0].heredoc_content == 'body\n'
+
+    def test_execution_uses_active_combinator_parser(self, captured_shell, monkeypatch):
+        """Heredoc input must parse with the ACTIVE parser, not silently RD.
+
+        source_processor used to route ANY heredoc-containing input to the
+        recursive descent parser even under --parser combinator; spy on the
+        combinator entry point to prove the honest routing.
+        """
+        from psh.parser.combinators.parser import ParserCombinatorShellParser
+        calls = []
+        original = ParserCombinatorShellParser.parse_with_heredocs
+
+        def spy(self, tokens, heredoc_contents):
+            calls.append(True)
+            return original(self, tokens, heredoc_contents)
+
+        monkeypatch.setattr(ParserCombinatorShellParser, 'parse_with_heredocs', spy)
+        captured_shell.active_parser = 'combinator'
+        rc = captured_shell.run_command(
+            'read line <<EOF\nreal seam\nEOF\necho "got: $line"')
+        assert rc == 0
+        assert calls, "heredoc input bypassed the active combinator parser"
+        assert captured_shell.get_stdout() == 'got: real seam\n'

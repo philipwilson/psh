@@ -10,7 +10,7 @@ from ....ast_nodes import ArrayAssignment, Redirect, SimpleCommand
 from ....lexer.token_types import Token, TokenType
 from ....parser.recursive_descent.helpers import ParseError
 from ....parser.recursive_descent.support.word_builder import WordBuilder
-from ..core import Parser, ParseResult, optional
+from ..core import Parser, ParseResult
 from ..diagnostics import error_context_for_token
 from ._constants import _WORD_LIKE_TYPES
 
@@ -72,6 +72,10 @@ class SimpleCommandMixin(_Base):
                 word_result = self.tokens.word_like.parse(tokens, pos)
                 if word_result.success:
                     assert word_result.value is not None
+                    unclosed = self._unclosed_expansion_error(word_result.value)
+                    if unclosed is not None:
+                        raise ParseError(error_context_for_token(
+                            word_result.value, unclosed))
                     if self.arrays.is_initializer_head(tokens, pos):
                         init_result = self.arrays.parse_initialization(tokens, pos)
                         if not init_result.success:
@@ -111,16 +115,11 @@ class SimpleCommandMixin(_Base):
             if not word_tokens and not redirects and not array_assignments:
                 return ParseResult(success=False, error="Expected command", position=pos)
 
-            # Parse optional background operator
-            background_result = optional(self.tokens.ampersand).parse(tokens, pos)
-            background = background_result.value is not None
-            pos = background_result.position
-
-            # Build the simple command
+            # A trailing '&' is NOT consumed here: backgrounding applies to
+            # the whole and-or list and is handled at that level (POSIX).
             cmd = self._build_simple_command(
                 word_tokens,
                 redirects,
-                background,
                 array_assignments=array_assignments,
             )
 
@@ -131,6 +130,32 @@ class SimpleCommandMixin(_Base):
             )
 
         return Parser(parse_simple_command)
+
+    @staticmethod
+    def _unclosed_expansion_error(tok: Token) -> Optional[str]:
+        """Return an error message if the token carries an unclosed expansion.
+
+        The lexer tolerates ``${``, ``$(``, `` ` ``, ``$((``, and ``<(``/``>(``
+        without their closer (interactive line-continuation needs the tokens);
+        at parse time they are syntax errors. Mirrors the recursive descent
+        parser's _check_for_unclosed_expansions.
+        """
+        for part in tok.parts or ():
+            if part.expansion_type and part.expansion_type.endswith('_unclosed'):
+                return f"syntax error: unclosed expansion '{part.value}'"
+        value = tok.value
+        kind = tok.type.name
+        if kind == 'VARIABLE' and value.startswith('${') and not value.endswith('}'):
+            return f"syntax error: unclosed parameter expansion '{value}'"
+        if kind == 'COMMAND_SUB' and not value.endswith(')'):
+            return f"syntax error: unclosed command substitution '{value}'"
+        if kind == 'COMMAND_SUB_BACKTICK' and value.count('`') == 1:
+            return f"syntax error: unclosed backtick substitution '{value}'"
+        if kind == 'ARITH_EXPANSION' and not value.endswith('))'):
+            return f"syntax error: unclosed arithmetic expansion '{value}'"
+        if kind in ('PROCESS_SUB_IN', 'PROCESS_SUB_OUT') and not value.endswith(')'):
+            return f"syntax error: unclosed process substitution '{value}'"
+        return None
 
     @staticmethod
     def _group_adjacent_tokens(word_tokens: List[Token]) -> List[List[Token]]:
@@ -153,21 +178,18 @@ class SimpleCommandMixin(_Base):
 
     def _build_simple_command(self, word_tokens: List[Token],
                              redirects: List[Redirect],
-                             background: bool = False,
                              array_assignments: Optional[List[ArrayAssignment]] = None) -> SimpleCommand:
         """Build a SimpleCommand with proper token type and quote preservation.
 
         Args:
             word_tokens: List of word tokens
             redirects: List of redirections
-            background: Whether command runs in background
 
         Returns:
             SimpleCommand AST node
         """
         cmd = SimpleCommand(
             redirects=redirects,
-            background=background,
             array_assignments=array_assignments or [],
         )
 
