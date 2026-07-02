@@ -1334,6 +1334,38 @@
   stderr: ""
   exit_code: 0
 
+- name: backtick_hash_splices_continuation
+  command: |
+    echo `echo a # c \
+    echo b`
+  stdout: "a\n"
+  stderr: ""
+  exit_code: 0
+
+- name: backtick_closed_hash_then_outer_continuation
+  command: |
+    echo `echo a # b` \
+    echo c
+  stdout: "a echo c\n"
+  stderr: ""
+  exit_code: 0
+
+- name: backtick_single_quote_splices_continuation
+  command: |
+    echo `echo 'a \
+    b'`
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: comment_after_closed_backtick_not_continuation
+  command: |
+    echo `echo hi` # trailing \
+    echo survived
+  stdout: "hi\nsurvived\n"
+  stderr: ""
+  exit_code: 0
+
 - name: empty_command
   command: ''
   stdout: ""

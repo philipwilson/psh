@@ -106,6 +106,56 @@ class TestHeredocBodyContext:
                 == "echo hi # <<EOF\necho a b")
 
 
+class TestBacktickContext:
+    """A ``` `...` ``` backtick word is raw-scanned by bash: it splices
+    backslash-newline while looking for the closing backtick and never treats
+    ``#`` or ``'`` inside it specially (comment/quote handling is the lexer's
+    job AFTER the splice). So a trailing backslash inside an open backtick is
+    always a continuation — unlike ``$(...)``, whose body IS honored as a
+    command list (a ``#`` there is a comment that suppresses the join).
+    """
+
+    def test_hash_inside_open_backtick_still_joins(self):
+        # Regression: comment-awareness must NOT apply inside a backtick.
+        assert (process_line_continuations("echo `echo a # c \\\necho b`")
+                == "echo `echo a # c echo b`")
+
+    def test_hash_inside_closed_backtick_does_not_suppress_outer_join(self):
+        # The '#' is a nested comment scoped to the (closed) backtick; the
+        # trailing backslash after the backtick is a normal continuation.
+        assert (process_line_continuations("echo `echo a # b` \\\necho c")
+                == "echo `echo a # b` echo c")
+
+    def test_apostrophe_in_backtick_comment_does_not_suppress_join(self):
+        # An apostrophe inside a comment inside a backtick is neither a quote
+        # nor does it block the splice.
+        assert (process_line_continuations("echo `echo a # don't \\\necho b`")
+                == "echo `echo a # don't echo b`")
+
+    def test_single_quote_inside_backtick_still_joins(self):
+        # bash splices backslash-newline even inside a single quote that is
+        # itself inside a backtick (the single quote does not protect it).
+        assert (process_line_continuations("echo `echo 'a \\\nb'`")
+                == "echo `echo 'a b'`")
+
+    def test_backtick_spanning_three_lines_joins(self):
+        assert (process_line_continuations(
+                    "echo `echo a \\\necho b \\\necho c`")
+                == "echo `echo a echo b echo c`")
+
+    def test_comment_after_closed_backtick_still_suppresses_join(self):
+        # The original A5 fix: a real comment after a closed backtick, ending
+        # in a backslash, must NOT swallow the next command line.
+        text = "echo `echo hi` # trailing \\\necho survived"
+        assert process_line_continuations(text) == text
+
+    def test_command_sub_comment_still_suppresses_join(self):
+        # Contrast with backticks: $( ) DOES honor an interior comment, so the
+        # trailing backslash there is comment text, not a continuation.
+        text = "echo $(echo a # c \\\necho b)"
+        assert process_line_continuations(text) == text
+
+
 class TestExistingBehaviorUnchanged:
     def test_double_quote_continuation_still_joins(self):
         assert (process_line_continuations('echo "a \\\nb"')
@@ -146,3 +196,14 @@ class TestHeredocMarkerScan:
 
     def test_open_heredoc_delimiters_ignores_comment_marker(self):
         assert open_heredoc_delimiters("echo hi # <<EOF") == []
+
+    def test_hash_inside_backtick_does_not_truncate_marker_scan(self):
+        # A '#' inside a backtick is not a top-level comment, so a real
+        # heredoc marker after the closed backtick is still found.
+        markers, quote = scan_line_heredoc_markers("cat `echo hi #` <<EOF")
+        assert markers == [("EOF", False, False)]
+        assert quote is None
+
+    def test_apostrophe_inside_backtick_not_carried_quote(self):
+        _, quote = scan_line_heredoc_markers("echo `echo don't`")
+        assert quote is None

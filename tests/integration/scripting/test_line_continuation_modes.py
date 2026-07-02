@@ -57,3 +57,44 @@ class TestContinuationContextsAcrossModes:
         assert result.returncode == 0
         assert result.stdout == "body\n"
         assert result.stderr == ""
+
+    def test_hash_inside_backtick_splices(self, mode, tmp_path):
+        # Regression: bash splices backslash-newline inside a backtick word
+        # regardless of '#'; the comment then eats the joined-in text, so the
+        # substitution yields just "a".
+        script = "echo `echo a # c \\\necho b`\n"
+        result = run_psh(script, mode, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout == "a\n"
+        assert result.stderr == ""
+
+    def test_hash_inside_closed_backtick_keeps_outer_join(self, mode, tmp_path):
+        script = "echo `echo a # b` \\\necho c\n"
+        result = run_psh(script, mode, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout == "a echo c\n"
+        assert result.stderr == ""
+
+    def test_single_quote_inside_backtick_splices(self, mode, tmp_path):
+        script = "echo `echo 'a \\\nb'`\n"
+        result = run_psh(script, mode, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout == "a b\n"
+        assert result.stderr == ""
+
+    def test_comment_after_closed_backtick_does_not_swallow(self, mode, tmp_path):
+        # The A5 comment fix stays intact when a closed backtick precedes it.
+        script = "echo `echo hi` # trailing \\\necho survived\n"
+        result = run_psh(script, mode, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout == "hi\nsurvived\n"
+        assert result.stderr == ""
+
+    def test_command_sub_comment_still_suppresses_join(self, mode, tmp_path):
+        # Contrast: $( ) honors the interior comment (no splice), so line 2
+        # runs as its own word inside the substitution.
+        script = "echo $(echo a # c \\\necho b)\n"
+        result = run_psh(script, mode, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout == "a b\n"
+        assert result.stderr == ""

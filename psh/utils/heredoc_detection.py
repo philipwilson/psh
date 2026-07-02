@@ -174,25 +174,46 @@ def is_inside_expansion(line: str, position: int) -> bool:
 
 
 def _quote_flags(line: str, quote):
-    """Per-character in-quote flags for `line`, starting in `quote` state.
+    """Per-character "protected" flags for `line`, starting in `quote` state.
 
-    Returns (flags, final_quote). The carried quote state lets the caller
-    track strings that span multiple command lines.
+    Returns (flags, final_quote). A char is flagged True when it is shielded
+    from TOP-LEVEL comment/heredoc recognition: inside single/double quotes,
+    or inside an unquoted ``` `...` ``` backtick command substitution.
+
+    Backtick interiors are flagged but do NOT contribute to the returned
+    quote state. Unlike ``$(...)`` — where bash re-parses the body as a
+    command list, so a ``#`` there starts a comment and a trailing backslash
+    is a continuation — a backtick word is raw-scanned: bash splices
+    backslash-newline and never treats ``#`` or ``'`` specially while looking
+    for the closing backtick (comment/quote handling inside the body is the
+    lexer's job AFTER the splice). So a backtick interior must never suppress
+    a continuation join or open a command-level quote. (A backtick inside
+    double quotes needs no special handling: the double-quote path already
+    joins and shields ``#``.) The carried quote state lets the caller track
+    strings that span multiple command lines.
     """
     flags = []
+    backtick = False  # inside an unquoted `...` command substitution
     i, n = 0, len(line)
     while i < n:
         c = line[i]
         if c == '\\' and quote != "'" and i + 1 < n:
-            inside = quote is not None
+            inside = quote is not None or backtick
             flags.append(inside)
             flags.append(inside)
             i += 2
             continue
-        if quote:
+        if backtick:
+            flags.append(True)
+            if c == '`':  # only an unescaped ` closes the backtick word
+                backtick = False
+        elif quote:
             flags.append(True)
             if c == quote:
                 quote = None
+        elif c == '`':
+            backtick = True
+            flags.append(True)
         elif c in ('"', "'"):
             quote = c
             flags.append(True)
@@ -252,8 +273,11 @@ def scan_line_heredoc_markers(line: str, quote=None):
 def eol_backslash_is_literal(line: str, quote=None) -> bool:
     """True when a backslash ending command line *line* is literal text —
     single-quoted or comment content — rather than a line continuation.
-    *quote* is the carried-in quote state (see ``_quote_flags``). The
-    line-continuation preprocessing consults this before joining."""
+    *quote* is the carried-in quote state (see ``_quote_flags``). A ``'`` or
+    ``#`` inside an unquoted backtick does NOT count (bash splices
+    backslash-newline while scanning a backtick regardless), so such a
+    trailing backslash is still a continuation. The line-continuation
+    preprocessing consults this before joining."""
     flags, quote_after = _quote_flags(line, quote)
     return quote_after == "'" or _comment_start(line, flags) < len(line)
 
