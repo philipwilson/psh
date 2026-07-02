@@ -4,7 +4,7 @@ This module provides the mixin building pipelines (``|``/``|&`` chains, with
 optional ``!`` negation) and and-or lists (``&&``/``||`` chains).
 """
 
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, List, Union, cast
 
 from ....ast_nodes import (
     AndOrList,
@@ -19,6 +19,7 @@ from ....ast_nodes import (
     IfConditional,
     Pipeline,
     SelectLoop,
+    UntilLoop,
     WhileLoop,
 )
 from ....lexer.token_types import Token
@@ -35,6 +36,16 @@ else:
 class PipelineMixin(_Base):
     """Mixin providing pipeline and and-or-list parsers for CommandParsers."""
 
+    # Token types that terminate a pipeline: a bare `time`/`time -p` with one
+    # of these next is a complete (empty) timed pipeline — bash times nothing.
+    # Mirrors the recursive descent parser's _PIPELINE_END_TOKENS.
+    _PIPELINE_END_TYPES = frozenset({
+        'SEMICOLON', 'NEWLINE', 'AMPERSAND', 'AND_AND', 'OR_OR',
+        'PIPE', 'PIPE_AND', 'RPAREN', 'RBRACE',
+        'DOUBLE_SEMICOLON', 'SEMICOLON_AMP', 'AMP_SEMICOLON',
+        'THEN', 'DO', 'DONE', 'FI', 'ELSE', 'ELIF', 'ESAC', 'EOF',
+    })
+
     def _build_pipeline_parser(self) -> Parser[Union[Pipeline, ASTNode]]:
         """Build parser for pipelines.
 
@@ -47,8 +58,35 @@ class PipelineMixin(_Base):
         """
         pipe_sep = self.tokens.pipe.or_else(self.tokens.pipe_and)
 
+        def at_pipeline_end(tokens: List[Token], pos: int) -> bool:
+            return (pos >= len(tokens)
+                    or tokens[pos].type.name in self._PIPELINE_END_TYPES)
+
         def parse_pipeline_with_negation(tokens: List[Token], pos: int) -> ParseResult:
-            """Parse optional `!` followed by a pipeline."""
+            """Parse optional `time [-p]` and `!` prefixes, then a pipeline."""
+            # `time [-p]` prefix: times the whole following pipeline (bash).
+            # It precedes the optional `!` negation, mirroring the RD grammar.
+            timed = False
+            time_posix = False
+            time_result = optional(self.tokens.time_kw).parse(tokens, pos)
+            if time_result.value is not None:
+                timed = True
+                pos = time_result.position
+                # `-p` (POSIX output format), only as the immediate next word.
+                if (pos < len(tokens) and tokens[pos].type.name == 'WORD'
+                        and tokens[pos].value == '-p'):
+                    time_posix = True
+                    pos += 1
+                # `time` with no following command is valid: it times an
+                # empty pipeline (bash times nothing).
+                if at_pipeline_end(tokens, pos):
+                    return ParseResult(
+                        success=True,
+                        value=Pipeline(commands=[], timed=True,
+                                       time_posix=time_posix),
+                        position=pos,
+                    )
+
             neg_result = optional(self.tokens.exclamation).parse(tokens, pos)
             negated = neg_result.value is not None
             pos = neg_result.position
@@ -85,13 +123,14 @@ class PipelineMixin(_Base):
                 commands.append(cmd_result.value)
                 pos = cmd_result.position
 
-            if len(commands) == 1 and not negated:
+            if len(commands) == 1 and not negated and not timed:
                 cmd = commands[0]
-                if isinstance(cmd, (IfConditional, WhileLoop, ForLoop, CaseConditional, SelectLoop,
-                                  CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement,
-                                  BreakStatement, ContinueStatement)):
+                if isinstance(cmd, (IfConditional, WhileLoop, UntilLoop, ForLoop, CaseConditional,
+                                  SelectLoop, CStyleForLoop, ArithmeticEvaluation,
+                                  EnhancedTestStatement, BreakStatement, ContinueStatement)):
                     return ParseResult(success=True, value=cmd, position=pos)
-            pipeline = Pipeline(commands=commands, negated=negated, pipe_stderr=pipe_stderr_list) if commands else None
+            pipeline = Pipeline(commands=commands, negated=negated, pipe_stderr=pipe_stderr_list,
+                                timed=timed, time_posix=time_posix) if commands else None
             return ParseResult(success=True, value=pipeline, position=pos)
 
         return Parser(parse_pipeline_with_negation)
@@ -144,13 +183,53 @@ class PipelineMixin(_Base):
                 rest.append((op_token, rhs_result.value))
                 pos = rhs_result.position
 
-            return ParseResult(
-                success=True,
-                value=self._build_and_or_list_from_parts((first, rest)),
-                position=pos,
-            )
+            value = self._build_and_or_list_from_parts((first, rest))
+
+            # POSIX: a trailing '&' backgrounds the whole and-or list. '&' is
+            # itself a separator, so another operator right after it ('&& b',
+            # '| cat', '; c') is a syntax error in bash — while ';;' (case)
+            # and closing keywords ('& fi', '& }') remain legal. Mirrors the
+            # recursive descent parser's parse_and_or_list/_apply_background.
+            amp_result = optional(self.tokens.ampersand).parse(tokens, pos)
+            if amp_result.value is not None:
+                pos = amp_result.position
+                if (pos < len(tokens) and tokens[pos].type.name in
+                        ('AND_AND', 'OR_OR', 'PIPE', 'PIPE_AND', 'SEMICOLON')):
+                    raise_committed_error(
+                        tokens, pos,
+                        f"syntax error near unexpected token '{tokens[pos].value}'",
+                    )
+                if not isinstance(value, AndOrList):
+                    # Unwrapped single compound (if/while/...): rewrap so the
+                    # background flag has an and-or list to live on. An
+                    # AndOrList holds compounds directly as pipeline elements
+                    # at runtime (established shape); the cast records that.
+                    value = AndOrList(pipelines=[cast(Pipeline, value)])
+                self._apply_background(value)
+
+            return ParseResult(success=True, value=value, position=pos)
 
         return Parser(parse_and_or_list)
+
+    @staticmethod
+    def _apply_background(and_or_list: AndOrList) -> None:
+        """Mark a parsed and-or list as background.
+
+        Single simple-command and single-pipeline cases keep the legacy
+        per-command flag (the executor's direct job-control paths);
+        everything else backgrounds the whole list via a subshell. Mirrors
+        the recursive descent parser's StatementParser._apply_background.
+        """
+        from ....ast_nodes import BraceGroup, SimpleCommand, SubshellGroup
+        if len(and_or_list.pipelines) == 1 and isinstance(and_or_list.pipelines[0], Pipeline):
+            commands = and_or_list.pipelines[0].commands
+            if commands and isinstance(commands[-1], SimpleCommand):
+                commands[-1].background = True
+                return
+            if len(commands) == 1 and isinstance(commands[0], (SubshellGroup, BraceGroup)):
+                commands[0].background = True
+                return
+        and_or_list.background = True
 
     def _build_and_or_list_from_parts(self, parse_result: tuple) -> Union[AndOrList, ASTNode]:
         """Build an AndOrList from parsed components.
@@ -174,7 +253,8 @@ class PipelineMixin(_Base):
         if not rest:
             # Single element with no operators - return it directly instead of wrapping
             # This prevents unnecessary AndOrList wrapping for standalone control structures
-            if isinstance(first_pipeline, (IfConditional, WhileLoop, ForLoop, CaseConditional, SelectLoop,
+            if isinstance(first_pipeline, (IfConditional, WhileLoop, UntilLoop, ForLoop,
+                                         CaseConditional, SelectLoop,
                                          CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement,
                                          BreakStatement, ContinueStatement)):
                 return first_pipeline

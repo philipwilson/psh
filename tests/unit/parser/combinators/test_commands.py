@@ -47,8 +47,13 @@ class TestCommandParsers:
         assert result.value.args == ["echo", "hello", "world"]
         assert result.value.background is False
 
-    def test_parse_simple_command_with_background(self):
-        """Test parsing a command with background operator."""
+    def test_parse_simple_command_stops_before_background_operator(self):
+        """A trailing '&' belongs to the and-or list, not the simple command.
+
+        POSIX backgrounds the whole and-or list ('a && b &' backgrounds the
+        chain, not just 'b'), so the simple-command parser must stop BEFORE
+        the '&' and leave it for the and-or level (reappraisal #15 L3).
+        """
         parsers = CommandParsers()
 
         tokens = [
@@ -61,7 +66,25 @@ class TestCommandParsers:
         assert result.success is True
         assert isinstance(result.value, SimpleCommand)
         assert result.value.args == ["sleep", "10"]
-        assert result.value.background is True
+        assert result.value.background is False
+        assert result.position == 2  # '&' left unconsumed
+
+    def test_and_or_list_consumes_background_operator(self):
+        """The and-or list consumes a trailing '&' and backgrounds the command."""
+        parsers = CommandParsers()
+
+        tokens = [
+            make_token(TokenType.WORD, "sleep"),
+            make_token(TokenType.WORD, "10"),
+            make_token(TokenType.AMPERSAND, "&")
+        ]
+
+        result = parsers.and_or_list.parse(tokens, 0)
+        assert result.success is True
+        assert result.position == 3  # '&' consumed
+        command = result.value.pipelines[0].commands[-1]
+        assert isinstance(command, SimpleCommand)
+        assert command.background is True
 
     def test_parse_simple_command_with_redirection(self):
         """Test parsing a command with output redirection."""

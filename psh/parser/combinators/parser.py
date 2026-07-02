@@ -128,6 +128,9 @@ class ParserCombinatorShellParser:
         )
         self.commands.set_command_parser(pipeline_element)
         self.commands.set_function_def(self.control.function_def)
+        # A non-brace function body may be any compound command, including
+        # the special-command module's `(( ))`.
+        self.control.set_special_command_parser(self.special.special_command)
 
         # Convenience handles onto the (already-built) command + top-level parsers.
         self.command = self.commands.and_or_list

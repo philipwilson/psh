@@ -85,7 +85,6 @@ class CommandParsersProtocol(Protocol):
         self,
         word_tokens: List["Token"],
         redirects: List["Redirect"],
-        background: bool = ...,
         array_assignments: Optional[List["ArrayAssignment"]] = ...,
     ) -> "SimpleCommand": ...
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, List, Optional
 from ....ast_nodes import Redirect
 from ....lexer.token_types import Token
 from ..core import ParseResult
-from ._constants import _FD_DUP_RE
+from ._constants import _FD_DUP_RE, _WORD_LIKE_TYPES
 
 if TYPE_CHECKING:
     from ._protocols import CommandParsersProtocol
@@ -80,9 +80,31 @@ class RedirectionMixin(_Base):
 
             delimiter_token = tokens[pos]
             delimiter = delimiter_token.value
+            pos += 1
 
-            redirect = Redirect(type=op_token.value, target=delimiter, fd=fd)
-            return ParseResult(success=True, value=redirect, position=pos + 1)
+            # Quoting anywhere in the delimiter disables body expansion. A
+            # composite delimiter spans several ADJACENT word-like tokens
+            # (`<<E"O"F`, `<<E$X`); consume them all so the trailing parts
+            # are not parsed as command arguments — mirrors the recursive
+            # descent parser's _parse_heredoc.
+            heredoc_quoted = (delimiter_token.type.name == 'STRING'
+                              or '\\' in delimiter_token.value)
+            while (pos < len(tokens)
+                   and tokens[pos].type.name in _WORD_LIKE_TYPES
+                   and getattr(tokens[pos], 'adjacent_to_previous', False)):
+                part = tokens[pos]
+                delimiter += part.value
+                if part.type.name == 'STRING' or '\\' in part.value:
+                    heredoc_quoted = True
+                pos += 1
+
+            redirect = Redirect(type=op_token.value, target=delimiter,
+                                heredoc_quoted=heredoc_quoted, fd=fd)
+            # The lexer's collector key links this redirect to its body
+            # (populated post-parse by HeredocProcessor).
+            if hasattr(op_token, 'heredoc_key'):
+                redirect.heredoc_key = op_token.heredoc_key
+            return ParseResult(success=True, value=redirect, position=pos)
 
         # Handle here string (<<<)
         if op_token.type.name == 'HERE_STRING':

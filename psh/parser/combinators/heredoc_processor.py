@@ -43,7 +43,7 @@ class HeredocProcessor:
         pass
 
     def populate_heredocs(self, ast: ASTNode,
-                         heredoc_contents: Dict[str, str]) -> None:
+                         heredoc_contents: Dict[str, Any]) -> None:
         """Populate heredoc content in AST nodes.
 
         This method traverses the AST and looks for redirect nodes that
@@ -60,7 +60,7 @@ class HeredocProcessor:
         self._traverse_node(ast, heredoc_contents)
 
     def _traverse_node(self, node: ASTNode,
-                      heredoc_contents: Dict[str, str]) -> None:
+                      heredoc_contents: Dict[str, Any]) -> None:
         """Recursively traverse AST nodes to populate heredoc content.
 
         Args:
@@ -70,9 +70,16 @@ class HeredocProcessor:
         if node is None:
             return
 
-        # Process simple commands
+        # Every node's own redirects are handled HERE — one chokepoint — so
+        # trailing redirects on compounds (`done <<EOF`, `fi <<EOF`) populate
+        # exactly like a simple command's.
+        redirects = getattr(node, 'redirects', None)
+        if redirects:
+            self._process_redirects(redirects, heredoc_contents)
+
+        # Process simple commands (redirects handled above; no children)
         if isinstance(node, SimpleCommand):
-            self._process_simple_command(node, heredoc_contents)
+            return
 
         # Process pipelines
         elif isinstance(node, Pipeline):
@@ -118,13 +125,10 @@ class HeredocProcessor:
         elif isinstance(node, BraceGroup):
             self._process_brace_group(node, heredoc_contents)
 
-        # Process arithmetic evaluations
-        elif isinstance(node, ArithmeticEvaluation):
-            self._process_arithmetic_evaluation(node, heredoc_contents)
-
-        # Process enhanced test statements
-        elif isinstance(node, EnhancedTestStatement):
-            self._process_enhanced_test(node, heredoc_contents)
+        # Arithmetic evaluations and enhanced tests: redirects handled
+        # above; no command children to traverse.
+        elif isinstance(node, (ArithmeticEvaluation, EnhancedTestStatement)):
+            return
 
         # Process command lists and statement lists
         elif isinstance(node, (CommandList, StatementList)):
@@ -135,32 +139,28 @@ class HeredocProcessor:
             self._process_generic_node(node, heredoc_contents)
 
     def _process_redirects(self, redirects: List[Redirect],
-                          heredoc_contents: Dict[str, str]) -> None:
+                          heredoc_contents: Dict[str, Any]) -> None:
         """Process redirections to populate heredoc content.
 
         Args:
             redirects: List of redirect nodes
-            heredoc_contents: Map of heredoc keys to their content
+            heredoc_contents: Map of heredoc keys to their content — either
+                a bare string, or the heredoc lexer's ``{'content': ...,
+                'quoted': ...}`` entry (the live tokenize_with_heredocs format)
         """
         for redirect in redirects:
             if (hasattr(redirect, 'heredoc_key') and
                 redirect.heredoc_key and
                 redirect.heredoc_key in heredoc_contents):
-                redirect.heredoc_content = heredoc_contents[redirect.heredoc_key]
-
-    def _process_simple_command(self, node: SimpleCommand,
-                               heredoc_contents: Dict[str, str]) -> None:
-        """Process simple command node.
-
-        Args:
-            node: Simple command node
-            heredoc_contents: Map of heredoc keys to their content
-        """
-        if node.redirects:
-            self._process_redirects(node.redirects, heredoc_contents)
+                info = heredoc_contents[redirect.heredoc_key]
+                if isinstance(info, dict):
+                    redirect.heredoc_content = info['content']
+                    redirect.heredoc_quoted = info.get('quoted', False)
+                else:
+                    redirect.heredoc_content = info
 
     def _process_pipeline(self, node: Pipeline,
-                         heredoc_contents: Dict[str, str]) -> None:
+                         heredoc_contents: Dict[str, Any]) -> None:
         """Process pipeline node.
 
         Args:
@@ -171,7 +171,7 @@ class HeredocProcessor:
             self._traverse_node(command, heredoc_contents)
 
     def _process_and_or_list(self, node: AndOrList,
-                            heredoc_contents: Dict[str, str]) -> None:
+                            heredoc_contents: Dict[str, Any]) -> None:
         """Process and-or list node.
 
         Args:
@@ -182,7 +182,7 @@ class HeredocProcessor:
             self._traverse_node(pipeline, heredoc_contents)
 
     def _process_if_conditional(self, node: IfConditional,
-                               heredoc_contents: Dict[str, str]) -> None:
+                               heredoc_contents: Dict[str, Any]) -> None:
         """Process if conditional node.
 
         Args:
@@ -206,7 +206,7 @@ class HeredocProcessor:
             self._traverse_node(node.else_part, heredoc_contents)
 
     def _process_while_loop(self, node: WhileLoop,
-                           heredoc_contents: Dict[str, str]) -> None:
+                           heredoc_contents: Dict[str, Any]) -> None:
         """Process while loop node.
 
         Args:
@@ -217,7 +217,7 @@ class HeredocProcessor:
         self._traverse_node(node.body, heredoc_contents)
 
     def _process_for_loop(self, node: ForLoop,
-                         heredoc_contents: Dict[str, str]) -> None:
+                         heredoc_contents: Dict[str, Any]) -> None:
         """Process for loop node.
 
         Args:
@@ -229,7 +229,7 @@ class HeredocProcessor:
         self._traverse_node(node.body, heredoc_contents)
 
     def _process_c_style_for_loop(self, node: CStyleForLoop,
-                                 heredoc_contents: Dict[str, str]) -> None:
+                                 heredoc_contents: Dict[str, Any]) -> None:
         """Process C-style for loop node.
 
         Args:
@@ -241,7 +241,7 @@ class HeredocProcessor:
         self._traverse_node(node.body, heredoc_contents)
 
     def _process_case_statement(self, node: CaseConditional,
-                               heredoc_contents: Dict[str, str]) -> None:
+                               heredoc_contents: Dict[str, Any]) -> None:
         """Process case statement node.
 
         Args:
@@ -252,7 +252,7 @@ class HeredocProcessor:
             self._traverse_node(item.commands, heredoc_contents)
 
     def _process_select_loop(self, node: SelectLoop,
-                            heredoc_contents: Dict[str, str]) -> None:
+                            heredoc_contents: Dict[str, Any]) -> None:
         """Process select loop node.
 
         Args:
@@ -262,12 +262,8 @@ class HeredocProcessor:
         # Process body
         self._traverse_node(node.body, heredoc_contents)
 
-        # Process redirects if present
-        if hasattr(node, 'redirects') and node.redirects:
-            self._process_redirects(node.redirects, heredoc_contents)
-
     def _process_function_def(self, node: FunctionDef,
-                             heredoc_contents: Dict[str, str]) -> None:
+                             heredoc_contents: Dict[str, Any]) -> None:
         """Process function definition node.
 
         Args:
@@ -277,7 +273,7 @@ class HeredocProcessor:
         self._traverse_node(node.body, heredoc_contents)
 
     def _process_subshell_group(self, node: SubshellGroup,
-                               heredoc_contents: Dict[str, str]) -> None:
+                               heredoc_contents: Dict[str, Any]) -> None:
         """Process subshell group node.
 
         Args:
@@ -286,12 +282,8 @@ class HeredocProcessor:
         """
         self._traverse_node(node.statements, heredoc_contents)
 
-        # Process redirects if present
-        if hasattr(node, 'redirects') and node.redirects:
-            self._process_redirects(node.redirects, heredoc_contents)
-
     def _process_brace_group(self, node: BraceGroup,
-                           heredoc_contents: Dict[str, str]) -> None:
+                           heredoc_contents: Dict[str, Any]) -> None:
         """Process brace group node.
 
         Args:
@@ -300,36 +292,8 @@ class HeredocProcessor:
         """
         self._traverse_node(node.statements, heredoc_contents)
 
-        # Process redirects if present
-        if hasattr(node, 'redirects') and node.redirects:
-            self._process_redirects(node.redirects, heredoc_contents)
-
-    def _process_arithmetic_evaluation(self, node: ArithmeticEvaluation,
-                                      heredoc_contents: Dict[str, str]) -> None:
-        """Process arithmetic evaluation node.
-
-        Args:
-            node: Arithmetic evaluation node
-            heredoc_contents: Map of heredoc keys to their content
-        """
-        # Process redirects if present
-        if hasattr(node, 'redirects') and node.redirects:
-            self._process_redirects(node.redirects, heredoc_contents)
-
-    def _process_enhanced_test(self, node: EnhancedTestStatement,
-                              heredoc_contents: Dict[str, str]) -> None:
-        """Process enhanced test statement node.
-
-        Args:
-            node: Enhanced test statement node
-            heredoc_contents: Map of heredoc keys to their content
-        """
-        # Process redirects if present
-        if hasattr(node, 'redirects') and node.redirects:
-            self._process_redirects(node.redirects, heredoc_contents)
-
     def _process_statement_list(self, node: Union[CommandList, StatementList],
-                               heredoc_contents: Dict[str, str]) -> None:
+                               heredoc_contents: Dict[str, Any]) -> None:
         """Process command list or statement list node.
 
         Args:
@@ -340,7 +304,7 @@ class HeredocProcessor:
             self._traverse_node(statement, heredoc_contents)
 
     def _process_generic_node(self, node: ASTNode,
-                            heredoc_contents: Dict[str, str]) -> None:
+                            heredoc_contents: Dict[str, Any]) -> None:
         """Process any other node type generically.
 
         This is a fallback for node types that aren't explicitly handled.
@@ -407,7 +371,7 @@ def create_heredoc_processor() -> HeredocProcessor:
     return HeredocProcessor()
 
 
-def populate_heredocs(ast: ASTNode, heredoc_contents: Dict[str, str]) -> None:
+def populate_heredocs(ast: ASTNode, heredoc_contents: Dict[str, Any]) -> None:
     """Convenience function to populate heredoc content in an AST.
 
     Args:

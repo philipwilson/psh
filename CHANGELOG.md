@@ -4,6 +4,40 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.571.0 (2026-07-02) - Fix: combinator parser parity — `time` keyword, live heredocs, and-or backgrounding (appraisal #15 Tier 1, Cluster L)
+- FIX (HIGH). Reappraisal #15 cluster L — the educational combinator parser
+  regained parity with the recursive-descent (RD) parser on three fronts.
+- L1: the `time [-p]` pipeline prefix (added to RD in v0.558) never reached the
+  combinator, so `--parser combinator -c 'time echo hi'` was a hard rc=2 parse
+  error. The pipeline parser now mirrors the RD grammar: `time [-p]` precedes
+  `!`, times the whole pipeline, and bare `time` is a complete empty timed
+  pipeline.
+- L2: heredoc bodies now flow through the combinator instead of being
+  structurally dropped and silently masked. (a) The redirection builder carries
+  `heredoc_key`/`heredoc_quoted` and consumes composite delimiters (`<<E"O"F`),
+  mirroring RD's `_parse_heredoc`. (b) `HeredocProcessor` understands the
+  lexer's live `{'content','quoted'}` heredoc map entries and populates every
+  node's redirects at ONE chokepoint in `_traverse_node`, fixing compound
+  trailing heredocs like `done <<EOF` that the per-node handling missed.
+  (c) `source_processor` no longer silently falls back to the RD parser for
+  heredoc input under `--parser combinator`; `parse_with_heredocs` takes the
+  ACTIVE parser and dispatches honestly.
+- L3: a trailing `&` backgrounded only the last pipeline (`a && b &` ran `a` in
+  the FOREGROUND). The `&` is consumed at the and-or list level with the RD
+  parser's `_apply_background` semantics, so `a && b &` backgrounds the whole
+  list and junk sequences `& |`, `& &&`, `& ;` are rejected (bash rc=2).
+- Stretch goals (each verified against a bash truth table): function
+  definitions accept any compound body (`f() if ...`, `f() (sub)`, `f() for ...`,
+  `f() ((...))`); unclosed expansions (`echo ${`, `$(`, backtick, `$((`, `<(`)
+  are syntax errors at word-consumption time (were accepted as literal words;
+  the backtick form hit a swallowed `RecursionError`); `UntilLoop` added to both
+  compound-unwrap `isinstance` tuples for consistency.
+- Deliberate divergences: `echo x | time cat` and `f() (echo s) &` stay rc=2 —
+  the RD parser diverges from bash identically on both (documented RD MED
+  follow-ups: `time` in a pipeline tail; function-definition composability), and
+  the combinator now matches RD there. Truth table: 59/61 three-way cases match
+  bash, the 2 remaining being those two RD-parity bars.
+
 ## 0.570.0 (2026-07-02) - Fix: unclosed `$((` falls back to command substitution with a subshell (appraisal #15 Tier 1, Cluster A4)
 - FIX (HIGH). Reappraisal #15 cluster A4 — `$((` that never closes with `))`
   now re-reads as a `$(` command substitution whose body starts with a
