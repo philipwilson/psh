@@ -255,8 +255,6 @@ ASTNode
 ├── Statement
 │   ├── AndOrList          Pipeline chain with && / ||
 │   ├── FunctionDef        Function definition
-│   ├── BreakStatement     break [n]
-│   ├── ContinueStatement  continue [n]
 │   └── UnifiedControlStructure
 │       ├── IfConditional
 │       ├── WhileLoop / UntilLoop
@@ -288,6 +286,16 @@ ASTNode
 └── Word                   Mixed literal/expansion content
     └── WordPart (LiteralPart | ExpansionPart)
 ```
+
+> `break`, `continue`, and `return` have **no dedicated AST nodes**. Like
+> bash, they are ordinary (special) builtins, so they parse as plain
+> `SimpleCommand`s — which is why `break 2>/dev/null`, `break | cat`,
+> `break && x`, and even `break() { ...; }` all behave like any other
+> command. The control transfer is implemented in the builtins
+> (`psh/builtins/loop_control.py` for break/continue,
+> `psh/builtins/function_support.py` for return), which raise the
+> `LoopBreak` / `LoopContinue` / `FunctionReturn` signals that the loop and
+> function executors catch.
 
 **Key node: `SimpleCommand`** (`ast_nodes.py:186`):
 ```python
@@ -493,8 +501,11 @@ ExecutorVisitor
 | `visit_BraceGroup` | `SubshellExecutor` |
 | `visit_FunctionDef` | `FunctionOperationExecutor` |
 | `visit_ArithmeticEvaluation` | Arithmetic evaluator |
-| `visit_BreakStatement` | Raises `LoopBreak` exception |
-| `visit_ContinueStatement` | Raises `LoopContinue` exception |
+
+`break`, `continue`, and `return` have no visitor methods: they are
+builtins, dispatched through `visit_SimpleCommand` like any other command.
+The builtins raise `LoopBreak` / `LoopContinue` / `FunctionReturn`, which
+the loop and function executors catch.
 
 ### 4.3 Command Execution
 

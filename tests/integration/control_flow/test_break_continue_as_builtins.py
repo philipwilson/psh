@@ -157,3 +157,62 @@ class TestArgumentErrors:
         assert r.returncode == 1
         assert r.stdout == ''
         assert 'too many arguments' in r.stderr
+
+
+class TestBackgroundedControlFlowNoLeak:
+    """A break/continue/return backgrounded with & must not leak an internal
+    error. It runs in a forked child, so the control-flow signal cannot cross
+    the process boundary — the child just ends (bash is silent). Regression
+    for the D2 empty "psh: error:" leak: the LoopBreak/LoopContinue/
+    FunctionReturn escaping the launcher child was caught by the generic
+    `except Exception` and printed "psh: error: " with no message.
+
+    Subprocess-based (& + wait): the background job lives in the child psh,
+    so these are xdist-safe and assert the child's real stderr.
+    """
+
+    def test_break_backgrounded_in_loop_is_silent(self):
+        r = run_psh('for i in 1 2; do break & wait; echo in-$i; done; echo after')
+        assert r.returncode == 0
+        assert r.stdout == 'in-1\nin-2\nafter\n'
+        assert 'psh: error:' not in r.stderr
+        assert r.stderr == ''
+
+    def test_continue_backgrounded_in_loop_is_silent(self):
+        r = run_psh('for i in 1 2; do continue & wait; echo in-$i; done; echo after')
+        assert r.returncode == 0
+        assert r.stdout == 'in-1\nin-2\nafter\n'
+        assert 'psh: error:' not in r.stderr
+        assert r.stderr == ''
+
+    def test_return_backgrounded_in_function_is_silent(self):
+        r = run_psh('f(){ return & wait; echo in-fn; }; f; echo after')
+        assert r.returncode == 0
+        assert r.stdout == 'in-fn\nafter\n'
+        assert 'psh: error:' not in r.stderr
+        assert r.stderr == ''
+
+    def test_brace_group_break_backgrounded_no_empty_error(self):
+        # bash prints its "only meaningful in a loop" warning for the brace-
+        # group form; psh stays silent (consistent with `{ break; } | cat`).
+        # The hard requirement either way: NO empty "psh: error:" leak.
+        r = run_psh('for i in 1 2; do { break; } & wait; echo in-$i; done; echo after')
+        assert r.returncode == 0
+        assert r.stdout == 'in-1\nin-2\nafter\n'
+        assert 'psh: error:' not in r.stderr
+
+    def test_backgrounded_return_status_reaches_child(self):
+        # bash: the child exits with the return's status (silent).
+        r = run_psh('f(){ return 5 & p=$!; wait $p; echo rc=$?; }; f')
+        assert r.returncode == 0
+        assert r.stdout == 'rc=5\n'
+        assert 'psh: error:' not in r.stderr
+
+    def test_break_backgrounded_outside_loop_still_warns(self):
+        # Guard the other direction: with no enclosing loop the builtin (in
+        # the child) prints bash's warning and exits 0 — unchanged by the fix.
+        r = run_psh('break & wait; echo after')
+        assert r.returncode == 0
+        assert r.stdout == 'after\n'
+        assert 'only meaningful' in r.stderr
+        assert 'psh: error:' not in r.stderr
