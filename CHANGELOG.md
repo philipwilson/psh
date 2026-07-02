@@ -4,6 +4,40 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.570.0 (2026-07-02) - Fix: unclosed `$((` falls back to command substitution with a subshell (appraisal #15 Tier 1, Cluster A4)
+- FIX (HIGH). Reappraisal #15 cluster A4 — `$((` that never closes with `))`
+  now re-reads as a `$(` command substitution whose body starts with a
+  subshell, per the POSIX/bash disambiguation rule. `echo $((echo a); echo b)`
+  prints `a b` (was rc=2 "unclosed arithmetic expansion"; the double-quoted
+  form `"$((echo a); echo b)"` even reported an unclosed quote). `$(( is an
+  arithmetic expansion only when the paren group opened by its second `(`
+  closes with another `)` immediately following; psh had committed greedily to
+  arithmetic.
+- Core: new three-way scanner `scan_double_paren_arithmetic`
+  (CLOSED / NOT_ARITHMETIC / UNCLOSED) in `psh/lexer/pure_helpers.py`,
+  replacing a scan that let paren depth go negative (so
+  `$((echo a) + (echo b))` was misread as arithmetic and could match a later
+  `))`). Every extent-scanning sibling was updated to the corrected rule: the
+  lexer expansion parser chokepoint (`_parse_arithmetic_expansion` ->
+  cmdsub, covering unquoted and double-quoted words), both cmdsub-scanner
+  branch pairs via a new shared `_skip_dollar_paren` helper,
+  `validate_brace_expansion`, and `skip_expansion_region`.
+- Input ending exactly at the inner group's `)` stays UNCLOSED so the next
+  character decides — preserving incomplete-input gathering for multi-line
+  `$(( 1 +\n2 ))` while making multi-line `$((echo a)\n)` resolve to a command
+  substitution like bash. True arithmetic with balanced `))` is unchanged
+  (`$((1+2))`, `$((ls))`, `$( (echo x) )`, `(( ))` command, nested `$(($((1+1)))
+  + 1)`).
+- Truth-table pinned: 55 paired probes vs bash 5.2 across `-c`, script, and
+  stdin all match. Tests: unit (three-way scan + token classification +
+  at-eof), integration (execution incl. combinator parser, quoting,
+  assignment, subscript, multi-line stdin), a conformance suite, and 9 golden
+  cases. Two deliberate divergences remain (both marked KNOWN): a
+  case-pattern-inside-`$(( ))` corner where psh is more permissive than bash's
+  fallback re-read (bash accepts the identical body standalone), and the
+  `((`-command-vs-nested-subshell parser gap that already fails identically on
+  the standalone form.
+
 ## 0.569.0 (2026-07-02) - Fix: `&` and `|&` set command position (appraisal #15 Tier 1, Cluster A2)
 - FIX (HIGH). Reappraisal #15 cluster A2 — reserved words, `[[`, and `!` lost
   command position after `&`: `true & if true; then echo B; fi` was a syntax
