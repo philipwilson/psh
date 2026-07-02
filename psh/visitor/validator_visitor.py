@@ -18,12 +18,10 @@ from ..ast_nodes import (
     # Core nodes
     ASTNode,
     BraceGroup,
-    BreakStatement,
     CaseConditional,
     # Case components
     CaseItem,
     Command,
-    ContinueStatement,
     CStyleForLoop,
     EnhancedTestStatement,
     ForLoop,
@@ -40,7 +38,6 @@ from ..ast_nodes import (
     UntilLoop,
     # Control structures
     WhileLoop,
-    literal_loop_control_level,
 )
 from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
@@ -420,32 +417,6 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         if not node.expression.strip():
             self._add_warning("Arithmetic command with empty expression", node)
         self._visit_redirects(node)
-
-    # Break/Continue validation
-
-    def visit_BreakStatement(self, node: BreakStatement) -> None:
-        """Validate a break statement."""
-        if self.in_loop == 0:
-            self._add_error("break: only meaningful in a `for', `while', or `until' loop", node)
-            return
-        level = literal_loop_control_level(node)
-        if level is not None and level > self.in_loop:
-            self._add_error(
-                f"break: loop count {level} exceeds maximum nesting level {self.in_loop}",
-                node
-            )
-
-    def visit_ContinueStatement(self, node: ContinueStatement) -> None:
-        """Validate a continue statement."""
-        if self.in_loop == 0:
-            self._add_error("continue: only meaningful in a `for', `while', or `until' loop", node)
-            return
-        level = literal_loop_control_level(node)
-        if level is not None and level > self.in_loop:
-            self._add_error(
-                f"continue: loop count {level} exceeds maximum nesting level {self.in_loop}",
-                node
-            )
 
     # Function validation
 

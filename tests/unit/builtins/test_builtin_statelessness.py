@@ -35,6 +35,8 @@ COMMAND_BATTERY = [
     'readonly psh_stateless_ro=1',
     'local x 2>/dev/null',                    # errors outside function: fine
     'f() { local lv=1; return 3; }; f',
+    'for i in 1 2; do break; done',
+    'for i in 1 2; do continue; done',
     'getopts ab opt -a',
     'let "psh_stateless_n2 = 1 + 1"',
     'eval "echo evald"',

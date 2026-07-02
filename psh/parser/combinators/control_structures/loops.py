@@ -1,14 +1,13 @@
 """Loop parsers for the shell parser combinator.
 
 This module provides mixin parsers for while, until, for (traditional and
-C-style), select loops, and break/continue statements.
+C-style), and select loops. (break/continue are not statements: they are
+ordinary simple commands backed by builtins, as in bash.)
 """
 
 from typing import TYPE_CHECKING, List, Tuple, Union, cast
 
 from ....ast_nodes import (
-    BreakStatement,
-    ContinueStatement,
     CStyleForLoop,
     ExpansionPart,
     ForLoop,
@@ -494,54 +493,3 @@ class LoopParserMixin(_Base):
 
         return Parser(parse_select_loop)
 
-    def _build_break_statement(self) -> Parser[BreakStatement]:
-        """Build parser for break statement."""
-        def parse_break(tokens: List[Token], pos: int) -> ParseResult[BreakStatement]:
-            """Parse break statement."""
-            if pos >= len(tokens) or not matches_keyword(tokens[pos], 'break'):
-                return ParseResult(success=False, error="Expected 'break'", position=pos)
-
-            pos += 1  # Skip 'break'
-
-            # Parse optional level (number)
-            level = 1  # Default
-            if pos < len(tokens) and tokens[pos].type.name == 'WORD':
-                try:
-                    level = int(tokens[pos].value)
-                    pos += 1
-                except ValueError:
-                    pass  # Not a number, leave level as 1
-
-            return ParseResult(
-                success=True,
-                value=BreakStatement(level=level),
-                position=pos
-            )
-
-        return Parser(parse_break)
-
-    def _build_continue_statement(self) -> Parser[ContinueStatement]:
-        """Build parser for continue statement."""
-        def parse_continue(tokens: List[Token], pos: int) -> ParseResult[ContinueStatement]:
-            """Parse continue statement."""
-            if pos >= len(tokens) or not matches_keyword(tokens[pos], 'continue'):
-                return ParseResult(success=False, error="Expected 'continue'", position=pos)
-
-            pos += 1  # Skip 'continue'
-
-            # Parse optional level (number)
-            level = 1  # Default
-            if pos < len(tokens) and tokens[pos].type.name == 'WORD':
-                try:
-                    level = int(tokens[pos].value)
-                    pos += 1
-                except ValueError:
-                    pass  # Not a number, leave level as 1
-
-            return ParseResult(
-                success=True,
-                value=ContinueStatement(level=level),
-                position=pos
-            )
-
-        return Parser(parse_continue)

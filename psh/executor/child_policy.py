@@ -209,10 +209,22 @@ def run_child_shell(parent_shell: 'Shell',
             io_setup()
 
         # Import here to avoid a circular import (shell -> executor).
-        from ..core.exceptions import FunctionReturn, TopLevelAbort
+        from ..core.exceptions import (
+            FunctionReturn,
+            LoopBreak,
+            LoopContinue,
+            TopLevelAbort,
+        )
         from ..shell import Shell
         child_shell = Shell.for_subshell(parent_shell, norc=norc)
         child_shell.state.in_forked_child = True
+        # A substitution child forked inside a loop keeps the loop scope
+        # visible (bash: `x=$(break)` in a loop is SILENT — no "only
+        # meaningful in a loop" warning — though the break cannot cross
+        # the process boundary; the except below just ends the child).
+        parent_executor = parent_shell._current_executor
+        if parent_executor is not None:
+            child_shell._loop_depth_seed = parent_executor.context.loop_depth
         # This process is a fresh fork: align OS dispositions with the
         # adopted trap state BEFORE any drop (a procsub child must still
         # reset the parent's queueing handlers copied by the fork).
@@ -241,6 +253,10 @@ def run_child_shell(parent_shell: 'Shell',
             # context ends the child with its status (bash:
             # f() { x=$(return 3); } leaves $? = 3).
             exit_code = e.exit_code
+        except (LoopBreak, LoopContinue):
+            # A break/continue that escapes the child's own loops (the
+            # inherited loop scope above) just ends the child, status 0.
+            exit_code = 0
         except SystemExit as e:
             # exit in a substitution terminates the child, not the parent.
             code = e.code

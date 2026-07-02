@@ -9,9 +9,7 @@ from typing import List, Optional, Tuple
 from ....ast_nodes import (
     ArrayInitialization,
     BraceGroup,
-    BreakStatement,
     Command,
-    ContinueStatement,
     LiteralPart,
     Pipeline,
     SimpleCommand,
@@ -411,10 +409,6 @@ class CommandParser(ParserSubcomponent):
             return self.parser.arithmetic.parse_arithmetic_command()
         elif self.parser.match(TokenType.DOUBLE_LBRACKET):
             return self.parser.tests.parse_enhanced_test_statement()
-        elif self.parser.match(TokenType.BREAK):
-            return self.parse_break_statement()
-        elif self.parser.match(TokenType.CONTINUE):
-            return self.parse_continue_statement()
         elif self.parser.match(TokenType.LPAREN):
             self._reject_escaped_dollar_paren()
             return self.parse_subshell_group()
@@ -491,14 +485,6 @@ class CommandParser(ParserSubcomponent):
                 return WordBuilder.build_word_from_token(token, quote_type)
             else:
                 raise self.parser.error("Expected word-like token")
-
-    def parse_break_statement(self) -> BreakStatement:
-        """Parse break statement for use in pipelines."""
-        return self.parser.control_structures.parse_break_statement()
-
-    def parse_continue_statement(self) -> ContinueStatement:
-        """Parse continue statement for use in pipelines."""
-        return self.parser.control_structures.parse_continue_statement()
 
     def parse_subshell_group(self) -> SubshellGroup:
         """Parse subshell group (...) that executes in isolated environment."""

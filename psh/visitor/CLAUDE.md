@@ -278,10 +278,10 @@ change that added the matrix test):
    in; `EnhancedValidatorVisitor` inherits it via `ValidatorVisitor`) — that
    every such handler calls; the matrix test verifies all redirect carriers
    behaviorally (parse real source, assert the issue/output/count).
-2. **`BreakStatement`/`ContinueStatement` redirects are unreachable from
-   source** (`break >f` parses as two statements); their `redirects`
-   fields exist only to satisfy the `Command` interface and are exempt in
-   the matrix, with a pinning test.
+2. **`break`/`continue` have no AST nodes** (since the D2 de-keywording):
+   they parse as ordinary `SimpleCommand`s backed by builtins, so their
+   redirects attach and apply like any command's (`break >f` — bash). The
+   matrix's `REDIRECT_EXEMPT` set is currently empty.
 
 ## Available Visitors
 

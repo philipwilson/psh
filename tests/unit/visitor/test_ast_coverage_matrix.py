@@ -35,9 +35,7 @@ import psh.ast_nodes as ast_mod
 from psh.ast_nodes import (
     ArrayAssignment,
     ASTNode,
-    BreakStatement,
     Command,
-    ContinueStatement,
     Pipeline,
     Redirect,
     SimpleCommand,
@@ -128,7 +126,7 @@ def test_inventory_is_sane():
                      'ProcessSubstitution', 'Redirect', 'CasePattern',
                      'BinaryTestExpression', 'ArrayInitialization'):
         assert expected in names
-    assert len(names) >= 36
+    assert len(names) >= 34
 
 
 # ---------------------------------------------------------------------------
@@ -244,11 +242,11 @@ REDIRECT_SOURCES = {
     'ArithmeticEvaluation': '((1 + 1)) >/etc/passwd',
 }
 
-# Nodes whose redirects field is unreachable from source: both parsers
-# treat a redirect after break/continue as a separate command
-# (`break >f` parses as BreakStatement followed by a bare-redirect
-# SimpleCommand). The field exists only to satisfy the Command interface.
-REDIRECT_EXEMPT = {'BreakStatement', 'ContinueStatement'}
+# Nodes whose redirects field is unreachable from source. (Currently none:
+# break/continue used to be exempt as statement nodes, but they are now
+# ordinary simple commands backed by builtins — `break >f` is a
+# SimpleCommand whose redirect applies, as in bash.)
+REDIRECT_EXEMPT: set = set()
 
 
 def _redirect_carrier_classes():
@@ -269,14 +267,14 @@ def test_redirect_field_inventory_matches_matrix():
     )
 
 
-def test_break_continue_redirects_truly_unreachable():
-    """Pin the justification for REDIRECT_EXEMPT."""
-    for src, cls in [('break >/etc/passwd', BreakStatement),
-                     ('continue >/etc/passwd', ContinueStatement)]:
-        nodes = _find_nodes(_ast(f'while true; do {src}; done'), cls)
-        assert nodes and all(not n.redirects for n in nodes), (
-            f"{cls.__name__} now carries parsed redirects - remove it from "
-            "REDIRECT_EXEMPT and add it to REDIRECT_SOURCES"
+def test_break_continue_parse_as_simple_commands_with_redirects():
+    """break/continue are simple commands; their redirects attach (bash)."""
+    for src, name in [('break >/etc/passwd', 'break'),
+                      ('continue >/etc/passwd', 'continue')]:
+        nodes = _find_nodes(_ast(f'while true; do {src}; done'), SimpleCommand)
+        matching = [n for n in nodes if n.args and n.args[0] == name]
+        assert matching and all(n.redirects for n in matching), (
+            f"{name!r} did not parse as a SimpleCommand with its redirect"
         )
 
 
@@ -392,13 +390,13 @@ def test_security_catches_while_loop_etc_passwd_write():
 def test_validator_traverses_until_loop_body():
     """until-loop bodies used to be skipped entirely by the validator."""
     v = ValidatorVisitor()
-    v.visit(_ast('until false; do break 5; done'))
-    assert any('loop count 5 exceeds' in i.message for i in v.issues)
+    v.visit(_ast('until false; do cd a b; done'))
+    assert any('cd: too many arguments' in i.message for i in v.issues)
 
 
 def test_validator_traverses_group_bodies():
     """subshell/brace group bodies used to be skipped by the validator."""
-    for src in ('( break )', '{ break; }'):
+    for src in ('( cd a b )', '{ cd a b; }'):
         v = ValidatorVisitor()
         v.visit(_ast(src))
-        assert any('break' in i.message for i in v.issues), src
+        assert any('cd: too many arguments' in i.message for i in v.issues), src

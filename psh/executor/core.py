@@ -20,9 +20,7 @@ from ..ast_nodes import (
     # Core nodes
     ASTNode,
     BraceGroup,
-    BreakStatement,
     CaseConditional,
-    ContinueStatement,
     CStyleForLoop,
     # Test commands
     EnhancedTestStatement,
@@ -129,13 +127,21 @@ class ExecutorVisitor(ASTVisitor[int]):
                         sys.exit(exit_status)
                     break
             except LoopBreak:
-                # Break at top level is an error
-                print("break: only meaningful in a `for' or `while' loop", file=sys.stderr)
+                # Re-raise when a loop in an enclosing frame (eval inside a
+                # loop, a seeded substitution child) is there to handle it;
+                # otherwise it's an error (defensive — the break builtin
+                # only raises when loop_depth > 0).
+                if self.context.loop_depth > 0:
+                    raise
+                print("break: only meaningful in a `for', `while', or `until' loop",
+                      file=sys.stderr)
                 exit_status = 1
                 self.state.last_exit_code = exit_status
             except LoopContinue:
-                # Continue at top level is an error
-                print("continue: only meaningful in a `for' or `while' loop", file=sys.stderr)
+                if self.context.loop_depth > 0:
+                    raise
+                print("continue: only meaningful in a `for', `while', or `until' loop",
+                      file=sys.stderr)
                 exit_status = 1
                 self.state.last_exit_code = exit_status
             except SystemExit:
@@ -180,10 +186,12 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # Function return should propagate up
                 raise
             except (LoopBreak, LoopContinue):
-                # Re-raise if we're in a loop, otherwise it's an error
+                # Re-raise if we're in a loop, otherwise it's an error.
+                # (Defensive: the break/continue builtins only raise when
+                # loop_depth > 0, so this path needs a context that reset
+                # the depth after the raise — e.g. a trap action.)
                 if self.context.loop_depth > 0:
                     raise
-                # Not in a loop - this was already reported by visit_BreakStatement/visit_ContinueStatement
                 exit_status = 1
                 self.state.last_exit_code = exit_status
                 # Don't continue executing statements after break/continue error
@@ -369,16 +377,6 @@ class ExecutorVisitor(ASTVisitor[int]):
         # Delegate to ControlFlowExecutor
         return self.control_flow_executor.execute_case(node, self.context, self)
 
-
-    def visit_BreakStatement(self, node: BreakStatement) -> int:
-        """Execute break statement."""
-        # Delegate to ControlFlowExecutor
-        return self.control_flow_executor.execute_break(node, self.context)
-
-    def visit_ContinueStatement(self, node: ContinueStatement) -> int:
-        """Execute continue statement."""
-        # Delegate to ControlFlowExecutor
-        return self.control_flow_executor.execute_continue(node, self.context)
 
     def visit_SubshellGroup(self, node: SubshellGroup) -> int:
         """Execute subshell group (...) in isolated environment."""

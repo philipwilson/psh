@@ -130,10 +130,6 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
         self.subshell_group = self._build_subshell_group()
         self.brace_group = self._build_brace_group()
 
-        # Break and continue
-        self.break_statement = self._build_break_statement()
-        self.continue_statement = self._build_continue_statement()
-
         # Combined control structure parser
         self.control_structure = (
             self.if_statement
@@ -144,8 +140,6 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
             .or_else(self.select_loop)
             .or_else(self.subshell_group)
             .or_else(self.brace_group)
-            .or_else(self.break_statement)
-            .or_else(self.continue_statement)
         )
 
     # === Shared helper methods ===

@@ -4,14 +4,13 @@ import pytest
 
 from psh.ast_nodes import (
     BraceGroup,
-    BreakStatement,
     CaseConditional,
-    ContinueStatement,
     CStyleForLoop,
     ForLoop,
     FunctionDef,
     IfConditional,
     SelectLoop,
+    SimpleCommand,
     SubshellGroup,
     WhileLoop,
 )
@@ -534,69 +533,33 @@ class TestCompoundCommands:
 
 
 class TestBreakContinue:
-    """Test break and continue statement parsing."""
+    """break/continue are NOT statements: they parse as ordinary simple
+    commands backed by builtins (bash treats them as builtins, not
+    reserved words)."""
 
-    def test_break_statement(self):
-        """Test break statement."""
-        parsers = ControlStructureParsers()
-        command_parsers = CommandParsers()
-        parsers.set_command_parsers(command_parsers)
+    def _parse_single(self, source: str):
+        parser = ParserCombinatorShellParser()
+        ast = parser.parse(tokenize(source))
+        items = ast.items if hasattr(ast, 'items') else ast.statements
+        assert len(items) == 1
+        # A TopLevel item may itself be a command list of one statement.
+        item = items[0]
+        if hasattr(item, 'statements'):
+            assert len(item.statements) == 1
+            return item.statements[0]
+        return item
 
-        tokens = [
-            make_token(TokenType.WORD, "break")
-        ]
-
-        result = parsers.break_statement.parse(tokens, 0)
-        assert result.success is True
-        assert isinstance(result.value, BreakStatement)
-        assert result.value.level == 1  # Default
-
-    def test_break_with_level(self):
-        """Test break statement with level."""
-        parsers = ControlStructureParsers()
-        command_parsers = CommandParsers()
-        parsers.set_command_parsers(command_parsers)
-
-        tokens = [
-            make_token(TokenType.WORD, "break"),
-            make_token(TokenType.WORD, "2")
-        ]
-
-        result = parsers.break_statement.parse(tokens, 0)
-        assert result.success is True
-        assert isinstance(result.value, BreakStatement)
-        assert result.value.level == 2
-
-    def test_continue_statement(self):
-        """Test continue statement."""
-        parsers = ControlStructureParsers()
-        command_parsers = CommandParsers()
-        parsers.set_command_parsers(command_parsers)
-
-        tokens = [
-            make_token(TokenType.WORD, "continue")
-        ]
-
-        result = parsers.continue_statement.parse(tokens, 0)
-        assert result.success is True
-        assert isinstance(result.value, ContinueStatement)
-        assert result.value.level == 1  # Default
-
-    def test_continue_with_level(self):
-        """Test continue statement with level."""
-        parsers = ControlStructureParsers()
-        command_parsers = CommandParsers()
-        parsers.set_command_parsers(command_parsers)
-
-        tokens = [
-            make_token(TokenType.WORD, "continue"),
-            make_token(TokenType.WORD, "3")
-        ]
-
-        result = parsers.continue_statement.parse(tokens, 0)
-        assert result.success is True
-        assert isinstance(result.value, ContinueStatement)
-        assert result.value.level == 3
+    @pytest.mark.parametrize("source,args", [
+        ("break", ["break"]),
+        ("break 2", ["break", "2"]),
+        ("continue", ["continue"]),
+        ("continue 3", ["continue", "3"]),
+    ])
+    def test_parses_as_simple_command(self, source, args):
+        stmt = self._parse_single(source)
+        cmd = stmt.pipelines[0].commands[0] if hasattr(stmt, 'pipelines') else stmt
+        assert isinstance(cmd, SimpleCommand)
+        assert cmd.args == args
 
 
 class TestConvenienceFunctions:

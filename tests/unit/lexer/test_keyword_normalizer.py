@@ -56,17 +56,18 @@ def test_normalizer_handles_case_terminators():
     assert tokens[7].type == TokenType.ESAC
 
 
-def test_normalizer_converts_return_keyword():
-    tokens = [
-        make_word("return"),
-        make_word("1")
-    ]
+def test_break_continue_return_are_not_keywords():
+    """break/continue/return are ordinary builtins in bash, not reserved
+    words — the normalizer must leave them as plain WORDs so they parse as
+    simple commands (definable as functions, redirectable, pipeable)."""
+    for name in ("break", "continue", "return"):
+        tokens = [make_word(name), make_word("1")]
 
-    normalizer = KeywordNormalizer()
-    normalizer.normalize(tokens)
+        normalizer = KeywordNormalizer()
+        normalizer.normalize(tokens)
 
-    assert tokens[0].type == TokenType.RETURN
-    assert tokens[0].is_keyword is True
+        assert tokens[0].type == TokenType.WORD
+        assert not tokens[0].is_keyword
 
 
 class TestKeywordCaseSensitivity:

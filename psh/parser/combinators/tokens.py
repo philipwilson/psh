@@ -127,11 +127,6 @@ class TokenParsers:
         # Pipeline-timing keyword
         self.time_kw = keyword('time')
 
-        # Flow control keywords
-        self.break_kw = keyword('break')
-        self.continue_kw = keyword('continue')
-        self.return_kw = keyword('return')
-
     def _initialize_expansions(self):
         """Initialize expansion token parsers."""
         # Variable and parameter expansion
@@ -185,7 +180,6 @@ class TokenParsers:
         # Word-like tokens (words, strings, expansions, and [ which starts test commands)
         self.word_like = (
             self.word
-            .or_else(self.return_kw)
             .or_else(self.string)
             .or_else(self.lbracket)
             .or_else(self.expansion)

@@ -1,9 +1,11 @@
 """Control-structure nodes.
 
-Function definitions, break/continue, case patterns/items, and the unified
-control structures (loops, if, case, select, arithmetic command). The
-unified structures inherit from both Statement and CompoundCommand so they
-work at statement level and as pipeline components.
+Function definitions, case patterns/items, and the unified control
+structures (loops, if, case, select, arithmetic command). The unified
+structures inherit from both Statement and CompoundCommand so they work at
+statement level and as pipeline components. (break/continue/return have no
+AST nodes: they are ordinary simple commands backed by builtins, as in
+bash.)
 """
 
 from dataclasses import dataclass, field
@@ -11,7 +13,6 @@ from typing import List, Optional, Tuple
 
 from .base import (
     ASTNode,
-    CompoundCommand,
     Statement,
     UnifiedControlStructure,
 )
@@ -28,49 +29,6 @@ class FunctionDef(Statement):
     # Redirections attached to the definition (f() { ...; } > file) are
     # applied at each CALL, not at definition time (bash).
     redirects: List[Redirect] = field(default_factory=list)
-
-
-@dataclass
-class BreakStatement(Statement, CompoundCommand):
-    """Break statement to exit loops."""
-    level: int = 1  # Literal default level (used when level_words is empty)
-    # The raw argument words (``break $n``, ``break foo``, the error case
-    # ``break 1 2``). bash validates the level at RUNTIME (a never-executed
-    # ``break foo`` is not an error) and the argument may be a non-literal
-    # expansion — so the executor expands and validates these. Empty means
-    # no argument; more than one resulting field is "too many arguments".
-    level_words: List[Word] = field(default_factory=list)
-    redirects: List[Redirect] = field(default_factory=list)  # Required for Command interface
-    background: bool = False  # Required for Command interface
-
-
-@dataclass
-class ContinueStatement(Statement, CompoundCommand):
-    """Continue statement to skip to next iteration."""
-    level: int = 1  # Literal default level (used when level_words is empty)
-    level_words: List[Word] = field(default_factory=list)  # raw arg words (see BreakStatement)
-    redirects: List[Redirect] = field(default_factory=list)  # Required for Command interface
-    background: bool = False  # Required for Command interface
-
-
-def literal_loop_control_level(node) -> Optional[int]:
-    """Best-effort STATIC level for a break/continue node.
-
-    The int level if it is statically knowable — a single literal-integer
-    argument word, or the int ``level`` field when there is no argument
-    word. None when the level is a non-literal expansion (``break $n``)
-    that can only be resolved at runtime, or when the argument is not a
-    plain integer. For static analysis (validator) and pretty-printing.
-    """
-    words = node.level_words
-    if not words:
-        return node.level
-    if len(words) != 1:
-        return None
-    try:
-        return int(words[0].source_text())
-    except ValueError:
-        return None
 
 
 @dataclass

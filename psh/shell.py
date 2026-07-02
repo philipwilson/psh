@@ -172,6 +172,11 @@ class Shell:
         # cross the fork, as in bash). 0 = not suppressed.
         self._errexit_suppress_seed: int = 0
 
+        # Loop-depth seed, same mechanism: run_child_shell sets this on a
+        # substitution child forked inside a loop so `x=$(break)` stays
+        # silent (bash) instead of warning "only meaningful in a loop".
+        self._loop_depth_seed: int = 0
+
     def _select_parser(self, parent_shell: Optional['Shell']) -> None:
         """Phase 5: choose the active parser implementation.
 
@@ -318,6 +323,7 @@ class Shell:
         # (condition, non-final && / || member) seeds the suppression into
         # its fresh visitor so the exemption crosses the fork, as in bash.
         executor.context.errexit_suppress = getattr(self, '_errexit_suppress_seed', 0)
+        executor.context.loop_depth = getattr(self, '_loop_depth_seed', 0)
         self._current_executor = executor
         try:
             return executor.visit(node)

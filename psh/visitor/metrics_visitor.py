@@ -14,10 +14,8 @@ from ..ast_nodes import (
     ArrayElementAssignment,
     ArrayInitialization,
     ASTNode,
-    BreakStatement,
     CaseConditional,
     CommandSubstitution,
-    ContinueStatement,
     CStyleForLoop,
     EnhancedTestStatement,
     ExpansionPart,
@@ -446,16 +444,6 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self.metrics.process_substitutions += 1
         # Process substitution contains a command
         # but we'll count it separately
-
-    def visit_BreakStatement(self, node: BreakStatement) -> None:
-        """Visit break statement."""
-        # Break adds a path, increasing complexity
-        self.metrics.cyclomatic_complexity += 1
-
-    def visit_ContinueStatement(self, node: ContinueStatement) -> None:
-        """Visit continue statement."""
-        # Continue adds a path, increasing complexity
-        self.metrics.cyclomatic_complexity += 1
 
     def visit_EnhancedTestStatement(self, node: EnhancedTestStatement) -> None:
         """Visit enhanced test [[...]]."""

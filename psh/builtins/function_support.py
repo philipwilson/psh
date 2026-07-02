@@ -1,4 +1,5 @@
 """Function-related builtin commands."""
+import sys
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from ..core import AssociativeArray, IndexedArray, ReadonlyVariableError, VarAttributes, Variable
@@ -831,6 +832,16 @@ class ReturnBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the return builtin."""
+        if len(args) > 2:
+            # bash checks this before the in-function check: the error does
+            # NOT return, and a non-interactive shell aborts with status 1
+            # (return is a POSIX special builtin).
+            self.error("too many arguments", shell)
+            shell.state.last_exit_code = 1
+            if shell.state.is_script_mode:
+                sys.exit(1)
+            return 1
+
         if not shell.state.function_stack and shell.state.source_depth == 0:
             self.error("can only `return' from a function or sourced script", shell)
             return 2  # bash usage-error status

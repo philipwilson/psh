@@ -147,15 +147,20 @@ class CommandExecutor:
         self.assignments = CommandAssignments(shell)
 
         # Initialize execution strategies.
-        # Order matters: special builtins > functions > builtins > external
-        # (POSIX lookup order). Aliases are NOT a runtime strategy: they are
-        # expanded as a token-stream transform at the lex→parse boundary
-        # (AliasManager.expand_aliases, wired in scripting/source_processor.py
-        # and command_accumulator.py), so by the time the executor runs the
-        # command word is already the alias-expanded token.
+        # Order matters: functions > builtins (special or not) > external —
+        # bash's default-mode lookup order, where functions shadow even
+        # POSIX special builtins (`exit(){ ...; }; exit` runs the function;
+        # POSIX puts special builtins first, which bash honors only in
+        # POSIX mode). The special/regular builtin split still matters for
+        # prefix-assignment persistence. Aliases are NOT a runtime
+        # strategy: they are expanded as a token-stream transform at the
+        # lex→parse boundary (AliasManager.expand_aliases, wired in
+        # scripting/source_processor.py and command_accumulator.py), so by
+        # the time the executor runs the command word is already the
+        # alias-expanded token.
         self.strategies = [
-            SpecialBuiltinExecutionStrategy(),
             FunctionExecutionStrategy(),
+            SpecialBuiltinExecutionStrategy(),
             BuiltinExecutionStrategy(),
             ExternalExecutionStrategy()
         ]
@@ -385,8 +390,12 @@ class CommandExecutor:
             if self.state.options.get('xtrace'):
                 self._print_xtrace(cmd_name, cmd_args)
 
-            # Special handling for exec builtin (needs access to redirections)
-            if cmd_name == 'exec':
+            # Special handling for exec builtin (needs access to
+            # redirections). A user-defined exec() function shadows the
+            # builtin (bash), so the special case only applies when no
+            # function will take the lookup.
+            if cmd_name == 'exec' and (bypass_functions or
+                                       not self.function_manager.get_function('exec')):
                 return self._handle_exec_builtin(node, expanded_args, prefix.applied)
 
             # Deliver structured array initializers to declaration
@@ -591,9 +600,9 @@ class CommandExecutor:
                          ) -> Optional[CommandResolution]:
         """Resolve a command name to the strategy that will run it.
 
-        Walks the priority-ordered strategy list (special builtins >
-        functions > builtins > external; aliases are expanded earlier as a
-        token-stream transform, not here), honoring the ``\\cmd``
+        Walks the priority-ordered strategy list (functions > builtins >
+        external, bash's default-mode order; aliases are expanded earlier
+        as a token-stream transform, not here), honoring the ``\\cmd``
         bypass exclusions, and returns the first match as a
         :class:`CommandResolution`. The persistence policy — previously the
         ``isinstance(strategy, SpecialBuiltinExecutionStrategy)`` check —

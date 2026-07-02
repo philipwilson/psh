@@ -10,10 +10,8 @@ from typing import List, Optional, Union
 from ...ast_nodes import (
     AndOrList,
     ArithmeticEvaluation,
-    BreakStatement,
     CaseConditional,
     CommandList,
-    ContinueStatement,
     CStyleForLoop,
     EnhancedTestStatement,
     ForLoop,
@@ -173,11 +171,6 @@ class Parser(ContextBaseParser):
                 if bare is not None:
                     return TopLevel(items=[bare])
                 return item
-            elif isinstance(item, (BreakStatement, ContinueStatement)):
-                # Convert to CommandList for compatibility
-                cmd_list = CommandList()
-                cmd_list.statements.append(item)
-                return cmd_list
             else:
                 # Other single items return TopLevel
                 return top_level
