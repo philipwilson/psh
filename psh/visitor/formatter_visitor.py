@@ -71,6 +71,11 @@ class FormatterVisitor(ASTVisitor[str]):
         super().__init__()
         self.indent = indent
         self.level = 0
+        # Heredoc bodies queued for the current physical line. A command with
+        # a ``<<DELIM`` registers its body+delimiter here (bash places them on
+        # the lines AFTER the whole logical line, not inline); the line's
+        # completing site flushes them via ``_flush_line`` — see J2.
+        self._pending_heredocs: list = []
 
     def _indent(self) -> str:
         """Get current indentation string."""
@@ -228,20 +233,33 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format top-level script."""
         parts = []
         for item in node.items:
-            parts.append(self.visit(item))
+            parts.append(self._flush_line(self.visit(item)))
         return '\n\n'.join(parts)
 
     def visit_StatementList(self, node: StatementList) -> str:
-        """Format a list of statements."""
+        """Format a list of statements.
+
+        Each statement is a physical line: after rendering it, flush any
+        heredoc bodies its commands queued, so `cat <<EOF && echo x` puts the
+        body+delimiter after the WHOLE line (J2). Compound statements flush
+        their own condition/body/trailer heredocs internally, leaving nothing
+        pending here.
+        """
         parts = []
         for stmt in node.statements:
-            parts.append(self.visit(stmt))
+            parts.append(self._flush_line(self.visit(stmt)))
         return '\n'.join(parts)
 
     # Command nodes
 
     def visit_SimpleCommand(self, node: SimpleCommand) -> str:
-        """Format a simple command."""
+        """Format a simple command.
+
+        Heredoc bodies are NOT emitted here: they are queued via
+        ``_register_heredocs`` and flushed after the whole physical line
+        (which may continue with ``&& …``, ``; then``, a pipe, …) by the
+        enclosing statement/header site — see ``_flush_line`` (J2).
+        """
         parts = []
 
         # Array assignments
@@ -253,7 +271,13 @@ class FormatterVisitor(ASTVisitor[str]):
         words = node.words if node.words else []
         for i, arg in enumerate(node.args):
             word = words[i] if i < len(words) else None
-            if word and word.parts:
+            if word is not None and word.array_init is not None:
+                # An argument-position array initializer (`declare -A m=(...)`).
+                # Render from the structured element Words, not the word's flat
+                # literal — the flat string re-serializes tokens and mangles a
+                # `$'...'` element (J3/J6).
+                parts.append(self.visit(word.array_init))
+            elif word and word.parts:
                 parts.append(self._format_word(word))
             else:
                 parts.append(arg)
@@ -266,7 +290,8 @@ class FormatterVisitor(ASTVisitor[str]):
         if node.background:
             parts.append('&')
 
-        return self._indent() + ' '.join(parts) + self._heredoc_trailer(node.redirects)
+        self._register_heredocs(node.redirects)
+        return self._indent() + ' '.join(parts)
 
     def visit_Pipeline(self, node: Pipeline) -> str:
         """Format a pipeline.
@@ -276,31 +301,26 @@ class FormatterVisitor(ASTVisitor[str]):
         ``case``/groups), which render across multiple lines. Delegate to
         the command so it keeps its own indentation; only a true multi-stage
         pipeline flattens its stages onto one line joined by ``' | '`` (which
-        is why the inline path resets the indent level to 0).
+        is why the inline path resets the indent level to 0). Heredoc bodies
+        from any stage are queued and flushed after the whole line (J2).
         """
+        prefix = self._pipeline_prefix(node)  # 'time '/'time -p '/'! '/…
+
+        if not node.commands:
+            # A bare `time` (no pipeline) parses to an empty timed Pipeline.
+            return self._indent() + prefix.rstrip()
+
         if len(node.commands) == 1:
             result = self.visit(node.commands[0])
-            if node.negated:
+            if prefix:
                 stripped = result.lstrip(' ')
                 indent = result[:len(result) - len(stripped)]
-                result = f"{indent}! {stripped}"
+                result = f"{indent}{prefix}{stripped}"
             return result
 
         saved_level = self.level
         self.level = 0
-        # Render each stage's command LINE, separating any heredoc body+delim
-        # so the whole pipeline header stays on one line and the heredoc bodies
-        # follow it — otherwise `cat <<EOF | grep h` formats the `| grep h` onto
-        # the EOF terminator line, which breaks heredoc termination on re-parse.
-        headers = []
-        trailers = []
-        for cmd in node.commands:
-            rendered = self.visit(cmd)
-            trailer = self._heredoc_trailer(getattr(cmd, 'redirects', []) or [])
-            if trailer and rendered.endswith(trailer):
-                rendered = rendered[:-len(trailer)]
-                trailers.append(trailer)
-            headers.append(rendered.strip())
+        headers = [self.visit(cmd).strip() for cmd in node.commands]
         self.level = saved_level
 
         # Join stages with ' | ' or ' |& ' (pipe_stderr[i] marks the |& between
@@ -311,11 +331,19 @@ class FormatterVisitor(ASTVisitor[str]):
             stderr_piped = (i - 1) < len(pipe_stderr) and pipe_stderr[i - 1]
             pieces.append(' |& ' if stderr_piped else ' | ')
             pieces.append(headers[i])
-        result = ''.join(pieces)
-        if node.negated:
-            result = '! ' + result
 
-        return self._indent() + result + ''.join(trailers)
+        return self._indent() + prefix + ''.join(pieces)
+
+    @staticmethod
+    def _pipeline_prefix(node: Pipeline) -> str:
+        """The reserved-word prefix of a pipeline: ``time``/``time -p`` then
+        ``!`` (bash grammar order ``[time [-p]] [!] pipeline``)."""
+        prefix = ''
+        if node.timed:
+            prefix += 'time -p ' if node.time_posix else 'time '
+        if node.negated:
+            prefix += '! '
+        return prefix
 
     def visit_AndOrList(self, node: AndOrList) -> str:
         """Format an and/or list."""
@@ -340,7 +368,8 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format a while loop."""
         lines = []
 
-        lines.append(f"{self._indent()}while {self._format_inline(node.condition)}; do")
+        lines.append(self._flush_line(
+            f"{self._indent()}while {self._format_inline(node.condition)}; do"))
         self._increase_indent()
         lines.append(self.visit(node.body))
         self._decrease_indent()
@@ -355,7 +384,8 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format an until loop."""
         lines = []
 
-        lines.append(f"{self._indent()}until {self._format_inline(node.condition)}; do")
+        lines.append(self._flush_line(
+            f"{self._indent()}until {self._format_inline(node.condition)}; do"))
         self._increase_indent()
         lines.append(self.visit(node.body))
         self._decrease_indent()
@@ -381,12 +411,25 @@ class FormatterVisitor(ASTVisitor[str]):
             return '"' + cls._escape_double_quoted(item) + '"'
         return item
 
+    def _format_loop_items(self, node) -> str:
+        """Render a for/select ``in`` list from the item Words.
+
+        The item Words carry per-part quote context, so a quoted item
+        round-trips faithfully (``'a b'`` stays single-quoted, ``"$z"`` keeps
+        its quotes) and the ``in``-less form (``for x; do``) — whose parser
+        stored the implicit ``"$@"`` Word — renders as ``for x in "$@"``
+        rather than an unquoted ``$@`` that would word-split (J5). Falls back
+        to the flat item strings only for hand-built ASTs with no item Words.
+        """
+        if node.item_words:
+            return ' '.join(self._format_word(w) for w in node.item_words)
+        return ' '.join(self._format_word_list_item(i) for i in node.items)
+
     def visit_ForLoop(self, node: ForLoop) -> str:
         """Format a for loop."""
         lines = []
 
-        items = [self._format_word_list_item(item) for item in node.items]
-        header = f"for {node.variable} in {' '.join(items)}".rstrip()
+        header = f"for {node.variable} in {self._format_loop_items(node)}".rstrip()
         lines.append(f"{self._indent()}{header}; do")
 
         self._increase_indent()
@@ -423,14 +466,16 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format an if statement."""
         lines = []
 
-        lines.append(f"{self._indent()}if {self._format_inline(node.condition)}; then")
+        lines.append(self._flush_line(
+            f"{self._indent()}if {self._format_inline(node.condition)}; then"))
         self._increase_indent()
         lines.append(self.visit(node.then_part))
         self._decrease_indent()
 
         # elif parts
         for condition, then_part in node.elif_parts:
-            lines.append(f"{self._indent()}elif {self._format_inline(condition)}; then")
+            lines.append(self._flush_line(
+                f"{self._indent()}elif {self._format_inline(condition)}; then"))
             self._increase_indent()
             lines.append(self.visit(then_part))
             self._decrease_indent()
@@ -501,8 +546,7 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format a select loop."""
         lines = []
 
-        items = ' '.join(self._format_word_list_item(item) for item in node.items)
-        header = f"select {node.variable} in {items}".rstrip()
+        header = f"select {node.variable} in {self._format_loop_items(node)}".rstrip()
         lines.append(f"{self._indent()}{header}; do")
 
         self._increase_indent()
@@ -534,15 +578,15 @@ class FormatterVisitor(ASTVisitor[str]):
         return '\n'.join(lines)
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> str:
-        """Format an arithmetic command."""
-        result = f"{self._indent()}(({node.expression}))"
+        """Format an arithmetic command.
 
-        # Add redirections
-        if node.redirects:
-            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
-            result += ' ' + redirect_str
-
-        return result
+        Redirects (including heredoc bodies) go through the shared
+        ``_append_redirects`` seam rather than a hand-join, so
+        ``(( 1 )) <<EOF ... EOF`` keeps its body (J2).
+        """
+        lines = [f"{self._indent()}(({node.expression}))"]
+        self._append_redirects(lines, node.redirects)
+        return '\n'.join(lines)
 
     def visit_SubshellGroup(self, node: SubshellGroup) -> str:
         """Format a subshell group ``( ... )``."""
@@ -564,23 +608,23 @@ class FormatterVisitor(ASTVisitor[str]):
         if node.background:
             lines[-1] += ' &'
         # Heredoc bodies follow the whole line, after any trailing `&`.
-        if node.redirects:
-            lines[-1] += self._heredoc_trailer(node.redirects)
+        self._register_heredocs(node.redirects)
+        lines[-1] = self._flush_line(lines[-1])
         return '\n'.join(lines)
 
     # Test expressions
 
     def visit_EnhancedTestStatement(self, node: EnhancedTestStatement) -> str:
-        """Format an enhanced test statement."""
+        """Format an enhanced test statement.
+
+        Redirects (including heredoc bodies) go through the shared
+        ``_append_redirects`` seam rather than a hand-join, so
+        ``[[ -n x ]] <<EOF ... EOF`` keeps its body (J2).
+        """
         expr_str = self.visit(node.expression)
-        result = f"{self._indent()}[[ {expr_str} ]]"
-
-        # Add redirections
-        if node.redirects:
-            redirect_str = ' '.join(self.visit(r) for r in node.redirects)
-            result += ' ' + redirect_str
-
-        return result
+        lines = [f"{self._indent()}[[ {expr_str} ]]"]
+        self._append_redirects(lines, node.redirects)
+        return '\n'.join(lines)
 
     def visit_BinaryTestExpression(self, node: BinaryTestExpression) -> str:
         """Format a binary test expression.
@@ -606,36 +650,66 @@ class FormatterVisitor(ASTVisitor[str]):
         """
         return f"{node.operator} {self._format_word(node.operand_word)}"
 
+    # Inside [[ ]], `&&` binds tighter than `||`, and `!` tighter than both.
+    _TEST_OP_PREC = {'||': 1, '&&': 2}
+    _NEG_PREC = 3
+
+    def _format_test_operand(self, node, min_prec: int) -> str:
+        """Format a test-expression operand, parenthesizing a compound child
+        whose top operator binds looser than the context requires.
+
+        Without this, ``[[ ( a || b ) && c ]]`` flattens to
+        ``[[ a || b && c ]]`` — which re-parses as ``a || (b && c)`` and
+        flips the result (J4). Only a strictly-lower-precedence compound
+        child needs parens; equal precedence re-parses identically (``&&``
+        and ``||`` are associative).
+        """
+        text = self.visit(node)
+        if (isinstance(node, CompoundTestExpression)
+                and self._TEST_OP_PREC.get(node.operator, 0) < min_prec):
+            return f"( {text} )"
+        return text
+
     def visit_CompoundTestExpression(self, node: CompoundTestExpression) -> str:
-        """Format a compound test expression."""
-        left = self.visit(node.left)
-        right = self.visit(node.right)
+        """Format a compound test expression, re-emitting grouping parens
+        where operator precedence would otherwise change the meaning (J4)."""
+        prec = self._TEST_OP_PREC.get(node.operator, 0)
+        left = self._format_test_operand(node.left, prec)
+        right = self._format_test_operand(node.right, prec)
         return f"{left} {node.operator} {right}"
 
     def visit_NegatedTestExpression(self, node: NegatedTestExpression) -> str:
-        """Format a negated test expression."""
-        expr = self.visit(node.expression)
-        return f"! {expr}"
+        """Format a negated test expression.
+
+        ``!`` binds tighter than ``&&``/``||``, so a compound operand must be
+        parenthesized: ``[[ ! ( a && b ) ]]`` must not flatten to
+        ``[[ ! a && b ]]`` (which is ``(! a) && b`` — J4).
+        """
+        return f"! {self._format_test_operand(node.expression, self._NEG_PREC)}"
 
     # Array assignments
 
     def visit_ArrayInitialization(self, node: ArrayInitialization) -> str:
-        """Format array initialization."""
-        elements = []
-        for i, elem in enumerate(node.elements):
-            if i < len(node.element_types) and node.element_types[i] == 'STRING':
-                quote = node.element_quote_types[i] if i < len(node.element_quote_types) else '"'
-                if quote is None:
-                    quote = '"'
-                elements.append(f'{quote}{elem}{quote}')
-            else:
-                elements.append(elem)
+        """Format array initialization.
 
+        Render each element from its Word (the required structural field),
+        via ``_format_word``, so the ANSI-C / double-quote / composite
+        re-escaping machinery applies. The legacy flat ``elements`` strings
+        wrapped in the derived quote char corrupted values — ``a=($'x\\ty')``
+        emitted a literal tab + a spurious ``$`` (J3).
+        """
+        elements = [self._format_word(w) for w in node.words]
         op = '+=' if node.is_append else '='
         return f"{node.name}{op}({' '.join(elements)})"
 
     def visit_ArrayElementAssignment(self, node: ArrayElementAssignment) -> str:
-        """Format array element assignment."""
+        """Format array element assignment.
+
+        Render the value from ``value_word`` via ``_format_word`` (not the
+        flat ``value`` string wrapped in the derived quote char): that path
+        re-escapes so ``a[3]=$'x\\ty'`` round-trips as ``a[3]=$'x\\ty'``
+        instead of injecting a raw tab that re-parses into a second word (J3).
+        """
         # Handle both string and token list indices
         if isinstance(node.index, str):
             index_str = node.index
@@ -644,12 +718,7 @@ class FormatterVisitor(ASTVisitor[str]):
             index_str = ''.join(token.value for token in node.index)
 
         op = '+=' if node.is_append else '='
-
-        if node.value_type == 'STRING' and node.value_quote_type:
-            value_str = f'{node.value_quote_type}{node.value}{node.value_quote_type}'
-        else:
-            value_str = node.value
-
+        value_str = self._format_word(node.value_word)
         return f"{node.name}[{index_str}]{op}{value_str}"
 
     # Redirections
@@ -663,36 +732,50 @@ class FormatterVisitor(ASTVisitor[str]):
             return f"$'{text}'"
         return f"{quote_type}{text}{quote_type}"
 
-    @staticmethod
-    def _heredoc_trailer(redirects) -> str:
-        """Body + closing delimiter for any heredocs on a command.
+    def _register_heredocs(self, redirects) -> None:
+        """Queue the body + closing delimiter of any heredocs on a command.
 
         Heredoc bodies and their closing delimiter sit at column 0 on the
-        lines *after* the command (they cannot be indented — for ``<<`` an
-        indented delimiter would not terminate the document), so they are
-        appended by the command formatter rather than emitted inline by
-        ``visit_Redirect``. Returns '' when the command has no heredocs.
+        lines *after* the whole physical line (they cannot be indented — for
+        ``<<`` an indented delimiter would not terminate the document), and
+        that line may continue past the ``<<DELIM`` (``cat <<EOF && echo x``,
+        ``if cat <<EOF; then``). So a command REGISTERS its bodies here and
+        the line-completing site emits them via ``_flush_line`` — this is the
+        single seam every heredoc-bearing construct funnels through (J2).
         """
-        out = []
         for r in redirects:
             if r.type in ('<<', '<<-') and r.heredoc_content is not None:
                 body = r.heredoc_content
                 if body and not body.endswith('\n'):
                     body += '\n'
-                out.append('\n' + body + (r.target or ''))
-        return ''.join(out)
+                self._pending_heredocs.append(body + (r.target or ''))
+
+    def _flush_line(self, line: str) -> str:
+        """Append (and clear) any queued heredoc bodies after ``line``.
+
+        Called at every physical-line boundary — after each statement, after
+        a control-structure header (``if …; then``), and after a compound's
+        trailing-redirect line. A no-op when nothing is queued.
+        """
+        if not self._pending_heredocs:
+            return line
+        trailer = '\n' + '\n'.join(self._pending_heredocs)
+        self._pending_heredocs = []
+        return line + trailer
 
     def _append_redirects(self, lines: list, redirects) -> None:
         """Append a compound command's redirects to its closing line.
 
         The inline operators (``>f``, ``<<EOF``) go on the last line; any
-        heredoc bodies follow it (see ``_heredoc_trailer``). Shared by every
-        compound formatter so ``done <<EOF`` / ``fi >out`` render uniformly.
+        heredoc bodies are queued and flushed after it. Shared by every
+        compound formatter so ``done <<EOF`` / ``fi >out`` / ``[[ … ]] <<EOF``
+        render uniformly (J2).
         """
         if not redirects:
             return
         lines[-1] += ' ' + ' '.join(self.visit(r) for r in redirects)
-        lines[-1] += self._heredoc_trailer(redirects)
+        self._register_heredocs(redirects)
+        lines[-1] = self._flush_line(lines[-1])
 
     def visit_Redirect(self, node: Redirect) -> str:
         """Format a redirection (the inline operator + target).

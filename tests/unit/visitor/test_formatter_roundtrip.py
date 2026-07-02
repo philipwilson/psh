@@ -170,6 +170,35 @@ BEHAVIOR_CASES = [
     '[[ -z "" ]]; echo $?',
     'v=x; cat <<< foo$v"dq"',
     "cat <<< 'literal $x'",
+    # --- reappraisal #15 Cluster J: formatter round-trip breaks ---
+    # J2: heredoc trailer must follow the WHOLE line, not sit on the
+    # delimiter (`EOF && echo AFTER`) or inline into a header (`EOF; then`).
+    "cat <<EOF && echo AFTER\nhello\nEOF",
+    "cat <<EOF || echo AFTER\nhello\nEOF",
+    "if cat <<EOF\nbody\nEOF\nthen echo yes; fi",
+    "while read x <<EOF\nbody\nEOF\ndo echo \"$x\"; break; done",
+    # J2: heredocs on [[ ]] / (( )) were dropped (hand-joined redirects)
+    "[[ -n x ]] <<EOF\nbody\nEOF\necho ok",
+    "(( 1 )) <<EOF\nbody\nEOF\necho ok",
+    # J2: multiple heredocs on one command, in order
+    "cat <<A <<B\naaa\nA\nbbb\nB",
+    # J3: array values must render from the Word layer (no corruption)
+    "a=($'x\\ty'); printf '%s\\n' \"${a[0]}\"",
+    "a[3]=$'x\\ty'; printf '%s\\n' \"${a[3]}\"",
+    'a=("x\\"y"); printf "%s\\n" "${a[0]}"',
+    'declare -A m=([k]="v 1"); printf "%s\\n" "${m[k]}"',
+    # J4: [[ ]] grouping parens must survive (precedence flip otherwise)
+    "[[ ( 1 = 1 || 1 = 2 ) && 1 = 2 ]]; echo rc=$?",
+    "[[ 1 = 1 && ( 1 = 2 || 1 = 1 ) ]]; echo rc=$?",
+    "[[ ! ( 1 = 1 && 1 = 2 ) ]]; echo rc=$?",
+    # J5: `for x; do` must render the implicit list QUOTED ("$@")
+    "set -- 'a b' c; for x; do echo \"[$x]\"; done",
+    # J6: $'...' in assignment / concatenation keeps its quote context
+    "v=$'l1\\nl2'; printf '%s\\n' \"$v\"",
+    "v=x$'y'z; printf '%s\\n' \"$v\"",
+    "export v=$'a\\tb'; printf '%s\\n' \"$v\"",
+    "a[0]=$'p q'; printf '%s\\n' \"${a[0]}\"",
+    "echo a$'b\\tc'd",
 ]
 
 
@@ -233,3 +262,58 @@ def test_format_for_metachar_item_quoted():
     # An item with an operator metacharacter MUST be quoted (else parse error).
     out = _fmt('for x in "a;b"; do :; done')
     assert '"a;b"' in out
+
+
+# ---------------------------------------------------------------------------
+# Reappraisal #15 Cluster J: explicit output-shape assertions
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("src,expected", [
+    # J1: the `time`/`time -p` reserved word must be re-emitted (was dropped)
+    ("time sleep 0", "time sleep 0"),
+    ("time -p sleep 0", "time -p sleep 0"),
+    ("time echo a | cat", "time echo a | cat"),
+    ("time", "time"),                       # bare time: empty timed pipeline
+    # J2: continuation stays on the command line, delimiter line is bare `EOF`
+    ("cat <<EOF && echo x\nhi\nEOF", "cat <<EOF && echo x\nhi\nEOF"),
+    # J3: array values re-escaped from the Word layer
+    ("a=($'x\\ty')", "a=($'x\\ty')"),
+    ("a[3]=$'x\\ty'", "a[3]=$'x\\ty'"),
+    ('a=("x\\"y")', 'a=("x\\"y")'),
+    ('m=([k]="v 1")', 'm=([k]="v 1")'),
+    # J4: grouping parens re-emitted where precedence would change
+    ("[[ ( a || b ) && c ]]", "( "),
+    ("[[ ! ( a && b ) ]]", "! ( "),
+    # J5: implicit for/select list rendered as quoted "$@"
+    ("for x; do :; done", 'for x in "$@"; do'),
+    ("select x; do :; done", 'select x in "$@"; do'),
+    # J6: $'...' assignment/concat re-emitted as $'...' (was flat + tab)
+    ("v=$'a\\tb'", "v=$'a\\tb'"),
+    ("v=x$'y'z", "v=x$'y'z"),
+    ("echo a$'b\\tc'd", "echo a$'b\\tc'd"),
+])
+def test_cluster_j_emits_expected(src, expected):
+    assert expected in _fmt(src)
+
+
+def test_time_formats_reparse_and_preserve_command():
+    # `time` output has nondeterministic timing on stderr, so compare stdout/rc
+    # (not stderr) and confirm the reserved word survived + still reparses.
+    for src in ("time echo hi", "time -p echo hi", "time echo a | cat"):
+        formatted = _format_via_psh(src)
+        assert formatted.lstrip().startswith("time"), formatted
+        assert _psh("--validate", "-c", formatted).returncode == 0
+        rc_o, out_o, _ = _run(src)
+        rc_f, out_f, _ = _run(formatted)
+        assert (rc_o, out_o) == (rc_f, out_f)
+
+
+def test_debug_ast_shows_time():
+    from psh.visitor.debug_ast_visitor import DebugASTVisitor
+    assert "time" in DebugASTVisitor().visit(parse(tokenize("time sleep 0")))
+    assert "time -p" in DebugASTVisitor().visit(parse(tokenize("time -p sleep 0")))
+
+
+def test_bare_time_does_not_crash_formatter():
+    # `--format -c time` used to raise IndexError on the empty timed Pipeline.
+    assert _format_via_psh("time").strip() == "time"
