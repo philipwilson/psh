@@ -232,10 +232,12 @@ class TestPrintfBuiltin:
 class TestReadBuiltin:
     """Test read builtin functionality."""
 
-    def test_read_timeout(self, shell, capsys):
-        """Test read -t with timeout."""
-        # This might not be testable in non-interactive mode
-        shell.run_command('read -t 0.1 var')
+    def test_read_timeout(self, shell, capsys, monkeypatch):
+        """read -t returns non-zero when no full line arrives in time."""
+        from io import StringIO
+        # No input available: read must give up (non-zero) rather than hang.
+        monkeypatch.setattr('sys.stdin', StringIO(""))
+        assert shell.run_command('read -t 0.1 var') != 0
         # Might timeout and return non-zero
 
     def test_read_n_chars(self, shell, capsys, monkeypatch):
@@ -300,12 +302,14 @@ class TestReadBuiltin:
         assert exit_code != 0  # Should fail on EOF
 
     def test_read_line_continuation(self, shell, capsys, monkeypatch):
-        """Test read with line continuation."""
+        """A trailing backslash-newline continues the line into `read`."""
         from io import StringIO
         monkeypatch.setattr('sys.stdin', StringIO("line one \\\nline two\n"))
         shell.run_command('read var')
-        shell.run_command('echo "$var"')
         capsys.readouterr()
+        shell.run_command('echo "$var"')
+        captured = capsys.readouterr()
+        assert captured.out.strip() == 'line one line two'
         # Might join lines or not depending on mode
 
 

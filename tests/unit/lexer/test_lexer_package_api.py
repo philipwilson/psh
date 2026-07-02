@@ -147,9 +147,6 @@ class TestDemotedImports:
 
         assert LexerContext is not None
 
-    def test_tier3_importable_from_submodules(self):
-        """Test that Tier 3 items are importable from their submodule paths."""
-
 
 class TestPackageInternals:
     """Test internal package structure (for migration verification)."""

@@ -276,12 +276,6 @@ class TestCompletionConfiguration:
 class TestCompletionErrorHandling:
     """Test completion error handling and edge cases."""
 
-    def test_completion_permission_denied(self):
-        """Test completion in directories without read permission."""
-        # This test would require creating a directory without read permissions
-        # and testing completion behavior
-        pass
-
     def test_completion_nonexistent_directory(self):
         """Test completion in non-existent directories."""
         result = InteractiveTestHelper.run_psh_interactive('ls /nonexistent/path/\t')
@@ -295,11 +289,6 @@ class TestCompletionErrorHandling:
         result = InteractiveTestHelper.run_psh_interactive(f'ls {long_path}\t')
         assert result['success']
         # Should handle long paths gracefully
-
-    def test_completion_special_characters(self):
-        """Test completion with special characters in filenames."""
-        # Test files with spaces, quotes, etc.
-        pass
 
 
 # Test runner integration

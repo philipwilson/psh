@@ -428,22 +428,19 @@ class TestDirsBuiltin:
                 os.rmdir(test_dir)
 
     def test_dirs_long_format(self, shell, capsys):
-        """Test dirs -l for long format (no tilde expansion)."""
+        """dirs -l prints full paths, never abbreviating home to '~'."""
         original = os.getcwd()
+        try:
+            shell.run_command('cd ~')
+            shell.run_command('pushd /tmp')
+            capsys.readouterr()
 
-        # Go to home directory to test tilde behavior
-        shell.run_command('cd ~')
-        shell.run_command('pushd /tmp')
-
-        # Test long format
-        shell.run_command('dirs -l')
-        captured = capsys.readouterr()
-
-        # In long format, should not show ~ for home directory
-        captured.out.strip().split()
-
-        # Clean up
-        shell.run_command(f'cd {original}')
+            shell.run_command('dirs -l')
+            captured = capsys.readouterr()
+            # Long format must not abbreviate the home directory with a tilde.
+            assert '~' not in captured.out
+        finally:
+            shell.run_command(f'cd {original}')
 
     def test_dirs_clear_stack(self, shell, capsys):
         """Test dirs -c to clear stack."""

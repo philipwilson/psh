@@ -664,16 +664,28 @@ class TestDocumentedDifferences(ConformanceTest):
         self.assert_identical_behavior('[[ 5 -gt 3 ]]')
         self.assert_identical_behavior('(( 5 > 3 ))')
 
-    def test_documented_behavioral_differences(self):
-        """Test documented behavioral differences."""
-        # These might have subtle differences in behavior
-        # but both shells should succeed
+    def test_directory_stack(self):
+        """pushd/popd/dirs manage the directory stack identically to bash.
 
-        self.check_behavior('pushd /tmp')
-        self.check_behavior('popd')
-
-        # Both should work but might have different output formats
-        # This documents the differences rather than asserting sameness
+        Fixed absolute paths (/, /usr, /bin) are used so the comparison is
+        independent of the per-shell temporary working directory.
+        """
+        # pushd builds the stack; dirs prints it newest-first.
+        self.assert_identical_behavior(
+            'cd /; pushd /usr >/dev/null; pushd /bin >/dev/null; dirs')
+        # popd returns to the previous directory.
+        self.assert_identical_behavior(
+            'cd /; pushd /usr >/dev/null; pushd /bin >/dev/null; popd >/dev/null; pwd')
+        # +N rotates the stack.
+        self.assert_identical_behavior(
+            'cd /; pushd /usr >/dev/null; pushd /bin >/dev/null; pushd +1 >/dev/null; pwd')
+        # pushd/popd echo the resulting stack.
+        self.assert_identical_behavior('cd /usr; pushd /bin; popd')
+        # dirs -c clears the stack; dirs -v prints an indexed listing.
+        self.assert_identical_behavior(
+            'cd /; pushd /usr >/dev/null; dirs -c; dirs')
+        self.assert_identical_behavior(
+            'cd /; pushd /usr >/dev/null; pushd /bin >/dev/null; dirs -v')
 
 
 def generate_bash_compatibility_report():

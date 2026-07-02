@@ -474,6 +474,8 @@ class TestPOSIXCompoundCommands(ConformanceTest):
         """Test while loop constructs."""
         self.assert_identical_behavior('i=0; while [ $i -lt 3 ]; do echo $i; i=$((i+1)); done')
         self.assert_identical_behavior('while false; do echo never; done')
+        # until is the while/until pair the compatibility table claims.
+        self.assert_identical_behavior('i=0; until [ $i -ge 2 ]; do echo $i; i=$((i+1)); done')
 
     def test_for_loops(self):
         """Test for loop constructs."""
@@ -485,6 +487,13 @@ class TestPOSIXCompoundCommands(ConformanceTest):
         self.assert_identical_behavior('case hello in hello) echo match;; esac')
         self.assert_identical_behavior('case test in hello) echo no;; *) echo yes;; esac')
         self.assert_identical_behavior('case abc in a*) echo starts_with_a;; esac')
+
+    def test_subshell_isolation(self):
+        """A ( ) subshell runs in a child: assignments do not leak out, but
+        its exit status propagates to the parent."""
+        self.assert_identical_behavior('x=outer; (x=inner; echo $x); echo $x')
+        self.assert_identical_behavior('(exit 3); echo $?')
+        self.assert_identical_behavior('(false); echo $?')
 
 
 class TestPOSIXShellFunctions(ConformanceTest):

@@ -84,10 +84,13 @@ class TestAliasBuiltin:
         assert captured.out.strip() == "myecho"
 
     def test_alias_recursive_prevention(self, shell, capsys):
-        """Test prevention of recursive alias expansion."""
-        shell.run_command('alias ls="ls -a"')
-        # This should not cause infinite recursion
-        shell.run_command('ls')
+        """A self-referential alias expands once, not infinitely."""
+        shell.run_command('alias echo="echo x"')
+        capsys.readouterr()
+        result = shell.run_command('echo hi')
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == 'x hi'
         # Command should complete (not hang)
 
     def test_alias_overwrite(self, shell, capsys):
@@ -212,12 +215,14 @@ class TestAliasExpansion:
         assert captured.out.strip() == "test"
 
     def test_alias_trailing_space(self, shell, capsys):
-        """Test alias with trailing space for further expansion."""
-        # Trailing space should enable expansion of next word
-        shell.run_command('alias sudo="sudo "')
-        shell.run_command('alias myls="ls"')
-        # 'sudo myls' should expand both aliases
-        shell.run_command('sudo myls')
+        """A trailing space in an alias makes the next word alias-expandable too."""
+        shell.run_command('alias a="echo "')
+        shell.run_command('alias b="hi"')
+        capsys.readouterr()
+        result = shell.run_command('a b')
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == 'hi'
         # This is complex behavior that PSH might not support
 
 

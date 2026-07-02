@@ -1,0 +1,41 @@
+"""Conformance pins for the ``set -x`` (xtrace) and ``set -v`` (verbose)
+shell options.
+
+The user guide lists both as "Full support", but the older
+``TestBashOptions`` class only checked that the options were *settable* -
+it never exercised the trace/echo output the options actually produce.
+These tests prove that behaviour against bash (trace to stderr with a
+``+ `` prefix for xtrace; input lines echoed to stderr for verbose).
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from conformance_framework import ConformanceTest
+
+
+class TestXtraceConformance(ConformanceTest):
+    """``set -x`` traces each executed command to stderr with a ``+ `` prefix."""
+
+    def test_xtrace_traces_simple_command(self):
+        self.assert_identical_behavior('set -x; echo hi')
+
+    def test_xtrace_traces_assignment_and_command(self):
+        self.assert_identical_behavior('set -x; x=5; echo $x')
+
+    def test_xtrace_can_be_turned_off(self):
+        self.assert_identical_behavior('set -x; echo on; set +x; echo off')
+
+
+class TestVerboseConformance(ConformanceTest):
+    """``set -v`` echoes input lines to stderr as the shell reads them."""
+
+    def test_verbose_echoes_subsequent_lines(self):
+        self.assert_identical_behavior('set -v\necho hi\necho bye')
+
+    def test_verbose_off_for_the_line_that_enables_it(self):
+        self.assert_identical_behavior('echo one\nset -v\necho two')
+
+    def test_verbose_can_be_turned_off(self):
+        self.assert_identical_behavior('set -v\necho a\nset +v\necho b')

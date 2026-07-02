@@ -281,11 +281,12 @@ class TestBraceExpansionInContext:
         assert captured.out.strip() == "a b c"
 
     def test_in_variable_assignment(self, shell, capsys):
-        """Test brace expansion in variable assignment."""
-        # Note: Brace expansion might not work in assignments
+        """Brace expansion does NOT occur in a scalar assignment (like bash)."""
         shell.run_command('FILES={a,b,c}')
-        shell.run_command('echo "$FILES"')
         capsys.readouterr()
+        shell.run_command('echo "$FILES"')
+        captured = capsys.readouterr()
+        assert captured.out.strip() == '{a,b,c}'
         # Might be literal "{a,b,c}" or expanded
 
     def test_with_glob_pattern(self, shell, capsys):

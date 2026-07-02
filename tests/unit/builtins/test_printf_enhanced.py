@@ -312,11 +312,11 @@ class TestPrintfErrorHandling:
         assert "usage" in captured.err.lower() or "format" in captured.err.lower()
 
     def test_invalid_format_specifier(self, shell, capsys):
-        """Test printf with invalid format specifier."""
-        # %z is not a valid format specifier
-        shell.run_command('printf "%z\\n" "test"')
-        # Should either ignore unknown formats or error
-        capsys.readouterr()
+        """printf rejects an unknown conversion (%z) with a non-zero exit."""
+        result = shell.run_command('printf "%z\\n" "test"')
+        assert result != 0
+        captured = capsys.readouterr()
+        assert 'invalid format' in (captured.out + captured.err)
         # Behavior may vary - either literal %z or error
 
     def test_invalid_number_conversion(self, shell, capsys):
