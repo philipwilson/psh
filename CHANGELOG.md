@@ -4,6 +4,39 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.568.0 (2026-07-02) - Fix: trap accepts POSIX numeric forms and every platform signal name (appraisal #15 Tier 1, Cluster F2)
+- FIX (HIGH). Reappraisal #15 cluster F2 — `trap` signal-spec parsing now
+  routes through `psh/utils/signal_utils` (the same tables `trap -l`/`kill -l`
+  list) as the single source of truth, replacing TrapManager's 13-name
+  whitelist. Verified against bash 5.2 probes; new conformance suite in
+  `tests/conformance/bash/test_trap_signal_spec_conformance.py` plus
+  golden-case pins.
+  - `trap 'cmd' 0` (the POSIX numeric EXIT form) sets the EXIT trap; every
+    platform signal works by name (WINCH, SEGV, VTALRM, KILL, ...) or number,
+    case-insensitively, with the `SIG` prefix optional (`sigusr1`, `Usr1`,
+    `10` all canonicalize to `USR1`), so a trap set under any spelling is
+    found by the name-keyed dispatch in SignalManager.
+  - Reset forms parse like bash: a first operand that is an unsigned decimal
+    naming a valid signal makes ALL operands conditions to reset
+    (`trap 2 15`, `trap 0` — POSIX), and a single signal-name operand resets
+    too (`trap USR1`); previously these were rejected or mis-read as actions.
+  - `set_trap` continues past an invalid spec like bash — it reports each bad
+    spec on stderr and returns 1, but still processes the remaining signals
+    (previously it aborted the whole command at the first bad spec).
+  - `trap -p BOGUS` reports `invalid signal specification` with rc=1 instead
+    of silently printing nothing with rc=0, and `trap -p -- INT` consumes the
+    leading `--` like the set form (regression-fixed on-branch);
+    `show_traps` now returns `(display, invalid_specs)` so the builtin does
+    the stderr reporting.
+  - Bare `trap`/`trap -p` listing uses bash's numeric order (EXIT first, then
+    signals by number, then DEBUG/ERR) directly from storage; numerically-set
+    traps display canonically (`trap ... 15` prints `SIGTERM`).
+  - `exit N` inside a substitution child's EXIT trap now sets the child's
+    exit status (bash semantics) instead of unwinding past the trap runner
+    (builds on v0.561.0's substitution-children-fire-EXIT-traps model).
+  - Deliberate divergence kept: RETURN traps remain unimplemented, so
+    `trap 'cmd' RETURN` is still rejected as an invalid spec.
+
 ## 0.567.0 (2026-07-02) - Fix: evaluation engines — [[ ]] arithmetic operands, bracket-pattern crashes, integer division, fatal subscripts (appraisal #15 Tier 1, Cluster H)
 - FIX (HIGH). Reappraisal #15 cluster H — four bash-5.2-pinned fixes to the
   evaluation engines, verified by a 94-case bash-vs-psh truth table

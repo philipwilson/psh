@@ -1,8 +1,12 @@
 """Trap management for PSH shell."""
 import signal
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from ..utils.signal_utils import list_all_signals
+from ..utils.signal_utils import (
+    list_all_signals,
+    signal_name_to_number,
+    signal_number_to_name,
+)
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -14,30 +18,6 @@ class TrapManager:
         self.shell = shell
         self.state = shell.state
 
-        # Map signal names to numbers
-        self.signal_map = {
-            'HUP': signal.SIGHUP,
-            'INT': signal.SIGINT,
-            'QUIT': signal.SIGQUIT,
-            'TERM': signal.SIGTERM,
-            'USR1': signal.SIGUSR1,
-            'USR2': signal.SIGUSR2,
-            'ALRM': signal.SIGALRM,
-            'CHLD': signal.SIGCHLD,
-            'CONT': signal.SIGCONT,
-            'TSTP': signal.SIGTSTP,
-            'TTIN': signal.SIGTTIN,
-            'TTOU': signal.SIGTTOU,
-            'PIPE': signal.SIGPIPE,
-            # Special pseudo-signals
-            'EXIT': 'EXIT',   # Shell exit
-            'DEBUG': 'DEBUG', # Before each command (bash extension)
-            'ERR': 'ERR',     # Command error (bash extension)
-        }
-
-        # Reverse mapping for display purposes
-        self.signal_names = {v: k for k, v in self.signal_map.items() if isinstance(v, int)}
-
         # Signal traps queued by the (async-signal-unsafe) Python handler;
         # executed at command boundaries via run_pending_traps(), so trap
         # actions never re-enter the parser/executor mid-command.
@@ -45,14 +25,6 @@ class TrapManager:
         # Re-entrancy guard: a DEBUG/ERR action must not fire DEBUG/ERR
         # traps for its own commands.
         self._in_debug_err_trap = False
-
-        # Add numbered mappings for every signal the platform supports
-        # (no handler-swapping probe needed).
-        for signum in sorted(int(s) for s in signal.valid_signals()):
-            if str(signum) not in self.signal_map:
-                self.signal_map[str(signum)] = signum
-            if signum not in self.signal_names:
-                self.signal_names[signum] = str(signum)
 
     def set_trap(self, action: str, signals: List[str]) -> int:
         """Set trap handler for signals.
@@ -70,6 +42,7 @@ class TrapManager:
         # traps are genuinely in effect, not inherited, and stay.
         self.drop_inherited_traps()
 
+        exit_code = 0
         for signal_spec in signals:
             # Normalize to one canonical key (SIGINT / 2 / INT all -> INT) so
             # every path — storage here and the name-keyed SignalManager
@@ -78,7 +51,9 @@ class TrapManager:
             if canonical is None:
                 print(f"trap: {signal_spec}: invalid signal specification",
                       file=self.state.stderr)
-                return 1
+                # bash reports the bad spec but keeps processing the rest.
+                exit_code = 1
+                continue
             signal_spec = canonical
 
             if action == '-':
@@ -91,7 +66,7 @@ class TrapManager:
                 # Set trap action
                 self._set_signal_handler(signal_spec, action)
 
-        return 0
+        return exit_code
 
     # Signals whose OS handlers psh manages elsewhere (SignalManager's
     # trap-checking handlers and job-control bookkeeping). For these, traps
@@ -102,37 +77,38 @@ class TrapManager:
         getattr(signal, 'SIGWINCH', None),
     }) - {None}
 
-    def _signum(self, signal_spec: str):
-        """The OS signal number for a trap spec, or None for pseudo-signals."""
-        num = self.signal_map.get(signal_spec)
-        if isinstance(num, int):
-            return num
-        try:
-            return int(signal_spec)
-        except (TypeError, ValueError):
-            return None
+    def _signum(self, signal_spec: str) -> Optional[int]:
+        """The OS signal number for a canonical trap key, or None for
+        pseudo-signals (EXIT/DEBUG/ERR)."""
+        return signal_name_to_number(signal_spec)
 
     def _canonical_signal_key(self, signal_spec: str) -> Optional[str]:
         """Canonical ``trap_handlers`` key for a user signal spec.
 
-        Resolves a ``SIG``-prefixed name (``SIGINT``) and a signal number
-        (``2``) to the bare signal name (``INT``) — the single key every
-        path uses, so a trap set as ``SIGINT`` or ``2`` is found by the
-        name-keyed dispatch in SignalManager (which the raw-spec keying used
-        to miss: ``trap … SIGINT`` was rejected and ``trap … 2`` for a
-        managed signal never fired). The real pseudo-signals EXIT/DEBUG/ERR
-        pass through unchanged (RETURN is deliberately not accepted, matching
-        bash here). Returns ``None`` for a spec that is not a valid signal.
+        Resolves every platform signal name (with or without the ``SIG``
+        prefix, case-insensitively) and every signal number to the bare
+        canonical name (``SIGINT`` / ``2`` / ``int`` all -> ``INT``), via
+        the same ``signal_utils`` tables that ``trap -l``/``kill -l`` list —
+        the single key every path uses, so a trap set under any spelling is
+        found by the name-keyed dispatch in SignalManager. Condition ``0``
+        is the EXIT trap (POSIX: ``trap 'cmd' 0``); the pseudo-signals
+        EXIT/DEBUG/ERR pass through unchanged (RETURN traps are not
+        implemented, so RETURN is rejected). Returns ``None`` for a spec
+        that is not a valid signal.
         """
         spec = signal_spec.upper()
         if spec in ('EXIT', 'DEBUG', 'ERR'):
             return spec
-        if spec.startswith('SIG') and len(spec) > 3:
-            spec = spec[3:]
-        signum = self._signum(spec)
-        if signum is None or signum not in self.signal_names:
-            return None
-        return self.signal_names[signum]
+        if spec.isdecimal():
+            # POSIX: condition 0 means the shell-exit trap.
+            return 'EXIT' if int(spec) == 0 else signal_number_to_name(int(spec))
+        num = signal_name_to_number(spec)
+        return signal_number_to_name(num) if num is not None else None
+
+    def is_signal_spec(self, signal_spec: str) -> bool:
+        """Whether ``signal_spec`` names a signal or pseudo-signal that
+        ``trap`` accepts (used by the builtin's reset-form parse)."""
+        return self._canonical_signal_key(signal_spec) is not None
 
     def _set_signal_handler(self, signal_spec: str, action: str):
         """Set a signal handler for the given signal."""
@@ -297,41 +273,45 @@ class TrapManager:
         """
         return list_all_signals()
 
-    def show_traps(self, signals: Optional[List[str]] = None) -> str:
-        """Show current trap settings.
+    def show_traps(self, signals: Optional[List[str]] = None) -> Tuple[str, List[str]]:
+        """Render trap settings for `trap` / `trap -p`.
 
         Args:
-            signals: Specific signals to show, or None for all
+            signals: Specific signal specs to show (kept in query order,
+                like bash), or None for all traps (bash's numeric order)
 
         Returns:
-            Formatted trap display string
+            (display, invalid): the formatted trap lines, plus any query
+            specs that are not valid signals (bash reports each on stderr
+            and exits 1 — the builtin does that reporting).
         """
+        invalid: List[str] = []
         if signals is None:
-            # Show all traps
-            signals_to_show = list(self.state.trap_handlers.keys())
+            signals_to_show = sorted(self.state.trap_handlers,
+                                     key=self._trap_sort_key)
         else:
-            # Show specific signals — canonicalize each query spec to the same
-            # key traps are stored under (so `trap -p SIGINT` / `trap -p 2`
-            # find a trap set on INT).
+            # Canonicalize each query spec to the same key traps are stored
+            # under (so `trap -p SIGINT` / `trap -p 2` find a trap set on INT).
             signals_to_show = []
             for sig in signals:
                 canonical = self._canonical_signal_key(sig)
-                if canonical is not None:
+                if canonical is None:
+                    invalid.append(sig)
+                elif canonical in self.state.trap_handlers:
                     signals_to_show.append(canonical)
 
         output_lines = []
-        for signal_name in sorted(signals_to_show, key=self._trap_sort_key):
-            if signal_name in self.state.trap_handlers:
-                action = self.state.trap_handlers[signal_name]
-                if action == '':
-                    action_display = "''"
-                else:
-                    # Quote the action for display
-                    action_display = f"'{action}'"
-                display_name = self._canonical_trap_name(signal_name)
-                output_lines.append(f"trap -- {action_display} {display_name}")
+        for signal_name in signals_to_show:
+            action = self.state.trap_handlers[signal_name]
+            if action == '':
+                action_display = "''"
+            else:
+                # Quote the action for display
+                action_display = f"'{action}'"
+            display_name = self._canonical_trap_name(signal_name)
+            output_lines.append(f"trap -- {action_display} {display_name}")
 
-        return '\n'.join(output_lines)
+        return '\n'.join(output_lines), invalid
 
     def _trap_sort_key(self, signal_name: str) -> int:
         """bash's trap-listing order: EXIT (signal 0) first, real signals
@@ -352,22 +332,13 @@ class TrapManager:
         """Canonical name for `trap -p` output (bash-compatible).
 
         Real signals get the ``SIG`` prefix (``TERM`` -> ``SIGTERM``);
-        pseudo-signals (EXIT/ERR/DEBUG/RETURN) are printed bare.
+        pseudo-signals (EXIT/ERR/DEBUG/RETURN) are printed bare. Keys are
+        always canonical bare names (see _canonical_signal_key), so a trap
+        set as ``trap ... 15`` prints as SIGTERM.
         """
-        name = signal_name.upper()
-        if name in self._PSEUDO_SIGNALS:
-            return name
-        # A numerically-keyed trap (e.g. set via `trap ... 15`) resolves to
-        # its canonical signal name (bash: SIGTERM, not SIG15).
-        try:
-            num = int(name)
-        except ValueError:
-            pass
-        else:
-            name = self.signal_names.get(num, name)
-        if name.startswith('SIG'):
-            return name
-        return f"SIG{name}"
+        if signal_name in self._PSEUDO_SIGNALS:
+            return signal_name
+        return f"SIG{signal_name}"
 
     def execute_exit_trap(self):
         """Execute EXIT trap if set.

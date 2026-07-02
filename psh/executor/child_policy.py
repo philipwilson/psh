@@ -228,11 +228,16 @@ def run_child_shell(parent_shell: 'Shell',
             exit_code = code if isinstance(code, int) else (0 if code is None else 1)
 
         # A substitution child runs its own EXIT trap when it finishes,
-        # exactly like a subshell (idempotent: the exit builtin's
-        # SystemExit path already fired it; inherited EXIT traps never
-        # fire — see TrapManager.get_handler).
+        # exactly like a subshell (bash: x=$(trap 'echo bye' EXIT)
+        # captures "bye"). Idempotent: the exit builtin's SystemExit path
+        # already fired it; inherited EXIT traps never fire — see
+        # TrapManager.get_handler.
         try:
             child_shell.trap_manager.execute_exit_trap()
+        except SystemExit as e:
+            # exit inside the EXIT trap sets the child's status (bash).
+            code = e.code
+            exit_code = code if isinstance(code, int) else (0 if code is None else 1)
         except Exception:
             pass
 

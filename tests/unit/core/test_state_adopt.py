@@ -91,7 +91,7 @@ class TestAdoptedTraps:
     def test_parent_trap_is_listed_in_child(self, captured_shell):
         captured_shell.run_command("trap 'echo hi' TERM")
         child = Shell.for_subshell(captured_shell)
-        assert "trap -- 'echo hi' SIGTERM" in child.trap_manager.show_traps()
+        assert "trap -- 'echo hi' SIGTERM" in child.trap_manager.show_traps()[0]
 
     def test_parent_trap_never_fires_in_child(self, captured_shell):
         captured_shell.run_command("trap 'child_fired=1' TERM")
@@ -106,9 +106,9 @@ class TestAdoptedTraps:
         captured_shell.run_command("trap 'echo hi' TERM")
         child = Shell.for_subshell(captured_shell)
         child.run_command("trap - HUP")
-        assert child.trap_manager.show_traps() == ""
+        assert child.trap_manager.show_traps()[0] == ""
         # The parent's trap is untouched.
-        assert "SIGTERM" in captured_shell.trap_manager.show_traps()
+        assert "SIGTERM" in captured_shell.trap_manager.show_traps()[0]
 
     def test_ignored_trap_stays_in_effect_in_child(self, captured_shell):
         captured_shell.run_command("trap '' TERM")
@@ -117,7 +117,7 @@ class TestAdoptedTraps:
         assert child.trap_manager.get_handler('TERM') == ''
         # ... and survives the child's first trap modification (bash).
         child.run_command("trap 'echo x' HUP")
-        assert "trap -- '' SIGTERM" in child.trap_manager.show_traps()
+        assert "trap -- '' SIGTERM" in child.trap_manager.show_traps()[0]
 
     def test_child_own_trap_replaces_inherited(self, captured_shell):
         captured_shell.run_command("trap 'echo parent' TERM")
@@ -157,12 +157,12 @@ class TestAdoptedTraps:
         captured_shell.run_command("trap 'echo D' DEBUG")
         child = Shell.for_subshell(captured_shell)
         assert child.trap_manager.get_handler('DEBUG') is None
-        assert "DEBUG" in child.trap_manager.show_traps()
+        assert "DEBUG" in child.trap_manager.show_traps()[0]
 
     def test_listing_order_matches_bash(self, captured_shell):
         # bash: EXIT (signal 0) first, real signals by number, then DEBUG/ERR.
         captured_shell.run_command(
             "trap : EXIT; trap : DEBUG; trap : ERR; trap : TERM; trap : HUP")
-        lines = captured_shell.trap_manager.show_traps().splitlines()
+        lines = captured_shell.trap_manager.show_traps()[0].splitlines()
         names = [line.rsplit(' ', 1)[1] for line in lines]
         assert names == ['EXIT', 'SIGHUP', 'SIGTERM', 'DEBUG', 'ERR']

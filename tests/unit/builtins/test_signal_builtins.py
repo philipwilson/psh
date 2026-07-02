@@ -239,3 +239,205 @@ def test_trap_double_dash_exit_fires(shell, capsys):
         [sys.executable, '-m', 'psh', '-c', 'trap -- "echo bye" EXIT'],
         capture_output=True, text=True)
     assert result.stdout == "bye\n"
+
+
+# --- POSIX numeric forms: condition 0 is EXIT (reappraisal #15 F2) ---
+
+def test_trap_zero_sets_exit_trap(shell, capsys):
+    """POSIX `trap 'cmd' 0` registers the EXIT trap."""
+    result = shell.run_command('trap "echo bye" 0')
+    assert result == 0
+    shell.run_command('trap -p')
+    captured = capsys.readouterr()
+    assert "trap -- 'echo bye' EXIT" in captured.out
+    shell.run_command('trap - 0')
+
+
+def test_trap_zero_fires_at_exit():
+    """`trap 'cmd' 0` fires exactly once at shell exit (bash: rc kept)."""
+    import subprocess
+    import sys
+    result = subprocess.run(
+        [sys.executable, '-m', 'psh', '-c', 'trap "echo bye" 0; exit 3'],
+        capture_output=True, text=True, timeout=10)
+    assert result.stdout == "bye\n"
+    assert result.returncode == 3
+
+
+def test_trap_query_exit_trap_by_zero(shell, capsys):
+    """`trap -p 0` finds a trap set as EXIT."""
+    shell.run_command('trap "echo bye" EXIT')
+    shell.run_command('trap -p 0')
+    captured = capsys.readouterr()
+    assert "trap -- 'echo bye' EXIT" in captured.out
+    shell.run_command('trap - 0')
+
+
+# --- Reset forms: no action operand (reappraisal #15 F2) ---
+
+def test_trap_zero_alone_resets_exit_trap(shell, capsys):
+    """`trap 0` with no action resets the EXIT trap."""
+    shell.run_command('trap "echo bye" 0')
+    result = shell.run_command('trap 0')
+    assert result == 0
+    shell.run_command('trap -p')
+    captured = capsys.readouterr()
+    assert captured.out == ""
+
+
+def test_trap_leading_number_resets_all_operands(shell, capsys):
+    """POSIX: `trap 2 15` treats all operands as conditions to reset."""
+    shell.run_command('trap "echo A" INT')
+    shell.run_command('trap "echo B" TERM')
+    result = shell.run_command('trap 2 15')
+    assert result == 0
+    shell.run_command('trap -p')
+    captured = capsys.readouterr()
+    assert captured.out == ""
+
+
+def test_trap_single_name_resets(shell, capsys):
+    """bash: a single operand naming a signal resets it (`trap INT`)."""
+    shell.run_command('trap "echo X" INT')
+    result = shell.run_command('trap INT')
+    assert result == 0
+    shell.run_command('trap -p')
+    captured = capsys.readouterr()
+    assert captured.out == ""
+
+
+def test_trap_single_invalid_operand_is_usage_error(shell):
+    """A single operand that is not a signal is a usage error (bash rc=2)."""
+    assert shell.run_command('trap NOTASIGNAL') == 2
+    assert shell.run_command('trap 999') == 2
+
+
+def test_trap_number_as_action_when_not_a_signal(shell, capsys):
+    """bash: `trap 999 2` sets the action '999' on SIGINT (999 not a signal)."""
+    result = shell.run_command('trap 999 2')
+    assert result == 0
+    shell.run_command('trap -p')
+    captured = capsys.readouterr()
+    assert "trap -- '999' SIGINT" in captured.out
+    shell.run_command('trap - INT')
+
+
+# --- Signal-name coverage via signal_utils (reappraisal #15 F2 MED) ---
+
+def test_trap_accepts_every_listed_signal_name():
+    """Every name `trap -l` lists registers, lists, and resets (incl. KILL)."""
+    import subprocess
+    import sys
+
+    from psh.utils.signal_utils import SIGNAL_NUMBER_TO_NAME
+    names = ' '.join(SIGNAL_NUMBER_TO_NAME.values())
+    script = (
+        f'for s in {names}; do '
+        'trap "echo x" "$s" || echo "set failed: $s"; '
+        'trap -p "$s" >/dev/null || echo "query failed: $s"; '
+        'trap - "$s" || echo "reset failed: $s"; '
+        'done; echo done')
+    result = subprocess.run([sys.executable, '-m', 'psh', '-c', script],
+                            capture_output=True, text=True, timeout=15)
+    assert result.stdout == "done\n"
+    assert result.stderr == ""
+
+
+def test_trap_winch_registers_lists_resets(shell, capsys):
+    """WINCH (outside the old 13-name whitelist) registers/lists/resets."""
+    assert shell.run_command('trap "echo w" WINCH') == 0
+    shell.run_command('trap -p')
+    captured = capsys.readouterr()
+    assert "trap -- 'echo w' SIGWINCH" in captured.out
+    assert shell.run_command('trap - WINCH') == 0
+    shell.run_command('trap -p')
+    assert capsys.readouterr().out == ""
+
+
+def test_trap_numeric_spec_lists_canonical_name(shell, capsys):
+    """A trap set by number lists under its canonical SIG name, not SIGnn."""
+    import signal as _signal
+
+    from psh.utils.signal_utils import signal_number_to_name
+    winch = int(_signal.SIGWINCH)
+    shell.run_command(f'trap "echo w" {winch}')
+    shell.run_command('trap -p')
+    captured = capsys.readouterr()
+    assert signal_number_to_name(winch, with_prefix=True) in captured.out
+    assert f'SIG{winch}' not in captured.out
+    shell.run_command(f'trap {winch}')
+
+
+# --- trap -p error handling and listing order ---
+
+def test_trap_p_invalid_signal_errors(shell, capsys):
+    """`trap -p NOSUCHSIG` reports the bad spec and returns 1 (bash)."""
+    result = shell.run_command('trap -p NOSUCHSIG')
+    assert result == 1
+    captured = capsys.readouterr()
+    assert 'NOSUCHSIG: invalid signal specification' in captured.err
+
+
+def test_trap_p_invalid_among_valid_still_lists(shell, capsys):
+    """Valid queried traps print even when another spec is invalid."""
+    shell.run_command('trap "echo x" INT')
+    result = shell.run_command('trap -p NOSUCHSIG INT')
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "trap -- 'echo x' SIGINT" in captured.out
+    assert 'NOSUCHSIG: invalid signal specification' in captured.err
+    shell.run_command('trap - INT')
+
+
+def test_trap_p_double_dash_before_spec(shell, capsys):
+    """`trap -p -- INT` consumes the option terminator (bash: rc=0)."""
+    shell.run_command('trap "echo x" INT')
+    result = shell.run_command('trap -p -- INT')
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "trap -- 'echo x' SIGINT" in captured.out
+    assert captured.err == ""
+    shell.run_command('trap - INT')
+
+
+def test_trap_p_double_dash_alone_shows_all(shell, capsys):
+    """Bare `trap -p --` behaves like `trap -p`: show all traps, rc=0."""
+    shell.run_command('trap "echo x" INT')
+    result = shell.run_command('trap -p --')
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "trap -- 'echo x' SIGINT" in captured.out
+    assert captured.err == ""
+    shell.run_command('trap - INT')
+
+
+def test_trap_p_double_dash_before_zero(shell, capsys):
+    """`trap -p -- 0` finds the EXIT trap (bash: rc=0, no stderr)."""
+    shell.run_command('trap "echo bye" EXIT')
+    result = shell.run_command('trap -p -- 0')
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "trap -- 'echo bye' EXIT" in captured.out
+    assert captured.err == ""
+    shell.run_command('trap - 0')
+
+
+def test_trap_p_spec_after_terminator_is_validated(shell, capsys):
+    """Only ONE -- is consumed: `trap -p -- --` queries the spec `--` (bash rc=1)."""
+    result = shell.run_command('trap -p -- --')
+    assert result == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert '--: invalid signal specification' in captured.err
+
+
+def test_trap_listing_orders_by_signal_number(shell, capsys):
+    """bash lists EXIT first, real signals by number, DEBUG/ERR last."""
+    shell.run_command('trap true CHLD')
+    shell.run_command('trap true INT')
+    shell.run_command('trap true EXIT')
+    shell.run_command('trap')
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert [line.split()[-1] for line in lines] == ['EXIT', 'SIGINT', 'SIGCHLD']
+    shell.run_command('trap - EXIT INT CHLD')

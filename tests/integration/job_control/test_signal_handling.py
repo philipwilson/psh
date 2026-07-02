@@ -209,9 +209,14 @@ class TestSignalErrorHandling:
 
     def test_trap_syntax_errors(self, shell):
         """Test trap command with syntax errors."""
-        # Missing command
+        # A single operand naming a signal is the RESET form, not an error
+        # (bash 5.2: `trap USR1` resets the USR1 trap and returns 0).
         result = shell.run_command('trap USR1')
-        assert result != 0
+        assert result == 0
+
+        # A single operand that is not a signal is a usage error.
+        result = shell.run_command('trap NOTASIGNAL')
+        assert result == 2
 
         # Invalid syntax
         result = shell.run_command('trap "unclosed quote USR1')
