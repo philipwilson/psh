@@ -48,19 +48,11 @@ class TestExpressionEvaluator:
         else:
             raise ValueError(f"Unknown test expression type: {type(expr).__name__}")
 
-    def _expand_operand(self, operand: str) -> str:
-        """Expand tilde and variables in a [[ ]] operand (string form).
-
-        Used by the unary operators, which keep a plain string operand.
-        Binary operands go through :meth:`_operand_string` (quote-aware,
-        per-part) instead.
-        """
-        result = self.expansion_manager.expand_tilde(operand)
-        return self.expansion_manager.expand_string_variables(result)
-
     def _operand_string(self, word) -> str:
         """Expand a [[ ]] operand Word to its subject/literal string,
-        QUOTE-AWARE per part (no word-splitting, no globbing).
+        QUOTE-AWARE per part (no word-splitting, no globbing). Shared by the
+        binary operands and (G1, 2026-07-02) the unary operators, so a
+        single-quoted operand (`[[ -n '$x' ]]`) stays literal in both.
 
         Backslash escapes are removed only from UNQUOTED parts (``ab\\?`` ->
         ``ab?``); a quoted part's text is already quote-removed by the lexer
@@ -306,8 +298,11 @@ class TestExpressionEvaluator:
             operand = expr.operand  # Don't expand for -v, we want the variable name
             return self._is_variable_set(operand)
 
-        # Expand tilde and variables in operand for other operators
-        operand = self._expand_operand(expr.operand)
+        # Expand the operand quote-aware from its Word (per-part quoting), the
+        # SAME path as a binary operand's subject string: tilde/variables/
+        # command/arithmetic, no splitting, no globbing — so a single-quoted
+        # operand (`[[ -n '$x' ]]`) stays literal instead of being re-expanded.
+        operand = self._operand_string(expr.operand_word)
 
         # Import test command's unary operators
         from ..builtins.test_command import TestBuiltin

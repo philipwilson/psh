@@ -294,17 +294,19 @@ class SpecialCommandParsers:
         # Handle unary operations: operator operand
         if len(tokens) == 2:
             operator = tokens[0].value
-            operand = self._format_test_operand(tokens[1])
 
             # Support file test operators and string test operators
             if operator.startswith('-') and len(operator) == 2:
-                return UnaryTestExpression(operator=operator, operand=operand)
+                return UnaryTestExpression(
+                    operator=operator,
+                    operand_word=self._operand_word_from_token(tokens[1]))
 
         # Handle single operand (string test)
         if len(tokens) == 1:
-            operand = self._format_test_operand(tokens[0])
             # Treat single operand as -n test (non-empty string test)
-            return UnaryTestExpression(operator='-n', operand=operand)
+            return UnaryTestExpression(
+                operator='-n',
+                operand_word=self._operand_word_from_token(tokens[0]))
 
         # Educational-scope boundary: anything longer/more complex than the
         # forms above (e.g. ``a == b && c == d``, parenthesised groups) is not

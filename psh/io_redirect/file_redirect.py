@@ -208,17 +208,27 @@ class FileRedirector:
 
         Shared redirect primitive (fd backend and builtin stream backend).
         Returns the content."""
-        quote_type = getattr(redirect, 'quote_type', None)
-        if quote_type == "'":
-            expanded = redirect.target
+        word = getattr(redirect, 'target_word', None)
+        if word is not None:
+            # bash expands a here-string word like an assignment value: all
+            # expansions, value-tilde (start + after each ':'), quote removal,
+            # but NO word splitting and NO globbing. Per-part quoting is honored
+            # (`foo$v"dq"` keeps the boundary; `'$v'` stays literal) instead of
+            # flattening the word and re-expanding the joined text.
+            expanded = self.shell.expansion_manager.expand_assignment_value_word(word)
         else:
-            target = redirect.target
-            # An UNQUOTED here-string tilde-expands like a value (start + after
-            # each ':'), BEFORE variable expansion (POSIX order). A double-quoted
-            # here-string does not tilde-expand (`<<<"~"` stays literal).
-            if not quote_type:
-                target = self.shell.expansion_manager.expand_string_tildes(target)
-            expanded = self.shell.expansion_manager.expand_string_variables(target)
+            # Fallback for synthesized redirects without a parsed Word.
+            quote_type = getattr(redirect, 'quote_type', None)
+            if quote_type == "'":
+                expanded = redirect.target
+            else:
+                target = redirect.target
+                # An UNQUOTED here-string tilde-expands like a value (start +
+                # after each ':'), BEFORE variable expansion (POSIX order). A
+                # double-quoted here-string does not tilde-expand.
+                if not quote_type:
+                    target = self.shell.expansion_manager.expand_string_tildes(target)
+                expanded = self.shell.expansion_manager.expand_string_variables(target)
         content = expanded + '\n'
         self._content_to_fd(content, self._heredoc_fd(redirect))
         return content

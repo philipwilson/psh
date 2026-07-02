@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.577.0 (2026-07-02) - Fix: flat-string AST sweep — case subject, [[ ]] unary operand, here-string carry Words (appraisal #15 Tier 1, Cluster G1)
+- FIX (HIGH). Reappraisal #15 cluster G1 retires the flat-string-AST defect
+  family: three sites that flattened a parsed Word into a string and then
+  re-expanded (or corrupted) the quoted text are migrated to the Word layer in
+  one sweep, so per-part quote context survives and each site matches bash 5.2.
+  - **case SUBJECT.** `CaseConditional` gained `subject_word`; the executor
+    expands it via the new `ExpansionManager.expand_word_as_subject`
+    (tilde-leading + parameter/command/arithmetic + quote removal, NO
+    splitting/globbing — the new `CASE_SUBJECT` policy). `case '$x' in` now
+    stays literal, `case '$(cmd)' in` no longer EXECUTES the single-quoted
+    command substitution, composites (`case "$x"y`) stop corrupting, and
+    backtick/tilde subjects expand. `expr` is retained as display text for the
+    analysis/debug visitors and manual-AST fallback.
+  - **`[[ ]]` UNARY operand.** `UnaryTestExpression` gained `operand_word`,
+    routed through the same quote-aware path binary operands use, so
+    `x=; [[ -n '$x' ]]` now tests the literal `$x` (true) instead of the
+    re-expanded empty value. `operand` becomes a derived read-only property;
+    the dead `_expand_operand` flatten path is removed.
+  - **HERE-STRING target.** The redirect now carries a Word (mirroring
+    filename targets) and `redirect_herestring` expands it via
+    `expand_assignment_value_word` (all expansions, value-tilde, quote removal,
+    NO split/glob), so `cat <<< foo$v"dq"` honors the quote boundary and
+    `<<< a\ b` drops the backslash. The legacy flat-string path stays as the
+    no-Word fallback.
+  - Both parsers (recursive-descent and combinator) updated; the formatter
+    renders the case-subject and unary-operand from the Words, fixing their
+    `--format` round-trip breaks (`[[ -z "" ]]`, empty/semicolon case subjects,
+    composite here-strings). Headline probes pinned in
+    `tests/behavioral/golden_cases.yaml` (verified with `--compare-bash`); the
+    two documented combinator composite-word parity gaps are unchanged.
+
 ## 0.576.0 (2026-07-02) - Fix: redirect visibility on in-process builtins + redirect-failure on compounds (appraisal #15 Tier 1, Cluster C)
 - FIX (HIGH). Reappraisal #15 cluster C — three related redirect defects,
   fixed as one family so every redirect-visibility and redirect-failure site

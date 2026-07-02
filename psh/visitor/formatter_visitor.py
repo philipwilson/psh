@@ -452,13 +452,16 @@ class FormatterVisitor(ASTVisitor[str]):
         """Format a case statement."""
         lines = []
 
-        # The case subject is stored as a flat, quote-stripped string (it has
-        # no Word to consult). If it contains whitespace it MUST have been
-        # quoted in the source (`case "a b" in`), so re-quote it — otherwise
-        # the reformatted `case a b in` is a syntax error.
-        subject = node.expr
-        if any(c.isspace() for c in subject):
-            subject = f'"{subject}"'
+        # Format the subject from its Word (per-part quote context) so a
+        # quoted subject re-quotes correctly — `case "a b" in`, `case "" in`,
+        # `case 'a;b' in` all survive the round-trip. Fall back to the flat
+        # string (re-quoting whitespace) for manually built ASTs with no Word.
+        if node.subject_word is not None:
+            subject = self._format_word(node.subject_word)
+        else:
+            subject = node.expr
+            if any(c.isspace() for c in subject):
+                subject = f'"{subject}"'
         lines.append(f"{self._indent()}case {subject} in")
 
         self._increase_indent()
@@ -595,11 +598,13 @@ class FormatterVisitor(ASTVisitor[str]):
     def visit_UnaryTestExpression(self, node: UnaryTestExpression) -> str:
         """Format a unary test expression.
 
-        ``operand`` is a plain string (no stored Word/quote context); inside
-        ``[[ ]]`` the operand is not word-split, so a dropped quote here is
-        cosmetic (``[[ -n "$y" ]]`` vs ``[[ -n $y ]]`` mean the same).
+        Format the operand Word (which carries per-part quote context), NOT
+        the derived ``.operand`` display string — otherwise quotes are dropped
+        and the meaning changes: ``[[ -n '$x' ]]`` (literal) would become
+        ``[[ -n $x ]]`` (expanded), and ``[[ -z "" ]]`` would format to the
+        unparseable ``[[ -z  ]]``.
         """
-        return f"{node.operator} {node.operand}"
+        return f"{node.operator} {self._format_word(node.operand_word)}"
 
     def visit_CompoundTestExpression(self, node: CompoundTestExpression) -> str:
         """Format a compound test expression."""
@@ -716,8 +721,12 @@ class FormatterVisitor(ASTVisitor[str]):
                 delim = f"'{delim}'"
             return f"{op}{delim}"
 
-        # Here string: re-quote the word so spaces/specials survive.
+        # Here string: format the Word (per-part quote context) so a composite
+        # like `<<< foo$v"dq"` round-trips; fall back to re-quoting the flat
+        # scalar for synthesized redirects with no Word.
         if node.type == '<<<':
+            if node.target_word is not None:
+                return f"{op}{self._format_word(node.target_word)}"
             return f"{op}{self._quote_scalar(node.target or '', node.quote_type)}"
 
         # fd duplication/close (2>&1, >&-).
