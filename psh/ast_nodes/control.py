@@ -110,11 +110,23 @@ class IfConditional(UnifiedControlStructure):
 
 @dataclass
 class CaseConditional(UnifiedControlStructure):
-    """Unified case statement."""
+    """Unified case statement.
+
+    ``subject_word`` carries the parsed subject as a multi-part :class:`Word`
+    with per-part quote context (like :class:`CasePattern`'s ``word``). The
+    executor expands it quote-aware — tilde, parameter, command and
+    arithmetic expansion, plus quote removal, but NO word splitting and NO
+    globbing — so a single-quoted subject (``case '$x' in``) stays literal
+    instead of being re-expanded. ``expr`` is the flattened display text,
+    kept for the analysis/debug visitors and for manually built ASTs; when
+    ``subject_word`` is None (a programmatically constructed node) the
+    executor and formatter fall back to it.
+    """
     expr: str
     items: List[CaseItem] = field(default_factory=list)
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False
+    subject_word: Optional['Word'] = None
 
 
 @dataclass

@@ -101,7 +101,7 @@ class TestParser(ParserSubcomponent):
 
         # Empty test
         if self.parser.match(TokenType.DOUBLE_RBRACKET):
-            return UnaryTestExpression('-n', '')
+            return UnaryTestExpression('-n', Word(parts=[]))
 
         # Parenthesized expression
         if self.parser.match(TokenType.LPAREN):
@@ -114,8 +114,8 @@ class TestParser(ParserSubcomponent):
         if self.parser.match(TokenType.WORD) and self._is_unary_test_operator(self.parser.peek().value):
             operator = self.parser.advance().value
             self.parser.skip_newlines()
-            operand = self._parse_test_operand()  # unary operand: text only
-            return UnaryTestExpression(operator, operand.display_text())
+            operand = self._parse_test_operand()
+            return UnaryTestExpression(operator, operand)
 
         # Binary expression or single value
         left_word = self._parse_test_operand()
@@ -155,7 +155,7 @@ class TestParser(ParserSubcomponent):
                 )
 
         # Single value test
-        return UnaryTestExpression('-n', left_word.display_text())
+        return UnaryTestExpression('-n', left_word)
 
     @staticmethod
     def _token_part(token) -> WordPart:

@@ -300,7 +300,8 @@ class ControlStructureParser(ParserSubcomponent):
         self.parser.expect(TokenType.CASE)
         self.parser.ctx.push_construct('case')
 
-        expr = self._parse_case_expression()
+        subject_word = self._parse_case_expression()
+        expr = subject_word.display_text()
 
         # bash allows newlines between the subject and `in`
         # (`case a <newline> in ...`), but nothing else.
@@ -332,22 +333,24 @@ class ControlStructureParser(ParserSubcomponent):
             expr=expr,
             items=items,
             redirects=redirects,
-            background=False
+            background=False,
+            subject_word=subject_word,
         )
 
-    def _parse_case_expression(self) -> str:
-        """Parse the case subject: exactly one word.
+    def _parse_case_expression(self) -> Word:
+        """Parse the case subject: exactly one word, as a :class:`Word`.
 
         bash takes exactly one word (possibly a composite like ``a"b"c``)
         between ``case`` and ``in``; ``case a b in ...`` is a syntax error
         near ``b``, raised by the caller when the next token isn't ``in``.
         The subject may be spelled ``in`` or ``esac`` (the lexer leaves the
-        word right after ``case`` as a plain WORD).
+        word right after ``case`` as a plain WORD). The Word carries per-part
+        quote context so the executor expands it without re-expanding
+        quoted text.
         """
         if not self.parser.match_any(TokenGroups.WORD_LIKE):
             raise self._case_syntax_error()
-        word = self.parser.commands.parse_argument_as_word()
-        return word.display_text()
+        return self.parser.commands.parse_argument_as_word()
 
     def _case_syntax_error(self):
         """Build a bash-shaped syntax error for a malformed case header."""

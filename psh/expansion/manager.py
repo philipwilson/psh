@@ -208,6 +208,20 @@ class ExpansionManager:
         # str(expansion), turning internal bugs into garbage output).
         return self.evaluator.evaluate(expansion)
 
+    def expand_word_as_subject(self, word) -> str:
+        """Expand a ``case`` subject Word to a single string.
+
+        bash applies tilde (leading only), parameter, command and arithmetic
+        expansion plus quote removal to a case subject, but NO word splitting
+        and NO pathname expansion — so a single-quoted subject (``case '$x'
+        in``) stays literal. Delegates to the canonical Word engine under the
+        :data:`CASE_SUBJECT` policy; a standalone ``$@``/array subject (which
+        the no-split engine returns as a list) is joined with spaces.
+        """
+        from .word_expansion_types import CASE_SUBJECT
+        result = self.word_expander.expand(word, CASE_SUBJECT)
+        return ' '.join(result) if isinstance(result, list) else result
+
     def expand_word_as_pattern(self, word) -> str:
         """Expand a Word into a glob-pattern string (case patterns).
 

@@ -124,6 +124,7 @@ class RedirectionMixin(_Base):
             redirect = Redirect(
                 type=op_token.value, target=content_value,
                 quote_type=content_word.effective_quote_char, fd=fd,
+                target_word=content_word,
             )
             return ParseResult(success=True, value=redirect, position=content_result.position)
 

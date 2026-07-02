@@ -48,9 +48,22 @@ class BinaryTestExpression(TestExpression):
 
 @dataclass
 class UnaryTestExpression(TestExpression):
-    """Unary test expression like -f FILE."""
+    """Unary test expression like -f FILE.
+
+    ``operand_word`` is a multi-part :class:`Word` carrying per-part quote
+    context, exactly like :class:`BinaryTestExpression`'s operands — so a
+    single-quoted operand (``[[ -n '$x' ]]``) stays literal instead of being
+    re-expanded. ``operand`` remains available as the derived read-only
+    pre-expansion string for the formatters/debug visitors and for ``-v``
+    (which wants the variable name, not an expansion).
+    """
     operator: str  # -f, -d, -z, -n, etc.
-    operand: str
+    operand_word: 'Word'
+
+    @property
+    def operand(self) -> str:
+        """Pre-expansion text of the operand (derived from the Word)."""
+        return self.operand_word.display_text()
 
 
 @dataclass

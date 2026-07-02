@@ -388,10 +388,17 @@ class ControlFlowExecutor:
         # bash runs the DEBUG trap before the `case` command (the subject eval).
         self.shell.trap_manager.execute_debug_trap()
 
-        # Expand the expression
-        expr = node.expr
-        if '$' in expr:
-            expr = self.expansion_manager.expand_string_variables(expr)
+        # Expand the subject. The parser carries a Word (per-part quote
+        # context), so expand it quote-aware — tilde/parameter/command/
+        # arithmetic expansion and quote removal, but NO splitting/globbing
+        # — and a single-quoted subject stays literal. Manually built ASTs
+        # (subject_word=None) fall back to legacy flat-string re-expansion.
+        if node.subject_word is not None:
+            expr = self.expansion_manager.expand_word_as_subject(node.subject_word)
+        else:
+            expr = node.expr
+            if '$' in expr:
+                expr = self.expansion_manager.expand_string_variables(expr)
 
         # set -x: bash traces the `case WORD in` header (expanded subject, quoted).
         if self.state.options.get('xtrace'):

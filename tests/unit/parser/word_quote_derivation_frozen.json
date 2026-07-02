@@ -447,6 +447,13 @@
         true,
         null,
         "n"
+      ],
+      [
+        "\"",
+        true,
+        false,
+        "\"",
+        "\"$x\""
       ]
     ],
     "arr=(\"a b\" $v 'z')": [
@@ -474,6 +481,13 @@
     ],
     "cat <<< \"a b\"": [
       [
+        "\"",
+        true,
+        false,
+        "\"",
+        "\"a b\""
+      ],
+      [
         null,
         false,
         true,
@@ -482,6 +496,13 @@
       ]
     ],
     "cat <<< plain": [
+      [
+        null,
+        false,
+        true,
+        null,
+        "plain"
+      ],
       [
         null,
         false,
@@ -989,6 +1010,13 @@
         true,
         null,
         "n"
+      ],
+      [
+        "\"",
+        true,
+        false,
+        "\"",
+        "\"$x\""
       ]
     ],
     "arr=(\"a b\" $v 'z')": [
@@ -1016,6 +1044,13 @@
     ],
     "cat <<< \"a b\"": [
       [
+        "\"",
+        true,
+        false,
+        "\"",
+        "\"a b\""
+      ],
+      [
         null,
         false,
         true,
@@ -1024,6 +1059,13 @@
       ]
     ],
     "cat <<< plain": [
+      [
+        null,
+        false,
+        true,
+        null,
+        "plain"
+      ],
       [
         null,
         false,

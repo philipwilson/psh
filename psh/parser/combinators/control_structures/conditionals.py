@@ -232,8 +232,16 @@ class ConditionalParserMixin(_Base):
             if pos >= len(tokens) or tokens[pos].type.name not in _CASE_EXPR_TYPES:
                 raise_committed_error(tokens, pos, "Expected expression after 'case'")
 
-            # Format the expression appropriately
-            expr = format_token_value(tokens[pos])
+            # Format the expression appropriately. Also build a subject Word
+            # (per-part quote context) so the executor expands it quote-aware
+            # — a single-quoted subject stays literal — matching rd.
+            subject_tok = tokens[pos]
+            expr = format_token_value(subject_tok)
+            try:
+                subject_word = self.commands.expansions.build_word_from_token(
+                    subject_tok)
+            except ValueError:
+                subject_word = None  # fall back to the flattened-string path
             pos += 1
 
             # bash allows newlines between the subject and `in`
@@ -350,6 +358,7 @@ class ConditionalParserMixin(_Base):
                     expr=expr,
                     items=items,
                     redirects=redirects,
+                    subject_word=subject_word,
                 ),
                 position=pos
             )

@@ -40,6 +40,13 @@ full suite):
   - the combinator ``'mixed'`` sentinel: a non-real quote char the old code
     stored but never read; it derives to None (the part is not flagged
     quoted).
+
+Cluster G1 (2026-07-02) added a Word to two more corpus entries: the
+``case`` subject (``CaseConditional.subject_word``) and the here-string
+target (``Redirect.target_word``) now carry their parsed Word so the
+executor expands them quote-aware. The frozen sidecar was regenerated to
+include those extra Words; every pre-existing tuple is unchanged (verified
+by set-diff), and derived == reported still holds for the new Words.
 """
 
 import dataclasses

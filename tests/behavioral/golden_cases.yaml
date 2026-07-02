@@ -975,6 +975,44 @@
   stderr: ""
   exit_code: 0
 
+# Cluster G1 (appraisal #15): quoted subjects/operands/here-strings carry a
+# Word and are no longer re-expanded (single-quoted stays literal).
+- name: case_single_quoted_subject_literal
+  command: "x=hello; case '$x' in '$x') echo literal;; hello) echo exp;; esac"
+  stdout: "literal\n"
+  stderr: ""
+  exit_code: 0
+
+- name: case_single_quoted_cmdsub_not_executed
+  command: "case '$(echo hi)' in '$(echo hi)') echo literal;; hi) echo exp;; esac"
+  stdout: "literal\n"
+  stderr: ""
+  exit_code: 0
+
+- name: case_backtick_subject
+  command: "case `echo foo` in foo) echo matched;; *) echo no;; esac"
+  stdout: "matched\n"
+  stderr: ""
+  exit_code: 0
+
+- name: double_bracket_single_quoted_operand_literal
+  command: "x=; [[ -n '$x' ]]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: here_string_composite_quote_boundary
+  command: 'v="a b"; cat <<< foo$v"dq"'
+  stdout: "fooa bdq\n"
+  stderr: ""
+  exit_code: 0
+
+- name: here_string_backslash_space
+  command: "cat <<< a\\ b"
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
 - name: break_in_loop
   command: 'for i in 1 2 3 4 5; do if [ $i -eq 3 ]; then break; fi; echo $i; done'
   stdout: "1\n2\n"

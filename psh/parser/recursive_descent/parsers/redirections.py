@@ -124,7 +124,11 @@ class RedirectionParser(ParserSubcomponent):
         if not self.parser.match_any(TokenGroups.WORD_LIKE):
             raise self.parser.error("Expected string after here string operator")
 
-        # Use Word AST parsing to handle variables and quotes properly
+        # Use Word AST parsing to handle variables and quotes properly. Carry
+        # the parsed Word (per-part quote context) so the executor expands it
+        # quote-aware — a composite like `foo$v"dq"` keeps the `$v`/`"dq"`
+        # boundary instead of flattening to `foo$vdq` and re-expanding. The
+        # flat target/quote_type stay for display and the no-Word fallback.
         word = self.parser.commands.parse_argument_as_word()
         content_value = word.display_text()
         quote_type = word.effective_quote_char
@@ -133,7 +137,8 @@ class RedirectionParser(ParserSubcomponent):
             type=token.value,
             target=content_value,
             quote_type=quote_type,
-            fd=token.fd
+            fd=token.fd,
+            target_word=word,
         )
 
     def _parse_dup_redirect(self, token: Token) -> Redirect:

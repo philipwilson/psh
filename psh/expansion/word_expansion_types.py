@@ -87,6 +87,16 @@ ARRAY_INIT_ELEMENT = WordExpansionPolicy(
 ASSOC_INIT_ELEMENT = WordExpansionPolicy(
     split=False, glob=False, assignment_tilde=False)
 
+#: The subject word of a ``case`` statement (``case WORD in``). bash
+#: applies tilde, parameter, command and arithmetic expansion plus quote
+#: removal, but NO word splitting and NO pathname expansion — a
+#: single-quoted subject stays literal, ``case ~ in`` expands the leading
+#: tilde, and ``case a:~ in`` keeps the ``~`` (only a LEADING tilde
+#: expands, not a value-tilde after ``:`` — probed against bash 5.2, the
+#: one axis that separates this from an assignment value).
+CASE_SUBJECT = WordExpansionPolicy(
+    split=False, glob=False, assignment_tilde=False)
+
 
 @dataclass
 class ExpandedSegment:

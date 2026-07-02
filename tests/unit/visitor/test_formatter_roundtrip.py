@@ -160,6 +160,16 @@ BEHAVIOR_CASES = [
     "for x in *.md; do echo item; done",
     # Heredoc inside a multi-stage pipeline
     "cat <<EOF | grep h\nhello\nhi\nEOF",
+    # G1 (appraisal #15): case subject / [[ ]] unary operand / here-string
+    # now carry Words — their quoting must survive the round-trip.
+    "x=hello; case '$x' in '$x') echo lit;; hello) echo exp;; esac",
+    'case "a b" in "a b") echo m;; *) echo no;; esac',
+    'x=; case "$x" in "") echo empty;; *) echo no;; esac',
+    "case 'a;b' in x) :;; esac",
+    "x=; [[ -n '$x' ]]; echo $?",
+    '[[ -z "" ]]; echo $?',
+    'v=x; cat <<< foo$v"dq"',
+    "cat <<< 'literal $x'",
 ]
 
 
@@ -193,6 +203,17 @@ def test_formatted_output_reparses(src):
     ("ls |& grep x", "|&"),
     ('echo "a\\$b"', '"a\\$b"'),
     ("echo hi {fd}>/dev/null", "{fd}>"),
+    # G1: single-quoted case subject stays single-quoted (not re-expanded)
+    ("case '$x' in a) :;; esac", "case '$x' in"),
+    # G1: empty/semicolon subjects re-quote (bare would be a syntax error)
+    ('case "" in a) :;; esac', 'case "" in'),
+    ("case 'a;b' in a) :;; esac", "case 'a;b' in"),
+    # G1: single-quoted unary operand keeps its quotes
+    ("[[ -n '$x' ]]", "[[ -n '$x' ]]"),
+    # G1: empty unary operand re-quotes ([[ -z  ]] would be a parse error)
+    ('[[ -z "" ]]', '[[ -z "" ]]'),
+    # G1: here-string composite preserves per-part quoting
+    ('cat <<< foo$v"dq"', 'foo$v"dq"'),
 ])
 def test_format_emits_expected_token(src, expected_substr):
     assert expected_substr in _fmt(src)
