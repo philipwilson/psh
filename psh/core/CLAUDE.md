@@ -259,16 +259,35 @@ paths in `scope.py`:
 
 Tests: `tests/unit/core/test_nameref.py`.
 
-### Unset Tombstones
+### Unset Semantics & Tombstones
 
-`unset` inside a function must hide an outer-scope variable, not just
-delete the local one. `unset_variable()` therefore plants a **tombstone**
-— `Variable(name, value="", attributes=VarAttributes.UNSET)` — in the
-current scope after deleting. `get_variable_object()` returns `None` when
-it hits a tombstone (stopping the walk), and `set_variable()` replaces a
-current-scope tombstone, clearing the UNSET flag. Listing functions
-(`get_all_variables()`, etc.) likewise let tombstones shadow outer
-variables. Tests: `tests/unit/core/test_scope_tombstones.py`.
+bash's dynamic scoping keeps a per-name stack of variable instances;
+`unset` removes the **most recent** one, revealing the next-outer
+instance (`x=g; f(){ local x=f; g; }; g(){ unset x; echo $x; }; f`
+prints `g` — g's unset removed f's local). `unset_variable()` therefore
+walks the scope chain and deletes the innermost instance wherever it
+lives — unsetting a global from inside a function removes the global,
+so a later assignment writes the global again (`x=1; f(){ unset x;
+x=new; }; f` leaves `x=new`).
+
+The one exception is a local unset **in its own declaring scope**: bash
+(default, non-`localvar_unset`) leaves it "local and unset" — the outer
+instance does not show through in that scope. That state is recorded as
+a **tombstone** — `Variable(name, value="", attributes=VarAttributes.UNSET)`
+— and this is the ONLY case `unset` plants one (`local`/`declare` without
+a value create the same declared-but-unset cell). `get_variable_object()`
+returns `None` when it hits a tombstone (stopping the walk, so the cell
+shadows in child scopes too); `set_variable()` binds to the innermost
+scope holding an instance *including* a tombstone (bash: `local x; unset
+x; x=new` rebinds in the declaring scope, even from a called function);
+a repeated `unset` of an own-scope tombstone is a no-op, but from a
+DEEPER scope the same cell is removed outright.
+`get_declared_variable_object()` finds tombstones so `declare -p x`
+prints `declare -- x`; listing functions (`get_all_variables()`, etc.)
+hide them. Unset strips
+attributes (`local -i x=5; unset x` → `declare -- x`). Truth table:
+`tmp/d1_unset_truth_table.sh`; tests:
+`tests/unit/core/test_scope_tombstones.py`.
 
 ### Subshell-Style Inheritance: `ShellState.adopt()`
 

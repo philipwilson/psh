@@ -2760,3 +2760,82 @@
   stdout: ""
   stderr: "return: too many arguments"
   exit_code: 1
+
+# =============================================================================
+# UNSET DYNAMIC-SCOPE SEMANTICS (reappraisal #15 D1)
+# bash keeps a per-name stack; unset removes the most recent instance,
+# revealing the next-outer one — except a local unset in its own declaring
+# scope, which stays "local and unset" there.
+# =============================================================================
+
+- name: unset_global_in_fn_then_assign_writes_global
+  command: 'x=1; f(){ unset x; x=new; }; f; echo "[${x-U}]"'
+  stdout: "[new]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_callers_local_reveals_global
+  command: 'x=global; f(){ local x=f; g; }; g(){ unset x; echo "[${x-U}]"; }; f'
+  stdout: "[global]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_callers_local_then_assign_writes_global
+  command: 'x=global; f(){ local x=f; g; echo f:$x; }; g(){ unset x; x=setbyg; }; f; echo top:$x'
+  stdout: "f:setbyg\ntop:setbyg\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_own_local_stays_local_unset
+  command: 'x=1; f(){ local x=2; unset x; echo "[${x-U}]"; }; f; echo "top:[$x]"'
+  stdout: "[U]\ntop:[1]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_three_deep_pops_one_instance_each
+  command: 'x=global; f(){ local x=f; g; }; g(){ local x=g; h; }; h(){ unset x; echo "1:[${x-U}]"; unset x; echo "2:[${x-U}]"; unset x; echo "3:[${x-U}]"; }; f; echo "top:[${x-U}]"'
+  stdout: "1:[f]\n2:[global]\n3:[U]\ntop:[U]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_child_assign_binds_callers_unset_local
+  command: 'x=global; f(){ local x=f; unset x; g; echo "f:[${x-U}]"; }; g(){ x=setbyg; }; f; echo "top:[$x]"'
+  stdout: "f:[setbyg]\ntop:[global]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_deeper_scope_removes_callers_unset_local
+  command: 'x=global; f(){ local x=f; unset x; g; }; g(){ unset x; echo "g:[${x-U}]"; }; f; echo "top:[${x-U}]"'
+  stdout: "g:[global]\ntop:[global]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_strips_local_attributes
+  command: 'f(){ local -i x=5; unset x; declare -p x; x=3+4; echo "[$x]"; }; f'
+  stdout: "declare -- x\n[3+4]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_own_local_declare_p_shows_declaration
+  command: 'x=1; f(){ local x=2; unset x; declare -p x; echo rc=$?; }; f'
+  stdout: "declare -- x\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_bare_declare_global_removes_cell
+  command: 'declare x; unset x; declare -p x 2>/dev/null; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_declare_g_after_unset_in_fn
+  command: 'x=1; f(){ unset x; declare -g x=new2; }; f; echo "[${x-U}]"'
+  stdout: "[new2]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_readonly_refused_value_kept
+  command: 'readonly r=1; f(){ unset r 2>/dev/null; echo rc=$?; }; f; echo "[$r]"'
+  stdout: "rc=1\n[1]\n"
+  stderr: ""
+  exit_code: 0
