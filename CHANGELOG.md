@@ -4,6 +4,45 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.565.0 (2026-07-01) - Fix: interactive history alias contract + lexer-driven cmdhist joining (appraisal #15 Tier 1, K1+K2)
+- FIX (HIGH). Reappraisal #15 cluster K1 — up-arrow/Ctrl-R were dead for any
+  session starting with an EMPTY history (every fresh install): LineEditor did
+  `HistoryNavigator(history or [])`, so a falsy empty `state.history` was
+  silently replaced by a private list and recall never saw a recorded command.
+  The alias also broke mid-session: HistoryManager REBOUND `state.history` to
+  a new list at three sites (erasedups, the HISTSIZE trim, the load-time
+  trim), detaching every live navigator.
+  - Fixed with an identity check (`history if history is not None else []`)
+    and in-place mutation (slice assignment / `del`) at all three rebind
+    sites. The "one shared list object for the whole session" contract is now
+    documented on HistoryManager and enforced by object-identity pins in
+    `tests/unit/interactive/test_history_alias_contract.py` plus a PTY
+    end-to-end recall test with a fresh empty HOME (the old recall test was
+    masked by a shared `.psh_history`).
+- FIX (HIGH). Reappraisal #15 cluster K2 — the keyword-whitelist
+  `convert_multiline_to_single` joiner corrupted recorded commands into parse
+  errors: `until`/`select` loops recorded as `until false do break done`
+  (unparseable on recall, persisted to HISTFILE), `case` emitted
+  `case x in; ...;;; esac`, and function-brace bodies emitted `f() { {`.
+  - Replaced with ONE lexer/parser-driven joiner (the same oracle
+    CommandAccumulator uses): newlines stay verbatim inside quotes, heredocs,
+    and unclosed expansions (matching bash cmdhist); backslash-newline
+    continuations splice; a bare space follows tokens that reject `;`
+    (`then`/`do`/`else`/`in`/`;;`/`&&`/`{`/`(`, case-pattern `)`, `f()`,
+    `function NAME`, inside `name=(...)`); `; ` otherwise.
+  - Recall (`HistoryNavigator._editable`) now uses the same rules — recalled
+    heredoc and quoted-newline entries are no longer space-joined into
+    corruption, and mixed commands match bash per-newline instead of the old
+    all-or-nothing gate.
+  - Pinned to interactive bash 5.2 recordings (`bash --norc -i` + `fc -ln`)
+    by a 44-case truth table in `tests/unit/test_line_editor_helpers.py`
+    (byte-for-byte, plus reparse-equivalence and recall-idempotence checks).
+    Documented divergences: `((1 +\n2))` records as `((1 +; 2))` exactly like
+    bash's own corrupted recording; bash's cosmetic space after a heredoc
+    terminator and its `;; esac` re-join are not imitated (both forms reparse
+    identically). Two old tests that pinned pre-fix corrupted joins were
+    rewritten against bash-verified expectations.
+
 ## 0.564.0 (2026-07-01) - Fix: CLI arg parsing stops at first operand; non-seekable scripts run (appraisal #15 Tier 1, I1+I2)
 - FIX (HIGH). Reappraisal #15 cluster I1 — `parse_args` stripped psh's own
   flags from ANYWHERE in argv via `args.remove`: `psh script.sh -i --norc foo`
