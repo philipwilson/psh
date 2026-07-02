@@ -144,8 +144,13 @@ class DebugASTVisitor(ASTVisitor[str]):
     def visit_Pipeline(self, node: Pipeline) -> str:
         """Format pipeline."""
         header = "Pipeline"
+        flags = []
         if node.negated:
-            header += " (negated)"
+            flags.append("negated")
+        if node.timed:
+            flags.append("time -p" if node.time_posix else "time")
+        if flags:
+            header += " (" + ", ".join(flags) + ")"
         result = self._format_header(header)
         return result + self._visit_children(node.commands)
 

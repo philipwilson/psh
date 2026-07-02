@@ -76,6 +76,14 @@ FORMATTER_CASES = [
     ("a[k]+='lit'", "a[k]+='lit'"),
     ('a[i+1]=val', 'a[i+1]=val'),
     ('a[0]+="z"', 'a[0]+="z"'),
+    # Reappraisal #15 J3/J6: values render from the Word layer, re-escaped —
+    # no legacy flat-string corruption (literal tab, spurious `$`, lost quotes).
+    ("a=($'x\\ty')", "a=($'x\\ty')"),
+    ("a=($'x\\ty' plain)", "a=($'x\\ty' plain)"),
+    ('a=("x\\"y")', 'a=("x\\"y")'),
+    ('m=([k]="v 1")', 'm=([k]="v 1")'),
+    ("a[3]=$'x\\ty'", "a[3]=$'x\\ty'"),
+    ("a[0]=$'p q'", "a[0]=$'p q'"),
 ]
 
 
@@ -118,3 +126,36 @@ def test_validator_mixed_combinator(src, mixed):
     if src in COMBINATOR_VALIDATOR_DIVERGENCE:
         pytest.skip("combinator composite-word split divergence (pinned separately)")
     assert _mixed_info(_comb_parse(src)) is mixed
+
+
+# -- Semantic oracle (reappraisal #15 J3/J6): assigning, then formatting and
+#    re-running, must leave the array's `declare -p` identical. This catches
+#    value corruption the byte-identical formatter check above cannot (the old
+#    flat-string path emitted a literal tab / spurious `$` / lost quotes that
+#    still "looked" plausible but changed the stored value on re-parse). -------
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+
+DECLARE_P_CASES = [
+    ("a", "a=($'x\\ty')"),
+    ("a", "a=($'x\\ty' plain)"),
+    ("a", 'a=("x\\"y")'),
+    ("a", "a=('one' \"two\" three)"),
+    ("a", "a[3]=$'x\\ty'"),
+    ("a", "a[0]=$'p q'"),
+    ("m", 'declare -A m=([k]="v 1")'),
+    ("m", "declare -A m=([x]=$'a\\tb' [y]='p q')"),
+]
+
+
+def _psh(*args):
+    return subprocess.run([sys.executable, "-m", "psh", *args],
+                          capture_output=True, text=True, timeout=30)
+
+
+@pytest.mark.parametrize("var,src", DECLARE_P_CASES)
+def test_declare_p_survives_format_roundtrip(var, src):
+    formatted = _psh("--format", "-c", src).stdout
+    orig = _psh("-c", f"{src}\ndeclare -p {var}").stdout
+    after = _psh("-c", f"{formatted}\ndeclare -p {var}").stdout
+    assert after == orig, f"src={src!r} formatted={formatted!r}"

@@ -2948,3 +2948,47 @@
   stdout: "rc=1\n[1]\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# ANSI-C QUOTING IN ASSIGNMENT / CONCATENATION (reappraisal #15 J6)
+# The value must decode identically whether $'...' is a standalone word or
+# embedded in an assignment value / concatenation.
+# =============================================================================
+
+- name: ansi_c_scalar_assignment_value
+  command: "v=$'a\\tb'; printf '%s' \"$v\""
+  stdout: "a\tb"
+  stderr: ""
+  exit_code: 0
+
+- name: ansi_c_concatenation_in_word
+  command: "echo a$'b\\tc'd"
+  stdout: "ab\tcd\n"
+  stderr: ""
+  exit_code: 0
+
+- name: ansi_c_array_element_value
+  command: "a=($'x\\ty'); printf '%s' \"${a[0]}\""
+  stdout: "x\ty"
+  stderr: ""
+  exit_code: 0
+
+- name: ansi_c_indexed_element_assignment
+  command: "a[0]=$'p q'; printf '%s' \"${a[0]}\""
+  stdout: "p q"
+  stderr: ""
+  exit_code: 0
+
+- name: assoc_composite_value_keeps_quotes
+  command: "declare -A m=([k]=$'a\\tb' [j]='p q'); printf '%s|%s' \"${m[k]}\" \"${m[j]}\""
+  stdout: "a\tb|p q"
+  stderr: ""
+  exit_code: 0
+
+# A quote in the NAME portion disqualifies the word as an assignment (bash):
+# `v$'a'=x` runs the COMMAND `va=x`, it is not an assignment.
+- name: quoted_name_part_is_not_assignment
+  command: "v$'a'=x; echo \"v=[$v]\""
+  stdout: "v=[]\n"
+  stderr: "command not found"
+  exit_code: 0

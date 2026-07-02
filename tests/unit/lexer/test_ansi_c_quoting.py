@@ -268,3 +268,64 @@ class TestAnsiCQuoting:
         captured = capsys.readouterr()
         expected = 'Error on line 42:\n\tFile not found: "test.txt"\n\tPlease check the path\n'
         assert captured.out == expected
+
+
+class TestAnsiCQuoteMetadata:
+    """Reappraisal #15 J6: a ``$'...'`` in assignment-value / concatenation
+    position must keep its quote metadata (it lexes as its own ``$'``-typed
+    STRING token that the parser re-joins into a composite Word), exactly like
+    ``"..."`` does — instead of being decoded inline into a flat, quote-less
+    literal. Previously the metadata was lost, so ``--format`` re-emitted a raw
+    (word-splitting) value and ran the second line as a command.
+    """
+
+    def _tokens(self, src):
+        from psh.lexer import tokenize
+        return [t for t in tokenize(src) if t.type.name != 'EOF']
+
+    def _assignment_word(self, src):
+        from psh.ast_nodes import SimpleCommand
+        from psh.lexer import tokenize
+        from psh.parser import parse
+        node = parse(tokenize(src))
+
+        found = []
+
+        def walk(n):
+            if isinstance(n, SimpleCommand):
+                found.extend(n.words)
+            for attr in ('items', 'statements', 'pipelines', 'commands'):
+                v = getattr(n, attr, None)
+                if isinstance(v, list):
+                    for x in v:
+                        walk(x)
+        walk(node)
+        return found[0]
+
+    def test_assignment_value_lexes_as_separate_string(self):
+        from psh.lexer.token_types import TokenType
+        toks = self._tokens("v=$'a\\tb'")
+        assert [t.type for t in toks] == [TokenType.WORD, TokenType.STRING]
+        assert toks[0].value == 'v='
+        assert toks[1].value == 'a\tb'      # decoded value
+        assert toks[1].quote_type == "$'"   # quote metadata preserved
+
+    def test_assignment_word_carries_ansi_c_part(self):
+        from psh.ast_nodes import LiteralPart
+        word = self._assignment_word("v=$'a\\tb'")
+        # v= (unquoted) + a<tab>b (quoted with $')
+        assert word.parts[0] == LiteralPart('v=', quoted=False, quote_char=None)
+        assert word.parts[-1].quote_char == "$'"
+        assert word.parts[-1].text == 'a\tb'
+
+    def test_concatenation_word_carries_ansi_c_part(self):
+        word = self._assignment_word("echo a$'b\\tc'd")  # first word is `echo`
+        word = self._assignment_word("x=a$'b\\tc'd")
+        quote_chars = [getattr(p, 'quote_char', None) for p in word.parts]
+        assert "$'" in quote_chars
+        assert word.display_text() == 'x=ab\tcd'
+
+    def test_runtime_value_preserved(self, shell, capsys):
+        # The whole point: metadata is added WITHOUT changing the value.
+        assert shell.run_command("v=$'a\\tb'; printf '%s' \"$v\"") == 0
+        assert capsys.readouterr().out == 'a\tb'

@@ -12,13 +12,17 @@ The recognizer has two halves:
   (``NEUTRAL → ASSIGN_NAME → ASSIGN_VALUE``) updated as each character is
   consumed, and an :class:`~.word_scanners.UnmatchedBracketTracker` for
   open subscripts. Sub-grammar segments (glob bracket classes, extglob
-  groups, array-assignment subscripts, inline ANSI-C strings) are consumed
-  whole by the pure mini-scanners in ``word_scanners.py``.
+  groups, array-assignment subscripts) are consumed whole by the pure
+  mini-scanners in ``word_scanners.py``.
 
 Because the shape state runs forward, the loop always KNOWS whether the
-``=`` it just hit starts an assignment value or ends the word, and whether
-a ``$'...'`` belongs to this word — there is no retro-scanning of the
-accumulated value.
+``=`` it just hit starts an assignment value or ends the word — there is
+no retro-scanning of the accumulated value. A ``$'...'`` in a value or
+concatenation (``v=$'a\\tb'``, ``pre$'x'post``) ends the literal like any
+quote/expansion: it lexes as its own ``$'``-typed STRING token, and the
+parser re-joins the adjacent tokens into one composite Word — so the
+ANSI-C part keeps its quote metadata (mirroring ``"..."``; J6). It is not
+decoded inline into a flat, quote-less literal.
 """
 
 from typing import Optional, Tuple
@@ -36,7 +40,6 @@ from .word_scanners import (
     scan_assignment_prefix,
     scan_extglob_group,
     scan_glob_bracket,
-    scan_inline_ansi_c,
 )
 
 
@@ -147,37 +150,26 @@ class LiteralRecognizer(ContextualRecognizer):
         start_pos = pos
 
         # Collect the literal value using helper method
-        value, pos, saw_inline_ansi = self._collect_literal_value(input_text, pos, context)
+        value, pos = self._collect_literal_value(input_text, pos, context)
 
         if not value:
             return None
 
-        token = Token(
-            TokenType.WORD,
-            value,
-            start_pos,
-            pos
-        )
-
-        if saw_inline_ansi and token.quote_type is None:
-            token.quote_type = 'mixed'
-
-        return token, pos
+        return Token(TokenType.WORD, value, start_pos, pos), pos
 
     def _collect_literal_value(
         self,
         input_text: str,
         pos: int,
         context: LexerContext
-    ) -> Tuple[str, int, bool]:
+    ) -> Tuple[str, int]:
         """Collect literal value characters until a terminator is reached.
 
         Returns:
-            Tuple of (collected_value, new_position, saw_inline_ansi)
+            Tuple of (collected_value, new_position)
         """
         posix_mode = self._posix_mode
         value = ""
-        saw_inline_ansi = False
         # Forward word-shape state, updated as characters are consumed.
         shape = WordShapeTracker(posix_mode)
         # Forward "value ends inside an unmatched [" state (quote-aware).
@@ -269,15 +261,6 @@ class LiteralRecognizer(ContextualRecognizer):
                         and input_text[pos + 1:pos + 2] == '='):
                     take(char, pos + 1)
                     continue
-                # Inline ANSI-C in an assignment value or concatenation:
-                # v=$'x', pre$'x'post — the decoded content joins this word.
-                if (char == '$' and input_text[pos + 1:pos + 2] == "'"
-                        and (shape.in_assignment_value or shape.concat_safe)):
-                    ansi = scan_inline_ansi_c(input_text, pos)
-                    if ansi is not None:
-                        take(*ansi)
-                        saw_inline_ansi = True
-                        continue
                 break  # ordinary terminator: the word ends here
 
             # --- quotes inside an open subscript stay in the word ---
@@ -287,16 +270,7 @@ class LiteralRecognizer(ContextualRecognizer):
 
             # --- quotes/expansions end the word (only non-terminator
             #     contexts, e.g. arithmetic, reach these checks) ---
-            if char == '$':
-                if (input_text[pos + 1:pos + 2] == "'"
-                        and shape.in_assignment_value):
-                    ansi = scan_inline_ansi_c(input_text, pos)
-                    if ansi is not None:
-                        take(*ansi)
-                        saw_inline_ansi = True
-                        continue
-                break
-            if char in ('`', "'", '"'):
+            if char in ('$', '`', "'", '"'):
                 break
 
             # Check if # starts a comment (shared definition with
@@ -311,7 +285,7 @@ class LiteralRecognizer(ContextualRecognizer):
 
             take(char, pos + 1)
 
-        return value, pos, saw_inline_ansi
+        return value, pos
 
     def _is_word_terminator(self, char: str, context: LexerContext) -> bool:
         """Check if character terminates a word in current context."""
