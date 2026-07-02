@@ -28,31 +28,26 @@ class Function:
 class FunctionManager:
     """Manages shell function definitions."""
 
-    # Reserved words that cannot be used as function names
-    RESERVED_WORDS = {
-        'if', 'then', 'else', 'elif', 'fi',
-        'while', 'until', 'do', 'done',
-        'for', 'in', 'case', 'esac',
-        'function', 'return', 'break', 'continue',
-        'true', 'false', 'exit'
-    }
-
     def __init__(self):
         self.functions: Dict[str, Function] = {}
 
     def define_function(self, name: str, body: CommandList,
                         redirects: Optional[List] = None) -> None:
-        """Define or redefine a function."""
-        if self._is_reserved_word(name):
-            raise FunctionDefinitionError(f"Cannot use reserved word '{name}' as function name")
+        """Define or redefine a function.
 
+        Name policy matches bash: any single word works (``my-func``,
+        ``.dot``, ``f.g``, builtin names like ``true`` — functions shadow
+        builtins in lookup). Reserved words are rejected by the PARSER
+        (they never lex as a plain name), so the only validity check left
+        here is the empty name, plus the readonly guard.
+        """
         if self._is_invalid_name(name):
-            raise FunctionDefinitionError(f"Invalid function name '{name}'")
+            raise FunctionDefinitionError(f"`{name}': not a valid function name")
 
         # Check if function is readonly
         existing = self.functions.get(name)
         if existing and existing.readonly:
-            raise FunctionDefinitionError(f"'{name}': readonly function")
+            raise FunctionDefinitionError(f"{name}: readonly function")
 
         # Preserve readonly/export status if redefining
         readonly = existing.readonly if existing else False
@@ -68,7 +63,7 @@ class FunctionManager:
         """Remove a function. Returns True if removed, False if not found."""
         func = self.functions.get(name)
         if func and func.readonly:
-            raise FunctionDefinitionError(f"'{name}': readonly function")
+            raise FunctionDefinitionError(f"{name}: readonly function")
         return self.functions.pop(name, None) is not None
 
     def set_function_readonly(self, name: str) -> bool:
@@ -115,22 +110,12 @@ class FunctionManager:
         new_manager.functions = self.functions.copy()
         return new_manager
 
-    def _is_reserved_word(self, name: str) -> bool:
-        """Check if name is a reserved word."""
-        return name in self.RESERVED_WORDS
-
     def _is_invalid_name(self, name: str) -> bool:
-        """Check if name is invalid as a function name."""
-        if not name:
-            return True
+        """Check if name is invalid as a function name.
 
-        # Function names must start with letter or underscore
-        if not (name[0].isalpha() or name[0] == '_'):
-            return True
-
-        # Rest can be letters, numbers, or underscores
-        for char in name[1:]:
-            if not (char.isalnum() or char == '_'):
-                return True
-
-        return False
+        bash is permissive: a function name is any non-empty word (it can
+        contain ``-``, ``.``, ``/``, glob characters, ...). The lexer
+        guarantees a name from real source has no whitespace; the check
+        here also covers hand-built ASTs.
+        """
+        return not name or any(c.isspace() for c in name)

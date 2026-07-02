@@ -7,7 +7,7 @@ This module handles function definition and execution operations.
 from typing import TYPE_CHECKING, List, Optional
 
 from ..core import LoopBreak, LoopContinue, UnboundVariableError
-from ..core.exceptions import FunctionReturn
+from ..core.exceptions import FunctionDefinitionError, FunctionReturn
 
 if TYPE_CHECKING:
     from psh.visitor import ASTVisitor
@@ -43,8 +43,15 @@ class FunctionOperationExecutor:
         Returns:
             Exit status code (0 for success)
         """
-        self.function_manager.define_function(node.name, node.body,
-                                              redirects=node.redirects)
+        try:
+            self.function_manager.define_function(node.name, node.body,
+                                                  redirects=node.redirects)
+        except FunctionDefinitionError as e:
+            # Expected shell error (e.g. redefining a readonly function):
+            # bash reports it and continues with status 1 — it must not
+            # abort the whole input line via the top-level defect guard.
+            print(f"psh: {e}", file=self.shell.stderr)
+            return 1
         return 0
 
     def _check_funcnest(self, name: str) -> None:

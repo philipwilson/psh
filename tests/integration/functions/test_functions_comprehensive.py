@@ -419,12 +419,13 @@ class TestFunctionErrorHandling:
         result = shell.run_command('function() { echo "test"; }')
         assert result != 0  # Should fail
 
-    def test_invalid_function_name_number(self, shell_with_temp_dir):
-        """Test error on invalid function name starting with number."""
+    def test_function_name_starting_with_number(self, shell_with_temp_dir):
+        """bash accepts function names starting with a digit (probe:
+        `123func(){ :; }; 123func` runs it, rc=0) — so must psh."""
         shell = shell_with_temp_dir
 
-        result = shell.run_command('123func() { echo "test"; }')
-        assert result != 0  # Should fail
+        result = shell.run_command('123func() { echo "test"; }; 123func')
+        assert result == 0
 
     def test_function_with_syntax_error(self, shell_with_temp_dir):
         """Test function definition with syntax error."""

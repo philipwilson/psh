@@ -7,12 +7,10 @@ This module handles parsing of control structures like if, while, for, case, and
 from typing import List, Tuple, Union
 
 from ....ast_nodes import (
-    BreakStatement,
     CaseConditional,
     CaseItem,
     CasePattern,
     CompoundCommand,
-    ContinueStatement,
     CStyleForLoop,
     ExpansionPart,
     ForLoop,
@@ -45,9 +43,9 @@ class ControlStructureParser(ParserSubcomponent):
         """Parse any control structure based on current token.
 
         Every control structure is a ``CompoundCommand`` (the unified
-        control structures, break/continue, ``[[ ]]`` and ``(( ))`` all
-        inherit it), so the result can appear both at statement level and
-        as a pipeline component.
+        control structures, ``[[ ]]`` and ``(( ))`` all inherit it), so the
+        result can appear both at statement level and as a pipeline
+        component.
         """
         token_type = self.parser.peek().type
 
@@ -63,10 +61,6 @@ class ControlStructureParser(ParserSubcomponent):
             return self.parse_case_statement()
         elif token_type == TokenType.SELECT:
             return self.parse_select_statement()
-        elif token_type == TokenType.BREAK:
-            return self.parse_break_statement()
-        elif token_type == TokenType.CONTINUE:
-            return self.parse_continue_statement()
         elif token_type == TokenType.DOUBLE_LBRACKET:
             return self.parser.tests.parse_enhanced_test_statement()
         elif token_type == TokenType.DOUBLE_LPAREN:
@@ -468,29 +462,3 @@ class ControlStructureParser(ParserSubcomponent):
             background=False
         )
 
-    # === Break/Continue Statement Parsing ===
-
-    def parse_break_statement(self) -> BreakStatement:
-        """Parse break statement with optional level."""
-        self.parser.expect(TokenType.BREAK)
-        return BreakStatement(level_words=self._parse_loop_control_arguments())
-
-    def parse_continue_statement(self) -> ContinueStatement:
-        """Parse continue statement with optional level."""
-        self.parser.expect(TokenType.CONTINUE)
-        return ContinueStatement(level_words=self._parse_loop_control_arguments())
-
-    def _parse_loop_control_arguments(self) -> List[Word]:
-        """Consume the break/continue argument words.
-
-        The level is validated at RUNTIME, not here (bash: a never-executed
-        ``break foo`` is fine, the level may be a non-literal expansion like
-        ``break $n``, and ``break 1 2`` is a runtime "too many arguments"
-        error). So every argument-like token — not just a digit — is captured
-        as a Word and handed to the executor. Returns [] when there is no
-        argument.
-        """
-        words: List[Word] = []
-        while self.parser.match_any(TokenGroups.WORD_LIKE):
-            words.append(self.parser.commands.parse_argument_as_word())
-        return words

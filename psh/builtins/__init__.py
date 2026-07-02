@@ -17,6 +17,7 @@ Modules:
     io              - echo, printf, pwd
     job_control     - jobs, fg, bg, wait
     kill_command    - kill
+    loop_control    - break, continue
     navigation      - cd
     parse_tree      - parse-tree visualization
     parser_control  - parser control commands
@@ -54,6 +55,7 @@ from . import (
     job_control,
     kill_command,
     let_builtin,
+    loop_control,
     mapfile_builtin,
     navigation,
     parse_tree,

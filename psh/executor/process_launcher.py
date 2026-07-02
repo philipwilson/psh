@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
+from ..core.exceptions import FunctionReturn, LoopBreak, LoopContinue
 from .child_policy import flush_child_streams, fork_with_signal_window
 
 if TYPE_CHECKING:
@@ -267,6 +268,23 @@ class ProcessLauncher:
         except KeyboardInterrupt:
             # Ctrl-C
             exit_code = 130  # 128 + SIGINT(2)
+
+        except FunctionReturn as e:
+            # `return` escaping to the top of a launcher child (e.g.
+            # `return 5 &` in a function): control flow cannot cross the
+            # fork, so it just ends this child with the return's status —
+            # bash: `f(){ return 5 & }; f` leaves the child status at 5,
+            # silently. Mirrors run_child_shell's substitution-child policy.
+            exit_code = e.exit_code
+
+        except (LoopBreak, LoopContinue):
+            # `break`/`continue` escaping to the top of a launcher child
+            # (e.g. `break & wait` inside a loop): the enclosing loop lives
+            # in the parent process, so the signal cannot reach it — the
+            # child just ends, status 0, with NO message (bash is silent
+            # here; the empty "psh: error:" leak this replaces was a D2
+            # regression). Same policy as run_child_shell.
+            exit_code = 0
 
         except Exception as e:
             # Unexpected error

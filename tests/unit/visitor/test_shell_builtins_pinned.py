@@ -25,7 +25,9 @@ BASH_SCOPED_EXTRAS = frozenset({
     'bind', 'caller', 'compgen', 'complete', 'compopt', 'enable',
     'fc', 'logout', 'suspend', 'ulimit',
     # keywords / control flow that scripts invoke like commands
-    'break', 'continue', '[[', ']]',
+    # ('break'/'continue' moved out 2026-07-02 when psh implemented them
+    # as real builtins)
+    '[[', ']]',
 })
 
 

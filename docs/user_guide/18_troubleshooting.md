@@ -98,16 +98,17 @@ psh$ case "$var" in
 ### Function Errors
 
 ```bash
-# Invalid function name
-psh$ function 123func() {
+# Invalid function name — a reserved word cannot name a function
+psh$ while() {
 >     echo "test"
 > }
-psh: <command>:1: Parse error: Invalid function name
+psh: <command>:1: syntax error near unexpected token ')'
 
-# Fix: Use valid identifier
-psh$ function func123() {
->     echo "test"
-> }
+# Fix: use any non-reserved word. Like bash, psh accepts names that are
+# not plain identifiers — digits-first, dashes, and dots are all fine:
+psh$ 123func() { echo "test"; }
+psh$ my-func()  { echo "test"; }
+psh$ .dotname() { echo "test"; }
 
 # Return outside function
 psh$ return 0

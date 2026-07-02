@@ -22,9 +22,6 @@ KEYWORD_TYPE_MAP = {
     'esac': TokenType.ESAC,
     'function': TokenType.FUNCTION,
     'time': TokenType.TIME,
-    'break': TokenType.BREAK,
-    'continue': TokenType.CONTINUE,
-    'return': TokenType.RETURN,
 }
 
 # Reverse lookup for matching by TokenType

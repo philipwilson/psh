@@ -72,7 +72,7 @@ try it interactively.
 | `expansions.py` | Expansion parsers and Word AST building |
 | `arrays.py` | `ArrayParsers` — THE array assignment/initialization parser (used by the live command path in `commands.py`) |
 | `commands.py` | Simple commands, pipelines, and-or lists, statement lists |
-| `control_structures/` | Package of mixins: `conditionals.py` (if, case), `loops.py` (while, until, for, select, break/continue), `structures.py` (functions, subshell/brace groups) |
+| `control_structures/` | Package of mixins: `conditionals.py` (if, case), `loops.py` (while, until, for, select), `structures.py` (functions, subshell/brace groups) |
 | `special_commands.py` | `(( ))`, `[[ ]]`, process substitution (NOT arrays — those live in `arrays.py`) |
 | `heredoc_processor.py` | Post-parse heredoc content population |
 | `utils.py` | Shared combinator helpers |

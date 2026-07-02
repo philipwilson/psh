@@ -160,13 +160,13 @@ class PipelineExecutor:
                     This closure captures the command index and node for execution.
                     """
                     def execute_fn():
-                        # Create forked context. Each pipeline component runs in
-                        # its OWN subshell, so it is a fresh control-flow scope:
-                        # the enclosing loop nesting is not visible (a `break N`
-                        # here can't escape into the parent's loop), matching the
-                        # plain-subshell path and bash.
+                        # Create forked context. Each pipeline component runs
+                        # in its OWN subshell process, so a break/continue here
+                        # can never escape into the parent's loop — the except
+                        # below just ends this subshell. loop_depth is still
+                        # inherited so a bare `break | cat` inside a loop is
+                        # silent (bash), not "only meaningful in a loop".
                         child_context = pipeline_context.fork_context()
-                        child_context.loop_depth = 0
 
                         # Set up pipeline redirections (stdin/stdout, and stderr for |&)
                         self._setup_pipeline_redirections(

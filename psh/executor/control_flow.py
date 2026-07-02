@@ -8,12 +8,14 @@ This module handles execution of control structures including:
 - For loops (standard and C-style)
 - Case statements
 - Select loops
-- Break and continue statements
+
+(break/continue themselves are ordinary builtins — psh/builtins/loop_control.py
+— that raise LoopBreak/LoopContinue; the loops here catch them.)
 """
 
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Iterator, List, Optional
+from typing import TYPE_CHECKING, Iterator, List
 
 from ..core import LoopBreak, LoopContinue, ReadonlyVariableError
 from ..expansion.arithmetic import evaluate_arithmetic
@@ -22,9 +24,7 @@ if TYPE_CHECKING:
     from psh.visitor import ASTVisitor
 
     from ..ast_nodes import (
-        BreakStatement,
         CaseConditional,
-        ContinueStatement,
         CStyleForLoop,
         ForLoop,
         IfConditional,
@@ -173,9 +173,19 @@ class ControlFlowExecutor:
         with self._loop_depth(context), self._compound_redirections(node), \
                 self._pipeline_context_disabled(context):
             while True:
-                # Evaluate condition (set -e is suppressed in conditions)
-                with context.errexit_suppressed():
-                    condition_status = visitor.visit(node.condition)
+                # Evaluate condition (set -e is suppressed in conditions).
+                # The condition is inside the loop for break/continue too:
+                # `while break; do ...; done` exits THIS loop, rc 0 (bash).
+                try:
+                    with context.errexit_suppressed():
+                        condition_status = visitor.visit(node.condition)
+                except LoopContinue as lc:
+                    self._reraise_loop_control(lc, context)
+                    continue
+                except LoopBreak as lb:
+                    exit_status = self._break_status(lb, exit_status)
+                    self._reraise_loop_control(lb, context)
+                    break
                 if condition_status != 0:
                     break
 
@@ -198,8 +208,18 @@ class ControlFlowExecutor:
         with self._loop_depth(context), self._compound_redirections(node), \
                 self._pipeline_context_disabled(context):
             while True:
-                with context.errexit_suppressed():
-                    condition_status = visitor.visit(node.condition)
+                # break/continue in the condition act on THIS loop (see
+                # execute_while).
+                try:
+                    with context.errexit_suppressed():
+                        condition_status = visitor.visit(node.condition)
+                except LoopContinue as lc:
+                    self._reraise_loop_control(lc, context)
+                    continue
+                except LoopBreak as lb:
+                    exit_status = self._break_status(lb, exit_status)
+                    self._reraise_loop_control(lb, context)
+                    break
                 if condition_status == 0:
                     break
                 try:
@@ -514,102 +534,6 @@ class ControlFlowExecutor:
                     exit_status = 130
 
         return exit_status
-
-    def execute_break(self, node: 'BreakStatement', context: 'ExecutionContext') -> int:
-        """Execute a break statement.
-
-        Raises LoopBreak with the resolved level, or returns a status when
-        the statement does not transfer control (outside a loop, or a bad
-        argument in an interactive shell). See _resolve_loop_control_level
-        for the bash-matched argument semantics.
-        """
-        if context.loop_depth == 0:
-            # bash: warn and continue with status 0 (the argument is not even
-            # validated when there is no enclosing loop).
-            print("break: only meaningful in a `for', `while', or `until' loop",
-                  file=self.shell.stderr)
-            return 0
-        level = self._resolve_loop_control_level(node, 'break')
-        if level is None:
-            return self.state.last_exit_code
-        if level == 0:
-            # Out-of-range (break 0/negative): bash exits ALL enclosing loops
-            # with status 1 (error already reported by the resolver).
-            raise LoopBreak(context.loop_depth, exit_status=1)
-        raise LoopBreak(level)
-
-    def execute_continue(self, node: 'ContinueStatement', context: 'ExecutionContext') -> int:
-        """Execute a continue statement (see execute_break for argument rules).
-
-        A non-positive count is a bash quirk: ``continue 0`` reports
-        "loop count out of range" and EXITS the loop (like ``break 1``), so
-        the out-of-range path raises LoopBreak for both statements.
-        """
-        if context.loop_depth == 0:
-            print("continue: only meaningful in a `for', `while', or `until' loop",
-                  file=self.shell.stderr)
-            return 0
-        level = self._resolve_loop_control_level(node, 'continue')
-        if level is None:
-            return self.state.last_exit_code
-        if level == 0:
-            # Out-of-range (continue 0/negative): bash quirk — like break 0, it
-            # exits ALL enclosing loops with status 1 (not "continue").
-            raise LoopBreak(context.loop_depth, exit_status=1)
-        raise LoopContinue(level)
-
-    def _resolve_loop_control_level(self, node, name: str) -> Optional[int]:
-        """Resolve a break/continue level argument at runtime (bash semantics).
-
-        Returns the positive level to act on; 0 for the non-positive
-        "loop count out of range" case (error already reported, caller exits
-        the loop one level); or None when the statement must NOT transfer
-        control because a hard argument error was reported (non-numeric / too
-        many arguments — a non-interactive shell aborts via sys.exit, an
-        interactive one sets the status and falls through).
-        """
-        if not node.level_words:
-            # No raw argument: honor a literal level set on the node (the
-            # combinator parser and hand-built ASTs use the int field).
-            return node.level
-
-        from ..expansion.word_expansion_types import LOOP_ITEM
-        fields: List[str] = []
-        for word in node.level_words:
-            fields.extend(
-                self.expansion_manager.expand_word_to_fields(word, LOOP_ITEM))
-
-        if not fields:
-            # The argument expanded to nothing (e.g. unset $n) — no argument.
-            return node.level
-        if len(fields) > 1:
-            self._report_loop_control_arg_error(f"{name}: too many arguments", 1)
-            return None
-
-        arg = fields[0]
-        try:
-            level = int(arg)
-        except ValueError:
-            self._report_loop_control_arg_error(
-                f"{name}: {arg}: numeric argument required", 128)
-            return None
-
-        if level <= 0:
-            # bash: report "loop count out of range" and (the caller then)
-            # exits ALL enclosing loops with status 1. Signalled by returning 0.
-            print(f"{name}: {arg}: loop count out of range",
-                  file=self.shell.stderr)
-            return 0
-        return level
-
-    def _report_loop_control_arg_error(self, message: str, status: int) -> None:
-        """Report a hard break/continue argument error. A non-interactive
-        shell aborts with the given status (break/continue are POSIX special
-        builtins); an interactive shell records the status and continues."""
-        print(message, file=self.shell.stderr)
-        self.state.last_exit_code = status
-        if self.shell.state.is_script_mode:
-            sys.exit(status)
 
     # Helper methods
 

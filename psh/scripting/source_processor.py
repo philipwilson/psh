@@ -323,11 +323,15 @@ class SourceProcessor(ScriptComponent):
                         # Break/continue outside of any loop is an error. Catch
                         # only these — any other exception propagates to its own
                         # handler.
-                        if nested:
-                            # e.g. `eval break` inside a loop — let the loop handle it
+                        if nested or self.shell._loop_depth_seed > 0:
+                            # nested: e.g. `eval break` inside a loop — the
+                            # enclosing loop handles it. Seeded: a substitution
+                            # child forked inside a loop — run_child_shell ends
+                            # the child cleanly (status 0), matching bash's
+                            # silent `x=$(break)`.
                             raise
                         stmt_name = "break" if isinstance(e, LoopBreak) else "continue"
-                        print(f"{stmt_name}: only meaningful in a `for' or `while' loop",
+                        print(f"{stmt_name}: only meaningful in a `for', `while', or `until' loop",
                               file=sys.stderr)
                         return 1
             except TopLevelAbort as e:
@@ -376,11 +380,17 @@ class SourceProcessor(ScriptComponent):
             return 2
         except Exception as e:
             # Control-flow exceptions from nested execution propagate to
-            # their enclosing loop/function handlers.
+            # their enclosing loop/function handlers; loop-control signals
+            # in a seeded substitution child propagate to run_child_shell
+            # (see the LoopBreak/LoopContinue handler above).
             from ..builtins import FunctionReturn
             from ..core import LoopBreak, LoopContinue
-            if nested and isinstance(e, (LoopBreak, LoopContinue, FunctionReturn)):
-                raise
+            if isinstance(e, (LoopBreak, LoopContinue, FunctionReturn)):
+                if nested:
+                    raise
+                if (isinstance(e, (LoopBreak, LoopContinue))
+                        and self.shell._loop_depth_seed > 0):
+                    raise
             # Last-resort guard so an internal defect doesn't kill an
             # interactive session (or re-raise under strict-errors so a test
             # harness surfaces it) — see report_internal_defect for the policy.

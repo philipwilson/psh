@@ -2644,3 +2644,119 @@
   stdout: "hi\nt\nafter\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# FUNCTION NAMES & BREAK/CONTINUE AS BUILTINS (appraisal #15 D2) — bash-valid
+# function names (builtin names, dashes, dots) work; functions shadow builtins
+# (even POSIX special ones, bash default mode); break/continue/return are
+# ordinary builtins, so their redirects apply and they compose in
+# pipelines/lists. stderr wording differs by shell where non-empty.
+# =============================================================================
+
+- name: function_named_true_shadows_builtin
+  command: "true(){ echo custom; }; true"
+  stdout: "custom\n"
+  stderr: ""
+  exit_code: 0
+
+- name: function_named_exit_shadows_special_builtin
+  command: "exit(){ echo no-exit; }; exit; echo still-here"
+  stdout: "no-exit\nstill-here\n"
+  stderr: ""
+  exit_code: 0
+
+- name: builtin_exit_bypasses_exit_function
+  command: "exit(){ echo no-exit; }; builtin exit 3; echo unreached"
+  stdout: ""
+  stderr: ""
+  exit_code: 3
+
+- name: dashed_function_name
+  command: "my-func(){ echo dash; }; my-func"
+  stdout: "dash\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dotted_function_name
+  command: "f.g(){ echo fg; }; f.g"
+  stdout: "fg\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_f_reveals_builtin_again
+  command: "true(){ echo custom; }; unset -f true; true; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: reserved_word_function_name_is_syntax_error
+  command: "if(){ :; }"
+  stdout: ""
+  stderr: "syntax error"
+  exit_code: 2
+
+- name: function_keyword_form_accepts_any_name
+  command: "function my-func { echo kwdash; }; my-func"
+  stdout: "kwdash\n"
+  stderr: ""
+  exit_code: 0
+
+- name: break_function_shadows_builtin_in_loop
+  command: "break(){ echo custom-break; }; for i in 1 2; do break; done; echo after-$i"
+  stdout: "custom-break\ncustom-break\nafter-2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: break_redirect_suppresses_warning
+  command: "break 2>/dev/null; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: break_outside_loop_composes_with_and
+  command: "break && echo yes"
+  stdout: "yes\n"
+  stderr: "break: only meaningful"
+  exit_code: 0
+
+- name: break_in_pipeline_outside_loop
+  command: "break | cat; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: "break: only meaningful"
+  exit_code: 0
+
+- name: break_in_pipeline_inside_loop_is_silent_noop
+  command: "for i in 1 2; do break | cat; echo in-$i; done; echo after"
+  stdout: "in-1\nin-2\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: command_break_bypasses_break_function
+  command: "break(){ echo custom; }; for i in 1 2; do command break; echo in-$i; done; echo after"
+  stdout: "after\n"
+  stderr: ""
+  exit_code: 0
+
+- name: break_in_while_condition_exits_loop
+  command: "while break; do echo body; done; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cmdsub_break_inside_loop_is_silent
+  command: "for i in 1; do x=$(break); echo after-$i; done"
+  stdout: "after-1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: variable_expanding_to_break_runs_builtin
+  command: "c=break; for i in 1 2; do $c; echo in-$i; done; echo after"
+  stdout: "after\n"
+  stderr: ""
+  exit_code: 0
+
+- name: return_too_many_arguments_aborts
+  command: "f(){ return 1 2; echo in; }; f; echo rc=$?"
+  stdout: ""
+  stderr: "return: too many arguments"
+  exit_code: 1

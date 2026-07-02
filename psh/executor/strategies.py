@@ -193,7 +193,11 @@ class ExecutionStrategy(ABC):
         pass
 
 
-# POSIX special builtins that take precedence over functions
+# POSIX special builtins. Their prefix assignments persist after the
+# command (POSIX). Lookup-wise they do NOT take precedence over functions:
+# bash applies the POSIX special-builtins-first order only in POSIX mode,
+# and in default mode functions shadow them (`exit(){ ...; }; exit` runs
+# the function) — psh follows bash's default.
 POSIX_SPECIAL_BUILTINS = {
     ':', 'break', 'continue', 'eval', 'exec', 'exit', 'export',
     'readonly', 'return', 'set', 'shift', 'trap', 'unset'
@@ -201,7 +205,7 @@ POSIX_SPECIAL_BUILTINS = {
 
 
 class SpecialBuiltinExecutionStrategy(ExecutionStrategy):
-    """Strategy for executing POSIX special builtin commands that take precedence over functions."""
+    """Strategy for executing POSIX special builtin commands."""
 
     def can_execute(self, cmd_name: str, shell: 'Shell') -> bool:
         """Check if command is a POSIX special builtin."""

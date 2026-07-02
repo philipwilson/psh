@@ -15,16 +15,28 @@ class FunctionParser(ParserSubcomponent):
     """Parser for function constructs."""
 
 
+    # Token types that can serve as a function name in the POSIX `name()`
+    # form. bash is permissive: any word that is not a reserved word works
+    # (`my-func`, `.dot`, `f.g`, even `[` and `]`).
+    NAME_TOKENS = (TokenType.WORD, TokenType.LBRACKET, TokenType.RBRACKET)
+
     def is_function_def(self) -> bool:
         """Check if current position starts a function definition."""
         if self.parser.match(TokenType.FUNCTION):
             return True
 
         # Check for name() pattern
-        if self.parser.match(TokenType.WORD):
+        if self.parser.match(*self.NAME_TOKENS):
             word_token = self.parser.peek()
             # Don't consider it a function if the word ends with '=' (array assignment)
             if word_token.value.endswith('='):
+                return False
+            # A reserved word is never a `name()` function name (bash:
+            # syntax error). `in` is the one keyword that lexes as a plain
+            # WORD at command position; the rest already carry keyword
+            # token types and fail the match above.
+            from ....lexer.constants import KEYWORDS
+            if word_token.value in KEYWORDS:
                 return False
 
             saved_pos = self.parser.current
@@ -57,7 +69,9 @@ class FunctionParser(ParserSubcomponent):
                 self.parser.expect(TokenType.RPAREN)
         else:
             # POSIX style: name()
-            name = self.parser.expect(TokenType.WORD).value
+            if not self.parser.match(*self.NAME_TOKENS):
+                raise self.parser.error("Expected function name")
+            name = self.parser.advance().value
             self.parser.expect(TokenType.LPAREN)
             self.parser.expect(TokenType.RPAREN)
 

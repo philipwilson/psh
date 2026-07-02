@@ -5,9 +5,9 @@ This module handles parsing of statement-level constructs including command list
 and/or lists, and statement sequencing.
 """
 
-from typing import Optional, Union
+from typing import Optional
 
-from ....ast_nodes import AndOrList, BreakStatement, CommandList, ContinueStatement, Statement
+from ....ast_nodes import AndOrList, CommandList, Statement
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups
 from .base import ParserSubcomponent
@@ -110,14 +110,6 @@ class StatementParser(ParserSubcomponent):
         # next token legitimately starts a new statement (`echo a & echo b`).
         if self.parser.tokens[self.parser.current - 1].type == TokenType.AMPERSAND:
             return
-        # break/continue are the one statement kind that leaves its trailing
-        # redirections unconsumed (`break >f` — legal in bash); the redirect
-        # parses as a separate, unreachable empty command — the established
-        # shape pinned by test_ast_coverage_matrix's REDIRECT_EXEMPT. Every
-        # other statement parser consumes its own redirects, so a redirect
-        # here cannot be anything else.
-        if self.parser.match_any(TokenGroups.REDIRECTS):
-            return
         raise self.parser.error(
             f"syntax error near unexpected token '{self.parser.peek().value}'")
 
@@ -139,15 +131,8 @@ class StatementParser(ParserSubcomponent):
                 f"syntax error near unexpected token '{self.parser.peek().value}'")
         return command_list
 
-    def parse_and_or_list(self) -> Union[AndOrList, BreakStatement, ContinueStatement]:
+    def parse_and_or_list(self) -> AndOrList:
         """Parse an and/or list."""
-        # Check for break/continue first
-        if self.parser.match(TokenType.BREAK):
-            return self.parser.control_structures.parse_break_statement()
-        elif self.parser.match(TokenType.CONTINUE):
-            return self.parser.control_structures.parse_continue_statement()
-
-        # Otherwise parse a simple pipeline and wrap it
         and_or_list = AndOrList()
 
         pipeline = self.parser.commands.parse_pipeline()

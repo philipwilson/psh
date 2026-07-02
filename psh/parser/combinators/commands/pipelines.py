@@ -10,9 +10,7 @@ from ....ast_nodes import (
     AndOrList,
     ArithmeticEvaluation,
     ASTNode,
-    BreakStatement,
     CaseConditional,
-    ContinueStatement,
     CStyleForLoop,
     EnhancedTestStatement,
     ForLoop,
@@ -127,7 +125,7 @@ class PipelineMixin(_Base):
                 cmd = commands[0]
                 if isinstance(cmd, (IfConditional, WhileLoop, UntilLoop, ForLoop, CaseConditional,
                                   SelectLoop, CStyleForLoop, ArithmeticEvaluation,
-                                  EnhancedTestStatement, BreakStatement, ContinueStatement)):
+                                  EnhancedTestStatement)):
                     return ParseResult(success=True, value=cmd, position=pos)
             pipeline = Pipeline(commands=commands, negated=negated, pipe_stderr=pipe_stderr_list,
                                 timed=timed, time_posix=time_posix) if commands else None
@@ -255,8 +253,7 @@ class PipelineMixin(_Base):
             # This prevents unnecessary AndOrList wrapping for standalone control structures
             if isinstance(first_pipeline, (IfConditional, WhileLoop, UntilLoop, ForLoop,
                                          CaseConditional, SelectLoop,
-                                         CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement,
-                                         BreakStatement, ContinueStatement)):
+                                         CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement)):
                 return first_pipeline
             return AndOrList(pipelines=[first_pipeline])
 

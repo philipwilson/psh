@@ -14,8 +14,8 @@ it (``from psh.ast_nodes import SimpleCommand, Word, ...``). The submodules:
 - ``commands``  — SimpleCommand, SubshellGroup/BraceGroup, Pipeline, AndOrList,
                   StatementList (alias CommandList), TopLevel.
 - ``tests``     — ``[[ ... ]]`` test-expression nodes.
-- ``control``   — FunctionDef, break/continue, case nodes, and the unified
-                  control structures (loops, if, case, select, arithmetic).
+- ``control``   — FunctionDef, case nodes, and the unified control
+                  structures (loops, if, case, select, arithmetic).
 
 Each node class' ``__module__`` is rewritten to ``psh.ast_nodes`` below, so
 introspection that filters on the module name (e.g. the AST coverage-matrix
@@ -54,11 +54,9 @@ from .commands import (
 )
 from .control import (
     ArithmeticEvaluation,
-    BreakStatement,
     CaseConditional,
     CaseItem,
     CasePattern,
-    ContinueStatement,
     CStyleForLoop,
     ForLoop,
     FunctionDef,
@@ -66,7 +64,6 @@ from .control import (
     SelectLoop,
     UntilLoop,
     WhileLoop,
-    literal_loop_control_level,
 )
 from .redirects import Redirect
 from .tests import (
@@ -147,8 +144,6 @@ __all__ = [
     'StatementList',
     'CommandList',
     'FunctionDef',
-    'BreakStatement',
-    'ContinueStatement',
     'CasePattern',
     'CaseItem',
     'TopLevel',
@@ -159,7 +154,6 @@ __all__ = [
     'CompoundTestExpression',
     'NegatedTestExpression',
     'EnhancedTestStatement',
-    'literal_loop_control_level',
     # unified control structures
     'UnifiedControlStructure',
     'WhileLoop',
