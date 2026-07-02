@@ -285,9 +285,10 @@ DEEPER scope the same cell is removed outright.
 `get_declared_variable_object()` finds tombstones so `declare -p x`
 prints `declare -- x`; listing functions (`get_all_variables()`, etc.)
 hide them. Unset strips
-attributes (`local -i x=5; unset x` → `declare -- x`). Truth table:
-`tmp/d1_unset_truth_table.sh`; tests:
-`tests/unit/core/test_scope_tombstones.py`.
+attributes (`local -i x=5; unset x` → `declare -- x`). Behaviors are
+pinned by `tests/unit/core/test_scope_tombstones.py` and the
+`unset_*` cases in `tests/behavioral/golden_cases.yaml`
+(re-run against real bash via `--compare-bash`).
 
 ### Subshell-Style Inheritance: `ShellState.adopt()`
 

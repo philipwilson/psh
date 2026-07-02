@@ -468,10 +468,13 @@ class UnsetBuiltin(Builtin):
                 else:
                     # Regular variable unset. The scope manager's
                     # variable_changed observer re-derives the environment
-                    # entry — it disappears, or REAPPEARS when the unset
-                    # reveals an exported outer instance (bash: unsetting
-                    # an exported local restores the exported global's
-                    # entry), so no explicit env.pop here.
+                    # entry — it disappears, or REAPPEARS when removing a
+                    # variable from a deeper scope reveals an exported outer
+                    # instance (bash: unsetting an exported local restores the
+                    # exported global's entry). This deeper-scope reveal is the
+                    # only reappearance case — an own-scope `local x; unset x`
+                    # plants a tombstone and reveals nothing. Either way there
+                    # is no explicit env.pop here.
                     try:
                         shell.state.scope_manager.unset_variable(var)
                     except ReadonlyVariableError:

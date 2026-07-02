@@ -12,8 +12,9 @@ Also guards listing behavior: get_all_variables()/
 all_variables_with_attributes() must not include tombstones, so
 `f(){ local x=1; unset x; set | grep ^x=; }` shows nothing (bash).
 
-All behaviors verified against bash 5.2 (tmp/d1_unset_truth_table.sh,
-reappraisal #15 finding D1).
+All behaviors verified against bash 5.2 (probes promoted to the
+`unset_*` cases in tests/behavioral/golden_cases.yaml, re-run under
+`--compare-bash`; reappraisal #15 finding D1).
 """
 
 from psh.core.scope import ScopeManager
