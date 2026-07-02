@@ -323,3 +323,52 @@ class TestExitTrapOnFatalSignal:
         assert p[0] == "INT-TRAP\n"
         assert p[2] == -signal.SIGINT
         assert (p[0], p[2]) == (b[0], b[2])
+
+    # --- fix-introduced-defect regression: EXIT trap that itself calls
+    # `exit N` under a fatal signal must NOT rob the shell of its 128+N
+    # signal-death wait status. The `exit` builtin raises SystemExit; if that
+    # escapes the signal handler it bypasses the re-raise and the shell exits
+    # normally (rc=0/N). bash keeps the signal death regardless. ---
+
+    def test_exit0_in_exit_trap_still_dies_by_sigterm(self, tmp_path):
+        # THE reported defect: `exit 0` in the EXIT trap used to make psh exit
+        # normally (rc=0); it must still die BY SIGTERM (128+15).
+        out, err, rc = _psh_script_signal(
+            tmp_path, 'trap "echo cleanup; exit 0" EXIT\nsleep 3\n',
+            signal.SIGTERM)
+        assert out == "cleanup\n"
+        assert rc == -signal.SIGTERM
+
+    def test_exit7_in_exit_trap_still_dies_by_sigterm(self, tmp_path):
+        # A non-zero `exit N` in the trap likewise loses to the signal death.
+        out, err, rc = _psh_script_signal(
+            tmp_path, 'trap "echo cleanup; exit 7" EXIT\nsleep 3\n',
+            signal.SIGTERM)
+        assert out == "cleanup\n"
+        assert rc == -signal.SIGTERM
+
+    def test_exit_in_exit_trap_fires_trap_exactly_once(self, tmp_path):
+        # The trap body still runs exactly once even though it raises
+        # SystemExit (TrapManager sets its idempotency flag before the body).
+        out, err, rc = _psh_script_signal(
+            tmp_path, 'trap "echo ONCE; exit 0" EXIT\nsleep 3\n',
+            signal.SIGTERM)
+        assert out.count("ONCE") == 1
+        assert rc == -signal.SIGTERM
+
+    def test_exit_in_exit_trap_matches_bash_sigterm(self, tmp_path):
+        # Pinned to bash 5.2: stdout AND wait status must agree.
+        script = 'trap "echo cleanup; exit 0" EXIT\nsleep 3\n'
+        p = _psh_script_signal(tmp_path, script, signal.SIGTERM)
+        b = _bash_script_signal(tmp_path, script, signal.SIGTERM)
+        assert (p[0], p[2]) == (b[0], b[2])
+        assert p[2] == -signal.SIGTERM
+
+    def test_exit0_in_exit_trap_command_mode_dies_by_signal(self, tmp_path):
+        # -c mode shares the same signal path; the SystemExit must not escape.
+        out, err, rc = _spawn_and_signal(
+            [sys.executable, '-m', 'psh', '-c',
+             'trap "echo cleanup; exit 0" EXIT; sleep 3'],
+            signal.SIGTERM)
+        assert out == "cleanup\n"
+        assert rc == -signal.SIGTERM

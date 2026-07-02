@@ -178,8 +178,26 @@ class SignalManager(InteractiveComponent):
         trap's stdout), restore the signal's default disposition, and
         re-raise it so the parent's wait status is a genuine signal death
         (128+N) rather than a normal exit.
+
+        The signal death ALWAYS wins over whatever the EXIT trap does. In
+        particular, an EXIT trap that itself calls ``exit N`` makes the
+        ``exit`` builtin raise ``SystemExit``; bash still reports a 128+N
+        signal death in that case, so the trap execution is wrapped and any
+        ``SystemExit`` (or other exception) escaping the body is swallowed —
+        it must not bypass the restore-default + re-raise below. The EXIT
+        trap still fires exactly once: TrapManager sets its idempotency flag
+        before running the body, so an aborted body is not retried.
         """
-        self.shell.trap_manager.execute_exit_trap()
+        try:
+            self.shell.trap_manager.execute_exit_trap()
+        except SystemExit:
+            # `exit N` inside the EXIT trap: bash keeps the signal death, so
+            # discard the trap's exit request and fall through to re-raise.
+            pass
+        except BaseException:
+            # Any other failure in the trap body must likewise not rob the
+            # parent of the true signal-death wait status.
+            pass
         for stream in (self.state.stdout, self.state.stderr):
             try:
                 stream.flush()
