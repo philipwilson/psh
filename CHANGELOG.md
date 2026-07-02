@@ -4,6 +4,46 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.574.0 (2026-07-02) - Fix: bash-valid function names + break/continue/return de-keyworded (appraisal #15 Tier 1, Cluster D2)
+- FIX (HIGH). Reappraisal #15 cluster D2 — function-name policy and the
+  break/continue/return keyword split. Two parts:
+  - **Function names.** `FunctionManager.RESERVED_WORDS` wrongly rejected the
+    builtins `true`/`false`/`exit`/`return`/`break`/`continue`, and
+    `_is_invalid_name` demanded identifier characters. bash accepts all of
+    `my-func`, `.dot`, `f.g`, `1fn`, `a@b`, `[`, and lets a function shadow a
+    builtin (even a POSIX special one) in default-mode lookup. `FunctionManager`
+    now accepts any non-empty single word; reserved words still fail at
+    **parse** time (`rc=2`, like bash) because keyword tokens never match the
+    name rule. Command lookup order is now functions > special-builtins >
+    builtins > external (bash default mode); `command`/`builtin` still bypass
+    functions, and `exec`'s dispatch defers to a user `exec()` function. A
+    rejected name now surfaces as a proper `FunctionDefinitionError` (reported,
+    execution continues) instead of aborting the whole input as an
+    "psh: unexpected error:".
+  - **break/continue/return de-keyworded** (the principled fix; collapses the
+    parser's two-path statement split). Removed from the lexer `KEYWORDS` /
+    `KEYWORD_TYPE_MAP`; the `BREAK`/`CONTINUE`/`RETURN` token types are gone and
+    they lex as plain WORDs. New `psh/builtins/loop_control.py` provides
+    `BreakBuiltin`/`ContinueBuiltin` (POSIX special builtins) that carry the
+    bash-matched diagnostics and raise `LoopBreak`/`LoopContinue`; `return`
+    likewise raises `FunctionReturn`. Consequences (all bash-verified):
+    `break()`/`return()` are definable, redirects on `break` are honored
+    (`break 2>/dev/null`), and `break | cat` / `break && echo` compose like
+    ordinary commands. `while break; do …` now exits the loop `rc=0`. The
+    break/continue level matrix and cross-fn/pipeline scoping are intact.
+  - **Follow-up:** backgrounded `break`/`continue`/`return` no longer leak an
+    empty `psh: error:` line — the escape is swallowed at the ProcessLauncher
+    child chokepoint — and stale `BreakStatement`/`ContinueStatement` doc
+    references were refreshed.
+  - Deliberate remaining divergences: `a+b(){ :; }` is still a parse error (a
+    pre-existing lexer quirk that splits `a+` looking for `a+=`), and
+    `{ break; } | cat` inside a loop stays silent where bash prints a warning
+    (the bare `break | cat` form matches bash). Known follow-up (not this
+    release): the combinator parser and `--validate` still reject digit-first
+    function names (RD/combinator parity gap).
+  - Truth table (`tmp/truth_d2.py`): 100/101 cases match bash 5.2 across `-c`,
+    stdin, and script-file modes.
+
 ## 0.573.0 (2026-07-02) - Fix: line-continuation preprocessing is comment- and heredoc-aware (appraisal #15 Tier 1, Cluster A5)
 - FIX (HIGH). Reappraisal #15 cluster A5 — `process_line_continuations` in
   `psh/scripting/input_preprocessing.py` (the pre-lexer stage every input mode
