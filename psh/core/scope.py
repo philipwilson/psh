@@ -257,18 +257,14 @@ class ScopeManager:
         ``export FOO`` / ``declare -i N`` / ``local -x V`` record
         attributes on a variable that still READS as unset (UNSET flag;
         get_variable_object returns None for it). ``declare -p`` must
-        nevertheless display it (bash: ``declare -x FOO``). A plain
-        ``unset`` tombstone carries no attribute besides UNSET and stays
-        hidden — an attribute-less declaration (bare ``declare FOO``) is
-        representationally identical, so it stays hidden too (bash would
-        show ``declare -- FOO``; accepted divergence).
+        nevertheless display it (bash: ``declare -x FOO``). An
+        attribute-less declared-unset cell — bare ``declare FOO`` /
+        ``local FOO``, or a local unset in its own scope — is found too
+        (bash shows ``declare -- FOO``).
         """
         for scope in reversed(self.scope_stack):
             if name in scope.variables:
-                var = scope.variables[name]
-                if var.is_unset and not (var.attributes & ~VarAttributes.UNSET):
-                    return None  # plain unset tombstone (or bare declaration)
-                return var
+                return scope.variables[name]
         return None
 
     def set_variable(self, name: str, value: Any,
@@ -337,30 +333,18 @@ class ScopeManager:
             target_scope = self.current_scope
             scope_name = target_scope.name
         else:
-            # In a function, not explicitly local
-            # Check if there's an unset tombstone in current scope first
-            if name in self.current_scope.variables and self.current_scope.variables[name].is_unset:
-                # Replace unset tombstone in current scope
-                target_scope = self.current_scope
-                scope_name = self.current_scope.name
+            # In a function, not explicitly local: bind to the innermost
+            # scope holding an instance of the name. A declared-but-unset
+            # local (tombstone) counts — bash rebinds ``local x; unset x;
+            # x=new`` (and an assignment from a CALLED function) in the
+            # declaring scope. With no instance anywhere, create a global.
+            for scope in reversed(self.scope_stack):
+                if name in scope.variables:
+                    target_scope = scope
+                    break
             else:
-                # Search for existing variable in scope chain (bash behavior)
-                found_scope: Optional[VariableScope] = None
-                for scope in reversed(self.scope_stack):
-                    if name in scope.variables:
-                        var = scope.variables[name]
-                        # Skip unset tombstones when searching for existing variables
-                        if not var.is_unset:
-                            found_scope = scope
-                            break
-
-                if found_scope is None:
-                    # Variable doesn't exist anywhere, create in global scope
-                    target_scope = self.global_scope
-                    scope_name = "global"
-                else:
-                    target_scope = found_scope
-                    scope_name = found_scope.name
+                target_scope = self.global_scope
+            scope_name = target_scope.name
 
         # Create or update variable
         if name in target_scope.variables:
@@ -437,7 +421,20 @@ class ScopeManager:
         self._notify_path_changed(name)
 
     def unset_variable(self, name: str):
-        """Unset a variable in the appropriate scope."""
+        """Unset the innermost instance of *name* (bash dynamic scoping).
+
+        bash keeps a per-name stack of instances; ``unset`` removes the
+        MOST RECENT one, revealing the next-outer instance (``x=g;
+        f(){ local x=f; g; }; g(){ unset x; echo $x; }; f`` prints ``g``)
+        — with one exception: a local unset in its own declaring scope
+        stays "local and unset" (default, non-``localvar_unset``
+        semantics), so the outer instance does NOT show through in that
+        scope. The tombstone Variable (attribute-less + UNSET) records
+        exactly that state; bash also strips the local's attributes here
+        (``local -i x=5; unset x`` shows ``declare -- x``). A repeated
+        unset of the tombstone is a no-op, but the same cell seen from a
+        DEEPER scope is removed outright like any outer instance.
+        """
         # SECONDS/RANDOM lose their special computed behavior once unset and
         # become ordinary variables (bash: after `unset SECONDS`, a later
         # `SECONDS=foo` stores the literal string). Record the deactivation
@@ -450,45 +447,27 @@ class ScopeManager:
             else:
                 self._random_seed = None
 
-        # Check current scope first
-        if name in self.current_scope.variables:
-            var = self.current_scope.variables[name]
+        for scope in reversed(self.scope_stack):
+            if name not in scope.variables:
+                continue
+            var = scope.variables[name]
             if var.is_readonly:
                 raise ReadonlyVariableError(name)
-            del self.current_scope.variables[name]
-            self._debug_print(f"Unsetting variable in scope '{self.current_scope.name}': {name}")
-
-            # If we're in a function scope, create an unset tombstone
-            # to prevent fallback to parent scopes
-            if len(self.scope_stack) > 1:
-                unset_var = Variable(name=name, value="", attributes=VarAttributes.UNSET)
-                self.current_scope.variables[name] = unset_var
-                self._debug_print(f"Creating unset tombstone for {name} in scope '{self.current_scope.name}'")
+            if scope is self.current_scope and scope is not self.global_scope:
+                if var.is_unset:
+                    return  # already local-and-unset: idempotent
+                scope.variables[name] = Variable(
+                    name=name, value="", attributes=VarAttributes.UNSET)
+                self._debug_print(
+                    f"Unsetting local {name} in its declaring scope "
+                    f"'{scope.name}' (tombstone planted)")
+            else:
+                del scope.variables[name]
+                self._debug_print(
+                    f"Unsetting variable in scope '{scope.name}': {name}")
             self._notify_path_changed(name)
             self._notify_variable_changed(name)
             return
-
-        # If not in current scope and we're in a function, check parent scopes
-        # (the loop includes the global scope — scope_stack[0] — so there is
-        # no separate global fallback; when not in a function the current
-        # scope IS the global scope and the branch above handled it).
-        if len(self.scope_stack) > 1:
-            # Search for the variable in parent scopes
-            for scope in reversed(self.scope_stack[:-1]):  # Skip current scope
-                if name in scope.variables:
-                    var = scope.variables[name]
-                    if var.is_readonly:
-                        raise ReadonlyVariableError(name)
-                    del scope.variables[name]
-                    self._debug_print(f"Unsetting variable in parent scope '{scope.name}': {name}")
-
-                    # Create unset tombstone in current scope
-                    unset_var = Variable(name=name, value="", attributes=VarAttributes.UNSET)
-                    self.current_scope.variables[name] = unset_var
-                    self._debug_print(f"Creating unset tombstone for {name} in current scope")
-                    self._notify_path_changed(name)
-                    self._notify_variable_changed(name)
-                    return
 
     def _coerce_computed_special_int(self, value: Any) -> int:
         """Parse an assignment to SECONDS/RANDOM as a plain integer.

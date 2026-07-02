@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.575.0 (2026-07-02) - Fix: unset follows bash dynamic-scope value-stack semantics (appraisal #15 Tier 1, Cluster D1)
+- FIX (HIGH). Reappraisal #15 cluster D1 — `unset` did not honor bash's
+  per-name dynamic-scope value stack. `unset_variable` (`psh/core/scope.py`)
+  now removes the innermost *visible* instance of a name wherever it lives, so:
+  - **Unsetting a global from inside a function deletes the global** (not a
+    function-local shadow), and a later assignment writes the global again —
+    fixing the silent-vanish bug: `x=1; f(){ unset x; x=new; }; f; echo $x`
+    now prints `new` (previously the value vanished).
+  - **A caller's local is revealed when a deeper scope unsets the name**:
+    `x=global; f(){ local x=f; g; }; g(){ unset x; echo ${x-U}; }; f` prints
+    `global`, and a subsequent `x=...` in `g` writes that revealed instance.
+  - A **tombstone (bash "local and unset") is planted ONLY when removing a
+    local from its own declaring scope**: `f(){ local x=2; unset x; echo
+    ${x-U}; }` prints `U` while the outer `x` stays intact. `unset` strips the
+    local's attributes (`local -i x=5; unset x` → `declare -- x`).
+  - `set_variable` binds an assignment to the innermost scope that already
+    holds an instance (including a declared-unset cell), matching bash.
+  - `get_declared_variable_object` returns plain tombstones so `declare -p x`
+    prints `declare -- x` for a local-and-unset name.
+  - The `unset` builtin (`psh/builtins/environment.py`) no longer pops
+    `shell.env` directly: the scope observer re-derives the environment entry,
+    so unsetting an exported local correctly *reveals* (reappears) an exported
+    outer instance. The readonly-refusal message now matches bash.
+  - `psh/core/CLAUDE.md` "Unset Tombstones" section rewritten (it had
+    documented the old, wrong rule as if intended). 12 probes promoted to the
+    `unset_*` cases in `tests/behavioral/golden_cases.yaml` (`--compare-bash`).
+  - Deliberate remaining divergence: bash's no-argument `declare -p` lists
+    shadowed instances at every visible scope; psh's listing stays
+    shadow-resolved (a named `declare -p x` matches bash).
+
 ## 0.574.0 (2026-07-02) - Fix: bash-valid function names + break/continue/return de-keyworded (appraisal #15 Tier 1, Cluster D2)
 - FIX (HIGH). Reappraisal #15 cluster D2 — function-name policy and the
   break/continue/return keyword split. Two parts:

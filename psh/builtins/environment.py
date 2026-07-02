@@ -466,13 +466,19 @@ class UnsetBuiltin(Builtin):
                     # an explicit `-v` restricts to variables and never falls back.
                     shell.function_manager.undefine_function(var)
                 else:
-                    # Regular variable unset
+                    # Regular variable unset. The scope manager's
+                    # variable_changed observer re-derives the environment
+                    # entry — it disappears, or REAPPEARS when removing a
+                    # variable from a deeper scope reveals an exported outer
+                    # instance (bash: unsetting an exported local restores the
+                    # exported global's entry). This deeper-scope reveal is the
+                    # only reappearance case — an own-scope `local x; unset x`
+                    # plants a tombstone and reveals nothing. Either way there
+                    # is no explicit env.pop here.
                     try:
-                        # Remove from both shell variables and environment
                         shell.state.scope_manager.unset_variable(var)
-                        shell.env.pop(var, None)
                     except ReadonlyVariableError:
-                        self.error(f"{var}: readonly variable", shell)
+                        self.error(f"{var}: cannot unset: readonly variable", shell)
                         exit_code = 1
             return exit_code
 
@@ -501,9 +507,8 @@ class UnsetBuiltin(Builtin):
             if isinstance(value, IndexedArray):
                 try:
                     shell.state.scope_manager.unset_variable(array_name)
-                    shell.env.pop(array_name, None)
                 except ReadonlyVariableError:
-                    self.error(f"{array_name}: readonly variable", shell)
+                    self.error(f"{array_name}: cannot unset: readonly variable", shell)
                     return False
                 return True
             if not isinstance(value, AssociativeArray):
@@ -536,9 +541,8 @@ class UnsetBuiltin(Builtin):
         if expander._eval_array_index(index_expr) == 0:
             try:
                 shell.state.scope_manager.unset_variable(array_name)
-                shell.env.pop(array_name, None)
             except ReadonlyVariableError:
-                self.error(f"{array_name}: readonly variable", shell)
+                self.error(f"{array_name}: cannot unset: readonly variable", shell)
                 return False
             return True
         self.error(f"{array_name}: not an array variable", shell)
