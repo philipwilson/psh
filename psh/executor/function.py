@@ -137,9 +137,15 @@ class FunctionOperationExecutor:
 
         try:
             # Execute function body, applying any definition-attached
-            # redirections (f() { ...; } > file) at each call (bash).
+            # redirections (f() { ...; } > file) at each call (bash). A bad
+            # redirect target prints bash's diagnostic and yields False, so the
+            # body does not run — the call returns 1 (matching the simple- and
+            # compound-command redirect-error format).
             if func.redirects:
-                with self.shell.io_manager.with_redirections(func.redirects):
+                with self.shell.io_manager.guarded_redirections(
+                        func.redirects) as applied:
+                    if not applied:
+                        return 1
                     exit_code = visitor.visit(func_body)
             else:
                 exit_code = visitor.visit(func_body)

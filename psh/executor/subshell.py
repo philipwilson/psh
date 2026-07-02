@@ -5,9 +5,11 @@ This module handles execution of subshells and brace groups with proper
 process isolation and environment management.
 """
 
+import os
 import sys
 from typing import TYPE_CHECKING, List
 
+from ..io_redirect.manager import format_redirect_error
 from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
@@ -85,8 +87,12 @@ class SubshellExecutor:
                 # in the parent first (that would cause double execution).
                 return self._execute_background_brace_group(node, visitor)
 
-            # Foreground: apply redirections and execute in current environment
-            with self.io_manager.with_redirections(node.redirects):
+            # Foreground: apply redirections and execute in current environment.
+            # A bad redirect target prints bash's diagnostic and yields False,
+            # so the body does not run — status 1, `|| fallback` runs.
+            with self.io_manager.guarded_redirections(node.redirects) as applied:
+                if not applied:
+                    return 1
                 return visitor.visit(node.statements)
         finally:
             context.in_pipeline = old_pipeline
@@ -141,9 +147,17 @@ class SubshellExecutor:
             subshell.stderr = self.shell.stderr
             subshell.stdin = self.shell.stdin
 
-            # Apply redirections if any
+            # Apply redirections if any. On a bad target, print bash's
+            # diagnostic to fd 2 and exit the subshell 1 (the shared
+            # redirect-error format) instead of letting the raw OSError reach
+            # the generic child-error handler.
             if redirects:
-                subshell.io_manager.apply_redirections(redirects)
+                try:
+                    subshell.io_manager.apply_redirections(redirects)
+                except OSError as e:
+                    os.write(2, (format_redirect_error(e) + "\n")
+                             .encode('utf-8', errors='replace'))
+                    return 1
 
             # Execute statements in isolated environment. A fatal assignment
             # error (readonly/nameref-cycle) aborts the whole subshell body with
@@ -232,6 +246,11 @@ class SubshellExecutor:
             try:
                 if redirects:
                     saved_fds = subshell.io_manager.apply_redirections(redirects)
+            except OSError as e:
+                os.write(2, (format_redirect_error(e) + "\n")
+                         .encode('utf-8', errors='replace'))
+                return 1
+            try:
                 exit_code = subshell.execute_command_list(statements)
             except TopLevelAbort as e:
                 exit_code = e.status
@@ -277,6 +296,11 @@ class SubshellExecutor:
             try:
                 if node.redirects:
                     saved_fds = self.io_manager.apply_redirections(node.redirects)
+            except OSError as e:
+                os.write(2, (format_redirect_error(e) + "\n")
+                         .encode('utf-8', errors='replace'))
+                return 1
+            try:
                 exit_code = visitor.visit(node.statements)
             finally:
                 if saved_fds:

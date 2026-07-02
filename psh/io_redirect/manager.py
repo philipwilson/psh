@@ -28,11 +28,17 @@ universe:
 ========================================  =====================================
 Redirect                                  Universe
 ========================================  =====================================
-``>``, ``>>``, ``>|``, ``&>`` to fd 1/2   stream swap (``_builtin_redirect_output_file`` / ``_builtin_redirect_combined``)
-``2>&1``, ``1>&2``                        stream swap (``sys.stderr = sys.stdout``), so builtin writes interleave and honor ordering
+``>``, ``>>``, ``>|``, ``&>`` to fd 1/2   BOTH: the stream swap (``_builtin_redirect_output_file`` / ``_builtin_redirect_combined``) for the builtin's own writes AND a dup2 of fd 1/2 — saved and restored — so a child the builtin spawns (``eval``/``source``/``command`` running an external) also writes to the target
+``2>&1``, ``1>&2``                        BOTH: stream swap (``sys.stderr = sys.stdout``) so builtin writes interleave and honor ordering, AND a dup2 of fd 2/1 so children inherit it
 ``<``, ``<>``, heredoc, here-string       BOTH: the stream for the builtin itself (``read`` consumes ``sys.stdin``) AND a dup2 of fd 0 — saved and restored — so any child spawned during the builtin sees the redirected stdin
 fd >= 3, other ``n>&m``, ``>&-``          fd level via FileRedirector (no Python stream counterpart exists)
 ========================================  =====================================
+
+The dup2 for fd 1/2 shares the opened file's open description (so the
+builtin's stream writes and a child's fd writes keep one offset — no
+re-truncation), exactly like the ``exec`` rebind. It is per-command
+(saved on the frame, restored when the command finishes); permanent
+fd rewriting is reserved for ``exec`` alone.
 
 Restore (``restore_builtin_redirections``) is transactional and
 order-aware: the ORIGINAL stream objects are recorded first-touch-wins
@@ -106,6 +112,23 @@ def _redirect_error_name(error: OSError, target: Optional[str]) -> str:
     if error.filename:
         return error.filename
     return str(error.errno)
+
+
+def format_redirect_error(error: OSError, target: Optional[str] = None) -> str:
+    """Format a redirect-setup ``OSError`` as bash's ``psh: TARGET: STRERROR``.
+
+    This is the ONE message shape every redirect-failure site emits — simple
+    command, in-process compound command, forked subshell, function call — so
+    they no longer diverge (raw ``OSError`` repr vs prefixed message). A
+    syscall failure (errno set: ENOENT/EISDIR/EACCES) becomes
+    ``psh: <target>: <strerror>``; a custom-message redirect error (errno
+    ``None``: noclobber, ambiguous redirect, bad fd) keeps its own message as
+    ``psh: <message>``.
+    """
+    if error.errno is None:
+        return f"psh: {error}"
+    name = _redirect_error_name(error, target)
+    return f"psh: {name}: {os.strerror(error.errno)}"
 
 
 class _BuiltinStreamSnapshot:
@@ -194,6 +217,44 @@ class IOManager:
             stream_restore = self._swap_closed_output_streams(redirects)
             try:
                 yield
+            finally:
+                stream_restore()
+                self.restore_redirections(saved_fds)
+
+    @contextmanager
+    def guarded_redirections(self, redirects: List[Redirect]):
+        """Like :meth:`with_redirections`, but a redirect SETUP failure is
+        turned into bash's diagnostic instead of an escaping ``OSError``.
+
+        This is the ONE chokepoint for the in-process COMPOUND commands
+        (brace group, ``if``/``for``/``while``/``until``/``case``, ``[[ ]]``,
+        ``(( ))``): a bad redirect target must print ``psh: TARGET: STRERROR``,
+        NOT run the body, and let the command fail with status 1 so
+        ``|| fallback`` runs — matching bash. It yields:
+
+        * ``True``  — redirects applied cleanly; run the body.
+        * ``False`` — a redirect FAILED (message already printed); the caller
+          must skip the body and ``return 1``.
+
+        Only the redirect SETUP is guarded: once the body runs it is outside
+        the ``try``, so a body exception is not misreported as a redirect
+        error. Simple commands keep their own per-strategy handling
+        (:meth:`setup_builtin_redirections` / ``setup_child_redirections``).
+        """
+        if not redirects:
+            yield True
+            return
+        with self.process_sub_handler.scope():
+            try:
+                saved_fds = self.apply_redirections(redirects)
+                stream_restore = self._swap_closed_output_streams(redirects)
+            except OSError as e:
+                # apply_redirections already rolled back its own partial state.
+                print(format_redirect_error(e), file=self.state.stderr)
+                yield False
+                return
+            try:
+                yield True
             finally:
                 stream_restore()
                 self.restore_redirections(saved_fds)
@@ -363,6 +424,28 @@ class IOManager:
             content = self.file_redirector.redirect_herestring(redirect)
             sys.stdin = io.StringIO(content)
 
+    def _dup_output_fd_for_children(self, source_fd: int, target_fd: int,
+                                    frame: BuiltinRedirectFrame):
+        """fd-level half of a builtin output redirect to fd 1/2.
+
+        A builtin writes through ``sys.stdout``/``sys.stderr`` (the stream
+        half), but a CHILD it spawns — ``eval``/``source`` running an external
+        command, ``command ext`` — inherits raw fd 1/2, so those must be
+        redirected too. This mirrors the stdin BOTH-universe treatment (see the
+        module docstring): ``dup2`` ``source_fd`` (the opened file's fd, or 1/2
+        for ``2>&1``/``1>&2``) onto ``target_fd``, saving the original on the
+        frame for restore. The dup2 shares the open file description, so the
+        builtin's stream writes and the child's fd writes keep one file offset
+        (no re-truncation). ``target_fd``'s original is saved tolerantly (None
+        when it was closed, e.g. after ``exec 1>&-``), matching ``_save_fd``.
+        """
+        try:
+            saved: Optional[int] = os.dup(target_fd)
+        except OSError:
+            saved = None  # target_fd was not open — close it again on restore
+        frame.saved_fds.append((target_fd, saved))
+        os.dup2(source_fd, target_fd)
+
     def _builtin_redirect_combined(self, target, redirect,
                                    frame: BuiltinRedirectFrame):
         """``&>`` / ``&>>`` for a builtin: one file object serves both streams."""
@@ -375,6 +458,9 @@ class IOManager:
         frame.opened_streams.append(f)
         sys.stdout = f
         sys.stderr = f
+        # fd level too, so children the builtin spawns see both fds redirected.
+        self._dup_output_fd_for_children(f.fileno(), 1, frame)
+        self._dup_output_fd_for_children(f.fileno(), 2, frame)
 
     def _builtin_redirect_output_file(self, target, redirect,
                                       frame: BuiltinRedirectFrame):
@@ -393,6 +479,8 @@ class IOManager:
             f = open(target, mode)  # text mode ('a'/'w') -> TextIO
             frame.opened_streams.append(cast(TextIO, f))
             sys.stdout = f
+            # fd 1 too, so children the builtin spawns write to the file.
+            self._dup_output_fd_for_children(f.fileno(), 1, frame)
             if self.state.options.get('debug-exec'):
                 print(f"DEBUG IOManager: redirected stdout to '{target}' "
                       f"(mode {mode!r}); sys.stdout is now {sys.stdout}",
@@ -402,6 +490,8 @@ class IOManager:
             f = open(target, mode)  # text mode ('a'/'w') -> TextIO
             frame.opened_streams.append(cast(TextIO, f))
             sys.stderr = f
+            # fd 2 too, so children the builtin spawns write to the file.
+            self._dup_output_fd_for_children(f.fileno(), 2, frame)
         else:
             self._builtin_redirect_fd_level(redirect, frame)
 
@@ -423,9 +513,13 @@ class IOManager:
         if redirect.fd == 2 and redirect.dup_fd == 1:
             frame.snapshot.note_stderr()
             sys.stderr = sys.stdout
+            # fd 2 → fd 1 too, so children the builtin spawns inherit it.
+            self._dup_output_fd_for_children(1, 2, frame)
         elif redirect.fd == 1 and redirect.dup_fd == 2:
             frame.snapshot.note_stdout()
             sys.stdout = sys.stderr
+            # fd 1 → fd 2 too, so children the builtin spawns inherit it.
+            self._dup_output_fd_for_children(2, 1, frame)
         elif redirect.fd in (1, 2) and redirect.dup_fd is not None:
             # Validates dup_fd and dup2's it onto fd 1/2 (for children).
             self._builtin_redirect_fd_level(redirect, frame)

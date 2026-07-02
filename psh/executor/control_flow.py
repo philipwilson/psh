@@ -63,15 +63,19 @@ class ControlFlowExecutor:
     # ------------------------------------------------------------------
 
     @contextmanager
-    def _compound_redirections(self, node) -> Iterator[None]:
+    def _compound_redirections(self, node) -> Iterator[bool]:
         """Apply the construct's redirections around its whole body.
 
         Redirects on a compound command apply to every command in the body
-        and are restored when the body finishes (delegates to the io manager's
-        per-block save/restore).
+        and are restored when the body finishes. Delegates to the io manager's
+        redirect-error chokepoint (``guarded_redirections``): a bad redirect
+        target prints bash's diagnostic and yields ``False``, and the caller
+        must then skip the body and ``return 1`` (so ``|| fallback`` runs, and
+        under ``set -e`` the failing construct still aborts). Yields ``True``
+        when redirects applied cleanly.
         """
-        with self.io_manager.with_redirections(node.redirects):
-            yield
+        with self.io_manager.guarded_redirections(node.redirects) as applied:
+            yield applied
 
     @contextmanager
     def _pipeline_context_disabled(self, context: 'ExecutionContext') -> Iterator[None]:
@@ -135,7 +139,10 @@ class ControlFlowExecutor:
         """
         # Redirects apply to the whole if; pipeline context is neutralized
         # for commands inside the construct.
-        with self._compound_redirections(node), self._pipeline_context_disabled(context):
+        with self._compound_redirections(node) as applied, \
+                self._pipeline_context_disabled(context):
+            if not applied:
+                return 1
             # Evaluate main condition (set -e is suppressed in conditions)
             with context.errexit_suppressed():
                 condition_status = visitor.visit(node.condition)
@@ -170,8 +177,11 @@ class ControlFlowExecutor:
             Exit status code
         """
         exit_status = 0
-        with self._loop_depth(context), self._compound_redirections(node), \
+        with self._loop_depth(context), \
+                self._compound_redirections(node) as applied, \
                 self._pipeline_context_disabled(context):
+            if not applied:
+                return 1
             while True:
                 # Evaluate condition (set -e is suppressed in conditions).
                 # The condition is inside the loop for break/continue too:
@@ -205,8 +215,11 @@ class ControlFlowExecutor:
                       visitor: 'ASTVisitor[int]') -> int:
         """Execute until loop (runs until condition succeeds)."""
         exit_status = 0
-        with self._loop_depth(context), self._compound_redirections(node), \
+        with self._loop_depth(context), \
+                self._compound_redirections(node) as applied, \
                 self._pipeline_context_disabled(context):
+            if not applied:
+                return 1
             while True:
                 # break/continue in the condition act on THIS loop (see
                 # execute_while).
@@ -250,8 +263,11 @@ class ControlFlowExecutor:
         # Expand items - handle all types of expansion, respecting quote types
         expanded_items = self._expand_loop_items(node)
 
-        with self._loop_depth(context), self._compound_redirections(node), \
+        with self._loop_depth(context), \
+                self._compound_redirections(node) as applied, \
                 self._pipeline_context_disabled(context):
+            if not applied:
+                return 1
             for item in expanded_items:
                 # set -x: bash re-traces the `for VAR in WORDS` header on EACH
                 # iteration (the expanded word list, quoted).
@@ -316,7 +332,10 @@ class ControlFlowExecutor:
             # Redirects apply to the whole loop; pipeline context is
             # neutralized for the body (uniform with while/for — see
             # _pipeline_context_disabled).
-            with self._compound_redirections(node), self._pipeline_context_disabled(context):
+            with self._compound_redirections(node) as applied, \
+                    self._pipeline_context_disabled(context):
+                if not applied:
+                    return 1
                 while True:
                     # Evaluate condition
                     self.shell.trap_manager.execute_debug_trap()
@@ -382,7 +401,10 @@ class ControlFlowExecutor:
 
         # Redirects apply to the whole case; pipeline context is neutralized
         # for commands inside the construct.
-        with self._compound_redirections(node), self._pipeline_context_disabled(context):
+        with self._compound_redirections(node) as applied, \
+                self._pipeline_context_disabled(context):
+            if not applied:
+                return 1
             # Try each case item
             fall_through = False
             for case_item in node.items:
@@ -463,7 +485,10 @@ class ControlFlowExecutor:
             if not expanded_items:
                 return 0
 
-            with self._compound_redirections(node), self._pipeline_context_disabled(context):
+            with self._compound_redirections(node) as applied, \
+                    self._pipeline_context_disabled(context):
+                if not applied:
+                    return 1
                 try:
                     # Get PS3 prompt (default "#? " if not set)
                     ps3 = self.state.get_variable("PS3", "#? ")

@@ -384,6 +384,22 @@ class FileRedirector:
         except OSError:
             return None
 
+    def _save_fd_high(self, fd: int):
+        """Like `_save_fd`, but force the backup onto a high fd (>= 10).
+
+        The combined `&>` redirect saves BOTH fd 1 and fd 2 before opening its
+        target and duping onto fd 1/2. If a low fd is currently closed (e.g.
+        after `exec 1>&-`), a plain `os.dup` of the OTHER fd would land in that
+        freed low slot — which the redirect then clobbers, so restore would
+        re-point stderr at the file. Duping to a high fd keeps the backup out
+        of the redirect's way (bash opens redirect targets on high fds for the
+        same reason). Returns None when `fd` is not open.
+        """
+        try:
+            return fcntl.fcntl(fd, fcntl.F_DUPFD, 10)
+        except OSError:
+            return None
+
     def _validate_dup_source(self, redirect: Redirect) -> None:
         """Validate the source fd for >&/<& before saving target fds."""
         if (redirect.fd is not None and redirect.dup_fd is not None
@@ -394,7 +410,11 @@ class FileRedirector:
         """Return fd backups needed before applying a temporary plan."""
         redirect = plan.redirect
         if redirect.combined:
-            return [(1, os.dup(1)), (2, os.dup(2))]
+            # High-fd, tolerant save: fd 1/2 may be closed (e.g. after
+            # `exec 1>&-`), in which case _save_fd_high returns None and
+            # restore closes the fd again; and saving to a high fd keeps the
+            # fd-2 backup out of the freed low slot the redirect reuses.
+            return [(1, self._save_fd_high(1)), (2, self._save_fd_high(2))]
         if redirect.type in ('<', '<>', '<<', '<<-', '<<<',
                              '>|', '>', '>>'):
             return [(plan.target_fd, self._save_fd(plan.target_fd))]
