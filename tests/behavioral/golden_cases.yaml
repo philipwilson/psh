@@ -1282,6 +1282,90 @@
   stderr: ""
   exit_code: 0
 
+- name: comment_trailing_backslash_not_continuation
+  command: |
+    # comment ends in backslash \
+    echo survived
+  stdout: "survived\n"
+  stderr: ""
+  exit_code: 0
+
+- name: comment_backslash_after_command
+  command: |
+    echo one # trailing \
+    echo two
+  stdout: "one\ntwo\n"
+  stderr: ""
+  exit_code: 0
+
+- name: comment_backslash_inside_command_sub
+  command: |
+    echo $(echo a # c \
+    echo b)
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_quoted_body_keeps_trailing_backslash
+  command: |
+    cat <<'EOF'
+    a\
+    b
+    EOF
+  stdout: "a\\\nb\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_unquoted_body_joins_continuation
+  command: |
+    cat <<EOF
+    a\
+    b
+    EOF
+  stdout: "ab\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_marker_in_comment_ignored
+  command: |
+    echo hi # <<EOF
+    echo bye
+  stdout: "hi\nbye\n"
+  stderr: ""
+  exit_code: 0
+
+- name: backtick_hash_splices_continuation
+  command: |
+    echo `echo a # c \
+    echo b`
+  stdout: "a\n"
+  stderr: ""
+  exit_code: 0
+
+- name: backtick_closed_hash_then_outer_continuation
+  command: |
+    echo `echo a # b` \
+    echo c
+  stdout: "a echo c\n"
+  stderr: ""
+  exit_code: 0
+
+- name: backtick_single_quote_splices_continuation
+  command: |
+    echo `echo 'a \
+    b'`
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: comment_after_closed_backtick_not_continuation
+  command: |
+    echo `echo hi` # trailing \
+    echo survived
+  stdout: "hi\nsurvived\n"
+  stderr: ""
+  exit_code: 0
+
 - name: empty_command
   command: ''
   stdout: ""

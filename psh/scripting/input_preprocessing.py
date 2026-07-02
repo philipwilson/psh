@@ -5,108 +5,91 @@ This module handles preprocessing of shell input before tokenization,
 including line continuation processing according to POSIX specification.
 """
 
+from typing import List, Optional, Tuple
+
 
 def process_line_continuations(text: str) -> str:
     """
     Process line continuation sequences in shell input.
 
-    According to POSIX, backslash-newline sequences should be removed
-    entirely from the input before any other processing occurs.
+    According to POSIX, an unquoted backslash-newline pair is removed
+    entirely from the input before tokenization. Context decides whether
+    the backslash is "unquoted" (matching bash):
 
-    Args:
-        text: Raw shell input that may contain line continuations
-
-    Returns:
-        Text with line continuations processed (removed)
+    * in command text (including inside double quotes) the pair is a
+      continuation — removed;
+    * inside single quotes both characters are literal — kept;
+    * inside a comment the backslash is comment text and the newline ends
+      the comment — kept (joining would swallow the next command line);
+    * inside the body of a heredoc with a QUOTED delimiter every character
+      is literal — kept (a trailing ``\\`` in a ``<<'EOF'`` body survives);
+    * inside the body of a heredoc with an unquoted delimiter the pair is
+      removed while the body is read, so a terminator on the joined-away
+      next line fuses into the body (bash does the same).
 
     Examples:
-        >>> process_line_continuations("echo hello \\\\nworld")
+        >>> process_line_continuations("echo hello \\\\\\nworld")
         'echo hello world'
 
-        >>> process_line_continuations("echo hello\\\\\\\\\\\\nworld")
-        'echo hello\\\\\\\\world'  # \\\\\\\\ -> \\\\, \\n removed
-
-        >>> process_line_continuations("echo 'hello \\\\nworld'")
-        "echo 'hello \\\\nworld'"  # No processing inside quotes
+        >>> process_line_continuations("echo 'hello \\\\\\nworld'")
+        "echo 'hello \\\\\\nworld'"  # No processing inside single quotes
     """
-    if not text:
+    if '\\' not in text:
         return text
+    from ..utils.heredoc_detection import (
+        eol_backslash_is_literal,
+        scan_line_heredoc_markers,
+    )
 
-    result = []
+    lines = text.split('\n')
+    out: List[str] = []
+    # Heredocs opened on an earlier command line whose bodies we are now
+    # inside, as (terminator, strip_tabs, quoted) triples in body order.
+    pending: List[Tuple[str, bool, bool]] = []
+    quote: Optional[str] = None  # quote state carried across command lines
+
     i = 0
-    in_single_quote = False
-    in_double_quote = False
-
-    while i < len(text):
-        char = text[i]
-
-        # Track quote state - handle escaped quotes properly
-        if char == "'" and not in_double_quote:
-            # Check if this quote is escaped by counting preceding backslashes
-            backslash_count = 0
-            j = i - 1
-            while j >= 0 and text[j] == '\\':
-                backslash_count += 1
-                j -= 1
-            # If even number of backslashes (including 0), quote is not escaped
-            if backslash_count % 2 == 0:
-                in_single_quote = not in_single_quote
-            result.append(char)
-            i += 1
-            continue
-        elif char == '"' and not in_single_quote:
-            # Check if this quote is escaped
-            backslash_count = 0
-            j = i - 1
-            while j >= 0 and text[j] == '\\':
-                backslash_count += 1
-                j -= 1
-            # If even number of backslashes, quote is not escaped
-            if backslash_count % 2 == 0:
-                in_double_quote = not in_double_quote
-            result.append(char)
-            i += 1
-            continue
-
-        # Don't process line continuations inside single quotes
-        # (but do process them inside double quotes - bash behavior)
-        if in_single_quote:
-            result.append(char)
-            i += 1
-            continue
-
-        # Look for line continuation pattern: unescaped \<newline>
-        if char == '\\' and i + 1 < len(text):
-            # Count consecutive backslashes
-            backslash_count = 0
-            j = i
-            while j < len(text) and text[j] == '\\':
-                backslash_count += 1
-                j += 1
-
-            # Check what follows the backslashes
-            if j < len(text):
-                if text[j] == '\n':
-                    # If odd number of backslashes, the last one escapes the newline
-                    if backslash_count % 2 == 1:
-                        # Line continuation: add all but the last backslash, skip \n
-                        result.extend('\\' * (backslash_count - 1))
-                        i = j + 1  # Skip past the newline
-                        continue
-                elif text[j] == '\r' and j + 1 < len(text) and text[j + 1] == '\n':
-                    # Handle \r\n line endings
-                    if backslash_count % 2 == 1:
-                        result.extend('\\' * (backslash_count - 1))
-                        i = j + 2  # Skip past \r\n
-                        continue
-
-            # Not a line continuation - add all backslashes and continue
-            result.extend('\\' * backslash_count)
-            i = j
-            continue
-
-        # Regular character - add to result
-        result.append(char)
+    while i < len(lines):
+        line = lines[i]
         i += 1
 
-    return ''.join(result)
+        if pending:
+            word, strip_tabs, quoted = pending[0]
+            check = line.lstrip('\t') if strip_tabs else line
+            if check == word:
+                pending.pop(0)
+            elif not quoted:
+                while _ends_with_continuation(line) and i < len(lines):
+                    line = _drop_continuation(line) + lines[i]
+                    i += 1
+            out.append(line)
+            continue
+
+        # Command text: join continuations. The trailing backslash must be
+        # outside single quotes and outside a comment (a comment, when
+        # present, always runs to the end of the line).
+        while (i < len(lines) and _ends_with_continuation(line)
+                and not eol_backslash_is_literal(line, quote)):
+            line = _drop_continuation(line) + lines[i]
+            i += 1
+        out.append(line)
+        markers, quote = scan_line_heredoc_markers(line, quote)
+        pending.extend(markers)
+
+    return '\n'.join(out)
+
+
+def _ends_with_continuation(line: str) -> bool:
+    """True when *line* ends with an unescaped backslash (an odd-length
+    trailing run), tolerating the CR of ``\\<CR><LF>`` input."""
+    if line.endswith('\r'):
+        line = line[:-1]
+    run = len(line) - len(line.rstrip('\\'))
+    return run % 2 == 1
+
+
+def _drop_continuation(line: str) -> str:
+    """Remove the continuation backslash (and the CR of ``\\<CR><LF>``)."""
+    if line.endswith('\r'):
+        line = line[:-1]
+    return line[:-1]

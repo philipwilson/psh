@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.573.0 (2026-07-02) - Fix: line-continuation preprocessing is comment- and heredoc-aware (appraisal #15 Tier 1, Cluster A5)
+- FIX (HIGH). Reappraisal #15 cluster A5 — `process_line_continuations` in
+  `psh/scripting/input_preprocessing.py` (the pre-lexer stage every input mode
+  shares: script files, `-c` strings, slurped stdin, `run_command`, interactive)
+  joined backslash-newline with only single/double-quote tracking, so:
+  - (a) a comment ending in a backslash silently swallowed the next command line
+    (`# c \` followed by `echo survived` printed nothing);
+  - (b) a QUOTED heredoc body lost literal trailing backslashes (`<<'EOF'` /
+    `<<"EOF"` / `<<\EOF` / `<<-'EOF'` with body `a\` + `b` printed `ab`,
+    corrupting embedded sed/awk/usage text);
+  - (c) an apostrophe in a comment or heredoc body poisoned the carried quote
+    state, suppressing later legitimate joins.
+- Rewritten as a line-based state machine aware of the three contexts: comments
+  (the newline ends the comment, never a continuation — comment position shared
+  with the lexer's `is_comment_start`, plus a raw-text `${#...}` guard), heredoc
+  bodies (quoted delimiter = verbatim; unquoted still joins, fusing even a
+  next-line terminator, exactly like bash), and carried quote state computed
+  from command text only.
+- Shared helpers `scan_line_heredoc_markers` / `eol_backslash_is_literal` live in
+  `psh/utils/heredoc_detection.py` and are reused by `open_heredoc_delimiters`,
+  so a heredoc marker inside a comment (`echo hi # <<EOF`) no longer registers a
+  phantom heredoc that swallowed the rest of the input.
+- Follow-up: `_quote_flags` is now backtick-aware. bash does NOT honor `#` (or a
+  single quote) inside an unclosed `` `...` `` during the continuation-join
+  decision, so `` echo `echo a # c \ `` / `echo b\`` now splices to bash's `a`
+  (was `a b`); `$( )` is deliberately left honoring an interior comment (bash
+  does too). Matches bash 5.2 across script, `-c`, and stdin modes.
+- Deliberate remaining divergences (pre-existing on main, out of A5 scope,
+  unchanged): an unterminated heredoc at EOF (bash executes body-to-EOF with a
+  warning; psh drops the command per the existing accumulator EOF policy), and a
+  lone trailing backslash at script/stdin EOF (bash drops it; psh keeps it —
+  known LOW divergence).
+- Tests: unit pins on the function and the shared marker scan, integration
+  parity across script/`-c`/stdin, and 10 promoted golden cases in
+  `tests/behavioral/golden_cases.yaml` (verified with `--compare-bash`).
+
 ## 0.572.0 (2026-07-02) - Fix: command substitution resets `set -e` like bash; `inherit_errexit` shopt added (appraisal #15 Tier 1, Cluster F1)
 - FIX (HIGH). Reappraisal #15 cluster F1 — command-substitution children now
   clear `set -e` the way bash does, while `( )` subshells and process

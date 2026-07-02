@@ -174,25 +174,46 @@ def is_inside_expansion(line: str, position: int) -> bool:
 
 
 def _quote_flags(line: str, quote):
-    """Per-character in-quote flags for `line`, starting in `quote` state.
+    """Per-character "protected" flags for `line`, starting in `quote` state.
 
-    Returns (flags, final_quote). The carried quote state lets the caller
-    track strings that span multiple command lines.
+    Returns (flags, final_quote). A char is flagged True when it is shielded
+    from TOP-LEVEL comment/heredoc recognition: inside single/double quotes,
+    or inside an unquoted ``` `...` ``` backtick command substitution.
+
+    Backtick interiors are flagged but do NOT contribute to the returned
+    quote state. Unlike ``$(...)`` — where bash re-parses the body as a
+    command list, so a ``#`` there starts a comment and a trailing backslash
+    is a continuation — a backtick word is raw-scanned: bash splices
+    backslash-newline and never treats ``#`` or ``'`` specially while looking
+    for the closing backtick (comment/quote handling inside the body is the
+    lexer's job AFTER the splice). So a backtick interior must never suppress
+    a continuation join or open a command-level quote. (A backtick inside
+    double quotes needs no special handling: the double-quote path already
+    joins and shields ``#``.) The carried quote state lets the caller track
+    strings that span multiple command lines.
     """
     flags = []
+    backtick = False  # inside an unquoted `...` command substitution
     i, n = 0, len(line)
     while i < n:
         c = line[i]
         if c == '\\' and quote != "'" and i + 1 < n:
-            inside = quote is not None
+            inside = quote is not None or backtick
             flags.append(inside)
             flags.append(inside)
             i += 2
             continue
-        if quote:
+        if backtick:
+            flags.append(True)
+            if c == '`':  # only an unescaped ` closes the backtick word
+                backtick = False
+        elif quote:
             flags.append(True)
             if c == quote:
                 quote = None
+        elif c == '`':
+            backtick = True
+            flags.append(True)
         elif c in ('"', "'"):
             quote = c
             flags.append(True)
@@ -200,6 +221,65 @@ def _quote_flags(line: str, quote):
             flags.append(False)
         i += 1
     return flags, quote
+
+
+def _comment_start(line: str, flags) -> int:
+    """Position where a comment starts on *line*, or ``len(line)`` if none.
+
+    Uses the lexer's shared comment-start predicate on the first unquoted
+    ``#`` (*flags* are the per-char in-quote flags from ``_quote_flags``).
+    One raw-text refinement: the ``#`` of ``${#...}`` is rejected here —
+    the lexer never consults the predicate there because the expansion
+    parser consumes ``${...}`` whole.
+    """
+    from ..lexer.recognizers.comment import is_comment_start
+    for pos, char in enumerate(line):
+        if char != '#' or (pos < len(flags) and flags[pos]):
+            continue
+        if pos >= 2 and line[pos - 1] == '{' and line[pos - 2] == '$':
+            continue
+        if is_comment_start(line, pos):
+            return pos
+    return len(line)
+
+
+def scan_line_heredoc_markers(line: str, quote=None):
+    """The heredocs one COMMAND line opens, in order, with the carried
+    quote state.
+
+    Returns ``(markers, quote_after)`` where each marker is a
+    ``(delimiter, strip_tabs, quoted)`` triple — ``quoted`` True when any
+    part of the raw delimiter is quoted or escaped (the body is then
+    literal, like bash) — and ``quote_after`` is the quote state at end
+    of line for multi-line strings. Markers inside quotes, expansions, or
+    a comment are not heredocs; comment text is also excluded from the
+    carried quote state (an apostrophe in ``# don't`` is not a quote).
+    """
+    flags, _ = _quote_flags(line, quote)
+    comment_at = _comment_start(line, flags)
+    _, quote_after = _quote_flags(line[:comment_at], quote)
+    markers = []
+    for match in HEREDOC_MARKER_RE.finditer(line, 0, comment_at):
+        if is_inside_expansion(line, match.start()):
+            continue
+        if match.start() < len(flags) and flags[match.start()]:
+            continue  # quoted "<<WORD" is not a heredoc
+        raw = match.group(2)
+        markers.append((heredoc_delimiter_word(match), bool(match.group(1)),
+                        any(c in raw for c in '\'"\\')))
+    return markers, quote_after
+
+
+def eol_backslash_is_literal(line: str, quote=None) -> bool:
+    """True when a backslash ending command line *line* is literal text —
+    single-quoted or comment content — rather than a line continuation.
+    *quote* is the carried-in quote state (see ``_quote_flags``). A ``'`` or
+    ``#`` inside an unquoted backtick does NOT count (bash splices
+    backslash-newline while scanning a backtick regardless), so such a
+    trailing backslash is still a continuation. The line-continuation
+    preprocessing consults this before joining."""
+    flags, quote_after = _quote_flags(line, quote)
+    return quote_after == "'" or _comment_start(line, flags) < len(line)
 
 
 def has_unclosed_heredoc(command: str) -> bool:
@@ -240,15 +320,11 @@ def open_heredoc_delimiters(command: str) -> list:
                         d['closed'] = True
                         break
         else:
-            flags, quote_state = _quote_flags(line, quote_state)
-            for match in HEREDOC_MARKER_RE.finditer(line):
-                if is_inside_expansion(line, match.start()):
-                    continue
-                if match.start() < len(flags) and flags[match.start()]:
-                    continue  # quoted "<<WORD" is not a heredoc
+            markers, quote_state = scan_line_heredoc_markers(line, quote_state)
+            for word, strip_tabs, _quoted in markers:
                 delimiters.append({
-                    'word': heredoc_delimiter_word(match),
-                    'strip_tabs': bool(match.group(1)),
+                    'word': word,
+                    'strip_tabs': strip_tabs,
                     'closed': False,
                 })
     return [(d['word'], d['strip_tabs']) for d in delimiters if not d['closed']]
