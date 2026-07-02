@@ -13,6 +13,7 @@ Two former residents grew into modules of their own:
   ANSI-C, ``skip_expansion_region``) live in ``recognizers/word_scanners.py``.
 """
 
+from enum import Enum
 from typing import Optional, Set, Tuple
 
 
@@ -151,36 +152,52 @@ def find_balanced_parentheses(
     )
 
 
-def find_balanced_double_parentheses(
+class ArithParenScan(Enum):
+    """Outcome of :func:`scan_double_paren_arithmetic`."""
+
+    CLOSED = 'closed'                  # a matching '))' closes the arithmetic
+    NOT_ARITHMETIC = 'not_arithmetic'  # inner group closed, no ')' adjacent
+    UNCLOSED = 'unclosed'              # input ended first (incomplete input)
+
+
+def scan_double_paren_arithmetic(
     input_text: str,
     start_pos: int,
     track_quotes: bool = False
-) -> Tuple[int, bool]:
-    """
-    Find balanced double parentheses for arithmetic expressions.
+) -> Tuple[int, ArithParenScan]:
+    """Scan for the ``))`` that closes a ``$((`` arithmetic expansion.
 
     Args:
         input_text: The input string
-        start_pos: Starting position (after opening $(()
+        start_pos: Starting position (after opening ``$((``)
         track_quotes: Whether to ignore parens inside quotes.
             Default False to preserve existing lexer behaviour;
             expansion callers pass True.
 
     Returns:
-        Tuple of (position_after_close_parens, found_closing)
+        Tuple of (position, status). For CLOSED the position is just past
+        the closing ``))``; otherwise it is where the scan stopped.
+
+    POSIX/bash disambiguation (bash parse.y, read_token_word): ``$((`` is
+    arithmetic only if the paren group opened by its second ``(`` closes
+    with another ``)`` immediately following. When the group closes on any
+    other character (``$((echo a); echo b)``), the construct must be
+    re-read as a ``$(`` command substitution whose body starts with a
+    subshell — NOT_ARITHMETIC. When input ends before the group closes, or
+    exactly at its ``)`` (one more character would decide), the construct
+    is incomplete — UNCLOSED, so line gathering can read more input.
     """
-    # For arithmetic expressions, we need to find ))
-    # but track individual ( and ) for internal balance
-    depth = 0
+    depth = 1  # the group opened by the second '(' of '$(('
     pos = start_pos
+    n = len(input_text)
     in_single_quote = False
     in_double_quote = False
 
-    while pos < len(input_text):
+    while pos < n:
         char = input_text[pos]
 
         # Handle backslash escapes
-        if char == '\\' and pos + 1 < len(input_text):
+        if char == '\\' and pos + 1 < n:
             pos += 2
             continue
 
@@ -213,25 +230,45 @@ def find_balanced_double_parentheses(
             pos += 1
             continue
 
-        # Check for )) first
-        if pos + 1 < len(input_text) and input_text[pos:pos+2] == '))':
-            if depth == 0:
-                # Found the closing )) at the right depth
-                return pos + 2, True
-            else:
-                # This )) but we have unmatched ( so treat as regular )
-                depth -= 1
-                pos += 1  # Only advance by 1 to check the second ) again
-                continue
-
         if char == '(':
             depth += 1
         elif char == ')':
             depth -= 1
+            if depth == 0:
+                if pos + 1 < n and input_text[pos + 1] == ')':
+                    return pos + 2, ArithParenScan.CLOSED
+                if pos + 1 >= n:
+                    return n, ArithParenScan.UNCLOSED
+                return pos + 1, ArithParenScan.NOT_ARITHMETIC
 
         pos += 1
 
-    return pos, False
+    return pos, ArithParenScan.UNCLOSED
+
+
+def find_balanced_double_parentheses(
+    input_text: str,
+    start_pos: int,
+    track_quotes: bool = False
+) -> Tuple[int, bool]:
+    """
+    Find balanced double parentheses for arithmetic expressions.
+
+    Boolean view of :func:`scan_double_paren_arithmetic` for callers that
+    only need "does a valid arithmetic ``))`` close this ``$((``" — both
+    NOT_ARITHMETIC and UNCLOSED map to False.
+
+    Args:
+        input_text: The input string
+        start_pos: Starting position (after opening $(()
+        track_quotes: Whether to ignore parens inside quotes.
+
+    Returns:
+        Tuple of (position_after_close_parens, found_closing)
+    """
+    pos, status = scan_double_paren_arithmetic(
+        input_text, start_pos, track_quotes)
+    return pos, status is ArithParenScan.CLOSED
 
 
 def handle_escape_sequence(
@@ -502,12 +539,15 @@ def validate_brace_expansion(
             pos += 1
             continue
         if input_text.startswith('$((', pos):
-            # Arithmetic expansion: skip to the matching ))
-            end, found = find_balanced_double_parentheses(input_text, pos + 3)
-            if not found:
+            # Arithmetic expansion: skip to the matching )). A `$((` that
+            # cannot be arithmetic falls through to the `$(` branch below
+            # (POSIX disambiguation — see scan_double_paren_arithmetic).
+            end, status = scan_double_paren_arithmetic(input_text, pos + 3)
+            if status is ArithParenScan.UNCLOSED:
                 break
-            pos = end
-            continue
+            if status is ArithParenScan.CLOSED:
+                pos = end
+                continue
         if input_text.startswith('${', pos):
             # Nested parameter expansion: skip its FULL extent so its closing
             # `}` does not end the outer one. This is the ONLY way `}` nests:

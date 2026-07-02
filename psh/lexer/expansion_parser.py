@@ -161,11 +161,18 @@ class ExpansionParser:
     ) -> Tuple[TokenPart, int]:
         """Parse $((...)) arithmetic expansion."""
         # Find the closing ))
-        end_pos, found = pure_helpers.find_balanced_double_parentheses(
+        end_pos, status = pure_helpers.scan_double_paren_arithmetic(
             input_text, start_pos + 3
         )
 
-        if found:
+        if status is pure_helpers.ArithParenScan.NOT_ARITHMETIC:
+            # POSIX disambiguation: a `$((` with no matching `))` is a
+            # command substitution whose body starts with a subshell —
+            # re-read it as `$(` (bash parse.y does the same).
+            return self._parse_command_substitution(
+                input_text, start_pos, quote_context)
+
+        if status is pure_helpers.ArithParenScan.CLOSED:
             value = input_text[start_pos:end_pos]
             expansion_type = 'arithmetic'
         else:

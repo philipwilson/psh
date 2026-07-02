@@ -20,7 +20,9 @@ from typing import List, Optional, Tuple
 
 from .command_position import CMDPOS_KEEPING_WORDS as _CMDPOS_KEEPING_WORDS
 from .pure_helpers import (
+    ArithParenScan,
     find_balanced_double_parentheses,
+    scan_double_paren_arithmetic,
     validate_brace_expansion,
 )
 
@@ -65,6 +67,26 @@ def _skip_until_unescaped(text: str, pos: int, end_char: str) -> int:
     return -1
 
 
+def _skip_dollar_paren(text: str, pos: int, pending_heredocs: list) -> int:
+    """Index just past the ``$((...))``/``$(...)`` at *pos* (the ``$``), or -1.
+
+    Applies the POSIX ``$((`` disambiguation (see
+    :func:`~psh.lexer.pure_helpers.scan_double_paren_arithmetic`): the
+    construct is arithmetic only when a matching ``))`` closes it; a ``$((``
+    that cannot be arithmetic is re-read as a ``$(`` command substitution
+    whose body starts with ``(``. Returns -1 when the construct never closes.
+    """
+    if text.startswith('$((', pos):
+        end, status = scan_double_paren_arithmetic(text, pos + 3)
+        if status is ArithParenScan.CLOSED:
+            return end
+        if status is ArithParenScan.UNCLOSED:
+            return -1
+        # NOT_ARITHMETIC: re-read as a `$(` command substitution
+    end, found = find_command_substitution_end(text, pos + 2, pending_heredocs)
+    return end if found else -1
+
+
 def _skip_double_quotes(text: str, pos: int, pending_heredocs: list) -> int:
     """Index just past the ``"`` closing a double quote opened before *pos*.
 
@@ -79,15 +101,9 @@ def _skip_double_quotes(text: str, pos: int, pending_heredocs: list) -> int:
             pos += 2
         elif c == '"':
             return pos + 1
-        elif text.startswith('$((', pos):
-            end, found = find_balanced_double_parentheses(text, pos + 3)
-            if not found:
-                return -1
-            pos = end
         elif text.startswith('$(', pos):
-            end, found = find_command_substitution_end(
-                text, pos + 2, pending_heredocs)
-            if not found:
+            end = _skip_dollar_paren(text, pos, pending_heredocs)
+            if end == -1:
                 return -1
             pos = end
         elif text.startswith('${', pos):
@@ -223,8 +239,11 @@ def find_command_substitution_end(
       backticks rescanned inside), ANSI-C ``$'...'``, and backslash escapes.
       A quoted or escaped ``)`` never closes anything.
     * **Nested expansions**: ``$(...)`` recurses into this scanner;
-      ``$((...))`` is skipped as arithmetic (same greedy ``$((`` dispatch
-      as the lexer itself); ``${...}`` is skipped brace-aware.
+      ``$((...))`` is skipped as arithmetic only when a matching ``))``
+      closes it, else re-read as a ``$(`` command substitution (the same
+      POSIX disambiguation the lexer applies — see ``_skip_dollar_paren``
+      and ``pure_helpers.scan_double_paren_arithmetic``); ``${...}`` is
+      skipped brace-aware.
     * **Comments**: an unquoted ``#`` at the start of a word hides the rest
       of the line, so ``$(echo hi # not-a-paren )`` stays open until a
       later ``)``.
@@ -484,15 +503,9 @@ class _CmdSubScanner:
             if end == -1:
                 return self.n, False
             self.pos = end
-        elif text.startswith('$((', pos):
-            end, found = find_balanced_double_parentheses(text, pos + 3)
-            if not found:
-                return self.n, False
-            self.pos = end
         elif nxt == '(':
-            end, found = find_command_substitution_end(
-                text, pos + 2, self.pending_heredocs)
-            if not found:
+            end = _skip_dollar_paren(text, pos, self.pending_heredocs)
+            if end == -1:
                 return self.n, False
             self.pos = end
         elif nxt == '{':

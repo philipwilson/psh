@@ -75,8 +75,9 @@ def skip_expansion_region(text: str, pos: int) -> Optional[int]:
     """
     from ..cmdsub_scanner import find_command_substitution_end
     from ..pure_helpers import (
-        find_balanced_double_parentheses,
+        ArithParenScan,
         find_closing_delimiter,
+        scan_double_paren_arithmetic,
     )
     if pos >= len(text):
         return None
@@ -86,8 +87,12 @@ def skip_expansion_region(text: str, pos: int) -> Optional[int]:
         return end + 1 if end != -1 else None
     if ch == '$' and pos + 1 < len(text) and text[pos + 1] in '({':
         if text.startswith('$((', pos):
-            end, found = find_balanced_double_parentheses(text, pos + 3)
-            return end if found else None
+            end, status = scan_double_paren_arithmetic(text, pos + 3)
+            if status is ArithParenScan.CLOSED:
+                return end
+            if status is ArithParenScan.UNCLOSED:
+                return None
+            # NOT_ARITHMETIC: re-read as a `$(` command substitution below
         if text[pos + 1] == '(':
             end, found = find_command_substitution_end(text, pos + 2)
             return end if found else None

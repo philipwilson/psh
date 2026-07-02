@@ -124,6 +124,29 @@ class TestTrickyCmdsubBodies(ConformanceTest):
             'echo $(arr=([0]=q); echo ${arr[0]})')
 
 
+class TestArithCmdsubDisambiguation(ConformanceTest):
+    """POSIX `$((` disambiguation: arithmetic only when a matching `))`
+    closes it; otherwise re-read as `$(` + subshell (reappraisal #15 A4,
+    probe battery tmp/truth_a4.py vs bash 5.2)."""
+
+    def test_subshell_fallback(self):
+        self.assert_identical_behavior('echo $((echo a); echo b)')
+        self.assert_identical_behavior('echo $((echo one two) | wc -w)')
+        self.assert_identical_behavior('x=$((echo u); echo host); echo $x')
+
+    def test_fallback_in_quoted_and_nested_contexts(self):
+        self.assert_identical_behavior('echo "$((echo a); echo b)"')
+        self.assert_identical_behavior('echo $(echo $((echo a); echo b))')
+        self.assert_identical_behavior(
+            'unset v; echo "${v:-$((echo a); echo b)}"')
+
+    def test_matching_close_parens_stay_arithmetic(self):
+        self.assert_identical_behavior('echo $((1+2)) $(( (1+2) * 3 ))')
+        self.assert_identical_behavior('echo $(( $((1+1)) + 1 ))')
+        self.assert_identical_behavior('echo $((ls))')  # unset var -> 0
+        self.assert_identical_behavior('echo $( (echo x) )')
+
+
 class TestCmdsubParseErrorBoundaries(ConformanceTest):
     """Unclosed $(...) at EOF: both shells fail with status 2; the stderr
     wording differs (bash: "unexpected EOF while looking for matching `)'",
