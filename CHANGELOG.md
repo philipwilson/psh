@@ -4,6 +4,35 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.572.0 (2026-07-02) - Fix: command substitution resets `set -e` like bash; `inherit_errexit` shopt added (appraisal #15 Tier 1, Cluster F1)
+- FIX (HIGH). Reappraisal #15 cluster F1 — command-substitution children now
+  clear `set -e` the way bash does, while `( )` subshells and process
+  substitutions keep inheriting it.
+- `$( )` and backtick children no longer abort on the first failing command:
+  `set -e; x=$(false; echo hi)` now captures `hi` and continues (was: aborted
+  before `echo`). The child's `$-` also drops `e` inside the substitution,
+  matching bash.
+- `shopt -s inherit_errexit` (and POSIX mode, `set -o posix`) restores
+  inheritance so the substitution child aborts on the first failure, exactly as
+  bash does. `inherit_errexit` is now a registered SHOPT-category option.
+- The errexit-*suppressed* state of the forking context (an `if`/`while`
+  condition, a non-final `&&`/`||` member, a `!`-negated command) still crosses
+  the fork into the substitution child, matching bash's memory-copy semantics —
+  which also repaired the identical divergence for process substitutions
+  (`if cat <(false; echo hi); then …`).
+- The substitution's exit *status* still drives the parent's errexit: `set -e;
+  x=$(false)` alone aborts, and `exit 5` in the body propagates as rc=5.
+- One chokepoint: `run_child_shell()` in `child_policy.py` gained a
+  `reset_errexit` knob and now seeds `_errexit_suppress_seed` the way
+  `SubshellExecutor` already did; `command_sub.py` opts in, subshells/procsubs
+  do not.
+- Tests: new live-bash conformance matrix in
+  `tests/conformance/bash/test_cmdsub_errexit_conformance.py`; 10 golden cases
+  promoted to `tests/behavioral/golden_cases.yaml` (verified with
+  `--compare-bash`, 91/91 probes match bash 5.2); registry drift-locks and user
+  guide ch17 (strict-mode note + shopt lists) updated. No deliberate divergences
+  remain in this area.
+
 ## 0.571.0 (2026-07-02) - Fix: combinator parser parity — `time` keyword, live heredocs, and-or backgrounding (appraisal #15 Tier 1, Cluster L)
 - FIX (HIGH). Reappraisal #15 cluster L — the educational combinator parser
   regained parity with the recursive-descent (RD) parser on three fronts.
