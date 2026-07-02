@@ -41,13 +41,17 @@ deliberate asymmetries between the sets, and worked examples, see
 from .token_types import TokenType
 
 # Operator token types after which the next token is at command position.
-# Shared verbatim by the lexer pass and the normalizer.
+# Shared verbatim by the lexer pass and the normalizer. `&` and `|&` belong
+# here just like `;` and `|`: bash accepts `true & if …` and `a |& while …`
+# (the cmdsub scanner already treats both characters this way).
 STATEMENT_SEPARATORS = frozenset({
     TokenType.SEMICOLON,
+    TokenType.AMPERSAND,
     TokenType.NEWLINE,
     TokenType.AND_AND,
     TokenType.OR_OR,
     TokenType.PIPE,
+    TokenType.PIPE_AND,
 })
 
 # Case-item terminators (``;;``, ``;&``, ``&;``) also return to command

@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.569.0 (2026-07-02) - Fix: `&` and `|&` set command position (appraisal #15 Tier 1, Cluster A2)
+- FIX (HIGH). Reappraisal #15 cluster A2 — reserved words, `[[`, and `!` lost
+  command position after `&`: `true & if true; then echo B; fi` was a syntax
+  error (rc=2) where bash runs it, and likewise after `|&`. Added `AMPERSAND`
+  and the sibling-defect `PIPE_AND` to the shared `STATEMENT_SEPARATORS` set
+  consumed by both broken command-position machines — the lexer pass and the
+  keyword normalizer (the cmdsub scanner already treated `&` as a separator);
+  the transition tables in `docs/architecture/command_position.md` were
+  updated to match.
+- Composed with the v0.560.0 statement-boundary guard this also unlocks `&`
+  directly before a closing construct keyword: `{ echo a & }`,
+  `if ...; then cmd & fi`, `while ...; do cmd & done`, and
+  `case x in x) cmd & esac` now all parse and background the command.
+- Verified against bash probes; pinned by a lexer unit suite
+  (`tests/unit/lexer/test_command_position_after_amp.py`), an integration
+  suite (`tests/integration/parsing/test_amp_command_position.py`), and 9
+  golden cases (including `true & echo if`, where `if` stays an argument).
+
 ## 0.568.0 (2026-07-02) - Fix: trap accepts POSIX numeric forms and every platform signal name (appraisal #15 Tier 1, Cluster F2)
 - FIX (HIGH). Reappraisal #15 cluster F2 — `trap` signal-spec parsing now
   routes through `psh/utils/signal_utils` (the same tables `trap -l`/`kill -l`
