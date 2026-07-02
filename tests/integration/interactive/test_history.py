@@ -326,18 +326,6 @@ class TestHistoryNavigation:
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_up_arrow_navigation(self):
-        """Test up arrow key for history navigation."""
-        # This test would require actual terminal interaction
-        # Difficult to test with subprocess approach
-        pass
-
-    def test_ctrl_r_search(self):
-        """Test Ctrl-R reverse search."""
-        # This test would require actual terminal interaction
-        # Difficult to test with subprocess approach
-        pass
-
     def test_history_search_command(self):
         """Test history search functionality if available as command."""
         commands = [

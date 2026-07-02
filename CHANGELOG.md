@@ -4,6 +4,23 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.580.0 (2026-07-03) - Test: tighten conformance meta-test + clear no-op debt; completes Tier-1 campaign (appraisal #15 Tier 1, Cluster M)
+- TEST-INFRASTRUCTURE (Cluster M). Completes the reappraisal #15 Tier-1 fix
+  campaign (releases v0.560–v0.580).
+- **M1 — conformance-claims meta-test hardened.** Replaced the substring matcher
+  in `tests/conformance/test_claims_have_tests.py` with an AST-based one that
+  only counts a user-guide "Full support" claim as proven when its mapped test
+  genuinely asserts about the feature. All 34 prior markers were vacuous —
+  class-name or assert-free substring matches that proved nothing. Re-pointed
+  every one of the 37 `CLAIM_TESTS` mappings at a test that actually exercises
+  the claim, and wrote new bash-verified conformance tests for constructs that
+  had no real coverage: `disown`, `set -x`/`set -v` (xtrace/verbose), subshell
+  isolation, and the `pushd`/`popd`/`dirs` directory stack. Broadened the Notes
+  matcher to accept the `Full support (incl. ...)` form.
+- **M2 — no-op test debt cleared.** Implemented 16 placeholder tests as genuine
+  pins and deleted 14 dead stubs across the unit and integration trees; zero
+  pure placeholder tests remain.
+
 ## 0.579.0 (2026-07-02) - Fix: run EXIT trap on untrapped fatal-signal death (appraisal #15 Tier 1, Cluster F3)
 - FIX (HIGH). Reappraisal #15 cluster F3. A non-interactive psh dying from an
   untrapped fatal signal (SIGTERM/SIGHUP/SIGINT/SIGQUIT) now runs its EXIT trap

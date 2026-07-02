@@ -99,3 +99,23 @@ class TestJobControlConformance(ConformanceTest):
     def test_dollar_dollar_stable_in_subshell_and_cmdsub(self):
         self.assert_identical_behavior(
             'a=$$; b=$(echo $$); (echo "eq:$([ "$a" = "$b" ] && echo yes)") ')
+
+    # disown: a disowned job is dropped from the job table so `jobs` no
+    # longer lists it. The background sleeps redirect their own I/O so they
+    # do not hold the capture pipe open after the shell exits.
+    def test_disown_by_jobspec_removes_job(self):
+        self.assert_identical_behavior(
+            'sleep 3 >/dev/null 2>&1 & disown %1; jobs; echo done')
+
+    def test_disown_no_arg_removes_current_job(self):
+        self.assert_identical_behavior(
+            'sleep 3 >/dev/null 2>&1 & disown; jobs; echo done')
+
+    def test_disown_all_removes_every_job(self):
+        self.assert_identical_behavior(
+            'sleep 3 >/dev/null 2>&1 & disown -a; jobs; echo done')
+
+    def test_disown_h_keeps_job_and_succeeds(self):
+        # -h marks the job to skip SIGHUP but leaves it in the table.
+        self.assert_identical_behavior(
+            'sleep 3 >/dev/null 2>&1 & disown -h %1; echo "rc=$?"')

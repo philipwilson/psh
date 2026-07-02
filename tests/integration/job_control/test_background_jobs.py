@@ -153,22 +153,11 @@ class TestJobControl:
         # fg_result = shell.run_command('fg %1')
         # This test is complex because fg blocks, needs special handling
 
-    def test_background_command(self, shell):
-        """Test sending stopped job to background with bg."""
-        # This test would require job suspension which is complex to test
-        # bg_result = shell.run_command('bg %1')
-        pass
-
     def test_job_reference_by_number(self, shell):
-        """Test referencing jobs by number (%1, %2, etc.)."""
-        # Start background jobs
-        shell.run_command('sleep 0.3 &')
-        shell.run_command('sleep 0.3 &')
-
-        # Test job references in other commands
-        # Note: This depends on kill command supporting job references
-        # kill_result = shell.run_command('kill %1')
-        # This might not be implemented yet
+        """A running job can be referenced with %N (here via `kill -0`)."""
+        shell.run_command('sleep 3 &')
+        # kill -0 only checks that the job/pid is signalable; %1 must resolve.
+        assert shell.run_command('kill -0 %1') == 0
 
 
 class TestJobCompletion:
@@ -264,10 +253,8 @@ class TestJobControlErrorHandling:
     """Test error handling in job control scenarios."""
 
     def test_invalid_job_reference(self, shell):
-        """Test handling of invalid job references."""
-        # Try to reference non-existent job
-        # This might not be implemented yet, so we'll mark as xfail
-        pass
+        """Referencing a non-existent job is an error (non-zero exit)."""
+        assert shell.run_command('kill %99') != 0
 
     def test_job_control_with_errexit(self, shell):
         """Test job control interaction with set -e."""
@@ -303,23 +290,6 @@ class TestJobControlErrorHandling:
 
 # Test fixtures and helper functions
 # Shell fixture provided by conftest.py
-
-
-# Integration with signal handling (will be expanded in signal tests)
-class TestJobControlSignalIntegration:
-    """Test basic integration between job control and signals."""
-
-    def test_background_job_signal_isolation(self, shell):
-        """Test that signals to shell don't affect background jobs."""
-        # This test would require sending signals to the shell
-        # while background jobs are running
-        pass
-
-    def test_signal_delivery_to_job_group(self, shell):
-        """Test that signals are delivered to entire job groups."""
-        # Start a job that creates child processes
-        # Send signal and verify all processes in group receive it
-        pass
 
 
 class TestSpecialBuiltinBackground:

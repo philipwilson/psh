@@ -55,10 +55,10 @@ class TestBasicArithmetic:
         assert captured.out.strip() == "1"
 
     def test_power(self, shell, capsys):
-        """Test power operation if supported."""
-        # Note: ** might not be supported in all shells
+        """Test the ** power operator."""
         shell.run_command('echo $((2 ** 3))')
-        capsys.readouterr()
+        captured = capsys.readouterr()
+        assert captured.out.strip() == '8'
         # Should be 8 if supported, or might be an error
 
     def test_negative_numbers(self, shell, capsys):

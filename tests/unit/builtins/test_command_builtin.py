@@ -128,10 +128,12 @@ def test_command_with_environment(shell, capsys):
     # Environment variable should be available to the command
 
 
-def test_command_help(shell):
-    """Test command builtin help."""
-    shell.run_command('command --help')
-    # May succeed or fail depending on implementation
+def test_command_help(shell, capsys):
+    """`command --help` is a usage error (exit 2) and prints usage."""
+    result = shell.run_command('command --help')
+    assert result == 2
+    captured = capsys.readouterr()
+    assert 'usage: command' in captured.out + captured.err
 
 
 class TestCommandVLookup:

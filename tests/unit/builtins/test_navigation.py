@@ -198,17 +198,19 @@ class TestPushdPopdDirs:
         assert captured.out.strip() == original
 
     def test_pushd_rotate(self, shell, capsys):
-        """Test pushd with rotation."""
-        # Build stack
+        """pushd +N rotates the stack, making another entry the current dir."""
+        # Build stack (top -> bottom): /var /usr /tmp
         shell.run_command('cd /tmp')
         shell.run_command('pushd /usr')
         shell.run_command('pushd /var')
+        capsys.readouterr()  # discard the stack echoes
 
-        # Rotate stack
+        # +1 brings the second entry (/usr) to the top.
         shell.run_command('pushd +1')
-        shell.run_command('pwd')
         capsys.readouterr()
-        # Should have rotated to different directory
+        shell.run_command('pwd')
+        captured = capsys.readouterr()
+        assert captured.out.strip() == '/usr'
 
     def test_dirs_display(self, shell, capsys):
         """Test dirs command display."""

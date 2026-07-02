@@ -154,42 +154,36 @@ def test_trap_print_specific_signal(shell, capsys):
     # Should show the trap if -p option is supported
 
 
-def test_trap_help(shell):
-    """Test trap help option."""
-    shell.run_command('trap --help')
-    # May or may not be implemented
+def test_trap_help(shell, capsys):
+    """trap --help prints usage and returns 2 (usage error)."""
+    result = shell.run_command('trap --help')
+    assert result == 2
+    captured = capsys.readouterr()
+    assert 'usage: trap' in captured.out + captured.err
 
 
 def test_trap_error_cases(shell):
-    """Test various trap error cases."""
-    # Too few arguments
-    shell.run_command('trap')
-    # Should succeed (shows current traps) or fail
-
-    # Invalid option
-    shell.run_command('trap -xyz')
-    # Should fail
+    """An unknown option is a usage error (exit 2)."""
+    assert shell.run_command('trap -xyz') == 2
 
 
 @pytest.mark.skipif(os.name == 'nt', reason="Unix signal handling test")
 def test_trap_unix_signals(shell):
-    """Test trap with Unix-specific signals."""
-    # Test with SIGUSR1 if available
-    shell.run_command('trap "echo usr1" SIGUSR1')
-    # Should work on Unix systems
+    """Test trap with a Unix-specific signal name."""
+    assert shell.run_command('trap "echo usr1" SIGUSR1') == 0
 
 
 def test_trap_persistence(shell, capsys):
-    """Test that traps persist across commands."""
+    """A trap set earlier is still listed after running another command."""
     shell.run_command('trap "echo persistent" TERM')
-
-    # Execute another command
     shell.run_command('echo "other command"')
+    capsys.readouterr()  # discard the echo output
 
-    # Check that trap is still there
-    shell.run_command('trap')
-    capsys.readouterr()
-    # Should still show the trap
+    result = shell.run_command('trap')
+    assert result == 0
+    captured = capsys.readouterr()
+    assert 'persistent' in captured.out
+    assert 'TERM' in captured.out
 
 
 def test_trap_in_subshell(shell):

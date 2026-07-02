@@ -104,21 +104,6 @@ class TestTrapCommand:
 class TestSignalDelivery:
     """Test signal delivery and handling in different contexts."""
 
-    def test_signal_to_shell_process(self, shell):
-        """Test delivering signals to the shell process itself."""
-        # This test requires external process management
-        # Would need to start PSH in subprocess and send signals to it
-        pass
-
-    def test_signal_propagation_in_pipeline(self, shell):
-        """Test how signals propagate through pipeline components."""
-        # Set up a trap
-        shell.run_command('trap "echo pipeline signal" USR1')
-
-        # Create a pipeline that can receive signals
-        # This is complex to test as it requires external signal delivery
-        pass
-
     def test_trap_execution_context(self, shell):
         """Test that traps execute in correct context."""
         # Set a variable
@@ -176,12 +161,6 @@ class TestSignalHandlingInSubshells:
         assert result.returncode == 0
         assert result.stdout == ("trap -- 'echo subshell trap' SIGUSR1\n"
                                  "trap -- 'echo parent trap' SIGUSR1\n")
-
-    def test_signal_delivery_to_subshell_group(self, shell):
-        """Test signal delivery to subshell process groups."""
-        # This would test that signals sent to a subshell
-        # are delivered to all processes in the subshell's process group
-        pass
 
 
 class TestSignalErrorHandling:
@@ -250,40 +229,21 @@ class TestSignalShellOptionInteraction:
 
         # Trap commands should be subject to xtrace when executed
 
-    def test_signal_during_pipefail(self, shell):
-        """Test signal handling with set -o pipefail."""
-        # Enable pipefail
-        shell.run_command('set -o pipefail')
-
-        # Set trap
-        shell.run_command('trap "echo pipefail trap" USR1')
-
-        # Signal handling should work correctly with pipefail
-
 
 class TestComplexSignalScenarios:
     """Test complex signal handling scenarios."""
 
     def test_nested_trap_execution(self, shell):
-        """Test trap that triggers another trap."""
-        # Set up nested traps
-        shell.run_command('trap "echo first trap; kill -USR2 $$" USR1')
-        shell.run_command('trap "echo second trap" USR2')
-
-        # This would require external signal delivery to test properly
-
-    def test_trap_during_command_execution(self, shell):
-        """Test signal delivery during command execution."""
-        # Set trap
-        shell.run_command('trap "echo interrupted" USR1')
-
-        # This would test signal delivery while a command is running
-        # Requires external process control
-
-    def test_signal_masking_during_execution(self, shell):
-        """Test that certain signals are masked during critical operations."""
-        # This would test that signals don't interrupt critical shell operations
-        pass
+        """A USR1 trap that signals USR2 fires the USR2 trap in turn."""
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c',
+             'trap "echo first trap; kill -USR2 $$" USR1; '
+             'trap "echo second trap" USR2; '
+             'kill -USR1 $$; echo done'],
+            capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0
+        assert result.stdout == "first trap\nsecond trap\ndone\n"
 
     def test_trap_cleanup_on_exit(self, shell):
         """Test comprehensive cleanup using EXIT trap."""
@@ -316,15 +276,6 @@ class TestJobControlSignalIntegration:
 
         # Send signal to job (kill %1)
         # This depends on kill command supporting job references
-        pass
-
-    def test_signal_to_process_group(self, shell):
-        """Test signal delivery to entire process groups."""
-        # Start pipeline in background
-        shell.run_command('sleep 10 | cat &')
-
-        # Signal should be delivered to entire pipeline
-        # This requires process group management
         pass
 
     def test_trap_with_background_jobs(self, shell):
