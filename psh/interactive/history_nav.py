@@ -148,10 +148,11 @@ class HistorySearch:
     - any other control character accepts AND asks the editor to
       re-dispatch it (``redispatch=True``).
 
-    The search logic (including its historical quirks — re-searching
-    always starts strictly before/after the current position, so
-    narrowing never re-checks the entry it is sitting on) is preserved
-    verbatim from the pre-R3 LineEditor.
+    Re-search semantics match readline: EXTENDING or shortening the
+    pattern re-searches from the current entry INCLUSIVE (if the entry
+    we are sitting on still matches the refined pattern, we stay on it);
+    only an explicit Ctrl-R/Ctrl-S step moves off the current entry to
+    the next match.
     """
 
     def __init__(self, history: List[str], start_pos: int,
@@ -210,15 +211,24 @@ class HistorySearch:
     # Internals
     # ------------------------------------------------------------------
 
-    def _perform(self) -> SearchState:
-        """Search for the pattern strictly before (backward) or after
-        (forward) the current position; on failure the position is
-        restored and the failed- prompt shown."""
+    def _perform(self, inclusive: bool = True) -> SearchState:
+        """Search for the pattern in the current direction; on failure the
+        position is restored and the failed- prompt shown.
+
+        A pattern extension/shortening (``inclusive=True``) re-checks the
+        entry we are sitting on first — so refining a pattern that still
+        matches keeps us on it, as readline does. An explicit Ctrl-R/Ctrl-S
+        step passes ``inclusive=False`` to move off the current entry.
+        """
         start = self.pos
         if self.direction < 0:
-            candidates = range(self.pos - 1, -1, -1)
+            # pos may be len(history) (the bottom) before any match lands;
+            # clamp so the first backward search checks the newest entry.
+            first = min(self.pos, len(self.history) - 1) if inclusive else self.pos - 1
+            candidates = range(first, -1, -1)
         else:
-            candidates = range(self.pos + 1, len(self.history))
+            first = self.pos if inclusive else self.pos + 1
+            candidates = range(first, len(self.history))
         for i in candidates:
             if self.pattern in self.history[i]:
                 self.pos = i
@@ -227,17 +237,10 @@ class HistorySearch:
         return self._state(failed=True)
 
     def _next(self, direction: int) -> SearchState:
-        """Continue the search one match further in *direction*."""
+        """Continue the search one match further in *direction* (Ctrl-R /
+        Ctrl-S), exclusive of the current entry."""
         self.direction = direction
-        if direction < 0 and self.pos > 0:
-            self.pos -= 1
-        elif direction > 0 and self.pos < len(self.history) - 1:
-            self.pos += 1
-        else:
-            # At the boundary: nothing moves, nothing repaints (but the
-            # direction change sticks, as it always has).
-            return self._state(repaint=False)
-        return self._perform()
+        return self._perform(inclusive=False)
 
     def _state(self, failed: bool = False, repaint: bool = True) -> SearchState:
         """The active-search render state: prompt text plus the current

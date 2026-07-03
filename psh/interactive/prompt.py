@@ -57,7 +57,7 @@ class PromptExpander:
         """
         return ''.join(text for text, _ in self.expand_prompt_segments(prompt))
 
-    def expand_full(self, prompt: str) -> str:
+    def expand_full(self, prompt: str, readline_markers: bool = True) -> str:
         """Full prompt expansion: backslash escapes, THEN parameter / command /
         arithmetic expansion (bash's default ``promptvars``), with escape output
         protected from the second pass.
@@ -67,8 +67,14 @@ class PromptExpander:
         escape's value must not be re-interpreted — so each escape-produced
         segment is replaced by a NUL sentinel before the ``$``-pass and restored
         after (verified against bash via ``${var@P}``).
+
+        ``readline_markers`` controls the ``\\[``/``\\]`` escapes: True (PS1/PS2
+        rendering) emits the ``\\001``/``\\002`` non-printing delimiters the
+        renderer needs for width math; False (``${var@P}``) drops them, since
+        bash's ``@P`` yields a plain string with the brackets removed (octal
+        ``\\001`` and literal markers already in the value are untouched).
         """
-        segments = self.expand_prompt_segments(prompt)
+        segments = self.expand_prompt_segments(prompt, readline_markers=readline_markers)
 
         protected: dict = {}
         parts = []
@@ -93,7 +99,7 @@ class PromptExpander:
             combined = combined.replace(key, text)
         return combined
 
-    def expand_prompt_segments(self, prompt: str):
+    def expand_prompt_segments(self, prompt: str, readline_markers: bool = True):
         """Decode prompt escapes into ``(text, from_escape)`` segments.
 
         ``from_escape`` is True for text produced by a ``\\``-escape (``\\w``,
@@ -118,7 +124,7 @@ class PromptExpander:
         while i < len(prompt):
             if prompt[i] == '\\' and i + 1 < len(prompt):
                 next_char = prompt[i + 1]
-                expanded = self._expand_escape(next_char)
+                expanded = self._expand_escape(next_char, readline_markers=readline_markers)
                 if expanded is not None:
                     flush_raw()
                     segments.append((expanded, True))
@@ -141,8 +147,12 @@ class PromptExpander:
         flush_raw()
         return segments
 
-    def _expand_escape(self, char: str) -> Optional[str]:
-        """Expand a single escape character."""
+    def _expand_escape(self, char: str, readline_markers: bool = True) -> Optional[str]:
+        """Expand a single escape character.
+
+        With ``readline_markers`` off (``${var@P}``), ``\\[``/``\\]`` decode to
+        nothing rather than the ``\\001``/``\\002`` non-printing delimiters.
+        """
         expansions = {
             'a': '\a',  # ASCII bell
             'd': self._get_date(),
@@ -165,8 +175,8 @@ class PromptExpander:
             '#': self._get_command_number(),
             '$': '#' if os.geteuid() == 0 else '$',
             '\\': '\\',
-            '[': '\001',  # Start non-printing sequence (readline)
-            ']': '\002',  # End non-printing sequence (readline)
+            '[': '\001' if readline_markers else '',  # Start non-printing (readline)
+            ']': '\002' if readline_markers else '',  # End non-printing (readline)
         }
 
         return expansions.get(char)

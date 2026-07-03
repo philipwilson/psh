@@ -77,6 +77,22 @@ class TestPromptTransform:
         shell.run_command(r'x="\u"; echo "${x@P}"')
         assert capsys.readouterr().out.strip() == getpass.getuser()
 
+    def test_readline_bracket_markers_stripped(self, shell, capsys):
+        # reappraisal #16 MED: @P yields a plain string, so \[ \] drop
+        # their readline non-printing markers — bash emits the raw escape
+        # sequence with no \001/\002 (they are only meaningful when the
+        # string is fed to readline as a prompt, which @P is not).
+        shell.run_command(r"""x='\[\e[32m\]hi\[\e[0m\]'; printf '%s' "${x@P}" """)
+        out = capsys.readouterr().out
+        assert '\x01' not in out and '\x02' not in out
+        assert out == '\x1b[32mhi\x1b[0m'
+
+    def test_octal_control_chars_kept_by_atP(self, shell, capsys):
+        # Octal \001/\002 escapes are the user's literal bytes — unlike
+        # \[ \], @P preserves them (bash).
+        shell.run_command(r"""x='\001a\002'; printf '%s' "${x@P}" """)
+        assert capsys.readouterr().out == '\x01a\x02'
+
 
 class TestAttributeTransforms:
     """${var@a} (flags) and ${var@A} (assignment form)."""
@@ -142,6 +158,9 @@ class TestBashParity:
         'declare -i n=42; echo "${n@A} ${n@a}"',
         'a=(one "two three"); echo "${a[@]@Q}"',
         'set -- p "q r"; echo "${@@Q}"',
+        # @P drops \[ \] readline markers but keeps octal control bytes.
+        r"""x='\[\e[1m\]hi\[\e[0m\]'; printf '%s' "${x@P}" """,
+        r"""x='\001a\002'; printf '%s' "${x@P}" """,
     ])
     def test_matches_bash(self, script):
         import subprocess

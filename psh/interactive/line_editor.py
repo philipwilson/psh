@@ -172,18 +172,21 @@ class LineEditor:
                 self.key_handler.mode = EditMode.VI_INSERT
             self.vi_repeat_count = ""
 
-        # A fresh decoder per read: characters left buffered by the
-        # previous read (e.g. the tail of a paste) are deliberately
-        # discarded, as before. The ESC disambiguation policy is a
-        # decoder TIMING knob set per mode here — vi probes 50 ms
-        # because ESC is a key of its own; emacs blocks because ESC is
-        # only ever a Meta/sequence prefix. What the resulting events
-        # MEAN stays mode policy in _dispatch_escape_event.
+        # A fresh decoder per read, but characters the previous read
+        # buffered without consuming (the tail of a multi-line paste)
+        # are carried over so their commands run in turn, as readline
+        # does — rather than being dropped. The ESC disambiguation
+        # policy is a decoder TIMING knob set per mode here — vi probes
+        # 50 ms because ESC is a key of its own; emacs blocks because
+        # ESC is only ever a Meta/sequence prefix. What the resulting
+        # events MEAN stays mode policy in _dispatch_escape_event.
+        carryover = self.decoder.take_buffered() if self.decoder is not None else []
         self.decoder = KeyDecoder(
             sys.stdin.fileno(),
             sigwinch_fd=sigwinch_fd if sigwinch_fd >= 0 else None,
             esc_timeout=ESC_FOLLOWER_TIMEOUT if self.edit_mode == 'vi' else None,
         )
+        self.decoder.seed(carryover)
 
         with self.terminal:
             while True:

@@ -320,9 +320,11 @@ class OperatorOpsMixin(_Base):
         if op == 'E':
             return self._ansi_c_expand(value)
         if op == 'P':
-            # Full prompt expansion (escapes + $-expansion), same as PS1/PS2.
+            # Full prompt expansion (escapes + $-expansion), same as PS1/PS2 —
+            # but @P yields a plain string, so \[ \] drop their readline
+            # non-printing markers rather than emitting \001/\002 (bash).
             from ..interactive.prompt import PromptExpander
-            return PromptExpander(self.shell).expand_full(value)
+            return PromptExpander(self.shell).expand_full(value, readline_markers=False)
         if op == 'a':
             return self._var_attr_flags(var_name)
         if op == 'A':

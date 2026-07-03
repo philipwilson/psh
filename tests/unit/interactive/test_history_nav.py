@@ -1,10 +1,12 @@
 """Unit tests for HistoryNavigator and HistorySearch (history_nav.py).
 
 Both classes are pure against an injected history list — no tty, no
-renderer, no editor — so these tests exercise them directly. The
-behaviors pinned here (including the search machine's historical
-quirks) are preserved verbatim from the pre-R3 LineEditor; the editor
+renderer, no editor — so these tests exercise them directly. The editor
 applies the returned text / SearchState via EditBuffer + LineRenderer.
+The reverse-search behaviors pinned here match readline/bash 5.2:
+refining a pattern re-searches from the current entry INCLUSIVE (a still-
+matching entry is kept), while an explicit Ctrl-R/Ctrl-S steps off it
+(reappraisal #16 H8b).
 """
 
 from psh.interactive.history_nav import HistoryNavigator, HistorySearch
@@ -111,14 +113,11 @@ class TestHistorySearch:
         s = self.search()
         for ch in 'findme':
             state = s.feed(ch)
-        # The first character landed on the match; later characters
-        # re-search strictly earlier entries and find nothing (failed-
-        # prompt), but the matched entry stays displayed with the
-        # cursor past the full pattern — exactly the pre-R3 behavior
-        # (the PTY test's 'bck-i-search' expectation matches both
-        # prompt variants).
+        # Every character re-searches from the current entry INCLUSIVE, so
+        # extending the pattern while the entry still matches keeps us on
+        # it with a non-failed prompt (readline/bash).
         assert state.status == 'active'
-        assert state.prompt == "(failed-bck-i-search)`findme': "
+        assert state.prompt == "(bck-i-search)`findme': "
         assert state.line == 'echo findme_16'
         assert state.cursor == len('echo findme')
         assert state.history_pos == 0
@@ -131,20 +130,43 @@ class TestHistorySearch:
         assert state.history_pos == len(self.HISTORY)
         assert state.line is None
 
-    def test_narrowing_never_rechecks_the_current_entry(self):
-        # Pinned quirk: re-search starts strictly before the current
-        # position, so extending the pattern while sitting on the only
-        # match reports failed- even though the entry still matches.
+    def test_narrowing_rechecks_current_entry_inclusive(self):
+        # reappraisal #16 H8b: re-search is INCLUSIVE of the current
+        # position, so extending the pattern while sitting on a match that
+        # still matches keeps us on it with a non-failed prompt (bash).
         s = self.search(['echo match'])
         s.feed('m')
         state = s.feed('a')
-        assert state.prompt == "(failed-bck-i-search)`ma': "
-        assert state.line == 'echo match'   # still displayed
+        assert state.prompt == "(bck-i-search)`ma': "
+        assert state.line == 'echo match'
+        assert state.history_pos == 0
+
+    def test_extension_stays_on_current_match_h8b(self):
+        # reappraisal #16 H8b: refining a pattern that STILL matches the
+        # entry we are on must keep us there, not jump to an older match.
+        # older 'echo foo bar' (0), newer 'echo foo baz' (1).
+        s = self.search(['echo foo bar', 'echo foo baz'])
+        for ch in 'foo':
+            state = s.feed(ch)
+        assert state.line == 'echo foo baz'   # newest match, not the older
+        assert state.history_pos == 1
+        assert state.prompt == "(bck-i-search)`foo': "
+
+    def test_ctrl_r_steps_off_current_match_to_older(self):
+        # An explicit Ctrl-R moves off the current entry (even though it
+        # still matches) to the next older match; a further Ctrl-R past
+        # the last match shows the failed- prompt.
+        s = self.search(['echo foo bar', 'echo foo baz'])
+        for ch in 'foo':
+            s.feed(ch)                # on 'echo foo baz' (pos 1)
+        state = s.feed('\x12')        # Ctrl-R: step to the older match
+        assert state.line == 'echo foo bar'
+        assert state.history_pos == 0
+        state = s.feed('\x12')        # Ctrl-R: no more matches
+        assert state.prompt == "(failed-bck-i-search)`foo': "
         assert state.history_pos == 0
 
     def test_repeated_ctrl_r_moves_to_earlier_match(self):
-        # Matches at 0 and 2 (the gap at 1 sidesteps the historical
-        # extra-decrement in _next, preserved from the old editor).
         s = self.search(['echo x a', 'other', 'echo x b'])
         state = s.feed('x')
         assert state.history_pos == 2
@@ -152,12 +174,15 @@ class TestHistorySearch:
         assert state.history_pos == 0
         assert state.line == 'echo x a'
 
-    def test_ctrl_r_at_top_boundary_does_not_repaint(self):
+    def test_ctrl_r_past_oldest_match_shows_failed(self):
+        # Stepping past the oldest match repaints the failed- prompt and
+        # stays on the last match (bash beeps + shows failed-reverse).
         s = self.search(['echo x'])
         s.feed('x')                   # match at 0
-        state = s.feed('\x12')        # already at the oldest entry
+        state = s.feed('\x12')        # step past the oldest entry
         assert state.status == 'active'
-        assert not state.repaint
+        assert state.repaint
+        assert state.prompt == "(failed-bck-i-search)`x': "
         assert state.history_pos == 0
 
     def test_ctrl_s_switches_to_forward_prompt(self):
@@ -198,10 +223,12 @@ class TestHistorySearch:
         s = self.search(['echo a', 'echo b'])
         s.feed('e')                   # matches 'echo b' (pos 1)
         s.feed('z')                   # 'ez': failed, still at pos 1
-        state = s.feed('\x7f')        # back to 'e': re-search moves on
+        state = s.feed('\x7f')        # back to 'e': inclusive re-search
+        # 'echo b' still matches 'e', so shortening keeps us on it (bash
+        # keeps the current entry on a pattern change).
         assert state.prompt == "(bck-i-search)`e': "
-        assert state.line == 'echo a'
-        assert state.history_pos == 0
+        assert state.line == 'echo b'
+        assert state.history_pos == 1
 
     def test_backspace_on_empty_pattern_does_not_repaint(self):
         s = self.search()
