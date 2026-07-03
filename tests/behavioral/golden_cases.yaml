@@ -278,6 +278,46 @@
   stderr: ""
   exit_code: 0
 
+# IFS is seeded as a REAL variable (default <space><tab><newline>), so it can
+# be read, tested, and round-tripped (H3, reappraisal #16).
+- name: ifs_default_length
+  command: 'echo ${#IFS}'
+  stdout: "3\n"
+  stderr: ""
+  exit_code: 0
+
+# The seeded default really contains tab and newline (not three spaces):
+# splitting on default IFS breaks a tab/newline-delimited value into 3 fields.
+- name: ifs_default_splits_tab_and_newline
+  command: 'x=$(printf "a\tb\nc"); set -- $x; echo $#'
+  stdout: "3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: ifs_plus_set_test
+  command: 'echo "${IFS+set}"'
+  stdout: "set\n"
+  stderr: ""
+  exit_code: 0
+
+- name: ifs_save_restore_idiom
+  command: 'OLD=$IFS; IFS=,; v="a,b,c"; set -- $v; echo $2; IFS=$OLD; x="p q r"; for w in $x; do echo "[$w]"; done'
+  stdout: "b\n[p]\n[q]\n[r]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: ifs_roundtrip_restores_default_split
+  command: 'OLD=$IFS; IFS=:; IFS=$OLD; set -- $(echo "a b c"); echo $#'
+  stdout: "3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: ifs_unset_falls_back_to_whitespace
+  command: 'unset IFS; set -- $(echo "p q r"); echo $#; echo $2'
+  stdout: "3\nq\n"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # GLOBBING / PATHNAME EXPANSION
 # =============================================================================

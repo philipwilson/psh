@@ -85,6 +85,17 @@ class ShellState:
         if 'PWD' not in self.env:
             self.scope_manager.set_variable('PWD', os.getcwd(), attributes=VarAttributes.EXPORT, local=False)
 
+        # Seed IFS to the default <space><tab><newline> as a REAL variable so
+        # ``$IFS`` expands, ``declare -p IFS`` prints it, and the save/restore
+        # idiom (``OLD=$IFS; IFS=,; ...; IFS=$OLD``) round-trips. bash resets
+        # IFS's VALUE to the default at startup regardless of any inherited
+        # value, but keeps the export attribute if it was inherited exported —
+        # passing no attributes preserves an imported EXPORT (declare -x) while
+        # replacing the value (declare -- otherwise). Word splitting still uses
+        # the same default when IFS is UNSET (get_variable's fallback arg), so
+        # ``unset IFS`` keeps bash's whitespace splitting.
+        self.scope_manager.set_variable('IFS', ' \t\n')
+
         # Positional parameters and script info
         self.positional_params = args if args else []
         self.script_name = script_name or "psh"
