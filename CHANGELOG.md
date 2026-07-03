@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.593.0 (2026-07-03) - Fix: core/options bash divergences (reappraisal #16 Tier 2 core/options cluster)
+- FIX. Reappraisal #16 Tier 2, core/options cluster: seven bash-5.2
+  divergences in the shell-state / options surface, each probe-pinned via a
+  bash-vs-psh truth table and captured as golden cases (verified with
+  `--compare-bash`).
+- **`declare -g NAME=val` now forces the GLOBAL scope past a same-named local
+  shadow** instead of writing the local. `ScopeManager.set_variable` gained a
+  `global_scope` flag that targets `scope_stack[0]` for the value write and the
+  existence / readonly / attribute-merge checks. Covers `-g`, `-gi`, `-gx`, and
+  the `-gA` / `-ga` array forms, plus the bare-name attribute path
+  (`declare -gr`/`-gx NAME`) via a global-only lookup in
+  apply_/remove_attribute. The export->env observer reflects the innermost
+  EXPORTED instance, so `declare -gx x` under a non-exported local keeps the
+  global's env entry.
+- **`set +o` output is now reusable.** Bare `set +o` had dumped every registry
+  option, so `eval "$(set +o)"` spewed "invalid option name". It now emits only
+  reusable SET-category boolean names; underscore-named SET options round-trip.
+- **Readonly-declaration errors are one clean bash-word-order message** instead
+  of being double/triple-wrapped through the declaration builtins. Still
+  non-fatal — the command list keeps running.
+- **`local -` implemented**: it snapshots the SET-category options and edit mode
+  onto the function scope and restores them on function return (options changed
+  via `set` in the body revert; `shopt` does not).
+- **`set -o` lists `emacs` and `vi` once each** (the separate edit-mode block
+  that printed them a second time with clashing values is gone).
+- **INTERNAL-category options (`interactive`, `stdin_mode`, `command_mode`) are
+  rejected by name** — `set -o interactive` no longer corrupts `$-` with a
+  spurious `i`.
+- **An ignored (`trap '' SIG`) disposition is inherited across `exec` by
+  external children (POSIX)**: reset_child_signals keeps a parent's `SIG_IGN`
+  instead of forcing `SIG_DFL`; a signal trapped WITH an action still resets to
+  default in the exec'd child.
+- Remaining deliberate residuals (ledgered): `declare -g NAME+=value` over a
+  local shadow reads the local base (narrow adjacent), and `readonly` inside an
+  arithmetic `(( ))` assignment is a pre-existing fatal-vs-continue path.
+
 ## 0.592.0 (2026-07-03) - Fix: lexer command-position feeding + parser one-liners (appraisal #16 follow-up ledger g)
 - FIX. Reappraisal #16 follow-up ledger, item (g), plus three same-area parser
   one-liners. The lexer's command-position machinery is now fed the grammar
