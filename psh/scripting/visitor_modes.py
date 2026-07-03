@@ -49,39 +49,46 @@ def _report_syntax_error(location: str, exc: Exception) -> int:
     return 2
 
 
-def handle_visitor_mode_for_command(shell: 'Shell', command: str) -> int:
-    """Run the selected analysis mode over a ``-c`` command string."""
+def handle_visitor_mode_for_content(shell: 'Shell', content: str,
+                                    location: str) -> int:
+    """Run the selected analysis mode over *content* read from *location*.
+
+    The SINGLE chokepoint every input channel routes through — ``-c`` command
+    strings, script files, and piped stdin all analyze identical content
+    identically (same output, same exit codes) and never execute it.
+    *location* only labels diagnostics (``-c``, the script path, ``<stdin>``).
+    """
     from ..core.exceptions import PshError
     try:
-        ast = _parse_for_analysis(shell, command)
+        ast = _parse_for_analysis(shell, content)
         return apply_visitor_mode(shell, ast)
     except (PshError, SyntaxError) as e:
         # ParseError (PshError), LexerError (PshError+SyntaxError), and
         # UnclosedQuoteError (SyntaxError) are all expected syntax errors.
-        return _report_syntax_error("-c", e)
+        return _report_syntax_error(location, e)
     except (ValueError, TypeError) as e:
         print(f"Error parsing command: {e}", file=sys.stderr)
         return 1
 
 
+def handle_visitor_mode_for_command(shell: 'Shell', command: str) -> int:
+    """Run the selected analysis mode over a ``-c`` command string."""
+    return handle_visitor_mode_for_content(shell, command, "-c")
+
+
 def handle_visitor_mode_for_script(shell: 'Shell', script_path: str) -> int:
     """Run the selected analysis mode over a script file."""
-    from ..core.exceptions import PshError
     try:
-        # Read and parse the script file
         with open(script_path, 'r') as f:
             content = f.read()
-
-        ast = _parse_for_analysis(shell, content)
-        return apply_visitor_mode(shell, ast)
     except FileNotFoundError:
         print(f"psh: {script_path}: No such file or directory", file=sys.stderr)
         return 1
-    except (PshError, SyntaxError) as e:
-        return _report_syntax_error(script_path, e)
-    except (ValueError, TypeError, OSError) as e:
+    except (OSError, ValueError) as e:
+        # ValueError covers UnicodeDecodeError on a non-UTF-8 file.
         print(f"Error processing script: {e}", file=sys.stderr)
         return 1
+    return handle_visitor_mode_for_content(shell, content, script_path)
 
 
 def apply_visitor_mode(shell: 'Shell', ast: Any) -> int:
