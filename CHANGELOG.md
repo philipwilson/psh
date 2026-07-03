@@ -4,6 +4,48 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.584.0 (2026-07-03) - Fix: wrap arithmetic literals to signed 64-bit; negative-shift masking; base-N literal errors (appraisal #16 H5 + 2 MED)
+- FIX (HIGH). Reappraisal #16 cluster H5 — integer **literals** at or above
+  `2**63` were not wrapped to signed 64-bit. Every arithmetic *operation*
+  wrapped via `_to_signed64`, but a bare/assigned/compared/subscript literal did
+  not, so `$((9223372036854775808))` kept the unsigned value where bash gives
+  `-9223372036854775808`, and `[[ 9223372036854775808 -eq -9223372036854775808 ]]`
+  wrongly compared unequal. Fed to an array subscript, the huge value made
+  `all_elements()` iterate `range(2**63)` and HANG.
+  - **Fix (`psh/expansion/arithmetic/evaluator.py`).** Wrap at the three leaf
+    value sources the evaluator funnels every operand through: `NumberNode`
+    literals, the `get_variable` plain-decimal fast path, and `_string_to_int`.
+    All literal forms (decimal/hex/octal/`base#n`) become `NumberNode`, so one
+    wrap there covers them; the two variable-value `int()` paths cover assigned
+    literals read back from storage. A literal is now wrapped exactly like an
+    operation result, matching bash across arithmetic-expand, `let`, `declare -i`,
+    C-`for`, the arithmetic command, `test -eq`, substring offset, and array
+    subscript. A wrapped-negative subscript then hits the existing out-of-range
+    check and reports bash's "bad array subscript" instead of hanging.
+- FIX (MED, negative shift). The `LSHIFT`/`RSHIFT` handlers raised a spurious
+  "negative shift count" via a guard sitting immediately in front of the already
+  present `& 63` mask. bash masks the count to 6 bits on x86-64
+  (`1<<-1 == 1<<63 == -9223372036854775808`, `256>>-1 == 0`, `1<<-64 == 1`), so
+  the guard is removed and the mask now yields bash's answer directly.
+- FIX (MED, base-N literal). A `base#n` literal with an out-of-range digit
+  stopped at the first bad digit, leaving trailing chars as stray tokens
+  ("Unexpected token after expression: 2"). The tokenizer
+  (`psh/expansion/arithmetic/tokenizer.py`) now consumes the whole base-digit
+  run (`[0-9a-zA-Z@_]`, bash's based-number alphabet) before validating and
+  raises a "value too great for base" error, mirroring the octal reader.
+- **Verification.** A bash-vs-psh truth table across `$(( ))`, `(( ))`, `let`,
+  `declare -i`, C-`for`, `a[expr]`, substring offset, and `[[ -eq ]]` — all 44
+  probes match bash in stdout, exit code, and stderr presence. Full gate green
+  (9,819 passed), ruff and mypy clean.
+- **Deliberate remaining divergences (pre-existing sibling paths, not H5):** the
+  hex reader has the same stray-token class; the `test` builtin does not wrap
+  literals; substring-offset error wording differs. Left for separate findings.
+- **Tests.** Updated the negative-shift characterization test (it pinned the old
+  error behavior; bash masks) plus bare-literal / negative-shift / base-N-error
+  coverage in `tests/unit/expansion/test_arithmetic_characterization.py`; 11 new
+  arithmetic golden cases in `tests/behavioral/golden_cases.yaml` (pass under
+  `--compare-bash`).
+
 ## 0.583.0 (2026-07-03) - Fix: seed `IFS` as a real shell variable (appraisal #16 H3)
 - FIX (HIGH). Reappraisal #16 cluster H3 — psh never seeded `IFS` as a real
   variable. It only used the default `<space><tab><newline>` as an internal

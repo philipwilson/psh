@@ -186,7 +186,7 @@ def test_logical_short_circuit_side_effects(sh):
 
 
 # ---------------------------------------------------------------------------
-# Shifts: masking and negative-count errors
+# Shifts: count masked to 6 bits (bash / C on x86-64)
 # ---------------------------------------------------------------------------
 
 def test_shift_count_masking(sh):
@@ -195,11 +195,20 @@ def test_shift_count_masking(sh):
     assert ev("1 << 65", sh) == 2
 
 
-@pytest.mark.parametrize("expr", ["1 << -1", "1 >> -1"])
-def test_negative_shift_errors(expr, sh):
-    with pytest.raises(ArithmeticError) as e:
-        ev(expr, sh)
-    assert "negative shift count" in str(e.value)
+@pytest.mark.parametrize("expr,expected", [
+    # A negative shift count is NOT an error in bash: it wraps into 0..63
+    # via the same 6-bit mask (`1 << -1` == `1 << 63`). Verified vs bash 5.2.
+    ("1 << -1", -9223372036854775808),   # 1 << 63
+    ("1 << -2", 4611686018427387904),    # 1 << 62
+    ("1 << -63", 2),                     # 1 << 1
+    ("1 << -64", 1),                     # 1 << 0
+    ("1 << -65", -9223372036854775808),  # 1 << 63
+    ("1 >> -1", 0),                      # 1 >> 63
+    ("256 >> -1", 0),                    # 256 >> 63
+    ("5 >> -64", 5),                     # 5 >> 0
+])
+def test_negative_shift_count_masks(expr, expected, sh):
+    assert ev(expr, sh) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -473,6 +482,30 @@ def test_signed64_wrapping(expr, expected, sh):
     assert ev(expr, sh) == expected
 
 
+@pytest.mark.parametrize("expr,expected", [
+    # A bare literal >= 2**63 wraps to signed 64-bit exactly like an operation
+    # result (bash), across decimal, hex and base#n forms. (H5, reappraisal #16.)
+    ("9223372036854775808", -9223372036854775808),   # 2**63
+    ("9223372036854775809", -9223372036854775807),
+    ("18446744073709551616", 0),                      # 2**64
+    ("0x8000000000000000", -9223372036854775808),
+    ("0x10000000000000000", 0),                       # 2**64 in hex
+    ("2#1000000000000000000000000000000000000000000000000000000000000000", -9223372036854775808),
+    # A wrapped-negative literal compares equal to its unwrapped-huge source.
+    ("9223372036854775808 == -9223372036854775808", 1),
+])
+def test_signed64_literal_wrapping(expr, expected, sh):
+    assert ev(expr, sh) == expected
+
+
+def test_signed64_literal_via_variable(sh):
+    # An assigned literal is wrapped when read back into arithmetic (the
+    # get_variable / _string_to_int int() paths, not just NumberNode).
+    sh.state.set_variable("big", "9223372036854775808")
+    assert ev("big", sh) == -9223372036854775808
+    assert ev("big + 0", sh) == -9223372036854775808
+
+
 # ---------------------------------------------------------------------------
 # Empty / whitespace expressions
 # ---------------------------------------------------------------------------
@@ -532,6 +565,16 @@ def test_octal_invalid_digit(sh):
     # 08 / 09 are invalid octal; bash-style "value too great for base" error.
     with pytest.raises(ArithmeticError) as e:
         ev("08", sh)
+    assert "value too great for base" in str(e.value)
+
+
+@pytest.mark.parametrize("expr", ["2#102", "16#1g", "10#9a", "8#8", "3#3", "2#1@"])
+def test_based_number_out_of_range_digit(expr, sh):
+    # A base#number with a digit >= base is a "value too great for base" error
+    # (bash), NOT a silent truncation that leaves a stray trailing token. The
+    # whole base-digit run ([0-9a-zA-Z@_]) is consumed before erroring.
+    with pytest.raises(ArithmeticError) as e:
+        ev(expr, sh)
     assert "value too great for base" in str(e.value)
 
 
