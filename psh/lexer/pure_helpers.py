@@ -274,7 +274,8 @@ def find_balanced_double_parentheses(
 def handle_escape_sequence(
     input_text: str,
     pos: int,
-    quote_context: Optional[str] = None
+    quote_context: Optional[str] = None,
+    closing_quote: Optional[str] = None
 ) -> Tuple[str, int]:
     """
     Handle escape sequences based on context.
@@ -283,6 +284,11 @@ def handle_escape_sequence(
         input_text: The input string
         pos: Position of the backslash
         quote_context: Current quote context ('"', "'", "$'", or None)
+        closing_quote: The delimiter that closes the enclosing quoted string
+            (passed by the lexer's quote parser). Bounds the ANSI-C ``\\c``
+            control-escape so it cannot consume the closing quote as its
+            control character; ``None`` (string contexts with no delimiter,
+            e.g. ``${var@E}``) leaves the whole input as the boundary.
 
     Returns:
         Tuple of (escaped_string, new_position)
@@ -297,7 +303,7 @@ def handle_escape_sequence(
 
     if quote_context == "$'":
         # ANSI-C quoting - handle extended escape sequences
-        return handle_ansi_c_escape(input_text, pos)
+        return handle_ansi_c_escape(input_text, pos, closing_quote)
     elif quote_context == '"':
         # In double quotes, bash only processes: \", \\, \$, \` and
         # \newline. Other sequences like \n, \t, \r are NOT escape
@@ -327,13 +333,19 @@ def handle_escape_sequence(
         return '\\' + next_char, pos + 2
 
 
-def handle_ansi_c_escape(input_text: str, pos: int) -> Tuple[str, int]:
+def handle_ansi_c_escape(
+    input_text: str,
+    pos: int,
+    closing_quote: Optional[str] = None
+) -> Tuple[str, int]:
     """
     Handle ANSI-C escape sequences in $'...' strings.
 
     Args:
         input_text: The input string
         pos: Position of the backslash
+        closing_quote: The string's closing delimiter, if any. Bounds the
+            ``\\c`` control-escape (see below); ``None`` uses end-of-input.
 
     Returns:
         Tuple of (escaped_string, new_position)
@@ -357,9 +369,13 @@ def handle_ansi_c_escape(input_text: str, pos: int) -> Tuple[str, int]:
     # Control-char escape: \cX — bash maps it to (toupper-independent)
     # `0x7f if X == '?' else ord(X) & 0x1f`. So \cI -> TAB (0x09),
     # \cA -> 0x01, \c@ -> NUL, \cz/\cZ -> 0x1a, \c? -> 0x7f, \c\ -> 0x1c.
-    # A bare \c at end of input is left literal (matches bash).
+    # A bare \c with no control char left in the string is literal (bash finds
+    # the closing quote before decoding escapes, so `$'x\c'` keeps `\c` rather
+    # than eating the closing quote as its control character).
     if next_char == 'c':
-        if pos + 2 >= len(input_text):
+        if pos + 2 >= len(input_text) or (
+                closing_quote is not None
+                and input_text[pos + 2] == closing_quote):
             return '\\c', pos + 2
         ctrl_char = input_text[pos + 2]
         if ctrl_char == '?':

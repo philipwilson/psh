@@ -329,3 +329,41 @@ class TestAnsiCQuoteMetadata:
         # The whole point: metadata is added WITHOUT changing the value.
         assert shell.run_command("v=$'a\\tb'; printf '%s' \"$v\"") == 0
         assert capsys.readouterr().out == 'a\tb'
+
+
+class TestTrailingControlEscape:
+    """`\\c` immediately before the closing quote of a $'...' string.
+
+    Regression for reappraisal #16 Tier-2 (lexer): the ``\\c`` control-escape
+    read its control char using the whole input length as the boundary, so a
+    ``\\c`` right before the closing quote consumed the quote and reported an
+    unclosed string. bash finds the string's closing quote before decoding
+    escapes, so a ``\\c`` with no control char left in the string stays a
+    literal ``\\c`` (bash 5.2-verified).
+    """
+
+    def test_trailing_c_is_literal(self, shell, capsys):
+        assert shell.run_command(r"printf '%s' $'abc\c'") == 0
+        assert capsys.readouterr().out == 'abc\\c'
+
+    def test_lone_c_is_literal(self, shell, capsys):
+        assert shell.run_command(r"printf '[%s]' $'\c'") == 0
+        assert capsys.readouterr().out == '[\\c]'
+
+    def test_c_then_text_after_quote(self, shell, capsys):
+        # $'a\c' is a\c (literal), then z concatenates outside the quote.
+        assert shell.run_command(r"printf '[%s]' $'a\c'z") == 0
+        assert capsys.readouterr().out == '[a\\cz]'
+
+    def test_interior_control_escape_still_decodes(self, shell, capsys):
+        # \cb (a real control char follows) is still Ctrl-B (0x02).
+        assert shell.run_command(r"printf '%s' $'a\cb'") == 0
+        assert capsys.readouterr().out == 'a\x02'
+
+    def test_at_E_expansion_still_consumes_control_char(self, shell, capsys):
+        # ${var@E} has no closing-quote boundary: \c' consumes the quote as
+        # its control char there (bash), unlike the lexer's $'...' context.
+        # v holds the literal bytes a \ c ' b; @E decodes \c' to Ctrl-' (0x07).
+        assert shell.run_command(
+            r"""v=$'a\\c\x27b'; printf '%s' "${v@E}" """) == 0
+        assert capsys.readouterr().out == 'a\x07b'

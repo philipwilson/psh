@@ -198,9 +198,10 @@ psh$ find / -name "*.log" 2>&1 | grep -v "Permission denied"
 
 # Shorthand for > file 2>&1 (bash style)
 psh$ command &> output.txt
-```
 
-> **Note:** The csh-style `>& file` syntax is not supported in PSH. Use `&> file` or `> file 2>&1` instead.
+# csh-style equivalent (also supported): both stdout and stderr to the file
+psh$ command >& output.txt
+```
 
 ### Redirecting stdout to stderr
 
@@ -725,12 +726,9 @@ I/O redirection in PSH provides powerful control over data flow:
 Key concepts:
 - Three standard streams: stdin (0), stdout (1), stderr (2)
 - Redirection order matters: `> file 2>&1` vs `2>&1 > file`
-- Use `2>&1` or `&>` to combine stderr with stdout
+- Use `2>&1`, `&>`, or the csh-style `>& file` to combine stderr with stdout
 - Here documents can expand variables or be literal (quoted delimiter)
 - Process substitution enables powerful file-based command composition
-
-Current limitations:
-- `>& file` (csh-style) is not supported; use `&> file`
 
 I/O redirection is fundamental to shell scripting, enabling log files, error handling, data processing pipelines, and clean separation of output types. In the next chapter, we'll explore pipelines and command lists.
 

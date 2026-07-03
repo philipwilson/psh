@@ -19,6 +19,9 @@ class Redirect(ASTNode):
     quote_type: Optional[str] = None  # Quote type used (' or " or None) for here strings
     heredoc_quoted: bool = False  # Whether heredoc delimiter was quoted (disables variable expansion)
     combined: bool = False  # True for &> and &>> (redirects both stdout and stderr)
+    # Move form `[n]>&m-` / `[n]<&m-`: duplicate fd `dup_fd` onto `fd`, then
+    # close the source `dup_fd` (bash keeps it open when dup_fd == fd).
+    move: bool = False
     heredoc_key: Optional[str] = None  # Lexer-assigned key linking to collected heredoc content
     # Named file descriptor: the variable from a `{varname}>file` prefix. The
     # shell allocates a free fd >= 10, opens onto it, and stores the number in

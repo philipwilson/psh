@@ -1280,6 +1280,57 @@
   stderr: "/nonexistent_zz/x"
   exit_code: 0
 
+# Reappraisal #16 Tier-2 (I/O): fd-move `[n]>&m-` = dup m onto n, close source.
+- name: redirect_fd_move_closes_source
+  command: 'echo x 3>&1-'
+  stdout: ""
+  stderr: "write error"
+  exit_code: 1
+
+# Move onto self (`1>&1-`) is a no-op that keeps the fd open (bash).
+- name: redirect_fd_move_to_self_keeps_fd
+  command: 'echo x 1>&1-; echo y'
+  stdout: "x\ny\n"
+  stderr: ""
+  exit_code: 0
+
+# Move preserves the target fd; source is closed.
+- name: redirect_fd_move_preserves_target
+  command: 'cd "$(mktemp -d)"; exec 3>f; exec 4>&3-; echo hi >&4; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# csh-style `>&word` (fd omitted, non-numeric word) == `&>word`.
+- name: redirect_csh_combined_to_file
+  command: 'cd "$(mktemp -d)"; echo hi >&gc; cat gc'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# A digit-prefixed non-numeric word is one filename, not a dup + argument.
+- name: redirect_csh_combined_digit_prefixed
+  command: 'cd "$(mktemp -d)"; echo hi >&2x; cat 2x'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# A failed exec redirection list is rolled back all-or-nothing: fd 3 does not
+# survive, so `echo rc=$?` reports the failure and the shell continues.
+- name: redirect_exec_partial_failure_rolls_back
+  command: 'cd "$(mktemp -d)"; exec 3>ok 4>/nonexistent/x; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: "No such file or directory"
+  exit_code: 0
+
+# Trailing `\c` in a $'...' string stays literal (bash finds the closing quote
+# before decoding escapes) — reappraisal #16 Tier-2 (lexer).
+- name: ansi_c_trailing_control_escape_literal
+  command: "printf '[%s]' $'x\\c'"
+  stdout: "[x\\c]"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # TEST EXPRESSIONS
 # =============================================================================

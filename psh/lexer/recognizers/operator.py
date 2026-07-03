@@ -75,9 +75,13 @@ class OperatorRecognizer(ContextualRecognizer):
         # Check for patterns: >&N, <&N, N>&M, N<&M
         remaining = input_text[pos:]
 
-        # Check for >&N or <&N (N a digit, '-', or a dynamic $.../`...` target)
+        # Check for >&N or <&N. The target after `&` may be a digit (`>&2`),
+        # '-' (close, `>&-`), a dynamic $.../`...` expansion (`>&$fd`), or a
+        # filename word — the csh-style combined redirect `>&word`, possibly
+        # after whitespace (`>& word`). Only a genuine following operator /
+        # terminator char keeps `>` and `&` as two separate tokens.
         if len(remaining) >= 3 and remaining[0] in '><' and remaining[1] == '&':
-            return remaining[2].isdigit() or remaining[2] == '-' or remaining[2] in '$`'
+            return remaining[2] not in '&|;()<>\n'
 
         # Check for N>&M or N<&M (where we're at the digit)
         if remaining and remaining[0].isdigit():
@@ -132,22 +136,32 @@ class OperatorRecognizer(ContextualRecognizer):
             return None
         pos += 1
 
-        # Get the target: fd digits, '-' (close), or a dynamic expansion
+        # Get the target: fd digits, '-' (close), a dynamic expansion, or a
+        # filename word (the csh-style combined redirect, read by the parser).
         if pos >= len(input_text):
             return None
 
         if input_text[pos] == '-':
             pos += 1
         elif input_text[pos].isdigit():
-            while pos < len(input_text) and input_text[pos].isdigit():
-                pos += 1
-        elif input_text[pos] in '$`':
-            # Dynamic target (e.g. 2>&$((1+1)), >&$fd): emit only the bare
-            # operator (N>& / >&); the following expansion is tokenized
-            # separately and consumed by the parser as the dup target.
-            pass
-        else:
-            return None
+            end = pos
+            while end < len(input_text) and input_text[end].isdigit():
+                end += 1
+            # Move form `[n]>&m-` / `[n]<&m-`: a single '-' immediately after
+            # the target fd digits duplicates m onto n, then closes source m.
+            if end < len(input_text) and input_text[end] == '-':
+                end += 1
+            # The digits form a numeric dup/move target only when a word
+            # boundary follows. Otherwise (`>&2x`, `>&2.txt`) they begin a
+            # filename word — leave `pos` at `&`+1 so the bare operator is
+            # emitted and the parser reads the whole word (csh-style redirect).
+            if end >= len(input_text) or input_text[end] in ' \t\n&|;()<>':
+                pos = end
+        # else: a dynamic target ($fd, $((...)), `cmd`) or a csh-style filename
+        # word (`>&word`, `>& word`) — pos stays at `&`+1 so only the bare
+        # operator (N>& / >&) is emitted. The following token is tokenized
+        # separately and classified by the parser (dup / close / combined /
+        # ambiguous).
 
         op_string = input_text[start_pos:pos]
         return Token(TokenType.REDIRECT_DUP, op_string, start_pos, pos), pos

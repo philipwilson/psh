@@ -171,7 +171,7 @@ class UnifiedQuoteParser:
                 # Use the quote_type parameter if provided (for ANSI-C quotes)
                 context = quote_type if quote_type else rules.quote_char
                 escaped_str, new_pos = pure_helpers.handle_escape_sequence(
-                    input_text, pos, context
+                    input_text, pos, context, closing_quote=rules.quote_char
                 )
                 current_value += escaped_str
                 pos = new_pos

@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING, List, Optional
 from ....ast_nodes import Redirect
 from ....lexer.token_types import Token
 from ..core import ParseResult
-from ._constants import _FD_DUP_RE, _WORD_LIKE_TYPES
+from ._constants import (
+    _FD_DUP_BARE_RE,
+    _FD_DUP_MOVE_RE,
+    _FD_DUP_RE,
+    _WORD_LIKE_TYPES,
+)
 
 if TYPE_CHECKING:
     from ._protocols import CommandParsersProtocol
@@ -50,23 +55,7 @@ class RedirectionMixin(_Base):
 
         # Handle redirect duplication (e.g., 2>&1, >&2, etc.)
         if op_token.type.name == 'REDIRECT_DUP':
-            # REDIRECT_DUP tokens contain the full operator (e.g., "2>&1")
-            # Parse the fd and dup_fd from the token value
-            dup_match = _FD_DUP_RE.match(op_token.value)
-            if dup_match:
-                source_fd_str, direction, target = dup_match.groups()
-                default_fd = 1 if direction == '>' else 0
-                source_fd = int(source_fd_str) if source_fd_str else default_fd
-                if target == '-':
-                    redirect = Redirect(type=direction + '&-', target=None, fd=source_fd)
-                else:
-                    redirect = Redirect(
-                        type=direction + '&', target=None,
-                        fd=source_fd, dup_fd=int(target),
-                    )
-            else:
-                redirect = Redirect(type=op_token.value, target='', fd=fd)
-            return ParseResult(success=True, value=redirect, position=pos)
+            return self._parse_dup_redirection(tokens, pos, op_token)
 
         # Handle heredoc operators
         if op_token.type.name in ['HEREDOC', 'HEREDOC_STRIP']:
@@ -152,6 +141,72 @@ class RedirectionMixin(_Base):
             target_word=target_word,
         )
         return ParseResult(success=True, value=redirect, position=target_result.position)
+
+    def _parse_dup_redirection(
+        self, tokens: List[Token], pos: int, op_token: Token
+    ) -> ParseResult[Redirect]:
+        """Parse an fd-duplication redirect: ``2>&1``, ``>&-``, the move form
+        ``[n]>&m-``, and the bare forms (``>&$fd`` dynamic, ``>&word`` csh)."""
+        # Single-token dup/close: 2>&1, 3<&0, >&-, 3>&-.
+        dup_match = _FD_DUP_RE.match(op_token.value)
+        if dup_match:
+            source_fd_str, direction, target = dup_match.groups()
+            default_fd = 1 if direction == '>' else 0
+            source_fd = int(source_fd_str) if source_fd_str else default_fd
+            if target == '-':
+                redirect = Redirect(type=direction + '&-', target=None, fd=source_fd)
+            else:
+                redirect = Redirect(
+                    type=direction + '&', target=None,
+                    fd=source_fd, dup_fd=int(target),
+                )
+            return ParseResult(success=True, value=redirect, position=pos)
+
+        # Move form: [n]>&m- / [n]<&m- (dup m onto n, then close source m).
+        move_match = _FD_DUP_MOVE_RE.match(op_token.value)
+        if move_match:
+            source_fd_str, direction, target = move_match.groups()
+            default_fd = 1 if direction == '>' else 0
+            source_fd = int(source_fd_str) if source_fd_str else default_fd
+            redirect = Redirect(type=direction + '&', target=None, fd=source_fd,
+                                dup_fd=int(target), move=True)
+            return ParseResult(success=True, value=redirect, position=pos)
+
+        # Bare operator with the target in the following token: ">& 2", ">&$fd",
+        # and the csh-style ">&word" combined redirect.
+        bare = _FD_DUP_BARE_RE.match(op_token.value)
+        if bare:
+            source_fd_str, direction = bare.groups()
+            default_fd = 1 if direction == '>' else 0
+            source_fd = int(source_fd_str) if source_fd_str else default_fd
+            target_result = self._parse_word_as_word(tokens, pos)
+            if not target_result.success:
+                return ParseResult(
+                    success=False,
+                    error=f"Expected file descriptor after {op_token.value}",
+                    position=pos)
+            word = target_result.value
+            assert word is not None
+            dup_part = word.display_text()
+            if dup_part == '-':
+                redirect = Redirect(type=direction + '&-', target=None, fd=source_fd)
+            elif dup_part.isdigit():
+                redirect = Redirect(type=direction + '&', target=dup_part,
+                                    fd=source_fd, dup_fd=int(dup_part))
+            elif (direction == '>' and not source_fd_str
+                    and not word.has_expansion_parts):
+                # csh-style `>&word`: combined redirect to the file (== &>word).
+                redirect = Redirect(type='>&', target=dup_part, fd=None,
+                                    combined=True, target_word=word)
+            else:
+                redirect = Redirect(type=direction + '&', target=dup_part,
+                                    fd=source_fd, dup_fd=None)
+            return ParseResult(success=True, value=redirect,
+                               position=target_result.position)
+
+        # Unrecognized shape: keep the old lenient fallback.
+        redirect = Redirect(type=op_token.value, target='', fd=op_token.fd)
+        return ParseResult(success=True, value=redirect, position=pos)
 
     @staticmethod
     def _parse_fd_dup_word(tok: Token) -> Optional[Redirect]:
