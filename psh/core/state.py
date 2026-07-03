@@ -545,13 +545,14 @@ class ShellState:
 
         Installed as ``scope_manager.variable_changed``; fired after any
         write, unset, attribute change, or scope pop affecting *name*.
-        The environment entry exists exactly when the visible variable
-        carries the EXPORT attribute, is not an array (bash never exports
-        arrays), and is not declared-but-unset (``export FOO`` records
-        the attribute; the entry appears when FOO is assigned).
+        The entry reflects the innermost EXPORTED instance across scopes
+        (not merely the innermost visible one): a non-exported local
+        shadowing an exported outer variable leaves the outer's entry in
+        place (bash). Arrays are never exported, and a declared-but-unset
+        export (``export FOO``) has no entry until FOO is assigned.
         """
-        var = self.scope_manager.get_variable_object(name)
-        if var is not None and var.is_exported and not var.is_array:
+        var = self.scope_manager.find_exported_instance(name)
+        if var is not None:
             self.env[name] = var.as_string()
         else:
             self.env.pop(name, None)

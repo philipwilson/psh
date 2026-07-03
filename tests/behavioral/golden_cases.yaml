@@ -3523,3 +3523,97 @@
   stdout: ""
   stderr: "Expected command"
   exit_code: 2
+
+# =============================================================================
+# REAPPRAISAL #16 TIER 2 — CORE/OPTIONS cluster
+# =============================================================================
+
+# declare -g writes the GLOBAL, past any same-named local (not the local).
+- name: declare_g_over_local
+  command: "x=1; f(){ local x=2; declare -g x=3; echo in=$x; }; f; echo out=$x"
+  stdout: "in=2\nout=3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: declare_g_integer_over_local
+  command: "x=1; f(){ local x=2; declare -gi x=3+4; echo in=$x; }; f; echo out=$x"
+  stdout: "in=2\nout=7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: declare_gA_over_local_assoc
+  command: "declare -A m=([a]=1); f(){ local -A m=([b]=2); declare -gA m=([c]=3); echo \"in=${m[b]}\"; }; f; echo \"out=${m[c]} a=${m[a]-none}\""
+  stdout: "in=2\nout=3 a=none\n"
+  stderr: ""
+  exit_code: 0
+
+- name: declare_g_from_nested_function
+  command: "x=1; g(){ declare -g x=3; }; f(){ local x=2; g; echo in=$x; }; f; echo out=$x"
+  stdout: "in=2\nout=3\n"
+  stderr: ""
+  exit_code: 0
+
+# `declare -gr NAME` (bare, no value) marks the GLOBAL readonly past a local
+# shadow — the local stays writable.
+- name: declare_gr_targets_global_not_local
+  command: "x=1; f(){ local x=2; declare -gr x; x=9; echo in=$x; }; f; echo out=$x"
+  stdout: "in=9\nout=1\n"
+  stderr: ""
+  exit_code: 0
+
+# `declare -gx NAME` exports the global; its value is visible in the child
+# environment even while a non-exported local shadows it.
+- name: declare_gx_exports_global_under_local_shadow
+  command: "x=g; f(){ local x=l; declare -gx x; printenv x; }; f"
+  stdout: "g\n"
+  stderr: ""
+  exit_code: 0
+
+# `set +o` output is reusable: eval must not spew "invalid option name".
+- name: set_plus_o_reusable_eval
+  command: 'o=$(set +o); eval "$o"; echo done'
+  stdout: "done\n"
+  stderr: ""
+  exit_code: 0
+
+# set -o lists emacs / vi exactly once each (not twice with clashing values).
+- name: set_o_emacs_vi_once
+  command: 'set -o | grep -cE "^(emacs|vi)"'
+  stdout: "2\n"
+  stderr: ""
+  exit_code: 0
+
+# `local -` saves the shell options and restores them on function return.
+- name: local_dash_restores_options
+  command: "set +e; f(){ local -; set -e; echo in=$-; }; f; echo out=$-"
+  stdout: "in=ehBc\nout=hBc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: local_dash_restores_after_set_plus
+  command: "set -e; f(){ local -; set +e; echo in=$-; }; f; echo out=$-"
+  stdout: "in=hBc\nout=ehBc\n"
+  stderr: ""
+  exit_code: 0
+
+# A declaration-builtin readonly error is non-fatal: it prints one line and
+# the rest of the command list still runs (bash).
+- name: declare_over_readonly_nonfatal
+  command: "readonly x=1; declare x=2; echo AFTER"
+  stdout: "AFTER\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+# trap '' (ignore) is inherited across exec by external children (POSIX).
+- name: trap_ignore_inherited_across_exec
+  command: 'trap "" INT; bash -c "trap -p INT"'
+  stdout: "trap -- '' SIGINT\n"
+  stderr: ""
+  exit_code: 0
+
+# A signal trapped WITH an action resets to default in the exec'd child.
+- name: trap_action_reset_across_exec
+  command: 'trap "echo hi" INT; bash -c "trap -p INT"'
+  stdout: ""
+  stderr: ""
+  exit_code: 0
