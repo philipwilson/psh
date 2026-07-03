@@ -4,6 +4,32 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.588.0 (2026-07-03) - Fix: temporary-redirect fd backups saved high so closed std fds stay closed (appraisal #16 ledger a)
+- FIX. Reappraisal #16 follow-up ledger, item (a). A redirected
+  function/compound body run after `exec 1>&-` closed fd 1 leaked its stdout to
+  the shell's real stderr and returned rc 0, instead of failing with EBADF like
+  bash. Probe: `exec 1>&-; f(){ echo OUT; }; f 2>/dev/null` printed `OUT` on the
+  real stderr under psh (rc 0) but is silent with rc 1 under bash.
+  - **Root cause.** `FileRedirector.saved_fds_for_plan` backed up a temporary
+    redirect's fd with a plain low `os.dup`. After `exec 1>&-` freed fd 1, that
+    `os.dup` landed the backup in the freed fd-1 slot — a slot the stale
+    `sys.stdout` wrapper still names — so a builtin's write to `sys.stdout`
+    flowed into the backup (the shell's real stderr) instead of hitting a closed
+    descriptor and failing EBADF.
+  - **Fix.** Save every temporary-redirect backup on a HIGH fd via
+    `_save_fd_high` (`fcntl F_DUPFD`, floor 10), matching bash's practice of
+    keeping internal saved descriptors above fd 10 — the same reasoning already
+    used for the combined `&>` save. Applied at the single shared chokepoint,
+    this repairs the function, brace-group, `if`/`while`/`for`, and
+    forked-subshell paths together. The now-dead `_save_fd` helper was removed.
+  - The #16 H1 builtin path in `io_redirect/manager.py` is untouched (only a
+    one-word docstring reference updated) and its pins still pass.
+  - Pinned by four new `tests/behavioral/golden_cases.yaml` cases
+    (redirected function body, nested functions, brace group all silent with
+    rc 1; plus a `f 1>&2` reopen case that still writes, guarding against
+    over-severing) and a new
+    `tests/unit/io_redirect/test_builtin_dup_source_reassigned.py`.
+
 ## 0.587.0 (2026-07-03) - Fix: multi-line paste, Ctrl-R inclusive re-search, @P marker strip (appraisal #16 H8 + MED)
 - FIX (HIGH). Reappraisal #16 finding H8 (interactive line editing), three
   defects, all pinned to bash 5.2:
