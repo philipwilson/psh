@@ -4,6 +4,40 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.591.0 (2026-07-03) - Fix: extglob alternation is leftmost-longest in substitution operators (appraisal #16 ledger f)
+- FIX. Reappraisal #16 follow-up ledger, item (f).
+- **extglob alternation matched Python-`re` leftmost (first alternative that
+  succeeds) instead of bash leftmost-longest.** The unanchored
+  parameter-substitution operators `${v/pat/r}`, `${v//pat/r}`, and `${v/#pat/r}`
+  routed non-negation extglob patterns through a Python `re`, whose alternation
+  commits to the first alternative that lets the overall regex succeed and never
+  extends to the longest. So the prefix-anchored `${v/#@(a|aa)/Z}` on `aaX` gave
+  `ZaX` (matched the short `a`) where bash gives `ZX` (matched `aa`), and
+  `@(a|ab)b` on `abb` stopped at the first success instead of extending the group
+  to `ab` to match the whole string.
+  - **Fix.** Reordering alternatives longest-first cannot fix this — the winning
+    length is input-dependent and `re` returns on first success regardless of
+    order (the truth table ruled that out). The three unanchored operators now
+    route non-negation extglob through the existing backtracking matcher
+    (`extglob_match_at`), which enumerates every reachable end index and takes the
+    maximum — POSIX leftmost-longest. That matcher was already used, and correct,
+    for negation patterns.
+  - The removal (`#`/`##`/`%`/`%%`), suffix-substitution (`/%`), and
+    case-modification operators were already correct (they scan every candidate
+    length, end-anchor, or match a single char) and are unchanged.
+  - Empty-match semantics are preserved exactly: `substitute_all` gets a
+    matcher-based scan mirroring `_substitute_all_empty_aware`, and
+    `substitute_first` suppresses the zero-width end-of-subject match only for
+    negation. bash's separate per-quantifier suppression of the empty match for
+    `?(x)` on an *empty value* is a pre-existing divergence not derivable from
+    the match extent (the plain-regex path diverged there too); it is left as-is.
+  - Truth table (bash 5.2) covers prefix/first/all, order-independence, nested
+    `@(a|@(b|bb))`, backtrack-forced-by-trailing-literal, empty-capable
+    alternation, and empty-value regressions. Tests: a unit class in
+    `test_patsub_nocase_and_anchoring` plus five golden cases (verified with
+    `--compare-bash`). The fix reuses the existing (unmodified) `extglob_match_at`
+    from `extglob.py`; the only production change is in `parameter_expansion.py`.
+
 ## 0.590.0 (2026-07-03) - Fix: arithmetic number literals and test integer operands match bash (appraisal #16 ledger c + d)
 - FIX. Reappraisal #16 follow-up ledger, items (c) and (d).
 - **(c) arithmetic number tokenizer left a stray trailing token on out-of-base
