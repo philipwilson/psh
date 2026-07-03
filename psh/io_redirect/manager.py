@@ -464,7 +464,7 @@ class IOManager:
         ``sys.stdout`` wrapper still names fd 1, so it would then write into
         this backup instead of failing with EBADF (bash keeps fd 1 closed).
         ``target_fd``'s original is saved tolerantly (None when it was closed,
-        e.g. after ``exec 1>&-``), matching ``_save_fd``.
+        e.g. after ``exec 1>&-``), matching ``_save_fd_high``.
         """
         try:
             saved: Optional[int] = fcntl.fcntl(target_fd, fcntl.F_DUPFD, 10)

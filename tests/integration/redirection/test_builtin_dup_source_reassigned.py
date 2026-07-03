@@ -119,3 +119,104 @@ class TestExecClosedFdThenBuiltin:
         psh = run_psh('exec 2>&-; echo X 1>g', cwd=tmp_path)
         assert psh.returncode == 0
         assert (tmp_path / 'g').read_text() == 'X\n'
+
+
+class TestExecClosedFdThenFunctionOrCompound:
+    """`exec 1>&-` then a REDIRECTED function/compound body (ledger #16(a)).
+
+    Sibling of the builtin path above, on the temporary-redirect chokepoint
+    (`FileRedirector.saved_fds_for_plan`). A function called with `f 2>g` (and
+    the equivalent brace-group/if/subshell) backs up fd 2 before duping the
+    target on. The backup used a plain `os.dup`, which after `exec 1>&-` landed
+    in the freed fd-1 slot — a slot the stale `sys.stdout` wrapper still names —
+    so a body `echo` wrote OUT into that backup (the real stderr) with rc 0
+    instead of failing EBADF. bash keeps fd 1 closed: OUT is never written and
+    the `write error` diagnostic follows fd 2 into g. Saving every backup on a
+    high fd (>= 10) keeps fd 1 closed. Expectations verified against bash 5.2.
+    """
+
+    def test_function_body_stdout_leak(self, tmp_path):
+        """The ledger probe: `exec 1>&-; f(){ echo OUT; echo ERR >&2; }; f 2>g`.
+
+        OUT never appears (fd 1 closed); g holds the write-error diagnostic
+        for OUT plus ERR; nothing leaks to the real stderr."""
+        psh = run_psh(
+            'exec 1>&-; f(){ echo OUT; echo ERR >&2; }; f 2>g', cwd=tmp_path)
+        g = (tmp_path / 'g').read_text()
+        assert 'write error' in g
+        assert 'ERR' in g
+        assert 'OUT' not in g
+        assert psh.stderr == ''            # OUT did NOT leak to the real stderr
+
+    def test_function_body_only_stdout_rc(self, tmp_path):
+        """`exec 1>&-; f(){ echo OUT; }; f 2>g`: rc 1, only the diagnostic."""
+        psh = run_psh('exec 1>&-; f(){ echo OUT; }; f 2>g', cwd=tmp_path)
+        assert psh.returncode == 1
+        g = (tmp_path / 'g').read_text()
+        assert 'write error' in g
+        assert 'OUT' not in g
+        assert psh.stderr == ''
+
+    def test_nested_functions_no_leak(self, tmp_path):
+        """Both nested-call body writes fail into g, none leak to real stderr."""
+        psh = run_psh(
+            'exec 1>&-; g(){ echo INNER; }; f(){ g; echo OUTER; }; f 2>g',
+            cwd=tmp_path)
+        assert psh.returncode == 1
+        assert (tmp_path / 'g').read_text().count('write error') == 2
+        assert psh.stderr == ''
+
+    def test_definition_attached_redirect_no_leak(self, tmp_path):
+        """`f(){ ...; } 2>g; f` after exec 1>&-: same result via func.redirects."""
+        psh = run_psh(
+            'exec 1>&-; f(){ echo OUT; echo ERR >&2; } 2>g; f', cwd=tmp_path)
+        g = (tmp_path / 'g').read_text()
+        assert 'write error' in g
+        assert 'ERR' in g
+        assert 'OUT' not in g
+        assert psh.stderr == ''
+
+    def test_function_reopen_fd1_still_lands(self, tmp_path):
+        """`exec 1>&-; f(){ echo a; }; f 1>g`: reopening fd 1 must deliver a."""
+        run_psh('exec 1>&-; f(){ echo a; }; f 1>g', cwd=tmp_path)
+        assert (tmp_path / 'g').read_text() == 'a\n'
+
+    def test_brace_group_body_no_leak(self, tmp_path):
+        """Compound sibling: `exec 1>&-; { echo OUT; echo ERR >&2; } 2>g`."""
+        psh = run_psh(
+            'exec 1>&-; { echo OUT; echo ERR >&2; } 2>g', cwd=tmp_path)
+        g = (tmp_path / 'g').read_text()
+        assert 'write error' in g
+        assert 'ERR' in g
+        assert 'OUT' not in g
+        assert psh.stderr == ''
+
+    def test_if_body_no_leak(self, tmp_path):
+        """Compound sibling: `if ...; then ...; fi 2>g` after exec 1>&-."""
+        psh = run_psh(
+            'exec 1>&-; if true; then echo OUT; echo ERR >&2; fi 2>g',
+            cwd=tmp_path)
+        g = (tmp_path / 'g').read_text()
+        assert 'write error' in g
+        assert 'ERR' in g
+        assert 'OUT' not in g
+        assert psh.stderr == ''
+
+    def test_subshell_body_no_leak(self, tmp_path):
+        """Forked-subshell sibling: `( echo OUT; echo ERR >&2; ) 2>g`."""
+        psh = run_psh(
+            'exec 1>&-; ( echo OUT; echo ERR >&2; ) 2>g', cwd=tmp_path)
+        g = (tmp_path / 'g').read_text()
+        assert 'write error' in g
+        assert 'ERR' in g
+        assert 'OUT' not in g
+        assert psh.stderr == ''
+
+    def test_close2_then_body_stderr_no_leak(self, tmp_path):
+        """`exec 2>&-; f(){ echo ERR >&2; }; f 1>g`: fd 2 stays closed, so the
+        body's `>&2` write fails (rc 1); ERR never leaks to the real stdout."""
+        psh = run_psh(
+            'exec 2>&-; f(){ echo ERR >&2; }; f 1>g', cwd=tmp_path)
+        assert psh.returncode == 1
+        assert (tmp_path / 'g').read_text() == ''
+        assert psh.stdout == ''            # ERR did NOT leak to the real stdout
