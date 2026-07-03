@@ -13,7 +13,6 @@ from ...ast_nodes import (
     ArithmeticEvaluation,
     BinaryTestExpression,
     EnhancedTestStatement,
-    LiteralPart,
     NegatedTestExpression,
     ProcessSubstitution,
     Redirect,
@@ -204,12 +203,14 @@ class SpecialCommandParsers:
         collected and handed to :meth:`_parse_test_expression`, which recognises
         negation and simple unary/binary/single-operand tests but does NOT model
         the full ``[[ ]]`` grammar — boolean compounds (``&&``/``||``),
-        parenthesised grouping, and per-operand quote context are not built
-        (see :meth:`_parse_test_expression` and :meth:`_operand_word`). The
-        recursive descent parser (``recursive_descent/parsers/tests.py``) is the
-        full implementation; this parser deliberately stops at the level the
-        parity corpus exercises. Trailing redirections after ``]]`` are likewise
-        not parsed.
+        parenthesised grouping, multi-token ``=~`` regexes, and per-operand
+        quote context are not built (see :meth:`_parse_test_expression`). Those
+        unmodelled forms are REJECTED with a committed parse error (exit 2)
+        rather than flattened into a silently-wrong test. The recursive descent
+        parser (``recursive_descent/parsers/tests.py``) is the full
+        implementation; this parser deliberately stops at the level the parity
+        corpus exercises. Trailing redirections after ``]]`` are likewise not
+        parsed.
         """
         def parse_enhanced_test(tokens: List[Token], pos: int) -> ParseResult[EnhancedTestStatement]:
             """Parse enhanced test expression."""
@@ -246,10 +247,18 @@ class SpecialCommandParsers:
             closing_pos = pos
             pos += 1  # Skip ]]
 
-            # Parse the test expression from collected tokens
+            # Parse the test expression from collected tokens. Compound/grouping/
+            # regex-parens forms return None here and are rejected cleanly (a
+            # committed parse error → exit 2), never flattened into a wrong test.
             test_expr = self._parse_test_expression(expr_tokens)
             if test_expr is None:
-                raise_committed_error(tokens, closing_pos, "Invalid test expression")
+                raise_committed_error(
+                    tokens, closing_pos,
+                    "[[ ]] expression not supported by the combinator parser "
+                    "(boolean compounds '&&'/'||', grouping, or =~ regex with "
+                    "parens are educational-scope gaps; use the recursive "
+                    "descent parser)",
+                )
 
             return ParseResult(
                 success=True,
@@ -309,57 +318,18 @@ class SpecialCommandParsers:
                 operand_word=self._operand_word_from_token(tokens[0]))
 
         # Educational-scope boundary: anything longer/more complex than the
-        # forms above (e.g. ``a == b && c == d``, parenthesised groups) is not
-        # modelled as a compound expression — it is flattened into one loose
-        # binary test (first token, second token as operator, the rest joined as
-        # the right operand). The recursive descent parser builds the real
-        # compound AST; this fallback keeps the parity corpus passing without
-        # claiming full coverage.
-        if len(tokens) >= 3:
-            left = self._format_test_operand(tokens[0])
-            operator = tokens[1].value if len(tokens) > 1 else '=='
-            right = ' '.join(self._format_test_operand(t) for t in tokens[2:])
-
-            return BinaryTestExpression(
-                left_word=self._operand_word(left),
-                operator=operator,
-                right_word=self._operand_word(right),
-            )
-
+        # forms above — boolean compounds (``a == b && c == d``, ``||``),
+        # parenthesised grouping (``( ... )``), and multi-token ``=~`` regexes
+        # (``(a|b)c``) — is NOT modelled by this parser. Return None so the
+        # caller rejects the whole ``[[ ]]`` with a committed parse error
+        # (exit 2) rather than flattening it into a loose, silently-wrong binary
+        # test. The recursive descent parser
+        # (``recursive_descent/parsers/tests.py``) builds the real compound AST.
         return None
-
-    @staticmethod
-    def _operand_word(text: str) -> Word:
-        """Wrap a combinator test operand string in an unquoted Word.
-
-        The combinator (educational-only parser) does not track operand
-        quote context, so every operand is an unquoted single LiteralPart
-        (``is_quoted`` is False) — combinator-built test operands are always
-        treated as unquoted (glob/regex-active) patterns."""
-        return Word(parts=[LiteralPart(text, quoted=False, quote_char=None)])
 
     def _operand_word_from_token(self, token: Token) -> Word:
         """Build a test operand Word from its source token."""
         return self.expansions.build_word_from_token(token)
-
-    def _format_test_operand(self, token: Token) -> str:
-        """Format a test operand token for proper shell representation.
-
-        Args:
-            token: Token to format
-
-        Returns:
-            Formatted string representation
-        """
-        if token.type.name == 'VARIABLE':
-            # Add $ prefix back for variables
-            return f'${token.value}'
-        elif token.type.name == 'STRING':
-            # For strings, use the content as-is
-            return token.value
-        else:
-            # For other token types, use the value as-is
-            return token.value
 
     def _build_process_substitution(self) -> Parser[ProcessSubstitution]:
         """Build parser for process substitution <(cmd) and >(cmd) syntax."""

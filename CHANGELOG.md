@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.599.0 (2026-07-03) - Fix: combinator named-fd redirects + honest [[ ]] compound rejection (reappraisal #16 Tier 2 combinator-parser cluster)
+- FIX. Reappraisal #16 Tier 2, combinator-parser cluster (the combinator is
+  educational-only; the recursive descent parser is production): two MED
+  findings, each pinned to bash 5.2.26 and to the recursive descent parser.
+  New/updated tests:
+  `tests/integration/parser/test_combinator_parity_regressions.py` (named-fd
+  three-way parity) and `tests/unit/parser/combinators/test_special_commands.py`
+  (`[[ ]]` rejection classes).
+- **Named-fd `{var}>fd` redirect no longer silently dropped (silent
+  misexecution).** The combinator read `op_token.fd` but never `op_token.var_fd`,
+  so `exec {fd}>/dev/null` parsed as a plain `exec >/dev/null` — permanently
+  clobbering the shell's own stdout and leaving `$fd` unset. The bare dynamic-dup
+  form `>&$var` was mis-composed too (`echo hi >&$v` leaked the `$var` target
+  into the command, printing `hi1`). `_parse_redirection` now reads `var_fd` and
+  carries it onto every Redirect it builds (heredoc, here-string, normal, and —
+  via `_parse_dup_redirection` — every fd-duplication form), and the bare-dup
+  operator with a separate dynamic target token (`>&`/`N>&` + expansion) is
+  handled via `_FD_DUP_BARE_RE`, mirroring the recursive descent parser. All
+  named-fd forms (`{fd}>`/`>>`/`<`/`<>`/`>|`/`>&`/`<&`/`>&-`/`{fd2}>&$fd`) now
+  match bash and rd exactly.
+- **`[[ ]]` boolean-compound / grouping / regex-parens fallback now rejects
+  honestly instead of returning a plausible-but-wrong exit status.** The old
+  `len>=3` fallback flattened the tokens with a lossy space-join, so
+  `[[ a == a && b == b ]]` evaluated `a == "a && b == b"` (rc1, bash rc0) and
+  `[[ ! a == a && b == b ]]` returned rc0 vs bash rc1. The combinator now
+  HARD-REJECTS the constructs it cannot model (`&&`/`||`, grouping parens,
+  multi-token `=~` regexes) with a committed parse error (exit 2) rather than
+  shipping a silently-wrong status. Simple negation/unary/binary/single-operand
+  tests and single-token regexes (`^a`, `[0-9]+`) still parse. Removed the
+  now-dead `_operand_word`/`_format_test_operand` helpers.
+- DELIBERATE divergence (documented educational-scope gap): bash/rd accept the
+  rejected `[[ ]]` compounds (rc0/rc1); the combinator's exit-2 rejection is
+  honest failure over silently-wrong, as the finding requires. Out of scope
+  (bash accepts, but rd ALSO rejects, so not combinator-specific): `>& word`
+  csh-style combined redirect.
+
 ## 0.598.0 (2026-07-03) - Fix: signal-death diagnostic for foreground externals + slash-path exec wording (reappraisal #16 Tier 2 executor-diagnostics cluster)
 - FIX. Reappraisal #16 Tier 2, executor-diagnostics cluster: two bash 5.2
   divergences in the executor's failure diagnostics, each pinned to a live-bash

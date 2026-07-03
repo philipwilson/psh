@@ -371,3 +371,100 @@ class TestUnclosedExpansionsRejected:
 
     def test_unclosed_arithmetic(self):
         assert_three_way('echo $((1+')
+
+
+class TestNamedFdRedirectCombinator:
+    """Named-fd redirects ``{var}>file`` must not be dropped (reappraisal #16).
+
+    The combinator read ``op_token.fd`` but never ``op_token.var_fd``, so
+    ``exec {fd}>/dev/null`` parsed as a plain ``exec >/dev/null`` — silently
+    clobbering the shell's own stdout and leaving ``$fd`` unset. The bare
+    dynamic-dup form (``>&$var``) was likewise mis-composed: the ``$var``
+    target leaked into the command as an argument. Both now mirror the
+    recursive descent parser and match bash.
+    """
+
+    def test_named_fd_open(self):
+        assert_three_way('exec {fd}>/dev/null; echo fd=$fd')
+
+    def test_named_fd_append(self):
+        assert_three_way('exec {fd}>>/dev/null; echo fd=$fd')
+
+    def test_named_fd_input(self):
+        assert_three_way('exec {fd}</dev/null; echo fd=$fd')
+
+    def test_named_fd_readwrite(self):
+        assert_three_way('exec {fd}<>/dev/null; echo fd=$fd')
+
+    def test_named_fd_clobber(self):
+        assert_three_way('exec {fd}>|/dev/null; echo fd=$fd')
+
+    def test_named_fd_on_simple_command(self):
+        assert_three_way('echo hi {fd}>/dev/null; echo fd=$fd')
+
+    def test_named_fd_dup_out(self):
+        assert_three_way('exec {fd}>&1; echo hello >&$fd')
+
+    def test_named_fd_dup_dynamic_target(self):
+        # {fd2}>&$fd : named-fd prefix AND a dynamic dup target.
+        assert_three_way('exec {fd}>/dev/null; exec {fd2}>&$fd; echo fd2=$fd2')
+
+    def test_plain_dynamic_dup_no_arg_leak(self):
+        # >&$var was composited wrong: $var leaked as a command argument
+        # (`echo hi >&$v` printed `hi1` instead of `hi`).
+        assert_three_way('v=1; echo hi >&$v')
+
+
+class TestEnhancedTestCompoundRejected:
+    """The combinator rejects ``[[ ]]`` forms it cannot model (reappraisal #16).
+
+    Boolean compounds (``&&``/``||``), parenthesised grouping, and multi-token
+    ``=~`` regexes are an educational-scope gap. The old flat space-join
+    fallback returned a plausible-but-WRONG exit status; the parser now
+    HARD-REJECTS these with a committed parse error (exit 2) instead of
+    shipping a silently-wrong answer. (bash/rd accept them; the combinator's
+    honest rejection is a documented, deliberate divergence.)
+    """
+
+    def _assert_combinator_rejects(self, cmd):
+        # rd still matches bash; the combinator rejects cleanly with rc 2 and
+        # produces no stdout (the whole line fails to parse).
+        bash = run_bash(cmd)
+        rd = run_psh(cmd, 'rd')
+        comb = run_psh(cmd, 'combinator')
+        assert rd.stdout == bash.stdout and rd.returncode == bash.returncode, (
+            f"rd vs bash for {cmd!r}")
+        assert comb.returncode == 2, (
+            f"combinator should reject {cmd!r} with rc 2, got "
+            f"{comb.returncode} (stdout={comb.stdout!r})")
+        assert comb.stdout == '', (
+            f"combinator should print nothing for rejected {cmd!r}, "
+            f"got {comb.stdout!r}")
+
+    def test_and_compound_rejected(self):
+        self._assert_combinator_rejects('[[ a == a && b == b ]]; echo $?')
+
+    def test_or_compound_rejected(self):
+        self._assert_combinator_rejects('[[ a == b || c == c ]]; echo $?')
+
+    def test_grouping_rejected(self):
+        self._assert_combinator_rejects('[[ ( a == a ) ]]; echo $?')
+
+    def test_regex_with_parens_rejected(self):
+        self._assert_combinator_rejects('[[ abc =~ (a|b)c ]]; echo $?')
+
+    def test_negated_compound_rejected(self):
+        self._assert_combinator_rejects('[[ ! a == a && b == b ]]; echo $?')
+
+    def test_numeric_compound_rejected(self):
+        self._assert_combinator_rejects('[[ 1 -lt 2 && 3 -gt 2 ]]; echo $?')
+
+    def test_simple_binary_still_accepted(self):
+        # Guard: the simple forms the combinator DOES model keep working.
+        assert_three_way('[[ a == a ]]; echo $?')
+
+    def test_simple_unary_still_accepted(self):
+        assert_three_way('[[ -n foo ]]; echo $?')
+
+    def test_negated_simple_still_accepted(self):
+        assert_three_way('[[ ! a == b ]]; echo $?')

@@ -1,5 +1,7 @@
 """Tests for special command parsers."""
 
+import pytest
+
 from psh.ast_nodes import (
     ArithmeticEvaluation,
     BinaryTestExpression,
@@ -190,6 +192,88 @@ class TestEnhancedTestExpressions:
         assert isinstance(result.value.expression, UnaryTestExpression)
         assert result.value.expression.operator == "-n"
         assert result.value.expression.operand == "$var"
+
+
+class TestEnhancedTestRejectsUnmodelled:
+    """The combinator rejects [[ ]] forms outside its educational scope.
+
+    Boolean compounds (&&/||), parenthesised grouping, and multi-token =~
+    regexes are NOT modelled. Rather than flattening them into a loose,
+    silently-wrong binary test (the old space-join fallback), the parser
+    returns None from _parse_test_expression and raises a committed
+    ParseError from enhanced_test_statement (exit 2 at the shell level).
+    See reappraisal #16 Tier-2.
+    """
+
+    def _tokens_between_brackets(self, *inner):
+        return (
+            [make_token(TokenType.DOUBLE_LBRACKET, "[[")]
+            + list(inner)
+            + [make_token(TokenType.DOUBLE_RBRACKET, "]]")]
+        )
+
+    def test_and_compound_returns_none(self):
+        parsers = SpecialCommandParsers()
+        inner = [
+            make_token(TokenType.WORD, "a"),
+            make_token(TokenType.WORD, "=="),
+            make_token(TokenType.WORD, "a"),
+            make_token(TokenType.AND_AND, "&&"),
+            make_token(TokenType.WORD, "b"),
+            make_token(TokenType.WORD, "=="),
+            make_token(TokenType.WORD, "c"),
+        ]
+        assert parsers._parse_test_expression(inner) is None
+
+    def test_or_compound_returns_none(self):
+        parsers = SpecialCommandParsers()
+        inner = [
+            make_token(TokenType.WORD, "a"),
+            make_token(TokenType.WORD, "=="),
+            make_token(TokenType.WORD, "b"),
+            make_token(TokenType.OR_OR, "||"),
+            make_token(TokenType.WORD, "c"),
+        ]
+        assert parsers._parse_test_expression(inner) is None
+
+    def test_grouping_returns_none(self):
+        parsers = SpecialCommandParsers()
+        inner = [
+            make_token(TokenType.LPAREN, "("),
+            make_token(TokenType.WORD, "a"),
+            make_token(TokenType.WORD, "=="),
+            make_token(TokenType.WORD, "a"),
+            make_token(TokenType.RPAREN, ")"),
+        ]
+        assert parsers._parse_test_expression(inner) is None
+
+    def test_compound_raises_committed_parse_error(self):
+        from psh.parser.recursive_descent.helpers import ParseError
+
+        parsers = SpecialCommandParsers()
+        tokens = self._tokens_between_brackets(
+            make_token(TokenType.WORD, "a"),
+            make_token(TokenType.WORD, "=="),
+            make_token(TokenType.WORD, "a"),
+            make_token(TokenType.AND_AND, "&&"),
+            make_token(TokenType.WORD, "b"),
+            make_token(TokenType.WORD, "=="),
+            make_token(TokenType.WORD, "b"),
+        )
+        with pytest.raises(ParseError):
+            parsers.enhanced_test_statement.parse(tokens, 0)
+
+    def test_simple_binary_still_parses(self):
+        # Guard: the simple forms the combinator DOES model still succeed.
+        parsers = SpecialCommandParsers()
+        tokens = self._tokens_between_brackets(
+            make_token(TokenType.WORD, "a"),
+            make_token(TokenType.WORD, "=="),
+            make_token(TokenType.WORD, "a"),
+        )
+        result = parsers.enhanced_test_statement.parse(tokens, 0)
+        assert result.success is True
+        assert isinstance(result.value.expression, BinaryTestExpression)
 
 
 class TestProcessSubstitution:
