@@ -14,6 +14,8 @@ from .base import ParserSubcomponent
 
 # Pre-compiled regex for fd duplication (e.g. "2>&1", ">&-")
 _FD_DUP_RE = re.compile(r'^(\d*)([><])&(-|\d+)$')
+# Move form "[n]>&m-" / "[n]<&m-": dup m onto n, then close the source m.
+_FD_DUP_MOVE_RE = re.compile(r'^(\d*)([><])&(\d+)-$')
 # Bare dup operator whose target is a separate (dynamic) token, e.g. ">&$fd",
 # "2>&$((n+1))" — the lexer emits just "N>&"/">&"/"<&" here.
 _FD_DUP_BARE_RE = re.compile(r'^(\d*)([><])&$')
@@ -145,8 +147,9 @@ class RedirectionParser(ParserSubcomponent):
         """Parse file descriptor duplication redirect."""
         var_fd = getattr(token, 'var_fd', None)
         # Bare operator forms whose target is a separate token: ">& 2", "<& 0",
-        # and the dynamic forms ">&$fd", "2>&$((n+1))". The lexer emits the
-        # operator (with any fd prefix) as one token and the target separately.
+        # the dynamic forms ">&$fd"/"2>&$((n+1))", and the csh-style combined
+        # redirect ">&word" (a filename target). The lexer emits the operator
+        # (with any fd prefix) as one token and the target separately.
         bare = _FD_DUP_BARE_RE.match(token.value)
         if bare:
             source_fd_str, direction = bare.groups()
@@ -168,10 +171,27 @@ class RedirectionParser(ParserSubcomponent):
                 # Static numeric fd — resolve now (e.g. ">& 2").
                 return Redirect(type=direction + '&', target=dup_part,
                                 fd=fd, dup_fd=int(dup_part), var_fd=var_fd)
+            if (direction == '>' and not source_fd_str
+                    and not word.has_expansion_parts):
+                # csh-style `>&word`: fd omitted + a static, non-numeric,
+                # non-'-' word redirects BOTH stdout and stderr to that file,
+                # exactly like `&>word`. `combined` is honored ahead of `type`
+                # everywhere, so keep `>&` for a faithful round-trip.
+                return Redirect(type='>&', target=dup_part, fd=None,
+                                combined=True, var_fd=var_fd, target_word=word)
             # Dynamic target: keep the (expandable) string; dup_fd resolved at
             # execution time by FileRedirector._resolve_dup_fd.
             return Redirect(type=direction + '&', target=dup_part,
                             fd=fd, dup_fd=None, var_fd=var_fd)
+
+        # Move form "[n]>&m-" / "[n]<&m-": dup m onto n, then close source m.
+        move = _FD_DUP_MOVE_RE.match(token.value)
+        if move:
+            source_fd_str, direction, target = move.groups()
+            default_fd = 1 if direction == '>' else 0
+            fd = int(source_fd_str) if source_fd_str else default_fd
+            return Redirect(type=direction + '&', target=None, fd=fd,
+                            dup_fd=int(target), move=True, var_fd=var_fd)
 
         # Handle single-token forms containing >&  or <&  (e.g., "2>&1", "3<&0", "3>&-", "3<&-")
         match = _FD_DUP_RE.match(token.value)

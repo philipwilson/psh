@@ -260,7 +260,9 @@ class FileRedirector:
         unchanged. Raises OSError for a non-numeric target (bash: "ambiguous
         redirect").
         """
-        if redirect.type not in ('>&', '<&'):
+        if redirect.type not in ('>&', '<&') or redirect.combined:
+            # A csh-style `>&word` combined redirect keeps type '>&' but is a
+            # file target, not a dup — never resolve it as a dynamic fd.
             return redirect
         if redirect.dup_fd is not None or not redirect.target or redirect.target == '-':
             return redirect
@@ -332,11 +334,18 @@ class FileRedirector:
         self.shell.state.set_variable(name, str(newfd))
 
     def _redirect_dup_fd(self, redirect):
-        """Handle >&/<& fd duplication. Validates source fd."""
+        """Handle >&/<& fd duplication (and the move form). Validates source fd."""
         if redirect.fd is not None and redirect.dup_fd is not None:
             if not self.dup_fd_valid(redirect.dup_fd):
                 raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
             os.dup2(redirect.dup_fd, redirect.fd)
+            # Move form `[n]>&m-`: close the source m after duplicating it onto
+            # n. bash keeps the fd open when source and destination coincide.
+            if redirect.move and redirect.dup_fd != redirect.fd:
+                try:
+                    os.close(redirect.dup_fd)
+                except OSError:
+                    pass
         elif redirect.fd is not None and redirect.target == '-':
             try:
                 os.close(redirect.fd)
@@ -430,10 +439,18 @@ class FileRedirector:
             return [(plan.target_fd, self._save_fd_high(plan.target_fd))]
         if redirect.type in ('>&', '<&'):
             self._validate_dup_source(redirect)
+            saves: List[Tuple[int, int | None]] = []
             if (redirect.fd is not None
                     and (redirect.dup_fd is not None
                          or redirect.target == '-')):
-                return [(redirect.fd, self._save_fd_high(redirect.fd))]
+                saves.append((redirect.fd, self._save_fd_high(redirect.fd)))
+            # Move form also closes the source fd — back it up so a temporary
+            # redirect (`echo x 3>&1-`) restores it after the command.
+            if (redirect.move and redirect.dup_fd is not None
+                    and redirect.dup_fd != redirect.fd):
+                saves.append((redirect.dup_fd,
+                              self._save_fd_high(redirect.dup_fd)))
+            return saves
         if redirect.type in ('>&-', '<&-') and redirect.fd is not None:
             return [(redirect.fd, self._save_fd_high(redirect.fd))]
         return []
@@ -561,12 +578,39 @@ class FileRedirector:
             self.shell.stdin = sys.stdin
             self.state.stdin = sys.stdin
 
+    def _snapshot_std_streams(self):
+        """Capture sys/shell/state std streams for permanent-redirect rollback."""
+        return (
+            (sys.stdout, sys.stderr, sys.stdin),
+            (self.shell.stdout, self.shell.stderr, self.shell.stdin),
+            (self.state.stdout, self.state.stderr, self.state.stdin),
+        )
+
+    def _rollback_std_streams(self, snapshot):
+        """Restore the streams captured by ``_snapshot_std_streams``, closing
+        any stream this exec had newly rebound (so its dup'd fd is released)."""
+        sys_streams, shell_streams, state_streams = snapshot
+        for cur in (sys.stdout, sys.stderr, sys.stdin):
+            if cur not in sys_streams:  # a stream this call rebound — close it
+                try:
+                    cur.close()
+                except (OSError, ValueError):
+                    pass
+        sys.stdout, sys.stderr, sys.stdin = sys_streams
+        self.shell.stdout, self.shell.stderr, self.shell.stdin = shell_streams
+        self.state.stdout, self.state.stderr, self.state.stdin = state_streams
+
     def apply_permanent_redirections(self, redirects: List[Redirect]):
         """Apply redirections permanently (for exec builtin).
 
         Output branches do the fd-level redirect first, then rebind the
         Python-level stream onto the SAME open file description via
         _rebind_output_stream() — never a second independent open().
+
+        All-or-nothing: if any redirect in the list fails, EVERY redirect
+        already applied is rolled back (fds and Python streams restored) before
+        the error propagates — bash undoes a failed exec's entire redirection
+        list, so `exec 3>ok 4>/bad/x` leaves fd 3 closed, not pointing at ok.
         """
         # Pending buffered output belongs to the OLD destination; flush it
         # before the fd-level dup2 silently re-routes it to the new file.
@@ -576,41 +620,60 @@ class FileRedirector:
             except (OSError, ValueError):
                 pass
 
-        for redirect in redirects:
-            if redirect.var_fd:
-                # Named-fd redirect under `exec`: same persistent allocation
-                # (already permanent, so no stream rebind needed).
-                self.apply_var_fd_redirect(redirect)
-                continue
-            plan = self.planner.plan(redirect)
-            redirect = plan.redirect
-            applied = False
+        # Back up each fd and the Python streams before touching them, so a
+        # later failure rolls the whole list back (bash semantics).
+        saved_fds: List[Tuple[int, int | None]] = []
+        saved_streams = self._snapshot_std_streams()
+        try:
+            for redirect in redirects:
+                if redirect.var_fd:
+                    # Named-fd redirect under `exec`: same persistent allocation
+                    # (already permanent, so no stream rebind needed).
+                    self.apply_var_fd_redirect(redirect)
+                    continue
+                plan = self.planner.plan(redirect)
+                redirect = plan.redirect
+                saved_fds.extend(self.saved_fds_for_plan(plan))
+                applied = False
 
-            try:
-                self.apply_fd_plan(plan)
-                # Rebind the Python-level stream onto the redirected fd. Dispatch
-                # by direction using the planner's target_fd (the single source
-                # of truth for which fd this redirect acts on) rather than
-                # re-enumerating every redirect.type: input forms (`<`, `<>`,
-                # `<<`, `<<-`, `<<<`) rebind stdin; output forms (`>`, `>>`,
-                # `>|`) rebind the target fd; `&>`/`&>>` rebind both 1 and 2;
-                # a `>&`/`<&` duplication rebinds its own fd (a close has no
-                # stream to rebind).
-                if redirect.combined:
-                    self._rebind_output_stream(1)
-                    self._rebind_output_stream(2)
-                elif '&' in redirect.type:  # >& <& (dup) or >&- <&- (close)
-                    # A duplication rebinds its own fd; a close (dup_fd is None)
-                    # has no stream to rebind.
-                    if redirect.fd is not None and redirect.dup_fd is not None:
-                        self._rebind_output_stream(redirect.fd)
-                elif redirect.type.startswith('<'):
-                    self._rebind_input_stream(plan.target_fd)
-                else:  # '>', '>>', '>|'
-                    self._rebind_output_stream(plan.target_fd)
-                applied = True
-            finally:
-                plan.close_procsub(applied=applied)
+                try:
+                    self.apply_fd_plan(plan)
+                    # Rebind the Python-level stream onto the redirected fd.
+                    # Dispatch by direction using the planner's target_fd (the
+                    # single source of truth for which fd this redirect acts on)
+                    # rather than re-enumerating every redirect.type: input forms
+                    # (`<`, `<>`, `<<`, `<<-`, `<<<`) rebind stdin; output forms
+                    # (`>`, `>>`, `>|`) rebind the target fd; `&>`/`&>>` rebind
+                    # both 1 and 2; a `>&`/`<&` duplication rebinds its own fd
+                    # (a close has no stream to rebind).
+                    if redirect.combined:
+                        self._rebind_output_stream(1)
+                        self._rebind_output_stream(2)
+                    elif '&' in redirect.type:  # >& <& (dup) or >&- <&- (close)
+                        # A duplication rebinds its own fd; a close (dup_fd is
+                        # None) has no stream to rebind.
+                        if redirect.fd is not None and redirect.dup_fd is not None:
+                            self._rebind_output_stream(redirect.fd)
+                    elif redirect.type.startswith('<'):
+                        self._rebind_input_stream(plan.target_fd)
+                    else:  # '>', '>>', '>|'
+                        self._rebind_output_stream(plan.target_fd)
+                    applied = True
+                finally:
+                    plan.close_procsub(applied=applied)
+        except Exception:
+            self._rollback_std_streams(saved_streams)
+            self.restore_redirections(saved_fds)
+            raise
+
+        # Success: the redirects are permanent. Close the fd backups so they
+        # don't leak (they held the pre-exec descriptions, now superseded).
+        for _fd, saved in saved_fds:
+            if saved is not None:
+                try:
+                    os.close(saved)
+                except OSError:
+                    pass
 
     @property
     def procsub_handler(self):

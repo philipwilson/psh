@@ -825,9 +825,10 @@ class FormatterVisitor(ASTVisitor[str]):
                 return f"{op}{self._format_word(node.target_word)}"
             return f"{op}{self._quote_scalar(node.target or '', node.quote_type)}"
 
-        # fd duplication/close (2>&1, >&-).
+        # fd duplication/close (2>&1, >&-). A move (`[n]>&m-`) keeps the
+        # trailing '-' so it does not re-parse as a plain dup.
         if node.dup_fd is not None:
-            return f"{op}{node.dup_fd}"
+            return f"{op}{node.dup_fd}{'-' if node.move else ''}"
 
         # Filename target: format the Word to preserve quoting (`> "a b"`);
         # fall back to the bare target string for forms with no Word. A process

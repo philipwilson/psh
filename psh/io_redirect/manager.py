@@ -62,6 +62,7 @@ re-pointing e.g. fd 3 at its exec-time file mid-eval — fixed in v0.302).
 Frames are restored innermost-first; this LIFO discipline is guaranteed by
 the paired try/finally in ``_execute_builtin_with_redirections``.
 """
+import copy
 import fcntl
 import os
 import sys
@@ -365,13 +366,22 @@ class IOManager:
                     self._builtin_redirect_stdin(target, redirect, frame)
                 elif redirect.type in ('>', '>>', '>|'):
                     self._builtin_redirect_output_file(target, redirect, frame)
-                elif redirect.type == '>&':
-                    self._builtin_redirect_dup(redirect, frame)
+                elif redirect.type in ('>&', '<&'):
+                    # A move (`n>&m-`) is a dup of m onto n followed by closing
+                    # the source m (unless m == n). Apply the dup with the
+                    # existing helpers, then DEFER the source close so it reuses
+                    # the same stream-swap + late-close machinery as `>&-`.
+                    dup_step, close_step = self._split_move_dup(redirect)
+                    if redirect.type == '>&':
+                        self._builtin_redirect_dup(dup_step, frame)
+                    else:
+                        self._builtin_redirect_fd_level(dup_step, frame)
+                    if close_step is not None:
+                        self._builtin_redirect_close(close_step, frame)
+                        deferred_closes.append(close_step)
                 elif redirect.type in ('>&-', '<&-'):
                     self._builtin_redirect_close(redirect, frame)
                     deferred_closes.append(redirect)
-                elif redirect.type == '<&':
-                    self._builtin_redirect_fd_level(redirect, frame)
 
             # Apply the deferred fd-level closes now that all opens are done.
             for redirect in deferred_closes:
@@ -565,6 +575,25 @@ class IOManager:
                 sys.stderr = f
         else:
             self._builtin_redirect_fd_level(redirect, frame)
+
+    @staticmethod
+    def _split_move_dup(redirect):
+        """Split a move (`[n]>&m-`) into its dup step and source-close step.
+
+        A plain dup returns ``(redirect, None)``. A move returns a
+        move-cleared dup plus a ``>&-``/``<&-`` close of the source fd — or
+        ``None`` for the close when source == destination, which bash leaves
+        open (`echo x 1>&1-` keeps stdout).
+        """
+        if not redirect.move:
+            return redirect, None
+        dup_only = copy.copy(redirect)
+        dup_only.move = False
+        close_step = None
+        if redirect.dup_fd is not None and redirect.dup_fd != redirect.fd:
+            close_step = Redirect(type=redirect.type + '-', target=None,
+                                  fd=redirect.dup_fd)
+        return dup_only, close_step
 
     def _builtin_redirect_close(self, redirect,
                                 frame: BuiltinRedirectFrame):
