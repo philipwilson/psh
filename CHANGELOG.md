@@ -4,6 +4,50 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.597.0 (2026-07-03) - Fix: fd-move [n]>&m-, csh >&word, exec all-or-nothing rollback, ANSI-C trailing \c (reappraisal #16 Tier 2 I/O + lexer cluster)
+- FIX. Reappraisal #16 Tier 2, I/O-redirect + lexer cluster: four bash 5.2
+  divergences, each pinned to a live-bash probe and captured as golden cases
+  plus dedicated unit/integration suites
+  (`tests/unit/lexer/test_ansi_c_quoting.py`,
+  `tests/integration/redirection/test_fd_move_and_csh_redirect.py`). Both
+  parsers (recursive-descent and combinator) were updated.
+- **fd-move `[n]>&m-` / `[n]<&m-` (dup m onto n, then close source m)** was
+  silently mis-parsed — the trailing `-` leaked as a command ARGUMENT, so no
+  move happened and the wrong output resulted. The lexer now consumes the `-`
+  into a single `REDIRECT_DUP` token and a new `Redirect.move` flag drives
+  dup-then-close in `_redirect_dup_fd` (bash keeps the fd open when `m == n`).
+  The builtin path decomposes a move into its dup plus a deferred source close,
+  reusing the `>&-` stream-swap machinery so `echo x 3>&1-` reports a write
+  error like bash. `saved_fds_for_plan` also backs up the source fd so a
+  temporary move restores both fds.
+- **csh-style `>&word` (fd omitted, non-numeric non-dash target)** is now the
+  combined redirect `&>word` (both streams to the file), including the space
+  form `>& word`, quoted words, and digit-prefixed non-numeric words (`>&2x` is
+  one filename, not a dup plus argument). The lexer emits a bare `>&`/`<&`
+  operator for a filename target; the parser classifies it
+  (dup / close / combined / ambiguous). `resolve_dynamic_dup` skips combined
+  redirects so the `>&` type is not mistaken for a dynamic fd dup.
+- **`exec` with multiple redirects now rolls back all-or-nothing on partial
+  failure**, matching bash. `apply_permanent_redirections` snapshots the fds
+  and Python streams before applying; any failure restores every applied
+  redirect and closes what this call opened, so `exec 3>ok 4>/nonexistent/x`
+  leaves fd 3 closed and `ok` empty. Successful lists close the fd backups so
+  they do not leak.
+- **Trailing `\c` in a `$'...'` ANSI-C string** no longer over-consumes the
+  closing quote (was: "Unclosed $' quote"). `handle_ansi_c_escape` takes the
+  string's closing delimiter and leaves `\c` literal when no control char
+  remains before the quote — bash finds the closing quote before decoding
+  escapes. The `${var@E}` path (no delimiter) still consumes the next char.
+- **Docs truth-up (reappraisal #16 H7 stale-negative)**: removed the two
+  now-false claims in `docs/user_guide/09_io_redirection.md` that the csh-style
+  `>& file` syntax is unsupported, since this release implements it.
+- **Disclosed residuals**: a *temporary* (non-`exec`) fd-move restores the
+  closed source fd for later commands where bash leaves it closed (minor);
+  `>&$var` with a non-numeric value keeps psh's dynamic-fd-dup semantics
+  (reports "ambiguous redirect") rather than bash's combined-redirect reading;
+  and `exec` rolls back before printing its diagnostic, so when stderr itself
+  is a rolled-back fd the message lands on the restored stderr.
+
 ## 0.596.0 (2026-07-03) - Fix: colon-operators test joined-nullness on @/* views; @A/@a strip subscript; reject positional/special :=/= (reappraisal #16 Tier 2 expansion-operators cluster)
 - FIX. Reappraisal #16 Tier 2, expansion-operators cluster: three parameter-
   expansion defects on multi-element views, each pinned to bash 5.2 and
