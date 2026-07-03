@@ -55,7 +55,7 @@ class StatementParser(ParserSubcomponent):
 
         # Parse additional statements
         while self.parser.match_any(TokenGroups.STATEMENT_SEPARATORS):
-            self.parser.skip_separators()
+            self._consume_interstatement_separators()
 
             # Check for terminators
             if self.parser.at_end():
@@ -67,6 +67,20 @@ class StatementParser(ParserSubcomponent):
             self._require_statement_boundary()
 
         return command_list
+
+    def _consume_interstatement_separators(self) -> None:
+        """Consume one statement's terminator plus following blank lines.
+
+        A statement is terminated by a single ``;`` / newline (a trailing
+        ``&`` is consumed earlier by ``parse_and_or_list``). Only blank lines
+        may follow before the next statement begins; a *second* ``;`` is left
+        in place so the next ``parse_statement`` rejects the empty command —
+        matching bash, where ``echo a; ; echo b`` (and ``echo a\\n; echo b``)
+        is a syntax error, not two commands.
+        """
+        if self.parser.match_any(TokenGroups.STATEMENT_SEPARATORS):
+            self.parser.advance()
+            self.parser.skip_newlines()
 
     def parse_command_list_until(self, *end_tokens: TokenType) -> CommandList:
         """Parse a command list until one of the end tokens is encountered.
@@ -85,11 +99,10 @@ class StatementParser(ParserSubcomponent):
                 command_list.statements.append(statement)
             self._require_statement_boundary(*end_tokens)
 
-            # Handle separators but stop at end tokens
-            while self.parser.match_any(TokenGroups.STATEMENT_SEPARATORS):
-                self.parser.advance()
-                if self.parser.match(*end_tokens):
-                    break
+            # Consume the statement's terminator and any blank lines, stopping
+            # at a second `;` (left for parse_statement to reject). An end
+            # token reached here is caught by the outer loop condition.
+            self._consume_interstatement_separators()
 
         return command_list
 

@@ -71,3 +71,21 @@ def test_regressions_match_bash(cmd):
     psh = _run(cmd)
     assert psh.stdout == bash.stdout, cmd
     assert psh.returncode == bash.returncode, cmd
+
+
+# Repeated `!`: bash accepts `! ! cmd`, each occurrence toggling the sense of
+# the exit status. Previously psh consumed only one `!` and hit "Expected
+# command" on the second. Verified against bash 5.2.
+@pytest.mark.parametrize("cmd", [
+    '! ! true; echo $?',
+    '! ! false; echo $?',
+    '! ! ! true; echo $?',
+    '! ! ! false; echo $?',
+    '! ! echo a | grep a; echo $?',
+    '! ! [[ -n x ]]; echo $?',
+])
+def test_repeated_bang_matches_bash(cmd):
+    bash = _bash(cmd)
+    psh = _run(cmd)
+    assert psh.stdout == bash.stdout, cmd
+    assert psh.returncode == bash.returncode, cmd

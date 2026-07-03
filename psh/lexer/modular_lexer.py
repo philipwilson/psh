@@ -204,8 +204,17 @@ class ModularLexer:
         # value-based check against LEXER_COMMAND_POSITION_WORDS below (the
         # lexer never sees keyword token TYPES here; see command_position.py
         # for the three machines that track command position).
+        #
+        # RPAREN also returns us to command position, matching the normalizer
+        # (KeywordNormalizer._next_command_position). A `)` closes a
+        # function-definition header (`f() [[ ... ]]`), a case pattern
+        # (`x) [[ ... ]] ;;`) or a subshell, and in each valid case the next
+        # token starts a command — so an operator like `[[` right after it
+        # must be recognized. Without this, `[[` after `)` lexes as a plain
+        # WORD and the parser rejects the compound body / test.
         command_starting_tokens = (
-            STATEMENT_SEPARATORS | COMMAND_GROUP_OPENERS | PIPELINE_PREFIX_TOKENS)
+            STATEMENT_SEPARATORS | COMMAND_GROUP_OPENERS | PIPELINE_PREFIX_TOKENS
+            | {TokenType.RPAREN})
 
         neutral_tokens = {
             TokenType.REDIRECT_IN, TokenType.REDIRECT_OUT,

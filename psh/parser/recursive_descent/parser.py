@@ -192,7 +192,8 @@ class Parser(ContextBaseParser):
 
         Returns the unwrapped node when *cmd_list* is exactly one bare compound
         command (one and-or list, one pipeline, no ``&&``/``||``, not
-        backgrounded, not negated, one command) or one function definition —
+        backgrounded, not negated, not ``time``-prefixed, one command) or one
+        function definition —
         the shapes the previous top-level parser returned directly under
         ``TopLevel``. Returns ``None`` otherwise, so the program stays a
         ``CommandList``.
@@ -207,7 +208,7 @@ class Parser(ContextBaseParser):
         if stmt.operators or stmt.background or len(stmt.pipelines) != 1:
             return None
         pipeline = stmt.pipelines[0]
-        if pipeline.negated or len(pipeline.commands) != 1:
+        if pipeline.negated or pipeline.timed or len(pipeline.commands) != 1:
             return None
         command = pipeline.commands[0]
         return command if isinstance(command, self._BARE_TOP_LEVEL_TYPES) else None
