@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.587.0 (2026-07-03) - Fix: multi-line paste, Ctrl-R inclusive re-search, @P marker strip (appraisal #16 H8 + MED)
+- FIX (HIGH). Reappraisal #16 finding H8 (interactive line editing), three
+  defects, all pinned to bash 5.2:
+  - **Multi-line paste merged commands.** LF/Ctrl-J (`0x0a`) was unbound in the
+    line editor, so pasting a two-line block (`echo one<LF>echo two`) dropped
+    the newline and ran the single corrupt command `echo oneecho two` — bash
+    runs both. LF/Ctrl-J are now bound to `accept_line` in the emacs and both vi
+    keymaps (matching readline). Binding LF alone was insufficient: the greedy
+    `os.read()` pulls the whole paste into the `KeyDecoder` buffer and a fresh
+    decoder per read discarded the tail past the newline, so the second command
+    vanished. `KeyDecoder.take_buffered()`/`seed()` now carry the unconsumed
+    tail across reads, so the paste's later commands run in turn. Multi-line
+    *construct* paste (`if/then/fi`) still accumulates via the
+    `CommandAccumulator`; a single Enter (CR) still accepts.
+  - **Ctrl-R incremental search recalled the wrong (older) entry.**
+    `HistorySearch._perform` always searched strictly before the current
+    position, so extending a still-matching pattern jumped to an older entry and
+    flashed a spurious "failed". Refining a pattern that still matches now
+    re-searches from the current entry *inclusive* (readline semantics); only an
+    explicit Ctrl-R/Ctrl-S step moves off the current match.
+- FIX (MED). `${var@P}` leaked readline non-printing markers. `expand_full`
+  turned `\[ \]` into `0x01`/`0x02` and returned them un-stripped; the renderer
+  strips them for PS1 *display* but the `@P` *operator* value kept them. bash's
+  `@P` yields a plain string with the brackets removed. `readline_markers` is
+  now threaded through `expand_full`/`expand_prompt_segments`/`_expand_escape`
+  and the `@P` call site passes `readline_markers=False`, so `\[ \]` decode to
+  nothing. Literal `0x01`/`0x02` bytes and octal `\001` escapes already in the
+  value are preserved (bash), and PS1/PS2 rendering is unchanged (still emits
+  the markers).
+- Tests: `HistorySearch` inclusive re-search pins (the tests that pinned the old
+  strictly-before quirk were re-verified against bash and updated), LF→
+  `accept_line` keybinding pins, `KeyDecoder` carry-over pins, `@P` marker-strip
+  pins (in-process + bash-parity subprocess), two golden cases (`@P` bracket
+  strip / octal keep), and a PTY class covering paste + LF + Ctrl-R. Full local
+  gate green (9970 passed, 558 skipped, 13 xfailed); ruff and mypy clean.
+
 ## 0.586.0 (2026-07-03) - Docs: ch17/README stale-negative truth-up + proving conformance tests (appraisal #16 H7)
 - DOCS (HIGH). Reappraisal #16 finding H7 — the ch17 compatibility tables and
   the README prose misclaimed several working, bash-matching features as
