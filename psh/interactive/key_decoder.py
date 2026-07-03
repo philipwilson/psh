@@ -152,6 +152,20 @@ class KeyDecoder:
         """
         self._char_buf.insert(0, char)
 
+    def take_buffered(self) -> List[str]:
+        """Hand off (and clear) characters read from the fd but not yet
+        consumed — the tail of a multi-line paste. The next decoder is
+        seeded with these (see ``seed``) so a paste's later commands run
+        in turn instead of being dropped."""
+        buffered = self._char_buf
+        self._char_buf = []
+        return buffered
+
+    def seed(self, chars: List[str]) -> None:
+        """Prepend already-decoded characters ahead of any fresh fd
+        input — the paste tail carried over from the previous decoder."""
+        self._char_buf[:0] = chars
+
     def read_key(self) -> KeyEvent:
         """Read one key event (blocking).
 

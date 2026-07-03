@@ -345,3 +345,44 @@ class TestErrorAndPushback:
         dec = probing(r)
         dec.pushback('\x1b')
         assert dec.read_key() == Key('up')
+
+
+class TestPasteCarryover:
+    """The tail of a multi-line paste survives across decoders.
+
+    A greedy os.read() pulls the whole paste into the decoder's buffer;
+    when the editor accepts the first line and starts a fresh decoder for
+    the next read, ``take_buffered`` / ``seed`` carry the unconsumed tail
+    over so the paste's later commands run (reappraisal #16 H8a).
+    """
+
+    def test_take_buffered_returns_and_clears_unconsumed_tail(self, stream):
+        r, w = stream
+        os.write(w, b'ab\ncd')
+        dec = probing(r)
+        assert dec.read_key() == Char('a')   # first read buffers the rest
+        tail = dec.take_buffered()
+        assert tail == ['b', '\n', 'c', 'd']
+        assert dec.take_buffered() == []     # cleared
+
+    def test_seeded_chars_are_read_before_fresh_fd_input(self, stream):
+        r, w = stream
+        os.write(w, b'Y')
+        dec = probing(r)
+        dec.seed(['c', 'd'])                 # carried-over tail
+        assert [dec.read_key() for _ in range(3)] == \
+            [Char('c'), Char('d'), Char('Y')]
+
+    def test_carryover_round_trip_preserves_order(self, stream):
+        r, w = stream
+        os.write(w, b'echo one\necho two\r')
+        first = probing(r)
+        # Consume "echo one" and the LF that would accept the line.
+        for _ in range('echo one\n'.index('\n') + 1):
+            first.read_key()
+        tail = first.take_buffered()
+        second = probing(r)
+        second.seed(tail)
+        got = ''.join(ev.char for ev in
+                      (second.read_key() for _ in range(len('echo two\r'))))
+        assert got == 'echo two\r'

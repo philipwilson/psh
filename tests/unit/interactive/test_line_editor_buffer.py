@@ -99,6 +99,21 @@ class TestBufferEditing:
         kb = EmacsKeyBindings()
         assert kb.bindings[kb.CTRL_U] == 'kill_to_beginning'
 
+    def test_lf_and_cr_both_accept_line_emacs(self):
+        # reappraisal #16 H8a: readline accepts on LF (Ctrl-J / a pasted
+        # newline) as well as CR, so a multi-line paste is split into
+        # commands instead of being merged.
+        from psh.interactive.keybindings import EmacsKeyBindings
+        kb = EmacsKeyBindings()
+        assert kb.bindings['\r'] == 'accept_line'
+        assert kb.bindings['\n'] == 'accept_line'
+
+    def test_lf_accepts_line_vi_insert_and_normal(self):
+        from psh.interactive.keybindings import ViKeyBindings
+        kb = ViKeyBindings()
+        assert kb.insert_bindings['\n'] == 'accept_line'
+        assert kb.normal_bindings['\n'] == 'accept_line'
+
     def test_yank_inserts_at_cursor_mid_line(self, editor):
         editor.edit_buffer.kill_ring.append("XY")
         set_line(editor, "abcd", cursor=2)

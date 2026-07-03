@@ -39,6 +39,7 @@ class KeyBindings:
     CTRL_F = '\x06'
     CTRL_G = '\x07'
     CTRL_H = '\x08'
+    CTRL_J = '\x0a'   # Line feed (Ctrl-J); readline also accepts the line on LF
     CTRL_K = '\x0b'
     CTRL_L = '\x0c'
     CTRL_N = '\x0e'
@@ -101,6 +102,7 @@ class EmacsKeyBindings(KeyBindings):
             self.CTRL_C: 'interrupt',
             self.TAB: 'complete',
             self.ENTER: 'accept_line',
+            self.CTRL_J: 'accept_line',  # LF accepts the line (pasted newlines)
         }
 
         # Meta (Alt) key bindings
@@ -139,6 +141,7 @@ class ViKeyBindings(KeyBindings):
             self.CTRL_U: 'kill_to_beginning',  # readline unix-line-discard
             self.TAB: 'complete',
             self.ENTER: 'accept_line',
+            self.CTRL_J: 'accept_line',  # LF accepts the line (pasted newlines)
         }
 
         # Normal mode bindings (implemented subset only)
@@ -170,6 +173,7 @@ class ViKeyBindings(KeyBindings):
             self.CTRL_L: 'clear_screen',
             self.CTRL_C: 'interrupt',
             self.ENTER: 'accept_line',
+            self.CTRL_J: 'accept_line',  # LF accepts the line (pasted newlines)
         }
 
     def get_action(self, key: str) -> Optional[str]:

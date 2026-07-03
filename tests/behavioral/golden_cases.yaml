@@ -2310,6 +2310,22 @@
   stderr: ""
   exit_code: 0
 
+# @P yields a plain string, so the \[ \] readline non-printing markers are
+# dropped (bash emits the raw escape with no \001/\002); reappraisal #16 MED.
+- name: promptvars_atP_strips_readline_brackets
+  command: "x='\\[\\e[1m\\]hi\\[\\e[0m\\]'; printf '%s' \"${x@P}\""
+  stdout: "\x1b[1mhi\x1b[0m"
+  stderr: ""
+  exit_code: 0
+
+# Octal \001/\002 escapes are the user's literal bytes — unlike \[ \], @P keeps
+# them (distinguishes marker-drop from a blanket strip).
+- name: promptvars_atP_keeps_octal_control_bytes
+  command: "x='\\001a\\002'; printf '%s' \"${x@P}\""
+  stdout: "\x01a\x02"
+  stderr: ""
+  exit_code: 0
+
 # Heredoc inside process substitution (Tier 3 M8): the whole <(...) spans
 # multiple lines and contains a <<EOF whose body must stay nested.
 - name: heredoc_inside_process_substitution

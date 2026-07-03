@@ -7,7 +7,8 @@ whose "pexpect doesn't work under pytest" premise no longer holds.
 
 Conventions that make these reliable:
 - send(cmd + '\\r'): the line editor runs in raw mode, where Enter is CR.
-  pexpect's sendline() sends LF, which is NOT accept-line.
+  (LF/Ctrl-J also accepts the line as of reappraisal #16 H8a, so
+  sendline() works too; the suite keeps using CR for consistency.)
 - Arithmetic sentinels (echo x_$((1+1)) → x_2): the expected output text
   never appears in the typed command, so matching can't hit the echo.
 - Always expect the next prompt before sending the next command.
@@ -178,6 +179,52 @@ class TestPtyLineEditing:
         psh.send(f'echo {arg} | wc -c\r')
         psh.expect('151')         # 150 chars + newline
         psh.expect(PROMPT)
+
+
+class TestPtyPasteAndReverseSearch:
+    """Multi-line paste and Ctrl-R incremental search (reappraisal #16 H8)."""
+
+    def test_multiline_paste_runs_both_commands(self, psh):
+        # A pasted two-line block: the LF between the lines accepts the
+        # first command (readline), and the buffered tail runs the second
+        # — bash runs both. The old build dropped the LF and merged them
+        # into one corrupt command.
+        psh.send('echo p1_$((1+1))\necho p2_$((3+3))\r')
+        psh.expect('p1_2')
+        psh.expect('p2_6')
+        psh.expect(PROMPT)
+
+    def test_lf_alone_accepts_line(self, psh):
+        # readline accepts on LF (Ctrl-J), so pexpect's sendline() works.
+        psh.sendline('echo lf_$((4+4))')
+        psh.expect('lf_8')
+        psh.expect(PROMPT)
+
+    def test_single_cr_still_accepts(self, psh):
+        psh.send('echo cr_$((5+5))\r')
+        psh.expect('cr_10')
+        psh.expect(PROMPT)
+
+    def test_multiline_construct_paste_accumulates(self, psh):
+        # A pasted compound spanning lines still accumulates through the
+        # CommandAccumulator (each LF is a line boundary, not a merge).
+        psh.send('if true\nthen\necho blk_$((6+6))\nfi\r')
+        psh.expect('blk_12')
+        psh.expect(PROMPT)
+
+    def test_ctrl_r_refinement_keeps_current_match(self, psh):
+        # H8b: Ctrl-R + 'foo' lands on the NEWEST match; refining the
+        # pattern while the current entry still matches must not jump to
+        # the older entry ('echo foo bar').
+        psh.send('echo foo bar\r'); psh.expect(PROMPT)
+        psh.send('echo foo baz\r'); psh.expect(PROMPT)
+        psh.send('\x12')            # Ctrl-R
+        psh.send('foo')
+        idx = psh.expect(['foo baz', 'foo bar'])
+        assert idx == 0             # current (newest) match, not the older
+        psh.send('\r')              # accept the match into the buffer
+        psh.send('\r')              # execute
+        psh.expect('foo baz')
 
 
 class TestPtyWrappedLines:
