@@ -4,6 +4,44 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.592.0 (2026-07-03) - Fix: lexer command-position feeding + parser one-liners (appraisal #16 follow-up ledger g)
+- FIX. Reappraisal #16 follow-up ledger, item (g), plus three same-area parser
+  one-liners. The lexer's command-position machinery is now fed the grammar
+  contexts it was missing. All bash-pinned against 5.2; both parsers verified.
+- **g1 — `f() [[ ... ]]` and `[[` at the start of a case body were rejected.**
+  After `)` the lexer reset command position, so the following `[[` lexed as a
+  plain WORD (parser: "Expected '{' for function body" / "[[: command not
+  found"). A `)` now returns the lexer to command position, mirroring the
+  keyword normalizer. The function-body parser's DOUBLE_LBRACKET branch was
+  already wired — it just never received the token.
+  - The `)` -> command-position transition is scoped to **outside** a
+    `[[ ... ]]` conditional (guarded by `bracket_depth == 0`). Inside a
+    conditional a `)` is part of the operand — e.g. the group close in
+    `=~ ([[:alpha:]]+)[[:space:]]+([[:alpha:]]+)` — and must not flip command
+    position, or the following `[[` is mis-lexed as the DOUBLE_LBRACKET
+    operator.
+- **g2 — the POSIX no-`in` for/select form (`for x do` / `for x; do`) was
+  rejected.** `do` closing a no-`in` loop header lexed as a WORD. The normalizer
+  now converts it to DO and clears the pending-`in` state — also plugging a
+  latent leak where `for x; do echo in; done` mis-read the body's `in` as the
+  loop keyword — and is made idempotent across the normalizer's two passes.
+- **Parser one-liners:**
+  - `time <lone compound>` dropped its timing report: the bare-top-level-compound
+    unwrap guarded `negated` but not its `timed` sibling.
+  - `! ! cmd` double-negation was rejected: the single negation consume is now a
+    loop toggling negation (`! ! true` -> 0, `! ! ! true` -> 1).
+  - consecutive `;` (`echo a; ; echo b`) ran both commands: the interstatement
+    separator skip now leaves a second `;` for the parser to reject, matching
+    bash in every command-list context.
+- **Deferred (documented):** the STRETCH `((echo a); echo b)` disambiguation —
+  bash re-reads `((` as nested subshells `( (` when the content is not valid
+  arithmetic — needs speculative parse-with-backtrack and is honestly deferred.
+- Frozen lexer-corpus: one row updated surgically (the degenerate `a[$(x])]=v`
+  now lexes `]` as RBRACKET after `)`; both shells reject the input). New tests:
+  `test_command_position_feeding.py`, `test_r16_command_position.py`, extended
+  `test_bang_prefix_compound.py` / `test_statement_separators.py` /
+  `test_time_keyword.py`, and 8 `golden_cases.yaml` entries.
+
 ## 0.591.0 (2026-07-03) - Fix: extglob alternation is leftmost-longest in substitution operators (appraisal #16 ledger f)
 - FIX. Reappraisal #16 follow-up ledger, item (f).
 - **extglob alternation matched Python-`re` leftmost (first alternative that

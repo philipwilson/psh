@@ -354,9 +354,11 @@ class CommandParser(ParserSubcomponent):
             if self._at_pipeline_end():
                 return pipeline
 
-        # Check for leading ! (negation)
-        if self.parser.consume_if(TokenType.EXCLAMATION):
-            pipeline.negated = True
+        # Check for leading ! (negation). bash allows the reserved word to
+        # repeat (`! ! cmd`), each occurrence toggling the sense of the exit
+        # status: `! ! true` -> 0, `! ! ! true` -> 1.
+        while self.parser.consume_if(TokenType.EXCLAMATION):
+            pipeline.negated = not pipeline.negated
 
         # Parse first command (could be simple or compound)
         command = self.parse_pipeline_component()

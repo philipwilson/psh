@@ -98,6 +98,57 @@ class TestAmpersandJunkRejected:
         assert r.stdout == 'a\n'
 
 
+class TestConsecutiveSemicolonRejected:
+    """A `;` with no command in front of it is a syntax error (reappraisal #16).
+
+    `;` terminates a command; only blank lines may follow before the next
+    command. psh used to skip separators greedily, so `echo a; ; echo b` ran
+    BOTH commands. Now the extra `;` is left for parse_statement to reject, in
+    every command-list context (top level, loop/if/case bodies, conditions).
+    bash 5.2 rejects each of these with rc=2.
+    """
+
+    # Single-line -c input is parsed fully before executing, so a rejected
+    # program runs nothing. (Multi-line `echo a\n; echo b` executes line 1
+    # then errors on line 2 — psh matches bash there too, but it is a
+    # different, incremental-execution behavior and not asserted here.)
+    REJECTED = [
+        'echo a; ; echo b',
+        'for i in 1 2; do echo $i; ; echo y; done',
+        '{ echo a; ; echo b; }',
+        'if true; then echo a; ; echo b; fi',
+        'if true; ; then echo a; fi',             # condition
+        'case x in x) echo a; ; echo b;; esac',
+        'while true; ; do :; done',
+    ]
+
+    def test_rejected(self):
+        for script in self.REJECTED:
+            r = run_psh(script)
+            assert r.returncode == 2, f'{script!r}: rc={r.returncode}'
+            assert r.stdout == '', f'{script!r}: executed, stdout={r.stdout!r}'
+            assert r.stderr, f'{script!r}: no error reported'
+
+    # Legal separator runs must keep working: a single `;`, trailing `;`,
+    # `;` then newlines, and multiple blank lines.
+    ACCEPTED = [
+        ('echo a; echo b', 'a\nb\n'),
+        ('echo a;', 'a\n'),
+        ('echo a;\necho b', 'a\nb\n'),
+        ('echo a\n\necho b', 'a\nb\n'),
+        ('for i in 1; do echo $i; done', '1\n'),
+        ('{ echo a; }', 'a\n'),
+        ('if true; then echo a; echo b; fi', 'a\nb\n'),
+        ('case x in x) echo a; echo b;; esac', 'a\nb\n'),
+    ]
+
+    def test_accepted(self):
+        for script, expected in self.ACCEPTED:
+            r = run_psh(script)
+            assert r.returncode == 0, f'{script!r}: rc={r.returncode} err={r.stderr!r}'
+            assert r.stdout == expected, f'{script!r}: stdout={r.stdout!r}'
+
+
 class TestBackgroundScopesWholeList:
     """`(a) && (b) &` backgrounds the whole and-or list, not the last group (A3)."""
 

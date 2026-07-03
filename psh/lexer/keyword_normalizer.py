@@ -91,6 +91,16 @@ class KeywordNormalizer:
                     if pending_in == 'case':
                         next_pattern_start = True
                     pending_in = None
+                elif pending_in in ('for', 'select') and token_value == 'do':
+                    # POSIX no-`in` loop form: `for name do ...` /
+                    # `for name; do ...` iterates the positional parameters.
+                    # `do` here ends the implicit word list and opens the body,
+                    # so it is the DO keyword even though it is not at command
+                    # position (`for x do`, no separator). Clearing pending_in
+                    # also stops a later `in` in the body (`for x; do echo in`)
+                    # being mis-read as the loop's `in`.
+                    converted_type = TokenType.DO
+                    pending_in = None
                 elif case_pattern_start and token_value == 'esac':
                     # `case a in esac` — esac right after `in` closes the case.
                     converted_type = TokenType.ESAC
@@ -107,6 +117,12 @@ class KeywordNormalizer:
                 # Already tagged as IN by lexer, clear pending state
                 if pending_in == 'case':
                     next_pattern_start = True
+                pending_in = None
+            elif token.type == TokenType.DO and pending_in in ('for', 'select'):
+                # A pre-typed `do` (this normalizer runs again over already-
+                # normalized tokens via create_context) closes a no-`in` loop
+                # header. Clear pending_in so this pass stays idempotent and a
+                # later `in` in the body is not mis-read as the loop keyword.
                 pending_in = None
 
             # Update command position based on (possibly converted) token

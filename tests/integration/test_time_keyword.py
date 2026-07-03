@@ -67,6 +67,30 @@ def test_time_before_double_bracket():
     assert 'rc=1' in r.stdout
 
 
+# A program that is EXACTLY one timed compound must keep the timing report:
+# `_bare_top_level_compound` used to unwrap the lone Pipeline (guarding
+# `negated` but not its `timed` sibling), silently dropping the report. A
+# trailing statement masked the bug (test_time_before_while_loop), so these
+# have nothing after the compound. Verified against bash 5.2.
+def test_time_lone_if():
+    r = _psh('time if true; then echo hi; fi')
+    assert r.stdout == 'hi\n'
+    assert _DEFAULT_RE.search(r.stderr), repr(r.stderr)
+    assert r.returncode == 0
+
+
+def test_time_lone_for():
+    r = _psh('time for i in 1 2; do :; done')
+    assert r.stdout == ''
+    assert _DEFAULT_RE.search(r.stderr), repr(r.stderr)
+
+
+def test_time_lone_while():
+    r = _psh('time while false; do :; done')
+    assert r.stdout == ''
+    assert _DEFAULT_RE.search(r.stderr), repr(r.stderr)
+
+
 def test_time_before_brace_group():
     r = _psh('time { echo a; echo b; }')
     assert r.stdout == 'a\nb\n'

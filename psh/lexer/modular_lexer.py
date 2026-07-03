@@ -204,6 +204,20 @@ class ModularLexer:
         # value-based check against LEXER_COMMAND_POSITION_WORDS below (the
         # lexer never sees keyword token TYPES here; see command_position.py
         # for the three machines that track command position).
+        #
+        # RPAREN also returns us to command position (handled by a guarded
+        # branch below, not this set), matching the normalizer
+        # (KeywordNormalizer._next_command_position). A `)` closes a
+        # function-definition header (`f() [[ ... ]]`), a case pattern
+        # (`x) [[ ... ]] ;;`) or a subshell, and in each valid case the next
+        # token starts a command — so an operator like `[[` right after it
+        # must be recognized. Without this, `[[` after `)` lexes as a plain
+        # WORD and the parser rejects the compound body / test. The guard
+        # excludes `)` inside a `[[ ... ]]` conditional, where a `)` is part
+        # of the regex/conditional operand (e.g. the group close in
+        # `=~ ([[:alpha:]]+)[[:space:]]+([[:alpha:]]+)`) and must NOT flip to
+        # command position, or the following `[[` is mis-lexed as the
+        # DOUBLE_LBRACKET operator.
         command_starting_tokens = (
             STATEMENT_SEPARATORS | COMMAND_GROUP_OPENERS | PIPELINE_PREFIX_TOKENS)
 
@@ -246,6 +260,13 @@ class ModularLexer:
             self.context.in_case_pattern = True
 
         if token_type in command_starting_tokens:
+            self.context.set_command_position()
+        elif (token_type == TokenType.RPAREN
+              and self.context.bracket_depth == 0):
+            # `)` returns to command position (function header / case pattern
+            # / subshell close) — but only OUTSIDE a `[[ ]]` conditional. See
+            # the command_starting_tokens comment above: inside `[[ ]]` a `)`
+            # is part of the operand and must not flip command position.
             self.context.set_command_position()
         elif (token_type == TokenType.WORD and
               token_value in LEXER_COMMAND_POSITION_WORDS):
