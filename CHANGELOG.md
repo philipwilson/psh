@@ -4,6 +4,45 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.581.0 (2026-07-03) - Fix: builtin output no longer misrouted when a dup source fd is reassigned (appraisal #16 H1 + exec-close sibling)
+- FIX (HIGH). Reappraisal #16 cluster H1 — a live REGRESSION introduced by the
+  v0.576 Cluster-C commit. A builtin doing `1>&2` or `2>&1` aliased the
+  `sys.stdout`/`sys.stderr` STREAM OBJECT (still backed by real fd 2), so a
+  later `2>file` (`os.dup2(file, 2)`) clobbered the backing out from under it
+  and the builtin's own output followed fd 2 into the file. `echo hi 1>&2 2>err`
+  put "hi" INTO `err` (bash: to the terminal's stderr), and the documented swap
+  idiom `echo hi 3>&1 1>&2 2>&3 3>&-` on a bare builtin went to stdout not stderr.
+  bash makes fd n a snapshot of m's CURRENT target, so a later reassignment of m
+  leaves n alone.
+  - **Fix (`psh/io_redirect/manager.py`).** Fold `1>&2`/`2>&1` into the same
+    snapshot path the `m>=3` dups already used — an fd-level dup (independent
+    duplicate of m's target, inherited by children) plus a stream bound to
+    `os.dup(m)` (a fresh snapshot of m's open file description), never an alias
+    of the stream object. The C-cluster's own pin (`echo out 2>&1 1>/dev/null`)
+    exercised only a stdout write, so it never caught this; the new pins vary
+    which fd the command writes to, including a builtin writing to BOTH streams
+    (`type name nosuch 2>&1 1>/dev/null`).
+  - **Executor sibling (exec-close).** After `exec 1>&-`, `echo X 2>g` leaked
+    stdout into `g` with rc 0 (bash: write error, rc 1). Python's `open()` takes
+    the lowest free fd, so `2>g` reallocated the freed fd 1 and the stale
+    `sys.stdout` wrapper (still naming fd 1) wrote there; the frame's backup
+    `os.dup(2)` likewise squatted fd 1. Fix: open a builtin's output target off
+    fds 0/1/2 (`F_DUPFD >= 3`, as bash does) and force the frame backup onto a
+    high fd (`F_DUPFD >= 10`, like `FileRedirector._save_fd_high`). fd 1 now
+    stays closed, so the write fails EBADF and the diagnostic follows fd 2 into
+    `g` — while a redirect that legitimately REOPENS fd 1 (`echo a > f`,
+    `{ echo a; } &> f`) still lands its output. This makes the documented
+    fd-swap-chain claim at `docs/user_guide/09_io_redirection.md` true.
+  - **Verification.** Truth table (bash 5.2 vs psh) covers all H1 probes, the
+    swap idiom, the exec-`1>&-` sibling, and the must-stay-correct regressions
+    (`> f 2>&1`, `2>&1 > f`, `command ls >/dev/null`, eval-pipe-to-file,
+    builtin-in-pipeline, fd>=3 no-leak, external `ls 1>&2 2>err`); all match
+    modulo psh's write-error message never carrying bash's `bash: line N:`
+    prefix. New `tests/integration/redirection/test_builtin_dup_source_reassigned.py`
+    (serial subprocess), 5 golden cases (`--compare-bash`), and one pre-existing
+    arithmetic-fd test rewritten from `capsys` (a sys-level capturer that cannot
+    observe fd-level output) to a subprocess.
+
 ## 0.580.0 (2026-07-03) - Test: tighten conformance meta-test + clear no-op debt; completes Tier-1 campaign (appraisal #15 Tier 1, Cluster M)
 - TEST-INFRASTRUCTURE (Cluster M). Completes the reappraisal #15 Tier-1 fix
   campaign (releases v0.560–v0.580).
