@@ -256,6 +256,74 @@ class TestNumericTests:
         assert exit_code != 0
 
 
+class TestNumericInt64Range:
+    """test/[ integer operands are signed 64-bit (bash uses intmax_t).
+
+    A literal outside [-2**63, 2**63-1] is rejected as "integer expression
+    expected" (exit 2), exactly like a non-numeric operand — it is NOT the
+    arbitrary-precision comparison Python's int() would give.
+    """
+
+    INT64_MIN = str(-(2 ** 63))          # -9223372036854775808
+    INT64_MAX = str(2 ** 63 - 1)         #  9223372036854775807
+    OVER_MAX = str(2 ** 63)              #  9223372036854775808
+    UNDER_MIN = str(-(2 ** 63) - 1)      # -9223372036854775809
+
+    @pytest.mark.parametrize("op", ['-eq', '-ne', '-lt', '-le', '-gt', '-ge'])
+    def test_over_max_left_operand_rejected(self, captured_shell, op):
+        rc = captured_shell.run_command(f'test {self.OVER_MAX} {op} 5')
+        assert rc == 2
+        err = captured_shell.get_stderr()
+        assert "integer expression expected" in err
+        # bash echoes the offending token in the message.
+        assert self.OVER_MAX in err
+
+    @pytest.mark.parametrize("op", ['-eq', '-ne', '-lt', '-le', '-gt', '-ge'])
+    def test_over_max_right_operand_rejected(self, captured_shell, op):
+        rc = captured_shell.run_command(f'test 5 {op} {self.OVER_MAX}')
+        assert rc == 2
+        assert "integer expression expected" in captured_shell.get_stderr()
+
+    def test_under_min_rejected(self, captured_shell):
+        rc = captured_shell.run_command(f'test {self.UNDER_MIN} -lt 5')
+        assert rc == 2
+        assert "integer expression expected" in captured_shell.get_stderr()
+
+    def test_over_2_64_rejected(self, captured_shell):
+        rc = captured_shell.run_command('test 18446744073709551616 -gt 5')
+        assert rc == 2
+        assert "integer expression expected" in captured_shell.get_stderr()
+
+    def test_bracket_form_rejects_over_max(self, captured_shell):
+        rc = captured_shell.run_command(f'[ {self.OVER_MAX} -gt 5 ]')
+        assert rc == 2
+        err = captured_shell.get_stderr()
+        assert "integer expression expected" in err
+        # The '[' builtin prefixes its own name, matching bash.
+        assert err.startswith('[: ') or ' [: ' in err
+
+    def test_int64_boundaries_accepted(self, captured_shell):
+        # The exact signed-64-bit extremes are IN range and compare normally.
+        assert captured_shell.run_command(
+            f'test {self.INT64_MAX} -gt 5') == 0
+        assert captured_shell.run_command(
+            f'test {self.INT64_MIN} -lt 5') == 0
+        assert captured_shell.get_stderr() == ""
+
+    def test_over_max_equals_negative_does_not_wrap(self, captured_shell):
+        # Unlike $((...)) (which wraps to signed 64-bit), test rejects the
+        # literal outright rather than wrapping 2**63 to -2**63 and matching.
+        rc = captured_shell.run_command(
+            f'test {self.OVER_MAX} -eq {self.INT64_MIN}')
+        assert rc == 2
+        assert "integer expression expected" in captured_shell.get_stderr()
+
+    def test_large_in_range_comparison_unchanged(self, captured_shell):
+        assert captured_shell.run_command(
+            'test 1000000000000 -gt 999999999999') == 0
+        assert captured_shell.get_stderr() == ""
+
+
 class TestLogicalOperators:
     """Test logical operators in test expressions."""
 

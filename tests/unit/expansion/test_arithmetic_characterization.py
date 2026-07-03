@@ -550,7 +550,6 @@ def test_negative_exponent(sh):
     "2 + 3)",       # extra close paren
     "1 ? 2",        # ternary missing colon
     "@",            # unexpected char
-    "0x",           # bad hex literal
     "1#5",          # invalid base (< 2)
     "99#1",         # invalid base (> 64)
     "++5",          # pre-increment needs identifier
@@ -581,6 +580,28 @@ def test_based_number_out_of_range_digit(expr, sh):
 def test_invalid_base_number_no_digits(sh):
     with pytest.raises(ArithmeticError):
         ev("16#", sh)
+
+
+@pytest.mark.parametrize("expr", [
+    "0xffg", "0x1g", "0xg", "0xz", "0x@", "0x_",   # hex: out-of-range digit
+    "00x", "07x", "0a", "0g", "089", "019",         # octal (leading 0): bad digit
+    "5a", "5x", "123abc", "1e5",                     # decimal: trailing letters
+])
+def test_radix_literal_out_of_range_digit(expr, sh):
+    # bash reads a whole [0-9a-zA-Z@_] token and errors "value too great for
+    # base" on a digit invalid for the base (hex/octal/decimal alike), rather
+    # than stopping at the bad digit and leaving a stray trailing token.
+    with pytest.raises(ArithmeticError) as e:
+        ev(expr, sh)
+    assert "value too great for base" in str(e.value)
+
+
+@pytest.mark.parametrize("expr,expected", [
+    ("0x", 0),   # bash: a bare 0x / 0X with no hex digits is 0
+    ("0X", 0),
+])
+def test_empty_hex_literal_is_zero(expr, expected, sh):
+    assert ev(expr, sh) == expected
 
 
 # ---------------------------------------------------------------------------

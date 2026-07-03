@@ -338,6 +338,27 @@ class TestBuiltin(Builtin):
             self.error(f"{op}: unary operator expected", shell)
             return 2  # Unknown operator
 
+    # Signed 64-bit range for test's integer operands (bash uses intmax_t).
+    _INT64_MIN = -(2 ** 63)
+    _INT64_MAX = 2 ** 63 - 1
+
+    @classmethod
+    def _to_int64(cls, arg: str) -> int:
+        """Parse a test/[ integer operand as bash does (signed 64-bit, base 10).
+
+        bash's test uses intmax_t, so a non-numeric operand OR one outside the
+        signed 64-bit range is rejected as "integer expression expected".
+        Raises ValueError whose message is the offending token (matching bash's
+        "TOKEN: integer expression expected") in both cases.
+        """
+        try:
+            value = int(arg)
+        except ValueError:
+            raise ValueError(arg)
+        if not (cls._INT64_MIN <= value <= cls._INT64_MAX):
+            raise ValueError(arg)
+        return value
+
     def _evaluate_binary(self, arg1: str, op: str, arg2: str, shell: 'Shell') -> int:
         """Evaluate binary operators."""
         if op == '=' or op == '==':
@@ -367,39 +388,39 @@ class TestBuiltin(Builtin):
             return 0 if arg1 > arg2 else 1
         elif op == '-eq':
             try:
-                return 0 if int(arg1) == int(arg2) else 1
-            except ValueError:
-                self.error("integer expression expected", shell)
+                return 0 if self._to_int64(arg1) == self._to_int64(arg2) else 1
+            except ValueError as e:
+                self.error(f"{e}: integer expression expected", shell)
                 return 2
         elif op == '-ne':
             try:
-                return 0 if int(arg1) != int(arg2) else 1
-            except ValueError:
-                self.error("integer expression expected", shell)
+                return 0 if self._to_int64(arg1) != self._to_int64(arg2) else 1
+            except ValueError as e:
+                self.error(f"{e}: integer expression expected", shell)
                 return 2
         elif op == '-lt':
             try:
-                return 0 if int(arg1) < int(arg2) else 1
-            except ValueError:
-                self.error("integer expression expected", shell)
+                return 0 if self._to_int64(arg1) < self._to_int64(arg2) else 1
+            except ValueError as e:
+                self.error(f"{e}: integer expression expected", shell)
                 return 2
         elif op == '-le':
             try:
-                return 0 if int(arg1) <= int(arg2) else 1
-            except ValueError:
-                self.error("integer expression expected", shell)
+                return 0 if self._to_int64(arg1) <= self._to_int64(arg2) else 1
+            except ValueError as e:
+                self.error(f"{e}: integer expression expected", shell)
                 return 2
         elif op == '-gt':
             try:
-                return 0 if int(arg1) > int(arg2) else 1
-            except ValueError:
-                self.error("integer expression expected", shell)
+                return 0 if self._to_int64(arg1) > self._to_int64(arg2) else 1
+            except ValueError as e:
+                self.error(f"{e}: integer expression expected", shell)
                 return 2
         elif op == '-ge':
             try:
-                return 0 if int(arg1) >= int(arg2) else 1
-            except ValueError:
-                self.error("integer expression expected", shell)
+                return 0 if self._to_int64(arg1) >= self._to_int64(arg2) else 1
+            except ValueError as e:
+                self.error(f"{e}: integer expression expected", shell)
                 return 2
         elif op == '-nt':
             # True if file1 is newer than file2 (modification time)
