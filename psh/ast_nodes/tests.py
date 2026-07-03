@@ -91,3 +91,4 @@ class EnhancedTestStatement(Statement, CompoundCommand):
     """
     expression: TestExpression  # The test expression to evaluate
     redirects: List[Redirect] = field(default_factory=list)
+    background: bool = False  # Only used in pipeline context

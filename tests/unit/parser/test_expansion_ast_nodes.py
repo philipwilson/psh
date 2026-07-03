@@ -54,6 +54,27 @@ class TestExpansionASTNodes:
         param4 = ParameterExpansion("FILE", "%", ".txt")
         assert str(param4) == "${FILE%.txt}"
 
+    def test_parameter_expansion_prefix_names(self):
+        """Prefix-names ${!prefix@}/${!prefix*}: bang is a PREFIX (r16 H4).
+
+        The parser stores the two-part operator as '!@'/'!*' with the bang
+        leading the name and the @/* trailing it. __str__ must reconstruct
+        that layout — the old code emitted the bang as a suffix (${prefix!@}),
+        which is a different, broken construct ("bad substitution").
+        """
+        assert str(ParameterExpansion("ab_", "!@", "")) == "${!ab_@}"
+        assert str(ParameterExpansion("ab_", "!*", "")) == "${!ab_*}"
+        # Empty-prefix historical form still round-trips.
+        assert str(ParameterExpansion("", "!@", "")) == "${!@}"
+        assert str(ParameterExpansion("", "!*", "")) == "${!*}"
+
+    def test_parameter_expansion_bang_forms_stay_distinct(self):
+        """${!x} indirection and ${!arr[@]} keys keep the bang prefix too."""
+        # Indirection: operator '!', word None → ${!x}
+        assert str(ParameterExpansion("x", "!", None)) == "${!x}"
+        # Array keys: whole subscripted name carried in parameter → ${!arr[@]}
+        assert str(ParameterExpansion("arr[@]", "!", None)) == "${!arr[@]}"
+
     def test_arithmetic_expansion(self):
         """Test ArithmeticExpansion node."""
         arith = ArithmeticExpansion("2 + 2")
@@ -238,6 +259,18 @@ class TestWordBuilder:
         assert expansion.parameter == "file"
         assert expansion.operator == "%"
         assert expansion.word == ".txt"
+
+    def test_parse_prefix_names_roundtrip(self):
+        """${!prefix@}/${!prefix*} parse then re-render to the same source (r16 H4)."""
+        for src, param, op in (("${!ab_@}", "ab_", "!@"),
+                               ("${!ab_*}", "ab_", "!*")):
+            token = Token(TokenType.PARAM_EXPANSION, src, 0)
+            expansion = WordBuilder.parse_expansion_token(token)
+            assert isinstance(expansion, ParameterExpansion)
+            assert expansion.parameter == param
+            assert expansion.operator == op
+            # Re-rendering must reproduce the original (was ${ab_!@} before).
+            assert str(expansion) == src
 
     def test_build_word_from_token(self):
         """Test building Word from a single token."""
