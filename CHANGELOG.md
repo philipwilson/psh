@@ -4,6 +4,38 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.586.0 (2026-07-03) - Docs: ch17/README stale-negative truth-up + proving conformance tests (appraisal #16 H7)
+- DOCS (HIGH). Reappraisal #16 finding H7 — the ch17 compatibility tables and
+  the README prose misclaimed several working, bash-matching features as
+  unsupported. The positive-claim meta-test only guarded rows marked "Full
+  support", so these false NEGATIVES went undetected for many releases. Each
+  suspect row was probed against live bash first; only the genuinely-full rows
+  were flipped to "Full support" with new bash-verified conformance tests plus
+  `CLAIM_TESTS` mappings:
+  - **History expansion** (`!!`, `!n`, `!-n`, `!string`, `!?string?`, word
+    designators `!$`/`!^`/`!*`/`!!:n`/`!!:n-m`, the `:h`/`:t`/`:r`/`:e`/`:s`/
+    `:g&`/`:p` modifiers, and `^old^new`) — new
+    `tests/conformance/bash/test_history_expansion_conformance.py`.
+  - **`${!prefix*}` / `${!prefix@}` variable-name prefix matching** and the
+    **associative `${var@K}` / `${var@k}` uppercase/lowercase-key transforms** —
+    new probes in `tests/conformance/bash/test_user_guide_notes_conformance.py`.
+- DOCS. Removed a stale contradiction in ch17's "Other Missing Features" that
+  still said `${!PATH*}` "lists ALL variables" (a bug that was already fixed),
+  and corrected ch05's note claiming `"${!prefix@}"` collapses to one word
+  (it expands to one word per name, matching bash).
+- DOCS (kept honest). `read` stays **Partial**: its `-e`/`-i` readline-editing
+  options are genuinely unsupported. History expansion's `:q`/`:x` word-quoting
+  modifiers and the `!#` current-line designator are enumerated in the Notes so
+  the flipped row is honest rather than over-claiming.
+- META-TEST. Added a symmetric stale-NEGATIVE guard to
+  `tests/conformance/test_claims_have_tests.py`: every `Yes | No` row now needs
+  a `NO_ROW_PROBES` entry (a command that diverges from bash *because* psh lacks
+  the feature). If psh ever grows the feature, the probe starts matching bash
+  and fails, forcing whoever shipped it to flip the row and add a proving test.
+- **Scope.** Docs + conformance/meta tests only — no `psh/` source change.
+  Verified: meta-test green, 122 conformance tests passed, 131 history tests
+  passed; full local gate green.
+
 ## 0.585.0 (2026-07-03) - Fix: POSIX bracket classes punct/cntrl/graph/print + no FutureWarning leak; nocasematch/extglob patsub (appraisal #16 H6 + 3 MED)
 - FIX (HIGH). Reappraisal #16 cluster H6 — `punct`, `cntrl`, `graph`, and
   `print` were absent from `_POSIX_CLASSES`, so the literal `[:class:]` text

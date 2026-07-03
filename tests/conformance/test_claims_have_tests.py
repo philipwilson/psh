@@ -24,12 +24,18 @@ whose file never ran disown, or ``pushd`` mapped to an assert-free probe.
 import ast
 import os
 import re
+import subprocess
+import sys
 
 import pytest
+
+sys.path.insert(0, os.path.dirname(__file__))
+from conformance_framework import find_bash
 
 GUIDE = os.path.join(os.path.dirname(__file__), '..', '..',
                      'docs', 'user_guide', '17_differences_from_bash.md')
 CONF_DIR = os.path.dirname(__file__)
+PSH = [sys.executable, '-m', 'psh']
 
 # Feature (exactly as in the table's first column) → (conformance file
 # relative to tests/conformance/, marker string). The marker must be a
@@ -72,6 +78,31 @@ CLAIM_TESTS = {
     'getopts builtin': ('posix/test_getopts_conformance.py', 'while getopts "ab:" opt'),
     'printf builtin': ('bash/test_edge_cases.py', 'printf "%q'),
     'pushd/popd/dirs': ('bash/test_bash_compatibility.py', 'pushd /usr >/dev/null; pushd /bin'),
+    # Reappraisal #16 H7 — rows flipped from a stale "No"/"Not implemented".
+    'History expansion (!!, !n)': (
+        'bash/test_history_expansion_conformance.py', '!!:s/hello/goodbye/'),
+    '${!prefix*} name matching': (
+        'bash/test_user_guide_notes_conformance.py', '${!MYV_*}'),
+    'Assoc key/value transforms ${var@K} / ${var@k}': (
+        'bash/test_user_guide_notes_conformance.py', '${m[@]@K}'),
+}
+
+
+# --- "No"-row staleness guard (reappraisal #16 H7) -------------------------
+# H7 was a cluster of rows marked "No"/"Not implemented" for features that had
+# quietly started working — the meta-test only guarded *positive* claims, so
+# the false negatives went undetected for up to 177 releases. To make that
+# class of staleness self-correcting, every row whose PSH column is "No" must
+# have a probe here: a command that behaves DIFFERENTLY in psh than in bash
+# *because psh lacks the feature*. If psh ever implements it, psh will start
+# matching bash, the probe below fails, and whoever shipped the feature is
+# forced to flip the row (and add a Full-support proving test above).
+NO_ROW_PROBES = {
+    'Coprocesses': 'coproc COP { echo hi; }; echo rc=$?',
+    'Programmable completion': 'compgen -W "apple apricot" -- ap; echo rc=$?',
+    'caller builtin': 'f(){ caller 0; }; f; echo rc=$?',
+    'BASH_SOURCE / BASH_LINENO':
+        'f(){ echo "${BASH_SOURCE[0]}|${BASH_LINENO[0]}"; }; f',
 }
 
 
@@ -92,6 +123,18 @@ def _full_support_features():
         if m:
             features.append(m.group(1).strip())
     return features
+
+
+# A row whose PSH-support column (the 2nd data column) is exactly "No".
+# PSH-specific rows are "No | Yes" (bash lacks them) and are NOT matched.
+_NO_SUPPORT_ROW = re.compile(
+    r'\|\s*([^|]+?)\s*\|\s*Yes\s*\|\s*No\s*\|')
+
+
+def _no_support_features():
+    text = open(GUIDE).read()
+    return [m.group(1).strip() for line in text.splitlines()
+            if (m := _NO_SUPPORT_ROW.match(line))]
 
 
 # --- Evidence matcher ------------------------------------------------------
@@ -232,3 +275,47 @@ def test_claim_evidence_exists(feature):
         f"test in {rel_path}. The mapping must point at a test that genuinely "
         f"exercises the feature (a class-name substring or an assert-free "
         f"check_behavior probe does not count).")
+
+
+# --- "No"-row staleness guard ----------------------------------------------
+
+def test_every_no_row_has_a_probe():
+    """Every "Yes | No" table row must have a NO_ROW_PROBES entry.
+
+    Symmetric with test_every_full_support_claim_is_mapped: a new "not
+    supported" row must ship with a probe that will catch it going stale.
+    """
+    missing = [f for f in _no_support_features() if f not in NO_ROW_PROBES]
+    assert not missing, (
+        f'Table rows marked "No" without a NO_ROW_PROBES probe: {missing}. '
+        "Add a probe command that behaves differently in psh than bash "
+        "*because psh lacks the feature*, so the row cannot silently rot.")
+
+
+def _run(argv, script):
+    return subprocess.run(argv + ['-c', script], capture_output=True,
+                          text=True, timeout=15)
+
+
+@pytest.mark.parametrize("feature", sorted(NO_ROW_PROBES))
+def test_no_row_feature_still_unsupported(feature):
+    """A "No" row's feature must still behave differently from bash.
+
+    If psh grows the feature, its probe output starts MATCHING bash and this
+    fails — forcing whoever implemented it to flip the doc row from "No" to
+    "Full support" (and add a proving test). This is the complement to the
+    positive-claim guard: it stops the ch17/README stale-NEGATIVE cluster
+    (reappraisal #16 H7) from recurring.
+    """
+    if feature not in _no_support_features():
+        pytest.skip(f"{feature} is no longer a 'No' row")
+    script = NO_ROW_PROBES[feature]
+    psh = _run(PSH, script)
+    bash = _run([find_bash()], script)
+    identical = (psh.stdout == bash.stdout and psh.returncode == bash.returncode)
+    assert not identical, (
+        f"{feature!r} now behaves identically to bash — the feature appears "
+        f"to work, but ch17 still marks it 'No'. Flip the row to 'Full "
+        f"support', add a proving conformance test + CLAIM_TESTS mapping, and "
+        f"remove its NO_ROW_PROBES entry.\n"
+        f"  probe: {script}\n  output: {psh.stdout!r} rc={psh.returncode}")

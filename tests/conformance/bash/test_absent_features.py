@@ -133,16 +133,16 @@ class TestAbsentBashFeatures:
     # Coverage lives in tests/unit/expansion/test_glob_expansion.py
     # (TestGlobOptions.test_failglob_*).
 
-    @pytest.mark.xfail(strict=True, reason=(
-        "SILENT TRAP: ${assoc[@]@K} is not implemented and degrades to the "
-        "plain values with NO error — scripts using @K get silently wrong "
-        "output rather than a failure"))
-    def test_assoc_at_K_transform(self):
-        """bash: `${a[@]@K}` expands an associative array as quoted
-        key-value pairs for re-input (probe: y "2" x "1"). psh: silently
-        prints just the values ('1 2') — the @K operator is ignored."""
-        assert_bash_parity(
-            'declare -A a=([x]=1 [y]=2); printf "%s\\n" "${a[@]@K}"')
+    # `${var@K}` / `${var@k}` associative key/value transforms are now
+    # IMPLEMENTED (reappraisal #16 H7 — the doc row was flipped from "Not
+    # implemented"). The former xfail's stated reason ("degrades to plain
+    # values") was stale: @K/@k produce the correct quoted/bare key-value
+    # pairs. The ONLY divergence is multi-key iteration order (psh insertion
+    # order vs bash hash order), a documented psh-wide associative property —
+    # not an absent feature. Positive coverage (scalar / indexed / single-key
+    # identical, multi-key sorted-pair parity) lives in
+    # tests/conformance/bash/test_user_guide_notes_conformance.py
+    # (TestAssocKeyValueTransformNotes).
 
     # extglob inside parameter-expansion patterns IS now implemented
     # (the former xfail trap was removed when the prefix-removal bug was
