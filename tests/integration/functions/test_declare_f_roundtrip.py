@@ -63,6 +63,14 @@ class TestDeclareFRoundTrip:
         ('f() { [[ -n $1 && $1 == a* ]] && echo yes || echo no; }',
          'f abc; f zz'),
         ('f() { return 42; }', 'f; echo rc=$?'),
+        # prefix-names ${!prefix@}/${!prefix*} — the r16 H4 formatter bug
+        # emitted the bang as a suffix (${ab_!@}), which re-parsed to a
+        # "bad substitution" and broke the round trip.
+        ('f() { ab_x=1; ab_y=2; echo ${!ab_@}; }', 'f'),
+        ('f() { ab_x=1; ab_y=2; echo ${!ab_*}; }', 'f'),
+        # indirection and array-keys bang forms must still round-trip.
+        ('f() { r=t; t=hit; echo ${!r}; }', 'f'),
+        ('f() { declare -a a=(x y z); echo ${!a[@]}; }', 'f'),
     ])
     def test_shape_survives_roundtrip(self, captured_shell, define, call):
         assert_roundtrip(captured_shell, define, call)

@@ -3023,3 +3023,34 @@
   stdout: "v=[]\n"
   stderr: "command not found"
   exit_code: 0
+
+# =============================================================================
+# REAPPRAISAL #16 H2/H4 (AST-node fixes)
+# =============================================================================
+
+# H2: an enhanced-test [[ ]] as the pipeline TAIL used to crash with an
+# AttributeError (EnhancedTestStatement lacked the `background` field the
+# PipelineExecutor reads off the last command). Now the [[ ]]'s truth value
+# is the pipeline status, matching bash.
+- name: enhanced_test_pipeline_tail
+  command: "true | [[ -n y ]]; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+# H4: ${!prefix@} / ${!prefix*} (prefix-names) must survive declare -f
+# serialization. The formatter used to render the bang as a suffix
+# (${ab_!@}), turning the round-tripped function into a "bad substitution".
+- name: prefix_names_declare_f_roundtrip
+  command: 'f() { ab_x=1; ab_y=2; echo ${!ab_@}; }; src=$(declare -f f); unset -f f; eval "$src"; f'
+  stdout: "ab_x ab_y\n"
+  stderr: ""
+  exit_code: 0
+
+# H4: direct expansion of both prefix-names forms (unaffected by the fix, but
+# pins the @/* pair against regression).
+- name: prefix_names_both_forms
+  command: "ab_x=1; ab_y=2; echo ${!ab_@}; echo ${!ab_*}"
+  stdout: "ab_x ab_y\nab_x ab_y\n"
+  stderr: ""
+  exit_code: 0

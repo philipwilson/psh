@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.582.0 (2026-07-03) - Fix: pipeline-tail `[[ ]]` crash + prefix-names expansion formatter corruption (appraisal #16 H2 + H4)
+- FIX (HIGH). Reappraisal #16 cluster H2 + H4 — two file-disjoint AST-node
+  defects fixed together.
+  - **H2 (`psh/ast_nodes/tests.py`): pipeline-tail enhanced-test crash.**
+    `EnhancedTestStatement` was the ONLY compound-command AST subclass missing
+    the `background` field that the pipeline executor reads off the last
+    command in a pipeline. A `[[ ]]` test as the TAIL of a pipeline
+    (`true | [[ -n y ]]`) therefore crashed with an internal `AttributeError`
+    instead of running. Added the `background: bool = False` field so the
+    enhanced-test statement matches every other compound command; the test's
+    truth value now becomes the pipeline status, matching bash
+    (`true | [[ -n y ]]; echo rc=$?` → `rc=0`).
+  - **H4 (`psh/ast_nodes/words.py`): prefix-names expansion formatter
+    corruption.** `ParameterExpansion.__str__` rendered the two-part
+    prefix-names operator (`${!prefix@}` / `${!prefix*}`) as a pure SUFFIX
+    (`${prefix!@}`) instead of a leading-bang PREFIX. The bang landing after
+    the name is a different, broken construct, so the prefix-names expansion
+    was silently corrupted through both `--format` and `declare -f`; a function
+    using `${!ab_@}` round-tripped through `declare -f`/`eval` into a
+    `bad substitution` error. Fixed the rendering to emit the bang as a prefix
+    (`${!prefix@}` / `${!prefix*}`) while leaving every other expansion form
+    intact.
+  - **Tests.** New unit pins for the AST repr/formatter of both prefix-names
+    forms (`tests/unit/parser/test_expansion_ast_nodes.py`), a `declare -f`
+    round-trip pin (`tests/integration/functions/test_declare_f_roundtrip.py`),
+    pipeline-tail enhanced-test coverage
+    (`tests/integration/pipeline/test_pipeline_execution.py`), and three
+    bash-compared golden cases (`enhanced_test_pipeline_tail`,
+    `prefix_names_declare_f_roundtrip`, `prefix_names_both_forms`).
+
 ## 0.581.0 (2026-07-03) - Fix: builtin output no longer misrouted when a dup source fd is reassigned (appraisal #16 H1 + exec-close sibling)
 - FIX (HIGH). Reappraisal #16 cluster H1 — a live REGRESSION introduced by the
   v0.576 Cluster-C commit. A builtin doing `1>&2` or `2>&1` aliased the

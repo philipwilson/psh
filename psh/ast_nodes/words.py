@@ -65,6 +65,12 @@ class ParameterExpansion(Expansion):
     word: Optional[str] = None  # The word part for operators like ${var:-word}
 
     def __str__(self):
+        # Prefix-names ${!prefix@}/${!prefix*}: the bang is a PREFIX and the
+        # @/* a SUFFIX around the name. The operator string stores them
+        # together ("!@"/"!*"), so split it — otherwise the bang lands after
+        # the name (${prefix!@}), which is a different (broken) construct.
+        if self.operator in ('!@', '!*'):
+            return f"${{!{self.parameter}{self.operator[1]}}}"
         if self.operator and self.word is not None:
             return f"${{{self.parameter}{self.operator}{self.word}}}"
         elif self.operator:

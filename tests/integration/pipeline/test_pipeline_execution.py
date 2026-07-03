@@ -165,3 +165,35 @@ def test_pipeline_with_here_document(shell, capsys):
     result = shell.run_command('cat << EOF | cat\nhello world\nEOF')
     # Should execute without syntax error
     assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# Reappraisal #16 H2: a compound command as the pipeline TAIL must not crash.
+#
+# EnhancedTestStatement was the only CompoundCommand subclass missing the
+# `background` field that PipelineExecutor reads off the last command
+# (pipeline.py: `node.commands[-1].background`), so `true | [[ ... ]]` raised
+# an AttributeError (a strict-errors internal defect, suite default). `[[ ]]`
+# as the pipeline LEADER always worked; only the tail hit the missing field.
+# ---------------------------------------------------------------------------
+
+def test_enhanced_test_as_pipeline_tail_success(shell):
+    """`true | [[ -n y ]]` — no crash, exit status from the [[ ]] (rc 0)."""
+    assert shell.run_command('true | [[ -n y ]]') == 0
+
+
+def test_enhanced_test_as_pipeline_tail_failure(shell):
+    """The [[ ]] tail's own truth value is the pipeline status."""
+    # -z on a non-empty operand is false → pipeline rc 1.
+    assert shell.run_command('false | [[ -z y ]]') == 1
+
+
+def test_enhanced_test_pipeline_tail_reads_upstream(shell):
+    """The [[ ]] tail can consume upstream stdout via command substitution."""
+    assert shell.run_command('echo x | [[ -n $(cat) ]]') == 0
+    assert shell.run_command('printf "" | [[ -n $(cat) ]]') == 1
+
+
+def test_enhanced_test_multistage_pipeline_tail(shell):
+    """[[ ]] as the tail of a 3-stage pipeline does not crash."""
+    assert shell.run_command('echo a | cat | [[ -n x ]]') == 0
