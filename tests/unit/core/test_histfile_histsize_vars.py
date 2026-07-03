@@ -76,6 +76,21 @@ def test_histfilesize_honored(shell):
     assert shell.state.max_history_file_size == 7
 
 
+def test_histfilesize_zero_is_distinct_from_unset(shell):
+    # HISTFILESIZE=0 must NOT be mistaken for "unset" (which returns None and
+    # falls back to $HISTSIZE); bash truncates the file to zero lines.
+    shell.state.set_variable('HISTFILESIZE', '0')
+    assert shell.state.max_history_file_size == 0
+
+
+def test_histfilesize_empty_inhibits_truncation(shell):
+    # bash: HISTFILESIZE set to an empty string inhibits truncation (unlimited),
+    # distinct from unset (which returns None -> falls back to $HISTSIZE).
+    import sys
+    shell.state.set_variable('HISTFILESIZE', '')
+    assert shell.state.max_history_file_size == sys.maxsize
+
+
 def test_negative_histfilesize_inhibits_truncation(shell):
     # bash: a negative HISTFILESIZE inhibits truncation of the file.
     import sys
@@ -103,3 +118,17 @@ def test_histfilesize_trims_file_not_histsize(tmp_path):
     shell.interactive_manager.history_manager.save_to_file()
     saved = histfile.read_text().splitlines()
     assert saved == ['c3', 'c4']
+
+
+def test_histfilesize_zero_empties_file(tmp_path):
+    # bash: HISTFILESIZE=0 truncates the history FILE to zero lines, even
+    # though HISTSIZE keeps the entries in memory. (Regression: the trim
+    # slice combined[-0:] used to keep the WHOLE list.)
+    shell = Shell(norc=True)
+    histfile = tmp_path / "h"
+    shell.state.set_variable('HISTFILE', str(histfile))
+    shell.state.set_variable('HISTSIZE', '100')
+    shell.state.set_variable('HISTFILESIZE', '0')
+    shell.state.history = ['a', 'b', 'c']
+    shell.interactive_manager.history_manager.save_to_file()
+    assert histfile.read_text() == ''

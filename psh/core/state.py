@@ -407,16 +407,24 @@ class ShellState:
     def max_history_file_size(self) -> Optional[int]:
         """Maximum number of lines to persist to the history file.
 
-        Honors ``$HISTFILESIZE`` (bash), read dynamically: ``None`` when it is
-        unset (the caller falls back to ``max_history_size``); a non-negative
-        integer is the file line cap; a negative or non-numeric value inhibits
-        truncation (bash) and is reported as ``sys.maxsize``.
+        Honors ``$HISTFILESIZE`` (bash), read dynamically. We must tell an
+        *unset* variable apart from one set to ``0`` or ``""``: reading the
+        raw value straight from the scope/environment preserves ``None`` for
+        genuinely unset (``ShellState.get_variable`` would collapse it to
+        ``""``). Only unset returns ``None`` (the caller then falls back to
+        ``max_history_size``) -- so ``HISTFILESIZE=0`` is NOT mistaken for
+        unset. Value mapping matches bash: ``0`` caps the file to zero lines
+        (truncate-to-empty), a positive integer is the line cap, and an
+        empty-string / negative / non-numeric value inhibits truncation
+        (reported as ``sys.maxsize``).
         """
-        histfilesize = self.get_variable('HISTFILESIZE')
-        if not histfilesize:
+        raw = self.scope_manager.get_variable('HISTFILESIZE')
+        if raw is None:
+            raw = self.env.get('HISTFILESIZE')
+        if raw is None:
             return None
         try:
-            n = int(histfilesize)
+            n = int(raw)
         except (ValueError, TypeError):
             return sys.maxsize
         return sys.maxsize if n < 0 else n

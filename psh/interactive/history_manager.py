@@ -173,7 +173,15 @@ class HistoryManager(InteractiveComponent):
                 try:
                     existing = [ln.rstrip('\n') for ln in f if ln.strip()]
                     combined = existing + new_entries
-                    if len(combined) > file_limit:
+                    # HISTFILESIZE=0 truncates the file to empty (bash). Guard
+                    # this explicitly: combined[-0:] is combined[0:], i.e. the
+                    # WHOLE list, so the naive slice would keep everything.
+                    # (Unset arrives as the max_history_size fallback and
+                    # negative/unlimited as sys.maxsize, so file_limit is never
+                    # negative here -- only 0 needs the special case.)
+                    if file_limit <= 0:
+                        combined = []
+                    elif len(combined) > file_limit:
                         combined = combined[-file_limit:]
                     f.seek(0)
                     f.truncate()
