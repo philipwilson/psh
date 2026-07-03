@@ -55,16 +55,20 @@ class UmaskBuiltin(Builtin):
                 self.error(f"{mode}: octal number out of range", shell)
                 return 1
             os.umask(mask)
-            return 0
+        else:
+            # Symbolic mode: clauses operate on the ALLOWED permissions
+            # (the complement of the mask), per POSIX.
+            current = os.umask(0)
+            os.umask(current)
+            allowed = self._apply_symbolic(mode, ~current & 0o777, shell)
+            if allowed is None:
+                return 1
+            mask = ~allowed & 0o777
+            os.umask(mask)
 
-        # Symbolic mode: clauses operate on the ALLOWED permissions
-        # (the complement of the mask), per POSIX.
-        current = os.umask(0)
-        os.umask(current)
-        allowed = self._apply_symbolic(mode, ~current & 0o777, shell)
-        if allowed is None:
-            return 1
-        os.umask(~allowed & 0o777)
+        # bash: `umask -S MODE` still echoes the new mask symbolically.
+        if opts['S']:
+            self.write_line(self._symbolic(mask), shell)
         return 0
 
     @staticmethod

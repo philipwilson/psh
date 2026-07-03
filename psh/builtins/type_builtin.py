@@ -108,17 +108,30 @@ class TypeBuiltin(Builtin):
                 if not show_all:
                     continue
 
+            # A command hashed by the shell takes precedence over a fresh
+            # PATH search (bash reports "NAME is hashed (PATH)"). Consulted
+            # only for the non-`-a` file lookup, and not under -P (which
+            # forces a fresh PATH search); the lookup counts as a hit, bash.
+            hashed_path = None
+            if not force_path and not show_all:
+                hashed_path = shell.state.command_hash.lookup(name)
+
             # Check in PATH
             paths = self._find_in_path(name, shell.env.get('PATH', ''))
-            if paths:
+            if hashed_path is not None or paths:
                 if type_only:
                     self.write_line("file", shell)
                 elif path_only or force_path:
                     # -p / -P print ONLY the path (no "name is " banner), bash.
-                    for path in paths:
+                    # -p prefers the hashed location; -P forces a PATH search.
+                    candidates = paths if force_path else (
+                        [hashed_path] if hashed_path is not None else paths)
+                    for path in candidates:
                         self.write_line(path, shell)
                         if not show_all:
                             break
+                elif hashed_path is not None:
+                    self.write_line(f"{name} is hashed ({hashed_path})", shell)
                 else:
                     for path in paths:
                         self.write_line(f"{name} is {path}", shell)

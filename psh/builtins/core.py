@@ -175,7 +175,7 @@ class ExecBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "exec [command [argument ...]]"
+        return "exec [-cl] [-a name] [command [argument ...]]"
 
     @property
     def description(self) -> str:
@@ -183,29 +183,42 @@ class ExecBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute command or apply redirections."""
-        # Remove 'exec' from args
-        args = args[1:] if args and args[0] == 'exec' else args
+        # -a NAME overrides argv[0]; -c runs with an empty environment;
+        # -l prepends '-' to argv[0] (login-shell convention).
+        opts, command = self.parse_flags(args, shell, flags='cl', value_flags='a')
+        if opts is None:
+            return 2
 
-        if not args:
-            # exec without arguments - just succeed
-            # Note: redirections would be handled by the executor/io_manager
+        if not command:
+            # exec with no command (with or without flags) - just succeed.
+            # Any redirections were already applied by the executor/io_manager.
             return 0
 
-        # For now, implement basic functionality
-        # Full exec implementation would need to handle:
-        # 1. Permanent redirections when no command given
-        # 2. Process replacement when command given
-        # 3. File descriptor manipulation
+        import os
 
-        # Basic implementation: execute the command normally
+        # bash locates the program with the shell's PATH, then hands the
+        # child the requested environment — so `-c` (empty env) still finds
+        # a command that lives on PATH.
+        env = {} if opts['c'] else shell.env
+        exec_file = command[0]
+        if opts['c'] and '/' not in exec_file:
+            from .type_builtin import TypeBuiltin
+            found = TypeBuiltin._find_in_path(exec_file, shell.env.get('PATH', ''))
+            if found:
+                exec_file = found[0]
+
+        argv0 = opts['a'] if opts['a'] is not None else command[0]
+        if opts['l']:
+            argv0 = '-' + argv0
+        argv = [argv0] + command[1:]
+
         try:
-            import os
-            os.execvpe(args[0], args, shell.env)
+            os.execvpe(exec_file, argv, env)
         except FileNotFoundError:
-            self.error(f"{args[0]}: command not found", shell)
+            self.error(f"{command[0]}: command not found", shell)
             return self._exec_failed(shell, 127)
         except OSError as e:
-            self.error(f"{args[0]}: {e}", shell)
+            self.error(f"{command[0]}: {e}", shell)
             return self._exec_failed(shell, 126)
 
     def _exec_failed(self, shell: 'Shell', code: int) -> int:

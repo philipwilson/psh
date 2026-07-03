@@ -256,6 +256,8 @@ class _PrintfEngine:
 
     def _emit_time(self, datefmt: str):
         """%(datefmt)T: strftime of an epoch-seconds argument."""
+        if datefmt == '':
+            datefmt = '%X'  # bash: an empty time format defaults to %X
         raw = self._next_arg()
         if raw in ('', '-1'):
             epoch = int(time.time())  # -1 / missing: now (bash)

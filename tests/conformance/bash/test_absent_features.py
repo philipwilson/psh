@@ -111,12 +111,9 @@ class TestAbsentBashFeatures:
         psh: command not found, exit 127."""
         assert_bash_parity('enable echo; echo rc=$?')
 
-    @pytest.mark.xfail(strict=True, reason="exec -a (custom argv[0]) is not implemented")
-    def test_exec_dash_a(self):
-        """bash: `exec -a customname sh -c 'echo $0'` execs with argv[0]
-        replaced (probe: argv0=customname). psh: parses -a as the command
-        to exec — 'exec: -a: command not found'."""
-        assert_bash_parity('(exec -a customname sh -c "echo argv0=\\$0")')
+    # `exec -a NAME` (custom argv[0]), plus `-c` (clean env) and `-l` (login
+    # dash prefix) were implemented in reappraisal #16 Tier-2. Coverage lives
+    # in tests/unit/builtins/test_exec_flags.py.
 
     @pytest.mark.xfail(strict=True, reason="shopt -s lastpipe is not implemented "
                                            "(shopt rejects the option name honestly)")

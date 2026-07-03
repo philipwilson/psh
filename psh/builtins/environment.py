@@ -477,6 +477,11 @@ class UnsetBuiltin(Builtin):
         opts, names = self.parse_flags(args, shell, flags='fvn')
         if opts is None:
             return 2  # invalid option (bash usage-error status)
+        if opts['f'] and opts['v']:
+            # bash rejects -f and -v together regardless of operands.
+            self.error(
+                "cannot simultaneously unset a function and a variable", shell)
+            return 1
         if not names:
             return 0  # bash: unset with no operands succeeds silently
 
