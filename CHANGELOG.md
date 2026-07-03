@@ -4,6 +4,52 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.589.0 (2026-07-03) - Fix: nocasematch keeps upper/lower classes case-sensitive in [[/case; POSIX classes in the =~ regex operator (appraisal #16 ledger b + e)
+- FIX. Reappraisal #16 follow-up ledger, items (b) and (e). Two fixes wiring
+  the pattern engine (made ignorecase-ready by #16 H6) correctly into the
+  test/case evaluators.
+- **(b) `nocasematch` over-folded `[[:upper:]]`/`[[:lower:]]`.** Under
+  `shopt -s nocasematch`, bash folds literals, ranges, and character sets but
+  keeps the `[[:upper:]]` and `[[:lower:]]` POSIX classes case-SENSITIVE. H6
+  taught `shell_pattern_to_regex` to protect those two classes with a scoped
+  `(?-i:...)` group, but `match_shell_pattern` applied `re.IGNORECASE` WITHOUT
+  forwarding `ignorecase` to the builder, so the protection never engaged.
+  Probe: `shopt -s nocasematch; [[ h == [[:upper:]] ]]` wrongly matched (rc 0)
+  under psh but is false (rc 1) under bash.
+  - **Fix.** Forward the `ignorecase` flag through `match_shell_pattern` — the
+    ready chokepoint — so the scoped-non-ignorecase protection H6 already built
+    engages. One-line forward fixes both the `[[ ]] ==` and `case` paths;
+    `control_flow.py` already passed `ignorecase` and is untouched.
+- **(e) `=~` did not translate POSIX bracket classes and leaked a
+  `FutureWarning`.** The `=~` regex path built a Python regex without
+  translating POSIX bracket classes, so `[[:punct:]]` reached `re` as a nested
+  set — wrong match plus `FutureWarning: Possible nested set` on stderr in
+  default mode.
+  - **Fix.** Share the glob engine's class table via a new
+    `translate_posix_classes()` in `glob.py` — classes only, since `=~` is an
+    ERE not a glob (no glob-metacharacter handling). All 12 POSIX classes now
+    match bash ERE with zero warning leaks. Under `nocasematch` bash's `=~`
+    uses `REG_ICASE`, which folds `[[:upper:]]`/`[[:lower:]]` too (unlike
+    `==`/`case`), so no case protection is applied on the `=~` side — matches
+    bash.
+  - Also fixes a pre-existing parse error for POSIX classes inside `=~` capture
+    groups: `([[:alpha:]])` lexed with the inner `[[`/`]]` mis-tokenized as
+    double brackets, and `_parse_regex_operand` stopped at the FIRST `]]`.
+    Paren depth is now tracked so a `]]` only terminates the test at group
+    depth 0, enabling the documented `([[:alpha:]]+)([[:digit:]]+)`
+    `BASH_REMATCH` idiom (appendix_c).
+  - **Deliberate residual:** a `=~` operand containing a double-open-bracket
+    that is NOT one of the 12 recognized classes can still leak the internal
+    warning (pre-existing, low-frequency). The educational combinator parser
+    also flattens a grouped `=~` operand with spaces so the class can't
+    translate — a documented limitation, and outside the production bar.
+- Verified against a 151-case bash-vs-psh truth table across all 12 POSIX
+  classes in `[[ ==`, `case`, and `=~` (quoted/unquoted, negated, combined,
+  grouped) with zero `FutureWarning` leaks (checked under
+  `-W error::FutureWarning`); H6 patsub/glob nocasematch re-confirmed intact.
+  Pinned by unit, integration, conformance, and golden-case tests.
+  Files: `pattern.py`, `enhanced_test_evaluator.py`, `glob.py`, `tests.py`.
+
 ## 0.588.0 (2026-07-03) - Fix: temporary-redirect fd backups saved high so closed std fds stay closed (appraisal #16 ledger a)
 - FIX. Reappraisal #16 follow-up ledger, item (a). A redirected
   function/compound body run after `exec 1>&-` closed fd 1 leaked its stdout to
