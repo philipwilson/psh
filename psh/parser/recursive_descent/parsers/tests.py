@@ -230,6 +230,12 @@ class TestParser(ParserSubcomponent):
         (`]]`, `&&`, `||`). Each token keeps its own quote context so the
         evaluator can match a quoted sub-part literally (``a"."`` -> the
         ``.`` is a literal dot, bash).
+
+        A `]]` inside an open `(...)` group is part of the regex, not the
+        terminator: `([[:alpha:]])` lexes as `( [[ :alpha: ]] )` (the inner
+        `[[`/`]]` mis-tokenize as double brackets at command position), so the
+        first `]]` must be kept and only the group-depth-0 `]]` closes the
+        test — matching bash's `([[:alpha:]]+)` capture groups.
         """
         if not self.parser.match_any(TokenGroups.WORD_LIKE) and \
                 self.parser.peek().type in (TokenType.DOUBLE_RBRACKET,
@@ -238,15 +244,23 @@ class TestParser(ParserSubcomponent):
 
         parts: List[WordPart] = []
         first = True
+        paren_depth = 0
         stop = (TokenType.DOUBLE_RBRACKET, TokenType.AND_AND,
                 TokenType.OR_OR, TokenType.EOF, TokenType.NEWLINE)
         while self.parser.current < len(self.parser.tokens):
             tok = self.parser.peek()
-            if tok.type in stop:
+            # A `]]` still closes the test only at group depth 0; inside an
+            # open paren group it is regex content (e.g. `([[:alpha:]])`).
+            if tok.type in stop and not (
+                    tok.type == TokenType.DOUBLE_RBRACKET and paren_depth > 0):
                 break
             # After the first token, only keep going while glued (no whitespace).
             if not first and not getattr(tok, 'adjacent_to_previous', False):
                 break
+            if tok.type == TokenType.LPAREN:
+                paren_depth += 1
+            elif tok.type == TokenType.RPAREN and paren_depth > 0:
+                paren_depth -= 1
             self.parser.advance()
             parts.append(self._token_part(tok))
             first = False

@@ -1923,6 +1923,40 @@
   stderr: ""
   exit_code: 0
 
+# nocasematch: [[:upper:]]/[[:lower:]] stay case-sensitive (reappraisal #16
+# ledger b) — bash folds literals/ranges but NOT these two classes in ==/case.
+- name: nocasematch_double_bracket_upper_class_case_sensitive
+  command: "shopt -s nocasematch; [[ h == [[:upper:]] ]] && echo m || echo no"
+  stdout: "no\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nocasematch_case_lower_class_case_sensitive
+  command: "shopt -s nocasematch; case H in [[:lower:]]) echo m;; *) echo no;; esac"
+  stdout: "no\n"
+  stderr: ""
+  exit_code: 0
+
+# =~ supports POSIX bracket classes as ERE (reappraisal #16 ledger e) — no
+# Python FutureWarning may leak; grouped classes work (appendix_c example).
+- name: regex_posix_class_punct
+  command: '[[ "!" =~ [[:punct:]] ]]; echo $?'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: regex_posix_class_grouped_capture
+  command: '[[ abc123 =~ ([[:alpha:]]+)([[:digit:]]+) ]]; echo "${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"'
+  stdout: "abc-123\n"
+  stderr: ""
+  exit_code: 0
+
+- name: regex_posix_class_negated
+  command: '[[ a =~ [^[:digit:]] ]]; echo $?'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # KEYWORD-AS-ARGUMENT (H1, reappraisal #7)
 # A reserved word spelled in argument position is a plain word, and does not
