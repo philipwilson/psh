@@ -15,6 +15,7 @@ from .heredoc_detection import (
     HEREDOC_MARKER_RE,
     contains_heredoc,
     has_unclosed_heredoc,
+    heredoc_terminator_matches,
     is_inside_expansion,
     open_heredoc_delimiters,
 )
@@ -26,6 +27,7 @@ __all__ = [
     'get_signal_registry',
     'contains_heredoc',
     'has_unclosed_heredoc',
+    'heredoc_terminator_matches',
     'open_heredoc_delimiters',
     'is_inside_expansion',
     'HEREDOC_MARKER_RE',

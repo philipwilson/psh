@@ -37,7 +37,11 @@ if TYPE_CHECKING:
 
 from ..lexer import UnclosedQuoteError, tokenize
 from ..parser import ParseError, Parser
-from ..utils import contains_heredoc, open_heredoc_delimiters
+from ..utils import (
+    contains_heredoc,
+    heredoc_terminator_matches,
+    open_heredoc_delimiters,
+)
 from .input_preprocessing import process_line_continuations
 
 
@@ -231,8 +235,7 @@ class CommandAccumulator:
         """Close the first pending heredoc whose delimiter is ``line``
         (tab-stripped for ``<<-``) — same matching as the shared detector."""
         for i, (word, strip_tabs) in enumerate(self._open_heredocs):
-            check = line.lstrip('\t') if strip_tabs else line
-            if check.rstrip() == word:
+            if heredoc_terminator_matches(line, word, strip_tabs):
                 del self._open_heredocs[i]
                 return
 

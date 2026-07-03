@@ -59,15 +59,15 @@ class SourceBuiltin(Builtin):
         if validation_result != 0:
             return validation_result
 
-        # Save current shell state
-        old_positional = shell.state.positional_params.copy()
-        old_script_name = shell.state.script_name
+        # Save current shell state. bash NEVER changes $0 (script_name) when
+        # sourcing — the sourced file sees the CALLER's $0 — so we leave it
+        # untouched. Positional parameters are saved/restored ONLY when ARGS
+        # are passed: a no-args source SHARES the caller's positionals, so a
+        # `set --` inside it persists to the caller (bash).
         old_script_mode = shell.state.is_script_mode
-
-        # Set new state for sourced script
         if has_source_args:
+            old_positional = shell.state.positional_params.copy()
             shell.state.positional_params = source_args
-        shell.state.script_name = script_path
         # Keep current script mode (sourcing inherits mode)
 
         shell.state.source_depth += 1
@@ -88,8 +88,8 @@ class SourceBuiltin(Builtin):
         finally:
             shell.state.source_depth -= 1
             # Restore previous state
-            shell.state.positional_params = old_positional
-            shell.state.script_name = old_script_name
+            if has_source_args:
+                shell.state.positional_params = old_positional
             shell.state.is_script_mode = old_script_mode
 
     def _find_source_file(self, filename: str, shell: 'Shell') -> Optional[str]:
@@ -100,17 +100,20 @@ class SourceBuiltin(Builtin):
                 return filename
             return None
 
-        # First check current directory
-        if os.path.exists(filename):
-            return filename
-
-        # Search in PATH
+        # Search PATH first, then fall back to the current directory. bash
+        # (non-posix, `sourcepath` on) searches $PATH for a slash-less name
+        # and only treats it as a cwd-relative path when PATH has no match —
+        # so a `both.sh` earlier on PATH wins over one in the cwd.
         path_dirs = shell.env.get('PATH', '').split(':')
         for path_dir in path_dirs:
             if path_dir:  # Skip empty path components
                 full_path = os.path.join(path_dir, filename)
                 if os.path.exists(full_path):
                     return full_path
+
+        # cwd fallback
+        if os.path.exists(filename):
+            return filename
 
         return None
 

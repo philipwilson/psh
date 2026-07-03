@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.600.0 (2026-07-03) - Fix: source/$0/LINENO/CR + POSIX short options; CRLF-file heredocs terminate (reappraisal #16 Tier 2 scripting cluster)
+- FIX. Reappraisal #16 Tier 2, scripting cluster: a set of script-invocation and
+  script-input defects, each pinned to bash 5.2. New/updated tests:
+  `tests/system/test_r16_scripting.py`, `tests/system/test_cli_argument_parsing.py`,
+  `tests/system/test_lineno_script_file.py`, `tests/unit/test_main_parse_args.py`,
+  and two new golden cases in `tests/behavioral/golden_cases.yaml`.
+- **`$0` is left unchanged inside a sourced file.** `source`/`.` no longer
+  overwrites the caller's `$0` for the duration of the sourced script.
+- **`$LINENO` no longer drifts per preceding line-continuation.** Each
+  backslash-newline continuation used to subtract 1 from every later `$LINENO`;
+  the value (and the line number in error messages) is now correct.
+- **`set -- ARGS` inside a no-argument `source` persists to the caller.** A
+  sourced file invoked without its own positional arguments that runs
+  `set --` now updates the caller's positional parameters, matching bash.
+- **`source` searches `PATH` before the current directory**, per POSIX, instead
+  of preferring `./name`.
+- **Carriage-return bytes in quoted script data are preserved.** Script files
+  are opened with universal-newline translation off, so a literal CR inside
+  quoted data survives instead of being rewritten to LF.
+- **POSIX short invocation options accepted.** `-e`, `-u`, `-x`, `-v`, `-n`,
+  `-f`, `-C`, and `-s` (read commands from stdin) are now recognized on the psh
+  command line. Coverage supersedes the removed short-option absence entries in
+  `tests/conformance/bash/test_absent_features.py`.
+- **Follow-up: CRLF-line-ending script files with heredocs terminate.** The
+  CR-preservation change regressed heredoc termination on CRLF files; a single
+  shared heredoc-terminator matcher (which strips only one trailing carriage
+  return) is now routed through all five heredoc-gathering layers
+  (`heredoc_detection.py`, `command_accumulator.py`, `input_preprocessing.py`,
+  lexer `heredoc_collector.py`, `cmdsub_scanner.py`), so a `<<EOF` delimiter on
+  a CRLF line matches and later commands run.
+
 ## 0.599.0 (2026-07-03) - Fix: combinator named-fd redirects + honest [[ ]] compound rejection (reappraisal #16 Tier 2 combinator-parser cluster)
 - FIX. Reappraisal #16 Tier 2, combinator-parser cluster (the combinator is
   educational-only; the recursive descent parser is production): two MED
