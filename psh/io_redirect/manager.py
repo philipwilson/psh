@@ -62,6 +62,7 @@ re-pointing e.g. fd 3 at its exec-time file mid-eval — fixed in v0.302).
 Frames are restored innermost-first; this LIFO discipline is guaranteed by
 the paired try/finally in ``_execute_builtin_with_redirections``.
 """
+import fcntl
 import os
 import sys
 from contextlib import contextmanager
@@ -424,6 +425,26 @@ class IOManager:
             content = self.file_redirector.redirect_herestring(redirect)
             sys.stdin = io.StringIO(content)
 
+    @staticmethod
+    def _open_output_off_low_fds(target: str, mode: str) -> TextIO:
+        """``open()`` a builtin's output target, keeping it off fds 0/1/2.
+
+        Python's ``open`` takes the lowest free descriptor. After ``exec 1>&-``
+        (or ``2>&-``) that free slot is fd 1 (or 2), which a stale
+        ``sys.stdout``/``sys.stderr`` wrapper still names — the builtin's own
+        writes would then silently land in THIS file instead of failing with
+        EBADF (bash: ``write error: Bad file descriptor``). bash opens redirect
+        targets on high fds for exactly this reason. Relocate onto fd >= 3
+        (``F_DUPFD`` shares the open file description, so the truncation the
+        original ``open`` already did stands) and drop the low slot.
+        """
+        f = open(target, mode)
+        if f.fileno() >= 3:
+            return cast(TextIO, f)
+        high_fd = fcntl.fcntl(f.fileno(), fcntl.F_DUPFD, 3)
+        f.close()  # frees the low slot; high_fd keeps the file open
+        return cast(TextIO, os.fdopen(high_fd, mode))
+
     def _dup_output_fd_for_children(self, source_fd: int, target_fd: int,
                                     frame: BuiltinRedirectFrame):
         """fd-level half of a builtin output redirect to fd 1/2.
@@ -432,15 +453,21 @@ class IOManager:
         half), but a CHILD it spawns — ``eval``/``source`` running an external
         command, ``command ext`` — inherits raw fd 1/2, so those must be
         redirected too. This mirrors the stdin BOTH-universe treatment (see the
-        module docstring): ``dup2`` ``source_fd`` (the opened file's fd, or 1/2
-        for ``2>&1``/``1>&2``) onto ``target_fd``, saving the original on the
-        frame for restore. The dup2 shares the open file description, so the
-        builtin's stream writes and the child's fd writes keep one file offset
-        (no re-truncation). ``target_fd``'s original is saved tolerantly (None
-        when it was closed, e.g. after ``exec 1>&-``), matching ``_save_fd``.
+        module docstring): ``dup2`` ``source_fd`` (the opened file's fd) onto
+        ``target_fd``, saving the original on the frame for restore. The dup2
+        shares the open file description, so the builtin's stream writes and the
+        child's fd writes keep one file offset (no re-truncation).
+
+        The backup is forced onto a high fd (>= 10) via ``F_DUPFD``, like
+        ``FileRedirector._save_fd_high``: a plain ``os.dup`` takes the lowest
+        free slot, which after ``exec 1>&-`` is fd 1 — and the stale
+        ``sys.stdout`` wrapper still names fd 1, so it would then write into
+        this backup instead of failing with EBADF (bash keeps fd 1 closed).
+        ``target_fd``'s original is saved tolerantly (None when it was closed,
+        e.g. after ``exec 1>&-``), matching ``_save_fd``.
         """
         try:
-            saved: Optional[int] = os.dup(target_fd)
+            saved: Optional[int] = fcntl.fcntl(target_fd, fcntl.F_DUPFD, 10)
         except OSError:
             saved = None  # target_fd was not open — close it again on restore
         frame.saved_fds.append((target_fd, saved))
@@ -454,7 +481,7 @@ class IOManager:
         is_append = redirect.type.endswith('>>')
         if not is_append and self.file_redirector.noclobber_blocks(target):
             raise OSError(f"{target}: cannot overwrite existing file")
-        f = open(target, 'a' if is_append else 'w')
+        f = self._open_output_off_low_fds(target, 'a' if is_append else 'w')
         frame.opened_streams.append(f)
         sys.stdout = f
         sys.stderr = f
@@ -476,8 +503,8 @@ class IOManager:
         target_fd = redirect.fd if redirect.fd is not None else 1
         if target_fd == 1:
             frame.snapshot.note_stdout()
-            f = open(target, mode)  # text mode ('a'/'w') -> TextIO
-            frame.opened_streams.append(cast(TextIO, f))
+            f = self._open_output_off_low_fds(target, mode)
+            frame.opened_streams.append(f)
             sys.stdout = f
             # fd 1 too, so children the builtin spawns write to the file.
             self._dup_output_fd_for_children(f.fileno(), 1, frame)
@@ -487,8 +514,8 @@ class IOManager:
                       file=sys.stderr)
         elif target_fd == 2:
             frame.snapshot.note_stderr()
-            f = open(target, mode)  # text mode ('a'/'w') -> TextIO
-            frame.opened_streams.append(cast(TextIO, f))
+            f = self._open_output_off_low_fds(target, mode)
+            frame.opened_streams.append(f)
             sys.stderr = f
             # fd 2 too, so children the builtin spawns write to the file.
             self._dup_output_fd_for_children(f.fileno(), 2, frame)
@@ -497,35 +524,37 @@ class IOManager:
 
     def _builtin_redirect_dup(self, redirect,
                               frame: BuiltinRedirectFrame):
-        """``>&`` fd duplication for a builtin.
+        """``>&`` fd duplication for a builtin (``2>&1``, ``1>&2``, ``1>&m``…).
 
-        For the common ``2>&1`` / ``1>&2`` cases the Python stream objects
-        are swapped, so a builtin's writes interleave correctly and honour
-        redirect ordering. ``1>&m`` / ``2>&m`` with m >= 3 (``echo x >&3``)
-        needs BOTH universes, like stdin: the fd-level dup so children
-        spawned during the builtin inherit it, AND a stream swap onto m's
-        open file description — the builtin writes through sys.stdout,
-        which may be a swapped file object not backed by fd 1 at all
-        (``eval "echo x >&3" >/dev/null``), so the dup2 alone would be
-        invisible to it. Dups of fds >= 3 (``3>&1``) have no stream
-        counterpart and are purely fd level.
+        ``n>&m`` targeting fd 1/2 needs BOTH universes:
+
+        * the fd-level dup (``_builtin_redirect_fd_level``) so a child the
+          builtin spawns inherits it AND — crucially — so fd n becomes an
+          INDEPENDENT duplicate of m's CURRENT target: a later ``m>file`` in
+          the same command reassigns fd m without disturbing fd n, exactly
+          as bash's descriptors behave;
+        * a stream swap so the builtin's own writes go to the same place,
+          bound to ``os.dup(m)`` — a fresh snapshot of m's current open file
+          description — NOT an alias of the ``sys.stdout``/``sys.stderr``
+          OBJECT. Aliasing the object (``sys.stdout = sys.stderr``) breaks
+          ``echo hi 1>&2 2>file``: that object stays backed by real fd 2,
+          which the later ``2>file`` clobbers out from under it, so the
+          builtin's output lands in the file instead of on the old fd-2
+          target (bash keeps it on the old target). ``os.dup`` shares m's
+          offset/O_APPEND; line buffering interleaves with fd-level writers
+          — same pattern as ``FileRedirector._stream_sharing_fd`` for
+          ``exec``. It also covers ``1>&m``/``2>&m`` with m >= 3
+          (``eval "echo x >&3" >/dev/null``), where the dup2 alone would be
+          invisible because sys.stdout may be a swapped object not backed by
+          fd 1.
+
+        Dups of fds >= 3 (``3>&1``) have no stream counterpart and are purely
+        fd level.
         """
-        if redirect.fd == 2 and redirect.dup_fd == 1:
-            frame.snapshot.note_stderr()
-            sys.stderr = sys.stdout
-            # fd 2 → fd 1 too, so children the builtin spawns inherit it.
-            self._dup_output_fd_for_children(1, 2, frame)
-        elif redirect.fd == 1 and redirect.dup_fd == 2:
-            frame.snapshot.note_stdout()
-            sys.stdout = sys.stderr
-            # fd 1 → fd 2 too, so children the builtin spawns inherit it.
-            self._dup_output_fd_for_children(2, 1, frame)
-        elif redirect.fd in (1, 2) and redirect.dup_fd is not None:
-            # Validates dup_fd and dup2's it onto fd 1/2 (for children).
+        if redirect.fd in (1, 2) and redirect.dup_fd is not None:
+            # Validates dup_fd and dup2's m onto fd n (independent of a later
+            # reassignment of m); fd n's target is now a snapshot of m's.
             self._builtin_redirect_fd_level(redirect, frame)
-            # os.dup shares m's open file description (offset, O_APPEND);
-            # line buffering interleaves with fd-level writers — same
-            # pattern as FileRedirector._stream_sharing_fd for `exec`.
             f = os.fdopen(os.dup(redirect.dup_fd), 'w', buffering=1)
             frame.opened_streams.append(f)
             if redirect.fd == 1:

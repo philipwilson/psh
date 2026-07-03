@@ -114,20 +114,27 @@ class TestArithmeticIntegrationAdvanced:
 
     # Complex redirection with arithmetic (PARTIALLY WORKING)
 
-    def test_arithmetic_in_file_descriptor_redirection(self, shell, capsys):
+    def test_arithmetic_in_file_descriptor_redirection(self):
         """Test arithmetic in file descriptor specifications.
 
-        `>&$((1+1))` now resolves the dup target at runtime (the lexer emits a
+        `>&$((1+1))` resolves the dup target at runtime (the lexer emits a
         bare `>&` operator, the parser keeps the expansion as the target, and
         FileRedirector.resolve_dynamic_dup expands it to an fd number).
+
+        Runs psh in a SUBPROCESS: the fd dance (`2>&1 >&$((1+1))`) binds the
+        builtin's stream to a fresh dup of the target fd's open description
+        (not an alias of the `sys.stdout` object), so the output only shows at
+        the fd level — `capsys`, which swaps the Python stream objects, cannot
+        observe it. Expectation verified against bash 5.2: "hello" reaches
+        stdout, exit 0.
         """
-        # Test echo "hello" >&$((1+1))  (redirect to fd 2)
-        # This is complex and may cause issues
-        result = shell.run_command('echo "hello" 2>&1 >&$((1+1)) 2>/dev/null || echo "redirect test"')
-        assert result == 0
-        captured = capsys.readouterr()
-        # The exact behavior may vary, but it shouldn't crash
-        assert "redirect test" in captured.out or "hello" in captured.out
+        import subprocess
+        import sys
+        cmd = 'echo "hello" 2>&1 >&$((1+1)) 2>/dev/null || echo "redirect test"'
+        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
+                             capture_output=True, text=True)
+        assert psh.returncode == 0
+        assert psh.stdout == 'hello\n'
 
     # Case statement pattern arithmetic (NOT WORKING YET)
 
