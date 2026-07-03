@@ -31,6 +31,7 @@ class ExecutionState:
         "errexit_eligible",
         "last_cmdsub_status",
         "in_forked_child",
+        "in_substitution",
     )
 
     def __init__(self) -> None:
@@ -56,11 +57,18 @@ class ExecutionState:
         # command-substitution child, ...); leaf builtins consult it to choose
         # between fd-level writes (os.write) and shell.stdout.
         self.in_forked_child: bool = False
+        # True inside a command/process substitution child (set by
+        # run_child_shell). bash suppresses the abnormal-termination
+        # diagnostic there but NOT in a ( ) subshell, so this flag —
+        # unlike in_forked_child — must distinguish the two.
+        self.in_substitution: bool = False
 
     def copy_into(self, other: "ExecutionState") -> None:
         """Copy the inheritable execution state into ``other`` (for subshell
         adoption). ``pipestatus`` is copied as a fresh list; ``in_forked_child``
-        is deliberately NOT copied — the child sets it itself.
+        is deliberately NOT copied — the child sets it itself. ``in_substitution``
+        IS copied so a ( ) subshell nested inside a command substitution inherits
+        the suppression (bash is silent for the whole substitution).
         """
         other.last_exit_code = self.last_exit_code
         other.last_bg_pid = self.last_bg_pid
@@ -69,3 +77,4 @@ class ExecutionState:
         other.pipestatus = list(self.pipestatus)
         other.errexit_eligible = self.errexit_eligible
         other.last_cmdsub_status = self.last_cmdsub_status
+        other.in_substitution = self.in_substitution

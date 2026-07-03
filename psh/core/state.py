@@ -504,6 +504,15 @@ class ShellState:
         self.execution.in_forked_child = value
 
     @property
+    def in_substitution(self) -> bool:
+        """True inside a command/process substitution child (not a ( ) subshell)."""
+        return self.execution.in_substitution
+
+    @in_substitution.setter
+    def in_substitution(self, value: bool) -> None:
+        self.execution.in_substitution = value
+
+    @property
     def debug_ast(self):
         """Whether AST debug output is enabled."""
         return self.options.get('debug-ast', False)

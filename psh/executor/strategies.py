@@ -65,7 +65,10 @@ def report_exec_failure(cmd_name: str, exc: OSError,
     gone, bash names the stale PATH: "bash: /path/cmd: No such file or
     directory", still 127 (probe-verified: bash 5.2 does NOT re-search
     PATH unless `shopt -s checkhash` — the re-verify happens parent-side
-    in ExternalExecutionStrategy, before the fork).
+    in ExternalExecutionStrategy, before the fork). A missing command
+    given as a *pathname* (one containing a slash) is likewise reported
+    as "No such file or directory", not "command not found" — bash reserves
+    "command not found" for a bare name that PATH couldn't resolve.
     """
     # surrogateescape on the diagnostics: a command name carrying non-UTF-8
     # bytes (from a non-UTF-8 script, read with surrogateescape) must not make
@@ -74,6 +77,9 @@ def report_exec_failure(cmd_name: str, exc: OSError,
     if isinstance(exc, FileNotFoundError):
         if resolved_path is not None:
             os.write(2, f"psh: {resolved_path}: No such file or directory\n"
+                     .encode('utf-8', errors='surrogateescape'))
+        elif '/' in cmd_name:
+            os.write(2, f"psh: {cmd_name}: No such file or directory\n"
                      .encode('utf-8', errors='surrogateescape'))
         else:
             os.write(2, f"psh: {cmd_name}: command not found\n"
@@ -517,6 +523,10 @@ class ExternalExecutionStrategy(ExecutionStrategy):
 
             # Use job manager to wait (it handles SIGCHLD)
             exit_status = shell.job_manager.wait_for_job(job)
+
+            # Announce abnormal termination (Terminated / Segmentation fault /
+            # ...) the way bash does for a signal-killed foreground command.
+            shell.job_manager.report_abnormal_termination(job)
 
             # Reclaim the terminal (if we handed it over) and clear
             # foreground-job bookkeeping (a stopped job stays as %+).

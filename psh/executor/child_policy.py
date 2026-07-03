@@ -218,6 +218,10 @@ def run_child_shell(parent_shell: 'Shell',
         from ..shell import Shell
         child_shell = Shell.for_subshell(parent_shell, norc=norc)
         child_shell.state.in_forked_child = True
+        # This child runs a command/process substitution. bash suppresses the
+        # abnormal-termination diagnostic (Terminated / Segmentation fault ...)
+        # inside substitutions, unlike a ( ) subshell which still reports it.
+        child_shell.state.in_substitution = True
         # A substitution child forked inside a loop keeps the loop scope
         # visible (bash: `x=$(break)` in a loop is SILENT — no "only
         # meaningful in a loop" warning — though the break cannot cross
