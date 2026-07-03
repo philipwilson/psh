@@ -382,28 +382,24 @@ class FileRedirector:
             except OSError:
                 pass
 
-    def _save_fd(self, fd: int):
-        """Dup `fd` so it can be restored later.
+    def _save_fd_high(self, fd: int):
+        """Dup `fd` onto a HIGH fd (>= 10) so it can be restored later.
+
+        Every temporary-redirect backup goes high, exactly as bash keeps its
+        internal saved descriptors above fd 10. A plain ``os.dup`` takes the
+        lowest free slot, which after ``exec 1>&-`` (or ``2>&-``) is fd 1 (or
+        2) — a slot a stale ``sys.stdout``/``sys.stderr`` wrapper still names.
+        The backup would then sit ON fd 1, so a builtin's write to
+        ``sys.stdout`` lands in the backup (the shell's real stderr) instead
+        of failing EBADF as bash does; and the freed low slot could not be
+        reclaimed and re-closed by the redirect's own ``open()``. Forcing the
+        backup to fd >= 10 keeps fds 0/1/2 out of its way (this is also why the
+        combined ``&>`` save, which backs up BOTH 1 and 2, must go high).
 
         Returns the duplicate, or None if `fd` is not currently open (e.g. a
-        high fd like `7>file`, where there is no original to restore — the fd
-        should simply be closed again on restore).
-        """
-        try:
-            return os.dup(fd)
-        except OSError:
-            return None
-
-    def _save_fd_high(self, fd: int):
-        """Like `_save_fd`, but force the backup onto a high fd (>= 10).
-
-        The combined `&>` redirect saves BOTH fd 1 and fd 2 before opening its
-        target and duping onto fd 1/2. If a low fd is currently closed (e.g.
-        after `exec 1>&-`), a plain `os.dup` of the OTHER fd would land in that
-        freed low slot — which the redirect then clobbers, so restore would
-        re-point stderr at the file. Duping to a high fd keeps the backup out
-        of the redirect's way (bash opens redirect targets on high fds for the
-        same reason). Returns None when `fd` is not open.
+        high fd like `7>file`, or a low fd already closed by ``exec 1>&-`);
+        restore then simply closes the fd again rather than restoring an
+        original.
         """
         try:
             return fcntl.fcntl(fd, fcntl.F_DUPFD, 10)
@@ -417,25 +413,29 @@ class FileRedirector:
             raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
 
     def saved_fds_for_plan(self, plan: RedirectPlan) -> List[Tuple[int, int | None]]:
-        """Return fd backups needed before applying a temporary plan."""
+        """Return fd backups needed before applying a temporary plan.
+
+        Every backup goes to a HIGH fd (``_save_fd_high``, see its docstring):
+        a plain ``os.dup`` would land in a freed low slot (fd 1/2 after
+        ``exec 1>&-``) that a stale ``sys.stdout``/``sys.stderr`` still aliases,
+        so an in-process builtin's write would leak into the backup instead of
+        failing EBADF like bash. ``_save_fd_high`` is tolerant: a closed fd
+        yields None and restore closes it again.
+        """
         redirect = plan.redirect
         if redirect.combined:
-            # High-fd, tolerant save: fd 1/2 may be closed (e.g. after
-            # `exec 1>&-`), in which case _save_fd_high returns None and
-            # restore closes the fd again; and saving to a high fd keeps the
-            # fd-2 backup out of the freed low slot the redirect reuses.
             return [(1, self._save_fd_high(1)), (2, self._save_fd_high(2))]
         if redirect.type in ('<', '<>', '<<', '<<-', '<<<',
                              '>|', '>', '>>'):
-            return [(plan.target_fd, self._save_fd(plan.target_fd))]
+            return [(plan.target_fd, self._save_fd_high(plan.target_fd))]
         if redirect.type in ('>&', '<&'):
             self._validate_dup_source(redirect)
             if (redirect.fd is not None
                     and (redirect.dup_fd is not None
                          or redirect.target == '-')):
-                return [(redirect.fd, self._save_fd(redirect.fd))]
+                return [(redirect.fd, self._save_fd_high(redirect.fd))]
         if redirect.type in ('>&-', '<&-') and redirect.fd is not None:
-            return [(redirect.fd, self._save_fd(redirect.fd))]
+            return [(redirect.fd, self._save_fd_high(redirect.fd))]
         return []
 
     def apply_fd_plan(self, plan: RedirectPlan, *,

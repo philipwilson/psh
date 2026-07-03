@@ -1144,6 +1144,38 @@
   stderr: "a"
   exit_code: 0
 
+# Ledger #16(a): a REDIRECTED function/compound body after `exec 1>&-` must
+# not leak stdout. The temporary `2>...` backs up fd 2; the backup must go to a
+# high fd, or it lands in the freed fd-1 slot the stale sys.stdout still names,
+# so the body echo writes OUT there (the real stderr) instead of failing EBADF.
+# Diagnostic routed to /dev/null so the leak is the ONLY thing left on stderr.
+- name: redirect_exec_close_func_body_no_leak
+  command: 'exec 1>&-; f(){ echo OUT; }; f 2>/dev/null'
+  stdout: ""
+  stderr: ""
+  exit_code: 1
+
+- name: redirect_exec_close_nested_func_no_leak
+  command: 'exec 1>&-; g(){ echo INNER; }; f(){ g; echo OUTER; }; f 2>/dev/null'
+  stdout: ""
+  stderr: ""
+  exit_code: 1
+
+- name: redirect_exec_close_brace_group_no_leak
+  command: 'exec 1>&-; { echo OUT; } 2>/dev/null'
+  stdout: ""
+  stderr: ""
+  exit_code: 1
+
+# The reopen case for a function: `f 1>&2` re-points fd 1 at fd 2, so the
+# body's stdout write DOES land (on the real stderr). Guards against
+# over-severing when the high-fd backup is in play.
+- name: redirect_exec_close_func_reopen_fd1
+  command: 'exec 1>&-; f(){ echo a; }; f 1>&2'
+  stdout: ""
+  stderr: "a"
+  exit_code: 0
+
 # Cluster C1 (appraisal #15): a redirect on an in-process builtin reaches
 # the children it spawns (external command / pipeline / sourced file).
 - name: redirect_command_external_devnull_no_leak
