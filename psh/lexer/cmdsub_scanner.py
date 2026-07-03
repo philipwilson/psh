@@ -170,6 +170,7 @@ def _consume_heredoc_bodies(text: str, pos: int, pending: list) -> int:
     *pending* on return means the input ended mid-body (caller reports the
     substitution as unclosed so more input can be gathered).
     """
+    from ..utils.heredoc_detection import heredoc_terminator_matches
     n = len(text)
     while pending:
         if pos >= n:
@@ -178,10 +179,10 @@ def _consume_heredoc_bodies(text: str, pos: int, pending: list) -> int:
         line_end = n if nl == -1 else nl
         line = text[pos:line_end]
         delimiter, strip_tabs = pending[0]
-        check = line.lstrip('\t') if strip_tabs else line
-        # rstrip() mirrors psh's heredoc line gatherer so the two layers
-        # always agree on where a body ends.
-        if check.rstrip() == delimiter:
+        # The shared terminator rule keeps every heredoc-gathering layer in
+        # agreement (exact match, only <<- strips leading tabs, and a single
+        # CRLF line-ending CR is dropped so a CRLF here-doc still terminates).
+        if heredoc_terminator_matches(line, delimiter, strip_tabs):
             pending.pop(0)
         pos = n if nl == -1 else nl + 1
     return pos

@@ -92,9 +92,11 @@ class HeredocCollector:
             # the same way content lines are stripped (bash does this too).
             # bash requires the terminator line to equal the delimiter exactly
             # (only <<- strips leading tabs); a line like "EOF " with trailing
-            # whitespace is body content, not the terminator.
-            delimiter_line = line.lstrip('\t') if heredoc.strip_tabs else line
-            if delimiter_line == heredoc.delimiter:
+            # whitespace is body content, not the terminator. The shared rule
+            # also drops a CRLF line-ending CR so a CRLF script terminates.
+            from ..utils.heredoc_detection import heredoc_terminator_matches
+            if heredoc_terminator_matches(
+                    line, heredoc.delimiter, heredoc.strip_tabs):
                 # Find the key for this heredoc
                 for key, info in self.collected.items():
                     if (info['delimiter'] == heredoc.delimiter and

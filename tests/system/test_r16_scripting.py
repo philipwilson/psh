@@ -125,3 +125,65 @@ class TestScriptFileCarriageReturn:
         psh = run_psh(str(script))
         assert psh.returncode == 0
         assert psh.stdout == 'one\ntwo\n'
+
+
+class TestScriptFileCRLFLineEndings:
+    r"""A whole-file CRLF (\r\n) script must not silently drop commands.
+
+    F5 opened script files with ``newline=''`` so an embedded CR in quoted data
+    survives verbatim (TestScriptFileCarriageReturn). That also left the CR of a
+    ``\r\n`` line ending on every physical line. A heredoc terminator line then
+    read as ``EOF\r`` and never matched the delimiter ``EOF`` (psh's lexer drops
+    the CR from the delimiter WORD), so the heredoc — AND every command after it
+    — was swallowed silently: no output, exit 0. The shared terminator rule now
+    drops that single line-ending CR, so a CRLF heredoc terminates like bash.
+
+    psh still strips the CR from body/command CONTENT (its lexer treats CR as
+    whitespace — the separate, F5-deferred lexer concern), so psh output equals
+    bash's with the carriage returns removed. These tests capture RAW BYTES and
+    pin psh to bash modulo that documented CR difference.
+    """
+
+    @staticmethod
+    def _run(script_bytes, tmp_path, name='crlf.sh'):
+        script = tmp_path / name
+        script.write_bytes(script_bytes)
+        psh = subprocess.run([sys.executable, '-m', 'psh', str(script)],
+                             capture_output=True, timeout=10, env=ENV)
+        bash = subprocess.run(['bash', str(script)], capture_output=True,
+                              timeout=10)
+        return psh, bash
+
+    def test_crlf_heredoc_terminates_and_runs_trailing_command(self, tmp_path):
+        # THE regression: on the F5 branch this produced no output and exit 0
+        # (heredoc never terminated -> the trailing echo was eaten as body).
+        psh, bash = self._run(
+            b'cat <<EOF\r\nbody\r\nEOF\r\necho after\r\n', tmp_path)
+        assert psh.returncode == 0
+        # Both the heredoc body and the trailing command ran.
+        assert psh.stdout == b'body\nafter\n'
+        # bash keeps the CRs; equal once they are removed.
+        assert psh.stdout == bash.stdout.replace(b'\r', b'')
+
+    def test_crlf_plain_multi_command_script(self, tmp_path):
+        psh, bash = self._run(b'echo hello\r\necho world\r\n', tmp_path)
+        assert psh.returncode == 0
+        assert psh.stdout == b'hello\nworld\n'
+        assert psh.stdout == bash.stdout.replace(b'\r', b'')
+
+    def test_crlf_dash_heredoc_tab_indented_terminator(self, tmp_path):
+        # <<- strips leading tabs; the tab-indented terminator "\tEOF\r" must
+        # still match once BOTH the leading tabs and the line-ending CR go.
+        psh, bash = self._run(
+            b'cat <<-EOF\r\n\tbody\r\n\tEOF\r\necho after\r\n', tmp_path)
+        assert psh.returncode == 0
+        assert psh.stdout == b'body\nafter\n'
+        assert psh.stdout == bash.stdout.replace(b'\r', b'')
+
+    def test_plain_lf_heredoc_unaffected(self, tmp_path):
+        # The pure-LF heredoc is unchanged: no CRs on either side.
+        psh, bash = self._run(
+            b'cat <<EOF\nbody\nEOF\necho after\n', tmp_path)
+        assert psh.returncode == 0
+        assert psh.stdout == b'body\nafter\n'
+        assert psh.stdout == bash.stdout

@@ -53,6 +53,32 @@ def heredoc_delimiter_word(match: 're.Match') -> str:
     return ''.join(out)
 
 
+def heredoc_terminator_matches(line: str, delimiter: str, strip_tabs: bool) -> bool:
+    """True when physical *line* terminates a heredoc with *delimiter*.
+
+    This is the ONE terminator rule shared by every layer that gathers heredoc
+    bodies (the completeness oracle, the line-continuation preprocessor, the
+    lexer's body collector, and the ``$(...)`` extent scanner) so they never
+    disagree about where a body ends.
+
+    Bash requires the terminator to equal the delimiter EXACTLY — only ``<<-``
+    strips leading tabs, and a line with trailing whitespace (``EOF ``) is body,
+    not the terminator. The one concession is a CRLF line ending: bash keeps the
+    raw CR as an ordinary byte, so its delimiter word captured from ``<<EOF\\r``
+    is ``EOF\\r`` and a terminator line ``EOF\\r`` matches. psh's lexer instead
+    treats CR as whitespace and drops it from the delimiter WORD (``EOF``), so a
+    CRLF script's terminator line ``EOF\\r`` would never match ``EOF`` and the
+    heredoc — plus every command after it — would be silently swallowed. Dropping
+    the single line-ending CR before the exact compare reproduces bash's "CRLF
+    heredoc terminates" behavior while still treating trailing spaces/tabs as
+    body (they are NOT stripped).
+    """
+    check = line.lstrip('\t') if strip_tabs else line
+    if check.endswith('\r'):
+        check = check[:-1]
+    return check == delimiter
+
+
 def _scan_arith_or_cmdsub(line: str, position: int, opener: str, open_len: int) -> bool:
     """True if *position* falls within a ``opener … )`` region on *line*.
 
@@ -314,9 +340,10 @@ def open_heredoc_delimiters(command: str) -> list:
             for d in delimiters:
                 if not d['closed']:
                     # Exact match (bash); only <<- strips leading tabs. A line
-                    # with trailing whitespace is body, not the terminator.
-                    check = line.lstrip('\t') if d['strip_tabs'] else line
-                    if check == d['word']:
+                    # with trailing whitespace is body, not the terminator — but
+                    # a CRLF line-ending CR is dropped (see the shared rule).
+                    if heredoc_terminator_matches(
+                            line, str(d['word']), bool(d['strip_tabs'])):
                         d['closed'] = True
                         break
         else:

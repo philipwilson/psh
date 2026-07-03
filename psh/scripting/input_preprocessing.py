@@ -38,6 +38,7 @@ def process_line_continuations(text: str) -> str:
         return text
     from ..utils.heredoc_detection import (
         eol_backslash_is_literal,
+        heredoc_terminator_matches,
         scan_line_heredoc_markers,
     )
 
@@ -55,8 +56,7 @@ def process_line_continuations(text: str) -> str:
 
         if pending:
             word, strip_tabs, quoted = pending[0]
-            check = line.lstrip('\t') if strip_tabs else line
-            if check == word:
+            if heredoc_terminator_matches(line, word, strip_tabs):
                 pending.pop(0)
             elif not quoted:
                 while _ends_with_continuation(line) and i < len(lines):
