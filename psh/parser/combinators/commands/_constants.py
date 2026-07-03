@@ -11,7 +11,9 @@ import re
 _FD_DUP_RE = re.compile(r'^(\d*)([><])&(-|\d+)$')
 # Move form "[n]>&m-" / "[n]<&m-": dup m onto n, then close the source m.
 _FD_DUP_MOVE_RE = re.compile(r'^(\d*)([><])&(\d+)-$')
-# Bare dup operator whose target is a separate token (">&$fd", ">&word").
+# Bare dup operator whose target is a separate (dynamic) token, e.g. ">&$fd",
+# "2>&$((n+1))" — the lexer emits just "N>&"/">&"/"<&" here (mirrors the
+# recursive descent parser's _FD_DUP_BARE_RE).
 _FD_DUP_BARE_RE = re.compile(r'^(\d*)([><])&$')
 
 # Token types that should be treated as word-like for composite merging
