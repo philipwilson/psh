@@ -95,13 +95,15 @@ ruff check psh tests
 **Type checking**
 
 A non-strict mypy config lives in `pyproject.toml` (`[tool.mypy]`); the `files`
-list defines the checked scope, which is now the **entire `psh/` source tree**
-(238 files as of v0.483.0) with `check_untyped_defs = true` enabled per-package.
+list is a single directory glob (`"psh"`) covering the **entire `psh/` source
+tree** (240 files) with `check_untyped_defs = true` enabled per-package.
 Run `mypy` (no arguments) and keep it passing. The **local** release gate and
 the nightly run enforce it — per-PR CI (`tests.yml`) is intentionally disabled
 (see the release-workflow note below), so a green `mypy` is your responsibility
-before merging. New modules are picked up by the package globs automatically;
-keep new code mypy-clean rather than loosening the config.
+before merging. New modules are genuinely picked up by the directory glob
+automatically (no more file-by-file enumeration to escape) — this is guarded by
+`tests/unit/tooling/test_mypy_scope.py`; keep new code mypy-clean rather than
+loosening the config.
 
 ## Critical Information
 

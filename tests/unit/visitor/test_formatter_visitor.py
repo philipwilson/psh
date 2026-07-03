@@ -43,6 +43,25 @@ def test_group_round_trip_stable(src):
     assert "# Unknown node" not in once
 
 
+@pytest.mark.parametrize("src", [
+    "echo a & echo b",
+    "echo a & echo b &",
+    "echo a & echo b; echo c",
+    "( echo a ) & echo b",
+    "echo a & echo b & echo c",
+])
+def test_backgrounded_top_level_is_idempotent(src):
+    """A top-level `&` splits into multiple TopLevel items; joining them with a
+    blank line was non-idempotent because re-parsing collapses the blank line
+    (reappraisal #16 Tier-2). format(format(x)) must equal format(x)."""
+    once = _fmt(src)
+    twice = FormatterVisitor().visit(parse(tokenize(once)))
+    assert once == twice
+    # The backgrounded item and its successor are one newline apart, not a
+    # blank line.
+    assert "\n\n" not in once
+
+
 def test_subshell_uses_parens():
     out = _fmt("( echo hi )")
     assert out.startswith("(")

@@ -230,11 +230,24 @@ class FormatterVisitor(ASTVisitor[str]):
     # Top-level nodes
 
     def visit_TopLevel(self, node: TopLevel) -> str:
-        """Format top-level script."""
-        parts = []
-        for item in node.items:
-            parts.append(self._flush_line(self.visit(item)))
-        return '\n\n'.join(parts)
+        """Format top-level script.
+
+        Items are paragraph-separated (a blank line between them) EXCEPT after a
+        backgrounded item: a multi-item TopLevel arises only from top-level `&`
+        (`echo a & echo b` → two items, the first background-terminated), and a
+        blank line after `&` is non-idempotent — re-parsing `echo a &\\n\\necho b`
+        yields one StatementList that the formatter rejoins with a single
+        newline. So join with one newline after a `&`-terminated item, keeping
+        format(format(x)) == format(x).
+        """
+        parts = [self._flush_line(self.visit(item)) for item in node.items]
+        if not parts:
+            return ''
+        result = parts[0]
+        for part in parts[1:]:
+            sep = '\n' if result.rstrip().endswith(' &') else '\n\n'
+            result += sep + part
+        return result
 
     def visit_StatementList(self, node: StatementList) -> str:
         """Format a list of statements.

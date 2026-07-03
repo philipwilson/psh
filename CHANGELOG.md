@@ -4,6 +4,47 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.595.0 (2026-07-03) - Fix: mypy gate hole, expand_aliases toggle, HISTFILESIZE/HISTSIZE, validator/formatter (reappraisal #16 Tier 2 tooling cluster)
+- FIX. Reappraisal #16 Tier 2, tooling/cross-cutting + visitor cluster: five
+  defects in the type gate, the alias-expansion option, history-size handling,
+  the `--validate` pass, and the `--format` pass, each pinned to bash 5.2 and
+  captured as golden cases / regression tests.
+- **mypy gate hole closed**: `[tool.mypy].files` enumerated `psh/builtins` and
+  `psh/parser/recursive_descent/parsers` file-by-file, so campaign-added modules
+  (`loop_control.py`, `base.py`) escaped the type gate. The `files` list is now
+  a single `psh` directory glob — mypy checks all 240 source files and stays
+  clean, and the CLAUDE.md "new modules are auto-picked-up by the package globs"
+  claim is now literally true. A new meta-test
+  (`tests/unit/tooling/test_mypy_scope.py`) asserts every `psh/**/*.py` is inside
+  the mypy scope, so a module can never again slip the gate.
+- **`shopt -u expand_aliases` now gates alias expansion**: the option was
+  registered but never read (accept-and-ignore). `Shell.expand_aliases` is now
+  the single lex→parse-boundary gate that the four scripting call sites route
+  through, so disabling the option suppresses expansion of subsequently-parsed
+  commands. psh keeps the option ON by default in every mode (bash defaults it
+  OFF non-interactively) so alias-reliant `-c`/script tests keep working — a
+  documented divergence, as is the same-line `shopt -u`/use case (psh expands the
+  whole logical command at once).
+- **`HISTFILESIZE` is honored**: previously ignored (the file was trimmed to
+  `HISTSIZE`). `HistoryManager.save_to_file` now trims the FILE to
+  `$HISTFILESIZE`, distinguishing unset (fall back to `$HISTSIZE`), empty /
+  negative / non-numeric (inhibit truncation → unlimited), `0` (truncate to an
+  empty file), and `N` (last N lines) exactly as bash-5.2.26 does. `HISTFILESIZE=0`
+  emptying the file is pinned as a regression test (the naive `combined[-0:]`
+  slice had kept the whole list).
+- **`HISTSIZE` negative means unlimited**: a negative `HISTSIZE` now reports
+  `sys.maxsize` rather than capping at the 1000 default.
+- **`--validate` no longer false-warns undefined-variable for assigning
+  builtins**: `printf -v VAR`, `mapfile`/`readarray`, and `getopts` (plus its
+  `OPTARG`/`OPTIND`) now record the variables they define.
+- **`--format` idempotent for a backgrounded top-level item**: `echo a & echo b`
+  had formatted with a blank line after `&` that a re-format removed; a
+  `&`-terminated top-level item now joins its successor with a single newline so
+  `format(format(x)) == format(x)`.
+- Deliberate residuals (report-only, tracked): a sibling `HISTSIZE=0` load-path
+  slice, and the append-only history-persistence design not modeling bash's
+  truncate-on-assignment.
+
 ## 0.594.0 (2026-07-03) - Fix: secondary builtin flags (reappraisal #16 Tier 2 builtins-flags cluster)
 - FIX. Reappraisal #16 Tier 2, builtins-flags cluster: a set of secondary
   flags on existing builtins that psh silently ignored or mishandled, each

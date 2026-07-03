@@ -250,7 +250,7 @@ class SourceProcessor(ScriptComponent):
                                                               shell_options=self.state.options)
                 # Alias expansion is a token-stream transform at the
                 # lex→parse boundary (see AliasManager.expand_aliases).
-                tokens = self.shell.alias_manager.expand_aliases(tokens)
+                tokens = self.shell.expand_aliases(tokens)
                 self._debug_print_tokens(tokens)
                 # Parse with heredoc map, honoring the active parser
                 from ..parser import parse_with_heredocs
@@ -258,7 +258,7 @@ class SourceProcessor(ScriptComponent):
                                           active_parser=self.shell.active_parser)
             else:
                 tokens = tokenize(command_string, shell_options=self.state.options)
-                tokens = self.shell.alias_manager.expand_aliases(tokens)
+                tokens = self.shell.expand_aliases(tokens)
                 self._debug_print_tokens(tokens)
                 # Parse with source text for better error messages and shell configuration
                 from ..parser import create_parser

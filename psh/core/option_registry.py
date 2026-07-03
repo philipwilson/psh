@@ -111,7 +111,9 @@ _SPECS = [
                 "clearing it (bash 4.4+; POSIX mode also keeps it)"),
     _spec("checkhash", False, OptionCategory.SHOPT),
     _spec("expand_aliases", True, OptionCategory.SHOPT,
-          notes="recognized no-op gate: psh always expands aliases (parse-time)"),
+          notes="gates alias expansion (Shell.expand_aliases). ON by default in "
+                "every mode (bash: OFF non-interactively); shopt -u disables it "
+                "for subsequently-parsed commands"),
     # Set by the shell itself; shown in $- but not user-toggled by name.
     _spec("interactive", False, OptionCategory.INTERNAL, dollar_dash="i"),
     _spec("stdin_mode", True, OptionCategory.INTERNAL, dollar_dash="s"),

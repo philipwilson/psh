@@ -620,6 +620,32 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                         VariableInfo(name=arg, defined_at=self._get_context(), is_array=is_array)
                     )
 
+        # 'printf -v VAR ...' assigns VAR (like declare); the name follows -v.
+        elif cmd == 'printf':
+            for i in range(1, len(node.args) - 1):
+                if node.args[i] == '-v':
+                    name = node.args[i + 1].split('[', 1)[0]
+                    self.var_tracker.define_variable(
+                        name, VariableInfo(name=name, defined_at=self._get_context()))
+                    break
+
+        # 'mapfile'/'readarray' fill an array (bash default MAPFILE); the target
+        # is the last non-option operand.
+        elif cmd in ('mapfile', 'readarray'):
+            target = 'MAPFILE'
+            for arg in node.args[1:]:
+                if not arg.startswith('-'):
+                    target = arg.split('[', 1)[0]
+            self.var_tracker.define_variable(
+                target,
+                VariableInfo(name=target, defined_at=self._get_context(), is_array=True))
+
+        # 'getopts OPTSTRING NAME' sets NAME plus OPTARG/OPTIND each iteration.
+        elif cmd == 'getopts' and len(node.args) > 2:
+            for name in (node.args[2], 'OPTARG', 'OPTIND'):
+                self.var_tracker.define_variable(
+                    name, VariableInfo(name=name, defined_at=self._get_context()))
+
     # Utility methods
 
     def _has_parameter_default(self, text: str) -> bool:

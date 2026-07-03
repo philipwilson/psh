@@ -1,5 +1,6 @@
 """Shell state management."""
 import os
+import sys
 from typing import Any, Dict, Optional, Set
 
 from ..version import __version__
@@ -381,9 +382,11 @@ class ShellState:
 
     @property
     def max_history_size(self) -> int:
-        """Maximum number of history entries to keep/persist.
+        """Maximum number of in-memory history entries to keep.
 
-        Honors ``$HISTSIZE`` (bash) when set to a non-negative integer, else the
+        Honors ``$HISTSIZE`` (bash) when set to an integer: a NEGATIVE value
+        means unlimited (bash), reported as ``sys.maxsize`` so the trim
+        comparisons never fire. A non-numeric value falls back to the
         HistoryState default. Read dynamically.
         """
         histsize = self.get_variable('HISTSIZE')
@@ -391,14 +394,40 @@ class ShellState:
             try:
                 n = int(histsize)
             except (ValueError, TypeError):
-                n = -1
-            if n >= 0:
-                return n
+                return self.history_state.max_size
+            # bash: a negative HISTSIZE means unlimited history.
+            return sys.maxsize if n < 0 else n
         return self.history_state.max_size
 
     @max_history_size.setter
     def max_history_size(self, value: int) -> None:
         self.history_state.max_size = value
+
+    @property
+    def max_history_file_size(self) -> Optional[int]:
+        """Maximum number of lines to persist to the history file.
+
+        Honors ``$HISTFILESIZE`` (bash), read dynamically. We must tell an
+        *unset* variable apart from one set to ``0`` or ``""``: reading the
+        raw value straight from the scope/environment preserves ``None`` for
+        genuinely unset (``ShellState.get_variable`` would collapse it to
+        ``""``). Only unset returns ``None`` (the caller then falls back to
+        ``max_history_size``) -- so ``HISTFILESIZE=0`` is NOT mistaken for
+        unset. Value mapping matches bash: ``0`` caps the file to zero lines
+        (truncate-to-empty), a positive integer is the line cap, and an
+        empty-string / negative / non-numeric value inhibits truncation
+        (reported as ``sys.maxsize``).
+        """
+        raw = self.scope_manager.get_variable('HISTFILESIZE')
+        if raw is None:
+            raw = self.env.get('HISTFILESIZE')
+        if raw is None:
+            return None
+        try:
+            n = int(raw)
+        except (ValueError, TypeError):
+            return sys.maxsize
+        return sys.maxsize if n < 0 else n
 
     # Per-command execution state delegates to the explicit ExecutionState
     # object (self.execution); see execution_state.py.
