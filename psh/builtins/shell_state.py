@@ -155,6 +155,11 @@ class LocalBuiltin(Builtin):
 
         # Process each argument
         for arg in positional:
+            if arg == '-':
+                # `local -`: save the shell's `set` options so they revert on
+                # function return (bash). It is NOT a variable named '-'.
+                self._save_dash_options(shell)
+                continue
             if '=' in arg:
                 # Variable with assignment: local var=value / var+=value
                 var_name, var_value = arg.split('=', 1)
@@ -231,6 +236,25 @@ class LocalBuiltin(Builtin):
                     shell.state.scope_manager.create_local(arg, None, attributes)
 
         return 0
+
+    def _save_dash_options(self, shell: 'Shell') -> None:
+        """Record the current `set` options for `local -` restore-on-return.
+
+        Snapshots the SET-category options (what the `set` builtin changes;
+        shopt/debug/internal are untouched by `local -`, per bash) plus the
+        edit mode onto the current function scope. The function-return path
+        (FunctionOperationExecutor) restores them. The first `local -` in a
+        function wins — a second is a no-op, so options revert to their
+        pre-`local -` values (bash).
+        """
+        from ..core.option_registry import OPTION_REGISTRY, OptionCategory
+        scope = shell.state.scope_manager.current_scope
+        if scope.dash_snapshot is not None:
+            return
+        snapshot = {name: shell.state.options[name]
+                    for name, spec in OPTION_REGISTRY.items()
+                    if spec.category is OptionCategory.SET}
+        scope.dash_snapshot = (snapshot, shell.state.edit_mode)
 
     def _build_indexed_array(self, array_init, into, shell: 'Shell'):
         """Build an IndexedArray from the structured init via the shared

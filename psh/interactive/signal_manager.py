@@ -337,9 +337,22 @@ class SignalManager(InteractiveComponent):
             signal.SIGWINCH,
         ]
 
+        # A signal IGNORED in the parent (`trap '' SIG`) must STAY ignored in
+        # the child and across exec — POSIX: exec preserves SIG_IGN for
+        # signals set to ignore. Resetting it to SIG_DFL here (and then
+        # exec'ing) broke that: an external child saw the signal defaulted
+        # (`trap "" INT; bash -c 'trap -p INT'` printed nothing). Only the
+        # empty-action IGNORE case inherits; a signal trapped WITH an action
+        # resets to default in the child (the handler can't cross exec).
+        trap_manager = getattr(self.shell, 'trap_manager', None)
         for sig in signals_to_reset:
+            disposition = signal.SIG_DFL
+            if trap_manager is not None:
+                name = signal_number_to_name(sig)
+                if name is not None and trap_manager.get_handler(name) == '':
+                    disposition = signal.SIG_IGN
             try:
-                signal.signal(sig, signal.SIG_DFL)
+                signal.signal(sig, disposition)
             except (OSError, ValueError):
                 # Signal not available on this platform
                 pass

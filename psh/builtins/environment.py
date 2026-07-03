@@ -8,7 +8,11 @@ process-fd binding helpers.
 from typing import TYPE_CHECKING, List
 
 from ..core import ReadonlyVariableError
-from ..core.option_registry import SHORT_TO_LONG
+from ..core.option_registry import (
+    OPTION_REGISTRY,
+    SHORT_TO_LONG,
+    OptionCategory,
+)
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .declare_format import escape_value
 from .registry import builtin
@@ -105,8 +109,14 @@ class ExportBuiltin(Builtin):
                     assert declare_builtin is not None
                     # Forward the SAME context so declare sees the structured
                     # init for this argument (it reads context.array_init(arg)).
-                    rc = declare_builtin.execute_in_context(
-                        ['declare', '-x', arg], shell, context)
+                    try:
+                        rc = declare_builtin.execute_in_context(
+                            ['declare', '-x', arg], shell, context)
+                    except ReadonlyVariableError as e:
+                        self.write_error_line(
+                            f"psh: {e.name}: readonly variable", shell)
+                        status = 1
+                        continue
                     if rc != 0:
                         status = rc
                     continue
@@ -120,15 +130,22 @@ class ExportBuiltin(Builtin):
                         f'declare -x {key}="{escape_value(shell.env[key])}"', shell)
                 continue
 
-            if unexport:
-                # export -n NAME[=value]: optionally assign, remove export attr
-                if value is not None:
-                    shell.state.set_variable(key, value)
-                self._remove_export(key, shell)
-            elif value is not None:
-                shell.state.export_variable(key, value)
-            else:
-                self._export_existing(key, shell)
+            try:
+                if unexport:
+                    # export -n NAME[=value]: optionally assign, remove export attr
+                    if value is not None:
+                        shell.state.set_variable(key, value)
+                    self._remove_export(key, shell)
+                elif value is not None:
+                    shell.state.export_variable(key, value)
+                else:
+                    self._export_existing(key, shell)
+            except ReadonlyVariableError as e:
+                # bash reports `export x=2` on a readonly var WITHOUT the
+                # builtin name (like a plain assignment error), non-fatally.
+                self.write_error_line(
+                    f"psh: {e.name}: readonly variable", shell)
+                status = 1
         return status
 
     def _export_existing(self, key: str, shell: 'Shell') -> None:
@@ -264,9 +281,17 @@ class SetBuiltin(Builtin):
                     # Show current options with bash-compatible formatting
                     self._show_all_options(shell)
                 else:
-                    # Show current options as set commands
-                    for opt_name, opt_value in sorted(shell.state.options.items()):
-                        self.write_line(f"set {'-o' if opt_value else '+o'} {opt_name}", shell)
+                    # Show current options as reusable `set` commands. Only
+                    # `set -o`-settable options belong here: emitting shopt/
+                    # debug/internal names (dotglob, stdin_mode, ...) made
+                    # `eval "$(set +o)"` spew "invalid option name" for each,
+                    # since `set -o NAME` rejects them. Restrict to the SET
+                    # category (bash's set-vs-shopt split); str-valued options
+                    # (parser-mode) have no on/off form and are skipped.
+                    for opt_name in sorted(self._reusable_option_names()):
+                        opt_value = shell.state.options[opt_name]
+                        self.write_line(
+                            f"set {'-o' if opt_value else '+o'} {opt_name}", shell)
                 return 0
 
             # Short option clusters like -eux / +eux. A trailing 'o' consumes
@@ -301,7 +326,24 @@ class SetBuiltin(Builtin):
 
     def _set_long_option(self, shell: 'Shell', name: str, enable: bool) -> int:
         """Set or unset one -o/+o long option. Returns 0 or an error status."""
-        option = name.lower().replace('_', '-')  # Allow debug_ast or debug-ast
+        # Resolve to a real option key, accepting both spellings: registry
+        # keys use dashes for debug-* but underscores for collect_errors /
+        # strict-errors / stdin_mode / command_mode. Trying the raw name first
+        # keeps underscore options settable — so `eval "$(set +o)"` (which may
+        # emit e.g. `set +o collect_errors`) round-trips instead of erroring.
+        raw = name.lower()
+        option = raw if raw in shell.state.options else raw.replace('_', '-')
+
+        # INTERNAL-category options (interactive, stdin_mode, command_mode) are
+        # set by the shell itself and are NOT user-settable by name — bash:
+        # `set -o interactive` → "interactive: invalid option name". Letting
+        # them through corrupted $- (a spurious `i`). psh's `set -o` otherwise
+        # stays a deliberate superset of bash's (it also accepts shopt/debug
+        # names); only the INTERNAL ones are rejected.
+        spec = OPTION_REGISTRY.get(option)
+        if spec is not None and spec.category is OptionCategory.INTERNAL:
+            self.error(f"{name}: invalid option name", shell)
+            return 2
 
         # Editor modes (silent, like bash)
         if option in ('vi', 'emacs'):
@@ -399,19 +441,27 @@ class SetBuiltin(Builtin):
             options_to_show = [opt for opt in standard_options if opt in shell.state.options]
 
         # Show options based on mode (standard vs all); Builtin.write_line
-        # handles forked-child fd semantics.
+        # handles forked-child fd semantics. emacs/vi are printed from the
+        # options dict like every other option (one line each): the option
+        # values already track the edit mode — `set -o vi` sets both — and
+        # match bash (both `off` in a non-interactive shell). A separate
+        # edit_mode-driven block used to print them a SECOND time with a
+        # contradictory value.
         for opt_name in sorted(options_to_show):
             opt_value = shell.state.options[opt_name]
             status = 'on' if opt_value else 'off'
             self.write_line(f"{opt_name:<15}\t{status}", shell)
 
-        # Add edit mode info using standard option names
-        if shell.state.edit_mode == 'emacs':
-            self.write_line(f"{'emacs':<15}\ton", shell)
-            self.write_line(f"{'vi':<15}\toff", shell)
-        else:  # vi mode
-            self.write_line(f"{'emacs':<15}\toff", shell)
-            self.write_line(f"{'vi':<15}\ton", shell)
+    @staticmethod
+    def _reusable_option_names() -> list:
+        """Option names emitted by bare `set +o` (the reusable form).
+
+        Only `set -o`-settable on/off options qualify: the SET category with a
+        boolean value type. shopt/debug/internal names and the str-valued
+        parser-mode are excluded so `eval "$(set +o)"` round-trips cleanly.
+        """
+        return [name for name, spec in OPTION_REGISTRY.items()
+                if spec.category is OptionCategory.SET and spec.value_type is bool]
 
 
 @builtin

@@ -78,10 +78,15 @@ class UnboundVariableError(PshError):
     pass
 
 class ReadonlyVariableError(PshError):
-    """Raised when attempting to modify a readonly variable."""
+    """Raised when attempting to modify a readonly variable.
+
+    The message is ``NAME: readonly variable`` (bash's word order) so a
+    guard that prints ``psh: {builtin}: {exc}`` yields bash's
+    ``declare: x: readonly variable`` form. Callers that build their own
+    message use ``.name`` directly."""
     def __init__(self, name: str):
         self.name = name
-        super().__init__(f"readonly variable: {name}")
+        super().__init__(f"{name}: readonly variable")
 
 class NamerefCycleError(PshError):
     """Raised when writing through a circular nameref chain

@@ -466,9 +466,11 @@ class DeclareBuiltin(Builtin):
             existing = self._declared_in_target_scope(shell, arg, options['global'])
             if existing:
                 if remove_attrs:
-                    shell.state.scope_manager.remove_attribute(arg, remove_attrs)
+                    shell.state.scope_manager.remove_attribute(
+                        arg, remove_attrs, global_scope=options['global'])
                 if attributes:
-                    shell.state.scope_manager.apply_attribute(arg, attributes)
+                    shell.state.scope_manager.apply_attribute(
+                        arg, attributes, global_scope=options['global'])
             else:
                 # Create the variable in the target scope (a local shadow
                 # inside a function). Declared-but-unset: the name reads as
@@ -593,6 +595,9 @@ class DeclareBuiltin(Builtin):
         creates a fresh LOCAL shadow rather than mutating the outer (bash).
         """
         sm = shell.state.scope_manager
+        if global_flag:
+            # declare -g targets the global instance, past any local shadow.
+            return sm.global_scope.variables.get(name)
         if self._declare_target_is_local(shell, global_flag):
             return sm.current_scope.variables.get(name)
         return sm.get_declared_variable_object(name)
@@ -603,21 +608,26 @@ class DeclareBuiltin(Builtin):
 
     def _set_variable_with_attributes(self, shell: 'Shell', name: str,
                                      value: Any, attributes: VarAttributes, global_flag: bool = False):
-        """Set variable with attributes."""
-        try:
-            # When in a function, declare creates local variables by default
-            # Unless -g flag is used to force global scope
-            # This matches bash behavior where 'declare' in a function is local
-            if global_flag:
-                local_scope = False  # Force global scope
-            else:
-                local_scope = bool(shell.state.function_stack)  # Local if in function
+        """Set variable with attributes.
 
-            # (set_variable fires the scope manager's observer, which keeps
-            # state.env in sync for export-attributed variables)
-            shell.state.scope_manager.set_variable(name, value, attributes=attributes, local=local_scope)
-        except ReadonlyVariableError:
-            raise ReadonlyVariableError(f"{self.name}: {name}: readonly variable")
+        With -g the write is forced to the global scope (past any local of
+        the same name — bash). Otherwise, inside a function, ``declare``
+        creates a local (== ``local``); at top level it writes the global.
+
+        A ReadonlyVariableError propagates UNWRAPPED: the builtin guard
+        (execute_builtin_guarded → report_internal_defect) prints one clean
+        ``psh: declare: NAME: readonly variable`` line. The former re-wrap
+        here produced a triple-nested message.
+        """
+        # (set_variable fires the scope manager's observer, which keeps
+        # state.env in sync for export-attributed variables)
+        if global_flag:
+            shell.state.scope_manager.set_variable(
+                name, value, attributes=attributes, global_scope=True)
+        else:
+            shell.state.scope_manager.set_variable(
+                name, value, attributes=attributes,
+                local=bool(shell.state.function_stack))
 
     def _print_function_definition(self, name, func, shell: 'Shell'):
         """Print a function definition in a format that can be re-executed."""
@@ -736,9 +746,18 @@ class ReadonlyBuiltin(Builtin):
             # creates a readonly array.
             declare_builtin = registry.get('declare')
             assert declare_builtin is not None
-            return declare_builtin.execute_in_context(
-                ['declare', '-r'] + options['declare_flags'] + names,
-                shell, context)
+            try:
+                return declare_builtin.execute_in_context(
+                    ['declare', '-r'] + options['declare_flags'] + names,
+                    shell, context)
+            except ReadonlyVariableError as e:
+                # bash prints the assignment error for `readonly x=2` WITHOUT
+                # the builtin name (unlike `declare`): just `x: readonly
+                # variable`. Emit that (via the psh assignment convention) and
+                # fail non-fatally — the rest of the command list continues.
+                self.write_error_line(
+                    f"psh: {e.name}: readonly variable", shell)
+                return 1
 
     # readonly attribute flags forwarded to `declare -r` (bash accepts -aA).
     _READONLY_FORWARD_FLAGS = {'a': '-a', 'A': '-A'}

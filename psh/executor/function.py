@@ -173,7 +173,16 @@ class FunctionOperationExecutor:
                 stream=self.shell.state.stderr)
         finally:
             # Pop function scope
-            self.shell.state.scope_manager.pop_scope()
+            popped_scope = self.shell.state.scope_manager.pop_scope()
+
+            # `local -` inside the function saved the shell's `set` options;
+            # restore them now that the function is returning (bash: options
+            # changed via `set` in the body revert; shopt changes do not).
+            if popped_scope is not None and popped_scope.dash_snapshot is not None:
+                saved_options, saved_edit_mode = popped_scope.dash_snapshot
+                for opt_name, opt_value in saved_options.items():
+                    self.shell.state.options[opt_name] = opt_value
+                self.shell.state.edit_mode = saved_edit_mode
 
             # Pop function from stack
             if self.shell.state.function_stack:

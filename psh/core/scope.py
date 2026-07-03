@@ -3,7 +3,7 @@
 import os
 import random
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .exceptions import ReadonlyVariableError
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
@@ -40,6 +40,10 @@ class VariableScope:
         self.variables: Dict[str, Variable] = {}
         self.parent = parent
         self.name = name or 'anonymous'
+        # `local -` snapshot: (set-option values, edit_mode) saved when the
+        # function ran `local -`; restored by the function-return path so the
+        # options changed inside the function revert (bash). None if unused.
+        self.dash_snapshot: Optional[Tuple[Dict[str, Any], str]] = None
 
     def __repr__(self):
         return f"VariableScope(name={self.name}, vars={list(self.variables.keys())})"
@@ -269,7 +273,7 @@ class ScopeManager:
 
     def set_variable(self, name: str, value: Any,
                      attributes: VarAttributes = VarAttributes.NONE,
-                     local: bool = False):
+                     local: bool = False, global_scope: bool = False):
         """Set variable with attributes in appropriate scope.
 
         Args:
@@ -278,6 +282,12 @@ class ScopeManager:
             attributes: Variable attributes to apply
             local: If True, set in current scope. If False and in function,
                    check if variable exists in current scope first
+            global_scope: If True (``declare -g``), force the GLOBAL scope
+                   regardless of any same-named local — bash: ``local x=2;
+                   declare -g x=3`` leaves the local at 2 and writes the
+                   global. The existence/readonly/attribute-merge checks
+                   then consult the global instance, not the innermost
+                   visible one.
         """
         # Redirect writes through a nameref to its target, EXCEPT when we are
         # defining the nameref itself (NAMEREF in the new attributes), where the
@@ -314,8 +324,16 @@ class ScopeManager:
             # spuriously advance the RANDOM generator.
             return
 
-        # Check if variable exists
-        existing = self.get_variable_object(name)
+        # Check if variable exists. `declare -g` targets the global scope, so
+        # its existence/readonly/attribute-merge checks must look at the global
+        # instance (a same-named local is irrelevant); a global tombstone reads
+        # as absent, like get_variable_object.
+        if global_scope:
+            existing = self.global_scope.variables.get(name)
+            if existing is not None and existing.is_unset:
+                existing = None
+        else:
+            existing = self.get_variable_object(name)
         if existing and existing.is_readonly:
             raise ReadonlyVariableError(name)
 
@@ -328,7 +346,11 @@ class ScopeManager:
             attributes = existing.attributes | attributes
 
         # Determine target scope
-        if local or len(self.scope_stack) == 1:
+        if global_scope:
+            # declare -g: always the global scope, past any local shadow.
+            target_scope = self.global_scope
+            scope_name = target_scope.name
+        elif local or len(self.scope_stack) == 1:
             # Set in current scope (global or explicitly local)
             target_scope = self.current_scope
             scope_name = target_scope.name
@@ -697,6 +719,24 @@ class ScopeManager:
                 return True
         return False
 
+    def find_exported_instance(self, name: str) -> Optional[Variable]:
+        """Innermost EXPORTED, non-array, non-unset instance of *name*, else None.
+
+        The live environment reflects the exported instance — NOT merely the
+        innermost visible one. A non-exported local shadowing an exported
+        outer variable does not hide the outer's environment entry (bash:
+        ``x=g; f(){ local x=l; declare -gx x; printenv x; }`` prints ``g`` —
+        the global is exported, the plain local is not). Skips arrays (never
+        exported) and declared-but-unset cells (``export FOO`` has no entry
+        until assigned).
+        """
+        for scope in reversed(self.scope_stack):
+            var = scope.variables.get(name)
+            if (var is not None and var.is_exported
+                    and not var.is_array and not var.is_unset):
+                return var
+        return None
+
     def sync_exports_to_environment(self, env: Dict[str, str]):
         """Sync variables with EXPORT attribute to environment."""
         # First, get all shell variables
@@ -732,7 +772,8 @@ class ScopeManager:
         # Update environment
         env.update(exported_vars)
 
-    def _find_variable_for_mutation(self, name: str) -> Optional[Variable]:
+    def _find_variable_for_mutation(self, name: str,
+                                    global_only: bool = False) -> Optional[Variable]:
         """Find a Variable for in-place ATTRIBUTE mutation, including
         declared-but-unset tombstones.
 
@@ -740,21 +781,29 @@ class ScopeManager:
         changes must reach declared-but-unset names: ``declare -u y;
         declare -l y`` must let the second declaration flip y's case
         attribute even though y still reads as unset.
+
+        ``global_only`` (``declare -g``) restricts the search to the global
+        scope, past any same-named local — bash: ``local x; declare -gr x``
+        marks the GLOBAL x readonly, leaving the local writable.
         """
+        if global_only:
+            return self.global_scope.variables.get(name)
         for scope in reversed(self.scope_stack):
             if name in scope.variables:
                 return scope.variables[name]
         return None
 
-    def apply_attribute(self, name: str, attributes: VarAttributes):
+    def apply_attribute(self, name: str, attributes: VarAttributes,
+                        global_scope: bool = False):
         """Apply additional attributes to an existing variable.
 
         Readonly variables ACCEPT new attributes — readonly forbids
         changing the value, not the metadata (bash 5.2, probe-verified:
         ``readonly R=1; export R`` and ``readonly R=1; declare -i R``
-        both succeed; only a value assignment fails).
+        both succeed; only a value assignment fails). ``global_scope``
+        (``declare -g``) targets the global instance past any local shadow.
         """
-        var = self._find_variable_for_mutation(name)
+        var = self._find_variable_for_mutation(name, global_only=global_scope)
         if var:
             # Handle mutually exclusive attributes
             new_attributes = var.attributes
@@ -773,9 +822,14 @@ class ScopeManager:
             var.attributes = new_attributes
             self._notify_variable_changed(name)
 
-    def remove_attribute(self, name: str, attributes: VarAttributes):
-        """Remove attributes from an existing variable."""
-        var = self._find_variable_for_mutation(name)
+    def remove_attribute(self, name: str, attributes: VarAttributes,
+                         global_scope: bool = False):
+        """Remove attributes from an existing variable.
+
+        ``global_scope`` (``declare -g``) targets the global instance past
+        any local shadow.
+        """
+        var = self._find_variable_for_mutation(name, global_only=global_scope)
         if var:
             # Cannot remove readonly attribute
             if attributes & VarAttributes.READONLY and var.is_readonly:
