@@ -60,11 +60,14 @@ class ArithTokenizer:
         if self.current_char() == '0' and peeked is not None and peeked.lower() == 'x':
             return self._read_hex(start_pos)
 
-        if self.current_char() == '0' and peeked is not None and peeked.isdigit():
+        if self.current_char() == '0':
+            # A leading 0 introduces octal (bash); the 0 stays in the digit
+            # run. A lone 0 or a 0 before an operator reads a single 0, while
+            # a trailing out-of-base digit/letter (08, 0a, 07x) errors.
             return self._read_octal(start_pos)
 
         # Regular decimal
-        return self.read_decimal()
+        return self._read_digits(10, start_pos)
 
     def _read_based_number(self, base: int, start_pos: int) -> int:
         """Read the digits of a base#number after the '#' has been consumed.
@@ -75,15 +78,24 @@ class ArithTokenizer:
         """
         if base < 2 or base > 64:
             raise SyntaxError(f"Invalid base {base} at position {start_pos}")
+        return self._read_digits(base, start_pos)
 
+    def _read_digits(self, base: int, start_pos: int) -> int:
+        """Read a maximal run of base-alphabet digits and return their value.
+
+        Consumes the whole run of based-number characters ([0-9a-zA-Z@_],
+        bash's alphabet) before validating, so a digit out of range for
+        ``base`` errors as one token ("value too great for base") instead of
+        silently ending the number and leaving a stray trailing token — bash
+        reads 0xffg, 08, 0a, 123abc and 16#1g as single error tokens. The
+        caller has already consumed any 0x / base# prefix; ``start_pos`` marks
+        the start of the full token for the error message. A char outside the
+        based-number alphabet (e.g. '.') ends the number.
+        """
         result = 0
         num_len = 0
         out_of_range = False
         char = self.current_char()
-        # Consume the whole run of base-digit characters ([0-9a-zA-Z@_], bash's
-        # based-number alphabet) before validating, mirroring the octal reader:
-        # an out-of-range digit must error, not silently end the token and leave
-        # a stray trailing token. A char outside that alphabet ends the number.
         while char is not None and self._based_digit_value(char, 64) is not None:
             digit_val = self._based_digit_value(char, base)
             if digit_val is None or digit_val >= base:
@@ -129,48 +141,15 @@ class ArithTokenizer:
         """Read a hex literal (0x.. / 0X..); leading 0x already detected."""
         self.advance()  # Skip 0
         self.advance()  # Skip x
-        hex_digits = ''
+        # bash: a bare "0x"/"0X" with no following hex digits evaluates to 0.
         char = self.current_char()
-        while char is not None and char in '0123456789abcdefABCDEF':
-            hex_digits += char
-            self.advance()
-            char = self.current_char()
-        if not hex_digits:
-            raise SyntaxError(f"Invalid hex number at position {start_pos}")
-        return int(hex_digits, 16)
+        if char is None or self._based_digit_value(char, 64) is None:
+            return 0
+        return self._read_digits(16, start_pos)
 
     def _read_octal(self, start_pos: int) -> int:
-        """Read an octal literal (leading 0); leading 0+digit already detected."""
-        octal_digits = ''
-        char = self.current_char()
-        while char is not None and char in '01234567':
-            octal_digits += char
-            self.advance()
-            char = self.current_char()
-        # If we hit 8 or 9, it's an invalid octal digit (bash errors here).
-        char = self.current_char()
-        if char is not None and char in '89':
-            # Read the rest of the digits so the error message shows the full token.
-            while char is not None and char.isdigit():
-                octal_digits += char
-                self.advance()
-                char = self.current_char()
-            # octal_digits already includes the leading '0'; don't prepend
-            # another one (bash reports e.g. "08", not "008").
-            raise SyntaxError(
-                f"{octal_digits}: value too great for base (error token is \"{octal_digits}\")"
-            )
-        return int(octal_digits, 8) if octal_digits else 0
-
-    def read_decimal(self) -> int:
-        """Read a decimal number"""
-        num_str = ''
-        char = self.current_char()
-        while char is not None and char.isdigit():
-            num_str += char
-            self.advance()
-            char = self.current_char()
-        return int(num_str) if num_str else 0
+        """Read an octal literal (leading 0 already detected, kept in the run)."""
+        return self._read_digits(8, start_pos)
 
     def read_identifier(self) -> str:
         """Read an identifier (variable name)"""
