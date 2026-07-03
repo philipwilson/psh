@@ -123,7 +123,7 @@ class PushdBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "pushd [dir | +N | -N]"
+        return "pushd [-n] [dir | +N | -N]"
 
     @property
     def description(self) -> str:
@@ -139,6 +139,10 @@ class PushdBuiltin(Builtin):
             shell.state.directory_stack.initialize(current_dir)
 
         stack = shell.state.directory_stack
+
+        # -n manipulates the stack WITHOUT changing directory (bash).
+        if len(args) > 1 and args[1] == '-n':
+            return self._pushd_no_cd(args[2:], stack, shell)
 
         if len(args) == 1:
             # No arguments - swap top two directories
@@ -233,6 +237,50 @@ class PushdBuiltin(Builtin):
             self.error(str(e), shell)
             return 1
 
+    def _pushd_no_cd(self, args: List[str], stack: DirectoryStack,
+                     shell: 'Shell') -> int:
+        """``pushd -n``: manipulate the stack without changing directory.
+
+        With a directory argument bash inserts it just BELOW the top of the
+        stack (the current directory stays on top) and does NOT verify the
+        path exists. With no argument the swap is suppressed (no change).
+        A ``+N``/``-N`` rotates the stack; psh rotates cleanly and does not
+        reproduce bash's duplicate-producing ``pushd -n +N`` quirk.
+        """
+        if not args:
+            self._print_stack(stack, shell)
+            return 0
+
+        arg = args[0]
+        if arg.startswith('+') or arg.startswith('-'):
+            try:
+                offset = int(arg)
+            except ValueError:
+                self.error(f"invalid rotation argument: {arg}", shell)
+                return 1
+            if arg.startswith('-'):
+                offset = stack.size() - 1 + offset
+            if stack.rotate(offset) is None:
+                self.error("directory stack empty", shell)
+                return 1
+            self._print_stack(stack, shell)
+            return 0
+
+        directory = arg
+        if directory.startswith('~'):
+            if hasattr(shell.expansion_manager, 'expand_tilde'):
+                directory = shell.expansion_manager.expand_tilde(directory)
+            else:
+                directory = os.path.expanduser(directory)
+        if not os.path.isabs(directory):
+            directory = os.path.abspath(directory)
+
+        if not stack.stack:
+            stack.initialize(shell.env.get('PWD', os.getcwd()))
+        stack.stack.insert(1, directory)
+        self._print_stack(stack, shell)
+        return 0
+
     def _update_pwd_vars(self, directory: str, shell: 'Shell'):
         """Update PWD and OLDPWD environment variables."""
         old_pwd = shell.env.get('PWD', os.getcwd())
@@ -254,7 +302,7 @@ class PushdBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """pushd: pushd [dir | +N | -N]
+        return """pushd: pushd [-n] [dir | +N | -N]
     Add directories to stack and change directory.
 
     Arguments:
@@ -281,7 +329,7 @@ class PopdBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "popd [+N | -N]"
+        return "popd [-n] [+N | -N]"
 
     @property
     def description(self) -> str:
@@ -297,6 +345,10 @@ class PopdBuiltin(Builtin):
             shell.state.directory_stack.initialize(current_dir)
 
         stack = shell.state.directory_stack
+
+        # -n removes from the stack WITHOUT changing directory (bash).
+        if len(args) > 1 and args[1] == '-n':
+            return self._popd_no_cd(args[2:], stack, shell)
 
         if stack.size() <= 1:
             self.error("directory stack empty", shell)
@@ -363,6 +415,40 @@ class PopdBuiltin(Builtin):
             self.error(f"invalid index argument: {arg}", shell)
             return 1
 
+    def _popd_no_cd(self, args: List[str], stack: DirectoryStack,
+                    shell: 'Shell') -> int:
+        """``popd -n``: remove from the stack without changing directory.
+
+        With no argument bash removes the entry just below the top (index 1),
+        leaving the current directory on top and performing no cd. ``+N``/
+        ``-N`` remove the indexed entry (from the left / right) without a cd.
+        """
+        if not args:
+            if stack.size() < 2:
+                self.error("directory stack empty", shell)
+                return 1
+            stack.stack.pop(1)
+            self._print_stack(stack, shell)
+            return 0
+
+        arg = args[0]
+        if not (arg.startswith('+') or arg.startswith('-')):
+            self.error(f"invalid argument: {arg}", shell)
+            return 1
+        try:
+            index = int(arg)
+        except ValueError:
+            self.error(f"invalid index argument: {arg}", shell)
+            return 1
+        if arg.startswith('-'):
+            index = stack.size() - 1 + index
+        if index < 0 or index >= stack.size():
+            self.error(f"directory stack index out of range: {arg}", shell)
+            return 1
+        stack.stack.pop(index)
+        self._print_stack(stack, shell)
+        return 0
+
     def _update_pwd_vars(self, directory: str, shell: 'Shell'):
         """Update PWD and OLDPWD environment variables."""
         old_pwd = shell.env.get('PWD', os.getcwd())
@@ -384,7 +470,7 @@ class PopdBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """popd: popd [+N | -N]
+        return """popd: popd [-n] [+N | -N]
     Remove directories from stack and change directory.
 
     Arguments:

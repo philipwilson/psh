@@ -272,7 +272,7 @@ class TestParser(ParserSubcomponent):
         return value in {
             '-a', '-b', '-c', '-d', '-e', '-f', '-g', '-h', '-k', '-p',
             '-r', '-s', '-t', '-u', '-w', '-x', '-G', '-L', '-N', '-O',
-            '-S', '-z', '-n', '-o', '-v'
+            '-R', '-S', '-z', '-n', '-o', '-v'
         }
 
     def _is_binary_test_operator(self, value: str) -> bool:

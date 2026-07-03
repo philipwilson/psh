@@ -135,8 +135,9 @@ def test_exec_with_environment(shell):
 
 
 def test_exec_help_option(shell):
-    """exec has no --help flag; it tries to exec '--help' (command not found)."""
-    assert shell.run_command('exec --help') == 127
+    """exec has no --help flag: like bash it rejects the unknown option with
+    a usage error (status 2), not command-not-found."""
+    assert shell.run_command('exec --help') == 2
     # Just test that it doesn't crash
 
 

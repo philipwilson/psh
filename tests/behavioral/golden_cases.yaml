@@ -3617,3 +3617,91 @@
   stdout: ""
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# BUILTINS-FLAGS (reappraisal #16 Tier-2): secondary flags on existing builtins
+# =============================================================================
+
+- name: dbracket_o_option_set
+  command: "set -o errexit; [[ -o errexit ]]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_o_option_unset
+  command: "[[ -o errexit ]]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_o_unknown_option_false
+  command: "[[ -o zzznotanopt ]]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: single_bracket_o_option_set
+  command: "set -o errexit; [ -o errexit ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_R_set_nameref
+  command: "declare -n r=x; x=1; [[ -R r ]]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_R_plain_var_false
+  command: "declare -n r=x; x=1; [[ -R x ]]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_R_missing_name_false
+  command: "[[ -R nope ]]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: unset_vf_both_flags_rejected
+  command: "x=1; unset -vf x; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "cannot simultaneously"
+  exit_code: 0
+
+- name: type_reports_hashed_command
+  command: "hash -p /bin/ls xyzls; type xyzls"
+  stdout: "xyzls is hashed (/bin/ls)\n"
+  stderr: ""
+  exit_code: 0
+
+- name: type_t_hashed_is_file
+  command: "hash -p /bin/ls xyzls; type -t xyzls"
+  stdout: "file\n"
+  stderr: ""
+  exit_code: 0
+
+- name: printf_empty_time_format_default
+  command: 'printf "%()T\n" 0'
+  stdout: null
+  stderr: ""
+  exit_code: 0
+
+- name: umask_S_with_mode_echoes
+  command: "(umask -S 022)"
+  stdout: "u=rwx,g=rx,o=rx\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pushd_n_adds_without_cd
+  command: "cd /; pushd -n /tmp; dirs; pwd"
+  stdout: "/ /tmp\n/ /tmp\n/\n"
+  stderr: ""
+  exit_code: 0
+
+- name: popd_n_removes_without_cd
+  command: "cd /; pushd /tmp >/dev/null; popd -n >/dev/null; dirs; pwd"
+  stdout: "/tmp\n/tmp\n"
+  stderr: ""
+  exit_code: 0

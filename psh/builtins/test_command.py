@@ -83,6 +83,11 @@ class TestBuiltin(Builtin):
       -S FILE    FILE is a socket
       -t FD      FD is opened on a terminal
 
+    Variable / option operators:
+      -v NAME    NAME is a set variable (or array element)
+      -R NAME    NAME is a set nameref variable
+      -o OPT     shell option OPT (as in `set -o OPT`) is enabled
+
     String operators:
       -z STRING        STRING has zero length
       -n STRING        STRING has non-zero length
@@ -334,6 +339,17 @@ class TestBuiltin(Builtin):
         elif op == '-v':
             # True if the named variable (or array element) is set.
             return 0 if variable_is_set(shell, arg) else 1
+        elif op == '-R':
+            # True if the named variable is a set nameref (bash). An empty
+            # `declare -n r` is stored unset (None here), so only a nameref
+            # with a target — even an unset target — counts.
+            var_obj = shell.state.scope_manager.get_variable_object(arg)
+            return 0 if (var_obj is not None and var_obj.is_nameref) else 1
+        elif op == '-o':
+            # True iff the named shell option (as spelled by `set -o NAME`)
+            # is enabled. An unknown option name is simply false — bash does
+            # not treat it as an error here.
+            return 0 if shell.state.options.get(arg, False) else 1
         else:
             self.error(f"{op}: unary operator expected", shell)
             return 2  # Unknown operator
