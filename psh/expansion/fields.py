@@ -75,20 +75,21 @@ class FieldExpansionMixin(_Base):
         if operator is None:
             return base
 
-        # Conditional operators (bash): a non-empty base keeps its fields;
-        # otherwise the default text becomes a single field.
-        if operator in (':-', '-'):
-            if base:
-                return base
-            return [self._expand_operand(operand or '')]
-        if operator in (':+', '+'):
-            if not base:
-                return []
-            return [self._expand_operand(operand or '')]
-        if operator in (':=', '=', ':?', '?'):
-            # Assignment/error semantics on @-subscripts: keep the fields
-            # when non-empty, else fall back to the scalar path.
-            return base if base else None
+        # Conditional/default/assign/error operators. bash tests the JOINED
+        # view for null (colon) or set-ness (non-colon), NOT the field count
+        # — see OperatorOpsMixin._view_conditional. The @-subscript views
+        # reaching here (param '@' and 'name[@]') join with a space; :=/= and
+        # :?/? raise bash's error when null/unset.
+        if operator in (':-', '-', ':+', '+', ':=', '=', ':?', '?'):
+            if param == '@':
+                subject, assign_error = '@', '$@: cannot assign in this way'
+            else:
+                name = self._resolve_array_name(param[:-3])
+                subject = f'{name}[@]'
+                assign_error = f'{subject}: bad array subscript'
+            return self._view_conditional(operator, base, ' ', operand,
+                                          qmark_subject=subject,
+                                          assign_error=assign_error)
 
         # Whole-array key/value transforms (bash):
         #   @K -> ONE field: key "value" key "value" ... (values @Q-quoted)

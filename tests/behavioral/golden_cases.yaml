@@ -3705,3 +3705,93 @@
   stdout: "/tmp\n/tmp\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# EXPANSION-OPERATOR VIEWS (reappraisal #16 Tier-2)
+# Colon operators on ${a[@]}/${a[*]}/${@}/${*} test the JOINED view for null,
+# not the element count; :=/= reject positional/special targets.
+# =============================================================================
+
+- name: view_at_colon_plus_single_empty_is_null
+  command: 'a=(""); echo "[${a[@]:+SET}]"'
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: view_at_colon_minus_single_empty_uses_default
+  command: 'a=(""); echo "[${a[@]:-D}]"'
+  stdout: "[D]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: view_at_colon_plus_two_empty_not_null
+  command: 'a=("" ""); echo "[${a[@]:+SET}]"'
+  stdout: "[SET]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: view_star_colon_plus_single_empty_is_null
+  command: 'a=(""); echo "[${a[*]:+SET}]"'
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: view_positional_colon_minus_single_empty_uses_default
+  command: 'set -- ""; echo "[${@:-D}]"'
+  stdout: "[D]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: view_positional_colon_plus_single_empty_is_null
+  command: 'set -- ""; echo "[${@:+S}]"'
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: view_at_noncolon_plus_tests_setness
+  command: 'a=(""); echo "[${a[@]+SET}]"'
+  stdout: "[SET]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: view_array_assign_null_view_errors
+  command: 'a=(""); echo "[${a[@]:=D}]"'
+  stdout: ""
+  stderr: "bad array subscript"
+  exit_code: 1
+
+- name: view_positional_assign_null_view_errors
+  command: 'set -- ""; echo "[${@:=D}]"'
+  stdout: ""
+  stderr: "cannot assign in this way"
+  exit_code: 1
+
+- name: unset_positional_assign_rejected
+  command: 'echo "[${1:=default}]"'
+  stdout: ""
+  stderr: "cannot assign in this way"
+  exit_code: 1
+
+- name: at_special_assign_rejected
+  command: 'echo "[${@:=default}]"'
+  stdout: ""
+  stderr: "cannot assign in this way"
+  exit_code: 1
+
+- name: single_element_at_A_strips_subscript
+  command: 'a=(1 2 3); echo "${a[1]@A}"'
+  stdout: "declare -a a='2'\n"
+  stderr: ""
+  exit_code: 0
+
+- name: single_element_at_a_reports_array_flag
+  command: 'a=(1 2 3); echo "${a[1]@a}"'
+  stdout: "a\n"
+  stderr: ""
+  exit_code: 0
+
+- name: assoc_element_at_A_strips_subscript
+  command: 'declare -A m=([k]=v); echo "${m[k]@A}"'
+  stdout: "declare -A m='v'\n"
+  stderr: ""
+  exit_code: 0

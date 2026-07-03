@@ -131,6 +131,13 @@ class GlobExpander:
         else:
             matches = glob.glob(translated, include_hidden=dotglob, recursive=globstar)
 
+        # Byte (C-locale) ordering. bash sorts glob results with strcoll() in
+        # the current LC_COLLATE, so this diverges from bash in a non-C locale
+        # (`[a-c]*` -> `aa aB banana` in bash vs `aB aa banana` here). Matching
+        # bash would need a process-global locale.setlocale() at startup plus a
+        # locale.strxfrm sort key; that is intentionally deferred as the same
+        # known limitation as `[[ < ]]` / `[ < ]` collation (see
+        # executor/enhanced_test_evaluator.py and builtins/test_command.py).
         return sorted(matches) if matches else []
 
     def _glob_nocase(self, pattern: str, dotglob: bool) -> List[str]:

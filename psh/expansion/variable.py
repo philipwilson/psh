@@ -350,22 +350,17 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             if operator in ('@K', '@k'):
                 return True, self._array_keyvalue_form(operator[1], var)
 
-            # Conditional operators on the whole array (bash): non-empty
-            # keeps its elements, otherwise the default text applies.
-            joiner = ' ' if index_expr == '@' else self._ifs_star_separator()
-            if operator in (':-', '-'):
-                if elements:
-                    return True, joiner.join(elements)
-                return True, self._expand_operand(operand or '')
-            if operator in (':+', '+'):
-                if not elements:
-                    return True, ''
-                return True, self._expand_operand(operand or '')
-            if operator in (':=', '=', ':?', '?'):
-                # Keep the elements when non-empty; like the quoted path
-                # (expand_to_fields), no per-element assignment/error is
-                # performed on @-subscripts.
-                return True, joiner.join(elements)
+            # Conditional/default/assign/error operators on the whole array.
+            # bash tests the JOINED view for null (colon) or set-ness
+            # (non-colon), NOT the element count — see _view_conditional.
+            if operator in (':-', '-', ':+', '+', ':=', '=', ':?', '?'):
+                joiner = ' ' if index_expr == '@' else self._ifs_star_separator()
+                label = f"{array_name}[{index_expr}]"
+                fields = self._view_conditional(
+                    operator, elements, joiner, operand,
+                    qmark_subject=label,
+                    assign_error=f"{label}: bad array subscript")
+                return True, joiner.join(fields)
 
             # Per-element transforms (@Q/@U/@u/@L/@E/@P/@a) apply to each
             # element; the @-operators need the array *name* (not the
