@@ -78,18 +78,29 @@ class ArithTokenizer:
 
         result = 0
         num_len = 0
+        out_of_range = False
         char = self.current_char()
-        while char is not None:
+        # Consume the whole run of base-digit characters ([0-9a-zA-Z@_], bash's
+        # based-number alphabet) before validating, mirroring the octal reader:
+        # an out-of-range digit must error, not silently end the token and leave
+        # a stray trailing token. A char outside that alphabet ends the number.
+        while char is not None and self._based_digit_value(char, 64) is not None:
             digit_val = self._based_digit_value(char, base)
             if digit_val is None or digit_val >= base:
-                break
-            result = result * base + digit_val
+                out_of_range = True
+            else:
+                result = result * base + digit_val
             num_len += 1
             self.advance()
             char = self.current_char()
 
         if num_len == 0:
             raise SyntaxError(f"Invalid base {base} number at position {start_pos}")
+        if out_of_range:
+            token = self.expr[start_pos:self.position]
+            raise SyntaxError(
+                f"{token}: value too great for base (error token is \"{token}\")"
+            )
 
         return result
 

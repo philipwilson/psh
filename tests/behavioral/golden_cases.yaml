@@ -2649,6 +2649,78 @@
   stderr: ""
   exit_code: 0
 
+# H5 (reappraisal #16): an integer literal >= 2**63 wraps to signed 64-bit
+# exactly like an operation result, at every arithmetic site.
+- name: arith_literal_wraps_signed64
+  command: "echo $((9223372036854775808))"
+  stdout: "-9223372036854775808\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_literal_hex_wraps_signed64
+  command: "echo $((0x8000000000000000))"
+  stdout: "-9223372036854775808\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_assigned_literal_wraps_signed64
+  command: "x=9223372036854775808; echo $((x))"
+  stdout: "-9223372036854775808\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_literal_2pow64_is_zero
+  command: "echo $((18446744073709551616))"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: test_eq_huge_literal_wraps_to_negative
+  command: "[[ 9223372036854775808 -eq -9223372036854775808 ]] && echo Y || echo N"
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_write_huge_subscript_wraps_bad_subscript
+  command: "a[9223372036854775808]=z; echo rc=$?"
+  stdout: ""
+  stderr: "bad array subscript"
+  exit_code: 1
+
+# MED (reappraisal #16): a negative shift count is masked to 6 bits (bash / C
+# on x86-64), NOT an error. `1 << -1` == `1 << 63`.
+- name: arith_negative_left_shift_masks
+  command: "echo $((1 << -1))"
+  stdout: "-9223372036854775808\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_negative_right_shift_masks
+  command: "echo $((256 >> -1))"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_negative_shift_wraps_to_identity
+  command: "echo $((1 << -64))"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+# MED (reappraisal #16): a base#n literal with an out-of-range digit is a
+# "value too great for base" error, not a silent split into stray tokens.
+- name: arith_based_number_out_of_range_errors
+  command: "echo $((2#102))"
+  stdout: ""
+  stderr: "value too great for base"
+  exit_code: 1
+
+- name: arith_based_number_bad_hex_digit_errors
+  command: "echo $((16#1g))"
+  stdout: ""
+  stderr: "value too great for base"
+  exit_code: 1
+
 # trap POSIX numeric forms (0 == EXIT; leading number = reset) and full
 # signal-name coverage (reappraisal #15 F2). Only platform-stable signal
 # numbers (2=INT, 15=TERM) appear literally.

@@ -70,8 +70,10 @@ class ArithmeticEvaluator:
                 return 0
 
             # Fast path: a plain signed decimal (no leading-zero octal trap).
+            # A literal value wraps to signed 64-bit exactly like an operation
+            # result (bash: `x=9223372036854775808; echo $((x))` is negative).
             if _PLAIN_DECIMAL_RE.match(value):
-                return int(value)
+                return _to_signed64(int(value))
 
             # Bare identifier: follow the reference chain with a cycle guard.
             if value.isidentifier() and not value.startswith('_' * 2):
@@ -100,7 +102,7 @@ class ArithmeticEvaluator:
         if not value:
             return 0
         if _PLAIN_DECIMAL_RE.match(value):
-            return int(value)
+            return _to_signed64(int(value))
         return evaluate_arithmetic(value, self.shell)
 
     def _array_key(self, name: str, index_node: ArithNode, index_text: str) -> Union[int, str]:
@@ -219,7 +221,10 @@ class ArithmeticEvaluator:
     def evaluate(self, node: ArithNode) -> int:
         """Evaluate an arithmetic AST node."""
         if isinstance(node, NumberNode):
-            return node.value
+            # A literal wraps to signed 64-bit like any operation result, so
+            # a bare/compared/subscript literal >= 2**63 matches bash (e.g.
+            # $((9223372036854775808)) is -9223372036854775808).
+            return _to_signed64(node.value)
         if isinstance(node, VariableNode):
             return self.get_variable(node.name)
         if isinstance(node, UnaryOpNode):
@@ -363,13 +368,12 @@ class ArithmeticEvaluator:
             return _to_signed64(left | right)
         if op == ArithTokenType.BIT_XOR:
             return _to_signed64(left ^ right)
+        # bash masks the shift count to 6 bits (C on x86-64): a negative count
+        # wraps into 0..63 (`1 << -1` == `1 << 63`), so no negative-count guard
+        # is needed — the mask below already produces bash's answer.
         if op == ArithTokenType.LSHIFT:
-            if right < 0:
-                raise ShellArithmeticError("negative shift count")
             return _to_signed64(left << (right & 63))
         if op == ArithTokenType.RSHIFT:
-            if right < 0:
-                raise ShellArithmeticError("negative shift count")
             return _to_signed64(left) >> (right & 63)
 
         raise ValueError(f"Unknown binary operator: {op}")
