@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.590.0 (2026-07-03) - Fix: arithmetic number literals and test integer operands match bash (appraisal #16 ledger c + d)
+- FIX. Reappraisal #16 follow-up ledger, items (c) and (d).
+- **(c) arithmetic number tokenizer left a stray trailing token on out-of-base
+  digits.** The number reader stopped at the first character invalid for the
+  base and left the rest as a separate token, so `$((0xffg))` reported
+  `Unexpected token after expression: g` instead of bash's
+  `value too great for base`; `00x`, `07x`, `0a`, `5a`, and `123abc` behaved the
+  same way. The #16 H5 fix had already corrected this for `base#number`
+  literals, but the hex, octal, and decimal readers were untouched.
+  - **Fix.** Hex, octal, decimal, and `base#number` now all go through one
+    `_read_digits()` chokepoint, which consumes the whole based-number run
+    (`[0-9a-zA-Z@_]`, bash's alphabet) and raises
+    `value too great for base (error token is ...)` on any digit out of range —
+    matching bash's single-token error and message exactly. A bare `0x`/`0X`
+    with no hex digits now yields `0`, matching bash. The now-unused
+    `read_decimal()` was removed.
+- **(d) `test`/`[` accepted integer operands outside signed 64-bit.** The
+  integer comparisons (`-eq`/`-ne`/`-lt`/`-le`/`-gt`/`-ge`) converted operands
+  with Python's arbitrary-precision `int()`, so `test 9223372036854775808 -gt 5`
+  returned 0 where bash, using `intmax_t`, rejects it (exit 2,
+  `integer expression expected`).
+  - **Fix.** A new `_to_int64()` parses base-10 like bash and rejects a
+    non-numeric OR out-of-64-bit operand, so the six comparison ops report
+    `TOKEN: integer expression expected` exactly like bash. In-range comparisons
+    (including the exact +/- 2**63 boundaries) are unchanged.
+- Verified against a 40-probe bash-vs-psh truth table (arithmetic `$(( ))`,
+  `let`, `declare`, hex/octal/decimal edges, and `test`/`[` across the 64-bit
+  boundary); every case matches bash in stdout, exit code, and stderr presence.
+  Added hex/octal/decimal error + empty-hex characterization tests,
+  `test`/`[` int64-range unit tests, and 9 golden cases (`--compare-bash`).
+  - Documented residuals (pre-existing, out of scope): `declare -i x=0xffg`
+    now emits the bash arith message but psh's builtin guard converts the error
+    to exit 1 and continues where bash aborts the command list — that is the
+    assignment-vs-`let` fatal-error routing in the builtin guard, not the
+    tokenizer. `test` also still accepts Python underscore digit separators.
+
 ## 0.589.0 (2026-07-03) - Fix: nocasematch keeps upper/lower classes case-sensitive in [[/case; POSIX classes in the =~ regex operator (appraisal #16 ledger b + e)
 - FIX. Reappraisal #16 follow-up ledger, items (b) and (e). Two fixes wiring
   the pattern engine (made ignorecase-ready by #16 H6) correctly into the
