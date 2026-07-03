@@ -32,6 +32,16 @@ class ParameterExpansion:
         """Whether extglob is currently enabled."""
         return self.state.options.get('extglob', False)
 
+    @property
+    def _nocasematch(self) -> bool:
+        """Whether ``shopt -s nocasematch`` is active.
+
+        bash applies nocasematch to pattern *substitution* (``${v/pat/r}`` and
+        its ``/#`` /``/%`` forms) but NOT to prefix/suffix *removal* (``#``/``%``)
+        or case modification — so only the ``substitute_*`` helpers consult it.
+        """
+        return self.state.options.get('nocasematch', False)
+
     @staticmethod
     def render_replacement(replacement: Union[str, list], matched: str) -> str:
         """Render the replacement text for one match.
@@ -156,11 +166,12 @@ class ParameterExpansion:
     def substitute_first(self, value: str, pattern: str,
                          replacement: Union[str, list]) -> str:
         """Replace first match."""
+        ic = self._nocasematch
         if self._neg(pattern):
             from .extglob import extglob_match_at
             n = len(value)
             for p in range(n + 1):
-                length = extglob_match_at(pattern, value, p)
+                length = extglob_match_at(pattern, value, p, ignorecase=ic)
                 if length is not None and not (length == 0 and p == n):
                     return (value[:p]
                             + self.render_replacement(replacement, value[p:p + length])
@@ -169,15 +180,16 @@ class ParameterExpansion:
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
         return re.sub(regex,
                       lambda m: self.render_replacement(replacement, m.group(0)),
-                      value, count=1)
+                      value, count=1, flags=re.IGNORECASE if ic else 0)
 
     def substitute_all(self, value: str, pattern: str,
                        replacement: Union[str, list]) -> str:
         """Replace all matches."""
+        ic = self._nocasematch
         if self._neg(pattern):
-            return self._substitute_all_negation(value, pattern, replacement)
+            return self._substitute_all_negation(value, pattern, replacement, ic)
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
-        compiled = re.compile(regex)
+        compiled = re.compile(regex, re.IGNORECASE if ic else 0)
         # Patterns that can match the empty string (e.g. extglob *(q), ?(q))
         # need bash's empty-match semantics: Python's re.sub emits an extra
         # zero-width match at end-of-string where bash does not
@@ -221,7 +233,8 @@ class ParameterExpansion:
         return ''.join(out)
 
     def _substitute_all_negation(self, value: str, pattern: str,
-                                 replacement: Union[str, list]) -> str:
+                                 replacement: Union[str, list],
+                                 ignorecase: bool = False) -> str:
         """Global substitution for negation patterns (matcher, not regex).
 
         Same left-to-right, leftmost-longest, empty-match-suppressed-at-end
@@ -233,7 +246,7 @@ class ParameterExpansion:
         pos = 0
         n = len(value)
         while pos < n:
-            length = extglob_match_at(pattern, value, pos)
+            length = extglob_match_at(pattern, value, pos, ignorecase=ignorecase)
             if length is None:
                 out.append(value[pos])
                 pos += 1
@@ -249,15 +262,20 @@ class ParameterExpansion:
     def substitute_prefix(self, value: str, pattern: str,
                           replacement: Union[str, list]) -> str:
         """Replace prefix match."""
+        ic = self._nocasematch
         if self._neg(pattern):
             from .extglob import extglob_match_at
-            length = extglob_match_at(pattern, value, 0)
+            length = extglob_match_at(pattern, value, 0, ignorecase=ic)
             if length is not None:
                 return (self.render_replacement(replacement, value[:length])
                         + value[length:])
             return value
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=True, extglob_enabled=self._extglob)
-        match = re.match(regex, value)
+        # Anchor at the START only: re.match already anchors at position 0, so
+        # the unanchored body matches a prefix. (An end-anchored regex — which
+        # the extglob converter would produce for from_start=True — wrongly
+        # demanded a full-string match, so /# behaved like a whole-value match.)
+        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
+        match = re.match(regex, value, re.IGNORECASE if ic else 0)
         if match:
             return (self.render_replacement(replacement, match.group(0))
                     + value[match.end():])
@@ -266,11 +284,12 @@ class ParameterExpansion:
     def substitute_suffix(self, value: str, pattern: str,
                           replacement: Union[str, list]) -> str:
         """Replace suffix match."""
+        ic = self._nocasematch
         if self._neg(pattern):
             from .extglob import extglob_fullmatch
             # Longest suffix that matches = smallest start index.
             for i in range(len(value) + 1):
-                if extglob_fullmatch(pattern, value[i:]):
+                if extglob_fullmatch(pattern, value[i:], ignorecase=ic):
                     return (value[:i]
                             + self.render_replacement(replacement, value[i:]))
             return value
@@ -279,7 +298,7 @@ class ParameterExpansion:
         regex = regex.rstrip('$') + '$'
 
         # Find match at end
-        match = re.search(regex, value)
+        match = re.search(regex, value, re.IGNORECASE if ic else 0)
         if match:
             return (value[:match.start()]
                     + self.render_replacement(replacement, match.group(0)))
