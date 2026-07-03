@@ -330,7 +330,6 @@ PSH includes many bash extensions while maintaining POSIX compliance:
 While PSH implements most shell features, some limitations remain:
 
 - **RETURN Traps**: `trap` supports signal traps plus the EXIT, DEBUG, and ERR pseudo-signals, but not RETURN
-- **History Word Designators**: basic event designators (`!!`, `!n`, `!string`) work, but word designators and modifiers (`!$`, `!!:1`, `^old^new`) are not supported
 - **Deep Recursion**: Recursive functions hit Python stack limits
 - **Some Advanced Features**: Minor gaps in specialized POSIX utilities
 

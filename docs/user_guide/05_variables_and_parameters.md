@@ -516,7 +516,7 @@ psh$ echo "${!USER_*}"
 USER_AGE USER_CITY USER_NAME
 ```
 
-> **Note:** Unlike bash, PSH's quoted `"${!prefix@}"` form expands to a single word rather than one word per variable name. Use the unquoted form (or `${!prefix*}`) when iterating over the names.
+> **Note:** As in bash, the quoted `"${!prefix@}"` form expands to one word per variable name (safe for `for` iteration), while `"${!prefix*}"` joins the names into a single IFS-separated word.
 
 ## 5.6 Local Variables in Functions
 

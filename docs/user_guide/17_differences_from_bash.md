@@ -102,8 +102,9 @@ echo "${arr[@]@Q}"   # 'one' 'two three'
 echo "${arr[@]@A}"   # declare -a arr=([0]="one" [1]="two three")
 ```
 
-The associative key/value operators `@K` and `@k` are not yet supported
-(see 17.2).
+The associative key/value operators `@K` (quoted key/value pairs) and `@k`
+(bare key/value pairs) are also supported; associative pairs iterate in
+insertion order rather than bash's hash order.
 
 ### Arrays and Associative Arrays
 
@@ -175,7 +176,10 @@ history          # Show command history
 history 10       # Show last 10 commands
 ```
 
-History *expansion* (`!!`, `!n`, `!string`) is **not** implemented — see 17.2.
+History *expansion* is fully supported in interactive mode: event
+designators (`!!`, `!n`, `!-n`, `!string`, `!?string?`), word designators
+(`!$`, `!^`, `!*`, `!!:n`, `!!:n-m`), the `:h`/`:t`/`:r`/`:e`/`:s`/`:g&`/`:p`
+modifiers, and `^old^new` quick substitution all match bash.
 
 ### Job Control
 
@@ -261,28 +265,7 @@ e=Q; echo "${arr[@]}" # p Q r
 
 ## 17.2 Unimplemented Features
 
-The following Bash features are not available in PSH v0.221.0.
-
-### Variable-Name Prefix Matching (${!prefix*})
-
-```bash
-# ${!prefix*} / ${!prefix@} list variable names sharing a prefix - not
-# supported (psh currently lists all variables):
-PATH_A=1 PATH_B=2
-echo "${!PATH_*}"     # bash: PATH_A PATH_B
-```
-
-### Associative Key/Value Transforms (${var@K}, ${var@k})
-
-```bash
-# NOT supported - the associative key/value display operators:
-declare -A m=([k]=v)
-echo "${m[@]@K}"   # quoted key/value pairs   -> (empty)
-echo "${m[@]@k}"   # bare key/value pairs     -> (empty)
-```
-
-The other transformation operators (`@Q @U @u @L @E @P @A @a`) **are**
-supported — see 17.1.
+The following Bash features are not available in PSH.
 
 ### Coprocesses
 
@@ -311,17 +294,6 @@ compgen -W "words" -- prefix    # Command not found
 # IS available in interactive mode
 ```
 
-### History Expansion
-
-```bash
-# The interactive history-expansion designators are not implemented:
-!!         # event not found
-!n         # event not found
-!string    # event not found
-
-# The `history` builtin (listing past commands) does work.
-```
-
 ### Missing Builtins
 
 ```bash
@@ -334,16 +306,20 @@ caller                       # Call-stack introspection - not a builtin
 ### Read Builtin Limitations
 
 ```bash
-# The read builtin supports -r, -d, -p, and also -t, -n, -s:
+# The read builtin supports -r, -d, -p, -t, -n, -N, -s, -a, and -u:
 read -r var             # Raw mode (no backslash processing)
 read -d ':' var         # Custom delimiter
 read -p "prompt: " var  # Prompt (interactive only)
 read -t 5 var           # Timeout
-read -n 4 var           # Read exact number of characters
+read -n 4 var           # Read up to N characters
+read -N 4 var           # Read EXACTLY N characters
 read -s var             # Silent mode (passwords)
+read -a arr             # Read words into an array
+read -u 3 var           # Read from file descriptor 3
 
-# Only the file-descriptor option is unsupported:
-read -u 3 var           # Error: invalid option (read from a specific fd)
+# Only the readline-editing options are unsupported:
+read -e var             # Error: invalid option (readline line editing)
+read -i text var        # Error: invalid option (initial readline text)
 ```
 
 ### Other Missing Features
@@ -593,15 +569,15 @@ fi
 | pushd/popd/dirs | Yes | Yes | Full support |
 | shopt options | Yes | Partial | dotglob, nullglob, globstar, nocaseglob, extglob, inherit_errexit |
 | Extended glob patterns | Yes | Yes | ?() *() +() @() !() (enable extglob before the line) |
-| read options | Yes | Partial | -r -d -p -t -n -s supported; -u not |
+| read options | Yes | Partial | -r -d -p -t -n -N -s -a -u supported; -e/-i (readline editing) not |
 | command history (`history`) | Yes | Yes | Listing past commands (interactive) |
-| History expansion (!!, !n) | Yes | No | Designators not implemented |
+| History expansion (!!, !n) | Yes | Yes | Full support (interactive; event/word designators + :h/:t/:r/:e/:s/:g& modifiers + ^old^new) |
 | Coprocesses | Yes | No | Not implemented |
 | Programmable completion | Yes | No | Basic tab completion only |
 | Namerefs (declare -n / local -n) | Yes | Yes | Scalar and array-element targets; chains; local -n |
-| Indirect expansion ${!var} | Yes | Yes | Scalar; ${!arr[@]} indices work; ${!prefix*} does not |
+| Indirect expansion ${!var} | Yes | Yes | Scalar; ${!arr[@]} indices and ${!prefix*}/${!prefix@} name-listing all work |
 | Parameter transforms ${var@Q/U/u/L/E/P/A/a} | Yes | Yes | Scalar, array, and positional |
-| Assoc key/value transforms ${var@K} / ${var@k} | Yes | No | Not implemented |
+| Assoc key/value transforms ${var@K} / ${var@k} | Yes | Yes | Full support (assoc pairs iterate in insertion order, not bash hash order) |
 | let builtin | Yes | Yes | Equivalent to ((...)) per argument |
 | mapfile/readarray | Yes | Yes | -d/-n/-O/-s/-t/-u (no -C/-c) |
 | caller builtin | Yes | No | Not implemented |
@@ -609,7 +585,7 @@ fi
 | FUNCNAME | Yes | Partial | [0] only; full call stack not populated |
 | wait -n | Yes | Yes | Waits for the next job; `-n` / `-p VAR` |
 | time keyword | Yes | Partial | Times pipelines (default & `-p` formats); `TIMEFORMAT` not honored |
-| ${!prefix*} name matching | Yes | No | Lists all variables (bug) |
+| ${!prefix*} name matching | Yes | Yes | Full support |
 | **PSH-Specific** |
 | --debug-ast | No | Yes | Multiple output formats |
 | --debug-tokens | No | Yes | PSH only |
@@ -648,7 +624,7 @@ result=$((a + b))
 # - Brace expansion (including expansion items like {$((1)),$((2))})
 # - Extended glob patterns (with shopt -s extglob enabled beforehand)
 # - Here documents and here strings
-# - trap command (standard signals + EXIT; avoid DEBUG/ERR/RETURN)
+# - trap command (standard signals + EXIT/DEBUG/ERR; avoid RETURN)
 # - All control structures
 ```
 
@@ -689,15 +665,10 @@ Most Bash scripts work without modification. Check for these issues:
 ```bash
 # 1. Check for unsupported builtins / features
 grep -E 'coproc|complete |compgen |caller' script.sh
-grep -E 'read .*-u' script.sh                 # read -u (fd) is unsupported
+grep -E 'read .*-[ei]' script.sh              # read -e/-i (readline editing) unsupported
 
-# 2. Check for the unsupported @K/@k transforms
-grep -E '@[Kk]\}' script.sh                   # ${m[@]@K} / @k - not supported
-
-# 3. Check for DEBUG/ERR/RETURN traps and history expansion
-grep -E 'trap .*(DEBUG|ERR|RETURN)' script.sh
-grep -E '!!|![0-9]' script.sh                 # history expansion
-
+# 2. Check for RETURN traps (DEBUG and ERR ARE supported)
+grep -E 'trap .*RETURN' script.sh
 ```
 
 ### Script Compatibility Checklist
@@ -722,30 +693,30 @@ grep -E '!!|![0-9]' script.sh                 # history expansion
 # - Regex matching =~ with BASH_REMATCH capture groups
 # - Job control (jobs, fg, bg, wait, disown)
 # - Shell options (errexit, nounset, xtrace, pipefail, etc.)
-# - eval, trap (standard signals + EXIT), getopts, printf (incl. %q)
-# - read -r/-d/-p/-t/-n/-s
+# - eval, trap (standard signals + EXIT + DEBUG + ERR), getopts, printf (incl. %q)
+# - read -r/-d/-p/-t/-n/-N/-s/-a/-u
 # - Subshells with variable isolation
 # - Control structures in pipelines
 # - Here documents and here strings
 # - shopt: dotglob, nullglob, globstar, nocaseglob, extglob, inherit_errexit
 # - pushd, popd, dirs
 # - history builtin (interactive)
+# - History expansion (interactive): !!, !n, !-n, !str, !?str?, word
+#   designators (!$, !!:1, !!:*), :h/:t/:r/:e/:s/:g& modifiers, ^old^new
 # - mapfile / readarray (-d/-n/-O/-s/-t/-u)
 # - let (arithmetic evaluation)
 # - namerefs (declare -n / local -n), scalar & array-element targets; ${!var}
+# - ${!prefix*} / ${!prefix@} variable-name prefix matching
+# - Associative key/value transforms ${var@K} / ${var@k}
+#   (assoc pairs iterate in insertion order, not bash hash order)
 
 # Not supported:
-# - ${!prefix*} / ${!prefix@} variable-name prefix matching
-# - Associative transforms ${var@K} / ${var@k}
-#   (${var@Q/U/u/L/E/P/A/a} ARE supported)
-# - DEBUG / ERR / RETURN traps
-# - History expansion designators (!!, !n, !string)
+# - RETURN traps (DEBUG / ERR ARE supported)
 # - Coprocesses (coproc)
 # - Programmable completion (complete, compgen)
 # - caller builtin
-# - read -u (read from a specific fd)
+# - read -e / read -i (readline line editing)
 # - BASH_SOURCE/BASH_LINENO; FUNCNAME beyond [0]
-# - ${!prefix*} variable-name prefix matching
 # - Very deep recursion (Python stack limits)
 ```
 
@@ -774,15 +745,15 @@ PSH v0.221.0 provides near-complete Bash compatibility for everyday shell progra
 
 1. **Comprehensive Feature Support**: Arrays, associative arrays, trap, wait, disown, all control structures, all expansions, extended globs, `=~` with BASH_REMATCH
 2. **Full Shell Options**: errexit, nounset, xtrace, pipefail, noclobber, allexport, and many more
-3. **Remaining Gaps**: `${var@K}`/`@k` associative transforms, `${!prefix*}` name matching, DEBUG/ERR/RETURN traps, history expansion, coprocesses, programmable completion, `caller`, `read -u`
+3. **Remaining Gaps**: RETURN traps (DEBUG/ERR fire), coprocesses, programmable completion, `caller`, `read -e`/`read -i` (readline editing), `BASH_SOURCE`/`BASH_LINENO`
 4. **Educational Tools**: Debug flags, script analysis, multiple parser implementations
 5. **High Compatibility**: Most Bash scripts run without modification
 
 Key differences to remember:
 - Use `set -eu -o pipefail` instead of `set -euo pipefail`
 - Namerefs (`declare -n`/`local -n`) support scalar and array-element targets, chains, and `local -n` pass-by-reference; `${!var}` indirect expansion works too
-- The `${var@Q/U/u/L/E/P/A/a}` transform operators are supported; only `${var@K}`/`${var@k}` (associative key/value display) are not
-- DEBUG/ERR/RETURN traps and history expansion (`!!`, `!n`) are not implemented
+- All `${var@...}` transform operators are supported, including `${var@K}`/`${var@k}` (associative key/value display)
+- DEBUG and ERR traps and interactive history expansion (`!!`, `!n`, word designators, modifiers) all work; only RETURN traps are unimplemented
 - `caller` is not available (`let`, `mapfile`, `readarray` are supported)
 - Use `$PSH_VERSION` instead of `$BASH_VERSION` to detect PSH
 - Deep recursion may hit Python stack limits
