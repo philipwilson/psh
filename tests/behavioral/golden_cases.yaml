@@ -3846,3 +3846,61 @@
   stdout: "declare -A m='v'\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# REAPPRAISAL #16 TIER-2 — EXECUTOR DIAGNOSTICS
+# =============================================================================
+# A signal-killed foreground external gets a bash-style abnormal-termination
+# line on stderr (Terminated / Segmentation fault / ...), even non-
+# interactively, then the shell continues. Exit codes (128+N) unchanged.
+# Wording tracks the host libc (macOS "Terminated: 15" vs Linux "Terminated"),
+# so the stderr check is the portable substring "Terminated". --compare-bash
+# diffs stdout + exit code only, both of which match bash.
+
+- name: signal_death_diagnostic_sigterm
+  command: 'sh -c "kill -TERM \$\$"; echo next'
+  stdout: "next\n"
+  stderr: "Terminated"
+  exit_code: 0
+
+# SIGINT and SIGPIPE deaths are deliberately NOT announced (bash parity).
+- name: signal_death_sigint_silent
+  command: 'sh -c "kill -INT \$\$"; echo next'
+  stdout: "next\n"
+  stderr: ""
+  exit_code: 0
+
+# The diagnostic is suppressed inside a command substitution (bash parity).
+- name: signal_death_suppressed_in_command_sub
+  command: 'x=$(sh -c "kill -TERM \$\$"); echo next'
+  stdout: "next\n"
+  stderr: ""
+  exit_code: 0
+
+# A ( ) subshell still announces its foreground child's signal death.
+- name: signal_death_reported_in_subshell
+  command: '(sh -c "kill -TERM \$\$"); echo next'
+  stdout: "next\n"
+  stderr: "Terminated"
+  exit_code: 0
+
+# A missing command given as a PATHNAME (contains a slash) reports the
+# filesystem error, not "command not found"; a bare name still says
+# "command not found". Both are exit 127, matching bash.
+- name: missing_slash_path_says_no_such_file
+  command: '/no/such/path/cmd'
+  stdout: ""
+  stderr: "No such file or directory"
+  exit_code: 127
+
+- name: missing_relative_path_says_no_such_file
+  command: './no_such_rel_cmd'
+  stdout: ""
+  stderr: "No such file or directory"
+  exit_code: 127
+
+- name: missing_bare_name_says_command_not_found
+  command: 'nosuchcmd_xyz_98765'
+  stdout: ""
+  stderr: "command not found"
+  exit_code: 127

@@ -4,6 +4,46 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.598.0 (2026-07-03) - Fix: signal-death diagnostic for foreground externals + slash-path exec wording (reappraisal #16 Tier 2 executor-diagnostics cluster)
+- FIX. Reappraisal #16 Tier 2, executor-diagnostics cluster: two bash 5.2
+  divergences in the executor's failure diagnostics, each pinned to a live-bash
+  probe. Exit codes were already correct and are unchanged; only the stderr
+  text is new. New tests:
+  `tests/integration/job_control/test_signal_killed_diagnostic.py` (serial,
+  subprocess; expected wording computed via `signal.strsignal` for portability),
+  `tests/integration/command_resolution/test_exec_failure_wording.py`, and seven
+  promotable rows in `tests/behavioral/golden_cases.yaml`
+  (verified `--compare-bash`).
+- **Signal-killed foreground external now announced.** When a foreground
+  external command dies by a signal other than SIGINT/SIGPIPE, bash prints a
+  bash-style abnormal-termination line to stderr — "Terminated: 15",
+  "Segmentation fault: 11", etc. — even non-interactively, then continues; psh
+  was silent. Added `abnormal_termination_message()` (decodes a raw wait status
+  via `signal.strsignal`, the same libc text bash uses, so wording tracks the
+  host: "Terminated: 15" on macOS, "Terminated" on Linux, appending
+  "(core dumped)" when a core was written) and
+  `JobManager.report_abnormal_termination()`, called from the single foreground
+  external wait path in `ExternalExecutionStrategy`. SIGINT/SIGPIPE deaths stay
+  silent (bash parity).
+- **Suppressed inside command/process substitution, reported in subshells.**
+  bash suppresses the diagnostic inside command/process substitution but NOT in
+  a `( )` subshell. A new `in_substitution` flag on `ExecutionState` is set at
+  the `run_child_shell` substitution chokepoint (which serves exactly cmdsub +
+  procsub, never subshells) and copied through subshell adoption so a subshell
+  nested in a substitution stays silent too; the diagnostic is gated on it.
+  Deliberate documented divergences: for signals other than SIGTERM bash adds a
+  verbose "bash: line N: PID ... CMD" job header (psh emits just the signal
+  description); and psh has no exec-last-command optimization, so a signal death
+  that is the shell's LAST action, and pipeline-member deaths, differ from bash's
+  exec-optimization / column job-notification machinery.
+- **Slash-path missing command says "No such file or directory".** A nonexistent
+  command given as a PATHNAME (a name containing a slash) said "command not
+  found"; bash says "No such file or directory" (still exit 127).
+  `report_exec_failure` now reports a slash-containing pathname that ENOENTs as
+  "No such file or directory", reserving "command not found" for a bare
+  unresolved name. This is the shared chokepoint, so the in-pipeline inline-exec
+  path and the `command NAME` path get it too.
+
 ## 0.597.0 (2026-07-03) - Fix: fd-move [n]>&m-, csh >&word, exec all-or-nothing rollback, ANSI-C trailing \c (reappraisal #16 Tier 2 I/O + lexer cluster)
 - FIX. Reappraisal #16 Tier 2, I/O-redirect + lexer cluster: four bash 5.2
   divergences, each pinned to a live-bash probe and captured as golden cases

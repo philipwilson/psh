@@ -2,10 +2,31 @@
 
 import errno
 import os
+import signal
 import sys
 import termios
 from enum import Enum
 from typing import Dict, List, Literal, Optional, Sequence, Tuple, Union, overload
+
+
+def abnormal_termination_message(status: int) -> Optional[str]:
+    """bash's diagnostic for a foreground job killed by a signal.
+
+    Returns the signal's description — ``signal.strsignal()``, the same libc
+    text bash reports, e.g. ``Terminated: 15`` on macOS or ``Terminated`` on
+    Linux — with ``(core dumped)`` appended when a core was written. Returns
+    None for a normal exit, a stop, or the two signals bash deliberately does
+    NOT announce (SIGINT and SIGPIPE), so the caller stays silent there.
+    """
+    if not os.WIFSIGNALED(status):
+        return None
+    sig = os.WTERMSIG(status)
+    if sig in (signal.SIGINT, signal.SIGPIPE):
+        return None
+    message = signal.strsignal(sig) or f"Signal {sig}"
+    if os.WCOREDUMP(status):
+        message += " (core dumped)"
+    return message
 
 
 def exit_status_from_wait_status(status: int) -> int:
@@ -229,6 +250,34 @@ class JobManager:
         if self.shell_state is not None:
             return self.shell_state.stderr
         return sys.stderr
+
+    def report_abnormal_termination(self, job: Job) -> None:
+        """Announce a foreground job killed by a signal, the way bash does.
+
+        bash prints e.g. ``Terminated: 15`` / ``Segmentation fault: 11`` to
+        stderr — even non-interactively — when a foreground command dies by a
+        signal other than SIGINT/SIGPIPE, so a following command isn't preceded
+        by unexplained silence. The exit status (128+N) is set by the caller and
+        left unchanged; this only adds the diagnostic. The last process's status
+        is the one announced (it becomes ``$?``), matching bash.
+
+        (bash additionally prefixes a ``bash: line N: PID`` job header for
+        every signal except SIGTERM; psh emits just the signal description,
+        which is exact for SIGTERM and carries the same wording otherwise.)
+
+        Silent inside a command/process substitution — bash does not announce
+        signal deaths there, only in the main shell and ( ) subshells.
+        """
+        if self.shell_state is not None and self.shell_state.in_substitution:
+            return
+        if not job.processes:
+            return
+        status = job.processes[-1].status
+        if status is None:
+            return
+        message = abnormal_termination_message(status)
+        if message is not None:
+            print(message, file=self._notification_stream())
 
     def notify_completed_jobs(self):
         """Print notifications for completed background jobs."""
