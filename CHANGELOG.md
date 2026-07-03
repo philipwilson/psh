@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.583.0 (2026-07-03) - Fix: seed `IFS` as a real shell variable (appraisal #16 H3)
+- FIX (HIGH). Reappraisal #16 cluster H3 — psh never seeded `IFS` as a real
+  variable. It only used the default `<space><tab><newline>` as an internal
+  word-splitting FALLBACK, so the `IFS` *parameter* itself read EMPTY: `$IFS`
+  expanded to nothing, `declare -p IFS` reported "not found", and `${IFS+set}`
+  was empty.
+  - **Broke the ubiquitous save/restore idiom.** `OLD=$IFS; IFS=,; ...;
+    IFS=$OLD` saved an empty string and then restored `IFS` to EMPTY — which
+    means "no splitting" — silently corrupting all later word-splitting.
+  - **Fix (`psh/core/state.py`).** Seed `IFS` to the default
+    `<space><tab><newline>` as a real shell variable at `ShellState` init, in
+    one chokepoint: after the environment-import loop and after the export
+    observer is wired. Seeding with no explicit attributes means an inherited
+    exported `IFS` keeps its EXPORT attribute (`declare -x`) with its value
+    reset to the default, while a non-inherited `IFS` is a plain variable
+    (`declare --`) — both matching bash 5.2, which resets `IFS`'s VALUE at
+    startup regardless of the inherited value. The `set_variable` observer
+    re-syncs the export. `unset IFS` still falls back to default whitespace
+    splitting (unchanged `get_variable` default).
+  - **Deliberate remaining divergence (pre-existing, not H3):** `declare -p`
+    still renders control-char values (tab/newline) with double quotes and
+    literal bytes where bash uses ANSI-C `$'...'` quoting; the value itself is
+    correct. Left for a separate finding.
+  - **Tests.** `tests/unit/core/test_ifs_seed.py` (seeded value, not exported,
+    `+set`, length, `declare -p` prefix, save/restore round-trip, unset/empty
+    splitting, exported-env value-reset-but-export-kept); six new IFS golden
+    cases in `tests/behavioral/golden_cases.yaml` verified with `--compare-bash`.
+
 ## 0.582.0 (2026-07-03) - Fix: pipeline-tail `[[ ]]` crash + prefix-names expansion formatter corruption (appraisal #16 H2 + H4)
 - FIX (HIGH). Reappraisal #16 cluster H2 + H4 — two file-disjoint AST-node
   defects fixed together.
