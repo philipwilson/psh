@@ -95,11 +95,12 @@ class TestAssignDefaultExpansion:
         assert captured.out.strip() == "original"
 
     def test_positional_param_assign_error(self, shell, capsys):
-        """Test ${1:=default} should error (can't assign to positional)."""
-        shell.run_command('echo "${1:=default}"')
-        # Might error or just not assign
-        capsys.readouterr()
-        # Check if it errors or ignores
+        """${1:=default} aborts with bash's "cannot assign in this way"."""
+        rc = shell.run_command('echo "${1:=default}"')
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert captured.out == ""
+        assert "$1: cannot assign in this way" in captured.err
 
 
 class TestErrorIfUnsetExpansion:

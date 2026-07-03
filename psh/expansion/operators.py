@@ -188,6 +188,77 @@ class OperatorOpsMixin(_Base):
         # identity check is unchanged.
         return self.state.get_variable(var_name, cast(str, _UNSET)) is not _UNSET
 
+    @staticmethod
+    def _nonassignable_subject(var_name: str) -> Optional[str]:
+        """Error subject for :=/= on a target bash cannot assign through,
+        else None. A positional ($1) or special ($@/$*/$#/...) parameter
+        cannot be assigned: bash aborts with "$N: cannot assign in this way"
+        instead of silently returning the default."""
+        if var_name.isdigit():
+            return f"${var_name}"
+        if var_name in ('@', '*', '#', '?', '$', '!', '-'):
+            return f"${var_name}"
+        return None
+
+    def _reject_nonassignable(self, var_name: str) -> None:
+        """Abort a :=/= assignment to a positional/special parameter (bash)."""
+        subject = self._nonassignable_subject(var_name)
+        if subject is not None:
+            from ..core import ExpansionError
+            msg = f"{subject}: cannot assign in this way"
+            print(f"psh: {msg}", file=sys.stderr)
+            self.state.last_exit_code = 1
+            raise ExpansionError(msg, exit_code=1)
+
+    def _view_conditional(self, operator: str, elements: list, joiner: str,
+                          operand: Optional[str], qmark_subject: str,
+                          assign_error: str) -> list:
+        """Apply a default/alternate/assign/error operator to a multi-element
+        VIEW (``${a[@]}``, ``${a[*]}``, ``${@}``, ``${*}``), matching bash.
+
+        The COLON variants (``:-``/``:+``/``:=``/``:?``) test whether the
+        JOINED view is null; the non-colon variants test set-ness (any
+        element present) — NOT the element count, which was psh's bug:
+
+            a=("");     "${a[@]:+X}" -> ''   (joined view is null)
+            a=("" "");  "${a[@]:+X}" -> X    (joined view is a single space)
+
+        Returns the list of result fields.  ``:=``/``=`` and ``:?``/``?``
+        raise bash's error when the view is null/unset (an @/* view can never
+        be assigned, so ``:=`` never mutates; a set/non-null view keeps its
+        elements).
+
+        ``joiner`` is used only for the colon null-test (a space for @ views,
+        IFS[0] for * views); ``qmark_subject`` is the ``:?``/``?`` error
+        subject; ``assign_error`` is the full ``:=``/``=`` error text (bash's
+        wording differs for array vs positional views).
+        """
+        from ..core import ExpansionError
+        if operator.startswith(':'):
+            triggered = joiner.join(elements) == ''
+            base, empty_msg = operator[1], "parameter null or not set"
+        else:
+            triggered = len(elements) == 0
+            base, empty_msg = operator, "parameter not set"
+
+        if base == '-':
+            return [self._expand_operand(operand or '')] if triggered else list(elements)
+        if base == '+':
+            return [] if triggered else [self._expand_operand(operand or '')]
+        if base == '=':
+            if triggered:
+                print(f"psh: {assign_error}", file=sys.stderr)
+                self.state.last_exit_code = 1
+                raise ExpansionError(assign_error, exit_code=1)
+            return list(elements)
+        # base == '?'
+        if triggered:
+            msg = self.expand_string_variables(operand) if operand else empty_msg
+            print(f"psh: {qmark_subject}: {msg}", file=sys.stderr)
+            self.state.last_exit_code = 127
+            raise ExpansionError(f"{qmark_subject}: {msg}", exit_code=127)
+        return list(elements)
+
     def _apply_operator(self, operator: str, value: str,
                         operand: Optional[str],
                         var_name: str = '', is_set: bool = True) -> str:
@@ -213,8 +284,9 @@ class OperatorOpsMixin(_Base):
         elif operator == '=':
             if not is_set:
                 assert operand is not None
+                self._reject_nonassignable(var_name)
                 expanded_default = self._expand_operand(operand)
-                if var_name and not var_name.isdigit():
+                if var_name:
                     self.set_var_or_array_element(var_name, expanded_default)
                 return expanded_default
             return value
@@ -235,8 +307,9 @@ class OperatorOpsMixin(_Base):
         elif operator == ':=':
             if not value:
                 assert operand is not None
+                self._reject_nonassignable(var_name)
                 expanded_default = self._expand_operand(operand)
-                if var_name and not var_name.isdigit():
+                if var_name:
                     self.set_var_or_array_element(var_name, expanded_default)
                 return expanded_default
             return value
@@ -326,10 +399,11 @@ class OperatorOpsMixin(_Base):
             from ..interactive.prompt import PromptExpander
             return PromptExpander(self.shell).expand_full(value, readline_markers=False)
         if op == 'a':
-            return self._var_attr_flags(var_name)
+            return self._var_attr_flags(self._transform_name(var_name))
         if op == 'A':
-            flags = self._var_attr_flags(var_name)
-            assign = f"{var_name}={self._shell_quote(value)}"
+            name = self._transform_name(var_name)
+            flags = self._var_attr_flags(name)
+            assign = f"{name}={self._shell_quote(value)}"
             return f"declare -{flags} {assign}" if flags else assign
         if op in ('K', 'k'):
             # @K/@k on a scalar (or a single array element) behaves like @Q:
@@ -369,6 +443,18 @@ class OperatorOpsMixin(_Base):
                 out.append(s[i])
                 i += 1
         return ''.join(out)
+
+    def _transform_name(self, var_name: str) -> str:
+        """The variable NAME used by a ${var@A}/${var@a} transform.
+
+        A single array element (``a[1]``, ``m[k]``) reports the whole
+        array's name and attributes: bash's ``${a[1]@A}`` prints an
+        assignment to the array NAME (``declare -a a='2'``) and ``${a[1]@a}``
+        reports the array's flags, not the subscripted element.
+        """
+        if '[' in var_name and var_name.endswith(']'):
+            return self._resolve_array_name(var_name[:var_name.find('[')])
+        return var_name
 
     def _var_attr_flags(self, var_name: str) -> str:
         """Return the attribute-flag letters for ${var@a} (e.g. 'rx', '')."""

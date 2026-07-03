@@ -4,6 +4,38 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.596.0 (2026-07-03) - Fix: colon-operators test joined-nullness on @/* views; @A/@a strip subscript; reject positional/special :=/= (reappraisal #16 Tier 2 expansion-operators cluster)
+- FIX. Reappraisal #16 Tier 2, expansion-operators cluster: three parameter-
+  expansion defects on multi-element views, each pinned to bash 5.2 and
+  captured as golden cases plus a dedicated unit suite
+  (`tests/unit/expansion/test_view_operators_joined_nullness.py`).
+- **Colon operators on `@`/`*` views test the JOINED view for null, not the
+  element count**: `${a[@]:-D}`, `${a[@]:+X}`, `${a[*]:+X}`, `${@:-D}`, and
+  `${@:+X}` (and their `*` analogues) now decide "null" by whether the *joined*
+  view is empty — a space join for `@` views, IFS[0] for `*` views — matching
+  bash, instead of psh's old element-count test. So `a=("")` yields
+  `${a[@]:+X}` -> `` (joined view is null) while `a=("" "")` yields `X` (the
+  joined view is a single space). The non-colon variants (`${a[@]+X}`) still
+  test set-ness. A new `OperatorOpsMixin._view_conditional` is the single
+  authority both the quoted-fields path (`fields.py`) and the whole-array path
+  (`variable.py`) route through.
+- **`@A`/`@a` on a single array element report the array, not the element**:
+  `${a[1]@A}` now prints an assignment to the array NAME (`declare -a a='2'`)
+  and `${a[1]@a}` reports the array's flags, exactly as bash does (a subscript
+  reference carries the whole array's attributes). Associative elements
+  (`${m[k]@A}` -> `declare -A m='v'`) behave the same.
+- **`:=`/`=` on a positional or special parameter is rejected like bash**:
+  `${1:=x}`, `${@:=x}`, `${*:=x}`, `${#:=x}` etc. now abort with
+  `$N: cannot assign in this way` (exit 1) rather than silently returning the
+  default. Assign/`:=` on an `@`/`*` array view likewise raises bash's
+  `name[@]: bad array subscript`, since such a view can never be assigned.
+- **Truth-up (no behavior change)**: `GlobExpander` now carries an accurate
+  comment that glob results are sorted in byte (C-locale) order, a deliberate,
+  documented divergence from bash's `strcoll`-in-`LC_COLLATE` sort — the same
+  known limitation as `[[ < ]]`/`[ < ]` collation, not fixed here.
+- **Disclosed residual**: `@A` on an *unset* array element still diverges from
+  bash (out of scope for this cluster).
+
 ## 0.595.0 (2026-07-03) - Fix: mypy gate hole, expand_aliases toggle, HISTFILESIZE/HISTSIZE, validator/formatter (reappraisal #16 Tier 2 tooling cluster)
 - FIX. Reappraisal #16 Tier 2, tooling/cross-cutting + visitor cluster: five
   defects in the type gate, the alias-expansion option, history-size handling,
