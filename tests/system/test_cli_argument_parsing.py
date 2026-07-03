@@ -134,3 +134,53 @@ class TestLoneDashEndsOptions:
         result = run_psh('-', make_args_script(tmp_path), 'x')
         assert result.returncode == 0
         assert result.stdout == 'args:x n:1\n'
+
+
+class TestPosixShortOptions:
+    """bash-style POSIX short options (reappraisal #16 Tier-2): psh used to
+    reject -e/-u/-x/-v/-n/-f/-C and -s with exit 2. Pinned against bash 5.2."""
+
+    def test_errexit_aborts(self):
+        result = run_psh('-e', '-c', 'false; echo REACHED')
+        assert result.returncode == 1
+        assert 'REACHED' not in result.stdout
+
+    def test_xtrace_traces_to_stderr(self):
+        result = run_psh('-x', '-c', ':')
+        assert result.returncode == 0
+        assert '+ :' in result.stderr
+
+    def test_nounset_errors_on_unset(self):
+        result = run_psh('-u', '-c', 'echo $DEFINITELY_UNSET_XYZ')
+        assert result.returncode != 0
+        assert 'unbound variable' in result.stderr
+
+    def test_noexec_parses_without_running(self):
+        result = run_psh('-n', '-c', 'echo NEVER')
+        assert result.returncode == 0
+        assert result.stdout == ''
+
+    def test_dollar_dash_reflects_set_options(self):
+        # $- must contain the letters for the options set on the command line.
+        result = run_psh('-e', '-c', 'echo $-')
+        assert result.returncode == 0
+        assert 'e' in result.stdout.strip()
+
+    def test_cluster_sets_all(self):
+        result = run_psh('-eu', '-c', 'echo $-')
+        assert result.returncode == 0
+        flags = result.stdout.strip()
+        assert 'e' in flags and 'u' in flags
+
+    def test_dash_s_reads_stdin_with_positionals(self):
+        # -s: read commands from stdin; operands become $1, $2, ...; $0 stays
+        # the shell name.
+        result = run_psh('-s', 'foo', 'bar',
+                         stdin_input='echo "$1/$2/$#"\n')
+        assert result.returncode == 0
+        assert result.stdout == 'foo/bar/2\n'
+
+    def test_unknown_short_option_exits_2(self):
+        result = run_psh('-Z', '-c', ':')
+        assert result.returncode == 2
+        assert 'invalid option' in result.stderr

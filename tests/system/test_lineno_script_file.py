@@ -60,3 +60,25 @@ class TestLinenoScriptFile:
         _assert_matches_bash(
             tmp_path,
             '#!/bin/sh\necho $LINENO\necho $LINENO\n')
+
+    def test_lineno_not_shifted_by_preceding_continuation(self, tmp_path):
+        # Reappraisal #16 Tier-2: each backslash-newline continuation used to
+        # subtract 1 from every LATER $LINENO (pre-join happened before line
+        # numbering). Physical lines must be preserved: bash reports 3, 4.
+        _assert_matches_bash(
+            tmp_path,
+            ': \\\n:\necho $LINENO\necho $LINENO\n')
+
+    def test_lineno_not_shifted_by_two_continuations(self, tmp_path):
+        # A command spanning three physical lines (two continuations); the
+        # following echoes are on physical lines 4 and 5.
+        _assert_matches_bash(
+            tmp_path,
+            ': \\\n\\\n:\necho $LINENO\necho $LINENO\n')
+
+    def test_lineno_of_spanning_command(self, tmp_path):
+        # The command starting on line 2 spans to line 3; the next echo is on
+        # physical line 4.
+        _assert_matches_bash(
+            tmp_path,
+            'echo $LINENO\ntrue \\\n  arg\necho $LINENO\n')

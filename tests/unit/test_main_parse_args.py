@@ -85,9 +85,50 @@ class TestInvalidOptions:
         assert exc.value.code == 2
 
     def test_unknown_short_option_exits_2(self):
+        # -Z is not a recognized short option (bash rejects it too). The
+        # POSIX set-options -e/-u/-x/-v/-n/-f/-C and -s are now accepted.
         with pytest.raises(SystemExit) as exc:
-            parse_args(['-x', 'script.sh'])
+            parse_args(['-Z', 'script.sh'])
         assert exc.value.code == 2
+
+    def test_unknown_char_in_cluster_exits_2(self):
+        with pytest.raises(SystemExit) as exc:
+            parse_args(['-eZ', 'script.sh'])
+        assert exc.value.code == 2
+
+
+class TestPosixShortOptions:
+    """bash-style POSIX short options: -e/-u/-x/-v/-n/-f/-C, -s, clusters."""
+
+    def test_single_set_option(self):
+        opts, operands = parse_args(['-e', 'script.sh'])
+        assert opts['set_options'] == ['errexit']
+        assert operands == ['script.sh']
+
+    def test_cluster_maps_each_char(self):
+        opts, _ = parse_args(['-eux'])
+        assert opts['set_options'] == ['errexit', 'nounset', 'xtrace']
+
+    def test_all_finding_short_options(self):
+        opts, _ = parse_args(['-e', '-u', '-x', '-v', '-n', '-f', '-C'])
+        assert opts['set_options'] == [
+            'errexit', 'nounset', 'xtrace', 'verbose',
+            'noexec', 'noglob', 'noclobber']
+
+    def test_dash_s_sets_stdin_mode(self):
+        opts, operands = parse_args(['-s', 'foo', 'bar'])
+        assert opts['stdin_mode'] is True
+        assert operands == ['foo', 'bar']
+
+    def test_cluster_with_s_and_interactive(self):
+        opts, _ = parse_args(['-si'])
+        assert opts['stdin_mode'] is True
+        assert opts['force_interactive'] is True
+
+    def test_short_options_stop_at_operand(self):
+        opts, operands = parse_args(['-x', 'script.sh', '-e'])
+        assert opts['set_options'] == ['xtrace']
+        assert operands == ['script.sh', '-e']
 
 
 class TestHelpVersionFlags:

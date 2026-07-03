@@ -52,16 +52,20 @@ class FileInput(InputSource):
         self.file_path = file_path
         self.file: Optional[TextIO] = None
         self.line_number = 0
-        self.processed_lines: List[str] = []
+        self.lines: List[str] = []
         self.current_line = 0
-        self.preprocessed = False
+        self.loaded = False
 
     def __enter__(self):
         # Use surrogateescape so a non-UTF-8 byte in a script does not crash
         # the shell with an uncaught UnicodeDecodeError — bash processes script
         # bytes leniently (a stray byte just becomes a "command not found").
+        # newline='' disables universal-newline translation so an embedded CR
+        # (or a CRLF script's trailing \r) reaches the shell verbatim, exactly
+        # as bash reads the raw bytes — splitting only on \n. (The stdin path
+        # is unaffected; it still uses Python's default translation.)
         raw = open(self.file_path, 'r', encoding='utf-8',
-                   errors='surrogateescape')
+                   errors='surrogateescape', newline='')
         # Relocate the script-reading descriptor out of the user-visible range.
         # A plain open() lands on the lowest free fd (typically 3), so a script
         # doing `exec 3>&-` or the classic `exec 3>&1 1>&2 2>&3 3>&-` swap would
@@ -88,15 +92,21 @@ class FileInput(InputSource):
             return raw
         raw.close()  # release the low fd; the dup at high_fd stays open
         return os.fdopen(high_fd, 'r', encoding='utf-8',
-                         errors='surrogateescape')
+                         errors='surrogateescape', newline='')
 
     def __exit__(self, exc_type, _exc_val, _exc_tb):
         if self.file:
             self.file.close()
 
-    def _preprocess_file(self):
-        """Read entire file and preprocess line continuations."""
-        if self.preprocessed:
+    def _load_lines(self):
+        """Read the whole file and split into PHYSICAL lines.
+
+        We deliberately do NOT join backslash-newline continuations here — the
+        command accumulator does that while it gathers a logical command, so
+        physical line numbers stay intact for ``$LINENO`` (pre-joining shifted
+        every later line number down by the count of preceding continuations).
+        """
+        if self.loaded:
             return
 
         # Read entire file content (only reached inside the `with` block,
@@ -104,21 +114,18 @@ class FileInput(InputSource):
         assert self.file is not None
         content = self.file.read()
 
-        # Process line continuations
-        from .input_preprocessing import process_line_continuations
-        processed_content = process_line_continuations(content)
-
-        # Split back into lines
-        self.processed_lines = processed_content.split('\n')
-        self.preprocessed = True
+        # Split on newline only (the file was opened with newline='' so no CR
+        # translation happened); each element is one physical line.
+        self.lines = content.split('\n')
+        self.loaded = True
 
     def read_line(self) -> Optional[str]:
-        """Read the next line from the preprocessed file."""
-        if not self.preprocessed:
-            self._preprocess_file()
+        """Read the next physical line from the file."""
+        if not self.loaded:
+            self._load_lines()
 
-        if self.current_line < len(self.processed_lines):
-            line = self.processed_lines[self.current_line]
+        if self.current_line < len(self.lines):
+            line = self.lines[self.current_line]
             self.current_line += 1
             self.line_number += 1
             return line
@@ -138,19 +145,18 @@ class StringInput(InputSource):
     """Input source for reading commands from a string."""
 
     def __init__(self, command: str, name: str = "<command>"):
-        # Process line continuations before storing
-        from .input_preprocessing import process_line_continuations
-        processed_command = process_line_continuations(command)
-
-        # For run_command (single-line commands), return as one chunk
-        # For -c and scripts, split on newlines for line-by-line processing
-        # (needed for shopt options that affect tokenization of subsequent lines)
+        # Do NOT pre-join line continuations here: the command accumulator
+        # joins them while gathering a logical command, and pre-joining shifted
+        # $LINENO down by the count of preceding continuations (each joined-away
+        # newline lost a physical line number).
         if name == "<command>":
-            # Single command mode - return the whole command as one line
-            self.lines = [processed_command] if processed_command else []
+            # run_command(): the whole (possibly multi-line) string is one
+            # logical unit fed to the accumulator in a single chunk.
+            self.lines = [command] if command else []
         else:
-            # Script mode and -c mode - split into lines for multi-line processing
-            self.lines = processed_command.split('\n')
+            # Script / -c / stdin: split into PHYSICAL lines for line-by-line
+            # processing (also lets shopt settings affect later-line lexing).
+            self.lines = command.split('\n')
 
         self.current = 0
         self.name = name

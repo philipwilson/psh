@@ -2,7 +2,7 @@
 """Main entry point for psh when run as a module."""
 
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, cast
 
 from .scripting.visitor_modes import (
     handle_visitor_mode_for_command,
@@ -36,6 +36,12 @@ _FLAG_TABLE: Dict[str, List[Tuple[str, object]]] = {
     "--norc": [("norc", True)],
 }
 
+# POSIX short options that set a shell option (bash: -e -u -x -v -n -f -C).
+# Each maps to its long name via the option registry (the single source of
+# truth); a cluster like -eux enables all three. -s (stdin) and -i
+# (interactive) are handled separately as they are not shell options.
+_SHORT_SET_OPTIONS = frozenset("euxvnfC")
+
 HELP_TEXT = """Usage: psh [options] [script [args...]]
        psh [options] -c command [args...]
 
@@ -43,7 +49,10 @@ Python Shell (psh) - An educational Unix shell implementation
 
 Options:
   -c command       Execute command and exit
+  -s               Read commands from stdin; operands become positional params
   -i               Force interactive mode (load rc, set $- 'i' flag)
+  -e -u -x -v      Set shell options (errexit, nounset, xtrace, verbose)
+  -n -f -C         Set shell options (noexec, noglob, noclobber; -eux clusters)
   --               End of options; remaining arguments are operands
   -h, --help       Show this help message and exit
   -V, --version    Show version information and exit
@@ -124,9 +133,13 @@ def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
         "force_interactive": False,
         "ast_format": None,
         "command_mode": False,
+        "stdin_mode": False,
+        "set_options": [],
         "help": False,
         "version": False,
     }
+
+    from .core.option_registry import SHORT_TO_LONG
 
     i = 0
     while i < len(argv):
@@ -153,6 +166,24 @@ def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
             options["rcfile"], i = _value_option(argv, i, "--rcfile")
         elif arg == "--parser" or arg.startswith("--parser="):
             options["parser_type"], i = _value_option(argv, i, "--parser")
+        elif not arg.startswith("--") and len(arg) > 1:
+            # A single-dash short-option cluster: -e, -eux, -s, ... Each
+            # char sets a shell option (bash -e/-u/-x/-v/-n/-f/-C) or is -s
+            # (read stdin, remaining operands become positionals) or -i.
+            for ch in arg[1:]:
+                if ch in _SHORT_SET_OPTIONS:
+                    cast(List[str], options["set_options"]).append(
+                        SHORT_TO_LONG[ch])
+                elif ch == "s":
+                    options["stdin_mode"] = True
+                elif ch == "i":
+                    options["force_interactive"] = True
+                else:
+                    print(f"psh: -{ch}: invalid option", file=sys.stderr)
+                    print("Try 'psh --help' for more information.",
+                          file=sys.stderr)
+                    sys.exit(2)
+            i += 1
         else:
             print(f"psh: {arg}: invalid option", file=sys.stderr)
             print("Try 'psh --help' for more information.", file=sys.stderr)
@@ -205,14 +236,17 @@ def main():
     # POSIX `sh -c command_string [name [args...]]`: the command string is the
     # first operand, the next is $0, and the rest are $1, $2, ...
     command_mode = bool(opts["command_mode"])
+    stdin_mode = bool(opts["stdin_mode"])
     if command_mode and not operands:
         print("psh: -c: option requires an argument", file=sys.stderr)
         sys.exit(2)
 
     # The shell must know its run-mode at construction: bash sources ~/.pshrc,
     # loads history, and enables line editing only for an INTERACTIVE shell —
-    # never for `-c` or a script file (_init_interactive decides this).
-    init_script_name = operands[0] if operands and not command_mode else None
+    # never for `-c` or a script file (_init_interactive decides this). With
+    # -s the first operand is a POSITIONAL parameter, not a script name.
+    init_script_name = (operands[0] if operands and not command_mode
+                        and not stdin_mode else None)
 
     visitor_mode = any([opts["format_only"], opts["metrics_only"],
                         opts["security_only"], opts["lint_only"],
@@ -247,6 +281,11 @@ def main():
     # Shell directly and never get handlers installed; the interactive loop
     # additionally re-runs setup and claims the foreground.
     shell.interactive_manager.signal_manager.setup_signal_handlers()
+
+    # Apply POSIX short options set on the command line (-e/-u/-x/-v/-n/-f/-C)
+    # BEFORE any input runs, so they govern the whole run and show up in $-.
+    for long_name in cast(List[str], opts["set_options"]):
+        shell.state.options[long_name] = True
 
     # Apply --parser selection
     if opts["parser_type"] is not None:
@@ -289,7 +328,7 @@ def main():
         exit_code = shell.script_manager.source_processor.execute_as_main(
             input_source, add_to_history=False)
         sys.exit(exit_code)
-    elif operands:
+    elif operands and not stdin_mode:
         # Script file execution
         script_path = operands[0]
         script_args = operands[1:]
@@ -302,6 +341,13 @@ def main():
         exit_code = shell.script_manager.run_script(script_path, script_args)
         sys.exit(exit_code)
     else:
+        # No script operand (or -s): commands come from stdin. Under -s any
+        # remaining operands are the positional parameters ($1, $2, ...); $0
+        # stays the shell name (bash: `echo ... | bash -s a b` → $0=bash).
+        if stdin_mode:
+            shell.state.is_script_mode = True
+            shell.state.options['stdin_mode'] = True  # 's' in $-
+            shell.state.positional_params = list(operands)
         if sys.stdin.isatty():
             # Interactive REPL (TTY attached)
             shell.interactive_manager.run_interactive_loop()

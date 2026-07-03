@@ -3904,3 +3904,21 @@
   stdout: ""
   stderr: "command not found"
   exit_code: 127
+
+# =============================================================================
+# SCRIPTING — LINENO across line continuations; CR data integrity
+# (reappraisal #16 Tier-2). Each backslash-newline continuation used to
+# subtract 1 from every later $LINENO; a script file used to translate CR→LF.
+# =============================================================================
+
+- name: lineno_after_continuation
+  command: ": \\\n:\necho $LINENO"
+  stdout: "3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lineno_after_two_continuations
+  command: ": \\\n\\\n:\necho $LINENO"
+  stdout: "4\n"
+  stderr: ""
+  exit_code: 0
