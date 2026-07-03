@@ -150,13 +150,19 @@ class HistoryManager(InteractiveComponent):
         shell to exit clobber every other shell sharing the file), this holds
         an exclusive lock, re-reads the current on-disk history (picking up
         entries other shells appended after we loaded), appends only OUR new
-        entries, trims to ``max_history_size``, and writes the merged result
-        back. Concurrent shells therefore serialize on the lock instead of
+        entries, trims to ``$HISTFILESIZE`` (bash; falling back to
+        ``max_history_size`` when unset), and writes the merged result back.
+        Concurrent shells therefore serialize on the lock instead of
         overwriting one another.
         """
         new_entries = self.state.history[self._file_synced_len:]
         if not new_entries:
             return
+        # bash trims the FILE to $HISTFILESIZE (distinct from $HISTSIZE, which
+        # caps the in-memory list); fall back to max_history_size when unset.
+        file_limit = self.state.max_history_file_size
+        if file_limit is None:
+            file_limit = self.state.max_history_size
         try:
             # O_RDWR|O_CREAT so a missing file is created; 0o600 keeps history
             # private (the old open(,'w') left it at the umask default).
@@ -167,8 +173,8 @@ class HistoryManager(InteractiveComponent):
                 try:
                     existing = [ln.rstrip('\n') for ln in f if ln.strip()]
                     combined = existing + new_entries
-                    if len(combined) > self.state.max_history_size:
-                        combined = combined[-self.state.max_history_size:]
+                    if len(combined) > file_limit:
+                        combined = combined[-file_limit:]
                     f.seek(0)
                     f.truncate()
                     if combined:

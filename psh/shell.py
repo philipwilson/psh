@@ -32,6 +32,7 @@ from .scripting.base import ScriptManager
 
 if TYPE_CHECKING:
     from .executor.core import ExecutorVisitor
+    from .lexer.token_types import Token
 
 
 class Shell:
@@ -354,6 +355,23 @@ class Shell:
         if not self.state.options.get('history', True):
             return
         self.interactive_manager.history_manager.add_to_history(command)
+
+    def expand_aliases(self, tokens: 'List[Token]') -> 'List[Token]':
+        """Alias-expand a token stream at the lex->parse boundary.
+
+        The single gate for the ``expand_aliases`` shopt option: ``shopt -u
+        expand_aliases`` makes this a pass-through, so aliases stop expanding
+        for subsequently-parsed commands (bash). psh keeps the option ON by
+        default in every mode, whereas bash defaults it OFF non-interactively —
+        a deliberate divergence so the many `-c`/script tests that rely on
+        aliases keep working. Because psh expands over the whole logical
+        command at once, ``shopt -u`` on the SAME line as the use does not
+        disable it (the same parse-time model that lets psh honor a same-line
+        ``alias`` definition).
+        """
+        if not self.state.options.get('expand_aliases', True):
+            return tokens
+        return self.alias_manager.expand_aliases(tokens)
 
     def run_command(self, command_string: str, add_to_history: bool = True,
                     base_line: int = 1) -> int:

@@ -349,3 +349,45 @@ class TestWordAnalysisStructuralFindings:
     def test_for_over_command_sub_security_unquoted_substitution(self):
         types = _security_types("for f in $(ls); do echo $f; done")
         assert "UNQUOTED_SUBSTITUTION" in types
+
+
+class TestAssignBuiltinsDefineVariables:
+    """Assigning builtins (printf -v, mapfile/readarray, getopts) register the
+    variables they define, so a later reference is not a false 'undefined
+    variable' warning (reappraisal #16 Tier-2)."""
+
+    def test_printf_v_defines_variable(self):
+        assert not any(
+            "undefined variable" in m
+            for m in _validator_messages('printf -v myvar %s hi\necho "$myvar"')
+        )
+
+    def test_printf_without_v_does_not_suppress_others(self):
+        assert any(
+            "undefined variable '$other'" in m
+            for m in _validator_messages('printf "%s" "$other"')
+        )
+
+    def test_mapfile_defines_array(self):
+        assert not any(
+            "undefined variable" in m
+            for m in _validator_messages('mapfile arr < f\necho "${arr[@]}"')
+        )
+
+    def test_readarray_defines_array(self):
+        assert not any(
+            "undefined variable" in m
+            for m in _validator_messages('readarray rows < f\necho "${rows[@]}"')
+        )
+
+    def test_getopts_defines_name_and_optarg(self):
+        src = 'while getopts "ab:" opt; do echo "$opt $OPTARG"; done'
+        assert not any(
+            "undefined variable" in m for m in _validator_messages(src)
+        )
+
+    def test_getopts_still_flags_unrelated_undefined(self):
+        src = 'while getopts "a" o; do echo "$other"; done'
+        assert any(
+            "undefined variable '$other'" in m for m in _validator_messages(src)
+        )
