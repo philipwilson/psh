@@ -4,6 +4,35 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.594.0 (2026-07-03) - Fix: secondary builtin flags (reappraisal #16 Tier 2 builtins-flags cluster)
+- FIX. Reappraisal #16 Tier 2, builtins-flags cluster: a set of secondary
+  flags on existing builtins that psh silently ignored or mishandled, each
+  pinned against bash 5.2 and captured as golden cases (verified with
+  `--compare-bash`).
+- **`[[ -o OPTNAME ]]` / `[ -o OPTNAME ]` shell-option test**: both bracket
+  forms now evaluate `-o` as a unary shell-option predicate (true when the
+  named `set -o` option is on, false when off or unknown), matching bash.
+- **`[[ -R NAME ]]` nameref test**: the `-R` unary operator is true only when
+  NAME is a set nameref variable (false for a plain variable or a missing
+  name). The recursive-descent test parser gained `-R` recognition.
+- **`exec -a NAME` / `exec -c` / `exec -l`**: `exec` now honours the bash flags
+  — `-a NAME` sets argv[0] of the replacement process, `-c` runs it in an empty
+  environment, and `-l` prepends `-` to argv[0] to launch a login shell.
+- **`pushd -n` / `popd -n`**: the `-n` flag manipulates the directory stack
+  without changing the current directory (push/pop the entry only).
+- **`unset -vf`**: passing both `-v` and `-f` is now rejected with bash's
+  "cannot simultaneously unset a function and a variable" error (status 1).
+- **`type` consults the command hash table**: a hashed command reports as
+  `NAME is hashed (PATH)` and `type -t` reports `file`, matching bash.
+- **`printf '%()T'`**: an empty time conversion uses a default format instead
+  of erroring.
+- **`umask -S MODE`**: `umask -S` with a MODE operand echoes the symbolic
+  result (e.g. `u=rwx,g=rx,o=rx`) rather than applying it silently.
+- Deliberate residuals (edge/pre-existing, tracked): `pushd -n` with no operand
+  prints extra dirs, `pushd -n` path normalization, `type -P` on a
+  hashed-but-not-in-PATH name, `[[ -o ]]` on options psh does not model, and
+  the cosmetic `psh:` error prefix.
+
 ## 0.593.0 (2026-07-03) - Fix: core/options bash divergences (reappraisal #16 Tier 2 core/options cluster)
 - FIX. Reappraisal #16 Tier 2, core/options cluster: seven bash-5.2
   divergences in the shell-state / options surface, each probe-pinned via a
