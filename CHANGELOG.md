@@ -4,6 +4,53 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.585.0 (2026-07-03) - Fix: POSIX bracket classes punct/cntrl/graph/print + no FutureWarning leak; nocasematch/extglob patsub (appraisal #16 H6 + 3 MED)
+- FIX (HIGH). Reappraisal #16 cluster H6 — `punct`, `cntrl`, `graph`, and
+  `print` were absent from `_POSIX_CLASSES`, so the literal `[:class:]` text
+  reached Python `re`/stdlib `fnmatch` as a nested set: the match was wrong AND
+  a `FutureWarning: Possible nested set` leaked to stderr in default mode. Added
+  the four ranges (`psh/expansion/glob.py`), each written to embed safely in
+  BOTH a Python `re` character class and `fnmatch` (no leading `!`/`^`, no bare
+  `]`/`\`). `glob.glob` splits on `/` before matching, so the pathname engine
+  uses a `punct` variant with `/` dropped (`_POSIX_CLASSES_PATHNAME`) — a
+  filename can never contain `/`, so the match set is identical. The fix reaches
+  every site: `[[ ]]`, `case`, prefix/suffix removal, and pathname globbing.
+- FIX (MED, `nocasematch` in patsub). `shopt -s nocasematch` was honored by
+  `case`/`[[` but never threaded into `${v/pat/r}` (nor its `/#` and `/%`
+  forms). Following bash, it now applies to substitution — folding literals,
+  explicit ranges (`[A-Z]`), and sets (`[abc]`) — but NOT to `#`/`%` removal or
+  case modification. The `[:upper:]`/`[:lower:]` POSIX classes are kept
+  case-SENSITIVE (bash does not fold them) by emitting only those two inside a
+  scoped `(?-i:...)` group; a new `ignorecase` flag threads through the single
+  shared converter chain (`shell_pattern_to_regex` →
+  `glob_to_regex_body`/`extglob_to_regex` → `_convert_pattern` →
+  `_bracket_to_regex`) and the backtracking matcher. The `ignorecase=False`
+  path is byte-for-byte identical to before, so the change is confined to the
+  nocase+bracket slice; only the four patsub `substitute_*` callers opt in.
+- FIX (MED, front-anchored patsub with extglob). `substitute_prefix` requested
+  an anchored regex, but the extglob converter appends a trailing `$`, so `/#`
+  demanded a full-string match and `${v/#+(a)/Z}` on `aaXaa` left the value
+  unchanged. It now anchors at the start only (as the suffix path already did),
+  so the unanchored body matches a real prefix.
+- FIX (MED, extglob non-final path). `_expand_extglob` ran the matcher only on
+  the basename, leaving a leading extglob component literal
+  (`@(d1|d2)/file`). It now walks the pattern one path component at a time,
+  matching extglob, plain-glob, and literal components per level.
+- **Verification.** Pinned to bash 5.2.26 (C locale) with a truth table before
+  fixing (12 POSIX classes × ASCII chars × `[[ ]]`/`case`/removal). Full gate
+  green (9,894 passed), ruff and mypy clean; new golden cases pass under
+  `--compare-bash`.
+- **Deliberate remaining divergences (pre-existing sibling paths, NOT this
+  fix):** `case`/`[[` + `nocasematch` + `[:upper:]`/`[:lower:]` share the same
+  over-fold — the shared converter chokepoint is now ready to close it later;
+  the `=~` regex-match operator's POSIX classes leak a `FutureWarning` at a
+  separate site (`enhanced_test_evaluator.py`); extglob patsub leftmost-longest
+  alternation (`${v/#@(a|aa)/Z}`) is a Python-`re` alternation-ordering limit.
+- **Tests.** `tests/unit/expansion/test_posix_char_classes.py`,
+  `test_patsub_nocase_and_anchoring.py`,
+  `tests/integration/test_extglob_nonfinal_path.py`, plus new golden cases in
+  `tests/behavioral/golden_cases.yaml`.
+
 ## 0.584.0 (2026-07-03) - Fix: wrap arithmetic literals to signed 64-bit; negative-shift masking; base-N literal errors (appraisal #16 H5 + 2 MED)
 - FIX (HIGH). Reappraisal #16 cluster H5 — integer **literals** at or above
   `2**63` were not wrapped to signed 64-bit. Every arithmetic *operation*

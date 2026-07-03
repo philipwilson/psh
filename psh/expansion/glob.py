@@ -10,9 +10,11 @@ if TYPE_CHECKING:
 
 
 # POSIX character classes -> the character ranges to substitute *inside* an
-# existing bracket expression. Only classes that map to bracket-safe ranges are
-# included (punct/cntrl/print/graph contain bracket metacharacters and are left
-# untranslated).
+# existing bracket expression. Each range is written so it embeds safely both
+# in a Python ``re`` character class AND in stdlib ``fnmatch``: no leading
+# ``!``/``^`` (fnmatch reads those as negation) and no bare ``]``/``\`` (which
+# would close the class or escape). punct/graph/print/cntrl therefore appear as
+# reordered ranges rather than literal metacharacter lists.
 _POSIX_CLASSES = {
     'alpha': 'a-zA-Z',
     'digit': '0-9',
@@ -22,7 +24,18 @@ _POSIX_CLASSES = {
     'xdigit': '0-9A-Fa-f',
     'blank': ' \t',
     'space': ' \t\n\r\x0b\x0c',
+    # 0x21-0x2f, 0x3a-0x40, 0x5b-0x60, 0x7b-0x7e (': ' first so no leading '!').
+    'punct': ':-@!-/[-`{-~',
+    'graph': '"-~!',            # 0x21-0x7e ('!' moved to the end)
+    'print': ' -~',             # 0x20-0x7e
+    'cntrl': '\x00-\x1f\x7f',   # 0x00-0x1f and 0x7f (literal control bytes)
 }
+
+# The pathname (``glob.glob``) path splits patterns on ``/`` before matching, so
+# a bracket range must not carry a literal ``/``. punct is the only class that
+# spans ``/`` (0x2f): drop it there — no filename can contain ``/``, so the
+# matched set is identical. Every other class is reused verbatim.
+_POSIX_CLASSES_PATHNAME = {**_POSIX_CLASSES, 'punct': ':-@!-.[-`{-~'}
 
 _POSIX_CLASS_RE = re.compile(r'\[:(\w+):\]')
 
@@ -55,8 +68,9 @@ def normalize_bracket_expressions(pattern: str) -> str:
     pathname expansion and case/``[[ ]]`` pattern matching so all of them agree.
     """
     # POSIX classes first (so a negated class like [^[:digit:]] still works).
+    # The pathname table drops '/' from punct (glob.glob splits on '/').
     pattern = _POSIX_CLASS_RE.sub(
-        lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)), pattern
+        lambda m: _POSIX_CLASSES_PATHNAME.get(m.group(1), m.group(0)), pattern
     )
     # Bracket negation: [^ -> [! when the '[' is not backslash-escaped.
     pattern = re.sub(r'(?<!\\)\[\^', '[!', pattern)
@@ -143,22 +157,70 @@ class GlobExpander:
         return current
 
     def _expand_extglob(self, pattern: str) -> List[str]:
-        """Expand an extglob pattern against the filesystem."""
-        from .extglob import expand_extglob
+        """Expand an extglob pattern against the filesystem.
 
+        Walks the pattern one path component at a time so extglob operators
+        work in NON-final components too (``@(dir1|dir2)/file``), not just the
+        basename. Plain-glob and literal components in the same pattern are
+        matched normally. Returns an empty list on no match (the caller keeps
+        the pattern literal).
+        """
         dotglob = self.state.options.get('dotglob', False)
 
-        # Determine directory and filename pattern
-        dirname = os.path.dirname(pattern)
-        basename = os.path.basename(pattern)
+        sep = os.sep
+        if pattern.startswith(sep):
+            bases = [sep]
+            rest = pattern[len(sep):]
+        else:
+            bases = ['']
+            rest = pattern
 
-        if not dirname:
-            dirname = '.'
+        for comp in rest.split(sep):
+            if comp == '':
+                continue
+            bases = self._match_glob_component(comp, bases, dotglob)
+            if not bases:
+                return []
+        return sorted(bases)
 
-        matches = expand_extglob(basename, dirname, dotglob=dotglob)
+    def _match_glob_component(self, comp: str, bases: List[str],
+                              dotglob: bool) -> List[str]:
+        """Match a single path component against the entries of each base dir.
 
-        if matches:
-            if dirname != '.':
-                matches = [os.path.join(dirname, m) for m in matches]
-            return sorted(matches)
-        return []
+        Handles extglob (``@(...)`` etc.), plain glob (``*?[...]``), and literal
+        components uniformly, returning the joined paths that matched.
+        """
+        from .extglob import contains_extglob, expand_extglob
+
+        result: List[str] = []
+        if self.state.options.get('extglob', False) and contains_extglob(comp):
+            # Extglob component: reuse the per-directory matcher, which does its
+            # own dotfile filtering.
+            for base in bases:
+                listing_dir = base if base else '.'
+                for name in expand_extglob(comp, listing_dir, dotglob=dotglob):
+                    result.append(os.path.join(base, name) if base else name)
+            return result
+
+        if has_glob_metacharacters(comp):
+            regex = re.compile(fnmatch.translate(
+                normalize_bracket_expressions(comp)))
+            is_pattern = True
+        else:
+            regex = None  # literal component: exact-name match (existence check)
+            is_pattern = False
+
+        for base in bases:
+            listing_dir = base if base else '.'
+            try:
+                entries = os.listdir(listing_dir)
+            except OSError:
+                continue
+            for entry in entries:
+                if (is_pattern and not dotglob
+                        and entry.startswith('.') and not comp.startswith('.')):
+                    continue
+                if (entry == comp if regex is None
+                        else regex.match(entry) is not None):
+                    result.append(os.path.join(base, entry) if base else entry)
+        return result

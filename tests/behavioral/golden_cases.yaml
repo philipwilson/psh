@@ -3166,3 +3166,130 @@
   stdout: "ab_x ab_y\nab_x ab_y\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# POSIX CHARACTER CLASSES — punct/cntrl/graph/print now supported everywhere,
+# with no FutureWarning leaking to stderr (reappraisal #16 H6).
+# =============================================================================
+
+- name: posix_class_punct_bracket
+  command: '[[ "!" == [[:punct:]] ]] && echo Y || echo N'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posix_class_punct_bracket_negative
+  command: '[[ "a" == [[:punct:]] ]] && echo Y || echo N'
+  stdout: "N\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posix_class_graph_bracket
+  command: '[[ "~" == [[:graph:]] ]] && echo Y || echo N'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posix_class_print_space
+  command: '[[ " " == [[:print:]] ]] && echo Y || echo N'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posix_class_graph_space_excluded
+  command: '[[ " " == [[:graph:]] ]] && echo Y || echo N'
+  stdout: "N\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posix_class_punct_case
+  command: 'case "@" in [[:punct:]]) echo Y;; *) echo N;; esac'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posix_class_punct_prefix_removal
+  command: 'v="!x"; echo "${v#[[:punct:]]}"'
+  stdout: "x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posix_class_graph_suffix_removal
+  command: 'v="ab~"; echo "${v%[[:graph:]]}"'
+  stdout: "ab\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posix_class_negated_bracket
+  command: '[[ "a" == [^[:punct:]] ]] && echo Y || echo N'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# PATTERN SUBSTITUTION — nocasematch threading + front-anchored extglob
+# (reappraisal #16 H6 cluster).
+# =============================================================================
+
+- name: patsub_nocasematch_all
+  command: 'shopt -s nocasematch; v=ABC; echo "${v//a/X}"'
+  stdout: "XBC\n"
+  stderr: ""
+  exit_code: 0
+
+- name: patsub_nocasematch_prefix
+  command: 'shopt -s nocasematch; v=ABC; echo "${v/#a/X}"'
+  stdout: "XBC\n"
+  stderr: ""
+  exit_code: 0
+
+- name: patsub_nocasematch_suffix
+  command: 'shopt -s nocasematch; v=ABC; echo "${v/%c/X}"'
+  stdout: "ABX\n"
+  stderr: ""
+  exit_code: 0
+
+- name: removal_not_nocasematch
+  command: 'shopt -s nocasematch; v=ABC; echo "${v#a}"'
+  stdout: "ABC\n"
+  stderr: ""
+  exit_code: 0
+
+- name: patsub_front_anchored_extglob_plus
+  command: 'shopt -s extglob; v=aaXaa; echo "${v/#+(a)/Z}"'
+  stdout: "ZXaa\n"
+  stderr: ""
+  exit_code: 0
+
+- name: patsub_front_anchored_extglob_at
+  command: 'shopt -s extglob; v=aabb; echo "${v/#@(aa)/Z}"'
+  stdout: "Zbb\n"
+  stderr: ""
+  exit_code: 0
+
+# nocasematch folds literals/ranges/sets in patsub but leaves the [:upper:]/
+# [:lower:] POSIX classes case-sensitive (reappraisal #16 regression guard —
+# the first cut over-folded them via blanket re.IGNORECASE).
+- name: patsub_nocasematch_upper_class_case_sensitive
+  command: 'shopt -s nocasematch; v=Hello; echo "${v//[[:upper:]]/x}"'
+  stdout: "xello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: patsub_nocasematch_lower_class_case_sensitive
+  command: 'shopt -s nocasematch; v=Hello; echo "${v//[[:lower:]]/X}"'
+  stdout: "HXXXX\n"
+  stderr: ""
+  exit_code: 0
+
+- name: patsub_nocasematch_range_still_folds
+  command: 'shopt -s nocasematch; v=Hello; echo "${v//[A-Z]/x}"'
+  stdout: "xxxxx\n"
+  stderr: ""
+  exit_code: 0
+
+- name: patsub_nocasematch_negated_upper_class
+  command: 'shopt -s nocasematch; v=Hello; echo "${v//[^[:upper:]]/_}"'
+  stdout: "H____\n"
+  stderr: ""
+  exit_code: 0
