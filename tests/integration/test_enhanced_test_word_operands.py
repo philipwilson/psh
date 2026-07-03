@@ -136,6 +136,54 @@ def test_bash_rematch_no_match_clears(isolated_shell_with_temp_dir):
 
 
 # ---------------------------------------------------------------------------
+# =~ POSIX bracket classes (reappraisal #16 ledger item e)
+# ---------------------------------------------------------------------------
+# bash ERE accepts [[:class:]]; Python re needs the classes translated (else a
+# wrong match + "FutureWarning: Possible nested set"). Grouped classes
+# (([[:alpha:]]+)) additionally used to fail at PARSE time because the inner
+# [[/]] mis-tokenize as double brackets and the first ]] was read as the test
+# terminator — now guarded by paren depth in _parse_regex_operand.
+
+# (setup, cmd, expected_rc)
+REGEX_POSIX_CASES = [
+    ("", '[[ "!" =~ [[:punct:]] ]]', 0),
+    ("", '[[ h =~ [[:alpha:]] ]]', 0),
+    ("", '[[ 5 =~ [[:alpha:]] ]]', 1),
+    ("", '[[ 5 =~ [[:digit:]] ]]', 0),
+    ("", '[[ a =~ [^[:digit:]] ]]', 0),          # negated class
+    ("", '[[ 5 =~ [^[:digit:]] ]]', 1),
+    ("", '[[ abc123 =~ ^[[:alpha:]]+[[:digit:]]+$ ]]', 0),
+    ("", '[[ Hello =~ [[:upper:]][[:lower:]]+ ]]', 0),
+    ("", '[[ abc =~ ([[:alpha:]]+) ]]', 0),      # parenthesized (parse fix)
+    ("", '[[ ab1 =~ ([[:alpha:]]+)([[:digit:]]+) ]]', 0),
+]
+
+
+@pytest.mark.parametrize("setup,cmd,expected", REGEX_POSIX_CASES)
+def test_regex_posix_classes(isolated_shell_with_temp_dir, setup, cmd, expected):
+    shell = isolated_shell_with_temp_dir
+    if setup:
+        assert shell.run_command(setup) == 0
+    assert shell.run_command(cmd) == expected
+
+
+def test_regex_posix_class_grouped_capture(isolated_shell_with_temp_dir):
+    """Capture groups over POSIX classes populate BASH_REMATCH (the fix that
+    also required the parser to keep a class-internal ]] inside ()."""
+    shell = isolated_shell_with_temp_dir
+    assert shell.run_command('[[ abc123 =~ ([[:alpha:]]+)([[:digit:]]+) ]]') == 0
+    assert shell.run_command('echo "${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"') == 0
+
+
+def test_regex_plain_ere_unchanged(isolated_shell_with_temp_dir):
+    """EREs without POSIX classes are untouched by the class translation."""
+    shell = isolated_shell_with_temp_dir
+    assert shell.run_command('[[ abc =~ ^a.c$ ]]') == 0
+    assert shell.run_command('[[ a-b =~ [a-z]-[a-z] ]]') == 0
+    assert shell.run_command('[[ 12 =~ [0-9]{2} ]]') == 0
+
+
+# ---------------------------------------------------------------------------
 # whole-operand is_quoted corpus
 # ---------------------------------------------------------------------------
 # (test_src, expected_is_quoted_for_right_operand)

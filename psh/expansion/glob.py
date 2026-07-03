@@ -60,6 +60,24 @@ def has_glob_metacharacters(s: str) -> bool:
     return any(c in GLOB_METACHARS for c in s)
 
 
+def translate_posix_classes(pattern: str) -> str:
+    """Replace POSIX ``[:class:]`` names with their equivalent character
+    ranges, leaving everything else untouched.
+
+    Shared with the ``[[ =~ ]]`` regex path (``enhanced_test_evaluator``): a
+    bash ``=~`` operand is an ERE where ``[[:punct:]]`` is valid syntax, but
+    Python's ``re`` has no ``[:class:]`` support and warns ``Possible nested
+    set`` for the bare ``[[`` — so the same class table the glob engine uses
+    is spliced in, and NO glob metacharacter handling is applied (``=~`` is a
+    regex, not a glob). Unknown class names (not real POSIX classes) are left
+    verbatim. A ``[:class:]`` that was ``re.escape``-d (a quoted operand part)
+    is not matched here, so quoted text stays literal.
+    """
+    return _POSIX_CLASS_RE.sub(
+        lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)), pattern
+    )
+
+
 def normalize_bracket_expressions(pattern: str) -> str:
     """Make shell bracket expressions understood by Python's fnmatch/glob.
 

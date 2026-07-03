@@ -68,7 +68,10 @@ def match_shell_pattern(string: str, pattern: str,
     asterisk — this is how quoted pattern text is kept literal), bracket
     classes, and extglob operators when enabled. When ``ignorecase`` is
     True (the ``nocasematch`` shopt), matching is case-insensitive — used
-    by ``[[ == ]]`` and ``case`` matching.
+    by ``[[ == ]]`` and ``case`` matching. ``ignorecase`` is forwarded to
+    the regex builder (not only applied as ``re.IGNORECASE``) so that
+    ``[[:upper:]]``/``[[:lower:]]`` stay case-sensitive under
+    ``nocasematch``, matching bash (see ``_bracket_to_regex``).
     """
     from .extglob import _contains_negation, extglob_fullmatch
     if extglob_enabled and _contains_negation(pattern):
@@ -76,6 +79,6 @@ def match_shell_pattern(string: str, pattern: str,
         return extglob_fullmatch(pattern, string, ignorecase=ignorecase)
 
     regex = PatternMatcher().shell_pattern_to_regex(
-        pattern, extglob_enabled=extglob_enabled)
+        pattern, extglob_enabled=extglob_enabled, ignorecase=ignorecase)
     flags = re.IGNORECASE if ignorecase else 0
     return re.fullmatch(regex, string, flags) is not None

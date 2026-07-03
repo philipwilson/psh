@@ -142,7 +142,14 @@ class TestExpressionEvaluator:
             # capture groups (cleared to an empty array on no match), like bash.
             # Quoted sub-parts are matched LITERALLY, unquoted parts are live
             # regex source (bash) — built per-part from the operand Word.
-            regex_src = self._rhs_regex(expr.right_word)
+            # bash's ERE accepts POSIX classes ([[:punct:]]); Python's re does
+            # not (and warns "Possible nested set"), so translate them via the
+            # shared glob-engine table. Only the classes are shared — =~ is a
+            # regex, not a glob, so no glob metacharacter handling is applied.
+            # Under nocasematch bash uses REG_ICASE, which folds [[:upper:]]/
+            # [[:lower:]] too (unlike ==/case), so no case protection here.
+            from ..expansion.glob import translate_posix_classes
+            regex_src = translate_posix_classes(self._rhs_regex(expr.right_word))
             flags = (re.IGNORECASE
                      if self.state.options.get('nocasematch', False) else 0)
             try:
