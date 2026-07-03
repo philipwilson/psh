@@ -177,7 +177,7 @@ class ParameterExpansion:
                             + self.render_replacement(replacement, value[p:p + length])
                             + value[p + length:])
             return value
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
+        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob, ignorecase=ic)
         return re.sub(regex,
                       lambda m: self.render_replacement(replacement, m.group(0)),
                       value, count=1, flags=re.IGNORECASE if ic else 0)
@@ -188,7 +188,7 @@ class ParameterExpansion:
         ic = self._nocasematch
         if self._neg(pattern):
             return self._substitute_all_negation(value, pattern, replacement, ic)
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
+        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob, ignorecase=ic)
         compiled = re.compile(regex, re.IGNORECASE if ic else 0)
         # Patterns that can match the empty string (e.g. extglob *(q), ?(q))
         # need bash's empty-match semantics: Python's re.sub emits an extra
@@ -274,7 +274,7 @@ class ParameterExpansion:
         # the unanchored body matches a prefix. (An end-anchored regex — which
         # the extglob converter would produce for from_start=True — wrongly
         # demanded a full-string match, so /# behaved like a whole-value match.)
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob)
+        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob, ignorecase=ic)
         match = re.match(regex, value, re.IGNORECASE if ic else 0)
         if match:
             return (self.render_replacement(replacement, match.group(0))
@@ -293,7 +293,7 @@ class ParameterExpansion:
                     return (value[:i]
                             + self.render_replacement(replacement, value[i:]))
             return value
-        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob)
+        regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob, ignorecase=ic)
         # Convert to end-anchored regex
         regex = regex.rstrip('$') + '$'
 

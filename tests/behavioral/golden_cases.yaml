@@ -3266,3 +3266,30 @@
   stdout: "Zbb\n"
   stderr: ""
   exit_code: 0
+
+# nocasematch folds literals/ranges/sets in patsub but leaves the [:upper:]/
+# [:lower:] POSIX classes case-sensitive (reappraisal #16 regression guard —
+# the first cut over-folded them via blanket re.IGNORECASE).
+- name: patsub_nocasematch_upper_class_case_sensitive
+  command: 'shopt -s nocasematch; v=Hello; echo "${v//[[:upper:]]/x}"'
+  stdout: "xello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: patsub_nocasematch_lower_class_case_sensitive
+  command: 'shopt -s nocasematch; v=Hello; echo "${v//[[:lower:]]/X}"'
+  stdout: "HXXXX\n"
+  stderr: ""
+  exit_code: 0
+
+- name: patsub_nocasematch_range_still_folds
+  command: 'shopt -s nocasematch; v=Hello; echo "${v//[A-Z]/x}"'
+  stdout: "xxxxx\n"
+  stderr: ""
+  exit_code: 0
+
+- name: patsub_nocasematch_negated_upper_class
+  command: 'shopt -s nocasematch; v=Hello; echo "${v//[^[:upper:]]/_}"'
+  stdout: "H____\n"
+  stderr: ""
+  exit_code: 0

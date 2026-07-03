@@ -89,7 +89,8 @@ def _split_pattern_list(inner: str) -> List[str]:
 
 def extglob_to_regex(pattern: str, anchored: bool = True,
                      from_start: bool = True,
-                     for_pathname: bool = False) -> str:
+                     for_pathname: bool = False,
+                     ic: bool = False) -> str:
     """Convert a shell pattern (with extglob operators) to a Python regex.
 
     Args:
@@ -97,8 +98,10 @@ def extglob_to_regex(pattern: str, anchored: bool = True,
         anchored: If True, anchor the regex (^ and/or $).
         from_start: If anchored, anchor at start (True) or just at end (False).
         for_pathname: If True, * and ? do not match '/'.
+        ic: If True (``nocasematch``), keep ``[:upper:]``/``[:lower:]``
+            case-sensitive; the caller still applies ``re.IGNORECASE``.
     """
-    regex = _convert_pattern(pattern, for_pathname, top_level=True)
+    regex = _convert_pattern(pattern, for_pathname, top_level=True, ic=ic)
 
     if anchored:
         if from_start:
@@ -109,18 +112,20 @@ def extglob_to_regex(pattern: str, anchored: bool = True,
 
 
 def glob_to_regex_body(pattern: str, for_pathname: bool = False,
-                       extglob: bool = True) -> str:
+                       extglob: bool = True, ic: bool = False) -> str:
     """Convert a shell glob pattern to an *unanchored* regex body.
 
     The public entry point for the shared glob→regex conversion. Callers that
     need anchoring add ``^``/``$`` themselves (see ``extglob_to_regex`` and
-    ``PatternMatcher.shell_pattern_to_regex``).
+    ``PatternMatcher.shell_pattern_to_regex``). ``ic`` (``nocasematch``) keeps
+    ``[:upper:]``/``[:lower:]`` case-sensitive; see ``_bracket_to_regex``.
     """
-    return _convert_pattern(pattern, for_pathname, extglob, top_level=True)
+    return _convert_pattern(pattern, for_pathname, extglob, top_level=True,
+                            ic=ic)
 
 
 def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,
-                     top_level: bool = False) -> str:
+                     top_level: bool = False, ic: bool = False) -> str:
     """Recursively convert a shell pattern to regex.
 
     Args:
@@ -129,6 +134,9 @@ def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,
         extglob: If True, interpret ``?(``/``*(``/``+(``/``@(``/``!(`` as extglob
             operators. Set False for plain-glob conversion (e.g. parameter
             expansion when extglob is off), where those prefixes are literal.
+        ic: If True (``nocasematch``), bracket expressions keep
+            ``[:upper:]``/``[:lower:]`` case-sensitive (see
+            ``_bracket_to_regex``); the caller applies ``re.IGNORECASE``.
 
     This is the single source of truth for shell-glob → regex conversion,
     shared by extglob matching and parameter-expansion pattern operators.
@@ -154,7 +162,7 @@ def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,
                 inner = pattern[i + 2:close]
                 alternatives = _split_pattern_list(inner)
                 # Recursively convert each alternative
-                alt_regexes = [_convert_pattern(alt, for_pathname, extglob) for alt in alternatives]
+                alt_regexes = [_convert_pattern(alt, for_pathname, extglob, ic=ic) for alt in alternatives]
                 alt_group = '|'.join(alt_regexes)
 
                 if ch == '?':
@@ -206,7 +214,7 @@ def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,
             # _bracket_to_regex translates the content for Python's re.
             end = _bracket_end(pattern, i)
             if end is not None:
-                result.append(_bracket_to_regex(pattern[i + 1:end - 1]))
+                result.append(_bracket_to_regex(pattern[i + 1:end - 1], ic))
                 i = end
                 continue
             result.append(re.escape('['))  # unterminated: '[' is literal
@@ -296,7 +304,7 @@ def _bracket_end(pattern: str, i: int) -> Optional[int]:
     return j + 1 if j < len(pattern) else None
 
 
-def _bracket_to_regex(content: str) -> str:
+def _bracket_to_regex(content: str, ic: bool = False) -> str:
     """Convert raw bracket-expression CONTENT (the text between ``[`` and
     ``]``) to a Python-re character class.
 
@@ -309,6 +317,19 @@ def _bracket_to_regex(content: str) -> str:
     nothing — or, negated (``[!z-a]``), any one character. The returned
     class always compiles, so an invalid set inside a larger pattern
     can never crash it.
+
+    ``ic`` (the ``nocasematch`` shopt) is subtle. bash's case-insensitive
+    matching folds literals, ranges (``[A-Z]``), sets (``[abc]``) and most
+    classes, but it leaves the ``[:upper:]`` / ``[:lower:]`` classes
+    case-SENSITIVE — they keep meaning "an actually-uppercase/lowercase
+    character" (verified against bash 5.2: ``shopt -s nocasematch;
+    ${v//[[:upper:]]/x}`` on ``Hello`` -> ``xello``, only the ``H``). The
+    caller applies the ``re.IGNORECASE`` flag, which would wrongly fold the
+    ``A-Z`` this function substitutes for ``[:upper:]``. So when ``ic`` is
+    set we emit ``[:upper:]`` / ``[:lower:]`` inside a ``(?-i:...)`` scoped
+    group (immune to the ambient flag) and combine it with the rest of the
+    bracket — which still folds — by alternation (or a negative-lookahead
+    atom when the bracket is negated).
     """
     negate = ''
     if content[:1] in ('!', '^'):
@@ -335,9 +356,39 @@ def _bracket_to_regex(content: str) -> str:
         out.append(ch)
         i += 1
     from .glob import _POSIX_CLASS_RE, _POSIX_CLASSES
-    body = _POSIX_CLASS_RE.sub(
-        lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)), ''.join(out))
-    regex = f'[{negate}{body}]'
+    body = ''.join(out)
+
+    if not ic:
+        translated = _POSIX_CLASS_RE.sub(
+            lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)), body)
+        regex = f'[{negate}{translated}]'
+    else:
+        # Case-insensitive: protect [:upper:]/[:lower:] from the ambient
+        # IGNORECASE flag while letting everything else fold normally.
+        has_upper = '[:upper:]' in body
+        has_lower = '[:lower:]' in body
+        rest = body.replace('[:upper:]', '').replace('[:lower:]', '')
+        rest = _POSIX_CLASS_RE.sub(
+            lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)), rest)
+        alts = []
+        if has_upper:
+            alts.append('(?-i:[A-Z])')
+        if has_lower:
+            alts.append('(?-i:[a-z])')
+        if rest:
+            alts.append(f'[{rest}]')  # folds under the caller's IGNORECASE
+        group = '|'.join(alts)
+        if not alts:
+            regex = r'[^\s\S]'  # empty bracket: matches nothing
+        elif negate:
+            # One char that is NONE of the alternatives (matches newline too,
+            # like a real negated class, so use [\s\S] not '.').
+            regex = rf'(?:(?!(?:{group}))[\s\S])'
+        elif len(alts) > 1:
+            regex = f'(?:{group})'
+        else:
+            regex = group
+
     try:
         re.compile(regex)
     except re.error:
@@ -352,9 +403,10 @@ def _bracket_match(cls: str, ch: str, ic: bool) -> bool:
 
     ``_bracket_to_regex`` guarantees a compilable class (an invalid set
     becomes its bash-verified match-nothing / match-any substitute), so no
-    ``re.error`` guard is needed here.
+    ``re.error`` guard is needed here. ``ic`` is threaded through so
+    ``[:upper:]`` / ``[:lower:]`` stay case-sensitive under ``nocasematch``.
     """
-    return re.match(_bracket_to_regex(cls), ch,
+    return re.match(_bracket_to_regex(cls, ic), ch,
                     re.IGNORECASE if ic else 0) is not None
 
 

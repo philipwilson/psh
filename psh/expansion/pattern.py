@@ -16,7 +16,8 @@ class PatternMatcher:
 
     def shell_pattern_to_regex(self, pattern: str, anchored: bool = False,
                                from_start: bool = True,
-                               extglob_enabled: bool = False) -> str:
+                               extglob_enabled: bool = False,
+                               ignorecase: bool = False) -> str:
         """
         Convert shell glob pattern to Python regex.
 
@@ -25,6 +26,10 @@ class PatternMatcher:
             anchored: If True, pattern must match from start or end
             from_start: If anchored, whether to anchor at start (True) or end (False)
             extglob_enabled: If True and pattern contains extglob, use extglob converter
+            ignorecase: If True (``nocasematch``), keep ``[:upper:]``/
+                ``[:lower:]`` case-sensitive even though the caller applies
+                ``re.IGNORECASE`` — bash folds literals/ranges/sets but not
+                those two classes (see ``_bracket_to_regex``).
 
         A pattern whose regex cannot compile (e.g. the reversed range
         ``[z-a]``) yields the never-matching ``(?!)`` — bash quietly
@@ -35,14 +40,14 @@ class PatternMatcher:
         from .extglob import contains_extglob, extglob_to_regex, glob_to_regex_body
         if extglob_enabled and contains_extglob(pattern):
             regex = extglob_to_regex(pattern, anchored=anchored,
-                                     from_start=from_start)
+                                     from_start=from_start, ic=ignorecase)
         else:
             # Plain glob: reuse the shared converter (extglob operators are
             # literal here). This also handles a leading ']' in a class
             # (e.g. [], [!]]), which the former inline loop produced an
             # invalid empty class for.
             regex = glob_to_regex_body(pattern, for_pathname=False,
-                                       extglob=False)
+                                       extglob=False, ic=ignorecase)
             if anchored and from_start:
                 regex = '^' + regex
                 # (suffix matching: callers add the '$' themselves)
