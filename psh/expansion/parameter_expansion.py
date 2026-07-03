@@ -67,11 +67,36 @@ class ParameterExpansion:
         ``${v/a!(b)c/r}``) — cannot be expressed as a Python regex (see
         ``extglob._extglob_consume``), so those operators match span-by-span via
         the matcher. Non-negation patterns keep the fast regex path unchanged.
+
+        Used by the operators whose regex already yields the correct match
+        *extent* (prefix/suffix REMOVAL scans every candidate length; suffix
+        substitution ``/%`` end-anchors so its regex backtracks to the longest;
+        case ops match a single char): there, only negation forces the matcher.
+        The unanchored SUBSTITUTION operators need ``_use_matcher`` instead.
         """
         if not self._extglob:
             return False
         from .extglob import _contains_negation
         return _contains_negation(pattern)
+
+    def _use_matcher(self, pattern: str) -> bool:
+        """Whether an unanchored substitution operator must use the matcher.
+
+        ``${v/pat/r}`` / ``${v//pat/r}`` / ``${v/#pat/r}`` need the leftmost
+        match's LONGEST extent, but Python ``re`` alternation is leftmost-*match*:
+        it commits to the first alternative that lets the overall regex succeed,
+        never the longest — ``${v/#@(a|aa)/Z}`` on ``aaX`` gives ``ZaX`` not
+        ``ZX``, and even ``@(a|ab)b`` on ``abb`` stops at the first success
+        rather than extending to the whole string. The backtracking matcher
+        enumerates every reachable end index and takes the max, i.e. POSIX
+        leftmost-longest, so any extglob group (negation, which also isn't
+        regex-expressible, OR an alternation) routes through it; plain globs keep
+        the fast regex path.
+        """
+        if not self._extglob:
+            return False
+        from .extglob import contains_extglob
+        return contains_extglob(pattern)
 
     # Pattern removal
     def _prefix_match_regex(self, pattern: str):
@@ -167,15 +192,25 @@ class ParameterExpansion:
                          replacement: Union[str, list]) -> str:
         """Replace first match."""
         ic = self._nocasematch
-        if self._neg(pattern):
+        if self._use_matcher(pattern):
             from .extglob import extglob_match_at
             n = len(value)
+            # A zero-width match at end-of-subject (i.e. an empty value) is
+            # dropped by bash for negation !(x) but emitted for *(x)/plain *;
+            # only negation suppresses it. (bash's separate suppression of the
+            # empty match for ?(x) on an empty value is a per-quantifier quirk
+            # not derivable from the extent; the plain-regex path diverged there
+            # too — left as-is.)
+            suppress_end_empty = self._neg(pattern)
             for p in range(n + 1):
                 length = extglob_match_at(pattern, value, p, ignorecase=ic)
-                if length is not None and not (length == 0 and p == n):
-                    return (value[:p]
-                            + self.render_replacement(replacement, value[p:p + length])
-                            + value[p + length:])
+                if length is None:
+                    continue
+                if length == 0 and p == n and suppress_end_empty:
+                    continue
+                return (value[:p]
+                        + self.render_replacement(replacement, value[p:p + length])
+                        + value[p + length:])
             return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob, ignorecase=ic)
         return re.sub(regex,
@@ -188,6 +223,11 @@ class ParameterExpansion:
         ic = self._nocasematch
         if self._neg(pattern):
             return self._substitute_all_negation(value, pattern, replacement, ic)
+        if self._use_matcher(pattern):
+            # Non-negation extglob: the matcher gives leftmost-LONGEST extents
+            # (Python re alternation is leftmost-match). Empty-match semantics
+            # match the regex empty-aware scan used for plain globs below.
+            return self._substitute_all_matcher(value, pattern, replacement, ic)
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=False, extglob_enabled=self._extglob, ignorecase=ic)
         compiled = re.compile(regex, re.IGNORECASE if ic else 0)
         # Patterns that can match the empty string (e.g. extglob *(q), ?(q))
@@ -232,6 +272,41 @@ class ParameterExpansion:
                 pos += 1
         return ''.join(out)
 
+    def _substitute_all_matcher(self, value: str, pattern: str,
+                                replacement: Union[str, list],
+                                ignorecase: bool = False) -> str:
+        """Global substitution for non-negation extglob patterns.
+
+        Uses the extglob backtracking matcher (``extglob_match_at`` →
+        leftmost-longest extent) rather than a regex, because Python ``re``
+        alternation is leftmost-*match* (``${v//@(a|aa)/Z}`` on ``aaX`` must
+        give ``ZX`` not ``ZaX``). The scan is otherwise identical to
+        ``_substitute_all_empty_aware`` (the regex path used for plain globs):
+        left to right, and the zero-width match at the very end of a non-empty
+        subject is suppressed, matching bash.
+        """
+        from .extglob import extglob_match_at
+        out: List[str] = []
+        pos = 0
+        n = len(value)
+        while pos <= n:
+            length = extglob_match_at(pattern, value, pos, ignorecase=ignorecase)
+            if length is not None and length > 0:
+                out.append(self.render_replacement(replacement, value[pos:pos + length]))
+                pos += length
+            elif length is not None and not (pos == n and n > 0):
+                # zero-width match, allowed (not the suppressed end-of-string
+                # match of a non-empty subject)
+                out.append(self.render_replacement(replacement, ''))
+                if pos < n:
+                    out.append(value[pos])
+                pos += 1
+            else:
+                if pos < n:
+                    out.append(value[pos])
+                pos += 1
+        return ''.join(out)
+
     def _substitute_all_negation(self, value: str, pattern: str,
                                  replacement: Union[str, list],
                                  ignorecase: bool = False) -> str:
@@ -263,7 +338,7 @@ class ParameterExpansion:
                           replacement: Union[str, list]) -> str:
         """Replace prefix match."""
         ic = self._nocasematch
-        if self._neg(pattern):
+        if self._use_matcher(pattern):
             from .extglob import extglob_match_at
             length = extglob_match_at(pattern, value, 0, ignorecase=ic)
             if length is not None:

@@ -244,6 +244,39 @@
   stderr: ""
   exit_code: 0
 
+# extglob alternation is leftmost-LONGEST (POSIX), not leftmost-match — see
+# reappraisal #16 follow-up (f). Python re alternation picks the first
+# alternative that lets the match succeed; bash picks the longest.
+- name: extglob_alt_leftmost_longest_prefix
+  command: 'shopt -s extglob; v=aaX; echo "${v/#@(a|aa)/Z}"'
+  stdout: "ZX\n"
+  stderr: ""
+  exit_code: 0
+
+- name: extglob_alt_leftmost_longest_first
+  command: 'shopt -s extglob; v=aaX; echo "${v/@(a|aa)/Z}"'
+  stdout: "ZX\n"
+  stderr: ""
+  exit_code: 0
+
+- name: extglob_alt_leftmost_longest_all
+  command: 'shopt -s extglob; v=aaXaa; echo "${v//@(a|aa)/Z}"'
+  stdout: "ZXZ\n"
+  stderr: ""
+  exit_code: 0
+
+- name: extglob_alt_backtrack_forced_by_trailing_literal
+  command: 'shopt -s extglob; v=abb; echo "${v/#@(a|ab)b/Z}"'
+  stdout: "Z\n"
+  stderr: ""
+  exit_code: 0
+
+- name: extglob_nested_alt_leftmost_longest
+  command: 'shopt -s extglob; v=bbX; echo "${v/@(a|@(b|bb))/Z}"'
+  stdout: "ZX\n"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # WORD SPLITTING
 # =============================================================================

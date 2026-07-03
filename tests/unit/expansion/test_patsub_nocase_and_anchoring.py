@@ -158,3 +158,87 @@ class TestFrontAnchoredExtglobPatsub:
         captured_shell.clear_output()
         captured_shell.run_command('v=aaXaa; echo "${v/%+(a)/Z}"')
         assert captured_shell.get_stdout() == "aaXZ\n"
+
+
+class TestExtglobAlternationLeftmostLongest:
+    """Extglob alternation matches leftmost-LONGEST (POSIX), not leftmost-match.
+
+    Reappraisal #16 follow-up (f): the unanchored substitution operators
+    ``${v/pat/r}`` / ``${v//pat/r}`` / ``${v/#pat/r}`` routed non-negation
+    extglob through a Python ``re``, whose alternation is leftmost-*match* — it
+    commits to the first alternative that lets the regex succeed rather than the
+    longest. So ``${v/#@(a|aa)/Z}`` on ``aaX`` gave ``ZaX`` (matched ``a``)
+    instead of bash's ``ZX`` (matched ``aa``). These now route through the
+    backtracking matcher, which enumerates every reachable end and takes the max.
+    All expected values pinned to bash 5.2.
+    """
+
+    def setup_shell(self, captured_shell):
+        captured_shell.run_command('shopt -s extglob')
+
+    def _check(self, captured_shell, command, expected):
+        self.setup_shell(captured_shell)
+        captured_shell.clear_output()
+        captured_shell.run_command(command)
+        assert captured_shell.get_stdout() == expected
+
+    def test_prefix_longest_alternative(self, captured_shell):
+        self._check(captured_shell, 'v=aaX; echo "${v/#@(a|aa)/Z}"', "ZX\n")
+
+    def test_prefix_order_independent(self, captured_shell):
+        # Leftmost-longest is order-independent: @(aa|a) == @(a|aa).
+        self._check(captured_shell, 'v=aaX; echo "${v/#@(aa|a)/Z}"', "ZX\n")
+
+    def test_first_longest_alternative(self, captured_shell):
+        self._check(captured_shell, 'v=aaX; echo "${v/@(a|aa)/Z}"', "ZX\n")
+
+    def test_first_longest_at_interior_position(self, captured_shell):
+        self._check(captured_shell, 'v=XaaY; echo "${v/@(a|aa)/Z}"', "XZY\n")
+
+    def test_first_shorter_alt_when_longer_cannot_complete(self, captured_shell):
+        # @(a|ab) on 'abb': 'ab' can't be followed by the rest as a longer
+        # prefix, so the leftmost-longest match at pos 0 is 'ab'.
+        self._check(captured_shell, 'v=abb; echo "${v/@(a|ab)/Z}"', "Zb\n")
+
+    def test_first_backtrack_forced_by_trailing_literal(self, captured_shell):
+        # @(a|ab)b on 'abb': re would commit to 'a'+'b' (stop at first success);
+        # leftmost-longest extends the group to 'ab' so 'abb' matches whole.
+        self._check(captured_shell, 'v=abb; echo "${v/#@(a|ab)b/Z}"', "Z\n")
+
+    def test_all_longest_each_position(self, captured_shell):
+        self._check(captured_shell, 'v=aaXaa; echo "${v//@(a|aa)/Z}"', "ZXZ\n")
+
+    def test_all_longest_consumes_pairs(self, captured_shell):
+        self._check(captured_shell, 'v=aaa; echo "${v//@(a|aa)/Z}"', "ZZ\n")
+
+    def test_all_longest_mixed(self, captured_shell):
+        self._check(captured_shell, 'v=aabb; echo "${v//@(a|aa)/-}"', "-bb\n")
+
+    def test_optional_alternation_longest_first(self, captured_shell):
+        # ?(a|aa) is empty-capable AND alternating: longest wins ('aa').
+        self._check(captured_shell, 'v=aaX; echo "${v/?(a|aa)/Z}"', "ZX\n")
+
+    def test_optional_alternation_longest_prefix(self, captured_shell):
+        self._check(captured_shell, 'v=aaX; echo "${v/#?(a|aa)/Z}"', "ZX\n")
+
+    def test_optional_alternation_longest_all(self, captured_shell):
+        self._check(captured_shell, 'v=aaa; echo "${v//?(a|aa)/Z}"', "ZZ\n")
+
+    def test_nested_alternation_first(self, captured_shell):
+        self._check(captured_shell, 'v=bbX; echo "${v/@(a|@(b|bb))/Z}"', "ZX\n")
+
+    def test_nested_alternation_prefix(self, captured_shell):
+        self._check(captured_shell, 'v=bbX; echo "${v/#@(a|@(b|bb))/Z}"', "ZX\n")
+
+    def test_empty_capable_closure_still_emits_empty_match(self, captured_shell):
+        # Regression guard: *(a)/plain * on an EMPTY value still substitute the
+        # empty match (bash), unlike the negation/optional forms — the matcher
+        # scan must not over-suppress.
+        self._check(captured_shell, 'v=; echo "${v/*(a)/-}"', "-\n")
+        self._check(captured_shell, 'v=; echo "${v//*(a)/-}"', "-\n")
+        self._check(captured_shell, 'v=; echo "${v/#*(a)/-}"', "-\n")
+
+    def test_negation_empty_value_suppressed(self, captured_shell):
+        # Negation !(x) on an empty value yields no substitution (bash).
+        self._check(captured_shell, 'v=; echo "[${v/!(x)/-}]"', "[]\n")
+        self._check(captured_shell, 'v=; echo "[${v//!(x)/-}]"', "[]\n")
