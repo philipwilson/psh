@@ -176,10 +176,12 @@ history          # Show command history
 history 10       # Show last 10 commands
 ```
 
-History *expansion* is fully supported in interactive mode: event
+History *expansion* is supported in interactive mode: event
 designators (`!!`, `!n`, `!-n`, `!string`, `!?string?`), word designators
 (`!$`, `!^`, `!*`, `!!:n`, `!!:n-m`), the `:h`/`:t`/`:r`/`:e`/`:s`/`:g&`/`:p`
-modifiers, and `^old^new` quick substitution all match bash.
+modifiers, and `^old^new` quick substitution all match bash. The `:q`/`:x`
+word-quoting modifiers and the `!#` (current-line) event designator are not
+yet supported.
 
 ### Job Control
 
@@ -337,9 +339,6 @@ echo ${BASH_SOURCE[0]}  # Not available (empty)
 echo ${BASH_LINENO[0]}  # Not available (empty)
 echo ${FUNCNAME[0]}     # Current function name works...
 echo ${FUNCNAME[1]}     # ...but the rest of the call stack is not populated
-
-# Variable name prefix matching is incomplete
-echo ${!PATH*}          # Lists ALL variables, not just PATH-prefixed ones
 ```
 
 ## 17.3 Behavioral Differences
@@ -571,7 +570,7 @@ fi
 | Extended glob patterns | Yes | Yes | ?() *() +() @() !() (enable extglob before the line) |
 | read options | Yes | Partial | -r -d -p -t -n -N -s -a -u supported; -e/-i (readline editing) not |
 | command history (`history`) | Yes | Yes | Listing past commands (interactive) |
-| History expansion (!!, !n) | Yes | Yes | Full support (interactive; event/word designators + :h/:t/:r/:e/:s/:g& modifiers + ^old^new) |
+| History expansion (!!, !n) | Yes | Yes | Full support for interactive event/word designators + :h/:t/:r/:e/:s/:g& modifiers + ^old^new; :q/:x modifiers and !# designator not yet supported |
 | Coprocesses | Yes | No | Not implemented |
 | Programmable completion | Yes | No | Basic tab completion only |
 | Namerefs (declare -n / local -n) | Yes | Yes | Scalar and array-element targets; chains; local -n |
@@ -712,6 +711,7 @@ grep -E 'trap .*RETURN' script.sh
 
 # Not supported:
 # - RETURN traps (DEBUG / ERR ARE supported)
+# - History expansion :q/:x word-quoting modifiers and the !# event designator
 # - Coprocesses (coproc)
 # - Programmable completion (complete, compgen)
 # - caller builtin
