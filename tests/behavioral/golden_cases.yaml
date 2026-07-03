@@ -1073,6 +1073,37 @@
   stderr: "hello"
   exit_code: 0
 
+# H1 (appraisal #16, a regression from Cluster C): `n>&m` makes fd n a snapshot
+# of m's CURRENT target; a later `m>...` reassigns m without disturbing n. The
+# builtin's own output must follow fd n's snapshot, not an alias of the stream
+# object (which the later redirect clobbers).
+- name: redirect_dup_source_reassigned
+  command: 'echo hi 1>&2 2>/dev/null'
+  stdout: ""
+  stderr: "hi"
+  exit_code: 0
+
+- name: redirect_swap_idiom_builtin
+  command: 'echo hi 3>&1 1>&2 2>&3 3>&-'
+  stdout: ""
+  stderr: "hi"
+  exit_code: 0
+
+# `exec 1>&-` closes fd 1 permanently: a builtin write then fails with EBADF
+# (bash: write error), and fd 1 is NOT reopened by an unrelated redirect...
+- name: redirect_exec_close_stdout_then_builtin
+  command: 'exec 1>&-; echo hi'
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+# ...but a redirect that REOPENS fd 1 (here `1>&2`) makes the builtin write land.
+- name: redirect_exec_close_then_reopen_fd1
+  command: 'exec 1>&-; echo a 1>&2'
+  stdout: ""
+  stderr: "a"
+  exit_code: 0
+
 # Cluster C1 (appraisal #15): a redirect on an in-process builtin reaches
 # the children it spawns (external command / pipeline / sourced file).
 - name: redirect_command_external_devnull_no_leak
