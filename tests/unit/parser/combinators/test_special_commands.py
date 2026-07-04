@@ -56,7 +56,10 @@ class TestArithmeticCommands:
         result = parsers.arithmetic_command.parse(tokens, 0)
         assert result.success is True
         assert isinstance(result.value, ArithmeticEvaluation)
-        assert result.value.expression == "$x * 2 + $y"
+        # The combinator now reconstructs the expression via the shared
+        # collector (psh/lexer/token_stream.py), matching the recursive descent
+        # parser byte-for-byte (spaces only between adjacent WORDs).
+        assert result.value.expression == "$x* 2 +$y"
 
     def test_nested_parentheses_in_arithmetic(self):
         """Test arithmetic with nested parentheses."""
@@ -77,7 +80,8 @@ class TestArithmeticCommands:
         result = parsers.arithmetic_command.parse(tokens, 0)
         assert result.success is True
         assert isinstance(result.value, ArithmeticEvaluation)
-        assert result.value.expression == "( 3 + 4 ) * 2"
+        # Matches the recursive descent parser's shared-collector reconstruction.
+        assert result.value.expression == "(3 + 4)* 2"
 
     def test_unterminated_arithmetic_command(self):
         """Test error on unterminated arithmetic command."""

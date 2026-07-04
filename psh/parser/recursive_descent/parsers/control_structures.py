@@ -257,8 +257,15 @@ class ControlStructureParser(ParserSubcomponent):
             condition = self.parser.arithmetic.parse_arithmetic_section(";")
             if condition == "":
                 condition = None
+            # The second ';' is mandatory: a C-style for header has exactly two
+            # semicolons (three sections, any may be empty). Without this guard a
+            # one-semicolon header like ``for ((i=0; i<3))`` would parse with an
+            # empty update and loop forever; bash rejects it. (The collector now
+            # stops the condition at ``))``, so a missing ';' surfaces here.)
             if self.parser.match(TokenType.SEMICOLON):
                 self.parser.advance()  # consume ;
+            else:
+                raise self.parser.error("Expected ';' after for loop condition")
         elif self.parser.match(TokenType.DOUBLE_SEMICOLON):
             # Handle ;; case - both init and condition are effectively empty
             self.parser.advance()  # consume ;;

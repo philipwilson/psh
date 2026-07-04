@@ -4,7 +4,7 @@ import fcntl
 import os
 import stat
 import sys
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, List, TextIO, Tuple
 
 from ..ast_nodes import Redirect
 from .planner import RedirectPlan, RedirectPlanner
@@ -16,6 +16,14 @@ if TYPE_CHECKING:
 def _dup2_preserve_target(opened_fd: int, target_fd: int):
     """dup2() helper that avoids closing target_fd when FDs already match."""
     if opened_fd == target_fd:
+        # open() happened to land exactly on target_fd, so no dup2 is needed.
+        # But dup2 is also what CLEARS O_CLOEXEC: Python opens fds
+        # non-inheritable by default, so without dup2 the raw fd stays
+        # CLOEXEC and a child (e.g. `cat /dev/fd/3 3<data`) can't inherit it —
+        # it sees EBADF where bash succeeds. Clear CLOEXEC here so the shortcut
+        # is behaviorally identical to the dup2 path (dup2 yields an
+        # inheritable fd).
+        os.set_inheritable(target_fd, True)
         return
     os.dup2(opened_fd, target_fd)
     os.close(opened_fd)
@@ -629,6 +637,10 @@ class FileRedirector:
         # later failure rolls the whole list back (bash semantics).
         saved_fds: List[Tuple[int, int | None]] = []
         saved_streams = self._snapshot_std_streams()
+        # Streams an output-fd close (`exec >&-` after `exec >file`) orphaned:
+        # dropped on SUCCESS only, so a later-redirect failure's rollback can
+        # still restore them (symmetric with the saved_fds backups below).
+        closed_dups: List[TextIO] = []
         try:
             for redirect in redirects:
                 if redirect.var_fd:
@@ -649,16 +661,16 @@ class FileRedirector:
                     # rather than re-enumerating every redirect.type: input forms
                     # (`<`, `<>`, `<<`, `<<-`, `<<<`) rebind stdin; output forms
                     # (`>`, `>>`, `>|`) rebind the target fd; `&>`/`&>>` rebind
-                    # both 1 and 2; a `>&`/`<&` duplication rebinds its own fd
-                    # (a close has no stream to rebind).
+                    # both 1 and 2; a `>&`/`<&` duplication rebinds its own fd;
+                    # a `>&-` close of fd 1/2 points the stream at a sentinel.
                     if redirect.combined:
                         self._rebind_output_stream(1)
                         self._rebind_output_stream(2)
                     elif '&' in redirect.type:  # >& <& (dup) or >&- <&- (close)
-                        # A duplication rebinds its own fd; a close (dup_fd is
-                        # None) has no stream to rebind.
                         if redirect.fd is not None and redirect.dup_fd is not None:
                             self._rebind_output_stream(redirect.fd)
+                        else:
+                            self._rebind_closed_output_stream(redirect, closed_dups)
                     elif redirect.type.startswith('<'):
                         self._rebind_input_stream(plan.target_fd)
                     else:  # '>', '>>', '>|'
@@ -672,13 +684,60 @@ class FileRedirector:
             raise
 
         # Success: the redirects are permanent. Close the fd backups so they
-        # don't leak (they held the pre-exec descriptions, now superseded).
+        # don't leak (they held the pre-exec descriptions, now superseded)...
         for _fd, saved in saved_fds:
             if saved is not None:
                 try:
                     os.close(saved)
                 except OSError:
                     pass
+        # ...and drop any dup an output-fd close orphaned (the dup an earlier
+        # `exec >file` had installed as sys.stdout/the state override).
+        for dup in closed_dups:
+            try:
+                dup.close()
+            except (OSError, ValueError):
+                pass
+
+    def _rebind_closed_output_stream(self, redirect: Redirect,
+                                     closed_dups: List[TextIO]) -> None:
+        """Reach the stream universe for a permanent ``>&-`` output-fd close.
+
+        The fd-level close already happened (``apply_fd_plan`` →
+        ``_redirect_close_fd``). The stream half only matters when an earlier
+        ``exec >file`` installed a state OVERRIDE — a *dup* of that file bound
+        as ``sys.std*`` and ``state.std*``. That dup does not reflect the
+        fd-level close, so a later builtin's write keeps leaking into the file
+        (``exec >f; exec >&-; echo two`` writing ``two`` into ``f``). Replace it
+        (and the override) with the shared ``_ClosedStream`` sentinel so the
+        write fails EBADF like bash, and hand the orphaned dup to
+        ``closed_dups`` to drop on success.
+
+        With NO override, ``sys.std*`` is the natural stream WRAPPING the fd, so
+        the fd-level close alone already makes writes fail — and, crucially, a
+        later fd-level reopen (``exec 1>&-; f 1>&2`` redirecting the fd back to
+        a live target) heals it, exactly as bash does. Installing the sentinel
+        there would permanently shadow that reopen, so leave it untouched.
+
+        Input closes (``<&-``) and closes of fd >= 3 have no output-stream
+        counterpart: ``output_close_fd`` returns ``None`` and this is a no-op.
+        """
+        io = self.shell.io_manager
+        target_fd = io.output_close_fd(redirect)
+        if target_fd is None:
+            return
+        _, stdout_ov, stderr_ov = self.state.streams.snapshot()
+        if (stdout_ov if target_fd == 1 else stderr_ov) is None:
+            return  # natural fd-wrapping stream: fd-level close/reopen suffices
+        displaced = io.swap_output_stream_closed(target_fd)
+        # Point the shell/state override at the same sentinel (sys.std* now
+        # holds it), so a builtin writing through state.stdout/stderr also
+        # fails rather than reaching the orphaned dup.
+        if target_fd == 1:
+            self.shell.stdout = sys.stdout
+        else:
+            self.shell.stderr = sys.stderr
+        closed_dups.append(displaced)
 
     @property
     def procsub_handler(self):

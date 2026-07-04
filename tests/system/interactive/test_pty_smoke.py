@@ -861,3 +861,87 @@ class TestPtyExitPolicy:
         # Everything between the first ^C and the sentinel output must
         # not contain another ^C (the REPL used to print a duplicate).
         assert '^C' not in psh.before
+
+
+def spawn_psh_c(script, timeout=10):
+    """Spawn ``psh -c SCRIPT`` under a PTY (for terminal-only read modes)."""
+    env = {
+        'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
+        'HOME': '/tmp',
+        'TERM': 'xterm',
+        'HISTFILE': '/dev/null',     # isolated: never touch a real history file
+        'PYTHONUNBUFFERED': '1',
+        'PYTHONPATH': PSH_ROOT,
+    }
+    return pexpect.spawn(
+        sys.executable, ['-u', '-m', 'psh', '-c', script],
+        timeout=timeout, encoding='utf-8', env=env, dimensions=(24, 80))
+
+
+@pytest.mark.serial
+class TestPtyReadSilent:
+    """`read -s` at a terminal (reappraisal #18 H6).
+
+    A silent read must NOT put the tty in raw mode. Raw mode clears
+    ICRNL/ISIG/ICANON, so Enter's CR never maps to the newline delimiter
+    (the read hangs) and Ctrl-D/Ctrl-C are inert. bash's model — and now
+    psh's — is canonical mode with only ECHO cleared: the typed text is
+    hidden, Enter still terminates, Ctrl-D is EOF, and ISIG stays on so
+    Ctrl-C's SIGINT terminates these ``-c`` reads (as the cases below pin).
+    (In the interactive REPL a Ctrl-C during a read is swallowed and the
+    read continues, like plain ``read`` — pre-existing REPL behavior, not
+    exercised here.)
+
+    A ``-p`` prompt is used as a sync point so input is only sent once psh
+    has entered the read (and cleared ECHO); without it psh's slower start
+    can echo the first keystrokes. Behavior pinned to bash 5.2 with the
+    same PTY probes (tmp/probes-r18t1-read-tty/).
+    """
+
+    def test_silent_hides_input_and_enter_terminates(self):
+        child = spawn_psh_c('read -sp "PW: " secret; echo "R[$secret]"')
+        try:
+            child.expect('PW: ')
+            child.send('hunter2\r')
+            child.expect(r'R\[hunter2\]')     # Enter terminated; value captured
+            # ECHO was off: the typed text never appeared before the echo.
+            assert 'hunter2' not in child.before
+        finally:
+            child.close(force=True)
+
+    def test_silent_ctrl_c_interrupts(self):
+        # Ctrl-C during a silent read must escape it: bash aborts the -c
+        # script via SIGINT (process dies, the trailing echo never runs)
+        # rather than hanging. psh matches (both exit on signal 2).
+        child = spawn_psh_c('read -sp "PW: " secret; echo "SHOULD_NOT_RUN"')
+        try:
+            child.expect('PW: ')
+            child.send('abc')
+            child.sendintr()
+            child.expect(pexpect.EOF)          # interrupted, not hung
+            assert 'SHOULD_NOT_RUN' not in (child.before or '')
+        finally:
+            child.close(force=True)
+
+    def test_silent_ctrl_d_is_eof(self):
+        # Ctrl-D at an empty silent read is EOF: read fails (rc 1) with an
+        # empty value, then execution continues (bash).
+        child = spawn_psh_c('read -sp "PW: " secret; echo "R[$secret]rc=$?"')
+        try:
+            child.expect('PW: ')
+            child.sendcontrol('d')
+            child.expect(r'R\[\]rc=1')
+        finally:
+            child.close(force=True)
+
+    def test_silent_with_timeout_terminates_on_enter(self):
+        # `read -s -t` must also stay canonical: Enter within the budget
+        # terminates and captures the value (no raw-mode hang).
+        child = spawn_psh_c('read -sp "PW: " -t 5 secret; echo "R[$secret]"')
+        try:
+            child.expect('PW: ')
+            child.send('swordfish\r')
+            child.expect(r'R\[swordfish\]')
+            assert 'swordfish' not in child.before
+        finally:
+            child.close(force=True)

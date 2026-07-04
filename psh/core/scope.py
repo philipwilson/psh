@@ -379,11 +379,30 @@ class ScopeManager:
             # But clear UNSET attribute when setting a value
             base_attributes = var.attributes & ~VarAttributes.UNSET  # Remove UNSET flag
             new_attributes = base_attributes | attributes
-            # Transform with the FULL merged attribute set: a
-            # declared-but-unset variable (``declare -u s; s=abc``) is
-            # invisible to the `existing` lookup above, so its -u/-l/-i
-            # attributes arrive only via this merge.
-            var.value = self._apply_attributes(value, new_attributes)
+            existing_val = var.value
+            if (isinstance(existing_val, (IndexedArray, AssociativeArray))
+                    and not isinstance(value, (IndexedArray, AssociativeArray))):
+                # bash: a plain scalar assigned to an EXISTING array sets
+                # element 0 (key "0" for associative) and PRESERVES the array
+                # container — ``a=(1 2 3); a=x`` yields a[0]=x with a still an
+                # array; only a compound ``a=(...)`` replaces the whole array.
+                # This also makes a temp-env prefix (``a=x cmd``) non-destructive:
+                # apply_prefix snapshots the whole array (a deep copy) up front
+                # and restore() puts that container back afterward.
+                scalar = self._apply_attributes(
+                    value,
+                    new_attributes & ~(VarAttributes.ARRAY
+                                       | VarAttributes.ASSOC_ARRAY))
+                if isinstance(existing_val, AssociativeArray):
+                    existing_val.set("0", scalar)
+                else:
+                    existing_val.set(0, scalar)
+            else:
+                # Transform with the FULL merged attribute set: a
+                # declared-but-unset variable (``declare -u s; s=abc``) is
+                # invisible to the `existing` lookup above, so its -u/-l/-i
+                # attributes arrive only via this merge.
+                var.value = self._apply_attributes(value, new_attributes)
             var.attributes = new_attributes
             self._debug_print(f"Updating variable in scope '{scope_name}': {name} = {var.value}")
         else:

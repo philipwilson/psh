@@ -71,6 +71,14 @@ REJECTION_CORPUS = [
                  id='bad-cstyle-for-close'),
     pytest.param('for ((i=0; i<1; i++)); do; done',
                  id='cstyle-for-empty-body'),
+    # A C-style for header needs exactly two semicolons (reappraisal #18 T1-5).
+    # A one-semicolon header would otherwise parse with an empty update and
+    # loop forever; bash rejects it. The paren variant guards the interaction
+    # with the fixed collector (which now stops the condition at `))`).
+    pytest.param('for ((i=0; i<3)); do echo x; done',
+                 id='cstyle-for-one-semicolon'),
+    pytest.param('for ((i=0; i<(3))); do echo x; done',
+                 id='cstyle-for-one-semicolon-paren'),
     pytest.param('echo |', id='pipeline-missing-command'),
     pytest.param('echo &&', id='and-if-missing-rhs'),
     pytest.param('&& echo', id='and-if-missing-lhs'),
@@ -118,6 +126,10 @@ ACCEPTANCE_CORPUS = [
     pytest.param('for x in; do echo hi; done', id='for-empty-word-list'),
     pytest.param('if true; then :; fi', id='if-noop-body'),
     pytest.param('while false; do :; done', id='while-noop-body'),
+    # Two-semicolon boundary: an empty *update* section is legal (distinct from
+    # the one-semicolon header rejected above).
+    pytest.param('for ((i=0; i<3;)); do echo x; done',
+                 id='cstyle-for-empty-update'),
 ]
 
 

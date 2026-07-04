@@ -3,6 +3,7 @@ import os
 import stat
 from typing import TYPE_CHECKING, List
 
+from ..utils.file_tests import file_newer_than, file_older_than, files_same
 from .base import Builtin
 from .registry import builtin
 
@@ -113,32 +114,98 @@ class TestBuiltin(Builtin):
         test_args = args[1:]
         return self.evaluate_test(test_args, shell)
 
+    # The $2 tokens that make a 3-argument expression a *binary* test. Per the
+    # POSIX `test` algorithm (and bash) these are recognised BEFORE `$1` is
+    # treated as `!` or `(` — so `test ! = x` is `"!" = "x"` (false), not a
+    # negation, and `test "(" -ef ")"` is a file comparison, not a group.
+    # `-a`/`-o` are the XSI 3-argument string-AND/OR primaries.
+    _BINARY_PRIMARIES = frozenset({
+        '=', '==', '!=', '<', '>',
+        '-eq', '-ne', '-lt', '-le', '-gt', '-ge',
+        '-nt', '-ot', '-ef',
+        '-a', '-o',
+    })
+
+    @staticmethod
+    def _negate(rc: int) -> int:
+        """Negate a test result, propagating usage/syntax errors (rc 2).
+
+        bash negates only the boolean: `! true` → 1, `! false` → 0. A `!`
+        applied to an expression that is itself an *error* (rc 2) keeps the
+        error — e.g. `test ! a b c` is rc 2, not 0.
+        """
+        if rc == 2:
+            return 2
+        return 1 if rc == 0 else 0
+
     def evaluate_test(self, args: List[str], shell: 'Shell') -> int:
-        """Evaluate test expression."""
-        if not args:
+        """Evaluate a `test`/`[` expression via the POSIX argument-count
+        algorithm.
+
+        The dispatch is driven PRIMARILY by the number of arguments (POSIX
+        XBD `test`); within a count, a binary primary in `$2` is recognised
+        before `$1` is interpreted as `!` or `(`. Expressions of more than
+        four arguments (and the 4-argument non-`!` forms) fall through to the
+        bash-extension parser in `_evaluate_expression` (parenthesised groups,
+        `-a`/`-o` with precedence).
+        """
+        n = len(args)
+        if n == 0:
             return 1  # False
+        if n == 1:
+            # Single argument — true iff non-empty.
+            return 0 if args[0] else 1
+        if n == 2:
+            return self._eval_two_args(args, shell)
+        if n == 3:
+            return self._eval_three_args(args, shell)
+        if n == 4 and args[0] == '!':
+            # POSIX 4-argument rule: leading `!` negates the 3-argument test
+            # of the remainder (`test ! a = b`, `test ! -f x`).
+            return self._negate(self._eval_three_args(args[1:], shell))
+        # 4 non-`!` arguments and everything longer: the bash-extension
+        # expression parser (grouping / -a / -o / leading `!`).
+        return self._evaluate_expression(args, shell)
 
-        # Check for leading ! (negation). A LONE `!` is not negation — it is
-        # the one-argument "non-empty string" test (bash/POSIX: `test !` → 0),
-        # so only treat `!` as negation when an operand follows.
-        negate = False
-        if args[0] == '!' and len(args) > 1:
-            negate = True
-            args = args[1:]  # Remove the !
+    def _eval_two_args(self, args: List[str], shell: 'Shell') -> int:
+        """Evaluate a 2-argument test (`$1 $2`)."""
+        op, arg = args
+        if op == '!':
+            # `test ! STRING` negates the one-argument (non-empty) test.
+            return self._negate(0 if arg else 1)
+        return self.evaluate_unary(op, arg, shell)
 
-        # Evaluate the expression
-        result = self._evaluate_expression(args, shell)
-
-        # Apply negation if needed
-        if negate:
-            result = 0 if result != 0 else 1
-
-        return result
+    def _eval_three_args(self, args: List[str], shell: 'Shell') -> int:
+        """Evaluate a 3-argument test (`$1 $2 $3`) per the POSIX order."""
+        arg1, op, arg2 = args
+        if op in self._BINARY_PRIMARIES:
+            # Binary primary in $2 wins over any !/( in $1 (POSIX/bash).
+            return self._evaluate_binary(arg1, op, arg2, shell)
+        if arg1 == '!':
+            # `test ! $2 $3` negates the 2-argument test of `$2 $3`.
+            return self._negate(self._eval_two_args([op, arg2], shell))
+        if arg1 == '(' and arg2 == ')':
+            # `( STRING )` — one-argument (non-empty) test of the inner token.
+            return 0 if op else 1
+        # $2 isn't a binary primary and $1 isn't !/( — bash reports $2.
+        self.error(f"{op}: binary operator expected", shell)
+        return 2
 
     def _evaluate_expression(self, args: List[str], shell: 'Shell') -> int:
-        """Evaluate test expression without negation."""
+        """Evaluate a test expression (bash-extension parser).
+
+        Reached for >4 arguments, the 4-argument non-`!` forms, and
+        recursively for the operands of `-a`/`-o` and parenthesised groups —
+        so it must handle short sub-expressions too.
+        """
         if not args:
             return 1  # False
+
+        # Leading `!` negates the rest (bash). A LONE `!` is not negation — it
+        # is the one-argument non-empty-string test (`test !` → 0), so only
+        # negate when an operand follows.
+        if args[0] == '!' and len(args) > 1:
+            return self._negate(self._evaluate_expression(args[1:], shell))
 
         # Handle parenthesized grouping: ( expr )
         if args[0] == '(' and ')' in args:
@@ -161,8 +228,6 @@ class TestBuiltin(Builtin):
         # NOTE: no "split operator" reconstruction (`test a ! = b` as `a != b`)
         # — bash does not do it either: every such 4-argument form
         # (`a ! = b`, `a = = b`, `a = ~ b`) is "too many arguments", rc 2.
-        # The one real 4-argument form, POSIX leading-`!` negation
-        # (`test ! a = b`), was already handled in evaluate_test.
 
         # Handle logical operators -a and -o
         # Scan for -o first (lower precedence), then -a, skipping
@@ -242,19 +307,26 @@ class TestBuiltin(Builtin):
             # True if file exists
             return 0 if os.path.exists(arg) else 1
         elif op == '-r':
-            # True if file is readable
-            return 0 if os.path.isfile(arg) and os.access(arg, os.R_OK) else 1
+            # True if the path is readable — for ANY file type, including
+            # directories and special files (bash defers to os.access; an
+            # `isfile` guard would wrongly fail `-r /dev/null`, `-r /usr/bin`).
+            # os.access already returns False for a nonexistent path.
+            return 0 if os.access(arg, os.R_OK) else 1
         elif op == '-w':
-            # True if file is writable
-            return 0 if os.path.isfile(arg) and os.access(arg, os.W_OK) else 1
+            # True if the path is writable (any file type; see -r).
+            return 0 if os.access(arg, os.W_OK) else 1
         elif op == '-x':
-            # True if file is executable
-            return 0 if os.path.isfile(arg) and os.access(arg, os.X_OK) else 1
+            # True if the path is executable/searchable (any file type — a
+            # directory with the search bit set is `-x`; see -r).
+            return 0 if os.access(arg, os.X_OK) else 1
         elif op == '-s':
-            # True if file exists and has size > 0
+            # True if the path exists and has a nonzero size — for ANY file
+            # type, including a directory (bash uses stat, not isfile; an
+            # `isfile` guard wrongly failed `-s DIR`). os.path.getsize follows
+            # symlinks and raises for a missing/broken path -> false.
             try:
-                return 0 if os.path.isfile(arg) and os.path.getsize(arg) > 0 else 1
-            except (OSError, IOError):
+                return 0 if os.path.getsize(arg) > 0 else 1
+            except OSError:
                 return 1
         elif op == '-L' or op == '-h':
             # True if file exists and is a symbolic link
@@ -439,29 +511,15 @@ class TestBuiltin(Builtin):
                 self.error(f"{e}: integer expression expected", shell)
                 return 2
         elif op == '-nt':
-            # True if file1 is newer than file2 (modification time)
-            try:
-                stat1 = os.stat(arg1)
-                stat2 = os.stat(arg2)
-                return 0 if stat1.st_mtime > stat2.st_mtime else 1
-            except (OSError, IOError):
-                return 1
+            # File1 newer than file2 (bash's existence-asymmetric rule).
+            # Shared with [[ ]] via psh.utils.file_tests — see that module.
+            return 0 if file_newer_than(arg1, arg2) else 1
         elif op == '-ot':
-            # True if file1 is older than file2 (modification time)
-            try:
-                stat1 = os.stat(arg1)
-                stat2 = os.stat(arg2)
-                return 0 if stat1.st_mtime < stat2.st_mtime else 1
-            except (OSError, IOError):
-                return 1
+            # File1 older than file2 (existence-asymmetric; shared helper).
+            return 0 if file_older_than(arg1, arg2) else 1
         elif op == '-ef':
-            # True if file1 and file2 refer to the same file (same device and inode)
-            try:
-                stat1 = os.stat(arg1)
-                stat2 = os.stat(arg2)
-                return 0 if (stat1.st_dev == stat2.st_dev and stat1.st_ino == stat2.st_ino) else 1
-            except (OSError, IOError):
-                return 1
+            # File1 and file2 are the same file (same device + inode).
+            return 0 if files_same(arg1, arg2) else 1
         else:
             self.error(f"{op}: binary operator expected", shell)
             return 2  # Unknown operator

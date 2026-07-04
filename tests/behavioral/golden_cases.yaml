@@ -5426,13 +5426,276 @@
   exit_code: 0
 
 # =============================================================================
-# BACKGROUND-CHILD TRAP DISCIPLINE (reappraisal #18 Tier-1 T1-4)
-#
-# A backgrounded compound runs in a forked subshell environment: it fires its
-# own EXIT trap on completion, and `wait <pid>` on a reaped known job returns
-# its remembered status. (Signal-timed symptoms — managed-signal body traps and
-# EXIT-on-fatal-signal — need file-sync and live in the serial integration
-# suite tests/integration/job_control/test_bg_child_trap_discipline.py.)
+# TEST / [ FILE OPERATORS + POSIX DISPATCH (reappraisal #18 T1-2)
+# File-creating cases live in the conformance/unit suites (temp dirs); these
+# golden cases stay file-free — an existing absolute path (/dev/null) paired
+# with a nonexistent one exercises the -nt/-ot existence-asymmetry without
+# writing to the cwd, and all cases match system bash 3.2 too.
+# =============================================================================
+
+- name: r18t1_fileops_nt_source_exists_target_missing
+  command: "[ /dev/null -nt /nonexistent_xyz_psh_r18 ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_nt_source_missing
+  command: "[ /nonexistent_xyz_psh_r18 -nt /dev/null ]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_nt_both_missing
+  command: "[ /nonexistent_a_psh_r18 -nt /nonexistent_b_psh_r18 ]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_ot_target_missing
+  command: "[ /dev/null -ot /nonexistent_xyz_psh_r18 ]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_ot_source_missing
+  command: "[ /nonexistent_xyz_psh_r18 -ot /dev/null ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_r_devnull
+  command: "[ -r /dev/null ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_w_devnull
+  command: "[ -w /dev/null ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_bracket2_r_devnull
+  command: "[[ -r /dev/null ]]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_bang_eq
+  command: "test ! = x; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_paren_eq
+  command: "test '(' = ')'; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_4arg_bang_paren_eq
+  command: "test ! '(' = ')'; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_paren_eqeq
+  command: "test '(' == ')'; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_bang_eqeq
+  command: "test ! == x; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_paren_ef
+  command: "test '(' -ef ')'; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_bang_nt
+  command: "test ! -nt x; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_4arg_bang_eq_true
+  command: "test ! a = a; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_s_on_directory
+  command: "[ -s . ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# REAPPRAISAL #18 TIER-1: array scalar-overwrite / attribute plumbing (T1-3)
+# =============================================================================
+
+- name: r18t1_array_scalar_overwrite_keeps_array
+  command: 'a=(1 2 3); a=x; echo "${a[@]}"'
+  stdout: "x 2 3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_scalar_overwrite_declare_p
+  command: 'a=(1 2 3); a=x; declare -p a'
+  stdout: "declare -a a=([0]=\"x\" [1]=\"2\" [2]=\"3\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_tempenv_nondestructive
+  command: 'a=(1 2 3); a=x true; echo "${a[@]}"'
+  stdout: "1 2 3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_tempenv_sparse_preserved
+  command: 'a=([1]=x [2]=y); a=z true; declare -p a'
+  stdout: "declare -a a=([1]=\"x\" [2]=\"y\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_assoc_no_stray_a_bit
+  command: 'declare -A m=([a]=1); m=([c]=3); declare -p m'
+  stdout: "declare -A m=([c]=\"3\" )\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_assoc_tempenv_no_spurious_key
+  command: 'declare -A m=([k]=v); m=x true; declare -p m'
+  stdout: "declare -A m=([k]=\"v\" )\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_local_ul_cancels_transform
+  command: 'f(){ local -ul x=Hello; echo "$x"; }; f'
+  stdout: "Hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_local_ul_declare_p
+  command: 'f(){ local -ul x=Hello; declare -p x; }; f'
+  stdout: "declare -- x=\"Hello\"\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# C-STYLE FOR HEADER: PARENTHESIZED SUBEXPRESSIONS (reappraisal #18 T1-5)
+# The arithmetic-section collector must not terminate a section on a balanced
+# inner ")" (or a "))"-fused pair); it ends only at a top-level ";" or the
+# enclosing "))". Pinned against GNU bash 5.2.
+# =============================================================================
+
+- name: r18t1_cfor_paren_in_condition
+  command: 'n=5; for ((i=0; i<(n-1); i++)); do echo $i; done'
+  stdout: "0\n1\n2\n3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_paren_in_init
+  command: 'for ((i=(1+1); i<5; i++)); do echo $i; done'
+  stdout: "2\n3\n4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_parenthesized_condition
+  command: 'for ((i=0; (i<3); i++)); do echo $i; done'
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_paren_in_update_straddle
+  command: 'for ((i=0; i<5; (i++))); do echo $i; done'
+  stdout: "0\n1\n2\n3\n4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_double_paren_update
+  command: 'for ((i=0; i<3; ((i++)))); do echo $i; done'
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_parens_all_three_sections
+  command: 'for ((i=(0); (i<3); (i++))); do echo $i; done'
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_paren_multiplied_condition
+  command: 'for ((i=0; i<(1+2); i++)); do echo $i; done'
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_arith_command_nested_double_paren
+  command: '(( ((1+2)) == 3 )); echo $?'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_one_semicolon_header_rejected
+  command: 'for ((i=0; i<3)); do echo x; done'
+  stdout: ""
+  stderr: "Expected ';'"
+  exit_code: 2
+
+# =============================================================================
+
+# A forked child inherits a redirect fd (process sub keeps the /dev/fd path
+# readable across exec). Pins the CLOEXEC-cleared inheritance conformance.
+- name: r18t1_fd_child_reads_dev_fd_procsub
+  command: 'cat /dev/fd/3 3< <(echo hi)'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# `exec >&-` after `exec >file` must sever the Python stream too: `echo two`
+# fails EBADF instead of leaking into the (closed) old destination. Redirected
+# to /dev/null so the case is self-contained; the buggy shell wrote to
+# /dev/null and exited 0, the fixed shell fails with a write error.
+- name: r18t1_fd_close_stdout_after_redirect_no_leak
+  command: 'exec >/dev/null; exec >&-; echo two'
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+# A `>&2` redirect onto a closed fd 2 can't report its diagnostic (fd gone),
+# but must NOT abort the list — the command fails and execution continues.
+- name: r18t1_fd_close_stderr_then_continue
+  command: 'exec 2>&-; echo two >&2; echo three'
+  stdout: "three\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+
+- name: r18t1_read_t_partial_single_var
+  command: '{ printf abc; sleep 1; printf def; } | { read -t 0.3 x; printf "rc=%s [%s]" "$?" "$x"; }'
+  stdout: "rc=142 [abc]"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_read_t_partial_multi_var_split
+  command: '{ printf "aa bb c"; sleep 1; printf dd; } | { read -t 0.3 x y z; printf "rc=%s [%s][%s][%s]" "$?" "$x" "$y" "$z"; }'
+  stdout: "rc=142 [aa][bb][c]"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_read_t_timeout_clears_preset_var
+  command: '{ sleep 1; } | { v=PRESET; read -t 0.3 v; printf "rc=%s [%s]" "$?" "$v"; }'
+  stdout: "rc=142 []"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 
 - name: r18t1_bgtrap_exit_trap_bg_brace

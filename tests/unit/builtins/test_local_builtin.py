@@ -103,3 +103,42 @@ class TestDeclareArrayAssignment:
             'declare -a arr=("two words" \'$lit\'); echo "[${arr[0]}][${arr[1]}]"')
         assert result == 0
         assert captured_shell.get_stdout() == "[two words][$lit]\n"
+
+
+class TestLocalCaseTransformCancellation:
+    """`local -ul` / `local -lu`: -u and -l together CANCEL — bash applies
+    neither transform and records neither attribute (matches the `declare`
+    builtin and the single ScopeManager._apply_attributes chokepoint). The
+    duplicate `_apply_attributes` that `local` used to run first uppercased
+    `-ul` instead. All expectations verified against bash 5.2.
+    """
+
+    def test_ul_leaves_value_unfolded(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ local -ul x=Hello; echo "$x"; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "Hello\n"
+
+    def test_lu_leaves_value_unfolded(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ local -lu x=Hello; echo "$x"; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "Hello\n"
+
+    def test_ul_records_neither_attribute(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ local -ul x=Hello; declare -p x; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == 'declare -- x="Hello"\n'
+
+    def test_u_alone_still_uppercases(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ local -u x=Hello; echo "$x"; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "HELLO\n"
+
+    def test_l_alone_still_lowercases(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ local -l x=Hello; echo "$x"; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "hello\n"

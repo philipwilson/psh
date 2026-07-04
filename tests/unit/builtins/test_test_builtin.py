@@ -509,3 +509,204 @@ class TestTooManyArguments:
             assert rc == 2, cmd
             assert captured_shell.get_stderr() == \
                 'test: too many arguments\n', cmd
+
+
+class TestPermsAnyFileType:
+    """-r/-w/-x apply to ANY file type, not just regular files (R18 T1-2).
+
+    psh formerly gated -r/-w/-x on os.path.isfile, so directories and special
+    files (which bash reports via access(2)) wrongly tested false.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolate_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+    def test_directory_is_readable_writable_executable(self, shell):
+        shell.run_command('mkdir d')
+        assert shell.run_command('[ -r d ]') == 0
+        assert shell.run_command('[ -w d ]') == 0
+        assert shell.run_command('[ -x d ]') == 0  # search bit
+        assert shell.run_command('test -x d') == 0
+
+    def test_enhanced_test_directory_executable(self, shell):
+        shell.run_command('mkdir d')
+        assert shell.run_command('[[ -x d ]]') == 0
+
+    def test_dev_null_readable_writable_not_executable(self, shell):
+        assert shell.run_command('[ -r /dev/null ]') == 0
+        assert shell.run_command('[ -w /dev/null ]') == 0
+        assert shell.run_command('[ -x /dev/null ]') == 1
+
+    def test_fifo_readable_writable(self, shell):
+        shell.run_command('mkfifo p')
+        assert shell.run_command('[ -r p ]') == 0
+        assert shell.run_command('[ -w p ]') == 0
+
+    def test_missing_path_not_readable(self, shell):
+        # os.access returns False for a nonexistent path.
+        assert shell.run_command('[ -r no_such_file ]') == 1
+        assert shell.run_command('[ -w no_such_file ]') == 1
+        assert shell.run_command('[ -x no_such_file ]') == 1
+
+    def test_regular_file_perms_unchanged(self, shell):
+        shell.run_command('touch f')
+        shell.run_command('chmod 644 f')
+        assert shell.run_command('[ -r f ]') == 0
+        assert shell.run_command('[ -w f ]') == 0
+        assert shell.run_command('[ -x f ]') == 1
+
+    def test_s_true_for_directory(self, shell):
+        # -s (size>0) uses stat, not isfile: a directory has nonzero st_size.
+        shell.run_command('mkdir d')
+        shell.run_command('echo x > d/f')
+        assert shell.run_command('[ -s d ]') == 0
+        assert shell.run_command('test -s d') == 0
+        assert shell.run_command('[[ -s d ]]') == 0
+
+    def test_s_still_false_for_empty_regular_file(self, shell):
+        # Regression guard: the fix must NOT make -s true for a 0-byte file.
+        shell.run_command('touch empty')
+        assert shell.run_command('[ -s empty ]') == 1
+        # ...and stays true for a nonempty regular file.
+        shell.run_command('echo content > full')
+        assert shell.run_command('[ -s full ]') == 0
+
+    def test_s_false_for_dev_null_and_missing(self, shell):
+        assert shell.run_command('[ -s /dev/null ]') == 1
+        assert shell.run_command('[ -s no_such_file ]') == 1
+
+
+class TestNtOtExistenceAsymmetry:
+    """-nt/-ot are existence-asymmetric and delegate to the shared helper
+    (psh.utils.file_tests) used by both test/[ and [[ ]] (R18 T1-2).
+
+    bash rule: `f1 -nt f2` is true if f1 is newer OR (f1 exists AND f2 does
+    not). `-ot` is symmetric. Both-missing is false. The absolute /dev/null
+    (present) paired with a nonexistent path exercises this without touching
+    the cwd, so no fixture isolation is needed for these cases.
+    """
+
+    NX = '/nonexistent_xyz_psh_r18t1'
+    NX2 = '/nonexistent_abc_psh_r18t1'
+
+    def test_nt_exists_vs_missing(self, shell):
+        assert shell.run_command(f'[ /dev/null -nt {self.NX} ]') == 0
+
+    def test_nt_missing_vs_exists(self, shell):
+        assert shell.run_command(f'[ {self.NX} -nt /dev/null ]') == 1
+
+    def test_nt_both_missing(self, shell):
+        assert shell.run_command(f'[ {self.NX} -nt {self.NX2} ]') == 1
+
+    def test_ot_exists_vs_missing(self, shell):
+        # f1 exists, f2 missing -> f1 is NOT older.
+        assert shell.run_command(f'[ /dev/null -ot {self.NX} ]') == 1
+
+    def test_ot_missing_vs_exists(self, shell):
+        # f2 exists, f1 missing -> f1 IS older.
+        assert shell.run_command(f'[ {self.NX} -ot /dev/null ]') == 0
+
+    def test_ot_both_missing(self, shell):
+        assert shell.run_command(f'[ {self.NX} -ot {self.NX2} ]') == 1
+
+    def test_enhanced_test_nt_rebuild_idiom(self, shell):
+        # [[ src -nt missing ]] routes through the SAME shared helper.
+        assert shell.run_command(f'[[ /dev/null -nt {self.NX} ]]') == 0
+
+    def test_enhanced_test_ot_missing_vs_exists(self, shell):
+        assert shell.run_command(f'[[ {self.NX} -ot /dev/null ]]') == 0
+
+    def test_shared_helper_matches_between_forms(self, shell):
+        # test/[ and [[ ]] must agree on the asymmetric result.
+        for form in ('[ /dev/null -nt %s ]', '[[ /dev/null -nt %s ]]'):
+            assert shell.run_command(form % self.NX) == 0
+        for form in ('[ %s -ot /dev/null ]', '[[ %s -ot /dev/null ]]'):
+            assert shell.run_command(form % self.NX) == 0
+
+
+class TestPosixArgDispatch:
+    """POSIX test argument-count algorithm: a binary primary in $2 is
+    recognised BEFORE $1 is treated as ! or ( (R18 T1-2).
+    """
+
+    def test_three_arg_bang_is_string_compare(self, shell):
+        # `! = x` is `"!" = "x"` (false), not a negation.
+        assert shell.run_command('test ! = x') == 1
+        assert shell.run_command('test ! != x') == 0
+        assert shell.run_command('test ! = =') == 1
+
+    def test_three_arg_paren_is_string_compare(self, shell):
+        assert shell.run_command("test '(' = ')'") == 1
+        assert shell.run_command("test '(' == ')'") == 1
+        assert shell.run_command("test '(' != ')'") == 0
+
+    def test_three_arg_paren_ef_both_missing(self, shell):
+        assert shell.run_command("test '(' -ef ')'") == 1
+
+    def test_three_arg_bang_nt_both_missing(self, shell):
+        assert shell.run_command('test ! -nt x') == 1
+
+    def test_three_arg_bang_still_negates_non_primary(self, shell):
+        # $2 is NOT a binary primary, so the leading ! DOES negate.
+        assert shell.run_command("test ! -z ''") == 1   # -z '' true -> negate
+        assert shell.run_command("test ! -n ''") == 0   # -n '' false -> negate
+        assert shell.run_command('test ! -f no_such_file') == 0
+
+    def test_three_arg_paren_group(self, shell):
+        assert shell.run_command("test '(' foo ')'") == 0
+        assert shell.run_command("test '(' '' ')'") == 1
+
+    def test_four_arg_bang_negates_three_arg(self, shell):
+        assert shell.run_command("test ! '(' = ')'") == 0  # negate(false)
+        assert shell.run_command('test ! a = a') == 1      # negate(true)
+        assert shell.run_command('test ! a = b') == 0      # negate(false)
+
+    def test_double_bang_no_spurious_error(self, captured_shell):
+        # `test ! ! a` -> negate(negate(a nonempty)) -> true, NO stderr.
+        assert captured_shell.run_command('test ! ! a') == 0
+        assert captured_shell.get_stderr() == ''
+
+    def test_bracket_form_dispatch(self, shell):
+        assert shell.run_command('[ ! = x ]') == 1
+        assert shell.run_command("[ '(' = ')' ]") == 1
+        assert shell.run_command("[ ! '(' = ')' ]") == 0
+
+
+class TestPosixDispatchErrors:
+    """3/4-arg forms that are usage errors return rc 2 with the offending
+    token named (matching bash's message content; the program-name prefix is
+    psh's own). Negation propagates rc 2 rather than turning it into 0.
+    """
+
+    def test_bang_eq_integer_error(self, captured_shell):
+        # `! -eq x` is `"!" -eq "x"` -> "!" is not an integer.
+        rc = captured_shell.run_command('test ! -eq x')
+        assert rc == 2
+        err = captured_shell.get_stderr()
+        assert 'integer expression expected' in err
+        assert '!' in err  # offending token is the LHS operand
+
+    def test_paren_eq_integer_error(self, captured_shell):
+        rc = captured_shell.run_command("test '(' -eq ')'")
+        assert rc == 2
+        err = captured_shell.get_stderr()
+        assert 'integer expression expected' in err
+        assert '(' in err
+
+    def test_bracket_form_uses_bracket_prefix(self, captured_shell):
+        rc = captured_shell.run_command('[ ! -eq x ]')
+        assert rc == 2
+        assert captured_shell.get_stderr().startswith('[: ')
+
+    def test_negation_propagates_usage_error(self, captured_shell):
+        # `test ! a b c` -> negate(3-arg `a b c` which is an error) -> rc 2,
+        # NOT 0. (The old negate turned rc 2 into 0.)
+        rc = captured_shell.run_command('test ! a b c')
+        assert rc == 2
+        assert 'binary operator expected' in captured_shell.get_stderr()
+
+    def test_negation_propagates_unary_usage_error(self, captured_shell):
+        rc = captured_shell.run_command('test ! a b')
+        assert rc == 2
+        assert 'unary operator expected' in captured_shell.get_stderr()

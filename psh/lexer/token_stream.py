@@ -208,18 +208,57 @@ class TokenStream:
         """Get all remaining tokens from current position."""
         return self.tokens[self.pos:] if self.pos < len(self.tokens) else []
 
-    def collect_arithmetic_expression(self,
-                                    stop_condition=None,
-                                    transform_redirects: bool = True) -> Tuple[List[Token], str]:
-        """Collect tokens for arithmetic expression with special handling.
+    def _split_double_rparen(self) -> None:
+        """Split the ``DOUBLE_RPAREN`` at the current position into two ``RPAREN``.
 
-        This method is specialized for collecting arithmetic expressions which need:
-        - Balanced parenthesis tracking
-        - Redirect token transformation (< and > operators)
-        - Optional stop conditions (e.g., semicolon at depth 0)
+        The lexer greedily fuses adjacent ``)`` into a single ``))`` token.  When
+        only the first ``)`` belongs to an arithmetic expression (it closes an
+        inner group) and the second begins the enclosing ``))`` terminator, we
+        split the fused token so each ``)`` can be handled on its own.
+        """
+        fused = self.tokens[self.pos]
+        first = Token(
+            type=TokenType.RPAREN, value=')',
+            position=fused.position, end_position=fused.position + 1,
+            line=fused.line, column=fused.column,
+            adjacent_to_previous=fused.adjacent_to_previous,
+        )
+        second = Token(
+            type=TokenType.RPAREN, value=')',
+            position=fused.position + 1, end_position=fused.end_position,
+            line=fused.line,
+            column=(fused.column + 1) if fused.column is not None else None,
+            adjacent_to_previous=True,
+        )
+        self.tokens[self.pos:self.pos + 1] = [first, second]
+
+    def collect_arithmetic_expression(self,
+                                    stop_at_semicolon: bool = False,
+                                    transform_redirects: bool = True) -> Tuple[List[Token], str]:
+        """Collect the tokens of one arithmetic (sub)expression inside a ``(( ))``.
+
+        The expression is the interior of a ``(( ))`` construct — an arithmetic
+        command/evaluation, or one ``;``-separated section of a C-style ``for``
+        header — so it starts at paren-depth 0.  A single depth-tracked discipline
+        governs where it ends::
+
+            (   -> +1        )   -> -1
+            ((  -> +2        ))  -> -2      (the lexer fuses adjacent parens)
+
+        The expression ends *before* its terminator (the caller consumes it):
+
+        * a top-level ``;`` / ``;;`` — only when ``stop_at_semicolon`` is set
+          (the ``for``-header sections); or
+        * the enclosing ``))`` — any closing paren met at depth 0, i.e. one that
+          would drop below the section's base depth.
+
+        Greedy lexing can fuse an inner group's closing ``)`` with the header's
+        first ``)``: ``(i++))`` lexes as ``(`` ``i++`` ``))``.  Such a ``))`` met
+        at depth 1 straddles the boundary, so it is split into two ``)`` — the
+        first closes the inner group (kept here), the second begins the terminator.
 
         Args:
-            stop_condition: Optional callable(token, paren_depth) -> bool
+            stop_at_semicolon: Stop at a top-level ``;``/``;;`` (for-header sections).
             transform_redirects: If True, transform REDIRECT_IN/OUT to < and >
 
         Returns:
@@ -234,18 +273,33 @@ class TokenStream:
             if not token:
                 break
 
-            # Check stop condition if provided
-            if stop_condition and stop_condition(token, paren_depth):
-                break
+            # Terminators live at the section's top level (depth 0).
+            if paren_depth == 0:
+                if stop_at_semicolon and token.type in (
+                        TokenType.SEMICOLON, TokenType.DOUBLE_SEMICOLON):
+                    break
+                # Any closing paren at depth 0 is the enclosing ``))`` — it would
+                # drop below the base depth, so it belongs to the caller.
+                if token.type in (TokenType.RPAREN, TokenType.DOUBLE_RPAREN):
+                    break
 
-            # Track parentheses depth
+            # A ``))`` met at depth 1 straddles an inner close and the terminator;
+            # split it so only the inner ``)`` is collected here.
+            if token.type == TokenType.DOUBLE_RPAREN and paren_depth == 1:
+                self._split_double_rparen()
+                split = self.peek()  # first half: a single RPAREN closing the group
+                assert split is not None  # just inserted two tokens at self.pos
+                token = split
+
+            # Track parentheses depth (fused ((/)) count as two).
             if token.type == TokenType.LPAREN:
                 paren_depth += 1
+            elif token.type == TokenType.DOUBLE_LPAREN:
+                paren_depth += 2
             elif token.type == TokenType.RPAREN:
                 paren_depth -= 1
-                # Some stop conditions check for RPAREN at depth 0
-                if stop_condition and stop_condition(token, paren_depth):
-                    break
+            elif token.type == TokenType.DOUBLE_RPAREN:
+                paren_depth -= 2
 
             # Collect token
             tokens.append(token)

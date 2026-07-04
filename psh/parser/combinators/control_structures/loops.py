@@ -5,7 +5,7 @@ C-style), and select loops. (break/continue are not statements: they are
 ordinary simple commands backed by builtins, as in bash.)
 """
 
-from typing import TYPE_CHECKING, List, Tuple, Union, cast
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union, cast
 
 from ....ast_nodes import (
     CStyleForLoop,
@@ -18,6 +18,7 @@ from ....ast_nodes import (
     Word,
 )
 from ....lexer.keyword_defs import matches_keyword
+from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import Token
 from ..core import Parser, ParseResult
 from ..diagnostics import raise_committed_error
@@ -314,43 +315,50 @@ class LoopParserMixin(_Base):
 
             pos += 2  # Skip 'for' and '(('
 
-            # Handle ';;' (DOUBLE_SEMICOLON) — both init and condition are empty
-            init_tokens: List[Token]
-            cond_tokens: List[Token]
-            if pos < len(tokens) and tokens[pos].type.name == 'DOUBLE_SEMICOLON':
-                init_tokens = []
-                cond_tokens = []
-                pos += 1  # Skip ';;'
-            else:
-                # Parse init expression (until ';')
-                init_tokens = []
-                while pos < len(tokens) and tokens[pos].value != ';':
-                    init_tokens.append(tokens[pos])
-                    pos += 1
+            # Parse the three arithmetic sections through the shared depth-tracked
+            # collector (``psh/lexer/token_stream.py``), mirroring the recursive
+            # descent parser (``recursive_descent/.../_parse_c_style_for``) so the
+            # two stay locked together: same paren discipline (``(`` / ``((`` open,
+            # ``)`` / ``))`` close, straddling ``))`` split), same normalized
+            # expression strings.
+            stream = TokenStream(tokens, pos)
+            _t, init_str = stream.collect_arithmetic_expression(stop_at_semicolon=True)
+            pos = stream.pos
+            init_expr = init_str or None
 
-                if pos >= len(tokens):
-                    raise_committed_error(tokens, pos, "Expected ';' after init expression")
+            cond_expr: Optional[str] = None
+            if pos < len(tokens) and tokens[pos].type.name == 'SEMICOLON':
                 pos += 1  # Skip ';'
-
-                # Parse condition expression (until ';')
-                cond_tokens = []
-                while pos < len(tokens) and tokens[pos].value != ';':
-                    cond_tokens.append(tokens[pos])
-                    pos += 1
-
-                if pos >= len(tokens):
+                stream = TokenStream(tokens, pos)
+                _t, cond_str = stream.collect_arithmetic_expression(stop_at_semicolon=True)
+                pos = stream.pos
+                cond_expr = cond_str or None
+                # The second ';' is mandatory: a C-style for header has exactly
+                # two semicolons. Without this a one-semicolon header like
+                # ``for ((i=0; i<3))`` would parse with an empty update and loop
+                # forever; bash rejects it. Mirrors the recursive descent parser.
+                if pos < len(tokens) and tokens[pos].type.name == 'SEMICOLON':
+                    pos += 1  # Skip ';'
+                else:
                     raise_committed_error(tokens, pos, "Expected ';' after condition expression")
-                pos += 1  # Skip ';'
+            elif pos < len(tokens) and tokens[pos].type.name == 'DOUBLE_SEMICOLON':
+                pos += 1  # Skip ';;' — condition (and, if init empty, init) omitted
+            else:
+                raise_committed_error(tokens, pos, "Expected ';' after init expression")
 
-            # Parse update expression (until '))')
-            update_tokens = []
-            while pos < len(tokens) and tokens[pos].type.name != 'DOUBLE_RPAREN' and tokens[pos].value != '))':
-                update_tokens.append(tokens[pos])
-                pos += 1
-
-            if pos >= len(tokens):
+            # Parse update expression, then consume the enclosing '))' (a single
+            # DOUBLE_RPAREN, or two RPARENs left by a straddle split).
+            stream = TokenStream(tokens, pos)
+            _t, update_str = stream.collect_arithmetic_expression(stop_at_semicolon=False)
+            pos = stream.pos
+            update_expr = update_str or None
+            if pos < len(tokens) and tokens[pos].type.name == 'DOUBLE_RPAREN':
+                pos += 1  # Skip '))'
+            elif (pos + 1 < len(tokens) and tokens[pos].type.name == 'RPAREN'
+                  and tokens[pos + 1].type.name == 'RPAREN'):
+                pos += 2  # Skip ') )'
+            else:
                 raise_committed_error(tokens, pos, "Expected '))' to close C-style for")
-            pos += 1  # Skip '))'
 
             # Skip optional separator and optional 'do' keyword.
             # PSH (like some shells) allows omitting 'do' for C-style for loops:
@@ -386,11 +394,6 @@ class LoopParserMixin(_Base):
 
             # Parse trailing redirections ('&' is handled at and-or level)
             redirects, pos = self._parse_trailing_redirects(tokens, pos)
-
-            # Convert token lists to strings
-            init_expr = ' '.join(t.value for t in init_tokens) if init_tokens else None
-            cond_expr = ' '.join(t.value for t in cond_tokens) if cond_tokens else None
-            update_expr = ' '.join(t.value for t in update_tokens) if update_tokens else None
 
             return ParseResult(
                 success=True,
