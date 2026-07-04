@@ -15,7 +15,17 @@ class HeredocCollector:
 
     @dataclass
     class PendingHeredoc:
-        """Information about a heredoc being collected."""
+        """Information about a heredoc being collected.
+
+        ``key`` is the heredoc's index into ``collected`` — stored here so
+        content lines and completion are recorded against exactly this
+        heredoc (a delimiter-string scan misfiled content when two heredocs
+        shared a delimiter). ``start_line`` is the 1-based source line where
+        this heredoc's body gathering begins; the driver re-stamps it when a
+        pending heredoc is promoted to first (matching the line bash reports
+        in its "delimited by end-of-file" warning).
+        """
+        key: str
         delimiter: str
         strip_tabs: bool
         quoted: bool
@@ -50,6 +60,7 @@ class HeredocCollector:
         self._counter += 1
 
         self.pending.append(self.PendingHeredoc(
+            key=key,
             delimiter=delimiter,
             strip_tabs=strip_tabs,
             quoted=quoted,
@@ -84,52 +95,51 @@ class HeredocCollector:
         """
         completed: List[Tuple[str, bool]] = []
 
-        # Only check the FIRST pending heredoc (heredocs are collected in order)
+        # Only the FIRST pending heredoc is live (bodies are read in order).
         if self.pending:
             heredoc = self.pending[0]
-            # Check if this line is the delimiter. For <<- the delimiter line
-            # may itself be tab-indented; strip leading tabs before comparing,
-            # the same way content lines are stripped (bash does this too).
-            # bash requires the terminator line to equal the delimiter exactly
-            # (only <<- strips leading tabs); a line like "EOF " with trailing
-            # whitespace is body content, not the terminator. The shared rule
-            # also drops a CRLF line-ending CR so a CRLF script terminates.
+            # Is this line the terminator? bash requires the terminator line
+            # to equal the delimiter exactly (only <<- strips leading tabs);
+            # a line like "EOF " with trailing whitespace is body content,
+            # not the terminator. The shared rule also drops a CRLF
+            # line-ending CR so a CRLF script terminates.
             from ..utils.heredoc_detection import heredoc_terminator_matches
             if heredoc_terminator_matches(
                     line, heredoc.delimiter, heredoc.strip_tabs):
-                # Find the key for this heredoc
-                for key, info in self.collected.items():
-                    if (info['delimiter'] == heredoc.delimiter and
-                        not info['complete']):
-                        info['complete'] = True
-                        completed.append((key, True))
-                        break
+                self.collected[heredoc.key]['complete'] = True
+                completed.append((heredoc.key, True))
+                self.pending.pop(0)
+            else:
+                content_line = line
+                if heredoc.strip_tabs:
+                    content_line = line.lstrip('\t')
+                self.collected[heredoc.key]['content'].append(content_line)
 
-        # Remove completed heredocs from pending (in order)
-        if completed:
-            # Since we only check the first pending heredoc, we only need to remove it
-            self.pending.pop(0)
-            remaining_pending = self.pending
-        else:
-            remaining_pending = self.pending
-
-        # If we didn't complete any heredocs, add the line to the FIRST pending one only
-        if not completed and self.pending:
-            # Only the first pending heredoc should collect content
-            heredoc = self.pending[0]
-            content_line = line
-            if heredoc.strip_tabs:
-                content_line = line.lstrip('\t')
-
-            # Find the key and add content
-            for key, info in self.collected.items():
-                if (info['delimiter'] == heredoc.delimiter and
-                    not info['complete']):
-                    info['content'].append(content_line)
-                    break
-
-        self.pending = remaining_pending
         return completed
+
+    def finalize_at_eof(self, last_line: int) -> List[Tuple[str, int]]:
+        """End of input with heredocs still pending: delimit them by EOF.
+
+        Bash does not drop an unterminated heredoc — it uses everything
+        gathered so far as the body, warns ("here-document at line N
+        delimited by end-of-file"), and runs the command (silently swallowing
+        it was worse than bash's warn-and-recover). Content routing matches
+        bash: the first pending heredoc keeps the gathered lines; any later
+        pending heredocs get empty bodies.
+
+        Returns ``(delimiter, start_line)`` pairs for the caller's warnings,
+        in order. The first pending heredoc reports the line its body
+        gathering began at (its — possibly re-stamped — ``start_line``);
+        later ones report ``last_line``, where their gathering would have
+        begun (bash reports the same line numbers).
+        """
+        warnings: List[Tuple[str, int]] = []
+        for index, heredoc in enumerate(self.pending):
+            self.collected[heredoc.key]['complete'] = True
+            warnings.append((heredoc.delimiter,
+                             heredoc.start_line if index == 0 else last_line))
+        self.pending.clear()
+        return warnings
 
     def get_content(self, key: str) -> Optional[str]:
         """Get the collected content for a heredoc."""

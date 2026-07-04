@@ -312,8 +312,10 @@ class ExecutorVisitor(ASTVisitor[int]):
         start = os.times()
         status = 0
         try:
-            if node.commands:
-                status = self.pipeline_executor.execute(node, self.context, self)
+            # PipelineExecutor handles the empty pipeline (`time` alone
+            # times a null command, status 0) and any `!` negation
+            # (`time !` -> 1) uniformly.
+            status = self.pipeline_executor.execute(node, self.context, self)
         finally:
             real = time.monotonic() - start_real
             end = os.times()

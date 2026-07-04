@@ -14,27 +14,48 @@ class TildeExpander:
         self.shell = shell
         self.state = shell.state
 
+    @staticmethod
+    def prefix_end(path: str) -> int:
+        """End index of the leading tilde-prefix in *path*.
+
+        bash delimits a tilde-prefix at the first unquoted ``/`` OR ``:``
+        (the ``:`` via tilde_additional_suffixes — ``echo ~:x`` expands to
+        ``$HOME:x``; probed bash 5.2). Returns ``len(path)`` when neither
+        appears. This is THE boundary rule, shared by :meth:`expand`, the
+        word-leading decision (word_expander._leading_tilde_expandable
+        documents the all-unquoted-literal requirement layered on top),
+        and the operand walkers (operands._tilde_prefix).
+        """
+        for i in range(1, len(path)):
+            if path[i] in '/:':
+                return i
+        return len(path)
+
     def expand(self, path: str) -> str:
-        """Expand tilde in paths like ~ and ~user"""
+        """Expand a leading tilde-prefix: ~, ~user, ~+/~-/~N (+ optional rest).
+
+        The prefix runs to the first ``/`` or ``:`` (see prefix_end); the
+        rest of *path* is appended verbatim. An inexpansible prefix (unknown
+        user, out-of-range dirstack index) leaves the WHOLE path literal.
+        """
         if not path.startswith('~'):
             return path
+
+        end = self.prefix_end(path)
+        prefix, rest = path[:end], path[end:]
 
         # Directory-stack / PWD / OLDPWD tilde prefixes:
         #   ~+    -> $PWD            ~-    -> $OLDPWD
         #   ~+N   -> `dirs +N`       ~-N   -> `dirs -N`
         #   ~N    -> `dirs +N`
-        # The prefix runs to the first '/' or end of word.
-        if len(path) > 1 and (path[1] in '+-' or path[1].isdigit()):
-            slash = path.find('/')
-            prefix = path if slash == -1 else path[:slash]
-            rest = '' if slash == -1 else path[slash:]
+        if len(prefix) > 1 and (prefix[1] in '+-' or prefix[1].isdigit()):
             expanded = self._expand_dirstack_prefix(prefix)
             if expanded is None:
                 return path  # leave whole thing literal (out of range, etc.)
             return expanded + rest
 
-        # Just ~ or ~/path
-        if path == '~' or path.startswith('~/'):
+        # Just ~ (possibly with /path or :rest following)
+        if prefix == '~':
             # The shell's HOME variable wins (HOME=/xyz; echo ~ → /xyz),
             # falling back to the password database like bash.
             home = self.state.get_variable('HOME')
@@ -43,30 +64,15 @@ class TildeExpander:
                     home = pwd.getpwuid(os.getuid()).pw_dir
                 except (KeyError, OSError):
                     home = '/'
+            return home + rest
 
-            if path == '~':
-                return home
-            else:
-                return home + path[1:]  # Replace ~ with home
-
-        # ~username or ~username/path
-        else:
-            # Find where username ends
-            slash_pos = path.find('/')
-            if slash_pos == -1:
-                username = path[1:]  # Everything after ~
-                rest = ''
-            else:
-                username = path[1:slash_pos]
-                rest = path[slash_pos:]
-
-            # Look up user's home directory
-            try:
-                user_info = pwd.getpwnam(username)
-                return user_info.pw_dir + rest
-            except KeyError:
-                # User not found, return unchanged
-                return path
+        # ~username (possibly with /path or :rest following)
+        try:
+            user_info = pwd.getpwnam(prefix[1:])
+            return user_info.pw_dir + rest
+        except KeyError:
+            # User not found, return unchanged
+            return path
 
     def _dir_stack(self):
         """Effective directory stack as ``dirs`` would show it.

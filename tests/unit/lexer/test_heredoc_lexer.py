@@ -59,9 +59,66 @@ class TestHeredocLexerUnit:
         assert 'tail' in values
         assert body_of(hmap, 'EOF') == 'body\n'
 
-    def test_incomplete_heredoc_excluded(self):
+    def test_punctuation_delimiters(self):
+        """Bash accepts almost any non-blank run as the delimiter word —
+        glob chars, dots, dashes, leading punctuation, mid-word # — and the
+        terminator is the same literal run (reappraisal #17 round-2)."""
+        for delim in ('E*F', 'A?B', 'AB[cd]', 'E.F', 'E-F', '@X', 'E#F',
+                      'E,F', 'E{F', 'E+F', '{abc}', '!', '123'):
+            src = f'cat <<{delim}\nhello\n{delim}\necho after\n'
+            tokens, hmap = tokenize_with_heredocs(src)
+            assert body_of(hmap, delim) == 'hello\n', delim
+            assert 'after' in [t.value for t in tokens], delim
+        # A leading-dash delimiter needs a space (`<<-EOF` is the <<-
+        # operator); `<<--EOF` is <<- with delimiter `-EOF`.
+        _, hmap = tokenize_with_heredocs('cat << -EOF\nhello\n-EOF\n')
+        assert body_of(hmap, '-EOF') == 'hello\n'
+        _, hmap = tokenize_with_heredocs('cat <<--EOF\nhello\n-EOF\n')
+        assert body_of(hmap, '-EOF') == 'hello\n'
+
+    def test_brace_delimiter_not_brace_expanded(self):
+        # `cat <<E{a,b}F` must NOT become delimiter words `EaF EbF`. Use the
+        # PACKAGE entry point — the post-lex pipeline (TokenBraceExpander)
+        # is where the delimiter word used to get expanded.
+        from psh.lexer import tokenize_with_heredocs as package_twh
+        tokens, hmap = package_twh('cat <<E{a,b}F\nhello\nE{a,b}F\n')
+        values = [t.value for t in tokens]
+        assert 'E{a,b}F' in values and 'EaF' not in values
+        assert body_of(hmap, 'E{a,b}F') == 'hello\n'
+
+    def test_brace_expansion_still_works_after_heredoc_delimiter(self):
+        # Only the delimiter word is exempt; other words on the line expand.
+        from psh.lexer import tokenize_with_heredocs as package_twh
+        tokens, _ = package_twh('cat <<EOF x{1,2}\nbody\nEOF\n')
+        values = [t.value for t in tokens]
+        assert 'x1' in values and 'x2' in values
+
+    def test_incomplete_heredoc_delimited_by_eof(self, capsys):
+        """An unterminated heredoc is NOT dropped: like bash, the gathered
+        lines become the body ("delimited by end-of-file") and a warning is
+        printed to stderr. (It used to be silently excluded from the map —
+        the command then ran with an EMPTY body, silent data loss.)"""
         _, hmap = tokenize_with_heredocs('cat <<EOF\nno terminator\n')
-        assert hmap == {}
+        assert body_of(hmap, 'EOF') == 'no terminator\n'
+        err = capsys.readouterr().err
+        assert ("warning: here-document at line 1 delimited by end-of-file "
+                "(wanted `EOF')") in err
+
+    def test_incomplete_heredoc_warning_suppressed_for_trials(self, capsys):
+        from psh.lexer.heredoc_lexer import HeredocLexer
+        lexer = HeredocLexer('cat <<EOF\nbody\n', warn_unterminated=False)
+        _, hmap = lexer.tokenize_with_heredocs()
+        assert body_of(hmap, 'EOF') == 'body\n'
+        assert capsys.readouterr().err == ''
+
+    def test_incomplete_second_heredoc_gets_empty_body(self, capsys):
+        # bash content routing: the first pending heredoc keeps everything
+        # gathered up to EOF; later pending heredocs get empty bodies.
+        _, hmap = tokenize_with_heredocs('cat <<A <<B\nbody1\n')
+        assert body_of(hmap, 'A') == 'body1\n'
+        assert body_of(hmap, 'B') == ''
+        err = capsys.readouterr().err
+        assert "(wanted `A')" in err and "(wanted `B')" in err
 
 
 class TestHeredocCrossLineState:

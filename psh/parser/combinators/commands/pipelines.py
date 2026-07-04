@@ -36,7 +36,11 @@ class PipelineMixin(_Base):
 
     # Token types that terminate a pipeline: a bare `time`/`time -p` with one
     # of these next is a complete (empty) timed pipeline — bash times nothing.
-    # Mirrors the recursive descent parser's _PIPELINE_END_TOKENS.
+    # NOTE: deliberately broader than bash's list_terminator (`;`, newline,
+    # EOF). The recursive descent parser narrowed to bash's rule and grew
+    # recursive time/! prefix interleaving (v0.607); this educational parser
+    # keeps the simpler historical shape — a documented parity gap, so forms
+    # like `! time cmd` honestly reject here rather than misparse.
     _PIPELINE_END_TYPES = frozenset({
         'SEMICOLON', 'NEWLINE', 'AMPERSAND', 'AND_AND', 'OR_OR',
         'PIPE', 'PIPE_AND', 'RPAREN', 'RBRACE',
@@ -85,8 +89,13 @@ class PipelineMixin(_Base):
                         position=pos,
                     )
 
-            neg_result = optional(self.tokens.exclamation).parse(tokens, pos)
-            negated = neg_result.value is not None
+            # Leading `!` negation. bash allows the reserved word to repeat
+            # (`! ! cmd`), each occurrence toggling the sense of the exit
+            # status: `! ! true` -> 0, `! ! ! true` -> 1. Mirrors the
+            # recursive descent parser's consume loop (commands.py).
+            neg_result = many(self.tokens.exclamation).parse(tokens, pos)
+            assert neg_result.value is not None
+            negated = len(neg_result.value) % 2 == 1
             pos = neg_result.position
 
             # Parse first command

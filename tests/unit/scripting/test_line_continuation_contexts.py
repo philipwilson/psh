@@ -190,6 +190,44 @@ class TestHeredocMarkerScan:
         markers, _ = scan_line_heredoc_markers("echo hi # <<EOF")
         assert markers == []
 
+    def test_marker_accepts_punctuation_delimiters(self):
+        """Bash accepts almost any non-blank run as the delimiter word;
+        the old [A-Za-z0-9_$] class truncated `E*F` to `E` (the terminator
+        then never matched -> the heredoc silently vanished)."""
+        for delim in ('E*F', 'A?B', 'AB[cd]', 'E.F', 'E-F', '@X', 'E#F',
+                      'E,F', 'E{a,b}F', '{abc}', '!', 'E+F', 'E=F', '123'):
+            markers, _ = scan_line_heredoc_markers(f"cat <<{delim}")
+            assert markers == [(delim, False, False)], delim
+
+    def test_marker_word_ends_at_metacharacters(self):
+        # `;` ends the delimiter word (bash); same for | & ( ) < > and blanks.
+        markers, _ = scan_line_heredoc_markers("cat <<EOF; echo hi")
+        assert markers == [("EOF", False, False)]
+        markers, _ = scan_line_heredoc_markers("cat <<EOF>out")
+        assert markers == [("EOF", False, False)]
+
+    def test_hash_cannot_start_a_delimiter(self):
+        # `#` right after `<<` (with or without a space) begins a comment in
+        # bash — both spellings are syntax errors, never heredocs.
+        markers, _ = scan_line_heredoc_markers("cat << #foo")
+        assert markers == []
+        markers, _ = scan_line_heredoc_markers("cat <<#foo")
+        assert markers == []
+
+    def test_leading_dash_delimiter_spellings(self):
+        # `<< -EOF` is a plain heredoc with delimiter -EOF; `<<--EOF` is the
+        # tab-stripping operator with delimiter -EOF.
+        markers, _ = scan_line_heredoc_markers("cat << -EOF")
+        assert markers == [("-EOF", False, False)]
+        markers, _ = scan_line_heredoc_markers("cat <<--EOF")
+        assert markers == [("-EOF", True, False)]
+
+    def test_crlf_line_ending_cr_not_part_of_delimiter(self):
+        # A CRLF line's trailing CR is a line ending, not delimiter text
+        # (the v0.600 CRLF-heredoc behavior depends on this).
+        markers, _ = scan_line_heredoc_markers("cat <<EOF\r")
+        assert markers == [("EOF", False, False)]
+
     def test_comment_quote_excluded_from_carried_state(self):
         _, quote = scan_line_heredoc_markers("echo hi # don't")
         assert quote is None

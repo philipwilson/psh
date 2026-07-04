@@ -24,7 +24,7 @@ from ....ast_nodes import (
     Word,
 )
 from ....lexer.token_types import TokenType
-from ..helpers import TokenGroups
+from ..helpers import TokenGroups, unexpected_token_message
 from .base import ParserSubcomponent
 
 
@@ -355,11 +355,7 @@ class ControlStructureParser(ParserSubcomponent):
     def _case_syntax_error(self):
         """Build a bash-shaped syntax error for a malformed case header."""
         token = self.parser.peek()
-        if token.type == TokenType.EOF:
-            return self.parser.error("syntax error: unexpected end of file", token)
-        display = 'newline' if token.type == TokenType.NEWLINE else token.value
-        return self.parser.error(
-            f"syntax error near unexpected token '{display}'", token)
+        return self.parser.error(unexpected_token_message(token), token)
 
     def parse_case_item(self) -> CaseItem:
         """Parse a single case item."""

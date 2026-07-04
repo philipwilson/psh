@@ -23,6 +23,17 @@ from .tokens import ArithToken, ArithTokenType
 class ArithParser:
     """Recursive descent parser for arithmetic expressions"""
 
+    # Maximum expression-nesting depth (parentheses, ternaries, unary
+    # chains). An EXPLICIT guard so a genuinely too-deep expression fails
+    # deterministically with "expression too deeply nested" — while a
+    # RecursionError from arithmetic is now always what it looks like
+    # (the surrounding shell exhausted the stack, e.g. runaway function
+    # recursion) and propagates to the function-call boundary instead of
+    # being mislabeled as an arithmetic error. 1024 levels * ~15 frames
+    # per level stays comfortably inside the interpreter limit raised by
+    # psh.shell.RECURSION_LIMIT (40,000).
+    MAX_DEPTH = 1024
+
     # Simple and compound assignment operators (used for scalars and array
     # elements alike).
     _ASSIGNMENT_OPS = (
@@ -41,6 +52,8 @@ class ArithParser:
         # can use the literal subscript text as their key.
         self.source = source
         self.current = 0
+        # Current expression-nesting depth; see MAX_DEPTH.
+        self._depth = 0
 
     def peek(self) -> ArithToken:
         if self.current < len(self.tokens):
@@ -94,17 +107,29 @@ class ArithParser:
         the grammar there restarts at the lowest precedence. The FALSE
         operand stays at ternary level — a following comma belongs to the
         enclosing expression (``$((0?1:2,3))`` is ``(0?1:2),3`` = 3).
+
+        Carries the nesting-depth guard: every nested descent of the
+        grammar except unary-operator chains re-enters here (parenthesized
+        sub-expressions via parse_comma, ternary arms). parse_unary guards
+        its own self-recursion with the same counter.
         """
-        condition = self.parse_logical_or()
+        self._depth += 1
+        try:
+            if self._depth > self.MAX_DEPTH:
+                raise SyntaxError("expression too deeply nested")
 
-        if self.match(ArithTokenType.QUESTION):
-            self.advance()
-            true_expr = self.parse_comma()
-            self.expect(ArithTokenType.COLON)
-            false_expr = self.parse_ternary()
-            return TernaryNode(condition, true_expr, false_expr)
+            condition = self.parse_logical_or()
 
-        return condition
+            if self.match(ArithTokenType.QUESTION):
+                self.advance()
+                true_expr = self.parse_comma()
+                self.expect(ArithTokenType.COLON)
+                false_expr = self.parse_ternary()
+                return TernaryNode(condition, true_expr, false_expr)
+
+            return condition
+        finally:
+            self._depth -= 1
 
     def parse_logical_or(self) -> ArithNode:
         """Parse logical OR (||)"""
@@ -196,14 +221,7 @@ class ArithParser:
         return left
 
     def parse_additive(self) -> ArithNode:
-        """Parse addition and subtraction (+, -)
-
-        A ``++``/``--`` pair that is not a real increment/decrement never
-        reaches the parser: the tokenizer's ``_pair_is_incdec`` splits it
-        into sign tokens (``5 ++ 3`` arrives as ``5 + + 3`` = 8). A real
-        INCREMENT/DECREMENT token in binary position (``3++x`` — prefix
-        form after a non-lvalue) is a syntax error, exactly like bash.
-        """
+        """Parse addition and subtraction (+, -)"""
         left = self.parse_multiplicative()
 
         while self.match(ArithTokenType.PLUS, ArithTokenType.MINUS):
@@ -240,16 +258,21 @@ class ArithParser:
     def parse_unary(self) -> ArithNode:
         """Parse unary operators"""
         # Unary operators: +, -, !, ~, ++, --
+        # A chain (`----x`, `!!!!x`) recurses here directly without passing
+        # parse_ternary, so it needs its own depth guard.
         if self.match(ArithTokenType.PLUS, ArithTokenType.MINUS,
                      ArithTokenType.NOT, ArithTokenType.BIT_NOT):
             op = self.advance().type
-            operand = self.parse_unary()
+            self._depth += 1
+            try:
+                if self._depth > self.MAX_DEPTH:
+                    raise SyntaxError("expression too deeply nested")
+                operand = self.parse_unary()
+            finally:
+                self._depth -= 1
             return UnaryOpNode(op, operand)
 
-        # Pre-increment/decrement. The tokenizer emits INCREMENT/DECREMENT
-        # in prefix position only when an identifier follows (a pair before
-        # a non-lvalue — ``++5``, ``++(x)`` — is split into sign tokens
-        # there, matching bash's expr.c), so this is defensive.
+        # Pre-increment/decrement
         if self.match(ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
             inc_op = self.advance()
             if not self.match(ArithTokenType.IDENTIFIER):

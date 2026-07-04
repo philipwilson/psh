@@ -65,9 +65,13 @@ class LiteralRecognizer(ContextualRecognizer):
         super().__init__()
         self.config = None  # Will be set by ModularLexer
 
-    # Characters that can terminate a word
+    # Characters that can terminate a word. The whitespace row is the shell
+    # token-separator set (space/tab/newline ONLY — see
+    # unicode_support.SHELL_WHITESPACE): CR/FF/VT are ordinary word
+    # characters in bash (`echo a<FF>b` is one word), and a CRLF line's
+    # trailing CR is handled by the line-reading layer, never here.
     WORD_TERMINATORS = {
-        ' ', '\t', '\n', '\r', '\f', '\v',  # Whitespace
+        ' ', '\t', '\n',                         # Whitespace (shell blanks + newline)
         '|', '&', ';', '(', ')', '{', '}',       # Operators
         '<', '>', '=', '+',                      # More operators
         '[', ']',                                # Bracket operators

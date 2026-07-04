@@ -105,12 +105,15 @@ class EmacsKeyBindings(KeyBindings):
             self.CTRL_J: 'accept_line',  # LF accepts the line (pasted newlines)
         }
 
-        # Meta (Alt) key bindings
+        # Meta (Alt) key bindings. The meta word commands use readline's
+        # ALNUM word boundaries (on `aa.bb`, M-DEL kills just `bb`),
+        # while C-w above stays whitespace-based (unix-word-rubout) —
+        # exactly bash's split.
         self.meta_bindings = {
-            'b': 'move_word_backward',
-            'f': 'move_word_forward',
-            'd': 'kill_word_forward',
-            self.BACKSPACE: 'kill_word_backward',
+            'b': 'backward_word',
+            'f': 'forward_word',
+            'd': 'kill_word',
+            self.BACKSPACE: 'backward_kill_word',
             '<': 'move_to_first_history',
             '>': 'move_to_last_history',
         }

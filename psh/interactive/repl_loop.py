@@ -3,6 +3,7 @@ import sys
 from typing import TYPE_CHECKING, Optional
 
 from .base import InteractiveComponent
+from .eof_policy import EOF_IGNORED_MESSAGE, ignoreeof_limit
 from .line_editor import LineEditor
 from .multiline_handler import MultiLineInputHandler
 from .title import idle_title, set_terminal_title
@@ -23,6 +24,10 @@ class REPLLoop(InteractiveComponent):
         self.prompt_manager: Optional["PromptManager"] = None
         self.line_editor: Optional[LineEditor] = None
         self.multi_line_handler: Optional[MultiLineInputHandler] = None
+        # Consecutive Ctrl-D presses at the prompt, for ignoreeof/
+        # IGNOREEOF (reset by a non-blank command; blank lines don't
+        # reset it — bash-probed, see interactive/eof_policy.py).
+        self._consecutive_eofs = 0
 
     def setup(self):
         """Set up the REPL environment."""
@@ -70,16 +75,43 @@ class REPLLoop(InteractiveComponent):
                 command = self.multi_line_handler.read_command(on_resize=on_resize)
 
                 if command is None:  # EOF (Ctrl-D)
+                    # ignoreeof: swallow up to IGNOREEOF consecutive
+                    # EOFs, telling the user how to leave (bash prints
+                    # the message to stderr).
+                    self._consecutive_eofs += 1
+                    limit = ignoreeof_limit(self.state)
+                    if limit is not None and self._consecutive_eofs <= limit:
+                        print(EOF_IGNORED_MESSAGE, file=sys.stderr)
+                        continue
+                    # The EOF that exits behaves "as if the user typed
+                    # exit" (bash synthesizes one), so shift it into the
+                    # command register — after `jobs`, a Ctrl-D exits
+                    # without a warning, exactly like `exit` — and apply
+                    # the stopped-jobs guard: the first attempt warns
+                    # and stays.
+                    self.job_manager.note_simple_command('exit')
+                    if not self.job_manager.confirm_exit_with_stopped_jobs():
+                        continue
                     print()  # New line before exit
                     break
 
                 if command.strip():
+                    self._consecutive_eofs = 0
+                    warning_was_pending = self.job_manager.exit_warning_pending
                     self.shell.run_command(command)
+                    if warning_was_pending:
+                        # A command ran after "There are stopped jobs."
+                        # without the shell exiting: re-arm the guard
+                        # (bash last_shell_builtin semantics — blank
+                        # lines don't get here and keep it disarmed).
+                        self.job_manager.clear_exit_warning()
 
             except KeyboardInterrupt:
-                # Ctrl-C pressed, cancel multi-line input and continue
+                # Ctrl-C pressed, cancel multi-line input and continue.
+                # The line editor already echoed ^C and moved to a new
+                # line (LineRenderer.show_interrupt) — echoing it again
+                # here printed a duplicate ^C (reappraisal #17 L1).
                 self.multi_line_handler.reset()
-                print("^C")
                 self.state.last_exit_code = 130  # 128 + SIGINT(2)
                 continue
             except EOFError:

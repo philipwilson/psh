@@ -41,6 +41,13 @@
       "psh_behavior": "Syntax error with PSH error format",
       "bash_behavior": "Syntax error with bash error format",
       "category": "error_format_differences"
+    },
+    "alias ll=\"echo ALIAS_EXPANDED\"; ll": {
+      "id": "ALIAS_EXPANSION_NONINTERACTIVE",
+      "description": "PSH deliberately keeps the expand_aliases shopt option ON in every mode (educational choice, single lex->parse alias gate in shell.py); bash defaults it OFF in non-interactive shells. Documented in user guide ch17 (17.3 Alias Expansion in Scripts) and ch04.",
+      "psh_behavior": "Alias expands in scripts and -c strings; prints ALIAS_EXPANDED, exit 0",
+      "bash_behavior": "expand_aliases is off non-interactively (and the line was read before the alias existed); ll: command not found, exit 127",
+      "category": "deliberate_divergences"
     }
   },
   "psh_extensions": {
