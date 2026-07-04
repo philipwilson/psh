@@ -4006,3 +4006,85 @@
   stdout: "after=0\nval=9\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# LOOP EXIT STATUS after break/continue (reappraisal #17 Tier-1 H3).
+# A successful break/continue is a command returning 0 that resets $?; the
+# loop reports the status of the last command executed — the break/continue
+# itself when taken via && / || on a later iteration (psh used to report the
+# previous iteration's stale failure). Includes the mirrored while/until
+# CONDITION-position semantics and out-of-range `break 0` crossing forks
+# (verified against bash 3.2 and 5.2; probes in tmp/probes-r17t1-break/).
+# =============================================================================
+
+- name: for_break_via_andand_resets_status
+  command: 'for i in 0 1 2 3; do [ $i -ge 2 ] && break; done; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: for_continue_via_andand_resets_status
+  command: 'for i in 0 1 2 3; do [ $i -ge 2 ] && continue; done; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: for_break_via_oror_resets_status
+  command: 'for i in 0 1 2 3; do test $i -lt 2 || break; test $i -lt 0; done; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: while_break_via_andand_resets_status
+  command: 'i=0; while [ $i -lt 4 ]; do i=$((i+1)); [ $i -ge 2 ] && break; done; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: until_continue_via_andand_resets_status
+  command: 'i=0; until [ $i -ge 4 ]; do i=$((i+1)); false; [ $i -ge 2 ] && continue; done; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cfor_break_via_andand_resets_status
+  command: 'for ((i=0;i<4;i++)); do [ $i -ge 2 ] && break; done; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: continue_then_false_keeps_failure_status
+  command: 'for i in 1 2; do [ $i -eq 1 ] && continue; false; done; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: untaken_break_keeps_test_failure_status
+  command: 'for i in 1 2 3; do false && break; done; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: while_cond_break_resets_status_after_failing_body
+  command: 'i=0; while { i=$((i+1)); [ $i -eq 2 ] && break; [ $i -le 5 ]; }; do false; done; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: until_cond_break_keeps_failing_body_status
+  command: 'i=0; until { i=$((i+1)); [ $i -eq 2 ] && break; [ $i -gt 5 ]; }; do false; done; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: until_cond_continue_terminates_with_body_status
+  command: 'i=0; until { i=$((i+1)); [ $i -eq 2 ] && continue; [ $i -gt 3 ]; }; do false; done; echo rc=$? i=$i'
+  stdout: "rc=1 i=2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cmdsub_break0_failure_status_crosses_fork
+  command: 'for i in 1; do x=$(break 0); echo rc=$?; done'
+  stdout: "rc=1\n"
+  stderr: "loop count out of range"
+  exit_code: 0

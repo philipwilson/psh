@@ -257,10 +257,12 @@ def run_child_shell(parent_shell: 'Shell',
             # context ends the child with its status (bash:
             # f() { x=$(return 3); } leaves $? = 3).
             exit_code = e.exit_code
-        except (LoopBreak, LoopContinue):
+        except (LoopBreak, LoopContinue) as e:
             # A break/continue that escapes the child's own loops (the
-            # inherited loop scope above) just ends the child, status 0.
-            exit_code = 0
+            # inherited loop scope above) just ends the child with the
+            # signal's own status — 0 normally, 1 for out-of-range
+            # `break 0` (bash: `x=$(break 0)` in a loop leaves $? = 1).
+            exit_code = e.exit_status or 0
         except SystemExit as e:
             # exit in a substitution terminates the child, not the parent.
             code = e.code

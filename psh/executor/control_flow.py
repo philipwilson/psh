@@ -15,7 +15,7 @@ This module handles execution of control structures including:
 
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Iterator, List
+from typing import TYPE_CHECKING, Iterator, List, Union
 
 from ..core import LoopBreak, LoopContinue, NamerefCycleError, ReadonlyVariableError
 from ..expansion.arithmetic import evaluate_arithmetic
@@ -110,19 +110,25 @@ class ControlFlowExecutor:
         When a ``break N`` / ``continue N`` (N > 1) reaches a loop that is not
         the outermost target, it must keep propagating outward with its level
         count reduced by one. Outside that case nothing is re-raised (the
-        caller handles the local break/continue). A LoopBreak's exit_status
-        (the out-of-range case) is carried forward through the propagation.
+        caller handles the local break/continue). The signal's exit_status
+        (0 for a successful break/continue, 1 for the out-of-range case) is
+        carried forward through the propagation.
         """
         if exc.level > 1 and context.loop_depth > 1:
-            if isinstance(exc, LoopBreak):
-                raise LoopBreak(exc.level - 1, exit_status=exc.exit_status)
-            raise type(exc)(exc.level - 1)
+            raise type(exc)(exc.level - 1, exit_status=exc.exit_status)
 
     @staticmethod
-    def _break_status(lb: 'LoopBreak', current: int) -> int:
-        """The loop's exit status after catching a LoopBreak: the break's own
-        status when set (out-of-range `break 0` → 1), else the body status."""
-        return lb.exit_status if lb.exit_status is not None else current
+    def _signal_status(sig: 'Union[LoopBreak, LoopContinue]', current: int) -> int:
+        """The loop's exit status after a break/continue signal from the BODY.
+
+        bash: the loop reports the status of the last command executed in
+        the body — and a break/continue IS such a command, so a successful
+        one resets the loop's status to 0 (`for i in 0 1; do false &&
+        break; done` ends with the test's 1, but `[ ... ] && break` taken
+        ends with the break's 0). Out-of-range `break 0` carries 1. A
+        manually raised signal (exit_status=None) keeps the body status.
+        """
+        return sig.exit_status if sig.exit_status is not None else current
 
     def execute_if(self, node: 'IfConditional', context: 'ExecutionContext',
                    visitor: 'ASTVisitor[int]') -> int:
@@ -190,10 +196,22 @@ class ControlFlowExecutor:
                     with context.errexit_suppressed():
                         condition_status = visitor.visit(node.condition)
                 except LoopContinue as lc:
+                    # bash: continue in a WHILE condition re-evaluates it,
+                    # and (like a body continue) resets the loop's pending
+                    # status to the continue's own 0 — a later body run
+                    # overrides it again. Pinned by the truth table in
+                    # tmp/probes-r17t1-break (cond_continue_after_fail_body).
+                    exit_status = self._signal_status(lc, exit_status)
                     self._reraise_loop_control(lc, context)
                     continue
                 except LoopBreak as lb:
-                    exit_status = self._break_status(lb, exit_status)
+                    # bash quirk (verified on 3.2 and 5.2): a SUCCESSFUL
+                    # break in a WHILE condition resets the loop's status
+                    # to 0, but a failed `break 0` there keeps the last
+                    # body status (the failure status 1 is NOT reported —
+                    # while_break0_cond / d8 in the truth table).
+                    if lb.exit_status == 0:
+                        exit_status = 0
                     self._reraise_loop_control(lb, context)
                     break
                 if condition_status != 0:
@@ -203,10 +221,11 @@ class ControlFlowExecutor:
                 try:
                     exit_status = visitor.visit(node.body)
                 except LoopContinue as lc:
+                    exit_status = self._signal_status(lc, exit_status)
                     self._reraise_loop_control(lc, context)
                     continue
                 except LoopBreak as lb:
-                    exit_status = self._break_status(lb, exit_status)
+                    exit_status = self._signal_status(lb, exit_status)
                     self._reraise_loop_control(lb, context)
                     break
         return exit_status
@@ -221,16 +240,28 @@ class ControlFlowExecutor:
             if not applied:
                 return 1
             while True:
-                # break/continue in the condition act on THIS loop (see
-                # execute_while).
+                # break/continue in the condition act on THIS loop, but with
+                # the WHILE polarity mirrored (bash, verified on 3.2 and 5.2;
+                # truth table in tmp/probes-r17t1-break): the continue/break
+                # returns 0, which reads as the condition SUCCEEDING, so the
+                # loop ends normally keeping the last body status.
                 try:
                     with context.errexit_suppressed():
                         condition_status = visitor.visit(node.condition)
                 except LoopContinue as lc:
+                    # `until continue; do ...; done` TERMINATES in bash
+                    # (d5/d10/e3 — psh used to loop forever here), keeping
+                    # the last body status.
                     self._reraise_loop_control(lc, context)
-                    continue
+                    break
                 except LoopBreak as lb:
-                    exit_status = self._break_status(lb, exit_status)
+                    # Successful break: condition "succeeded" — keep the
+                    # body status (until_cond_break_after_fail_body → 1).
+                    # Failed `break 0` (status 1): the condition failed, so
+                    # the until does NOT end normally; the failure status is
+                    # reported (d4_until_break0_cond → 1).
+                    if lb.exit_status:
+                        exit_status = lb.exit_status
                     self._reraise_loop_control(lb, context)
                     break
                 if condition_status == 0:
@@ -238,10 +269,11 @@ class ControlFlowExecutor:
                 try:
                     exit_status = visitor.visit(node.body)
                 except LoopContinue as lc:
+                    exit_status = self._signal_status(lc, exit_status)
                     self._reraise_loop_control(lc, context)
                     continue
                 except LoopBreak as lb:
-                    exit_status = self._break_status(lb, exit_status)
+                    exit_status = self._signal_status(lb, exit_status)
                     self._reraise_loop_control(lb, context)
                     break
         return exit_status
@@ -295,10 +327,11 @@ class ControlFlowExecutor:
                 try:
                     exit_status = visitor.visit(node.body)
                 except LoopContinue as lc:
+                    exit_status = self._signal_status(lc, exit_status)
                     self._reraise_loop_control(lc, context)
                     continue
                 except LoopBreak as lb:
-                    exit_status = self._break_status(lb, exit_status)
+                    exit_status = self._signal_status(lb, exit_status)
                     self._reraise_loop_control(lb, context)
                     break
         return exit_status
@@ -368,9 +401,10 @@ class ControlFlowExecutor:
                     try:
                         exit_status = visitor.visit(node.body)
                     except LoopContinue as lc:
+                        exit_status = self._signal_status(lc, exit_status)
                         self._reraise_loop_control(lc, context)
                     except LoopBreak as lb:
-                        exit_status = self._break_status(lb, exit_status)
+                        exit_status = self._signal_status(lb, exit_status)
                         self._reraise_loop_control(lb, context)
                         break
 
@@ -576,10 +610,11 @@ class ControlFlowExecutor:
                         try:
                             exit_status = visitor.visit(node.body)
                         except LoopContinue as lc:
+                            exit_status = self._signal_status(lc, exit_status)
                             self._reraise_loop_control(lc, context)
                             continue
                         except LoopBreak as lb:
-                            exit_status = self._break_status(lb, exit_status)
+                            exit_status = self._signal_status(lb, exit_status)
                             self._reraise_loop_control(lb, context)
                             break
                 except KeyboardInterrupt:
