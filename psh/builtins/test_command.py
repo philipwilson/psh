@@ -158,15 +158,11 @@ class TestBuiltin(Builtin):
             arg1, op, arg2 = args
             return self._evaluate_binary(arg1, op, arg2, shell)
 
-        if len(args) == 4:
-            # Check if we have a split operator (e.g., ! = becoming != )
-            # This handles cases like: test hello ! = hello
-            arg1, op_part1, op_part2, arg2 = args
-            combined_op = op_part1 + op_part2
-
-            # Check if the combined operator is valid
-            if combined_op in ['!=', '==', '=~']:
-                return self._evaluate_binary(arg1, combined_op, arg2, shell)
+        # NOTE: no "split operator" reconstruction (`test a ! = b` as `a != b`)
+        # — bash does not do it either: every such 4-argument form
+        # (`a ! = b`, `a = = b`, `a = ~ b`) is "too many arguments", rc 2.
+        # The one real 4-argument form, POSIX leading-`!` negation
+        # (`test ! a = b`), was already handled in evaluate_test.
 
         # Handle logical operators -a and -o
         # Scan for -o first (lower precedence), then -a, skipping

@@ -490,7 +490,22 @@ class TestTooManyArguments:
         assert captured_shell.get_stderr() == '[: too many arguments\n'
 
     def test_valid_four_arg_forms_stay_silent(self, captured_shell):
-        # Split operators and -a/-o combinations are still recognized.
-        assert captured_shell.run_command('test hello ! = hello') == 1
+        # -a/-o combinations and POSIX leading-`!` negation are still
+        # recognized 4-argument forms and stay silent.
         assert captured_shell.run_command('[ -n x -a -n y ]') == 0
+        assert captured_shell.run_command('test ! hello = hello') == 1
+        assert captured_shell.run_command('test ! hello != hello') == 0
         assert captured_shell.get_stderr() == ''
+
+    def test_split_operators_are_too_many_arguments(self, captured_shell):
+        # bash does NOT reconstruct split operators: `test a ! = b`,
+        # `test a = = b`, `test a = ~ b` are all "too many arguments",
+        # rc 2 (psh used to glue them into !=/==/=~ and evaluate).
+        for cmd in ('test hello ! = hello',
+                    'test a = = b',
+                    'test a = ~ b'):
+            captured_shell.clear_output()
+            rc = captured_shell.run_command(cmd)
+            assert rc == 2, cmd
+            assert captured_shell.get_stderr() == \
+                'test: too many arguments\n', cmd
