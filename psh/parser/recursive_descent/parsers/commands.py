@@ -18,7 +18,7 @@ from ....ast_nodes import (
 )
 from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import Token, TokenType
-from ..helpers import ParseError, TokenGroups
+from ..helpers import ParseError, TokenGroups, unexpected_token_message
 from ..support.word_builder import WordBuilder
 from .base import ParserSubcomponent
 from .redirections import _FD_DUP_RE
@@ -532,8 +532,7 @@ class CommandParser(ParserSubcomponent):
         # Bash requires at least one command inside a subshell: `()`, `( )`,
         # newline-only or comment-only groups are a syntax error (exit 2).
         if not statements.statements:
-            raise self.parser.error(
-                f"syntax error near unexpected token '{self.parser.peek().value}'")
+            raise self.parser.error(unexpected_token_message(self.parser.peek()))
         self.parser.expect(TokenType.RPAREN)
         self.parser.ctx.pop_construct()
 
@@ -562,8 +561,7 @@ class CommandParser(ParserSubcomponent):
         # Bash requires at least one command inside a brace group: `{ }`,
         # newline-only or comment-only groups are a syntax error (exit 2).
         if not statements.statements:
-            raise self.parser.error(
-                f"syntax error near unexpected token '{self.parser.peek().value}'")
+            raise self.parser.error(unexpected_token_message(self.parser.peek()))
         self.parser.expect(TokenType.RBRACE)
         self.parser.ctx.pop_construct()
 

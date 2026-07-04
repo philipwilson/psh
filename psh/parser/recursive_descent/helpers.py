@@ -69,6 +69,21 @@ def describe_token(token: Token) -> str:
     return token_display_name(token.type)
 
 
+def unexpected_token_message(token: Token) -> str:
+    """bash-style "syntax error near unexpected token 'X'" for *token*.
+
+    EOF gets bash's dedicated phrasing ("unexpected end of file") instead
+    of quoting the EOF token's empty value as ``token ''``, and NEWLINE
+    renders as the word ``newline`` (bash) rather than a literal line
+    break inside the quotes.
+    """
+    if token.type == TokenType.EOF:
+        return "syntax error: unexpected end of file"
+    if token.type == TokenType.NEWLINE:
+        return "syntax error near unexpected token 'newline'"
+    return f"syntax error near unexpected token '{token.value}'"
+
+
 class TokenGroups:
     """Groups of related tokens for cleaner matching."""
 

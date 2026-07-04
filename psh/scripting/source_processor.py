@@ -10,7 +10,7 @@ same text twice.
 """
 import dataclasses
 import sys
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 from ..ast_nodes import ASTNode, StatementList, TopLevel
 from ..lexer import UnclosedQuoteError, tokenize
@@ -133,7 +133,8 @@ class SourceProcessor(ScriptComponent):
                 # A real syntax error (not incomplete input): report it
                 # against where the command started and reset.
                 self._report_syntax_error(result.error, input_source,
-                                          command_start_line)
+                                          command_start_line,
+                                          source_text=result.source or result.text)
                 command_start_line = 0
                 exit_code = 2  # Bash uses exit code 2 for syntax errors
                 self.state.last_exit_code = 2
@@ -150,7 +151,8 @@ class SourceProcessor(ScriptComponent):
 
         return exit_code
 
-    def _report_syntax_error(self, error, input_source, start_line: int) -> None:
+    def _report_syntax_error(self, error, input_source, start_line: int,
+                             source_text: Optional[str] = None) -> None:
         """Print a syntax error in the ONE canonical format.
 
         Every parse/lex error — whether reported from the accumulator's
@@ -163,15 +165,27 @@ class SourceProcessor(ScriptComponent):
         prefix uses the ERROR's absolute line when known (bash reports the
         line the error is on, not the line the command started on);
         lexer SyntaxErrors fall back to the command's start line.
+
+        ``source_text`` back-fills the caret's source line for errors whose
+        parser was not given the source (the combinator parser) — the
+        token's line is fragment-relative, so it indexes ``source_text``
+        directly.
         """
         filename = (input_source.get_name()
                     if hasattr(input_source, 'get_name') else 'stdin')
         line = start_line
         detail = str(error)
         if isinstance(error, ParseError) and error.error_context:
-            if error.error_context.line:
-                line = error.error_context.line
-            detail = error.error_context.format_error()
+            ctx = error.error_context
+            if ctx.source_line is None and source_text is not None:
+                token = ctx.token
+                token_line = getattr(token, 'line', None)
+                lines = source_text.splitlines()
+                if token_line and 0 < token_line <= len(lines):
+                    ctx.source_line = lines[token_line - 1]
+            if ctx.line:
+                line = ctx.line
+            detail = ctx.format_error()
         location = f"{filename}:{line}" if line > 0 else "command"
         print(f"psh: {location}: {detail}", file=sys.stderr)
 
@@ -362,7 +376,8 @@ class SourceProcessor(ScriptComponent):
                 return e.exit_code
         except ParseError as e:
             # Same canonical rendering as the trial-parse error path.
-            self._report_syntax_error(e, input_source, start_line)
+            self._report_syntax_error(e, input_source, start_line,
+                                      source_text=command_string)
             self.state.last_exit_code = 2  # Bash uses exit code 2 for syntax errors
             return 2
         except UnclosedQuoteError as e:
