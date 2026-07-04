@@ -4,6 +4,49 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.601.0 (2026-07-04) - Fix: readonly enforcement in arithmetic + assignment-error taxonomy (reappraisal #17 H1)
+- FIX. Reappraisal #17 H1. **Readonly array elements were silently writable
+  through every arithmetic entry point.** `readonly -a a=(1 2); (( a[0]=9 ))`
+  (and `echo $((a[0]=9))`, `let 'a[0]=9'`; indexed and associative; all mutation
+  forms `=`, `+=`, `++`, prefix `++`) wrote the element with no error — the
+  arithmetic evaluator's `set_array_element` (`psh/expansion/arithmetic/evaluator.py`)
+  mutated the variable's value directly and never checked `is_readonly`, while the
+  parallel `SimpleCommand` assignment path (`executor/array.py`) did. It now raises
+  `ReadonlyVariableError` at that chokepoint, flowing exactly like the
+  already-correct scalar arithmetic path in every consumer.
+- **Assignment-error taxonomy for arithmetic contexts.** A `ReadonlyVariableError`
+  (or nameref-cycle error) raised from `(( r=9 ))`, `[[ $((r=9)) -eq 9 ]]`, a
+  C-style `for` header expression, or a `for` loop-variable binding used to escape
+  the handlers' narrow `(ValueError, ArithmeticError)` catch and surface as
+  `psh: -c:1: unexpected error: ...`, **aborting the rest of a `-c` list**. A new
+  shared helper `report_assignment_error()` (`executor/strategies.py`, beside
+  `report_unbound_variable`) now renders the failure bash-style (message + status
+  1) and the surrounding list/loop continues, matching bash. Routed from
+  `visit_ArithmeticEvaluation`, `visit_EnhancedTestStatement`, the three C-style
+  `for` sites (init returns 1; cond/update stop the loop), and the `for`
+  loop-variable binding (which also gained the missing `NamerefCycleError` catch;
+  the readonly message now names the resolved nameref target, like bash).
+- **Cyclic-nameref writes inside arithmetic follow bash's warn-and-drop model.**
+  A circular name-reference write now warns (`circular name reference`) and drops
+  the assignment; evaluation continues (`(( na=5 ))` is status 0, `(( na=0 ))`
+  status 1), handled at the evaluator's two write chokepoints. A cyclic-nameref
+  `for`-loop binding remains an error (warn + status 1 + loop abandoned).
+- **`(( ... ))` diagnostics honour the command's redirections.**
+  `visit_ArithmeticEvaluation`'s error reporting moved inside the
+  `guarded_redirections` scope, so a div-by-zero/readonly message respects
+  `(( ... )) 2>/dev/null` like bash (matching the `visit_EnhancedTestStatement`
+  sibling; previously the message leaked past the redirect).
+- Bash-verified against bash 5.2: all command-context rows in
+  `tmp/probes-r17t1-readonly/truth_table.py` match. Known residual (deliberately
+  deferred to the Tier-2 arithmetic-error-model item): bash's discard-rest-of-line
+  semantics after a failed `$(( ))` *expansion* on the same line — e.g. one-line
+  `readonly r=1; echo $((r=9)); echo after` forms — still diverge; this cluster
+  fixes the command-context (`(( ))`, `let`, `for`, `[[ ]]`) paths, not the
+  same-line expansion-discard behaviour.
+- Tests: 62 new (`tests/unit/expansion/test_arith_readonly_nameref.py`,
+  `tests/integration/test_arith_readonly_continue.py`) plus 12
+  `tests/behavioral/golden_cases.yaml` pins (green under `--compare-bash`).
+
 ## 0.600.0 (2026-07-03) - Fix: source/$0/LINENO/CR + POSIX short options; CRLF-file heredocs terminate (reappraisal #16 Tier 2 scripting cluster)
 - FIX. Reappraisal #16 Tier 2, scripting cluster: a set of script-invocation and
   script-input defects, each pinned to bash 5.2. New/updated tests:
