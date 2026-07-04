@@ -34,9 +34,12 @@ POSIX ordering contract (probe-verified against bash 5.2):
    the caller makes the assignment error fatal instead.
 """
 
+import copy
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple, cast
 
 from ..core import (
+    AssociativeArray,
+    IndexedArray,
     NamerefCycleError,
     ReadonlyVariableError,
     TopLevelAbort,
@@ -305,8 +308,22 @@ class CommandAssignments:
             saved = None
             if var not in saved_vars:
                 existing = self.state.scope_manager.get_variable_object(var)
+                # Snapshot the value for restore(). A scalar is saved as its
+                # string (None when unset, so restore can re-unset it). An
+                # ARRAY is saved as a DEEP COPY of the container, not its
+                # as_string() (element 0): the scalar assignment below mutates
+                # the live array's element 0 in place (bash keeps ``a=x cmd``
+                # non-destructive), and restoring only element 0 would leave a
+                # spurious [0]/["0"] on a sparse or associative array whose
+                # slot 0 did not exist beforehand.
+                existing_val = existing.value if existing is not None else None
+                state_snapshot: object
+                if isinstance(existing_val, (IndexedArray, AssociativeArray)):
+                    state_snapshot = copy.deepcopy(existing_val)
+                else:
+                    state_snapshot = self.state.scope_manager.get_variable(var)
                 saved = {
-                    'state': self.state.scope_manager.get_variable(var),
+                    'state': state_snapshot,
                     'env': self.shell.env.get(var),  # May be None if not in env
                     'was_exported': bool(existing and existing.is_exported),
                 }

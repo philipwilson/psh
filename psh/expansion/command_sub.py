@@ -35,7 +35,14 @@ class CommandSubstitution:
         # fd 0 actually IS the terminal — if stdin was redirected to a
         # pipe or file (scripts, tests, `cmd | psh`), the substitution
         # may legitimately need to read it.
-        is_interactive = getattr(self.shell, '_force_interactive', sys.stdin.isatty())
+        # getattr evaluates its default eagerly, so guard sys.stdin before
+        # .isatty(): psh may run with fd 0 closed (`exec 0<&-; psh -c '…$(…)…'`),
+        # where CPython sets sys.stdin to None. A closed/absent stdin is not a
+        # tty. Matches the guard idiom in shell.py / __main__.py.
+        is_interactive = getattr(
+            self.shell, '_force_interactive',
+            bool(sys.stdin is not None and not sys.stdin.closed
+                 and sys.stdin.isatty()))
         should_protect_stdin = (
             not self.state.is_script_mode and
             is_interactive and
