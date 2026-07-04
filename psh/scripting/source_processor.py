@@ -10,7 +10,7 @@ same text twice.
 """
 import dataclasses
 import sys
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import Any, cast
 
 from ..ast_nodes import ASTNode, StatementList, TopLevel
 from ..lexer import UnclosedQuoteError, tokenize
@@ -18,9 +18,6 @@ from ..parser import ParseError
 from ..utils import contains_heredoc
 from .base import ScriptComponent
 from .command_accumulator import CommandAccumulator, Complete, NeedMore
-
-if TYPE_CHECKING:
-    from ..visitor import EnhancedValidatorVisitor
 
 
 def _offset_line_numbers(obj: Any, delta: int) -> None:
@@ -89,20 +86,13 @@ class SourceProcessor(ScriptComponent):
         command_start_line = 0
         accumulator = CommandAccumulator(self.shell)
 
-        # For validation mode, collect all issues across the entire script
-        self.validation_visitor: Optional["EnhancedValidatorVisitor"] = None
-        if self.shell.validate_only:
-            from ..visitor import EnhancedValidatorVisitor
-            self.validation_visitor = EnhancedValidatorVisitor()
-
         while True:
             line = input_source.read_line()
             if self.state.options.get('debug-exec', False):
                 print(f"DEBUG source_processor: read line: {repr(line)}", file=sys.stderr)
             if line is None:  # EOF
                 # End of input inside a heredoc body: the command never got
-                # its delimiter, so it is dropped (no execution, and in
-                # validation mode no summary either).
+                # its delimiter, so it is dropped (no execution).
                 if accumulator.pending_heredoc:
                     return exit_code
                 # Execute any remaining buffered command (a truncated
@@ -113,13 +103,6 @@ class SourceProcessor(ScriptComponent):
                         add_to_history)
                     if self._should_exit_on_error(exit_code, input_source):
                         return exit_code
-                # In validation mode, show final summary at end
-                if self.validation_visitor:
-                    print(self.validation_visitor.get_summary())
-                    # Return exit code based on errors
-                    error_count = sum(1 for i in self.validation_visitor.issues
-                                    if i.severity.value == 'error')
-                    exit_code = 1 if error_count > 0 else 0
                 break
 
             if accumulator.is_empty:
@@ -280,24 +263,6 @@ class SourceProcessor(ScriptComponent):
             if self.state.debug_ast:
                 from ..utils.ast_debug import print_ast_debug
                 print_ast_debug(ast, self.shell.ast_format, self.shell)
-
-            # Validation mode - analyze AST without executing
-            if self.shell.validate_only:
-                # Use the shared validator instance
-                if self.validation_visitor:
-                    self.validation_visitor.visit(ast)
-                else:
-                    # Fallback for single command validation
-                    from ..visitor import EnhancedValidatorVisitor
-                    validator = EnhancedValidatorVisitor()
-                    validator.visit(ast)
-                    print(validator.get_summary())
-                    error_count = sum(1 for i in validator.issues
-                                    if i.severity.value == 'error')
-                    return 1 if error_count > 0 else 0
-
-                # Don't execute in validation mode
-                return 0
 
             # NoExec mode - parse and validate but don't execute
             if self.state.options.get('noexec', False):

@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple, cast
 
 from .scripting.visitor_modes import (
     handle_visitor_mode_for_command,
+    handle_visitor_mode_for_content,
     handle_visitor_mode_for_script,
 )
 from .shell import Shell
@@ -348,6 +349,19 @@ def main():
             shell.state.is_script_mode = True
             shell.state.options['stdin_mode'] = True  # 's' in $-
             shell.state.positional_params = list(operands)
+
+        # Handle visitor modes for stdin: analysis modes NEVER execute their
+        # input, so read ALL of stdin (piped input, or typed until EOF at a
+        # TTY) and route it through the same chokepoint as -c and script
+        # files. (This branch previously executed the piped script —
+        # `cat script | psh --security` ran the very commands it was asked
+        # to analyze.)
+        if visitor_mode:
+            script_content = sys.stdin.read()
+            exit_code = handle_visitor_mode_for_content(
+                shell, script_content, "<stdin>")
+            sys.exit(exit_code)
+
         if sys.stdin.isatty():
             # Interactive REPL (TTY attached)
             shell.interactive_manager.run_interactive_loop()
