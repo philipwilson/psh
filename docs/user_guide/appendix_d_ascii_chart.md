@@ -216,7 +216,7 @@ Extended ASCII characters vary by encoding. The most common in Unix/Linux enviro
 ```bash
 # Using echo with escape sequences
 echo -e "\x41"          # Prints 'A' (hex)
-echo -e "\101"          # Prints 'A' (octal)
+echo -e "\0101"         # Prints 'A' (octal — echo -e requires a leading 0; bare \101 is literal, matching bash)
 echo -e "\u0041"        # Prints 'A' (Unicode)
 
 # Using printf

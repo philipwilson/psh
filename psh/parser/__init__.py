@@ -64,7 +64,7 @@ def parse_with_heredocs(tokens, heredoc_map, active_parser='rd'):
     return utils_parse_with_heredocs(tokens, heredoc_map)
 
 
-def create_parser(tokens, active_parser='rd', source_text=None):
+def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0):
     """Create a parser configured for the selected implementation.
 
     Chooses between the recursive descent parser and the combinator parser
@@ -75,6 +75,8 @@ def create_parser(tokens, active_parser='rd', source_text=None):
         active_parser: ``'rd'`` for recursive descent (default),
             ``'combinator'`` for the combinator parser.
         source_text: Optional source text for error reporting.
+        line_offset: Number of source lines before this fragment in the
+            enclosing input, so errors report absolute line numbers.
 
     Returns:
         Object with a ``.parse()`` method that returns an AST.
@@ -96,4 +98,5 @@ def create_parser(tokens, active_parser='rd', source_text=None):
 
         return _ParserWrapper(pc, tokens)
 
-    return Parser(tokens, config=config)
+    return Parser(tokens, config=config, source_text=source_text,
+                  line_offset=line_offset)

@@ -55,6 +55,16 @@ class LineEditor:
         'delete': 'delete_char',
     }
 
+    # Kill commands participate in readline's kill-ring coalescing: two
+    # kills in a row (emacs mode only, like readline) merge into one ring
+    # entry instead of pushing two (see EditBuffer._push_kill). Any other
+    # command — movement, typing, yank, history — breaks the chain.
+    KILL_ACTIONS = frozenset({
+        'kill_line', 'kill_whole_line', 'kill_to_beginning',
+        'kill_word_backward', 'kill_word_forward',
+        'kill_word', 'backward_kill_word',
+    })
+
     def __init__(self, history: Optional[List[str]] = None, edit_mode: str = 'emacs'):
         # The components: the buffer model, the renderer, and the
         # history navigator, which keeps the injected list reference —
@@ -82,6 +92,10 @@ class LineEditor:
 
         # Vi specific state
         self.vi_repeat_count = ""
+
+        # True while the PREVIOUS dispatched command was a kill — arms
+        # the kill-ring coalescing for a directly following kill.
+        self._last_action_was_kill = False
 
         # The sole reader of stdin; created fresh per read_line (the fd
         # and the ESC-disambiguation policy are bound at read time).
@@ -160,6 +174,7 @@ class LineEditor:
         self.completion_state = None
         self.current_prompt = prompt
         self.search = None
+        self._last_action_was_kill = False
         self.renderer.update_width()
 
         # Paint the prompt (wrap-aware; strips \x01/\x02 markers)
@@ -255,6 +270,7 @@ class LineEditor:
                 # Insert mode or emacs mode
                 self._insert_char(char)
                 self.completion_state = None
+                self._last_action_was_kill = False  # typing breaks the kill chain
         return None
 
     def _get_key_action(self, char: str) -> Optional[str]:
@@ -346,6 +362,8 @@ class LineEditor:
             'move_backward_char': op(self._move_left),
             'move_word_forward': op(self._move_word_forward),
             'move_word_backward': op(self._move_word_backward),
+            'forward_word': op(self._forward_word),
+            'backward_word': op(self._backward_word),
 
             # Editing
             'delete_char': self._delete_char_action,
@@ -355,6 +373,8 @@ class LineEditor:
             'kill_to_beginning': op(self._kill_to_beginning),
             'kill_word_backward': op(self._kill_word_backward),
             'kill_word_forward': op(self._kill_word_forward),
+            'kill_word': op(self._kill_word),
+            'backward_kill_word': op(self._backward_kill_word),
             'yank': op(self._yank),
             'transpose_chars': op(self._transpose_chars),
 
@@ -386,9 +406,23 @@ class LineEditor:
 
     def _execute_action(self, action: str, char: str) -> Optional[str]:
         """Execute a key binding action by name (unknown names are
-        ignored, as the old elif chain ignored them)."""
+        ignored, as the old elif chain ignored them).
+
+        Also tracks the kill chain: when a kill command directly follows
+        another kill, EditBuffer's ring coalescing is armed so the two
+        kills merge into one yankable entry. readline coalesces in emacs
+        mode only (``_rl_last_command_was_kill && rl_editing_mode !=
+        vi_mode``), and so does psh."""
         handler = self._actions.get(action)
-        return handler(char) if handler else None
+        if handler is None:
+            return None
+        is_kill = action in self.KILL_ACTIONS
+        self.edit_buffer.coalesce_next_kill = (
+            is_kill and self._last_action_was_kill
+            and self.edit_mode == 'emacs')
+        result = handler(char)
+        self._last_action_was_kill = is_kill
+        return result
 
     def _delete_char_action(self, char: str) -> Optional[str]:
         """delete_char, except Ctrl-D on an empty line means EOF (the
@@ -471,6 +505,16 @@ class LineEditor:
         if self.edit_buffer.move_word_backward():
             self._move_cursor_to(self.edit_buffer.cursor)
 
+    def _forward_word(self):
+        """Move to the end of the next word (M-f, alnum boundaries)."""
+        if self.edit_buffer.forward_word():
+            self._move_cursor_to(self.edit_buffer.cursor)
+
+    def _backward_word(self):
+        """Move to the start of the previous word (M-b, alnum boundaries)."""
+        if self.edit_buffer.backward_word():
+            self._move_cursor_to(self.edit_buffer.cursor)
+
     def _kill_line(self):
         """Kill from cursor to end of line."""
         if self.edit_buffer.kill_to_end():
@@ -494,6 +538,16 @@ class LineEditor:
     def _kill_word_forward(self):
         """Kill the word after cursor."""
         if self.edit_buffer.kill_word_forward():
+            self._redraw()
+
+    def _kill_word(self):
+        """Kill to the end of the next word (M-d, alnum boundaries)."""
+        if self.edit_buffer.kill_word():
+            self._redraw()
+
+    def _backward_kill_word(self):
+        """Kill to the start of the previous word (M-DEL, alnum boundaries)."""
+        if self.edit_buffer.backward_kill_word():
             self._redraw()
 
     def _yank(self):

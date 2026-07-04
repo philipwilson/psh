@@ -10,7 +10,7 @@ same text twice.
 """
 import dataclasses
 import sys
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 from ..ast_nodes import ASTNode, StatementList, TopLevel
 from ..lexer import UnclosedQuoteError, tokenize
@@ -91,12 +91,13 @@ class SourceProcessor(ScriptComponent):
             if self.state.options.get('debug-exec', False):
                 print(f"DEBUG source_processor: read line: {repr(line)}", file=sys.stderr)
             if line is None:  # EOF
-                # End of input inside a heredoc body: the command never got
-                # its delimiter, so it is dropped (no execution).
-                if accumulator.pending_heredoc:
-                    return exit_code
                 # Execute any remaining buffered command (a truncated
                 # construct parses to "unexpected end of input" here).
+                # End of input inside a heredoc body is NOT special: like
+                # bash, the heredoc is "delimited by end-of-file" — the
+                # lexer finalizes the gathered lines as the body, prints
+                # bash's warning, and the command runs (it used to be
+                # silently dropped, rc 0).
                 if not accumulator.is_empty:
                     exit_code = self._execute_buffered_command(
                         accumulator.flush(), input_source, command_start_line,
@@ -121,6 +122,9 @@ class SourceProcessor(ScriptComponent):
                 # for $LINENO. base_line is 1 for normal sources (no shift);
                 # for eval / trap actions it is the invoking command's line.
                 command_start_line = base_line + input_source.get_line_number() - 1
+                # Tell the accumulator where this command starts so its
+                # trial-parse errors carry absolute line numbers.
+                accumulator.start_line = max(1, command_start_line)
 
             result = accumulator.feed(line)
             if isinstance(result, NeedMore):
@@ -129,8 +133,9 @@ class SourceProcessor(ScriptComponent):
             if result.error is not None:
                 # A real syntax error (not incomplete input): report it
                 # against where the command started and reset.
-                filename = input_source.get_name() if hasattr(input_source, 'get_name') else 'stdin'
-                print(f"{filename}:{command_start_line}: {result.error}", file=sys.stderr)
+                self._report_syntax_error(result.error, input_source,
+                                          command_start_line,
+                                          source_text=result.source or result.text)
                 command_start_line = 0
                 exit_code = 2  # Bash uses exit code 2 for syntax errors
                 self.state.last_exit_code = 2
@@ -146,6 +151,44 @@ class SourceProcessor(ScriptComponent):
                 return exit_code
 
         return exit_code
+
+    def _report_syntax_error(self, error, input_source, start_line: int,
+                             source_text: Optional[str] = None) -> None:
+        """Print a syntax error in the ONE canonical format.
+
+        Every parse/lex error — whether reported from the accumulator's
+        trial parse or from the execution path's own parse — renders as::
+
+            psh: <source>:<line>: <detailed message>
+
+        For a ParseError the detailed message is the rich caret form
+        (source line, ``^`` marker, suggestions, token context) and the
+        prefix uses the ERROR's absolute line when known (bash reports the
+        line the error is on, not the line the command started on);
+        lexer SyntaxErrors fall back to the command's start line.
+
+        ``source_text`` back-fills the caret's source line for errors whose
+        parser was not given the source (the combinator parser) — the
+        token's line is fragment-relative, so it indexes ``source_text``
+        directly.
+        """
+        filename = (input_source.get_name()
+                    if hasattr(input_source, 'get_name') else 'stdin')
+        line = start_line
+        detail = str(error)
+        if isinstance(error, ParseError) and error.error_context:
+            ctx = error.error_context
+            if ctx.source_line is None and source_text is not None:
+                token = ctx.token
+                token_line = getattr(token, 'line', None)
+                lines = source_text.splitlines()
+                if token_line and 0 < token_line <= len(lines):
+                    ctx.source_line = lines[token_line - 1]
+            if ctx.line:
+                line = ctx.line
+            detail = ctx.format_error()
+        location = f"{filename}:{line}" if line > 0 else "command"
+        print(f"psh: {location}: {detail}", file=sys.stderr)
 
     def _should_exit_on_error(self, exit_code: int, input_source) -> bool:
         """Whether errexit (`set -e`) aborts the whole source now.
@@ -236,10 +279,18 @@ class SourceProcessor(ScriptComponent):
                 self._debug_print_tokens(complete.tokens)
                 ast = complete.ast
             elif contains_heredoc(command_string):
-                # Use the lexer with heredoc support
+                # Use the lexer with heredoc support. The source name and
+                # start line locate the buffer for the unterminated-heredoc
+                # warning ("delimited by end-of-file"): a script/sourced-file
+                # path prefixes it like bash's script name; the -c/stdin/eval
+                # pseudo-names map to the "psh" prefix (bash prints "bash:").
                 from ..lexer import tokenize_with_heredocs
-                tokens, heredoc_map = tokenize_with_heredocs(command_string, strict=self.state.options.get('posix', False),
-                                                              shell_options=self.state.options)
+                name = input_source.get_name()
+                tokens, heredoc_map = tokenize_with_heredocs(
+                    command_string, strict=self.state.options.get('posix', False),
+                    shell_options=self.state.options,
+                    source_name=None if name.startswith(('<', '-')) else name,
+                    base_line=start_line if start_line > 0 else 1)
                 # Alias expansion is a token-stream transform at the
                 # lex→parse boundary (see AliasManager.expand_aliases).
                 tokens = self.shell.expand_aliases(tokens)
@@ -258,6 +309,7 @@ class SourceProcessor(ScriptComponent):
                     tokens,
                     active_parser=self.shell.active_parser,
                     source_text=command_string,
+                    line_offset=max(0, start_line - 1),
                 )
                 ast = parser.parse()
 
@@ -309,14 +361,26 @@ class SourceProcessor(ScriptComponent):
                               file=sys.stderr)
                         return 1
             except TopLevelAbort as e:
-                # A fatal assignment error (readonly/nameref-cycle) unwound the
-                # whole current top-level command (the rest of the command list
-                # and any enclosing if/loop/function on the same input). The
-                # error was already printed at the raise site; resume at the next
-                # top-level command (bash). When nested (eval) let it keep
-                # unwinding to the real top-level command boundary.
-                if nested:
+                # A fatal error (readonly/nameref-cycle assignment, failed
+                # arithmetic/parameter expansion, failglob) unwound the whole
+                # current command line (the rest of the command list and any
+                # enclosing if/loop/function on the same input). The error was
+                # already printed at the raise site; resume at the next
+                # buffered command (bash). This containment applies at EVERY
+                # buffered-command boundary — including the nested processors
+                # run by eval/source/trap actions: bash 5.2 (probe-verified,
+                # tmp/probes-r17t2-arith/) CONTAINS the discard there
+                # (`eval 'r=2; echo x'; echo after` kills x, runs after with
+                # $?=1; a sourced file resumes at its own next line).
+                # EXCEPTION: the assignment/subscript arithmetic-error family
+                # passes through eval/source to the top-level input loop
+                # (contain_nested=False — see arith_assignment_discard).
+                if nested and not e.contain_nested:
                     raise
+                if e.errexit_immune:
+                    # Expansion-error discards bypass set -e (bash); a
+                    # readonly/failglob discard keeps its errexit effect.
+                    self.state.errexit_eligible = False
                 self.state.last_exit_code = e.status
                 return e.status
             except FunctionReturn as e:
@@ -332,14 +396,9 @@ class SourceProcessor(ScriptComponent):
                 self.state.last_exit_code = e.exit_code
                 return e.exit_code
         except ParseError as e:
-            # Check if error already has context, otherwise add location
-            if e.error_context and e.error_context.source_line:
-                # Error already has full context, just print it
-                print(f"psh: {str(e)}", file=sys.stderr)
-            else:
-                # Add location prefix to error
-                location = f"{input_source.get_name()}:{start_line}" if start_line > 0 else "command"
-                print(f"psh: {location}: {e.message}", file=sys.stderr)
+            # Same canonical rendering as the trial-parse error path.
+            self._report_syntax_error(e, input_source, start_line,
+                                      source_text=command_string)
             self.state.last_exit_code = 2  # Bash uses exit code 2 for syntax errors
             return 2
         except UnclosedQuoteError as e:
@@ -365,6 +424,33 @@ class SourceProcessor(ScriptComponent):
                 if (isinstance(e, (LoopBreak, LoopContinue))
                         and self.shell._loop_depth_seed > 0):
                     raise
+            # A fatal expansion error escaping a non-SimpleCommand context
+            # (case subject, for-loop words, array initializer, redirect
+            # target of a compound, ...) reaches this boundary directly:
+            # apply the same bash model the command path uses. We are AT the
+            # buffered-command boundary, so the discard-line family is
+            # already complete (returning the status IS the discard); the
+            # shell-exit family (:?/badsub/set -u) raises SystemExit for a
+            # non-interactive shell. Messages were printed at the raise
+            # site, except set -u which prints here.
+            from ..core import (
+                ExpansionError,
+                UnboundVariableError,
+                fatal_expansion_status,
+            )
+            if isinstance(e, (ExpansionError, UnboundVariableError)):
+                if isinstance(e, UnboundVariableError):
+                    print(f"psh: {e}", file=sys.stderr)
+                rc = fatal_expansion_status(self.state, e, at_boundary=True)
+                self.state.last_exit_code = rc
+                return rc
+            if isinstance(e, RecursionError) and nested:
+                # Runaway recursion inside a nested source (eval/trap body):
+                # keep unwinding so the nearest enclosing function-call
+                # boundary can convert it to the FUNCNEST diagnostic. At the
+                # REAL top level (not nested) it falls through to the guard
+                # below, whose expected-error taxonomy reports it cleanly.
+                raise
             # Last-resort guard so an internal defect doesn't kill an
             # interactive session (or re-raise under strict-errors so a test
             # harness surfaces it) — see report_internal_defect for the policy.

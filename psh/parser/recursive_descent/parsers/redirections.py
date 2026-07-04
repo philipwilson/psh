@@ -83,9 +83,15 @@ class RedirectionParser(ParserSubcomponent):
     def _parse_heredoc(self, token: Token) -> Redirect:
         """Parse here document redirect."""
         # The delimiter word may START with an expansion-shaped token taken
-        # literally (``<<$VAR`` → terminator ``$VAR``), not just WORD/STRING.
+        # literally (``<<$VAR`` → terminator ``$VAR``, ``<<$(cmd)`` →
+        # terminator ``$(cmd)`` — bash never expands the delimiter), not just
+        # WORD/STRING. This set mirrors the lexer's _DELIMITER_PART_TYPES so
+        # the parser accepts exactly the delimiters HeredocLexer registered.
         if not self.parser.match(TokenType.WORD, TokenType.STRING,
-                                 TokenType.VARIABLE):
+                                 TokenType.VARIABLE, TokenType.COMMAND_SUB,
+                                 TokenType.COMMAND_SUB_BACKTICK,
+                                 TokenType.ARITH_EXPANSION,
+                                 TokenType.PARAM_EXPANSION):
             raise self.parser.error("Expected delimiter after here document operator")
 
         delimiter_token = self.parser.advance()

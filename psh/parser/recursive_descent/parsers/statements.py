@@ -9,7 +9,7 @@ from typing import Optional
 
 from ....ast_nodes import AndOrList, CommandList, Statement
 from ....lexer.token_types import TokenType
-from ..helpers import TokenGroups
+from ..helpers import TokenGroups, unexpected_token_message
 from .base import ParserSubcomponent
 
 
@@ -140,8 +140,7 @@ class StatementParser(ParserSubcomponent):
         """
         command_list = self.parse_command_list_until(*end_tokens)
         if not command_list.statements:
-            raise self.parser.error(
-                f"syntax error near unexpected token '{self.parser.peek().value}'")
+            raise self.parser.error(unexpected_token_message(self.parser.peek()))
         return command_list
 
     def parse_and_or_list(self) -> AndOrList:

@@ -11,7 +11,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
-from ..core.exceptions import FunctionReturn, LoopBreak, LoopContinue
+from ..core.exceptions import (
+    FunctionReturn,
+    LoopBreak,
+    LoopContinue,
+    TopLevelAbort,
+)
 from .child_policy import flush_child_streams, fork_with_signal_window
 
 if TYPE_CHECKING:
@@ -286,6 +291,16 @@ class ProcessLauncher:
             # silent here; the empty "psh: error:" leak this replaces was a
             # D2 regression). Same policy as run_child_shell.
             exit_code = e.exit_status or 0
+
+        except TopLevelAbort as e:
+            # A fatal discard (readonly assignment, failed expansion,
+            # failglob) inside a launcher child — e.g. a pipeline member
+            # `echo $((1/0)) | cat` — is CONTAINED at the process
+            # boundary: the child ends with the abort status and the
+            # parent's line continues (bash). The message was printed at
+            # the raise site. Without this the BaseException would unwind
+            # into the forked copy of the parent's stack.
+            exit_code = e.status
 
         except Exception as e:
             # Unexpected error

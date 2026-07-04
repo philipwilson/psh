@@ -193,6 +193,23 @@ class FunctionOperationExecutor:
         except UnboundVariableError:
             # Let unbound variable errors propagate
             raise
+        except RecursionError:
+            # The interpreter recursion limit is psh's implicit FUNCNEST: a
+            # runaway recursive function exhausts Python frames long before
+            # anything else. Convert it at the function-call boundary into
+            # bash's FUNCNEST diagnostic and abort the current top-level
+            # command (bash with FUNCNEST=N prints "NAME: maximum function
+            # nesting level exceeded (N)", status 1, and resumes at the next
+            # input line — exactly what _check_funcnest does). The innermost
+            # call frame catches it first, so the message names the function
+            # actually recursing and prints exactly once; TopLevelAbort is a
+            # BaseException, so it unwinds past every enclosing guard while
+            # each frame's ``finally`` still restores scope/params.
+            print(f"psh: {name}: maximum function nesting level exceeded",
+                  file=self.shell.state.stderr)
+            self.shell.state.last_exit_code = 1
+            from ..core import TopLevelAbort
+            raise TopLevelAbort(1) from None
         except Exception as e:
             # Last-resort guard: a defect inside the function body. Keep the
             # shell alive (or re-raise under strict-errors) — see

@@ -9,7 +9,7 @@ import errno
 import os
 import sys
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from .process_launcher import ProcessConfig, ProcessRole
 
@@ -51,15 +51,17 @@ def exec_external(full_args: List[str], env: dict,
                   env)
 
 
-def report_exec_failure(cmd_name: str, exc: OSError,
-                        resolved_path: Optional[str] = None) -> int:
-    """Report a failed exec on fd 2 and return the exit status.
+def format_exec_failure(cmd_name: str, exc: OSError,
+                        resolved_path: Optional[str] = None
+                        ) -> Tuple[str, int]:
+    """Format a failed exec as bash's diagnostic; return ``(message, status)``.
 
-    Shared by the in-pipeline (inline exec) and fork execution paths so
-    both produce the same bash-style diagnostics: "command not found"
-    with status 127 for a missing command, the OS error with status 126
-    otherwise (e.g. permission denied). Writes at the fd level — both
-    callers run in a forked child.
+    The single source of truth for exec-failure wording, shared by the
+    forked execution paths (via :func:`report_exec_failure`) and the
+    ``exec`` builtin, so every exec failure produces the same bash-style
+    diagnostics: "command not found" with status 127 for a missing
+    command, the OS error's strerror with status 126 otherwise (e.g.
+    permission denied) — never the raw Python OSError repr.
 
     When the exec used a pre-resolved path (hash table) and the file is
     gone, bash names the stale PATH: "bash: /path/cmd: No such file or
@@ -70,21 +72,12 @@ def report_exec_failure(cmd_name: str, exc: OSError,
     as "No such file or directory", not "command not found" — bash reserves
     "command not found" for a bare name that PATH couldn't resolve.
     """
-    # surrogateescape on the diagnostics: a command name carrying non-UTF-8
-    # bytes (from a non-UTF-8 script, read with surrogateescape) must not make
-    # the error message itself raise UnicodeEncodeError — the byte round-trips
-    # back out unchanged, and the command is still reported as not found.
     if isinstance(exc, FileNotFoundError):
         if resolved_path is not None:
-            os.write(2, f"psh: {resolved_path}: No such file or directory\n"
-                     .encode('utf-8', errors='surrogateescape'))
-        elif '/' in cmd_name:
-            os.write(2, f"psh: {cmd_name}: No such file or directory\n"
-                     .encode('utf-8', errors='surrogateescape'))
-        else:
-            os.write(2, f"psh: {cmd_name}: command not found\n"
-                     .encode('utf-8', errors='surrogateescape'))
-        return 127
+            return f"psh: {resolved_path}: No such file or directory", 127
+        if '/' in cmd_name:
+            return f"psh: {cmd_name}: No such file or directory", 127
+        return f"psh: {cmd_name}: command not found", 127
     # Report bash's strerror ("Permission denied", "Is a directory"), not
     # Python's OSError repr ("[Errno 13] Permission denied: './x'"). exec of a
     # directory returns EACCES on macOS, but bash reports "Is a directory" — so
@@ -94,25 +87,44 @@ def report_exec_failure(cmd_name: str, exc: OSError,
         detail = os.strerror(errno.EISDIR)
     else:
         detail = exc.strerror or str(exc)
-    os.write(2, f"psh: {cmd_name}: {detail}\n".encode('utf-8', errors='surrogateescape'))
-    return 126
+    return f"psh: {cmd_name}: {detail}", 126
+
+
+def report_exec_failure(cmd_name: str, exc: OSError,
+                        resolved_path: Optional[str] = None) -> int:
+    """Report a failed exec on fd 2 and return the exit status.
+
+    Shared by the in-pipeline (inline exec) and fork execution paths so
+    both produce the same bash-style diagnostics (see
+    :func:`format_exec_failure`, which owns the wording). Writes at the
+    fd level — both callers run in a forked child.
+    """
+    message, status = format_exec_failure(cmd_name, exc, resolved_path)
+    # surrogateescape on the diagnostics: a command name carrying non-UTF-8
+    # bytes (from a non-UTF-8 script, read with surrogateescape) must not make
+    # the error message itself raise UnicodeEncodeError — the byte round-trips
+    # back out unchanged, and the command is still reported as not found.
+    os.write(2, (message + "\n").encode('utf-8', errors='surrogateescape'))
+    return status
 
 
 def report_unbound_variable(state: 'ShellState', exc: Exception) -> int:
     """Report a ``set -u`` violation (UnboundVariableError) the bash way.
 
-    Prints once, then a non-interactive shell ABORTS — exit 127 for ``-c``,
-    1 for a script file. Shared by the simple-command path and the arithmetic
-    command / C-style-for paths so every set -u violation behaves identically
-    (a bare ``$undef``, ``$(( undef ))``, ``(( undef ))`` and ``for ((i=undef;``
-    all abort the same way). Raises ``SystemExit`` in script mode; otherwise
-    returns the exit code.
+    Prints once, then applies the shell-exit family of the fatal
+    expansion-error model (``fatal_expansion_status``): a non-interactive
+    shell EXITS — 127 for ``-c``, 1 for a script file / piped stdin — and
+    an interactive (or embedded) shell discards the current line with
+    status 1. Shared by the simple-command path and the arithmetic command
+    / C-style-for paths so every set -u violation behaves identically (a
+    bare ``$undef``, ``$(( undef ))``, ``(( undef ))`` and ``for ((i=undef;``
+    all abort the same way). Never returns normally — raises ``SystemExit``
+    or ``TopLevelAbort`` (typed ``-> int`` for its ``return
+    report_unbound_variable(...)`` callers).
     """
+    from ..core import fatal_expansion_status
     print(f"psh: {exc}", file=state.stderr)
-    exit_code = 127 if state.options.get('command_mode') else 1
-    if state.is_script_mode:
-        sys.exit(exit_code)
-    return exit_code
+    return fatal_expansion_status(state, exc)
 
 
 def report_assignment_error(state: 'ShellState', exc: Exception) -> int:
@@ -190,11 +202,25 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
             UnboundVariableError,
         )
         from ..core.exceptions import FunctionReturn
+        from ..expansion.arithmetic import ShellArithmeticError
+        # A declaration value that fails to evaluate arithmetically
+        # (`declare -i v='1/0'`, `local -i w='1//'`): bash prints
+        # "declare: 1/0: division by 0" and DISCARDS the rest of the
+        # line (rest of the whole -c string under -c) — the
+        # assignment/subscript arithmetic-error family.
+        if isinstance(e, ShellArithmeticError):
+            from ..core import arith_assignment_discard
+            print(f"psh: {cmd_name}: {e}", file=shell.stderr)
+            arith_assignment_discard(shell.state)
         # ExpansionError propagates to _handle_execution_error, which knows
         # a fatal expansion (message already printed at the raise site, e.g.
         # `unset "a[08]"`) aborts a non-interactive shell like bash.
+        # RecursionError propagates so runaway recursion THROUGH a builtin
+        # (e.g. `f(){ eval f; }`) still reaches the function-call boundary,
+        # which converts it to the FUNCNEST diagnostic.
         if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue,
-                          UnboundVariableError, ExpansionError)):
+                          UnboundVariableError, ExpansionError,
+                          RecursionError)):
             raise
         from ..core import report_internal_defect
         return report_internal_defect(shell.state, e, prefix=f"{cmd_name}: ",

@@ -107,11 +107,14 @@ def _redirect_error_name(error: OSError, target: Optional[str]) -> str:
     """Pick the name bash prints in `psh: NAME: STRERROR` for a redirect error.
 
     Prefer the expanded redirect target; fall back to the OSError's own
-    filename (set by os.open) when no target is available.
+    filename (set by os.open) when no target is available. Both checks are
+    ``is not None``, NOT truthiness: an EMPTY target (``> ""``) is a real
+    name and must print bash's ``psh: : No such file or directory``, not
+    fall through to the errno number.
     """
-    if target:
+    if target is not None:
         return target
-    if error.filename:
+    if error.filename is not None:
         return error.filename
     return str(error.errno)
 

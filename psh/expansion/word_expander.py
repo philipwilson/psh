@@ -173,10 +173,8 @@ class WordExpander:
                     st.value_len += len(chunk)
                     text = head + expanded_chunk
                 st.prev_char = text[-1] if text else st.prev_char
-            had_escapes = False
             # Process escape sequences in unquoted text
             if '\\' in text:
-                had_escapes = True
                 text, escaped_globs = self._process_unquoted_escapes(text)
                 # If glob chars remain that weren't escaped, track them
                 if has_glob_metacharacters(text) and not escaped_globs:
@@ -185,15 +183,51 @@ class WordExpander:
                 # Track unquoted glob chars
                 if has_glob_metacharacters(text):
                     seg_has_glob = True
-            # Unquoted literal: tilde on first part if leading ~
-            # Only suppress tilde expansion if the ~ itself was
-            # escaped (\~), not if some later char was escaped.
-            tilde_escaped = had_escapes and part.text.startswith('\\~')
+            # Unquoted literal: tilde on first part if leading ~ and the
+            # tilde word is wholly unquoted literal (bash) — see
+            # _leading_tilde_expandable for the boundary rule.
             if (not st.has_expansion and not st.segments
-                    and text.startswith('~') and not tilde_escaped):
+                    and text.startswith('~')
+                    and self._leading_tilde_expandable(
+                        part.text,
+                        parts_follow=part_index < len(word.parts) - 1)):
                 text = self.manager.expand_tilde(text)
             st.segments.append(ExpandedSegment(
                 text, quoted=False, glob_eligible=seg_has_glob))
+
+    @staticmethod
+    def _leading_tilde_expandable(raw_text: str, parts_follow: bool) -> bool:
+        """Whether a word-leading ``~`` literal starts an expandable prefix.
+
+        bash expands a word-leading tilde-prefix (delimited at the first
+        unquoted ``/`` or ``:`` — TildeExpander.prefix_end) only when every
+        character of the tilde WORD (``~`` up to the first unquoted ``/``,
+        or the whole word) is an unquoted literal. Scanning the RAW literal
+        text up to its first ``/``:
+
+        - a backslash escape is a quoted character inside the tilde word
+          (``echo ~\\:x`` / ``~\\/x`` / ``~b\\in`` all stay literal), and an
+          escaped ``~`` itself never expands;
+        - running off the literal's end into a following part — quoted text
+          or an expansion — means the prefix is not self-contained
+          (``echo ~"x"`` → ``~x``, ``echo ~$USER`` → ``~pwilson``,
+          ``echo ~:"x"`` → ``~:x``; probed bash 5.2);
+        - a ``/`` bounds the tilde word inside this literal, so following
+          parts are irrelevant (``echo ~/x"y"`` expands).
+
+        Known documented divergence: when a ``:``-bounded prefix runs into
+        an expansion part (``echo ~:$X``), bash 5.2 expands the tilde AND
+        pastes the rest verbatim ($X unexpanded — a tilde_find_word quirk);
+        psh keeps the whole word literal-then-normal (``~:<value of X>``).
+        """
+        if raw_text.startswith('\\~'):
+            return False
+        for ch in raw_text[1:]:
+            if ch == '/':
+                return True
+            if ch == '\\':
+                return False
+        return not parts_follow
 
     def _walk_expansion_part(self, word: Word, part: ExpansionPart,
                              st: _WalkState,
@@ -545,11 +579,15 @@ class WordExpander:
         """
         segments = text.split(':')
         last = len(segments) - 1
+        prefix_end = self.manager.tilde_expander.prefix_end
         out = []
         for idx, seg in enumerate(segments):
             if seg.startswith('~') and (idx > 0 or first_trigger):
+                # Shared boundary rule (TildeExpander.prefix_end); the
+                # colon-split segments contain no ':', so this reduces to
+                # "does a '/' bound the prefix inside this segment".
                 prefix_open = (idx == last and parts_follow
-                               and '/' not in seg)
+                               and prefix_end(seg) == len(seg))
                 if not prefix_open:
                     seg = self.manager.tilde_expander.expand(seg)
             out.append(seg)
@@ -814,10 +852,20 @@ class WordExpander:
                     # glob_expander.expand() already returns sorted results.
                     result.extend(matches)
                 elif self.state.options.get('failglob', False):
-                    # failglob: a no-match glob fails the command (bash). Not
-                    # fatal to the shell — the command-error handler returns 1.
-                    from ..core import GlobNoMatchError
-                    raise GlobNoMatchError(w)
+                    # failglob: a no-match glob DISCARDS the rest of the
+                    # current line and resumes at the next one (bash 5.2,
+                    # probe-verified — tmp/probes-r17t2-arith/), in every
+                    # consumer of glob expansion (command words, for-loop
+                    # words, array initializers). Under set -e a
+                    # non-interactive shell EXITS instead (bash exits even
+                    # from errexit-suppressed contexts like an if
+                    # condition, unlike the arithmetic discard family).
+                    from ..core import TopLevelAbort
+                    print(f"psh: no match: {w}", file=self.state.stderr)
+                    if (self.state.options.get('errexit')
+                            and self.state.is_script_mode):
+                        raise SystemExit(1)
+                    raise TopLevelAbort(1)
                 elif self.state.options.get('nullglob', False):
                     pass  # nullglob: no matches -> nothing
                 else:

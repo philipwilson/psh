@@ -630,6 +630,15 @@ class ShellState:
         else:
             self.env.pop(name, None)
 
+        if name == 'IGNOREEOF':
+            # sv_ignoreeof (bash): the `ignoreeof` option tracks whether
+            # the IGNOREEOF variable exists at all — any value counts,
+            # even '' or non-numeric (those just mean the default limit
+            # of 10; the limit rules live in
+            # psh/interactive/eof_policy.py).
+            self.options['ignoreeof'] = (
+                self.scope_manager.get_variable('IGNOREEOF') is not None)
+
     def get_positional_param(self, index: int) -> str:
         """Get positional parameter by index (1-based)."""
         if 1 <= index <= len(self.positional_params):

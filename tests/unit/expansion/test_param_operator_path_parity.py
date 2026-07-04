@@ -42,9 +42,13 @@ class TestColonOperatorsStringPath:
     def test_error_set_ok(self, shell, capsys):
         assert self._out(shell, capsys, 'x=v; echo "[${x:?msg}]"') == "[v]\n"
 
-    def test_error_unset_exits_127(self, shell, capsys):
+    def test_error_unset_discards_line(self, shell, capsys):
+        # ${x:?msg} on unset: fatal expansion error. An interactive/embedded
+        # shell discards the line with status 1 (bash -i: $? is 1; the 127
+        # -c exit status is pinned by the subprocess tests in
+        # tests/integration/test_fatal_expansion_model.py).
         rc = shell.run_command('unset x; echo "${x:?boom}"')
-        assert rc == 127
+        assert rc == 1
         assert "boom" in capsys.readouterr().err
 
     def test_colon_ops_on_array_element(self, shell, capsys):

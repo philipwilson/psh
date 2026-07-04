@@ -214,46 +214,11 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             # Special case: ${#} is number of positional params
             # (param_parser emits parameter='', operator='#').
             return str(len(self.state.positional_params))
-        elif var_name == '*':
-            # ${#*} is the positional count; ${*#pat} (operand not None,
-            # including the empty-pattern ${*#}) removes per-element.
-            if operator == '#' and operand is None:
-                return str(len(self.state.positional_params))
-            if operator in ('#', '##', '%', '%%'):
-                return self._ifs_star_separator().join(
-                    self._apply_operator(operator, p, operand, var_name=var_name)
-                    for p in self.state.positional_params)
-            if operator == ':':
-                assert operand is not None  # ':' always carries a slice operand
-                return self._ifs_star_separator().join(
-                    self._slice_sequence(self._positional_slice_elements(),
-                                         operand, what='*'))
-            if len(operator) == 2 and operator[0] == '@':
-                return self._ifs_star_separator().join(
-                    self._apply_transform(operator[1], p, var_name)
-                    for p in self.state.positional_params)
-            # IFS-aware join — the one source in state.get_special_variable
-            # (bash: ``IFS=:; set -- a b; echo "${*-d}"`` → a:b)
-            value = self.state.get_special_variable('*')
-        elif var_name == '@':
-            # ${#@} is the positional count; ${@#pat} (operand not None,
-            # including the empty-pattern ${@#}) removes per-element.
-            if operator == '#' and operand is None:
-                return str(len(self.state.positional_params))
-            if operator in ('#', '##', '%', '%%'):
-                return ' '.join(
-                    self._apply_operator(operator, p, operand, var_name=var_name)
-                    for p in self.state.positional_params)
-            if operator == ':':
-                assert operand is not None  # ':' always carries a slice operand
-                return ' '.join(
-                    self._slice_sequence(self._positional_slice_elements(),
-                                         operand, what='@'))
-            if len(operator) == 2 and operator[0] == '@':
-                return ' '.join(
-                    self._apply_transform(operator[1], p, var_name)
-                    for p in self.state.positional_params)
-            value = ' '.join(self.state.positional_params)
+        elif var_name in ('*', '@'):
+            handled, value = self._expand_positional_view(operator, var_name,
+                                                          operand)
+            if handled:
+                return value
         elif var_name.isdigit():
             if int(var_name) == 0:
                 # $0 is the script/shell name, not a positional parameter.
@@ -284,10 +249,58 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 raise UnboundVariableError(f"{var_name}: unbound variable")
 
         needs_is_set = (operator in ('-', '=', '+', '?')
-                        or (len(operator) == 2 and operator[0] == '@'))
+                        or operator.startswith('@'))
         is_set = self._param_is_set(var_name) if needs_is_set else True
         return self._apply_operator(operator, value, operand, var_name=var_name,
                                     is_set=is_set, quote_ctx=quote_ctx)
+
+    def _expand_positional_view(self, operator: str, var_name: str,
+                                operand: Optional[str]) -> Tuple[bool, str]:
+        """Expand the positional-parameter views ``${*<op>...}``/``${@<op>...}``.
+
+        The two views share per-element operator routing and differ only
+        in their joiner: ``*`` joins with the IFS separator, ``@`` with
+        spaces. This scalar path serves string contexts (here-doc bodies,
+        double-quoted string data, operand text); word-context ``${@...}``
+        fields go through fields.py:expand_to_fields instead.
+
+        Every value-level operator family — removal (# ## % %%),
+        substitution (/ // /# /%) and case modification (^ ^^ , ,,) — plus
+        slices and @X transforms applies PER ELEMENT and then joins (bash:
+        ``set -- foo bar; "${*^}"`` → ``Foo Bar``; ``IFS=o; set -- fo of;
+        "${*//o/_}"`` → ``f_o_f`` — the separator never participates).
+
+        Returns ``(handled, value)``: when *handled* is True the *value*
+        is the complete expansion; when False the *value* is the JOINED
+        view for the shared scalar operator application (the conditional
+        operators test the joined view — bash: ``IFS=:; set -- a b;
+        "${*-d}"`` → ``a:b``).
+        """
+        params = self.state.positional_params
+        joiner = self._ifs_star_separator() if var_name == '*' else ' '
+        # ${#*} / ${#@}: the positional count. operand is None only for the
+        # length form; the empty removal pattern ${*#} has operand ''.
+        if operator == '#' and operand is None:
+            return True, str(len(params))
+        if operator in self._VALUE_OPERATORS:
+            return True, joiner.join(
+                self._apply_operator(operator, p, operand, var_name=var_name)
+                for p in params)
+        if operator == ':':
+            assert operand is not None  # ':' always carries a slice operand
+            return True, joiner.join(
+                self._slice_sequence(self._positional_slice_elements(),
+                                     operand, what=var_name))
+        if len(operator) == 2 and operator[0] == '@':
+            return True, joiner.join(
+                self._apply_transform(operator[1], p, var_name)
+                for p in params)
+        # Conditional/default/assign/error operators (and anything else)
+        # get the joined view. '*' joins IFS-aware — the one source in
+        # state.get_special_variable; '@' joins with spaces.
+        if var_name == '*':
+            return False, self.state.get_special_variable('*')
+        return False, ' '.join(params)
 
     def _expand_array_parameter(self, operator: str, var_name: str,
                                 operand: Optional[str],
@@ -373,6 +386,12 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                     qmark_subject=label,
                     assign_error=f"{label}: bad array subscript",
                     quote_ctx=quote_ctx)
+                if len(fields) == 1:
+                    # Return a single field as-is: a triggered operand is an
+                    # OperandResult whose segments carry quote protection
+                    # (${a[*]:-'p q'} must stay ONE field — bash); str.join
+                    # would flatten it to a plain str and lose that.
+                    return True, fields[0]
                 return True, joiner.join(fields)
 
             # Per-element transforms (@Q/@U/@u/@L/@E/@P/@a) apply to each

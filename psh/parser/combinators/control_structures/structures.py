@@ -116,7 +116,7 @@ class StructureParserMixin(_Base):
         """
         if pos < len(tokens) and tokens[pos].value != '{':
             tok = tokens[pos]
-            if (tok.type.name in ('LPAREN', 'DOUBLE_LPAREN')
+            if (tok.type.name in ('LPAREN', 'DOUBLE_LPAREN', 'DOUBLE_LBRACKET')
                     or any(matches_keyword(tok, kw)
                            for kw in self._COMPOUND_BODY_KEYWORDS)):
                 body_result = self._compound_body.parse(tokens, pos)

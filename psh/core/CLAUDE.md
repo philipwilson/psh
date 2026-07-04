@@ -311,7 +311,10 @@ Two distinct families — do not mix them up:
 - **Errors** derive from `PshError`, the root of every psh-specific error
   class (lexer, parser, arithmetic, expansion, builtins). Catch "any psh
   error" with one `except PshError`. Members here: `UnboundVariableError`,
-  `ReadonlyVariableError`, `NamerefCycleError`, `ExpansionError`,
+  `ReadonlyVariableError`, `NamerefCycleError`, `ExpansionError` (with
+  `FatalExpansionError` for the `${x:?}`/unknown-`@X`-transform kinds that
+  exit a non-interactive shell — see `fatal_expansion_status` in
+  `internal_errors.py` for the bash discard-line model),
   `FunctionDefinitionError` (invalid/reserved/readonly function name).
 - **Control-flow signals** (`LoopBreak`, `LoopContinue`, `FunctionReturn`)
   implement `break`/`continue`/`return` and deliberately do NOT derive
@@ -323,11 +326,13 @@ Two distinct families — do not mix them up:
 The four last-resort guards (command dispatch, builtin execution, function
 body, buffered-statement source) delegate to one helper,
 `report_internal_defect(state, exc, *, prefix, stream)`. It classifies the
-exception: an **expected shell error** — any `PshError`, `OSError`, or
+exception: an **expected shell error** — any `PshError`, `OSError`,
 `SyntaxError` (redirection/fork failures, lexer/parse errors, arithmetic
-errors) — is reported normally (message + exit 1); anything else (a genuine
-Python-bug exception like `RuntimeError`/`AttributeError`/`TypeError`/
-`KeyError`/plain `ValueError`) is an INTERNAL DEFECT.
+errors) or `RecursionError` (runaway recursion hitting psh's implicit
+FUNCNEST; the function-call boundary usually converts it first) — is
+reported normally (message + exit 1); anything else (a genuine
+Python-bug exception like a non-recursion `RuntimeError`/`AttributeError`/
+`TypeError`/`KeyError`/plain `ValueError`) is an INTERNAL DEFECT.
 
 The `strict-errors` shell option (seeded from `PSH_STRICT_ERRORS`) makes the
 guard RE-RAISE internal defects instead of masking them as exit 1. **`conftest.py`

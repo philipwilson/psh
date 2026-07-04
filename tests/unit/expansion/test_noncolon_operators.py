@@ -50,9 +50,13 @@ class TestNonColonAssign:
 
 
 class TestNonColonError:
-    def test_unset_errors_127(self, shell, capsys):
+    def test_unset_errors(self, shell, capsys):
+        # ${x?msg} on unset: fatal expansion error. An interactive/embedded
+        # shell discards the line with status 1 (bash -i: $? is 1, not 127;
+        # 127 is the -c exit status — pinned by the subprocess tests in
+        # tests/integration/test_fatal_expansion_model.py).
         rc = shell.run_command('unset x; echo "${x?boom}"')
-        assert rc == 127
+        assert rc == 1
         assert "boom" in capsys.readouterr().err
 
     def test_set_no_error(self, shell, capsys):

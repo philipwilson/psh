@@ -43,6 +43,7 @@ from ..core import (
     is_valid_assignment,
     resolve_append_assignment,
 )
+from ..expansion.arithmetic import ShellArithmeticError
 
 if TYPE_CHECKING:
     from ..ast_nodes import SimpleCommand, Word, WordPart
@@ -179,47 +180,70 @@ class CommandAssignments:
         expanding the values — then it is the substitution's status (the
         caller cleared ``state.last_cmdsub_status`` before any expansion;
         see the module docstring for why the clear lives there).
-        """
-        # Apply redirections first
-        with self.io_manager.with_redirections(node.redirects):
-            xtrace = self.state.options.get('xtrace')
-            for var, value, value_word in raw_assignments:
-                value = self._expand_value(value, value_word)
-                if xtrace:
-                    from ..core.options import xtrace_quote
-                    ps4 = self.state.get_variable('PS4', '+ ')
-                    # bash quotes the assignment VALUE (`x='a;b'`), not `x=`.
-                    self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
-                    self.state.stderr.flush()
-                # resolve_append_assignment may return an array object (scalar
-                # append to an array updates element 0 and returns the array),
-                # so the resolved value is wider than str; set_variable accepts it.
-                var, resolved = resolve_append_assignment(
-                    self.state.scope_manager, var, value)
-                try:
-                    self.state.set_variable(var, resolved)
-                except ReadonlyVariableError as e:
-                    # bash: a readonly-variable assignment error aborts the
-                    # whole CURRENT top-level command (the rest of the command
-                    # list, and any enclosing if/loop/function on the same input)
-                    # but does NOT exit the shell — execution resumes at the next
-                    # top-level command. Use e.name so a readonly array element
-                    # write reports the array name (``a[0]=X`` → ``a: readonly
-                    # variable``), like bash.
-                    print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
-                    raise TopLevelAbort(1)
-                except NamerefCycleError as e:
-                    # bash: writing through a circular nameref warns and aborts
-                    # the current top-level command (same scope as above).
-                    self.state.scope_manager.warn_nameref_cycle(e.name)
-                    raise TopLevelAbort(1)
 
-            # bash: a pure assignment's status is 0, unless a command
-            # substitution ran while expanding the value — then it is the
-            # substitution's status (cleared/recorded around expansion).
-            if self.state.last_cmdsub_status is not None:
-                return self.state.last_cmdsub_status
-            return 0
+        bash order (probe-verified): the assignments are performed FIRST,
+        using the original file descriptors — ``x=$(cat) < file`` reads the
+        ORIGINAL stdin, not the redirect — and only then are the command's
+        redirections applied. A redirect failure therefore still leaves the
+        variables assigned and fails the command with status 1
+        (``x=5 > /bad/y`` → x is 5, rc 1).
+        """
+        xtrace = self.state.options.get('xtrace')
+        for var, value, value_word in raw_assignments:
+            value = self._expand_value(value, value_word)
+            if xtrace:
+                from ..core.options import xtrace_quote
+                ps4 = self.state.get_variable('PS4', '+ ')
+                # bash quotes the assignment VALUE (`x='a;b'`), not `x=`.
+                self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
+                self.state.stderr.flush()
+            # resolve_append_assignment may return an array object (scalar
+            # append to an array updates element 0 and returns the array),
+            # so the resolved value is wider than str; set_variable accepts it.
+            var, resolved = resolve_append_assignment(
+                self.state.scope_manager, var, value)
+            try:
+                self.state.set_variable(var, resolved)
+            except ReadonlyVariableError as e:
+                # bash: a readonly-variable assignment error aborts the
+                # whole CURRENT top-level command (the rest of the command
+                # list, and any enclosing if/loop/function on the same input)
+                # but does NOT exit the shell — execution resumes at the next
+                # top-level command. Use e.name so a readonly array element
+                # write reports the array name (``a[0]=X`` → ``a: readonly
+                # variable``), like bash.
+                print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
+                raise TopLevelAbort(1)
+            except NamerefCycleError as e:
+                # bash: writing through a circular nameref warns and aborts
+                # the current top-level command (same scope as above).
+                self.state.scope_manager.warn_nameref_cycle(e.name)
+                raise TopLevelAbort(1)
+            except ShellArithmeticError as e:
+                # An integer-attributed variable (declare -i v; v='1/0')
+                # whose value fails to evaluate: bash prints the arithmetic
+                # error and DISCARDS the rest of the line (the rest of the
+                # whole -c string under -c) — the assignment/subscript
+                # arithmetic-error family. Value expansion has already run
+                # against the ORIGINAL fds (assignments precede redirects).
+                print(f"psh: {e}", file=self.state.stderr)
+                from ..core import arith_assignment_discard
+                arith_assignment_discard(self.state)
+
+        if node.redirects:
+            # Applied after the assignments (bash order, above). A setup
+            # failure prints the one `psh: TARGET: STRERROR` shape and
+            # fails the command with status 1 — never the raw OSError repr.
+            with self.io_manager.guarded_redirections(node.redirects) as ok:
+                if not ok:
+                    return 1
+
+        # bash: a pure assignment's status is 0, unless a command
+        # substitution ran while expanding the value — then it is the
+        # substitution's status (cleared/recorded around expansion).
+        if self.state.last_cmdsub_status is not None:
+            return self.state.last_cmdsub_status
+        return 0
 
     # ------------------------------------------------------------------
     # Prefix assignments (FOO=bar cmd)

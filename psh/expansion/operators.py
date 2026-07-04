@@ -262,7 +262,8 @@ class OperatorOpsMixin(_Base):
             msg = str(self._expand_operand(operand)) if operand else empty_msg
             print(f"psh: {qmark_subject}: {msg}", file=sys.stderr)
             self.state.last_exit_code = 127
-            raise ExpansionError(f"{qmark_subject}: {msg}", exit_code=127)
+            from ..core import FatalExpansionError
+            raise FatalExpansionError(f"{qmark_subject}: {msg}", exit_code=127)
         return list(elements)
 
     def _apply_operator(self, operator: str, value: str,
@@ -357,11 +358,16 @@ class OperatorOpsMixin(_Base):
             # ${!prefix@}: names joined with spaces
             names = self.param_expansion.match_variable_names(var_name)
             return ' '.join(names)
-        elif len(operator) == 2 and operator[0] == '@':
-            # An unset parameter transforms to nothing (bash: ${unset@Q} -> '').
+        elif operator.startswith('@'):
+            # An unset parameter transforms to nothing whatever the operand
+            # (bash: ${unset@Q}, ${unset@ZZ}, ${unset@} are all '').
             if not is_set:
                 return ''
-            return self._apply_transform(operator[1], value, var_name)
+            if len(operator) == 2:
+                return self._apply_transform(operator[1], value, var_name)
+            # Empty or multi-char operand on a SET parameter: fatal bad
+            # substitution (bash — probe-verified: ${x@}, ${x@ZZ}, ${x@Q9}).
+            self._bad_transform_error(operator[1:], var_name)
         # Unknown operator, return value unchanged
         return value
 
@@ -390,11 +396,11 @@ class OperatorOpsMixin(_Base):
         rules regardless of the enclosing quotes (probed: both
         ``${x:?'m'}`` and ``"${x:?'m'}"`` report ``m``).
         """
-        from ..core import ExpansionError
+        from ..core import FatalExpansionError
         msg = str(self._expand_operand(operand)) if operand else default_msg
         print(f"psh: {var_name}: {msg}", file=sys.stderr)
         self.state.last_exit_code = 127
-        raise ExpansionError(f"{var_name}: {msg}", exit_code=127)
+        raise FatalExpansionError(f"{var_name}: {msg}", exit_code=127)
 
     _ATTR_FLAG_ORDER = (
         ('ARRAY', 'a'), ('ASSOC_ARRAY', 'A'), ('INTEGER', 'i'),
@@ -437,7 +443,24 @@ class OperatorOpsMixin(_Base):
             # form (${arr[@]@K}) is handled in the array branch of
             # variable.py / fields.py before reaching here.
             return self._shell_quote(value)
-        return value
+        # Unknown transform letter on a SET variable: runtime bad
+        # substitution (bash). The unset case never reaches here — the
+        # dispatch returns '' for unset parameters before applying the
+        # transform, matching bash's quirk that ${unset@Z} is silently
+        # empty while ${set@Z} is a fatal error.
+        self._bad_transform_error(op, var_name)
+
+    def _bad_transform_error(self, operand: str, var_name: str) -> NoReturn:
+        """Fatal bad substitution for a ``${var@X}`` transform whose operand
+        is unknown/empty/multi-char and the parameter IS set. Unlike the
+        bad-NAME form (discard-line, BadSubstitutionError), this kind EXITS
+        a non-interactive shell — 127 under ``-c`` (bash, probe-verified)."""
+        from ..core.exceptions import FatalExpansionError
+        content = f"{var_name}@{operand}" if var_name else f"@{operand}"
+        print(f"psh: ${{{content}}}: bad substitution", file=sys.stderr)
+        self.state.last_exit_code = 1
+        raise FatalExpansionError(f"${{{content}}}: bad substitution",
+                                  exit_code=127)
 
     @staticmethod
     def _shell_quote(s: str) -> str:
@@ -544,11 +567,15 @@ class OperatorOpsMixin(_Base):
         result = self._value_op(operator, value, operand, var_name)
         if result is not None:
             return result
-        if len(operator) == 2 and operator[0] == '@':
-            if operator[1] == 'A':
+        if operator.startswith('@') and len(operator) > 1:
+            if operator == '@A':
                 # @A produces one whole-array assignment statement, not a
                 # per-element transform — scalar path handles it.
                 return None
+            if len(operator) > 2:
+                # Multi-char operand on a SET element: fatal bad
+                # substitution, like the scalar path (bash).
+                self._bad_transform_error(operator[1:], var_name)
             return self._apply_transform(operator[1], value, var_name)
         return None
 

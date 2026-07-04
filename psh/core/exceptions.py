@@ -54,7 +54,7 @@ class FunctionReturn(Exception):
 
 
 class TopLevelAbort(BaseException):
-    """A fatal runtime condition that aborts the CURRENT top-level command but
+    """A fatal runtime condition that DISCARDS the current command line but
     does NOT exit the shell — bash reports the error, unwinds the whole current
     top-level command (the rest of the command list and any enclosing
     ``if``/loop/function/brace group on the same logical input), then resumes at
@@ -66,17 +66,42 @@ class TopLevelAbort(BaseException):
         echo X                         # ... resumes: X prints
 
     Raised for a fatal variable-assignment error (readonly variable, circular
-    nameref) and for exceeding ``FUNCNEST`` (maximum function nesting).
+    nameref, ``declare -i``/plain ``-i`` values that fail to evaluate), for
+    exceeding ``FUNCNEST``, for a failed arithmetic/parameter EXPANSION
+    (``$((1/0))``, ``${a[1//]}``, ``${v:1:-5}``, ...; see
+    ``fatal_expansion_status`` in internal_errors.py for the full model),
+    and for a ``failglob`` no-match.
 
     Derives from ``BaseException`` (like ``SystemExit``) so it unwinds past the
     executor's ``except Exception`` guards without being mistaken for an
-    internal defect; it is caught explicitly at the top-level command boundary
-    (``SourceProcessor._execute_buffered_command``) and at child-shell
-    boundaries (subshell ``execute_fn``, ``run_child_shell``). The error message
-    is printed at the raise site (bash prints it before unwinding).
+    internal defect; it is caught explicitly at EVERY buffered-command boundary
+    (``SourceProcessor._execute_buffered_command``) — including the nested
+    processors run by ``eval``, ``source`` and trap actions, which CONTAIN the
+    discard exactly like bash 5.2 (``eval 'r=2; echo x'; echo after`` kills
+    ``x`` but runs ``after``; a sourced file resumes at its own next line) —
+    and at child-shell boundaries (subshell ``execute_fn``, ``run_child_shell``,
+    ``ProcessLauncher`` children). The error message is printed at the raise
+    site (bash prints it before unwinding).
+
+    ``errexit_immune``: bash's expansion-error discards (``$((1/0))`` etc.)
+    do NOT interact with ``set -e`` — the next line runs even under errexit
+    (probe-verified) — while a readonly-assignment discard or a ``failglob``
+    no-match under errexit DOES exit the shell. The flag tells the boundary
+    handler to suppress the errexit check for the immune family.
+
+    ``contain_nested``: the assignment/subscript arithmetic-error family
+    (``declare -i v='1/0'``, ``${a[1//]}``; see ``arith_assignment_discard``)
+    is NOT contained by eval/source — bash kills the rest of the eval'd
+    string / the whole sourced file AND the caller's line, resuming only at
+    the top-level input loop's next line (probe-verified in file, stdin and
+    interactive modes). Those raisers pass ``contain_nested=False`` so
+    nested buffered boundaries re-raise instead of containing.
     """
-    def __init__(self, status: int = 1):
+    def __init__(self, status: int = 1, errexit_immune: bool = False,
+                 contain_nested: bool = True):
         self.status = status
+        self.errexit_immune = errexit_immune
+        self.contain_nested = contain_nested
         super().__init__()
 
 
@@ -105,28 +130,40 @@ class NamerefCycleError(PshError):
         super().__init__(f"{name}: circular name reference")
 
 class ExpansionError(PshError):
-    """Raised when parameter expansion fails (e.g., :? operator)."""
+    """Raised when a word/parameter expansion fails at runtime.
+
+    The message is printed at the RAISE site; the exception then carries
+    the failure to the fatal-expansion chokepoints (``fatal_expansion_status``
+    in internal_errors.py), which apply bash's DISCARD-LINE model: the rest
+    of the current command line is dropped and execution resumes at the
+    next input line. The two errors bash instead treats as fatal to a whole
+    non-interactive shell (``${x:?}`` and bad substitution) use the
+    ``FatalExpansionError`` subclass below."""
     def __init__(self, message: str, exit_code: int = 1):
         self.exit_code = exit_code
         super().__init__(message)
 
-class GlobNoMatchError(PshError):
-    """Raised when pathname expansion matches nothing under ``shopt -s
-    failglob``. Unlike a parameter ExpansionError this is NOT fatal to a
-    non-interactive shell — bash fails only the current command (status 1)
-    and continues to the next — so the command-error handler reports it and
-    returns 1 without exiting."""
-    def __init__(self, pattern: str):
-        self.pattern = pattern
-        super().__init__(f"no match: {pattern}")
+class FatalExpansionError(ExpansionError):
+    """An expansion failure that EXITS a whole non-interactive shell (bash):
+    ``${x:?msg}`` and an unknown ``${var@X}`` transform on a SET variable.
+    bash 5.2, probe-verified (tmp/probes-r17t2-arith/): the shell exits —
+    with the error's own status under ``-c`` (127 for these kinds) and 1
+    for a script file / piped stdin — in EVERY enclosing context (function,
+    if-condition, eval — eval does NOT contain it); an interactive shell
+    just discards the current line with status 1. Contained at
+    subshell/command-substitution boundaries (the child exits).
+    All other expansion errors are plain ``ExpansionError`` = the
+    discard-line family (the line dies, the next line runs)."""
 
 class BadSubstitutionError(ExpansionError):
     """Raised at expansion time for a syntactically-invalid ``${...}``
-    parameter name (bash: "${...}: bad substitution", exit 1). Examples:
+    parameter NAME (bash: "${...}: bad substitution"). Examples:
     ``${}``, ``${ }``, ``${1abc}``, ``${.foo}``, ``${:-x}``. The braces are
-    included in the message text to match bash's format. Subclasses
-    ExpansionError so the command-error handler treats it as
-    already-printed (message emitted in place) and propagates exit 1."""
+    included in the message text to match bash's format. The name form is
+    DISCARD-LINE family (bash resumes at the next line in every input
+    mode, exit 1 for a one-line ``-c``) — unlike the unknown-``@X``
+    transform bad substitution, which is fatal (``FatalExpansionError``,
+    raised at its own site in operators.py)."""
     def __init__(self, content: str, exit_code: int = 1):
         self.content = content
         super().__init__(f"${{{content}}}: bad substitution", exit_code=exit_code)
