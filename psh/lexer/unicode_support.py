@@ -56,27 +56,31 @@ def is_identifier_char(char: str, posix_mode: bool = False) -> bool:
                 category.startswith('M'))      # Marks (combining characters)
 
 
+# The shell's token separators: the POSIX <blank>s (space, tab) plus newline
+# (the command terminator, handled specially by every caller). Bash splits
+# words on NOTHING else — not CR, FF, VT, and not Unicode space-category
+# characters like NBSP: `echo a<NBSP>b` is ONE word in bash (usually yielding
+# "command not found" for a copy-pasted NBSP), and a raw \f/\v/\r inside a
+# word is an ordinary word character. Line-ending CRs of a CRLF script are
+# the LINE-READING layer's job (FileInput strips one trailing CR per physical
+# line; the heredoc terminator rule has the same concession) — the lexer
+# itself never treats CR as whitespace.
+SHELL_WHITESPACE = frozenset(' \t\n')
+
+
 def is_whitespace(char: str, posix_mode: bool = False) -> bool:
     """
-    Check if character is whitespace.
+    Check if character is a shell token separator (space, tab, newline).
 
     Args:
         char: Character to check
-        posix_mode: If True, restrict to ASCII whitespace
+        posix_mode: Accepted for call-site uniformity; the separator set is
+            the same in both modes (bash's is too)
 
     Returns:
-        True if character is whitespace
+        True if character is a shell token separator
     """
-    if posix_mode:
-        # POSIX mode: ASCII whitespace only
-        return char in ' \t\n\r\f\v'
-    else:
-        # Unicode mode: Unicode whitespace
-        if len(char) != 1:
-            return False
-        # Use Unicode whitespace classification
-        category = unicodedata.category(char)
-        return category.startswith('Z') or char in '\t\n\r\f\v'
+    return char in SHELL_WHITESPACE
 
 
 def normalize_identifier(name: str, posix_mode: bool = False, case_sensitive: bool = True) -> str:

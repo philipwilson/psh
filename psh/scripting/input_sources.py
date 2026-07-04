@@ -8,7 +8,7 @@ This module provides different input sources for the shell:
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, TextIO
+from typing import List, Optional
 
 
 class InputSource(ABC):
@@ -50,80 +50,62 @@ class FileInput(InputSource):
 
     def __init__(self, file_path: str):
         self.file_path = file_path
-        self.file: Optional[TextIO] = None
         self.line_number = 0
         self.lines: List[str] = []
         self.current_line = 0
         self.loaded = False
 
     def __enter__(self):
+        # Read the WHOLE script eagerly, then close the descriptor before any
+        # command runs. psh never needs the fd again (read_line serves from
+        # self.lines), and holding it open collided with user-visible fds:
+        # a plain open() landed on fd 3 (clobbered by `exec 3>&-` — the
+        # classic swap idiom), and the F_DUPFD_CLOEXEC relocation that
+        # replaced it parked the fd at 10 — exactly bash's base for `{var}`
+        # named-fd allocation — so `exec {fd}>/dev/null` returned 11 (bash:
+        # 10) and a script touching fd 10 itself hit a spurious
+        # "[Errno 9] Bad file descriptor" at close. (bash avoids the clash
+        # differently: it reads lazily and moves its script fd to 255; psh
+        # reads eagerly, so closing is simpler and cannot collide at all.)
+        #
         # Use surrogateescape so a non-UTF-8 byte in a script does not crash
         # the shell with an uncaught UnicodeDecodeError — bash processes script
         # bytes leniently (a stray byte just becomes a "command not found").
         # newline='' disables universal-newline translation so an embedded CR
-        # (or a CRLF script's trailing \r) reaches the shell verbatim, exactly
-        # as bash reads the raw bytes — splitting only on \n. (The stdin path
-        # is unaffected; it still uses Python's default translation.)
-        raw = open(self.file_path, 'r', encoding='utf-8',
-                   errors='surrogateescape', newline='')
-        # Relocate the script-reading descriptor out of the user-visible range.
-        # A plain open() lands on the lowest free fd (typically 3), so a script
-        # doing `exec 3>&-` or the classic `exec 3>&1 1>&2 2>&3 3>&-` swap would
-        # clobber the fd we read the script from — at close that raised a
-        # spurious "[Errno 9] Bad file descriptor" + exit 1. bash keeps its
-        # script fd >= 10; do the same via F_DUPFD_CLOEXEC (lowest free fd >= 10,
-        # close-on-exec set so it does not leak to child processes).
-        self.file = self._relocate_high(raw)
+        # inside a line reaches the shell verbatim, exactly as bash reads the
+        # raw bytes. (The stdin path is unaffected; it still uses Python's
+        # default translation.)
+        with open(self.file_path, 'r', encoding='utf-8',
+                  errors='surrogateescape', newline='') as f:
+            content = f.read()
+        self._load_lines(content)
         return self
 
-    @staticmethod
-    def _relocate_high(raw: TextIO) -> TextIO:
-        """Move *raw*'s descriptor to the lowest free fd >= 10 (close-on-exec).
-
-        Returns a new file object on the relocated fd; falls back to *raw*
-        unchanged if relocation is unsupported (e.g. a non-fd stream).
-        """
-        import fcntl
-        import os
-        try:
-            dup_flag = getattr(fcntl, 'F_DUPFD_CLOEXEC', fcntl.F_DUPFD)
-            high_fd = fcntl.fcntl(raw.fileno(), dup_flag, 10)
-        except (OSError, ValueError, AttributeError):
-            return raw
-        raw.close()  # release the low fd; the dup at high_fd stays open
-        return os.fdopen(high_fd, 'r', encoding='utf-8',
-                         errors='surrogateescape', newline='')
-
     def __exit__(self, exc_type, _exc_val, _exc_tb):
-        if self.file:
-            self.file.close()
+        # The descriptor was already closed at the end of __enter__.
+        pass
 
-    def _load_lines(self):
-        """Read the whole file and split into PHYSICAL lines.
+    def _load_lines(self, content: str):
+        """Split file *content* into PHYSICAL lines.
 
         We deliberately do NOT join backslash-newline continuations here — the
         command accumulator does that while it gathers a logical command, so
         physical line numbers stay intact for ``$LINENO`` (pre-joining shifted
         every later line number down by the count of preceding continuations).
+
+        Split on newline only, then drop ONE trailing CR per line: this is the
+        line-reading layer's CRLF handling, so a DOS-line-ending script runs
+        as if dos2unix'd (psh's documented divergence — bash keeps the CR
+        bytes). An embedded CR *inside* a line stays verbatim like bash; the
+        lexer no longer treats CR as whitespace, so mid-line CRs are ordinary
+        word characters there too.
         """
-        if self.loaded:
-            return
-
-        # Read entire file content (only reached inside the `with` block,
-        # so self.file has been opened by __enter__).
-        assert self.file is not None
-        content = self.file.read()
-
-        # Split on newline only (the file was opened with newline='' so no CR
-        # translation happened); each element is one physical line.
-        self.lines = content.split('\n')
+        self.lines = [line[:-1] if line.endswith('\r') else line
+                      for line in content.split('\n')]
         self.loaded = True
 
     def read_line(self) -> Optional[str]:
         """Read the next physical line from the file."""
-        if not self.loaded:
-            self._load_lines()
-
         if self.current_line < len(self.lines):
             line = self.lines[self.current_line]
             self.current_line += 1

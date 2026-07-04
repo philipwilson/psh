@@ -1581,6 +1581,125 @@
   stderr: ""
   exit_code: 0
 
+# Bash accepts almost any non-blank run as a heredoc delimiter word
+# (reappraisal #17 lexer round-2: [A-Za-z0-9_$]-only truncated `E*F` to `E`,
+# so the terminator never matched and the whole heredoc vanished, rc 0).
+- name: heredoc_delimiter_glob_star
+  command: |
+    cat <<E*F
+    hello
+    E*F
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_punctuation_at_start
+  command: |
+    cat <<@X
+    hello
+    @X
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_bracket_class
+  command: |
+    cat <<AB[cd]
+    hello
+    AB[cd]
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_hash_mid_word
+  command: |
+    cat <<E#F
+    hello
+    E#F
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_braces_not_expanded
+  # brace expansion never applies to a heredoc delimiter word
+  command: |
+    cat <<E{a,b}F
+    hello
+    E{a,b}F
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_leading_dash_after_strip_operator
+  # `<<--EOF` is the <<- operator with delimiter `-EOF`
+  command: |
+    cat <<--EOF
+    hello
+    -EOF
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+# An unterminated heredoc is delimited by end-of-file: gathered lines are the
+# body, a warning goes to stderr, and the command RUNS (bash). psh used to
+# silently drop the whole command (no output, no warning, rc 0).
+- name: heredoc_unterminated_delimited_by_eof
+  command: "cat <<EOF\nhello"
+  stdout: "hello\n"
+  stderr: "warning: here-document at line 1 delimited by end-of-file (wanted `EOF')"
+  exit_code: 0
+
+- name: heredoc_unterminated_consumer_exit_code
+  command: "grep -q zzz <<EOF\nhello"
+  stdout: ""
+  stderr: "delimited by end-of-file"
+  exit_code: 1
+
+- name: heredoc_dash_space_indented_terminator_is_body
+  # <<- strips TABS only: a space-indented "EOF" line is body, so this heredoc
+  # runs to end-of-file (with the warning) instead of vanishing silently.
+  command: "cat <<-EOF\n\thello\n  EOF\necho after"
+  stdout: "hello\n  EOF\necho after\n"
+  stderr: "delimited by end-of-file"
+  exit_code: 0
+
+# =============================================================================
+# WORD SEPARATORS (space/tab only — reappraisal #17 lexer MED-2)
+# =============================================================================
+
+- name: nbsp_is_a_word_character
+  # A copy-pasted NBSP is NOT a token separator (bash): `a<NBSP>b` is one word.
+  command: "set -- a b; echo $#"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: form_feed_is_a_word_character
+  command: "set -- a\fb; echo $#"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: vertical_tab_is_a_word_character
+  command: "set -- a\vb; echo $#"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: comment_starts_after_redirect_operator
+  # bash: `#` right after a redirect operator begins a comment, so the
+  # operator has no operand -> syntax error (exit 2). Message text differs.
+  command: "echo x >#f"
+  stdout: ""
+  stderr: null
+  exit_code: 2
+
 # =============================================================================
 # MISC EDGE CASES
 # =============================================================================

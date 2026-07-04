@@ -1,11 +1,16 @@
 """
-The script-reading descriptor must not collide with user fds (reappraisal #14 H3).
+The script-reading descriptor must not collide with user fds (reappraisal #14
+H3, then #17 io MED-2).
 
 A plain open() landed the script file on fd 3, so a script doing `exec 3>&-`
 or the classic `exec 3>&1 1>&2 2>&3 3>&-` stdout/stderr swap clobbered the fd
 psh read the script from — at close it raised a spurious
-"[Errno 9] Bad file descriptor" and exit 1. bash keeps its script fd >= 10;
-FileInput now relocates via F_DUPFD_CLOEXEC. Verified against bash 5.2.
+"[Errno 9] Bad file descriptor" and exit 1. The first fix relocated the fd
+via F_DUPFD_CLOEXEC to >= 10 — which parked it EXACTLY on bash's `{var}`
+named-fd allocation base, so `exec {fd}>/dev/null` returned 11 (bash: 10) and
+a script touching fd 10 itself hit the same spurious EBADF. FileInput now
+reads the whole script eagerly and CLOSES the descriptor before any command
+runs, so no collision is possible at any fd. Verified against bash 5.2.
 
 Permanent-fd / exec redirection in scripts -> always run psh in a subprocess.
 """
@@ -76,4 +81,42 @@ def test_sourced_file_exec_close_fd3(tmp_path):
     r = run_psh_script(tmp_path, f'. {inc}\necho after\n')
     assert r.returncode == 0
     assert r.stdout == "after\n"
+    assert "Bad file descriptor" not in r.stderr
+
+
+def test_named_fd_allocates_10_in_script_mode(tmp_path):
+    # bash's {var} allocation base is 10; the old relocation parked psh's
+    # script fd there, so `exec {fd}>/dev/null` answered 11.
+    script = 'exec {fd}>/dev/null\necho $fd\nexec {fd}>&-\n'
+    psh = run_psh_script(tmp_path, script)
+    bash = run_bash_script(tmp_path, script)
+    assert psh.stdout == bash.stdout == "10\n"
+    assert psh.returncode == bash.returncode == 0
+
+
+def test_two_named_fds_allocate_10_and_11(tmp_path):
+    script = 'exec {a}>/dev/null {b}>/dev/null\necho $a $b\n'
+    psh = run_psh_script(tmp_path, script)
+    bash = run_bash_script(tmp_path, script)
+    assert psh.stdout == bash.stdout == "10 11\n"
+
+
+def test_script_can_use_fd10_explicitly(tmp_path):
+    # `exec 10>f; ...; exec 10>&-` used to exit 1 with a spurious
+    # "[Errno 9] Bad file descriptor" (FileInput's own fd sat on 10).
+    out = tmp_path / "f10.out"
+    script = f'exec 10>{out}\necho ten >&10\nexec 10>&-\ncat {out}\n'
+    r = run_psh_script(tmp_path, script)
+    assert r.returncode == 0
+    assert r.stdout == "ten\n"
+    assert "Bad file descriptor" not in r.stderr
+
+
+def test_sourced_file_touching_fd10(tmp_path):
+    inc = tmp_path / "inc10.sh"
+    out = tmp_path / "inner10.out"
+    inc.write_text(f'exec 10>{out}\necho from-inner >&10\nexec 10>&-\n')
+    r = run_psh_script(tmp_path, f'. {inc}\ncat {out}\n')
+    assert r.returncode == 0
+    assert r.stdout == "from-inner\n"
     assert "Bad file descriptor" not in r.stderr
