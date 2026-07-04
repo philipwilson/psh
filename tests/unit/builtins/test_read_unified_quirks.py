@@ -8,6 +8,7 @@ labelled as such. Subprocess is used so real OS pipes drive the fd-level paths.
 """
 import subprocess
 import sys
+import time
 
 
 def _psh(script, stdin):
@@ -139,3 +140,48 @@ class TestReadFdAndPoll:
         # /dev/null is at EOF, which select reports readable -> rc 0 (bash).
         r = _psh('read -t 0 x </dev/null; echo "rc=$?"', '')
         assert r.stdout == "rc=0\n"
+
+
+class TestReadTimeoutDeadline:
+    """reappraisal #18 T1-7: `read -t` enforces its deadline across the WHOLE
+    read, not just the wait for the first byte. A slow producer delivers a
+    partial chunk then stalls far past the budget; the read must time out on
+    schedule (exit 142) with the partial input saved, matching bash."""
+
+    def _feed_then_stall(self, first, stall_secs):
+        """Popen a producer that writes ``first`` then stalls; return its
+        stdout pipe for use as another process's stdin."""
+        src = (f'import sys,time; sys.stdout.write({first!r}); '
+               f'sys.stdout.flush(); time.sleep({stall_secs}); '
+               f'sys.stdout.write("TAIL\\n"); sys.stdout.flush()')
+        return subprocess.Popen([sys.executable, '-c', src],
+                                stdout=subprocess.PIPE)
+
+    def test_deadline_bounds_whole_read_after_first_byte(self):
+        feeder = self._feed_then_stall("abc", 5)
+        try:
+            t0 = time.time()
+            r = subprocess.run(
+                [sys.executable, '-m', 'psh', '-c',
+                 'read -t 0.5 x; echo "rc=$? [$x]"'],
+                stdin=feeder.stdout, capture_output=True, text=True,
+                timeout=10)
+            elapsed = time.time() - t0
+        finally:
+            feeder.kill()
+        # Partial input saved, timeout exit code, and — crucially — the read
+        # returned on its ~0.5s deadline, NOT after the producer's 5s stall.
+        assert r.stdout == "rc=142 [abc]\n"
+        assert elapsed < 3.0, f"read -t abandoned its deadline ({elapsed:.2f}s)"
+
+    def test_deadline_partial_splits_across_vars(self):
+        feeder = self._feed_then_stall("aa bb c", 5)
+        try:
+            r = subprocess.run(
+                [sys.executable, '-m', 'psh', '-c',
+                 'read -t 0.5 x y z; echo "rc=$? [$x][$y][$z]"'],
+                stdin=feeder.stdout, capture_output=True, text=True,
+                timeout=10)
+        finally:
+            feeder.kill()
+        assert r.stdout == "rc=142 [aa][bb][c]\n"
