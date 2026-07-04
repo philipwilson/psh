@@ -4422,3 +4422,105 @@
   stdout: "OK\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# REAPPRAISAL #17 TIER-2 GRAB BAG (r17t2)
+# =============================================================================
+
+# (a) repeated `!` negation toggles the exit status per occurrence
+- name: double_negation_true
+  command: "! ! true; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: double_negation_false
+  command: "! ! false; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: triple_negation_true
+  command: "! ! ! true; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: double_negation_bare_exit_code
+  command: "! ! false"
+  stdout: ""
+  stderr: ""
+  exit_code: 1
+
+# (a) [[ ]] as a non-brace function body
+- name: function_body_enhanced_test
+  command: "f() [[ 1 == 1 ]]; f && echo t"
+  stdout: "t\n"
+  stderr: ""
+  exit_code: 0
+
+# (b) globstar ** does not descend through symlinked dirs (bash 4.3+);
+# a symlink loop (loop -> .) must terminate, with the link listed once.
+- name: globstar_symlink_no_traverse
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch a.txt sub/x.txt sub/deep/z.txt && ln -s sub symdir && ln -s . loop && shopt -s globstar && echo **'
+  stdout: "a.txt loop sub sub/deep sub/deep/z.txt sub/x.txt symdir\n"
+  stderr: ""
+  exit_code: 0
+
+- name: globstar_symlink_prefix_excluded
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch a.txt sub/x.txt sub/deep/z.txt && ln -s sub symdir && ln -s . loop && shopt -s globstar && echo **/*.txt'
+  stdout: "a.txt sub/deep/z.txt sub/x.txt\n"
+  stderr: ""
+  exit_code: 0
+
+- name: globstar_explicit_symlink_followed
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch sub/x.txt sub/deep/z.txt && ln -s sub symdir && shopt -s globstar && echo symdir/**'
+  stdout: "symdir/ symdir/deep symdir/deep/z.txt symdir/x.txt\n"
+  stderr: ""
+  exit_code: 0
+
+- name: globstar_trailing_slash_dirs_only
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch a.txt sub/x.txt && ln -s sub symdir && shopt -s globstar && echo **/'
+  stdout: "sub/ sub/deep/ symdir/\n"
+  stderr: ""
+  exit_code: 0
+
+# (c) fg-pipeline LAST-member signal death is announced (bash rule: the
+# member whose status becomes $?); stderr wording is host-libc, so pin the
+# stable "Terminated" prefix as a substring.
+- name: pipeline_last_member_sigterm_announced
+  command: "true | sh -c 'kill -TERM $$'; echo rc=$?"
+  stdout: "rc=143\n"
+  stderr: "Terminated"
+  exit_code: 0
+
+- name: pipeline_middle_member_sigterm_silent
+  command: "sh -c 'kill -TERM $$' | cat; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_pipefail_announces_determining_member
+  command: "set -o pipefail; sh -c 'kill -TERM $$' | cat; echo rc=$?"
+  stdout: "rc=143\n"
+  stderr: "Terminated"
+  exit_code: 0
+
+# (d) declare -n target validation (two distinct bash messages)
+- name: declare_nameref_invalid_target
+  command: "declare -n r=1; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "invalid variable name for name reference"
+  exit_code: 0
+
+- name: declare_nameref_empty_target
+  command: "declare -n r=; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "': not a valid identifier"
+  exit_code: 0
+
+- name: declare_nameref_array_element_target_valid
+  command: "a=(1 2); declare -n r='a[1]'; echo rc=$? v=$r"
+  stdout: "rc=0 v=2\n"
+  stderr: ""
+  exit_code: 0
