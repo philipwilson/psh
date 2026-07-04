@@ -129,6 +129,18 @@ def test_echo_e_flag_c_terminator(shell, capsys):
     captured = capsys.readouterr()
     assert captured.out == "test"
 
+    # Escapes BEFORE \c are still processed (bash: 'a<TAB>b')
+    result = shell.run_command("echo -e 'a\\tb\\cd'")
+    assert result == 0
+    captured = capsys.readouterr()
+    assert captured.out == "a\tb"
+
+    # \\c is a literal backslash + c, NOT a terminator (bash)
+    result = shell.run_command("echo -e 'x\\\\cy'")
+    assert result == 0
+    captured = capsys.readouterr()
+    assert captured.out == "x\\cy\n"
+
 
 def test_echo_e_flag_octal(shell, capsys):
     """Test -e flag with octal sequences."""
@@ -155,6 +167,25 @@ def test_echo_e_flag_octal(shell, capsys):
     assert result == 0
     captured = capsys.readouterr()
     assert captured.out == "start\0end\n"
+
+    # \0 with no digits is NUL (bash)
+    result = shell.run_command("echo -e 'a\\0b'")
+    assert result == 0
+    captured = capsys.readouterr()
+    assert captured.out == "a\0b\n"
+
+    # Value wraps mod 256: \0777 = 511 % 256 = 0xFF (bash)
+    result = shell.run_command("echo -e '\\0777'")
+    assert result == 0
+    captured = capsys.readouterr()
+    assert captured.out == "\xff\n"
+
+    # Octal WITHOUT the leading 0 stays literal in echo -e (bash;
+    # only printf %b accepts the bare \\ddd form)
+    result = shell.run_command("echo -e '\\101'")
+    assert result == 0
+    captured = capsys.readouterr()
+    assert captured.out == "\\101\n"
 
 
 def test_echo_e_flag_hex(shell, capsys):
