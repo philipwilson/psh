@@ -7,6 +7,7 @@ from ..utils.signal_utils import (
     signal_name_to_number,
     signal_number_to_name,
 )
+from .exceptions import FunctionReturn, LoopBreak, LoopContinue
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -25,6 +26,14 @@ class TrapManager:
         # Re-entrancy guard: a DEBUG/ERR action must not fire DEBUG/ERR
         # traps for its own commands.
         self._in_debug_err_trap = False
+        # Re-entrancy guard: a function returning while a RETURN action runs
+        # must not fire RETURN again (bash 5.2 recurses forever on
+        # `trap 'return 3' RETURN`; psh deterministically fires once).
+        self._in_return_trap = False
+        # Depth of trap actions currently executing. While non-zero,
+        # $BASH_COMMAND is frozen at the interrupted command (bash: "the
+        # command executing at the time of the trap").
+        self._trap_action_depth = 0
 
     def set_trap(self, action: str, signals: List[str]) -> int:
         """Set trap handler for signals.
@@ -92,12 +101,11 @@ class TrapManager:
         the single key every path uses, so a trap set under any spelling is
         found by the name-keyed dispatch in SignalManager. Condition ``0``
         is the EXIT trap (POSIX: ``trap 'cmd' 0``); the pseudo-signals
-        EXIT/DEBUG/ERR pass through unchanged (RETURN traps are not
-        implemented, so RETURN is rejected). Returns ``None`` for a spec
-        that is not a valid signal.
+        EXIT/DEBUG/ERR/RETURN pass through unchanged. Returns ``None`` for
+        a spec that is not a valid signal.
         """
         spec = signal_spec.upper()
-        if spec in ('EXIT', 'DEBUG', 'ERR'):
+        if spec in self._PSEUDO_SIGNALS:
             return spec
         if spec.isdecimal():
             # POSIX: condition 0 means the shell-exit trap.
@@ -113,7 +121,7 @@ class TrapManager:
     def _set_signal_handler(self, signal_spec: str, action: str):
         """Set a signal handler for the given signal."""
         # Special handling for pseudo-signals
-        if signal_spec in ('EXIT', 'DEBUG', 'ERR'):
+        if signal_spec in self._PSEUDO_SIGNALS:
             self.state.trap_handlers[signal_spec] = action
             return
 
@@ -138,7 +146,7 @@ class TrapManager:
     def _ignore_signal(self, signal_spec: str):
         """Set signal to be ignored."""
         # Special handling for pseudo-signals
-        if signal_spec in ('EXIT', 'DEBUG', 'ERR'):
+        if signal_spec in self._PSEUDO_SIGNALS:
             self.state.trap_handlers[signal_spec] = ''
             return
 
@@ -153,7 +161,7 @@ class TrapManager:
     def _reset_trap(self, signal_spec: str):
         """Reset signal to default behavior."""
         # Special handling for pseudo-signals
-        if signal_spec in ('EXIT', 'DEBUG', 'ERR'):
+        if signal_spec in self._PSEUDO_SIGNALS:
             if signal_spec in self.state.trap_handlers:
                 del self.state.trap_handlers[signal_spec]
             return
@@ -252,14 +260,30 @@ class TrapManager:
                 base_line = self.state.scope_manager.get_current_line_number()
             else:
                 base_line = 1
-            self.shell.run_command(action, add_to_history=False,
-                                   base_line=base_line)
+            # While the action runs, $BASH_COMMAND stays the interrupted
+            # command (bash) — see set_bash_command.
+            self._trap_action_depth += 1
+            try:
+                self.shell.run_command(action, add_to_history=False,
+                                       base_line=base_line)
+            finally:
+                self._trap_action_depth -= 1
 
             # For most signals, restore the exit code
             # EXIT trap should preserve the exit code it sets
             if signal_name != 'EXIT':
                 self.state.last_exit_code = saved_exit_code
 
+        except (FunctionReturn, LoopBreak, LoopContinue):
+            # `return` / `break` / `continue` in a trap action act on the
+            # enclosing function/loop (bash: `trap 'return 9' USR1` returns
+            # 9 from the function the signal interrupted; `trap break USR1`
+            # exits the enclosing loop with status 0). Control-flow signals
+            # deliberately do not derive from PshError, and must not be
+            # swallowed by the defect guard below — re-raise so they unwind
+            # from run_pending_traps to the enclosing executor. (`exit`
+            # already works: SystemExit is not an Exception.)
+            raise
         except Exception as e:
             # Trap execution failed, but don't crash the shell
             print(f"trap: error executing trap for {signal_name}: {e}", file=self.state.stderr)
@@ -315,13 +339,16 @@ class TrapManager:
 
     def _trap_sort_key(self, signal_name: str) -> int:
         """bash's trap-listing order: EXIT (signal 0) first, real signals
-        by number, then the pseudo-signals DEBUG and ERR after them all."""
+        by number, then the pseudo-signals DEBUG, ERR and RETURN after
+        them all (bash 5.2 lists them in exactly that order)."""
         if signal_name == 'EXIT':
             return 0
         if signal_name == 'DEBUG':
             return signal.NSIG + 1
         if signal_name == 'ERR':
             return signal.NSIG + 2
+        if signal_name == 'RETURN':
+            return signal.NSIG + 3
         return self._signum(signal_name) or 0
 
     # Pseudo-signals are printed WITHOUT a SIG prefix (bash); real signals
@@ -360,11 +387,20 @@ class TrapManager:
         unless the relevant trace option is set: ``errtrace`` (``set -E``) for
         ERR, ``functrace`` (``set -T``) for DEBUG/RETURN. At top level the trap
         always fires. ``function_stack`` is non-empty exactly while a function
-        body is executing.
+        body is executing. For DEBUG (functrace), a function carrying the
+        ``declare -ft`` trace attribute also inherits the trap — the check is
+        against the INNERMOST function, so a non-traced function called from
+        a traced one does not fire (bash).
         """
         if not self.state.function_stack:
             return True
-        return bool(self.state.options.get(trace_option))
+        if self.state.options.get(trace_option):
+            return True
+        if trace_option == 'functrace':
+            func = self.shell.function_manager.get_function(
+                self.state.function_stack[-1])
+            return func is not None and func.trace
+        return False
 
     def execute_debug_trap(self):
         """Execute DEBUG trap if set (called before each simple command)."""
@@ -395,6 +431,96 @@ class TrapManager:
                 self.execute_trap('ERR')
             finally:
                 self._in_debug_err_trap = False
+
+    # ------------------------------------------------------------------
+    # RETURN trap
+    #
+    # Unlike DEBUG/ERR (whose inheritance is a fire-time check against
+    # errtrace/functrace), the RETURN trap uses bash's HIDING model, which
+    # is observably different: on function entry without `set -T` (or the
+    # function's -t trace attribute) the trap is REMOVED for the
+    # function's extent — `trap -p RETURN` inside lists nothing, a trap
+    # the BODY sets fires at that same function's return and persists
+    # afterwards, and the hidden outer trap is restored only if the body
+    # didn't install its own. Sourced files never hide it (a RETURN trap
+    # fires at the end of every `source`, -T or not). Pinned by the truth
+    # table in tmp/probes-r17t2-trap/cases_c_return.sh (bash 5.2).
+    # ------------------------------------------------------------------
+
+    def hide_return_trap_on_function_entry(self) -> Optional[str]:
+        """Hide the RETURN trap for a function's extent (bash without -T).
+
+        Returns the hidden action string for restore_return_trap_on_
+        function_exit, or None when nothing was hidden. The caller decides
+        WHETHER to hide (functrace / the function's trace attribute
+        inherit the trap instead). Inherited-for-listing entries (a
+        parent's trap in a subshell-style child) are not live and stay.
+        """
+        if ('RETURN' in self.state.trap_handlers
+                and 'RETURN' not in self.state.inherited_traps):
+            return self.state.trap_handlers.pop('RETURN')
+        return None
+
+    def restore_return_trap_on_function_exit(self, hidden: Optional[str]) -> None:
+        """Restore a hidden RETURN trap when the function returns.
+
+        A RETURN trap the body installed WINS and persists after the
+        function (bash: the hidden outer action is discarded) — restore
+        only when no RETURN trap is currently set.
+        """
+        if hidden is not None and 'RETURN' not in self.state.trap_handlers:
+            self.state.trap_handlers['RETURN'] = hidden
+
+    def execute_return_trap(self) -> Optional[int]:
+        """Fire the RETURN trap at a function return or end of `source`.
+
+        Runs with the returning context still in place (FUNCNAME/locals —
+        the caller fires before popping scope/stack) and with $? = the
+        status of the last command executed BEFORE the return (bash);
+        execute_trap's save/restore keeps the action's own commands from
+        changing the pending return status.
+
+        Returns an override exit status when the action itself executed
+        `return N` (POSIX: return in a trap action returns from the trap);
+        None otherwise. This adoption is a deliberate divergence with two
+        faces, pinned in tests/integration/job_control/test_trap_actions.py:
+
+        * fired at a FUNCTION return, bash 5.2 recurses forever (the
+          action's `return` re-triggers the trap); psh fires once and
+          adopts N.
+        * fired at the end of `source`, bash rejects the `return` ("can
+          only `return' from a function or sourced script" — the sourced
+          file has already finished) and keeps the source's own status;
+          psh adopts N here too, one consistent rule for both fire points.
+        """
+        if self._in_return_trap:
+            return None
+        if not self.get_handler('RETURN'):
+            return None
+        self._in_return_trap = True
+        try:
+            self.execute_trap('RETURN')
+        except FunctionReturn as fr:
+            return fr.exit_code
+        finally:
+            self._in_return_trap = False
+        return None
+
+    def set_bash_command(self, command: object) -> None:
+        """Record $BASH_COMMAND — the command being/about to be executed.
+
+        Called by the executor's dispatch chokepoints (simple commands,
+        pipeline members, for/case/(( ))/[[ ]] headers) BEFORE the DEBUG
+        trap fires, with either the AST node (rendered lazily — and only —
+        when $BASH_COMMAND is actually read; see ShellState.bash_command)
+        or a cheap pre-rendered string. While a trap action is executing,
+        updates are suppressed so $BASH_COMMAND keeps the interrupted
+        command (bash: "unless the shell is executing a command as a
+        result of a trap, in which case it is the command executing at
+        the time of the trap").
+        """
+        if self._trap_action_depth == 0:
+            self.state.bash_command = command
 
     def queue_trap(self, signal_name: str):
         """Queue a signal trap from handler context (async-signal path)."""

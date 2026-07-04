@@ -906,3 +906,36 @@ def format_function_definition(name: str, func) -> str:
     """
     node = FunctionDef(name=name, body=func.body, redirects=func.redirects)
     return FormatterVisitor().visit(node)
+
+
+# ---------------------------------------------------------------------------
+# $BASH_COMMAND text
+#
+# bash reports the PRE-expansion text of the dispatched command (its own
+# reconstruction from the parsed command, not the raw source bytes):
+# `echo $x` stays `echo $x`, quotes survive, redirects are included, and
+# compound constructs report a HEADER (`for i in $v`, `case $x in `) while
+# their bodies' simple commands report themselves. These helpers reuse the
+# formatter's single-node rendering for that. Truth table:
+# tmp/probes-r17t2-trap/cases_b_bashcmd.sh (bash 5.2).
+# ---------------------------------------------------------------------------
+
+def format_bash_command(node) -> str:
+    """One command's $BASH_COMMAND text (SimpleCommand, [[ ]], (( )), ...)."""
+    return FormatterVisitor().visit(node)
+
+
+def format_for_header(node) -> str:
+    """A for loop's $BASH_COMMAND header: ``for i in $v`` (pre-expansion)."""
+    formatter = FormatterVisitor()
+    return f"for {node.variable} in {formatter._format_loop_items(node)}".rstrip()
+
+
+def format_case_header(node) -> str:
+    """A case statement's $BASH_COMMAND header: ``case $x in `` (bash keeps
+    the trailing space before where the patterns would start)."""
+    if node.subject_word is not None:
+        subject = FormatterVisitor._format_word(node.subject_word)
+    else:
+        subject = node.expr
+    return f"case {subject} in "

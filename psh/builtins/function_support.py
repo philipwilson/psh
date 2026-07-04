@@ -123,10 +123,12 @@ class DeclareBuiltin(Builtin):
 
         # Attribute flags combined with -f/-F APPLY the attribute to the
         # named functions rather than printing them (bash: `declare -fx f`
-        # exports f, `declare -fr f` makes it readonly; an undefined name is
-        # silent with status 1, like `declare -f NAME`).
+        # exports f, `declare -fr f` makes it readonly, `declare -ft f`
+        # sets the trace attribute so f inherits the RETURN trap; an
+        # undefined name is silent with status 1, like `declare -f NAME`).
         if names and (options['export'] or options['remove_export']
-                      or options['readonly']):
+                      or options['readonly']
+                      or options['trace'] or options['remove_trace']):
             exit_code = 0
             for name in names:
                 if fm.get_function(name) is None:
@@ -136,6 +138,8 @@ class DeclareBuiltin(Builtin):
                     fm.set_function_exported(name, options['export'])
                 if options['readonly']:
                     fm.set_function_readonly(name)
+                if options['trace'] or options['remove_trace']:
+                    fm.set_function_trace(name, options['trace'])
             return exit_code
 
         if not names:
@@ -179,8 +183,10 @@ class DeclareBuiltin(Builtin):
 
     @staticmethod
     def _function_flags(func) -> str:
-        """The flag string for a function's attribute line (f, fr, fx, frx)."""
-        return 'f' + ('r' if func.readonly else '') + ('x' if func.exported else '')
+        """The flag string for a function's attribute line (f, fr, ft, fx, ...)."""
+        return ('f' + ('r' if func.readonly else '')
+                + ('t' if getattr(func, 'trace', False) else '')
+                + ('x' if func.exported else ''))
 
     def _is_valid_identifier(self, name: str) -> bool:
         """Check if a name is a valid shell identifier."""

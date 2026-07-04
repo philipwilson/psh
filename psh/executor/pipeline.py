@@ -154,6 +154,13 @@ class PipelineExecutor:
         try:
             # Fork processes for each command
             for i, command in enumerate(node.commands):
+                # $BASH_COMMAND: bash records each pipeline element in the
+                # PARENT as it dispatches it (an ERR trap after `a | b`
+                # reports the last element's text); each forked child also
+                # re-records its own command before its DEBUG trap. The
+                # node is stamped; text renders lazily on read.
+                self.shell.trap_manager.set_bash_command(command)
+
                 # Determine process role
                 if i == 0:
                     role = ProcessRole.PIPELINE_LEADER

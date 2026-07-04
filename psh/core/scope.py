@@ -620,6 +620,13 @@ class ScopeManager:
                     arr.set(i, str(st))
                 return Variable(name='PIPESTATUS', value=arr,
                                 attributes=VarAttributes.ARRAY)
+        elif name == 'BASH_COMMAND':
+            # The command currently being (or about to be) executed — or,
+            # inside a trap action, the command executing at the time of
+            # the trap (TrapManager.set_bash_command freezes it there).
+            if self._shell is not None:
+                return Variable(name='BASH_COMMAND',
+                                value=self._shell.state.bash_command)
         elif name == 'FUNCNAME':
             # FUNCNAME is an ARRAY (bash): [0] is the current function, [1] the
             # caller, ... — the call stack, innermost first. function_stack is

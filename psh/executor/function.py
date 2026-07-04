@@ -135,24 +135,54 @@ class FunctionOperationExecutor:
         # Push function onto stack for return builtin
         self.shell.state.function_stack.append(name)
 
+        # DEBUG/RETURN traps are not inherited into the function body unless
+        # functrace (set -T) or the function's trace attribute (declare -ft)
+        # is set. DEBUG uses a fire-time check (_inherited_into_function);
+        # RETURN uses bash's observable HIDING model: the trap is removed for
+        # the function's extent (trap -p inside lists nothing; a trap the
+        # body sets fires at THIS function's return and persists) and
+        # restored on exit only if the body didn't install its own.
+        trap_manager = self.shell.trap_manager
+        inherits_trace_traps = bool(
+            self.shell.state.options.get('functrace')) or func.trace
+        hidden_return_trap = (None if inherits_trace_traps
+                              else trap_manager.hide_return_trap_on_function_entry())
+
         try:
             # Execute function body, applying any definition-attached
             # redirections (f() { ...; } > file) at each call (bash). A bad
             # redirect target prints bash's diagnostic and yields False, so the
             # body does not run — the call returns 1 (matching the simple- and
             # compound-command redirect-error format).
-            if func.redirects:
-                with self.shell.io_manager.guarded_redirections(
-                        func.redirects) as applied:
-                    if not applied:
-                        return 1
+            try:
+                # bash additionally fires the DEBUG trap on function ENTRY
+                # when the trap is inherited (set -T): `f` fires once as the
+                # calling simple command and once here, before the body's own
+                # commands. execute_debug_trap's inheritance check makes this
+                # a no-op without functrace ($BASH_COMMAND is still the
+                # call's text). Inside the inner try so a `return` in the
+                # action returns from THIS function (bash).
+                trap_manager.execute_debug_trap()
+
+                if func.redirects:
+                    with self.shell.io_manager.guarded_redirections(
+                            func.redirects) as applied:
+                        if not applied:
+                            return 1
+                        exit_code = visitor.visit(func_body)
+                else:
                     exit_code = visitor.visit(func_body)
-            else:
-                exit_code = visitor.visit(func_body)
+            except FunctionReturn as fr:
+                # Handle return statement
+                exit_code = fr.exit_code
+            # The RETURN trap fires while the function context is still in
+            # place (FUNCNAME/locals visible; $? = the last command's status
+            # from BEFORE the return) — bash. Not on `exit` (SystemExit
+            # skips this). A `return` in the action overrides the status.
+            override = trap_manager.execute_return_trap()
+            if override is not None:
+                exit_code = override
             return exit_code
-        except FunctionReturn as fr:
-            # Handle return statement
-            return fr.exit_code
         except (LoopBreak, LoopContinue):
             # break/continue must NOT cross the function boundary (bash). With
             # loop_depth reset to 0 on entry, an in-function loop always catches
@@ -189,6 +219,10 @@ class FunctionOperationExecutor:
                 self.shell.state, e, prefix=f"{name}: ",
                 stream=self.shell.state.stderr)
         finally:
+            # Restore a RETURN trap hidden on entry (no-op if the body
+            # installed its own — that one persists, bash).
+            trap_manager.restore_return_trap_on_function_exit(hidden_return_trap)
+
             # Pop function scope
             popped_scope = self.shell.state.scope_manager.pop_scope()
 

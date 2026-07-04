@@ -402,6 +402,11 @@ class ExecutorVisitor(ASTVisitor[int]):
         from ..core import NamerefCycleError, ReadonlyVariableError, UnboundVariableError
         from ..expansion.arithmetic import evaluate_arithmetic
 
+        # bash runs the DEBUG trap before a (( )) command, with
+        # $BASH_COMMAND = its own text.
+        self.shell.trap_manager.set_bash_command(f"(({node.expression}))")
+        self.shell.trap_manager.execute_debug_trap()
+
         # Apply redirections if any (a bad target prints bash's diagnostic
         # and yields False, so the arithmetic does not run — status 1).
         # Error handling sits INSIDE the redirection scope so diagnostics
@@ -455,6 +460,11 @@ class ExecutorVisitor(ASTVisitor[int]):
         from ..core import NamerefCycleError, ReadonlyVariableError, UnboundVariableError
         from ..expansion.arithmetic import ShellArithmeticError
         from .enhanced_test_evaluator import TestExpressionEvaluator
+
+        # bash runs the DEBUG trap before a [[ ]] command, with
+        # $BASH_COMMAND = its own text (node stamped; rendered lazily).
+        self.shell.trap_manager.set_bash_command(node)
+        self.shell.trap_manager.execute_debug_trap()
 
         # guarded_redirections also owns any process substitutions used as
         # redirect targets (cleaned up when the statement finishes). A bad

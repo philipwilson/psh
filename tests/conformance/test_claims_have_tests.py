@@ -94,6 +94,11 @@ CLAIM_TESTS = {
     'FUNCNAME': (
         'bash/test_user_guide_notes_conformance.py',
         'c(){ echo "${FUNCNAME[@]}";}; a'),
+    # Reappraisal #17 Tier-2 (v0.617) — row flipped from "Partial (RETURN not)"
+    # once RETURN traps were implemented; DEBUG and ERR already worked.
+    'DEBUG/ERR/RETURN traps': (
+        'bash/test_trap_signal_spec_conformance.py',
+        "trap 'echo RET' RETURN"),
 }
 
 
@@ -127,9 +132,8 @@ NO_ROW_PROBES = {
 # genuinely remains. Probes suppress stderr where the divergence would
 # otherwise rest on error-message wording, so only real behavior is compared.
 PARTIAL_ROW_PROBES = {
-    # Note claims RETURN traps are unsupported (DEBUG/ERR work).
-    'DEBUG/ERR/RETURN traps':
-        'f(){ trap "echo RET" RETURN; }; f 2>/dev/null; echo after',
+    # (The DEBUG/ERR/RETURN traps row was flipped to Full support in v0.617
+    # once RETURN traps landed — see CLAIM_TESTS above.)
     # Note claims only a subset of bash's ~57 shopt options exists
     # (lastpipe is a representative missing one).
     'shopt options':

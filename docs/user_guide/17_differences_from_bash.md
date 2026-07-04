@@ -152,8 +152,9 @@ trap -p INT            # Show specific trap
 trap - EXIT INT
 ```
 
-PSH handles standard signals and the `EXIT`, `DEBUG`, and `ERR`
-pseudo-signals (as of v0.263.0). `RETURN` is not supported (see 17.2).
+PSH handles standard signals and the `EXIT`, `DEBUG`, `ERR`, and `RETURN`
+pseudo-signals (`EXIT`/`DEBUG`/`ERR` as of v0.263.0, `RETURN` as of v0.617;
+see 17.2).
 
 ### Select Statement
 
@@ -280,9 +281,14 @@ coproc NAME { command; }      # Command not found
 ### RETURN Traps
 
 ```bash
-# EXIT, DEBUG, and ERR all fire (DEBUG before each simple command; ERR
-# after failures, with the same exemptions as set -e). RETURN does not:
-trap 'echo ret' RETURN   # Error: invalid signal specification
+# EXIT, DEBUG, ERR, and RETURN all fire (DEBUG before each simple command;
+# ERR after failures, with the same exemptions as set -e). RETURN fires at
+# every function return and end of `source`, honoring bash's hiding model
+# (hidden for a function's extent unless `set -T` / `declare -ft`):
+trap 'echo ret' RETURN
+f(){ trap 'echo ret' RETURN; }; f   # prints: ret
+# Deliberate divergence: a `return N` *inside* the RETURN action adopts N
+# once here; bash 5.2 recurses forever on that construct.
 ```
 
 ### Programmable Completion
@@ -593,9 +599,9 @@ fi
 | set -o noglob | Yes | Yes | Full support |
 | set -o verbose | Yes | Yes | Full support |
 | **Signal Handling** |
-| trap command | Yes | Yes | Standard signals + EXIT/DEBUG/ERR |
+| trap command | Yes | Yes | Standard signals + EXIT/DEBUG/ERR/RETURN |
 | Signal handling | Yes | Yes | All standard signals |
-| DEBUG/ERR/RETURN traps | Yes | Partial | DEBUG and ERR supported (v0.263); RETURN not |
+| DEBUG/ERR/RETURN traps | Yes | Full support | DEBUG/ERR (v0.263) + RETURN (v0.617); RETURN honors bash's hiding model (`set -T`/`declare -ft`). Deliberate divergence: a `return N` *inside* a RETURN action adopts N once (bash 5.2 recurses forever). |
 | **Advanced Features** |
 | Here documents | Yes | Yes | Full support |
 | Here strings | Yes | Yes | Full support |
@@ -663,7 +669,7 @@ result=$((a + b))
 # - Brace expansion (including expansion items like {$((1)),$((2))})
 # - Extended glob patterns (with shopt -s extglob enabled beforehand)
 # - Here documents and here strings
-# - trap command (standard signals + EXIT/DEBUG/ERR; avoid RETURN)
+# - trap command (standard signals + EXIT/DEBUG/ERR/RETURN)
 # - All control structures
 ```
 
@@ -705,9 +711,7 @@ Most Bash scripts work without modification. Check for these issues:
 # 1. Check for unsupported builtins / features
 grep -E 'coproc|complete |compgen |caller' script.sh
 grep -E 'read .*-[ei]' script.sh              # read -e/-i (readline editing) unsupported
-
-# 2. Check for RETURN traps (DEBUG and ERR ARE supported)
-grep -E 'trap .*RETURN' script.sh
+# (EXIT/DEBUG/ERR/RETURN traps all fire as of v0.617 — no trap migration needed.)
 ```
 
 ### Script Compatibility Checklist
@@ -751,9 +755,10 @@ grep -E 'trap .*RETURN' script.sh
 # - ${!prefix*} / ${!prefix@} variable-name prefix matching
 # - Associative key/value transforms ${var@K} / ${var@k}
 #   (assoc pairs iterate in insertion order, not bash hash order)
+# - EXIT/DEBUG/ERR/RETURN pseudo-signal traps (RETURN honors bash's
+#   set -T / declare -ft hiding model)
 
 # Not supported:
-# - RETURN traps (DEBUG / ERR ARE supported)
 # - History expansion :q/:x word-quoting modifiers and the !# event designator
 # - Coprocesses (coproc)
 # - Programmable completion (complete, compgen)
@@ -789,7 +794,7 @@ PSH v0.221.0 provides near-complete Bash compatibility for everyday shell progra
 
 1. **Comprehensive Feature Support**: Arrays, associative arrays, trap, wait, disown, all control structures, all expansions, extended globs, `=~` with BASH_REMATCH
 2. **Full Shell Options**: errexit, nounset, xtrace, pipefail, noclobber, allexport, and many more
-3. **Remaining Gaps**: RETURN traps (DEBUG/ERR fire), coprocesses, programmable completion, `caller`, `read -e`/`read -i` (readline editing), `BASH_SOURCE`/`BASH_LINENO`
+3. **Remaining Gaps**: coprocesses, programmable completion, `caller`, `read -e`/`read -i` (readline editing), `BASH_SOURCE`/`BASH_LINENO`
 4. **Educational Tools**: Debug flags, script analysis, multiple parser implementations
 5. **High Compatibility**: Most Bash scripts run without modification
 
@@ -797,7 +802,7 @@ Key differences to remember:
 - Use `set -eu -o pipefail` instead of `set -euo pipefail`
 - Namerefs (`declare -n`/`local -n`) support scalar and array-element targets, chains, and `local -n` pass-by-reference; `${!var}` indirect expansion works too
 - All `${var@...}` transform operators are supported, including `${var@K}`/`${var@k}` (associative key/value display)
-- DEBUG and ERR traps and interactive history expansion (`!!`, `!n`, word designators, modifiers) all work; only RETURN traps are unimplemented
+- DEBUG, ERR, and RETURN traps and interactive history expansion (`!!`, `!n`, word designators, modifiers) all work (RETURN as of v0.617, honoring bash's `set -T`/`declare -ft` hiding model)
 - `caller` is not available (`let`, `mapfile`, `readarray` are supported)
 - Use `$PSH_VERSION` instead of `$BASH_VERSION` to detect PSH
 - Aliases expand in scripts and `-c` strings by default (bash: interactive only); `shopt -u expand_aliases` turns that off

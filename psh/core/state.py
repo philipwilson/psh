@@ -495,6 +495,41 @@ class ShellState:
         self.execution.last_cmdsub_status = value
 
     @property
+    def bash_command(self) -> str:
+        """Pre-expansion text of the command being executed ($BASH_COMMAND).
+
+        The executor stamps the AST NODE (cheap) rather than rendered text;
+        the render happens here, on the first read, and is cached back into
+        the slot — so scripts that never read $BASH_COMMAND (no DEBUG/ERR
+        trap, no literal reference) pay nothing per command. During a trap
+        action the stamp is frozen (TrapManager.set_bash_command), so this
+        renders the FROZEN node — the interrupted command (bash).
+        """
+        value = self.execution.bash_command
+        if isinstance(value, str):
+            return value
+        from ..ast_nodes import CaseConditional, ForLoop
+        from ..visitor import (
+            format_bash_command,
+            format_case_header,
+            format_for_header,
+        )
+        # Compound constructs report a HEADER; everything else (simple
+        # commands, [[ ]], ...) reports its own text.
+        if isinstance(value, ForLoop):
+            text = format_for_header(value)
+        elif isinstance(value, CaseConditional):
+            text = format_case_header(value)
+        else:
+            text = format_bash_command(value)
+        self.execution.bash_command = text
+        return text
+
+    @bash_command.setter
+    def bash_command(self, value: object) -> None:
+        self.execution.bash_command = value
+
+    @property
     def in_forked_child(self) -> bool:
         """True only inside a forked child (pipeline member, subshell, ...)."""
         return self.execution.in_forked_child

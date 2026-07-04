@@ -183,3 +183,32 @@ class TestTrapSubstitutionExitConformance(ConformanceTest):
     def test_process_substitution_child(self):
         self.assert_identical_behavior(
             'cat <(trap "echo bye" EXIT; echo body); echo after')
+
+
+class TestReturnTrapConformance(ConformanceTest):
+    """RETURN pseudo-signal traps (reappraisal #17 Tier-2, v0.617): fire at
+    every function return and end of `source`, with bash's hiding model
+    (hidden for a function's extent unless `set -T`/`declare -ft`). Flips the
+    ch17 "DEBUG/ERR/RETURN traps" row to Full support. (The action's own
+    `return N` overriding the status is a documented deliberate divergence:
+    bash 5.2 recurses forever there, so it is not asserted here.)"""
+
+    def test_return_trap_fires_at_function_return(self):
+        self.assert_identical_behavior(
+            "f(){ trap 'echo RET' RETURN; }; f; echo after")
+
+    def test_return_trap_preserves_pre_return_status(self):
+        self.assert_identical_behavior(
+            "f(){ trap 'echo RET' RETURN; return 5; }; f; echo rc=$?")
+
+    def test_return_trap_hidden_for_function_extent(self):
+        self.assert_identical_behavior(
+            "f(){ trap 'echo RET' RETURN; }; trap -p RETURN; f; trap -p RETURN")
+
+    def test_return_listed_with_other_pseudo_signals(self):
+        self.assert_identical_behavior(
+            "trap 'echo t' RETURN EXIT DEBUG ERR; trap -l >/dev/null; echo ok")
+
+    def test_functrace_return_trap_fires_in_untraced_call(self):
+        self.assert_identical_behavior(
+            "set -T; f(){ echo in; }; trap 'echo R' RETURN; f; echo done")
