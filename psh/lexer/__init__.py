@@ -26,6 +26,7 @@ from .token_types import Token
 from .unicode_support import (
     is_identifier_char,
     is_identifier_start,
+    is_valid_name,
     is_whitespace,
     normalize_identifier,
     validate_identifier,

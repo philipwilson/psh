@@ -129,3 +129,18 @@ def validate_identifier(name: str, posix_mode: bool = False) -> bool:
             return False
 
     return True
+
+
+# The shell's single authoritative "is this a valid variable/function NAME?"
+# predicate. Every runtime name-validation site — assignment (``NAME=value``),
+# ``declare``/``export``/``readonly``/``local``, ``read NAME``, ``for NAME in``,
+# function definitions, and ``${NAME}`` — routes here so identifier policy has
+# ONE definition instead of a dozen divergent ``str.isalpha()``/``isalnum()``
+# copies.
+#
+# ``posix_mode`` (wired to ``set -o posix``) restricts names to the POSIX/ASCII
+# set ``[A-Za-z_][A-Za-z0-9_]*``, matching bash. With posix mode OFF, the
+# lenient Unicode-letter rule applies — psh's DELIBERATE, documented divergence
+# from bash (see ``docs/user_guide/17_differences_from_bash.md``). ``is_valid_name``
+# is the preferred name; ``validate_identifier`` remains as the original alias.
+is_valid_name = validate_identifier
