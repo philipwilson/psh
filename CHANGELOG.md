@@ -4,6 +4,48 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.606.0 (2026-07-04) - Fix: parameter-expansion value-word quoting + backtick escapes in double quotes (reappraisal #17 H5+H6)
+- FIX. Reappraisal #17 Tier-1 H5+H6.
+- **(H5) Value-word quote/escape removal in `${x:-w}` families.** The value
+  operand of `${x:-w}` / `${x:=w}` / `${x:+w}` / `${x:?w}` — and the no-colon
+  `${x-w}` / `${x+w}` forms — previously had quotes removed **only when a single
+  quote pair wrapped the whole operand**. Anything else leaked: embedded quotes
+  (`${x:-a"b"c}`) passed through into the output, single-quoted segments were
+  still `$`-expanded instead of taken literally, backslash escapes went
+  unprocessed, and — worst — `${x:="a"b}` **STORED the corrupted text** into the
+  variable (silent data corruption on every subsequent read).
+- **Root cause / fix.** Value operands now go through a quote-aware walk that
+  was **converged with the pattern-operand walker that was already correct**
+  (shared logic rather than a second divergent path), with the enclosing
+  double-quote context threaded through. Inside `"..."` the bash rule inverts:
+  single quotes are literal, double quotes are stripped. Heredoc bodies,
+  `$(( ))`, and `[[ ]]` string parts all follow double-quote semantics — so
+  `$(( ${u:-'5'} ))` now errors like bash (single quotes literal → non-numeric)
+  while `$(( ${u:-"5"} ))` works. Field/glob protection is honored per bash:
+  `${x:-'a b'}` is one field, `${x:-'*'}` never globs, but `${x:-*}` still globs.
+  The `:=` store now writes the clean, quote-removed value.
+- **(H6) Backtick `\"` unescape inside double quotes.** A backtick command
+  substitution inside double quotes now strips `\"` per POSIX
+  (`echo "`echo \"q\"`"` prints `q`). The lexer had been ignoring its
+  `quote_context` for backticks. Bare backticks (`echo `echo \"q\"``) and the
+  `$(...)` form are unchanged — they keep the escaped quote.
+- **Tests.** New `tests/unit/expansion/test_value_operand_quoting.py` and
+  `tests/unit/lexer/test_backtick_dquote_escapes.py`; 29 `value_operand_*` /
+  `backtick_*` / `cmdsub_*` golden cases pinned in
+  `tests/behavioral/golden_cases.yaml` (re-run against real bash under
+  `--compare-bash`). Pattern operands verified untouched (53/53 pattern cases
+  still pass); the `:=` store semantics and the `"${x:-a"$y"c}"` name-scan quirk
+  were confirmed to reproduce bash exactly.
+- **Honest residual disclosures (per-field protection granularity — tracked as
+  reappraisal-#17 ledger items, not fixed here):**
+  1. The mixed protected/unprotected glob corner `${x:-'*'x*}` changed failure
+     shape: main leaked quotes; this now pathname-expands where bash keeps it
+     literal (affects both scalars and array views).
+  2. `${a[*]:-'p q'}` splits into two fields where bash keeps one — the `[*]`
+     view joins to a plain string that drops the per-segment protection
+     (pre-existing array-view model gap).
+  3. `[[ ]]` / `case` PATTERN contexts ignore operand protection (pre-existing).
+
 ## 0.605.0 (2026-07-04) - Fix: no brace expansion inside [[ ]] — regex intervals work (reappraisal #17 H4)
 - FIX. Reappraisal #17 Tier-1 H4. **Brace expansion ran inside `[[ ]]`**, so the
   ubiquitous regex-interval idiom `[[ $x =~ ^[0-9]{1,3}$ ]]` — and any
