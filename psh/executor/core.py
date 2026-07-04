@@ -397,27 +397,38 @@ class ExecutorVisitor(ASTVisitor[int]):
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> int:
         """Execute arithmetic command: ((expression))"""
-        from ..core import UnboundVariableError
+        from ..core import NamerefCycleError, ReadonlyVariableError, UnboundVariableError
         from ..expansion.arithmetic import evaluate_arithmetic
 
-        try:
-            # Apply redirections if any (a bad target prints bash's diagnostic
-            # and yields False, so the arithmetic does not run — status 1).
-            with self.io_manager.guarded_redirections(node.redirects) as applied:
-                if not applied:
-                    return 1
+        # Apply redirections if any (a bad target prints bash's diagnostic
+        # and yields False, so the arithmetic does not run — status 1).
+        # Error handling sits INSIDE the redirection scope so diagnostics
+        # honour `(( ... )) 2>/dev/null` like bash (and like the
+        # visit_EnhancedTestStatement sibling).
+        with self.io_manager.guarded_redirections(node.redirects) as applied:
+            if not applied:
+                return 1
+            try:
                 result = evaluate_arithmetic(node.expression, self.shell)
                 # Bash behavior: exit 0 if expression is true (non-zero)
                 # exit 1 if expression is false (zero)
                 return 0 if result != 0 else 1
-        except UnboundVariableError as e:
-            # set -u: an unset variable in `(( ))` aborts the shell (bash),
-            # handled identically to a bare `$undef`.
-            from .strategies import report_unbound_variable
-            return report_unbound_variable(self.state, e)
-        except (ValueError, ArithmeticError) as e:
-            print(f"psh: ((: {e}", file=self.state.stderr)
-            return 1
+            except UnboundVariableError as e:
+                # set -u: an unset variable in `(( ))` aborts the shell
+                # (bash), handled identically to a bare `$undef`.
+                from .strategies import report_unbound_variable
+                return report_unbound_variable(self.state, e)
+            except (ReadonlyVariableError, NamerefCycleError) as e:
+                # `readonly r; (( r=9 ))`: bash reports "r: readonly
+                # variable", the command fails with status 1, and execution
+                # CONTINUES — this must not leak to the buffered-command
+                # guard (which would print "unexpected error" and abort a
+                # -c list).
+                from .strategies import report_assignment_error
+                return report_assignment_error(self.state, e)
+            except (ValueError, ArithmeticError) as e:
+                print(f"psh: ((: {e}", file=self.state.stderr)
+                return 1
 
     def visit_CStyleForLoop(self, node: CStyleForLoop) -> int:
         """Execute C-style for loop: for ((init; cond; update))"""
@@ -439,7 +450,7 @@ class ExecutorVisitor(ASTVisitor[int]):
 
     def visit_EnhancedTestStatement(self, node: EnhancedTestStatement) -> int:
         """Execute enhanced test: [[ expression ]]"""
-        from ..core import UnboundVariableError
+        from ..core import NamerefCycleError, ReadonlyVariableError, UnboundVariableError
         from ..expansion.arithmetic import ShellArithmeticError
         from .enhanced_test_evaluator import TestExpressionEvaluator
 
@@ -465,6 +476,12 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # fails with status 1 — execution continues.
                 print(f"psh: [[: {e}", file=self.state.stderr)
                 return 1
+            except (ReadonlyVariableError, NamerefCycleError) as e:
+                # `[[ $((r=9)) -eq 9 ]]` with readonly r: report the
+                # assignment failure and fail the statement (status 1)
+                # instead of leaking an "unexpected error" abort.
+                from .strategies import report_assignment_error
+                return report_assignment_error(self.state, e)
             except (ValueError, TypeError, OSError) as e:
                 print(f"psh: [[: {e}", file=sys.stderr)
                 return 2  # Syntax error

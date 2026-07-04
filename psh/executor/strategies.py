@@ -115,6 +115,27 @@ def report_unbound_variable(state: 'ShellState', exc: Exception) -> int:
     return exit_code
 
 
+def report_assignment_error(state: 'ShellState', exc: Exception) -> int:
+    """Report a readonly / cyclic-nameref assignment failure the bash way
+    and fail the command (status 1) WITHOUT aborting the shell.
+
+    Shared by every handler that evaluates arithmetic as a command —
+    ``(( ))``, the three C-style ``for`` expressions, ``[[ ]]`` — and by
+    the ``for`` loop-variable binding, so ``readonly r; (( r=9 ))`` behaves
+    identically everywhere: print ``psh: r: readonly variable`` (bash's
+    message and flow — error, status 1, execution continues) instead of
+    leaking a PshError to the buffered-command guard as an "unexpected
+    error" that aborts a ``-c`` list. A cyclic nameref prints bash's
+    warning form instead of the error form.
+    """
+    from ..core import NamerefCycleError
+    if isinstance(exc, NamerefCycleError):
+        state.scope_manager.warn_nameref_cycle(exc.name)
+    else:
+        print(f"psh: {exc}", file=state.stderr)
+    return 1
+
+
 def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
                             shell: 'Shell',
                             invocation: Optional['BuiltinContext'] = None) -> int:
