@@ -440,6 +440,9 @@ TERM (15)   # Termination request
 HUP (1)     # Hangup (terminal closed)
 QUIT (3)    # Quit (Ctrl-\)
 EXIT        # Shell exit (pseudo-signal)
+DEBUG       # Before each simple command (pseudo-signal)
+ERR         # After a command fails (pseudo-signal)
+RETURN      # On function return / end of source (pseudo-signal)
 
 # Example patterns
 trap 'rm -f $tmpfile' EXIT     # Cleanup temp files
