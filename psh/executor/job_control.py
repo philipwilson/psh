@@ -151,6 +151,10 @@ class JobManager:
         self.shell_pgid = os.getpgrp()
         self.shell_tmodes = None
         self.shell_state = None  # Will be set by shell
+        # True after confirm_exit_with_stopped_jobs() blocked an exit;
+        # cleared by the REPL when another command runs in between
+        # (bash's last_shell_builtin two-strikes semantics).
+        self._exit_warned = False
 
         # Save shell's terminal modes
         try:
@@ -238,6 +242,55 @@ class JobManager:
         """Count jobs that are running or stopped."""
         return sum(1 for job in self.jobs.values()
                   if job.state != JobState.DONE)
+
+    def has_stopped_jobs(self) -> bool:
+        """True when any job is currently stopped (Ctrl-Z / SIGTSTP)."""
+        return any(job.state == JobState.STOPPED for job in self.jobs.values())
+
+    # ------------------------------------------------------------------
+    # The stopped-jobs exit guard (bash exit.def)
+    #
+    # ONE chokepoint answers "should this interactive exit really
+    # exit?" for BOTH the exit builtin (builtins/core.py) and the
+    # REPL's Ctrl-D EOF path (interactive/repl_loop.py) — bash treats
+    # EOF as if the user typed `exit`, so the two are interchangeable
+    # for the two-strikes rule (PTY truth table in
+    # tmp/probes-r17t2-interactive/probe_stopped_jobs2.py).
+    # ------------------------------------------------------------------
+
+    @property
+    def exit_warning_pending(self) -> bool:
+        """True after a blocked exit, until a command re-arms the guard."""
+        return self._exit_warned
+
+    def clear_exit_warning(self) -> None:
+        """Re-arm the stopped-jobs exit guard.
+
+        The REPL calls this after any non-blank command runs following a
+        warning — bash re-arms whenever ``last_shell_builtin`` stops
+        being ``exit`` (even ``jobs`` re-arms; blank lines do not)."""
+        self._exit_warned = False
+
+    def confirm_exit_with_stopped_jobs(self) -> bool:
+        """Return True when an interactive exit/EOF may proceed.
+
+        bash semantics: the FIRST attempt with stopped jobs prints
+        "There are stopped jobs." to stderr, sets ``$?`` handling aside
+        (the exit builtin returns 1), and is blocked; a second
+        consecutive attempt — exit or Ctrl-D, in any combination —
+        proceeds. Running (non-stopped) background jobs never warn
+        (bash's checkjobs shopt is off by default). Non-interactive
+        shells and forked children never check at all."""
+        state = self.shell_state
+        if state is None or not state.options.get('interactive'):
+            return True
+        if getattr(state, 'in_forked_child', False):
+            return True
+        if self._exit_warned or not self.has_stopped_jobs():
+            return True
+        print("There are stopped jobs.", file=self._notification_stream())
+        self._exit_warned = True
+        return False
 
     def _notification_stream(self):
         """Stream for asynchronous job-state notices.

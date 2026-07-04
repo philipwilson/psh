@@ -28,6 +28,7 @@ Tab completion is NOT a separate manager: it is `CompletionEngine`
 | File | Purpose |
 |------|---------|
 | `repl_loop.py` | `REPLLoop` - main Read-Eval-Print Loop |
+| `eof_policy.py` | `ignoreeof_limit` - bash ignoreeof/IGNOREEOF EOF policy (shared by REPL + PS2 handler) |
 | `line_editor.py` | `LineEditor` - coordinator: mode policy, the action dispatch table, completion UI |
 | `edit_buffer.py` | `EditBuffer` - single source of truth for text + cursor, kill ring, undo/redo |
 | `line_renderer.py` | `LineRenderer` - the ONLY writer of ANSI to the terminal |
@@ -165,16 +166,27 @@ class REPLLoop(InteractiveComponent):
                 command = self.multi_line_handler.read_command(on_resize=on_resize)
 
                 if command is None:  # EOF (Ctrl-D)
+                    # ignoreeof/IGNOREEOF: swallow up to N consecutive
+                    # EOFs with 'Use "exit" to leave the shell.'
+                    # (eof_policy.ignoreeof_limit), then apply the
+                    # stopped-jobs guard — the first exit attempt with
+                    # stopped jobs warns and stays
+                    # (JobManager.confirm_exit_with_stopped_jobs, shared
+                    # with the exit builtin).
+                    ...
                     print()
                     break
 
-                # 4. Execute via unified input system
+                # 4. Execute via unified input system (a non-blank
+                # command resets the EOF counter and re-arms the
+                # stopped-jobs warning)
                 if command.strip():
                     self.shell.run_command(command)
 
             except KeyboardInterrupt:
+                # The line editor already echoed ^C (show_interrupt);
+                # printing it again here would duplicate it (r17 L1).
                 self.multi_line_handler.reset()
-                print("^C")
                 self.state.last_exit_code = 130  # 128 + SIGINT(2)
                 continue
             except EOFError:

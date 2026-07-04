@@ -283,9 +283,12 @@ class TestEscapeEventDispatch:
         assert editor.edit_buffer.cursor == 1
 
     def test_emacs_meta_f_moves_word_forward(self, editor):
+        # readline forward-word lands at the END of the word (bash-pinned
+        # in reappraisal #17 M5; it previously overshot to the start of
+        # the next word).
         set_line(editor, "echo foo", cursor=0)
         editor._dispatch_escape_event(Meta('f'))
-        assert editor.edit_buffer.cursor == 5  # past "echo" and the space
+        assert editor.edit_buffer.cursor == 4  # end of "echo"
 
     def test_emacs_unbound_meta_is_ignored(self, editor):
         set_line(editor, "abc", cursor=1)

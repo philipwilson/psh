@@ -4341,3 +4341,31 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# PROMPT ESCAPES (reappraisal #17 L2 — via ${var@P}, tty-independent)
+# =============================================================================
+
+- name: prompt_at_p_job_count_escape
+  command: 'PS1="[\j]"; echo "${PS1@P}"'
+  stdout: "[0]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: prompt_at_p_tty_basename_fallback
+  command: 'PS1="[\l]"; echo "${PS1@P}"'
+  stdout: "[tty]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: prompt_at_p_strftime_escape
+  command: 'PS1="[\D{y}]"; echo "${PS1@P}"'
+  stdout: "[y]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: prompt_at_p_bare_backslash_D_literal
+  command: 'PS1="[\D]x"; echo "${PS1@P}"'
+  stdout: "[\\D]x\n"
+  stderr: ""
+  exit_code: 0

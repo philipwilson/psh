@@ -714,3 +714,98 @@ class TestPtyPortedLegacy:
         psh.send('echo v_$MYVAR_AL\t')   # bash: completes to $MYVAR_ALPHA
         psh.send('\r')
         psh.expect('v_42', timeout=4)
+
+
+class TestPtyExitPolicy:
+    """ignoreeof + the stopped-jobs exit guard (reappraisal #17 M2/M3).
+
+    bash 5.2 truth tables live in tmp/probes-r17t2-interactive/ (PTY
+    probes): IGNOREEOF=N swallows N consecutive Ctrl-Ds with
+    'Use "exit" to leave the shell.' and exits on the N+1st; a first
+    interactive exit/Ctrl-D with stopped jobs warns 'There are stopped
+    jobs.' and stays, a second consecutive attempt exits, and any
+    command in between re-arms the warning.
+
+    Stopped jobs are created with `kill -TSTP %1` (a Ctrl-Z through a
+    pexpect PTY is not reliably delivered on this host; the TSTP path
+    exercises the same JobState.STOPPED machinery).
+    """
+
+    def _stop_a_job(self, psh):
+        psh.send('sleep 30 &\r')
+        psh.expect(r'\[1\] \d+')
+        psh.send('kill -TSTP %1\r')
+        psh.send('echo armed_$((20+3))\r')
+        psh.expect('armed_23')
+
+    def test_ignoreeof_swallows_n_eofs_then_exits(self, psh):
+        psh.send('IGNOREEOF=1\r')
+        psh.expect(PROMPT)
+        psh.send('\x04')          # EOF #1: swallowed with the hint
+        psh.expect('Use "exit" to leave the shell')
+        psh.send('\x04')          # EOF #2 (> limit): exits
+        psh.expect(pexpect.EOF)
+
+    def test_set_o_ignoreeof_blocks_eof_but_not_exit(self, psh):
+        psh.send('set -o ignoreeof\r')
+        psh.expect(PROMPT)
+        psh.send('\x04')
+        psh.expect('Use "exit" to leave the shell')
+        psh.send('exit\r')        # exit always works
+        psh.expect(pexpect.EOF)
+
+    def test_ignoreeof_counter_reset_by_command(self, psh):
+        psh.send('IGNOREEOF=1\r')
+        psh.expect(PROMPT)
+        psh.send('\x04')
+        psh.expect('Use "exit" to leave the shell')
+        psh.send('echo reset_$((30+7))\r')   # command resets the counter
+        psh.expect('reset_37')
+        psh.send('\x04')          # counts as EOF #1 again
+        psh.expect('Use "exit" to leave the shell')
+        psh.send('\x04')
+        psh.expect(pexpect.EOF)
+
+    def test_stopped_job_exit_two_strikes(self, psh):
+        self._stop_a_job(psh)
+        psh.send('exit\r')
+        psh.expect('There are stopped jobs')
+        psh.send('exit\r')        # second consecutive attempt proceeds
+        psh.expect(pexpect.EOF)
+
+    def test_stopped_job_ctrl_d_two_strikes(self, psh):
+        self._stop_a_job(psh)
+        psh.send('\x04')
+        psh.expect('There are stopped jobs')
+        psh.send('\x04')
+        psh.expect(pexpect.EOF)
+
+    def test_command_between_exits_rearms_warning(self, psh):
+        self._stop_a_job(psh)
+        psh.send('exit\r')
+        psh.expect('There are stopped jobs')
+        psh.send('echo again_$((40+2))\r')
+        psh.expect('again_42')
+        psh.send('exit\r')        # re-armed: warns again instead of exiting
+        psh.expect('There are stopped jobs')
+        psh.send('exit\r')
+        psh.expect(pexpect.EOF)
+
+    def test_running_bg_job_exits_silently(self, psh):
+        psh.send('sleep 30 &\r')
+        psh.expect(r'\[1\] \d+')
+        psh.send('exit\r')        # running jobs never warn (bash default)
+        psh.expect(pexpect.EOF)
+        assert 'There are stopped jobs' not in (psh.before or '')
+
+    def test_ctrl_c_echoes_exactly_once(self, psh):
+        # L1: the line editor echoes ^C; the REPL must not echo a second
+        # one. $? stays 130.
+        psh.send('abc')
+        psh.sendintr()
+        psh.expect(r'\^C')        # the line editor's echo
+        psh.send('echo rc_$(($?+0))\r')
+        psh.expect('rc_130')
+        # Everything between the first ^C and the sentinel output must
+        # not contain another ^C (the REPL used to print a duplicate).
+        assert '^C' not in psh.before
