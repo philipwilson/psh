@@ -7,6 +7,12 @@ Tests cover:
 - Disown with different options
 - Error conditions
 - Integration with other job control commands
+
+The ``spawned_pids`` fixture (see ``conftest.py``) guarantees every background
+job spawned here is SIGKILLed by EXACT PID on teardown — disowned jobs escape
+the ``shell`` fixture's ``_cleanup_shell`` net (they're removed from the job
+table), so this is what stops a failed test from orphaning a long-lived
+``sleep`` that could wedge the runner later.
 """
 
 import time
@@ -15,10 +21,11 @@ import time
 class TestDisownBuiltin:
     """Test disown builtin functionality."""
 
-    def test_disown_current_job(self, shell, capsys):
+    def test_disown_current_job(self, shell, capsys, spawned_pids):
         """Test disowning the current job."""
         # Start a background job
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Verify job is in list
         shell.run_command('jobs')
@@ -35,14 +42,15 @@ class TestDisownBuiltin:
         captured = capsys.readouterr()
         assert 'sleep' not in captured.out or captured.out.strip() == ""
 
-        # Clean up - kill the process manually since it's disowned
-        shell.run_command('pkill -f "sleep 30" 2>/dev/null || true')
+        # Cleanup: `spawned_pids` fixture SIGKILLs the disowned PID by exact id.
 
-    def test_disown_specific_job(self, shell, capsys):
+    def test_disown_specific_job(self, shell, capsys, spawned_pids):
         """Test disowning a specific job by job ID."""
         # Start multiple background jobs
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
         shell.run_command('sleep 40 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Verify both jobs are in list
         shell.run_command('jobs')
@@ -60,14 +68,14 @@ class TestDisownBuiltin:
         assert '[1]' not in captured.out or 'sleep 30' not in captured.out
         assert '[2]' in captured.out or 'sleep 40' in captured.out
 
-        # Clean up
-        shell.run_command('pkill -f "sleep 30" 2>/dev/null || true')
-        shell.run_command('kill %2 2>/dev/null || true')
+        # Cleanup: both PIDs (disowned %1 and still-tracked %2) SIGKILLed by
+        # exact id in the `spawned_pids` fixture teardown.
 
-    def test_disown_by_pid(self, shell, capsys):
+    def test_disown_by_pid(self, shell, capsys, spawned_pids):
         """Test disowning a job by process ID."""
         # Start a background job
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Get the PID
         shell.run_command('jobs -p')
@@ -84,15 +92,17 @@ class TestDisownBuiltin:
             captured = capsys.readouterr()
             assert 'sleep' not in captured.out or captured.out.strip() == ""
 
-            # Clean up
-            shell.run_command(f'kill {pid} 2>/dev/null || true')
+            # Cleanup: disowned PID SIGKILLed by exact id in the fixture.
 
-    def test_disown_all_jobs(self, shell, capsys):
+    def test_disown_all_jobs(self, shell, capsys, spawned_pids):
         """Test disowning all jobs with -a option."""
         # Start multiple background jobs
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
         shell.run_command('sleep 40 &')
+        spawned_pids.append(shell.state.last_bg_pid)
         shell.run_command('sleep 50 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Verify all jobs are in list
         shell.run_command('jobs')
@@ -109,14 +119,16 @@ class TestDisownBuiltin:
         captured = capsys.readouterr()
         assert captured.out.strip() == "" or 'no jobs' in captured.out.lower()
 
-        # Clean up
-        shell.run_command('pkill -f "sleep" 2>/dev/null || true')
+        # Cleanup: all three disowned PIDs SIGKILLed by exact id in the fixture
+        # (never `pkill -f sleep`, which would hit sibling workers' sleeps).
 
-    def test_disown_running_jobs_only(self, shell, capsys):
+    def test_disown_running_jobs_only(self, shell, capsys, spawned_pids):
         """Test disowning only running jobs with -r option."""
         # Start background jobs
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
         shell.run_command('sleep 40 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Try to stop one job (this might not work in test environment)
         # For testing purposes, we'll assume both are running
@@ -130,8 +142,7 @@ class TestDisownBuiltin:
         capsys.readouterr()
         # Should have no running jobs left
 
-        # Clean up
-        shell.run_command('pkill -f "sleep" 2>/dev/null || true')
+        # Cleanup: disowned PIDs SIGKILLed by exact id in the fixture.
 
     def test_disown_no_jobs(self, shell, capsys):
         """Test disown when no jobs exist."""
@@ -180,10 +191,11 @@ class TestDisownBuiltin:
 class TestDisownOptions:
     """Test disown command options."""
 
-    def test_disown_with_h_option(self, shell, capsys):
+    def test_disown_with_h_option(self, shell, capsys, spawned_pids):
         """Test disown -h to mark job for no SIGHUP."""
         # Start a background job
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Mark job to ignore SIGHUP but keep in job table
         exit_code = shell.run_command('disown -h %1')
@@ -194,31 +206,33 @@ class TestDisownOptions:
         captured = capsys.readouterr()
         assert 'sleep' in captured.out
 
-        # Clean up
-        shell.run_command('kill %1 2>/dev/null || true')
+        # Cleanup: PID SIGKILLed by exact id in the fixture (with -h the job
+        # stays in the table, but exact-PID cleanup is used uniformly).
 
-    def test_disown_list_jobs(self, shell, capsys):
+    def test_disown_list_jobs(self, shell, capsys, spawned_pids):
         """Test disown with no arguments lists current jobs."""
         # Start some background jobs
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
         shell.run_command('sleep 40 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # In some shells, disown with no args might list jobs
         # This behavior varies between shells
         shell.run_command('disown')
         capsys.readouterr()
 
-        # Clean up
-        shell.run_command('pkill -f "sleep" 2>/dev/null || true')
+        # Cleanup: both PIDs SIGKILLed by exact id in the fixture.
 
 
 class TestDisownIntegration:
     """Test disown integration with other job control features."""
 
-    def test_disown_then_fg_fails(self, shell, capsys):
+    def test_disown_then_fg_fails(self, shell, capsys, spawned_pids):
         """Test that fg fails on disowned job."""
         # Start background job
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Get job number
         shell.run_command('jobs')
@@ -235,13 +249,13 @@ class TestDisownIntegration:
         captured = capsys.readouterr()
         assert 'no such job' in captured.err.lower()
 
-        # Clean up
-        shell.run_command('pkill -f "sleep 30" 2>/dev/null || true')
+        # Cleanup: disowned PID SIGKILLed by exact id in the fixture.
 
-    def test_disown_then_bg_fails(self, shell, capsys):
+    def test_disown_then_bg_fails(self, shell, capsys, spawned_pids):
         """Test that bg fails on disowned job."""
         # Start background job
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Disown the job
         shell.run_command('disown %1')
@@ -253,13 +267,13 @@ class TestDisownIntegration:
         captured = capsys.readouterr()
         assert 'no such job' in captured.err.lower()
 
-        # Clean up
-        shell.run_command('pkill -f "sleep 30" 2>/dev/null || true')
+        # Cleanup: disowned PID SIGKILLed by exact id in the fixture.
 
-    def test_disown_then_kill_fails(self, shell, capsys):
+    def test_disown_then_kill_fails(self, shell, capsys, spawned_pids):
         """Test that kill %job fails on disowned job."""
         # Start background job
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Disown the job
         shell.run_command('disown %1')
@@ -268,13 +282,13 @@ class TestDisownIntegration:
         exit_code = shell.run_command('kill %1')
         assert exit_code != 0
 
-        # Clean up
-        shell.run_command('pkill -f "sleep 30" 2>/dev/null || true')
+        # Cleanup: disowned PID SIGKILLed by exact id in the fixture.
 
-    def test_disown_job_exit_no_notification(self, shell, capsys):
+    def test_disown_job_exit_no_notification(self, shell, capsys, spawned_pids):
         """Test disowned job exit doesn't generate notification."""
         # Start a short-lived background job
         shell.run_command('(sleep 0.5; exit 0) &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Disown it immediately
         shell.run_command('disown %1')
@@ -306,10 +320,11 @@ class TestDisownErrorCases:
         captured = capsys.readouterr()
         assert 'invalid option' in captured.err.lower() or 'unknown option' in captured.err.lower()
 
-    def test_disown_mixed_valid_invalid_jobs(self, shell, capsys):
+    def test_disown_mixed_valid_invalid_jobs(self, shell, capsys, spawned_pids):
         """Test disown with mix of valid and invalid job specs."""
         # Start one job
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Try to disown valid and invalid jobs
         shell.run_command('disown %1 %999')
@@ -317,13 +332,13 @@ class TestDisownErrorCases:
         # Behavior may vary - some shells continue with valid ones
         capsys.readouterr()
 
-        # Clean up
-        shell.run_command('pkill -f "sleep 30" 2>/dev/null || true')
+        # Cleanup: PID SIGKILLed by exact id in the fixture.
 
-    def test_disown_completed_job(self, shell, capsys):
+    def test_disown_completed_job(self, shell, capsys, spawned_pids):
         """Test disowning an already completed job."""
         # Start a quick job
         shell.run_command('(sleep 0.1; exit 0) &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Wait for it to complete
         time.sleep(0.2)
@@ -338,11 +353,13 @@ class TestDisownErrorCases:
 class TestDisownBashCompatibility:
     """Test bash-compatible disown behavior."""
 
-    def test_disown_job_spec_formats(self, shell, capsys):
+    def test_disown_job_spec_formats(self, shell, capsys, spawned_pids):
         """Test various job specification formats."""
         # Start multiple jobs
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
         shell.run_command('sleep 40 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Test different job spec formats
         formats = ['%1', '%+', '%-']  # current, most recent, previous
@@ -358,10 +375,9 @@ class TestDisownBashCompatibility:
                 if fmt in ['%1', '%+'] and '[1]' in captured.out:
                     assert exit_code == 0
 
-        # Clean up
-        shell.run_command('pkill -f "sleep" 2>/dev/null || true')
+        # Cleanup: both PIDs SIGKILLed by exact id in the fixture.
 
-    def test_disown_preserves_exit_status(self, shell, capsys):
+    def test_disown_preserves_exit_status(self, shell, capsys, spawned_pids):
         """Test disown doesn't change shell exit status inappropriately."""
         # Get current exit status
         shell.run_command('echo $?')
@@ -370,6 +386,7 @@ class TestDisownBashCompatibility:
 
         # Start and disown a job
         shell.run_command('sleep 30 &')
+        spawned_pids.append(shell.state.last_bg_pid)
         shell.run_command('disown %1')
 
         # Clear output from job start notification
@@ -383,17 +400,17 @@ class TestDisownBashCompatibility:
         # Disown success should give exit status 0
         assert final_status == "0"
 
-        # Clean up
-        shell.run_command('pkill -f "sleep 30" 2>/dev/null || true')
+        # Cleanup: disowned PID SIGKILLed by exact id in the fixture.
 
 
 class TestDisownRealWorldUsage:
     """Test real-world disown usage patterns."""
 
-    def test_disown_long_running_process(self, shell, capsys):
+    def test_disown_long_running_process(self, shell, capsys, spawned_pids):
         """Test disowning a long-running process."""
         # Start a long-running background process
         shell.run_command('sleep 300 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Verify it's in the job list
         shell.run_command('jobs')
@@ -414,15 +431,17 @@ class TestDisownRealWorldUsage:
         captured = capsys.readouterr()
         # Should find the process
 
-        # Clean up
-        shell.run_command('pkill -f "sleep 300" 2>/dev/null || true')
+        # Cleanup: the disowned `sleep 300` (the exact orphan hazard flagged in
+        # the appraisal) is SIGKILLed by exact PID in the fixture teardown,
+        # which runs even if an assertion above fails.
 
-    def test_disown_before_shell_exit(self, shell, capsys):
+    def test_disown_before_shell_exit(self, shell, capsys, spawned_pids):
         """Test disowning jobs before shell exit (common pattern)."""
         # Start several background jobs
         jobs = ['sleep 120', 'sleep 130', 'sleep 140']
         for job in jobs:
             shell.run_command(f'{job} &')
+            spawned_pids.append(shell.state.last_bg_pid)
 
         # Verify all jobs are active
         shell.run_command('jobs')
@@ -438,7 +457,4 @@ class TestDisownRealWorldUsage:
         captured = capsys.readouterr()
         assert captured.out.strip() == "" or 'no jobs' in captured.out.lower()
 
-        # Clean up
-        for job in jobs:
-            duration = job.split()[1]
-            shell.run_command(f'pkill -f "sleep {duration}" 2>/dev/null || true')
+        # Cleanup: all three disowned PIDs SIGKILLed by exact id in the fixture.

@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.624.0 | **Tests**: 11,500+ | **POSIX Compliance**: ~98%
+**Current Version**: 0.628.0 | **Tests**: 12,000+ | **POSIX Compliance**: ~98%
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -247,8 +247,8 @@ PSH includes two parser implementations with deliberately different statuses:
 - **Parser Selection**: Use `parser-select combinator` builtin (or `--parser combinator`) to switch implementations interactively
 
 ### Project Statistics
-- **Lines of Code**: ~62,300 lines of production code in `psh/` across 241 Python files, plus ~94,500 lines of tests in `tests/` (488 Python files)
-- **Test Coverage**: 12,415 tests in 488 test files
+- **Lines of Code**: ~62,800 lines of production code in `psh/` across 241 Python files, plus ~95,900 lines of tests in `tests/` (493 Python files)
+- **Test Coverage**: 12,686 tests in 485 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -299,8 +299,8 @@ python -m pytest tests/ --cov=psh --cov-report=html
 
 **Note:** As of v0.195.0 the full suite passes under normal pytest capture; the `-s` flag is no longer required for subshell tests (a `read` builtin fix made it read the real redirected file descriptor). `run_tests.py` still works and remains the recommended runner.
 
-**Current test status**: the full suite (8,439 collected tests across 365
-files) passes locally via `python run_tests.py --parallel`, with a few
+**Current test status**: the full suite (12,686 collected tests across 485
+test files) passes locally via `python run_tests.py --parallel`, with a few
 hundred tests skipped as platform-specific or interactive. Run the command
 for exact pass/skip totals on your platform — see
 [`docs/testing_source_of_truth.md`](docs/testing_source_of_truth.md).

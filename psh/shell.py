@@ -279,6 +279,39 @@ class Shell:
             load_rc_file(self)
 
     # ------------------------------------------------------------------
+    # Resource lifecycle
+    # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        """Release the fd-backed resources this Shell owns (idempotent).
+
+        Currently that is the SignalManager's SIGCHLD/SIGWINCH self-pipes.
+        Safe to call more than once and safe on a shell that never allocated
+        them (the self-pipes are created lazily, only when interactive signal
+        handlers are installed) — and it only frees resources that the shell
+        re-creates on demand, so a closed shell that is subsequently used again
+        keeps working.
+
+        The long-lived interactive / main shell need not call this: its fds die
+        with the process. ``close()`` exists for the MANY transient Shell
+        instances — tests, the ``env`` builtin's child, subshell helpers — so
+        their self-pipes are freed immediately rather than lingering until
+        garbage collection. It never touches the (possibly shared) stdin/
+        stdout/stderr streams, which the shell does not own.
+        """
+        interactive_manager = getattr(self, 'interactive_manager', None)
+        if interactive_manager is not None:
+            signal_manager = getattr(interactive_manager, 'signal_manager', None)
+            if signal_manager is not None:
+                signal_manager.close()
+
+    def __enter__(self) -> 'Shell':
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        self.close()
+
+    # ------------------------------------------------------------------
     # State delegation: the four stream/environment accessors that the
     # rest of the tree (and the test fixtures) address through the shell.
     # All other state lives behind the explicit `shell.state` attribute.

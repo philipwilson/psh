@@ -1,7 +1,7 @@
 """Signal handling manager for interactive shell."""
 import os
 import signal
-from typing import TYPE_CHECKING, Callable, Dict
+from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 from ..executor.job_control import JobState
 from ..utils import SignalNotifier, get_signal_registry
@@ -19,11 +19,16 @@ class SignalManager(InteractiveComponent):
         super().__init__(shell)
         self._original_handlers: Dict[int, Callable] = {}
 
-        # Self-pipe for safe SIGCHLD handling
-        self._sigchld_notifier = SignalNotifier()
-
-        # Self-pipe for safe SIGWINCH handling (terminal resize)
-        self._sigwinch_notifier = SignalNotifier()
+        # Self-pipes for safe SIGCHLD / SIGWINCH (terminal resize) handling.
+        # Allocated LAZILY (each is a 2-fd os.pipe): only a shell that actually
+        # installs interactive signal handlers — via setup_signal_handlers() →
+        # _setup_interactive_mode_handlers() — needs them. The many transient
+        # Shell instances (tests, the `env` builtin's child, subshell helpers,
+        # scripts, `-c`) never enter interactive mode and so never open these,
+        # keeping their per-Shell fd footprint at zero. See
+        # _ensure_sigchld_notifier()/_ensure_sigwinch_notifier().
+        self._sigchld_notifier: Optional[SignalNotifier] = None
+        self._sigwinch_notifier: Optional[SignalNotifier] = None
 
         # Guard against reentrancy in notification processing
         self._in_sigchld_processing = False
@@ -34,15 +39,28 @@ class SignalManager(InteractiveComponent):
         assert registry is not None
         self._signal_registry: "SignalRegistry" = registry
 
+    def _ensure_sigchld_notifier(self) -> SignalNotifier:
+        """Return the SIGCHLD self-pipe, creating it on first use.
+
+        Also recreates it after a previous close()/restore_default_handlers()
+        marked its fds closed, so setup → restore → setup (e.g. an embedder
+        running the interactive loop twice on one Shell) keeps working.
+        """
+        if self._sigchld_notifier is None or self._sigchld_notifier.get_fd() < 0:
+            self._sigchld_notifier = SignalNotifier()
+        return self._sigchld_notifier
+
+    def _ensure_sigwinch_notifier(self) -> SignalNotifier:
+        """Return the SIGWINCH self-pipe, creating it on first use.
+
+        See _ensure_sigchld_notifier() for the recreate-after-close contract.
+        """
+        if self._sigwinch_notifier is None or self._sigwinch_notifier.get_fd() < 0:
+            self._sigwinch_notifier = SignalNotifier()
+        return self._sigwinch_notifier
+
     def setup_signal_handlers(self):
         """Configure signal handlers based on shell mode."""
-        # Recreate the self-pipes if a previous restore_default_handlers()
-        # closed them, so setup → restore → setup (e.g. an embedder running
-        # the interactive loop twice on one Shell) keeps working.
-        if self._sigchld_notifier.get_fd() < 0:
-            self._sigchld_notifier = SignalNotifier()
-        if self._sigwinch_notifier.get_fd() < 0:
-            self._sigwinch_notifier = SignalNotifier()
         if self.state.is_script_mode:
             self._setup_script_mode_handlers()
         else:
@@ -102,6 +120,12 @@ class SignalManager(InteractiveComponent):
 
     def _setup_interactive_mode_handlers(self):
         """Set up full signal handling for interactive mode."""
+        # Allocate the self-pipes now: the SIGCHLD/SIGWINCH handlers installed
+        # below (and the REPL loop / line editor that drain them) require live
+        # notifiers. Doing it here — not in __init__ — is what keeps
+        # non-interactive shells at zero notifier fds.
+        self._ensure_sigchld_notifier()
+        self._ensure_sigwinch_notifier()
         # Store original handlers for restoration and register with tracking
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT):
             self._install_handler(sig, self._handle_signal_with_trap_check,
@@ -124,11 +148,29 @@ class SignalManager(InteractiveComponent):
                 pass
         self._original_handlers.clear()
 
-        # Clean up signal notifier resources
-        if hasattr(self, '_sigchld_notifier'):
-            self._sigchld_notifier.close()
-        if hasattr(self, '_sigwinch_notifier'):
-            self._sigwinch_notifier.close()
+        # Clean up signal notifier resources (the fds are marked closed but the
+        # objects are kept, so a re-setup on the same shell recreates them and
+        # the fd stays -1 in between — see _ensure_*_notifier()).
+        self._close_notifiers()
+
+    def _close_notifiers(self) -> None:
+        """Close both self-pipes if allocated (idempotent, None-safe)."""
+        for notifier in (self._sigchld_notifier, self._sigwinch_notifier):
+            if notifier is not None:
+                notifier.close()
+
+    def close(self) -> None:
+        """Release the self-pipe fds this manager owns (idempotent).
+
+        Distinct from restore_default_handlers(): that also reinstates the
+        saved signal dispositions and is the interactive-loop teardown; this
+        only frees the notifier fds and is what Shell.close() calls so a
+        transient shell (test, `env` child, subshell helper) doesn't hold its
+        self-pipes until garbage collection. Safe whether or not the notifiers
+        were ever allocated, and safe to call more than once; a later
+        setup_signal_handlers() re-creates them on demand.
+        """
+        self._close_notifiers()
 
     def _handle_signal_with_trap_check(self, signum, frame):
         """Handle signals with trap checking."""
@@ -250,7 +292,11 @@ class SignalManager(InteractiveComponent):
         This is async-signal-safe (only calls os.write via SignalNotifier).
         The actual child reaping happens in process_sigchld_notifications().
         """
-        self._sigchld_notifier.notify(signal.SIGCHLD)
+        # Installed only by _setup_interactive_mode_handlers(), which allocates
+        # the notifier first; the guard is defensive (never create in a signal
+        # handler — os.pipe/fcntl are not async-signal-safe).
+        if self._sigchld_notifier is not None:
+            self._sigchld_notifier.notify(signal.SIGCHLD)
 
     def process_sigchld_notifications(self):
         """Process pending SIGCHLD notifications.
@@ -265,6 +311,10 @@ class SignalManager(InteractiveComponent):
 
         self._in_sigchld_processing = True
         try:
+            # No notifier means interactive handlers were never installed
+            # (lazy allocation) — nothing to drain.
+            if self._sigchld_notifier is None:
+                return
             # Drain notification pipe
             notifications = self._sigchld_notifier.drain_notifications()
 
@@ -306,7 +356,10 @@ class SignalManager(InteractiveComponent):
 
         Just notifies via self-pipe; actual redraw happens in main loop.
         """
-        self._sigwinch_notifier.notify(signal.SIGWINCH)
+        # See _handle_sigchld: the notifier is allocated before this handler
+        # is installed; the guard is defensive.
+        if self._sigwinch_notifier is not None:
+            self._sigwinch_notifier.notify(signal.SIGWINCH)
 
     def get_sigwinch_fd(self) -> int:
         """Get file descriptor for SIGWINCH notifications.
@@ -317,7 +370,9 @@ class SignalManager(InteractiveComponent):
         Returns:
             Read file descriptor for SIGWINCH notifications
         """
-        return self._sigwinch_notifier.get_fd()
+        # Called by the line editor, which only runs in interactive mode after
+        # setup; ensure covers direct/early callers and post-close reuse.
+        return self._ensure_sigwinch_notifier().get_fd()
 
     def ensure_foreground(self):
         """Ensure shell is in its own process group and is foreground."""
