@@ -4,6 +4,14 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.628.0 (2026-07-04) - Hygiene: Shell.close() + lazy signal-notifier allocation + close the env child (reappraisal #18 Tier-3)
+- ASSURANCE/HYGIENE. Reappraisal #18 Tier-3, from the independent review's Shell-fd-lifecycle finding. No user-visible behavior change.
+- Each `Shell` eagerly allocated two `SignalNotifier` self-pipes (4 fds) in `__init__`, even for the many transient/non-interactive shells (tests, the `env` builtin's child, subshell helpers); GC reclaimed them (a sawtooth) but nothing closed them explicitly, and the `env` child Shell was never closed at all.
+- **Lazy allocation** (`signal_manager.py`): the notifiers start `None` and are created on first use, only in `_setup_interactive_mode_handlers` — which allocates them BEFORE installing the SIGCHLD/SIGWINCH handlers, so there is no window where a signal handler references a missing notifier (verifier-proven; the handlers also carry None-guards and never allocate in signal context). A fresh non-interactive shell now opens ZERO notifier fds.
+- **`Shell.close()` + context-manager** (`shell.py`): idempotent, releases the self-pipes, and NEVER touches stdin/stdout/stderr (verified via fstat that fds 0/1/2 stay valid); the shell remains usable afterward (notifiers re-allocate on demand). `__enter__`/`__exit__` added.
+- **`env` child closed** (`env_command.py`) in its existing `finally`; **`tests/conftest.py`** `_cleanup_shell` teardown routes through `shell.close()` (the old code poked the now-`None` notifier directly).
+- fd count for 200 held transient shells: **4/shell → 0** (measured both trees). Pinned by a new `test_shell_fd_lifecycle.py` stress test (mutation-confirmed: reverting to eager allocation makes it fail with "800 fds / 4.000 per Shell"). Full gate green (11,765); interactive/job-control/signal delivery unchanged across a 3× pty run.
+
 ## 0.627.0 (2026-07-04) - Assurance: replace the conformance runner with pytest discovery + a gating JSON hook (reappraisal #18 Tier-3)
 - ASSURANCE (test-tooling only; no psh runtime change). Reappraisal #18 Tier-3, the independent review's core contribution.
 - The old `tests/conformance/run_conformance_tests.py` was untrustworthy: it ran a hardcoded subset (~364 of ~1,471 collected tests), its `main()` NEVER gated on defects (always exited 0, so a conformance failure couldn't fail the nightly), and it emitted stale frozen metrics. **Full replacement.**
