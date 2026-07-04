@@ -148,7 +148,11 @@ recursive-descent parser. The one apparent exception,
 ('if', 'then', 'while', ...) read by exactly one consumer — the
 `CommandAccumulator`'s incomplete-input hints after an `at_eof` parse
 failure, which drive the interactive `if> `/`for then> ` continuation
-prompts. No parse method ever reads it.)
+prompts. No parse method ever reads it. `nesting_depth` is likewise not
+grammar context but a resource limit: a counter of compound-command
+nesting maintained by `CommandParser._parse_compound_component`, checked
+only against `MAX_NESTING_DEPTH` (1000) so runaway nesting raises a
+clean ParseError instead of a Python RecursionError.)
 
 ```python
 class ParserContext:
@@ -163,6 +167,9 @@ class ParserContext:
     # Source context (for error messages)
     source_text: Optional[str]
     source_lines: Optional[List[str]]
+
+    # Resource limit (see above)
+    nesting_depth: int
 ```
 
 ### 4. TokenGroups for Matching

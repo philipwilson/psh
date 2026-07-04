@@ -1331,6 +1331,55 @@
   stderr: ""
   exit_code: 0
 
+# echo -e / printf %b escape dialects — reappraisal #17 M3.
+# (a) escapes BEFORE \c are processed; the old scanner returned the raw prefix.
+- name: echo_e_escapes_before_backslash_c
+  command: "echo -e 'a\\tb\\cd'"
+  stdout: "a\tb"
+  stderr: ""
+  exit_code: 0
+
+- name: printf_percent_b_escapes_before_backslash_c
+  command: "printf '%b' 'x\\ny\\cz'"
+  stdout: "x\ny"
+  stderr: ""
+  exit_code: 0
+
+- name: echo_e_double_backslash_c_is_literal
+  command: "echo -e 'x\\\\cy'"
+  stdout: "x\\cy\n"
+  stderr: ""
+  exit_code: 0
+
+# (b) octal dialects: %b takes the bare POSIX \ddd form; echo -e REQUIRES
+# the leading zero (\0ddd) and leaves \ddd literal.
+- name: printf_percent_b_bare_octal
+  command: "printf '%b.%b\\n' '\\41' '\\101'"
+  stdout: "!.A\n"
+  stderr: ""
+  exit_code: 0
+
+- name: echo_e_octal_requires_leading_zero
+  command: "echo -e '\\101'; echo -e '\\0101'"
+  stdout: "\\101\nA\n"
+  stderr: ""
+  exit_code: 0
+
+# \u accepts short forms (1-4 hex digits) in all three escape dialects.
+- name: escape_unicode_short_form_all_dialects
+  command: "printf '\\u41'; printf '%b' '\\u41'; echo -e '\\u41'"
+  stdout: "AAA\n"
+  stderr: ""
+  exit_code: 0
+
+# In the printf FORMAT string, \% emits '\' and the '%' then fails
+# conversion parsing ("missing format character", exit 1) — bash 5.2.
+- name: printf_format_backslash_percent
+  command: "printf '\\%'"
+  stdout: "\\"
+  stderr: "missing format character"
+  exit_code: 1
+
 # =============================================================================
 # TEST EXPRESSIONS
 # =============================================================================
@@ -4339,6 +4388,38 @@
 - name: backtick_nested_in_dquotes
   command: 'echo "`echo \`echo hi\``"'
   stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# RECURSION CEILING (reappraisal #17 Tier 2 — implicit FUNCNEST)
+# =============================================================================
+
+- name: function_recursion_depth_100
+  command: "f(){ [ $1 -le 0 ] && return 0; f $(($1-1)); }; f 100; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: function_recursion_depth_1000
+  command: "f(){ [ $1 -le 0 ] && return 0; f $(($1-1)); }; f 1000; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: infinite_recursion_implicit_funcnest
+  # bash (no FUNCNEST) segfaults here; psh reports the FUNCNEST-style
+  # diagnostic, aborts the current command list (echo skipped, like an
+  # explicit FUNCNEST=N in bash) and survives.
+  command: "g(){ g; }; g; echo after=$?"
+  stdout: ""
+  stderr: "maximum function nesting level exceeded"
+  exit_code: 1
+  psh_only: true
+
+- name: nested_brace_groups_100_deep
+  command: "{ { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { echo OK; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }"
+  stdout: "OK\n"
   stderr: ""
   exit_code: 0
 

@@ -176,7 +176,8 @@ retired to `docs/archive/` in v0.311.0.)
    triggers a genuine INTERNAL DEFECT (an unexpected Python exception —
    `RuntimeError`/`AttributeError`/`TypeError`/`KeyError`/plain `ValueError`)
    now FAILS LOUDLY instead of silently passing as exit-1. Expected shell
-   errors (`PshError`/`OSError`/`SyntaxError`) pass through normally. A test
+   errors (`PshError`/`OSError`/`SyntaxError`/`RecursionError`) pass through
+   normally. A test
    that DELIBERATELY drives an internal exception (to exercise the swallow-to-1
    path) must set `strict-errors` off on its shell explicitly. See the
    expected-error taxonomy in `psh/core/CLAUDE.md`.
