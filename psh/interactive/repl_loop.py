@@ -84,8 +84,12 @@ class REPLLoop(InteractiveComponent):
                         print(EOF_IGNORED_MESSAGE, file=sys.stderr)
                         continue
                     # The EOF that exits behaves "as if the user typed
-                    # exit" (bash), so the stopped-jobs guard applies —
-                    # the first attempt warns and stays.
+                    # exit" (bash synthesizes one), so shift it into the
+                    # command register — after `jobs`, a Ctrl-D exits
+                    # without a warning, exactly like `exit` — and apply
+                    # the stopped-jobs guard: the first attempt warns
+                    # and stays.
+                    self.job_manager.note_simple_command('exit')
                     if not self.job_manager.confirm_exit_with_stopped_jobs():
                         continue
                     print()  # New line before exit

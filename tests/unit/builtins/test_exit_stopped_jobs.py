@@ -3,12 +3,17 @@
 bash exit.def semantics, PTY-probed (tmp/probes-r17t2-interactive/
 probe_stopped_jobs2.py): an interactive `exit` (or Ctrl-D) with stopped
 jobs prints "There are stopped jobs." and is blocked with $?=1; a second
-consecutive attempt proceeds; any command in between re-arms the guard;
-running (non-stopped) background jobs never warn.
+consecutive attempt proceeds; any command in between re-arms the guard —
+EXCEPT `jobs`, which instead exempts the next attempt outright (bash's
+`last_shell_builtin == jobs_builtin`: the user just looked at the job
+table, so `jobs` then `exit` exits with no warning at all). Blank lines
+and pure assignments neither re-arm nor clear the exemption. `exit` in
+a SOURCED file bypasses the guard entirely (bash skips the check while
+sourcing), and running (non-stopped) background jobs never warn.
 
 The REPL-side plumbing (Ctrl-D path, re-arming after a command) is
 exercised by the PTY tier (tests/system/interactive/test_pty_smoke.py
-TestExitPolicy); these tests pin the chokepoint itself.
+TestPtyExitPolicy); these tests pin the chokepoint itself.
 """
 
 import pytest
@@ -97,6 +102,68 @@ class TestExitBuiltinGuard:
         assert "TRAPPED" not in shell.get_stdout()
 
 
+class TestJobsBuiltinExemption:
+    """`jobs` as the immediately preceding command disarms the guard
+    (bash: `jobs` then `exit`/Ctrl-D exits with no warning at all)."""
+
+    def test_jobs_then_exit_exits_without_warning(self, interactive_shell):
+        shell = interactive_shell
+        stop_a_fake_job(shell)
+        shell.run_command("jobs")
+        with pytest.raises(SystemExit):
+            shell.run_command("exit")
+        assert "There are stopped jobs." not in shell.get_stderr()
+
+    def test_warned_then_jobs_then_exit_exits(self, interactive_shell):
+        shell = interactive_shell
+        stop_a_fake_job(shell)
+        assert shell.run_command("exit") == 1
+        shell.run_command("jobs")
+        with pytest.raises(SystemExit):
+            shell.run_command("exit")
+
+    def test_jobs_then_other_command_warns_again(self, interactive_shell):
+        shell = interactive_shell
+        stop_a_fake_job(shell)
+        shell.run_command("jobs")
+        shell.run_command("true")   # clears the exemption (bash)
+        assert shell.run_command("exit") == 1
+        assert "There are stopped jobs." in shell.get_stderr()
+
+    def test_pure_assignment_keeps_exemption(self, interactive_shell):
+        # bash: assignments run no command word — no shift, `jobs` stays
+        # the last command.
+        shell = interactive_shell
+        stop_a_fake_job(shell)
+        shell.run_command("jobs")
+        shell.run_command("x=1")
+        with pytest.raises(SystemExit):
+            shell.run_command("exit")
+
+
+class TestSourcedExitBypass:
+    """bash skips the stopped-jobs check for `exit` while sourcing."""
+
+    def test_sourced_exit_bypasses_guard(self, interactive_shell, tmp_path):
+        shell = interactive_shell
+        stop_a_fake_job(shell)
+        script = tmp_path / "leave.sh"
+        script.write_text("exit\n")
+        with pytest.raises(SystemExit):
+            shell.run_command(f"source {script}")
+        assert "There are stopped jobs." not in shell.get_stderr()
+
+    def test_source_depth_passes_chokepoint(self, interactive_shell):
+        jm = interactive_shell.job_manager
+        stop_a_fake_job(interactive_shell)
+        interactive_shell.state.source_depth = 1
+        try:
+            assert jm.confirm_exit_with_stopped_jobs() is True
+        finally:
+            interactive_shell.state.source_depth = 0
+        assert jm.confirm_exit_with_stopped_jobs() is False  # warns normally
+
+
 class TestChokepointDirect:
     """The shared chokepoint used by both exit and the REPL EOF path."""
 
@@ -123,3 +190,16 @@ class TestChokepointDirect:
         assert jm.has_stopped_jobs() is True
         job.state = JobState.RUNNING
         assert jm.has_stopped_jobs() is False
+
+    def test_note_simple_command_shift_register(self, interactive_shell):
+        # bash last/this_shell_builtin: the guard reads the LAST slot —
+        # `jobs` exempts while it is the previous command, and is
+        # cleared by the next shift (function/external = None).
+        jm = interactive_shell.job_manager
+        stop_a_fake_job(interactive_shell)
+        jm.note_simple_command('jobs')
+        jm.note_simple_command('exit')   # the exit builtin's own shift
+        assert jm.confirm_exit_with_stopped_jobs() is True
+        jm.note_simple_command(None)     # an external/function ran
+        jm.note_simple_command('exit')
+        assert jm.confirm_exit_with_stopped_jobs() is False  # warns

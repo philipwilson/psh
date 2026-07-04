@@ -591,6 +591,18 @@ class CommandExecutor:
             # Should never happen: ExternalExecutionStrategy.can_execute
             # always matches. Preserves the historical 127 fallback.
             return ExecutionResult(status=127, prefix_assignments_persist=False)
+        # Shift bash's last/this_shell_builtin register BEFORE dispatch,
+        # so a builtin running now (e.g. `exit`) sees the PREVIOUS
+        # command in the `last` slot — the stopped-jobs exit guard
+        # exempts an exit directly preceded by `jobs`
+        # (JobManager.confirm_exit_with_stopped_jobs). Functions and
+        # externals shift a None in (they clear the exemption, like
+        # bash); pure assignments never reach here (no shift).
+        self.shell.job_manager.note_simple_command(
+            cmd_name if isinstance(
+                resolution.strategy,
+                (SpecialBuiltinExecutionStrategy, BuiltinExecutionStrategy))
+            else None)
         return self._invoke_resolution(
             resolution, cmd_name, args, node, context, invocation)
 

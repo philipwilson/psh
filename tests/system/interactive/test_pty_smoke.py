@@ -724,7 +724,10 @@ class TestPtyExitPolicy:
     'Use "exit" to leave the shell.' and exits on the N+1st; a first
     interactive exit/Ctrl-D with stopped jobs warns 'There are stopped
     jobs.' and stays, a second consecutive attempt exits, and any
-    command in between re-arms the warning.
+    command in between re-arms the warning — EXCEPT `jobs`, which
+    exempts the immediately following exit/Ctrl-D outright (no warning
+    even without a first strike), and `exit` in a sourced file, which
+    bypasses the guard entirely.
 
     Stopped jobs are created with `kill -TSTP %1` (a Ctrl-Z through a
     pexpect PTY is not reliably delivered on this host; the TSTP path
@@ -795,6 +798,55 @@ class TestPtyExitPolicy:
         psh.send('sleep 30 &\r')
         psh.expect(r'\[1\] \d+')
         psh.send('exit\r')        # running jobs never warn (bash default)
+        psh.expect(pexpect.EOF)
+        assert 'There are stopped jobs' not in (psh.before or '')
+
+    def test_jobs_builtin_exempts_exit(self, psh):
+        # bash: `jobs` immediately before `exit` exits with NO warning
+        # (last_shell_builtin == jobs_builtin in exit.def).
+        self._stop_a_job(psh)
+        psh.send('jobs\r')
+        psh.expect('Stopped')
+        psh.send('exit\r')
+        psh.expect(pexpect.EOF)
+        assert 'There are stopped jobs' not in (psh.before or '')
+
+    def test_jobs_builtin_exempts_ctrl_d(self, psh):
+        self._stop_a_job(psh)
+        psh.send('jobs\r')
+        psh.expect('Stopped')
+        psh.send('\x04')
+        psh.expect(pexpect.EOF)
+        assert 'There are stopped jobs' not in (psh.before or '')
+
+    def test_warned_then_jobs_then_exit_exits(self, psh):
+        self._stop_a_job(psh)
+        psh.send('exit\r')
+        psh.expect('There are stopped jobs')
+        psh.send('jobs\r')
+        psh.expect('Stopped')
+        psh.send('exit\r')
+        psh.expect(pexpect.EOF)
+
+    def test_jobs_then_other_command_warns(self, psh):
+        # Any command word after `jobs` clears the exemption (bash).
+        self._stop_a_job(psh)
+        psh.send('jobs\r')
+        psh.expect('Stopped')
+        psh.send('echo clear_$((50+1))\r')
+        psh.expect('clear_51')
+        psh.send('exit\r')
+        psh.expect('There are stopped jobs')
+        psh.send('exit\r')
+        psh.expect(pexpect.EOF)
+
+    def test_sourced_exit_bypasses_guard(self, psh, tmp_path):
+        # bash: `exit` arriving from a sourced file skips the
+        # stopped-jobs check entirely.
+        script = tmp_path / 'leave.sh'
+        script.write_text('exit\n')
+        self._stop_a_job(psh)
+        psh.send(f'. {script}\r')
         psh.expect(pexpect.EOF)
         assert 'There are stopped jobs' not in (psh.before or '')
 
