@@ -814,10 +814,20 @@ class WordExpander:
                     # glob_expander.expand() already returns sorted results.
                     result.extend(matches)
                 elif self.state.options.get('failglob', False):
-                    # failglob: a no-match glob fails the command (bash). Not
-                    # fatal to the shell — the command-error handler returns 1.
-                    from ..core import GlobNoMatchError
-                    raise GlobNoMatchError(w)
+                    # failglob: a no-match glob DISCARDS the rest of the
+                    # current line and resumes at the next one (bash 5.2,
+                    # probe-verified — tmp/probes-r17t2-arith/), in every
+                    # consumer of glob expansion (command words, for-loop
+                    # words, array initializers). Under set -e a
+                    # non-interactive shell EXITS instead (bash exits even
+                    # from errexit-suppressed contexts like an if
+                    # condition, unlike the arithmetic discard family).
+                    from ..core import TopLevelAbort
+                    print(f"psh: no match: {w}", file=self.state.stderr)
+                    if (self.state.options.get('errexit')
+                            and self.state.is_script_mode):
+                        raise SystemExit(1)
+                    raise TopLevelAbort(1)
                 elif self.state.options.get('nullglob', False):
                     pass  # nullglob: no matches -> nothing
                 else:

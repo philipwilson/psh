@@ -309,14 +309,21 @@ class SourceProcessor(ScriptComponent):
                               file=sys.stderr)
                         return 1
             except TopLevelAbort as e:
-                # A fatal assignment error (readonly/nameref-cycle) unwound the
-                # whole current top-level command (the rest of the command list
-                # and any enclosing if/loop/function on the same input). The
-                # error was already printed at the raise site; resume at the next
-                # top-level command (bash). When nested (eval) let it keep
-                # unwinding to the real top-level command boundary.
-                if nested:
-                    raise
+                # A fatal error (readonly/nameref-cycle assignment, failed
+                # arithmetic/parameter expansion, failglob) unwound the whole
+                # current command line (the rest of the command list and any
+                # enclosing if/loop/function on the same input). The error was
+                # already printed at the raise site; resume at the next
+                # buffered command (bash). This containment applies at EVERY
+                # buffered-command boundary — including the nested processors
+                # run by eval/source/trap actions: bash 5.2 (probe-verified,
+                # tmp/probes-r17t2-arith/) CONTAINS the discard there
+                # (`eval 'r=2; echo x'; echo after` kills x, runs after with
+                # $?=1; a sourced file resumes at its own next line).
+                if e.errexit_immune:
+                    # Expansion-error discards bypass set -e (bash); a
+                    # readonly/failglob discard keeps its errexit effect.
+                    self.state.errexit_eligible = False
                 self.state.last_exit_code = e.status
                 return e.status
             except FunctionReturn as e:
@@ -365,6 +372,26 @@ class SourceProcessor(ScriptComponent):
                 if (isinstance(e, (LoopBreak, LoopContinue))
                         and self.shell._loop_depth_seed > 0):
                     raise
+            # A fatal expansion error escaping a non-SimpleCommand context
+            # (case subject, for-loop words, array initializer, redirect
+            # target of a compound, ...) reaches this boundary directly:
+            # apply the same bash model the command path uses. We are AT the
+            # buffered-command boundary, so the discard-line family is
+            # already complete (returning the status IS the discard); the
+            # shell-exit family (:?/badsub/set -u) raises SystemExit for a
+            # non-interactive shell. Messages were printed at the raise
+            # site, except set -u which prints here.
+            from ..core import (
+                ExpansionError,
+                UnboundVariableError,
+                fatal_expansion_status,
+            )
+            if isinstance(e, (ExpansionError, UnboundVariableError)):
+                if isinstance(e, UnboundVariableError):
+                    print(f"psh: {e}", file=sys.stderr)
+                rc = fatal_expansion_status(self.state, e, at_boundary=True)
+                self.state.last_exit_code = rc
+                return rc
             # Last-resort guard so an internal defect doesn't kill an
             # interactive session (or re-raise under strict-errors so a test
             # harness surfaces it) — see report_internal_defect for the policy.

@@ -226,6 +226,31 @@ def test_ternary(expr, expected, sh):
     assert ev(expr, sh) == expected
 
 
+@pytest.mark.parametrize("expr,expected", [
+    # C/bash grammar: the MIDDLE operand is a full comma-level
+    # expression; the FALSE operand stays at ternary level, so a
+    # trailing comma belongs to the enclosing expression (bash 5.2).
+    ("1 ? 2,3 : 4", 3),
+    ("0 ? 2,3 : 4,5", 5),        # (0?2,3:4),5
+    ("2 > 1 ? 2,3 : 4", 3),
+    ("1 ? 0 ? 5 : 6 : 7", 6),    # nested ternary in the middle
+])
+def test_ternary_comma_middle(expr, expected, sh):
+    assert ev(expr, sh) == expected
+
+
+def test_ternary_comma_middle_side_effects(sh):
+    # $((1?(a=1),(b=2):3)) evaluates BOTH middle operands (bash).
+    assert ev("1 ? (a=1),(b=2) : 3", sh) == 2
+    assert ev("a", sh) == 1
+    assert ev("b", sh) == 2
+
+
+def test_ternary_assignment_in_middle(sh):
+    assert ev("1 ? x=5 : 6", sh) == 5
+    assert ev("x", sh) == 5
+
+
 # ---------------------------------------------------------------------------
 # Comma operator
 # ---------------------------------------------------------------------------
@@ -552,12 +577,22 @@ def test_negative_exponent(sh):
     "@",            # unexpected char
     "1#5",          # invalid base (< 2)
     "99#1",         # invalid base (> 64)
-    "++5",          # pre-increment needs identifier
-    "--5",          # pre-decrement needs identifier (not unary minus twice)
 ])
 def test_malformed_expressions(expr, sh):
     with pytest.raises(ArithmeticError):
         ev(expr, sh)
+
+
+@pytest.mark.parametrize("expr,expected", [
+    ("++5", 5),      # bash: ++ on a non-lvalue is two unary signs, +(+5)
+    ("--5", 5),      # bash: -(-5)
+    ("5 ++ 3", 8),   # binary position: 5 + (+3) (bash)
+    ("5 -- 3", 8),   # 5 - (-3)
+])
+def test_incdec_on_non_lvalue_is_unary_signs(expr, expected, sh):
+    # bash 5.2, probe-verified: ++/-- that cannot be an increment are
+    # re-read as two +/- signs, never an error.
+    assert ev(expr, sh) == expected
 
 
 def test_octal_invalid_digit(sh):

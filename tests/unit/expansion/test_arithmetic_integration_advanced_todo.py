@@ -183,21 +183,25 @@ class TestArithmeticIntegrationAdvanced:
     def test_arithmetic_error_recovery_in_complex_context(self, shell, capsys):
         """Test error recovery with arithmetic in complex nested contexts.
 
-        A division-by-zero inside an array index is handled without corrupting
-        parser state: execution continues past the failing line.
+        A division-by-zero inside an array index DISCARDS the rest of that
+        line (bash: the ``||`` tail never runs) without corrupting parser
+        state: the next command runs normally. One run_command call per
+        input line, mirroring how a script/stdin feeds the shell (a single
+        multi-line run_command string is one buffer, i.e. one "line").
         """
-        # Test complex expression with intentional error
-        result = shell.run_command('''
-        arr=(1 2 3)
-        echo "before"
-        echo "${arr[$(( 1 / 0 ))]}" 2>/dev/null || echo "error handled"
-        echo "after"
-        ''')
+        shell.run_command('arr=(1 2 3)')
+        shell.run_command('echo "before"')
+        result = shell.run_command(
+            'echo "${arr[$(( 1 / 0 ))]}" 2>/dev/null || echo "error handled"')
+        assert result == 1   # discard-line: the || tail is killed (bash)
+        result = shell.run_command('echo "after"')
         assert result == 0
         captured = capsys.readouterr()
         lines = captured.out.strip().split('\n')
         assert "before" in lines
-        assert ("error handled" in lines or "after" in lines)
+        assert "after" in lines
+        assert "error handled" not in lines
+        assert "ivision by zero" in captured.err
 
     # Performance stress tests (MAY TIMEOUT)
 

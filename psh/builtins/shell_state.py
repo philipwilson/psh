@@ -328,18 +328,14 @@ class LocalBuiltin(Builtin):
         elif attributes & VarAttributes.LOWERCASE:
             return value.lower()
         elif attributes & VarAttributes.INTEGER:
-            # Evaluate arithmetic expression
-            try:
-                # Use shell's arithmetic evaluator
-                from ..expansion.arithmetic import evaluate_arithmetic
-                result = evaluate_arithmetic(value, shell)
-                return str(result)
-            except (ValueError, ArithmeticError):
-                # Fall back to simple int conversion
-                try:
-                    return str(int(value))
-                except (ValueError, TypeError):
-                    return "0"
+            # Evaluate the arithmetic expression. A value that fails to
+            # evaluate (`local -i w='1/0'`) propagates ShellArithmeticError
+            # to execute_builtin_guarded, which prints "psh: local: ..." and
+            # discards the rest of the line (bash; used to be silently
+            # swallowed to "0" here). Unset names evaluate to 0, so plain
+            # words are not errors.
+            from ..expansion.arithmetic import evaluate_arithmetic
+            return str(evaluate_arithmetic(value, shell))
         return value
 
     @property

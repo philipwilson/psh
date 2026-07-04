@@ -233,8 +233,12 @@ class TestTransforms:
         # '@'+letter not at the end is no transform: plain (unset) name.
         assert triple('v@Qx') == ('v@Qx', None, None)
 
-    def test_unknown_letter_is_plain(self):
-        assert triple('v@X') == ('v@X', None, None)
+    def test_unknown_letter_parses_as_transform(self):
+        # ANY letter after a final '@' parses as a transform operator
+        # (bash): ${unset@X} silently expands to '' and only a SET
+        # variable makes it a runtime bad substitution — so the
+        # classification cannot depend on the letter being known.
+        assert triple('v@X') == ('v', '@X', '')
 
 
 class TestScanStrategy:

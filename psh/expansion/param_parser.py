@@ -85,6 +85,11 @@ Known representational choices (pinned by the differential corpus):
 from ..ast_nodes import ParameterExpansion
 
 # One transform letter may follow '@' in final position: ${v@Q} etc.
+# ANY letter parses as a transform operator (bash): an UNKNOWN letter is
+# not a parse error — ${unset@Z} expands to '' silently, and only a SET
+# variable makes ${x@Z} a runtime "bad substitution" (probe-verified,
+# bash 5.2; the set-ness check lives in the operator application).
+# The known letters are what _apply_transform implements:
 TRANSFORM_LETTERS = 'QEPAUuLakK'
 
 # Two-character operators, tried before any one-character operator at the
@@ -158,8 +163,9 @@ def _scan_operator(content: str):
             continue
         if depth > 0 or i == 0:
             continue
-        # ${param@X}: '@' + transform letter in final position
-        if c == '@' and i == n - 2 and content[i + 1] in TRANSFORM_LETTERS:
+        # ${param@X}: '@' + a letter in final position (see TRANSFORM_LETTERS
+        # for why unknown letters still parse as transform operators).
+        if c == '@' and i == n - 2 and content[i + 1].isalpha():
             return '@' + content[i + 1], i
         if content[i:i + 2] in _TWO_CHAR_OPS:
             return content[i:i + 2], i

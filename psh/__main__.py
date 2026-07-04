@@ -369,6 +369,16 @@ def main():
             # Non-interactive: read all commands from stdin and execute as a
             # script. With -i the interactive flag is still set (rc loaded,
             # history loaded) but commands come from the pipe — no REPL.
+            # This IS script execution (bash treats `cmds | bash` exactly
+            # like `bash -s`): set is_script_mode so the non-interactive
+            # abort policies (errexit exits the shell, set -u / ${x:?} /
+            # bad substitution are fatal, exec-failure exits) apply to
+            # piped input too. Signal handlers were already installed at
+            # startup, so this flag does not change handler selection.
+            # Under -i the shell stays interactive-family (bash -i piped
+            # discards the failing line and continues — probe-verified).
+            if not _flag("force_interactive"):
+                shell.state.is_script_mode = True
             script_content = sys.stdin.read()
             if script_content.strip():
                 from .scripting.input_sources import StringInput

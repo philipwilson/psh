@@ -89,8 +89,10 @@ class TestViewAssignAndErrorOperators:
         assert "a[*]: bad array subscript" in captured_shell.get_stderr()
 
     def test_array_qmark_on_null_view_errors(self, captured_shell):
+        # Fatal expansion error: an embedded/interactive shell discards
+        # the line with status 1 (bash -i; 127 is the -c exit status).
         rc = captured_shell.run_command('a=(""); echo "[${a[@]:?boom}]"')
-        assert rc == 127
+        assert rc == 1
         assert "a[@]: boom" in captured_shell.get_stderr()
 
     def test_array_assign_on_nonnull_view_keeps_elements(self, captured_shell):

@@ -86,12 +86,20 @@ class ArithParser:
         return left
 
     def parse_ternary(self) -> ArithNode:
-        """Parse ternary conditional (?:)"""
+        """Parse ternary conditional (?:)
+
+        The MIDDLE operand is a full comma-level expression, as in C and
+        bash (``$((1?2,3:4))`` is 3, ``$((1?(a=1),(b=2):3))`` runs both
+        assignments): between ``?`` and ``:`` there is no ambiguity, so
+        the grammar there restarts at the lowest precedence. The FALSE
+        operand stays at ternary level — a following comma belongs to the
+        enclosing expression (``$((0?1:2,3))`` is ``(0?1:2),3`` = 3).
+        """
         condition = self.parse_logical_or()
 
         if self.match(ArithTokenType.QUESTION):
             self.advance()
-            true_expr = self.parse_ternary()
+            true_expr = self.parse_comma()
             self.expect(ArithTokenType.COLON)
             false_expr = self.parse_ternary()
             return TernaryNode(condition, true_expr, false_expr)
@@ -188,13 +196,29 @@ class ArithParser:
         return left
 
     def parse_additive(self) -> ArithNode:
-        """Parse addition and subtraction (+, -)"""
+        """Parse addition and subtraction (+, -)
+
+        A ``++``/``--`` token in BINARY position (``5 ++ 3``) can only be
+        here because the left operand was not an lvalue (parse_postfix
+        consumes postfix ``x++``). bash follows C's tokenization but then
+        re-reads it as a binary op plus a unary sign: ``5 ++ 3`` is
+        ``5 + (+3)`` = 8 and ``5 -- 3`` is ``5 - (-3)`` = 8
+        (probe-verified, bash 5.2).
+        """
         left = self.parse_multiplicative()
 
-        while self.match(ArithTokenType.PLUS, ArithTokenType.MINUS):
-            op = self.advance().type
+        while self.match(ArithTokenType.PLUS, ArithTokenType.MINUS,
+                         ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
+            tok = self.advance()
+            if tok.type in (ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
+                sign = (ArithTokenType.PLUS
+                        if tok.type == ArithTokenType.INCREMENT
+                        else ArithTokenType.MINUS)
+                right: ArithNode = UnaryOpNode(sign, self.parse_multiplicative())
+                left = BinaryOpNode(sign, left, right)
+                continue
             right = self.parse_multiplicative()
-            left = BinaryOpNode(op, left, right)
+            left = BinaryOpNode(tok.type, left, right)
 
         return left
 
@@ -235,7 +259,13 @@ class ArithParser:
         if self.match(ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
             inc_op = self.advance()
             if not self.match(ArithTokenType.IDENTIFIER):
-                raise SyntaxError(f"Expected identifier after {inc_op.value}")
+                # Not an lvalue (``++5``, ``++(x+1)``, ``++++x``): bash
+                # reads the token as two unary signs — ``$((++5))`` is
+                # ``+(+5)`` = 5, ``$((--5))`` is ``-(-5)`` = 5.
+                sign = (ArithTokenType.PLUS
+                        if inc_op.type == ArithTokenType.INCREMENT
+                        else ArithTokenType.MINUS)
+                return UnaryOpNode(sign, UnaryOpNode(sign, self.parse_unary()))
             var_name = cast(str, self.advance().value)
             is_inc = inc_op.type == ArithTokenType.INCREMENT
             # Array-element lvalue: ++arr[i] / --arr[i]

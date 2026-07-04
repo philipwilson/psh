@@ -43,6 +43,7 @@ from ..core import (
     is_valid_assignment,
     resolve_append_assignment,
 )
+from ..expansion.arithmetic import ShellArithmeticError
 
 if TYPE_CHECKING:
     from ..ast_nodes import SimpleCommand, Word, WordPart
@@ -213,6 +214,15 @@ class CommandAssignments:
                     # the current top-level command (same scope as above).
                     self.state.scope_manager.warn_nameref_cycle(e.name)
                     raise TopLevelAbort(1)
+                except ShellArithmeticError as e:
+                    # An integer-attributed variable (declare -i v; v='1/0')
+                    # whose value fails to evaluate: bash prints the
+                    # arithmetic error and DISCARDS the rest of the line
+                    # (rest of the whole -c string under -c) — the
+                    # assignment/subscript arithmetic-error family.
+                    print(f"psh: {e}", file=self.state.stderr)
+                    from ..core import arith_assignment_discard
+                    arith_assignment_discard(self.state)
 
             # bash: a pure assignment's status is 0, unless a command
             # substitution ran while expanding the value — then it is the
