@@ -3922,3 +3922,87 @@
   stdout: "4\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# ARITHMETIC × READONLY / NAMEREF-CYCLE (reappraisal #17 H1). Readonly array
+# elements were silently WRITABLE through every arithmetic entry point
+# ((( )), $(( )), let, C-style for), and a readonly-scalar failure in (( ))
+# leaked as "unexpected error" ABORTING the -c list. bash: "NAME: readonly
+# variable", status 1, value unchanged, execution continues. A cyclic-nameref
+# WRITE in arithmetic only WARNS (assignment dropped, status from the value);
+# a cyclic-nameref for-loop-variable binding is an error (status 1).
+# =============================================================================
+
+- name: readonly_arith_scalar_paren_continues
+  command: 'readonly r=5; (( r=9 )); echo after=$?; echo val=$r'
+  stdout: "after=1\nval=5\n"
+  stderr: "r: readonly variable"
+  exit_code: 0
+
+- name: readonly_arith_indexed_elem_assign
+  command: 'readonly -a a=(1 2); (( a[0]=9 )); echo after=$?; echo val=${a[0]}'
+  stdout: "after=1\nval=1\n"
+  stderr: "a: readonly variable"
+  exit_code: 0
+
+- name: readonly_arith_indexed_elem_increment
+  command: 'readonly -a a=(1 2); (( a[0]++ )); echo after=$?; echo val=${a[0]}'
+  stdout: "after=1\nval=1\n"
+  stderr: "a: readonly variable"
+  exit_code: 0
+
+- name: readonly_arith_assoc_elem_compound
+  command: 'declare -A m=([k]=1); readonly m; (( m[k]+=5 )); echo after=$?; echo val=${m[k]}'
+  stdout: "after=1\nval=1\n"
+  stderr: "m: readonly variable"
+  exit_code: 0
+
+- name: readonly_arith_let_array_elem
+  command: "readonly -a a=(1 2); let 'a[0]=9'; echo after=$?; echo val=${a[0]}"
+  stdout: "after=1\nval=1\n"
+  stderr: "a: readonly variable"
+  exit_code: 0
+
+# The $(( )) expansion form: on ONE line bash discards the rest of the line,
+# so the pin uses separate lines (both shells continue on the next line).
+- name: readonly_arith_expansion_array_elem
+  command: "readonly -a a=(1 2)\necho $((a[0]=9))\necho after=$?\necho val=${a[0]}"
+  stdout: "after=1\nval=1\n"
+  stderr: "a: readonly variable"
+  exit_code: 0
+
+- name: readonly_arith_cfor_init
+  command: 'readonly z=1; for ((z=0; z<3; z++)); do echo body; done; echo after=$?'
+  stdout: "after=1\n"
+  stderr: "z: readonly variable"
+  exit_code: 0
+
+- name: readonly_arith_cfor_update_body_once
+  command: 'readonly z=1; for ((i=0; i<2; z++)); do echo body; done; echo after=$?'
+  stdout: "body\nafter=1\n"
+  stderr: "z: readonly variable"
+  exit_code: 0
+
+- name: readonly_arith_paren_redirect_suppresses_message
+  command: 'readonly r=5; (( r=9 )) 2>/dev/null; echo after=$?'
+  stdout: "after=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nameref_cycle_arith_write_warns_status_from_value
+  command: 'declare -n na=nb; declare -n nb=na; (( na=5 )); echo after=$?'
+  stdout: "after=0\n"
+  stderr: "circular name reference"
+  exit_code: 0
+
+- name: nameref_cycle_for_loop_var_fails_loop
+  command: 'declare -n na=nb; declare -n nb=na; for na in 1 2; do echo body; done; echo after=$?'
+  stdout: "after=1\n"
+  stderr: "circular name reference"
+  exit_code: 0
+
+- name: unreadonly_array_arith_write_still_works
+  command: 'a=(1 2); (( a[0]=9 )); echo after=$?; echo val=${a[0]}'
+  stdout: "after=0\nval=9\n"
+  stderr: ""
+  exit_code: 0

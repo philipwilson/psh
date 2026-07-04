@@ -17,7 +17,7 @@ import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Iterator, List
 
-from ..core import LoopBreak, LoopContinue, ReadonlyVariableError
+from ..core import LoopBreak, LoopContinue, NamerefCycleError, ReadonlyVariableError
 from ..expansion.arithmetic import evaluate_arithmetic
 
 if TYPE_CHECKING:
@@ -281,12 +281,15 @@ class ControlFlowExecutor:
                 # EACH iteration (so `trap d DEBUG; for i in 1 2; do echo x;
                 # done` fires d before every `i=…` and every `echo`).
                 self.shell.trap_manager.execute_debug_trap()
-                # Set loop variable
+                # Set loop variable. A readonly variable or a cyclic nameref
+                # rejects the binding: bash reports (error / warning form
+                # respectively), the loop is abandoned with status 1, and
+                # execution continues.
                 try:
                     self.state.set_variable(node.variable, item)
-                except ReadonlyVariableError:
-                    print(f"psh: {node.variable}: readonly variable", file=self.state.stderr)
-                    return 1
+                except (ReadonlyVariableError, NamerefCycleError) as e:
+                    from .strategies import report_assignment_error
+                    return report_assignment_error(self.state, e)
 
                 # Execute body
                 try:
@@ -325,6 +328,11 @@ class ControlFlowExecutor:
             if node.init_expr:
                 try:
                     evaluate_arithmetic(node.init_expr, self.shell)
+                except (ReadonlyVariableError, NamerefCycleError) as e:
+                    # `readonly z; for ((z=0; ...))`: bash reports, the loop
+                    # never runs (status 1), and execution continues.
+                    from .strategies import report_assignment_error
+                    return report_assignment_error(self.state, e)
                 except (ValueError, ArithmeticError) as e:
                     print(f"psh: ((: {e}", file=self.state.stderr)
                     return 1
@@ -344,6 +352,12 @@ class ControlFlowExecutor:
                             result = evaluate_arithmetic(node.condition_expr, self.shell)
                             if result == 0:  # Zero means false
                                 break
+                        except (ReadonlyVariableError, NamerefCycleError) as e:
+                            # Assignment failure in the condition: bash
+                            # reports and stops the loop with status 1.
+                            from .strategies import report_assignment_error
+                            exit_status = report_assignment_error(self.state, e)
+                            break
                         except (ValueError, ArithmeticError) as e:
                             print(f"psh: ((: {e}", file=self.state.stderr)
                             exit_status = 1
@@ -365,6 +379,13 @@ class ControlFlowExecutor:
                     if node.update_expr:
                         try:
                             evaluate_arithmetic(node.update_expr, self.shell)
+                        except (ReadonlyVariableError, NamerefCycleError) as e:
+                            # Assignment failure in the update: bash reports
+                            # and stops the loop with status 1 (the body has
+                            # already run this iteration).
+                            from .strategies import report_assignment_error
+                            exit_status = report_assignment_error(self.state, e)
+                            break
                         except (ValueError, ArithmeticError) as e:
                             print(f"psh: ((: {e}", file=self.state.stderr)
                             exit_status = 1

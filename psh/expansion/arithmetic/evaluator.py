@@ -91,10 +91,19 @@ class ArithmeticEvaluator:
 
     def set_variable(self, name: str, value: int) -> None:
         """Set variable value"""
+        from ...core import NamerefCycleError
         # Use state's set_variable which handles scopes
         # When in a function and assigning to a local variable,
         # this should update the local, not create a new global
-        self.shell.state.set_variable(name, str(value))
+        try:
+            self.shell.state.set_variable(name, str(value))
+        except NamerefCycleError as e:
+            # bash: a cyclic-nameref WRITE inside arithmetic only warns and
+            # drops the assignment — evaluation continues and the expression
+            # keeps its value (`(( na=5 ))` is status 0). A readonly failure,
+            # by contrast, propagates and aborts the evaluation (bash:
+            # `(( r=9, x=1 ))` leaves x unset).
+            self.shell.state.scope_manager.warn_nameref_cycle(e.name)
 
     def _string_to_int(self, value: Optional[str]) -> int:
         """Convert a stored string value to an integer like get_variable()."""
@@ -150,10 +159,20 @@ class ArithmeticEvaluator:
             ArraySubscriptError,
             AssociativeArray,
             IndexedArray,
+            NamerefCycleError,
+            ReadonlyVariableError,
             VarAttributes,
         )
         from .errors import ShellArithmeticError
         var = self.shell.state.scope_manager.get_variable_object(name)
+        # A readonly array (or scalar) forbids element writes exactly like
+        # the SimpleCommand `a[0]=9` path (executor/array.py): bash reports
+        # "a: readonly variable", the evaluation aborts with status 1, and
+        # the value is unchanged. Without this, `readonly -a a=(1 2);
+        # (( a[0]=9 ))` was a silent write. The nameref/creation fallthrough
+        # below is covered too: scope_manager.set_variable re-checks.
+        if var is not None and var.is_readonly:
+            raise ReadonlyVariableError(name)
         try:
             if var is not None and isinstance(var.value, IndexedArray):
                 var.value.set(int(key), str(value))
@@ -172,6 +191,11 @@ class ArithmeticEvaluator:
             # ("NAME[SUB]: bad array subscript") rather than as an internal
             # defect under strict-errors.
             raise ShellArithmeticError(f"{name}[{e.subscript}]: {e}") from e
+        except NamerefCycleError as e:
+            # Cyclic-nameref write through the creation/nameref fallthrough:
+            # warn and drop the assignment, like set_variable() above
+            # (bash: `(( na[0]=5 ))` warns, status from the value).
+            self.shell.state.scope_manager.warn_nameref_cycle(e.name)
 
     def _eval_array_assignment(self, node: 'ArrayAssignmentNode') -> int:
         key = self._array_key(node.name, node.index, node.index_text)
