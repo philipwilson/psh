@@ -5424,3 +5424,113 @@
   stdout: "D\nD\nD\nx\nD\ntop\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# TEST / [ FILE OPERATORS + POSIX DISPATCH (reappraisal #18 T1-2)
+# File-creating cases live in the conformance/unit suites (temp dirs); these
+# golden cases stay file-free — an existing absolute path (/dev/null) paired
+# with a nonexistent one exercises the -nt/-ot existence-asymmetry without
+# writing to the cwd, and all cases match system bash 3.2 too.
+# =============================================================================
+
+- name: r18t1_fileops_nt_source_exists_target_missing
+  command: "[ /dev/null -nt /nonexistent_xyz_psh_r18 ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_nt_source_missing
+  command: "[ /nonexistent_xyz_psh_r18 -nt /dev/null ]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_nt_both_missing
+  command: "[ /nonexistent_a_psh_r18 -nt /nonexistent_b_psh_r18 ]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_ot_target_missing
+  command: "[ /dev/null -ot /nonexistent_xyz_psh_r18 ]; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_ot_source_missing
+  command: "[ /nonexistent_xyz_psh_r18 -ot /dev/null ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_r_devnull
+  command: "[ -r /dev/null ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_w_devnull
+  command: "[ -w /dev/null ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_bracket2_r_devnull
+  command: "[[ -r /dev/null ]]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_bang_eq
+  command: "test ! = x; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_paren_eq
+  command: "test '(' = ')'; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_4arg_bang_paren_eq
+  command: "test ! '(' = ')'; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_paren_eqeq
+  command: "test '(' == ')'; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_bang_eqeq
+  command: "test ! == x; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_paren_ef
+  command: "test '(' -ef ')'; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_3arg_bang_nt
+  command: "test ! -nt x; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_4arg_bang_eq_true
+  command: "test ! a = a; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_fileops_s_on_directory
+  command: "[ -s . ]; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
