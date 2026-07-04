@@ -91,7 +91,9 @@ class TestExpressionEvaluator:
             # text "$x"): expand variables, then remove ONLY the double-quote
             # escapes (\$ \\ \" \`); a backslash before anything else stays
             # literal (so "a\.c" keeps its backslash — bash).
-            expanded = self.expansion_manager.expand_string_variables(text)
+            from ..expansion.operands import DQ_STRING
+            expanded = self.expansion_manager.expand_string_variables(
+                text, quote_ctx=DQ_STRING)
             return WordExpander.process_dquote_escapes(expanded)
         # unquoted literal: no embedded $ (expansions are separate
         # ExpansionParts); tilde on a leading literal, then escape removal.
@@ -220,8 +222,10 @@ class TestExpressionEvaluator:
                 elif part.quoted:
                     # double-quoted literal: expand vars, strip dquote
                     # escapes, then glob-escape (literal).
+                    from ..expansion.operands import DQ_STRING
                     expanded = WordExpander.process_dquote_escapes(
-                        self.expansion_manager.expand_string_variables(part.text))
+                        self.expansion_manager.expand_string_variables(
+                            part.text, quote_ctx=DQ_STRING))
                     out.append(ve.glob_escape(expanded))
                 else:
                     # unquoted literal: no embedded $; keep raw text so the
@@ -232,7 +236,10 @@ class TestExpressionEvaluator:
                         text = self.expansion_manager.expand_tilde(text)
                     out.append(text)
             elif isinstance(part, ExpansionPart):
-                expanded = self.expansion_manager.expand_expansion(part.expansion)
+                from ..expansion.operands import DQ_WORD
+                expanded = self.expansion_manager.expand_expansion(
+                    part.expansion,
+                    quote_ctx=DQ_WORD if part.quoted else None)
                 out.append(ve.glob_escape(expanded) if part.quoted else expanded)
         return ''.join(out)
 
@@ -251,15 +258,20 @@ class TestExpressionEvaluator:
                 if part.quote_char == "'":
                     out.append(re.escape(part.text))
                 elif part.quoted:
+                    from ..expansion.operands import DQ_STRING
                     expanded = WordExpander.process_dquote_escapes(
-                        self.expansion_manager.expand_string_variables(part.text))
+                        self.expansion_manager.expand_string_variables(
+                            part.text, quote_ctx=DQ_STRING))
                     out.append(re.escape(expanded))
                 else:
                     # unquoted literal: no embedded $; live regex source. A
                     # backslash escape (\.) keeps quoting the next char (re).
                     out.append(part.text)
             elif isinstance(part, ExpansionPart):
-                expanded = self.expansion_manager.expand_expansion(part.expansion)
+                from ..expansion.operands import DQ_WORD
+                expanded = self.expansion_manager.expand_expansion(
+                    part.expansion,
+                    quote_ctx=DQ_WORD if part.quoted else None)
                 out.append(re.escape(expanded) if part.quoted else expanded)
         return ''.join(out)
 

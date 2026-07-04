@@ -7,7 +7,7 @@ slicing (:off:len), and @-transforms. Mixed into VariableExpander
 """
 
 import sys
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, NoReturn, Optional, cast
 
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
@@ -212,7 +212,8 @@ class OperatorOpsMixin(_Base):
 
     def _view_conditional(self, operator: str, elements: list, joiner: str,
                           operand: Optional[str], qmark_subject: str,
-                          assign_error: str) -> list:
+                          assign_error: str,
+                          quote_ctx: Optional[str] = None) -> list:
         """Apply a default/alternate/assign/error operator to a multi-element
         VIEW (``${a[@]}``, ``${a[*]}``, ``${@}``, ``${*}``), matching bash.
 
@@ -242,9 +243,11 @@ class OperatorOpsMixin(_Base):
             base, empty_msg = operator, "parameter not set"
 
         if base == '-':
-            return [self._expand_operand(operand or '')] if triggered else list(elements)
+            return ([self._expand_operand(operand or '', quote_ctx)]
+                    if triggered else list(elements))
         if base == '+':
-            return [] if triggered else [self._expand_operand(operand or '')]
+            return ([] if triggered
+                    else [self._expand_operand(operand or '', quote_ctx)])
         if base == '=':
             if triggered:
                 print(f"psh: {assign_error}", file=sys.stderr)
@@ -253,7 +256,10 @@ class OperatorOpsMixin(_Base):
             return list(elements)
         # base == '?'
         if triggered:
-            msg = self.expand_string_variables(operand) if operand else empty_msg
+            # bash renders the error word with UNQUOTED-context rules even
+            # when the expansion sits inside double quotes (probed:
+            # "${x:?'m'}" reports m, not 'm').
+            msg = str(self._expand_operand(operand)) if operand else empty_msg
             print(f"psh: {qmark_subject}: {msg}", file=sys.stderr)
             self.state.last_exit_code = 127
             raise ExpansionError(f"{qmark_subject}: {msg}", exit_code=127)
@@ -261,11 +267,15 @@ class OperatorOpsMixin(_Base):
 
     def _apply_operator(self, operator: str, value: str,
                         operand: Optional[str],
-                        var_name: str = '', is_set: bool = True) -> str:
+                        var_name: str = '', is_set: bool = True,
+                        quote_ctx: Optional[str] = None) -> str:
         """Apply a parameter expansion operator to a resolved value.
 
         ``is_set`` distinguishes unset from set-but-empty and is only consulted
         by the non-colon operators (``-``, ``=``, ``+``, ``?``).
+        ``quote_ctx`` is the quoting context enclosing the ``${...}``
+        (operands.py) — it shapes how the default/alternate operators
+        expand their value word.
         """
         # Every operator below carries a non-None operand (the parser emits
         # operand=None only for ${#var} length, handled in its own branch);
@@ -273,58 +283,43 @@ class OperatorOpsMixin(_Base):
         if operator == ':-':
             if not value:
                 assert operand is not None
-                return self._expand_operand(operand)
+                return self._expand_operand(operand, quote_ctx)
             return value
         elif operator == '-':
             # Unset -> operand; set (even if empty) -> value.
             if not is_set:
                 assert operand is not None
-                return self._expand_operand(operand)
+                return self._expand_operand(operand, quote_ctx)
             return value
         elif operator == '=':
             if not is_set:
                 assert operand is not None
-                self._reject_nonassignable(var_name)
-                expanded_default = self._expand_operand(operand)
-                if var_name:
-                    self.set_var_or_array_element(var_name, expanded_default)
-                return expanded_default
+                return self._assign_default(var_name, operand, quote_ctx)
             return value
         elif operator == '+':
             # Set (even if empty) -> operand; unset -> empty.
             if is_set:
                 assert operand is not None
-                return self._expand_operand(operand)
+                return self._expand_operand(operand, quote_ctx)
             return ''
         elif operator == '?':
             if not is_set:
-                expanded_message = self.expand_string_variables(operand) if operand else "parameter not set"
-                print(f"psh: {var_name}: {expanded_message}", file=sys.stderr)
-                self.state.last_exit_code = 127
-                from ..core import ExpansionError
-                raise ExpansionError(f"{var_name}: {expanded_message}", exit_code=127)
+                self._qmark_error(var_name, operand, "parameter not set")
             return value
         elif operator == ':=':
             if not value:
                 assert operand is not None
-                self._reject_nonassignable(var_name)
-                expanded_default = self._expand_operand(operand)
-                if var_name:
-                    self.set_var_or_array_element(var_name, expanded_default)
-                return expanded_default
+                return self._assign_default(var_name, operand, quote_ctx)
             return value
         elif operator == ':?':
             if not value:
-                expanded_message = self.expand_string_variables(operand) if operand else "parameter null or not set"
-                print(f"psh: {var_name}: {expanded_message}", file=sys.stderr)
-                self.state.last_exit_code = 127
-                from ..core import ExpansionError
-                raise ExpansionError(f"{var_name}: {expanded_message}", exit_code=127)
+                self._qmark_error(var_name, operand,
+                                  "parameter null or not set")
             return value
         elif operator == ':+':
             if value:
                 assert operand is not None
-                return self._expand_operand(operand)
+                return self._expand_operand(operand, quote_ctx)
             return ''
         elif operator == '#' and operand is None:
             # ${#var} (no operand) is the length; ${var#} (empty pattern)
@@ -369,6 +364,37 @@ class OperatorOpsMixin(_Base):
             return self._apply_transform(operator[1], value, var_name)
         # Unknown operator, return value unchanged
         return value
+
+    def _assign_default(self, var_name: str, operand: str,
+                        quote_ctx: Optional[str]) -> str:
+        """Expand, STORE, and return a ``:=``/``=`` default (bash).
+
+        The assigned value is the quote-removed word; the expansion then
+        RESULTS in the variable's new value — plain value semantics, so
+        an unquoted ``${x:=a\\ b}`` splits into two fields even though
+        ``${x:-a\\ b}`` stays one (probed: bash stores "a b" and prints
+        <a><b>). Hence the plain-str coercion: no operand segments (and
+        their splitting protection) survive an assignment.
+        """
+        self._reject_nonassignable(var_name)
+        expanded_default = str(self._expand_operand(operand, quote_ctx))
+        if var_name:
+            self.set_var_or_array_element(var_name, expanded_default)
+        return expanded_default
+
+    def _qmark_error(self, var_name: str, operand: Optional[str],
+                     default_msg: str) -> NoReturn:
+        """Report a ``:?``/``?`` failure and abort the command (bash).
+
+        bash renders the error word with UNQUOTED-context value-operand
+        rules regardless of the enclosing quotes (probed: both
+        ``${x:?'m'}`` and ``"${x:?'m'}"`` report ``m``).
+        """
+        from ..core import ExpansionError
+        msg = str(self._expand_operand(operand)) if operand else default_msg
+        print(f"psh: {var_name}: {msg}", file=sys.stderr)
+        self.state.last_exit_code = 127
+        raise ExpansionError(f"{var_name}: {msg}", exit_code=127)
 
     _ATTR_FLAG_ORDER = (
         ('ARRAY', 'a'), ('ASSOC_ARRAY', 'A'), ('INTEGER', 'i'),

@@ -4,7 +4,7 @@ Expansions that yield multiple fields (one per element) rather than a
 single string, including per-element operator application and field
 slicing. Mixed into VariableExpander (variable.py).
 """
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
@@ -16,7 +16,8 @@ else:
 class FieldExpansionMixin(_Base):
     """Multi-field expansion of array/positional parameters."""
 
-    def expand_to_fields(self, parameter: str, operator, operand):
+    def expand_to_fields(self, parameter: str, operator, operand,
+                         quote_ctx: Optional[str] = None):
         """Expand an @-subscripted parameter expansion to a list of fields.
 
         Returns None when the expansion has scalar semantics (anything not
@@ -89,7 +90,8 @@ class FieldExpansionMixin(_Base):
                 assign_error = f'{subject}: bad array subscript'
             return self._view_conditional(operator, base, ' ', operand,
                                           qmark_subject=subject,
-                                          assign_error=assign_error)
+                                          assign_error=assign_error,
+                                          quote_ctx=quote_ctx)
 
         # Whole-array key/value transforms (bash):
         #   @K -> ONE field: key "value" key "value" ... (values @Q-quoted)

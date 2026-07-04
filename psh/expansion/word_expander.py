@@ -40,6 +40,7 @@ from ..ast_nodes import (
     Word,
 )
 from .glob import GLOB_METACHARS, has_glob_metacharacters
+from .operands import DQ_WORD
 from .word_expansion_types import (
     ExpandedSegment,
     WordExpansionPolicy,
@@ -265,25 +266,69 @@ class WordExpander:
                 if not policy.split:
                     return ' '.join(ufields) if ufields else []
                 out: List[str] = []
+                globby = False
                 for f in ufields:
-                    out.extend(self._split_with_ifs(f))
-                if (any(has_glob_metacharacters(f) for f in out)
-                        and not self.state.options.get('noglob', False)):
+                    # A field carrying operand segments (a triggered
+                    # ${a[@]:-'a b'} default) splits and globs only its
+                    # unprotected regions (bash).
+                    fsegs = getattr(f, 'segments', None)
+                    if fsegs is None:
+                        pieces = self._split_with_ifs(f)
+                        out.extend(pieces)
+                        globby = globby or any(
+                            has_glob_metacharacters(piece) for piece in pieces)
+                    else:
+                        out.extend(self._field_split_pass(
+                            self._operand_segments_to_expanded(fsegs)))
+                        globby = globby or any(
+                            not protected and has_glob_metacharacters(text)
+                            for text, protected in fsegs)
+                if globby and not self.state.options.get('noglob', False):
                     return self._glob_words(out)
                 return out
 
-        expanded = self.manager.expand_expansion(part.expansion)
+        expanded = self.manager.expand_expansion(
+            part.expansion, quote_ctx=DQ_WORD if part.quoted else None)
         if part.quoted:
             # Quoted expansion: no word splitting, no globbing on result
             st.segments.append(ExpandedSegment(expanded, quoted=True))
         else:
-            # Unquoted expansion: its text is the only splittable text, and
-            # glob chars in it trigger globbing.
-            has_glob = has_glob_metacharacters(expanded)
-            st.segments.append(ExpandedSegment(
-                expanded, quoted=False, splittable=True,
-                glob_eligible=has_glob))
+            segs = getattr(expanded, 'segments', None)
+            if segs is not None:
+                # A value-operand result (${x:-word}): quoted/escaped
+                # regions of the operand are protected from splitting
+                # and globbing (bash: ${x:-'a b'} stays one field).
+                for seg in self._operand_segments_to_expanded(segs):
+                    st.segments.append(seg)
+                if not segs:
+                    # Empty operand: keep the zero-field rule (an
+                    # expansion that vanishes contributes no field).
+                    st.segments.append(ExpandedSegment(
+                        '', quoted=False, splittable=True))
+            else:
+                # Unquoted expansion: its text is the only splittable
+                # text, and glob chars in it trigger globbing.
+                has_glob = has_glob_metacharacters(expanded)
+                st.segments.append(ExpandedSegment(
+                    expanded, quoted=False, splittable=True,
+                    glob_eligible=has_glob))
         return _CONTINUE_WALK
+
+    @staticmethod
+    def _operand_segments_to_expanded(
+            segs: Tuple[Tuple[str, bool], ...]) -> List[ExpandedSegment]:
+        """Map OperandResult (text, protected) pairs to ExpandedSegments.
+
+        Protected regions (quoted/escaped operand text) become quoted
+        segments — never split, never globbed; unprotected regions stay
+        splittable and glob-eligible, like any unquoted expansion result.
+        """
+        return [
+            ExpandedSegment(text, quoted=True) if protected
+            else ExpandedSegment(text, quoted=False, splittable=True,
+                                 glob_eligible=has_glob_metacharacters(text))
+            for text, protected in segs
+        ]
 
     def _finish(self, st: _WalkState,
                 policy: WordExpansionPolicy) -> Union[str, List[str]]:
@@ -462,8 +507,9 @@ class WordExpander:
                         part.expansion.direction, part.expansion.command)
                     result_parts.append(path)
                 else:
-                    result_parts.append(
-                        self.manager.expand_expansion(part.expansion))
+                    result_parts.append(str(self.manager.expand_expansion(
+                        part.expansion,
+                        quote_ctx=DQ_WORD if part.quoted else None)))
                 prev_char = ''
                 value_len += 1
 
@@ -523,6 +569,7 @@ class WordExpander:
         """
         from ..ast_nodes import ParameterExpansion, VariableExpansion
         exp = part.expansion
+        quote_ctx = DQ_WORD if part.quoted else None
         if isinstance(exp, VariableExpansion):
             if exp.name == '@':
                 return list(self.state.positional_params)
@@ -534,7 +581,7 @@ class WordExpander:
             return None
         if isinstance(exp, ParameterExpansion):
             return self.manager.variable_expander.expand_to_fields(
-                exp.parameter, exp.operator, exp.word)
+                exp.parameter, exp.operator, exp.word, quote_ctx=quote_ctx)
         return None
 
     def _expand_double_quoted_word(self, word: Word,
@@ -570,7 +617,8 @@ class WordExpander:
                         word, part, result_parts, in_double_quote=True,
                         first_fields=fields)
 
-                expanded = self.manager.expand_expansion(part.expansion)
+                expanded = self.manager.expand_expansion(part.expansion,
+                                                          quote_ctx=DQ_WORD)
                 result_parts.append(expanded)
 
         return ''.join(result_parts)

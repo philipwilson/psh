@@ -1,11 +1,35 @@
-"""Operand mini-expansion for pattern/replacement operators.
+"""Operand mini-expansion for value/pattern/replacement operators.
 
-Operands of ${var#pat}, ${var/pat/repl}, etc. get their own expansion
-pass: quoted text and quoted expansion results are glob-escaped (match
-literally) while unquoted text stays glob-active — bash semantics
-pinned in v0.266.0. Mixed into VariableExpander (variable.py).
+Operands of ${var:-word}, ${var#pat}, ${var/pat/repl}, etc. get their
+own expansion pass: quoted text and quoted expansion results are
+protected (match literally / never field-split) while unquoted text
+stays active — bash semantics pinned in v0.266.0 (patterns) and this
+module's value walkers (v0.601). Mixed into VariableExpander
+(variable.py).
+
+Value operands (${x:-w}, ${x:=w}, and the +/- families) expand
+differently depending on the quoting context ENCLOSING the whole
+``${...}`` — the ``quote_ctx`` parameter threaded through
+VariableExpander (probed against bash 5.2, see
+tmp/probes-r17t1-quoting/):
+
+- ``None`` (unquoted ${...}): ordinary word semantics. One level of
+  quotes is removed; single quotes keep text literal, double quotes
+  expand without splitting, ``\\c`` escapes any character, ``$'...'``
+  decodes, and a leading unquoted tilde prefix expands. Quoted/escaped
+  regions are protected from later IFS splitting and globbing — the
+  ``OperandResult.segments`` carry that protection to the Word walker.
+- ``DQ_WORD`` / ``DQ_STRING`` (${...} inside double quotes): single
+  quotes are LITERAL characters; an embedded ``"`` toggles the effective
+  quote state (dquote backslash rules outside embedded quotes,
+  backslash-escapes-anything inside them) and is removed; a simple
+  ``$name`` scan runs ACROSS embedded quote marks (bash 3.2–5.2:
+  ``"${x:-a"$y"c}"`` reads the variable ``yc`` — probed). ``$'...'``
+  decodes only in DQ_WORD (lexed words); in DQ_STRING (heredoc bodies,
+  ``$(( ))``, ``[[ ]]`` string operands) it stays literal, as bash never
+  ANSI-C-decodes text that was not lexed as a word.
 """
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
@@ -13,9 +37,32 @@ if TYPE_CHECKING:
 else:
     _Base = object
 
+#: Enclosing-quote contexts for value-operand expansion (see module
+#: docstring). ``None`` means the ``${...}`` itself is unquoted.
+DQ_WORD = 'dquote-word'      # lexed double-quoted word: "${x:-w}"
+DQ_STRING = 'dquote-string'  # dquote-like string data: heredocs, $(( )), [[ ]]
+
+
+class OperandResult(str):
+    """A joined value-operand expansion carrying per-segment quoting.
+
+    Behaves as a plain str for every existing consumer; the Word walker
+    (word_expander) additionally reads ``segments`` — ``(text,
+    protected)`` pairs — to keep quoted/escaped regions of the operand
+    safe from IFS splitting and globbing (bash: ``${x:-'a b'}`` stays
+    one field while ``${x:-a b}`` splits into two).
+    """
+    __slots__ = ('segments',)
+    segments: Tuple[Tuple[str, bool], ...]
+
+    def __new__(cls, segments: List[Tuple[str, bool]]) -> 'OperandResult':
+        obj = super().__new__(cls, ''.join(text for text, _ in segments))
+        obj.segments = tuple(segments)
+        return obj
+
 
 class OperandOpsMixin(_Base):
-    """Expansion of pattern/replacement operands with quote awareness."""
+    """Expansion of value/pattern/replacement operands with quote awareness."""
 
     @staticmethod
     def _inline_ansi_c(operand: str, i: int):
@@ -35,54 +82,181 @@ class OperandOpsMixin(_Base):
             return operand[i], i + 1
         return res
 
-    def _expand_operand(self, operand: str) -> str:
-        """Expand a conditional-operator operand (${x:-OPERAND}).
+    def _expand_operand(self, operand: str,
+                        quote_ctx: Optional[str] = None) -> str:
+        """Expand a value-operator operand (${x:-OPERAND} and friends).
 
-        One surrounding level of quotes is removed (bash): single quotes
-        keep the text literal, double quotes expand without tilde.
+        ``quote_ctx`` is the quoting context enclosing the whole ``${...}``
+        (see the module docstring). Unquoted context returns an
+        :class:`OperandResult` whose segments record which regions were
+        quoted/escaped, so the Word walker can protect them from IFS
+        splitting and globbing; double-quote contexts return a plain str
+        (the enclosing quotes already protect the whole result).
         """
-        if len(operand) >= 2 and operand[0] == "'" and operand[-1] == "'":
-            return operand[1:-1]
-        if len(operand) >= 2 and operand[0] == '"' and operand[-1] == '"':
-            return self.expand_string_variables(operand[1:-1])
-        if "$'" not in operand:
-            return self._expand_tilde_in_operand(self.expand_string_variables(operand))
-        # The operand contains an inline ANSI-C $'...' segment, which
-        # expand_string_variables does not decode. Decode the $'...' segments
-        # here and string-expand the gaps between them (skipping over ordinary
-        # quotes so a $' inside them isn't mistaken for an ANSI-C quote).
-        out = []
-        i = gap = 0
-        n = len(operand)
-        while i < n:
-            ch = operand[i]
-            if ch == '$' and i + 1 < n and operand[i + 1] == "'":
-                from ..lexer.recognizers.word_scanners import scan_inline_ansi_c
-                res = scan_inline_ansi_c(operand, i)
-                if res is not None:
-                    if i > gap:
-                        out.append(self.expand_string_variables(operand[gap:i]))
-                    seg, i = res
-                    out.append(seg)
-                    gap = i
-                    continue
-                i += 1
-            elif ch == "'":
-                end = operand.find("'", i + 1)
-                i = n if end == -1 else end + 1
-            elif ch == '"':
-                i = self._skip_double_quote(operand, i + 1)
-            else:
-                i += 1
-        if gap < n:
-            out.append(self.expand_string_variables(operand[gap:]))
-        return self._expand_tilde_in_operand(''.join(out))
+        if quote_ctx is not None:
+            return self._value_dq_text(operand,
+                                       decode_ansi=(quote_ctx == DQ_WORD))
+        return OperandResult(self._value_segments_unquoted(operand))
 
-    def _expand_tilde_in_operand(self, text: str) -> str:
-        """Apply tilde expansion to parameter expansion operand values."""
-        if text.startswith('~'):
-            return self.shell.expansion_manager.tilde_expander.expand(text)
-        return text
+    def _inner_dquote_segment(self, operand: str, i: int) -> Tuple[str, int]:
+        """Expand the ``"..."`` starting at operand[i] (``"`` or ``$"``).
+
+        Returns (expanded_content, index_past_closing_quote). The content
+        expands with double-quote rules; nested ``${...}`` operands see a
+        double-quote context (bash: ``${x:-"${z:-'q'}"}`` keeps the single
+        quotes).
+        """
+        start = i + (2 if operand[i] == '$' else 1)
+        end = self._skip_double_quote(operand, start)
+        closed = end > start and operand[end - 1] == '"'
+        seg = operand[start:end - 1] if closed else operand[start:end]
+        return self.expand_string_variables(seg, quote_ctx=DQ_STRING), end
+
+    def _value_segments_unquoted(self, operand: str) -> List[Tuple[str, bool]]:
+        """Walk an unquoted-context value operand into (text, protected) runs.
+
+        Ordinary word semantics (bash): quotes group and are removed,
+        ``\\c`` escapes any character, ``$'...'`` decodes, ``$"..."`` is a
+        locale string, a leading tilde prefix expands, and $-constructs
+        expand. ``protected`` marks text that came from quotes/escapes
+        (or a nested protected operand) and thus never field-splits or
+        globs; unquoted literal text and unquoted expansion results stay
+        active. Adjacent runs with equal protection are merged.
+        """
+        out: List[Tuple[str, bool]] = []
+
+        def emit(text: str, protected: bool) -> None:
+            if out and out[-1][1] == protected:
+                out[-1] = (out[-1][0] + text, protected)
+            else:
+                out.append((text, protected))
+
+        i = 0
+        n = len(operand)
+        if n and operand[0] == '~':
+            # bash expands only a LEADING tilde prefix in value operands
+            # (no after-':' rule, unlike assignment values) and never
+            # splits or globs the result.
+            prefix, skip = self._tilde_prefix(operand)
+            if skip:
+                emit(prefix, True)
+                i = skip
+        while i < n:
+            c = operand[i]
+            if c == "'":
+                end = operand.find("'", i + 1)
+                seg = operand[i + 1:] if end == -1 else operand[i + 1:end]
+                i = n if end == -1 else end + 1
+                emit(seg, True)
+            elif c == '"':
+                seg, i = self._inner_dquote_segment(operand, i)
+                emit(seg, True)
+            elif c == '\\' and i + 1 < n:
+                emit(operand[i + 1], True)
+                i += 2
+            elif c == '$' and i + 1 < n and operand[i + 1] == "'":
+                seg, i = self._inline_ansi_c(operand, i)
+                emit(seg, True)
+            elif c == '$' and i + 1 < n and operand[i + 1] == '"':
+                # Locale string $"...": double-quoted content (untranslated).
+                seg, i = self._inner_dquote_segment(operand, i)
+                emit(seg, True)
+            elif c in '$`':
+                expanded, i = self._expand_one_dollar(operand, i)
+                # A nested operand's protection propagates out (bash:
+                # ${x:-${z:-'a b'}} stays one field).
+                nested = getattr(expanded, 'segments', None)
+                if nested is not None:
+                    for text, protected in nested:
+                        emit(text, protected)
+                else:
+                    emit(expanded, False)
+            else:
+                emit(c, False)
+                i += 1
+        return out
+
+    def _value_dq_text(self, operand: str, decode_ansi: bool) -> str:
+        """Expand a value operand whose ``${...}`` sits inside double quotes.
+
+        bash rules (probed 3.2–5.2, tmp/probes-r17t1-quoting/): single
+        quotes are literal characters; an embedded ``"`` is removed and
+        TOGGLES the effective quote state — outside embedded quotes the
+        double-quote backslash rules apply (``\\$ \\" \\\\ \\``` processed,
+        others kept), inside them a backslash escapes ANY character; a
+        simple ``$name`` scan runs across embedded quote marks (consuming
+        them), so ``"${x:-a"$y"c}"`` reads the variable ``yc``; ``$"..."``
+        is a locale string; ``$'...'`` decodes only for lexed words
+        (*decode_ansi*), never for heredoc-like string data. No tilde
+        expansion, no splitting/globbing (the enclosing quotes protect
+        the result).
+        """
+        out: List[str] = []
+        i = 0
+        n = len(operand)
+        inner = False  # inside an embedded "..." region (escape rules invert)
+        while i < n:
+            c = operand[i]
+            if c == '"':
+                inner = not inner
+                i += 1
+            elif c == '\\' and i + 1 < n:
+                nxt = operand[i + 1]
+                if inner or nxt in '\\"$`':
+                    out.append(nxt)
+                    i += 2
+                else:
+                    out.append(c)
+                    i += 1
+            elif c == '$' and i + 1 < n and operand[i + 1] == "'" and decode_ansi:
+                seg, i = self._inline_ansi_c(operand, i)
+                out.append(seg)
+            elif c == '$' and i + 1 < n and operand[i + 1] == '"':
+                seg, i = self._inner_dquote_segment(operand, i)
+                out.append(seg)
+            elif c == '$' and i + 1 < n and (operand[i + 1].isalnum()
+                                             or operand[i + 1] == '_'):
+                expanded, i, inner = self._dq_name_scan(operand, i, inner)
+                out.append(expanded)
+            elif c in '$`':
+                expanded, i = self._expand_one_dollar(
+                    operand, i, quote_ctx=DQ_WORD if decode_ansi else DQ_STRING)
+                out.append(str(expanded))
+            else:
+                out.append(c)
+                i += 1
+        return ''.join(out)
+
+    def _dq_name_scan(self, operand: str, i: int,
+                      inner: bool) -> Tuple[str, int, bool]:
+        """Scan-and-expand the ``$name`` at operand[i] in dquote context.
+
+        The name scan consumes embedded ``"`` marks (each toggling the
+        *inner* escape state) — the bash behavior that makes
+        ``"${x:-a"$y"c}"`` expand the variable ``yc``. Digits fall through
+        to the shared scanner first (``$1`` is single-character). Returns
+        (expanded_text, new_index, new_inner_state).
+        """
+        if operand[i + 1].isdigit():
+            expanded, i = self._expand_one_dollar(operand, i)
+            return str(expanded), i, inner
+        j = i + 1
+        name: List[str] = []
+        while j < len(operand):
+            ch = operand[j]
+            if ch.isalnum() or ch == '_':
+                name.append(ch)
+                j += 1
+            elif ch == '"':
+                inner = not inner
+                j += 1
+            else:
+                break
+        if not name:
+            # "$" directly before an embedded quote and no name: the quotes
+            # were consumed (and toggled); the $ stays literal.
+            return '$', j, inner
+        return self.expand_variable('$' + ''.join(name)), j, inner
 
     def _split_pattern_replacement(self, operand: str):
         """Split a substitution operand into (pattern, replacement).
@@ -154,11 +328,14 @@ class OperandOpsMixin(_Base):
         return ''.join('\\' + c if c in cls._GLOB_SPECIALS else c
                        for c in text)
 
-    def _expand_one_dollar(self, text: str, i: int):
+    def _expand_one_dollar(self, text: str, i: int,
+                           quote_ctx: Optional[str] = None):
         """Expand the single $-construct or `...` at text[i].
 
         Returns (expanded_text, index_past_construct); a '$' that starts
-        nothing expandable stays literal.
+        nothing expandable stays literal. ``quote_ctx`` is the enclosing
+        quote context, inherited by nested ``${...}`` operators (bash:
+        the single quotes in ``"${x:-${z:-'q'}}"`` stay literal).
         """
         from ..lexer.cmdsub_scanner import find_command_substitution_end
         from ..lexer.pure_helpers import (
@@ -189,7 +366,8 @@ class OperandOpsMixin(_Base):
             end, found = find_closing_delimiter(
                 text, i + 2, '{', '}', track_quotes=True, track_escapes=True)
             if found:
-                return self.expand_variable(text[i:end]), end
+                return self.expand_variable(text[i:end],
+                                            quote_ctx=quote_ctx), end
             return '$', i + 1
         j = i + 1
         if j < n and text[j] in '?$!#@*-0123456789':

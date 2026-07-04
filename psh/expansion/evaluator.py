@@ -5,7 +5,7 @@ delegating to the existing VariableExpander and ExpansionManager
 to avoid duplicating expansion logic.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ..ast_nodes import (
     ArithmeticExpansion,
@@ -28,7 +28,8 @@ class ExpansionEvaluator:
         self.state = shell.state
         self.expansion_manager = shell.expansion_manager
 
-    def evaluate(self, expansion: Expansion) -> str:
+    def evaluate(self, expansion: Expansion,
+                 quote_ctx: Optional[str] = None) -> str:
         """Evaluate any expansion type.
 
         Reconstructs the canonical string form and delegates to
@@ -37,6 +38,9 @@ class ExpansionEvaluator:
 
         Args:
             expansion: The expansion AST node to evaluate
+            quote_ctx: quote context enclosing the expansion
+                (expansion.operands: None / DQ_WORD / DQ_STRING) —
+                consulted by parameter-expansion value operands
 
         Returns:
             The expanded string value
@@ -49,7 +53,7 @@ class ExpansionEvaluator:
         elif isinstance(expansion, CommandSubstitution):
             return self._evaluate_command_sub(expansion)
         elif isinstance(expansion, ParameterExpansion):
-            return self._evaluate_parameter(expansion)
+            return self._evaluate_parameter(expansion, quote_ctx)
         elif isinstance(expansion, ArithmeticExpansion):
             return self._evaluate_arithmetic(expansion)
         elif isinstance(expansion, ProcessSubstitution):
@@ -77,7 +81,8 @@ class ExpansionEvaluator:
             cmd_sub = f"$({expansion.command})"
         return self.expansion_manager.command_sub.execute(cmd_sub)
 
-    def _evaluate_parameter(self, expansion: ParameterExpansion) -> str:
+    def _evaluate_parameter(self, expansion: ParameterExpansion,
+                            quote_ctx: Optional[str] = None) -> str:
         """Evaluate parameter expansion by calling VariableExpander directly.
 
         Uses expand_parameter_direct() with the pre-parsed components —
@@ -96,7 +101,7 @@ class ExpansionEvaluator:
                 # Preserve None vs '': ${#v} (length) has word=None,
                 # ${v#} (empty removal pattern) has word=''.
                 expansion.operator, expansion.parameter,
-                expansion.word
+                expansion.word, quote_ctx=quote_ctx
             )
         else:
             # Plain ${var} / ${arr[idx]} — name resolution only (nounset,
