@@ -28,8 +28,14 @@ is an **expected shell error** (never strict-re-raised) when it is one of:
   rollback, missing dir, permission; fork failures, EAGAIN).
 - ``SyntaxError`` — lex/parse failures during eval/source/trap (e.g.
   ``UnclosedQuoteError``).
+- ``RecursionError`` — the interpreter recursion limit is psh's de-facto
+  nesting ceiling (an implicit FUNCNEST), so hitting it is a legitimate
+  runaway-script error, not a psh bug. The function-call boundary converts
+  it to bash's "maximum function nesting level exceeded" abort before it
+  can reach a guard; this entry covers the function-less paths (deep
+  ``eval`` chains, deeply nested compounds at execution time).
 
-Everything else (``RuntimeError``, ``AttributeError``, ``TypeError``,
+Everything else (other ``RuntimeError``s, ``AttributeError``, ``TypeError``,
 ``KeyError``, ``NameError``, ``IndexError``, plain ``ValueError``, ...) is
 an **internal defect**, and strict mode re-raises it so the test harness can
 tell a Python bug apart from an ordinary nonzero command exit.
@@ -50,7 +56,7 @@ if TYPE_CHECKING:
 # Exceptions that are legitimate shell errors, not internal defects. Even in
 # strict-errors mode these are handled normally (printed, exit 1) rather than
 # re-raised. See the module docstring for the rationale.
-_EXPECTED_SHELL_ERRORS = (PshError, OSError, SyntaxError)
+_EXPECTED_SHELL_ERRORS = (PshError, OSError, SyntaxError, RecursionError)
 
 
 def report_internal_defect(state: 'ShellState', exc: BaseException, *,

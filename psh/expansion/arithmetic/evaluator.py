@@ -435,9 +435,15 @@ def evaluate_arithmetic(expr: str, shell, expand: bool = True) -> int:
         return evaluator.evaluate(ast)
 
     except (SyntaxError, ShellArithmeticError) as e:
+        # A genuinely too-deep expression arrives here as ArithParser's
+        # explicit depth-guard SyntaxError ("expression too deeply nested").
+        # A RecursionError, by contrast, means the SURROUNDING shell
+        # exhausted the interpreter stack (runaway function recursion whose
+        # deepest frame merely happened to be in arithmetic) — it must NOT
+        # be relabeled as an arithmetic error; it propagates to the
+        # function-call boundary, which reports "maximum function nesting
+        # level exceeded".
         raise ShellArithmeticError(str(e))
-    except RecursionError:
-        raise ShellArithmeticError("expression too deeply nested")
     except (ValueError, OverflowError, MemoryError) as e:
         raise ShellArithmeticError(str(e))
 

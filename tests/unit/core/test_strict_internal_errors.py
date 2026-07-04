@@ -142,12 +142,15 @@ def test_taxonomy_expected_errors_not_reraised_under_strict():
     shell.state.options['strict-errors'] = True
 
     # Expected shell errors: handled (return 1), never re-raised.
+    # RecursionError is expected (an implicit-FUNCNEST runaway-script error,
+    # not a psh bug) even though its parent RuntimeError is a defect.
     for exc in (
         PshError("generic psh error"),
         ExpansionError("bad expansion"),
         FunctionDefinitionError("'x': readonly function"),
         OSError("Bad file descriptor"),
         SyntaxError("Unclosed quote"),
+        RecursionError("maximum recursion depth exceeded"),
     ):
         stream = io.StringIO()
         rc = report_internal_defect(shell.state, exc, stream=stream)
