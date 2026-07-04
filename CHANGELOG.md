@@ -4,6 +4,13 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.623.0 (2026-07-04) - Fix: read -s canonical termios + read -t deadline (reappraisal #18 Tier-1)
+- FIX. Reappraisal #18 Tier-1 (T1-7, H6 + a MED), pinned to bash 5.2 via pexpect pty + timed-pipe probes.
+- **H6 — interactive `read -s`/`read -sp` hung on Enter and couldn't be interrupted.** `tty.setraw` cleared ICRNL (so Enter's CR never mapped to the `\n` delimiter), ISIG, and ICANON. For silent DELIMITER-terminated reads (no `-n`/`-N`), psh now stays in CANONICAL mode and clears only `ECHO|ECHONL` (bash's model): Enter terminates, line editing and Ctrl-D EOF work, and ISIG is preserved so Ctrl-C's SIGINT is delivered (terminating a `-c` read; the interactive REPL swallows Ctrl-C during a read like plain `read`, unchanged). Count reads (`-n`/`-N`) keep raw char-at-a-time mode. Terminal state is restored on every exit path (normal / Ctrl-C / Ctrl-D / timeout) — verified no leaked no-echo terminal.
+- **MED — `read -t` abandoned its deadline after the first byte** on the non-tty path (measured ~5s vs bash ~0.3s, wrong rc). The remaining time budget is now threaded through the whole read loop, so the deadline holds across the entire read. On expiry the timeout falls through to normal assignment (partial input assigned and IFS-split, a preset variable cleared) with rc 142, matching bash — including the `-t 0` poll special case (returns immediately, non-consuming).
+- Multibyte and `-N` count paths were explicitly out of scope and untouched (the pre-existing `read -N -t` timeout gap is queued for Tier-2).
+- Pinned by a pexpect pty test (`TestPtyReadSilent`, 4 cases, `@serial`, isolated HISTFILE) + subprocess timeout tests (xdist-safe) + 3 golden pins (`--compare-bash`), each mutation-checked. Known accepted scope-cut: a silent read still emits a trailing newline (now `\r\n` via ONLCR, an improvement over the old raw-mode bare `\n` staircase) where bash emits none — queued for Tier-2 polish.
+
 ## 0.622.0 (2026-07-04) - Fix: CLOEXEC fd-inheritance + exec-close stream primitive (reappraisal #18 Tier-1)
 - FIX. Reappraisal #18 Tier-1 io cluster (T1-6, H5 + a MED), pinned to bash 5.2.
 - **H5 — redirect fds were CLOEXEC when `open()` landed on the target fd**, so children couldn't inherit them: `cat /dev/fd/3 3<data` gave EBADF where bash succeeds. `_dup2_preserve_target`'s `opened_fd == target_fd` shortcut skipped the `dup2` that clears `O_CLOEXEC`; it now calls `os.set_inheritable(target_fd, True)`, making the shortcut behaviorally identical. Fixes the fd 3/4 idioms, `exec` reopen-after-close, and child-inherited fds. The `{v}>` (F_DUPFD) named-fd path is immune and untouched.
