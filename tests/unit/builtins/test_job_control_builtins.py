@@ -95,10 +95,11 @@ class TestJobsBuiltin:
         assert 'invalid option' in captured.err
         assert 'usage:' in captured.err
 
-    def test_disown_job(self, shell, capsys):
+    def test_disown_job(self, shell, capsys, spawned_pids):
         """Test disowning a job."""
         # Start a background job
         shell.run_command('sleep 10 &')
+        spawned_pids.append(shell.state.last_bg_pid)
 
         # Try to disown it
         exit_code = shell.run_command('disown %1')
@@ -109,5 +110,6 @@ class TestJobsBuiltin:
         captured = capsys.readouterr()
         assert 'sleep' not in captured.out
 
-        # Clean up (kill by searching process)
-        shell.run_command('pkill -f "sleep 10" 2>/dev/null || true')
+        # Cleanup: the disowned PID (invisible to `_cleanup_shell` once removed
+        # from the job table) is SIGKILLed by exact id in the `spawned_pids`
+        # fixture, replacing the old broad `pkill -f "sleep 10"`.
