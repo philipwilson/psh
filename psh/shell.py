@@ -239,7 +239,14 @@ class Shell:
         shells), history is loaded for interactive shells, and the rc file
         has run (interactive, non-script shells without --norc only).
         """
-        is_interactive = force_interactive or sys.stdin.isatty()
+        # A shell may be started with fd 0 already closed (`exec 0<&-; psh …`);
+        # CPython then sets sys.stdin to None, so guard before .isatty() — a
+        # closed/absent stdin is simply non-interactive (bash: same, exit 0),
+        # never an AttributeError crash. Matches the stdin guard idiom used in
+        # control_flow.py.
+        stdin = sys.stdin
+        is_interactive = force_interactive or (
+            stdin is not None and not stdin.closed and stdin.isatty())
         self.state.options['interactive'] = is_interactive
 
         # Running a script FILE or a -c COMMAND string is non-interactive even
