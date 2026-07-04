@@ -2,7 +2,7 @@
 
 from typing import Iterable, Optional
 
-from .token_types import TokenType
+from .token_types import Token, TokenType
 
 # Mapping between keyword strings and their canonical token types
 KEYWORD_TYPE_MAP = {
@@ -33,7 +33,7 @@ def keyword_from_type(token_type: TokenType) -> Optional[str]:
     return KEYWORD_BY_TYPE.get(token_type)
 
 
-def matches_keyword_type(token, expected_type: TokenType) -> bool:
+def matches_keyword_type(token: Token, expected_type: TokenType) -> bool:
     """Check whether the token represents the given keyword token type."""
     if token.type == expected_type:
         return True
@@ -53,7 +53,7 @@ def matches_keyword_type(token, expected_type: TokenType) -> bool:
     return False
 
 
-def matches_keyword(token, keyword: str) -> bool:
+def matches_keyword(token: Token, keyword: str) -> bool:
     """Check whether the token represents the given keyword string.
 
     `keyword` must be the canonical lowercase spelling; matching against
@@ -65,7 +65,7 @@ def matches_keyword(token, keyword: str) -> bool:
     return matches_keyword_type(token, expected_type)
 
 
-def matches_any_keyword(token, keywords: Iterable[str]) -> bool:
+def matches_any_keyword(token: Token, keywords: Iterable[str]) -> bool:
     """Return True if token matches any of the provided keyword strings."""
     return any(matches_keyword(token, keyword) for keyword in keywords)
 
@@ -75,7 +75,7 @@ class KeywordGuard:
 
     __slots__ = ("token", "_cache")
 
-    def __init__(self, token):
+    def __init__(self, token: Token) -> None:
         self.token = token
         self._cache: dict[str, bool] = {}
 

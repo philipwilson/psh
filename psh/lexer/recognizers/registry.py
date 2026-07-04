@@ -1,7 +1,7 @@
 """Registry for token recognizers."""
 
 import logging
-from typing import List, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 from ..state_context import LexerContext
 from ..token_types import Token
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class RecognizerRegistry:
     """Registry and dispatcher for token recognizers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize empty registry."""
         self._recognizers: List[TokenRecognizer] = []
         self._sorted = False
@@ -89,6 +89,6 @@ class RecognizerRegistry:
         """Get the number of registered recognizers."""
         return len(self._recognizers)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[TokenRecognizer]:
         """Iterate over recognizers in priority order."""
         return iter(self.get_recognizers())

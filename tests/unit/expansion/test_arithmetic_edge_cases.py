@@ -186,7 +186,7 @@ class TestArithmeticEdgeCases:
         """Test moderately nested arithmetic expressions."""
         # Build a nested expression
         expr = "1"
-        for i in range(10):
+        for _ in range(10):
             expr = f"({expr} + 1)"
 
         result = shell.run_command(f'echo $(({expr}))')
@@ -198,7 +198,7 @@ class TestArithmeticEdgeCases:
         """Test deeply nested arithmetic expressions."""
         # Build a deeper nested expression
         expr = "1"
-        for i in range(25):  # Keep reasonable to avoid timeout
+        for _ in range(25):  # Keep reasonable to avoid timeout
             expr = f"({expr} + 1)"
 
         result = shell.run_command(f'echo $(({expr}))')

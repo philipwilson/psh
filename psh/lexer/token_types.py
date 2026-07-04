@@ -105,7 +105,7 @@ class Token:
     var_fd: Optional[str] = None  # Named-fd prefix var (e.g. 'fd' in {fd}>file)
     combined_redirect: bool = False  # True for &> and &>> (stdout+stderr)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize parts if not provided."""
         if self.parts is None:
             self.parts = []

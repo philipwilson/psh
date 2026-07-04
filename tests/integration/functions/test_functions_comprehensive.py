@@ -582,6 +582,6 @@ class TestFunctionPerformance:
         shell.run_command('simple() { echo "simple"; }')
 
         # Call function multiple times
-        for i in range(10):
+        for _ in range(10):
             result = shell.run_command('simple > /dev/null')
             assert result == 0

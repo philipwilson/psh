@@ -284,7 +284,7 @@ class FileRedirector:
         try:
             fd = int(expanded)
         except ValueError:
-            raise OSError(f"{expanded}: ambiguous redirect")
+            raise OSError(f"{expanded}: ambiguous redirect") from None
         resolved = copy.copy(redirect)
         resolved.dup_fd = fd
         return resolved

@@ -157,7 +157,7 @@ class TestExpressionEvaluator:
             try:
                 pattern = re.compile(regex_src, flags)
             except re.error as e:
-                raise ValueError(f"invalid regex: {e}")
+                raise ValueError(f"invalid regex: {e}") from e
             match = pattern.search(left)
             self._set_bash_rematch(match)
             return bool(match)

@@ -8,7 +8,7 @@ The main entry point is the tokenize() function which uses the ModularLexer
 as the single lexer implementation.
 """
 
-from typing import Any, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from .constants import KEYWORDS, SPECIAL_VARIABLES
 from .keyword_normalizer import KeywordNormalizer
@@ -87,7 +87,7 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True,
                            shell_options: Optional[Mapping[str, Any]] = None,
                            source_name: Optional[str] = None,
                            base_line: int = 1,
-                           warn_unterminated: bool = True):
+                           warn_unterminated: bool = True) -> Tuple[List[Token], Dict[str, Dict[str, Any]]]:
     """
     Tokenize a shell command string with heredoc support.
 

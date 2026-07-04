@@ -463,7 +463,7 @@ class ReadBuiltin(Builtin):
                 err = ValueError(
                     f"{value}: invalid file descriptor specification")
                 setattr(err, 'rc', 1)
-                raise err
+                raise err from None
             options['fd'] = fd
             options['fd_from_u'] = True
         elif char == 'p':

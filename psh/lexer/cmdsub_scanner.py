@@ -16,7 +16,7 @@ discoverable.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from .command_position import CMDPOS_KEEPING_WORDS as _CMDPOS_KEEPING_WORDS
 from .pure_helpers import (
@@ -366,7 +366,7 @@ class _CmdSubScanner:
                 return outcome
         return self.n, False
 
-    def _dispatch(self, ch: str):
+    def _dispatch(self, ch: str) -> Callable[[str, Optional[CaseScanState]], Optional[Tuple[int, bool]]]:
         """Pick the handler for the construct starting with *ch*."""
         if ch in ' \t':
             return self._handle_blank
@@ -398,7 +398,7 @@ class _CmdSubScanner:
 
     # -- case-statement state machine ------------------------------------
 
-    def _advance_case_state(self, ch: str, top) -> Optional[bool]:
+    def _advance_case_state(self, ch: str, top: Optional[CaseScanState]) -> Optional[bool]:
         """Apply the raw-character ``case`` state transitions.
 
         Returns ``True`` when it consumed input itself (the optional pattern
@@ -432,12 +432,12 @@ class _CmdSubScanner:
 
     # -- whitespace / newline --------------------------------------------
 
-    def _handle_blank(self, ch: str, top) -> None:
+    def _handle_blank(self, ch: str, top: Optional[CaseScanState]) -> None:
         self.pos += 1
         self.at_word_start = True
         return None
 
-    def _handle_newline(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+    def _handle_newline(self, ch: str, top: Optional[CaseScanState]) -> Optional[Tuple[int, bool]]:
         self.pos += 1
         if self.pending_heredocs:
             self.pos = _consume_heredoc_bodies(
@@ -450,7 +450,7 @@ class _CmdSubScanner:
 
     # -- backslash escapes (and line continuation) -----------------------
 
-    def _handle_backslash(self, ch: str, top) -> None:
+    def _handle_backslash(self, ch: str, top: Optional[CaseScanState]) -> None:
         if self.text.startswith('\\\n', self.pos):
             self.pos += 2  # line continuation: vanishes entirely
             return None
@@ -461,7 +461,7 @@ class _CmdSubScanner:
 
     # -- quotes -----------------------------------------------------------
 
-    def _handle_single_quote(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+    def _handle_single_quote(self, ch: str, top: Optional[CaseScanState]) -> Optional[Tuple[int, bool]]:
         end = self.text.find("'", self.pos + 1)
         if end == -1:
             return self.n, False
@@ -470,7 +470,7 @@ class _CmdSubScanner:
         self.at_word_start = False
         return None
 
-    def _handle_double_quote(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+    def _handle_double_quote(self, ch: str, top: Optional[CaseScanState]) -> Optional[Tuple[int, bool]]:
         end = _skip_double_quotes(
             self.text, self.pos + 1, self.pending_heredocs)
         if end == -1:
@@ -480,7 +480,7 @@ class _CmdSubScanner:
         self.at_word_start = False
         return None
 
-    def _handle_backtick(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+    def _handle_backtick(self, ch: str, top: Optional[CaseScanState]) -> Optional[Tuple[int, bool]]:
         end = _skip_until_unescaped(self.text, self.pos + 1, '`')
         if end == -1:
             return self.n, False
@@ -491,7 +491,7 @@ class _CmdSubScanner:
 
     # -- $-expansions -----------------------------------------------------
 
-    def _handle_dollar(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+    def _handle_dollar(self, ch: str, top: Optional[CaseScanState]) -> Optional[Tuple[int, bool]]:
         text, pos, n = self.text, self.pos, self.n
         nxt = text[pos + 1] if pos + 1 < n else ''
         if nxt == "'":            # ANSI-C $'...'
@@ -522,7 +522,7 @@ class _CmdSubScanner:
 
     # -- comments ---------------------------------------------------------
 
-    def _handle_hash(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+    def _handle_hash(self, ch: str, top: Optional[CaseScanState]) -> Optional[Tuple[int, bool]]:
         if not self.at_word_start:
             self._handle_word(ch, top)  # never matches a close; returns None
             return None
@@ -535,7 +535,7 @@ class _CmdSubScanner:
 
     # -- parentheses ------------------------------------------------------
 
-    def _handle_open_paren(self, ch: str, top) -> None:
+    def _handle_open_paren(self, ch: str, top: Optional[CaseScanState]) -> None:
         if top is not None and top.phase == CasePhase.PATTERN:
             top.pattern_paren_depth += 1  # extglob/group paren in a pattern
             self.pos += 1
@@ -556,7 +556,7 @@ class _CmdSubScanner:
         self.at_word_start = True
         return None
 
-    def _handle_close_paren(self, ch: str, top) -> Optional[Tuple[int, bool]]:
+    def _handle_close_paren(self, ch: str, top: Optional[CaseScanState]) -> Optional[Tuple[int, bool]]:
         if top is not None and top.phase == CasePhase.PATTERN:
             if top.pattern_paren_depth > 0:
                 top.pattern_paren_depth -= 1  # closes an extglob/group paren
@@ -584,7 +584,7 @@ class _CmdSubScanner:
 
     # -- separators / operators ------------------------------------------
 
-    def _handle_semicolon(self, ch: str, top) -> None:
+    def _handle_semicolon(self, ch: str, top: Optional[CaseScanState]) -> None:
         if top is not None and top.phase == CasePhase.BODY:
             if self.text.startswith(';;&', self.pos):
                 top.phase = CasePhase.EXPECT_PATTERN
@@ -601,13 +601,13 @@ class _CmdSubScanner:
         self.at_word_start = True
         return None
 
-    def _handle_pipe_amp(self, ch: str, top) -> None:
+    def _handle_pipe_amp(self, ch: str, top: Optional[CaseScanState]) -> None:
         self.pos += 1
         self.command_position = True
         self.at_word_start = True
         return None
 
-    def _handle_redirection(self, ch: str, top) -> None:
+    def _handle_redirection(self, ch: str, top: Optional[CaseScanState]) -> None:
         text, pos = self.text, self.pos
         if text.startswith('<<', pos) and not text.startswith('<<<', pos):
             strip_tabs = text.startswith('<<-', pos)
@@ -631,7 +631,7 @@ class _CmdSubScanner:
 
     # -- plain word -------------------------------------------------------
 
-    def _handle_word(self, ch: str, top) -> None:
+    def _handle_word(self, ch: str, top: Optional[CaseScanState]) -> None:
         text, n = self.text, self.n
         start = self.pos
         pos = start

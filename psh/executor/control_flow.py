@@ -589,7 +589,7 @@ class ControlFlowExecutor:
                                     reply = sys.stdin.readline()
                                 except (OSError, ValueError):
                                     # Handle case where stdin is not available in test environment
-                                    raise EOFError
+                                    raise EOFError from None
 
                             if not reply:  # EOF
                                 raise EOFError

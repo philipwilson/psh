@@ -300,7 +300,7 @@ class GlobExpander:
                 for text, literal in bases:
                     new_bases[(text + os.sep, literal)] = None
             elif comp == '**':
-                for text, literal in bases:
+                for text, _literal in bases:
                     # Zero components: the base itself continues, now in
                     # joined-path (expanded) form.
                     new_bases[(zero_text(text), False)] = None

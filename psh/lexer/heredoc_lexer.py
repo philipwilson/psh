@@ -8,11 +8,14 @@ re-lexed each physical line with a fresh lexer, which broke any multi-line
 construct sharing a command with a heredoc.
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from .heredoc_collector import HeredocCollector
 from .modular_lexer import ModularLexer
 from .token_types import Token, TokenType
+
+if TYPE_CHECKING:
+    from .position import LexerConfig
 
 # Token types that can be ADJACENT parts of one heredoc delimiter word
 # (`<<E"O"F`, `<<E$X`). Operators (`;`, `|`, redirects) end the word even when
@@ -69,9 +72,9 @@ class HeredocLexer:
     pass will print again.
     """
 
-    def __init__(self, source: str, config=None,
+    def __init__(self, source: str, config: "Optional[LexerConfig]" = None,
                  source_name: str | None = None, base_line: int = 1,
-                 warn_unterminated: bool = True):
+                 warn_unterminated: bool = True) -> None:
         self.source = source
         self.config = config
         self.source_name = source_name
@@ -285,7 +288,7 @@ class HeredocLexer:
                     idx += 1
 
 
-def tokenize_with_heredocs(source: str, config=None,
+def tokenize_with_heredocs(source: str, config: "Optional[LexerConfig]" = None,
                            source_name: str | None = None,
                            base_line: int = 1
                            ) -> Tuple[List[Token], Dict[str, Dict[str, Any]]]:

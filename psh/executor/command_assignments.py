@@ -216,12 +216,12 @@ class CommandAssignments:
                 # write reports the array name (``a[0]=X`` → ``a: readonly
                 # variable``), like bash.
                 print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
-                raise TopLevelAbort(1)
+                raise TopLevelAbort(1) from None
             except NamerefCycleError as e:
                 # bash: writing through a circular nameref warns and aborts
                 # the current top-level command (same scope as above).
                 self.state.scope_manager.warn_nameref_cycle(e.name)
-                raise TopLevelAbort(1)
+                raise TopLevelAbort(1) from None
             except ShellArithmeticError as e:
                 # An integer-attributed variable (declare -i v; v='1/0')
                 # whose value fails to evaluate: bash prints the arithmetic

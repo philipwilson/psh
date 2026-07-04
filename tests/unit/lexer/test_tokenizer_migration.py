@@ -150,7 +150,7 @@ class TestTokenizerMigration:
         ]
 
         assert len(tokens) == len(expected_types)
-        for token, expected_type in zip(tokens, expected_types):
+        for token, expected_type in zip(tokens, expected_types, strict=True):
             assert token.type == expected_type
 
     def test_position_tracking(self):

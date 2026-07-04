@@ -206,7 +206,7 @@ class PrintBuiltin(Builtin):
                     try:
                         opts['fd'] = int(fd_str)
                     except ValueError:
-                        raise PrintOptionError(f"-u: {fd_str}: invalid file descriptor")
+                        raise PrintOptionError(f"-u: {fd_str}: invalid file descriptor") from None
                     consumed_whole = False
                     break
                 elif c == 'f':

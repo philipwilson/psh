@@ -120,7 +120,7 @@ class PipelineExecutor:
         pipeline_ctx = PipelineContext(self.job_manager)
 
         # Create pipes
-        for i in range(len(node.commands) - 1):
+        for _ in range(len(node.commands) - 1):
             pipeline_ctx.add_pipe()
 
         # Check if pipeline runs in background (last command determines)

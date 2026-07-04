@@ -25,7 +25,7 @@ ANSI-C part keeps its quote metadata (mirroring ``"..."``; J6). It is not
 decoded inline into a flat, quote-less literal.
 """
 
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from ..state_context import LexerContext
 from ..token_types import Token, TokenType
@@ -42,8 +42,11 @@ from .word_scanners import (
     scan_glob_bracket,
 )
 
+if TYPE_CHECKING:
+    from ..position import LexerConfig
 
-def extglob_active(config, context: LexerContext) -> bool:
+
+def extglob_active(config: "Optional[LexerConfig]", context: LexerContext) -> bool:
     """Is extglob pattern recognition (``?*+@!(...)``) live at this point?
 
     True when the ``extglob`` shell option is on (``config.enable_extglob``)
@@ -61,9 +64,9 @@ def extglob_active(config, context: LexerContext) -> bool:
 class LiteralRecognizer(ContextualRecognizer):
     """Recognizes literal tokens: words, identifiers, assignments."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.config = None  # Will be set by ModularLexer
+        self.config: "Optional[LexerConfig]" = None  # Will be set by ModularLexer
 
     # Characters that can terminate a word. The whitespace row is the shell
     # token-separator set (space/tab/newline ONLY — see
