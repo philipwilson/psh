@@ -4,6 +4,15 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.607.0 (2026-07-04) - Docs: truth-up FUNCNAME/aliases/coproc + extend doc-staleness guard to Partial rows (reappraisal #17 Tier-2 M1/M4/L5/L6)
+- DOCS + TESTS ONLY. Reappraisal #17 Tier-2 docs/meta cluster. Zero `psh/` source changes; every claim re-probed against live bash before editing.
+- **M1a FUNCNAME row corrected to Full support.** The ch17 compatibility row claimed "[0] only; full call stack not populated" — false: `a->b->c` yields `c b a`, identical to bash under `-c`. Flipped to Full support with the honest caveat that bash's `main`/`source` base frames (the BASH_SOURCE/BASH_LINENO cluster) are absent — in a script *file* bash prints `c b a main` where psh prints `c b a`. Added proving conformance tests (`TestFuncnameNotes`, including a divergence pin for the main-frame caveat) plus the `CLAIM_TESTS` mapping the meta-test contract requires; 17.2 prose and the 17.7 checklist updated to match.
+- **M1b (root cause): the doc-staleness meta-test now guards Partial rows.** `test_claims_have_tests.py` guarded Yes rows (`CLAIM_TESTS`) and No rows (`NO_ROW_PROBES`) but not Partial rows — exactly how FUNCNAME rotted. New `PARTIAL_ROW_PROBES`: every "Yes | Partial" row must map to a probe demonstrating the claimed-missing sub-behavior still diverges from bash (`test_every_partial_row_has_a_probe` + parametrized `test_partial_row_gap_still_diverges`), with a shared `_runs_identically` predicate and a self-test proving the guard isn't vacuous. All four remaining Partial rows verified still-divergent (RETURN trap, `shopt lastpipe`, `read -e`, `TIMEFORMAT`).
+- **M4 expand_aliases documented.** psh deliberately keeps aliases ON non-interactively (bash defaults OFF) — new 17.3 "Alias Expansion in Scripts" section, compatibility-table row, migration notes, and ch04 coverage, pinned by a documented-difference catalog entry (`ALIAS_EXPANSION_NONINTERACTIVE`) and identical-behavior pins for the `shopt -u/-s expand_aliases` toggle.
+- **L5 coproc roadmap** added to `docs/missing_features.md` (bash semantics probed live: `NAME[0]/NAME[1]/NAME_PID`, subshell fd invisibility, still-exists warning, NAME-vs-simple-command rule; implementation plan against ProcessLauncher/JobManager; edge cases; test plan).
+- **L6 stale xfail reasons** in `tests/integration/interactive/test_history.py` rewritten to the honest non-interactive-stdin form (history expansion and `history -c` are implemented; no test logic or statuses changed).
+- shopt row note refreshed to the actual supported set (adds `checkhash`, `expand_aliases`, `failglob`, `nocasematch`).
+
 ## 0.606.0 (2026-07-04) - Fix: parameter-expansion value-word quoting + backtick escapes in double quotes (reappraisal #17 H5+H6)
 - FIX. Reappraisal #17 Tier-1 H5+H6.
 - **(H5) Value-word quote/escape removal in `${x:-w}` families.** The value
