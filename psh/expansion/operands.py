@@ -379,19 +379,35 @@ class OperandOpsMixin(_Base):
         return '$', i + 1
 
     def _tilde_prefix(self, operand: str):
-        """Expand a leading unquoted ~ or ~user prefix of an operand.
+        """Expand a leading unquoted tilde word of an operand.
 
-        Returns (expanded_prefix, chars_consumed); (``''``, 0) when the
-        prefix isn't a plain tilde word.
+        bash finds the tilde WORD — the raw text up to the first unquoted
+        ``/``, or the whole operand — and tilde-expands it: the prefix
+        proper is delimited at the first ``/`` or ``:``
+        (TildeExpander.expand), and on success the REST of the tilde word
+        is consumed verbatim with it, protected from further expansion
+        (probed bash 5.2: ``${u:-~:$X}`` yields ``$HOME:$X`` with the
+        ``$X`` literal and unsplit; ``${v#~root:x*}`` makes the ``x*``
+        literal). A quote character inside the tilde word (``~'q'``,
+        ``~\\:y``) or a failed expansion (unknown user, ``~$X``) yields
+        ``('', 0)``: no tilde expansion, the walker processes the operand
+        normally.
+
+        Returns (expanded_text, chars_consumed).
         """
-        end = operand.find('/')
-        prefix = operand if end == -1 else operand[:end]
-        if any(ch in prefix for ch in '\'"\\$`&'):
+        end = len(operand)
+        for i in range(1, len(operand)):
+            ch = operand[i]
+            if ch == '/':
+                end = i
+                break
+            if ch in '\'"\\':
+                return '', 0
+        tilde_word = operand[:end]
+        expanded = self.shell.expansion_manager.tilde_expander.expand(tilde_word)
+        if expanded == tilde_word:
             return '', 0
-        expanded = self.shell.expansion_manager.tilde_expander.expand(prefix)
-        if expanded == prefix:
-            return '', 0
-        return expanded, len(prefix)
+        return expanded, end
 
     def _expand_pattern_operand(self, operand: str) -> str:
         """Expand a pattern operand (``${x#OP}``, ``${x/OP/...}``, case mods).
