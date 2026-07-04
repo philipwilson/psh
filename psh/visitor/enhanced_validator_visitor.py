@@ -427,7 +427,7 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         parsed operator, and reports each reference exactly once.
         """
         words = node.words if node.words else []
-        for i, (arg, word) in enumerate(zip(node.args, words)):
+        for i, (arg, word) in enumerate(zip(node.args, words, strict=False)):
             # Skip the command itself
             if i == 0:
                 continue
@@ -513,7 +513,7 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
     def _check_quoting_issues(self, node: SimpleCommand):
         """Check for potential quoting issues."""
         words = node.words if node.words else []
-        for i, (arg, word) in enumerate(zip(node.args, words)):
+        for i, (arg, word) in enumerate(zip(node.args, words, strict=False)):
             # Skip command name
             if i == 0:
                 continue
@@ -729,7 +729,7 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         file_ops = FILE_TEST_OPERATORS | {'-L', '-h'}
         string_ops = STRING_COMPARISON_OPERATORS | {'==', '<', '>'}
 
-        for i, (arg, word) in enumerate(zip(args, words)):
+        for i, (arg, _word) in enumerate(zip(args, words, strict=False)):
             # Check if this is a file test operator
             if arg in file_ops and i + 1 < len(args):
                 next_arg = args[i + 1]

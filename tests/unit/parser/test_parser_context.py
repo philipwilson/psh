@@ -124,7 +124,7 @@ class TestParserContext:
         assert ctx.can_continue_parsing()
 
         # Add errors up to limit
-        for i in range(4):  # Changed to 4 to stay under limit
+        for _ in range(4):  # Changed to 4 to stay under limit
             ctx.errors.append(Mock(spec=ParseError))
 
         # Should still be able to continue under limit

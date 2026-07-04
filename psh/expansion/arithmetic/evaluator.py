@@ -443,9 +443,9 @@ def evaluate_arithmetic(expr: str, shell, expand: bool = True) -> int:
         # be relabeled as an arithmetic error; it propagates to the
         # function-call boundary, which reports "maximum function nesting
         # level exceeded".
-        raise ShellArithmeticError(str(e))
+        raise ShellArithmeticError(str(e)) from e
     except (ValueError, OverflowError, MemoryError) as e:
-        raise ShellArithmeticError(str(e))
+        raise ShellArithmeticError(str(e)) from e
 
 
 def execute_arithmetic_expansion(expr: str, shell) -> int:
@@ -480,8 +480,8 @@ def execute_arithmetic_expansion(expr: str, shell) -> int:
     except ShellArithmeticError as e:
         print(f"psh: arithmetic error: {e}", file=sys.stderr)
         # Raise exception to stop command execution (like bash)
-        raise ExpansionError(f"arithmetic error: {e}")
+        raise ExpansionError(f"arithmetic error: {e}") from e
     except (ValueError, TypeError) as e:
         print(f"psh: unexpected arithmetic error: {e}", file=sys.stderr)
         # Raise exception to stop command execution (like bash)
-        raise ExpansionError(f"unexpected arithmetic error: {e}")
+        raise ExpansionError(f"unexpected arithmetic error: {e}") from e

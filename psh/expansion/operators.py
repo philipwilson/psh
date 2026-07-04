@@ -83,7 +83,7 @@ class OperatorOpsMixin(_Base):
             msg = f"{what}: {operand}: invalid offset or length"
             print(f"psh: {msg}", file=sys.stderr)
             self.state.last_exit_code = 1
-            raise ExpansionError(msg, exit_code=1)
+            raise ExpansionError(msg, exit_code=1) from None
         return offset, length
 
     def _slice_negative_length_error(self, length: int):
@@ -107,7 +107,7 @@ class OperatorOpsMixin(_Base):
             start = offset if offset >= 0 else top + offset
             if start < 0 or start >= top:
                 return []
-            selected = [el for el, i in zip(elements, indices) if i >= start]
+            selected = [el for el, i in zip(elements, indices, strict=False) if i >= start]
         else:
             n = len(elements)
             start = offset if offset >= 0 else n + offset
@@ -138,7 +138,7 @@ class OperatorOpsMixin(_Base):
         except ValueError as e:
             print(f"psh: {e}", file=sys.stderr)
             self.state.last_exit_code = 1
-            raise ExpansionError(str(e), exit_code=1)
+            raise ExpansionError(str(e), exit_code=1) from e
 
     def _slice_sequence(self, elements: list, operand: str,
                         what: str = 'seq', indices=None) -> list:
@@ -349,7 +349,7 @@ class OperatorOpsMixin(_Base):
                 # non-zero exit status.
                 print(f"psh: {e}", file=sys.stderr)
                 self.state.last_exit_code = 1
-                raise ExpansionError(str(e), exit_code=1)
+                raise ExpansionError(str(e), exit_code=1) from e
         elif operator == '!*':
             # ${!prefix*}: names joined with the first character of IFS
             names = self.param_expansion.match_variable_names(var_name)

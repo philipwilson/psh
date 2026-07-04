@@ -48,10 +48,13 @@ quote tracking, same ``skip_expansion_region`` opacity for ``$(...)`` /
 """
 
 from enum import Enum
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from ..pure_helpers import QuoteState
 from ..unicode_support import is_identifier_char, is_identifier_start
+
+if TYPE_CHECKING:
+    from ..state_context import LexerContext
 
 __all__ = [
     'WordShape', 'WordShapeTracker', 'UnmatchedBracketTracker',
@@ -256,7 +259,7 @@ class UnmatchedBracketTracker:
     __slots__ = ('_bracket_count', '_has_opening_bracket',
                  '_in_single', '_in_double')
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._bracket_count = 0
         self._has_opening_bracket = False
         self._in_single = False
@@ -613,7 +616,7 @@ def build_assignment_prefix_map(text: str,
 
 
 def cached_assignment_prefix_map(text: str, posix_mode: bool,
-                                 context) -> bytearray:
+                                 context: "LexerContext") -> bytearray:
     """The assignment-prefix map for *text*, cached on the LexerContext.
 
     Both consumers — ModularLexer's quote/expansion dispatch and the
@@ -624,6 +627,6 @@ def cached_assignment_prefix_map(text: str, posix_mode: bool,
     """
     cache = context.assignment_map_cache
     if cache is None or cache[0] is not text:
-        context.assignment_map_cache = (
-            text, build_assignment_prefix_map(text, posix_mode))
-    return context.assignment_map_cache[1]
+        cache = (text, build_assignment_prefix_map(text, posix_mode))
+        context.assignment_map_cache = cache
+    return cache[1]

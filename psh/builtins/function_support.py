@@ -850,7 +850,7 @@ class ReadonlyBuiltin(Builtin):
             functions = shell.function_manager.list_functions()
             readonly_funcs = [(name, func) for name, func in functions if func.readonly]
 
-            for name, func in readonly_funcs:
+            for name, _func in readonly_funcs:
                 self.write_line(f"readonly -f {name}", shell)
             return 0
 
@@ -922,7 +922,7 @@ class ReturnBuiltin(Builtin):
                 # bash: the error still returns from the function/sourced
                 # file, with the usage-error status 2.
                 self.error(f"{args[1]}: numeric argument required", shell)
-                raise FunctionReturn(2)
+                raise FunctionReturn(2) from None
         else:
             # With no arguments, return the current value of $?
             exit_code = shell.state.last_exit_code

@@ -442,7 +442,7 @@ class TestBuiltin(Builtin):
         try:
             value = int(arg)
         except ValueError:
-            raise ValueError(arg)
+            raise ValueError(arg) from None
         if not (cls._INT64_MIN <= value <= cls._INT64_MAX):
             raise ValueError(arg)
         return value

@@ -35,7 +35,7 @@ from psh.ast_nodes import (
     WhileLoop,
 )
 from psh.lexer import tokenize
-from psh.parser import parse
+from psh.parser import ParseError, parse
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -136,7 +136,7 @@ def test_control_backgrounded(src):
 
 
 def test_double_ampersand_after_background_is_error():
-    with pytest.raises(Exception):
+    with pytest.raises(ParseError):
         _parse("while false; do :; done & && echo x")
 
 

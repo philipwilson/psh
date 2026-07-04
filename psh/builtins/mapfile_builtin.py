@@ -142,7 +142,7 @@ class MapfileBuiltin(Builtin):
         try:
             return int(value)
         except ValueError:
-            raise ValueError(f"{flag}: {value}: invalid number")
+            raise ValueError(f"{flag}: {value}: invalid number") from None
 
     def _read_all(self, fd: int) -> str:
         """Read all input from the descriptor (or sys.stdin under test capture)."""

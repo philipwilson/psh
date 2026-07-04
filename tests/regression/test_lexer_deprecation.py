@@ -286,7 +286,7 @@ class TestDeprecationCleanup:
         """Test that feature flags are no longer accessible."""
         try:
             from psh.lexer.feature_flags import feature_flags  # noqa: F401
-            assert False, "feature_flags should not be importable"
+            raise AssertionError("feature_flags should not be importable")
         except ImportError:
             # Expected - feature flags should be removed
             pass
@@ -303,7 +303,7 @@ class TestDeprecationCleanup:
         # Should not import enhanced-specific classes
         try:
             from psh.lexer import EnhancedModularLexer  # noqa: F401
-            assert False, "EnhancedModularLexer should not be importable"
+            raise AssertionError("EnhancedModularLexer should not be importable")
         except ImportError:
             # Expected - enhanced classes should be removed
             pass

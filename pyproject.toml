@@ -70,6 +70,22 @@ select = [
     "F841",   # unused variables
     "I",      # import sorting
     "W",      # pycodestyle warnings (whitespace, trailing, etc.)
+    "B",      # flake8-bugbear (bug-prone patterns: unchained excepts, dead
+              # loop vars, implicit zip truncation, assert-False under -O, ...)
+]
+ignore = [
+    # B010 (setattr-with-constant) fires only where psh deliberately attaches a
+    # DYNAMIC attribute the target type does not declare (Token.heredoc_key /
+    # Token.array_init signal out-of-band lexer state; ValueError.rc carries a
+    # bash exit code). Direct `obj.attr = v` there fails mypy `attr-defined`, so
+    # B010's premise ("not any safer than normal property access") does not hold.
+    "B010",
+    # B024 (ABC without abstract method) fires only on intentional marker/
+    # shared-init bases (ASTNode is the AST type-hierarchy root; Interactive-
+    # Component/ScriptComponent supply a shared __init__ with no polymorphic
+    # entry point). Adding @abstractmethod would change instantiability and is
+    # semantically wrong — these are grouping bases, not abstract interfaces.
+    "B024",
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -117,6 +133,10 @@ check_untyped_defs = true
 [[tool.mypy.overrides]]
 module = "psh.lexer.*"
 check_untyped_defs = true
+# R18-T3: the lexer package is fully annotated — every def must carry a
+# signature (not just have its body checked). Deepen ONE package at a time;
+# the rest of psh keeps the global `allow_untyped_defs = true` default.
+disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
 module = "psh.visitor.*"

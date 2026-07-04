@@ -389,7 +389,7 @@ def handle_ansi_c_escape(
         hex_str = ""
         new_pos = pos + 2
         # Read up to 2 hex digits
-        for i in range(2):
+        for _ in range(2):
             if new_pos < len(input_text) and input_text[new_pos] in '0123456789ABCDEFabcdef':
                 hex_str += input_text[new_pos]
                 new_pos += 1
@@ -409,7 +409,7 @@ def handle_ansi_c_escape(
     if next_char in '01234567':
         octal_str = ""
         new_pos = pos + 1  # start at the first octal digit (next_char)
-        for i in range(3):
+        for _ in range(3):
             if new_pos < len(input_text) and input_text[new_pos] in '01234567':
                 octal_str += input_text[new_pos]
                 new_pos += 1
@@ -422,7 +422,7 @@ def handle_ansi_c_escape(
         hex_str = ""
         new_pos = pos + 2
         # Read exactly 4 hex digits
-        for i in range(4):
+        for _ in range(4):
             if new_pos < len(input_text) and input_text[new_pos] in '0123456789ABCDEFabcdef':
                 hex_str += input_text[new_pos]
                 new_pos += 1
@@ -443,7 +443,7 @@ def handle_ansi_c_escape(
         hex_str = ""
         new_pos = pos + 2
         # Read exactly 8 hex digits
-        for i in range(8):
+        for _ in range(8):
             if new_pos < len(input_text) and input_text[new_pos] in '0123456789ABCDEFabcdef':
                 hex_str += input_text[new_pos]
                 new_pos += 1

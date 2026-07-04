@@ -213,7 +213,7 @@ class TestArithmeticIntegrationAdvanced:
         """
         # Create an extremely deep expression (may cause timeout)
         expr = "1"
-        for i in range(50):  # This might be too deep
+        for _ in range(50):  # This might be too deep
             expr = f"({expr} + 1)"
 
         result = shell.run_command(f'echo $(({expr}))')

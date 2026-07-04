@@ -400,7 +400,7 @@ class TestArithmeticIntegration:
         """Test performance with deeply nested arithmetic expressions."""
         # Create a reasonably deep expression
         expr = "1"
-        for i in range(10):  # Not too deep to avoid timeout
+        for _ in range(10):  # Not too deep to avoid timeout
             expr = f"({expr} + 1)"
 
         result = shell.run_command(f'echo $(({expr}))')

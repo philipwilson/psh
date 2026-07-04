@@ -1,6 +1,6 @@
 """Operator token recognizer."""
 
-from typing import Optional, Set, Tuple
+from typing import TYPE_CHECKING, Optional, Set, Tuple
 
 from ..state_context import LexerContext
 from ..token_types import Token, TokenType
@@ -8,13 +8,16 @@ from ..unicode_support import is_identifier_char, is_identifier_start
 from .base import ContextualRecognizer
 from .literal import extglob_active
 
+if TYPE_CHECKING:
+    from ..position import LexerConfig
+
 
 class OperatorRecognizer(ContextualRecognizer):
     """Recognizes shell operators with context awareness."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.config = None  # Will be set by ModularLexer
+        self.config: "Optional[LexerConfig]" = None  # Will be set by ModularLexer
 
     # Operators organized by length (longest first for greedy matching)
     OPERATORS = {

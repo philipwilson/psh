@@ -155,7 +155,7 @@ class KillBuiltin(Builtin):
                     raise ValueError(f"invalid signal number: {signal_num}")
                 return signal_num
             except ValueError:
-                raise ValueError(f"invalid signal number: {signal_str}")
+                raise ValueError(f"invalid signal number: {signal_str}") from None
 
         # Parse as signal name (with or without SIG prefix, case-insensitive)
         num = signal_name_to_number(signal_str)

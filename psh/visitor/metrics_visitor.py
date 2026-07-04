@@ -212,7 +212,7 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         # Special handling for declare/typeset
         if cmd_name in ['declare', 'typeset'] and len(node.args) >= 3:
             # declare -a varname or declare varname=value
-            for i, arg in enumerate(node.args[1:], 1):
+            for _, arg in enumerate(node.args[1:], 1):
                 if arg.startswith('-'):
                     continue
                 # Extract variable name
@@ -349,7 +349,7 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         # Analyze items for features. A bare literal item (no expansions) that
         # looks like a name is recorded as a potential variable; otherwise the
         # item's Word parts are inspected structurally.
-        for item, word in zip(node.items, node.item_words):
+        for item, word in zip(node.items, node.item_words, strict=False):
             if self._is_valid_varname(item):
                 self.metrics.variable_names.add(item)
             else:

@@ -161,7 +161,7 @@ class HeredocCollector:
             return info
         return None
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all heredoc state."""
         self.pending.clear()
         self.collected.clear()
