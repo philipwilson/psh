@@ -9,11 +9,14 @@ re-lexing the result. Working on tokens means:
   literal — nothing is re-lexed;
 - quote context is already resolved by the lexer;
 - assignment words can be left unexpanded using command-prefix position
-  (bash: ``a={x,y}`` stays literal, but ``echo a={x,y}`` expands).
+  (bash: ``a={x,y}`` stays literal, but ``echo a={x,y}`` expands);
+- ``[[ ... ]]`` regions can be left unexpanded entirely (bash performs no
+  brace expansion inside the conditional expression, so regex intervals like
+  ``[[ 192 =~ ^[0-9]{1,3}$ ]]`` and patterns like ``a{b,c}`` stay literal).
 
 It delegates the actual per-string expansion to ``BraceExpander``; this module
 only handles the token-stream concerns (run gathering, quote/opaque-token
-encoding, command-prefix tracking).
+encoding, command-prefix and ``[[ ]]``-region tracking).
 
 This module is in mypy's checked scope; keep it clean.
 """
@@ -81,18 +84,41 @@ class TokenBraceExpander:
     def expand(self, tokens):
         if not tokens:
             return tokens
+        from ..lexer.token_types import TokenType
 
         word_like = self._word_like()
         reset_types = self._reset_types()
 
         out = []
         zone_active = True  # in a command-prefix (assignment-allowed) position
+        in_test_expr = False  # between [[ and ]] — no brace expansion there
         n = len(tokens)
         i = 0
 
         while i < n:
             tok = tokens[i]
-            if tok.type in word_like:
+            if tok.type == TokenType.DOUBLE_LBRACKET:
+                # Bash performs NO brace expansion inside [[ ... ]]: regex
+                # intervals ([[ x =~ [0-9]{1,3} ]]) and patterns (a{b,c})
+                # stay literal. The lexer only emits DOUBLE_LBRACKET in
+                # command position, so the token type marks the region
+                # reliably. [[ ]] does not nest (an inner `[[` is a WORD),
+                # so a flag suffices; an unbalanced `[[` — a parse error
+                # downstream — merely leaves the rest unexpanded.
+                in_test_expr = True
+                out.append(tok)
+                i += 1
+            elif tok.type == TokenType.DOUBLE_RBRACKET:
+                # ]] terminates the conditional like `)`/`}` end their
+                # compounds, so it also reopens the command prefix.
+                in_test_expr = False
+                zone_active = True
+                out.append(tok)
+                i += 1
+            elif in_test_expr:
+                out.append(tok)
+                i += 1
+            elif tok.type in word_like:
                 # Gather a maximal run of adjacent word-forming tokens — these
                 # together form one logical (possibly composite) word.
                 j = i

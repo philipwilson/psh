@@ -604,3 +604,161 @@ class TestStrayBraceNeighbors:
         # ${HOME}/{a,b}: ${...} is skipped; only the trailing group expands.
         shell.run_command('HOME=/h; echo ${HOME}/{a,b}')
         assert capsys.readouterr().out.strip() == "/h/a /h/b"
+
+
+class TestNoBraceExpansionInsideDoubleBrackets:
+    """Bash performs NO brace expansion inside [[ ... ]] (reappraisal #17 H4).
+
+    Regex intervals ([[ x =~ [0-9]{1,3} ]]) and brace-shaped patterns
+    (a{b,c}) must stay literal; expanding them used to split the word into
+    two tokens and hard-break the ]] parse ("Expected DOUBLE_RBRACKET").
+    Outside the [[ ]] region — including elsewhere on the same line —
+    expansion must still happen.
+    """
+
+    def test_regex_interval_idiom(self, shell, capsys):
+        # The headline idiom: an ERE interval count.
+        rc = shell.run_command('[[ 192 =~ ^[0-9]{1,3}$ ]] && echo ok')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "ok"
+
+    def test_regex_interval_non_match(self, shell, capsys):
+        rc = shell.run_command('[[ 1924 =~ ^[0-9]{1,3}$ ]] || echo no')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "no"
+
+    def test_regex_exact_count(self, shell, capsys):
+        rc = shell.run_command('[[ aab =~ ^a{2}b$ ]] && echo two')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "two"
+
+    def test_equals_pattern_braces_literal(self, shell, capsys):
+        # Pattern a{b,c} is LITERAL inside [[ ]]; it does not match "ab".
+        rc = shell.run_command('[[ ab == a{b,c} ]]; echo rc=$?')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "rc=1"
+
+    def test_equals_literal_brace_match(self, shell, capsys):
+        rc = shell.run_command('[[ "a{b,c}" == a{b,c} ]] && echo litmatch')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "litmatch"
+
+    def test_range_braces_literal_in_pattern(self, shell, capsys):
+        rc = shell.run_command('[[ a2 == a{1..3} ]]; echo rc=$?')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "rc=1"
+
+    def test_lhs_braces_literal(self, shell, capsys):
+        rc = shell.run_command('[[ a{1,2} == "a{1,2}" ]] && echo lhs')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "lhs"
+
+    def test_expansion_still_works_outside_on_same_line(self, shell, capsys):
+        rc = shell.run_command('echo a{1,2}; [[ x == x ]] && echo b{3,4}')
+        assert rc == 0
+        assert capsys.readouterr().out == "a1 a2\nb3 b4\n"
+
+    def test_expansion_after_double_bracket_no_space(self, shell, capsys):
+        rc = shell.run_command('[[ x == x ]]&&echo t{1,2}')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "t1 t2"
+
+    def test_multiple_regions_one_line(self, shell, capsys):
+        rc = shell.run_command(
+            '[[ a =~ a{1,2} ]]; echo rc=$?; [[ b == b ]] && echo two; '
+            'echo c{5,6}')
+        assert rc == 0
+        assert capsys.readouterr().out == "rc=0\ntwo\nc5 c6\n"
+
+    def test_inside_if_condition(self, shell, capsys):
+        rc = shell.run_command('if [[ 5 =~ ^[0-9]{1,3}$ ]]; then echo yes; fi')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "yes"
+
+    def test_inside_while_condition(self, shell, capsys):
+        rc = shell.run_command(
+            'i=0; while [[ $i =~ ^[0-9]{1}$ ]]; do i=$((i+10)); done; '
+            'echo i=$i')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "i=10"
+
+    def test_inside_case_body(self, shell, capsys):
+        rc = shell.run_command(
+            'case x in x) [[ 5 =~ ^[0-9]{1,3}$ ]] && echo incase;; esac')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "incase"
+
+    def test_inside_function_body(self, shell, capsys):
+        rc = shell.run_command('f() { [[ 42 =~ ^[0-9]{2}$ ]] && echo fn; }; f')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "fn"
+
+    def test_negated_regex(self, shell, capsys):
+        rc = shell.run_command('[[ ! 192 =~ ^[a-z]{1,3}$ ]] && echo neg')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "neg"
+
+    def test_double_rbracket_word_outside_region(self, shell, capsys):
+        # ]] in non-command position is an ordinary word; braces around it
+        # still expand (the expander must not think a region closed/opened).
+        rc = shell.run_command('echo x{1,2} ]] y{3,4}')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "x1 x2 ]] y3 y4"
+
+    def test_assignment_control_unchanged(self, shell, capsys):
+        # Command-prefix assignment suppression must still work after the
+        # region logic (zone reopens after ]]).
+        rc = shell.run_command('[[ x == x ]] && v={1,2}; echo "$v"')
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "{1,2}"
+
+    def test_token_stream_keeps_interval_word_intact(self):
+        # Token-level pin: {1,3} must NOT split ^[0-9]{1,3}$ into two words.
+        from psh.lexer import tokenize
+        from psh.lexer.token_types import TokenType
+        tokens = tokenize('[[ 192 =~ ^[0-9]{1,3}$ ]]')
+        types_values = [(t.type, t.value) for t in tokens
+                        if t.type != TokenType.EOF]
+        assert types_values == [
+            (TokenType.DOUBLE_LBRACKET, '[['),
+            (TokenType.WORD, '192'),
+            (TokenType.REGEX_MATCH, '=~'),
+            (TokenType.WORD, '^[0-9]{1,3}$'),
+            (TokenType.DOUBLE_RBRACKET, ']]'),
+        ]
+
+    def test_token_stream_expands_after_region(self):
+        # ...but the same brace group DOES expand once the region has closed.
+        from psh.lexer import tokenize
+        from psh.lexer.token_types import TokenType
+        tokens = tokenize('[[ x == a{1,2} ]]; echo a{1,2}')
+        words = [t.value for t in tokens if t.type == TokenType.WORD]
+        assert words == ['x', 'a{1,2}', 'echo', 'a1', 'a2']
+
+    def test_unbalanced_double_lbracket_no_crash(self, shell, capsys):
+        # Error input: parse error downstream, but no internal crash and
+        # no bogus expansion-driven message.
+        rc = shell.run_command('[[ a == a{1,2}')
+        assert rc != 0
+
+    def test_combinator_parser_regex_interval(self):
+        # The fix is at the shared token level; prove the combinator parser
+        # benefits too (subprocess: --parser is a startup flag).
+        import subprocess
+        import sys
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '--parser', 'combinator', '-c',
+             '[[ 192 =~ ^[0-9]{1,3}$ ]] && echo ok'],
+            capture_output=True, text=True)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "ok"
+
+    def test_combinator_parser_pattern_braces_literal(self):
+        import subprocess
+        import sys
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '--parser', 'combinator', '-c',
+             '[[ ab == a{b,c} ]]; echo rc=$?'],
+            capture_output=True, text=True)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "rc=1"
