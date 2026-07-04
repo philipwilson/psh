@@ -10,7 +10,7 @@ from ...ast_nodes import ASTNode, CommandList, Statement, StatementList, TopLeve
 from ...lexer.keyword_normalizer import KeywordNormalizer
 from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
-from ..recursive_descent.helpers import ParseError
+from ..recursive_descent.helpers import ParseError, describe_token
 from .commands import create_command_parsers
 from .control_structures import create_control_structure_parsers
 from .diagnostics import error_context_for_token
@@ -177,12 +177,15 @@ class ParserCombinatorShellParser:
         result = self.top_level.parse(tokens, start_pos)
 
         if not result.success:
-            # Try to provide a helpful error message
+            # Try to provide a helpful error message. Token identity renders
+            # through the shared describe_token so no raw enum name
+            # ("EXCLAMATION") leaks into a user-facing diagnostic.
             error_msg = result.error or "Failed to parse input"
             error_token = None
             if result.position < len(tokens):
                 error_token = tokens[result.position]
-                error_msg = f"{error_msg} at position {result.position}: {error_token.type.name} '{error_token.value}'"
+                error_msg = (f"{error_msg} at position {result.position}: "
+                             f"{describe_token(error_token)}")
             if error_token is None:
                 error_token = tokens[-1] if tokens else Token(type=TokenType.WORD, value='', position=0)
             raise ParseError(error_context_for_token(error_token, error_msg))
@@ -201,7 +204,7 @@ class ParserCombinatorShellParser:
             remaining_token = tokens[pos]
             raise ParseError(error_context_for_token(
                 remaining_token,
-                f"Unexpected token after valid input: {remaining_token.type.name} '{remaining_token.value}'",
+                f"Unexpected token after valid input: {describe_token(remaining_token)}",
             ))
 
         self._apply_heredocs(ast)

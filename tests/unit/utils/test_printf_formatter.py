@@ -245,6 +245,21 @@ class TestExistingBehaviorPinned:
         assert r.output == 'a'
         assert r.exit_code == 0
 
+    def test_percent_b_escapes_before_backslash_c_are_processed(self):
+        # bash: printf '%b' 'x\ny\cz' -> 'x<NL>y' (reappraisal #17 M3a)
+        r = fmt('%b', 'x\\ny\\cz')
+        assert r.output == 'x\ny'
+        assert r.exit_code == 0
+
+    def test_percent_b_bare_octal_posix_form(self):
+        # bash %b octal does NOT need the leading 0 (reappraisal #17 M3b):
+        # \1 -> 0x01, \41 -> '!', \777 -> 0xFF (mod 256), \0 -> NUL
+        assert fmt('%b', '\\1').output == '\x01'
+        assert fmt('%b', '\\41').output == '!'
+        assert fmt('%b', '\\777').output == '\xff'
+        assert fmt('%b', '\\0').output == '\x00'
+        assert fmt('%b', '\\0101').output == 'A'
+
     def test_char_is_first_char_not_codepoint(self):
         assert fmt('%c\n', '65').output == '6\n'
         assert fmt('%c', 'hello').output == 'h'
@@ -270,6 +285,38 @@ class TestExistingBehaviorPinned:
         # bash prints 'a\zb' literally; \c is NOT special in the format
         assert fmt('a\\zb').output == 'a\\zb'
         assert fmt('a\\cb').output == 'a\\cb'
+
+    def test_question_mark_escape_drops_backslash(self):
+        # bash: printf '\?' -> '?' (like \' and \" in the format dialect)
+        assert fmt('\\?').output == '?'
+
+    def test_unicode_short_forms(self):
+        # bash accepts 1-4 hex digits for \u and 1-8 for \U in the format
+        assert fmt('\\u41').output == 'A'
+        assert fmt('\\u123').output == 'ģ'
+        assert fmt('\\U41').output == 'A'
+        assert fmt('\\u00411').output == 'A1'
+
+    def test_format_octal_leading_zero_not_special(self):
+        # Format dialect: 1-3 octal digits TOTAL — '\0101' is \010 + '1'
+        # (unlike echo -e / %b where \0ddd allows 3 digits after the 0)
+        assert fmt('\\0101').output == '\x081'
+        assert fmt('\\101').output == 'A'
+        assert fmt('\\777').output == '\xff'
+
+    def test_backslash_percent_feeds_conversion_parsing(self):
+        # bash: printf '\%' emits '\' then fails on the bare '%'
+        r = fmt('\\%')
+        assert r.output == '\\'
+        assert r.exit_code == 1
+        assert r.errors == ["`%': missing format character"]
+
+    def test_unrepresentable_unicode_emits_nothing(self):
+        # bash writes raw bytes for surrogates; a Python str cannot, so
+        # the engine emits nothing instead of crashing at write time
+        r = fmt('a\\ud800b')
+        assert r.output == 'ab'
+        assert r.exit_code == 0
 
     def test_double_percent(self):
         assert fmt('%%\n').output == '%\n'

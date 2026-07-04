@@ -18,7 +18,7 @@ from ....ast_nodes import (
 )
 from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import Token, TokenType
-from ..helpers import ErrorContext, ParseError, TokenGroups
+from ..helpers import ParseError, TokenGroups, unexpected_token_message
 from ..support.word_builder import WordBuilder
 from .base import ParserSubcomponent
 from .redirections import _FD_DUP_RE
@@ -30,6 +30,17 @@ _UNCLOSED_EXPANSION_MSGS = {
     'arithmetic_unclosed': ("unclosed arithmetic expansion", '$((', 3),
     'backtick_unclosed': ("unclosed backtick substitution", '`', 1),
 }
+
+# Maximum compound-command nesting depth (brace groups, subshells,
+# if/while/for/case/select, ((...)), [[...]] inside one another). The
+# recursive-descent parser burns ~9 Python frames per nesting level, so
+# runaway nesting would otherwise die as a Python RecursionError; this
+# explicit guard (the statement-parser analogue of ArithParser.MAX_DEPTH)
+# turns it into a clean ParseError instead, well before the interpreter
+# limit raised by psh.shell.RECURSION_LIMIT (40,000 — parsing, executing
+# and formatting a 1000-deep script all fit with headroom; bash itself
+# parses such scripts without complaint, limited only by memory).
+MAX_NESTING_DEPTH = 1000
 
 
 class CommandParser(ParserSubcomponent):
@@ -57,11 +68,10 @@ class CommandParser(ParserSubcomponent):
         the CommandAccumulator's continuation hints, so nothing has to
         string-match the error message.
         """
-        error_context = ErrorContext(
-            token=token,
-            message=msg,
-            position=token.position
-        )
+        # Build through the context so the error carries line/column,
+        # the source line for the caret, and token context — the same
+        # rich rendering every other parse error gets.
+        error_context = self.parser.ctx._create_error_context(msg, token)
         error = ParseError(error_context)
         if at_eof:
             error.at_eof = True
@@ -143,6 +153,14 @@ class CommandParser(ParserSubcomponent):
                 f"syntax error near unexpected token '{self.parser.peek().value}'",
                 self.parser.peek()
             )
+
+        # A bare '}' can never START a command (bash: syntax error, rc 2,
+        # nothing runs). RBRACE stays in WORD_LIKE so `echo }` keeps working
+        # as an ARGUMENT; a real brace group's closer never reaches here —
+        # parse_brace_group's expect(RBRACE) consumes it first.
+        if self.parser.match(TokenType.RBRACE):
+            self._raise_syntax_error(
+                "syntax error near unexpected token '}'", self.parser.peek())
 
         # Ensure we have a word-like token, redirect, or fd-duplication word
         if not self.parser.match_any(TokenGroups.WORD_LIKE | TokenGroups.REDIRECTS):
@@ -340,25 +358,44 @@ class CommandParser(ParserSubcomponent):
         # within a multi-line && / || chain (see ASTNode.line).
         pipeline.line = self.parser.peek().line
 
-        # `time [-p]` prefix: times the whole following pipeline (bash). It
-        # precedes the optional `!` negation.
-        if self.parser.consume_if(TokenType.TIME):
-            pipeline.timed = True
-            # `-p` (POSIX output format), only as the immediate next word.
+        # `time [-p]` / `!` prefixes. bash's pipeline_command grammar is
+        # RECURSIVE, so the prefixes may repeat and interleave freely:
+        # `! time cmd`, `time time cmd`, `time ! time cmd`, `time -p ! cmd`.
+        # Each `!` toggles the negation sense (`! ! true` -> 0); repeated
+        # `time` still times once. Inside a prefix run the lexer may have
+        # left a later `time`/`!` as a plain WORD (its command-position
+        # tracking stops at the `-p` word) — an UNQUOTED word spelling
+        # `time`/`!` there is still the reserved word (escaped `\!` and
+        # quoted forms keep their backslash/STRING type, so they don't
+        # match).
+        saw_prefix = False
+        while True:
             tok = self.parser.peek()
-            if tok.type == TokenType.WORD and tok.value == '-p':
+            in_run = saw_prefix and tok.type == TokenType.WORD
+            if tok.type == TokenType.TIME or (in_run and tok.value == 'time'):
                 self.parser.advance()
-                pipeline.time_posix = True
-            # `time` with no following command (`time`, `time -p`) is valid:
-            # it times an empty pipeline. Detect end-of-pipeline now.
-            if self._at_pipeline_end():
-                return pipeline
+                saw_prefix = True
+                pipeline.timed = True
+                # `-p` (POSIX output format), only as the immediate next word.
+                tok = self.parser.peek()
+                if tok.type == TokenType.WORD and tok.value == '-p':
+                    self.parser.advance()
+                    pipeline.time_posix = True
+            elif tok.type == TokenType.EXCLAMATION or (in_run and tok.value == '!'):
+                self.parser.advance()
+                saw_prefix = True
+                pipeline.negated = not pipeline.negated
+            else:
+                break
 
-        # Check for leading ! (negation). bash allows the reserved word to
-        # repeat (`! ! cmd`), each occurrence toggling the sense of the exit
-        # status: `! ! true` -> 0, `! ! ! true` -> 1.
-        while self.parser.consume_if(TokenType.EXCLAMATION):
-            pipeline.negated = not pipeline.negated
+        # A prefix with no following command is valid ONLY before a list
+        # terminator — `;`, newline, or end of input (bash's grammar:
+        # `BANG list_terminator` / `timespec list_terminator`). `time`
+        # times an empty pipeline (status 0); `!` negates it (status 1).
+        # Anything else (`time &&`, `( ! )`, `{ time }`) falls through to
+        # parse a command and fails there, exactly like bash (rc 2).
+        if saw_prefix and self._at_list_terminator():
+            return pipeline
 
         # Parse first command (could be simple or compound)
         command = self.parse_pipeline_component()
@@ -376,49 +413,88 @@ class CommandParser(ParserSubcomponent):
 
         return pipeline
 
-    # Tokens that terminate a pipeline: a bare `time`/`time -p` with one of
-    # these next is a complete (empty) timed pipeline (bash times nothing).
-    _PIPELINE_END_TOKENS = frozenset({
-        TokenType.SEMICOLON, TokenType.NEWLINE, TokenType.AMPERSAND,
-        TokenType.AND_AND, TokenType.OR_OR, TokenType.PIPE, TokenType.PIPE_AND,
-        TokenType.RPAREN, TokenType.RBRACE,
-        TokenType.DOUBLE_SEMICOLON, TokenType.SEMICOLON_AMP, TokenType.AMP_SEMICOLON,
-        TokenType.THEN, TokenType.DO, TokenType.DONE, TokenType.FI,
-        TokenType.ELSE, TokenType.ELIF, TokenType.ESAC, TokenType.EOF,
+    # bash's list_terminator: the ONLY tokens after which a bare `time`/`!`
+    # prefix forms a complete (empty) pipeline. Deliberately narrow — bash
+    # REJECTS `time &&`, `time |`, `( ! )`, `{ time }`, `time ;;` (rc 2).
+    _LIST_TERMINATORS = frozenset({
+        TokenType.SEMICOLON, TokenType.NEWLINE, TokenType.EOF,
     })
 
-    def _at_pipeline_end(self) -> bool:
-        """True if the current token terminates the pipeline (so `time` alone
-        is a complete, empty timed pipeline)."""
-        return self.parser.at_end() or self.parser.peek().type in self._PIPELINE_END_TOKENS
+    def _at_list_terminator(self) -> bool:
+        """True if the current token is a list terminator (`;`, newline, or
+        end of input), so a bare `time`/`!` prefix is a complete pipeline."""
+        return self.parser.peek().type in self._LIST_TERMINATORS
 
     def parse_pipeline_component(self) -> Command:
-        """Parse a single component of a pipeline (simple or compound command)."""
-        # Try parsing as control structure first
-        if self.parser.match(TokenType.WHILE):
-            return self.parser.control_structures.parse_while_statement()
-        elif self.parser.match(TokenType.UNTIL):
-            return self.parser.control_structures.parse_until_statement()
-        elif self.parser.match(TokenType.FOR):
-            return self.parser.control_structures.parse_for_statement()
-        elif self.parser.match(TokenType.IF):
-            return self.parser.control_structures.parse_if_statement()
-        elif self.parser.match(TokenType.CASE):
-            return self.parser.control_structures.parse_case_statement()
-        elif self.parser.match(TokenType.SELECT):
-            return self.parser.control_structures.parse_select_statement()
-        elif self.parser.match(TokenType.DOUBLE_LPAREN):
-            return self.parser.arithmetic.parse_arithmetic_command()
-        elif self.parser.match(TokenType.DOUBLE_LBRACKET):
-            return self.parser.tests.parse_enhanced_test_statement()
-        elif self.parser.match(TokenType.LPAREN):
-            self._reject_escaped_dollar_paren()
-            return self.parse_subshell_group()
-        elif self.parser.match(TokenType.LBRACE):
-            return self.parse_brace_group()
-        else:
-            # Fall back to simple command
-            return self.parse_command()
+        """Parse a single component of a pipeline (simple or compound command).
+
+        Every compound command's body parses back through here for its own
+        components, so this is the single chokepoint where NESTING depth
+        accumulates — and therefore where the MAX_NESTING_DEPTH guard
+        lives. Only compound components count (a simple command inside
+        1000 brace groups is at depth 1000, not 1001), and sequential
+        components at the same level balance out (increment/decrement
+        around each), so flat scripts never approach the limit.
+        """
+        # `time` is a reserved word only at the START of a pipeline — the
+        # prefix loop in parse_pipeline consumed any leading TIME tokens, so
+        # one reaching here follows a `|`. bash runs the EXTERNAL time there
+        # (`echo a | time cat` -> /usr/bin/time); demote it to a plain word.
+        if self.parser.match(TokenType.TIME):
+            tok = self.parser.peek()
+            tok.type = TokenType.WORD
+            tok.is_keyword = False
+
+        compound = self._parse_compound_component()
+        if compound is not None:
+            return compound
+        # Fall back to simple command
+        return self.parse_command()
+
+    def _parse_compound_component(self) -> Optional[Command]:
+        """Dispatch to the compound-command parsers under the depth guard.
+
+        Returns None when the current token starts a simple command instead.
+        """
+        if not self.parser.match(TokenType.WHILE, TokenType.UNTIL,
+                                 TokenType.FOR, TokenType.IF,
+                                 TokenType.CASE, TokenType.SELECT,
+                                 TokenType.DOUBLE_LPAREN,
+                                 TokenType.DOUBLE_LBRACKET,
+                                 TokenType.LPAREN, TokenType.LBRACE):
+            return None
+
+        ctx = self.parser.ctx
+        ctx.nesting_depth += 1
+        try:
+            if ctx.nesting_depth > MAX_NESTING_DEPTH:
+                raise self.parser.error(
+                    f"commands nested too deeply "
+                    f"(maximum depth {MAX_NESTING_DEPTH})")
+
+            if self.parser.match(TokenType.WHILE):
+                return self.parser.control_structures.parse_while_statement()
+            elif self.parser.match(TokenType.UNTIL):
+                return self.parser.control_structures.parse_until_statement()
+            elif self.parser.match(TokenType.FOR):
+                return self.parser.control_structures.parse_for_statement()
+            elif self.parser.match(TokenType.IF):
+                return self.parser.control_structures.parse_if_statement()
+            elif self.parser.match(TokenType.CASE):
+                return self.parser.control_structures.parse_case_statement()
+            elif self.parser.match(TokenType.SELECT):
+                return self.parser.control_structures.parse_select_statement()
+            elif self.parser.match(TokenType.DOUBLE_LPAREN):
+                return self.parser.arithmetic.parse_arithmetic_command()
+            elif self.parser.match(TokenType.DOUBLE_LBRACKET):
+                return self.parser.tests.parse_enhanced_test_statement()
+            elif self.parser.match(TokenType.LPAREN):
+                self._reject_escaped_dollar_paren()
+                return self.parse_subshell_group()
+            else:  # TokenType.LBRACE (guaranteed by the match above)
+                return self.parse_brace_group()
+        finally:
+            ctx.nesting_depth -= 1
 
     def _reject_escaped_dollar_paren(self) -> None:
         """Reject `\\$(`-style constructs, matching bash's syntax error.
@@ -501,8 +577,7 @@ class CommandParser(ParserSubcomponent):
         # Bash requires at least one command inside a subshell: `()`, `( )`,
         # newline-only or comment-only groups are a syntax error (exit 2).
         if not statements.statements:
-            raise self.parser.error(
-                f"syntax error near unexpected token '{self.parser.peek().value}'")
+            raise self.parser.error(unexpected_token_message(self.parser.peek()))
         self.parser.expect(TokenType.RPAREN)
         self.parser.ctx.pop_construct()
 
@@ -531,8 +606,7 @@ class CommandParser(ParserSubcomponent):
         # Bash requires at least one command inside a brace group: `{ }`,
         # newline-only or comment-only groups are a syntax error (exit 2).
         if not statements.statements:
-            raise self.parser.error(
-                f"syntax error near unexpected token '{self.parser.peek().value}'")
+            raise self.parser.error(unexpected_token_message(self.parser.peek()))
         self.parser.expect(TokenType.RBRACE)
         self.parser.ctx.pop_construct()
 

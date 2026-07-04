@@ -103,6 +103,13 @@ class PipelineExecutor:
     def _execute_pipeline(self, node: 'Pipeline', context: 'ExecutionContext',
                          visitor: 'ExecutorVisitor') -> int:
         """Execute pipeline without NOT handling."""
+        if not node.commands:
+            # An empty pipeline (a bare `!` / `time` prefix before a list
+            # terminator) succeeds; execute() then applies any negation
+            # (bash: `!` alone -> 1, `! !` -> 0).
+            self.state.pipestatus = [0]
+            return 0
+
         if len(node.commands) == 1:
             # Single command, no pipeline needed
             status = visitor.visit(node.commands[0])
@@ -297,16 +304,24 @@ class PipelineExecutor:
             all_statuses = [all_statuses]
         self.state.pipestatus = list(all_statuses)
 
+        # The member whose status becomes the pipeline's exit status is also
+        # the one whose signal death gets announced (bash).
+        status_index = len(all_statuses) - 1
         if self.state.options.get('pipefail') and len(node.commands) > 1:
             # Return rightmost non-zero exit status, or 0 if all succeeded
             exit_status = 0
-            for status in reversed(all_statuses):
-                if status != 0:
-                    exit_status = status
+            for i in range(len(all_statuses) - 1, -1, -1):
+                if all_statuses[i] != 0:
+                    exit_status = all_statuses[i]
+                    status_index = i
                     break
         else:
             # Normal behavior: return exit status of last command
             exit_status = all_statuses[-1]
+
+        # Announce abnormal termination (Terminated / Segmentation fault /
+        # ...) the way bash does for a signal-killed foreground pipeline.
+        self._report_signal_death(job, status_index)
 
         # Reclaim the terminal (if we handed it over) and clear
         # foreground-job bookkeeping (a stopped job stays as %+).
@@ -318,6 +333,34 @@ class PipelineExecutor:
             self.job_manager.remove_job(job.job_id)
 
         return exit_status
+
+    def _report_signal_death(self, job: 'Job', index: int) -> None:
+        """Announce a foreground pipeline member killed by a signal.
+
+        bash prints the signal's description (``Terminated: 15``, ...) to
+        stderr when the pipeline's EXIT STATUS reflects a signal death —
+        i.e. the announced member is the one whose status the pipeline
+        reports: the last member normally, the rightmost failing member
+        under pipefail (pinned against bash 5.2 in
+        tmp/probes-r17t2-grabbag/probe_c_pipeline_signal.sh). Any other
+        member's signal death is silent, as is SIGINT/SIGPIPE (see
+        abnormal_termination_message). This mirrors
+        JobManager.report_abnormal_termination for single commands,
+        including its silence inside command/process substitutions; psh
+        emits just the bare signal message where bash sometimes adds a
+        PID/command job-table wrapper (documented format difference).
+        """
+        if self.state.in_substitution:
+            return
+        if not 0 <= index < len(job.processes):
+            return
+        status = job.processes[index].status
+        if status is None:
+            return
+        from .job_control import abnormal_termination_message
+        message = abnormal_termination_message(status)
+        if message is not None:
+            print(message, file=self.state.stderr)
 
     def _setup_pipeline_redirections(self, index: int, pipeline_ctx: PipelineContext,
                                      pipe_stderr: Optional[List[bool]] = None):

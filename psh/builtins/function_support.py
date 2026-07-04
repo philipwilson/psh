@@ -192,6 +192,36 @@ class DeclareBuiltin(Builtin):
         # Rest must be alphanumeric or underscore
         return all(c.isalnum() or c == '_' for c in name[1:])
 
+    def _is_valid_nameref_target(self, value: str) -> bool:
+        """Check a nameref target: an identifier, optionally followed by ONE
+        balanced ``[subscript]`` spanning to the end of the string.
+
+        Mirrors bash's valid_nameref_value/valid_array_reference (pinned
+        against bash 5.2): ``a``, ``a[0]``, ``a[$i]``, ``a[b[c]]`` are valid;
+        ``1``, ``a b``, ``a-b``, ``a[``, ``a[]``, ``a[0]x``, ``a[0][1]`` are
+        not. The subscript is NOT evaluated here — only its shape is checked.
+        """
+        bracket = value.find('[')
+        name = value if bracket == -1 else value[:bracket]
+        if not self._is_valid_identifier(name):
+            return False
+        if bracket == -1:
+            return True
+        subscript = value[bracket:]
+        if len(subscript) < 3 or not subscript.endswith(']'):
+            return False  # needs a non-empty, closed [subscript]
+        depth = 0
+        for i, ch in enumerate(subscript):
+            if ch == '[':
+                depth += 1
+            elif ch == ']':
+                depth -= 1
+                if depth == 0:
+                    # The first [ must close exactly at the end (a[0][1] is
+                    # invalid, a[b[c]] valid).
+                    return i == len(subscript) - 1
+        return False
+
     # Option key → variable attribute, for both the -set and +remove
     # directions of _declare_variables.
     _OPTION_ATTRIBUTES = {
@@ -298,6 +328,15 @@ class DeclareBuiltin(Builtin):
         if options['nameref']:
             if name == value:
                 self.error(f"{name}: nameref variable self references not allowed", shell)
+                return 1
+            # bash validates the target's SHAPE at declare time (the target
+            # need not exist). An empty target gets bash's plain-identifier
+            # message; any other invalid shape gets the nameref-specific one.
+            if not value:
+                self.error("`': not a valid identifier", shell)
+                return 1
+            if not self._is_valid_nameref_target(value):
+                self.error(f"`{value}': invalid variable name for name reference", shell)
                 return 1
             self._set_variable_with_attributes(shell, name, value, attributes, options['global'])
             return 0

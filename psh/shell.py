@@ -35,6 +35,31 @@ if TYPE_CHECKING:
     from .lexer.token_types import Token
 
 
+# Python-frame headroom for psh's recursive engines (parser, expansion,
+# executor visitor). One shell function call burns ~18 Python frames and one
+# nested compound ~12 (measured empirically, 2026-07-04), so CPython's default
+# limit of 1000 capped shell recursion at ~50 calls — bash handles 5000+.
+# 40,000 frames gives ~2,200 shell-call / ~3,300 nested-compound depth.
+# Safe on the supported interpreters (>= 3.12): Python frames live on the
+# heap and C-stack recursion is guarded separately, so a runaway raises
+# RecursionError (converted to a clean shell error at the function-call
+# boundary / last-resort guards) rather than overflowing the OS stack —
+# verified to survive limits up to 60,000 even under `ulimit -s 512`.
+RECURSION_LIMIT = 40_000
+
+
+def _ensure_recursion_headroom() -> None:
+    """Raise the interpreter recursion limit to RECURSION_LIMIT.
+
+    Only ever raises, never lowers — an embedding process (e.g. the test
+    runner) that already set a higher limit keeps it. Process-wide by
+    nature; idempotent, so per-Shell invocation (including forked
+    subshell children) is harmless.
+    """
+    if sys.getrecursionlimit() < RECURSION_LIMIT:
+        sys.setrecursionlimit(RECURSION_LIMIT)
+
+
 class Shell:
     def __init__(self, args: Optional[List[str]] = None, script_name: Optional[str] = None,
                  debug_ast: bool = False, debug_tokens: bool = False, debug_scopes: bool = False,
@@ -45,6 +70,11 @@ class Shell:
                  security_only: bool = False, lint_only: bool = False,
                  parent_shell: Optional['Shell'] = None, ast_format: Optional[str] = None,
                  force_interactive: bool = False, command_mode: bool = False) -> None:
+        # Phase 0: interpreter headroom for the recursive engines. Must be
+        # process-wide and early, so every path into this shell (scripts,
+        # -c, interactive, in-process embedding) gets the same ceiling.
+        _ensure_recursion_headroom()
+
         self._create_state(args, script_name, debug_ast, debug_tokens, debug_scopes,
                            debug_expansion, debug_expansion_detail, debug_exec,
                            debug_exec_fork, norc, rcfile)
