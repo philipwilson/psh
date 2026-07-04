@@ -203,11 +203,11 @@ class CommandExecutor:
         :meth:`_handle_execution_error` applies uniformly.
         """
         try:
-            # $BASH_COMMAND: the pre-expansion command text, recorded before
-            # the DEBUG trap fires so the trap action (and the command's own
-            # expansions) see this command (bash).
-            from ..visitor import format_bash_command
-            self.shell.trap_manager.set_bash_command(format_bash_command(node))
+            # $BASH_COMMAND: stamp the node before the DEBUG trap fires so
+            # the trap action (and the command's own expansions) see this
+            # command. The pre-expansion text is rendered lazily, only when
+            # $BASH_COMMAND is actually read (ShellState.bash_command).
+            self.shell.trap_manager.set_bash_command(node)
 
             # bash runs the DEBUG trap before each simple command
             self.shell.trap_manager.execute_debug_trap()

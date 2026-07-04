@@ -315,9 +315,9 @@ class ControlFlowExecutor:
                 # bash runs the DEBUG trap before binding the loop variable on
                 # EACH iteration (so `trap d DEBUG; for i in 1 2; do echo x;
                 # done` fires d before every `i=…` and every `echo`), with
-                # $BASH_COMMAND = the pre-expansion header (`for i in $v`).
-                from ..visitor import format_for_header
-                self.shell.trap_manager.set_bash_command(format_for_header(node))
+                # $BASH_COMMAND = the pre-expansion header (`for i in $v` —
+                # the stamped node renders as the header lazily on read).
+                self.shell.trap_manager.set_bash_command(node)
                 self.shell.trap_manager.execute_debug_trap()
                 # Set loop variable. A readonly variable or a cyclic nameref
                 # rejects the binding: bash reports (error / warning form
@@ -451,9 +451,9 @@ class ControlFlowExecutor:
             Exit status code
         """
         # bash runs the DEBUG trap before the `case` command (the subject
-        # eval), with $BASH_COMMAND = the pre-expansion header `case $x in `.
-        from ..visitor import format_case_header
-        self.shell.trap_manager.set_bash_command(format_case_header(node))
+        # eval), with $BASH_COMMAND = the pre-expansion header `case $x in `
+        # (the stamped node renders as the header lazily on read).
+        self.shell.trap_manager.set_bash_command(node)
         self.shell.trap_manager.execute_debug_trap()
 
         # Expand the subject. The parser carries a Word (per-part quote

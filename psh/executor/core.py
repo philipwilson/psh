@@ -457,12 +457,11 @@ class ExecutorVisitor(ASTVisitor[int]):
         """Execute enhanced test: [[ expression ]]"""
         from ..core import NamerefCycleError, ReadonlyVariableError, UnboundVariableError
         from ..expansion.arithmetic import ShellArithmeticError
-        from ..visitor import format_bash_command
         from .enhanced_test_evaluator import TestExpressionEvaluator
 
         # bash runs the DEBUG trap before a [[ ]] command, with
-        # $BASH_COMMAND = its own text.
-        self.shell.trap_manager.set_bash_command(format_bash_command(node))
+        # $BASH_COMMAND = its own text (node stamped; rendered lazily).
+        self.shell.trap_manager.set_bash_command(node)
         self.shell.trap_manager.execute_debug_trap()
 
         # guarded_redirections also owns any process substitutions used as

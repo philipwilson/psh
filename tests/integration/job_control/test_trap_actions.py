@@ -329,6 +329,18 @@ class TestReturnTrap:
                          'f; echo after=$?')
         assert result.stdout == 'after=3\n'
 
+    def test_return_in_source_return_trap_overrides(self, tmp_path):
+        # The divergence's second face (see execute_return_trap): when the
+        # RETURN trap fired at the end of `source` runs `return 9`, bash
+        # rejects it ("can only `return'" — the sourced file has already
+        # finished; status unchanged, probed with a timeout guard). psh
+        # applies the same adoption rule as the function fire point.
+        src = tmp_path / 'src.sh'
+        src.write_text('echo in-src\n')
+        result = run_psh(f'trap "return 9" RETURN; source {src}; echo rc=$?')
+        assert result.stdout == 'in-src\nrc=9\n'
+        assert result.returncode == 0
+
     def test_nested_source_fires_for_each(self, tmp_path):
         inner = tmp_path / 'inner.sh'
         inner.write_text('echo inner-src\n')
@@ -364,3 +376,17 @@ class TestFunctraceDebugEntry:
                          'trap "if [ \\${#FUNCNAME[@]} -gt 0 ]; then return 5; fi"'
                          ' DEBUG; f; echo rc=$?')
         assert result.stdout == 'rc=5\n'
+
+    def test_declare_ft_inherits_debug_into_function(self):
+        # The trace attribute inherits DEBUG (like set -T, but per
+        # function): call-site + entry + each body command fire (bash).
+        result = run_psh('f() { echo x; }; declare -ft f; '
+                         'trap "echo D" DEBUG; f; echo top')
+        assert result.stdout == 'D\nD\nD\nx\nD\ntop\n'
+
+    def test_declare_ft_debug_not_inherited_by_nested_untraced(self):
+        # Innermost-function rule: a non-traced function called FROM a
+        # traced one does not fire DEBUG inside its own body (bash).
+        result = run_psh('h() { echo hx; }; g() { h; echo gx; }; '
+                         'declare -ft g; trap "echo D" DEBUG; g')
+        assert result.stdout == 'D\nD\nD\nhx\nD\ngx\n'

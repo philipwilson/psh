@@ -387,11 +387,20 @@ class TrapManager:
         unless the relevant trace option is set: ``errtrace`` (``set -E``) for
         ERR, ``functrace`` (``set -T``) for DEBUG/RETURN. At top level the trap
         always fires. ``function_stack`` is non-empty exactly while a function
-        body is executing.
+        body is executing. For DEBUG (functrace), a function carrying the
+        ``declare -ft`` trace attribute also inherits the trap — the check is
+        against the INNERMOST function, so a non-traced function called from
+        a traced one does not fire (bash).
         """
         if not self.state.function_stack:
             return True
-        return bool(self.state.options.get(trace_option))
+        if self.state.options.get(trace_option):
+            return True
+        if trace_option == 'functrace':
+            func = self.shell.function_manager.get_function(
+                self.state.function_stack[-1])
+            return func is not None and func.trace
+        return False
 
     def execute_debug_trap(self):
         """Execute DEBUG trap if set (called before each simple command)."""
@@ -472,10 +481,17 @@ class TrapManager:
         changing the pending return status.
 
         Returns an override exit status when the action itself executed
-        `return N` (POSIX: return in a trap action returns from the trap).
-        bash 5.2 recurses forever on `trap 'return N' RETURN`; psh fires
-        once and adopts N — the one deliberate divergence here. Returns
-        None otherwise.
+        `return N` (POSIX: return in a trap action returns from the trap);
+        None otherwise. This adoption is a deliberate divergence with two
+        faces, pinned in tests/integration/job_control/test_trap_actions.py:
+
+        * fired at a FUNCTION return, bash 5.2 recurses forever (the
+          action's `return` re-triggers the trap); psh fires once and
+          adopts N.
+        * fired at the end of `source`, bash rejects the `return` ("can
+          only `return' from a function or sourced script" — the sourced
+          file has already finished) and keeps the source's own status;
+          psh adopts N here too, one consistent rule for both fire points.
         """
         if self._in_return_trap:
             return None
@@ -490,19 +506,21 @@ class TrapManager:
             self._in_return_trap = False
         return None
 
-    def set_bash_command(self, text: str) -> None:
+    def set_bash_command(self, command: object) -> None:
         """Record $BASH_COMMAND — the command being/about to be executed.
 
         Called by the executor's dispatch chokepoints (simple commands,
-        pipeline members, for/case/(( ))/[[ ]] headers) with the
-        PRE-expansion command text, before the DEBUG trap fires. While a
-        trap action is executing, updates are suppressed so $BASH_COMMAND
-        keeps the interrupted command (bash: "unless the shell is
-        executing a command as a result of a trap, in which case it is
-        the command executing at the time of the trap").
+        pipeline members, for/case/(( ))/[[ ]] headers) BEFORE the DEBUG
+        trap fires, with either the AST node (rendered lazily — and only —
+        when $BASH_COMMAND is actually read; see ShellState.bash_command)
+        or a cheap pre-rendered string. While a trap action is executing,
+        updates are suppressed so $BASH_COMMAND keeps the interrupted
+        command (bash: "unless the shell is executing a command as a
+        result of a trap, in which case it is the command executing at
+        the time of the trap").
         """
         if self._trap_action_depth == 0:
-            self.state.bash_command = text
+            self.state.bash_command = command
 
     def queue_trap(self, signal_name: str):
         """Queue a signal trap from handler context (async-signal path)."""

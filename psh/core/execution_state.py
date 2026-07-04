@@ -63,10 +63,13 @@ class ExecutionState:
         # diagnostic there but NOT in a ( ) subshell, so this flag —
         # unlike in_forked_child — must distinguish the two.
         self.in_substitution: bool = False
-        # Pre-expansion text of the command being/about to be executed
-        # ($BASH_COMMAND). Written via TrapManager.set_bash_command, which
-        # freezes it while a trap action runs (bash).
-        self.bash_command: str = ""
+        # The command being/about to be executed ($BASH_COMMAND): either the
+        # pre-rendered text (str) or the AST node itself, rendered LAZILY on
+        # the first $BASH_COMMAND read (ShellState.bash_command) so commands
+        # pay nothing when no one reads it. Written via
+        # TrapManager.set_bash_command, which freezes it while a trap action
+        # runs (bash).
+        self.bash_command: object = ""
 
     def copy_into(self, other: "ExecutionState") -> None:
         """Copy the inheritable execution state into ``other`` (for subshell

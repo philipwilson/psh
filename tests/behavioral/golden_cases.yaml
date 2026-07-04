@@ -4478,3 +4478,9 @@
   stdout: "D\nD\nD\n"
   stderr: ""
   exit_code: 0
+
+- name: declare_ft_inherits_debug_trap
+  command: 'f() { echo x; }; declare -ft f; trap "echo D" DEBUG; f; echo top'
+  stdout: "D\nD\nD\nx\nD\ntop\n"
+  stderr: ""
+  exit_code: 0
