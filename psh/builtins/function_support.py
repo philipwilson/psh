@@ -188,17 +188,18 @@ class DeclareBuiltin(Builtin):
                 + ('t' if getattr(func, 'trace', False) else '')
                 + ('x' if func.exported else ''))
 
-    def _is_valid_identifier(self, name: str) -> bool:
-        """Check if a name is a valid shell identifier."""
-        if not name:
-            return False
-        # Must start with letter or underscore
-        if not (name[0].isalpha() or name[0] == '_'):
-            return False
-        # Rest must be alphanumeric or underscore
-        return all(c.isalnum() or c == '_' for c in name[1:])
+    def _is_valid_identifier(self, name: str, posix_mode: bool = False) -> bool:
+        """Check if a name is a valid shell identifier.
 
-    def _is_valid_nameref_target(self, value: str) -> bool:
+        Delegates to the shell's single authoritative identifier policy
+        (``unicode_support.is_valid_name``). ``posix_mode`` (``set -o posix``)
+        restricts names to ASCII ``[A-Za-z_][A-Za-z0-9_]*`` as bash does;
+        otherwise psh's lenient Unicode-letter rule applies.
+        """
+        from ..lexer.unicode_support import is_valid_name
+        return is_valid_name(name, posix_mode)
+
+    def _is_valid_nameref_target(self, value: str, posix_mode: bool = False) -> bool:
         """Check a nameref target: an identifier, optionally followed by ONE
         balanced ``[subscript]`` spanning to the end of the string.
 
@@ -209,7 +210,7 @@ class DeclareBuiltin(Builtin):
         """
         bracket = value.find('[')
         name = value if bracket == -1 else value[:bracket]
-        if not self._is_valid_identifier(name):
+        if not self._is_valid_identifier(name, posix_mode):
             return False
         if bracket == -1:
             return True
@@ -325,7 +326,8 @@ class DeclareBuiltin(Builtin):
             name = name[:-1]
 
         # Validate variable name
-        if not self._is_valid_identifier(name):
+        posix_mode = shell.state.options.get('posix', False)
+        if not self._is_valid_identifier(name, posix_mode):
             self.error(f"`{arg}': not a valid identifier", shell)
             return 1
 
@@ -341,7 +343,7 @@ class DeclareBuiltin(Builtin):
             if not value:
                 self.error("`': not a valid identifier", shell)
                 return 1
-            if not self._is_valid_nameref_target(value):
+            if not self._is_valid_nameref_target(value, posix_mode):
                 self.error(f"`{value}': invalid variable name for name reference", shell)
                 return 1
             self._set_variable_with_attributes(shell, name, value, attributes, options['global'])
@@ -441,7 +443,7 @@ class DeclareBuiltin(Builtin):
         """Declare/modify a variable by NAME only (no assignment)."""
         # Just declaring with attributes, no assignment
         # Validate variable name
-        if not self._is_valid_identifier(arg):
+        if not self._is_valid_identifier(arg, shell.state.options.get('posix', False)):
             self.error(f"`{arg}': not a valid identifier", shell)
             return 1
 

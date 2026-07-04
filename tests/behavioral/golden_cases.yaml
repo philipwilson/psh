@@ -5739,3 +5739,63 @@
   stdout: "5\n0\n127\n"
   stderr: "not a child of this shell"
   exit_code: 0
+
+# --- reappraisal #18 Tier-3 (T3-5): identifier policy ---
+# One authoritative name predicate (unicode_support.is_valid_name) gated on
+# set -o posix. These cases all match bash EXACTLY (the deliberate
+# Unicode-accepted-without-posix divergences live in the conformance tests,
+# not here, since golden cases must agree with bash).
+
+- name: r18t3_identifier_posix_valid_ascii_assignment
+  command: "set -o posix; foo=1; echo $foo"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t3_identifier_posix_unicode_assignment_is_command
+  command: "set -o posix; é=1; echo done"
+  stdout: "done\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: r18t3_identifier_invalid_digit_start_assignment_127
+  command: "9x=1; echo rc=$?"
+  stdout: "rc=127\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: r18t3_identifier_invalid_hyphen_assignment_127
+  command: "a-b=1; echo rc=$?"
+  stdout: "rc=127\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: r18t3_identifier_read_invalid_digit_start_rejected
+  command: "read 9x <<< hi; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
+- name: r18t3_identifier_posix_declare_unicode_rejected
+  command: "set -o posix; declare é=1; echo done"
+  stdout: "done\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
+- name: r18t3_identifier_posix_export_unicode_rejected
+  command: "set -o posix; export é=1; echo done"
+  stdout: "done\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
+- name: r18t3_identifier_posix_read_unicode_rejected
+  command: "set -o posix; read é <<< hi; echo done"
+  stdout: "done\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
+- name: r18t3_identifier_posix_valid_function_defines
+  command: "set -o posix; foo() { echo hi; }; foo"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0

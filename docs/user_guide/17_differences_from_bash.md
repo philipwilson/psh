@@ -408,6 +408,43 @@ VAR= value        # Sets VAR to empty, then runs "value" as command
 VAR =value        # Tries to run "VAR" as command with arg "=value"
 ```
 
+### Identifier (Name) Rules — Unicode Extension
+
+A single policy decides what counts as a valid variable/function *name*
+everywhere it matters — assignments, `declare`/`export`/`readonly`/`local`,
+`read`, `for`, function definitions, and `${NAME}`. Bash restricts names to the
+POSIX/ASCII set `[A-Za-z_][A-Za-z0-9_]*` in every mode. PSH is more lenient by
+default:
+
+```bash
+# DEFAULT MODE — PSH accepts Unicode-letter names (a deliberate extension):
+é=1;      echo "$é"          # PSH: 1     | Bash: "é=1: command not found"
+naïve=hi; echo "$naïve"      # PSH: hi    | Bash: rejects
+for π in a b; do echo $π; done   # PSH: loops | Bash: "not a valid identifier"
+
+# Names that never start legally are rejected by BOTH shells, in BOTH modes:
+9x=1                         # command not found (9 is not a name start)
+a-b=1                        # command not found
+
+# POSIX MODE restores bash's ASCII-only rule exactly:
+set -o posix
+é=1                          # not an assignment -> "é=1: command not found"
+declare é=1                  # declare: `é=1': not a valid identifier (status 1)
+read é                       # read: `é': not a valid identifier (status 1)
+foo=1; echo $foo             # plain ASCII names still work (1)
+```
+
+So the *only* behavioral change `set -o posix` makes to names is switching
+OFF the Unicode extension; ASCII names behave identically in both modes.
+
+Note on `for`/`function` error flow: in DEFAULT mode both shells simply report
+"not a valid identifier" (status 1) and CONTINUE — PSH matches bash here. The
+flow differs only under `set -o posix`: bash then treats the invalid name as a
+*parse* error and aborts the whole input (exit 2), whereas PSH — which parses the
+entire program before executing, so a runtime `set -o posix` cannot influence
+parsing — still rejects it at *execution* time (status 1) and continues. Both
+reject the name; only the posix abort-vs-continue flow differs.
+
 ### Here Document Behavior
 
 ```bash

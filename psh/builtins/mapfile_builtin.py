@@ -1,7 +1,6 @@
 """mapfile / readarray builtin: read lines from input into an indexed array."""
 import io
 import os
-import re
 import sys
 from typing import TYPE_CHECKING, List
 
@@ -10,8 +9,6 @@ from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
-
-_VALID_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
 
 @builtin
@@ -116,7 +113,12 @@ class MapfileBuiltin(Builtin):
         # extras (returning success), so we do the same.
         if rest:
             array_name = rest[0]
-        if not _VALID_NAME.match(array_name):
+        # Single identifier policy (unicode_support.is_valid_name): under
+        # ``set -o posix`` the name is ASCII-only as bash requires; otherwise
+        # psh's lenient Unicode-letter rule applies, consistent with every
+        # other name site (assignment, declare, read, ...).
+        from ..lexer.unicode_support import is_valid_name
+        if not is_valid_name(array_name, shell.state.options.get('posix', False)):
             self.error(f"`{array_name}': not a valid identifier", shell)
             return 1
 

@@ -294,6 +294,19 @@ class ControlFlowExecutor:
         Returns:
             Exit status code
         """
+        # The loop variable must be a valid name. bash rejects an invalid one
+        # ("`NAME': not a valid identifier", status 1) before running the body
+        # or expanding the word list. Single identifier policy via
+        # unicode_support: under ``set -o posix`` names are ASCII-only as bash
+        # requires; otherwise psh's lenient Unicode-letter rule applies (a
+        # documented divergence — bash rejects Unicode names in both modes).
+        from ..lexer.unicode_support import is_valid_name
+        if not is_valid_name(node.variable,
+                             self.state.options.get('posix', False)):
+            print(f"psh: `{node.variable}': not a valid identifier",
+                  file=self.shell.stderr)
+            return 1
+
         exit_status = 0
         # Expand items - handle all types of expansion, respecting quote types
         expanded_items = self._expand_loop_items(node)

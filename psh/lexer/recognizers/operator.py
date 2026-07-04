@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional, Set, Tuple
 
 from ..state_context import LexerContext
 from ..token_types import Token, TokenType
+from ..unicode_support import is_identifier_char, is_identifier_start
 from .base import ContextualRecognizer
 from .literal import extglob_active
 
@@ -236,10 +237,12 @@ class OperatorRecognizer(ContextualRecognizer):
         """
         n = len(input_text)
         i = pos + 1
-        if i >= n or not (input_text[i].isalpha() or input_text[i] == '_'):
+        # Single identifier policy (unicode_support), honoring the lexer's
+        # posix_mode like every other name scanner.
+        if i >= n or not is_identifier_start(input_text[i], context.posix_mode):
             return None
         j = i
-        while j < n and (input_text[j].isalnum() or input_text[j] == '_'):
+        while j < n and is_identifier_char(input_text[j], context.posix_mode):
             j += 1
         if j >= n or input_text[j] != '}':
             return None

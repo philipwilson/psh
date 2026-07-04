@@ -103,7 +103,8 @@ class CommandAssignments:
             # candidate (i.e., a regular word, not a process substitution
             # or other special token).
             if self._is_assignment_candidate(node, i):
-                if '=' in arg and is_valid_assignment(arg):
+                posix_mode = self.state.options.get('posix', False)
+                if '=' in arg and is_valid_assignment(arg, posix_mode):
                     var, value = arg.split('=', 1)
                     assignments.append((var, value, node.words[i]))
                     i += 1
