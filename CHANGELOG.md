@@ -4,6 +4,35 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.604.0 (2026-07-04) - Fix: HISTCONTROL=ignorespace works on the real command path (reappraisal #17 H7)
+- FIX (privacy-relevant). Reappraisal #17 Tier-1 H7. **`HISTCONTROL=ignorespace`
+  was silently a no-op on the path real commands take.** Typing a space-led
+  command (` echo secret`) still recorded it in history, defeating the whole
+  point of the option. The source processor pre-stripped the command string
+  before handing it to the history manager, so the manager's leading-space
+  check never saw the space. The existing unit tests drove the leaf
+  `add_to_history` method directly with an already-spaced argument, so they
+  passed as a **false positive** while the real entry path leaked.
+- **Root cause / fix.** `scripting/source_processor.py` called
+  `self.shell.add_history(command_string.strip())`; it now passes the command
+  **RAW**. bash 5.2 (truth-tabled via `--noediting` HISTFILE round-trips) stores
+  the line verbatim and every filter decides on that unmodified text:
+  - lines are stored **verbatim** — leading and trailing whitespace preserved;
+  - `ignorespace` fires only on a literal leading **space** (a leading **tab** is
+    kept and stored verbatim);
+  - `ignoredups` compares verbatim (` echo a` differs from `echo a`);
+  - `HISTIGNORE` matches the verbatim line (`HISTIGNORE=ls` keeps ` ls`);
+  - a space-led multi-line compound drops the **whole** logical command.
+- **Deliberate divergence kept:** whitespace-only lines are still not recorded
+  (bash records them).
+- **Tests.** `tests/unit/interactive/test_histcontrol_histignore.py` rewritten to
+  drive `shell.run_command` (the full source-processor path) instead of the leaf
+  method, with verbatim-storage, tab/`ignoredups`/`HISTIGNORE`-verbatim,
+  multi-line, and HISTFILE round-trip pins; two PTY smoke tests pin the live
+  interactive path (ignorespace drop + verbatim leading-space storage). The
+  false-positive kill was mutation-tested: re-introducing the old `.strip()`
+  fails 11 of the 22 rewritten tests.
+
 ## 0.603.0 (2026-07-04) - Fix: analysis modes on stdin analyze instead of executing; one visitor-mode chokepoint (reappraisal #17 H2)
 - FIX (security-relevant). Reappraisal #17 Tier-1 H2. **Piping a script into any
   analysis mode EXECUTED the input instead of analyzing it.** `cat script | psh

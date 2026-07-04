@@ -210,10 +210,19 @@ class SourceProcessor(ScriptComponent):
             # constructs land as a single joined entry (bash cmdhist).
             # Done before parsing so that, like bash, commands with syntax
             # errors are still recallable for editing.
+            # The command is passed RAW — bash stores the line verbatim
+            # (leading/trailing whitespace included), and the semantic
+            # filters inside add_to_history depend on the unmodified text:
+            # HISTCONTROL=ignorespace keys on the leading space, and
+            # ignoredups/HISTIGNORE compare/match the verbatim line. A
+            # pre-strip here made ignorespace a silent no-op on the real
+            # entry path (reappraisal #17 H7 privacy leak). Whitespace-only
+            # commands are still skipped (deliberate divergence: bash
+            # records them).
             if add_to_history and command_string.strip():
                 from ..interactive.history_expansion import contains_history_reference
                 if not contains_history_reference(command_string):
-                    self.shell.add_history(command_string.strip())
+                    self.shell.add_history(command_string)
 
             # Alias expansion is a token-stream transform applied at the
             # lex->parse seam (see the expand_aliases calls below and in

@@ -440,6 +440,51 @@ class TestPtyHistory:
         # stored as ONE entry with the embedded newline intact, not ';'-joined
         assert 'echo "one\r\ntwo_$((1+1))"' in psh.before
 
+    def test_histcontrol_ignorespace_drops_typed_leading_space(self, tmp_path):
+        """HISTCONTROL=ignorespace: a command typed with a leading space
+        must NOT be recorded (bash privacy feature). Reappraisal #17 H7:
+        the source processor stripped the line before the leading-space
+        check, so real interactive use recorded it — the leaf-level unit
+        test masked this. Fresh HOME so no shared history file leaks in.
+        """
+        env = {
+            'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
+            'HOME': str(tmp_path), 'TERM': 'xterm', 'PS1': 'PSH$ ',
+            'PYTHONUNBUFFERED': '1', 'PYTHONPATH': PSH_ROOT,
+            'HISTCONTROL': 'ignorespace',
+        }
+        child = pexpect.spawn(
+            sys.executable, ['-u', '-m', 'psh', '--norc', '--force-interactive'],
+            timeout=10, encoding='utf-8', env=env)
+        try:
+            child.send('\r')
+            child.expect(PROMPT)
+            child.send(' echo sec_$((40+5))\r')
+            child.expect('sec_45')       # it EXECUTES...
+            child.expect(PROMPT)
+            child.send('echo pub_$((6+7))\r')
+            child.expect('pub_13')
+            child.expect(PROMPT)
+            child.send('history\r')
+            child.expect(PROMPT)
+            entries = re.findall(r'\d+  (.+?)\r', child.before)
+            # ...but is not recorded; the space-less command is.
+            assert not any('sec_' in e for e in entries), entries
+            assert any(e == 'echo pub_$((6+7))' for e in entries), entries
+        finally:
+            child.close(force=True)
+
+    def test_history_stores_leading_space_verbatim_without_ignorespace(self, psh):
+        # HISTCONTROL unset (spawn_psh's minimal env): bash stores the
+        # line verbatim, leading space included.
+        psh.send(' echo vb_$((21+21))\r')
+        psh.expect('vb_42')
+        psh.expect(PROMPT)
+        psh.send('history 3\r')
+        psh.expect(PROMPT)
+        entries = re.findall(r'\d+  (.+?)\r', psh.before)
+        assert ' echo vb_$((21+21))' in entries, entries
+
 
 class TestPtyJobControl:
     def test_job_notices_go_to_stderr(self, tmp_path):
