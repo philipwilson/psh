@@ -205,11 +205,11 @@ class ControlFlowExecutor:
                     self._reraise_loop_control(lc, context)
                     continue
                 except LoopBreak as lb:
-                    # bash quirk (verified on 3.2 and 5.2): a SUCCESSFUL
-                    # break in a WHILE condition resets the loop's status
-                    # to 0, but a failed `break 0` there keeps the last
-                    # body status (the failure status 1 is NOT reported —
-                    # while_break0_cond / d8 in the truth table).
+                    # bash quirk (verified against bash 5.2, the project
+                    # oracle): a SUCCESSFUL break in a WHILE condition resets
+                    # the loop's status to 0, but a failed `break 0` there
+                    # keeps the last body status (the failure status 1 is NOT
+                    # reported — while_break0_cond / d8 in the truth table).
                     if lb.exit_status == 0:
                         exit_status = 0
                     self._reraise_loop_control(lb, context)
@@ -241,10 +241,13 @@ class ControlFlowExecutor:
                 return 1
             while True:
                 # break/continue in the condition act on THIS loop, but with
-                # the WHILE polarity mirrored (bash, verified on 3.2 and 5.2;
-                # truth table in tmp/probes-r17t1-break): the continue/break
-                # returns 0, which reads as the condition SUCCEEDING, so the
-                # loop ends normally keeping the last body status.
+                # the WHILE polarity mirrored (verified against bash 5.2, the
+                # project oracle; truth table in tmp/probes-r17t1-break): the
+                # continue/break returns 0, which reads as the condition
+                # SUCCEEDING, so the loop ends normally keeping the last body
+                # status. NOTE: bash 3.2 diverges specifically on
+                # until-condition-continue — it does NOT abandon the list
+                # there (see the LoopContinue arm just below); psh pins 5.2.
                 try:
                     with context.errexit_suppressed():
                         condition_status = visitor.visit(node.condition)
