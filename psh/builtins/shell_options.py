@@ -24,7 +24,13 @@ class ShoptBuiltin(Builtin):
     SHOPT_OPTIONS = {name: name for name in SHOPT_OPTION_NAMES}
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        # Parse flags
+        # Parse flags. NOTE: deliberately NOT parse_flags() — shopt's option
+        # grammar cannot be expressed by the shared getopt helper: flags may
+        # follow operands (`shopt extglob -s` still sets extglob), the flags are
+        # mutually exclusive ("cannot combine multiple flag options", exit 1),
+        # clustering is rejected (`-sq` is "invalid option: -sq", exit 2, not
+        # -s -q), and a bad flag is "invalid option: -x" (exit 2) rather than
+        # parse_flags' "-x: invalid option" + usage line.
         flag = None
         option_names = []
 
