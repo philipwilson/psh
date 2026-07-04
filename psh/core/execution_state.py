@@ -32,6 +32,7 @@ class ExecutionState:
         "last_cmdsub_status",
         "in_forked_child",
         "in_substitution",
+        "bash_command",
     )
 
     def __init__(self) -> None:
@@ -62,6 +63,10 @@ class ExecutionState:
         # diagnostic there but NOT in a ( ) subshell, so this flag —
         # unlike in_forked_child — must distinguish the two.
         self.in_substitution: bool = False
+        # Pre-expansion text of the command being/about to be executed
+        # ($BASH_COMMAND). Written via TrapManager.set_bash_command, which
+        # freezes it while a trap action runs (bash).
+        self.bash_command: str = ""
 
     def copy_into(self, other: "ExecutionState") -> None:
         """Copy the inheritable execution state into ``other`` (for subshell
@@ -78,3 +83,4 @@ class ExecutionState:
         other.errexit_eligible = self.errexit_eligible
         other.last_cmdsub_status = self.last_cmdsub_status
         other.in_substitution = self.in_substitution
+        other.bash_command = self.bash_command

@@ -77,11 +77,22 @@ class SourceBuiltin(Builtin):
             try:
                 with FileInput(script_path) as input_source:
                     # Execute with no history since it's sourced
-                    return shell.script_manager.source_processor.execute_from_source(input_source, add_to_history=False)
+                    exit_code = shell.script_manager.source_processor.execute_from_source(
+                        input_source, add_to_history=False)
             except FunctionReturn as ret:
                 # `return N` inside the sourced file: stop executing the file
                 # and make N the exit status of `source` itself (bash).
-                return ret.exit_code
+                exit_code = ret.exit_code
+            # The RETURN trap fires each time a sourced file finishes —
+            # whether by end-of-file or an explicit `return` — with $? =
+            # the last command's status from before the return (bash).
+            # Unlike functions, `source` never hides the trap (it fires
+            # without set -T). A `return` in the action overrides the
+            # exit status (see TrapManager.execute_return_trap).
+            override = shell.trap_manager.execute_return_trap()
+            if override is not None:
+                exit_code = override
+            return exit_code
         except OSError as e:
             self.error(f"{script_path}: {e}", shell)
             return 1

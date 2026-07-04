@@ -10,7 +10,8 @@ from .exceptions import FunctionDefinitionError
 class Function:
     """Represents a shell function definition."""
     def __init__(self, name: str, body: CommandList, readonly: bool = False,
-                 redirects: Optional[List] = None, exported: bool = False):
+                 redirects: Optional[List] = None, exported: bool = False,
+                 trace: bool = False):
         self.name = name
         self.body = body
         self.readonly = readonly
@@ -19,6 +20,9 @@ class Function:
         # the `export -f` / `declare -Fx` listing — but it makes the attribute
         # round-trip and matches bash's exit status.
         self.exported = exported
+        # `declare -t` trace attribute: the function inherits the RETURN
+        # trap (bash also inherits DEBUG) even without `set -T`.
+        self.trace = trace
         # Redirections from the definition (f() { ...; } > file),
         # applied at each call (bash).
         self.redirects = redirects or []
@@ -49,11 +53,12 @@ class FunctionManager:
         if existing and existing.readonly:
             raise FunctionDefinitionError(f"{name}: readonly function")
 
-        # Preserve readonly/export status if redefining
+        # Preserve readonly/export/trace status if redefining
         readonly = existing.readonly if existing else False
         exported = existing.exported if existing else False
+        trace = existing.trace if existing else False
         self.functions[name] = Function(name, body, readonly, redirects,
-                                        exported=exported)
+                                        exported=exported, trace=trace)
 
     def get_function(self, name: str) -> Optional[Function]:
         """Get a function by name."""
@@ -87,6 +92,18 @@ class FunctionManager:
         func = self.functions.get(name)
         if func:
             func.exported = exported
+            return True
+        return False
+
+    def set_function_trace(self, name: str, trace: bool = True) -> bool:
+        """Set/clear a function's trace attribute (`declare -ft`/`declare +t`).
+
+        A traced function inherits the RETURN trap without `set -T` (bash).
+        Returns True if the function exists, False otherwise.
+        """
+        func = self.functions.get(name)
+        if func:
+            func.trace = trace
             return True
         return False
 

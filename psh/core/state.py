@@ -495,6 +495,15 @@ class ShellState:
         self.execution.last_cmdsub_status = value
 
     @property
+    def bash_command(self) -> str:
+        """Pre-expansion text of the command being executed ($BASH_COMMAND)."""
+        return self.execution.bash_command
+
+    @bash_command.setter
+    def bash_command(self, value: str) -> None:
+        self.execution.bash_command = value
+
+    @property
     def in_forked_child(self) -> bool:
         """True only inside a forked child (pipeline member, subshell, ...)."""
         return self.execution.in_forked_child

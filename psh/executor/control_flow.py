@@ -15,7 +15,7 @@ This module handles execution of control structures including:
 
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Iterator, List, Union
+from typing import TYPE_CHECKING, Iterator, List, Optional, Union
 
 from ..core import LoopBreak, LoopContinue, NamerefCycleError, ReadonlyVariableError
 from ..expansion.arithmetic import evaluate_arithmetic
@@ -314,7 +314,10 @@ class ControlFlowExecutor:
                     self.state.stderr.write(header + "\n")
                 # bash runs the DEBUG trap before binding the loop variable on
                 # EACH iteration (so `trap d DEBUG; for i in 1 2; do echo x;
-                # done` fires d before every `i=…` and every `echo`).
+                # done` fires d before every `i=…` and every `echo`), with
+                # $BASH_COMMAND = the pre-expansion header (`for i in $v`).
+                from ..visitor import format_for_header
+                self.shell.trap_manager.set_bash_command(format_for_header(node))
                 self.shell.trap_manager.execute_debug_trap()
                 # Set loop variable. A readonly variable or a cyclic nameref
                 # rejects the binding: bash reports (error / warning form
@@ -357,7 +360,9 @@ class ControlFlowExecutor:
             # bash runs the DEBUG trap before each arithmetic step of a C-style
             # for: the init, every condition test, and every update (plus the
             # body commands fire their own). So `for ((i=0;i<1;i++)); do echo w;
-            # done` fires D before init, cond, echo, update, then the final cond.
+            # done` fires D before init, cond, echo, update, then the final
+            # cond. $BASH_COMMAND is the step's own text: ((i=0)), ((i<1)), ...
+            self._set_arith_step_bash_command(node.init_expr)
             self.shell.trap_manager.execute_debug_trap()
             # Evaluate init expression (before redirects, matching prior
             # behavior: an init error returns 1 without opening redirects).
@@ -382,6 +387,7 @@ class ControlFlowExecutor:
                     return 1
                 while True:
                     # Evaluate condition
+                    self._set_arith_step_bash_command(node.condition_expr)
                     self.shell.trap_manager.execute_debug_trap()
                     if node.condition_expr:
                         try:
@@ -412,6 +418,7 @@ class ControlFlowExecutor:
                         break
 
                     # Evaluate update expression
+                    self._set_arith_step_bash_command(node.update_expr)
                     self.shell.trap_manager.execute_debug_trap()
                     if node.update_expr:
                         try:
@@ -443,7 +450,10 @@ class ControlFlowExecutor:
         Returns:
             Exit status code
         """
-        # bash runs the DEBUG trap before the `case` command (the subject eval).
+        # bash runs the DEBUG trap before the `case` command (the subject
+        # eval), with $BASH_COMMAND = the pre-expansion header `case $x in `.
+        from ..visitor import format_case_header
+        self.shell.trap_manager.set_bash_command(format_case_header(node))
         self.shell.trap_manager.execute_debug_trap()
 
         # Expand the subject. The parser carries a Word (per-part quote
@@ -627,6 +637,13 @@ class ControlFlowExecutor:
         return exit_status
 
     # Helper methods
+
+    def _set_arith_step_bash_command(self, expr: Optional[str]) -> None:
+        """$BASH_COMMAND for one C-style-for arithmetic step (bash reports
+        ``((i=0))`` / ``((i<1))`` / ``((i++))``). An absent step records
+        nothing (the previous command's text stands)."""
+        if expr:
+            self.shell.trap_manager.set_bash_command(f"(({expr}))")
 
     def _expand_loop_items(self, node) -> List[str]:
         """Expand the item list of a for or select loop.

@@ -4341,3 +4341,140 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# TRAP ACTIONS (reappraisal #17 Tier-2: control flow in traps, $BASH_COMMAND,
+# RETURN trap — truth tables in tmp/probes-r17t2-trap/, bash 5.2)
+# =============================================================================
+
+- name: trap_return_in_signal_trap_returns_from_function
+  command: 'f() { trap "echo t; return 9" USR1; kill -USR1 $$; echo after; }; f; echo rc=$?'
+  stdout: "t\nrc=9\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_break_in_signal_trap_exits_loop_status_0
+  command: 'trap "break" USR1; i=0; while true; do i=$((i+1)); test $i -eq 2 && kill -USR1 $$; test $i -gt 5 && break; done; echo i=$i rc=$?'
+  stdout: "i=2 rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_continue_in_signal_trap_skips_iteration
+  command: 'trap "continue" USR1; for i in 1 2 3; do test $i = 2 && kill -USR1 $$; echo i=$i; done; echo rc=$?'
+  stdout: "i=1\ni=3\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_return_in_trap_innermost_function_only
+  command: 'g() { kill -USR1 $$; echo g-after; }; f() { trap "return 4" USR1; g; echo f-after; }; f; echo rc=$?'
+  stdout: "f-after\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_break2_in_trap_breaks_both_loops
+  command: 'trap "break 2" USR1; for i in 1 2; do for j in a b; do test $j = a && kill -USR1 $$; echo $i$j; done; echo outer-$i; done; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bash_command_debug_pre_expansion
+  command: 'x=5; trap "echo [\$BASH_COMMAND]" DEBUG; echo $x'
+  stdout: "[echo $x]\n5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bash_command_err_trap_failing_command
+  command: 'trap "echo [\$BASH_COMMAND]" ERR; false; true'
+  stdout: "[false]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bash_command_frozen_during_signal_trap
+  command: 'trap "echo [\$BASH_COMMAND]" USR1; kill -USR1 $$; echo done'
+  stdout: "[kill -USR1 $$]\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bash_command_for_header_pre_expansion
+  command: 'trap "echo [\$BASH_COMMAND]" DEBUG; v="a b"; for i in $v; do :; done'
+  stdout: "[v=\"a b\"]\n[for i in $v]\n[:]\n[for i in $v]\n[:]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bash_command_case_header_trailing_space
+  command: 'x=foo; trap "echo [\$BASH_COMMAND]" DEBUG; case $x in foo) : ;; esac'
+  stdout: "[case $x in ]\n[:]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bash_command_cstyle_for_arith_steps
+  command: 'trap "echo [\$BASH_COMMAND]" DEBUG; for ((i=0;i<1;i++)); do echo b; done'
+  stdout: "[((i=0))]\n[((i<1))]\n[echo b]\nb\n[((i++))]\n[((i<1))]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bash_command_arith_command_fires_debug
+  command: 'trap "echo [\$BASH_COMMAND]" DEBUG; ((1+1))'
+  stdout: "[((1+1))]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bash_command_cond_expr_fires_debug
+  command: 'trap "echo [\$BASH_COMMAND]" DEBUG; [[ a == a ]]'
+  stdout: "[[[ a == a ]]]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: return_trap_hidden_in_plain_function
+  command: 'trap "echo R" RETURN; f() { :; }; f; echo done'
+  stdout: "done\n"
+  stderr: ""
+  exit_code: 0
+
+- name: return_trap_fires_with_functrace
+  command: 'set -T; trap "echo R" RETURN; f() { :; }; f; echo done'
+  stdout: "R\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+- name: return_trap_set_inside_function_fires
+  command: 'f() { trap "echo R" RETURN; :; }; f; echo done'
+  stdout: "R\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+- name: return_trap_source_fires_without_functrace
+  command: 'trap "echo R" RETURN; source /dev/null; echo done'
+  stdout: "R\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+- name: return_trap_dollar_q_pre_return_status
+  command: "f() { trap 'echo rc=$?' RETURN; false; return 7; }; f; echo after=$?"
+  stdout: "rc=1\nafter=7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: return_trap_action_does_not_change_status
+  command: 'f() { trap "false" RETURN; return 0; }; f; echo after=$?'
+  stdout: "after=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: return_trap_p_listing
+  command: 'trap "echo R" RETURN; trap -p RETURN'
+  stdout: "trap -- 'echo R' RETURN\n"
+  stderr: ""
+  exit_code: 0
+
+- name: return_trap_declare_ft_trace_attribute
+  command: 'f() { :; }; declare -ft f; trap "echo R" RETURN; f; echo done'
+  stdout: "R\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+- name: functrace_debug_fires_on_function_entry
+  command: 'set -T; trap "echo D" DEBUG; f() { :; }; f'
+  stdout: "D\nD\nD\n"
+  stderr: ""
+  exit_code: 0
