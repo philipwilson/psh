@@ -43,6 +43,16 @@ class FunctionOperationExecutor:
         Returns:
             Exit status code (0 for success)
         """
+        # Under ``set -o posix`` a function name must be a valid POSIX/ASCII
+        # identifier, exactly as bash restricts it. With posix mode OFF, psh
+        # (like bash) allows the lenient set — a Unicode-letter name such as
+        # ``é`` is accepted. Single authoritative policy: unicode_support.
+        from ..lexer.unicode_support import is_valid_name
+        if self.shell.state.options.get('posix', False):
+            if not is_valid_name(node.name, posix_mode=True):
+                print(f"psh: `{node.name}': not a valid identifier",
+                      file=self.shell.stderr)
+                return 1
         try:
             self.function_manager.define_function(node.name, node.body,
                                                   redirects=node.redirects)

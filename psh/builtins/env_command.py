@@ -89,6 +89,9 @@ class EnvBuiltin(Builtin):
             return child_shell.run_command(command_text, add_to_history=False)
         finally:
             self._restore_process_fds(fd_backups)
+            # Release the child's own fd-backed resources (signal self-pipes).
+            # It shares the parent's stdio streams, which close() leaves alone.
+            child_shell.close()
 
     def _parse_invocation(
         self, argv: List[str], shell: 'Shell'

@@ -17,77 +17,89 @@ Features that PSH provides but bash doesn't (or implements differently).
 - `version`: Show PSH version information
 - `help`: Context-aware help system
 
-### 2. Bash-Specific Features (Not Implemented)
-Features that bash provides but PSH intentionally doesn't support.
+### 2. Major Bash Features PSH Supports
+This doc formerly listed the features below as "not implemented." That was
+badly stale: **every item here is implemented and covered by conformance
+tests.** They are called out explicitly so migrating users and reviewers
+know PSH has them (see the mapped conformance files for the proving tests).
 
 #### Advanced Conditionals
-- `[[ ]]`: Bash extended test construct
-- `(( ))`: Arithmetic evaluation construct
+- `[[ ]]`: extended test construct — `[[ "hello" == hel* ]]`
+- `(( ))`: arithmetic evaluation construct — `(( x++ ))`, `(( 3 > 2 ))`
 
 #### Arrays
-- `declare -a`: Indexed array declaration
-- `declare -A`: Associative array declaration  
-- `${array[@]}`: Array expansion syntax
-- `${#array[@]}`: Array length syntax
+- `declare -a`: indexed array declaration
+- `declare -A`: associative array declaration
+- `${array[@]}` / `${array[*]}`: array expansion
+- `${#array[@]}`: array length; `${!array[@]}`: index/key list
 
 #### Advanced Parameter Expansion
-- `${var^}`, `${var^^}`: Case conversion (first char/all chars to upper)
-- `${var,}`, `${var,,}`: Case conversion (first char/all chars to lower)
-- `${var/pattern/replacement}`: Pattern substitution
-- `${var//pattern/replacement}`: Global pattern substitution
+- `${var^}`, `${var^^}`, `${var,}`, `${var,,}`: case conversion
+- `${var/pattern/replacement}`, `${var//pattern/replacement}`: pattern substitution
+- `${var@P}`, `${var@Q}`, `${var@K}`/`${var@k}` and friends: `@`-operator transforms
 
 #### Process Substitution
-- `<(command)`: Process substitution input
-- `>(command)`: Process substitution output
+- `<(command)`: process substitution input
+- `>(command)`: process substitution output
 
-#### Extended Globbing
-- `?(pattern)`: Zero or one occurrence
-- `+(pattern)`: One or more occurrences  
-- `*(pattern)`: Zero or more occurrences
-- `@(pattern)`: Exactly one occurrence
-- `!(pattern)`: Not matching pattern
+#### Extended Globbing (`shopt -s extglob`)
+- `?(pattern)`, `+(pattern)`, `*(pattern)`, `@(pattern)`, `!(pattern)` — in
+  pathname expansion, `case` patterns, `[[ ]]` matches, and parameter-expansion
+  patterns. As in bash, `shopt -s extglob` must take effect **before** the line
+  using the syntax is parsed (bash rejects `shopt -s extglob; case x in @(a));;`
+  on a single `-c` line for the same reason).
 
 #### Bash Builtins
-- `declare`: Variable/function declaration with attributes
-- `local`: Local variables in functions
-- `mapfile`/`readarray`: Read lines into array
-- `shopt`: Shell option setting
+- `declare` / `typeset`: variable declaration with attributes
+- `local`: function-local variables
+- `mapfile` / `readarray`: read lines into an array
+- `shopt`: shell option setting
 
-### 3. Documented Behavioral Differences
+### 3. Bash Features PSH Does NOT Implement
+Features bash provides that PSH genuinely lacks. The **authoritative,
+continuously-verified ledger** is
+[`tests/conformance/bash/test_absent_features.py`](../bash/test_absent_features.py):
+each entry is a `strict-xfail` that turns the suite RED the moment PSH
+implements the feature, so this list cannot silently rot.
+
+#### Unimplemented builtins (report "command not found")
+- `bind`: readline key-binding builtin
+- `compgen` / `complete`: programmable-completion builtins
+- `caller`: print the call site of the current function
+- `enable`: enable/disable shell builtins
+- `suspend`: suspend the shell
+
+#### Job control / process features
+- `coproc`: co-processes
+- `wait -f`: wait until a job fully terminates
+- `jobs -x`: replace jobspecs with PGIDs in a command's arguments
+- `shopt -s lastpipe`: run the last pipeline element in the current shell
+  (rejected honestly as "invalid shell option name")
+
+### 4. Documented Behavioral Differences
 Areas where PSH and bash both support a feature but with different behavior.
 
-#### Directory Stack (pushd/popd)
-- PSH and bash may handle directory stack operations slightly differently
-- Output format may vary
-- Error handling may differ
+#### History Expansion
+- History expansion **is** implemented: event designators (`!!`, `!n`,
+  `!string`, `!?string?`), word designators, `:h`/`:t`/`:r`/`:e`/`:s`/`:g&`
+  modifiers, and `^old^new` quick substitution. Like bash, it is
+  **interactive-only** — both shells disable it for non-interactive `-c`
+  strings and scripts (proving coverage:
+  [`tests/conformance/bash/test_history_expansion_conformance.py`](../bash/test_history_expansion_conformance.py)).
+- Divergence: PSH toggles history expansion via the `histexpand` shell option
+  (`H` in `$-`), but **does not accept `set -H` / `set +H`** as a way to flip
+  it (`set -H` reports "invalid option"). bash accepts both.
+- Multi-key associative-array iteration order is PSH insertion order vs bash's
+  internal hash order (a PSH-wide associative property, not an absent feature).
 
-#### History Handling
-- PSH may implement history differently than bash
-- History expansion (`!!`, `!n`) not implemented in PSH
-- History file format may differ
+#### Directory Stack (pushd/popd/dirs)
+- Implemented; output format and some error messages may differ in wording
+  from bash.
 
 #### Signal Handling
-- PSH may handle some signals differently than bash
-- Trap behavior in functions may vary
-- Job control signal handling differences
-
-### 4. Known Limitations
-Features that are partially implemented or have known issues.
-
-#### Here Documents
-- PSH here document processing has architectural limitations
-- Variable expansion in here documents may not work identically
-- Tab stripping (`<<-`) may not be fully implemented
-
-#### Interactive Features
-- Line editing capabilities may be limited
-- Tab completion may not be fully implemented
-- Prompt customization may be limited
-
-#### I/O Redirection
-- Advanced redirection features may not be supported
-- File descriptor manipulation may be limited
-- Some redirection combinations may not work
+- Some signal behavior is platform-specific: real-time signals
+  (`SIGRTMIN+n`) exist on Linux but not macOS, and a few signal-name aliases
+  (`SIGCHLD`/`SIGCLD`) vary by platform. Trap semantics otherwise match bash.
 
 ## Testing Strategy
 

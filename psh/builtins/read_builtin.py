@@ -64,6 +64,23 @@ class ReadBuiltin(Builtin):
             self.error(str(e), shell)
             return getattr(e, 'rc', 2)
 
+        # Validate the target NAME(s) before reading anything (bash rejects a
+        # non-identifier target with "not a valid identifier", status 1). Uses
+        # the shell's single identifier policy (unicode_support.is_valid_name):
+        # under ``set -o posix`` names are ASCII-only as in bash; otherwise
+        # psh's lenient Unicode-letter rule applies (documented divergence).
+        # A subscripted target ``NAME[i]`` validates only its base NAME.
+        from ..lexer.unicode_support import is_valid_name
+        posix_mode = shell.state.options.get('posix', False)
+        targets = list(var_names)
+        if options['array_name']:
+            targets.append(options['array_name'])
+        for target in targets:
+            base = target.split('[', 1)[0]
+            if not is_valid_name(base, posix_mode):
+                self.error(f"`{target}': not a valid identifier", shell)
+                return 1
+
         # Display the -p prompt, but ONLY when the input is a terminal (bash):
         # a `read -p` from a pipe / here-string / redirected file writes no
         # prompt, so it stays out of captured output.
