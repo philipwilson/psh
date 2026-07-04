@@ -1332,6 +1332,27 @@ psh: ll: command not found
 psh$ unalias -a
 ```
 
+**Difference from bash — aliases work in scripts too.** PSH deliberately
+keeps alias expansion enabled in every mode; bash disables the
+`expand_aliases` option in non-interactive shells, so aliases in bash
+scripts and `-c` strings are ignored unless the script runs
+`shopt -s expand_aliases` first. PSH honors the same toggle in reverse:
+
+```bash
+# In a PSH script (bash would say "ll: command not found"):
+alias ll='ls -la'
+ll                          # runs ls -la
+
+shopt -u expand_aliases     # turn expansion off (as in bash)
+ll                          # psh: ll: command not found
+shopt -s expand_aliases     # and back on
+```
+
+PSH also expands an alias used on the same line that defines it
+(`alias hi='echo hello'; hi` prints `hello`); bash never does, because it
+reads the whole line before running the `alias` command. See Chapter 17
+(17.3) for the portability notes.
+
 ### local - Local Variables in Functions
 
 Create variables scoped to a function:

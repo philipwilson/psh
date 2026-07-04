@@ -18,13 +18,19 @@ Covered claims (chapter: feature):
   by test_edge_cases.py)
 - ch16: ``read -n`` / ``read -t`` / ``read -s`` / ``read -u`` (from an fd)
   (reappraisal #16 H7 flipped the stale ``read -u`` "unsupported" note)
+- ch17: ``FUNCNAME`` full nested call stack (reappraisal #17 M1 — flipped
+  from the stale "[0] only" row) + the ``main``-frame caveat pin
+- ch17/ch04: non-interactive alias expansion (documented difference) and
+  the ``shopt -u/-s expand_aliases`` toggle (reappraisal #17 M4)
 """
 
 import os
+import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from conformance_framework import ConformanceTest
+from conformance_framework import ConformanceTest, find_bash
 
 
 class TestPipelineNotes(ConformanceTest):
@@ -191,3 +197,85 @@ class TestReadOptionNotes(ConformanceTest):
 
     def test_read_s_silent(self):
         self.assert_identical_behavior('echo secret | { read -s v; echo "$v"; }')
+
+
+class TestFuncnameNotes(ConformanceTest):
+    """ch17: FUNCNAME populates the full nested-function call stack.
+
+    Reappraisal #17 M1 — the compatibility-table row claimed "[0] only;
+    full call stack not populated" long after psh populated the whole
+    stack. The row was flipped to "Full support"; these tests prove it
+    (and pin the one honest caveat: bash's ``main``/``source`` base
+    frames, which belong to the unimplemented BASH_SOURCE/BASH_LINENO
+    cluster, are not appended).
+    """
+
+    def test_funcname_full_call_stack(self):
+        self.assert_identical_behavior(
+            'a(){ b;}; b(){ c;}; c(){ echo "${FUNCNAME[@]}";}; a')
+
+    def test_funcname_indexed_frames_and_length(self):
+        self.assert_identical_behavior(
+            'a(){ b;}; b(){ c;}; c(){ echo "${FUNCNAME[0]}|${FUNCNAME[1]}|'
+            '${FUNCNAME[2]}|${#FUNCNAME[@]}";}; a')
+
+    def test_funcname_unset_outside_functions(self):
+        self.assert_identical_behavior('echo "outside=[${FUNCNAME[@]:-unset}]"')
+
+    def test_funcname_star_join(self):
+        self.assert_identical_behavior('a(){ b;}; b(){ echo "${FUNCNAME[*]}";}; a')
+
+    def test_funcname_script_base_frames_differ(self):
+        """Caveat pin: in a script FILE bash appends a ``main`` base frame.
+
+        psh's function frames are identical, but the bash-only ``main``
+        (and ``source``) frames arrive with the BASH_SOURCE/BASH_LINENO
+        work — this pin fails when that lands, forcing the ch17 caveat to
+        be retired.
+        """
+        script = 'a(){ b;}; b(){ c;}; c(){ echo "${FUNCNAME[@]}";}; a\n'
+        with tempfile.NamedTemporaryFile('w', suffix='.sh', delete=False) as f:
+            f.write(script)
+            path = f.name
+        try:
+            root = os.path.abspath(os.path.join(
+                os.path.dirname(__file__), '..', '..', '..'))
+            psh = subprocess.run([sys.executable, '-m', 'psh', path],
+                                 capture_output=True, text=True,
+                                 cwd=root, timeout=15)
+            bash = subprocess.run([find_bash(), path], capture_output=True,
+                                  text=True, timeout=15)
+            assert psh.stdout == 'c b a\n', psh.stdout
+            assert bash.stdout == 'c b a main\n', bash.stdout
+        finally:
+            os.unlink(path)
+
+
+class TestAliasExpansionNotes(ConformanceTest):
+    """ch17 (17.3) / ch04: alias expansion in non-interactive shells.
+
+    psh deliberately keeps ``expand_aliases`` ON in every mode where bash
+    defaults it OFF non-interactively (documented difference, reappraisal
+    #17 M4). The ``shopt`` toggle itself must then behave exactly like
+    bash's: ``shopt -u expand_aliases`` disables expansion for
+    subsequently-parsed commands and ``shopt -s`` re-enables it.
+    """
+
+    def test_alias_expands_noninteractively_documented_difference(self):
+        self.assert_documented_difference(
+            'alias ll="echo ALIAS_EXPANDED"; ll',
+            'ALIAS_EXPANSION_NONINTERACTIVE')
+
+    def test_same_line_alias_definition_is_psh_extension(self):
+        # bash never expands an alias used on the line that defines it.
+        self.assert_psh_extension('alias hi="echo hello"; hi')
+
+    def test_shopt_u_expand_aliases_disables(self):
+        self.assert_identical_behavior(
+            'shopt -u expand_aliases\nalias ll="echo X"\n'
+            'll 2>/dev/null; echo rc=$?')
+
+    def test_shopt_s_expand_aliases_reenables(self):
+        self.assert_identical_behavior(
+            'shopt -u expand_aliases\nalias ll="echo X"\nll 2>/dev/null\n'
+            'shopt -s expand_aliases\nll')

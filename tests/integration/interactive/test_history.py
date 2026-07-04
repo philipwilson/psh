@@ -157,7 +157,7 @@ class TestHistoryExpansion:
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @pytest.mark.xfail(reason="history expansion (!!, !n) is unsupported (documented wontfix); see docs/reviews/architecture_feature_review_2026-06-09.md")
+    @pytest.mark.xfail(reason="history expansion is implemented (proving coverage: tests/conformance/bash/test_history_expansion_conformance.py), but it is interactive-only in both bash and psh; this test feeds a non-interactive stdin, which records no history and performs no expansion")
     def test_history_expansion_last_command(self):
         """Test !! expansion (repeat last command)."""
         commands = [
@@ -172,7 +172,7 @@ class TestHistoryExpansion:
         hello_count = result['stdout'].count('hello world')
         assert hello_count >= 2
 
-    @pytest.mark.xfail(reason="history expansion (!!, !n) is unsupported (documented wontfix); see docs/reviews/architecture_feature_review_2026-06-09.md")
+    @pytest.mark.xfail(reason="history expansion is implemented (proving coverage: tests/conformance/bash/test_history_expansion_conformance.py), but it is interactive-only in both bash and psh; this test feeds a non-interactive stdin, which records no history and performs no expansion")
     def test_history_expansion_by_number(self):
         """Test !n expansion (repeat command by number)."""
         commands = [
@@ -189,7 +189,7 @@ class TestHistoryExpansion:
         first_count = result['stdout'].count('first')
         assert first_count >= 2
 
-    @pytest.mark.xfail(reason="history expansion (!!, !n) is unsupported (documented wontfix); see docs/reviews/architecture_feature_review_2026-06-09.md")
+    @pytest.mark.xfail(reason="history expansion is implemented (proving coverage: tests/conformance/bash/test_history_expansion_conformance.py), but it is interactive-only in both bash and psh; this test feeds a non-interactive stdin, which records no history and performs no expansion")
     def test_history_expansion_by_string(self):
         """Test !string expansion (repeat command starting with string)."""
         commands = [
@@ -354,7 +354,7 @@ class TestHistoryBuiltins:
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @pytest.mark.xfail(reason="history -c/-d options not implemented")
+    @pytest.mark.xfail(reason="history -c IS implemented; this test feeds a non-interactive stdin (which records no history to clear) and its assertion also matches the `echo before_clear` output itself, so it cannot pass as written")
     def test_history_clear(self):
         """Test history -c (clear history)."""
         commands = [
@@ -385,7 +385,7 @@ class TestHistoryBuiltins:
                 content = f.read()
                 assert 'echo test_write' in content
 
-    @pytest.mark.xfail(reason="history -c/-d options not implemented")
+    @pytest.mark.xfail(reason="history -r is not implemented (psh's history builtin supports only `history [n]` and `history -c`); this test also feeds a non-interactive stdin, which records no history")
     def test_history_read(self):
         """Test history -r (read history from file)."""
         # Pre-populate history file

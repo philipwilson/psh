@@ -337,13 +337,52 @@ time echo hello         # Times the command; `time while ...; done`, `time { ...
 # Call-stack introspection arrays
 echo ${BASH_SOURCE[0]}  # Not available (empty)
 echo ${BASH_LINENO[0]}  # Not available (empty)
-echo ${FUNCNAME[0]}     # Current function name works...
-echo ${FUNCNAME[1]}     # ...but the rest of the call stack is not populated
+
+# FUNCNAME itself IS fully populated for nested function calls:
+a() { b; }; b() { c; }
+c() { echo "${FUNCNAME[@]}"; }
+a                       # c b a — same as bash
+# Only the bash-specific base frames are missing: bash appends `main`
+# for the top-level script frame and `source` frames for sourced files
+# (they arrive with the BASH_SOURCE/BASH_LINENO work), so in a script
+# bash prints `c b a main` where PSH prints `c b a`.
 ```
 
 ## 17.3 Behavioral Differences
 
 Some features work differently in PSH compared to Bash.
+
+### Alias Expansion in Scripts
+
+PSH deliberately keeps alias expansion ON in every mode; bash turns the
+`expand_aliases` shopt option off in non-interactive shells (scripts and
+`-c` strings):
+
+```bash
+# In a script or with -c:
+alias ll='ls -la'
+ll          # PSH: runs ls -la      bash: ll: command not found
+
+# bash needs an explicit opt-in (and the alias on an EARLIER line):
+shopt -s expand_aliases
+
+# PSH supports the reverse toggle — turn expansion off for
+# subsequently parsed commands, exactly like bash's option:
+shopt -u expand_aliases
+ll          # command not found in both shells
+shopt -s expand_aliases   # ...and back on
+
+# One further PSH nicety: an alias defined on the SAME line can be used
+# immediately. Bash never expands it (the line was read before the
+# alias command ran):
+alias hi='echo hello'; hi   # PSH: hello    bash: hi: command not found
+```
+
+This is an intentional educational choice (aliases behave the same
+everywhere, so examples work in scripts), not an oversight. If you are
+porting a PSH script to bash, either add `shopt -s expand_aliases` near
+the top or replace aliases with shell functions (which bash expands in
+all modes).
 
 ### Quote Handling
 
@@ -566,10 +605,11 @@ fi
 | getopts builtin | Yes | Yes | Full support |
 | printf builtin | Yes | Yes | Full support (incl. %q) |
 | pushd/popd/dirs | Yes | Yes | Full support |
-| shopt options | Yes | Partial | dotglob, nullglob, globstar, nocaseglob, extglob, inherit_errexit |
+| shopt options | Yes | Partial | checkhash, dotglob, expand_aliases, extglob, failglob, globstar, inherit_errexit, nocaseglob, nocasematch, nullglob |
 | Extended glob patterns | Yes | Yes | ?() *() +() @() !() (enable extglob before the line) |
 | read options | Yes | Partial | -r -d -p -t -n -N -s -a -u supported; -e/-i (readline editing) not |
 | command history (`history`) | Yes | Yes | Listing past commands (interactive) |
+| Aliases | Yes | Yes | Expanded in scripts/`-c` too by default (bash: interactive-only); `shopt -u expand_aliases` disables — see 17.3 |
 | History expansion (!!, !n) | Yes | Yes | Full support for interactive event/word designators + :h/:t/:r/:e/:s/:g& modifiers + ^old^new; :q/:x modifiers and !# designator not yet supported |
 | Coprocesses | Yes | No | Not implemented |
 | Programmable completion | Yes | No | Basic tab completion only |
@@ -581,7 +621,7 @@ fi
 | mapfile/readarray | Yes | Yes | -d/-n/-O/-s/-t/-u (no -C/-c) |
 | caller builtin | Yes | No | Not implemented |
 | BASH_SOURCE / BASH_LINENO | Yes | No | Not populated |
-| FUNCNAME | Yes | Partial | [0] only; full call stack not populated |
+| FUNCNAME | Yes | Yes | Full support (nested call stack, `c b a`); only the bash `main`/`source` base frames are absent — they arrive with BASH_SOURCE/BASH_LINENO |
 | wait -n | Yes | Yes | Waits for the next job; `-n` / `-p VAR` |
 | time keyword | Yes | Partial | Times pipelines (default & `-p` formats); `TIMEFORMAT` not honored |
 | ${!prefix*} name matching | Yes | Yes | Full support |
@@ -697,7 +737,8 @@ grep -E 'trap .*RETURN' script.sh
 # - Subshells with variable isolation
 # - Control structures in pipelines
 # - Here documents and here strings
-# - shopt: dotglob, nullglob, globstar, nocaseglob, extglob, inherit_errexit
+# - shopt: checkhash, dotglob, expand_aliases, extglob, failglob, globstar,
+#   inherit_errexit, nocaseglob, nocasematch, nullglob
 # - pushd, popd, dirs
 # - history builtin (interactive)
 # - History expansion (interactive): !!, !n, !-n, !str, !?str?, word
@@ -705,6 +746,8 @@ grep -E 'trap .*RETURN' script.sh
 # - mapfile / readarray (-d/-n/-O/-s/-t/-u)
 # - let (arithmetic evaluation)
 # - namerefs (declare -n / local -n), scalar & array-element targets; ${!var}
+# - FUNCNAME call stack (nested function frames, innermost first)
+# - aliases — NOTE: expanded in scripts too (bash needs shopt -s expand_aliases)
 # - ${!prefix*} / ${!prefix@} variable-name prefix matching
 # - Associative key/value transforms ${var@K} / ${var@k}
 #   (assoc pairs iterate in insertion order, not bash hash order)
@@ -716,7 +759,8 @@ grep -E 'trap .*RETURN' script.sh
 # - Programmable completion (complete, compgen)
 # - caller builtin
 # - read -e / read -i (readline line editing)
-# - BASH_SOURCE/BASH_LINENO; FUNCNAME beyond [0]
+# - BASH_SOURCE/BASH_LINENO (and FUNCNAME's `main`/`source` base frames;
+#   the nested function call stack in FUNCNAME IS fully populated)
 # - Very deep recursion (Python stack limits)
 ```
 
@@ -756,6 +800,7 @@ Key differences to remember:
 - DEBUG and ERR traps and interactive history expansion (`!!`, `!n`, word designators, modifiers) all work; only RETURN traps are unimplemented
 - `caller` is not available (`let`, `mapfile`, `readarray` are supported)
 - Use `$PSH_VERSION` instead of `$BASH_VERSION` to detect PSH
+- Aliases expand in scripts and `-c` strings by default (bash: interactive only); `shopt -u expand_aliases` turns that off
 - Deep recursion may hit Python stack limits
 
 ---
