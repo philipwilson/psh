@@ -38,6 +38,24 @@ PARITY_CORPUS = [
     pytest.param('select x in a b; do echo $x; done', id='select-loop'),
     pytest.param('for ((i=0; i<3; i++)); do echo $i; done',
                  id='c-style-for-loop'),
+    # C-style for headers with parenthesized subexpressions (reappraisal #18
+    # T1-5): the shared depth-tracked collector must keep both parsers producing
+    # identical section strings — parens in init, condition, or update, plus the
+    # fused-)) straddle and nested (( )).
+    pytest.param('for ((i=0; i<(n-1); i++)); do echo $i; done',
+                 id='c-style-for-paren-in-condition'),
+    pytest.param('for ((i=(1+1); i<5; i++)); do echo $i; done',
+                 id='c-style-for-paren-in-init'),
+    pytest.param('for ((i=0; (i<3); i++)); do echo $i; done',
+                 id='c-style-for-parenthesized-condition'),
+    pytest.param('for ((i=0; i<5; (i++))); do echo $i; done',
+                 id='c-style-for-paren-in-update-straddle'),
+    pytest.param('for ((i=0; i<3; ((i++)))); do echo $i; done',
+                 id='c-style-for-double-paren-update'),
+    pytest.param('for ((i=(0); (i<3); (i++))); do echo $i; done',
+                 id='c-style-for-parens-all-three-sections'),
+    pytest.param('(( ((1+2)) == 3 ))',
+                 id='arithmetic-command-nested-double-paren'),
     pytest.param('case $x in a) ;; b|c) ;; *) ;; esac',
                  id='case-patterns'),
     pytest.param('if true; then echo yes; else echo no; fi',

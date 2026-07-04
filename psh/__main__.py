@@ -218,6 +218,27 @@ def _neutralize_closed_std_streams() -> None:
                 pass
 
 
+def _read_all_stdin() -> str:
+    """Return all of stdin as text, tolerating non-UTF-8 bytes.
+
+    Reads the raw bytes and decodes them with surrogateescape, mirroring
+    FileInput's script treatment (psh/scripting/input_sources.py) so a binary
+    or otherwise undecodable byte on stdin cannot crash psh with an uncaught
+    UnicodeDecodeError — bash reads stdin bytes leniently (a stray byte simply
+    becomes a "command not found"). Returns '' when stdin is unavailable
+    (fd 0 closed at startup, where CPython sets sys.stdin to None).
+    """
+    stdin = sys.stdin
+    if stdin is None or stdin.closed:
+        return ""
+    buffer = getattr(stdin, "buffer", None)
+    if buffer is not None:
+        return buffer.read().decode("utf-8", errors="surrogateescape")
+    # A stream without a binary buffer (e.g. a StringIO installed by an
+    # embedder) already yields str; read it directly.
+    return stdin.read()
+
+
 def main():
     """Main entry point for psh command."""
     import atexit
@@ -357,12 +378,13 @@ def main():
         # `cat script | psh --security` ran the very commands it was asked
         # to analyze.)
         if visitor_mode:
-            script_content = sys.stdin.read()
+            script_content = _read_all_stdin()
             exit_code = handle_visitor_mode_for_content(
                 shell, script_content, "<stdin>")
             sys.exit(exit_code)
 
-        if sys.stdin.isatty():
+        stdin = sys.stdin
+        if stdin is not None and not stdin.closed and stdin.isatty():
             # Interactive REPL (TTY attached)
             shell.interactive_manager.run_interactive_loop()
         else:
@@ -379,7 +401,7 @@ def main():
             # discards the failing line and continues — probe-verified).
             if not _flag("force_interactive"):
                 shell.state.is_script_mode = True
-            script_content = sys.stdin.read()
+            script_content = _read_all_stdin()
             if script_content.strip():
                 from .scripting.input_sources import StringInput
                 input_source = StringInput(script_content, "<stdin>")
