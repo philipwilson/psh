@@ -118,18 +118,21 @@ def arith_assignment_discard(state: 'ShellState') -> NoReturn:
     integer-attributed variable, array-subscript evaluation failures on
     read and write (``${a[1//]}``, ``a[1//]=x``, ``unset 'a[08]'``).
 
-    bash 5.2 (probe-verified, tmp/probes-r17t2-arith/): these behave as
-    ordinary discard-line errors in every input mode EXCEPT ``-c``, where
-    bash abandons the REST OF THE ``-c`` STRING (rc 1) — the abandonment
-    passes through ``eval`` but is contained at fork boundaries
-    (command substitution, subshells). Word-arithmetic ``$((1/0))``
-    errors, by contrast, resume at the next ``-c`` line. Like the other
-    discard kinds this one is errexit-immune. The caller must already
-    have printed the message.
+    bash 5.2 (probe-verified, tmp/probes-r17t2-arith/): a HARDER discard
+    than the word-arithmetic family. In every input mode it passes THROUGH
+    eval/source containment — bash kills the rest of the eval'd string /
+    the whole sourced file AND the caller's line, resuming only at the
+    top-level input loop's next line. Under ``-c`` (where the whole string
+    is the input) that means the REST OF THE ``-c`` STRING is abandoned
+    (rc 1). Contained at fork boundaries (command substitution, subshells)
+    like everything else. Word-arithmetic ``$((1/0))`` errors, by
+    contrast, are contained per buffered command (eval/source resume).
+    Like the other discard kinds this one is errexit-immune. The caller
+    must already have printed the message.
     """
     if state.options.get('command_mode'):
         raise SystemExit(1)
-    raise TopLevelAbort(1, errexit_immune=True)
+    raise TopLevelAbort(1, errexit_immune=True, contain_nested=False)
 
 
 def report_internal_defect(state: 'ShellState', exc: BaseException, *,

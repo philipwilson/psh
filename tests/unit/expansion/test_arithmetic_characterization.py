@@ -584,15 +584,61 @@ def test_malformed_expressions(expr, sh):
 
 
 @pytest.mark.parametrize("expr,expected", [
-    ("++5", 5),      # bash: ++ on a non-lvalue is two unary signs, +(+5)
+    ("++5", 5),      # bash: ++ before a non-identifier is two signs, +(+5)
     ("--5", 5),      # bash: -(-5)
-    ("5 ++ 3", 8),   # binary position: 5 + (+3) (bash)
+    ("5 ++ 3", 8),   # binary position, digit follows: 5 + (+3) (bash)
     ("5 -- 3", 8),   # 5 - (-3)
+    ("5+++3", 8),    # (5) + (+ (+3)) — the pair splits, signs re-pair
+    ("++++5", 5),
+    ("++(5)", 5),    # '(' is not an identifier starter -> signs
 ])
 def test_incdec_on_non_lvalue_is_unary_signs(expr, expected, sh):
-    # bash 5.2, probe-verified: ++/-- that cannot be an increment are
-    # re-read as two +/- signs, never an error.
+    # bash 5.2, probe-verified: a ++/-- pair whose next non-whitespace
+    # char does NOT start an identifier (and whose previous token is not
+    # a variable) is re-read as two +/- signs, never an error.
     assert ev(expr, sh) == expected
+
+
+@pytest.mark.parametrize("expr", [
+    "3++x",      # pair before an identifier stays ++ -> binary-position error
+    "3 ++ x",    # whitespace does not matter: bash skips it in the peek
+    "3--x",
+    "2 -- x",
+    "x ++ 2",    # postfix x++ then a dangling operand
+    "x++y",
+    "5++",       # split -> 5 + + <EOF> -> operand expected
+    "(x)++",     # ')' is not a variable token -> split -> operand expected
+])
+def test_incdec_lvalue_boundary_errors(expr, sh):
+    # bash 5.2, probe-verified: all of these are syntax errors in bash.
+    sh.run_command("x=5")
+    with pytest.raises(ArithmeticError):
+        ev(expr, sh)
+
+
+def test_triple_minus_is_minus_predecrement(sh):
+    # bash: `3---x` tokenizes as `3 - --x` (the first pair splits because
+    # '-' follows; the second re-pairs before the identifier) — the
+    # DECREMENT side effect must happen.
+    sh.run_command("x=5")
+    assert ev("3---x", sh) == -1
+    assert ev("x", sh) == 4
+
+
+def test_prefix_incdec_with_whitespace_before_identifier(sh):
+    # bash: `-- x` IS a pre-decrement (the peek skips whitespace).
+    sh.run_command("x=5")
+    assert ev("-- x", sh) == 4
+    assert ev("x", sh) == 4
+    assert ev("++ x", sh) == 5
+
+
+def test_postfix_after_subscript_and_whitespace(sh):
+    # `a[0] ++` is a postfix increment (previous token is the closing
+    # bracket), like bash.
+    sh.run_command("a=(7)")
+    assert ev("a[0] ++", sh) == 7
+    assert ev("a[0]", sh) == 8
 
 
 def test_octal_invalid_digit(sh):

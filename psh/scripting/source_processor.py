@@ -320,6 +320,11 @@ class SourceProcessor(ScriptComponent):
                 # tmp/probes-r17t2-arith/) CONTAINS the discard there
                 # (`eval 'r=2; echo x'; echo after` kills x, runs after with
                 # $?=1; a sourced file resumes at its own next line).
+                # EXCEPTION: the assignment/subscript arithmetic-error family
+                # passes through eval/source to the top-level input loop
+                # (contain_nested=False — see arith_assignment_discard).
+                if nested and not e.contain_nested:
+                    raise
                 if e.errexit_immune:
                     # Expansion-error discards bypass set -e (bash); a
                     # readonly/failglob discard keeps its errexit effect.

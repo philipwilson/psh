@@ -284,7 +284,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 raise UnboundVariableError(f"{var_name}: unbound variable")
 
         needs_is_set = (operator in ('-', '=', '+', '?')
-                        or (len(operator) == 2 and operator[0] == '@'))
+                        or operator.startswith('@'))
         is_set = self._param_is_set(var_name) if needs_is_set else True
         return self._apply_operator(operator, value, operand, var_name=var_name,
                                     is_set=is_set, quote_ctx=quote_ctx)

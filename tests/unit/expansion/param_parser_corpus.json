@@ -1535,9 +1535,9 @@ null
 "start:length"
 ],
 "arr[@]@OP": [
-"arr[@]@OP",
-null,
-null
+"arr[@]",
+"@OP",
+""
 ],
 "arr[@]@Q": [
 "arr[@]",
@@ -2105,9 +2105,9 @@ null
 "word"
 ],
 "parameter@OP": [
-"parameter@OP",
-null,
-null
+"parameter",
+"@OP",
+""
 ],
 "path##*/": [
 "path",
@@ -2635,9 +2635,9 @@ null
 ""
 ],
 "v@Qx": [
-"v@Qx",
-null,
-null
+"v",
+"@Qx",
+""
 ],
 "v@X": [
 "v",

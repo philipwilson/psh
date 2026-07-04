@@ -88,10 +88,20 @@ class TopLevelAbort(BaseException):
     (probe-verified) — while a readonly-assignment discard or a ``failglob``
     no-match under errexit DOES exit the shell. The flag tells the boundary
     handler to suppress the errexit check for the immune family.
+
+    ``contain_nested``: the assignment/subscript arithmetic-error family
+    (``declare -i v='1/0'``, ``${a[1//]}``; see ``arith_assignment_discard``)
+    is NOT contained by eval/source — bash kills the rest of the eval'd
+    string / the whole sourced file AND the caller's line, resuming only at
+    the top-level input loop's next line (probe-verified in file, stdin and
+    interactive modes). Those raisers pass ``contain_nested=False`` so
+    nested buffered boundaries re-raise instead of containing.
     """
-    def __init__(self, status: int = 1, errexit_immune: bool = False):
+    def __init__(self, status: int = 1, errexit_immune: bool = False,
+                 contain_nested: bool = True):
         self.status = status
         self.errexit_immune = errexit_immune
+        self.contain_nested = contain_nested
         super().__init__()
 
 

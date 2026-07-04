@@ -198,27 +198,18 @@ class ArithParser:
     def parse_additive(self) -> ArithNode:
         """Parse addition and subtraction (+, -)
 
-        A ``++``/``--`` token in BINARY position (``5 ++ 3``) can only be
-        here because the left operand was not an lvalue (parse_postfix
-        consumes postfix ``x++``). bash follows C's tokenization but then
-        re-reads it as a binary op plus a unary sign: ``5 ++ 3`` is
-        ``5 + (+3)`` = 8 and ``5 -- 3`` is ``5 - (-3)`` = 8
-        (probe-verified, bash 5.2).
+        A ``++``/``--`` pair that is not a real increment/decrement never
+        reaches the parser: the tokenizer's ``_pair_is_incdec`` splits it
+        into sign tokens (``5 ++ 3`` arrives as ``5 + + 3`` = 8). A real
+        INCREMENT/DECREMENT token in binary position (``3++x`` — prefix
+        form after a non-lvalue) is a syntax error, exactly like bash.
         """
         left = self.parse_multiplicative()
 
-        while self.match(ArithTokenType.PLUS, ArithTokenType.MINUS,
-                         ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
-            tok = self.advance()
-            if tok.type in (ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
-                sign = (ArithTokenType.PLUS
-                        if tok.type == ArithTokenType.INCREMENT
-                        else ArithTokenType.MINUS)
-                right: ArithNode = UnaryOpNode(sign, self.parse_multiplicative())
-                left = BinaryOpNode(sign, left, right)
-                continue
+        while self.match(ArithTokenType.PLUS, ArithTokenType.MINUS):
+            op = self.advance().type
             right = self.parse_multiplicative()
-            left = BinaryOpNode(tok.type, left, right)
+            left = BinaryOpNode(op, left, right)
 
         return left
 
@@ -255,17 +246,14 @@ class ArithParser:
             operand = self.parse_unary()
             return UnaryOpNode(op, operand)
 
-        # Pre-increment/decrement
+        # Pre-increment/decrement. The tokenizer emits INCREMENT/DECREMENT
+        # in prefix position only when an identifier follows (a pair before
+        # a non-lvalue — ``++5``, ``++(x)`` — is split into sign tokens
+        # there, matching bash's expr.c), so this is defensive.
         if self.match(ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
             inc_op = self.advance()
             if not self.match(ArithTokenType.IDENTIFIER):
-                # Not an lvalue (``++5``, ``++(x+1)``, ``++++x``): bash
-                # reads the token as two unary signs — ``$((++5))`` is
-                # ``+(+5)`` = 5, ``$((--5))`` is ``-(-5)`` = 5.
-                sign = (ArithTokenType.PLUS
-                        if inc_op.type == ArithTokenType.INCREMENT
-                        else ArithTokenType.MINUS)
-                return UnaryOpNode(sign, UnaryOpNode(sign, self.parse_unary()))
+                raise SyntaxError(f"Expected identifier after {inc_op.value}")
             var_name = cast(str, self.advance().value)
             is_inc = inc_op.type == ArithTokenType.INCREMENT
             # Array-element lvalue: ++arr[i] / --arr[i]

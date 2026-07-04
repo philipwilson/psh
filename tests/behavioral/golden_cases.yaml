@@ -4481,3 +4481,51 @@
   stdout: ""
   stderr: "nope: msg"
   exit_code: 127
+
+- name: arith_incdec_pair_before_ident_is_error
+  command: "x=5; echo $((3++x)); echo tail\necho next rc=$?"
+  stdout: "next rc=1\n"
+  stderr: null
+  exit_code: 0
+
+- name: arith_triple_minus_decrements_var
+  command: "x=5; echo $((3---x)) x=$x"
+  stdout: "-1 x=4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_prefix_decrement_after_space
+  command: "x=5; echo $((-- x)) x=$x"
+  stdout: "4 x=4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_postfix_after_space
+  command: "x=5; echo $((x ++)) x=$x"
+  stdout: "5 x=6\n"
+  stderr: ""
+  exit_code: 0
+
+- name: badsub_multichar_transform_unset_is_empty
+  command: "echo a${x@ZZ}; echo tail"
+  stdout: "a\ntail\n"
+  stderr: ""
+  exit_code: 0
+
+- name: badsub_multichar_transform_set_exits_c_shell_127
+  command: "x=1\necho a${x@ZZ}; echo tail\necho next"
+  stdout: ""
+  stderr: "bad substitution"
+  exit_code: 127
+
+- name: badsub_empty_transform_set_exits_c_shell_127
+  command: "x=1\necho a${x@}; echo tail\necho next"
+  stdout: ""
+  stderr: "bad substitution"
+  exit_code: 127
+
+- name: bang_prefix_at_listing_still_works
+  command: "zz_gold_a=1 zz_gold_b=2\necho ${!zz_gold_@}"
+  stdout: "zz_gold_a zz_gold_b\n"
+  stderr: ""
+  exit_code: 0

@@ -229,9 +229,18 @@ class TestTransforms:
         assert triple('arr[@]@Q') == ('arr[@]', '@Q', '')
         assert triple('@@Q') == ('@', '@Q', '')
 
-    def test_only_in_final_position(self):
-        # '@'+letter not at the end is no transform: plain (unset) name.
-        assert triple('v@Qx') == ('v@Qx', None, None)
+    def test_multichar_operand_parses_as_transform(self):
+        # bash accepts ANY operand after '@' (probe-verified): ${v@Qx}
+        # is a transform with operand 'Qx' — silently empty when v is
+        # unset, a fatal bad substitution when v is set. It is NOT a
+        # plain 'v@Qx' parameter name.
+        assert triple('v@Qx') == ('v', '@Qx', '')
+
+    def test_empty_operand_parses_as_transform(self):
+        # ${x@}: transform with an empty operand (unset -> '', set ->
+        # fatal bad substitution — bash). ${!prefix@} stays name-listing.
+        assert triple('x@') == ('x', '@', '')
+        assert triple('!pre@') == ('pre', '!@', '')
 
     def test_unknown_letter_parses_as_transform(self):
         # ANY letter after a final '@' parses as a transform operator

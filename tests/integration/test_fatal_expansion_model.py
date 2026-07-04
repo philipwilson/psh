@@ -14,9 +14,12 @@ families:
    under set -e exits a non-interactive shell).
 
 2. ASSIGNMENT/SUBSCRIPT arith errors (declare -i v='1/0', v='1/0' with -i,
-   ${a[1//]}, a[1//]=x, unset 'a[08]'): discard-line in every mode EXCEPT
-   -c, where bash abandons the REST OF THE -c STRING (rc 1, passes through
-   eval, contained at fork boundaries).
+   ${a[1//]}, a[1//]=x, unset 'a[08]'): a HARDER discard that passes
+   THROUGH eval/source containment in EVERY mode (bash kills the rest of
+   the eval'd string / the whole sourced file AND the caller's line,
+   resuming only at the top-level input loop's next line). Under -c the
+   whole string is the input, so the REST OF THE -c STRING is abandoned
+   (rc 1). Contained at fork boundaries.
 
 3. SHELL-EXIT — ${x:?msg}, unknown-@X-transform on a SET variable, and
    set -u violations: a non-interactive shell (script file, -c, piped
@@ -236,6 +239,30 @@ class TestAssignmentSubscriptFamily:
         r = psh_c("eval 'declare -i v=\"1/0\"; echo ineval'; echo after\necho next")
         assert r.stdout == ""
         assert r.returncode == 1
+
+    def test_passes_through_eval_in_script(self, tmp_path):
+        # In a script file the discard also passes THROUGH eval — the
+        # caller's line dies too — but the top-level loop resumes at the
+        # next line (bash, probe-verified; unlike the word-arith family,
+        # which eval contains).
+        r = psh_file(tmp_path,
+                     "eval 'declare -i v=\"1/0\"; echo ineval'; echo after\n"
+                     'echo next\n')
+        assert r.stdout == "next\n"
+        assert r.returncode == 0
+
+    def test_kills_whole_sourced_file_and_caller_line(self, tmp_path):
+        inner = tmp_path / "inner_f2.sh"
+        inner.write_text('declare -i v="1/0"; echo srcsame\necho srcnext\n')
+        r = psh_file(tmp_path, f'. {inner}; echo after\necho next\n')
+        assert r.stdout == "next\n"
+        assert r.returncode == 0
+
+    def test_subscript_passes_through_eval_in_stdin(self):
+        r = psh_stdin("a=(1 2)\neval 'echo ${a[1/0]}; echo ineval'; echo after\n"
+                      'echo next\n')
+        assert r.stdout == "next\n"
+        assert r.returncode == 0
 
     def test_contained_at_cmdsub_under_c(self):
         r = psh_c('v=$(declare -i w="1/0"; echo insub); echo after=[$v] rc=$?\necho next')
