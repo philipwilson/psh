@@ -5675,3 +5675,23 @@
   stdout: "three\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+
+- name: r18t1_read_t_partial_single_var
+  command: '{ printf abc; sleep 1; printf def; } | { read -t 0.3 x; printf "rc=%s [%s]" "$?" "$x"; }'
+  stdout: "rc=142 [abc]"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_read_t_partial_multi_var_split
+  command: '{ printf "aa bb c"; sleep 1; printf dd; } | { read -t 0.3 x y z; printf "rc=%s [%s][%s][%s]" "$?" "$x" "$y" "$z"; }'
+  stdout: "rc=142 [aa][bb][c]"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_read_t_timeout_clears_preset_var
+  command: '{ sleep 1; } | { v=PRESET; read -t 0.3 v; printf "rc=%s [%s]" "$?" "$v"; }'
+  stdout: "rc=142 []"
+  stderr: ""
+  exit_code: 0

@@ -106,8 +106,10 @@ class ReadBuiltin(Builtin):
                     options['fd'], options['timeout'], delim,
                     options['max_chars'], options['silent'], use_sys_stdin
                 )
-                if read_status == 'timeout':
-                    return 142  # Timeout exit code
+                # On timeout bash still ASSIGNS whatever partial input was read
+                # (splitting/clearing the variables normally), so fall through
+                # to the assignment path; the 142 exit code is reported at the
+                # end via read_status.
             elif options['silent'] or options['max_chars'] is not None:
                 line, read_status = self._read_special(
                     options['fd'], delim,
@@ -168,8 +170,12 @@ class ReadBuiltin(Builtin):
                     chars, ifs, max_fields=len(var_names))
                 self._assign_to_variables(fields, var_names, shell)
 
-            # Exit 1 when input ended before the delimiter (bash), even though
-            # the variables were just assigned the partial/empty result.
+            # Report the read outcome. Exit 142 when a -t timeout expired,
+            # exit 1 when input ended before the delimiter (EOF) — in both
+            # cases the variables were just assigned the partial/empty result
+            # (bash). Otherwise success.
+            if read_status == 'timeout':
+                return 142
             return 1 if read_status == 'eof' else 0
 
         except KeyboardInterrupt:
@@ -636,19 +642,35 @@ class ReadBuiltin(Builtin):
         if max_chars == 0:
             return '', 'ok'  # bash: read -n 0 reads nothing and succeeds
 
-        if os.isatty(fd) and (silent or max_chars is not None):
-            # Raw terminal mode for char-at-a-time input without canonical
-            # buffering. Raw mode disables terminal echo, so -n without -s
-            # echoes each character back manually.
+        if os.isatty(fd) and max_chars is not None:
+            # COUNT-terminated read (-n): raw terminal mode for char-at-a-time
+            # input without canonical line buffering. Raw mode disables echo,
+            # so -n without -s echoes each character back manually.
             with self._terminal_raw_mode(fd, echo=not silent):
                 data, status = self._read_chars(
                     fd, delimiter=delimiter, limit=max_chars,
-                    use_sys_stdin=False,
-                    echo=(not silent and max_chars is not None))
+                    use_sys_stdin=False, echo=not silent)
                 if silent:
                     # Echo newline after silent input
                     sys.stdout.write('\n')
                     sys.stdout.flush()
+        elif os.isatty(fd) and silent:
+            # SILENT delimiter-terminated read (`read -s`, no -n): stay in
+            # CANONICAL mode and clear only ECHO (bash's model). Raw mode
+            # would clear ICANON/ISIG/ICRNL, so Enter's CR would never map to
+            # the newline delimiter (the read would hang) and Ctrl-D/Ctrl-C
+            # would be inert. Canonical no-echo keeps line editing, the
+            # Enter->delimiter mapping and Ctrl-D EOF, and leaves ISIG on so
+            # Ctrl-C's SIGINT is delivered (terminating a -c read) — all while
+            # hiding the typed text.
+            with self._terminal_noecho_mode(fd):
+                data, status = self._read_chars(
+                    fd, delimiter=delimiter, limit=None,
+                    use_sys_stdin=False,
+                    include_delimiter=(delimiter == '\n'))
+                # Enter is not echoed (ECHO off); print the newline bash prints.
+                sys.stdout.write('\n')
+                sys.stdout.flush()
         elif max_chars is not None:
             data, status = self._read_chars(
                 fd, delimiter=delimiter, limit=max_chars,
@@ -715,15 +737,13 @@ class ReadBuiltin(Builtin):
         if max_chars == 0:
             return '', 'ok'  # bash: read -n 0 reads nothing and succeeds
 
-        if os.isatty(fd) and (silent or max_chars is not None):
-            # Raw mode, char-at-a-time, with the time budget enforced
-            # across characters.
+        if os.isatty(fd) and max_chars is not None:
+            # COUNT-terminated read (-n): raw mode, char-at-a-time, with the
+            # time budget enforced across characters.
             with self._terminal_raw_mode(fd, echo=not silent):
                 data, status = self._read_chars(
                     fd, delimiter=delimiter, limit=max_chars,
-                    use_sys_stdin=False,
-                    echo=(not silent and max_chars is not None),
-                    timeout=timeout)
+                    use_sys_stdin=False, echo=not silent, timeout=timeout)
                 if silent and (data or status != 'timeout'):
                     # Echo newline after silent input (skipped only when
                     # the timeout expired before anything was typed).
@@ -733,25 +753,43 @@ class ReadBuiltin(Builtin):
                 return data, 'timeout'
             return data, ('ok' if status in ('delim', 'limit') else 'eof')
 
-        # Simple case or non-TTY: select bounds only the wait for the
-        # FIRST byte; once input is ready, reading proceeds unbounded.
-        if use_sys_stdin:
-            # StringIO-backed stdin doesn't support select; read immediately.
-            ready = [sys.stdin]
-        else:
-            try:
-                ready, _, _ = select.select([fd], [], [], timeout)
-            except (OSError, AttributeError, ValueError):
-                ready = []
-        if not ready:
-            return '', 'timeout'
-
-        if max_chars is not None:
-            data, status = self._read_chars(
-                fd, delimiter=delimiter, limit=max_chars,
-                use_sys_stdin=use_sys_stdin)
+        if os.isatty(fd) and silent:
+            # SILENT delimiter-terminated read at a tty (`read -s -t`): as in
+            # _read_special, use canonical no-echo mode (not raw) so Enter
+            # still terminates and signals still fire, with the time budget
+            # enforced across the whole read.
+            with self._terminal_noecho_mode(fd):
+                data, status = self._read_chars(
+                    fd, delimiter=delimiter, limit=None,
+                    use_sys_stdin=False, timeout=timeout,
+                    include_delimiter=(delimiter == '\n'))
+                if data or status != 'timeout':
+                    sys.stdout.write('\n')
+                    sys.stdout.flush()
+            if status == 'timeout':
+                return data, 'timeout'
             return data, ('ok' if status in ('delim', 'limit') else 'eof')
-        return self._read_normal(fd, delimiter, use_sys_stdin)
+
+        # Simple case or non-TTY. StringIO test stdin can't be select()'d and
+        # never blocks, so it reads immediately with no budget enforcement.
+        if use_sys_stdin:
+            if max_chars is not None:
+                data, status = self._read_chars(
+                    fd, delimiter=delimiter, limit=max_chars,
+                    use_sys_stdin=True)
+                return data, ('ok' if status in ('delim', 'limit') else 'eof')
+            return self._read_normal(fd, delimiter, use_sys_stdin)
+
+        # Real fd: thread the time budget through the WHOLE read so the
+        # deadline bounds every blocking read, not just the wait for the
+        # first byte (bash saves the partial input and exits >128 on expiry).
+        data, status = self._read_chars(
+            fd, delimiter=delimiter, limit=max_chars,
+            use_sys_stdin=False, timeout=timeout,
+            include_delimiter=(max_chars is None and delimiter == '\n'))
+        if status == 'timeout':
+            return data, 'timeout'
+        return data, ('ok' if status in ('delim', 'limit') else 'eof')
 
     @contextmanager
     def _terminal_raw_mode(self, fd: int, echo: bool = True):
@@ -769,6 +807,35 @@ class ReadBuiltin(Builtin):
                 new_settings = termios.tcgetattr(fd)
                 new_settings[3] &= ~termios.ECHO
                 termios.tcsetattr(fd, termios.TCSANOW, new_settings)
+            yield
+        finally:
+            termios.tcsetattr(fd, termios.TCSANOW, old_settings)
+
+    @contextmanager
+    def _terminal_noecho_mode(self, fd: int):
+        """Canonical terminal mode with echo disabled (bash's `read -s`).
+
+        Unlike ``_terminal_raw_mode``, this leaves ICANON, ISIG and ICRNL
+        intact: line editing works, Enter's CR maps to the newline delimiter,
+        Ctrl-D is EOF, and ISIG stays on so Ctrl-C's SIGINT is still delivered
+        (it terminates a ``-c``/script read). Only the echo flags are cleared,
+        so the typed line is hidden while the read still terminates on Enter.
+        (Under the interactive REPL a Ctrl-C during a read is swallowed and the
+        read continues, exactly like plain ``read`` — a pre-existing REPL-level
+        SIGINT behavior this mode does not change.)
+        """
+        if not os.isatty(fd):
+            yield
+            return
+
+        old_settings = termios.tcgetattr(fd)
+        try:
+            new_settings = termios.tcgetattr(fd)
+            # lflags is index 3. Clear ECHO (hide typed chars) and ECHONL
+            # (so the delimiter newline is not echoed either); keep ICANON
+            # (line editing, Ctrl-D EOF) and ISIG (Ctrl-C's SIGINT delivered).
+            new_settings[3] &= ~(termios.ECHO | termios.ECHONL)
+            termios.tcsetattr(fd, termios.TCSANOW, new_settings)
             yield
         finally:
             termios.tcsetattr(fd, termios.TCSANOW, old_settings)
