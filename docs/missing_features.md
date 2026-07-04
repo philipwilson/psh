@@ -10,6 +10,7 @@ These grew out of the ground-up reappraisal #14 (2026-06-22,
 `docs/reviews/ground_up_reappraisal_14_2026-06-22.md`). The MED-severity
 findings that were quick, localized fixes shipped in v0.540–v0.559; what
 remains here are the standalone features and one cosmetic-but-broad item.
+Later reappraisals add entries as gaps are confirmed (`coproc`, #17).
 
 Status legend: **Deferred** = agreed worth doing, not yet scheduled.
 
@@ -236,6 +237,103 @@ Large — realistically split into increments: (a) `compgen` generators, (b)
 `complete` registry + `-W`/`-A` wiring into the editor, (c) the `-F` /
 `COMP_*` / `COMPREPLY` bridge, (d) `compopt` + full `-o` matrix. Two to three
 focused sessions.
+
+---
+
+## 3. `coproc` (coprocesses)
+
+**Status: Deferred.** (Entry added by reappraisal #17 — the feature was
+confirmed unimplemented and documented as such in ch17, but had no roadmap
+section here.) A whole new execution form: an asynchronous command wired to
+the parent shell through a two-way pipe exposed as shell variables. Less
+commonly used than the two items above; scripts in the wild usually reach
+for named pipes or process substitution instead.
+
+### Bash semantics
+
+`coproc [NAME] command [redirections]` runs *command* asynchronously in a
+subshell, with a two-way pipe established between it and the calling shell:
+
+- `NAME` defaults to `COPROC`. `NAME` may only be given for a **compound**
+  command — with a simple command the word is interpreted as the command
+  itself (verified live: `coproc NAMED sleep 5` leaves `NAMED_PID` unset and
+  tries to run `NAMED`).
+- `NAME[0]` is a file descriptor from which the shell **reads the coproc's
+  stdout**; `NAME[1]` is a descriptor **writing to its stdin**. Usage shape:
+  `echo req >&"${NAME[1]}"; read -r resp <&"${NAME[0]}"`.
+- `NAME_PID` holds the coproc's PID (`wait $NAME_PID` reaps it and returns
+  its exit status).
+- The descriptors are **not available in subshells** (verified:
+  `( read <&"${CAT[0]}" )` → "Bad file descriptor") and are not inherited by
+  child processes — they must be `exec`-dup'd to a plain fd first.
+- Starting a second coproc while one is active prints
+  `warning: execute_coproc: coproc [PID:NAME] still exists` but proceeds.
+- `coproc` itself returns 0 immediately (async, like `&`); the coproc shows
+  up in job control.
+
+### Current state in psh
+
+- Not a keyword, not a builtin: `coproc COP { echo hi; }` produces
+  `psh: coproc: command not found` (and the stray `}` then also fails) —
+  exit 127. There is no parser, executor, or state support of any kind.
+- ch17 documents it as unimplemented (compatibility-table "No" row plus the
+  17.2 section), and the row is pinned by a `NO_ROW_PROBES` staleness probe
+  in `tests/conformance/test_claims_have_tests.py` — implementing coproc
+  will make that probe fail, forcing the docs flip.
+- The building blocks all exist: `fork_with_signal_window()` /
+  `apply_child_signal_policy()` (`executor/child_policy.py`),
+  `ProcessLauncher` for job-controlled background processes, `JobManager`,
+  and `IndexedArray` + `VarAttributes.ARRAY` for the `NAME` variable.
+
+### Implementation plan
+
+1. **Parser.** Recognize `coproc` in command position (both parsers — RD and
+   combinator): an optional `NAME` word followed by a compound command, or a
+   simple command with no NAME. New AST node `CoprocCommand(name, body,
+   redirects)`; `--format`/visitor support (formatter, validator) in the
+   same change.
+2. **Executor.** Create two `os.pipe()` pairs, fork the body via
+   `ProcessLauncher` as a background job (own process group, no terminal),
+   child dup2s one pipe end onto stdin and the other onto stdout; parent
+   keeps the opposite ends.
+3. **Variable wiring.** In the parent, publish `NAME` as an `IndexedArray`
+   (`[read_fd, write_fd]`) and `NAME_PID`; set close-on-exec on both fds so
+   external children do not inherit them (bash behavior above).
+4. **Job integration.** Register with `JobManager` so `jobs`/`wait` see it;
+   emit the bash "still exists" warning when a live coproc is already
+   registered.
+5. **Docs truth-up.** Flip the ch17 row (Full-support conformance test +
+   `CLAIM_TESTS` mapping), delete the `NO_ROW_PROBES` entry, update the 17.2
+   section and the migration-guide greps, and remove this section.
+
+### Edge cases / gotchas
+
+- The NAME-vs-simple-command parsing rule (word is the command unless the
+  body is compound).
+- fd bookkeeping across nested redirections — the coproc fds must survive
+  per-command redirect save/restore but stay invisible to subshells and
+  exec'd children (close-on-exec, plus explicit removal in `ShellState.adopt`
+  for forked subshell copies).
+- Deadlock is user-visible behavior: the pipe buffers are finite, and bash
+  makes no attempt to prevent write-write deadlock — match that (do not add
+  hidden buffering).
+- Reaping: after `wait $NAME_PID`, bash leaves `NAME` set but the fds closed
+  once the coproc exits and its output is drained — pin exact lifecycle
+  against live bash before coding (truth-table first, per the H5 lesson).
+
+### Test plan
+
+Conformance tests under `tests/conformance/bash/`: the echo-through-`cat`
+round trip; `COPROC` default naming; `NAME_PID` + `wait` exit status;
+fd-invisibility in subshells (the verified probes above, promoted). Golden
+cases in `tests/behavioral/golden_cases.yaml` for the async/exit-status
+shape. The meta-test wiring in step 5 keeps ch17 honest automatically.
+
+### Effort
+
+Medium-large. The parser and variable wiring are straightforward; the fd
+lifecycle (close-on-exec, subshell invisibility, reap semantics) is the real
+work. ~1 focused session, after building the bash truth table.
 
 ---
 

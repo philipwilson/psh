@@ -1331,6 +1331,55 @@
   stderr: ""
   exit_code: 0
 
+# echo -e / printf %b escape dialects — reappraisal #17 M3.
+# (a) escapes BEFORE \c are processed; the old scanner returned the raw prefix.
+- name: echo_e_escapes_before_backslash_c
+  command: "echo -e 'a\\tb\\cd'"
+  stdout: "a\tb"
+  stderr: ""
+  exit_code: 0
+
+- name: printf_percent_b_escapes_before_backslash_c
+  command: "printf '%b' 'x\\ny\\cz'"
+  stdout: "x\ny"
+  stderr: ""
+  exit_code: 0
+
+- name: echo_e_double_backslash_c_is_literal
+  command: "echo -e 'x\\\\cy'"
+  stdout: "x\\cy\n"
+  stderr: ""
+  exit_code: 0
+
+# (b) octal dialects: %b takes the bare POSIX \ddd form; echo -e REQUIRES
+# the leading zero (\0ddd) and leaves \ddd literal.
+- name: printf_percent_b_bare_octal
+  command: "printf '%b.%b\\n' '\\41' '\\101'"
+  stdout: "!.A\n"
+  stderr: ""
+  exit_code: 0
+
+- name: echo_e_octal_requires_leading_zero
+  command: "echo -e '\\101'; echo -e '\\0101'"
+  stdout: "\\101\nA\n"
+  stderr: ""
+  exit_code: 0
+
+# \u accepts short forms (1-4 hex digits) in all three escape dialects.
+- name: escape_unicode_short_form_all_dialects
+  command: "printf '\\u41'; printf '%b' '\\u41'; echo -e '\\u41'"
+  stdout: "AAA\n"
+  stderr: ""
+  exit_code: 0
+
+# In the printf FORMAT string, \% emits '\' and the '%' then fails
+# conversion parsing ("missing format character", exit 1) — bash 5.2.
+- name: printf_format_backslash_percent
+  command: "printf '\\%'"
+  stdout: "\\"
+  stderr: "missing format character"
+  exit_code: 1
+
 # =============================================================================
 # TEST EXPRESSIONS
 # =============================================================================

@@ -100,10 +100,14 @@ class TestEchoBuiltin:
         captured = capsys.readouterr()
         assert "A" in captured.out
 
-        # Octal escape
+        # Octal escape: echo -e requires the leading 0 (bash 5.2 —
+        # \101 stays literal; only printf %b takes the bare \ddd form)
         shell.run_command('echo -e "\\101"')
         captured = capsys.readouterr()
-        assert "A" in captured.out
+        assert captured.out == "\\101\n"
+        shell.run_command('echo -e "\\0101"')
+        captured = capsys.readouterr()
+        assert captured.out == "A\n"
 
     def test_echo_backslash_c(self, shell, capsys):
         """Test echo -e with \\c to suppress newline."""
