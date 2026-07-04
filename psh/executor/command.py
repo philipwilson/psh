@@ -12,7 +12,6 @@ application, restoration, and the POSIX ordering contract) lives in
 runs and whether prefix assignments persist (POSIX special builtins).
 """
 
-import os
 import sys
 from dataclasses import dataclass
 from enum import Enum
@@ -253,8 +252,13 @@ class CommandExecutor:
             # — but is non-fatal when reading a script from stdin.
             if is_bare_array_assignment:
                 if node.redirects:
-                    with self.io_manager.with_redirections(node.redirects):
-                        pass
+                    # The element was already assigned above (bash order:
+                    # `a[0]=x > /bad/y` still assigns); a redirect failure
+                    # prints the one diagnostic shape and fails with 1.
+                    with self.io_manager.guarded_redirections(
+                            node.redirects) as ok:
+                        if not ok:
+                            return 1
                 if array_assignment_status != 0 and self.state.is_script_mode:
                     sys.exit(array_assignment_status)
                 return array_assignment_status
@@ -327,10 +331,14 @@ class CommandExecutor:
             command_start_index = tokens_consumed
             if command_start_index >= len(node.words):
                 # No command to execute, but apply any redirections
-                # (e.g., ">file" should create/truncate the file)
+                # (e.g., ">file" should create/truncate the file). A setup
+                # failure (`> ""`, `> adir`) prints the one diagnostic shape
+                # and fails with 1, like bash.
                 if node.redirects:
-                    with self.io_manager.with_redirections(node.redirects):
-                        pass
+                    with self.io_manager.guarded_redirections(
+                            node.redirects) as ok:
+                        if not ok:
+                            return 1
                 return 0
 
             # Create a sub-node for the command's own words only
@@ -701,7 +709,15 @@ class CommandExecutor:
 
         # RedirectionMode.FD_LEVEL_WINDOW: functions, aliases,
         # builtins in pipelines, and builtins in forked children.
-        with self.io_manager.with_redirections(node.redirects):
+        # guarded_redirections is the redirect-error chokepoint: a setup
+        # failure (`f > adir`, `echo x > /bad/y | cat`) prints bash's one
+        # `psh: TARGET: STRERROR` message shape and fails with status 1,
+        # instead of leaking the raw Python OSError repr — the same policy
+        # as the builtin, external, and compound dispatch sites.
+        with self.io_manager.guarded_redirections(node.redirects) as ok:
+            if not ok:
+                return ExecutionResult(status=1,
+                                       prefix_assignments_persist=persist)
             status = strategy.execute(
                 cmd_name, args, self.shell, context,
                 node.redirects, node.background,
@@ -771,8 +787,8 @@ class CommandExecutor:
             # their existing `psh: <message>` formatting is preserved.
             if e.errno is None:
                 raise
-            name = e.filename if e.filename else os.strerror(e.errno)
-            print(f"psh: {name}: {os.strerror(e.errno)}", file=self.state.stderr)
+            from ..io_redirect.manager import format_redirect_error
+            print(format_redirect_error(e), file=self.state.stderr)
             return 1
         try:
             # Update shell streams for builtins that might use them

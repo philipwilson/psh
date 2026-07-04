@@ -203,6 +203,7 @@ class ExecBuiltin(Builtin):
             # Any redirections were already applied by the executor/io_manager.
             return 0
 
+        import errno
         import os
 
         # bash locates the program with the shell's PATH, then hands the
@@ -221,14 +222,59 @@ class ExecBuiltin(Builtin):
             argv0 = '-' + argv0
         argv = [argv0] + command[1:]
 
+        if not exec_file:
+            # bash: `exec ""` → "exec: : not found", status 127 (os.execvpe
+            # would raise a ValueError about argv instead).
+            self.error(f"{command[0]}: not found", shell)
+            return self._exec_failed(shell, 127)
+
+        # Reconcile signal dispositions for the new process image: keep
+        # SIG_IGN for `trap '' SIG` (POSIX: exec preserves ignored
+        # signals — psh's managed traps are Python handlers the kernel
+        # would reset to SIG_DFL), default everything else psh/CPython
+        # holds a handler or ignore for (SIGTTOU in script mode, CPython's
+        # SIGXFSZ). Same policy as forked children (reset_child_signals);
+        # restore on the exec-failed path so a surviving shell keeps
+        # working.
+        restore_signals = (
+            shell.interactive_manager.signal_manager.prepare_signals_for_exec())
+
         try:
             os.execvpe(exec_file, argv, env)
-        except FileNotFoundError:
-            self.error(f"{command[0]}: command not found", shell)
-            return self._exec_failed(shell, 127)
+        except FileNotFoundError as e:
+            restore_signals()
+            from ..executor.strategies import format_exec_failure
+            if '/' in exec_file:
+                # A pathname (or a PATH-resolved file that vanished): bash
+                # reports "No such file or directory", no "exec:" prefix —
+                # so write_error_line (unprefixed), not error().
+                resolved = exec_file if exec_file != command[0] else None
+                message, status = format_exec_failure(command[0], e, resolved)
+                self.write_error_line(message, shell)
+            else:
+                # A bare name PATH couldn't resolve: bash's exec builtin
+                # says "not found" (unlike plain-command "command not
+                # found").
+                self.error(f"{command[0]}: not found", shell)
+                status = 127
+            return self._exec_failed(shell, status)
         except OSError as e:
-            self.error(f"{command[0]}: {e}", shell)
-            return self._exec_failed(shell, 126)
+            restore_signals()
+            # bash prints TWO lines here: the shell-level execve failure
+            # ("/etc: Is a directory", unprefixed) followed by the exec
+            # builtin's own diagnostic ("exec: /etc: cannot execute: Is a
+            # directory"). format_exec_failure owns the first line's
+            # wording (shared with the forked exec paths).
+            from ..executor.strategies import format_exec_failure
+            resolved = exec_file if exec_file != command[0] else None
+            message, status = format_exec_failure(command[0], e, resolved)
+            self.write_error_line(message, shell)
+            if os.path.isdir(exec_file):
+                detail = os.strerror(errno.EISDIR)
+            else:
+                detail = e.strerror or str(e)
+            self.error(f"{command[0]}: cannot execute: {detail}", shell)
+            return self._exec_failed(shell, status)
 
     def _exec_failed(self, shell: 'Shell', code: int) -> int:
         """Handle a failed exec.

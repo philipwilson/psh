@@ -71,13 +71,15 @@ class ReadBuiltin(Builtin):
             sys.stderr.write(options['prompt'])
             sys.stderr.flush()
 
-        # `read -u FD`: the fd must be open, else bash errors with status 1.
+        # `read -u FD`: the fd must be open, else bash errors with status 1
+        # ("read: 9: invalid file descriptor: Bad file descriptor").
         if options['fd_from_u']:
             try:
                 os.fstat(options['fd'])
-            except OSError:
+            except OSError as e:
                 self.error(
-                    f"{options['fd']}: invalid file descriptor", shell)
+                    f"{options['fd']}: invalid file descriptor: "
+                    f"{e.strerror or e}", shell)
                 return 1
 
         try:
@@ -173,7 +175,14 @@ class ReadBuiltin(Builtin):
         except KeyboardInterrupt:
             # Ctrl-C pressed
             return 130
-        except (OSError, ValueError) as e:
+        except OSError as e:
+            # bash's shape: "read: read error: 0: Bad file descriptor"
+            # (e.g. reading after `exec 0<&-`) — never the raw Python
+            # OSError repr ("[Errno 9] Bad file descriptor").
+            self.error(
+                f"read error: {options['fd']}: {e.strerror or e}", shell)
+            return 1
+        except ValueError as e:
             self.error(str(e), shell)
             return 1
 
