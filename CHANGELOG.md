@@ -4,6 +4,40 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.603.0 (2026-07-04) - Fix: analysis modes on stdin analyze instead of executing; one visitor-mode chokepoint (reappraisal #17 H2)
+- FIX (security-relevant). Reappraisal #17 Tier-1 H2. **Piping a script into any
+  analysis mode EXECUTED the input instead of analyzing it.** `cat script | psh
+  --security` ran the very (untrusted) commands it was asked to inspect — same
+  for `--format`, `--validate`, `--lint`, and `--metrics`. The stdin branch of
+  `__main__.main()` never checked `visitor_mode`, so piped/typed input fell
+  straight through to the normal execution path.
+- **One chokepoint for every input channel.** `-c` command strings, script
+  files, and piped stdin now all route through the single new function
+  `scripting/visitor_modes.handle_visitor_mode_for_content(shell, content,
+  location)`, which parses (heredoc-aware) and analyzes identical content
+  identically — same output, same exit codes — and never executes it.
+  `handle_visitor_mode_for_command` and `handle_visitor_mode_for_script` are now
+  thin wrappers over it; `location` only labels diagnostics (`-c`, the script
+  path, or `<stdin>`).
+- **Deleted the divergent second `--validate` implementation.** A separate
+  line-by-line validator baked into the execution loop
+  (`scripting/source_processor.py`) printed the syntax error AND a contradictory
+  "No issues found - AST is valid!" summary, exiting 0. It is removed; `--validate`
+  now reports consistent exit codes on every channel: **0** when clean, **2** on a
+  syntax error.
+- **Deliberate behavior changes:** (1) `psh --validate` at a TTY now reads stdin
+  to EOF and analyzes it (the shape of `bash -n`) instead of running the old
+  validate-REPL; (2) empty piped stdin under an analysis mode analyzes the empty
+  program rather than doing nothing.
+- Verification: independently rebuilt 60-cell truth table (5 modes x 4 channels
+  including `--format < file` x 3 payloads) — byte-identical output across
+  channels, zero side effects, plain-stdin-still-executes confirmed, REPL
+  unaffected via PTY. New regression coverage in
+  `tests/system/test_visitor_stdin.py`.
+- Known pre-existing residual (NOT this fix, ledgered): binary/non-UTF-8 stdin
+  under any mode (including plain execution) tracebacks with `UnicodeDecodeError`
+  at `sys.stdin.read()` — the r12 surrogateescape fix covered `FileInput` only.
+
 ## 0.602.0 (2026-07-04) - Fix: break/continue reset $? like bash; until-condition continue no longer hangs (reappraisal #17 H3)
 - FIX. Reappraisal #17 Tier-1 H3. **A successful `break`/`continue` is a command
   that resets `$?` to 0**, but psh raised `LoopBreak`/`LoopContinue` without a
