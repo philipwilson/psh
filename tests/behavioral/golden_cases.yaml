@@ -4390,3 +4390,35 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# RECURSION CEILING (reappraisal #17 Tier 2 — implicit FUNCNEST)
+# =============================================================================
+
+- name: function_recursion_depth_100
+  command: "f(){ [ $1 -le 0 ] && return 0; f $(($1-1)); }; f 100; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: function_recursion_depth_1000
+  command: "f(){ [ $1 -le 0 ] && return 0; f $(($1-1)); }; f 1000; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: infinite_recursion_implicit_funcnest
+  # bash (no FUNCNEST) segfaults here; psh reports the FUNCNEST-style
+  # diagnostic, aborts the current command list (echo skipped, like an
+  # explicit FUNCNEST=N in bash) and survives.
+  command: "g(){ g; }; g; echo after=$?"
+  stdout: ""
+  stderr: "maximum function nesting level exceeded"
+  exit_code: 1
+  psh_only: true
+
+- name: nested_brace_groups_100_deep
+  command: "{ { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { echo OK; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }"
+  stdout: "OK\n"
+  stderr: ""
+  exit_code: 0
