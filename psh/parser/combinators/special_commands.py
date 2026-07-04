@@ -21,6 +21,7 @@ from ...ast_nodes import (
     UnaryTestExpression,
     Word,
 )
+from ...lexer.token_stream import TokenStream
 from ...lexer.token_types import Token
 from ..config import ParserConfig
 from .commands import CommandParsers
@@ -125,58 +126,27 @@ class SpecialCommandParsers:
 
             pos += 1  # Skip ((
 
-            # Collect arithmetic expression until ))
-            expr_tokens = []
-            paren_depth = 0
+            # Collect the expression through the shared depth-tracked collector
+            # (``psh/lexer/token_stream.py``) — the same routine the recursive
+            # descent parser uses (``_parse_arithmetic_expression_until_double_rparen``),
+            # so both parsers normalize identically and handle nested/fused parens
+            # (``(( ((1+2)) == 3 ))``) the same way.
+            stream = TokenStream(tokens, pos)
+            _t, expression = stream.collect_arithmetic_expression(
+                stop_at_semicolon=False, transform_redirects=False)
+            pos = stream.pos
 
-            while pos < len(tokens):
-                token = tokens[pos]
-
-                # Check for closing ))
-                if token.type.name == 'DOUBLE_RPAREN' and paren_depth == 0:
-                    break
-                elif token.type.name == 'LPAREN':
-                    paren_depth += 1
-                elif token.type.name == 'RPAREN':
-                    paren_depth -= 1
-                    if paren_depth < 0:
-                        # Handle case of separate ) ) tokens
-                        if (pos + 1 < len(tokens) and
-                            tokens[pos + 1].type.name == 'RPAREN'):
-                            # Found ) ) pattern, this ends the arithmetic command
-                            pos += 1  # Skip second )
-                            break
-                        else:
-                            return ParseResult(success=False,
-                                             error="Unbalanced parentheses in arithmetic command",
-                                             position=pos)
-
-                expr_tokens.append(token)
+            # Consume the closing )) (a single DOUBLE_RPAREN, or two RPARENs left
+            # when a straddling )) was split by the collector).
+            if pos < len(tokens) and tokens[pos].type.name == 'DOUBLE_RPAREN':
                 pos += 1
-
-            if pos >= len(tokens):
+            elif (pos + 1 < len(tokens) and tokens[pos].type.name == 'RPAREN'
+                  and tokens[pos + 1].type.name == 'RPAREN'):
+                pos += 2
+            else:
                 return ParseResult(success=False,
                                  error="Unterminated arithmetic command: expected '))'",
                                  position=pos)
-
-            # Skip the closing )) token if we found DOUBLE_RPAREN
-            if pos < len(tokens) and tokens[pos].type.name == 'DOUBLE_RPAREN':
-                pos += 1
-
-            # Build expression string from tokens, preserving variable syntax
-            expression_parts = []
-            for token in expr_tokens:
-                if token.type.name == 'VARIABLE':
-                    # Add $ prefix for variables
-                    expression_parts.append(f'${token.value}')
-                else:
-                    expression_parts.append(token.value)
-
-            # Join with spaces and clean up extra whitespace
-            expression = ' '.join(expression_parts)
-            # Normalize multiple spaces to single spaces
-            import re
-            expression = re.sub(r'\s+', ' ', expression).strip()
 
             # Educational-scope boundary: trailing redirections on an arithmetic
             # command (``((i++)) >log`` — valid but rare) are intentionally not

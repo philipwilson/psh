@@ -481,6 +481,99 @@ class TestCStyleForSyntaxVariations:
         assert output == "4\n6\n8\n"
 
 
+class TestCStyleForParenthesizedSubexpr:
+    """Parenthesized subexpressions inside C-style for-header sections.
+
+    Reappraisal #18 T1-5: the recursive-descent arithmetic-section collector
+    used to terminate a section on the *first* ``)`` that returned to depth 0,
+    so a balanced ``(...)`` (or a ``(( ))``-fused pair) inside any section
+    aborted the parse. All outputs are pinned against GNU bash 5.2. The
+    combinator parser is locked to the same behavior by the AST parity corpus
+    (``tests/parser_differential/test_combinator_ast_parity.py``).
+    """
+
+    def test_paren_in_condition(self, captured_shell):
+        """A balanced group in the condition: i<(n-1)."""
+        shell = captured_shell
+        result = shell.run_command(
+            'n=5; for ((i=0; i<(n-1); i++)); do echo $i; done')
+        assert result == 0
+        assert shell.get_stdout() == "0\n1\n2\n3\n"
+
+    def test_paren_in_init(self, captured_shell):
+        """A balanced group in the init: i=(1+1)."""
+        shell = captured_shell
+        result = shell.run_command(
+            'for ((i=(1+1); i<5; i++)); do echo $i; done')
+        assert result == 0
+        assert shell.get_stdout() == "2\n3\n4\n"
+
+    def test_parenthesized_whole_condition(self, captured_shell):
+        """The whole condition wrapped: (i<3)."""
+        shell = captured_shell
+        result = shell.run_command(
+            'for ((i=0; (i<3); i++)); do echo $i; done')
+        assert result == 0
+        assert shell.get_stdout() == "0\n1\n2\n"
+
+    def test_paren_in_update_straddle(self, captured_shell):
+        """A group in the update whose ``)`` fuses with the header ``))``: (i++)."""
+        shell = captured_shell
+        result = shell.run_command(
+            'for ((i=0; i<5; (i++))); do echo $i; done')
+        assert result == 0
+        assert shell.get_stdout() == "0\n1\n2\n3\n4\n"
+
+    def test_double_paren_update(self, captured_shell):
+        """A doubly-nested update group producing fused ``))``: ((i++))."""
+        shell = captured_shell
+        result = shell.run_command(
+            'for ((i=0; i<3; ((i++)))); do echo $i; done')
+        assert result == 0
+        assert shell.get_stdout() == "0\n1\n2\n"
+
+    def test_parens_in_all_three_sections(self, captured_shell):
+        """Balanced groups in every section at once."""
+        shell = captured_shell
+        result = shell.run_command(
+            'for ((i=(0); (i<3); (i++))); do echo $i; done')
+        assert result == 0
+        assert shell.get_stdout() == "0\n1\n2\n"
+
+    def test_paren_multiplied_condition(self, captured_shell):
+        """A group as a condition operand: i<(1+2)."""
+        shell = captured_shell
+        result = shell.run_command(
+            'for ((i=0; i<(1+2); i++)); do echo $i; done')
+        assert result == 0
+        assert shell.get_stdout() == "0\n1\n2\n"
+
+
+class TestCStyleForSemicolonArity:
+    """A one-semicolon C-style for header must be rejected, not looped forever.
+
+    Reappraisal #18 T1-5 regression guard: once the collector correctly stops a
+    section at ``))``, a one-semicolon header (``for ((i=0; i<3))``) would
+    otherwise parse with an empty update and loop forever. bash rejects it with
+    exit 2; psh must too. This drives the full execution path in a subprocess
+    (with a timeout) to prove there is no infinite loop and matches bash's
+    rejection. The both-parsers reject/accept arity is pinned separately at
+    parse level in ``tests/parser_differential/test_combinator_error_parity.py``
+    (ids ``cstyle-for-one-semicolon``/``-paren``, ``cstyle-for-empty-update``).
+
+    Runs psh with ``PYTHONPATH`` pinned to the worktree (the editable install
+    otherwise resolves ``psh`` to the main tree).
+    """
+
+    def test_one_semicolon_header_does_not_hang(self):
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', 'for ((i=0; i<3)); do echo x; done'],
+            capture_output=True, text=True, timeout=10,
+            env={**os.environ, 'PYTHONPATH': os.getcwd()})
+        assert result.returncode == 2
+        assert result.stdout == ""
+
+
 class TestCStyleForErrorChannel:
     """Arithmetic errors in loop expressions go to stderr, not stdout.
 
