@@ -351,6 +351,61 @@ class TestFunctionCompoundBodies:
     def test_plain_word_body_still_rejected(self):
         assert_three_way('f() break')
 
+    def test_enhanced_test_body(self):
+        # Reappraisal #17 F1: the combinator's non-brace body guard lacked
+        # DOUBLE_LBRACKET, rejecting `f() [[ ... ]]` (rd/bash accept).
+        assert_three_way('f() [[ 1 == 1 ]]; f && echo t')
+
+    def test_enhanced_test_body_false(self):
+        assert_three_way('f() [[ 1 == 2 ]]; f || echo f')
+
+    def test_enhanced_test_body_uses_arguments(self):
+        assert_three_way('f() [[ $1 == a ]]; f a && echo yes; f b || echo no')
+
+    def test_enhanced_test_body_with_redirect(self):
+        assert_three_way('f() [[ 1 == 1 ]] >/dev/null; f; echo rc=$?')
+
+    def test_enhanced_test_body_in_case(self):
+        assert_three_way('case x in x) f() [[ 1 == 1 ]]; f && echo m;; esac')
+
+
+class TestPipelineNegationRuns:
+    """`!` may repeat, each occurrence toggling the exit status (bash).
+
+    Reappraisal #17 F2: the combinator consumed exactly one `!`
+    (optional(exclamation)), rejecting `! ! cmd` with a parse error while
+    rd/bash accept it. The consume is now a run with parity toggling,
+    mirroring the recursive descent parser (v0.592).
+    """
+
+    def test_double_negation_true(self):
+        assert_three_way('! ! true; echo $?')
+
+    def test_double_negation_false(self):
+        assert_three_way('! ! false; echo $?')
+
+    def test_triple_negation_true(self):
+        assert_three_way('! ! ! true; echo $?')
+
+    def test_triple_negation_false(self):
+        assert_three_way('! ! ! false; echo $?')
+
+    def test_single_negation_still_works(self):
+        assert_three_way('! true; echo $?')
+
+    def test_double_negation_in_if_condition(self):
+        assert_three_way('if ! ! true; then echo y; else echo n; fi')
+
+    def test_double_negation_of_pipeline(self):
+        assert_three_way('! ! echo x | cat; echo rc=$?')
+
+    def test_double_negation_of_brace_group(self):
+        assert_three_way('! ! { echo g; }; echo $?')
+
+    def test_time_then_negation_run(self):
+        # `time` precedes the `!` run; timing output goes to stderr.
+        assert_three_way('time ! ! true 2>/dev/null; echo rc=$?')
+
 
 class TestUnclosedExpansionsRejected:
     """Unclosed expansions are syntax errors, not literal words (bash rc=2).

@@ -85,8 +85,13 @@ class PipelineMixin(_Base):
                         position=pos,
                     )
 
-            neg_result = optional(self.tokens.exclamation).parse(tokens, pos)
-            negated = neg_result.value is not None
+            # Leading `!` negation. bash allows the reserved word to repeat
+            # (`! ! cmd`), each occurrence toggling the sense of the exit
+            # status: `! ! true` -> 0, `! ! ! true` -> 1. Mirrors the
+            # recursive descent parser's consume loop (commands.py).
+            neg_result = many(self.tokens.exclamation).parse(tokens, pos)
+            assert neg_result.value is not None
+            negated = len(neg_result.value) % 2 == 1
             pos = neg_result.position
 
             # Parse first command

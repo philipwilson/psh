@@ -1331,6 +1331,55 @@
   stderr: ""
   exit_code: 0
 
+# echo -e / printf %b escape dialects — reappraisal #17 M3.
+# (a) escapes BEFORE \c are processed; the old scanner returned the raw prefix.
+- name: echo_e_escapes_before_backslash_c
+  command: "echo -e 'a\\tb\\cd'"
+  stdout: "a\tb"
+  stderr: ""
+  exit_code: 0
+
+- name: printf_percent_b_escapes_before_backslash_c
+  command: "printf '%b' 'x\\ny\\cz'"
+  stdout: "x\ny"
+  stderr: ""
+  exit_code: 0
+
+- name: echo_e_double_backslash_c_is_literal
+  command: "echo -e 'x\\\\cy'"
+  stdout: "x\\cy\n"
+  stderr: ""
+  exit_code: 0
+
+# (b) octal dialects: %b takes the bare POSIX \ddd form; echo -e REQUIRES
+# the leading zero (\0ddd) and leaves \ddd literal.
+- name: printf_percent_b_bare_octal
+  command: "printf '%b.%b\\n' '\\41' '\\101'"
+  stdout: "!.A\n"
+  stderr: ""
+  exit_code: 0
+
+- name: echo_e_octal_requires_leading_zero
+  command: "echo -e '\\101'; echo -e '\\0101'"
+  stdout: "\\101\nA\n"
+  stderr: ""
+  exit_code: 0
+
+# \u accepts short forms (1-4 hex digits) in all three escape dialects.
+- name: escape_unicode_short_form_all_dialects
+  command: "printf '\\u41'; printf '%b' '\\u41'; echo -e '\\u41'"
+  stdout: "AAA\n"
+  stderr: ""
+  exit_code: 0
+
+# In the printf FORMAT string, \% emits '\' and the '%' then fails
+# conversion parsing ("missing format character", exit 1) — bash 5.2.
+- name: printf_format_backslash_percent
+  command: "printf '\\%'"
+  stdout: "\\"
+  stderr: "missing format character"
+  exit_code: 1
+
 # =============================================================================
 # TEST EXPRESSIONS
 # =============================================================================
@@ -4458,5 +4507,139 @@
 - name: backtick_nested_in_dquotes
   command: 'echo "`echo \`echo hi\``"'
   stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# RECURSION CEILING (reappraisal #17 Tier 2 — implicit FUNCNEST)
+# =============================================================================
+
+- name: function_recursion_depth_100
+  command: "f(){ [ $1 -le 0 ] && return 0; f $(($1-1)); }; f 100; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: function_recursion_depth_1000
+  command: "f(){ [ $1 -le 0 ] && return 0; f $(($1-1)); }; f 1000; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: infinite_recursion_implicit_funcnest
+  # bash (no FUNCNEST) segfaults here; psh reports the FUNCNEST-style
+  # diagnostic, aborts the current command list (echo skipped, like an
+  # explicit FUNCNEST=N in bash) and survives.
+  command: "g(){ g; }; g; echo after=$?"
+  stdout: ""
+  stderr: "maximum function nesting level exceeded"
+  exit_code: 1
+  psh_only: true
+
+- name: nested_brace_groups_100_deep
+  command: "{ { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { echo OK; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }"
+  stdout: "OK\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# REAPPRAISAL #17 TIER-2 GRAB BAG (r17t2)
+# =============================================================================
+
+# (a) repeated `!` negation toggles the exit status per occurrence
+- name: double_negation_true
+  command: "! ! true; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: double_negation_false
+  command: "! ! false; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: triple_negation_true
+  command: "! ! ! true; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: double_negation_bare_exit_code
+  command: "! ! false"
+  stdout: ""
+  stderr: ""
+  exit_code: 1
+
+# (a) [[ ]] as a non-brace function body
+- name: function_body_enhanced_test
+  command: "f() [[ 1 == 1 ]]; f && echo t"
+  stdout: "t\n"
+  stderr: ""
+  exit_code: 0
+
+# (b) globstar ** does not descend through symlinked dirs (bash 4.3+);
+# a symlink loop (loop -> .) must terminate, with the link listed once.
+- name: globstar_symlink_no_traverse
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch a.txt sub/x.txt sub/deep/z.txt && ln -s sub symdir && ln -s . loop && shopt -s globstar && echo **'
+  stdout: "a.txt loop sub sub/deep sub/deep/z.txt sub/x.txt symdir\n"
+  stderr: ""
+  exit_code: 0
+
+- name: globstar_symlink_prefix_excluded
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch a.txt sub/x.txt sub/deep/z.txt && ln -s sub symdir && ln -s . loop && shopt -s globstar && echo **/*.txt'
+  stdout: "a.txt sub/deep/z.txt sub/x.txt\n"
+  stderr: ""
+  exit_code: 0
+
+- name: globstar_explicit_symlink_followed
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch sub/x.txt sub/deep/z.txt && ln -s sub symdir && shopt -s globstar && echo symdir/**'
+  stdout: "symdir/ symdir/deep symdir/deep/z.txt symdir/x.txt\n"
+  stderr: ""
+  exit_code: 0
+
+- name: globstar_trailing_slash_dirs_only
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch a.txt sub/x.txt && ln -s sub symdir && shopt -s globstar && echo **/'
+  stdout: "sub/ sub/deep/ symdir/\n"
+  stderr: ""
+  exit_code: 0
+
+# (c) fg-pipeline LAST-member signal death is announced (bash rule: the
+# member whose status becomes $?); stderr wording is host-libc, so pin the
+# stable "Terminated" prefix as a substring.
+- name: pipeline_last_member_sigterm_announced
+  command: "true | sh -c 'kill -TERM $$'; echo rc=$?"
+  stdout: "rc=143\n"
+  stderr: "Terminated"
+  exit_code: 0
+
+- name: pipeline_middle_member_sigterm_silent
+  command: "sh -c 'kill -TERM $$' | cat; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_pipefail_announces_determining_member
+  command: "set -o pipefail; sh -c 'kill -TERM $$' | cat; echo rc=$?"
+  stdout: "rc=143\n"
+  stderr: "Terminated"
+  exit_code: 0
+
+# (d) declare -n target validation (two distinct bash messages)
+- name: declare_nameref_invalid_target
+  command: "declare -n r=1; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "invalid variable name for name reference"
+  exit_code: 0
+
+- name: declare_nameref_empty_target
+  command: "declare -n r=; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "': not a valid identifier"
+  exit_code: 0
+
+- name: declare_nameref_array_element_target_valid
+  command: "a=(1 2); declare -n r='a[1]'; echo rc=$? v=$r"
+  stdout: "rc=0 v=2\n"
   stderr: ""
   exit_code: 0

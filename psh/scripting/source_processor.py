@@ -374,6 +374,13 @@ class SourceProcessor(ScriptComponent):
                 if (isinstance(e, (LoopBreak, LoopContinue))
                         and self.shell._loop_depth_seed > 0):
                     raise
+            if isinstance(e, RecursionError) and nested:
+                # Runaway recursion inside a nested source (eval/trap body):
+                # keep unwinding so the nearest enclosing function-call
+                # boundary can convert it to the FUNCNEST diagnostic. At the
+                # REAL top level (not nested) it falls through to the guard
+                # below, whose expected-error taxonomy reports it cleanly.
+                raise
             # Last-resort guard so an internal defect doesn't kill an
             # interactive session (or re-raise under strict-errors so a test
             # harness surfaces it) — see report_internal_defect for the policy.

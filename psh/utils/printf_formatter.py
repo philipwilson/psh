@@ -36,7 +36,7 @@ import time
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-from .escapes import process_echo_escapes, quote_printf_q
+from .escapes import process_percent_b_escapes, quote_printf_q, unicode_escape_char
 
 INT64_MIN = -(2 ** 63)
 INT64_MAX = 2 ** 63 - 1
@@ -276,7 +276,7 @@ class _PrintfEngine:
         if conv == 's':
             formatted = _format_string(raw, spec)
         elif conv == 'b':
-            expanded, terminate = process_echo_escapes(raw)
+            expanded, terminate = process_percent_b_escapes(raw)
             formatted = _format_string(expanded, spec)
             if terminate:
                 # \c in a %b argument stops ALL output (bash/POSIX).
@@ -522,7 +522,8 @@ def _process_format_escape(fmt: str, start: int) -> Tuple[str, int]:
     """Process one backslash escape in the FORMAT string (bash dialect).
 
     Unlike %b/echo -e, \\c is NOT special here (bash prints it
-    literally), and unknown escapes keep their backslash.
+    literally), \\'/\\"/\\? drop their backslash, and octal is 1-3
+    digits with NO special leading-0 rule (\\0101 -> '\\x08' + '1').
     Returns (text, chars_consumed).
     """
     next_char = fmt[start + 1]
@@ -531,20 +532,17 @@ def _process_format_escape(fmt: str, start: int) -> Tuple[str, int]:
         'a': '\a', 'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r',
         't': '\t', 'v': '\v',
         'e': '\x1b', 'E': '\x1b',  # bash extension
-        '\\': '\\', '"': '"', "'": "'",
+        '\\': '\\', '"': '"', "'": "'", '?': '?',
     }
     if next_char in escape_map:
         return escape_map[next_char], 2
 
     # Octal: \nnn (1-3 digits, no leading 0 required in the format dialect)
-    if next_char.isdigit():
+    if next_char in '01234567':
         j = start + 1
         while j < len(fmt) and j < start + 4 and fmt[j] in '01234567':
             j += 1
-        if j > start + 1:
-            value = int(fmt[start + 1:j], 8)
-            if value <= 0o777:
-                return chr(value % 256), j - start
+        return chr(int(fmt[start + 1:j], 8) % 256), j - start
 
     # Hex: \xhh (1-2 digits)
     if next_char == 'x':
@@ -554,15 +552,18 @@ def _process_format_escape(fmt: str, start: int) -> Tuple[str, int]:
         if j > start + 2:
             return chr(int(fmt[start + 2:j], 16)), j - start
 
-    # Unicode: \uhhhh and \Uhhhhhhhh
-    for marker, length in (('u', 4), ('U', 8)):
-        if next_char == marker and start + 2 + length <= len(fmt):
-            hex_str = fmt[start + 2:start + 2 + length]
-            if all(c in '0123456789abcdefABCDEF' for c in hex_str):
-                try:
-                    return chr(int(hex_str, 16)), 2 + length
-                except (ValueError, OverflowError):
-                    pass
+    # Unicode: \uhhhh and \Uhhhhhhhh (bash accepts 1-4 / 1-8 hex digits)
+    for marker, max_len in (('u', 4), ('U', 8)):
+        if next_char == marker:
+            j = start + 2
+            while (j < len(fmt) and j - start - 2 < max_len
+                   and fmt[j] in '0123456789abcdefABCDEF'):
+                j += 1
+            if j > start + 2:
+                return unicode_escape_char(int(fmt[start + 2:j], 16)), j - start
 
-    # Unknown escape: bash keeps the backslash (printf 'a\zb' -> 'a\zb').
-    return '\\' + next_char, 2
+    # Unknown escape: emit the backslash and leave the next character to
+    # be re-scanned — it is usually a literal (printf 'a\zb' -> 'a\zb')
+    # but bash lets '%' start a conversion here (printf '\%' -> '\' then
+    # a "missing format character" error).
+    return '\\', 1
