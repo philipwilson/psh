@@ -160,12 +160,24 @@ class LocalBuiltin(Builtin):
             attributes &= ~(VarAttributes.LOWERCASE | VarAttributes.UPPERCASE)
 
         # Process each argument
+        from ..lexer.unicode_support import is_valid_name
+        posix_mode = shell.state.options.get('posix', False)
         for arg in positional:
             if arg == '-':
                 # `local -`: save the shell's `set` options so they revert on
                 # function return (bash). It is NOT a variable named '-'.
                 self._save_dash_options(shell)
                 continue
+            # Validate the target NAME (bash: "not a valid identifier",
+            # status 1). Same single identifier policy as declare — posix mode
+            # restricts to ASCII; otherwise psh's lenient Unicode default
+            # applies. A subscripted / append LHS validates its base name.
+            name_part = arg.split('=', 1)[0]
+            if name_part.endswith('+') and not options['nameref']:
+                name_part = name_part[:-1]
+            if not is_valid_name(name_part.split('[', 1)[0], posix_mode):
+                self.error(f"`{arg}': not a valid identifier", shell)
+                return 1
             if '=' in arg:
                 # Variable with assignment: local var=value / var+=value
                 var_name, var_value = arg.split('=', 1)

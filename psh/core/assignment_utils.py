@@ -7,17 +7,25 @@ variable assignments, used by both the executor core and command modules.
 from typing import Tuple
 
 
-def is_valid_assignment(arg: str) -> bool:
+def is_valid_assignment(arg: str, posix_mode: bool = False) -> bool:
     """Check if argument is a valid variable assignment (VAR=value).
 
     A valid assignment has:
     - An '=' character
-    - A variable name before the '=' that:
-      - Starts with a letter or underscore
-      - Contains only alphanumeric characters or underscores
+    - A variable name before the '=' that ``unicode_support.is_valid_name``
+      accepts for the current mode
+
+    Name validity is delegated to the shell's single authoritative identifier
+    policy (``psh.lexer.unicode_support.is_valid_name``). With ``posix_mode``
+    (``set -o posix``) the name must be ASCII ``[A-Za-z_][A-Za-z0-9_]*``, matching
+    bash; otherwise psh's lenient Unicode-letter rule applies (a documented
+    divergence). A word that is not a valid assignment is treated as an ordinary
+    command word, so ``é=1`` under posix runs as a command (``command not
+    found``), exactly as bash does.
 
     Args:
         arg: The argument string to check
+        posix_mode: Restrict names to the POSIX/ASCII set when True
 
     Returns:
         True if the argument is a valid assignment, False otherwise
@@ -32,6 +40,7 @@ def is_valid_assignment(arg: str) -> bool:
         >>> is_valid_assignment("no_equals")
         False
     """
+    from ..lexer.unicode_support import is_valid_name
     if '=' not in arg:
         return False
 
@@ -39,12 +48,7 @@ def is_valid_assignment(arg: str) -> bool:
     # NAME+=value appends (bash); validate the name without the '+'
     if var_name.endswith('+'):
         var_name = var_name[:-1]
-    # Variable name must start with letter or underscore
-    if not var_name or not (var_name[0].isalpha() or var_name[0] == '_'):
-        return False
-
-    # Rest must be alphanumeric or underscore
-    return all(c.isalnum() or c == '_' for c in var_name[1:])
+    return is_valid_name(var_name, posix_mode)
 
 
 def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str, object]:

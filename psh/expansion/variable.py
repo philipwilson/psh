@@ -467,9 +467,14 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                                  exit_code=1)
         return target
 
-    @staticmethod
-    def _valid_indirect_target(target: str) -> bool:
-        """Whether text can serve as an indirection target parameter name."""
+    def _valid_indirect_target(self, target: str) -> bool:
+        """Whether text can serve as an indirection target parameter name.
+
+        The base name is validated through the shell's single identifier policy
+        (``unicode_support.is_valid_name``); under ``set -o posix`` the name is
+        ASCII-only, otherwise psh's lenient Unicode-letter rule applies.
+        """
+        from ..lexer.unicode_support import is_valid_name
         if not target:
             return False
         if target.isdigit():
@@ -481,9 +486,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             if not target.endswith(']'):
                 return False
             name = target[:target.find('[')]
-        if not name or not (name[0].isalpha() or name[0] == '_'):
-            return False
-        return all(c.isalnum() or c == '_' for c in name)
+        return is_valid_name(name, self.state.options.get('posix', False))
 
     def expand_string_variables(self, text: str,
                                 quote_ctx: Optional[str] = None) -> str:

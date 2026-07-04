@@ -89,7 +89,7 @@ class ExportBuiltin(Builtin):
 
             # bash: invalid names are reported (rc 1) but the remaining
             # arguments are still processed.
-            if not self._is_valid_identifier(key):
+            if not self._is_valid_identifier(key, shell.state.options.get('posix', False)):
                 self.error(f"`{arg}': not a valid identifier", shell)
                 status = 1
                 continue
@@ -195,13 +195,15 @@ class ExportBuiltin(Builtin):
             fm.set_function_exported(name, not unexport)
         return status
 
-    def _is_valid_identifier(self, name: str) -> bool:
-        """Check if a name is a valid shell identifier."""
-        if not name:
-            return False
-        if not (name[0].isalpha() or name[0] == '_'):
-            return False
-        return all(c.isalnum() or c == '_' for c in name[1:])
+    def _is_valid_identifier(self, name: str, posix_mode: bool = False) -> bool:
+        """Check if a name is a valid shell identifier.
+
+        Delegates to the shell's single authoritative identifier policy
+        (``unicode_support.is_valid_name``); ``posix_mode`` (``set -o posix``)
+        restricts to the ASCII set as bash does.
+        """
+        from ..lexer.unicode_support import is_valid_name
+        return is_valid_name(name, posix_mode)
 
     def _print_exports(self, shell: 'Shell') -> None:
         """Print all exported variables in ``declare -x`` format.

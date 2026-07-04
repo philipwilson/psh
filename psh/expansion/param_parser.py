@@ -103,10 +103,17 @@ _SPECIAL_PARAM_CHARS = '@*#?$!-'
 
 
 def _is_identifier(name: str) -> bool:
-    """A valid variable identifier: [A-Za-z_][A-Za-z0-9_]*."""
-    if not name or not (name[0].isalpha() or name[0] == '_'):
-        return False
-    return all(c.isalnum() or c == '_' for c in name)
+    """A valid variable identifier.
+
+    Routed through the shell's single identifier policy
+    (``unicode_support.is_valid_name``) so ``${NAME}`` classification agrees
+    with the lexer and every other name site. This runs at PARSE time, where
+    the runtime ``set -o posix`` state is not yet available, so the lenient
+    (non-posix) rule is used; the posix ASCII restriction is enforced at the
+    runtime name-declaration sites (assignment, declare, read, ...).
+    """
+    from ..lexer.unicode_support import is_valid_name
+    return is_valid_name(name, posix_mode=False)
 
 
 def _subscript_end(content: str, start: int) -> int:
