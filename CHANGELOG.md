@@ -4,6 +4,14 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.612.0 (2026-07-04) - Fix: positional-$* per-element operators + tilde-prefix boundary (reappraisal #17 Tier-2 F1/F2/F3)
+- FIX. Reappraisal #17 Tier-2. Truth-tabled against bash 5.2 (operator families × views × IFS; tilde prefix-kinds × followers × contexts).
+- **F1 (leaned HIGH — silent corruption): value operators on the positional `*`/`@` scalar views applied to the IFS-joined string instead of per element.** Case modification (`^ ^^ , ,,`) and substitution (`/ // /# /%`) now route through the same per-element treatment as removal/slices, via a single `_expand_positional_view` helper keyed off `_VALUE_OPERATORS` — so no operator family can be forgotten for one view again. `set -- foo bar; "${*^}"` → `Foo Bar` (was `Foo bar`); `IFS=o; set -- fo of; "${*//o/_}"` → `f_o_f` (was `f___f`); `"${*/#ab/X}"` → `Xc Xd`. The `@` scalar view had the same bug in string contexts (here-docs).
+- **F2 (under-expansion): a leading tilde-prefix is now terminated by `:` as well as `/`** (bash `tilde_additional_suffixes`) — `~:x`, `~root:x`, `~+:x` all expand. The boundary rule lives in one place (`TildeExpander.prefix_end`), shared by `expand()`, the word-leading decision, the assignment-value splitter, and the operand walkers.
+- **F3 (over-expansion): a tilde word running into a quoted part or an expansion stays literal** — `~"x"` → `~x`, `~$USER` → `~user`, `~+"x"` → `~+x`, and escapes (`~\:x`, `~\/x`) stay literal. `_leading_tilde_expandable` requires the whole tilde word to be unquoted literal, matching bash 5.2.
+- **Documented divergences (not parity):** for the WORD `~:$X`, bash pastes `$X` verbatim after expanding whereas psh keeps the tilde literal and expands `$X` normally; operand contexts otherwise reproduce bash's `tilde_find_word` verbatim-remainder semantics (`${u:-~:$X}` → `$HOME:$X` with `$X` literal/unsplit). Adjacent v0.606 disclosure: `${a[*]:-'p q'}` now returns a single field as-is (quote protection survives) rather than str.join-flattening it.
+- Pinned by 27 golden pins (`--compare-bash`) + 73 unit tests.
+
 ## 0.611.0 (2026-07-04) - Fix: script-fd placement, heredoc delimiter/EOF edges, whitespace set (reappraisal #17 Tier-2)
 - FIX. Reappraisal #17 Tier-2 — four input-layer clusters (io MED-2, lexer MED-1/MED-2 + round-2 addendum), each truth-tabled against bash 5.2 first.
 - **(a) Script fd off user space.** `FileInput` now reads the whole script eagerly in `__enter__` and closes the descriptor before any command runs, **retiring the `_relocate_high` F_DUPFD hack** that parked it on fd 10 — exactly bash's `{var}` named-fd base. `exec {fd}>/dev/null` now answers 10 (was 11) in script mode, and a script using fd 10 itself no longer dies with a spurious EBADF at close.

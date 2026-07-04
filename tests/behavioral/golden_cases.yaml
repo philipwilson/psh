@@ -4643,3 +4643,183 @@
   stdout: "rc=0 v=2\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# Reappraisal #17 Tier-2: positional-$* per-element value operators (F1),
+# tilde-prefix boundary at ':' + all-unquoted-literal requirement (F2/F3),
+# and single-field protection through the ${a[*]:-...} view.
+#
+# F1: case-mod (^ ^^ , ,,) and substitution (/ // /# /%) on the positional
+# $* / $@ views used to run on the IFS-joined string; bash applies them per
+# element and joins after (the separator never participates in matching).
+# F2/F3: bash delimits a leading tilde-prefix at the first unquoted '/' OR
+# ':' and expands it only when the whole tilde word is unquoted literal.
+# =============================================================================
+
+- name: star_view_casemod_upper_per_element
+  command: 'set -- foo bar; echo "${*^}"'
+  stdout: "Foo Bar\n"
+  stderr: ""
+  exit_code: 0
+
+- name: star_view_casemod_lower_per_element
+  command: 'set -- FOO BAR; echo "${*,}"'
+  stdout: "fOO bAR\n"
+  stderr: ""
+  exit_code: 0
+
+- name: star_view_subst_custom_ifs_keeps_separator
+  command: 'IFS=o; set -- fo of; echo "${*//o/_}"'
+  stdout: "f_o_f\n"
+  stderr: ""
+  exit_code: 0
+
+- name: star_view_subst_anchored_prefix_per_element
+  command: 'set -- abc abd; echo "${*/#ab/X}"'
+  stdout: "Xc Xd\n"
+  stderr: ""
+  exit_code: 0
+
+- name: star_view_subst_anchored_suffix_per_element
+  command: 'set -- abc abd; echo "${*/%bc/Y}"'
+  stdout: "aY abd\n"
+  stderr: ""
+  exit_code: 0
+
+- name: star_view_subst_never_spans_elements
+  command: 'set -- ab ba; echo "${*/a*a/X}"'
+  stdout: "ab ba\n"
+  stderr: ""
+  exit_code: 0
+
+- name: star_view_casemod_empty_ifs
+  command: 'IFS=; set -- foo bar; echo "${*^}"'
+  stdout: "FooBar\n"
+  stderr: ""
+  exit_code: 0
+
+- name: at_view_heredoc_casemod_per_element
+  command: |
+    set -- p q; cat <<EOF
+    ${@^} ${*^}
+    EOF
+  stdout: "P Q P Q\n"
+  stderr: ""
+  exit_code: 0
+
+- name: at_view_heredoc_anchored_subst_per_element
+  command: |
+    set -- abc abd; cat <<EOF
+    ${@/#ab/X}
+    EOF
+  stdout: "Xc Xd\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tilde_prefix_colon_terminated
+  command: 'HOME=/h; echo ~:x'
+  stdout: "/h:x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tilde_prefix_colon_terminated_dirstack
+  command: 'cd /tmp; echo ~+:x'
+  stdout: "/tmp:x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tilde_after_colon_in_word_stays_literal
+  command: 'echo a:~:b'
+  stdout: "a:~:b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tilde_quoted_suffix_stays_literal
+  command: 'echo ~"x" ~"" ~''y'''
+  stdout: "~x ~ ~y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tilde_expansion_suffix_stays_literal
+  command: 'X=u; echo ~$X ~$X/p'
+  stdout: "~u ~u/p\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tilde_slash_bounded_before_quoted_expands
+  command: 'HOME=/h; echo ~/"x" ~/x"y"'
+  stdout: "/h/x /h/xy\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tilde_colon_bounded_before_quoted_stays_literal
+  command: 'echo ~:"x"'
+  stdout: "~:x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tilde_escaped_colon_or_slash_stays_literal
+  command: 'echo ~\:x ~\/x'
+  stdout: "~:x ~/x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_tilde_colon_expands
+  command: 'HOME=/h; echo ${u:-~:y}'
+  stdout: "/h:y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_tilde_word_rest_verbatim
+  command: 'HOME=/h; X=hello; set --; printf "[%s]" ${u:-~:$X}; echo'
+  stdout: "[/h:$X]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_tilde_word_unsplit
+  command: 'HOME=/h; set --; printf "[%s]" ${u:-~:a b}; echo'
+  stdout: "[/h:a b]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pattern_operand_tilde_colon_expands
+  command: 'HOME=/h; p=/h:q; echo "${p#~:}"'
+  stdout: "q\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pattern_operand_tilde_word_glob_literal
+  command: 'HOME=/h; v=/h:xyz; echo "${v#~:x*}"'
+  stdout: "/h:xyz\n"
+  stderr: ""
+  exit_code: 0
+
+- name: replacement_operand_tilde_colon_expands
+  command: 'HOME=/h; w=qX; echo "${w/q/~:z}"'
+  stdout: "/h:zX\n"
+  stderr: ""
+  exit_code: 0
+
+- name: replacement_operand_tilde_word_amp_literal
+  command: 'HOME=/h; w=qX; echo "${w/q/~:&}"'
+  stdout: "/h:&X\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_star_view_default_operand_one_field
+  command: "a=(); printf '[%s]' ${a[*]:-'p q'}; echo"
+  stdout: "[p q]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_star_view_plus_operand_one_field
+  command: "a=(x); printf '[%s]' ${a[*]:+'p q'}; echo"
+  stdout: "[p q]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_star_view_unprotected_operand_still_splits
+  command: "a=(); b='p q'; printf '[%s]' ${a[*]:-$b}; echo"
+  stdout: "[p][q]\n"
+  stderr: ""
+  exit_code: 0
