@@ -5424,3 +5424,55 @@
   stdout: "D\nD\nD\nx\nD\ntop\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# REAPPRAISAL #18 TIER-1: array scalar-overwrite / attribute plumbing (T1-3)
+# =============================================================================
+
+- name: r18t1_array_scalar_overwrite_keeps_array
+  command: 'a=(1 2 3); a=x; echo "${a[@]}"'
+  stdout: "x 2 3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_scalar_overwrite_declare_p
+  command: 'a=(1 2 3); a=x; declare -p a'
+  stdout: "declare -a a=([0]=\"x\" [1]=\"2\" [2]=\"3\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_tempenv_nondestructive
+  command: 'a=(1 2 3); a=x true; echo "${a[@]}"'
+  stdout: "1 2 3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_tempenv_sparse_preserved
+  command: 'a=([1]=x [2]=y); a=z true; declare -p a'
+  stdout: "declare -a a=([1]=\"x\" [2]=\"y\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_assoc_no_stray_a_bit
+  command: 'declare -A m=([a]=1); m=([c]=3); declare -p m'
+  stdout: "declare -A m=([c]=\"3\" )\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_assoc_tempenv_no_spurious_key
+  command: 'declare -A m=([k]=v); m=x true; declare -p m'
+  stdout: "declare -A m=([k]=\"v\" )\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_local_ul_cancels_transform
+  command: 'f(){ local -ul x=Hello; echo "$x"; }; f'
+  stdout: "Hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_array_local_ul_declare_p
+  command: 'f(){ local -ul x=Hello; declare -p x; }; f'
+  stdout: "declare -- x=\"Hello\"\n"
+  stderr: ""
+  exit_code: 0

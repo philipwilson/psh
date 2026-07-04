@@ -152,6 +152,12 @@ class LocalBuiltin(Builtin):
             attributes |= VarAttributes.ASSOC_ARRAY
         if options['nameref']:
             attributes |= VarAttributes.NAMEREF
+        if options['lowercase'] and options['uppercase']:
+            # -l and -u together cancel: bash applies NEITHER transform and
+            # records neither attribute (``local -ul x=Hello`` -> value
+            # "Hello", ``declare -p`` shows ``declare --``). Matches the declare
+            # builtin's _attributes_from_options.
+            attributes &= ~(VarAttributes.LOWERCASE | VarAttributes.UPPERCASE)
 
         # Process each argument
         for arg in positional:
@@ -214,9 +220,11 @@ class LocalBuiltin(Builtin):
                         from ..core import resolve_append_assignment
                         _, var_value = resolve_append_assignment(
                             shell.state.scope_manager, var_name + '+', var_value)
-                    var_value = self._apply_attributes(var_value, attributes, shell)
 
-                    # Create local variable with value and attributes
+                    # Attribute transforms (-u/-l/-i) are applied by the single
+                    # chokepoint in create_local -> ScopeManager._apply_attributes,
+                    # NOT here: a second, divergent copy used to run first and
+                    # mishandled -ul (it uppercased instead of applying neither).
                     shell.state.scope_manager.create_local(var_name, var_value, attributes)
             else:
                 # Variable without assignment: local var
@@ -318,25 +326,6 @@ class LocalBuiltin(Builtin):
             i += 1
 
         return options, positional
-
-    def _apply_attributes(self, value: str, attributes, shell: 'Shell') -> str:
-        """Apply attribute transformations to value."""
-        from ..core import VarAttributes
-
-        if attributes & VarAttributes.UPPERCASE:
-            return value.upper()
-        elif attributes & VarAttributes.LOWERCASE:
-            return value.lower()
-        elif attributes & VarAttributes.INTEGER:
-            # Evaluate the arithmetic expression. A value that fails to
-            # evaluate (`local -i w='1/0'`) propagates ShellArithmeticError
-            # to execute_builtin_guarded, which prints "psh: local: ..." and
-            # discards the rest of the line (bash; used to be silently
-            # swallowed to "0" here). Unset names evaluate to 0, so plain
-            # words are not errors.
-            from ..expansion.arithmetic import evaluate_arithmetic
-            return str(evaluate_arithmetic(value, shell))
-        return value
 
     @property
     def help(self) -> str:
