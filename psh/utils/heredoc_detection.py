@@ -15,14 +15,26 @@ import re
 # rejects a third ``<`` so a here-string (``<<<WORD``) is not mistaken for a
 # heredoc.
 #   group(1): '-' for <<- (strip leading tabs)
-#   group(2): the RAW delimiter — a run of word chars (``$`` included, taken
-#             LITERALLY like bash), backslash-escaped chars, and single/double-
-#             quoted segments (quotes/escapes still present).
-# Use heredoc_delimiter_word(match) for the literal terminator text. ``$`` is a
-# plain delimiter character here (``<<E$X`` → terminator ``E$X``); this MUST
+#   group(2): the RAW delimiter — one shell WORD (quotes/escapes still
+#             present). Bash accepts almost ANY non-blank run as the
+#             delimiter (``E*F``, ``A?B``, ``AB[cd]``, ``E.F``, ``E-F``,
+#             ``@X``, ``{abc}``, ``!``, digits, ``$`` taken LITERALLY —
+#             verified against bash 5.2), so the character class is
+#             NEGATED: the word ends at blanks (space/tab), the line
+#             terminators newline/CR (a CRLF line's trailing CR is line
+#             ending, not delimiter text), the shell metacharacters
+#             ``| & ; ( ) < >``, and quote/escape characters (which the
+#             leading alternatives consume as units). One extra rule: a
+#             ``#`` cannot START the word — after the ``<<`` operator it
+#             begins a comment (``cat << #foo`` and ``cat <<#foo`` are both
+#             syntax errors in bash) — but is an ordinary character
+#             mid-word (``<<E#F``).
+# Use heredoc_delimiter_word(match) for the literal terminator text. This MUST
 # agree with HeredocLexer._delimiter_from_source and the parser's _parse_heredoc.
 HEREDOC_MARKER_RE = re.compile(
-    r'(?<!<)<<(?!<)(-?)\s*((?:\\.|"[^"]*"|\'[^\']*\'|[A-Za-z0-9_$])+)')
+    r'(?<!<)<<(?!<)(-?)[ \t]*'
+    r'((?:\\.|"[^"]*"|\'[^\']*\'|[^ \t\n\r"\'\\|&;()<>#])'
+    r'(?:\\.|"[^"]*"|\'[^\']*\'|[^ \t\n\r"\'\\|&;()<>])*)')
 
 
 def heredoc_delimiter_word(match: 're.Match') -> str:
@@ -65,13 +77,14 @@ def heredoc_terminator_matches(line: str, delimiter: str, strip_tabs: bool) -> b
     strips leading tabs, and a line with trailing whitespace (``EOF ``) is body,
     not the terminator. The one concession is a CRLF line ending: bash keeps the
     raw CR as an ordinary byte, so its delimiter word captured from ``<<EOF\\r``
-    is ``EOF\\r`` and a terminator line ``EOF\\r`` matches. psh's lexer instead
-    treats CR as whitespace and drops it from the delimiter WORD (``EOF``), so a
-    CRLF script's terminator line ``EOF\\r`` would never match ``EOF`` and the
-    heredoc — plus every command after it — would be silently swallowed. Dropping
-    the single line-ending CR before the exact compare reproduces bash's "CRLF
-    heredoc terminates" behavior while still treating trailing spaces/tabs as
-    body (they are NOT stripped).
+    is ``EOF\\r`` and a terminator line ``EOF\\r`` matches. psh instead strips
+    the line-ending CR at the line-reading layer (FileInput per physical line;
+    HeredocLexer's line splitter), so its delimiter word is ``EOF`` — but lines
+    that reach this rule WITHOUT passing those layers (a ``-c`` string with
+    embedded CRLF, fed line-by-line to the completeness oracle) still carry the
+    CR. Dropping the single line-ending CR before the exact compare reproduces
+    bash's "CRLF heredoc terminates" behavior everywhere while still treating
+    trailing spaces/tabs as body (they are NOT stripped).
     """
     check = line.lstrip('\t') if strip_tabs else line
     if check.endswith('\r'):

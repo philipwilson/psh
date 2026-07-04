@@ -91,12 +91,13 @@ class SourceProcessor(ScriptComponent):
             if self.state.options.get('debug-exec', False):
                 print(f"DEBUG source_processor: read line: {repr(line)}", file=sys.stderr)
             if line is None:  # EOF
-                # End of input inside a heredoc body: the command never got
-                # its delimiter, so it is dropped (no execution).
-                if accumulator.pending_heredoc:
-                    return exit_code
                 # Execute any remaining buffered command (a truncated
                 # construct parses to "unexpected end of input" here).
+                # End of input inside a heredoc body is NOT special: like
+                # bash, the heredoc is "delimited by end-of-file" — the
+                # lexer finalizes the gathered lines as the body, prints
+                # bash's warning, and the command runs (it used to be
+                # silently dropped, rc 0).
                 if not accumulator.is_empty:
                     exit_code = self._execute_buffered_command(
                         accumulator.flush(), input_source, command_start_line,
@@ -236,10 +237,18 @@ class SourceProcessor(ScriptComponent):
                 self._debug_print_tokens(complete.tokens)
                 ast = complete.ast
             elif contains_heredoc(command_string):
-                # Use the lexer with heredoc support
+                # Use the lexer with heredoc support. The source name and
+                # start line locate the buffer for the unterminated-heredoc
+                # warning ("delimited by end-of-file"): a script/sourced-file
+                # path prefixes it like bash's script name; the -c/stdin/eval
+                # pseudo-names map to the "psh" prefix (bash prints "bash:").
                 from ..lexer import tokenize_with_heredocs
-                tokens, heredoc_map = tokenize_with_heredocs(command_string, strict=self.state.options.get('posix', False),
-                                                              shell_options=self.state.options)
+                name = input_source.get_name()
+                tokens, heredoc_map = tokenize_with_heredocs(
+                    command_string, strict=self.state.options.get('posix', False),
+                    shell_options=self.state.options,
+                    source_name=None if name.startswith(('<', '-')) else name,
+                    base_line=start_line if start_line > 0 else 1)
                 # Alias expansion is a token-stream transform at the
                 # lex→parse boundary (see AliasManager.expand_aliases).
                 tokens = self.shell.expand_aliases(tokens)

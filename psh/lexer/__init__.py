@@ -83,7 +83,11 @@ def tokenize(input_string: str, strict: bool = True, shell_options: Optional[Map
     return _post_lex(lexer.tokenize())
 
 
-def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options: Optional[Mapping[str, Any]] = None):
+def tokenize_with_heredocs(input_string: str, strict: bool = True,
+                           shell_options: Optional[Mapping[str, Any]] = None,
+                           source_name: Optional[str] = None,
+                           base_line: int = 1,
+                           warn_unterminated: bool = True):
     """
     Tokenize a shell command string with heredoc support.
 
@@ -96,13 +100,21 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True, shell_options
         input_string: The shell command string to tokenize
         strict: If True, use strict mode (batch); if False, use interactive mode
         shell_options: Optional shell options dict to configure extglob etc.
+        source_name: Name prefixing the unterminated-heredoc warning (script
+            path; None → "psh", matching bash's "bash:" for -c/stdin)
+        base_line: Absolute source line of input_string's first line, so the
+            warning's line numbers match the enclosing file
+        warn_unterminated: False silences the unterminated-heredoc warning
+            (trial parses; the execution pass prints it)
 
     Returns:
         Tuple of (tokens, heredoc_map) where heredoc_map contains collected heredoc content
     """
     from .heredoc_lexer import HeredocLexer
 
-    lexer = HeredocLexer(input_string, config=_make_config(strict, shell_options))
+    lexer = HeredocLexer(input_string, config=_make_config(strict, shell_options),
+                         source_name=source_name, base_line=base_line,
+                         warn_unterminated=warn_unterminated)
     tokens, heredoc_map = lexer.tokenize_with_heredocs()
     return _post_lex(tokens), heredoc_map
 

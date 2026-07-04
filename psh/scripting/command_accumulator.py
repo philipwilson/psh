@@ -253,7 +253,10 @@ class CommandAccumulator:
             tokens, heredoc_map = tokenize_with_heredocs(
                 preview,
                 strict=self.state.options.get('posix', False),
-                shell_options=self.state.options)
+                shell_options=self.state.options,
+                # A trial must never print the unterminated-heredoc warning:
+                # the execution pass re-lexes (or reuses this AST) and warns.
+                warn_unterminated=False)
             # Expand aliases on the token stream (lex→parse boundary) so the
             # trial AST — which the execution path reuses — matches what the
             # execution seam produces.
