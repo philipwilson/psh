@@ -305,16 +305,26 @@ class ExpansionParser:
         start_pos: int,
         quote_context: Optional[str] = None
     ) -> Tuple[TokenPart, int]:
-        """Parse `...` backtick command substitution."""
+        r"""Parse `...` backtick command substitution.
+
+        Inside backticks a backslash quotes backslash, backtick, and
+        dollar. When the backtick itself sits inside double quotes
+        (*quote_context* is ``"``) bash ALSO strips a backslash before
+        ``"`` — probed: ``echo "`echo \"q\"`"`` prints ``q`` while the
+        bare ``echo `echo \"q\"``` keeps the quotes (and ``$(...)``
+        inside double quotes keeps ``\"`` too — the rule is
+        backtick-specific).
+        """
         # Find closing backtick
         pos = start_pos + 1
         content = ""
+        unescape = '`$\\' + ('"' if quote_context == '"' else '')
 
         while pos < len(input_text) and input_text[pos] != '`':
             if input_text[pos] == '\\' and pos + 1 < len(input_text):
                 # Handle escape sequences in backticks
                 next_char = input_text[pos + 1]
-                if next_char in '`$\\':
+                if next_char in unescape:
                     pos += 1  # Skip backslash
                     content += input_text[pos] if pos < len(input_text) else ''
                 else:

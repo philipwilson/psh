@@ -46,7 +46,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             self.state.last_exit_code = 1
             raise BadSubstitutionError(content)
 
-    def expand_variable(self, var_expr: str) -> str:
+    def expand_variable(self, var_expr: str,
+                        quote_ctx: Optional[str] = None) -> str:
         """Expand a variable expression starting with $.
 
         This is the string-expansion ENTRY point (here-docs, double-quoted
@@ -56,7 +57,9 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         WordBuilder uses at parse time), and the resulting triple through
         the single application path in expand_parameter_direct. Errors
         propagate: user-facing failures are raised as ExpansionError/
-        UnboundVariableError by the operator handlers.
+        UnboundVariableError by the operator handlers. ``quote_ctx`` is
+        the enclosing quote context (operands.py: None / DQ_WORD /
+        DQ_STRING), shaping value-operand expansion.
         """
         if not var_expr.startswith('$'):
             return var_expr
@@ -72,7 +75,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 # Preserve None vs '' for node.word: ${#v} (length) parses to
                 # word=None, ${v#} (empty removal pattern) parses to word=''.
                 return self.expand_parameter_direct(
-                    node.operator, node.parameter, node.word)
+                    node.operator, node.parameter, node.word,
+                    quote_ctx=quote_ctx)
 
             var_name = node.parameter
 
@@ -164,7 +168,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             return self.state.get_variable(var_name, '')
 
     def expand_parameter_direct(self, operator: str, var_name: str,
-                                operand: Optional[str]) -> str:
+                                operand: Optional[str],
+                                quote_ctx: Optional[str] = None) -> str:
         """Expand a parameter expansion from pre-parsed components.
 
         Called by ExpansionEvaluator for Word AST nodes and by
@@ -174,6 +179,9 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             operator: The expansion operator ('#', '##', '%', '%%', '/', '//', etc.)
             var_name: The variable name (may include array subscript like 'arr[0]')
             operand: The pattern/replacement/offset operand
+            quote_ctx: the quote context enclosing the ${...} (operands.py:
+                None unquoted / DQ_WORD / DQ_STRING) — value operands
+                (:- := :+ :? and non-colon forms) expand per context
         """
         # ${!arr[@]} / ${!arr[*]}: array indices/keys.
         if operator == '!' and var_name.endswith(('[@]', '[*]')):
@@ -257,7 +265,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             # Array element with parameter expansion. Whole-array @/* forms
             # return directly; a regular element access yields a scalar value
             # that falls through to the shared operator application below.
-            handled, value = self._expand_array_parameter(operator, var_name, operand)
+            handled, value = self._expand_array_parameter(
+                operator, var_name, operand, quote_ctx=quote_ctx)
             if handled:
                 return value
         else:
@@ -277,10 +286,13 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         needs_is_set = (operator in ('-', '=', '+', '?')
                         or (len(operator) == 2 and operator[0] == '@'))
         is_set = self._param_is_set(var_name) if needs_is_set else True
-        return self._apply_operator(operator, value, operand, var_name=var_name, is_set=is_set)
+        return self._apply_operator(operator, value, operand, var_name=var_name,
+                                    is_set=is_set, quote_ctx=quote_ctx)
 
     def _expand_array_parameter(self, operator: str, var_name: str,
-                                operand: Optional[str]) -> Tuple[bool, str]:
+                                operand: Optional[str],
+                                quote_ctx: Optional[str] = None
+                                ) -> Tuple[bool, str]:
         """Expand the array-subscript branch of ``${arr[...]<op>...}``.
 
         Handles whole-array ``[@]``/``[*]`` forms (count, slice, conditional
@@ -359,7 +371,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 fields = self._view_conditional(
                     operator, elements, joiner, operand,
                     qmark_subject=label,
-                    assign_error=f"{label}: bad array subscript")
+                    assign_error=f"{label}: bad array subscript",
+                    quote_ctx=quote_ctx)
                 return True, joiner.join(fields)
 
             # Per-element transforms (@Q/@U/@u/@L/@E/@P/@a) apply to each
@@ -453,7 +466,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             return False
         return all(c.isalnum() or c == '_' for c in name)
 
-    def expand_string_variables(self, text: str) -> str:
+    def expand_string_variables(self, text: str,
+                                quote_ctx: Optional[str] = None) -> str:
         """Expand variables, command substitution, and arithmetic in a string
         (here strings/documents, double-quoted content, redirect targets).
 
@@ -461,15 +475,21 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         the shared $-scanner also used for operator operands — so the
         recognized constructs can't drift between contexts. This wrapper
         adds only the double-quote escape rules (``\\\\``, ``\\"``,
-        ``\\$``, ``\\```).
+        ``\\$``, ``\\```). ``quote_ctx`` (operands.py) tells nested
+        ``${x:-word}`` operands what quoting context encloses them:
+        heredoc bodies, ``$(( ))`` and ``[[ ]]`` string operands pass
+        DQ_STRING (single quotes literal, embedded dquotes toggle);
+        word-like strings (redirect targets, case patterns, array
+        subscripts) default to None (unquoted word semantics).
         """
         result = []
         i = 0
         n = len(text)
         while i < n:
             if (text[i] == '$' and i + 1 < n) or text[i] == '`':
-                expanded, i = self._expand_one_dollar(text, i)
-                result.append(expanded)
+                expanded, i = self._expand_one_dollar(text, i,
+                                                      quote_ctx=quote_ctx)
+                result.append(str(expanded))
                 continue
             elif text[i] == '\\' and i + 1 < len(text):
                 piece, i = self._process_double_quote_escape(text, i)

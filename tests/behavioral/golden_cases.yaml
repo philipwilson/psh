@@ -4154,3 +4154,190 @@
   stdout: "{1,2}\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# VALUE-OPERAND QUOTE/ESCAPE REMOVAL — ${x:-w} families (reappraisal #17 H5).
+# The operand used to strip only a WHOLE-operand quote pair: embedded quotes
+# leaked into output, $var expanded inside single quotes, ${x:=w} STORED the
+# corrupted text, and the rules failed to invert inside double quotes.
+# =============================================================================
+
+- name: value_operand_embedded_dquotes_strip
+  command: 'echo ${x:-a"b"c}'
+  stdout: "abc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_single_quotes_suppress_dollar
+  command: "y=mid; echo ${x:-a'$y'b}"
+  stdout: "a$yb\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_quoted_var_with_suffix
+  command: 'y=V; echo ${x:-"$y"/bin}'
+  stdout: "V/bin\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_backslash_escapes_space
+  command: 'printf "<%s>" ${x:-a\ b}; echo'
+  stdout: "<a b>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_assign_stores_clean_value
+  command: 'echo ${x:="a"b}; echo $x'
+  stdout: "ab\nab\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_assign_result_splits_like_value
+  command: 'printf "<%s>" ${x:=a\ b}; echo; echo "[$x]"'
+  stdout: "<a><b>\n[a b]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_quoted_default_one_field
+  command: "printf '<%s>' ${x:-'a b'}; echo"
+  stdout: "<a b>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_unquoted_default_splits
+  command: "printf '<%s>' ${x:-a b}; echo"
+  stdout: "<a><b>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_empty_quotes_one_empty_field
+  command: "set -- ${x:-''}; echo $#"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_nested_protection_propagates
+  command: "set -- ${x:-${z:-'a b'}}; echo $#"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_ansi_c_decodes_protected
+  command: "set -- ${x:-$'a\\tb'}; echo $#"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_dquote_ctx_keeps_single_quotes
+  command: "echo \"${x:-'literal'}\""
+  stdout: "'literal'\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_dquote_ctx_strips_inner_dquotes
+  command: 'echo "${x:-a"b"c}"'
+  stdout: "abc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_dquote_ctx_nested_inherits
+  command: "echo \"${x:-${z:-'q'}}\""
+  stdout: "'q'\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_dquote_ctx_name_scan_crosses_quotes
+  command: 'y=mid; yc=YC; echo "${x:-a"$y"c}"'
+  stdout: "aYC\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_noncolon_dash_strips_quotes
+  command: 'echo ${x-a"b"c}'
+  stdout: "abc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_plus_strips_quotes
+  command: "x=SET; echo ${x:+a'b'c}"
+  stdout: "abc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_qmark_message_quote_removed
+  command: 'echo ${x:?a"b"c}'
+  stdout: ""
+  stderr: "x: abc"
+  exit_code: 127
+
+- name: value_operand_heredoc_keeps_single_quotes
+  command: "cat <<EOF\n${x:-'q'}\nEOF"
+  stdout: "'q'\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_heredoc_strips_double_quotes
+  command: "cat <<EOF\n${x:-a\"b\"c}\nEOF"
+  stdout: "abc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_herestring_word_rules
+  command: 'cat <<< ${x:-a"b"c}'
+  stdout: "abc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_arith_dquotes_delete
+  command: 'echo $(( ${u:-"5"} + 1 ))'
+  stdout: "6\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_tilde_only_leading
+  command: 'echo ${x:-a:~}'
+  stdout: "a:~\n"
+  stderr: ""
+  exit_code: 0
+
+- name: value_operand_no_tilde_in_dquote_ctx
+  command: 'echo "${x:-~}"'
+  stdout: "~\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# BACKTICK \" UNESCAPE INSIDE DOUBLE QUOTES (reappraisal #17 H6). A backtick
+# substitution inside double quotes also strips backslash-doublequote; the
+# bare form and $(...) keep it. The lexer ignored its quote_context.
+# =============================================================================
+
+- name: backtick_in_dquotes_unescapes_dquote
+  command: 'echo "`echo \"q\"`"'
+  stdout: "q\n"
+  stderr: ""
+  exit_code: 0
+
+- name: backtick_in_dquotes_unescapes_dquote_around_var
+  command: 'x=hi; echo "`echo \"$x\"`"'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: backtick_bare_keeps_escaped_dquote
+  command: 'echo `echo \"q\"`'
+  stdout: "\"q\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cmdsub_in_dquotes_keeps_escaped_dquote
+  command: 'echo "$(echo \"q\")"'
+  stdout: "\"q\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: backtick_nested_in_dquotes
+  command: 'echo "`echo \`echo hi\``"'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0

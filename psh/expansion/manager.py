@@ -193,11 +193,15 @@ class ExpansionManager:
         """
         return self.word_expander.expand_assignment_value_word(word)
 
-    def expand_expansion(self, expansion) -> str:
+    def expand_expansion(self, expansion, quote_ctx=None) -> str:
         """Evaluate a single expansion AST node to a string (public API).
 
         Used by the executor when building an assignment value from Word parts;
         kept public so callers need not reach into a private method.
+        ``quote_ctx`` (expansion.operands: None / DQ_WORD / DQ_STRING) is
+        the quote context enclosing the expansion — pass DQ_WORD for a
+        part inside double quotes so ``${x:-'q'}`` keeps bash's
+        context-dependent quoting rules.
         """
         # Use ExpansionEvaluator for clean evaluation. Errors propagate:
         # user-facing failures arrive as ExpansionError/UnboundVariableError
@@ -206,7 +210,7 @@ class ExpansionManager:
         # that must fail loudly rather than silently degrade to the literal
         # text of the expansion (the pre-v0.300 fallback returned
         # str(expansion), turning internal bugs into garbage output).
-        return self.evaluator.evaluate(expansion)
+        return self.evaluator.evaluate(expansion, quote_ctx=quote_ctx)
 
     def expand_word_as_subject(self, word) -> str:
         """Expand a ``case`` subject Word to a single string.
@@ -245,16 +249,22 @@ class ExpansionManager:
                 if isinstance(part.expansion, ProcessSubstitution):
                     out.append(str(part.expansion))
                     continue
-                expanded = self.expand_expansion(part.expansion)
+                from .operands import DQ_WORD
+                expanded = self.expand_expansion(
+                    part.expansion,
+                    quote_ctx=DQ_WORD if part.quoted else None)
                 out.append(ve.glob_escape(expanded) if part.quoted else expanded)
         return ''.join(out)
 
-    def expand_string_variables(self, text: str) -> str:
+    def expand_string_variables(self, text: str, quote_ctx=None) -> str:
         """
         Expand variables and arithmetic in a string.
-        Used for here strings and double-quoted strings.
+        Used for here strings and double-quoted strings. ``quote_ctx``
+        (expansion.operands) tells nested ``${x:-word}`` operands what
+        quoting context encloses them (heredoc bodies pass DQ_STRING).
         """
-        return self.variable_expander.expand_string_variables(text)
+        return self.variable_expander.expand_string_variables(
+            text, quote_ctx=quote_ctx)
 
     def expand_string_tildes(self, text: str) -> str:
         """Value-context tilde expansion of a raw string: an unquoted ``~``/

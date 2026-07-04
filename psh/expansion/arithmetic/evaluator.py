@@ -411,8 +411,13 @@ def evaluate_arithmetic(expr: str, shell, expand: bool = True) -> int:
     then a syntax error, matching bash, which never rescans expanded text.
     """
     try:
-        # First, expand all shell variables and parameter expansions
-        expanded_expr = (shell.expansion_manager.expand_string_variables(expr)
+        # First, expand all shell variables and parameter expansions.
+        # Arithmetic is a dquote-like context for nested ${x:-word}
+        # operands (bash: $(( ${u:-"5"} )) is 5+..., but $(( ${u:-'5'} ))
+        # keeps the single quotes and is a syntax error).
+        from ..operands import DQ_STRING
+        expanded_expr = (shell.expansion_manager.expand_string_variables(
+                             expr, quote_ctx=DQ_STRING)
                          if expand else expr)
 
         # Tokenize the expanded expression

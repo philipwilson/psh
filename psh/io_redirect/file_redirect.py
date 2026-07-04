@@ -199,7 +199,12 @@ class FileRedirector:
         Returns the expanded content."""
         content = redirect.heredoc_content or ''
         if content and not getattr(redirect, 'heredoc_quoted', False):
-            content = self.shell.expansion_manager.expand_string_variables(content)
+            # Heredoc bodies are a dquote-like context for nested
+            # ${x:-word} operands (bash keeps the quotes of ${x:-'q'});
+            # $'...' stays literal there (DQ_STRING, not DQ_WORD).
+            from ..expansion.operands import DQ_STRING
+            content = self.shell.expansion_manager.expand_string_variables(
+                content, quote_ctx=DQ_STRING)
         self._content_to_fd(content, self._heredoc_fd(redirect))
         return content
 
