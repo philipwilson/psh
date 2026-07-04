@@ -5424,3 +5424,33 @@
   stdout: "D\nD\nD\nx\nD\ntop\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# reappraisal #18 T1-6: child fd inheritance (H5) + exec-close stream leak (MED)
+# =============================================================================
+
+# A forked child inherits a redirect fd (process sub keeps the /dev/fd path
+# readable across exec). Pins the CLOEXEC-cleared inheritance conformance.
+- name: r18t1_fd_child_reads_dev_fd_procsub
+  command: 'cat /dev/fd/3 3< <(echo hi)'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# `exec >&-` after `exec >file` must sever the Python stream too: `echo two`
+# fails EBADF instead of leaking into the (closed) old destination. Redirected
+# to /dev/null so the case is self-contained; the buggy shell wrote to
+# /dev/null and exited 0, the fixed shell fails with a write error.
+- name: r18t1_fd_close_stdout_after_redirect_no_leak
+  command: 'exec >/dev/null; exec >&-; echo two'
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+# A `>&2` redirect onto a closed fd 2 can't report its diagnostic (fd gone),
+# but must NOT abort the list — the command fails and execution continues.
+- name: r18t1_fd_close_stderr_then_continue
+  command: 'exec 2>&-; echo two >&2; echo three'
+  stdout: "three\n"
+  stderr: ""
+  exit_code: 0
