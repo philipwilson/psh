@@ -72,13 +72,11 @@ def _cleanup_shell(shell_instance):
         except OSError:
             pass
     _reap_children()
-    # Close signal notifier pipe FDs to prevent FD exhaustion across tests
-    if hasattr(shell_instance, 'interactive_manager'):
-        sm = shell_instance.interactive_manager.signal_manager
-        if hasattr(sm, '_sigchld_notifier'):
-            sm._sigchld_notifier.close()
-        if hasattr(sm, '_sigwinch_notifier'):
-            sm._sigwinch_notifier.close()
+    # Release the shell's fd-backed resources (the signal-notifier self-pipes)
+    # to prevent FD exhaustion across tests. Shell.close() is idempotent and
+    # None-safe for shells that never allocated the notifiers (lazy alloc).
+    if hasattr(shell_instance, 'close'):
+        shell_instance.close()
 
 
 @pytest.fixture(autouse=True)
