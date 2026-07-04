@@ -19,6 +19,11 @@ A marker that only matches a class name, a module-level constant, or an
 assert-free investigative probe (``check_behavior`` with no assertion) does
 NOT count. That closes the loophole where, e.g., ``disown`` mapped to a class
 whose file never ran disown, or ``pushd`` mapped to an assert-free probe.
+
+The negative directions are guarded too: every "No" row needs a
+NO_ROW_PROBES entry and every "Partial" row a PARTIAL_ROW_PROBES entry —
+a probe that still behaves differently from bash *because of the claimed
+gap* — so stale-negative rows (reappraisal #16 H7, #17 M1) cannot recur.
 """
 
 import ast
@@ -85,6 +90,10 @@ CLAIM_TESTS = {
         'bash/test_user_guide_notes_conformance.py', '${!MYV_*}'),
     'Assoc key/value transforms ${var@K} / ${var@k}': (
         'bash/test_user_guide_notes_conformance.py', '${m[@]@K}'),
+    # Reappraisal #17 M1 — row flipped from a stale "Partial ([0] only)".
+    'FUNCNAME': (
+        'bash/test_user_guide_notes_conformance.py',
+        'c(){ echo "${FUNCNAME[@]}";}; a'),
 }
 
 
@@ -103,6 +112,33 @@ NO_ROW_PROBES = {
     'caller builtin': 'f(){ caller 0; }; f; echo rc=$?',
     'BASH_SOURCE / BASH_LINENO':
         'f(){ echo "${BASH_SOURCE[0]}|${BASH_LINENO[0]}"; }; f',
+}
+
+
+# --- "Partial"-row staleness guard (reappraisal #17 M1) ---------------------
+# The v0.586 sweep guarded "Yes" rows (CLAIM_TESTS) and "No" rows
+# (NO_ROW_PROBES) but left "Partial" rows unguarded — which is exactly how the
+# FUNCNAME row rotted ("[0] only; full call stack not populated" while psh had
+# long populated the full stack). Every row whose PSH column is "Partial" must
+# have a probe here demonstrating the claimed-UNSUPPORTED sub-behavior still
+# diverges from bash. If psh grows the missing piece, the probe starts
+# matching bash and the guard fails — forcing the row to be flipped to "Full
+# support" (with a CLAIM_TESTS mapping) or its Notes narrowed to whatever gap
+# genuinely remains. Probes suppress stderr where the divergence would
+# otherwise rest on error-message wording, so only real behavior is compared.
+PARTIAL_ROW_PROBES = {
+    # Note claims RETURN traps are unsupported (DEBUG/ERR work).
+    'DEBUG/ERR/RETURN traps':
+        'f(){ trap "echo RET" RETURN; }; f 2>/dev/null; echo after',
+    # Note claims only a subset of bash's ~57 shopt options exists
+    # (lastpipe is a representative missing one).
+    'shopt options':
+        'shopt -s lastpipe 2>/dev/null; echo hi | read x; echo "x=$x"',
+    # Note claims read -e/-i (readline editing) are unsupported.
+    'read options': 'read -e x <<< hello 2>/dev/null; echo "got:$x"',
+    # Note claims TIMEFORMAT is not honored (a %-free TIMEFORMAT makes
+    # bash's output deterministic, so implementing it would match exactly).
+    'time keyword': 'TIMEFORMAT="CUSTOM_FMT"; { time true; } 2>&1',
 }
 
 
@@ -135,6 +171,17 @@ def _no_support_features():
     text = open(GUIDE).read()
     return [m.group(1).strip() for line in text.splitlines()
             if (m := _NO_SUPPORT_ROW.match(line))]
+
+
+# A row whose PSH-support column is exactly "Partial".
+_PARTIAL_SUPPORT_ROW = re.compile(
+    r'\|\s*([^|]+?)\s*\|\s*Yes\s*\|\s*Partial\s*\|')
+
+
+def _partial_support_features():
+    text = open(GUIDE).read()
+    return [m.group(1).strip() for line in text.splitlines()
+            if (m := _PARTIAL_SUPPORT_ROW.match(line))]
 
 
 # --- Evidence matcher ------------------------------------------------------
@@ -297,6 +344,32 @@ def _run(argv, script):
                           text=True, timeout=15)
 
 
+def _runs_identically(script):
+    """True when psh and bash agree on stdout and exit code for *script*.
+
+    Shared predicate of the No-row and Partial-row staleness guards: a
+    stale row is one whose divergence probe has started running identically.
+    """
+    psh = _run(PSH, script)
+    bash = _run([find_bash()], script)
+    return psh.stdout == bash.stdout and psh.returncode == bash.returncode
+
+
+def test_staleness_guard_detects_stale_probe():
+    """Self-test: the guard predicate must flag identical behavior.
+
+    A synthetic "stale row" — a probe that behaves identically in both
+    shells — must register as identical (which is precisely what makes the
+    parametrized guards below fail), and a genuinely divergent probe must
+    not, so the guards cannot silently become vacuous.
+    """
+    assert _runs_identically('echo synthetic-stale-row-probe'), (
+        "guard predicate failed to recognize identical behavior — a stale "
+        "row would slip through")
+    assert not _runs_identically('echo "psh-only:${PSH_VERSION:+set}"'), (
+        "guard predicate reported a PSH-specific divergence as identical")
+
+
 @pytest.mark.parametrize("feature", sorted(NO_ROW_PROBES))
 def test_no_row_feature_still_unsupported(feature):
     """A "No" row's feature must still behave differently from bash.
@@ -310,12 +383,47 @@ def test_no_row_feature_still_unsupported(feature):
     if feature not in _no_support_features():
         pytest.skip(f"{feature} is no longer a 'No' row")
     script = NO_ROW_PROBES[feature]
-    psh = _run(PSH, script)
-    bash = _run([find_bash()], script)
-    identical = (psh.stdout == bash.stdout and psh.returncode == bash.returncode)
-    assert not identical, (
+    assert not _runs_identically(script), (
         f"{feature!r} now behaves identically to bash — the feature appears "
         f"to work, but ch17 still marks it 'No'. Flip the row to 'Full "
         f"support', add a proving conformance test + CLAIM_TESTS mapping, and "
-        f"remove its NO_ROW_PROBES entry.\n"
-        f"  probe: {script}\n  output: {psh.stdout!r} rc={psh.returncode}")
+        f"remove its NO_ROW_PROBES entry.\n  probe: {script}")
+
+
+# --- "Partial"-row staleness guard -------------------------------------------
+
+def test_every_partial_row_has_a_probe():
+    """Every "Yes | Partial" table row must have a PARTIAL_ROW_PROBES entry.
+
+    Symmetric with the "No"-row guard: a new "Partial" row must ship with a
+    probe demonstrating that the sub-behavior its Notes column disclaims
+    still diverges from bash — otherwise the row can rot silently the way
+    the FUNCNAME row did (reappraisal #17 M1).
+    """
+    missing = [f for f in _partial_support_features()
+               if f not in PARTIAL_ROW_PROBES]
+    assert not missing, (
+        f'Table rows marked "Partial" without a PARTIAL_ROW_PROBES probe: '
+        f"{missing}. Add a probe command exercising the sub-behavior the "
+        "row's Notes column claims is missing, so the row cannot silently "
+        "rot when that gap is closed.")
+
+
+@pytest.mark.parametrize("feature", sorted(PARTIAL_ROW_PROBES))
+def test_partial_row_gap_still_diverges(feature):
+    """A "Partial" row's claimed-missing sub-behavior must still diverge.
+
+    If psh closes the gap a Partial row's Notes column disclaims, the probe
+    starts MATCHING bash and this fails — forcing the row to be flipped to
+    "Full support" (plus a CLAIM_TESTS mapping) or its Notes re-narrowed to
+    the gap that genuinely remains.
+    """
+    if feature not in _partial_support_features():
+        pytest.skip(f"{feature} is no longer a 'Partial' row")
+    script = PARTIAL_ROW_PROBES[feature]
+    assert not _runs_identically(script), (
+        f"{feature!r}: the sub-behavior its ch17 Notes column claims is "
+        f"missing now behaves identically to bash. Update the row — flip it "
+        f"to 'Full support' (add a proving conformance test + CLAIM_TESTS "
+        f"mapping) or narrow its Notes to the remaining gap — and update its "
+        f"PARTIAL_ROW_PROBES entry.\n  probe: {script}")
