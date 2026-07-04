@@ -16,6 +16,7 @@ constructs are still open.
 from typing import Callable, Optional
 
 from ..scripting.command_accumulator import CommandAccumulator, Complete, Hint
+from .eof_policy import ignoreeof_limit
 from .line_editor import LineEditor
 
 
@@ -54,6 +55,13 @@ class MultiLineInputHandler:
                 if not self.accumulator.is_empty:
                     print("\npsh: syntax error: unexpected end of file")
                     self.reset()
+                    if ignoreeof_limit(self.shell.state) is not None:
+                        # bash + ignoreeof at a PS2 prompt: the
+                        # unfinished command is abandoned with the
+                        # syntax error, but the shell STAYS (no
+                        # Use-"exit" message). Report "read nothing"
+                        # so the REPL just re-prompts.
+                        return ''
                 return None
 
             result = self.accumulator.feed(line)

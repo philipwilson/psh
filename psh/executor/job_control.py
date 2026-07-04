@@ -151,6 +151,17 @@ class JobManager:
         self.shell_pgid = os.getpgrp()
         self.shell_tmodes = None
         self.shell_state = None  # Will be set by shell
+        # True after confirm_exit_with_stopped_jobs() blocked an exit;
+        # cleared by the REPL when another command runs in between
+        # (bash's last_shell_builtin two-strikes semantics).
+        self._exit_warned = False
+        # bash's this_shell_builtin/last_shell_builtin shift register:
+        # the builtin name run by the current and previous top-level
+        # simple command (None for functions/externals). Shifted by
+        # CommandExecutor before each dispatch; the `jobs` builtin in
+        # the LAST slot exempts an exit from the stopped-jobs guard.
+        self._this_command_builtin: Optional[str] = None
+        self._last_command_builtin: Optional[str] = None
 
         # Save shell's terminal modes
         try:
@@ -238,6 +249,82 @@ class JobManager:
         """Count jobs that are running or stopped."""
         return sum(1 for job in self.jobs.values()
                   if job.state != JobState.DONE)
+
+    def has_stopped_jobs(self) -> bool:
+        """True when any job is currently stopped (Ctrl-Z / SIGTSTP)."""
+        return any(job.state == JobState.STOPPED for job in self.jobs.values())
+
+    # ------------------------------------------------------------------
+    # The stopped-jobs exit guard (bash exit.def)
+    #
+    # ONE chokepoint answers "should this interactive exit really
+    # exit?" for BOTH the exit builtin (builtins/core.py) and the
+    # REPL's Ctrl-D EOF path (interactive/repl_loop.py) — bash treats
+    # EOF as if the user typed `exit`, so the two are interchangeable
+    # for the two-strikes rule (PTY truth table in
+    # tmp/probes-r17t2-interactive/probe_stopped_jobs2.py).
+    # ------------------------------------------------------------------
+
+    @property
+    def exit_warning_pending(self) -> bool:
+        """True after a blocked exit, until a command re-arms the guard."""
+        return self._exit_warned
+
+    def clear_exit_warning(self) -> None:
+        """Re-arm the stopped-jobs exit guard.
+
+        The REPL calls this after any non-blank command runs following a
+        warning — bash re-arms whenever ``last_shell_builtin`` stops
+        being ``exit`` (blank lines do not re-arm; ``jobs`` re-arms the
+        WARNING but simultaneously exempts the next attempt outright —
+        see :meth:`confirm_exit_with_stopped_jobs`)."""
+        self._exit_warned = False
+
+    def note_simple_command(self, builtin_name: Optional[str]) -> None:
+        """Shift bash's last/this_shell_builtin register.
+
+        Called by the CommandExecutor before dispatching every top-level
+        simple command that has a command word — with the builtin's name,
+        or None for functions and external commands. Pure assignments
+        and blank lines never get here (bash: no shift), and commands in
+        forked children (pipelines, subshells, substitutions) only shift
+        the child's copy. The REPL's Ctrl-D path shifts an ``exit`` in,
+        mirroring bash's synthesized exit on EOF."""
+        self._last_command_builtin = self._this_command_builtin
+        self._this_command_builtin = builtin_name
+
+    def confirm_exit_with_stopped_jobs(self) -> bool:
+        """Return True when an interactive exit/EOF may proceed.
+
+        bash exit.def semantics (PTY truth tables in
+        tmp/probes-r17t2-interactive/): the FIRST attempt with stopped
+        jobs prints "There are stopped jobs." to stderr and is blocked
+        (the exit builtin returns 1); a second consecutive attempt —
+        exit or Ctrl-D, in any combination — proceeds. Additionally,
+        ``jobs`` as the IMMEDIATELY preceding command exempts the
+        attempt entirely (no warning even without a first strike: the
+        user just looked at the job table — bash's ``last_shell_builtin
+        == jobs_builtin`` case); any other command word (builtin,
+        function, or external — but not blank lines or pure
+        assignments) clears that exemption. Running (non-stopped)
+        background jobs never warn (bash's checkjobs shopt is off by
+        default). Non-interactive shells, forked children, and ``exit``
+        inside a SOURCED file (bash skips the check while sourcing)
+        pass straight through."""
+        state = self.shell_state
+        if state is None or not state.options.get('interactive'):
+            return True
+        if getattr(state, 'in_forked_child', False):
+            return True
+        if getattr(state, 'source_depth', 0) > 0:
+            return True
+        if self._exit_warned or self._last_command_builtin == 'jobs':
+            return True
+        if not self.has_stopped_jobs():
+            return True
+        print("There are stopped jobs.", file=self._notification_stream())
+        self._exit_warned = True
+        return False
 
     def _notification_stream(self):
         """Stream for asynchronous job-state notices.
