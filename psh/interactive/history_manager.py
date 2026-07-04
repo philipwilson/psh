@@ -15,7 +15,11 @@ class HistoryManager(InteractiveComponent):
 
     The SOLE history writer is shell.add_history → add_to_history, fed by
     the source processor with the complete logical command (the line
-    editor records nothing itself).
+    editor records nothing itself). The command must arrive RAW — bash
+    stores lines verbatim (leading/trailing whitespace included) and the
+    HISTCONTROL/HISTIGNORE filters below decide on the unmodified text,
+    so callers must not normalize first (reappraisal #17 H7: a caller-side
+    .strip() silently disabled ignorespace).
 
     ALIAS CONTRACT: the line editor's HistoryNavigator holds a reference
     to the ``state.history`` LIST OBJECT for the whole session, so every
