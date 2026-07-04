@@ -106,7 +106,11 @@ class BreakBuiltin(LoopControlBuiltin):
         return "break"
 
     def _transfer(self, level: int) -> None:
-        raise LoopBreak(level)
+        # A successful break is a command that returned 0: it sets $? like
+        # any other command, and the loop's status is that of the last
+        # command executed — the break itself (bash). The out-of-range
+        # `break 0` case carries 1 instead (see execute()).
+        raise LoopBreak(level, exit_status=0)
 
     @property
     def synopsis(self) -> str:
@@ -133,7 +137,9 @@ class ContinueBuiltin(LoopControlBuiltin):
         return "continue"
 
     def _transfer(self, level: int) -> None:
-        raise LoopContinue(level)
+        # A successful continue returns 0 and sets $? (bash): a loop whose
+        # last executed command was the continue reports status 0.
+        raise LoopContinue(level, exit_status=0)
 
     @property
     def synopsis(self) -> str:

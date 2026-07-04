@@ -4,6 +4,47 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.602.0 (2026-07-04) - Fix: break/continue reset $? like bash; until-condition continue no longer hangs (reappraisal #17 H3)
+- FIX. Reappraisal #17 Tier-1 H3. **A successful `break`/`continue` is a command
+  that resets `$?` to 0**, but psh raised `LoopBreak`/`LoopContinue` without a
+  status, so a loop fell back to the *previous iteration's* status. The extremely
+  common `[ cond ] && break` idiom therefore made a loop exit 1 after any earlier
+  failing iteration where bash reports 0: `for i in 0 1 2 3; do [ $i -ge 2 ] &&
+  break; done; echo $?` printed `1` in psh, `0` in bash. This bit every loop type
+  (`for`/`while`/`until`/C-style `for`/`select`) whenever the signal was taken via
+  `&&` or `||` on a non-first iteration after a failure.
+- Root cause: `BreakBuiltin` raised `LoopBreak` with `exit_status=None` (executors
+  fell back to the stale body status) and `LoopContinue` carried no status at all.
+  Fix: `core/exceptions.py` — `LoopContinue` gains `exit_status` (default 0),
+  `LoopBreak`'s 0/1/None-sentinel semantics documented; `builtins/loop_control.py`
+  — both `_transfer` methods raise with `exit_status=0` (out-of-range `break 0`/
+  `continue 0` still carry 1); `executor/control_flow.py` — `_signal_status`
+  generalizes the old `_break_status` so every body except-handler across all five
+  loop types applies the signal's status (a manually raised signal with
+  `exit_status=None` still keeps the body status), and `_reraise_loop_control`
+  carries `exit_status` outward for nested loops.
+- **Mirrored CONDITION-position semantics** (empirically pinned): a successful
+  `break` in a `while` condition resets the loop status to 0, but a failed `break 0`
+  there keeps the last body status; the `until` condition is the polarity mirror
+  (a successful `break` keeps the body status, a failed `break 0` reports its
+  failure).
+- **ALSO FIXES A HANG.** `until continue; do :; done` looped forever in psh — a
+  `continue` in an `until` condition now terminates the loop (keeping the last body
+  status) like bash.
+- **Correct child statuses at fork boundaries.** `executor/pipeline.py`,
+  `process_launcher.py`, `child_policy.py`: a signal escaping a forked child
+  (pipeline member, background, substitution) now exits the child with the signal's
+  own status, so `x=$(break 0)` and `... | break 0` report 1 like bash.
+- Bash-verified against **bash 5.2** (the project oracle), pinned by a truth table
+  in `tmp/probes-r17t1-break/`. Known divergence: bash 3.2 differs on
+  until-condition-`continue` list-abandonment (it does not abandon the list there);
+  psh follows 5.2 (noted in the code comments). A pre-existing `! break` negation
+  divergence surfaced during verification and is NOT a regression from this fix —
+  it is recorded on the reappraisal #17 follow-up ledger.
+- Tests: 36 regression tests in
+  `tests/integration/control_flow/test_loop_status_reset.py` plus 12
+  `tests/behavioral/golden_cases.yaml` pins (green under `--compare-bash`).
+
 ## 0.601.0 (2026-07-04) - Fix: readonly enforcement in arithmetic + assignment-error taxonomy (reappraisal #17 H1)
 - FIX. Reappraisal #17 H1. **Readonly array elements were silently writable
   through every arithmetic entry point.** `readonly -a a=(1 2); (( a[0]=9 ))`

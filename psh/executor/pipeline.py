@@ -190,11 +190,14 @@ class PipelineExecutor:
                             # return from the enclosing function — the function
                             # body is in the parent process).
                             return fr.exit_code
-                        except (LoopBreak, LoopContinue):
+                        except (LoopBreak, LoopContinue) as e:
                             # A break/continue that escapes the subshell's own
-                            # loops just ends the subshell (status 0); it must
+                            # loops just ends the subshell with the signal's
+                            # own status — 0 normally, 1 for the out-of-range
+                            # `break 0` case (bash: `cat /dev/null | break 0`
+                            # inside a loop yields pipeline status 1). It must
                             # not surface as an internal "psh: error:".
-                            return 0
+                            return e.exit_status or 0
 
                     return execute_fn
 

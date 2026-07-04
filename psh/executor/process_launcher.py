@@ -277,14 +277,15 @@ class ProcessLauncher:
             # silently. Mirrors run_child_shell's substitution-child policy.
             exit_code = e.exit_code
 
-        except (LoopBreak, LoopContinue):
+        except (LoopBreak, LoopContinue) as e:
             # `break`/`continue` escaping to the top of a launcher child
             # (e.g. `break & wait` inside a loop): the enclosing loop lives
             # in the parent process, so the signal cannot reach it — the
-            # child just ends, status 0, with NO message (bash is silent
-            # here; the empty "psh: error:" leak this replaces was a D2
-            # regression). Same policy as run_child_shell.
-            exit_code = 0
+            # child just ends with the signal's own status (0 normally, 1
+            # for out-of-range `break 0`), with NO extra message (bash is
+            # silent here; the empty "psh: error:" leak this replaces was a
+            # D2 regression). Same policy as run_child_shell.
+            exit_code = e.exit_status or 0
 
         except Exception as e:
             # Unexpected error

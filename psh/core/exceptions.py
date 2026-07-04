@@ -22,9 +22,12 @@ class PshError(Exception):
 class LoopBreak(Exception):
     """Exception used to implement break statement.
 
-    ``exit_status`` is normally None (the loop keeps the body's status); it is
-    set only for the bash ``break 0``/negative "loop count out of range" case,
-    where the loop must report status 1.
+    ``exit_status`` carries the break command's own exit status: 0 for a
+    successful ``break`` (bash: like any command, it sets ``$?`` to 0, and
+    the loop's status is that of the last command executed — the break
+    itself), or 1 for the bash ``break 0``/negative "loop count out of
+    range" case. ``None`` (a manually raised signal) makes the loop keep
+    the last body status.
     """
     def __init__(self, level=1, exit_status=None):
         self.level = level
@@ -32,9 +35,15 @@ class LoopBreak(Exception):
         super().__init__()
 
 class LoopContinue(Exception):
-    """Exception used to implement continue statement."""
-    def __init__(self, level=1):
+    """Exception used to implement continue statement.
+
+    ``exit_status`` carries the continue command's own exit status —
+    normally 0 (bash: a successful ``continue`` sets ``$?`` to 0, so a loop
+    whose last executed command was the continue reports 0).
+    """
+    def __init__(self, level=1, exit_status=0):
         self.level = level
+        self.exit_status = exit_status
         super().__init__()
 
 class FunctionReturn(Exception):
