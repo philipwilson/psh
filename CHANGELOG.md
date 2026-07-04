@@ -4,6 +4,37 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.605.0 (2026-07-04) - Fix: no brace expansion inside [[ ]] — regex intervals work (reappraisal #17 H4)
+- FIX. Reappraisal #17 Tier-1 H4. **Brace expansion ran inside `[[ ]]`**, so the
+  ubiquitous regex-interval idiom `[[ $x =~ ^[0-9]{1,3}$ ]]` — and any
+  brace-expandable construct there (`{1,3}`, `{1..3}`, `a{b,c}`) — hard-failed
+  with a parse error, because expanding `{1,3}` split the word and broke the
+  `]]` parse. **bash performs NO brace expansion inside the `[[ ]]` conditional
+  expression:** regex intervals and brace-shaped patterns stay literal.
+- **Root cause / fix.** The token-stream brace expander
+  (`psh/expansion/brace_expansion_tokens.py`) already tracked a command-prefix
+  (assignment-allowed) zone; it now additionally tracks a
+  `DOUBLE_LBRACKET..DOUBLE_RBRACKET` region and passes those tokens through
+  untouched. `]]` reopens the command prefix (like `)`/`}` end their compounds).
+  Because the fix is at the shared token level, **both parsers** (recursive
+  descent and combinator) benefit.
+- **Lexer safety invariants (verified in source).** The lexer only emits
+  `DOUBLE_LBRACKET` at command position and `DOUBLE_RBRACKET` only at bracket
+  depth > 0, so the region flag cannot be forged from argument-position text:
+  `echo [[ a{1,2} ]]` still brace-expands normally. `[[ ]]` does not nest (an
+  inner `[[` lexes as a WORD), so a single flag suffices.
+- **Unchanged behavior.** Case patterns and assignment words — which already
+  matched bash — are untouched.
+- **Tests.** `tests/unit/expansion/test_brace_expansion.py` gains coverage for
+  the suppressed-region behavior and its boundaries; 10 `dbracket_*` golden
+  cases pinned in `tests/behavioral/golden_cases.yaml` (re-run against real bash
+  via `--compare-bash`). ~75 fresh probes on both parsers all match bash.
+- **Pre-existing residuals for the ledger (NOT this fix):** `[[ x == x]]`
+  (missing whitespace before `]]`) is accepted; `case [[ in` mis-lexes; case
+  patterns are still brace-expanded (`case a1a2 in a{1,2})` matches in psh, not
+  bash); `[[ x =~ a{1..3} ]]` returns rc1 vs bash rc2 on the invalid-interval
+  regcomp error.
+
 ## 0.604.0 (2026-07-04) - Fix: HISTCONTROL=ignorespace works on the real command path (reappraisal #17 H7)
 - FIX (privacy-relevant). Reappraisal #17 Tier-1 H7. **`HISTCONTROL=ignorespace`
   was silently a no-op on the path real commands take.** Typing a space-led

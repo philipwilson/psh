@@ -4088,3 +4088,69 @@
   stdout: "rc=1\n"
   stderr: "loop count out of range"
   exit_code: 0
+# BRACE EXPANSION suppressed inside [[ ]] (reappraisal #17 Tier-1 H4).
+# Bash performs NO brace expansion in the [[ ]] conditional expression:
+# regex intervals ({1,3}) and brace-shaped patterns (a{b,c}) stay literal.
+# Expanding them used to split the word and hard-break the ]] parse.
+# Expansion elsewhere on the same line must still happen.
+# =============================================================================
+
+- name: dbracket_regex_interval_matches
+  command: '[[ 192 =~ ^[0-9]{1,3}$ ]] && echo ok'
+  stdout: "ok\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_regex_interval_rejects
+  command: '[[ 1924 =~ ^[0-9]{1,3}$ ]] || echo no'
+  stdout: "no\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_pattern_braces_literal
+  command: '[[ ab == a{b,c} ]]; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_pattern_braces_literal_match
+  command: '[[ "a{b,c}" == a{b,c} ]] && echo litmatch'
+  stdout: "litmatch\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_lhs_braces_literal
+  command: '[[ a{1,2} == "a{1,2}" ]] && echo lhs'
+  stdout: "lhs\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_range_braces_literal_pattern
+  command: '[[ a2 == a{1..3} ]]; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_brace_expansion_still_outside
+  command: 'echo a{1,2}; [[ x == x ]] && echo b{3,4}'
+  stdout: "a1 a2\nb3 b4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_regex_interval_in_if
+  command: 'if [[ 5 =~ ^[0-9]{1,3}$ ]]; then echo yes; fi'
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_word_outside_region_still_expands
+  command: 'echo x{1,2} ]] y{3,4}'
+  stdout: "x1 x2 ]] y3 y4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dbracket_assignment_zone_reopens_after
+  command: '[[ x == x ]] && v={1,2}; echo "$v"'
+  stdout: "{1,2}\n"
+  stderr: ""
+  exit_code: 0
