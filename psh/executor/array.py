@@ -76,9 +76,12 @@ class ArrayOperationExecutor:
         if var_obj and isinstance(var_obj.value, AssociativeArray):
             assoc = self.build_associative_array(
                 node.words, into=(var_obj.value if node.is_append else None))
+            # An associative array carries ONLY the ASSOC_ARRAY bit — never
+            # the ARRAY (indexed) bit. Merging both left a stray ``-a`` on the
+            # variable, so ``declare -p`` printed ``declare -aA`` (bash: ``-A``),
+            # which does not round-trip back into either shell.
             self.state.scope_manager.set_variable(
-                name, assoc,
-                attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
+                name, assoc, attributes=VarAttributes.ASSOC_ARRAY)
             return 0
 
         existing = (var_obj.value

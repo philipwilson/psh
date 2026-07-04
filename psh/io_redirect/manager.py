@@ -102,6 +102,12 @@ class _ClosedStream:
     def writelines(self, _lines):
         self._bad_fd()
 
+    def close(self):
+        # A no-op (not _bad_fd): the permanent-redirect rollback closes
+        # whatever stream it finds in sys.stdout/stderr, which after an
+        # `exec >&-` is this sentinel — closing a closed fd should be silent.
+        pass
+
 
 def _redirect_error_name(error: OSError, target: Optional[str]) -> str:
     """Pick the name bash prints in `psh: NAME: STRERROR` for a redirect error.
@@ -264,6 +270,48 @@ class IOManager:
                 stream_restore()
                 self.restore_redirections(saved_fds)
 
+    @staticmethod
+    def output_close_fd(redirect: Redirect) -> Optional[int]:
+        """The OUTPUT fd (1 or 2) a redirect closes with ``>&-``, else ``None``.
+
+        Shared classifier for the three sites that must reach the stream
+        universe when a builtin-visible output fd is closed
+        (``_swap_closed_output_streams``, ``_builtin_redirect_close``, and the
+        permanent-exec close branch). Returns ``None`` for an input close
+        (``<&-``), a close of fd >= 3 (no Python stream counterpart), a
+        ``{v}>&-`` named-fd close (acts on the variable's fd, not stdout/
+        stderr), or any redirect that is not a ``>&-`` close.
+        """
+        if redirect.var_fd:
+            return None
+        if redirect.type != '>&-':
+            return None
+        target_fd = redirect.fd if redirect.fd is not None else 1
+        return target_fd if target_fd in (1, 2) else None
+
+    @staticmethod
+    def swap_output_stream_closed(target_fd: int) -> TextIO:
+        """Point fd 1's/2's Python stream at a ``_ClosedStream`` (write→EBADF)
+        and RETURN the stream it displaced.
+
+        The single stream-universe primitive behind an output-fd close, shared
+        by all three sites. The temporary callers (``_swap_closed_output_streams``
+        for compound commands, ``_builtin_redirect_close`` for simple-command
+        builtins) SAVE the displaced stream and restore it when the redirect
+        region ends; the permanent ``exec`` caller instead CLOSES it to drop
+        the now-orphaned dup an earlier ``exec >file`` had installed. The
+        fd-level close is done separately (``_redirect_close_fd``); this only
+        makes the Python stream fail, so a builtin's write raises EBADF exactly
+        as bash does rather than leaking into the old destination.
+        """
+        if target_fd == 1:
+            displaced = sys.stdout
+            sys.stdout = cast(TextIO, _ClosedStream())
+            return displaced
+        displaced = sys.stderr
+        sys.stderr = cast(TextIO, _ClosedStream())
+        return displaced
+
     def _swap_closed_output_streams(self, redirects: List[Redirect]):
         """For ``>&-`` closing fd 1/2, point the Python stream at a stream
         that raises EBADF, and return a closure that restores it.
@@ -278,17 +326,10 @@ class IOManager:
         """
         saved: List[Tuple[int, TextIO]] = []
         for redirect in redirects:
-            if redirect.var_fd:
-                continue  # named-fd close ({v}>&-) acts on $v, not stdout/stderr
-            if redirect.type != '>&-':
+            target_fd = self.output_close_fd(redirect)
+            if target_fd is None:
                 continue
-            target_fd = redirect.fd if redirect.fd is not None else 1
-            if target_fd == 1:
-                saved.append((1, sys.stdout))
-                sys.stdout = _ClosedStream()
-            elif target_fd == 2:
-                saved.append((2, sys.stderr))
-                sys.stderr = _ClosedStream()
+            saved.append((target_fd, self.swap_output_stream_closed(target_fd)))
 
         def restore():
             for fd, stream in reversed(saved):
@@ -619,15 +660,16 @@ class IOManager:
         close is deferred by setup_builtin_redirections (see the comment
         there) so a later redirect's open() cannot grab the freed fd number.
         """
-        if redirect.type != '>&-':
+        target_fd = self.output_close_fd(redirect)
+        if target_fd is None:
             return
-        target_fd = redirect.fd if redirect.fd is not None else 1
+        # Record the pre-close stream on the frame (first-touch-wins) BEFORE
+        # swapping, so restore reinstates the original.
         if target_fd == 1:
             frame.snapshot.note_stdout()
-            sys.stdout = _ClosedStream()
-        elif target_fd == 2:
+        else:
             frame.snapshot.note_stderr()
-            sys.stderr = _ClosedStream()
+        self.swap_output_stream_closed(target_fd)
 
     def _builtin_redirect_fd_level(self, redirect,
                                    frame: BuiltinRedirectFrame):

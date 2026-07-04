@@ -160,12 +160,22 @@ def report_internal_defect(state: 'ShellState', exc: BaseException, *,
 
     Otherwise print a generic ``psh: {prefix}{exc}`` message (full traceback
     under debug-exec) and return 1, keeping an interactive shell alive.
+
+    The diagnostic write is BEST-EFFORT: after ``exec 2>&-`` the shell's own
+    stderr fd is gone, so the message cannot be delivered (exactly as in bash,
+    which silently can't report to a closed fd 2). Swallow that secondary write
+    failure rather than letting it escape and abort the whole command list —
+    the status (1) is still returned. The strict-errors re-raise above runs
+    FIRST, so a genuine internal defect still surfaces regardless.
     """
     if (state.options.get('strict-errors')
             and not isinstance(exc, _EXPECTED_SHELL_ERRORS)):
         raise exc
-    if state.options.get('debug-exec'):
-        import traceback
-        traceback.print_exc(file=stream)
-    print(f"psh: {prefix}{exc}", file=stream)
+    try:
+        if state.options.get('debug-exec'):
+            import traceback
+            traceback.print_exc(file=stream)
+        print(f"psh: {prefix}{exc}", file=stream)
+    except (OSError, ValueError):
+        pass
     return 1
