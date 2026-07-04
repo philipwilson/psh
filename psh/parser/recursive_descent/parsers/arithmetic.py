@@ -37,88 +37,49 @@ class ArithmeticParser(ParserSubcomponent):
             background=False
         )
 
-    @staticmethod
-    def _double_rparen_stop(stream):
-        """A ``collect_arithmetic_expression`` stop condition that fires at
-        ``))`` — a single DOUBLE_RPAREN token, or two consecutive RPARENs at
-        paren-depth 0. Shared by both arithmetic-section collectors."""
-        def stop_at_double_rparen(token, paren_depth):
-            if paren_depth == 0 and token.type == TokenType.DOUBLE_RPAREN:
-                return True
-            if paren_depth == 0 and token.type == TokenType.RPAREN:
-                next_token = stream.peek(1)
-                if next_token and next_token.type == TokenType.RPAREN:
-                    return True
-            return False
-        return stop_at_double_rparen
-
     def _parse_arithmetic_expression_until_double_rparen(self) -> str:
-        """Parse arithmetic expression until )) is found."""
-        # Create TokenStream from current position
+        """Parse arithmetic expression until the enclosing )) is found.
+
+        Stops before the ``))`` (consumed by :meth:`parse_arithmetic_command`).
+        """
         stream = TokenStream(self.parser.tokens, self.parser.current)
-
-        # Collect arithmetic expression (no redirect transformation needed here)
-        tokens, expr_string = stream.collect_arithmetic_expression(
-            stop_condition=self._double_rparen_stop(stream),
-            transform_redirects=False
+        _tokens, expr_string = stream.collect_arithmetic_expression(
+            stop_at_semicolon=False,
+            transform_redirects=False,
         )
-
-        # Update parser position
         self.parser.current = stream.pos
-
         return expr_string
 
     def parse_arithmetic_section(self, terminator: str) -> Optional[str]:
-        """Parse arithmetic expression section until terminator character."""
-        # Create TokenStream from current position
+        """Parse one ``for``-header arithmetic section up to its ``;`` terminator."""
         stream = TokenStream(self.parser.tokens, self.parser.current)
-
-        # Define stop condition for semicolon terminator
-        def stop_at_semicolon(token, paren_depth):
-            if paren_depth == 0 and terminator == ';':
-                if token.type == TokenType.SEMICOLON:
-                    return True
-                elif token.type == TokenType.DOUBLE_SEMICOLON:
-                    # Found ;;, treat first ; as terminator
-                    return True
-            # Also stop at RPAREN when depth would go negative
-            if token.type == TokenType.RPAREN and paren_depth == 0:
-                return True
-            return False
-
-        # Collect arithmetic expression
-        tokens, expr_string = stream.collect_arithmetic_expression(
-            stop_condition=stop_at_semicolon,
-            transform_redirects=True
+        _tokens, expr_string = stream.collect_arithmetic_expression(
+            stop_at_semicolon=(terminator == ';'),
+            transform_redirects=True,
         )
-
-        # Update parser position
         self.parser.current = stream.pos
-
         return expr_string if expr_string else ""
 
     def parse_arithmetic_section_until_double_rparen(self) -> Optional[str]:
-        """Parse arithmetic expression until we find )) at depth 0."""
-        # Create TokenStream from current position
-        stream = TokenStream(self.parser.tokens, self.parser.current)
+        """Parse the ``for``-header update section, ending at the enclosing )).
 
-        # Collect arithmetic expression
-        tokens, expr_string = stream.collect_arithmetic_expression(
-            stop_condition=self._double_rparen_stop(stream),
-            transform_redirects=True
+        Unlike the ``;``-terminated sections, this one consumes the closing
+        ``))`` (a single DOUBLE_RPAREN, or two RPARENs after a straddle split).
+        """
+        stream = TokenStream(self.parser.tokens, self.parser.current)
+        _tokens, expr_string = stream.collect_arithmetic_expression(
+            stop_at_semicolon=False,
+            transform_redirects=True,
         )
 
-        # Consume the )) tokens if we stopped because of them
-        if stream.pos < len(stream.tokens):
-            current_token = stream.tokens[stream.pos]
-            if current_token.type == TokenType.DOUBLE_RPAREN:
-                stream.advance(1)  # Consume DOUBLE_RPAREN token
-            elif (current_token.type == TokenType.RPAREN and
-                  stream.pos + 1 < len(stream.tokens) and
-                  stream.tokens[stream.pos + 1].type == TokenType.RPAREN):
-                stream.advance(2)  # Consume both ) tokens
+        # Consume the )) that ended the section.
+        current_token = stream.peek()
+        next_token = stream.peek(1)
+        if current_token and current_token.type == TokenType.DOUBLE_RPAREN:
+            stream.advance(1)
+        elif (current_token and current_token.type == TokenType.RPAREN and
+              next_token and next_token.type == TokenType.RPAREN):
+            stream.advance(2)
 
-        # Update parser position
         self.parser.current = stream.pos
-
         return expr_string if expr_string else None

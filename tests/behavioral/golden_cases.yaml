@@ -5424,3 +5424,64 @@
   stdout: "D\nD\nD\nx\nD\ntop\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# C-STYLE FOR HEADER: PARENTHESIZED SUBEXPRESSIONS (reappraisal #18 T1-5)
+# The arithmetic-section collector must not terminate a section on a balanced
+# inner ")" (or a "))"-fused pair); it ends only at a top-level ";" or the
+# enclosing "))". Pinned against GNU bash 5.2.
+# =============================================================================
+
+- name: r18t1_cfor_paren_in_condition
+  command: 'n=5; for ((i=0; i<(n-1); i++)); do echo $i; done'
+  stdout: "0\n1\n2\n3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_paren_in_init
+  command: 'for ((i=(1+1); i<5; i++)); do echo $i; done'
+  stdout: "2\n3\n4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_parenthesized_condition
+  command: 'for ((i=0; (i<3); i++)); do echo $i; done'
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_paren_in_update_straddle
+  command: 'for ((i=0; i<5; (i++))); do echo $i; done'
+  stdout: "0\n1\n2\n3\n4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_double_paren_update
+  command: 'for ((i=0; i<3; ((i++)))); do echo $i; done'
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_parens_all_three_sections
+  command: 'for ((i=(0); (i<3); (i++))); do echo $i; done'
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_paren_multiplied_condition
+  command: 'for ((i=0; i<(1+2); i++)); do echo $i; done'
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_arith_command_nested_double_paren
+  command: '(( ((1+2)) == 3 )); echo $?'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_cfor_one_semicolon_header_rejected
+  command: 'for ((i=0; i<3)); do echo x; done'
+  stdout: ""
+  stderr: "Expected ';'"
+  exit_code: 2
