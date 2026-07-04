@@ -4341,3 +4341,106 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# REDIRECT-FAILURE DIAGNOSTIC FAMILY (reappraisal #17 Tier-2 repr-leaks).
+# One message shape (`psh: TARGET: STRERROR`) on every dispatch site — the
+# FD_LEVEL_WINDOW path (functions, builtins in pipelines) used to leak the
+# raw Python OSError repr, and `> ""` printed a different malformed message
+# per path. stderr here is a substring pin (prefix differs from bash);
+# stdout/exit-code are compared against live bash by --compare-bash.
+# =============================================================================
+
+- name: redirect_error_function_missing_dir
+  command: 'f(){ echo hi; }; f > /nonexistent_dir_zz_psh/y; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ": No such file or directory"
+  exit_code: 0
+
+- name: redirect_error_pipeline_builtin_missing_dir
+  command: 'echo x > /nonexistent_dir_zz_psh/y | cat; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ": No such file or directory"
+  exit_code: 0
+
+- name: redirect_error_empty_target_no_command
+  command: '> ""'
+  stdout: ""
+  stderr: ": No such file or directory"
+  exit_code: 1
+
+- name: redirect_error_empty_target_function
+  command: 'f(){ echo hi; }; f > ""; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ": No such file or directory"
+  exit_code: 0
+
+- name: pure_assignment_persists_on_redirect_failure
+  command: 'x=5 > /nonexistent_dir_zz_psh/y; echo x=[$x] rc=$?'
+  stdout: "x=[5] rc=1\n"
+  stderr: ": No such file or directory"
+  exit_code: 0
+
+- name: bare_array_assignment_persists_on_redirect_failure
+  command: 'a=(1 2); a[0]=x > /nonexistent_dir_zz_psh/y; echo a0=[${a[0]}] rc=$?'
+  stdout: "a0=[x] rc=1\n"
+  stderr: ": No such file or directory"
+  exit_code: 0
+
+# =============================================================================
+# EXEC BUILTIN DIAGNOSTICS + trap '' ACROSS DIRECT EXEC (reappraisal #17
+# builtins M2 / core trap-exec MED).
+# =============================================================================
+
+- name: exec_pathname_not_found_127
+  command: 'exec /nonexistent_dir_zz_psh/x'
+  stdout: ""
+  stderr: "No such file or directory"
+  exit_code: 127
+
+- name: exec_directory_cannot_execute_126
+  command: 'exec /etc'
+  stdout: ""
+  stderr: "cannot execute: Is a directory"
+  exit_code: 126
+
+- name: exec_bare_name_not_found_127
+  command: 'exec nosuchcommand_zz_psh'
+  stdout: ""
+  stderr: "not found"
+  exit_code: 127
+
+- name: trap_ignore_survives_direct_exec
+  command: "trap '' INT; exec bash -c 'trap -p INT'"
+  stdout: "trap -- '' SIGINT\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_action_resets_across_direct_exec
+  command: "trap 'echo hit' INT; exec bash -c 'trap -p INT'"
+  stdout: ""
+  stderr: ""
+  exit_code: 0
+
+- name: no_ignored_signals_leak_through_direct_exec
+  command: "exec bash -c 'trap -p'"
+  stdout: ""
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# test/[ TOO-MANY-ARGUMENTS DIAGNOSTIC + read ERROR WORDING (reappraisal #17
+# builtins M4 / io cross-finding).
+# =============================================================================
+
+- name: bracket_too_many_arguments_diagnostic
+  command: '[ x = ab ac ]; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "too many arguments"
+  exit_code: 0
+
+- name: read_closed_stdin_read_error_wording
+  command: 'exec 0<&-; read x; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: "read error: 0: Bad file descriptor"
+  exit_code: 0

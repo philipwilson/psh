@@ -465,3 +465,32 @@ class TestErrorPrefix:
     def test_test_errors_use_test_prefix(self, captured_shell):
         captured_shell.run_command('test 1 -eq')
         assert captured_shell.get_stderr().startswith('test: ')
+
+
+class TestTooManyArguments:
+    """4+-argument expressions that parse as nothing print bash's
+    "too many arguments" diagnostic with status 2 (reappraisal #17
+    builtins M4 — the rc was already 2, but SILENTLY).
+    """
+
+    def test_binary_with_trailing_operand(self, captured_shell):
+        # bash: `[: too many arguments`, rc 2
+        rc = captured_shell.run_command('[ x = ab ac ]')
+        assert rc == 2
+        assert captured_shell.get_stderr() == '[: too many arguments\n'
+
+    def test_test_spelling_uses_test_prefix(self, captured_shell):
+        rc = captured_shell.run_command('test x = y z')
+        assert rc == 2
+        assert captured_shell.get_stderr() == 'test: too many arguments\n'
+
+    def test_five_bare_words(self, captured_shell):
+        rc = captured_shell.run_command('[ a b c d e ]')
+        assert rc == 2
+        assert captured_shell.get_stderr() == '[: too many arguments\n'
+
+    def test_valid_four_arg_forms_stay_silent(self, captured_shell):
+        # Split operators and -a/-o combinations are still recognized.
+        assert captured_shell.run_command('test hello ! = hello') == 1
+        assert captured_shell.run_command('[ -n x -a -n y ]') == 0
+        assert captured_shell.get_stderr() == ''

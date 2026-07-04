@@ -63,3 +63,61 @@ class TestTrapIgnoreInheritedAcrossExec:
         psh = _run(cmd)
         assert psh.stdout == ""
         assert psh.stdout == _bash(cmd).stdout
+
+
+@pytest.mark.serial
+class TestTrapIgnoreInheritedAcrossDirectExec:
+    """`trap '' SIG` must also survive the DIRECT `exec` builtin.
+
+    Reappraisal #17 core MED: the v0.593 reconciliation lived only in the
+    forked-child policy (reset_child_signals); `trap "" INT; exec cmd`
+    still lost the ignore for MANAGED signals (INT/TERM/HUP/QUIT), whose
+    traps are Python-level handlers the kernel resets to SIG_DFL on exec.
+    The exec builtin now applies the same keep-SIG_IGN-for-''/default-
+    otherwise reconciliation (prepare_signals_for_exec) before execvpe.
+    """
+
+    def test_ignored_managed_signals_inherited(self):
+        for sig in ('INT', 'TERM', 'HUP', 'QUIT'):
+            cmd = f'trap "" {sig}; exec bash -c "trap -p {sig}"'
+            psh = _run(cmd)
+            assert psh.returncode == 0, (sig, psh.stderr)
+            assert psh.stdout == f"trap -- '' SIG{sig}\n", (sig, psh.stdout)
+            assert psh.stdout == _bash(cmd).stdout
+
+    def test_ignored_unmanaged_signal_inherited(self):
+        cmd = 'trap "" USR1; exec bash -c "trap -p USR1"'
+        psh = _run(cmd)
+        assert psh.stdout == "trap -- '' SIGUSR1\n"
+        assert psh.stdout == _bash(cmd).stdout
+
+    def test_action_trap_resets_across_direct_exec(self):
+        cmd = 'trap "echo hit" INT; exec bash -c "trap -p INT"'
+        psh = _run(cmd)
+        assert psh.returncode == 0
+        assert psh.stdout == ""
+        assert psh.stdout == _bash(cmd).stdout
+
+    def test_no_trap_stays_default(self):
+        cmd = 'exec bash -c "trap -p INT"'
+        psh = _run(cmd)
+        assert psh.stdout == ""
+        assert psh.stdout == _bash(cmd).stdout
+
+    def test_no_shell_internal_ignores_leak(self):
+        """psh's own SIG_IGNs (SIGTTOU/SIGTTIN in script mode) and
+        CPython's startup SIGXFSZ ignore must not leak into the image:
+        bash-under-bash inherits NO ignored signals, so `trap -p` in the
+        exec'd child prints nothing."""
+        cmd = 'exec bash -c "trap -p"'
+        psh = _run(cmd)
+        assert psh.stdout == ""
+        assert psh.stdout == _bash(cmd).stdout
+
+    def test_forked_child_does_not_leak_sigxfsz(self):
+        """The forked path shares the disposition list: CPython ignores
+        SIGXFSZ at startup, and reset_child_signals must reset it."""
+        cmd = 'bash -c "trap -p"'
+        psh = _run(cmd)
+        assert psh.stdout == ""
+        assert psh.stdout == _bash(cmd).stdout

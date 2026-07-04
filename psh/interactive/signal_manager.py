@@ -301,23 +301,46 @@ class SignalManager(InteractiveComponent):
         """Reset all signals to default in child process.
 
         This should be called in all forked child processes to ensure
-        they don't inherit the shell's custom signal handlers. It's the
-        single source of truth for which signals need to be reset.
-
-        Signals reset to default:
-        - SIGINT: Allow child to handle interrupts
-        - SIGQUIT: Allow child to handle quit requests
-        - SIGTERM: Drop the shell's trap-check handler (default: terminate)
-        - SIGHUP: Drop the shell's trap-check handler (default: terminate)
-        - SIGTSTP: Allow child to handle suspend requests
-        - SIGTTOU: Allow child to write to terminal
-        - SIGTTIN: Allow child to read from terminal
-        - SIGCHLD: Allow child to handle child process signals
-        - SIGPIPE: Allow child to handle broken pipe signals
-        - SIGWINCH: Allow child to handle terminal resize signals
+        they don't inherit the shell's custom signal handlers. The signal
+        list and the per-signal disposition policy (SIG_DFL, or SIG_IGN
+        for a ``trap '' SIG`` ignore that must survive exec) live in
+        :meth:`exec_image_dispositions` — the single source of truth
+        shared with the ``exec`` builtin's direct-exec path.
 
         This method is platform-safe and will skip signals not available
         on the current platform.
+        """
+        for sig, disposition in self.exec_image_dispositions():
+            try:
+                signal.signal(sig, disposition)
+            except (OSError, ValueError):
+                # Signal not available on this platform
+                pass
+
+    def exec_image_dispositions(self):
+        """The ``(signal, disposition)`` pairs an exec'd image must see.
+
+        The single source of truth for reconciling the shell's Python-level
+        signal handling with what an external program should inherit —
+        shared by :meth:`reset_child_signals` (forked children) and
+        :meth:`prepare_signals_for_exec` (the ``exec`` builtin replacing
+        the shell directly), so both exec paths agree.
+
+        A signal IGNORED by trap (`trap '' SIG`) must STAY ignored in the
+        child and across exec — POSIX: exec preserves SIG_IGN for signals
+        set to ignore. psh implements managed-signal traps (INT/TERM/HUP/
+        QUIT, ...) with Python-level handlers, which the kernel resets to
+        SIG_DFL on exec — so the empty-action IGNORE case must be
+        materialized as a real SIG_IGN first (`trap "" INT; bash -c
+        'trap -p INT'` printed nothing before this reconciliation). Only
+        the empty-action IGNORE case inherits; a signal trapped WITH an
+        action resets to default (the handler can't cross exec).
+
+        SIGXFSZ is in the list because CPython itself sets it to SIG_IGN
+        at interpreter startup — without an explicit reset, every program
+        psh execs inherits an ignored SIGXFSZ that a bash-launched program
+        would not (probe: `bash -c 'trap -p'` under psh showed
+        `trap -- '' SIGXFSZ`).
         """
         signals_to_reset = [
             signal.SIGINT,
@@ -336,23 +359,54 @@ class SignalManager(InteractiveComponent):
             signal.SIGPIPE,
             signal.SIGWINCH,
         ]
+        if hasattr(signal, 'SIGXFSZ'):
+            signals_to_reset.append(signal.SIGXFSZ)
 
-        # A signal IGNORED in the parent (`trap '' SIG`) must STAY ignored in
-        # the child and across exec — POSIX: exec preserves SIG_IGN for
-        # signals set to ignore. Resetting it to SIG_DFL here (and then
-        # exec'ing) broke that: an external child saw the signal defaulted
-        # (`trap "" INT; bash -c 'trap -p INT'` printed nothing). Only the
-        # empty-action IGNORE case inherits; a signal trapped WITH an action
-        # resets to default in the child (the handler can't cross exec).
         trap_manager = getattr(self.shell, 'trap_manager', None)
+        pairs = []
         for sig in signals_to_reset:
             disposition = signal.SIG_DFL
             if trap_manager is not None:
                 name = signal_number_to_name(sig)
                 if name is not None and trap_manager.get_handler(name) == '':
                     disposition = signal.SIG_IGN
+            pairs.append((sig, disposition))
+        return pairs
+
+    def prepare_signals_for_exec(self):
+        """Apply the exec-image dispositions to the CURRENT process.
+
+        Used by the ``exec`` builtin just before ``os.execvpe`` replaces
+        the shell: the same keep-SIG_IGN-for-``trap ''`` / default-
+        everything-else reconciliation that forked children get from
+        :meth:`reset_child_signals` (the v0.593 fix covered only the
+        fork+exec path; a DIRECT ``trap "" INT; exec cmd`` still lost the
+        ignore because the kernel reset psh's Python-level INT handler to
+        SIG_DFL on exec).
+
+        Returns a ``restore()`` callable that reinstates the saved
+        dispositions — the exec-failed path (127/126) must put the
+        surviving shell's handlers back.
+        """
+        saved = []
+        for sig, disposition in self.exec_image_dispositions():
             try:
+                previous = signal.getsignal(sig)
                 signal.signal(sig, disposition)
             except (OSError, ValueError):
                 # Signal not available on this platform
-                pass
+                continue
+            if previous is not None:
+                # getsignal() returns None for a handler not installed
+                # from Python — that disposition can't be reinstated, so
+                # it is (rarely) left reconciled on the failure path.
+                saved.append((sig, previous))
+
+        def restore():
+            for sig, previous in saved:
+                try:
+                    signal.signal(sig, previous)
+                except (OSError, ValueError):
+                    pass
+
+        return restore

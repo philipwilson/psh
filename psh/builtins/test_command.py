@@ -189,7 +189,11 @@ class TestBuiltin(Builtin):
                         return 0
                     return self._evaluate_expression(args[i+1:], shell)
 
-        # If we get here, it's a complex expression we don't support
+        # If we get here it's a 4+-argument expression that isn't any
+        # recognized combination — bash diagnoses these as "too many
+        # arguments" (e.g. `[ x = ab ac ]`, `[ a b c d ]`), status 2.
+        # The message must be printed, not just the silent rc.
+        self.error("too many arguments", shell)
         return 2
 
     def _evaluate_with_parens(self, args: List[str], shell: 'Shell') -> int:
