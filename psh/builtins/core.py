@@ -45,6 +45,15 @@ class ExitBuiltin(Builtin):
                 self.error(f"{args[1]}: numeric argument required", shell)
                 exit_code = 2
 
+        # bash: the FIRST interactive exit attempt with stopped jobs is
+        # blocked with "There are stopped jobs."; a second consecutive
+        # attempt proceeds. One chokepoint, shared with the REPL's
+        # Ctrl-D path (JobManager owns the two-strikes state; the REPL
+        # re-arms it when another command runs in between). A blocked
+        # exit returns 1 (bash sets $? to EXECUTION_FAILURE).
+        if not shell.job_manager.confirm_exit_with_stopped_jobs():
+            return 1
+
         # Set the exit code in shell state for EXIT trap
         shell.state.last_exit_code = exit_code
 

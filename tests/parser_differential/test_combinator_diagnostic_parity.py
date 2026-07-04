@@ -53,8 +53,6 @@ STABLE_DIAGNOSTIC_CORPUS = [
     pytest.param('f() { echo hi', id='unterminated-posix-function'),
     pytest.param('function f {', id='unterminated-function-keyword'),
     pytest.param('function { echo hi; }', id='function-missing-name'),
-    pytest.param('f() { if true; then echo x; }', id='function-body-if-missing-fi'),
-    pytest.param('f() { while true; do echo x; }', id='function-body-while-missing-done'),
     pytest.param('[[ -n $x', id='unterminated-enhanced-test'),
     pytest.param('[[ $x == ]]', id='enhanced-test-missing-rhs'),
     pytest.param('for ((i=0; i<3; i++); do echo $i; done', id='unterminated-c-style-for'),
@@ -77,6 +75,19 @@ STABLE_DIAGNOSTIC_CORPUS = [
     pytest.param('{ echo x; } <', id='brace-trailing-redirect-missing-target'),
     pytest.param('while true; do echo x; done 2>', id='while-trailing-redirect-missing-target'),
     pytest.param('( echo x ) >', id='subshell-trailing-redirect-missing-target'),
+]
+
+# Cases where the recursive-descent parser moved TOWARD bash and the
+# combinator (educational, outside the production bar) retains the older
+# shape — structurally different summaries, so they cannot sit in the
+# stable-parity corpus. For a `}` at command position inside an unclosed
+# compound (`f() { if true; then echo x; }`), bash and rd both reject AT
+# THE `}` ("syntax error near unexpected token '}'", not at_eof — v0.607
+# bare-`}` fix); the combinator still reports incomplete input at EOF.
+# Its at_eof answer is an honest reject, just not bash's diagnosis.
+KNOWN_DIVERGENT_DIAGNOSTICS = [
+    pytest.param('f() { if true; then echo x; }', id='function-body-if-missing-fi'),
+    pytest.param('f() { while true; do echo x; }', id='function-body-while-missing-done'),
 ]
 
 
@@ -113,3 +124,16 @@ def _summarize(error):
 @pytest.mark.parametrize('source', STABLE_DIAGNOSTIC_CORPUS)
 def test_combinator_diagnostic_summary_matches_recursive_descent(source):
     assert _combinator_diagnostic(source) == _recursive_descent_diagnostic(source)
+
+
+@pytest.mark.parametrize('source', KNOWN_DIVERGENT_DIAGNOSTICS)
+def test_known_divergent_cases_both_reject(source):
+    """Both parsers reject; rd carries bash's `}` diagnosis, the
+    combinator its older incomplete-input-at-EOF shape. If the combinator
+    ever converges, move the case back into STABLE_DIAGNOSTIC_CORPUS."""
+    rd = _recursive_descent_diagnostic(source)
+    combinator = _combinator_diagnostic(source)
+    assert rd.exception_type == 'ParseError'
+    assert rd.token_type == 'RBRACE' and not rd.at_eof
+    assert combinator.exception_type == 'ParseError'
+    assert combinator.at_eof

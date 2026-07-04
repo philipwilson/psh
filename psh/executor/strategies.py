@@ -203,8 +203,12 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
         # ExpansionError propagates to _handle_execution_error, which knows
         # a fatal expansion (message already printed at the raise site, e.g.
         # `unset "a[08]"`) aborts a non-interactive shell like bash.
+        # RecursionError propagates so runaway recursion THROUGH a builtin
+        # (e.g. `f(){ eval f; }`) still reaches the function-call boundary,
+        # which converts it to the FUNCNEST diagnostic.
         if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue,
-                          UnboundVariableError, ExpansionError)):
+                          UnboundVariableError, ExpansionError,
+                          RecursionError)):
             raise
         from ..core import report_internal_defect
         return report_internal_defect(shell.state, e, prefix=f"{cmd_name}: ",

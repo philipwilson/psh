@@ -118,6 +118,24 @@ class TokenBraceExpander:
             elif in_test_expr:
                 out.append(tok)
                 i += 1
+            elif tok.type in (TokenType.HEREDOC, TokenType.HEREDOC_STRIP):
+                # A heredoc delimiter is taken LITERALLY — bash performs no
+                # brace expansion on it (`cat <<E{a,b}F` waits for the literal
+                # terminator line `E{a,b}F`). Copy the operator and its
+                # adjacent delimiter-word run through unexpanded; expanding
+                # here would also detach the word from the terminator the
+                # HeredocCollector registered from the raw source.
+                out.append(tok)
+                j = i + 1
+                if j < n and tokens[j].type in word_like:
+                    out.append(tokens[j])
+                    while (j + 1 < n and tokens[j + 1].type in word_like
+                           and getattr(tokens[j + 1], 'adjacent_to_previous',
+                                       False)):
+                        j += 1
+                        out.append(tokens[j])
+                    j += 1
+                i = j
             elif tok.type in word_like:
                 # Gather a maximal run of adjacent word-forming tokens — these
                 # together form one logical (possibly composite) word.

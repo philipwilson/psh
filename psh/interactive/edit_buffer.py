@@ -26,6 +26,14 @@ class EditBuffer:
         self.chars: List[str] = []
         self.cursor: int = 0
         self.kill_ring: List[str] = []
+        # readline kill-ring coalescing: when the PREVIOUS edit command
+        # was also a kill, the LineEditor arms this flag before
+        # dispatching the next one and the killed text merges into the
+        # top ring entry (append for forward kills, prepend for backward
+        # kills) instead of pushing a new entry. The editor rewrites the
+        # flag before every dispatched command; direct EditBuffer users
+        # set it explicitly (default: no coalescing).
+        self.coalesce_next_kill: bool = False
         self.undo_stack: List[Tuple[str, int]] = []
         self.redo_stack: List[Tuple[str, int]] = []
         self.save_undo_state()
@@ -130,15 +138,81 @@ class EditBuffer:
         return True
 
     # ------------------------------------------------------------------
+    # Meta word commands (alnum boundaries)
+    #
+    # readline's M-f/M-b/M-d/M-DEL treat a word as a run of ALPHANUMERIC
+    # characters (str.isalnum() — UTF-8 accented letters stay in-word),
+    # so ``aa.bb`` is two words. The whitespace-based operations above
+    # stay for C-w (unix-word-rubout) and vi's w/b, which really are
+    # whitespace-delimited. Pinned to bash 5.2 by
+    # tests/unit/interactive/test_edit_buffer_killring.py.
+    # ------------------------------------------------------------------
+
+    def _forward_word_target(self) -> int:
+        """Where forward-word lands: past any non-alnum characters, then
+        to the END of the next alnum run (readline, unlike
+        move_word_forward which stops at the START of the next word)."""
+        pos = self.cursor
+        while pos < len(self.chars) and not self.chars[pos].isalnum():
+            pos += 1
+        while pos < len(self.chars) and self.chars[pos].isalnum():
+            pos += 1
+        return pos
+
+    def _backward_word_target(self) -> int:
+        """Where backward-word lands: back over any non-alnum characters,
+        then to the START of the previous alnum run."""
+        pos = self.cursor
+        while pos > 0 and not self.chars[pos - 1].isalnum():
+            pos -= 1
+        while pos > 0 and self.chars[pos - 1].isalnum():
+            pos -= 1
+        return pos
+
+    def forward_word(self) -> bool:
+        """Move to the end of the next word (readline forward-word, M-f)."""
+        pos = self._forward_word_target()
+        if pos == self.cursor:
+            return False
+        self.cursor = pos
+        return True
+
+    def backward_word(self) -> bool:
+        """Move to the start of the previous word (readline backward-word,
+        M-b)."""
+        pos = self._backward_word_target()
+        if pos == self.cursor:
+            return False
+        self.cursor = pos
+        return True
+
+    # ------------------------------------------------------------------
     # Kill / yank
     # ------------------------------------------------------------------
+
+    def _push_kill(self, text: str, forward: bool) -> None:
+        """Record killed text on the kill ring (readline rules).
+
+        A kill immediately following another kill coalesces into the top
+        ring entry — a forward kill (C-k, M-d) APPENDS, a backward kill
+        (C-w, C-u, M-DEL) PREPENDS — so C-w C-w C-y restores
+        ``alpha beta``, not just ``alpha ``. Whether this kill is
+        "consecutive" is the editor's call (coalesce_next_kill); any
+        non-kill command in between breaks the chain."""
+        if self.coalesce_next_kill and self.kill_ring:
+            if forward:
+                self.kill_ring[-1] += text
+            else:
+                self.kill_ring[-1] = text + self.kill_ring[-1]
+        else:
+            self.kill_ring.append(text)
 
     def kill_to_end(self) -> bool:
         """Kill from cursor to end of line (Ctrl-K)."""
         if self.cursor >= len(self.chars):
             return False
         self.save_undo_state()
-        self.kill_ring.append(''.join(self.chars[self.cursor:]))
+        self._push_kill(''.join(self.chars[self.cursor:]), forward=True)
         self.chars = self.chars[:self.cursor]
         return True
 
@@ -146,7 +220,7 @@ class EditBuffer:
         """Kill the entire line. Unconditional: an empty kill still pushes ''
         onto the ring, as it always has."""
         self.save_undo_state()
-        self.kill_ring.append(''.join(self.chars))
+        self._push_kill(''.join(self.chars), forward=True)
         self.chars = []
         self.cursor = 0
 
@@ -157,13 +231,14 @@ class EditBuffer:
         if self.cursor <= 0:
             return False
         self.save_undo_state()
-        self.kill_ring.append(''.join(self.chars[:self.cursor]))
+        self._push_kill(''.join(self.chars[:self.cursor]), forward=False)
         self.chars = self.chars[self.cursor:]
         self.cursor = 0
         return True
 
     def kill_word_backward(self) -> bool:
-        """Kill spaces then the word before the cursor (Ctrl-W)."""
+        """Kill spaces then the word before the cursor (Ctrl-W,
+        whitespace-delimited unix-word-rubout)."""
         if self.cursor <= 0:
             return False
         self.save_undo_state()
@@ -172,12 +247,14 @@ class EditBuffer:
             self.cursor -= 1
         while self.cursor > 0 and not self.chars[self.cursor - 1].isspace():
             self.cursor -= 1
-        self.kill_ring.append(''.join(self.chars[self.cursor:start]))
+        self._push_kill(''.join(self.chars[self.cursor:start]), forward=False)
         del self.chars[self.cursor:start]
         return True
 
     def kill_word_forward(self) -> bool:
-        """Kill the word after the cursor, then trailing spaces (M-d)."""
+        """Kill the whitespace-delimited word after the cursor, then
+        trailing spaces (historical psh binding; readline's M-d is
+        kill_word below)."""
         if self.cursor >= len(self.chars):
             return False
         self.save_undo_state()
@@ -188,7 +265,31 @@ class EditBuffer:
         while (self.cursor < len(self.chars)
                and self.chars[self.cursor].isspace()):
             self.cursor += 1
-        self.kill_ring.append(''.join(self.chars[start:self.cursor]))
+        self._push_kill(''.join(self.chars[start:self.cursor]), forward=True)
+        del self.chars[start:self.cursor]
+        self.cursor = start
+        return True
+
+    def kill_word(self) -> bool:
+        """Kill to the end of the next word (readline kill-word, M-d;
+        alnum boundaries)."""
+        end = self._forward_word_target()
+        if end == self.cursor:
+            return False
+        self.save_undo_state()
+        self._push_kill(''.join(self.chars[self.cursor:end]), forward=True)
+        del self.chars[self.cursor:end]
+        return True
+
+    def backward_kill_word(self) -> bool:
+        """Kill to the start of the previous word (readline
+        backward-kill-word, M-DEL; alnum boundaries — on ``aa.bb`` it
+        kills just ``bb``, where C-w kills all of ``aa.bb``)."""
+        start = self._backward_word_target()
+        if start == self.cursor:
+            return False
+        self.save_undo_state()
+        self._push_kill(''.join(self.chars[start:self.cursor]), forward=False)
         del self.chars[start:self.cursor]
         self.cursor = start
         return True

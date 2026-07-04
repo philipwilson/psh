@@ -10,7 +10,13 @@ from typing import List, Optional
 
 from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
-from .helpers import ErrorContext, ErrorSeverity, ParseError
+from .helpers import (
+    ErrorContext,
+    ErrorSeverity,
+    ParseError,
+    describe_token,
+    token_display_name,
+)
 
 
 @dataclass
@@ -34,6 +40,22 @@ class ParserContext:
     # Source context
     source_text: Optional[str] = None
     source_lines: Optional[List[str]] = None
+    # Number of source lines BEFORE this fragment in the enclosing input
+    # (0 when the fragment starts the input). Token .line values are
+    # fragment-relative; error reporting adds this offset so a multi-line
+    # script's diagnostics carry the ABSOLUTE line number. source_lines
+    # indexing stays fragment-relative.
+    line_offset: int = 0
+
+    # Current compound-command nesting depth. Incremented/decremented by
+    # CommandParser.parse_pipeline_component — the single chokepoint every
+    # nested compound (brace group, subshell, if/while/for/case/select,
+    # ((...)), [[...]]) parses through — and checked there against
+    # MAX_NESTING_DEPTH so runaway nesting raises a clean ParseError
+    # instead of a Python RecursionError (the statement-parser analogue of
+    # ArithParser.MAX_DEPTH). Flat &&/||/pipe/`;` chains parse iteratively
+    # and never accumulate depth.
+    nesting_depth: int = 0
 
     # Open-construct trail for incomplete-input hints. Parse methods push a
     # name when they consume an opening keyword ('if', 'while', 'case',
@@ -101,10 +123,13 @@ class ParserContext:
             return self.advance()
 
         current = self.peek()
-        message = error_message or f"Expected {token_type}, got {current.type}"
+        message = error_message or (
+            f"Expected {token_display_name(token_type)}, "
+            f"got {describe_token(current)}")
 
         # Create error with context
-        error_context = self._create_error_context(message, current)
+        error_context = self._create_error_context(message, current,
+                                                   expected_type=token_type)
         error = ParseError(error_context)
 
         if self.config.collect_errors:
@@ -113,8 +138,14 @@ class ParserContext:
         else:
             raise error
 
-    def _create_error_context(self, message: str, token: Token):
-        """Create error context with source information."""
+    def _create_error_context(self, message: str, token: Token,
+                              expected_type: Optional[TokenType] = None):
+        """Create error context with source information.
+
+        ``expected_type`` is the token type an expect()/consume() failed on,
+        when known — the suggestion logic keys off it (never off the message
+        string).
+        """
         source_line = None
         if self.source_lines and token.line and 0 < token.line <= len(self.source_lines):
             source_line = self.source_lines[token.line - 1]
@@ -123,13 +154,15 @@ class ParserContext:
             token=token,
             message=message,
             position=token.position,
-            line=token.line,
+            # Absolute line in the enclosing input (token.line is
+            # fragment-relative; line_offset counts the lines before it).
+            line=token.line + self.line_offset if token.line else token.line,
             column=token.column,
             source_line=source_line
         )
 
         # Enhance error context with suggestions and context tokens
-        self._enhance_error_context(error_context, token)
+        self._enhance_error_context(error_context, token, expected_type)
 
         return error_context
 
@@ -137,20 +170,37 @@ class ParserContext:
     def _display_token(tok) -> str:
         """Human-readable token text for the "Context:" line.
 
-        Renders the token's value when it has one; for valueless tokens
-        (EOF, NEWLINE) show a friendly placeholder rather than leaking a
+        Renders the token's value when it has one; EOF and NEWLINE always
+        use a placeholder (a NEWLINE token's value is a literal newline,
+        which would break the one-line Context rendering), and other
+        valueless tokens get a friendly placeholder rather than leaking a
         raw ``TokenType.EOF`` repr.
         """
         from ...lexer.token_types import TokenType
-        if tok.value:
-            return tok.value
         if tok.type == TokenType.EOF:
             return '<EOF>'
         if tok.type == TokenType.NEWLINE:
             return '<newline>'
+        if tok.value:
+            return tok.value
         return f'<{tok.type.name.lower()}>'
 
-    def _enhance_error_context(self, error_context, token):
+    # Suggestions attached when an expect() fails on these token types.
+    # Keyed on the STRUCTURED expected type — never on the rendered
+    # message string (the old string-matching was coupled to a leaky
+    # "Expected TokenType.THEN" format).
+    _EXPECT_SUGGESTIONS = {
+        TokenType.THEN: "Add ';' before 'then' keyword",
+        TokenType.DO: "Add ';' before 'do' keyword",
+        TokenType.RPAREN: "Add ')' to close parentheses",
+        TokenType.RBRACE: "Add '}' to close brace group",
+        TokenType.FI: "Add 'fi' to close if statement",
+        TokenType.DONE: "Add 'done' to close the loop",
+        TokenType.ESAC: "Add 'esac' to close case statement",
+    }
+
+    def _enhance_error_context(self, error_context, token,
+                               expected_type: Optional[TokenType] = None):
         """Enhance error context with smart suggestions and context tokens."""
         # Add context tokens (up to 3 before and after current position),
         # kept on separate sides so they render correctly around -> HERE <-.
@@ -168,17 +218,11 @@ class ParserContext:
         # Flat list retained for backward compatibility (before + after).
         error_context.context_tokens = context_before + context_after
 
-        # Add contextual suggestions based on message
-        if "Expected TokenType.THEN" in error_context.message:
-            error_context.suggestions.append("Add ';' before 'then' keyword")
-        elif "Expected TokenType.DO" in error_context.message:
-            error_context.suggestions.append("Add ';' before 'do' keyword")
-        elif "Expected TokenType.RPAREN" in error_context.message:
-            error_context.suggestions.append("Add ')' to close parentheses")
-        elif "Expected TokenType.RBRACE" in error_context.message:
-            error_context.suggestions.append("Add '}' to close brace group")
-        elif "Expected TokenType.FI" in error_context.message:
-            error_context.suggestions.append("Add 'fi' to close if statement")
+        # Add a contextual suggestion keyed on the expected token type.
+        if expected_type is not None:
+            suggestion = self._EXPECT_SUGGESTIONS.get(expected_type)
+            if suggestion:
+                error_context.suggestions.append(suggestion)
 
     # === Error Collection ===
 

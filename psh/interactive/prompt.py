@@ -25,9 +25,12 @@ class PromptExpander:
         Supported sequences:
         \\a - ASCII bell character (07)
         \\d - date in "Weekday Month Date" format
+        \\D{format} - strftime(3) format (empty format: locale time)
         \\e - ASCII escape character (033)
         \\h - hostname up to first '.'
         \\H - full hostname
+        \\j - number of jobs currently managed by the shell
+        \\l - basename of the shell's terminal device name
         \\n - newline
         \\r - carriage return
         \\s - shell name (basename of $0)
@@ -124,6 +127,17 @@ class PromptExpander:
         while i < len(prompt):
             if prompt[i] == '\\' and i + 1 < len(prompt):
                 next_char = prompt[i + 1]
+                # \D{format} consumes through the closing brace (the only
+                # multi-character escape); an unclosed brace takes the
+                # rest of the string as the format, and a \D with no
+                # brace at all stays literal — both bash-probed.
+                if next_char == 'D' and prompt[i + 2:i + 3] == '{':
+                    close = prompt.find('}', i + 3)
+                    fmt = prompt[i + 3:close] if close != -1 else prompt[i + 3:]
+                    flush_raw()
+                    segments.append((self._get_strftime(fmt), True))
+                    i = close + 1 if close != -1 else len(prompt)
+                    continue
                 expanded = self._expand_escape(next_char, readline_markers=readline_markers)
                 if expanded is not None:
                     flush_raw()
@@ -159,6 +173,8 @@ class PromptExpander:
             'e': '\033',  # ASCII escape
             'h': self._get_hostname(short=True),
             'H': self._get_hostname(short=False),
+            'j': self._get_job_count(),
+            'l': self._get_tty_basename(),
             'n': '\n',
             'r': '\r',
             's': 'psh',  # Shell name
@@ -201,6 +217,30 @@ class PromptExpander:
     def _get_time_24_short(self) -> str:
         """Get time in 24-hour HH:MM format."""
         return datetime.datetime.now().strftime('%H:%M')
+
+    def _get_strftime(self, fmt: str) -> str:
+        """bash ``\\D{format}``: strftime with the given format; an empty
+        format means the locale's time representation (bash uses %X)."""
+        try:
+            return datetime.datetime.now().strftime(fmt or '%X')
+        except ValueError:
+            # An invalid format (e.g. a lone trailing '%') must never
+            # abort prompt rendering.
+            return ''
+
+    def _get_job_count(self) -> str:
+        """Number of jobs currently managed by the shell (bash ``\\j``)."""
+        job_manager = getattr(self.shell, 'job_manager', None)
+        return str(len(job_manager.jobs)) if job_manager is not None else '0'
+
+    def _get_tty_basename(self) -> str:
+        """Basename of the shell's terminal device (bash ``\\l``; the
+        fallback when stdin is not a terminal is the literal ``tty``,
+        matching bash)."""
+        try:
+            return os.path.basename(os.ttyname(0))
+        except (OSError, ValueError):
+            return 'tty'
 
     def _get_hostname(self, short: bool = True) -> str:
         """Get hostname (cached)."""

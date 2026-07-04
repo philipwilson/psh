@@ -358,6 +358,21 @@ class SetBuiltin(Builtin):
                 shell.state.options['emacs'] = False
             return 0
 
+        # ignoreeof couples to the IGNOREEOF variable exactly like
+        # bash's set_ignoreeof(): enabling binds IGNOREEOF=10, disabling
+        # unbinds it. The variable observer (ShellState's
+        # _sync_exported_variable, playing sv_ignoreeof) keeps the
+        # option flag tracking the variable's existence, so
+        # `IGNOREEOF=n` / `unset IGNOREEOF` flip it too; the explicit
+        # assignment below covers the variable-absent direction.
+        if option == 'ignoreeof':
+            if enable:
+                shell.state.set_variable('IGNOREEOF', '10')
+            else:
+                shell.state.scope_manager.unset_variable('IGNOREEOF')
+            shell.state.options['ignoreeof'] = enable
+            return 0
+
         # Debug options and shell options
         if option in shell.state.options:
             shell.state.options[option] = enable
