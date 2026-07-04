@@ -50,7 +50,7 @@ class ArrayOpsMixin(_Base):
         fatal expansion error aborting the whole command (bash), not a
         silent index 0.
         """
-        from ..core import ExpansionError
+        from ..core import arith_assignment_discard
         from .arithmetic import ArithmeticError, evaluate_arithmetic
         expanded = self.expand_array_index(index_expr)
         try:
@@ -58,7 +58,7 @@ class ArrayOpsMixin(_Base):
         except ArithmeticError as e:
             print(f"psh: {e}", file=self.state.stderr)
             self.state.last_exit_code = 1
-            raise ExpansionError(str(e), exit_code=1)
+            arith_assignment_discard(self.state)
 
     def _expand_array_indices(self, subscripted: str) -> str:
         """Handle ${!arr[@]} and ${!arr[*]} — *subscripted* is ``arr[@]``.

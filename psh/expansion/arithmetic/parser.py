@@ -101,6 +101,13 @@ class ArithParser:
     def parse_ternary(self) -> ArithNode:
         """Parse ternary conditional (?:)
 
+        The MIDDLE operand is a full comma-level expression, as in C and
+        bash (``$((1?2,3:4))`` is 3, ``$((1?(a=1),(b=2):3))`` runs both
+        assignments): between ``?`` and ``:`` there is no ambiguity, so
+        the grammar there restarts at the lowest precedence. The FALSE
+        operand stays at ternary level — a following comma belongs to the
+        enclosing expression (``$((0?1:2,3))`` is ``(0?1:2),3`` = 3).
+
         Carries the nesting-depth guard: every nested descent of the
         grammar except unary-operator chains re-enters here (parenthesized
         sub-expressions via parse_comma, ternary arms). parse_unary guards
@@ -115,7 +122,7 @@ class ArithParser:
 
             if self.match(ArithTokenType.QUESTION):
                 self.advance()
-                true_expr = self.parse_ternary()
+                true_expr = self.parse_comma()
                 self.expect(ArithTokenType.COLON)
                 false_expr = self.parse_ternary()
                 return TernaryNode(condition, true_expr, false_expr)

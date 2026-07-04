@@ -109,13 +109,13 @@ class ArrayOperationExecutor:
         address index 0. Mirrors ``VariableExpander._eval_array_index``
         (the read-path chokepoint).
         """
-        from ..core import ExpansionError
+        from ..core import arith_assignment_discard
         try:
             return evaluate_arithmetic(index_text, self.shell)
         except ArithmeticError as e:
             print(f"psh: {e}", file=self.state.stderr)
             self.state.last_exit_code = 1
-            raise ExpansionError(str(e), exit_code=1)
+            arith_assignment_discard(self.state)
 
     def build_indexed_array(self, words: List['Word'],
                             into: Optional[IndexedArray] = None) -> IndexedArray:

@@ -226,6 +226,31 @@ def test_ternary(expr, expected, sh):
     assert ev(expr, sh) == expected
 
 
+@pytest.mark.parametrize("expr,expected", [
+    # C/bash grammar: the MIDDLE operand is a full comma-level
+    # expression; the FALSE operand stays at ternary level, so a
+    # trailing comma belongs to the enclosing expression (bash 5.2).
+    ("1 ? 2,3 : 4", 3),
+    ("0 ? 2,3 : 4,5", 5),        # (0?2,3:4),5
+    ("2 > 1 ? 2,3 : 4", 3),
+    ("1 ? 0 ? 5 : 6 : 7", 6),    # nested ternary in the middle
+])
+def test_ternary_comma_middle(expr, expected, sh):
+    assert ev(expr, sh) == expected
+
+
+def test_ternary_comma_middle_side_effects(sh):
+    # $((1?(a=1),(b=2):3)) evaluates BOTH middle operands (bash).
+    assert ev("1 ? (a=1),(b=2) : 3", sh) == 2
+    assert ev("a", sh) == 1
+    assert ev("b", sh) == 2
+
+
+def test_ternary_assignment_in_middle(sh):
+    assert ev("1 ? x=5 : 6", sh) == 5
+    assert ev("x", sh) == 5
+
+
 # ---------------------------------------------------------------------------
 # Comma operator
 # ---------------------------------------------------------------------------
@@ -552,12 +577,68 @@ def test_negative_exponent(sh):
     "@",            # unexpected char
     "1#5",          # invalid base (< 2)
     "99#1",         # invalid base (> 64)
-    "++5",          # pre-increment needs identifier
-    "--5",          # pre-decrement needs identifier (not unary minus twice)
 ])
 def test_malformed_expressions(expr, sh):
     with pytest.raises(ArithmeticError):
         ev(expr, sh)
+
+
+@pytest.mark.parametrize("expr,expected", [
+    ("++5", 5),      # bash: ++ before a non-identifier is two signs, +(+5)
+    ("--5", 5),      # bash: -(-5)
+    ("5 ++ 3", 8),   # binary position, digit follows: 5 + (+3) (bash)
+    ("5 -- 3", 8),   # 5 - (-3)
+    ("5+++3", 8),    # (5) + (+ (+3)) — the pair splits, signs re-pair
+    ("++++5", 5),
+    ("++(5)", 5),    # '(' is not an identifier starter -> signs
+])
+def test_incdec_on_non_lvalue_is_unary_signs(expr, expected, sh):
+    # bash 5.2, probe-verified: a ++/-- pair whose next non-whitespace
+    # char does NOT start an identifier (and whose previous token is not
+    # a variable) is re-read as two +/- signs, never an error.
+    assert ev(expr, sh) == expected
+
+
+@pytest.mark.parametrize("expr", [
+    "3++x",      # pair before an identifier stays ++ -> binary-position error
+    "3 ++ x",    # whitespace does not matter: bash skips it in the peek
+    "3--x",
+    "2 -- x",
+    "x ++ 2",    # postfix x++ then a dangling operand
+    "x++y",
+    "5++",       # split -> 5 + + <EOF> -> operand expected
+    "(x)++",     # ')' is not a variable token -> split -> operand expected
+])
+def test_incdec_lvalue_boundary_errors(expr, sh):
+    # bash 5.2, probe-verified: all of these are syntax errors in bash.
+    sh.run_command("x=5")
+    with pytest.raises(ArithmeticError):
+        ev(expr, sh)
+
+
+def test_triple_minus_is_minus_predecrement(sh):
+    # bash: `3---x` tokenizes as `3 - --x` (the first pair splits because
+    # '-' follows; the second re-pairs before the identifier) — the
+    # DECREMENT side effect must happen.
+    sh.run_command("x=5")
+    assert ev("3---x", sh) == -1
+    assert ev("x", sh) == 4
+
+
+def test_prefix_incdec_with_whitespace_before_identifier(sh):
+    # bash: `-- x` IS a pre-decrement (the peek skips whitespace).
+    sh.run_command("x=5")
+    assert ev("-- x", sh) == 4
+    assert ev("x", sh) == 4
+    assert ev("++ x", sh) == 5
+
+
+def test_postfix_after_subscript_and_whitespace(sh):
+    # `a[0] ++` is a postfix increment (previous token is the closing
+    # bracket), like bash.
+    sh.run_command("a=(7)")
+    assert ev("a[0] ++", sh) == 7
+    assert ev("a[0]", sh) == 8
 
 
 def test_octal_invalid_digit(sh):

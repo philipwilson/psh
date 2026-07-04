@@ -18,9 +18,9 @@ from .assignment_utils import (
 from .exceptions import (
     ArraySubscriptError,
     ExpansionError,
+    FatalExpansionError,
     FunctionDefinitionError,
     FunctionReturn,
-    GlobNoMatchError,
     LoopBreak,
     LoopContinue,
     NamerefCycleError,
@@ -29,7 +29,11 @@ from .exceptions import (
     TopLevelAbort,
     UnboundVariableError,
 )
-from .internal_errors import report_internal_defect
+from .internal_errors import (
+    arith_assignment_discard,
+    fatal_expansion_status,
+    report_internal_defect,
+)
 from .options import OptionHandler
 from .scope import ScopeManager, VariableScope
 from .state import ShellState
@@ -45,7 +49,7 @@ __all__ = [
     'ReadonlyVariableError',
     'NamerefCycleError',
     'ExpansionError',
-    'GlobNoMatchError',
+    'FatalExpansionError',
     'FunctionDefinitionError',
     'ArraySubscriptError',
     # Variables
@@ -60,8 +64,10 @@ __all__ = [
     'ShellState',
     # Options
     'OptionHandler',
-    # Internal-defect guard
+    # Internal-defect guard + fatal expansion-error policy
     'report_internal_defect',
+    'fatal_expansion_status',
+    'arith_assignment_discard',
     # Traps
     'TrapManager',
     # Assignment utilities

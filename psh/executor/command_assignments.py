@@ -43,6 +43,7 @@ from ..core import (
     is_valid_assignment,
     resolve_append_assignment,
 )
+from ..expansion.arithmetic import ShellArithmeticError
 
 if TYPE_CHECKING:
     from ..ast_nodes import SimpleCommand, Word, WordPart
@@ -218,6 +219,16 @@ class CommandAssignments:
                 # the current top-level command (same scope as above).
                 self.state.scope_manager.warn_nameref_cycle(e.name)
                 raise TopLevelAbort(1)
+            except ShellArithmeticError as e:
+                # An integer-attributed variable (declare -i v; v='1/0')
+                # whose value fails to evaluate: bash prints the arithmetic
+                # error and DISCARDS the rest of the line (the rest of the
+                # whole -c string under -c) — the assignment/subscript
+                # arithmetic-error family. Value expansion has already run
+                # against the ORIGINAL fds (assignments precede redirects).
+                print(f"psh: {e}", file=self.state.stderr)
+                from ..core import arith_assignment_discard
+                arith_assignment_discard(self.state)
 
         if node.redirects:
             # Applied after the assignments (bash order, above). A setup

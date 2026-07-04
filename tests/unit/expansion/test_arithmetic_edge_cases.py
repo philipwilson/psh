@@ -13,21 +13,21 @@ class TestArithmeticEdgeCases:
     # Syntax error tests
 
     def test_missing_operands_right(self, shell, capsys):
-        """Test missing right operand errors."""
-        # Missing right operand for binary operators
+        """A failed arithmetic expansion DISCARDS the rest of the line
+        (bash: the ``||`` tail never runs, status 1, error on stderr)."""
         result = shell.run_command('echo $((5 +)) 2>/dev/null || echo "syntax error"')
-        assert result in [0, 1, 2]  # Allow various error handling
+        assert result == 1
         captured = capsys.readouterr()
-        # Should either show error or handle gracefully
-        assert captured.out.strip() != ""  # Should produce some output
+        assert captured.out == ""       # discard killed the || tail (bash)
+        assert "arithmetic error" in captured.err
 
     def test_missing_operands_left(self, shell, capsys):
-        """Test missing left operand errors."""
-        # Missing left operand for binary operators
+        """Missing left operand: error + discard (bash)."""
         result = shell.run_command('echo $((* 5)) 2>/dev/null || echo "syntax error"')
-        assert result in [0, 1, 2]
+        assert result == 1
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out == ""
+        assert "arithmetic error" in captured.err
 
     def test_incomplete_parentheses(self, shell, capsys):
         """Test mismatched parentheses in arithmetic context."""
@@ -44,18 +44,21 @@ class TestArithmeticEdgeCases:
         assert captured.out.strip() == "16"
 
     def test_invalid_operators(self, shell, capsys):
-        """Test invalid operator sequences."""
-        # Double operators without proper operands
-        result = shell.run_command('echo $((5 ++ 3)) 2>/dev/null || echo "operator error"')
-        assert result in [0, 1, 2]
+        """Operator-sequence oddities, pinned to bash."""
+        # ++ in binary position is a binary + and a unary + in bash/C:
+        # 5 ++ 3 == 5 + (+3) == 8.
+        result = shell.run_command('echo $((5 ++ 3))')
+        assert result == 0
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out.strip() == "8"
 
-        # Invalid operator combinations
+        # A genuinely invalid combination: error + discard (the || tail
+        # never runs — bash).
         result = shell.run_command('echo $((5 =+ 3)) 2>/dev/null || echo "operator error"')
-        assert result in [0, 1, 2]
+        assert result == 1
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out == ""
+        assert "arithmetic error" in captured.err
 
     def test_empty_arithmetic_expression(self, shell, capsys):
         """Test completely empty arithmetic expressions."""
@@ -66,18 +69,18 @@ class TestArithmeticEdgeCases:
         assert captured.out.strip() != ""
 
     def test_malformed_variable_references(self, shell, capsys):
-        """Test malformed variable references in arithmetic."""
-        # Incomplete variable reference
+        """Malformed $-references: error + discard (bash rc 1, no stdout)."""
         result = shell.run_command('echo $(($)) 2>/dev/null || echo "var error"')
-        assert result in [0, 1, 2]
+        assert result == 1
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out == ""
+        assert captured.err != ""
 
-        # Invalid braced variable
         result = shell.run_command('echo $((${)) 2>/dev/null || echo "var error"')
-        assert result in [0, 1, 2]
+        assert result == 1
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out == ""
+        assert captured.err != ""
 
     # Whitespace variation tests
 
@@ -128,21 +131,21 @@ class TestArithmeticEdgeCases:
     # Division by zero and mathematical edge cases
 
     def test_division_by_zero(self, shell, capsys):
-        """Test division by zero error handling."""
-        # Direct division by zero
+        """Division by zero: error + discard-line (bash — the || tail
+        never runs, status 1)."""
         result = shell.run_command('echo $((5 / 0)) 2>/dev/null || echo "division by zero"')
-        assert result in [0, 1, 2]
+        assert result == 1
         captured = capsys.readouterr()
-        # Should either produce error message or handle gracefully
-        output = captured.out.strip()
-        assert output != ""  # Should produce some output
+        assert captured.out == ""
+        assert "ivision by zero" in captured.err
 
     def test_modulo_by_zero(self, shell, capsys):
-        """Test modulo by zero error handling."""
+        """Modulo by zero: error + discard-line (bash)."""
         result = shell.run_command('echo $((7 % 0)) 2>/dev/null || echo "modulo by zero"')
-        assert result in [0, 1, 2]
+        assert result == 1
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out == ""
+        assert "ivision by zero" in captured.err
 
     def test_negative_modulo(self, shell, capsys):
         """Test modulo with negative numbers."""
@@ -222,40 +225,42 @@ class TestArithmeticEdgeCases:
     # Invalid number format tests
 
     def test_invalid_base_notation(self, shell, capsys):
-        """Test invalid base notation."""
-        # Invalid base (too high)
-        result = shell.run_command('echo $((37#10)) 2>/dev/null || echo "invalid base"')
-        assert result in [0, 1, 2]
+        """Base-N notation, pinned to bash."""
+        # Base 37 is VALID (bash supports bases up to 64): 37#10 == 37.
+        result = shell.run_command('echo $((37#10))')
+        assert result == 0
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out.strip() == "37"
 
-        # Invalid digits for base
+        # Digit out of range for the base: error + discard (bash).
         result = shell.run_command('echo $((2#123)) 2>/dev/null || echo "invalid digit"')
-        assert result in [0, 1, 2]
+        assert result == 1
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out == ""
+        assert "value too great for base" in captured.err
 
     def test_malformed_hex_numbers(self, shell, capsys):
-        """Test malformed hexadecimal numbers."""
-        # Incomplete hex number
-        result = shell.run_command('echo $((0x)) 2>/dev/null || echo "malformed hex"')
-        assert result in [0, 1, 2]
+        """Malformed hex, pinned to bash."""
+        # Bare 0x evaluates to 0 in bash.
+        result = shell.run_command('echo $((0x))')
+        assert result == 0
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out.strip() == "0"
 
-        # Invalid hex digits
+        # Invalid hex digits: error + discard (bash).
         result = shell.run_command('echo $((0xGH)) 2>/dev/null || echo "invalid hex"')
-        assert result in [0, 1, 2]
+        assert result == 1
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out == ""
+        assert "value too great for base" in captured.err
 
     def test_malformed_octal_numbers(self, shell, capsys):
-        """Test malformed octal numbers."""
-        # Invalid octal digits
+        """Invalid octal digits: error + discard (bash)."""
         result = shell.run_command('echo $((089)) 2>/dev/null || echo "invalid octal"')
-        assert result in [0, 1, 2]
+        assert result == 1
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out == ""
+        assert "value too great for base" in captured.err
 
     # String and type conversion edge cases
 
@@ -424,12 +429,13 @@ class TestArithmeticEdgeCases:
         assert output != "" or result != 0  # Some indication of handling
 
     def test_partial_evaluation_errors(self, shell, capsys):
-        """Test errors in partial evaluation of complex expressions."""
-        # Expression where one part fails
+        """An error in a sub-expression fails the whole expansion:
+        error + discard-line (bash)."""
         result = shell.run_command('echo $((5 + (3 / 0))) 2>/dev/null || echo "partial error"')
-        assert result in [0, 1, 2]
+        assert result == 1
         captured = capsys.readouterr()
-        assert captured.out.strip() != ""
+        assert captured.out == ""
+        assert "ivision by zero" in captured.err
 
     # Boundary condition tests
 

@@ -167,6 +167,31 @@ class ArithTokenizer:
                 char = self.current_char()
         return ident
 
+    def _pair_is_incdec(self) -> bool:
+        """Whether a ``++``/``--`` PAIR at the current position is an
+        increment/decrement token, following bash's expr.c readtok
+        (probe-verified against bash 5.2):
+
+        - POSTFIX when the PREVIOUS token is a variable or a closing
+          subscript bracket (``x++``, ``a[0] ++`` — whitespace before the
+          pair does not matter);
+        - otherwise PREFIX when the next NON-WHITESPACE character after
+          the pair starts an identifier (``++x``, ``3 ++ x`` — the latter
+          is then a syntax error in binary position, exactly like bash);
+        - otherwise NOT an inc/dec at all: the caller emits a single
+          ``+``/``-`` and rescans the second sign char, which may re-pair
+          (``$((++5))`` = +(+5) = 5; ``$((5 ++ 3))`` = 5 + (+3) = 8;
+          ``$((3---x))`` = 3 - --x, decrementing x).
+        """
+        prev = self.tokens[-1].type if self.tokens else None
+        if prev in (ArithTokenType.IDENTIFIER, ArithTokenType.RBRACKET):
+            return True  # postfix position
+        i = self.position + 2
+        while i < len(self.expr) and self.expr[i].isspace():
+            i += 1
+        return i < len(self.expr) and (self.expr[i].isalpha()
+                                       or self.expr[i] == '_')
+
     # -- Main loop -----------------------------------------------------------
 
     def tokenize(self) -> List[ArithToken]:
@@ -192,7 +217,7 @@ class ArithTokenizer:
 
             # Operators and delimiters
             elif char == '+':
-                if self.peek_char() == '+':
+                if self.peek_char() == '+' and self._pair_is_incdec():
                     self.tokens.append(ArithToken(ArithTokenType.INCREMENT, '++', start_pos))
                     self.advance()
                     self.advance()
@@ -201,11 +226,13 @@ class ArithTokenizer:
                     self.advance()
                     self.advance()
                 else:
+                    # Includes a '++' pair that is NOT an increment (see
+                    # _pair_is_incdec): emit ONE sign and rescan the second.
                     self.tokens.append(ArithToken(ArithTokenType.PLUS, '+', start_pos))
                     self.advance()
 
             elif char == '-':
-                if self.peek_char() == '-':
+                if self.peek_char() == '-' and self._pair_is_incdec():
                     self.tokens.append(ArithToken(ArithTokenType.DECREMENT, '--', start_pos))
                     self.advance()
                     self.advance()
@@ -214,6 +241,9 @@ class ArithTokenizer:
                     self.advance()
                     self.advance()
                 else:
+                    # A '--' pair that is not a decrement splits here, and
+                    # the second '-' is rescanned — so `3---x` tokenizes as
+                    # `3 - --x` (bash: -1 with x decremented).
                     self.tokens.append(ArithToken(ArithTokenType.MINUS, '-', start_pos))
                     self.advance()
 

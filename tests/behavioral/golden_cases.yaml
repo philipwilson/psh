@@ -5093,3 +5093,191 @@
   stdout: "rc=1\n"
   stderr: "read error: 0: Bad file descriptor"
   exit_code: 0
+
+# =============================================================================
+# FATAL EXPANSION-ERROR MODEL (reappraisal #17 Tier-2 arith cluster)
+# bash 5.2 probe-verified: tmp/probes-r17t2-arith/ truth table.
+# Discard-line family: the failed expansion kills the REST OF THE LINE and
+# execution resumes at the next line ($? = 1). Shell-exit family (:?,
+# bad substitution, set -u): a non-interactive shell exits.
+# =============================================================================
+
+- name: arith_ternary_comma_middle
+  command: "echo $((1?2,3:4))"
+  stdout: "3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_ternary_comma_false_binds_loose
+  command: "echo $((0?2,3:4,5))"
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_incdec_nonlvalue_is_unary_signs
+  command: "echo $((++5)) $((--5)) $((5 ++ 3)) $((5 -- 3))"
+  stdout: "5 5 8 8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_div0_discards_rest_of_line
+  command: "echo x$((1/0)); echo tail\necho next rc=$?"
+  stdout: "next rc=1\n"
+  stderr: "ivision by zero"
+  exit_code: 0
+
+- name: arith_div0_kills_and_or_tail
+  command: "echo x$((1/0)) || echo fallback\necho next rc=$?"
+  stdout: "next rc=1\n"
+  stderr: "ivision by zero"
+  exit_code: 0
+
+- name: arith_synerr_discards_line
+  command: "echo x$((1+)); echo tail\necho next rc=$?"
+  stdout: "next rc=1\n"
+  stderr: null
+  exit_code: 0
+
+- name: arith_div0_contained_in_cmdsub
+  command: "v=$(echo a$((1/0)); echo insub); echo v=[$v] rc=$?"
+  stdout: "v=[] rc=1\n"
+  stderr: "ivision by zero"
+  exit_code: 0
+
+- name: arith_div0_contained_in_subshell
+  command: "( echo a$((1/0)); echo insub ); echo after rc=$?"
+  stdout: "after rc=1\n"
+  stderr: "ivision by zero"
+  exit_code: 0
+
+- name: arith_div0_contained_at_eval_boundary
+  command: "eval 'echo x$((1/0)); echo ineval'; echo after=$?"
+  stdout: "after=1\n"
+  stderr: "ivision by zero"
+  exit_code: 0
+
+- name: arith_div0_errexit_still_resumes
+  command: "set -e\necho x$((1/0)); echo tail\necho next"
+  stdout: "next\n"
+  stderr: "ivision by zero"
+  exit_code: 0
+
+- name: failglob_discards_rest_of_line
+  command: "shopt -s failglob\necho /nonexistent_zzz_dir/*; echo tail\necho next rc=$?"
+  stdout: "next rc=1\n"
+  stderr: "no match"
+  exit_code: 0
+
+- name: failglob_for_words_discard_line
+  command: "shopt -s failglob\nfor i in /nonexistent_zzz_dir/*; do echo i=$i; done; echo tail\necho next"
+  stdout: "next\n"
+  stderr: "no match"
+  exit_code: 0
+
+- name: failglob_errexit_exits_shell
+  command: "set -e\nshopt -s failglob\necho /nonexistent_zzz_dir/*\necho next"
+  stdout: ""
+  stderr: "no match"
+  exit_code: 1
+
+- name: paramq_error_exits_c_shell_127
+  command: "echo x${nope:?msg}; echo tail\necho next"
+  stdout: ""
+  stderr: "nope: msg"
+  exit_code: 127
+
+- name: nounset_exits_c_shell_127
+  command: "set -u\necho x$nope; echo tail\necho next"
+  stdout: ""
+  stderr: "unbound variable"
+  exit_code: 127
+
+- name: badsub_bad_name_discards_line
+  command: "echo ${}; echo tail\necho next rc=$?"
+  stdout: "next rc=1\n"
+  stderr: "bad substitution"
+  exit_code: 0
+
+- name: subscript_arith_error_kills_rest_of_c_string
+  command: "a=(1 2); echo before; echo x${a[1/0]}; echo tail\necho next"
+  stdout: "before\n"
+  stderr: "ivision by zero"
+  exit_code: 1
+
+- name: declare_i_arith_error_kills_rest_of_c_string
+  command: "declare -i v='1/0'; echo tail\necho next"
+  stdout: ""
+  stderr: "ivision by zero"
+  exit_code: 1
+
+- name: assign_i_attr_arith_error_kills_rest_of_c_string
+  command: "declare -i v\nv='1/0'; echo tail\necho next"
+  stdout: ""
+  stderr: "ivision by zero"
+  exit_code: 1
+
+- name: badsub_unknown_transform_set_exits_c_shell_127
+  command: "x=1\necho a${x@Z}; echo tail\necho next"
+  stdout: ""
+  stderr: "bad substitution"
+  exit_code: 127
+
+- name: badsub_unknown_transform_unset_is_empty
+  command: "echo a${x@Z}; echo tail"
+  stdout: "a\ntail\n"
+  stderr: ""
+  exit_code: 0
+
+- name: paramq_not_contained_by_eval
+  command: "eval 'echo x${nope:?msg}; echo ineval'; echo after"
+  stdout: ""
+  stderr: "nope: msg"
+  exit_code: 127
+
+- name: arith_incdec_pair_before_ident_is_error
+  command: "x=5; echo $((3++x)); echo tail\necho next rc=$?"
+  stdout: "next rc=1\n"
+  stderr: null
+  exit_code: 0
+
+- name: arith_triple_minus_decrements_var
+  command: "x=5; echo $((3---x)) x=$x"
+  stdout: "-1 x=4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_prefix_decrement_after_space
+  command: "x=5; echo $((-- x)) x=$x"
+  stdout: "4 x=4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_postfix_after_space
+  command: "x=5; echo $((x ++)) x=$x"
+  stdout: "5 x=6\n"
+  stderr: ""
+  exit_code: 0
+
+- name: badsub_multichar_transform_unset_is_empty
+  command: "echo a${x@ZZ}; echo tail"
+  stdout: "a\ntail\n"
+  stderr: ""
+  exit_code: 0
+
+- name: badsub_multichar_transform_set_exits_c_shell_127
+  command: "x=1\necho a${x@ZZ}; echo tail\necho next"
+  stdout: ""
+  stderr: "bad substitution"
+  exit_code: 127
+
+- name: badsub_empty_transform_set_exits_c_shell_127
+  command: "x=1\necho a${x@}; echo tail\necho next"
+  stdout: ""
+  stderr: "bad substitution"
+  exit_code: 127
+
+- name: bang_prefix_at_listing_still_works
+  command: "zz_gold_a=1 zz_gold_b=2\necho ${!zz_gold_@}"
+  stdout: "zz_gold_a zz_gold_b\n"
+  stderr: ""
+  exit_code: 0

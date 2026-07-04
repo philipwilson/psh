@@ -111,18 +111,20 @@ def report_exec_failure(cmd_name: str, exc: OSError,
 def report_unbound_variable(state: 'ShellState', exc: Exception) -> int:
     """Report a ``set -u`` violation (UnboundVariableError) the bash way.
 
-    Prints once, then a non-interactive shell ABORTS — exit 127 for ``-c``,
-    1 for a script file. Shared by the simple-command path and the arithmetic
-    command / C-style-for paths so every set -u violation behaves identically
-    (a bare ``$undef``, ``$(( undef ))``, ``(( undef ))`` and ``for ((i=undef;``
-    all abort the same way). Raises ``SystemExit`` in script mode; otherwise
-    returns the exit code.
+    Prints once, then applies the shell-exit family of the fatal
+    expansion-error model (``fatal_expansion_status``): a non-interactive
+    shell EXITS — 127 for ``-c``, 1 for a script file / piped stdin — and
+    an interactive (or embedded) shell discards the current line with
+    status 1. Shared by the simple-command path and the arithmetic command
+    / C-style-for paths so every set -u violation behaves identically (a
+    bare ``$undef``, ``$(( undef ))``, ``(( undef ))`` and ``for ((i=undef;``
+    all abort the same way). Never returns normally — raises ``SystemExit``
+    or ``TopLevelAbort`` (typed ``-> int`` for its ``return
+    report_unbound_variable(...)`` callers).
     """
+    from ..core import fatal_expansion_status
     print(f"psh: {exc}", file=state.stderr)
-    exit_code = 127 if state.options.get('command_mode') else 1
-    if state.is_script_mode:
-        sys.exit(exit_code)
-    return exit_code
+    return fatal_expansion_status(state, exc)
 
 
 def report_assignment_error(state: 'ShellState', exc: Exception) -> int:
@@ -200,6 +202,16 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
             UnboundVariableError,
         )
         from ..core.exceptions import FunctionReturn
+        from ..expansion.arithmetic import ShellArithmeticError
+        # A declaration value that fails to evaluate arithmetically
+        # (`declare -i v='1/0'`, `local -i w='1//'`): bash prints
+        # "declare: 1/0: division by 0" and DISCARDS the rest of the
+        # line (rest of the whole -c string under -c) — the
+        # assignment/subscript arithmetic-error family.
+        if isinstance(e, ShellArithmeticError):
+            from ..core import arith_assignment_discard
+            print(f"psh: {cmd_name}: {e}", file=shell.stderr)
+            arith_assignment_discard(shell.state)
         # ExpansionError propagates to _handle_execution_error, which knows
         # a fatal expansion (message already printed at the raise site, e.g.
         # `unset "a[08]"`) aborts a non-interactive shell like bash.

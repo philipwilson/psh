@@ -486,20 +486,22 @@ class CommandExecutor:
           assignments no longer raise — CommandAssignments.apply_prefix
           reports and skips them so the command still runs, like bash.)
         - Circular nameref in a command prefix: warn, status 1.
-        - set -u violation: print once; abort a non-interactive shell
-          with 127, otherwise return 127.
-        - ExpansionError: message already printed; exit the shell in
-          script mode, otherwise return its exit code.
+        - set -u violation: print once, then the shell-exit family of the
+          fatal expansion-error model (report_unbound_variable).
+        - ExpansionError: message already printed at the raise site; apply
+          bash's fatal expansion-error model (fatal_expansion_status):
+          ${x:?}/bad substitution exit a non-interactive shell, everything
+          else discards the rest of the current line via TopLevelAbort.
         - Anything else is likely an internal defect: keep the shell
           alive, print a generic message (traceback under --debug-exec).
         """
         # Import these here to avoid circular imports
         from ..core import (
             ExpansionError,
-            GlobNoMatchError,
             LoopBreak,
             LoopContinue,
             UnboundVariableError,
+            fatal_expansion_status,
         )
         from ..core.exceptions import FunctionReturn
 
@@ -515,13 +517,6 @@ class CommandExecutor:
             # function on the stack it reaches the top-level source guard,
             # where the expected-error taxonomy reports it cleanly.
             raise
-
-        if isinstance(e, GlobNoMatchError):
-            # shopt -s failglob: a no-match glob fails THIS command (status 1)
-            # but does NOT abort a non-interactive shell (bash) — so, unlike a
-            # parameter ExpansionError, never sys.exit here.
-            print(f"psh: {e}", file=self.state.stderr)
-            return 1
 
         # Handle other exceptions
         if isinstance(e, ReadonlyVariableError):
@@ -544,12 +539,9 @@ class CommandExecutor:
             return report_unbound_variable(self.state, e)
 
         if isinstance(e, ExpansionError):
-            # Error message already printed by the expansion code
-            expansion_exit_code = getattr(e, 'exit_code', 1)
-            # In script mode, we should exit the shell
-            if self.shell.state.is_script_mode:
-                sys.exit(expansion_exit_code)
-            return expansion_exit_code
+            # Message already printed by the expansion code; apply the
+            # bash fatal-model (discard-line, or shell-exit for :?/badsub).
+            return fatal_expansion_status(self.state, e)
 
         # Last-resort guard: anything else is likely an internal defect.
         # Keep the shell alive (or re-raise under strict-errors) — see

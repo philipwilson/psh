@@ -85,6 +85,11 @@ Known representational choices (pinned by the differential corpus):
 from ..ast_nodes import ParameterExpansion
 
 # One transform letter may follow '@' in final position: ${v@Q} etc.
+# ANY letter parses as a transform operator (bash): an UNKNOWN letter is
+# not a parse error — ${unset@Z} expands to '' silently, and only a SET
+# variable makes ${x@Z} a runtime "bad substitution" (probe-verified,
+# bash 5.2; the set-ness check lives in the operator application).
+# The known letters are what _apply_transform implements:
 TRANSFORM_LETTERS = 'QEPAUuLakK'
 
 # Two-character operators, tried before any one-character operator at the
@@ -158,9 +163,16 @@ def _scan_operator(content: str):
             continue
         if depth > 0 or i == 0:
             continue
-        # ${param@X}: '@' + transform letter in final position
-        if c == '@' and i == n - 2 and content[i + 1] in TRANSFORM_LETTERS:
-            return '@' + content[i + 1], i
+        # ${param@...}: '@' + everything to the end is a transform operand.
+        # bash accepts ANY operand here — empty, multi-char, punctuation
+        # (${x@}, ${x@ZZ}, ${x@9}, ${x@_}): on an UNSET parameter the whole
+        # expansion is silently empty; on a SET parameter anything but a
+        # known single letter is a fatal bad substitution (probe-verified,
+        # bash 5.2 — see TRANSFORM_LETTERS). The one exclusion: a bang-
+        # prefixed content ending in bare '@' is the ${!prefix@} name
+        # listing, not an empty transform.
+        if c == '@' and not (content[0] == '!' and i == n - 1):
+            return '@' + content[i + 1:], i
         if content[i:i + 2] in _TWO_CHAR_OPS:
             return content[i:i + 2], i
         if c == '/':
