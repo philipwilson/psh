@@ -18,9 +18,10 @@ auto-marked ``serial`` (spawn/kill/wait — xdist-unsafe).
 Two divergences from bash are deliberate and documented (not tested here):
   * bash prefixes ``bash: line N: PID ... CMD`` for signals other than
     SIGTERM; psh emits just the signal description.
-  * a signal death that is the shell's LAST action, and pipeline-member
-    deaths, use bash's exec-optimization / column job-notification machinery
-    that psh does not replicate.
+  * a signal death that is the shell's LAST action uses bash's
+    exec-optimization / column job-notification machinery that psh does not
+    replicate. (Pipeline-member deaths ARE announced since reappraisal #17
+    MED-2 — see test_pipeline_signal_death.py.)
 """
 
 import signal
