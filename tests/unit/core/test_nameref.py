@@ -165,3 +165,71 @@ class TestNamerefBashParity:
         bash = subprocess.run(['bash', '-c', script], capture_output=True, text=True)
         assert psh.stdout == bash.stdout
         assert psh.returncode == bash.returncode
+
+
+class TestNamerefTargetValidation:
+    """declare -n validates the TARGET's shape at declare time (bash;
+    reappraisal #17 core MED). Two distinct bash messages, both pinned
+    against 5.2: an empty target gets the plain identifier message, any
+    other invalid shape gets the nameref-specific one. The target need
+    not EXIST — only its shape is checked."""
+
+    @pytest.mark.parametrize("target", [
+        '1', '1a', 'a b', 'a-b', 'a.b', '$x', '@',
+        'a[', 'a[]', 'a[0]x', 'a[0][1]',
+    ])
+    def test_invalid_target_rejected(self, captured_shell, target):
+        rc = captured_shell.run_command(f"declare -n r='{target}'")
+        assert rc == 1
+        assert (f"`{target}': invalid variable name for name reference"
+                in captured_shell.get_stderr())
+        # The nameref must NOT have been created.
+        captured_shell.clear_output()
+        assert captured_shell.run_command('declare -p r') != 0
+
+    def test_empty_target_uses_identifier_message(self, captured_shell):
+        rc = captured_shell.run_command('declare -n r=')
+        assert rc == 1
+        assert "`': not a valid identifier" in captured_shell.get_stderr()
+
+    @pytest.mark.parametrize("target", [
+        'ok', '_ok', '_', '_9', 'a[0]', 'a[foo]', 'a[$i]', 'a[ ]',
+        'a[1+2]', 'a[@]', 'a[*]', 'a[b[c]]',
+    ])
+    def test_valid_target_accepted(self, captured_shell, target):
+        # Balanced-to-end subscripts are valid even when unusual (bash:
+        # a[b[c]] valid, a[0][1] not); the target need not exist yet.
+        rc = captured_shell.run_command(f"declare -n r='{target}'")
+        assert rc == 0, captured_shell.get_stderr()
+        assert captured_shell.get_stderr() == ""
+
+    def test_typeset_alias_validates_too(self, captured_shell):
+        assert captured_shell.run_command('typeset -n t=1') == 1
+        assert ("invalid variable name for name reference"
+                in captured_shell.get_stderr())
+
+    def test_later_argument_failure_reports_rc1(self, captured_shell):
+        rc = captured_shell.run_command('v=5; declare -n r=v r2=1; echo "one=$r"')
+        assert "invalid variable name for name reference" in captured_shell.get_stderr()
+        assert rc == 0  # the list's last command (echo) succeeds
+        assert captured_shell.get_stdout() == "one=5\n"
+
+    def test_self_reference_message_unchanged(self, captured_shell):
+        assert captured_shell.run_command('declare -n r=r') == 1
+        assert ("nameref variable self references not allowed"
+                in captured_shell.get_stderr())
+
+    @pytest.mark.parametrize("script", [
+        'declare -n r=1; echo rc=$?',
+        'declare -n r="a b"; echo rc=$?',
+        'declare -n r=; echo rc=$?',
+        'declare -n r=a[0]; echo rc=$?',
+        'declare -n r="a[b[c]]"; echo rc=$?',
+        'declare -n r="a[0][1]"; echo rc=$?',
+        'declare -n r=1 2>/dev/null; declare -p r 2>/dev/null; echo rc=$?',
+    ])
+    def test_matches_bash(self, script):
+        psh = _run(script)
+        bash = subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+        assert psh.stdout == bash.stdout
+        assert psh.returncode == bash.returncode

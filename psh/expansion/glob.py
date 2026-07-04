@@ -3,7 +3,7 @@ import fnmatch
 import glob
 import os
 import re
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Iterator, List, Tuple
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -113,6 +113,15 @@ class GlobExpander:
         if self.state.options.get('extglob', False):
             from .extglob import contains_extglob
             if contains_extglob(pattern):
+                if (self.state.options.get('globstar', False)
+                        and any(c == '**' for c in pattern.split(os.sep))):
+                    # extglob combined with a bare `**` component: the
+                    # globstar walker recurses properly (and handles the
+                    # extglob components via _match_glob_component), where
+                    # _expand_extglob would treat `**` as a single level.
+                    return sorted(self._expand_globstar(
+                        normalize_bracket_expressions(pattern),
+                        self.state.options.get('dotglob', False)))
                 return self._expand_extglob(pattern)
 
         # Normalize POSIX classes / [^...] negation so fnmatch/glob handle them.
@@ -128,8 +137,16 @@ class GlobExpander:
 
         if nocaseglob:
             matches = self._glob_nocase(translated, dotglob)
+        elif globstar and any(c == '**' for c in translated.split(os.sep)):
+            # A bare `**` component under shopt -s globstar: bash's recursive
+            # scan does NOT descend through symlinked directories, but
+            # Python's glob.glob(recursive=True) does (and can loop) — use
+            # the symlink-aware walker instead.
+            matches = self._expand_globstar(translated, dotglob)
         else:
-            matches = glob.glob(translated, include_hidden=dotglob, recursive=globstar)
+            # Without a `**` component the recursive flag is irrelevant
+            # (globstar off leaves `**` behaving as `*`, same as glob.glob).
+            matches = glob.glob(translated, include_hidden=dotglob)
 
         # Byte (C-locale) ordering. bash sorts glob results with strcoll() in
         # the current LC_COLLATE, so this diverges from bash in a non-C locale
@@ -180,6 +197,171 @@ class GlobExpander:
             current = nxt
 
         return current
+
+    @staticmethod
+    def _join_entry(text: str, name: str) -> str:
+        """Join a directory prefix (as accumulated pattern/path text) and an
+        entry name the way bash builds globstar results: ``''`` means the
+        current directory (bare entry name), a prefix already ending in the
+        separator keeps its written form (``sub//`` + ``deep`` ->
+        ``sub//deep``), anything else gets one separator inserted."""
+        if not text:
+            return name
+        if text.endswith(os.sep):
+            return text + name
+        return text + os.sep + name
+
+    def _walk_no_follow(self, text: str, dotglob: bool
+                        ) -> Iterator[Tuple[str, os.DirEntry]]:
+        """Yield ``(joined_path, entry)`` for every descendant of the
+        directory named by ``text`` ('' = cwd), depth-first.
+
+        This is the ``**`` scan: it recurses into real directories only —
+        a symlinked directory is yielded as a leaf but never entered
+        (bash 4.3+), which also makes symlink loops safe. Hidden entries
+        are skipped (and not descended into) unless ``dotglob``.
+        Opening the STARTING directory itself follows symlinks (an explicit
+        ``symdir/**`` prefix is honored); only scan-discovered links stop.
+        """
+        try:
+            entries = list(os.scandir(text or '.'))
+        except OSError:
+            return
+        for entry in entries:
+            name = entry.name
+            if name.startswith('.') and not dotglob:
+                continue
+            path = self._join_entry(text, name)
+            yield path, entry
+            try:
+                is_real_dir = entry.is_dir(follow_symlinks=False)
+            except OSError:
+                is_real_dir = False
+            if is_real_dir:
+                yield from self._walk_no_follow(path, dotglob)
+
+    def _expand_globstar(self, pattern: str, dotglob: bool) -> List[str]:
+        """Expand a pattern containing a bare ``**`` component
+        (``shopt -s globstar``), with bash-5.2-pinned semantics
+        (truth table in tmp/probes-r17t2-grabbag/probe_b_globstar.sh):
+
+        - ``**`` matches the base directory itself (zero components) plus
+          every descendant; the recursive scan lists symlinks as leaves but
+          never descends through them (so loops cannot hang).
+        - A non-``**`` component naming a symlink IS followed
+          (``symdir/**`` works; only the ``**`` scan refuses to descend).
+        - When ``**`` is followed by more components, only REAL directories
+          from the scan continue the match (bash: ``**/*.txt`` does not
+          look inside ``symdir``).
+        - Zero-component match text is bash-verbatim: a purely literal
+          prefix keeps its written form (``sub/**`` -> ``sub/``,
+          ``sub//**`` -> ``sub//``, ``./**`` -> ``./``) while a prefix that
+          passed through any expanded component is a plain joined path
+          (``**/sub/**`` -> ``sub``, ``s*/**`` -> ``sub``).
+        - A trailing ``/`` restricts matches to directories (symlink-to-dir
+          qualifies) and appends ``/`` to each result.
+        """
+        # Split off a leading run of separators (absolute patterns).
+        lead = re.match(f'{re.escape(os.sep)}+', pattern)
+        prefix = lead.group() if lead else ''
+        comps = pattern[len(prefix):].split(os.sep)
+
+        require_dir = False
+        while comps and comps[-1] == '':
+            comps.pop()
+            require_dir = True
+        if not comps:
+            return []
+
+        def is_pattern_comp(comp: str) -> bool:
+            if has_glob_metacharacters(comp):
+                return True
+            if self.state.options.get('extglob', False):
+                from .extglob import contains_extglob
+                return contains_extglob(comp)
+            return False
+
+        def zero_text(text: str) -> str:
+            """The base's text after a ``**`` matched zero components:
+            joined-path form (no trailing separator; '/' kept for the
+            filesystem root)."""
+            return text.rstrip(os.sep) or (os.sep if text.startswith(os.sep)
+                                           else '')
+
+        # Bases: (text, literal). ``literal`` marks a prefix that is still
+        # the pattern's own text verbatim (no expanded component yet).
+        bases: List[Tuple[str, bool]] = [(prefix, True)]
+
+        for comp in comps[:-1]:
+            new_bases: dict = {}
+            if comp == '':
+                # Interior empty component (``sub//**``): keep the extra
+                # separator verbatim.
+                for text, literal in bases:
+                    new_bases[(text + os.sep, literal)] = None
+            elif comp == '**':
+                for text, literal in bases:
+                    # Zero components: the base itself continues, now in
+                    # joined-path (expanded) form.
+                    new_bases[(zero_text(text), False)] = None
+                    # One or more components: real directories only.
+                    for path, entry in self._walk_no_follow(text, dotglob):
+                        try:
+                            if entry.is_dir(follow_symlinks=False):
+                                new_bases[(path, False)] = None
+                        except OSError:
+                            pass
+            elif is_pattern_comp(comp):
+                texts = [text for text, _ in bases]
+                for path in self._match_glob_component(comp, texts, dotglob):
+                    new_bases[(path, False)] = None
+            else:
+                # Literal component: appended verbatim, no scan. Existence
+                # is checked when something is finally emitted.
+                for text, literal in bases:
+                    if literal:
+                        new_bases[(text + comp + os.sep, True)] = None
+                    else:
+                        new_bases[(self._join_entry(text, comp), False)] = None
+            bases = list(new_bases)
+
+        results: dict = {}
+
+        def emit(path: str) -> None:
+            if require_dir:
+                if os.path.isdir(path or '.'):
+                    results[path if path.endswith(os.sep)
+                            else path + os.sep] = None
+            else:
+                results[path] = None
+
+        last = comps[-1]
+        if last == '**':
+            for text, literal in bases:
+                # Zero components: the prefix itself (nameless at the top
+                # level, so '' is never emitted). Literal prefixes keep
+                # their verbatim written form.
+                if text and os.path.isdir(text):
+                    emit(text if literal else zero_text(text))
+                for path, entry in self._walk_no_follow(text, dotglob):
+                    if require_dir:
+                        try:
+                            if not entry.is_dir():  # follows symlinks
+                                continue
+                        except OSError:
+                            continue
+                    emit(path)
+        elif is_pattern_comp(last):
+            texts = [text for text, _ in bases]
+            for path in self._match_glob_component(last, texts, dotglob):
+                emit(path)
+        else:
+            for text, _literal in bases:
+                candidate = self._join_entry(text, last)
+                if os.path.lexists(candidate):
+                    emit(candidate)
+
+        return list(results)
 
     def _expand_extglob(self, pattern: str) -> List[str]:
         """Expand an extglob pattern against the filesystem.

@@ -499,6 +499,15 @@ class CommandExecutor:
         if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue, SystemExit)):
             raise
 
+        if isinstance(e, RecursionError):
+            # Stack exhaustion (runaway recursion). Let it climb: the nearest
+            # enclosing function-call boundary converts it to bash's
+            # "maximum function nesting level exceeded" abort
+            # (FunctionOperationExecutor.execute_function_call); with no
+            # function on the stack it reaches the top-level source guard,
+            # where the expected-error taxonomy reports it cleanly.
+            raise
+
         if isinstance(e, GlobNoMatchError):
             # shopt -s failglob: a no-match glob fails THIS command (status 1)
             # but does NOT abort a non-interactive shell (bash) — so, unlike a

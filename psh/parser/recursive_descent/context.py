@@ -47,6 +47,16 @@ class ParserContext:
     # indexing stays fragment-relative.
     line_offset: int = 0
 
+    # Current compound-command nesting depth. Incremented/decremented by
+    # CommandParser.parse_pipeline_component — the single chokepoint every
+    # nested compound (brace group, subshell, if/while/for/case/select,
+    # ((...)), [[...]]) parses through — and checked there against
+    # MAX_NESTING_DEPTH so runaway nesting raises a clean ParseError
+    # instead of a Python RecursionError (the statement-parser analogue of
+    # ArithParser.MAX_DEPTH). Flat &&/||/pipe/`;` chains parse iteratively
+    # and never accumulate depth.
+    nesting_depth: int = 0
+
     # Open-construct trail for incomplete-input hints. Parse methods push a
     # name when they consume an opening keyword ('if', 'while', 'case',
     # 'brace', ...), retitle it at internal transitions ('if' → 'then' →
