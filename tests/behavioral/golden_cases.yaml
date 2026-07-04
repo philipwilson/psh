@@ -5424,3 +5424,55 @@
   stdout: "D\nD\nD\nx\nD\ntop\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# BACKGROUND-CHILD TRAP DISCIPLINE (reappraisal #18 Tier-1 T1-4)
+#
+# A backgrounded compound runs in a forked subshell environment: it fires its
+# own EXIT trap on completion, and `wait <pid>` on a reaped known job returns
+# its remembered status. (Signal-timed symptoms — managed-signal body traps and
+# EXIT-on-fatal-signal — need file-sync and live in the serial integration
+# suite tests/integration/job_control/test_bg_child_trap_discipline.py.)
+# =============================================================================
+
+- name: r18t1_bgtrap_exit_trap_bg_brace
+  command: "{ trap 'echo bye' EXIT; echo body; } & wait $!"
+  stdout: "body\nbye\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_bgtrap_exit_trap_bg_subshell
+  command: "( trap 'echo bye' EXIT; echo body ) & wait $!"
+  stdout: "body\nbye\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_bgtrap_exit_trap_bg_function
+  command: "f() { trap 'echo bye' EXIT; echo body; }; f & wait $!"
+  stdout: "body\nbye\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_bgtrap_wait_remembered_status
+  command: "( exit 7 ) & p=$!; wait $p; echo first=$?; wait $p; echo second=$?"
+  stdout: "first=7\nsecond=7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_bgtrap_wait_unknown_pid_127
+  command: "wait 999999; echo rc=$?"
+  stdout: "rc=127\n"
+  stderr: "not a child of this shell"
+  exit_code: 0
+
+- name: r18t1_bgtrap_wait_bare_then_explicit_127
+  command: "( exit 5 ) & p=$!; wait; wait $p; echo rc=$?"
+  stdout: "rc=127\n"
+  stderr: "not a child of this shell"
+  exit_code: 0
+
+- name: r18t1_bgtrap_wait_bare_clears_explicit_retention
+  command: "( exit 5 ) & p=$!; wait $p; echo $?; wait; echo $?; wait $p; echo $?"
+  stdout: "5\n0\n127\n"
+  stderr: "not a child of this shell"
+  exit_code: 0

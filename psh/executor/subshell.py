@@ -227,52 +227,43 @@ class SubshellExecutor:
         def execute_fn():
             # Import Shell lazily to avoid circular dependency
             from ..shell import Shell
+            from .child_policy import run_background_shell_child
 
             subshell = Shell.for_subshell(self.shell)
-
-            # This process is a fresh fork (launch_background_job): align OS
-            # signal dispositions with the adopted trap state, exactly like
-            # the foreground path.
-            subshell.trap_manager.sync_forked_child_dispositions()
 
             # Share I/O streams for consistent output handling
             subshell.stdout = self.shell.stdout
             subshell.stderr = self.shell.stderr
             subshell.stdin = self.shell.stdin
 
-            exit_code = 0
-            saved_fds = []
-            from ..core import FunctionReturn, TopLevelAbort
-            try:
-                if redirects:
-                    saved_fds = subshell.io_manager.apply_redirections(redirects)
-            except OSError as e:
-                os.write(2, (format_redirect_error(e) + "\n")
-                         .encode('utf-8', errors='replace'))
-                return 1
-            try:
-                exit_code = subshell.execute_command_list(statements)
-            except TopLevelAbort as e:
-                exit_code = e.status
-            except FunctionReturn as e:
-                # `return` in a backgrounded subshell that inherited a
-                # function/sourced-file context (bash: (return 5) & → 5).
-                exit_code = e.exit_code
-            finally:
-                if saved_fds:
-                    subshell.io_manager.restore_redirections(saved_fds)
-                # A backgrounded subshell is still a subshell: it runs its own
-                # EXIT trap when it finishes, exactly like the foreground path.
+            # The shared bg-child runner owns the subshell-environment trap
+            # reset, the managed-signal handler re-arm, the pending-trap pump
+            # and the EXIT trap (on normal completion, and via the signal
+            # handlers on an untrapped fatal signal). The body just applies
+            # this subshell's own redirects and runs its statements.
+            def body() -> int:
+                saved_fds = []
                 try:
-                    subshell.trap_manager.execute_exit_trap()
-                except Exception:
-                    pass
-                # Flush output streams before returning
+                    if redirects:
+                        saved_fds = subshell.io_manager.apply_redirections(redirects)
+                except OSError as e:
+                    os.write(2, (format_redirect_error(e) + "\n")
+                             .encode('utf-8', errors='replace'))
+                    return 1
                 try:
-                    subshell.stdout.flush()
-                    subshell.stderr.flush()
-                except (OSError, ValueError):
-                    pass
+                    return subshell.execute_command_list(statements)
+                finally:
+                    if saved_fds:
+                        subshell.io_manager.restore_redirections(saved_fds)
+
+            exit_code = run_background_shell_child(subshell, body)
+
+            # Flush output streams before returning (os._exit() won't).
+            try:
+                subshell.stdout.flush()
+                subshell.stderr.flush()
+            except (OSError, ValueError):
+                pass
 
             return exit_code
 
@@ -289,24 +280,30 @@ class SubshellExecutor:
         """
         # Create execution function
         def execute_fn():
-            # Execute the brace group in current environment (no new shell)
-            # Apply redirections first
-            exit_code = 0
-            saved_fds = []
-            try:
-                if node.redirects:
-                    saved_fds = self.io_manager.apply_redirections(node.redirects)
-            except OSError as e:
-                os.write(2, (format_redirect_error(e) + "\n")
-                         .encode('utf-8', errors='replace'))
-                return 1
-            try:
-                exit_code = visitor.visit(node.statements)
-            finally:
-                if saved_fds:
-                    self.io_manager.restore_redirections(saved_fds)
+            from .child_policy import run_background_shell_child
 
-            return exit_code
+            # A backgrounded brace group runs in a forked subshell environment
+            # (the fork copies self.shell). The shared bg-child runner gives it
+            # the same trap discipline as ( ... ) &: a PARENT trap is reset so
+            # it does not fire here, a body-set managed-signal trap fires, and
+            # the EXIT trap runs on completion / fatal signal. The body applies
+            # the group's redirects and runs its statements in this environment.
+            def body() -> int:
+                saved_fds = []
+                try:
+                    if node.redirects:
+                        saved_fds = self.io_manager.apply_redirections(node.redirects)
+                except OSError as e:
+                    os.write(2, (format_redirect_error(e) + "\n")
+                             .encode('utf-8', errors='replace'))
+                    return 1
+                try:
+                    return visitor.visit(node.statements)
+                finally:
+                    if saved_fds:
+                        self.io_manager.restore_redirections(saved_fds)
+
+            return run_background_shell_child(self.shell, body)
 
         return self.launcher.launch_background_job(
             execute_fn, "<brace-group>", "brace-group", is_shell_process=True)

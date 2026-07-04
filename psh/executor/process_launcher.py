@@ -6,6 +6,7 @@ external commands, and subshells.
 """
 
 import os
+import signal
 import sys
 from dataclasses import dataclass
 from enum import Enum
@@ -255,6 +256,16 @@ class ProcessLauncher:
                 is_shell_process=config.is_shell_process,
             )
 
+            # 2b. POSIX asynchronous-list rules, applied only when job control
+            # is OFF (non-interactive) to a standalone backgrounded job (a bg
+            # pipeline's members set up their own stdin from the pipe and are
+            # left alone). See bash: an async list with job control disabled
+            # has its stdin redirected from /dev/null and ignores SIGINT/
+            # SIGQUIT. This runs BEFORE io_setup so an explicit body redirect
+            # (`cmd < file &`) still wins.
+            if config.role == ProcessRole.SINGLE and not config.foreground:
+                self._apply_async_job_defaults(config)
+
             # 3. Set up I/O redirections if provided
             if config.io_setup:
                 config.io_setup()
@@ -315,6 +326,47 @@ class ProcessLauncher:
             # os._exit() does not flush Python-level buffers)
             flush_child_streams(sys.stdout, sys.stderr)
             os._exit(exit_code)
+
+    def _job_control_off(self) -> bool:
+        """True when the shell runs without job control (non-interactive).
+
+        psh enables job control only for the interactive REPL; a script, a
+        ``-c`` string or piped stdin all run with it off — exactly where the
+        POSIX asynchronous-list defaults (stdin ← /dev/null, ignore INT/QUIT)
+        apply. Mirrors SignalManager._in_noninteractive_shell.
+        """
+        return (self.state.is_script_mode
+                or not self.state.options.get('interactive', False))
+
+    def _apply_async_job_defaults(self, config: ProcessConfig) -> None:
+        """Apply the POSIX async-list defaults to this backgrounded child.
+
+        Only when job control is off. Redirects stdin from /dev/null so a
+        backgrounded reader (`read &`, `cat &`) does not steal the script's
+        stdin. For a LEAF child (an external about to exec, or a bg builtin —
+        not a shell-process compound) also sets SIGINT/SIGQUIT to SIG_IGN,
+        which survives exec (POSIX). A shell-process compound instead re-arms
+        the trap-checking handlers via run_background_shell_child, so a
+        body-set INT/QUIT trap can still fire while the untrapped default is
+        ignore.
+        """
+        if not self._job_control_off():
+            return
+        try:
+            devnull = os.open(os.devnull, os.O_RDONLY)
+            try:
+                os.dup2(devnull, 0)
+            finally:
+                if devnull != 0:
+                    os.close(devnull)
+        except OSError:
+            pass
+        if not config.is_shell_process:
+            for sig in (signal.SIGINT, signal.SIGQUIT):
+                try:
+                    signal.signal(sig, signal.SIG_IGN)
+                except (OSError, ValueError):
+                    pass
 
     def _parent_setup(self, pid: int, config: ProcessConfig) -> int:
         """Parent process setup after fork.

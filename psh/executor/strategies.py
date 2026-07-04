@@ -396,20 +396,30 @@ class FunctionExecutionStrategy(ExecutionStrategy):
         launcher = shell.process_launcher
 
         def execute_fn():
-            if redirects:
-                from ..ast_nodes import SimpleCommand
-                temp_command = SimpleCommand(redirects=redirects)
-                shell.io_manager.setup_child_redirections(temp_command)
+            from .child_policy import run_background_shell_child
 
-            from .function import FunctionOperationExecutor
-            function_executor = FunctionOperationExecutor(shell)
-            v = visitor
-            if v is None:
-                from .core import ExecutorVisitor
-                v = ExecutorVisitor(shell)
-                v.context = context
-            return function_executor.execute_function_call(
-                cmd_name, args, context, v, None)
+            # A backgrounded function call runs in a forked subshell
+            # environment (bash). The shared bg-child runner gives it the same
+            # trap discipline as ( ... ) & / { ...; } &: inherited PARENT traps
+            # reset, a body-set managed-signal trap fires, and the EXIT trap
+            # runs on completion / fatal signal.
+            def body() -> int:
+                if redirects:
+                    from ..ast_nodes import SimpleCommand
+                    temp_command = SimpleCommand(redirects=redirects)
+                    shell.io_manager.setup_child_redirections(temp_command)
+
+                from .function import FunctionOperationExecutor
+                function_executor = FunctionOperationExecutor(shell)
+                v = visitor
+                if v is None:
+                    from .core import ExecutorVisitor
+                    v = ExecutorVisitor(shell)
+                    v.context = context
+                return function_executor.execute_function_call(
+                    cmd_name, args, context, v, None)
+
+            return run_background_shell_child(shell, body)
 
         # The child keeps running shell code (the function body may start
         # pipelines or manage terminal control), so mark it a shell process.

@@ -138,6 +138,82 @@ def flush_child_streams(*streams) -> None:
             pass
 
 
+def run_background_shell_child(shell: 'Shell',
+                               body: Callable[[], int]) -> int:
+    """Run a backgrounded compound body with full trap discipline.
+
+    The shared "what every backgrounded shell-process child does" wrapper,
+    called from inside the ProcessLauncher child (the bg execute_fn), after
+    apply_child_signal_policy() has reset handlers and the child Shell is
+    built. Used by every in-process backgrounded compound —  ``( ... ) &``,
+    ``{ ...; } &`` and a backgrounded function call — so the four background
+    trap symptoms are fixed in one place, mirroring the main shell:
+
+    1. enter_subshell_trap_environment() — a PARENT trap does not fire in
+       the child (non-ignored inherited traps reset to default); then
+       install_child_trap_handlers(background=True) re-arms the managed
+       (INT/TERM/HUP/QUIT) handlers so a body-set ``trap`` for one of them
+       actually fires, and marks this a job-control-off async job (untrapped
+       INT/QUIT are ignored).
+    2. exit_code = body() — control-flow exceptions map to a status exactly
+       as run_child_shell / ProcessLauncher do (a subshell boundary; break/
+       return cannot cross the fork).
+    3. finally: pump any queued signal traps, then run the EXIT trap. bash
+       runs a backgrounded compound's EXIT trap on normal completion; the
+       untrapped-fatal-signal path runs it instead via
+       _terminate_from_signal (both idempotent — TrapManager guards it).
+
+    Returns the exit code (this runs inside execute_fn, which returns to
+    ProcessLauncher._child_setup_and_exec — NOT a NoReturn context).
+    """
+    from ..core.exceptions import (
+        FunctionReturn,
+        LoopBreak,
+        LoopContinue,
+        TopLevelAbort,
+    )
+
+    shell.trap_manager.enter_subshell_trap_environment()
+    shell.interactive_manager.signal_manager.install_child_trap_handlers(
+        background=True)
+
+    exit_code = 0
+    try:
+        exit_code = body()
+        if not isinstance(exit_code, int):
+            exit_code = 0 if exit_code else 1
+    except TopLevelAbort as e:
+        exit_code = e.status
+    except FunctionReturn as e:
+        exit_code = e.exit_code
+    except (LoopBreak, LoopContinue) as e:
+        exit_code = e.exit_status or 0
+    except SystemExit as e:
+        code = e.code
+        exit_code = code if isinstance(code, int) else (0 if code is None else 1)
+    finally:
+        # A managed-signal trap queued while the body ran (e.g. after the
+        # last statement) still fires; then the EXIT trap runs on the way
+        # out, as it does for the main shell and a foreground subshell.
+        try:
+            shell.trap_manager.run_pending_traps()
+        except SystemExit as e:
+            code = e.code
+            if isinstance(code, int):
+                exit_code = code
+        except Exception:
+            pass
+        try:
+            shell.trap_manager.execute_exit_trap()
+        except SystemExit as e:
+            code = e.code
+            if isinstance(code, int):
+                exit_code = code
+        except Exception:
+            pass
+    return exit_code
+
+
 def run_child_shell(parent_shell: 'Shell',
                     body: Callable[['Shell'], int],
                     *,
