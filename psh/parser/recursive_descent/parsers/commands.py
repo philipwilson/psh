@@ -31,6 +31,17 @@ _UNCLOSED_EXPANSION_MSGS = {
     'backtick_unclosed': ("unclosed backtick substitution", '`', 1),
 }
 
+# Maximum compound-command nesting depth (brace groups, subshells,
+# if/while/for/case/select, ((...)), [[...]] inside one another). The
+# recursive-descent parser burns ~9 Python frames per nesting level, so
+# runaway nesting would otherwise die as a Python RecursionError; this
+# explicit guard (the statement-parser analogue of ArithParser.MAX_DEPTH)
+# turns it into a clean ParseError instead, well before the interpreter
+# limit raised by psh.shell.RECURSION_LIMIT (40,000 — parsing, executing
+# and formatting a 1000-deep script all fit with headroom; bash itself
+# parses such scripts without complaint, limited only by memory).
+MAX_NESTING_DEPTH = 1000
+
 
 class CommandParser(ParserSubcomponent):
     """Parser for command-level constructs."""
@@ -393,32 +404,66 @@ class CommandParser(ParserSubcomponent):
         return self.parser.at_end() or self.parser.peek().type in self._PIPELINE_END_TOKENS
 
     def parse_pipeline_component(self) -> Command:
-        """Parse a single component of a pipeline (simple or compound command)."""
-        # Try parsing as control structure first
-        if self.parser.match(TokenType.WHILE):
-            return self.parser.control_structures.parse_while_statement()
-        elif self.parser.match(TokenType.UNTIL):
-            return self.parser.control_structures.parse_until_statement()
-        elif self.parser.match(TokenType.FOR):
-            return self.parser.control_structures.parse_for_statement()
-        elif self.parser.match(TokenType.IF):
-            return self.parser.control_structures.parse_if_statement()
-        elif self.parser.match(TokenType.CASE):
-            return self.parser.control_structures.parse_case_statement()
-        elif self.parser.match(TokenType.SELECT):
-            return self.parser.control_structures.parse_select_statement()
-        elif self.parser.match(TokenType.DOUBLE_LPAREN):
-            return self.parser.arithmetic.parse_arithmetic_command()
-        elif self.parser.match(TokenType.DOUBLE_LBRACKET):
-            return self.parser.tests.parse_enhanced_test_statement()
-        elif self.parser.match(TokenType.LPAREN):
-            self._reject_escaped_dollar_paren()
-            return self.parse_subshell_group()
-        elif self.parser.match(TokenType.LBRACE):
-            return self.parse_brace_group()
-        else:
-            # Fall back to simple command
-            return self.parse_command()
+        """Parse a single component of a pipeline (simple or compound command).
+
+        Every compound command's body parses back through here for its own
+        components, so this is the single chokepoint where NESTING depth
+        accumulates — and therefore where the MAX_NESTING_DEPTH guard
+        lives. Only compound components count (a simple command inside
+        1000 brace groups is at depth 1000, not 1001), and sequential
+        components at the same level balance out (increment/decrement
+        around each), so flat scripts never approach the limit.
+        """
+        compound = self._parse_compound_component()
+        if compound is not None:
+            return compound
+        # Fall back to simple command
+        return self.parse_command()
+
+    def _parse_compound_component(self) -> Optional[Command]:
+        """Dispatch to the compound-command parsers under the depth guard.
+
+        Returns None when the current token starts a simple command instead.
+        """
+        if not self.parser.match(TokenType.WHILE, TokenType.UNTIL,
+                                 TokenType.FOR, TokenType.IF,
+                                 TokenType.CASE, TokenType.SELECT,
+                                 TokenType.DOUBLE_LPAREN,
+                                 TokenType.DOUBLE_LBRACKET,
+                                 TokenType.LPAREN, TokenType.LBRACE):
+            return None
+
+        ctx = self.parser.ctx
+        ctx.nesting_depth += 1
+        try:
+            if ctx.nesting_depth > MAX_NESTING_DEPTH:
+                raise self.parser.error(
+                    f"commands nested too deeply "
+                    f"(maximum depth {MAX_NESTING_DEPTH})")
+
+            if self.parser.match(TokenType.WHILE):
+                return self.parser.control_structures.parse_while_statement()
+            elif self.parser.match(TokenType.UNTIL):
+                return self.parser.control_structures.parse_until_statement()
+            elif self.parser.match(TokenType.FOR):
+                return self.parser.control_structures.parse_for_statement()
+            elif self.parser.match(TokenType.IF):
+                return self.parser.control_structures.parse_if_statement()
+            elif self.parser.match(TokenType.CASE):
+                return self.parser.control_structures.parse_case_statement()
+            elif self.parser.match(TokenType.SELECT):
+                return self.parser.control_structures.parse_select_statement()
+            elif self.parser.match(TokenType.DOUBLE_LPAREN):
+                return self.parser.arithmetic.parse_arithmetic_command()
+            elif self.parser.match(TokenType.DOUBLE_LBRACKET):
+                return self.parser.tests.parse_enhanced_test_statement()
+            elif self.parser.match(TokenType.LPAREN):
+                self._reject_escaped_dollar_paren()
+                return self.parse_subshell_group()
+            else:  # TokenType.LBRACE (guaranteed by the match above)
+                return self.parse_brace_group()
+        finally:
+            ctx.nesting_depth -= 1
 
     def _reject_escaped_dollar_paren(self) -> None:
         """Reject `\\$(`-style constructs, matching bash's syntax error.

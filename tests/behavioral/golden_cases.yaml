@@ -1331,6 +1331,55 @@
   stderr: ""
   exit_code: 0
 
+# echo -e / printf %b escape dialects — reappraisal #17 M3.
+# (a) escapes BEFORE \c are processed; the old scanner returned the raw prefix.
+- name: echo_e_escapes_before_backslash_c
+  command: "echo -e 'a\\tb\\cd'"
+  stdout: "a\tb"
+  stderr: ""
+  exit_code: 0
+
+- name: printf_percent_b_escapes_before_backslash_c
+  command: "printf '%b' 'x\\ny\\cz'"
+  stdout: "x\ny"
+  stderr: ""
+  exit_code: 0
+
+- name: echo_e_double_backslash_c_is_literal
+  command: "echo -e 'x\\\\cy'"
+  stdout: "x\\cy\n"
+  stderr: ""
+  exit_code: 0
+
+# (b) octal dialects: %b takes the bare POSIX \ddd form; echo -e REQUIRES
+# the leading zero (\0ddd) and leaves \ddd literal.
+- name: printf_percent_b_bare_octal
+  command: "printf '%b.%b\\n' '\\41' '\\101'"
+  stdout: "!.A\n"
+  stderr: ""
+  exit_code: 0
+
+- name: echo_e_octal_requires_leading_zero
+  command: "echo -e '\\101'; echo -e '\\0101'"
+  stdout: "\\101\nA\n"
+  stderr: ""
+  exit_code: 0
+
+# \u accepts short forms (1-4 hex digits) in all three escape dialects.
+- name: escape_unicode_short_form_all_dialects
+  command: "printf '\\u41'; printf '%b' '\\u41'; echo -e '\\u41'"
+  stdout: "AAA\n"
+  stderr: ""
+  exit_code: 0
+
+# In the printf FORMAT string, \% emits '\' and the '%' then fails
+# conversion parsing ("missing format character", exit 1) — bash 5.2.
+- name: printf_format_backslash_percent
+  command: "printf '\\%'"
+  stdout: "\\"
+  stderr: "missing format character"
+  exit_code: 1
+
 # =============================================================================
 # TEST EXPRESSIONS
 # =============================================================================
@@ -1531,6 +1580,125 @@
   stdout: "hello $x\n"
   stderr: ""
   exit_code: 0
+
+# Bash accepts almost any non-blank run as a heredoc delimiter word
+# (reappraisal #17 lexer round-2: [A-Za-z0-9_$]-only truncated `E*F` to `E`,
+# so the terminator never matched and the whole heredoc vanished, rc 0).
+- name: heredoc_delimiter_glob_star
+  command: |
+    cat <<E*F
+    hello
+    E*F
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_punctuation_at_start
+  command: |
+    cat <<@X
+    hello
+    @X
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_bracket_class
+  command: |
+    cat <<AB[cd]
+    hello
+    AB[cd]
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_hash_mid_word
+  command: |
+    cat <<E#F
+    hello
+    E#F
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_braces_not_expanded
+  # brace expansion never applies to a heredoc delimiter word
+  command: |
+    cat <<E{a,b}F
+    hello
+    E{a,b}F
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_leading_dash_after_strip_operator
+  # `<<--EOF` is the <<- operator with delimiter `-EOF`
+  command: |
+    cat <<--EOF
+    hello
+    -EOF
+    echo after
+  stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+# An unterminated heredoc is delimited by end-of-file: gathered lines are the
+# body, a warning goes to stderr, and the command RUNS (bash). psh used to
+# silently drop the whole command (no output, no warning, rc 0).
+- name: heredoc_unterminated_delimited_by_eof
+  command: "cat <<EOF\nhello"
+  stdout: "hello\n"
+  stderr: "warning: here-document at line 1 delimited by end-of-file (wanted `EOF')"
+  exit_code: 0
+
+- name: heredoc_unterminated_consumer_exit_code
+  command: "grep -q zzz <<EOF\nhello"
+  stdout: ""
+  stderr: "delimited by end-of-file"
+  exit_code: 1
+
+- name: heredoc_dash_space_indented_terminator_is_body
+  # <<- strips TABS only: a space-indented "EOF" line is body, so this heredoc
+  # runs to end-of-file (with the warning) instead of vanishing silently.
+  command: "cat <<-EOF\n\thello\n  EOF\necho after"
+  stdout: "hello\n  EOF\necho after\n"
+  stderr: "delimited by end-of-file"
+  exit_code: 0
+
+# =============================================================================
+# WORD SEPARATORS (space/tab only — reappraisal #17 lexer MED-2)
+# =============================================================================
+
+- name: nbsp_is_a_word_character
+  # A copy-pasted NBSP is NOT a token separator (bash): `a<NBSP>b` is one word.
+  command: "set -- a b; echo $#"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: form_feed_is_a_word_character
+  command: "set -- a\fb; echo $#"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: vertical_tab_is_a_word_character
+  command: "set -- a\vb; echo $#"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: comment_starts_after_redirect_operator
+  # bash: `#` right after a redirect operator begins a comment, so the
+  # operator has no operand -> syntax error (exit 2). Message text differs.
+  command: "echo x >#f"
+  stdout: ""
+  stderr: null
+  exit_code: 2
 
 # =============================================================================
 # MISC EDGE CASES
@@ -4339,6 +4507,140 @@
 - name: backtick_nested_in_dquotes
   command: 'echo "`echo \`echo hi\``"'
   stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# RECURSION CEILING (reappraisal #17 Tier 2 — implicit FUNCNEST)
+# =============================================================================
+
+- name: function_recursion_depth_100
+  command: "f(){ [ $1 -le 0 ] && return 0; f $(($1-1)); }; f 100; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: function_recursion_depth_1000
+  command: "f(){ [ $1 -le 0 ] && return 0; f $(($1-1)); }; f 1000; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: infinite_recursion_implicit_funcnest
+  # bash (no FUNCNEST) segfaults here; psh reports the FUNCNEST-style
+  # diagnostic, aborts the current command list (echo skipped, like an
+  # explicit FUNCNEST=N in bash) and survives.
+  command: "g(){ g; }; g; echo after=$?"
+  stdout: ""
+  stderr: "maximum function nesting level exceeded"
+  exit_code: 1
+  psh_only: true
+
+- name: nested_brace_groups_100_deep
+  command: "{ { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { { echo OK; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }"
+  stdout: "OK\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# REAPPRAISAL #17 TIER-2 GRAB BAG (r17t2)
+# =============================================================================
+
+# (a) repeated `!` negation toggles the exit status per occurrence
+- name: double_negation_true
+  command: "! ! true; echo $?"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: double_negation_false
+  command: "! ! false; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: triple_negation_true
+  command: "! ! ! true; echo $?"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: double_negation_bare_exit_code
+  command: "! ! false"
+  stdout: ""
+  stderr: ""
+  exit_code: 1
+
+# (a) [[ ]] as a non-brace function body
+- name: function_body_enhanced_test
+  command: "f() [[ 1 == 1 ]]; f && echo t"
+  stdout: "t\n"
+  stderr: ""
+  exit_code: 0
+
+# (b) globstar ** does not descend through symlinked dirs (bash 4.3+);
+# a symlink loop (loop -> .) must terminate, with the link listed once.
+- name: globstar_symlink_no_traverse
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch a.txt sub/x.txt sub/deep/z.txt && ln -s sub symdir && ln -s . loop && shopt -s globstar && echo **'
+  stdout: "a.txt loop sub sub/deep sub/deep/z.txt sub/x.txt symdir\n"
+  stderr: ""
+  exit_code: 0
+
+- name: globstar_symlink_prefix_excluded
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch a.txt sub/x.txt sub/deep/z.txt && ln -s sub symdir && ln -s . loop && shopt -s globstar && echo **/*.txt'
+  stdout: "a.txt sub/deep/z.txt sub/x.txt\n"
+  stderr: ""
+  exit_code: 0
+
+- name: globstar_explicit_symlink_followed
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch sub/x.txt sub/deep/z.txt && ln -s sub symdir && shopt -s globstar && echo symdir/**'
+  stdout: "symdir/ symdir/deep symdir/deep/z.txt symdir/x.txt\n"
+  stderr: ""
+  exit_code: 0
+
+- name: globstar_trailing_slash_dirs_only
+  command: 'cd "$(mktemp -d)" && mkdir -p sub/deep && touch a.txt sub/x.txt && ln -s sub symdir && shopt -s globstar && echo **/'
+  stdout: "sub/ sub/deep/ symdir/\n"
+  stderr: ""
+  exit_code: 0
+
+# (c) fg-pipeline LAST-member signal death is announced (bash rule: the
+# member whose status becomes $?); stderr wording is host-libc, so pin the
+# stable "Terminated" prefix as a substring.
+- name: pipeline_last_member_sigterm_announced
+  command: "true | sh -c 'kill -TERM $$'; echo rc=$?"
+  stdout: "rc=143\n"
+  stderr: "Terminated"
+  exit_code: 0
+
+- name: pipeline_middle_member_sigterm_silent
+  command: "sh -c 'kill -TERM $$' | cat; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_pipefail_announces_determining_member
+  command: "set -o pipefail; sh -c 'kill -TERM $$' | cat; echo rc=$?"
+  stdout: "rc=143\n"
+  stderr: "Terminated"
+  exit_code: 0
+
+# (d) declare -n target validation (two distinct bash messages)
+- name: declare_nameref_invalid_target
+  command: "declare -n r=1; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "invalid variable name for name reference"
+  exit_code: 0
+
+- name: declare_nameref_empty_target
+  command: "declare -n r=; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "': not a valid identifier"
+  exit_code: 0
+
+- name: declare_nameref_array_element_target_valid
+  command: "a=(1 2); declare -n r='a[1]'; echo rc=$? v=$r"
+  stdout: "rc=0 v=2\n"
   stderr: ""
   exit_code: 0
 

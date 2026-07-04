@@ -8,14 +8,21 @@ from .base import ContextualRecognizer
 
 # Operators/metacharacters after which a '#' begins a comment (besides
 # whitespace and start-of-input). NOTE: ')' and '}' are deliberately NOT
-# in this set. This is the single comment-start definition shared by
+# in this set. '<' and '>' ARE: a redirect operator ends the previous word,
+# so a '#' straight after one starts a comment in bash — `cat <<#foo`,
+# `echo x >#f`, `cat <#f` are all syntax errors ("unexpected token
+# `newline'": the comment swallowed the operand), and bash applies the
+# same rule even inside [[ ]] (`[[ a<#b ]]` errors). A '#' that must stay
+# a word character is never preceded by a bare '<'/'>' (base-N arithmetic
+# `16#ff` follows a digit; extglob `a@(b)#c` follows ')').
+# This is the single comment-start definition shared by
 # CommentRecognizer and LiteralRecognizer: because LiteralRecognizer runs
 # at higher priority and collects any '#' this predicate rejects into the
 # current word, both recognizers must agree — a wider set here would be
 # unreachable (the literal recognizer would have consumed the '#' first)
 # and a wider set in the literal recognizer would split words like the
 # extglob pattern a@(b)#c.
-_COMMENT_PRECEDING_OPS = frozenset('|&;({')
+_COMMENT_PRECEDING_OPS = frozenset('|&;({<>')
 
 
 def is_comment_start(input_text: str, pos: int) -> bool:

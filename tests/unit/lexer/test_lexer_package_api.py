@@ -134,6 +134,29 @@ class TestDemotedImports:
         assert is_whitespace(' ') is True
         assert is_whitespace('a') is False
 
+    def test_whitespace_is_shell_blanks_plus_newline_only(self):
+        """The token-separator set is space/tab/newline — bash splits words
+        on nothing else. CR/FF/VT and Unicode space-category characters
+        (NBSP, EN SPACE, IDEOGRAPHIC SPACE) are ordinary word characters;
+        a copy-pasted `echo a b` is ONE word (reappraisal #17 MED-2)."""
+        from psh.lexer import is_whitespace
+
+        for ch in (' ', '\t', '\n'):
+            assert is_whitespace(ch) is True
+            assert is_whitespace(ch, posix_mode=True) is True
+        for ch in ('\r', '\f', '\v', ' ', ' ', '　'):
+            assert is_whitespace(ch) is False
+            assert is_whitespace(ch, posix_mode=True) is False
+
+    def test_nbsp_and_ff_are_word_characters_in_tokens(self):
+        from psh.lexer import tokenize
+        toks = tokenize('echo a b')
+        words = [t.value for t in toks if t.type.name == 'WORD']
+        assert words == ['echo', 'a b']
+        toks = tokenize('echo a\fb')
+        words = [t.value for t in toks if t.type.name == 'WORD']
+        assert words == ['echo', 'a\fb']
+
     def test_token_classes_importable(self):
         """Test that TokenPart and RichToken are still importable."""
         from psh.lexer import RichToken, TokenPart

@@ -323,11 +323,13 @@ Two distinct families — do not mix them up:
 The four last-resort guards (command dispatch, builtin execution, function
 body, buffered-statement source) delegate to one helper,
 `report_internal_defect(state, exc, *, prefix, stream)`. It classifies the
-exception: an **expected shell error** — any `PshError`, `OSError`, or
+exception: an **expected shell error** — any `PshError`, `OSError`,
 `SyntaxError` (redirection/fork failures, lexer/parse errors, arithmetic
-errors) — is reported normally (message + exit 1); anything else (a genuine
-Python-bug exception like `RuntimeError`/`AttributeError`/`TypeError`/
-`KeyError`/plain `ValueError`) is an INTERNAL DEFECT.
+errors) or `RecursionError` (runaway recursion hitting psh's implicit
+FUNCNEST; the function-call boundary usually converts it first) — is
+reported normally (message + exit 1); anything else (a genuine
+Python-bug exception like a non-recursion `RuntimeError`/`AttributeError`/
+`TypeError`/`KeyError`/plain `ValueError`) is an INTERNAL DEFECT.
 
 The `strict-errors` shell option (seeded from `PSH_STRICT_ERRORS`) makes the
 guard RE-RAISE internal defects instead of masking them as exit 1. **`conftest.py`
