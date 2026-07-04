@@ -4,6 +4,13 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.629.0 (2026-07-05) - Fix: centralize identifier-name policy + gate on posix_mode (reappraisal #18 Tier-3)
+- FIX (behavior change, posix-gated). Reappraisal #18 Tier-3, from the independent review: ~13 identifier-name-validation sites had drifted or were missing, and psh accepted non-ASCII identifiers (e.g. `é=1`) even under `set -o posix`, where bash restricts identifiers to ASCII `[A-Za-z_][A-Za-z0-9_]*`.
+- **One authoritative rule** — `lexer/unicode_support.validate_identifier(name, posix_mode)`, exposed as `is_valid_name`. Assignment, `declare`/`export`/`readonly`/`local`, nameref targets, `read`, `for` loop-var, function definitions, `mapfile`/`readarray`, and `${!indirect}` all route to it and read `set -o posix` at RUNTIME. Parse-time sites (`{fd}` recognizer, `${...}` classification) use the lenient rule and are backstopped by the gated runtime sites.
+- **posix ON restricts to ASCII, matching bash exactly** (exit code + message); **posix OFF keeps psh's lenient Unicode-name behavior — a deliberate, now-documented divergence** (new user-guide §17.3, tightened to note the default-mode report-and-continue parity; the parse-abort/exit-2 difference is posix-only). Default-mode behavior is otherwise unchanged (verifier confirmed zero ASCII regression).
+- **Latent bugs fixed** (names invalid in BOTH bash modes that main wrongly accepted): `read`/`for`/`local` now reject `9x`/`a-b` in both modes, matching bash. `mapfile`'s ASCII-only regex was the one inconsistent outlier — it now follows the single rule (lenient in default like its siblings, ASCII under posix); the maintainer-noted default-mode Unicode acceptance is subsumed by the existing documented divergence.
+- Pinned by `test_identifier_policy.py` (12 unit) + `test_identifier_policy_conformance.py` (21 conformance) + 9 golden pins (`--compare-bash`), each mutation-checked. Full conformance suite green (1,525). No unmapped "Full support" claim (documented as prose).
+
 ## 0.628.0 (2026-07-04) - Hygiene: Shell.close() + lazy signal-notifier allocation + close the env child (reappraisal #18 Tier-3)
 - ASSURANCE/HYGIENE. Reappraisal #18 Tier-3, from the independent review's Shell-fd-lifecycle finding. No user-visible behavior change.
 - Each `Shell` eagerly allocated two `SignalNotifier` self-pipes (4 fds) in `__init__`, even for the many transient/non-interactive shells (tests, the `env` builtin's child, subshell helpers); GC reclaimed them (a sawtooth) but nothing closed them explicitly, and the `env` child Shell was never closed at all.
