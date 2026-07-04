@@ -221,6 +221,30 @@ class TrapManager:
             except (OSError, ValueError):
                 pass  # uncatchable (KILL/STOP) or not in main thread
 
+    def enter_subshell_trap_environment(self) -> None:
+        """Establish subshell-environment trap semantics after a fork.
+
+        bash resets every non-ignored inherited trap to its default action
+        on entry to a subshell environment; the trap stays visible to
+        ``trap`` (listing) until the first ``trap`` modification, then is
+        dropped. Ignored ('') traps stay ignored.
+
+        For a fresh child ``Shell`` this repeats what ``ShellState.adopt``
+        already computed (idempotent). For a backgrounded compound that
+        REUSES the parent Shell object in the fork (bg brace group /
+        function), ``adopt`` never ran, so this is what stops a PARENT trap
+        from firing in the child. Uses the same errtrace/ERR exemption
+        adopt does, then re-aligns the OS dispositions.
+        """
+        live = set()
+        if self.state.options.get('errtrace'):
+            live.add('ERR')
+        self.state.inherited_traps = {
+            name for name, action in self.state.trap_handlers.items()
+            if action != '' and name not in live
+        }
+        self.sync_forked_child_dispositions()
+
     def get_handler(self, signal_spec: str) -> Optional[str]:
         """Return the LIVE trap action for a signal.
 

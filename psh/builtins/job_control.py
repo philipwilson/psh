@@ -337,6 +337,11 @@ class WaitBuiltin(Builtin):
             except (ChildProcessError, OSError):
                 break
 
+        # A bare `wait` resets the retained bg-status table: a job it reaped is
+        # NOT retained, and any status retained by a prior explicit `wait <pid>`
+        # is forgotten (bash: `wait $p; wait; wait $p` → 5, then 127).
+        shell.job_manager.clear_remembered_statuses()
+
         return 0
 
     def _wait_for_specific(self, specs: List[str], shell: 'Shell') -> int:
@@ -366,8 +371,10 @@ class WaitBuiltin(Builtin):
                     # Wait for job to complete
                     exit_status = shell.job_manager.wait_for_job(job)
 
-                # Clean up if done
+                # Clean up if done, retaining the status for a repeated wait
+                # (explicit wait paths retain; a bare `wait` does not).
                 if job.state == JobState.DONE:
+                    shell.job_manager.remember_job_statuses(job)
                     shell.job_manager.remove_job(job.job_id)
 
             else:
@@ -396,10 +403,22 @@ class WaitBuiltin(Builtin):
                                 exit_status = self._extract_exit_status(proc.status)
                                 break
 
-                    # Clean up if done
+                    # Clean up if done, retaining the status for a repeated
+                    # explicit wait (a bare `wait` clears it — see _wait_for_all).
                     if job.state == JobState.DONE:
+                        shell.job_manager.remember_job_statuses(job)
                         shell.job_manager.remove_job(job.job_id)
                 else:
+                    # A job reaped by a PRIOR explicit `wait <pid>` and removed
+                    # leaves a remembered exit status keyed by pid: a repeated
+                    # explicit `wait <pid>` returns it (bash), rather than "not
+                    # a child" / 127. (A job reaped by a bare `wait` is not
+                    # retained, and a bare `wait` clears prior retention.)
+                    remembered = shell.job_manager.get_remembered_status(pid)
+                    if remembered is not None:
+                        exit_status = remembered
+                        continue
+
                     # Try to wait for the specific PID
                     try:
                         _, status = os.waitpid(pid, os.WNOHANG)

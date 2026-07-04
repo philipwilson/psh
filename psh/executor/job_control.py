@@ -143,11 +143,24 @@ class Job:
 
 class JobManager:
     """Manages all jobs in the shell."""
+
+    # How many completed-job statuses to remember for a later `wait <pid>`.
+    # bash bounds this by CHILD_MAX; a fixed cap keeps the table from growing
+    # without bound in a long-running shell while covering realistic reuse.
+    _MAX_REMEMBERED_STATUSES = 4096
+
     def __init__(self):
         self.jobs: Dict[int, Job] = {}
         self.next_job_id = 1
         self.current_job: Optional[Job] = None
         self.previous_job: Optional[Job] = None
+        # pid -> remembered exit status of a job reaped by an EXPLICIT
+        # `wait <pid>` and already removed, so a repeated explicit
+        # `wait <pid>` returns the same status bash retains (rather than
+        # "not a child" / 127). A bare `wait` clears this table (see
+        # clear_remembered_statuses). Insertion-ordered so the oldest
+        # entries are evicted first when the cap is reached.
+        self.remembered_statuses: "Dict[int, int]" = {}
         self.shell_pgid = os.getpgrp()
         self.shell_tmodes = None
         self.shell_state = None  # Will be set by shell
@@ -199,6 +212,45 @@ class JobManager:
                 self.previous_job = None
 
             del self.jobs[job_id]
+
+    def remember_job_statuses(self, job: 'Job') -> None:
+        """Retain a completed job's per-pid exit status for a later `wait`.
+
+        bash retains a background job's status for a REPEATED explicit
+        ``wait <pid>`` — but only for a job reaped by an explicit wait, and
+        only until the next bare ``wait`` (see clear_remembered_statuses).
+        Called from the explicit-pid / %jobspec wait paths just before the
+        job is removed; a bare ``wait`` deliberately does NOT call it, so a
+        job it reaps is not retained (bash: `wait; wait $p` → 127).
+        """
+        if job.state != JobState.DONE:
+            return
+        for proc in job.processes:
+            if proc.status is not None:
+                self._remember_status(
+                    proc.pid, exit_status_from_wait_status(proc.status))
+
+    def _remember_status(self, pid: int, exit_status: int) -> None:
+        """Record a reaped pid's exit status for a later `wait <pid>`."""
+        # Refresh position (most-recent last) and evict the oldest if capped.
+        self.remembered_statuses.pop(pid, None)
+        self.remembered_statuses[pid] = exit_status
+        while len(self.remembered_statuses) > self._MAX_REMEMBERED_STATUSES:
+            oldest = next(iter(self.remembered_statuses))
+            del self.remembered_statuses[oldest]
+
+    def clear_remembered_statuses(self) -> None:
+        """Discard all retained bg statuses (a bare ``wait`` resets them).
+
+        bash: once a bare ``wait`` (wait-for-all) runs, a subsequent explicit
+        ``wait <pid>`` for a previously-retained job returns 127, not the old
+        status (`( exit 5 )& p=$!; wait $p; wait; wait $p` → 5, then 127).
+        """
+        self.remembered_statuses.clear()
+
+    def get_remembered_status(self, pid: int) -> Optional[int]:
+        """Exit status of a reaped, already-removed job's pid, or None."""
+        return self.remembered_statuses.get(pid)
 
     def get_job(self, job_id: int) -> Optional[Job]:
         """Get job by ID."""

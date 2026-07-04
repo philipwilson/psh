@@ -48,6 +48,32 @@ class SignalManager(InteractiveComponent):
         else:
             self._setup_interactive_mode_handlers()
 
+    def install_child_trap_handlers(self, *, background: bool = False) -> None:
+        """Re-arm the managed-signal trap-checking handlers in a forked child.
+
+        A forked child reset INT/TERM/HUP/QUIT to SIG_DFL
+        (apply_child_signal_policy), so a ``trap ... TERM`` set inside a
+        backgrounded compound body (subshell / brace group / function) would
+        install nothing — psh implements managed-signal traps through this
+        handler rather than a per-signal OS handler. Re-arming it makes a
+        body-set managed-signal trap fire, and lets an untrapped fatal
+        TERM/HUP still run the EXIT trap before dying (via
+        ``_terminate_from_signal``).
+
+        ``background`` marks a job-control-off async job, whose untrapped
+        SIGINT/SIGQUIT default action is IGNORE (consulted by
+        ``_handle_signal_with_trap_check``).
+        """
+        self._is_background_child = background
+        for sig in (signal.SIGINT, signal.SIGTERM,
+                    signal.SIGHUP, signal.SIGQUIT):
+            try:
+                self._signal_registry.register(
+                    sig, self._handle_signal_with_trap_check,
+                    "SignalManager:bgchild")
+            except (OSError, ValueError):
+                pass
+
     def _install_handler(self, sig: int, handler, component: str):
         """Install a handler, remembering the ORIGINAL disposition.
 
@@ -126,6 +152,14 @@ class SignalManager(InteractiveComponent):
                     self.shell.trap_manager.queue_trap(signal_name)
                     return
 
+        # No trap set. A backgrounded async job with job control OFF ignores
+        # SIGINT and SIGQUIT (POSIX: the shell ensures they are ignored in an
+        # asynchronous list) unless its body traps them — handled above.
+        if (getattr(self, '_is_background_child', False)
+                and signum in (signal.SIGINT, signal.SIGQUIT)
+                and self._in_noninteractive_shell()):
+            return
+
         # No trap set. In a non-interactive shell, match bash's default
         # disposition for the signal; a live interactive REPL keeps its own.
         if signum == signal.SIGINT:
@@ -157,9 +191,13 @@ class SignalManager(InteractiveComponent):
 
     def _handle_sigint(self, signum, frame):
         """Handle Ctrl-C (SIGINT) default behavior."""
-        if self._in_noninteractive_shell():
-            # Non-interactive: SIGINT terminates the shell — run the EXIT trap,
-            # then re-raise so the parent sees a true signal death.
+        if self._in_noninteractive_shell() or self.state.in_forked_child:
+            # Non-interactive, or a forked child (never the live REPL): an
+            # untrapped SIGINT terminates it — run the EXIT trap, then re-raise
+            # so the parent sees a true signal death. Without the forked-child
+            # arm, a backgrounded compound in an INTERACTIVE shell (which now
+            # installs the trap-checking handler) would take the REPL's
+            # print-a-newline path and wrongly survive `kill -INT`.
             self._terminate_from_signal(signum)
         else:
             # In interactive mode, just print a newline - the command loop will handle the rest
