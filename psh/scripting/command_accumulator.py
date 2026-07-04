@@ -109,6 +109,11 @@ class CommandAccumulator:
     def __init__(self, shell):
         self.shell = shell
         self.state = shell.state
+        # Absolute line number (1-based) where the buffered command starts
+        # in the enclosing input. The source processor sets it as it reads;
+        # trial-parse errors use it so a multi-line script's syntax errors
+        # report absolute line numbers, not buffer-relative ones.
+        self.start_line: int = 1
         self._lines: List[str] = []
         # Pending heredoc bodies as (delimiter, strip_tabs) pairs. While
         # non-empty, fed lines are body text checked incrementally against
@@ -248,6 +253,7 @@ class CommandAccumulator:
         parse error), and the collected bodies are populated into the AST.
         """
         self._open_constructs = []
+        line_offset = max(0, self.start_line - 1)
         if contains_heredoc(preview):
             from ..lexer import tokenize_with_heredocs
             tokens, heredoc_map = tokenize_with_heredocs(
@@ -261,14 +267,16 @@ class CommandAccumulator:
             # trial AST — which the execution path reuses — matches what the
             # execution seam produces.
             tokens = self.shell.expand_aliases(tokens)
-            parser = Parser(tokens)
+            parser = Parser(tokens, source_text=preview,
+                            line_offset=line_offset)
             self._open_constructs = parser.ctx.open_constructs
             ast = parser.parse()
             parser.utils.populate_heredoc_content(ast, heredoc_map)
         else:
             tokens = tokenize(preview, shell_options=self.state.options)
             tokens = self.shell.expand_aliases(tokens)
-            parser = Parser(tokens, source_text=preview)
+            parser = Parser(tokens, source_text=preview,
+                            line_offset=line_offset)
             self._open_constructs = parser.ctx.open_constructs
             ast = parser.parse()
         return ast, tokens

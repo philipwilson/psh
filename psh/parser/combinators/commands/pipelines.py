@@ -36,7 +36,11 @@ class PipelineMixin(_Base):
 
     # Token types that terminate a pipeline: a bare `time`/`time -p` with one
     # of these next is a complete (empty) timed pipeline — bash times nothing.
-    # Mirrors the recursive descent parser's _PIPELINE_END_TOKENS.
+    # NOTE: deliberately broader than bash's list_terminator (`;`, newline,
+    # EOF). The recursive descent parser narrowed to bash's rule and grew
+    # recursive time/! prefix interleaving (v0.607); this educational parser
+    # keeps the simpler historical shape — a documented parity gap, so forms
+    # like `! time cmd` honestly reject here rather than misparse.
     _PIPELINE_END_TYPES = frozenset({
         'SEMICOLON', 'NEWLINE', 'AMPERSAND', 'AND_AND', 'OR_OR',
         'PIPE', 'PIPE_AND', 'RPAREN', 'RBRACE',
