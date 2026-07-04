@@ -45,7 +45,8 @@ class Parser(ContextBaseParser):
 
     def __init__(self, tokens: List[Token],
                  source_text: Optional[str] = None,
-                 config: Optional[ParserConfig] = None, ctx: Optional[ParserContext] = None):
+                 config: Optional[ParserConfig] = None, ctx: Optional[ParserContext] = None,
+                 line_offset: int = 0):
         # Create or use provided context
         if ctx is not None:
             # Use provided context directly
@@ -54,11 +55,13 @@ class Parser(ContextBaseParser):
             # Configuration (create default if not provided)
             config = config or ParserConfig()
 
-            # Create context
+            # Create context. line_offset carries the number of source lines
+            # before this fragment, so error messages report absolute lines.
             ctx = create_context(
                 tokens=tokens,
                 config=config,
-                source_text=source_text
+                source_text=source_text,
+                line_offset=line_offset
             )
             super().__init__(ctx)
 

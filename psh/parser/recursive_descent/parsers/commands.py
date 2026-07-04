@@ -18,7 +18,7 @@ from ....ast_nodes import (
 )
 from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import Token, TokenType
-from ..helpers import ErrorContext, ParseError, TokenGroups
+from ..helpers import ParseError, TokenGroups
 from ..support.word_builder import WordBuilder
 from .base import ParserSubcomponent
 from .redirections import _FD_DUP_RE
@@ -57,11 +57,10 @@ class CommandParser(ParserSubcomponent):
         the CommandAccumulator's continuation hints, so nothing has to
         string-match the error message.
         """
-        error_context = ErrorContext(
-            token=token,
-            message=msg,
-            position=token.position
-        )
+        # Build through the context so the error carries line/column,
+        # the source line for the caret, and token context — the same
+        # rich rendering every other parse error gets.
+        error_context = self.parser.ctx._create_error_context(msg, token)
         error = ParseError(error_context)
         if at_eof:
             error.at_eof = True
@@ -143,6 +142,14 @@ class CommandParser(ParserSubcomponent):
                 f"syntax error near unexpected token '{self.parser.peek().value}'",
                 self.parser.peek()
             )
+
+        # A bare '}' can never START a command (bash: syntax error, rc 2,
+        # nothing runs). RBRACE stays in WORD_LIKE so `echo }` keeps working
+        # as an ARGUMENT; a real brace group's closer never reaches here —
+        # parse_brace_group's expect(RBRACE) consumes it first.
+        if self.parser.match(TokenType.RBRACE):
+            self._raise_syntax_error(
+                "syntax error near unexpected token '}'", self.parser.peek())
 
         # Ensure we have a word-like token, redirect, or fd-duplication word
         if not self.parser.match_any(TokenGroups.WORD_LIKE | TokenGroups.REDIRECTS):
@@ -340,25 +347,44 @@ class CommandParser(ParserSubcomponent):
         # within a multi-line && / || chain (see ASTNode.line).
         pipeline.line = self.parser.peek().line
 
-        # `time [-p]` prefix: times the whole following pipeline (bash). It
-        # precedes the optional `!` negation.
-        if self.parser.consume_if(TokenType.TIME):
-            pipeline.timed = True
-            # `-p` (POSIX output format), only as the immediate next word.
+        # `time [-p]` / `!` prefixes. bash's pipeline_command grammar is
+        # RECURSIVE, so the prefixes may repeat and interleave freely:
+        # `! time cmd`, `time time cmd`, `time ! time cmd`, `time -p ! cmd`.
+        # Each `!` toggles the negation sense (`! ! true` -> 0); repeated
+        # `time` still times once. Inside a prefix run the lexer may have
+        # left a later `time`/`!` as a plain WORD (its command-position
+        # tracking stops at the `-p` word) — an UNQUOTED word spelling
+        # `time`/`!` there is still the reserved word (escaped `\!` and
+        # quoted forms keep their backslash/STRING type, so they don't
+        # match).
+        saw_prefix = False
+        while True:
             tok = self.parser.peek()
-            if tok.type == TokenType.WORD and tok.value == '-p':
+            in_run = saw_prefix and tok.type == TokenType.WORD
+            if tok.type == TokenType.TIME or (in_run and tok.value == 'time'):
                 self.parser.advance()
-                pipeline.time_posix = True
-            # `time` with no following command (`time`, `time -p`) is valid:
-            # it times an empty pipeline. Detect end-of-pipeline now.
-            if self._at_pipeline_end():
-                return pipeline
+                saw_prefix = True
+                pipeline.timed = True
+                # `-p` (POSIX output format), only as the immediate next word.
+                tok = self.parser.peek()
+                if tok.type == TokenType.WORD and tok.value == '-p':
+                    self.parser.advance()
+                    pipeline.time_posix = True
+            elif tok.type == TokenType.EXCLAMATION or (in_run and tok.value == '!'):
+                self.parser.advance()
+                saw_prefix = True
+                pipeline.negated = not pipeline.negated
+            else:
+                break
 
-        # Check for leading ! (negation). bash allows the reserved word to
-        # repeat (`! ! cmd`), each occurrence toggling the sense of the exit
-        # status: `! ! true` -> 0, `! ! ! true` -> 1.
-        while self.parser.consume_if(TokenType.EXCLAMATION):
-            pipeline.negated = not pipeline.negated
+        # A prefix with no following command is valid ONLY before a list
+        # terminator — `;`, newline, or end of input (bash's grammar:
+        # `BANG list_terminator` / `timespec list_terminator`). `time`
+        # times an empty pipeline (status 0); `!` negates it (status 1).
+        # Anything else (`time &&`, `( ! )`, `{ time }`) falls through to
+        # parse a command and fails there, exactly like bash (rc 2).
+        if saw_prefix and self._at_list_terminator():
+            return pipeline
 
         # Parse first command (could be simple or compound)
         command = self.parse_pipeline_component()
@@ -376,24 +402,29 @@ class CommandParser(ParserSubcomponent):
 
         return pipeline
 
-    # Tokens that terminate a pipeline: a bare `time`/`time -p` with one of
-    # these next is a complete (empty) timed pipeline (bash times nothing).
-    _PIPELINE_END_TOKENS = frozenset({
-        TokenType.SEMICOLON, TokenType.NEWLINE, TokenType.AMPERSAND,
-        TokenType.AND_AND, TokenType.OR_OR, TokenType.PIPE, TokenType.PIPE_AND,
-        TokenType.RPAREN, TokenType.RBRACE,
-        TokenType.DOUBLE_SEMICOLON, TokenType.SEMICOLON_AMP, TokenType.AMP_SEMICOLON,
-        TokenType.THEN, TokenType.DO, TokenType.DONE, TokenType.FI,
-        TokenType.ELSE, TokenType.ELIF, TokenType.ESAC, TokenType.EOF,
+    # bash's list_terminator: the ONLY tokens after which a bare `time`/`!`
+    # prefix forms a complete (empty) pipeline. Deliberately narrow — bash
+    # REJECTS `time &&`, `time |`, `( ! )`, `{ time }`, `time ;;` (rc 2).
+    _LIST_TERMINATORS = frozenset({
+        TokenType.SEMICOLON, TokenType.NEWLINE, TokenType.EOF,
     })
 
-    def _at_pipeline_end(self) -> bool:
-        """True if the current token terminates the pipeline (so `time` alone
-        is a complete, empty timed pipeline)."""
-        return self.parser.at_end() or self.parser.peek().type in self._PIPELINE_END_TOKENS
+    def _at_list_terminator(self) -> bool:
+        """True if the current token is a list terminator (`;`, newline, or
+        end of input), so a bare `time`/`!` prefix is a complete pipeline."""
+        return self.parser.peek().type in self._LIST_TERMINATORS
 
     def parse_pipeline_component(self) -> Command:
         """Parse a single component of a pipeline (simple or compound command)."""
+        # `time` is a reserved word only at the START of a pipeline — the
+        # prefix loop in parse_pipeline consumed any leading TIME tokens, so
+        # one reaching here follows a `|`. bash runs the EXTERNAL time there
+        # (`echo a | time cat` -> /usr/bin/time); demote it to a plain word.
+        if self.parser.match(TokenType.TIME):
+            tok = self.parser.peek()
+            tok.type = TokenType.WORD
+            tok.is_keyword = False
+
         # Try parsing as control structure first
         if self.parser.match(TokenType.WHILE):
             return self.parser.control_structures.parse_while_statement()

@@ -103,6 +103,13 @@ class PipelineExecutor:
     def _execute_pipeline(self, node: 'Pipeline', context: 'ExecutionContext',
                          visitor: 'ExecutorVisitor') -> int:
         """Execute pipeline without NOT handling."""
+        if not node.commands:
+            # An empty pipeline (a bare `!` / `time` prefix before a list
+            # terminator) succeeds; execute() then applies any negation
+            # (bash: `!` alone -> 1, `! !` -> 0).
+            self.state.pipestatus = [0]
+            return 0
+
         if len(node.commands) == 1:
             # Single command, no pipeline needed
             status = visitor.visit(node.commands[0])

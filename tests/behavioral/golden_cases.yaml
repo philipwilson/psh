@@ -4341,3 +4341,142 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# REAPPRAISAL #17 TIER 2 — RD-PARSER cluster
+# (bare `}` at command position, recursive time/! prefixes, function-name
+# validation, unified diagnostics). Pinned against bash 5.2.
+# =============================================================================
+
+# A bare `}` can never START a command: syntax error, rc 2, NOTHING runs.
+- name: r17p_rbrace_command_position_rejected
+  command: 'echo A; }; echo B'
+  stdout: ""
+  stderr: "syntax error near unexpected token '}'"
+  exit_code: 2
+
+- name: r17p_rbrace_first_word_rejected
+  command: '} echo x'
+  stdout: ""
+  stderr: "syntax error near unexpected token '}'"
+  exit_code: 2
+
+- name: r17p_rbrace_still_ok_as_argument
+  command: 'echo a } b'
+  stdout: "a } b\n"
+  stderr: ""
+  exit_code: 0
+
+# bash's pipeline_command grammar is recursive: time/! interleave freely.
+- name: r17p_bang_time_true
+  command: '! time true; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: null
+  exit_code: 0
+
+- name: r17p_bang_time_false
+  command: '! time false; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: null
+  exit_code: 0
+
+- name: r17p_nested_time
+  command: 'time time false; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: null
+  exit_code: 0
+
+- name: r17p_time_p_then_bang
+  command: 'time -p ! false; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: null
+  exit_code: 0
+
+# A bare prefix before a list terminator is an EMPTY pipeline (`!` -> 1).
+- name: r17p_bang_alone
+  command: '! ; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r17p_double_bang_alone
+  command: '! ! ; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r17p_time_bang_alone
+  command: 'time !; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: null
+  exit_code: 0
+
+# ... and before anything ELSE it is a syntax error (bash rejects).
+- name: r17p_time_before_andand_rejected
+  command: 'time && echo x'
+  stdout: ""
+  stderr: "Expected command"
+  exit_code: 2
+
+- name: r17p_subshell_bare_bang_rejected
+  command: '( ! )'
+  stdout: ""
+  stderr: "Expected command"
+  exit_code: 2
+
+- name: r17p_brace_time_no_semi_rejected
+  command: '{ time }'
+  stdout: ""
+  stderr: "syntax error near unexpected token '}'"
+  exit_code: 2
+
+# Function names: an ASSIGNMENT word followed by () is a syntax error...
+- name: r17p_assignment_word_paren_rejected
+  command: 'a=b() { :; }'
+  stdout: ""
+  stderr: "syntax error near unexpected token '('"
+  exit_code: 2
+
+- name: r17p_subscript_assignment_paren_rejected
+  command: 'a[0]=b() { :; }'
+  stdout: ""
+  stderr: "syntax error near unexpected token '('"
+  exit_code: 2
+
+# ...while non-assignment words containing +/=/digits/brackets are legal.
+- name: r17p_plus_function_name
+  command: 'foo+bar() { echo FB; }; foo+bar'
+  stdout: "FB\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r17p_digit_eq_function_name
+  command: '2=b() { echo TWO; }; 2=b'
+  stdout: "TWO\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r17p_bracket_function_name
+  command: '[foo]() { echo BF; }; [foo]'
+  stdout: "BF\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r17p_function_keyword_plus_name
+  command: 'function foo+bar { echo FKP; }; foo+bar'
+  stdout: "FKP\n"
+  stderr: ""
+  exit_code: 0
+
+# Diagnostics: friendly token names + absolute line numbers.
+- name: r17p_friendly_expected_then
+  command: 'if true then echo x fi'
+  stdout: ""
+  stderr: "Expected 'then', got end of input"
+  exit_code: 2
+
+- name: r17p_absolute_error_line
+  command: "echo one\necho two\necho )"
+  stdout: "one\ntwo\n"
+  stderr: "-c:3:"
+  exit_code: 2

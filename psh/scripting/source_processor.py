@@ -121,6 +121,9 @@ class SourceProcessor(ScriptComponent):
                 # for $LINENO. base_line is 1 for normal sources (no shift);
                 # for eval / trap actions it is the invoking command's line.
                 command_start_line = base_line + input_source.get_line_number() - 1
+                # Tell the accumulator where this command starts so its
+                # trial-parse errors carry absolute line numbers.
+                accumulator.start_line = max(1, command_start_line)
 
             result = accumulator.feed(line)
             if isinstance(result, NeedMore):
@@ -129,8 +132,8 @@ class SourceProcessor(ScriptComponent):
             if result.error is not None:
                 # A real syntax error (not incomplete input): report it
                 # against where the command started and reset.
-                filename = input_source.get_name() if hasattr(input_source, 'get_name') else 'stdin'
-                print(f"{filename}:{command_start_line}: {result.error}", file=sys.stderr)
+                self._report_syntax_error(result.error, input_source,
+                                          command_start_line)
                 command_start_line = 0
                 exit_code = 2  # Bash uses exit code 2 for syntax errors
                 self.state.last_exit_code = 2
@@ -146,6 +149,31 @@ class SourceProcessor(ScriptComponent):
                 return exit_code
 
         return exit_code
+
+    def _report_syntax_error(self, error, input_source, start_line: int) -> None:
+        """Print a syntax error in the ONE canonical format.
+
+        Every parse/lex error — whether reported from the accumulator's
+        trial parse or from the execution path's own parse — renders as::
+
+            psh: <source>:<line>: <detailed message>
+
+        For a ParseError the detailed message is the rich caret form
+        (source line, ``^`` marker, suggestions, token context) and the
+        prefix uses the ERROR's absolute line when known (bash reports the
+        line the error is on, not the line the command started on);
+        lexer SyntaxErrors fall back to the command's start line.
+        """
+        filename = (input_source.get_name()
+                    if hasattr(input_source, 'get_name') else 'stdin')
+        line = start_line
+        detail = str(error)
+        if isinstance(error, ParseError) and error.error_context:
+            if error.error_context.line:
+                line = error.error_context.line
+            detail = error.error_context.format_error()
+        location = f"{filename}:{line}" if line > 0 else "command"
+        print(f"psh: {location}: {detail}", file=sys.stderr)
 
     def _should_exit_on_error(self, exit_code: int, input_source) -> bool:
         """Whether errexit (`set -e`) aborts the whole source now.
@@ -258,6 +286,7 @@ class SourceProcessor(ScriptComponent):
                     tokens,
                     active_parser=self.shell.active_parser,
                     source_text=command_string,
+                    line_offset=max(0, start_line - 1),
                 )
                 ast = parser.parse()
 
@@ -332,14 +361,8 @@ class SourceProcessor(ScriptComponent):
                 self.state.last_exit_code = e.exit_code
                 return e.exit_code
         except ParseError as e:
-            # Check if error already has context, otherwise add location
-            if e.error_context and e.error_context.source_line:
-                # Error already has full context, just print it
-                print(f"psh: {str(e)}", file=sys.stderr)
-            else:
-                # Add location prefix to error
-                location = f"{input_source.get_name()}:{start_line}" if start_line > 0 else "command"
-                print(f"psh: {location}: {e.message}", file=sys.stderr)
+            # Same canonical rendering as the trial-parse error path.
+            self._report_syntax_error(e, input_source, start_line)
             self.state.last_exit_code = 2  # Bash uses exit code 2 for syntax errors
             return 2
         except UnclosedQuoteError as e:

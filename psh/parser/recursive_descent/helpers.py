@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import FrozenSet, List, Optional
+from typing import Dict, FrozenSet, List, Optional
 
 from ...core.exceptions import PshError
 from ...lexer.token_types import Token, TokenType
@@ -14,6 +14,59 @@ class ErrorSeverity(Enum):
     WARNING = "warning"
     ERROR = "error"
     FATAL = "fatal"
+
+
+# Human-readable spellings for token types in parse-error messages.
+# This is the ONE map every error path shares: the default expect()
+# message, ErrorContext's token descriptions, and the suggestion logic
+# all key off token types rendered through here, so a raw enum repr
+# ("TokenType.THEN") can never leak into a user-facing diagnostic.
+TOKEN_DISPLAY_NAMES: Dict[TokenType, str] = {
+    TokenType.EOF: "end of input",
+    TokenType.NEWLINE: "newline",
+    # Reserved words
+    TokenType.IF: "'if'", TokenType.THEN: "'then'", TokenType.ELSE: "'else'",
+    TokenType.ELIF: "'elif'", TokenType.FI: "'fi'",
+    TokenType.WHILE: "'while'", TokenType.UNTIL: "'until'",
+    TokenType.DO: "'do'", TokenType.DONE: "'done'",
+    TokenType.FOR: "'for'", TokenType.IN: "'in'",
+    TokenType.CASE: "'case'", TokenType.ESAC: "'esac'",
+    TokenType.SELECT: "'select'", TokenType.FUNCTION: "'function'",
+    TokenType.TIME: "'time'",
+    # Grouping / operators
+    TokenType.LPAREN: "'('", TokenType.RPAREN: "')'",
+    TokenType.LBRACE: "'{'", TokenType.RBRACE: "'}'",
+    TokenType.LBRACKET: "'['", TokenType.RBRACKET: "']'",
+    TokenType.DOUBLE_LPAREN: "'(('", TokenType.DOUBLE_RPAREN: "'))'",
+    TokenType.DOUBLE_LBRACKET: "'[['", TokenType.DOUBLE_RBRACKET: "']]'",
+    TokenType.SEMICOLON: "';'", TokenType.DOUBLE_SEMICOLON: "';;'",
+    TokenType.SEMICOLON_AMP: "';&'", TokenType.AMP_SEMICOLON: "';;&'",
+    TokenType.AMPERSAND: "'&'", TokenType.PIPE: "'|'",
+    TokenType.PIPE_AND: "'|&'", TokenType.AND_AND: "'&&'",
+    TokenType.OR_OR: "'||'", TokenType.EXCLAMATION: "'!'",
+    # Word-ish
+    TokenType.WORD: "word", TokenType.STRING: "string",
+}
+
+
+def token_display_name(token_type: TokenType) -> str:
+    """Friendly display name for a token type ("'then'", "end of input")."""
+    return TOKEN_DISPLAY_NAMES.get(token_type, token_type.name.lower())
+
+
+def describe_token(token: Token) -> str:
+    """Human-readable description of a concrete token for error messages.
+
+    Prefers the token's actual text (quoted); valueless tokens (EOF,
+    NEWLINE) fall back to the friendly type name.
+    """
+    if token.type == TokenType.EOF:
+        return "end of input"
+    if token.type == TokenType.NEWLINE:
+        return "newline"
+    if token.value:
+        return f"'{token.value}'"
+    return token_display_name(token.type)
 
 
 class TokenGroups:
@@ -139,14 +192,7 @@ class ErrorContext:
 
     def _token_description(self, token: Token) -> str:
         """Get human-readable token description."""
-        if token.type == TokenType.EOF:
-            return "end of input"
-        elif token.type == TokenType.NEWLINE:
-            return "newline"
-        elif token.value:
-            return f"'{token.value}'"
-        else:
-            return token.type.name.lower()
+        return describe_token(token)
 
 
 class ParseError(PshError):
