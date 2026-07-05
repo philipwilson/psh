@@ -99,9 +99,10 @@ class TestParser(ParserSubcomponent):
         """Parse primary test expression."""
         self.parser.skip_newlines()
 
-        # Empty test
-        if self.parser.match(TokenType.DOUBLE_RBRACKET):
-            return UnaryTestExpression('-n', Word(parts=[]))
+        # No empty-operand fallback: bash rejects a missing operand as a syntax
+        # error (`[[ ]]`, `[[ ! ]]`, `[[ x || ]]` all error, not silently pass).
+        # A `]]` (or any non-operand) reaching here falls through to
+        # `_parse_test_operand`, which raises "Expected test operand" (rc 2).
 
         # Parenthesized expression
         if self.parser.match(TokenType.LPAREN):

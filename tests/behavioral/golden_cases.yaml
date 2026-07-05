@@ -5834,4 +5834,155 @@
   command: "source /bin/ls; echo rc=$?"
   stdout: "rc=126\n"
   stderr: "cannot execute binary file"
+# CASE-TOGGLE OPERATORS + LENGTH-SAFE CASE MAPPING (reappraisal #18, T2-D)
+# =============================================================================
+
+- name: r18t2_expansion_toggle_first_lower
+  command: 'x=hello; echo "${x~}"'
+  stdout: "Hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_toggle_first_upper
+  command: 'x=HELLO; echo "${x~}"'
+  stdout: "hELLO\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_toggle_all_mixed
+  command: 'x=HeLLo123; echo "${x~~}"'
+  stdout: "hEllO123\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_toggle_all_pattern_range
+  command: 'x=abcABC; echo "${x~~[a-c]}"'
+  stdout: "ABCABC\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_toggle_first_pattern_nomatch
+  command: 'x=hello; echo "${x~l}"'
+  stdout: "hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_toggle_array_all
+  command: 'a=(foo BAR bAz); echo "${a[@]~~}"'
+  stdout: "FOO bar BaZ\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_upper_length_safe_sharp_s
+  command: 'x=straße; echo "${x^^}"'
+  stdout: "STRAßE\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_upper_length_safe_ligature
+  command: 'x=ﬀ; echo "${x^^}"'
+  stdout: "ﬀ\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_declare_upper_length_safe
+  command: 'declare -u x=straße; echo "$x"'
+  stdout: "STRAßE\n"
+# R18 Tier-2 T2-C — lexer/parser narrow fixes
+# =============================================================================
+
+# M-cc1: a case pattern that starts with a POSIX character class on its own
+# line no longer mis-lexes the leading `[[` as the `[[` conditional operator.
+- name: r18t2_lexparse_case_charclass_alpha_ownline
+  command: "c=x; case $c in\n[[:alpha:]]) echo letter ;;\n*) echo other ;;\nesac"
+  stdout: "letter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_case_charclass_digit_ownline
+  command: "c=5; case $c in\n[[:digit:]]) echo digit ;;\n*) echo other ;;\nesac"
+  stdout: "digit\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_case_charclass_negated_space_ownline
+  command: "c=x; case $c in\n[![:space:]]) echo nonspace ;;\n*) echo space ;;\nesac"
+  stdout: "nonspace\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_case_charclass_nested_ownline
+  command: "c=a; case $c in\n[[:alpha:][:digit:]]) echo alnum ;;\n*) echo other ;;\nesac"
+  stdout: "alnum\n"
+  stderr: ""
+  exit_code: 0
+
+# M-p1: empty / dangling-operand [[ ]] tests are syntax errors, not rc0/rc1.
+- name: r18t2_lexparse_dbracket_empty
+  command: "[[ ]]"
+  stdout: ""
+  stderr: "Expected test operand"
+  exit_code: 2
+
+- name: r18t2_lexparse_dbracket_empty_negated
+  command: "[[ ! ]]"
+  stdout: ""
+  stderr: "Expected test operand"
+  exit_code: 2
+
+- name: r18t2_lexparse_dbracket_dangling_or
+  command: "[[ x || ]]"
+  stdout: ""
+  stderr: "Expected test operand"
+  exit_code: 2
+
+- name: r18t2_lexparse_dbracket_dangling_and
+  command: "[[ x && ]]"
+  stdout: ""
+  stderr: "Expected test operand"
+  exit_code: 2
+
+# M-p2: `function NAME` accepts any compound command as its body, not just { }.
+- name: r18t2_lexparse_function_for_body
+  command: "function f for i in 1 2; do echo $i; done\nf"
+  stdout: "1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_function_if_body
+  command: "function f if true; then echo hi; fi\nf"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_function_case_body
+  command: "function f case x in x) echo matched ;; esac\nf"
+  stdout: "matched\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_function_subshell_body
+  command: "function f ( echo subshell )\nf"
+  stdout: "subshell\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_function_empty_parens_brace_body
+  command: "function f ( ) { echo hi; }\nf"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# T1-5 leftover: a nested bare `((` inside a C-style for header no longer fuses
+# the following `do` body into a single WORD.
+- name: r18t2_lexparse_cfor_nested_paren_semi_do
+  command: "for ((i=0; i<((5)-1); i++)); do echo x; done"
+  stdout: "x\nx\nx\nx\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_cfor_nested_paren_newline_do
+  command: "for ((i=0; i<((5)-1); i++))\ndo echo y\ndone"
+  stdout: "y\ny\ny\ny\n"
+  stderr: ""
   exit_code: 0
