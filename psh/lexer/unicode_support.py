@@ -105,6 +105,73 @@ def normalize_identifier(name: str, posix_mode: bool = False, case_sensitive: bo
     return name
 
 
+# --- Case mapping for ${x^^}/${x,,}/${x~~} and declare -u/-l ---------------
+#
+# bash's case-modification uses the C library's towupper/towlower, which map
+# one codepoint to exactly one codepoint. Python's str.upper()/str.lower()
+# apply the *full* Unicode mappings, which can GROW the string (ß -> "SS",
+# the ﬀ ligature -> "FF", İ -> "i̇"). That length change is wrong for shells:
+# `x=straße; echo ${x^^}` is STRAßE in bash, not STRASSE.
+#
+# We reproduce the 1:1 (Unicode "simple") mapping instead: a codepoint is
+# case-mapped only when its Unicode mapping is itself a single codepoint;
+# otherwise it is left unchanged. This is length-safe by construction and is
+# what glibc/newer-libc bash produces. Two rare/exotic divergences remain, in
+# OPPOSITE directions:
+#
+#   (a) We map, macOS bash doesn't (Linux bash does): recent/rare codepoints
+#       whose single-codepoint mapping postdates macOS's frozen libc case
+#       tables — titlecase digraphs ǅǈǋǲ, Roman numerals, circled letters. We
+#       follow Unicode/Linux; case-mapping is host-libc-dependent regardless.
+#
+#   (b) We don't map, but bash maps on ALL platforms: the 27 polytonic-Greek
+#       iota-subscript codepoints U+1F80..U+1FF3 (e.g. `${x^^}` on ᾳ is ᾼ,
+#       U+1FBC, in bash everywhere). Their Python full-upper is TWO codepoints
+#       (ᾳ -> "ΑΙ"), so the length guard rejects it and we leave them
+#       unchanged. This is an all-platform psh limitation driven by length
+#       safety, not a macOS artifact — a faithful fix needs the Unicode SIMPLE
+#       (single-codepoint) uppercase tables, which Python does not expose.
+#       Still strictly better than the old full-mapping, which grew the string.
+
+
+def _simple_upper_char(char: str) -> str:
+    upper = char.upper()
+    return upper if len(upper) == 1 else char
+
+
+def _simple_lower_char(char: str) -> str:
+    lower = char.lower()
+    if len(lower) == 1:
+        return lower
+    # U+0130 (İ, dotted capital I) is the ONLY codepoint in all of Unicode
+    # whose full lowercase spans two codepoints ('i' + combining dot); its
+    # simple (single-codepoint) lowercase is plain 'i', which is what bash
+    # produces. No general table is needed — every other codepoint already
+    # lowercases to a single codepoint above.
+    return 'i' if char == 'İ' else char
+
+
+def simple_upper(text: str) -> str:
+    """Uppercase like bash: each codepoint maps to at most one codepoint."""
+    return ''.join(_simple_upper_char(c) for c in text)
+
+
+def simple_lower(text: str) -> str:
+    """Lowercase like bash: each codepoint maps to at most one codepoint."""
+    return ''.join(_simple_lower_char(c) for c in text)
+
+
+def toggle_case(text: str) -> str:
+    """Toggle case per codepoint like bash's ${x~~}.
+
+    bash tests each codepoint with iswupper(): an uppercase codepoint is
+    lowercased, everything else is uppercased — both via the length-safe
+    (single-codepoint) mappings above.
+    """
+    return ''.join(_simple_lower_char(c) if c.isupper() else _simple_upper_char(c)
+                   for c in text)
+
+
 def validate_identifier(name: str, posix_mode: bool = False) -> bool:
     """
     Validate that a string is a valid identifier.

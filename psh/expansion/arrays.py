@@ -135,16 +135,23 @@ class ArrayOpsMixin(_Base):
                 return ''
             return result
         elif var and var.value:
-            expanded_index = self.expand_array_index(index_expr)
-            try:
-                index = int(expanded_index)
-                if index == 0:
-                    return str(var.value)
-            except ValueError:
-                return ''
+            # Scalar: the subscript is ARITHMETIC (bash), so index 0 addresses
+            # the value and any other index is unset. Evaluate — and thereby
+            # VALIDATE — it: ${x[1-1]} is $x (index 0), while ${x[1//]} is a
+            # fatal subscript error that discards the line, not a silent empty.
+            idx = self._eval_array_index(index_expr)
+            if idx == 0:
+                return str(var.value)
             self._check_nounset_element(array_name, index_expr, check_nounset)
             return ''
-        # No such array variable at all (unset / tombstone).
+        # No such array variable at all (unset / tombstone). bash still
+        # arithmetic-evaluates the subscript here (an undeclared name is
+        # treated as indexed): a bad subscript (${a[1//]}, ${a[08]}) is a
+        # fatal expansion error that discards the line, not a silent empty.
+        # (${#name[sub]} on an unset name is the one exception — 0 without
+        # evaluating the subscript — and is short-circuited earlier in
+        # _expand_array_parameter.)
+        self._eval_array_index(index_expr)
         self._check_nounset_element(array_name, index_expr, check_nounset)
         return ''
 

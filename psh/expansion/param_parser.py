@@ -48,9 +48,10 @@ Operators found by the scan (parameter is everything before the operator):
     remove       ``${v#p}`` ``${v##p}`` ``${v%p}`` ``${v%%p}``
     substitute   ``${v/p/r}`` ``${v//p/r}`` ``${v/#p/r}`` ``${v/%p/r}``
                  (operand is the raw 'pattern/replacement' text)
-    case-mod     ``${v^}`` ``${v^^}`` ``${v,}`` ``${v,,}`` with optional
-                 pattern: ``${v,,pattern}`` (an absent pattern yields
-                 word '' — the evaluator defaults it to '?')
+    case-mod     ``${v^}`` ``${v^^}`` (upper) ``${v,}`` ``${v,,}`` (lower)
+                 ``${v~}`` ``${v~~}`` (toggle) with optional pattern:
+                 ``${v,,pattern}`` (an absent pattern yields word '' — the
+                 evaluator defaults it to '?')
     transform    ``${v@Q}`` — '@' + one of QEPAUuLakK in final position
                  (final position distinguishes it from a literal '@')
 
@@ -94,10 +95,11 @@ TRANSFORM_LETTERS = 'QEPAUuLakK'
 
 # Two-character operators, tried before any one-character operator at the
 # same position. '/#', '/%', '//' are handled by the '/' lookahead below.
-_TWO_CHAR_OPS = (':-', ':=', ':?', ':+', '##', '%%', '^^', ',,')
+_TWO_CHAR_OPS = (':-', ':=', ':?', ':+', '##', '%%', '^^', ',,', '~~')
 
-# One-character operators.
-_ONE_CHAR_OPS = '#%:-=+?^,'
+# One-character operators. '~' is the case-toggle case-mod (sibling of the
+# ^ upper and , lower one-char ops; the doubled '~~' is in _TWO_CHAR_OPS).
+_ONE_CHAR_OPS = '#%:-=+?^,~'
 
 _SPECIAL_PARAM_CHARS = '@*#?$!-'
 

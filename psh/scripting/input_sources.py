@@ -126,18 +126,25 @@ class FileInput(InputSource):
 class StringInput(InputSource):
     """Input source for reading commands from a string."""
 
-    def __init__(self, command: str, name: str = "<command>"):
+    def __init__(self, command: str, name: str = "<command>",
+                 split_lines: Optional[bool] = None):
         # Do NOT pre-join line continuations here: the command accumulator
         # joins them while gathering a logical command, and pre-joining shifted
         # $LINENO down by the count of preceding continuations (each joined-away
         # newline lost a physical line number).
-        if name == "<command>":
-            # run_command(): the whole (possibly multi-line) string is one
-            # logical unit fed to the accumulator in a single chunk.
+        #
+        # ``split_lines`` selects the read granularity; when None it defaults
+        # from the source name. Line-by-line reading (True) lets the buffered
+        # boundary CONTAIN a discard-line error (a word-arithmetic failure,
+        # readonly-in-$(( )) ...) to just the offending line and resume at the
+        # next — which is why ``-c``/stdin/script and line-oriented ``eval``
+        # use it. Single-chunk reading (False) feeds the whole string as one
+        # logical unit (the historical run_command default).
+        if split_lines is None:
+            split_lines = (name != "<command>")
+        if not split_lines:
             self.lines = [command] if command else []
         else:
-            # Script / -c / stdin: split into PHYSICAL lines for line-by-line
-            # processing (also lets shopt settings affect later-line lexing).
             self.lines = command.split('\n')
 
         self.current = 0

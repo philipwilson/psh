@@ -596,7 +596,7 @@ class CommandExecutor:
         lives in one place in core rather than being reimplemented here.
         """
         from ..core import OptionHandler
-        OptionHandler.print_xtrace(self.state, [cmd_name] + args)
+        OptionHandler.print_xtrace(self.shell, [cmd_name] + args)
 
     def _execute_with_strategy(self, cmd_name: str, args: List[str],
                               node: 'SimpleCommand', context: 'ExecutionContext',

@@ -375,3 +375,49 @@ class TestNavigationEdgeCases:
         # Clean up
         shell.run_command('cd ..')
         os.rmdir(dirname)
+
+
+class TestCdEmptyOperand:
+    """`cd ""` — R18 T2-E (M-b3). Pinned against bash 5.2.
+
+    An empty operand not resolved via CDPATH is a no-op success (bash stays in
+    the current directory); psh used to error on chdir(""). CDPATH is still
+    searched first, so `CDPATH=<dir> cd ""` still changes directory.
+    """
+
+    def test_cd_empty_is_noop_success(self, shell):
+        original = os.getcwd()
+        result = shell.run_command('cd ""')
+        assert result == 0
+        assert os.getcwd() == original
+        assert shell.state.get_variable('PWD') == original
+
+    def test_cd_empty_no_error_output(self, shell, capsys):
+        shell.run_command('cd ""')
+        captured = capsys.readouterr()
+        assert captured.out == ''
+        assert captured.err == ''
+
+    def test_cd_empty_still_searches_cdpath(self, shell, capsys):
+        # The verifier-flagged regression guard: `cd ""` must still honor
+        # CDPATH (bash changes to the CDPATH entry) rather than short-circuit.
+        original = os.getcwd()
+        os.makedirs('cdp_target', exist_ok=True)
+        target = os.path.join(original, 'cdp_target')
+        try:
+            shell.run_command(f'CDPATH={target}')
+            result = shell.run_command('cd ""')
+            assert result == 0
+            assert os.path.realpath(os.getcwd()) == os.path.realpath(target)
+        finally:
+            capsys.readouterr()
+            os.chdir(original)
+            os.rmdir(target)
+
+    def test_cd_empty_with_extra_operand_still_errors(self, shell, capsys):
+        original = os.getcwd()
+        result = shell.run_command('cd "" x')
+        assert result == 1
+        assert os.getcwd() == original
+        captured = capsys.readouterr()
+        assert 'too many arguments' in captured.err

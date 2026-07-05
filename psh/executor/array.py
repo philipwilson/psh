@@ -429,10 +429,14 @@ class ArrayOperationExecutor:
             value = current + expanded_value
         else:
             value = expanded_value
+        # Length-safe (single-codepoint) mapping like bash — see
+        # unicode_support (str.upper()/str.lower() would grow ß -> "SS").
         if is_upper:
-            return value.upper()
+            from ..lexer.unicode_support import simple_upper
+            return simple_upper(value)
         if is_lower:
-            return value.lower()
+            from ..lexer.unicode_support import simple_lower
+            return simple_lower(value)
         return value
 
     # Helper methods
