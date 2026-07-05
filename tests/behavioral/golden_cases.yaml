@@ -5799,3 +5799,29 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# R18 T2-F INTERACTIVE CLUSTER
+# =============================================================================
+# The monitor ('m') flag is on only for a genuinely interactive shell with
+# job control; a non-interactive `-c` shell leaves it off, matching bash.
+# (The interactive on-case is covered by the PTY suite — not expressible as a
+# non-interactive golden case.)
+
+- name: r18t2_interactive_dollar_dash_c_no_monitor
+  command: "echo $-"
+  stdout: "hBc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_interactive_set_o_monitor_enables_m
+  command: "set -o monitor; case $- in *m*) echo has_m;; *) echo no_m;; esac"
+  stdout: "has_m\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_interactive_set_plus_o_monitor_clears_m
+  command: "set -o monitor; set +o monitor; case $- in *m*) echo has_m;; *) echo no_m;; esac"
+  stdout: "no_m\n"
+  stderr: ""
+  exit_code: 0

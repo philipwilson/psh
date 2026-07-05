@@ -13,9 +13,14 @@ moved in v0.276). The `jobs` BUILTIN's listing is command output and
 stays on stdout — these tests cover only asynchronous notifications.
 """
 
+import signal
 from io import StringIO
 
-from psh.executor.job_control import JobManager, JobState
+from psh.executor.job_control import (
+    JobManager,
+    JobState,
+    background_completion_label,
+)
 
 
 class _FakeState:
@@ -88,6 +93,102 @@ class TestNotificationStream:
 
         assert state.stderr.getvalue() == ""
         assert state.stdout.getvalue() == ""
+
+
+def _exited_status(code):
+    """Raw waitpid status for a normal exit with the given code."""
+    return (code & 0xFF) << 8
+
+
+def _signaled_status(sig, core=False):
+    """Raw waitpid status for death by signal `sig` (optionally with core)."""
+    return (sig & 0x7F) | (0x80 if core else 0)
+
+
+class TestBackgroundCompletionLabel:
+    """The bash state label for a completed bg job (R18 M-i3).
+
+    Unlike the FOREGROUND diagnostic (abnormal_termination_message), the
+    background notice announces SIGINT but stays silent for SIGPIPE, and it
+    splits a normal exit into Done (0) / Exit N. Signal text is libc's
+    strsignal (platform-specific — 'Terminated: 15' on macOS, 'Terminated'
+    on Linux), so assert against signal.strsignal, not a hard-coded string.
+    Pinned to bash 5.2 (tmp/probes-r18t2-interactive/probe_mi3_*).
+    """
+
+    def test_exit_zero_is_done(self):
+        assert background_completion_label(_exited_status(0)) == "Done"
+
+    def test_none_status_is_done(self):
+        # A never-reaped process is treated as a clean Done.
+        assert background_completion_label(None) == "Done"
+
+    def test_nonzero_exit_is_exit_n(self):
+        assert background_completion_label(_exited_status(3)) == "Exit 3"
+        assert background_completion_label(_exited_status(130)) == "Exit 130"
+
+    def test_sigterm_uses_strsignal(self):
+        assert (background_completion_label(_signaled_status(signal.SIGTERM))
+                == signal.strsignal(signal.SIGTERM))
+
+    def test_sigkill_uses_strsignal(self):
+        assert (background_completion_label(_signaled_status(signal.SIGKILL))
+                == signal.strsignal(signal.SIGKILL))
+
+    def test_sigint_is_announced_for_background(self):
+        # The foreground diagnostic suppresses SIGINT; the bg notice does NOT.
+        assert (background_completion_label(_signaled_status(signal.SIGINT))
+                == signal.strsignal(signal.SIGINT))
+
+    def test_sigpipe_is_silent(self):
+        # bash prints no notice for a SIGPIPE'd bg job.
+        assert background_completion_label(_signaled_status(signal.SIGPIPE)) is None
+
+    def test_core_dumped_suffix(self):
+        label = background_completion_label(
+            _signaled_status(signal.SIGQUIT, core=True))
+        assert label == signal.strsignal(signal.SIGQUIT) + " (core dumped)"
+
+
+class TestCompletionNoticeStates:
+    """notify_completed_jobs renders the bash-accurate state word, not
+    always 'Done' (R18 M-i3)."""
+
+    def _finished_job(self, jm, status, command="sleep 30"):
+        job = _add_background_job(jm, command=command)
+        job.processes[0].status = status
+        job.processes[0].completed = True
+        job.update_state()
+        assert job.state == JobState.DONE
+        return job
+
+    def test_terminated_notice(self):
+        jm, state = _make_manager()
+        self._finished_job(jm, _signaled_status(signal.SIGTERM))
+        jm.notify_completed_jobs()
+        out = state.stderr.getvalue()
+        assert f"[1]+  {signal.strsignal(signal.SIGTERM)}" in out
+        assert "Done" not in out
+
+    def test_exit_n_notice(self):
+        jm, state = _make_manager()
+        self._finished_job(jm, _exited_status(3), command="false")
+        jm.notify_completed_jobs()
+        assert "[1]+  Exit 3" in state.stderr.getvalue()
+
+    def test_sigpipe_notice_is_silent_but_reaped(self):
+        jm, state = _make_manager()
+        self._finished_job(jm, _signaled_status(signal.SIGPIPE))
+        jm.notify_completed_jobs()
+        # No line printed, and the job is still removed from the table.
+        assert state.stderr.getvalue() == ""
+        assert jm.get_job(1) is None
+
+    def test_done_notice_unchanged_for_clean_exit(self):
+        jm, state = _make_manager()
+        self._finished_job(jm, _exited_status(0))
+        jm.notify_completed_jobs()
+        assert "[1]+  Done" in state.stderr.getvalue()
 
 
 class TestNotifyOptionChannel:

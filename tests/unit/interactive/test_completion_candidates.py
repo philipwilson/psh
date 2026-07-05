@@ -123,10 +123,21 @@ class TestEditorTabApply:
         return ed
 
     def test_unique_completion_applied(self, workdir):
+        # bash finishes a UNIQUE non-directory match with a trailing space
+        # (R18 M-i5; probe_mi5_trailspace.py), so the cursor is ready for the
+        # next word.
         ed = self._editor_with("cat foob")
         ed._handle_tab()
-        assert ''.join(ed.edit_buffer.chars) == "cat foobar.txt"
-        assert ed.edit_buffer.cursor == len("cat foobar.txt")
+        assert ''.join(ed.edit_buffer.chars) == "cat foobar.txt "
+        assert ed.edit_buffer.cursor == len("cat foobar.txt ")
+
+    def test_unique_directory_keeps_slash_without_space(self, workdir):
+        # bash: a unique DIRECTORY match keeps its trailing '/' with NO
+        # space, so you can keep descending (R18 M-i5).
+        ed = self._editor_with("ls ba")
+        ed._handle_tab()
+        assert ''.join(ed.edit_buffer.chars) == "ls baz/"
+        assert ed.edit_buffer.cursor == len("ls baz/")
 
     def test_multiple_matches_expand_to_common_prefix(self, workdir):
         ed = self._editor_with("cat f")
@@ -142,10 +153,11 @@ class TestEditorTabApply:
         assert ed.edit_buffer.cursor == len("cat foo")
 
     def test_completion_with_space_is_escaped(self, workdir):
+        # Unique file: escaped AND finished with a trailing space (bash).
         (workdir / "my file.txt").write_text("x")
         ed = self._editor_with("cat my")
         ed._handle_tab()
-        assert ''.join(ed.edit_buffer.chars) == "cat my\\ file.txt"
+        assert ''.join(ed.edit_buffer.chars) == "cat my\\ file.txt "
 
     def test_no_completions_leave_buffer_unchanged(self, workdir):
         ed = self._editor_with("cat zzz")

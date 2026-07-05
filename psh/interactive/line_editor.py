@@ -16,6 +16,7 @@ stays here deliberately: it is pure coordination between
 CompletionEngine, TerminalManager and the renderer.
 """
 
+import os
 import sys
 import termios
 from typing import Callable, Dict, List, Optional
@@ -743,8 +744,13 @@ class LineEditor:
             return
 
         if len(completions) == 1:
-            # Single completion - use it
-            self._apply_completion(completions[0])
+            # Single completion - use it. bash finishes a UNIQUE match with a
+            # trailing space, so the cursor is ready for the next word — except
+            # a directory, which keeps its trailing '/' (no space) so you can
+            # keep descending. Directory completions already carry the
+            # separator; add the space only for non-directory matches.
+            only = completions[0]
+            self._apply_completion(only, add_trailing_space=not only.endswith(os.sep))
         else:
             # Multiple completions
             common_prefix = self.completion_engine.find_common_prefix(completions)
@@ -760,8 +766,14 @@ class LineEditor:
                 # Show all completions
                 self._show_completions(completions)
 
-    def _apply_completion(self, completion: str):
-        """Apply a completion to the current line."""
+    def _apply_completion(self, completion: str, add_trailing_space: bool = False):
+        """Apply a completion to the current line.
+
+        ``add_trailing_space`` finishes a unique non-directory match with a
+        space, matching bash. It applies only outside quotes (the quoted path
+        does not escape or close the quote here, so leaving it untouched
+        keeps that partial behavior unchanged).
+        """
         line = self.edit_buffer.text
         cursor = self.edit_buffer.cursor
 
@@ -772,6 +784,8 @@ class LineEditor:
         if word_start == 0 or line[word_start-1] not in '"\'':
             # Not in quotes, escape special characters
             completion = self.completion_engine.escape_path(completion)
+            if add_trailing_space:
+                completion += ' '
 
         # Update buffer and cursor position, then repaint (wrap-aware)
         new_line = line[:word_start] + completion

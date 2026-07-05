@@ -274,6 +274,17 @@ class Shell:
         self.state.options['emacs'] = live_interactive
         self.state.options['histexpand'] = live_interactive
 
+        # Job control / monitor mode ('m' in $-) is on by default for a shell
+        # bash considers interactive that can also control the terminal: the
+        # REPL and `bash -i`/`-ic` turn it on, plain `-c`/scripts leave it off.
+        # The option is COSMETIC in psh — real job control keys off
+        # supports_job_control, not this flag — so it exists purely to make
+        # `$-` and `set -o monitor` report truthfully (bash-probed:
+        # tmp/probes-r18t2-interactive/probe_mi1_*).
+        self.state.options['monitor'] = (
+            (live_interactive or force_interactive)
+            and self.state.supports_job_control)
+
         if live_interactive and not self.state.norc:
             from .interactive import load_rc_file
             load_rc_file(self)
