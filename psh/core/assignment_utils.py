@@ -101,7 +101,9 @@ def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str,
     the INTEGER transform the expression "(old)+(value)" to evaluate,
     matching bash. A scalar append to an array variable updates element
     0 in place and returns the array (bash: ``a=(1 2); a+=x`` makes
-    a[0] "1x").
+    a[0] "1x"); on an INTEGER array it arithmetic-adds to element 0
+    (``declare -ai a=(1 2 3); a+=10`` -> a[0]=11), and a -u/-l array
+    case-folds the new element 0.
     """
     from .variables import AssociativeArray, IndexedArray, VarAttributes
     if not var.endswith('+'):
@@ -115,14 +117,20 @@ def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str,
     # (set_variable, below) re-resolves the nameref, so we still return `name`.
     target = scope_manager.resolve_nameref_name(name)
     var_obj = scope_manager.get_variable_object(target)
-    if var_obj is not None and isinstance(var_obj.value, IndexedArray):
-        indexed = var_obj.value
-        indexed.set(0, (indexed.get(0) or '') + value)
-        return name, indexed
-    if var_obj is not None and isinstance(var_obj.value, AssociativeArray):
-        assoc = var_obj.value
-        assoc.set('0', (assoc.get('0') or '') + value)
-        return name, assoc
+    container = var_obj.value if var_obj is not None else None
+    if isinstance(container, (IndexedArray, AssociativeArray)):
+        key: object = 0 if isinstance(container, IndexedArray) else '0'
+        old0 = container.get(key) or ''  # type: ignore[arg-type]
+        if var_obj.attributes & VarAttributes.INTEGER and value.strip():
+            new0: object = scope_manager._evaluate_integer(
+                f"({old0 or 0})+({value})")
+        else:
+            # string concat, then the variable's -u/-l case attribute (bash
+            # applies the case fold to array elements too)
+            new0 = scope_manager._apply_attributes(
+                str(old0) + value, var_obj.attributes)
+        container.set(key, str(new0))  # type: ignore[arg-type]
+        return name, container
     old = '' if var_obj is None or var_obj.value is None else str(var_obj.value)
     if (var_obj is not None and var_obj.attributes & VarAttributes.INTEGER
             and value.strip()):

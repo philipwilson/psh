@@ -76,6 +76,7 @@ class ArrayOperationExecutor:
         if var_obj and isinstance(var_obj.value, AssociativeArray):
             assoc = self.build_associative_array(
                 node.words, into=(var_obj.value if node.is_append else None))
+            self._apply_declared_case_integer(name, assoc)
             # An associative array carries ONLY the ASSOC_ARRAY bit — never
             # the ARRAY (indexed) bit. Merging both left a stray ``-a`` on the
             # variable, so ``declare -p`` printed ``declare -aA`` (bash: ``-A``),
@@ -88,10 +89,40 @@ class ArrayOperationExecutor:
                     if node.is_append and var_obj is not None
                     and isinstance(var_obj.value, IndexedArray) else None)
         indexed = self.build_indexed_array(node.words, into=existing)
+        self._apply_declared_case_integer(name, indexed)
 
         # Set array in shell state
         self.state.scope_manager.set_variable(name, indexed, attributes=VarAttributes.ARRAY)
         return 0
+
+    def _apply_declared_case_integer(self, name: str,
+                                     array: Union[IndexedArray, AssociativeArray]) -> None:
+        """Apply the variable's -u/-l/-i attribute to every array ELEMENT.
+
+        A bare ``a=(...)`` / ``a+=(...)`` on a variable already declared
+        ``declare -u/-l/-i`` must case-fold / integer-evaluate its elements,
+        including the appended ones (bash: ``declare -u a; a+=(three)`` stores
+        ``THREE``). The attribute lives on the DECLARED variable object — which
+        may be declared-but-unset (``declare -u a`` before the first
+        assignment), so it is read via get_declared_variable_object. Case/
+        integer folds are idempotent, so re-folding pre-existing elements on an
+        append is harmless. (The DECLARE builtin path applies this via its own
+        _transform_array_elements; this covers the bare-syntax path.)
+        """
+        declared = self.state.scope_manager.get_declared_variable_object(name)
+        if declared is None:
+            return
+        attrs = declared.attributes
+        if not (attrs & (VarAttributes.INTEGER | VarAttributes.UPPERCASE
+                         | VarAttributes.LOWERCASE)):
+            return
+        apply = self.state.scope_manager._apply_attributes
+        if isinstance(array, IndexedArray):
+            for i in array.indices():
+                array.set(i, str(apply(array.get(i) or '', attrs)))
+        else:
+            for k in array.keys():
+                array.set(k, str(apply(array.get(k) or '', attrs)))
 
     # ------------------------------------------------------------------ #
     # Shared value-computation helpers (the single implementation used by

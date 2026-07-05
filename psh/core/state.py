@@ -163,6 +163,20 @@ class ShellState:
         # forked children (POSIX) — never the child's os.getpid().
         self.shell_pid = os.getpid()
 
+        # UID/EUID/PPID are READONLY INTEGER variables in bash (`declare -ir`),
+        # initialized ONCE at startup — not recomputed per read. Storing them
+        # as real variables (rather than computing them on read) makes
+        # assignment and `unset` fail like bash, and lists them in `declare -p`
+        # / `readonly -p`. PPID uses the startup parent pid (kept stable across
+        # subshells because adopt() copies the whole global scope); a subshell's
+        # own $$/BASHPID differ but PPID does not (bash).
+        for _pid_name, _pid_value in (('UID', os.getuid()),
+                                      ('EUID', os.geteuid()),
+                                      ('PPID', self.initial_ppid)):
+            self.scope_manager.set_variable(
+                _pid_name, str(_pid_value), local=False,
+                attributes=VarAttributes.READONLY | VarAttributes.INTEGER)
+
         # Terminal capabilities — one cohesive object (is_terminal /
         # terminal_fd / supports_job_control delegate to it via properties);
         # populated by terminal.detect() below.
@@ -177,6 +191,25 @@ class ShellState:
 
         # PSH-specific variables
         self.scope_manager.set_variable('PSH_AST_FORMAT', 'tree')  # Default AST format
+
+        # Platform identity variables (bash: HOSTNAME/OSTYPE/MACHTYPE/HOSTTYPE)
+        # are ORDINARY shell variables initialized at startup — freely
+        # reassignable and unsettable, unlike the readonly UID/EUID/PPID above.
+        # Only seed a name the environment did not already provide, so an
+        # inherited (exported) HOSTNAME is preserved like bash. Values are
+        # derived from uname and differ machine-to-machine.
+        _uname = os.uname()
+        _machine = _uname.machine
+        _sysname = _uname.sysname.lower()
+        _ostype = (f"{_sysname}{_uname.release}" if _sysname == 'darwin'
+                   else f"{_sysname}-gnu")
+        _vendor = 'apple' if _sysname == 'darwin' else 'pc'
+        for _pname, _pvalue in (('HOSTNAME', _uname.nodename),
+                                ('HOSTTYPE', _machine),
+                                ('OSTYPE', _ostype),
+                                ('MACHTYPE', f"{_machine}-{_vendor}-{_ostype}")):
+            if self.scope_manager.get_variable_object(_pname) is None:
+                self.scope_manager.set_variable(_pname, _pvalue)
 
         # Trap handlers: signal -> command string
         # Maps signal names (e.g., 'INT', 'TERM', 'EXIT') to trap command strings
@@ -610,8 +643,15 @@ class ShellState:
 
     def export_variable(self, name: str, value: str):
         """Set a variable with the EXPORT attribute (the observer adds the
-        ``state.env`` entry; os.environ is never written — class docstring)."""
-        self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
+        ``state.env`` entry; os.environ is never written — class docstring).
+
+        ``skip_temp_env`` writes past a command's temp-env prefix layer to the
+        variable's real home, so ``X=1 f; f(){ export X=2; }`` updates the
+        global X (which survives the function return) rather than the discarded
+        temp layer — bash. (``cd``/``pushd``'s PWD/OLDPWD exports likewise want
+        the real variable, never a temp shadow.)"""
+        self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT,
+                                        local=False, skip_temp_env=True)
 
     def _sync_exported_variable(self, name: str) -> None:
         """Re-derive one name's live-environment entry from its variable.

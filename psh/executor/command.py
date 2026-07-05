@@ -328,6 +328,7 @@ class CommandExecutor:
         tokens_consumed = len(raw_assignments)
         prefix_assignments_persist = False
         saved_vars = None
+        pushed_temp_scope = False
 
         try:
             # Phase 2: Expand the remaining arguments. POSIX expands the
@@ -385,9 +386,25 @@ class CommandExecutor:
             except ReadonlyVariableError:
                 pass
 
+            # When the command resolves to a shell FUNCTION, temp-env prefix
+            # assignments follow bash's temporary-variable-context model: they
+            # act as an exported scope layered under the function's own locals,
+            # so a plain body assignment is discarded on return while a body
+            # ``declare -g``/``export`` reaches the global and survives. We push
+            # that scope HERE (before value expansion, so `A=1 B=$A f` sees A in
+            # the layer) and pop it in the finally; a mid-expansion error still
+            # unwinds cleanly because the push precedes apply_prefix.
+            is_function_call = (
+                not bypass_functions
+                and self.function_manager.get_function(cmd_name) is not None)
+            if is_function_call and raw_assignments:
+                self.state.scope_manager.push_temp_env_scope()
+                pushed_temp_scope = True
+
             # Apply assignments for this command, now that its words are
             # expanded. Each value sees the assignments to its left.
-            prefix = self.assignments.apply_prefix(raw_assignments)
+            prefix = self.assignments.apply_prefix(
+                raw_assignments, temp_scope=pushed_temp_scope)
             saved_vars = prefix.saved
 
             if prefix.failed and self.state.options.get('errexit'):
@@ -436,7 +453,12 @@ class CommandExecutor:
 
         finally:
             # POSIX: assignments before special builtins persist
-            if saved_vars is not None and not prefix_assignments_persist:
+            if pushed_temp_scope:
+                # Function temp-env layer: pop it (its variables are discarded,
+                # revealing any global write the body made). Special builtins
+                # never take the function path, so persistence doesn't apply.
+                self.state.scope_manager.pop_scope()
+            elif saved_vars is not None and not prefix_assignments_persist:
                 self.assignments.restore(saved_vars)
 
     def _strip_backslash_bypass(self, command_node: 'SimpleCommand'):
