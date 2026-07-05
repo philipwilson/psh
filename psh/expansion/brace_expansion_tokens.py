@@ -25,17 +25,17 @@ import copy
 import re
 from typing import Any, List, Tuple
 
+from ..core.assignment_utils import ASSIGNMENT_WORD_RE, NAME_RE
 from .brace_expansion import _RANGE_EMPTY, BraceExpander, BraceExpansionError
 
-# Words matching this are variable assignments (name=, name[idx]=, name+=).
-# Brace expansion is suppressed on assignment words in command-prefix position
-# (bash: `a={x,y}` stays literal, but `echo a={x,y}` expands).
-_ASSIGNMENT_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])?\+?=')
-
-# A simple (fusable) variable name: `$v{1,2}` re-forms the names `v1`/`v2` in
-# bash because brace expansion runs first. Braced `${v}`, special ($?, $#) and
-# positional ($1) parameters are delimited and never fuse.
-_SIMPLE_NAME_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*$')
+# Assignment words (name=, name[idx]=, name+=) share the canonical
+# ASSIGNMENT_WORD_RE: brace expansion is suppressed on them in command-prefix
+# position (bash: `a={x,y}` stays literal, but `echo a={x,y}` expands).
+#
+# A simple (fusable) variable name uses the canonical NAME_RE: `$v{1,2}`
+# re-forms the names `v1`/`v2` in bash because brace expansion runs first.
+# Braced `${v}`, special ($?, $#) and positional ($1) parameters are delimited
+# and never fuse.
 _NAME_CHARS_RE = re.compile(r'[A-Za-z0-9_]+')
 
 
@@ -159,7 +159,7 @@ class TokenBraceExpander:
         # An assignment word keeps the command prefix open (a=1 b=2 cmd); any
         # other word is the command name (or an argument) and ends the prefix.
         if (first_tok.type == TokenType.WORD and zone_active
-                and first_tok.value and _ASSIGNMENT_RE.match(first_tok.value)):
+                and first_tok.value and ASSIGNMENT_WORD_RE.match(first_tok.value)):
             return True
         return False
 
@@ -168,7 +168,7 @@ class TokenBraceExpander:
         first = run[0]
         # Suppress brace expansion on a command-prefix assignment (a={x,y}).
         if (zone_active and first.type == TokenType.WORD
-                and first.value and _ASSIGNMENT_RE.match(first.value)):
+                and first.value and ASSIGNMENT_WORD_RE.match(first.value)):
             return list(run)
 
         if len(run) == 1:
@@ -357,7 +357,7 @@ class TokenBraceExpander:
                 # `$v{1,2}` re-forms the names `v1`/`v2`: fold trailing
                 # unquoted name chars into a simple-name VARIABLE.
                 if (tok.type == TokenType.VARIABLE and tok.value
-                        and _SIMPLE_NAME_RE.match(tok.value)
+                        and NAME_RE.match(tok.value)
                         and i + 1 < len(segments)
                         and segments[i + 1][0] == 'chars'):
                     m = _NAME_CHARS_RE.match(segments[i + 1][1])

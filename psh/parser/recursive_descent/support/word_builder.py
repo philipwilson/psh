@@ -19,12 +19,15 @@ from ....ast_nodes import (
     Word,
     WordPart,
 )
+from ....core.assignment_utils import SHELL_NAME
 from ....expansion.param_parser import parse_parameter_expansion
 from ....lexer.token_types import Token, TokenType
 
 # Token types that represent standalone expansion tokens
-# Pre-compiled regex patterns for variable name classification
-_SIMPLE_VAR_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(\[.+?\])?$')
+# Pre-compiled regex patterns for variable name classification. A ``${inner}``
+# is a simple variable when it is a bare name optionally followed by a
+# (non-empty) subscript — the name uses the shared SHELL_NAME fragment.
+_SIMPLE_VAR_RE = re.compile(rf'^{SHELL_NAME}(\[.+?\])?$')
 _SPECIAL_VAR_RE = re.compile(r'^[0-9$?!@*#-]$')
 
 EXPANSION_TYPES = frozenset({
