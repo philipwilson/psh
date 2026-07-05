@@ -28,6 +28,16 @@ from .tokens import ArithTokenType
 # (0x.., 0.., base#n, "2*3", ...) is evaluated as an arithmetic sub-expression.
 _PLAIN_DECIMAL_RE = re.compile(r'[+-]?(?:0|[1-9][0-9]*)$')
 
+# Maximum re-entrancy depth of arithmetic evaluation. A variable whose value is
+# itself an expression is evaluated recursively (get_variable -> evaluate_
+# arithmetic), so a self-referential (`x="x+1"`) or too-deeply-chained
+# expression would exhaust the interpreter stack. Bounding it here matches
+# bash's EXPR_NEST_MAX (1024): a chain 1000 deep evaluates, one 1024 deep trips
+# a clean "expression recursion level exceeded" arithmetic error (status 1, the
+# line resumes) rather than a Python RecursionError leaking as an internal
+# defect.
+_MAX_ARITH_RECURSION = 1024
+
 
 def _trunc_div(left: int, right: int) -> int:
     """C-style integer division: truncate toward zero (Python's ``//``
@@ -199,16 +209,21 @@ class ArithmeticEvaluator:
 
     def _eval_array_assignment(self, node: 'ArrayAssignmentNode') -> int:
         key = self._array_key(node.name, node.index, node.index_text)
-        value = self.evaluate(node.value)
 
         if node.op == ArithTokenType.ASSIGN:
+            value = self.evaluate(node.value)
             self.set_array_element(node.name, key, value)
             return value
 
         base_op = self._COMPOUND_TO_BASE.get(node.op)
         if base_op is None:
             raise ValueError(f"Unknown assignment operator: {node.op}")
+        # Read the element's CURRENT value BEFORE evaluating the RHS, so an
+        # embedded ++/-- on the same element in the RHS does not feed back into
+        # the read (bash: a=(1 2); $((a[1]+=a[1]++)) is 4, not 5). See the
+        # scalar _eval_assignment for the same ordering rationale.
         current = self.get_array_element(node.name, key)
+        value = self.evaluate(node.value)
         result = self._apply_binary_op(base_op, current, value)
         self.set_array_element(node.name, key, result)
         return result
@@ -311,17 +326,22 @@ class ArithmeticEvaluator:
         return self.evaluate(node.false_expr)
 
     def _eval_assignment(self, node: AssignmentNode) -> int:
-        value = self.evaluate(node.value)
-
         if node.op == ArithTokenType.ASSIGN:
+            value = self.evaluate(node.value)
             self.set_variable(node.var_name, value)
             return value
 
-        # Compound assignment — reuse the base binary operator.
+        # Compound assignment — reuse the base binary operator. Read the LHS's
+        # CURRENT value BEFORE evaluating the RHS: bash binds the left operand
+        # of `+=`/`-=`/... once at the start, so an embedded post/pre-increment
+        # of the same variable in the RHS does not feed back into that read
+        # (`c=1; $((c+=c++))` is 2, not 3 — c is read as 1, then c++ yields 1,
+        # then 1+1=2).
         base_op = self._COMPOUND_TO_BASE.get(node.op)
         if base_op is None:
             raise ValueError(f"Unknown assignment operator: {node.op}")
         current = self.get_variable(node.var_name)
+        value = self.evaluate(node.value)
         result = self._apply_binary_op(base_op, current, value)
         self.set_variable(node.var_name, result)
         return result
@@ -410,6 +430,24 @@ def evaluate_arithmetic(expr: str, shell, expand: bool = True) -> int:
     expanded (e.g. a ``[[ -eq ]]`` operand): a residual literal ``$`` is
     then a syntax error, matching bash, which never rescans expanded text.
     """
+    # Bound re-entrancy so a self-referential/deeply-chained expression trips
+    # a clean arithmetic error instead of a RecursionError (see
+    # _MAX_ARITH_RECURSION). The counter lives on shell state so it spans the
+    # get_variable -> evaluate_arithmetic re-entry, and the finally always
+    # unwinds it (including on the exceptions raised below).
+    depth = shell.state._arith_recursion_depth + 1
+    shell.state._arith_recursion_depth = depth
+    try:
+        if depth > _MAX_ARITH_RECURSION:
+            raise ShellArithmeticError(
+                f"{expr.strip()}: expression recursion level exceeded")
+        return _evaluate_arithmetic_inner(expr, shell, expand)
+    finally:
+        shell.state._arith_recursion_depth = depth - 1
+
+
+def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
+    """Tokenize/parse/evaluate one arithmetic expression (no depth guard)."""
     try:
         # First, expand all shell variables and parameter expansions.
         # Arithmetic is a dquote-like context for nested ${x:-word}
@@ -467,7 +505,7 @@ def execute_arithmetic_expansion(expr: str, shell) -> int:
     """
     import sys
 
-    from ...core import ExpansionError
+    from ...core import ExpansionError, ReadonlyVariableError, TopLevelAbort
 
     # Remove $(( and ))
     if expr.startswith('$((') and expr.endswith('))'):
@@ -477,6 +515,17 @@ def execute_arithmetic_expansion(expr: str, shell) -> int:
 
     try:
         return evaluate_arithmetic(arith_expr, shell)
+    except ReadonlyVariableError as e:
+        # Assigning to a readonly variable inside $(( )) word expansion.
+        # bash prints the error and DISCARDS the rest of the current line
+        # (the same-line `;` tail, `&&`/`||` tail, ...), resuming at the next
+        # line — the readonly-assignment discard, which (unlike the
+        # $((1/0))/bad-subscript expansion errors) is NOT immune to `set -e`:
+        # under errexit a non-interactive shell exits. Mirror the plain
+        # assignment path (executor/command_assignments.py) exactly: print,
+        # then raise the errexit-eligible, eval/source-contained TopLevelAbort.
+        print(f"psh: {e.name}: readonly variable", file=sys.stderr)
+        raise TopLevelAbort(1) from None
     except ShellArithmeticError as e:
         print(f"psh: arithmetic error: {e}", file=sys.stderr)
         # Raise exception to stop command execution (like bash)

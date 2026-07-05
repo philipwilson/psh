@@ -5799,3 +5799,88 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# R18 TIER-2 (T2-A): arithmetic / eval error-path edges
+# =============================================================================
+
+# Compound assignment reads the LHS BEFORE evaluating the RHS (bash): an
+# embedded ++/-- of the same variable in the RHS does not feed back into the
+# left-operand read.
+- name: r18t2_arith_compound_reads_lhs_first
+  command: "c=1; echo $((c+=c++))"
+  stdout: "2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_arith_compound_minus_reads_lhs_first
+  command: "c=5; echo $((c-=c++))"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_arith_array_compound_reads_lhs_first
+  command: "a=(1 2 3); echo $((a[1]+=a[1]++)); echo ${a[1]}"
+  stdout: "4\n4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_arith_plain_assign_last_write_wins
+  command: "c=1; echo $((c=c++)); echo $c"
+  stdout: "1\n1\n"
+  stderr: ""
+  exit_code: 0
+
+# A readonly write inside $(( )) word expansion discards the rest of the line.
+- name: r18t2_arith_readonly_in_dollar_arith_discards_line
+  command: "readonly r=0; echo $((r=5)); echo same; echo done"
+  stdout: ""
+  stderr: "readonly variable"
+  exit_code: 1
+
+# A self-referential expression variable trips a bounded arithmetic error;
+# the (( )) command form continues the line.
+- name: r18t2_arith_self_ref_paren_continues
+  command: 'x="x+1"; (( x )); echo rc=$?; echo alive'
+  stdout: "rc=1\nalive\n"
+  stderr: "expression recursion level exceeded"
+  exit_code: 0
+
+# A finite reference chain within bash's EXPR_NEST_MAX still evaluates.
+- name: r18t2_arith_ref_chain_within_limit
+  command: 'a0=0; for i in $(seq 1 500); do eval "a$i=a$((i-1))+1"; done; echo $(( a500 ))'
+  stdout: "500\n"
+  stderr: ""
+  exit_code: 0
+
+# A bad subscript on an UNSET array is a fatal expansion error (not empty).
+- name: r18t2_arith_unset_bad_subscript_fatal
+  command: 'echo "[${a[1//]}]" after'
+  stdout: ""
+  stderr: "Unexpected token"
+  exit_code: 1
+
+# ${#name[sub]} on an unset name is 0 without evaluating the subscript.
+- name: r18t2_arith_unset_length_form_zero
+  command: 'echo "[${#a[1//]}]" after'
+  stdout: "[0] after\n"
+  stderr: ""
+  exit_code: 0
+
+# A scalar's subscript is arithmetic; index 0 addresses the value.
+- name: r18t2_arith_scalar_index_zero_is_value
+  command: 'x=5; echo "[${x[1-1]}]"'
+  stdout: "[5]\n"
+  stderr: ""
+  exit_code: 0
+
+# eval processes its argument line-by-line: a word-arith error inside it
+# drops only the offending line and resumes at the next.
+- name: r18t2_arith_eval_multiline_line_discard
+  command: |
+    eval 'echo one
+    echo $((1/0))
+    echo three'; echo after
+  stdout: "one\nthree\nafter\n"
+  stderr: "Division by zero"
+  exit_code: 0

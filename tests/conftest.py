@@ -271,7 +271,8 @@ def captured_shell():
     # Store original run_command method
     original_run_command = shell.run_command
 
-    def capturing_run_command(command_string, add_to_history=True, base_line=1):
+    def capturing_run_command(command_string, add_to_history=True, base_line=1,
+                              line_oriented=False):
         """Run command with output capture."""
         # Replace sys streams during execution
         sys.stdout = captured_stdout
@@ -285,7 +286,8 @@ def captured_shell():
         shell.stderr = captured_stderr
 
         try:
-            result = original_run_command(command_string, add_to_history, base_line)
+            result = original_run_command(command_string, add_to_history,
+                                          base_line, line_oriented)
         finally:
             # Always restore
             sys.stdout = original_sys_stdout
