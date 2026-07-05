@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 
 from ..state_context import LexerContext
 from ..token_types import Token
+from ..unicode_support import is_whitespace
 from .base import ContextualRecognizer
 
 # Operators/metacharacters after which a '#' begins a comment (besides
@@ -34,8 +35,13 @@ def is_comment_start(input_text: str, pos: int) -> bool:
     if pos == 0:
         return True
 
+    # SHELL whitespace only (space/tab/newline via is_whitespace, NOT Python
+    # str.isspace()/a hardcoded '\r'): a bare CR is an ordinary word char in
+    # bash, so `a<CR>#b` is one word and the `#` is NOT a comment. (A CRLF
+    # script's line-ending CR is stripped by the line-reading layer before the
+    # lexer ever sees it, so dropping '\r' here does not affect real comments.)
     prev_char = input_text[pos - 1]
-    return prev_char in ' \t\n\r' or prev_char in _COMMENT_PRECEDING_OPS
+    return is_whitespace(prev_char) or prev_char in _COMMENT_PRECEDING_OPS
 
 
 class CommentRecognizer(ContextualRecognizer):

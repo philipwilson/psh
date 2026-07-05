@@ -35,13 +35,30 @@ from .unicode_support import (
 
 def _make_config(strict: bool, shell_options: Optional[Mapping[str, Any]] = None) -> LexerConfig:
     """Build the lexer config for an entry point (batch vs interactive,
-    shell options like extglob applied)."""
+    shell options like extglob and posix applied).
+
+    ``posix_mode`` is taken from the active shell options (``set -o posix``) so
+    the lexer's POSIX-aware identifier paths (variable-name extraction in
+    ``$var``/``${var}``, assignment-name recognition, named-fd names) actually
+    activate — previously ``config.posix_mode`` was never set and those paths
+    were dead on the public path. With posix OFF (the default) this is
+    byte-identical to before; with posix ON the lexer restricts identifiers to
+    the ASCII portable set, consistent with the executor/state-layer name
+    validation (`set -o posix` gating in function/read/declare/for/assignment).
+
+    ``strict`` (batch-vs-interactive) currently selects between identical
+    configs and is retained only for the public API; POSIX mode is NOT derived
+    from it (see the module ``tokenize`` docstring).
+    """
     if strict:
         config = LexerConfig.create_batch_config()
     else:
         config = LexerConfig.create_interactive_config()
-    if shell_options and shell_options.get('extglob', False):
-        config.enable_extglob = True
+    if shell_options:
+        if shell_options.get('extglob', False):
+            config.enable_extglob = True
+        if shell_options.get('posix', False):
+            config.posix_mode = True
     return config
 
 

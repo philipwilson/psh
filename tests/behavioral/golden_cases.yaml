@@ -6258,3 +6258,141 @@
   stdout: "0\n1\n2\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# LEXER FIX D1 — keyword-spelled arguments do not restore command position
+# (fix/lex-fixes: ModularLexer eligibility gate). Bash prints the keyword-like
+# arg literally; psh used to mis-lex the following `[[`/`((` as an operator.
+# =============================================================================
+
+- name: lexfix_arg_if_double_bracket
+  command: "echo if [[ x"
+  stdout: "if [[ x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_while_double_bracket
+  command: "echo while [[ x"
+  stdout: "while [[ x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_time_double_bracket
+  command: "echo time [[ x"
+  stdout: "time [[ x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_printf_for_double_bracket
+  command: "printf '%s\\n' for [["
+  stdout: "for\n[[\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_case_x_in
+  command: "echo case x in"
+  stdout: "case x in\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_if_after_separator
+  command: "false; echo if [[ x"
+  stdout: "if [[ x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_if_in_command_sub
+  command: "echo $(echo if [[ x)"
+  stdout: "if [[ x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_real_if_still_works
+  command: "if [[ -n x ]]; then echo y; fi"
+  stdout: "y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_real_case_glob_pattern_still_works
+  command: "case ab in [a-z]*) echo hit;; esac"
+  stdout: "hit\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# LEXER FIX D2 — shell whitespace classification (space/tab/newline only)
+# (fix/lex-fixes). A non-breaking space / CR / other Unicode whitespace is an
+# ordinary word character; it must not turn `!` into negation, `{` into a
+# brace group, or a following `#` into a comment. `\xA0` is U+00A0 (NBSP).
+# =============================================================================
+
+- name: lexfix_ws_nbsp_between_words
+  command: "echo a\xA0b"
+  stdout: "a\xA0b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_ws_nbsp_after_bang_false
+  command: "!\xA0false"
+  stdout: ""
+  stderr: "command not found"
+  exit_code: 127
+
+- name: lexfix_ws_nbsp_after_bang_true
+  command: "!\xA0true"
+  stdout: ""
+  stderr: "command not found"
+  exit_code: 127
+
+- name: lexfix_ws_nbsp_before_brace_group
+  command: "{\xA0echo hi; }"
+  stdout: ""
+  stderr: null
+  exit_code: 2
+
+- name: lexfix_ws_bang_space_still_negation
+  command: "! false"
+  stdout: ""
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_ws_brace_group_still_group
+  command: "{ echo hi; }"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_ws_space_before_hash_is_comment
+  command: "echo a #b"
+  stdout: "a\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# LEXER FIX D3 — POSIX mode reaches lexer config (fix/lex-fixes).
+# Under `set -o posix` the lexer restricts $var identifiers to ASCII, matching
+# the executor's name validation. psh is codepoint-aware while bash classifies
+# identifier BYTES (locale-dependent byte-soup), so the Unicode-under-posix
+# cases are psh_only — a documented deliberate divergence. `set -o posix` is on
+# its own line because a -c line is tokenized in one pass before it executes.
+# =============================================================================
+
+- name: lexfix_posix_unicode_var_becomes_literal
+  command: "set -o posix\necho \"[$ünïcödé]\""
+  stdout: "[$ünïcödé]\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: lexfix_nonposix_unicode_var_lenient
+  command: "ünïcödé=5; echo \"[$ünïcödé]\""
+  stdout: "[5]\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: lexfix_posix_ascii_var_unchanged
+  command: "set -o posix\nx=5; echo $x"
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
