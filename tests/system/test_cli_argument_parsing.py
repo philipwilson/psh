@@ -184,3 +184,44 @@ class TestPosixShortOptions:
         result = run_psh('-Z', '-c', ':')
         assert result.returncode == 2
         assert 'invalid option' in result.stderr
+
+
+class TestInvocationOptionForms:
+    """R18 T2-E (M-s3): -o/+o NAME, +flag (disable), -c in a cluster.
+
+    Pinned against bash 5.2: `bash -o pipefail -c`, `bash +x -c`,
+    `bash -xc 'cmd'`.
+    """
+
+    def test_o_pipefail_takes_effect(self):
+        # -o pipefail: a failing pipe member sets the pipeline status.
+        result = run_psh('-o', 'pipefail', '-c', 'false | true; echo $?')
+        assert result.returncode == 0
+        assert result.stdout == '1\n'
+
+    def test_no_pipefail_by_default(self):
+        result = run_psh('-c', 'false | true; echo $?')
+        assert result.stdout == '0\n'
+
+    def test_plus_x_disables_xtrace(self):
+        # +x turns the (default-off) option off: no trace, clean run.
+        result = run_psh('+x', '-c', 'echo hi')
+        assert result.returncode == 0
+        assert result.stdout == 'hi\n'
+        assert result.stderr == ''
+
+    def test_dash_xc_cluster_traces_and_runs_command(self):
+        result = run_psh('-xc', 'echo hi')
+        assert result.returncode == 0
+        assert result.stdout == 'hi\n'
+        assert '+ echo hi' in result.stderr
+
+    def test_o_bad_name_exits_2(self):
+        result = run_psh('-o', 'nosuchoption', '-c', ':')
+        assert result.returncode == 2
+        assert 'invalid option name' in result.stderr
+
+    def test_dash_x_shows_in_dollar_dash(self):
+        result = run_psh('-x', '-c', 'echo $-')
+        assert result.returncode == 0
+        assert 'x' in result.stdout.strip()

@@ -197,7 +197,7 @@ class CommandAssignments:
             value = self._expand_value(value, value_word)
             if xtrace:
                 from ..core.options import xtrace_quote
-                ps4 = self.state.get_variable('PS4', '+ ')
+                ps4 = self.expansion_manager.expand_ps4()
                 # bash quotes the assignment VALUE (`x='a;b'`), not `x=`.
                 self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
                 self.state.stderr.flush()
@@ -295,7 +295,7 @@ class CommandAssignments:
                 # set -x: a command-prefix assignment (`x=5 cmd`) is traced
                 # before the command itself (bash), value-quoted like a pure one.
                 from ..core.options import xtrace_quote
-                ps4 = self.state.get_variable('PS4', '+ ')
+                ps4 = self.expansion_manager.expand_ps4()
                 self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
             var, resolved = resolve_append_assignment(
                 self.state.scope_manager, var, value)
