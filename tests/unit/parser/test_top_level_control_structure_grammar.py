@@ -8,14 +8,15 @@ also grouped statements differently depending on order:
     echo a; while ...; done   ->  one CommandList
     while ...; done; echo a   ->  TopLevel[WhileLoop, CommandList]   (asymmetric)
 
-Now the whole top level goes through `parse_command_list`, so a control
-structure is just a pipeline component like any other. `_simplify_result`
-restores the historical `TopLevel`-rooted shape for a program that is a single
-bare compound / function definition, so existing callers and tests keep their
-root shape.
+That duplicate grammar was removed: the whole top level goes through
+`parse_command_list`, so a control structure is just a pipeline component like
+any other. The parser now returns a single canonical `Program` root for every
+parse, and a bare compound keeps its normal `AndOrList -> Pipeline` ancestry —
+it is NOT unwrapped at the root (the historical TopLevel behavior). No
+post-parse root reshaping remains.
 
-These tests pin the resulting AST shapes (Phase 0) and guard against the
-duplicate path being reintroduced (Phase 5).
+These tests pin the resulting AST shapes and guard against the duplicate path
+being reintroduced (Phase 5).
 """
 
 import re
@@ -27,11 +28,10 @@ import pytest
 
 from psh.ast_nodes import (
     AndOrList,
-    CommandList,
     FunctionDef,
     Pipeline,
+    Program,
     SimpleCommand,
-    TopLevel,
     WhileLoop,
 )
 from psh.lexer import tokenize
@@ -44,21 +44,31 @@ def _parse(src):
     return parse(tokenize(src))
 
 
-def _root_items(ast):
-    """The top-level items, whether the root is TopLevel or a CommandList."""
-    if isinstance(ast, TopLevel):
-        return ast.items
+def _statements(ast):
+    """The top-level statements of the canonical Program root."""
+    assert isinstance(ast, Program), f"root is {type(ast).__name__}, not Program"
     return ast.statements
 
 
 def _only(ast):
-    items = _root_items(ast)
-    assert len(items) == 1, f"expected one top-level item, got {len(items)}"
-    return items[0]
+    stmts = _statements(ast)
+    assert len(stmts) == 1, f"expected one top-level statement, got {len(stmts)}"
+    return stmts[0]
+
+
+def _sole_command(and_or):
+    """The single command inside a one-pipeline, one-command AndOrList."""
+    assert isinstance(and_or, AndOrList)
+    assert len(and_or.pipelines) == 1
+    pipeline = and_or.pipelines[0]
+    assert isinstance(pipeline, Pipeline)
+    assert len(pipeline.commands) == 1
+    return pipeline.commands[0]
 
 
 # ---------------------------------------------------------------------------
-# Phase 0: root-shape characterization
+# Root-shape characterization: every parse is a Program, and a bare compound
+# keeps its normal AndOrList -> Pipeline ancestry (no root unwrapping).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("src,node_name", [
@@ -71,31 +81,34 @@ def _only(ast):
     ("[[ -n x ]]", "EnhancedTestStatement"),
     ("(( 1 ))", "ArithmeticEvaluation"),
 ])
-def test_bare_compound_keeps_toplevel_root(src, node_name):
-    """A program that is one bare compound keeps the historical TopLevel root."""
+def test_bare_compound_keeps_andorlist_ancestry(src, node_name):
+    """A bare compound is a normal statement: AndOrList -> Pipeline -> compound,
+    NOT an unwrapped node directly under the root."""
     ast = _parse(src)
-    assert isinstance(ast, TopLevel)
-    assert type(_only(ast)).__name__ == node_name
+    command = _sole_command(_only(ast))
+    assert type(command).__name__ == node_name
 
 
-def test_bare_function_def_keeps_toplevel_root():
+def test_bare_function_def_is_direct_statement():
+    """A function definition is a Statement, so it sits directly in the Program
+    (FunctionDef is not wrapped in an AndOrList)."""
     ast = _parse("f() { echo hi; }")
-    assert isinstance(ast, TopLevel)
     assert isinstance(_only(ast), FunctionDef)
 
 
-@pytest.mark.parametrize("src", [
-    "( echo hi )",       # subshell group: always CommandList-wrapped
-    "{ echo hi; }",      # brace group: always CommandList-wrapped
-    "echo hi",           # simple command
+@pytest.mark.parametrize("src,node_name", [
+    ("( echo hi )", "SubshellGroup"),
+    ("{ echo hi; }", "BraceGroup"),
+    ("echo hi", "SimpleCommand"),
 ])
-def test_non_bare_forms_stay_command_list(src):
+def test_non_compound_forms_wrap_in_andorlist(src, node_name):
     ast = _parse(src)
-    assert isinstance(ast, CommandList)
+    command = _sole_command(_only(ast))
+    assert type(command).__name__ == node_name
 
 
 # ---------------------------------------------------------------------------
-# Phase 0: operator forms route through the normal and-or / pipeline machinery
+# Operator forms route through the normal and-or / pipeline machinery
 # ---------------------------------------------------------------------------
 
 def test_control_in_pipeline_is_a_pipeline_component():
@@ -141,24 +154,24 @@ def test_double_ampersand_after_background_is_error():
 
 
 # ---------------------------------------------------------------------------
-# Phase 0: the order-asymmetry regression — both orders group identically
+# The order-asymmetry regression — both orders group identically
 # ---------------------------------------------------------------------------
 
 def test_order_independent_grouping():
     a = _parse("echo a; while false; do :; done")
     b = _parse("while false; do :; done; echo a")
     for ast in (a, b):
-        items = _root_items(ast)
-        assert len(items) == 2
-        assert all(isinstance(s, AndOrList) for s in items)
+        stmts = _statements(ast)
+        assert len(stmts) == 2
+        assert all(isinstance(s, AndOrList) for s in stmts)
     # The compound is wrapped as a pipeline component in both orders.
-    a_kinds = [type(s.pipelines[0].commands[0]).__name__ for s in _root_items(a)]
-    b_kinds = [type(s.pipelines[0].commands[0]).__name__ for s in _root_items(b)]
+    a_kinds = [type(s.pipelines[0].commands[0]).__name__ for s in _statements(a)]
+    b_kinds = [type(s.pipelines[0].commands[0]).__name__ for s in _statements(b)]
     assert sorted(a_kinds) == sorted(b_kinds) == ["SimpleCommand", "WhileLoop"]
 
 
 # ---------------------------------------------------------------------------
-# Phase 0: execution-level behavior is preserved
+# Execution-level behavior is preserved
 # ---------------------------------------------------------------------------
 
 def _run(script):

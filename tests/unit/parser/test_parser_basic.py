@@ -11,7 +11,7 @@ import pytest
 PSH_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(PSH_ROOT))
 
-from psh.ast_nodes import SimpleCommand, StatementList, SubshellGroup
+from psh.ast_nodes import Program, SimpleCommand, SubshellGroup
 from psh.lexer import tokenize
 from psh.parser import ParseError, parse
 
@@ -23,7 +23,7 @@ class TestBasicParsing:
         """Test parsing a simple command."""
         ast = parse(list(tokenize("echo hello world")))
 
-        # Navigate: StatementList -> AndOrList -> Pipeline -> SimpleCommand
+        # Navigate: Program -> AndOrList -> Pipeline -> SimpleCommand
         cmd = ast.statements[0].pipelines[0].commands[0]
         assert isinstance(cmd, SimpleCommand)
         assert cmd.args == ["echo", "hello", "world"]
@@ -88,7 +88,7 @@ class TestBasicParsing:
     def test_empty_input(self):
         """Test parsing empty input."""
         ast = parse(list(tokenize("")))
-        assert isinstance(ast, StatementList)
+        assert isinstance(ast, Program)
         assert len(ast.statements) == 0
 
         # Just whitespace

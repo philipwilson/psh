@@ -12,7 +12,7 @@ import dataclasses
 import sys
 from typing import Any, Optional, cast
 
-from ..ast_nodes import ASTNode, StatementList, TopLevel
+from ..ast_nodes import ASTNode, Program, StatementList, TopLevel
 from ..lexer import UnclosedQuoteError, tokenize
 from ..parser import ParseError
 from ..utils import contains_heredoc
@@ -421,22 +421,28 @@ class SourceProcessor(ScriptComponent):
     def _dispatch_execution(self, ast: ASTNode, nested: bool) -> int:
         """Execute a parsed AST, resolving control-flow signals at the boundary.
 
-        Dispatches ``TopLevel`` (functions + commands) vs a plain
-        ``StatementList`` and translates the control-flow exceptions that
-        surface here. This is the inner try/except of the buffered boundary;
-        anything it does NOT handle (``ParseError`` cannot occur now, but a
+        The recursive-descent parser returns a ``Program``; the combinator
+        parser still returns a ``TopLevel`` (and, historically, a bare
+        ``StatementList``) until it is aligned. Route each to its execution
+        facade and translate the control-flow exceptions that surface here.
+        ``Program``/``TopLevel`` handle their own out-of-loop break/continue
+        (in visit_Program/visit_TopLevel); only the legacy ``StatementList``
+        path needs the inner break/continue handler. This is the inner
+        try/except of the buffered boundary; anything it does NOT handle (a
         fatal-expansion ``ExpansionError``, ``RecursionError`` or internal
-        defect can) propagates to ``_execute_buffered_command``'s clauses.
+        defect) propagates to ``_execute_buffered_command``'s clauses.
         """
         from ..core import FunctionReturn, LoopBreak, LoopContinue, TopLevelAbort
         try:
-            # Handle TopLevel AST node (functions + commands)
-            if isinstance(ast, TopLevel):
+            if isinstance(ast, Program):
+                return self.shell.execute_program(ast)
+            # Legacy roots from the combinator parser (functions + commands).
+            elif isinstance(ast, TopLevel):
                 return self.shell.execute_toplevel(ast)
             else:
                 try:
                     # Heredoc content is now pre-populated during parsing.
-                    # The parser returns a StatementList here (TopLevel
+                    # The parser returns a StatementList here (Program/TopLevel
                     # handled above); the cast records that invariant.
                     exit_code = self.shell.execute_command_list(cast(StatementList, ast))
                     return exit_code
