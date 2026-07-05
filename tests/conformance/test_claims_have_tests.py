@@ -82,6 +82,7 @@ CLAIM_TESTS = {
     'eval builtin': ('bash/test_control_eval_conformance.py', "eval 'echo evaled'"),
     'getopts builtin': ('posix/test_getopts_conformance.py', 'while getopts "ab:" opt'),
     'printf builtin': ('bash/test_edge_cases.py', 'printf "%q'),
+    'ulimit builtin': ('bash/test_ulimit_conformance.py', 'ulimit -S -n 256'),
     'pushd/popd/dirs': ('bash/test_bash_compatibility.py', 'pushd /usr >/dev/null; pushd /bin'),
     # Reappraisal #16 H7 — rows flipped from a stale "No"/"Not implemented".
     'History expansion (!!, !n)': (

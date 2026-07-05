@@ -51,6 +51,8 @@ COMMAND_BATTERY = [
     'trap -p',  # read-only listing; setting real handlers is xdist-hostile
     'umask',
     'times',
+    'ulimit -a >/dev/null',  # query only: setting a limit would hit the runner
+
     'test -n x',
     '[ -n x ]',
     'type echo',
