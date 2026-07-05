@@ -17,6 +17,7 @@ Modules:
     io              - echo, printf, pwd
     job_control     - jobs, fg, bg, wait
     kill_command    - kill
+    limits          - ulimit
     loop_control    - break, continue
     navigation      - cd
     parse_tree      - parse-tree visualization
@@ -55,6 +56,7 @@ from . import (
     job_control,
     kill_command,
     let_builtin,
+    limits,
     loop_control,
     mapfile_builtin,
     navigation,

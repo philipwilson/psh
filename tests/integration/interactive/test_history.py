@@ -354,11 +354,14 @@ class TestHistoryBuiltins:
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @pytest.mark.xfail(reason="history -c IS implemented; this test feeds a non-interactive stdin (which records no history to clear) and its assertion also matches the `echo before_clear` output itself, so it cannot pass as written")
     def test_history_clear(self):
-        """Test history -c (clear history)."""
+        """Test history -c (clear history).
+
+        Uses ``history -s`` to place an entry (non-interactive stdin records
+        nothing on its own), then clears and lists — the entry must be gone.
+        """
         commands = [
-            'echo before_clear',
+            'history -s stored_before_clear',
             'history -c',
             'history'
         ]
@@ -366,26 +369,23 @@ class TestHistoryBuiltins:
         result = HistoryTestHelper.run_psh_with_history(commands, self.history_file)
         assert result['success']
 
-        # After clear, should not see before_clear in history
-        assert 'before_clear' not in result['stdout']
+        # After clear, the stored entry must not appear in the listing.
+        assert 'stored_before_clear' not in result['stdout']
 
     def test_history_write(self):
         """Test history -w (write history to file)."""
         commands = [
-            'echo test_write',
+            'history -s echo test_write',
             'history -w'
         ]
 
         result = HistoryTestHelper.run_psh_with_history(commands, self.history_file)
         assert result['success']
 
-        # Check that history file contains the command
-        if os.path.exists(self.history_file):
-            with open(self.history_file, 'r') as f:
-                content = f.read()
-                assert 'echo test_write' in content
+        assert os.path.exists(self.history_file)
+        with open(self.history_file, 'r') as f:
+            assert 'echo test_write' in f.read()
 
-    @pytest.mark.xfail(reason="history -r is not implemented (psh's history builtin supports only `history [n]` and `history -c`); this test also feeds a non-interactive stdin, which records no history")
     def test_history_read(self):
         """Test history -r (read history from file)."""
         # Pre-populate history file
@@ -408,18 +408,16 @@ class TestHistoryBuiltins:
     def test_history_append(self):
         """Test history -a (append new history to file)."""
         commands = [
-            'echo append_test',
+            'history -s append_test',
             'history -a'
         ]
 
         result = HistoryTestHelper.run_psh_with_history(commands, self.history_file)
         assert result['success']
 
-        # Check that history file was appended to
-        if os.path.exists(self.history_file):
-            with open(self.history_file, 'r') as f:
-                content = f.read()
-                assert 'append_test' in content
+        assert os.path.exists(self.history_file)
+        with open(self.history_file, 'r') as f:
+            assert 'append_test' in f.read()
 
 
 class TestHistoryErrorHandling:

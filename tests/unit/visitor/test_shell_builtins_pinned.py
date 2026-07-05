@@ -23,7 +23,7 @@ BASH_SCOPED_EXTRAS = frozenset({
     # entries in tests/conformance/bash/test_absent_features.py
     # ('hash' moved out 2026-06-13 when psh implemented it)
     'bind', 'caller', 'compgen', 'complete', 'compopt', 'enable',
-    'fc', 'logout', 'suspend', 'ulimit',
+    'fc', 'logout', 'suspend',
     # keywords / control flow that scripts invoke like commands
     # ('break'/'continue' moved out 2026-07-02 when psh implemented them
     # as real builtins)

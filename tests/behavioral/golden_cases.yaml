@@ -5799,3 +5799,49 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# BUILTINS FEATURE GAPS (reappraisal #18 Tier-2 T2-G)
+# =============================================================================
+
+- name: r18t2_builtins_ulimit_set_get_soft_nofile
+  command: "ulimit -S -n 256; ulimit -n"
+  stdout: "256\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_builtins_ulimit_set_both_when_no_hs
+  command: "ulimit -n 256; echo $(ulimit -Sn) $(ulimit -Hn)"
+  stdout: "256 256\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_builtins_ulimit_file_size_block_factor
+  command: "ulimit -S -f 100; ulimit -f"
+  stdout: "100\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_builtins_ulimit_invalid_option
+  command: "ulimit -Z"
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+- name: r18t2_builtins_history_store_and_list
+  command: "set -o history; history -s alpha; history -s beta; history"
+  stdout: "    1  alpha\n    2  beta\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_builtins_history_delete_offset
+  command: "set -o history; history -s a; history -s b; history -s c; history -d 2; history"
+  stdout: "    1  a\n    2  c\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_builtins_history_write_to_stdout
+  command: "set -o history; history -s x; history -w /dev/stdout"
+  stdout: "x\n"
+  stderr: ""
+  exit_code: 0

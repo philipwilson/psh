@@ -1,7 +1,7 @@
 """Command history management."""
 import fcntl
 import os
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from .base import InteractiveComponent
 from .line_editor_helpers import convert_multiline_to_single
@@ -42,6 +42,10 @@ class HistoryManager(InteractiveComponent):
         # Count of state.history entries already persisted to the file
         # (entries loaded from it at startup, plus whatever we've since saved).
         self._file_synced_len = 0
+        # Count of the default history file's lines already consumed into the
+        # in-memory list (startup load + `history -r`/`-n` of the default
+        # file). `history -n` uses this to append only lines it hasn't read yet.
+        self._file_read_len = 0
 
     def _histcontrol_options(self) -> set:
         """The effective HISTCONTROL value set (``ignoreboth`` expanded)."""
@@ -130,6 +134,7 @@ class HistoryManager(InteractiveComponent):
 
     def load_from_file(self) -> None:
         """Load command history from file."""
+        read = 0
         try:
             if os.path.exists(self.state.history_file):
                 with open(self.state.history_file, 'r') as f:
@@ -137,6 +142,7 @@ class HistoryManager(InteractiveComponent):
                         line = line.rstrip('\n')
                         if line:
                             self.state.history.append(line)
+                            read += 1
                 # Trim to max size
                 if len(self.state.history) > self.state.max_history_size:
                     del self.state.history[:-self.state.max_history_size]
@@ -146,6 +152,8 @@ class HistoryManager(InteractiveComponent):
         # Everything loaded is already on disk; only entries added after this
         # point are new and need appending on save.
         self._file_synced_len = len(self.state.history)
+        # We have now consumed the whole file, so `history -n` starts from here.
+        self._file_read_len = read
 
     def save_to_file(self) -> None:
         """Persist this session's new history entries (concurrency-safe).
@@ -208,3 +216,117 @@ class HistoryManager(InteractiveComponent):
         # The list is now empty; nothing is "already on disk" relative to it,
         # so subsequent commands append from the start.
         self._file_synced_len = 0
+        self._file_read_len = 0
+
+    # -- `history` file-sync operations -------------------------------------
+    # These back the `history -w/-r/-a/-n` builtin flags. The two markers above
+    # track our position relative to the DEFAULT history file ($HISTFILE):
+    # `_file_synced_len` = in-memory entries already written to it,
+    # `_file_read_len`   = its lines already read into memory. An operation on
+    # an explicitly-named other file leaves both markers alone (that file is
+    # unrelated to $HISTFILE's sync state).
+
+    def _is_default_file(self, path: str) -> bool:
+        try:
+            return os.path.abspath(path) == os.path.abspath(self.state.history_file)
+        except OSError:
+            return False
+
+    def store_entry(self, command: str) -> None:
+        """`history -s`: add *command* as one entry without executing it.
+
+        Stored verbatim (no HISTCONTROL/HISTIGNORE filtering — bash keeps an
+        explicit `-s` entry) via in-place mutation to preserve the list-alias
+        contract."""
+        self.state.history.append(command)
+
+    def write_history(self, path: Optional[str] = None) -> bool:
+        """`history -w`: write the ENTIRE in-memory list to *path* (default
+        $HISTFILE), truncating it first."""
+        target = path or self.state.history_file
+        try:
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'w') as f:
+                if self.state.history:
+                    f.write('\n'.join(self.state.history) + '\n')
+        except OSError:
+            return False
+        # The whole list is now flushed to a file, so the exit-time save and a
+        # subsequent `-a` won't re-emit it (bash marks it written regardless of
+        # which file). Only reads of the DEFAULT file move the read cursor.
+        self._file_synced_len = len(self.state.history)
+        if self._is_default_file(target):
+            self._file_read_len = len(self.state.history)
+        return True
+
+    def append_history(self, path: Optional[str] = None) -> bool:
+        """`history -a`: append entries added since the last write/append to
+        *path* (default $HISTFILE)."""
+        target = path or self.state.history_file
+        new_entries = self.state.history[self._file_synced_len:]
+        try:
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            with os.fdopen(fd, 'a') as f:
+                if new_entries:
+                    f.write('\n'.join(new_entries) + '\n')
+        except OSError:
+            return False
+        # Advance the written cursor for ANY target (bash's `-a` marker is
+        # session-global), so the next `-a`/exit-save won't duplicate them.
+        self._file_synced_len = len(self.state.history)
+        if self._is_default_file(target):
+            self._file_read_len += len(new_entries)
+        return True
+
+    def read_history(self, path: Optional[str] = None) -> bool:
+        """`history -r`: append ALL lines of *path* (default $HISTFILE) to the
+        in-memory list."""
+        target = path or self.state.history_file
+        lines = self._read_file_lines(target)
+        if lines is None:
+            return False
+        self.state.history.extend(lines)
+        if self._is_default_file(target):
+            # These lines already live in the default file; don't re-append
+            # them on save, and advance the read cursor past them.
+            self._file_synced_len = len(self.state.history)
+            self._file_read_len = len(lines)
+        return True
+
+    def read_new_history(self, path: Optional[str] = None) -> bool:
+        """`history -n`: append only the lines of *path* (default $HISTFILE)
+        not already read into this session."""
+        target = path or self.state.history_file
+        lines = self._read_file_lines(target)
+        if lines is None:
+            return False
+        default = self._is_default_file(target)
+        start = self._file_read_len if default else 0
+        fresh = lines[start:]
+        self.state.history.extend(fresh)
+        if default:
+            self._file_synced_len = len(self.state.history)
+            self._file_read_len = len(lines)
+        return True
+
+    def delete_entry(self, first: int, last: int) -> None:
+        """`history -d`: delete the entries at 1-based positions [first, last].
+
+        Callers validate the range. Deletions before the sync/read cursors
+        shift them so the append/read slices still start at the right place."""
+        lo, hi = first - 1, last  # 0-based half-open slice
+        removed = hi - lo
+        del self.state.history[lo:hi]
+        before_sync = max(0, min(hi, self._file_synced_len) - lo)
+        before_read = max(0, min(hi, self._file_read_len) - lo)
+        self._file_synced_len = max(0, self._file_synced_len - before_sync)
+        self._file_read_len = max(0, self._file_read_len - before_read)
+        _ = removed  # documents intent; slice already applied
+
+    def _read_file_lines(self, path: str) -> Optional[List[str]]:
+        """Non-empty, newline-stripped lines of *path*; None on OSError."""
+        try:
+            with open(path, 'r') as f:
+                return [ln.rstrip('\n') for ln in f if ln.strip()]
+        except OSError:
+            return None

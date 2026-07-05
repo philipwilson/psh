@@ -173,8 +173,19 @@ done
 
 ```bash
 # The `history` builtin lists previous commands in interactive mode:
-history          # Show command history
-history 10       # Show last 10 commands
+history          # Show the whole command history
+history 10       # Show the last 10 commands
+
+# History-file synchronization and editing flags are supported:
+history -c              # Clear the in-memory history list
+history -d 3            # Delete entry 3 (negative counts from the end;
+                        #   3-5 deletes a range)
+history -w [file]       # Write the whole list to FILE (default: $HISTFILE)
+history -r [file]       # Read (append) FILE's lines into the list
+history -a [file]       # Append entries new since the last write/append
+history -n [file]       # Read only FILE lines not yet read this session
+history -s cmd args     # Store "cmd args" as one entry without running it
+# `history -p` (expand-and-print without storing) is not supported.
 ```
 
 History *expansion* is supported in interactive mode: event
@@ -651,7 +662,7 @@ fi
 | shopt options | Yes | Partial | checkhash, dotglob, expand_aliases, extglob, failglob, globstar, inherit_errexit, nocaseglob, nocasematch, nullglob |
 | Extended glob patterns | Yes | Yes | ?() *() +() @() !() (enable extglob before the line) |
 | read options | Yes | Partial | -r -d -p -t -n -N -s -a -u supported; -e/-i (readline editing) not |
-| command history (`history`) | Yes | Yes | Listing past commands (interactive) |
+| command history (`history`) | Yes | Yes | Listing (interactive) + file-sync/edit flags -c/-d/-w/-r/-a/-n/-s; -p (expand-and-print) not supported |
 | Aliases | Yes | Yes | Expanded in scripts/`-c` too by default (bash: interactive-only); `shopt -u expand_aliases` disables — see 17.3 |
 | History expansion (!!, !n) | Yes | Yes | Full support for interactive event/word designators + :h/:t/:r/:e/:s/:g& modifiers + ^old^new; :q/:x modifiers and !# designator not yet supported |
 | Coprocesses | Yes | No | Not implemented |
@@ -660,6 +671,7 @@ fi
 | Indirect expansion ${!var} | Yes | Yes | Scalar; ${!arr[@]} indices and ${!prefix*}/${!prefix@} name-listing all work |
 | Parameter transforms ${var@Q/U/u/L/E/P/A/a} | Yes | Yes | Scalar, array, and positional |
 | Assoc key/value transforms ${var@K} / ${var@k} | Yes | Yes | Full support (assoc pairs iterate in insertion order, not bash hash order) |
+| ulimit builtin | Yes | Yes | Full support for every resource Python's `resource` module exposes (-c/-d/-f/-l/-m/-n/-s/-t/-u/-v and Linux -e/-i/-q/-r/-x), soft/hard via -S/-H, keywords `unlimited`/`hard`/`soft`, and -a; the non-rlimit pipe size -p is unsupported. Sets the psh process's own limits (inherited by children), unlike the external binary psh formerly fell through to |
 | let builtin | Yes | Yes | Equivalent to ((...)) per argument |
 | mapfile/readarray | Yes | Yes | -d/-n/-O/-s/-t/-u (no -C/-c) |
 | caller builtin | Yes | No | Not implemented |
