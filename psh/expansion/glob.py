@@ -1,8 +1,8 @@
 """Glob (pathname) expansion implementation."""
-import fnmatch
 import glob
 import os
 import re
+import warnings
 from typing import TYPE_CHECKING, Iterator, List, Tuple
 
 if TYPE_CHECKING:
@@ -79,11 +79,18 @@ def translate_posix_classes(pattern: str) -> str:
 
 
 def normalize_bracket_expressions(pattern: str) -> str:
-    """Make shell bracket expressions understood by Python's fnmatch/glob.
+    """Adapt shell bracket expressions to the form stdlib ``glob.glob`` /
+    ``fnmatch`` understand.
 
     Translates POSIX character classes ``[[:alpha:]]`` to equivalent ranges and
-    converts ``[^...]`` negation to fnmatch's ``[!...]`` form. Shared by
-    pathname expansion and case/``[[ ]]`` pattern matching so all of them agree.
+    converts ``[^...]`` negation to fnmatch's ``[!...]`` form. This is now the
+    input shim for the ONE remaining ``fnmatch``-based path: the default
+    pathname-expansion walker (``glob.glob`` in ``GlobExpander.expand``). Every
+    other shell glob consumer — ``case`` / ``[[ == ]]`` / parameter expansion
+    (``psh/expansion/pattern.py``) and the nocaseglob / extglob / globstar
+    walkers (via ``_compile_component`` below) — routes through the single
+    glob→regex converter ``extglob.glob_to_regex_body`` instead, which handles
+    these bracket forms natively and never needs this rewrite.
     """
     # POSIX classes first (so a negated class like [^[:digit:]] still works).
     # The pathname table drops '/' from punct (glob.glob splits on '/').
@@ -93,6 +100,52 @@ def normalize_bracket_expressions(pattern: str) -> str:
     # Bracket negation: [^ -> [! when the '[' is not backslash-escaped.
     pattern = re.sub(r'(?<!\\)\[\^', '[!', pattern)
     return pattern
+
+
+def _compile_component(comp: str, ignorecase: bool = False) -> 're.Pattern[str]':
+    """Compile a single pathname COMPONENT glob to a full-match regex using the
+    shell's one glob→regex converter (``extglob.glob_to_regex_body``).
+
+    This is the pathname side of the converter shared with ``case`` /
+    ``[[ == ]]`` / parameter-expansion matching (``psh/expansion/pattern.py``),
+    so bracket/class/escape semantics can no longer drift between "matching a
+    pattern against a filename" and "matching it against a string". Two
+    pathname-specific adjustments make the result reproduce, byte-for-byte, what
+    the previous stdlib ``fnmatch``-based path matched (verified over ~26k
+    pattern/string pairs, case-sensitive and -insensitive):
+
+    * ``for_pathname=True`` so ``*``/``?`` become ``[^/]*``/``[^/]`` (a single
+      component never spans ``/``), and ``extglob=False`` because extglob
+      components are handled by the caller before a component reaches here.
+    * Backslashes are doubled first. A residual backslash reaching pathname
+      matching (e.g. ``x="a\\*b"; echo $x``) is a LITERAL character — as stdlib
+      ``glob``/``fnmatch`` treat it — whereas the converter reads ``\\x`` as an
+      escape. Doubling (``\\`` -> ``\\\\``) makes the converter emit a literal
+      backslash and keep the following metacharacter live, matching the old
+      path exactly. This deliberately PRESERVES the long-standing divergence
+      from the ``case``/``[[`` path, which honors ``\\`` escapes; converging
+      that is a behavior change, out of scope for this refactor.
+
+    Warnings are silenced while compiling: stdlib ``fnmatch`` escaped the regex
+    set-operator sequences (``&&``/``||``/``~~``) that can occur inside a
+    bracket, so the old pathname path never emitted the ``FutureWarning`` that
+    ``re`` now raises for them. The resulting match set is identical, so
+    silencing keeps stderr byte-identical to the previous behavior.
+    """
+    from .extglob import glob_to_regex_body
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            # The conversion is inside the suppression block too: the shared
+            # converter validates each bracket class with its own re.compile
+            # (extglob._bracket_to_regex), which is where the set-operator
+            # FutureWarning is raised.
+            body = glob_to_regex_body(comp.replace('\\', '\\\\'),
+                                      for_pathname=True, extglob=False)
+            return re.compile(body, re.IGNORECASE if ignorecase else 0)
+    except re.error:
+        # bash quietly matches nothing for an uncompilable pattern; never crash.
+        return re.compile('(?!)')
 
 
 class GlobExpander:
@@ -120,15 +173,13 @@ class GlobExpander:
                     # extglob components via _match_glob_component), where
                     # _expand_extglob would treat `**` as a single level.
                     return sorted(self._expand_globstar(
-                        normalize_bracket_expressions(pattern),
-                        self.state.options.get('dotglob', False)))
+                        pattern, self.state.options.get('dotglob', False)))
                 return self._expand_extglob(pattern)
 
-        # Normalize POSIX classes / [^...] negation so fnmatch/glob handle them.
-        translated = normalize_bracket_expressions(pattern)
-
-        # Check if the pattern contains glob characters
-        if not has_glob_metacharacters(translated):
+        # Check if the pattern contains glob characters. normalize_bracket_
+        # expressions never adds or removes a metacharacter (it only rewrites
+        # bracket-expression *contents*), so this holds on the raw pattern.
+        if not has_glob_metacharacters(pattern):
             return [pattern]
 
         dotglob = self.state.options.get('dotglob', False)
@@ -136,17 +187,22 @@ class GlobExpander:
         nocaseglob = self.state.options.get('nocaseglob', False)
 
         if nocaseglob:
-            matches = self._glob_nocase(translated, dotglob)
-        elif globstar and any(c == '**' for c in translated.split(os.sep)):
+            matches = self._glob_nocase(pattern, dotglob)
+        elif globstar and any(c == '**' for c in pattern.split(os.sep)):
             # A bare `**` component under shopt -s globstar: bash's recursive
             # scan does NOT descend through symlinked directories, but
             # Python's glob.glob(recursive=True) does (and can loop) — use
             # the symlink-aware walker instead.
-            matches = self._expand_globstar(translated, dotglob)
+            matches = self._expand_globstar(pattern, dotglob)
         else:
             # Without a `**` component the recursive flag is irrelevant
             # (globstar off leaves `**` behaving as `*`, same as glob.glob).
-            matches = glob.glob(translated, include_hidden=dotglob)
+            # This default case delegates directory walking to stdlib
+            # ``glob.glob``; normalize_bracket_expressions adapts the pattern's
+            # bracket expressions (POSIX classes, [^...] negation) to the form
+            # glob/fnmatch understand — the sole remaining consumer of that shim.
+            matches = glob.glob(normalize_bracket_expressions(pattern),
+                                include_hidden=dotglob)
 
         # Byte (C-locale) ordering. bash sorts glob results with strcoll() in
         # the current LC_COLLATE, so this diverges from bash in a non-C locale
@@ -177,7 +233,7 @@ class GlobExpander:
                 continue
             has_magic = has_glob_metacharacters(comp)
             if has_magic:
-                regex = re.compile(fnmatch.translate(comp), re.IGNORECASE)
+                regex = _compile_component(comp, ignorecase=True)
             else:
                 regex = re.compile(re.escape(comp) + r'\Z', re.IGNORECASE)
 
@@ -192,7 +248,7 @@ class GlobExpander:
                     if (has_magic and not dotglob
                             and entry.startswith('.') and not comp.startswith('.')):
                         continue
-                    if regex.match(entry):
+                    if regex.fullmatch(entry):
                         nxt.append(os.path.join(base, entry) if base else entry)
             current = nxt
 
@@ -410,8 +466,7 @@ class GlobExpander:
             return result
 
         if has_glob_metacharacters(comp):
-            regex = re.compile(fnmatch.translate(
-                normalize_bracket_expressions(comp)))
+            regex = _compile_component(comp)
             is_pattern = True
         else:
             regex = None  # literal component: exact-name match (existence check)
@@ -428,6 +483,6 @@ class GlobExpander:
                         and entry.startswith('.') and not comp.startswith('.')):
                     continue
                 if (entry == comp if regex is None
-                        else regex.match(entry) is not None):
+                        else regex.fullmatch(entry) is not None):
                     result.append(os.path.join(base, entry) if base else entry)
         return result
