@@ -37,6 +37,7 @@ from psh.ast_nodes import (
     ASTNode,
     Command,
     Pipeline,
+    Program,
     Redirect,
     SimpleCommand,
     Statement,
@@ -97,7 +98,7 @@ def executable_node_classes():
     assignments) are consumed as *data* by their parent's handler, not
     dispatched through visit().
     """
-    containers = {TopLevel, StatementList, Pipeline}
+    containers = {TopLevel, StatementList, Pipeline, Program}
     return [c for c in concrete_node_classes()
             if issubclass(c, (Statement, Command)) or c in containers]
 

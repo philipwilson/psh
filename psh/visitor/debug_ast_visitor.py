@@ -30,6 +30,7 @@ from ..ast_nodes import (
     NegatedTestExpression,
     Pipeline,
     ProcessSubstitution,
+    Program,
     Redirect,
     SelectLoop,
     SimpleCommand,
@@ -87,6 +88,11 @@ class DebugASTVisitor(ASTVisitor[str]):
         return ''.join(self._visit_child(child) for child in children)
 
     # Top-level nodes
+
+    def visit_Program(self, node: Program) -> str:
+        """Format a program (the canonical root)."""
+        result = self._format_header("Program")
+        return result + self._visit_children(node.statements)
 
     def visit_TopLevel(self, node: TopLevel) -> str:
         """Format top-level script."""

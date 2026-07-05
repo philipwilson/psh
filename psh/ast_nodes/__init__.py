@@ -12,7 +12,7 @@ it (``from psh.ast_nodes import SimpleCommand, Word, ...``). The submodules:
 - ``arrays``    — ArrayAssignment / ArrayInitialization / ArrayElementAssignment
                   (depend on Word).
 - ``commands``  — SimpleCommand, SubshellGroup/BraceGroup, Pipeline, AndOrList,
-                  StatementList (alias CommandList), TopLevel.
+                  StatementList (alias CommandList), Program, TopLevel.
 - ``tests``     — ``[[ ... ]]`` test-expression nodes.
 - ``control``   — FunctionDef, case nodes, and the unified control
                   structures (loops, if, case, select, arithmetic).
@@ -47,6 +47,7 @@ from .commands import (
     BraceGroup,
     CommandList,
     Pipeline,
+    Program,
     SimpleCommand,
     StatementList,
     SubshellGroup,
@@ -143,6 +144,7 @@ __all__ = [
     'AndOrList',
     'StatementList',
     'CommandList',
+    'Program',
     'FunctionDef',
     'CasePattern',
     'CaseItem',

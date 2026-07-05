@@ -29,6 +29,7 @@ from ..ast_nodes import (
     FunctionDef,
     IfConditional,
     Pipeline,
+    Program,
     Redirect,
     SelectLoop,
     SimpleCommand,
@@ -123,6 +124,11 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         ))
 
     # Top-level nodes
+
+    def visit_Program(self, node: Program) -> None:
+        """Validate a program (the canonical root)."""
+        for statement in node.statements:
+            self.visit(statement)
 
     def visit_TopLevel(self, node: TopLevel) -> None:
         """Validate top-level script."""

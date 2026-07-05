@@ -29,6 +29,8 @@ from ..ast_nodes import (
     FunctionDef,
     IfConditional,
     Pipeline,
+    # Root
+    Program,
     SelectLoop,
     SimpleCommand,
     StatementList,
@@ -101,6 +103,63 @@ class ExecutorVisitor(ASTVisitor[int]):
         self.subshell_executor = SubshellExecutor(shell)
 
     # Top-level execution
+
+    def visit_Program(self, node: Program) -> int:
+        """Execute the statements of a parsed program (the canonical root).
+
+        Mirrors :meth:`visit_TopLevel`'s top-level sequencing semantics
+        (pending traps, ``$LINENO`` restamping, ``$?`` update, ``set -e``
+        exit-vs-break, out-of-loop break/continue diagnostics, ^C handling,
+        ``SystemExit`` passthrough) but iterates the flat ``statements`` list.
+        Commit 4 folds this and ``visit_StatementList`` onto one shared
+        sequence helper selected by context.
+        """
+        exit_status = 0
+
+        for statement in node.statements:
+            try:
+                self.shell.trap_manager.run_pending_traps()
+                # Track $LINENO: each statement carries its absolute source
+                # line (see ASTNode.line). Re-stamping per statement also
+                # restores LINENO after a function/source call returns here.
+                if statement.line is not None:
+                    self.state.scope_manager.set_current_line_number(statement.line)
+                exit_status = self.visit(statement)
+                # Update $? after each top-level statement
+                self.state.last_exit_code = exit_status
+
+                # Check errexit mode (set -e). Only a failure the AndOrList
+                # marked eligible triggers it (POSIX exempts condition
+                # contexts, non-final && / || members, and ! negation).
+                if (exit_status != 0 and self.state.options.get('errexit', False)
+                        and self.state.errexit_eligible):
+                    if self.shell.state.is_script_mode:
+                        sys.exit(exit_status)
+                    break
+            except LoopBreak:
+                if self.context.loop_depth > 0:
+                    raise
+                print("break: only meaningful in a `for', `while', or `until' loop",
+                      file=sys.stderr)
+                exit_status = 1
+                self.state.last_exit_code = exit_status
+            except LoopContinue:
+                if self.context.loop_depth > 0:
+                    raise
+                print("continue: only meaningful in a `for', `while', or `until' loop",
+                      file=sys.stderr)
+                exit_status = 1
+                self.state.last_exit_code = exit_status
+            except SystemExit:
+                # Let exit propagate
+                raise
+            except KeyboardInterrupt:
+                # Handle Ctrl+C
+                print()  # New line after ^C
+                exit_status = 130
+                self.state.last_exit_code = exit_status
+
+        return exit_status
 
     def visit_TopLevel(self, node: TopLevel) -> int:
         """Execute top-level statements."""

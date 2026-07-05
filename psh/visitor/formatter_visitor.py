@@ -35,6 +35,7 @@ from ..ast_nodes import (
     ParameterExpansion,
     Pipeline,
     ProcessSubstitution,
+    Program,
     Redirect,
     SelectLoop,
     SimpleCommand,
@@ -178,6 +179,28 @@ class FormatterVisitor(ASTVisitor[str]):
         return ''.join(result)
 
     # Top-level nodes
+
+    def visit_Program(self, node: Program) -> str:
+        """Format a program (the canonical root): one statement per line.
+
+        Statements are joined by a single newline, with each statement's
+        queued heredoc bodies flushed after its physical line (same mechanics
+        as :meth:`visit_StatementList`). There is deliberately NO blank-line
+        ("paragraph") separator between statements:
+
+        The grammar only starts a new top-level "item" after a background ``&``
+        (``&`` is the sole terminator that ends a command list without a
+        ``;``/newline). The former ``visit_TopLevel`` joined such
+        ``&``-terminated items with a single newline (its ``\\n\\n`` branch was
+        unreachable from real parser output — the ``&``-ending test always
+        selected ``\\n``), and joined ``;``/newline-separated statements within
+        an item with a single newline too. So every adjacency renders with one
+        ``\\n``. A statement's ``&`` still comes from its own background flag —
+        rendered by ``visit_SimpleCommand``/``visit_AndOrList`` — never from the
+        container shape. This keeps ``format(format(x)) == format(x)``.
+        """
+        parts = [self._flush_line(self.visit(stmt)) for stmt in node.statements]
+        return '\n'.join(parts)
 
     def visit_TopLevel(self, node: TopLevel) -> str:
         """Format top-level script.

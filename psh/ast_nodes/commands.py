@@ -3,7 +3,7 @@
 The executable command (:class:`SimpleCommand`), the grouping compound
 commands (subshell/brace), and the list containers that thread statements
 together (:class:`Pipeline`, :class:`AndOrList`, :class:`StatementList`,
-:class:`TopLevel`).
+:class:`Program`, :class:`TopLevel`).
 """
 
 from dataclasses import dataclass, field
@@ -102,6 +102,22 @@ class StatementList(ASTNode):
 
 
 CommandList = StatementList
+
+
+@dataclass
+class Program(ASTNode):
+    """Root of one parsed shell input unit.
+
+    The single canonical result type of both parsers for EVERY parse,
+    including empty input. Its ``statements`` are the ordinary statements the
+    command-list grammar produces (``AndOrList`` / ``FunctionDef``), each with
+    its normal ``AndOrList -> Pipeline`` ancestry — a bare compound is NOT
+    unwrapped at the root. Nested command bodies (loop/if/function/group
+    interiors) still use :class:`StatementList`; ``Program`` is only ever the
+    root, and gives program-wide metadata (source path, span, diagnostics) a
+    single natural owner.
+    """
+    statements: List[Statement] = field(default_factory=list)
 
 
 @dataclass

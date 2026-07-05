@@ -17,6 +17,7 @@ from ..ast_nodes import (
     ExpansionPart,
     ForLoop,
     FunctionDef,
+    Program,
     SimpleCommand,
     TopLevel,
     VariableExpansion,
@@ -187,6 +188,10 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         self._current_function: Optional[str] = None
 
     # Override parent visit methods to add enhanced checks
+
+    def visit_Program(self, node: Program) -> None:
+        """Visit a program with enhanced validation."""
+        super().visit_Program(node)
 
     def visit_TopLevel(self, node: TopLevel) -> None:
         """Visit top-level with enhanced validation."""
