@@ -154,6 +154,14 @@ class ShellState:
         # addition to function_stack.
         self.source_depth = 0
 
+        # Re-entrancy depth of arithmetic evaluation. A variable whose value is
+        # itself an expression is evaluated recursively (`x="x+1"; $((x))`), so
+        # a self-referential or too-deeply-chained expression would exhaust the
+        # interpreter stack. evaluate_arithmetic() bounds it to bash's
+        # EXPR_NEST_MAX, tripping a clean "expression recursion level exceeded"
+        # arithmetic error instead of a RecursionError.
+        self._arith_recursion_depth = 0
+
         # The shell's parent process id at startup ($PPID). Subshells
         # inherit it (bash: PPID does not change in subshells).
         self.initial_ppid = os.getppid()
