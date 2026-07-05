@@ -17,8 +17,8 @@ from ..ast_nodes import (
     ExpansionPart,
     ForLoop,
     FunctionDef,
+    Program,
     SimpleCommand,
-    TopLevel,
     VariableExpansion,
 )
 from ..core.assignment_utils import SHELL_NAME
@@ -188,11 +188,11 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
 
     # Override parent visit methods to add enhanced checks
 
-    def visit_TopLevel(self, node: TopLevel) -> None:
-        """Visit top-level with enhanced validation."""
+    def visit_Program(self, node: Program) -> None:
+        """Visit a program with enhanced validation."""
         # Initialize any global variables from environment
         # In a real implementation, we might parse .bashrc or similar
-        super().visit_TopLevel(node)
+        super().visit_Program(node)
 
     def visit_SimpleCommand(self, node: SimpleCommand) -> None:
         """Enhanced simple command validation."""

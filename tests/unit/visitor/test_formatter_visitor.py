@@ -51,9 +51,10 @@ def test_group_round_trip_stable(src):
     "echo a & echo b & echo c",
 ])
 def test_backgrounded_top_level_is_idempotent(src):
-    """A top-level `&` splits into multiple TopLevel items; joining them with a
-    blank line was non-idempotent because re-parsing collapses the blank line
-    (reappraisal #16 Tier-2). format(format(x)) must equal format(x)."""
+    """A top-level `&` yields a background statement in the Program; joining
+    statements with a blank line would be non-idempotent because re-parsing
+    collapses it (reappraisal #16 Tier-2). The formatter joins every statement
+    with a single newline, so format(format(x)) must equal format(x)."""
     once = _fmt(src)
     twice = FormatterVisitor().visit(parse(tokenize(once)))
     assert once == twice
@@ -131,3 +132,65 @@ class TestFormatFunctionDefinition:
         out = self._via_shell(
             'f() { case $1 in a) echo A;; esac; g() { echo inner; }; }')
         assert parse(tokenize(out)) is not None
+
+
+class TestProgramFormatting:
+    """The formatter derives layout from the Program's statements and their
+    background flags, not from a root container class (visit_Program joins
+    every statement with a single newline)."""
+
+    IDEMPOTENCE_CORPUS = [
+        "echo hi",
+        "echo a; echo b",
+        "echo a\necho b\necho c",
+        "echo a | cat | rev",
+        "true && echo x || echo y",
+        "while false; do echo x; done",
+        "if true; then echo a; elif b; then c; else d; fi",
+        "for i in 1 2 3; do echo $i; done",
+        "case $x in a|b) echo AB;; *) echo O;; esac",
+        "f() { echo hi; }",
+        "( echo a; echo b )",
+        "{ ls; echo done; }",
+        "while false; do echo x; done\necho after",
+        "echo before\nwhile false; do echo x; done",
+        "echo a & echo b",
+        "echo a & echo b & echo c",
+        "echo a; echo b & echo c",
+        "cat <<EOF\nhello\nEOF",
+        "cat <<EOF && echo x\nbody\nEOF",
+    ]
+
+    @pytest.mark.parametrize("src", IDEMPOTENCE_CORPUS)
+    def test_format_is_idempotent(self, src):
+        once = _fmt(src)
+        twice = FormatterVisitor().visit(parse(tokenize(once)))
+        assert once == twice
+
+    @pytest.mark.parametrize("src", [
+        "while false; do echo x; done\necho after",
+        "echo before\nwhile false; do echo x; done",
+        "if true; then echo a; fi\necho b",
+        "echo a\nfor i in 1 2; do echo $i; done",
+    ])
+    def test_compound_simple_order_no_blank_line(self, src):
+        """Adjacent compound/simple statements are one newline apart in both
+        orders — the container shape carries no blank-line policy."""
+        out = _fmt(src)
+        assert "\n\n" not in out
+
+    @pytest.mark.parametrize("src", [
+        "echo a & echo b",
+        "echo a & echo b &",
+        "( echo a ) & echo b",
+        "a && b &",
+        "echo a; echo b & echo c",
+    ])
+    def test_background_list_reparses_to_equivalent_program(self, src):
+        """Formatting a background list and reparsing yields an equivalent
+        Program (same AST, background flags preserved)."""
+        from psh.ast_nodes import Program
+        original = parse(tokenize(src))
+        reparsed = parse(tokenize(_fmt(src)))
+        assert isinstance(original, Program) and isinstance(reparsed, Program)
+        assert reparsed == original

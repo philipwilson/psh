@@ -7,7 +7,7 @@ This document provides guidance for working with the PSH parser subsystem.
 The parser transforms token streams into Abstract Syntax Trees (ASTs). PSH uses a **recursive descent parser** with specialized sub-parsers for different language constructs.
 
 ```
-Tokens → Parser → AST (CommandList/TopLevel)
+Tokens → Parser → AST (Program root)
               ↓
     ┌─────────┼─────────┬──────────┬─────────┐
     ↓         ↓         ↓          ↓         ↓
@@ -188,7 +188,7 @@ class TokenGroups:
 
 ### Top-Level Parsing
 
-There is ONE grammar path. `_parse_top_level_item()` delegates straight to
+There is ONE grammar path and ONE root type. `parse()` loops over
 `parse_command_list` — it does NOT special-case control structures. A control
 structure at command position is just a pipeline component (see
 `parse_pipeline_component`), so `while …; done | cat`, `… && …`, `… &`, etc.
@@ -197,21 +197,25 @@ and the top level builds no `Pipeline`/`AndOrList` by hand. (This is enforced
 by `tests/unit/parser/test_top_level_control_structure_grammar.py`.)
 
 ```python
-def parse(self) -> Union[CommandList, TopLevel]:
-    top_level = TopLevel()
+def parse(self) -> Program:
+    program = Program()
     while not self.at_end():
-        item = self._parse_top_level_item()  # delegates to parse_command_list
-        if item:
-            top_level.items.append(item)
-    return self._simplify_result(top_level)
+        command_list = self.statements.parse_command_list()
+        program.statements.extend(command_list.statements)
+        self.skip_separators()
+    return program
 ```
 
-Root-shape policy is separate from grammar parsing: `_simplify_result`
-(via `_bare_top_level_compound`) keeps the historical `TopLevel`-rooted shape
-for a program that is exactly one bare compound / function definition, while
-multi-statement programs stay a `CommandList`. So `while …; done; echo a`
-groups the same way as `echo a; while …; done` (the old top-level special
-case did not).
+Every parse — including empty input — returns a single canonical `Program`
+whose `statements` are the ordinary statements the grammar produced
+(`AndOrList` / `FunctionDef`). There is NO post-parse root reshaping: a bare
+compound keeps its normal `AndOrList → Pipeline` ancestry, exactly like any
+other statement (it is not unwrapped at the root). So `while …; done; echo a`
+groups the same way as `echo a; while …; done`. `Program` is the root only;
+nested command bodies (loop/if/function/group interiors) still use
+`StatementList`. The combinator parser returns the same `Program` root, so
+both parsers share one concrete root contract
+(`tests/parser_differential/test_combinator_ast_parity.py`).
 
 ### Statement Parsing
 

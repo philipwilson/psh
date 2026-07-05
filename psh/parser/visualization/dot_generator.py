@@ -41,8 +41,8 @@ class ASTDotGenerator(ASTVisitor[str]):
             'CStyleForLoop': '#F3E5F5',      # Light purple
             'FunctionDef': '#FFEBEE',        # Light red
             'CaseConditional': '#E0F2F1',    # Light teal
-            'CommandList': '#F5F5F5',        # Light gray
             'StatementList': '#F5F5F5',      # Light gray
+            'Program': '#F5F5F5',            # Light gray
             'AndOrList': '#E1F5FE',          # Light cyan
             'Redirect': '#FFF8E1',           # Light yellow
         }
@@ -276,7 +276,7 @@ class ASTDotGenerator(ASTVisitor[str]):
         return node_id
 
     def visit_StatementList(self, node) -> str:
-        """Generate DOT for statement list (also handles CommandList alias)."""
+        """Generate DOT for a statement list."""
         count = len(node.statements) if hasattr(node, 'statements') else 0
         label = self._format_node_label(node, f'StatementList\\n({count} stmts)')
         node_id = self._add_node(node, label)
@@ -285,9 +285,6 @@ class ASTDotGenerator(ASTVisitor[str]):
             self._process_field(node_id, 'statements', node.statements)
 
         return node_id
-
-    # CommandList is an alias for StatementList
-    visit_CommandList = visit_StatementList
 
     def generic_visit(self, node: ASTNode) -> str:
         """Generic visitor for unknown node types."""

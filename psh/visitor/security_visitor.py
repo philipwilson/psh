@@ -224,9 +224,9 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
         self._visit_redirects(node)
 
-    # TopLevel / StatementList / AndOrList need no explicit handler: the
+    # Program / StatementList / AndOrList need no explicit handler: the
     # generic_visit -> visit_children default descends into exactly their
-    # ASTNode children (items / statements / pipelines). Only nodes that add
+    # ASTNode children (statements / pipelines). Only nodes that add
     # per-node analysis or carry redirects keep an explicit method below.
     def visit_IfConditional(self, node: IfConditional) -> None:
         self.visit(node.condition)

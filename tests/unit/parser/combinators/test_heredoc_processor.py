@@ -8,7 +8,6 @@ from psh.ast_nodes import (
     CaseConditional,
     CaseItem,
     CasePattern,
-    CommandList,
     CStyleForLoop,
     EnhancedTestStatement,
     ForLoop,
@@ -153,10 +152,10 @@ class TestHeredocProcessor:
 
         # Create if conditional
         if_node = IfConditional(
-            condition=CommandList(statements=[cond_cmd]),
-            then_part=CommandList(statements=[then_cmd]),
-            elif_parts=[(CommandList(statements=[elif_cmd]), CommandList(statements=[]))],
-            else_part=CommandList(statements=[else_cmd])
+            condition=StatementList(statements=[cond_cmd]),
+            then_part=StatementList(statements=[then_cmd]),
+            elif_parts=[(StatementList(statements=[elif_cmd]), StatementList(statements=[]))],
+            else_part=StatementList(statements=[else_cmd])
         )
 
         # Populate heredoc content
@@ -206,8 +205,8 @@ class TestHeredocProcessor:
 
         # Create while loop
         while_node = WhileLoop(
-            condition=CommandList(statements=[cond_cmd]),
-            body=CommandList(statements=[body_cmd])
+            condition=StatementList(statements=[cond_cmd]),
+            body=StatementList(statements=[body_cmd])
         )
 
         # Populate heredoc content
@@ -243,7 +242,7 @@ class TestHeredocProcessor:
         for_node = ForLoop(
             variable='item',
             items=['a', 'b', 'c'],
-            body=CommandList(statements=[cmd])
+            body=StatementList(statements=[cmd])
         )
 
         # Populate heredoc content
@@ -276,7 +275,7 @@ class TestHeredocProcessor:
             init_expr='i=0',
             condition_expr='i<10',
             update_expr='i++',
-            body=CommandList(statements=[cmd])
+            body=StatementList(statements=[cmd])
         )
 
         # Populate heredoc content
@@ -319,13 +318,13 @@ class TestHeredocProcessor:
         # Create case items
         item1 = CaseItem(
             patterns=[CasePattern('pattern1')],
-            commands=CommandList(statements=[cmd1]),
+            commands=StatementList(statements=[cmd1]),
             terminator=';;'
         )
 
         item2 = CaseItem(
             patterns=[CasePattern('pattern2')],
-            commands=CommandList(statements=[cmd2]),
+            commands=StatementList(statements=[cmd2]),
             terminator=';;'
         )
 
@@ -376,7 +375,7 @@ class TestHeredocProcessor:
         select_node = SelectLoop(
             variable='choice',
             items=['opt1', 'opt2', 'opt3'],
-            body=CommandList(statements=[cmd]),
+            body=StatementList(statements=[cmd]),
             redirects=[redirect_loop],
             background=False
         )
@@ -451,7 +450,7 @@ class TestHeredocProcessor:
 
         # Create subshell group
         subshell_node = SubshellGroup(
-            statements=CommandList(statements=[cmd]),
+            statements=StatementList(statements=[cmd]),
             redirects=[redirect_outer]
         )
 
@@ -494,7 +493,7 @@ class TestHeredocProcessor:
 
         # Create brace group
         brace_node = BraceGroup(
-            statements=CommandList(statements=[cmd]),
+            statements=StatementList(statements=[cmd]),
             redirects=[redirect_outer]
         )
 
@@ -584,11 +583,11 @@ class TestHeredocProcessor:
 
         pipeline = Pipeline(commands=[cmd])
         and_or = AndOrList(pipelines=[pipeline], operators=[])
-        subshell = SubshellGroup(statements=CommandList(statements=[and_or]))
-        if_body = CommandList(statements=[subshell])
+        subshell = SubshellGroup(statements=StatementList(statements=[and_or]))
+        if_body = StatementList(statements=[subshell])
 
         if_node = IfConditional(
-            condition=CommandList(statements=[]),
+            condition=StatementList(statements=[]),
             then_part=if_body,
             elif_parts=[],
             else_part=None
@@ -694,27 +693,28 @@ class TestRealHeredocSeam:
 
     def test_body_populates_through_real_tokens(self):
         ast = self._parse('cat <<EOF\nhello seam\nEOF\n')
-        redirect = ast.items[0].pipelines[0].commands[0].redirects[0]
+        redirect = ast.statements[0].pipelines[0].commands[0].redirects[0]
         assert redirect.heredoc_key
         assert redirect.heredoc_content == 'hello seam\n'
         assert redirect.heredoc_quoted is False
 
     def test_quoted_delimiter_sets_quoted_flag(self):
         ast = self._parse("cat <<'EOF'\nvalue $x\nEOF\n")
-        redirect = ast.items[0].pipelines[0].commands[0].redirects[0]
+        redirect = ast.statements[0].pipelines[0].commands[0].redirects[0]
         assert redirect.heredoc_content == 'value $x\n'
         assert redirect.heredoc_quoted is True
 
     def test_two_heredocs_populate_independently(self):
         ast = self._parse('cat <<A; cat <<B\nfirst\nA\nsecond\nB\n')
-        first = ast.items[0].pipelines[0].commands[0].redirects[0]
-        second = ast.items[1].pipelines[0].commands[0].redirects[0]
+        first = ast.statements[0].pipelines[0].commands[0].redirects[0]
+        second = ast.statements[1].pipelines[0].commands[0].redirects[0]
         assert first.heredoc_content == 'first\n'
         assert second.heredoc_content == 'second\n'
 
     def test_compound_trailing_heredoc_populates(self):
         ast = self._parse('while read x; do echo $x; done <<EOF\nbody\nEOF\n')
-        loop = ast.items[0]
+        # Bare compound keeps its AndOrList -> Pipeline ancestry under Program.
+        loop = ast.statements[0].pipelines[0].commands[0]
         assert loop.redirects[0].heredoc_content == 'body\n'
 
     def test_execution_uses_active_combinator_parser(self, captured_shell, monkeypatch):

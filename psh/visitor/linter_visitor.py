@@ -14,9 +14,9 @@ from ..ast_nodes import (
     FunctionDef,
     IfConditional,
     Pipeline,
+    Program,
     Redirect,
     SimpleCommand,
-    TopLevel,
     Word,
 )
 from .analysis_helpers import RedirectTraversalMixin
@@ -162,12 +162,14 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
     # Visitor methods
 
-    def visit_TopLevel(self, node: TopLevel) -> None:
-        """Visit top-level script."""
-        # Visit all items
-        for item in node.items:
-            self.visit(item)
+    def visit_Program(self, node: Program) -> None:
+        """Visit a program (the canonical root)."""
+        for statement in node.statements:
+            self.visit(statement)
+        self._check_program_level_issues()
 
+    def _check_program_level_issues(self) -> None:
+        """Root-level lint checks run after the whole program is traversed."""
         # Check for unused variables
         if self.config.check_unused_vars:
             unused = self.defined_vars - self.used_vars - self.exported_vars

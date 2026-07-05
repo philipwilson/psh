@@ -150,7 +150,7 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self.current_function = None
         self.in_command_substitution = False
 
-    # TopLevel / StatementList carry no metrics of their own; the
+    # Program / StatementList carry no metrics of their own; the
     # generic_visit -> visit_children default descends into their children.
 
     def visit_Redirect(self, node: Redirect) -> None:

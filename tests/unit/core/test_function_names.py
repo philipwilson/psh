@@ -11,7 +11,7 @@ redefinitions — and those route as expected shell errors, not through the
 
 import pytest
 
-from psh.ast_nodes import CommandList
+from psh.ast_nodes import StatementList
 from psh.core.exceptions import FunctionDefinitionError
 from psh.core.functions import FunctionManager
 
@@ -23,21 +23,21 @@ class TestFunctionManagerNamePolicy:
     ])
     def test_bash_valid_names_accepted(self, name):
         mgr = FunctionManager()
-        mgr.define_function(name, CommandList())
+        mgr.define_function(name, StatementList())
         assert mgr.get_function(name) is not None
 
     @pytest.mark.parametrize("name", ['', 'a b', 'a\tb'])
     def test_empty_or_whitespace_names_rejected(self, name):
         mgr = FunctionManager()
         with pytest.raises(FunctionDefinitionError):
-            mgr.define_function(name, CommandList())
+            mgr.define_function(name, StatementList())
 
     def test_readonly_redefinition_rejected_with_bash_message(self):
         mgr = FunctionManager()
-        mgr.define_function('f', CommandList())
+        mgr.define_function('f', StatementList())
         mgr.set_function_readonly('f')
         with pytest.raises(FunctionDefinitionError, match=r'f: readonly function'):
-            mgr.define_function('f', CommandList())
+            mgr.define_function('f', StatementList())
 
 
 class TestDefinitionErrorRouting:

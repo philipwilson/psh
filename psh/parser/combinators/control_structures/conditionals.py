@@ -9,8 +9,8 @@ from ....ast_nodes import (
     CaseConditional,
     CaseItem,
     CasePattern,
-    CommandList,
     IfConditional,
+    StatementList,
 )
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token, TokenType
@@ -72,7 +72,7 @@ class ConditionalParserMixin(_Base):
 
     def _build_if_statement(self) -> Parser[IfConditional]:
         """Build parser for if/then/elif/else/fi statements."""
-        def parse_condition_then(tokens: List[Token], pos: int) -> ParseResult[Tuple[CommandList, CommandList]]:
+        def parse_condition_then(tokens: List[Token], pos: int) -> ParseResult[Tuple[StatementList, StatementList]]:
             """Parse a condition-then pair."""
             # Parse the condition by recursion: a statement list up to (but not
             # consuming) the command-position 'then'. Parsing on the real token
@@ -145,7 +145,7 @@ class ConditionalParserMixin(_Base):
             pos = main_result.position
 
             # Parse elif parts
-            elif_parts: List[Tuple[CommandList, CommandList]] = []
+            elif_parts: List[Tuple[StatementList, StatementList]] = []
             while pos < len(tokens) and matches_keyword(tokens[pos], 'elif'):
                 pos += 1  # Skip 'elif'
                 elif_result = parse_condition_then(tokens, pos)

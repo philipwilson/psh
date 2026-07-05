@@ -24,11 +24,11 @@ if TYPE_CHECKING:
         AndOrList,
         ArrayAssignment,
         ASTNode,
-        CommandList,
         FunctionDef,
         Pipeline,
         Redirect,
         SimpleCommand,
+        StatementList,
     )
     from ....lexer.token_types import Token
     from ...config import ParserConfig
@@ -49,7 +49,7 @@ class CommandParsersProtocol(Protocol):
     # ``redirection`` and ``statement`` are typed loosely (``Any`` /
     # ``Parser[Any]``) rather than pinned to their element type. The parse
     # closures append ``redirection.parse().value`` to a ``List[Redirect]``
-    # and forward ``statement.parse()`` as a wider ``ParseResult[CommandList]``.
+    # and forward ``statement.parse()`` as a wider ``ParseResult[StatementList]``.
     # In the pre-split single-module version mypy inferred both attributes as
     # collapsed-``Any`` (the bound-method generic inference for
     # ``Parser(self._parse_redirection)`` did not pin ``T``), so those usages
@@ -60,7 +60,7 @@ class CommandParsersProtocol(Protocol):
     pipeline: "Parser[Union[Pipeline, ASTNode]]"
     and_or_list: "Parser[Union[AndOrList, ASTNode]]"
     statement: "Parser[Any]"
-    statement_list: "Parser[CommandList]"
+    statement_list: "Parser[StatementList]"
     _pipeline_element: "Parser"
     _function_def: "Parser"
 
@@ -108,4 +108,4 @@ class CommandParsersProtocol(Protocol):
         self,
         terminators: frozenset = ...,
         terminator_types: frozenset = ...,
-    ) -> "Parser[CommandList]": ...
+    ) -> "Parser[StatementList]": ...

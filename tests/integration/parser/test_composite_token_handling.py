@@ -29,7 +29,7 @@ class TestCompositeTokenParsing:
     def get_simple_command(self, input_str: str):
         """Helper to get the first simple command from parsed input."""
         ast = self.parse_command(input_str)
-        return ast.and_or_lists[0].pipelines[0].commands[0]
+        return ast.statements[0].pipelines[0].commands[0]
 
     def test_simple_quoted_composite(self):
         """Test parsing of simple quoted string followed by unquoted text."""
@@ -92,7 +92,7 @@ class TestCompositeTokensInComplexStructures:
     def test_multiple_composite_arguments(self):
         """Test command with multiple composite arguments."""
         ast = self.parse_command('cp "file"name "dest"dir/')
-        cmd = ast.and_or_lists[0].pipelines[0].commands[0]
+        cmd = ast.statements[0].pipelines[0].commands[0]
 
         assert isinstance(cmd, SimpleCommand)
         assert len(cmd.args) == 3
@@ -107,7 +107,7 @@ class TestCompositeTokensInComplexStructures:
         ast = self.parse_command('cat "file"name | grep "pattern"text')
 
         # Check we have a pipeline with 2 commands
-        pipeline = ast.and_or_lists[0].pipelines[0]
+        pipeline = ast.statements[0].pipelines[0]
         assert len(pipeline.commands) == 2
 
         # First command: cat
@@ -125,7 +125,7 @@ class TestCompositeTokensInComplexStructures:
     def test_composite_in_redirection(self):
         """Test composite tokens in file redirection."""
         ast = self.parse_command('echo test > "output"file.txt')
-        cmd = ast.and_or_lists[0].pipelines[0].commands[0]
+        cmd = ast.statements[0].pipelines[0].commands[0]
 
         # Check the command
         assert cmd.args[0] == 'echo'
@@ -141,7 +141,7 @@ class TestCompositeTokensInComplexStructures:
         """Test composite tokens containing variables."""
         # Note: The actual variable expansion happens later, not in parsing
         ast = self.parse_command('echo "$HOME"/.bashrc')
-        cmd = ast.and_or_lists[0].pipelines[0].commands[0]
+        cmd = ast.statements[0].pipelines[0].commands[0]
 
         assert len(cmd.args) == 2
         assert cmd.args[0] == 'echo'
@@ -154,7 +154,7 @@ class TestCompositeTokensInComplexStructures:
         ast = self.parse_command('(echo "sub"shell)')
 
         # Navigate to the subshell command
-        subshell = ast.and_or_lists[0].pipelines[0].commands[0]
+        subshell = ast.statements[0].pipelines[0].commands[0]
         # The subshell contains statements
         inner_cmd = subshell.statements.and_or_lists[0].pipelines[0].commands[0]
 
@@ -175,7 +175,7 @@ class TestCompositeEdgeCases:
     def test_empty_quotes_composite(self):
         """Test composite with empty quoted strings."""
         ast = self.parse_command('echo ""hello')
-        cmd = ast.and_or_lists[0].pipelines[0].commands[0]
+        cmd = ast.statements[0].pipelines[0].commands[0]
 
         assert len(cmd.args) == 2
         assert cmd.args[1] == 'hello'  # Empty string concatenated
@@ -185,7 +185,7 @@ class TestCompositeEdgeCases:
         """Test composite with escaped quotes."""
         # This tests how escaped quotes interact with composite tokens
         ast = self.parse_command(r'echo "part\"one"two')
-        cmd = ast.and_or_lists[0].pipelines[0].commands[0]
+        cmd = ast.statements[0].pipelines[0].commands[0]
 
         assert len(cmd.args) == 2
         assert cmd.args[0] == 'echo'
@@ -196,7 +196,7 @@ class TestCompositeEdgeCases:
     def test_numeric_composite(self):
         """Test composite with numeric strings."""
         ast = self.parse_command('echo "123"456')
-        cmd = ast.and_or_lists[0].pipelines[0].commands[0]
+        cmd = ast.statements[0].pipelines[0].commands[0]
 
         assert len(cmd.args) == 2
         assert cmd.args[1] == '123456'
@@ -205,7 +205,7 @@ class TestCompositeEdgeCases:
     def test_special_chars_composite(self):
         """Test composite with special characters."""
         ast = self.parse_command('echo "hello-"world')
-        cmd = ast.and_or_lists[0].pipelines[0].commands[0]
+        cmd = ast.statements[0].pipelines[0].commands[0]
 
         assert len(cmd.args) == 2
         assert cmd.args[1] == 'hello-world'
@@ -218,7 +218,7 @@ class TestCompositeEdgeCases:
         input_cmd = f'echo {"".join(parts)}'
 
         ast = self.parse_command(input_cmd)
-        cmd = ast.and_or_lists[0].pipelines[0].commands[0]
+        cmd = ast.statements[0].pipelines[0].commands[0]
 
         assert len(cmd.args) == 2
         expected = ''.join(f'part{i}' for i in range(10))

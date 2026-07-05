@@ -17,8 +17,8 @@ import sys
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO
 
 from .ast_nodes import (
+    Program,
     StatementList,
-    TopLevel,
 )
 from .builtins import registry as builtin_registry
 from .core import ShellState
@@ -380,13 +380,13 @@ class Shell:
     # Execution facade
     # ------------------------------------------------------------------
 
-    def execute_command_list(self, command_list: StatementList) -> int:
-        """Execute a command list"""
-        return self._execute_with_visitor(command_list)
+    def execute_program(self, program: Program) -> int:
+        """Execute a parsed program (the canonical parser root)."""
+        return self._execute_with_visitor(program)
 
-    def execute_toplevel(self, toplevel: TopLevel) -> int:
-        """Execute a top-level script/input containing functions and commands."""
-        return self._execute_with_visitor(toplevel)
+    def execute_command_list(self, command_list: StatementList) -> int:
+        """Execute a nested command list (a subshell/brace-group body)."""
+        return self._execute_with_visitor(command_list)
 
     def _execute_with_visitor(self, node: Any) -> int:
         """Execute an AST node, reusing the active executor when nested.

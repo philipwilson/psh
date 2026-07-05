@@ -12,7 +12,7 @@ import dataclasses
 import sys
 from typing import Any, Optional, cast
 
-from ..ast_nodes import ASTNode, StatementList, TopLevel
+from ..ast_nodes import ASTNode, Program
 from ..lexer import UnclosedQuoteError, tokenize
 from ..parser import ParseError
 from ..utils import contains_heredoc
@@ -421,40 +421,21 @@ class SourceProcessor(ScriptComponent):
     def _dispatch_execution(self, ast: ASTNode, nested: bool) -> int:
         """Execute a parsed AST, resolving control-flow signals at the boundary.
 
-        Dispatches ``TopLevel`` (functions + commands) vs a plain
-        ``StatementList`` and translates the control-flow exceptions that
-        surface here. This is the inner try/except of the buffered boundary;
-        anything it does NOT handle (``ParseError`` cannot occur now, but a
-        fatal-expansion ``ExpansionError``, ``RecursionError`` or internal
-        defect can) propagates to ``_execute_buffered_command``'s clauses.
+        Both parsers return a ``Program``, so there is no root-type branch: run
+        it via ``execute_program`` and translate the control-flow exceptions
+        that surface here. An out-of-loop break/continue at the real top level
+        is handled inside ``visit_Program`` (loop_depth == 0); one that escapes
+        with loop_depth > 0 (``eval break`` inside a loop, a seeded substitution
+        child) propagates past here to ``_classify_buffered_error``, which
+        re-raises it to the enclosing loop frame. This is the inner try/except
+        of the buffered boundary; anything it does NOT handle (a fatal-expansion
+        ``ExpansionError``, ``RecursionError`` or internal defect) propagates to
+        ``_execute_buffered_command``'s clauses.
         """
-        from ..core import FunctionReturn, LoopBreak, LoopContinue, TopLevelAbort
+        from ..core import FunctionReturn, TopLevelAbort
         try:
-            # Handle TopLevel AST node (functions + commands)
-            if isinstance(ast, TopLevel):
-                return self.shell.execute_toplevel(ast)
-            else:
-                try:
-                    # Heredoc content is now pre-populated during parsing.
-                    # The parser returns a StatementList here (TopLevel
-                    # handled above); the cast records that invariant.
-                    exit_code = self.shell.execute_command_list(cast(StatementList, ast))
-                    return exit_code
-                except (LoopBreak, LoopContinue) as e:
-                    # Break/continue outside of any loop is an error. Catch
-                    # only these — any other exception propagates to its own
-                    # handler.
-                    if nested or self.shell._loop_depth_seed > 0:
-                        # nested: e.g. `eval break` inside a loop — the
-                        # enclosing loop handles it. Seeded: a substitution
-                        # child forked inside a loop — run_child_shell ends
-                        # the child cleanly (status 0), matching bash's
-                        # silent `x=$(break)`.
-                        raise
-                    stmt_name = "break" if isinstance(e, LoopBreak) else "continue"
-                    print(f"{stmt_name}: only meaningful in a `for', `while', or `until' loop",
-                          file=sys.stderr)
-                    return 1
+            # Heredoc content is pre-populated during parsing.
+            return self.shell.execute_program(cast(Program, ast))
         except TopLevelAbort as e:
             # A fatal error (readonly/nameref-cycle assignment, failed
             # arithmetic/parameter expansion, failglob) unwound the whole

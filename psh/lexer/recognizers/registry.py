@@ -69,6 +69,14 @@ class RecognizerRegistry:
                     if result is not None:
                         token, new_pos = result
                         return token, new_pos, recognizer
+            except RecursionError:
+                # The interpreter recursion limit is psh's implicit FUNCNEST
+                # (an EXPECTED shell error — see core/internal_errors.py), not
+                # a recognizer defect. Let it propagate unwrapped so the
+                # nearest function-call boundary can convert runaway recursion
+                # (e.g. `f(){ eval f; }; f`, whose ceiling can land inside the
+                # lexer) into bash's "maximum function nesting level exceeded".
+                raise
             except Exception as e:
                 # Recognizers are contracted to return None when they cannot
                 # handle the input, not to raise. A raised exception therefore

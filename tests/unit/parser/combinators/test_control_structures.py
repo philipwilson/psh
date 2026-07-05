@@ -130,10 +130,12 @@ class TestIfStatements:
         outer if.
         """
         top = parse_combinator('if true; then if false; then echo nested; fi; fi')
-        outer = top.items[0]
+        # Bare compound keeps its AndOrList -> Pipeline ancestry under Program.
+        outer = top.statements[0].pipelines[0].commands[0]
         assert isinstance(outer, IfConditional)
         assert len(outer.then_part.statements) == 1
-        inner = outer.then_part.statements[0]
+        # The nested compound is likewise wrapped in AndOrList -> Pipeline.
+        inner = outer.then_part.statements[0].pipelines[0].commands[0]
         assert isinstance(inner, IfConditional)
         assert len(inner.then_part.statements) == 1
 
@@ -173,10 +175,12 @@ class TestWhileLoops:
         (a nested ``WhileLoop``), leaving the outer ``done`` for the outer loop.
         """
         top = parse_combinator('while true; do while false; do echo nested; done; done')
-        outer = top.items[0]
+        # Bare compound keeps its AndOrList -> Pipeline ancestry under Program.
+        outer = top.statements[0].pipelines[0].commands[0]
         assert isinstance(outer, WhileLoop)
         assert len(outer.body.statements) == 1
-        inner = outer.body.statements[0]
+        # The nested compound is likewise wrapped in AndOrList -> Pipeline.
+        inner = outer.body.statements[0].pipelines[0].commands[0]
         assert isinstance(inner, WhileLoop)
         assert len(inner.body.statements) == 1
 
@@ -514,7 +518,7 @@ class TestFunctionDefinitions:
         }
         for source, name in cases.items():
             ast = parse_combinator(source)
-            fn = ast.items[0]
+            fn = ast.statements[0]
             assert isinstance(fn, FunctionDef), source
             assert fn.name == name, source
 
@@ -595,14 +599,8 @@ class TestBreakContinue:
     def _parse_single(self, source: str):
         parser = ParserCombinatorShellParser()
         ast = parser.parse(tokenize(source))
-        items = ast.items if hasattr(ast, 'items') else ast.statements
-        assert len(items) == 1
-        # A TopLevel item may itself be a command list of one statement.
-        item = items[0]
-        if hasattr(item, 'statements'):
-            assert len(item.statements) == 1
-            return item.statements[0]
-        return item
+        assert len(ast.statements) == 1
+        return ast.statements[0]
 
     @pytest.mark.parametrize("source,args", [
         ("break", ["break"]),

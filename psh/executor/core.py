@@ -6,7 +6,8 @@ maintaining compatibility with the existing execution engine.
 """
 
 import sys
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Iterable
 
 from psh.visitor import ASTVisitor
 
@@ -29,17 +30,17 @@ from ..ast_nodes import (
     FunctionDef,
     IfConditional,
     Pipeline,
+    # Root
+    Program,
     SelectLoop,
     SimpleCommand,
     StatementList,
     # Other
     SubshellGroup,
-    TopLevel,
     UntilLoop,
     WhileLoop,
 )
 from ..core import LoopBreak, LoopContinue
-from ..core.exceptions import FunctionReturn
 from .array import ArrayOperationExecutor
 from .command import CommandExecutor
 from .context import ExecutionContext
@@ -50,6 +51,49 @@ from .subshell import SubshellExecutor
 
 if TYPE_CHECKING:
     from ..shell import Shell
+
+
+@dataclass(frozen=True)
+class SequenceContext:
+    """Selects the control-flow policy for a statement sequence.
+
+    The program root and a nested statement list share the SAME common
+    sequencing (pending traps, ``$LINENO`` restamp, ``$?`` update, ``set -e``
+    exit-vs-break), and differ on exactly three control-flow signals, each a
+    named flag here so the divergence is deliberate rather than inferred from
+    which container class reached the visitor:
+
+    * ``catch_keyboard_interrupt`` — the root catches ``^C`` (prints a newline,
+      sets ``$?`` = 130, and continues to the next statement); a nested list
+      lets ``KeyboardInterrupt`` propagate.
+    * ``announce_out_of_loop`` — on a ``break``/``continue`` that escapes with
+      ``loop_depth == 0``, the root prints the "only meaningful in a loop"
+      diagnostic; a nested list fails silently.
+    * ``stop_on_out_of_loop`` — after that out-of-loop ``break``/``continue``
+      the root continues to the next statement, while a nested list stops.
+
+    ``FunctionReturn`` and ``SystemExit`` propagate from both (the shared loop
+    catches neither).
+    """
+    catch_keyboard_interrupt: bool
+    announce_out_of_loop: bool
+    stop_on_out_of_loop: bool
+
+
+# The parsed-program root: report an out-of-loop
+# break/continue and keep going; own ^C handling.
+ROOT_SEQUENCE = SequenceContext(
+    catch_keyboard_interrupt=True,
+    announce_out_of_loop=True,
+    stop_on_out_of_loop=False,
+)
+# A nested command body (loop/if/function/group interior): fail an out-of-loop
+# break/continue silently and stop the list; let ^C propagate.
+NESTED_SEQUENCE = SequenceContext(
+    catch_keyboard_interrupt=False,
+    announce_out_of_loop=False,
+    stop_on_out_of_loop=True,
+)
 
 
 class ExecutorVisitor(ASTVisitor[int]):
@@ -100,66 +144,34 @@ class ExecutorVisitor(ASTVisitor[int]):
         # Subshell executor - handles subshells and brace groups
         self.subshell_executor = SubshellExecutor(shell)
 
-    # Top-level execution
+    # Top-level and statement-list execution
 
-    def visit_TopLevel(self, node: TopLevel) -> int:
-        """Execute top-level statements."""
-        exit_status = 0
-
-        for item in node.items:
-            try:
-                self.shell.trap_manager.run_pending_traps()
-                # Track $LINENO: each statement carries its absolute source
-                # line (see ASTNode.line). Re-stamping per item also restores
-                # LINENO after a function/source call returns to this list.
-                if item.line is not None:
-                    self.state.scope_manager.set_current_line_number(item.line)
-                exit_status = self.visit(item)
-                # Update $? after each top-level item
-                self.state.last_exit_code = exit_status
-
-                # Check errexit mode (set -e). Only a failure the AndOrList
-                # marked eligible triggers it (POSIX exempts condition
-                # contexts, non-final && / || members, and ! negation).
-                if (exit_status != 0 and self.state.options.get('errexit', False)
-                        and self.state.errexit_eligible):
-                    if self.shell.state.is_script_mode:
-                        sys.exit(exit_status)
-                    break
-            except LoopBreak:
-                # Re-raise when a loop in an enclosing frame (eval inside a
-                # loop, a seeded substitution child) is there to handle it;
-                # otherwise it's an error (defensive — the break builtin
-                # only raises when loop_depth > 0).
-                if self.context.loop_depth > 0:
-                    raise
-                print("break: only meaningful in a `for', `while', or `until' loop",
-                      file=sys.stderr)
-                exit_status = 1
-                self.state.last_exit_code = exit_status
-            except LoopContinue:
-                if self.context.loop_depth > 0:
-                    raise
-                print("continue: only meaningful in a `for', `while', or `until' loop",
-                      file=sys.stderr)
-                exit_status = 1
-                self.state.last_exit_code = exit_status
-            except SystemExit:
-                # Let exit propagate
-                raise
-            except KeyboardInterrupt:
-                # Handle Ctrl+C
-                print()  # New line after ^C
-                exit_status = 130
-                self.state.last_exit_code = exit_status
-
-        return exit_status
+    def visit_Program(self, node: Program) -> int:
+        """Execute a parsed program (the canonical root)."""
+        return self._execute_sequence(node.statements, context=ROOT_SEQUENCE)
 
     def visit_StatementList(self, node: StatementList) -> int:
-        """Execute a list of statements."""
+        """Execute a nested statement list (loop/if/function/group body)."""
+        return self._execute_sequence(node.statements, context=NESTED_SEQUENCE)
+
+    def _execute_sequence(self, statements: Iterable[ASTNode], *,
+                          context: SequenceContext) -> int:
+        """Execute a sequence of statements — the shared mechanics behind the
+        program root and every nested statement list.
+
+        Common to both: run pending signal traps at each statement boundary,
+        restamp ``$LINENO`` from the statement's absolute source line, update
+        ``$?``, and honour ``set -e`` (in script mode a triggering failure
+        exits the process; otherwise it stops the sequence). Only failures
+        ``visit_AndOrList`` marked errexit-eligible trigger it (POSIX exempts
+        condition contexts, non-final ``&&``/``||`` members, and ``!``
+        negation). The control-flow-signal divergences between the two
+        contexts are named on ``context`` (see :class:`SequenceContext`);
+        ``FunctionReturn`` and ``SystemExit`` propagate from both.
+        """
         exit_status = 0
 
-        for statement in node.statements:
+        for statement in statements:
             try:
                 self.shell.trap_manager.run_pending_traps()
                 # Track $LINENO: each statement carries its absolute source
@@ -171,31 +183,35 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # Update $? after each statement
                 self.state.last_exit_code = exit_status
 
-                # Check errexit mode
-                # If errexit is set and command failed, stop executing further statements.
-                # Only failures marked eligible by visit_AndOrList trigger this
-                # (POSIX exempts conditions, non-final && / || members, ! negation).
                 if (exit_status != 0 and self.state.options.get('errexit', False)
                         and self.state.errexit_eligible):
-                    # In script mode, exit the process
+                    # Script mode exits the process; otherwise stop the sequence.
                     if self.shell.state.is_script_mode:
                         sys.exit(exit_status)
-                    # Otherwise, just stop executing further statements in this list
                     break
-            except FunctionReturn:
-                # Function return should propagate up
-                raise
-            except (LoopBreak, LoopContinue):
-                # Re-raise if we're in a loop, otherwise it's an error.
-                # (Defensive: the break/continue builtins only raise when
-                # loop_depth > 0, so this path needs a context that reset
-                # the depth after the raise — e.g. a trap action.)
+            except (LoopBreak, LoopContinue) as e:
+                # A break/continue reaching here with loop_depth > 0 belongs to
+                # an enclosing loop frame (eval inside a loop, a seeded
+                # substitution child) — re-raise so it handles it. (Defensive:
+                # the break/continue builtins only raise when loop_depth > 0,
+                # so the loop_depth == 0 branch needs a context that reset the
+                # depth after the raise — e.g. a trap action.)
                 if self.context.loop_depth > 0:
                     raise
+                if context.announce_out_of_loop:
+                    keyword = "break" if isinstance(e, LoopBreak) else "continue"
+                    print(f"{keyword}: only meaningful in a `for', `while', or `until' loop",
+                          file=sys.stderr)
                 exit_status = 1
                 self.state.last_exit_code = exit_status
-                # Don't continue executing statements after break/continue error
-                break
+                if context.stop_on_out_of_loop:
+                    break
+            except KeyboardInterrupt:
+                if not context.catch_keyboard_interrupt:
+                    raise
+                print()  # New line after ^C
+                exit_status = 130
+                self.state.last_exit_code = exit_status
 
         return exit_status
 
@@ -284,11 +300,11 @@ class ExecutorVisitor(ASTVisitor[int]):
     def _execute_background_list(self, node: AndOrList) -> int:
         """Run a whole and-or list (or a backgrounded compound command) in
         a background subshell: `a && b &`, `while ...; done &` (POSIX)."""
-        from ..ast_nodes import CommandList
+        from ..ast_nodes import StatementList
         foreground_copy = AndOrList()
         foreground_copy.pipelines = node.pipelines
         foreground_copy.operators = node.operators
-        statements = CommandList()
+        statements = StatementList()
         statements.statements.append(foreground_copy)
         return self.subshell_executor._execute_background_subshell(statements, [])
 

@@ -7,7 +7,7 @@ and/or lists, and statement sequencing.
 
 from typing import Optional
 
-from ....ast_nodes import AndOrList, CommandList, Statement
+from ....ast_nodes import AndOrList, Statement, StatementList
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups, unexpected_token_message
 from .base import ParserSubcomponent
@@ -39,9 +39,9 @@ class StatementParser(ParserSubcomponent):
             stmt.line = start_line
         return stmt
 
-    def parse_command_list(self) -> CommandList:
+    def parse_command_list(self) -> StatementList:
         """Parse a command list (statements separated by ; or newline)."""
-        command_list = CommandList()
+        command_list = StatementList()
         self.parser.skip_newlines()
 
         if self.parser.at_end():
@@ -82,7 +82,7 @@ class StatementParser(ParserSubcomponent):
             self.parser.advance()
             self.parser.skip_newlines()
 
-    def parse_command_list_until(self, *end_tokens: TokenType) -> CommandList:
+    def parse_command_list_until(self, *end_tokens: TokenType) -> StatementList:
         """Parse a command list until one of the end tokens is encountered.
 
         May return an EMPTY list when the end token is already current (e.g. an
@@ -90,7 +90,7 @@ class StatementParser(ParserSubcomponent):
         bash requires at least one command — every loop/if body and condition —
         use :meth:`parse_required_command_list_until` instead.
         """
-        command_list = CommandList()
+        command_list = StatementList()
         self.parser.skip_newlines()
 
         while not self.parser.match(*end_tokens) and not self.parser.at_end():
@@ -126,7 +126,7 @@ class StatementParser(ParserSubcomponent):
         raise self.parser.error(
             f"syntax error near unexpected token '{self.parser.peek().value}'")
 
-    def parse_required_command_list_until(self, *end_tokens: TokenType) -> CommandList:
+    def parse_required_command_list_until(self, *end_tokens: TokenType) -> StatementList:
         """Parse a command list that must contain at least one statement.
 
         bash rejects empty compound-command bodies and conditions at PARSE

@@ -30,12 +30,12 @@ from ..ast_nodes import (
     NegatedTestExpression,
     Pipeline,
     ProcessSubstitution,
+    Program,
     Redirect,
     SelectLoop,
     SimpleCommand,
     StatementList,
     SubshellGroup,
-    TopLevel,
     UnaryTestExpression,
     UntilLoop,
     # Control structures
@@ -88,14 +88,14 @@ class DebugASTVisitor(ASTVisitor[str]):
 
     # Top-level nodes
 
-    def visit_TopLevel(self, node: TopLevel) -> str:
-        """Format top-level script."""
-        result = self._format_header("TopLevel")
-        return result + self._visit_children(node.items)
+    def visit_Program(self, node: Program) -> str:
+        """Format a program (the canonical root)."""
+        result = self._format_header("Program")
+        return result + self._visit_children(node.statements)
 
     def visit_StatementList(self, node: StatementList) -> str:
-        """Format statement list (alias: CommandList)."""
-        result = self._format_header("CommandList")
+        """Format a statement list."""
+        result = self._format_header("StatementList")
         return result + self._visit_children(node.statements)
 
     # Command nodes

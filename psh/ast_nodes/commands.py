@@ -3,11 +3,11 @@
 The executable command (:class:`SimpleCommand`), the grouping compound
 commands (subshell/brace), and the list containers that thread statements
 together (:class:`Pipeline`, :class:`AndOrList`, :class:`StatementList`,
-:class:`TopLevel`).
+:class:`Program`).
 """
 
 from dataclasses import dataclass, field
-from typing import List, Union
+from typing import List
 
 from .arrays import ArrayAssignment
 from .base import ASTNode, Command, CompoundCommand, Statement
@@ -50,7 +50,7 @@ class SimpleCommand(Command):
 @dataclass
 class SubshellGroup(CompoundCommand):
     """Represents a subshell group (...) that executes in an isolated environment."""
-    statements: 'CommandList'
+    statements: 'StatementList'
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False
 
@@ -69,7 +69,7 @@ class BraceGroup(CompoundCommand):
     - Must have space after opening brace: { command
     - Must have semicolon or newline before closing brace: command; }
     """
-    statements: 'CommandList'
+    statements: 'StatementList'
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False
 
@@ -101,10 +101,17 @@ class StatementList(ASTNode):
         return [s for s in self.statements if isinstance(s, AndOrList)]
 
 
-CommandList = StatementList
-
-
 @dataclass
-class TopLevel(ASTNode):
-    """Root node that can contain functions and/or commands."""
-    items: List[Union[Statement, StatementList]] = field(default_factory=list)  # List of Statement or StatementList
+class Program(ASTNode):
+    """Root of one parsed shell input unit.
+
+    The single canonical result type of both parsers for EVERY parse,
+    including empty input. Its ``statements`` are the ordinary statements the
+    command-list grammar produces (``AndOrList`` / ``FunctionDef``), each with
+    its normal ``AndOrList -> Pipeline`` ancestry — a bare compound is NOT
+    unwrapped at the root. Nested command bodies (loop/if/function/group
+    interiors) still use :class:`StatementList`; ``Program`` is only ever the
+    root, and gives program-wide metadata (source path, span, diagnostics) a
+    single natural owner.
+    """
+    statements: List[Statement] = field(default_factory=list)

@@ -39,7 +39,7 @@ def test_parse_heredoc():
 
     tokens = tokenize("cat << EOF")
     ast = parse(tokens)
-    command = ast.and_or_lists[0].pipelines[0].commands[0]
+    command = ast.statements[0].pipelines[0].commands[0]
 
     assert len(command.redirects) == 1
     redirect = command.redirects[0]
@@ -67,7 +67,7 @@ def test_parse_here_string():
 
     tokens = tokenize("cat <<< 'test string'")
     ast = parse(tokens)
-    command = ast.and_or_lists[0].pipelines[0].commands[0]
+    command = ast.statements[0].pipelines[0].commands[0]
 
     assert len(command.redirects) == 1
     redirect = command.redirects[0]
@@ -294,7 +294,7 @@ def test_heredoc_syntax_variants():
     for case in test_cases:
         tokens = tokenize(case)
         ast = parse(tokens)
-        command = ast.and_or_lists[0].pipelines[0].commands[0]
+        command = ast.statements[0].pipelines[0].commands[0]
         assert len(command.redirects) == 1
         assert command.redirects[0].type in ["<<", "<<-"]
 
@@ -317,6 +317,6 @@ def test_here_string_syntax_variants():
     for case in test_cases:
         tokens = tokenize(case)
         ast = parse(tokens)
-        command = ast.and_or_lists[0].pipelines[0].commands[0]
+        command = ast.statements[0].pipelines[0].commands[0]
         assert len(command.redirects) == 1
         assert command.redirects[0].type == "<<<"

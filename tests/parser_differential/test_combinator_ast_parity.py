@@ -13,7 +13,6 @@ from enum import Enum
 
 import pytest
 
-from psh.ast_nodes import ASTNode, StatementList, TopLevel
 from psh.lexer import tokenize
 from psh.parser import Parser
 from psh.parser.combinators.parser import ParserCombinatorShellParser
@@ -157,17 +156,14 @@ def _parse_combinator(source):
     return ParserCombinatorShellParser().parse(tokenize(source))
 
 
-def _program_items(ast):
-    """Normalize parser-root wrappers without hiding nested AST differences."""
-    if isinstance(ast, TopLevel):
-        return ast.items
-    if isinstance(ast, StatementList):
-        return ast.statements
-    return [ast]
-
-
 def _canonical_ast(value):
-    """Convert AST dataclasses into plain nested values for equality checks."""
+    """Convert AST dataclasses into plain nested values for equality checks.
+
+    Both parsers now return the same canonical ``Program`` root and the same
+    ``AndOrList -> Pipeline`` ancestry for every construct, so there is NO
+    root/wrapper normalization here — the two ASTs are compared directly, node
+    for node.
+    """
     if isinstance(value, Enum):
         return value.name
     if value is None or isinstance(value, (str, int, bool)):
@@ -176,19 +172,6 @@ def _canonical_ast(value):
         return [_canonical_ast(item) for item in value]
     if isinstance(value, tuple):
         return tuple(_canonical_ast(item) for item in value)
-    if isinstance(value, (TopLevel, StatementList)):
-        return {
-            'type': 'Program',
-            'items': _canonical_ast(_program_items(value)),
-        }
-    if isinstance(value, ASTNode) and dataclasses.is_dataclass(value):
-        return {
-            'type': type(value).__name__,
-            **{
-                field.name: _canonical_ast(getattr(value, field.name))
-                for field in dataclasses.fields(value)
-            },
-        }
     if dataclasses.is_dataclass(value):
         return {
             'type': type(value).__name__,

@@ -239,21 +239,6 @@ class ASTPrettyPrinter(ASTVisitor[str]):
         self.current_indent -= 1
         return "\n".join(lines)
 
-    def visit_CommandList(self, node) -> str:
-        """Format command list."""
-        if hasattr(node, 'commands') and node.commands:
-            if len(node.commands) == 1 and self.compact_mode:
-                # Single command - just show it directly
-                return self.visit(node.commands[0])
-            else:
-                lines = [f"{self._indent()}{self._format_node_header(node, 'CommandList')}:"]
-                self.current_indent += 1
-                lines.append(self._format_field('commands', node.commands))
-                self.current_indent -= 1
-                return "\n".join(lines)
-        else:
-            return f"{self._indent()}CommandList: []"
-
     def visit_StatementList(self, node) -> str:
         """Format statement list."""
         if hasattr(node, 'statements') and node.statements:

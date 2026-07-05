@@ -5,24 +5,12 @@ This module contains the main Parser class that orchestrates parsing by delegati
 to specialized parser modules for different language constructs.
 """
 
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from ...ast_nodes import (
-    AndOrList,
     ArithmeticEvaluation,
-    CaseConditional,
-    CommandList,
-    CStyleForLoop,
     EnhancedTestStatement,
-    ForLoop,
-    FunctionDef,
-    IfConditional,
-    SelectLoop,
-    Statement,
-    StatementList,
-    TopLevel,
-    UntilLoop,
-    WhileLoop,
+    Program,
 )
 from ...lexer.token_types import Token
 from ..config import ParserConfig
@@ -120,101 +108,37 @@ class Parser(ContextBaseParser):
 
     # === Top-Level Parsing ===
 
-    def parse(self) -> Union[CommandList, TopLevel]:
-        """Parse input, returning TopLevel if needed, CommandList for simple cases."""
-        top_level = TopLevel()
-        self.skip_newlines()
-
-        while not self.at_end():
-            # Capture the first token's (buffer-relative) line before parsing
-            # so a top-level control structure / function def — which bypass
-            # parse_statement — also gets a $LINENO stamp. parse_command_list
-            # items stamp their own inner statements; stamping the wrapper too
-            # is harmless (re-stamped per inner statement at execution). See
-            # ASTNode.line.
-            item_line = self.peek().line
-            item = self._parse_top_level_item()
-            if item:
-                if item.line is None:
-                    item.line = item_line
-                top_level.items.append(item)
-            self.skip_separators()
-
-        return self._simplify_result(top_level)
-
-    def _parse_top_level_item(self) -> Optional[Union[Statement, StatementList]]:
-        """Parse the top-level program via the ordinary statement path.
+    def parse(self) -> Program:
+        """Parse input into the canonical :class:`Program` root.
 
         Top-level parsing uses the SAME grammar as a nested command list —
         ``parse_command_list`` → ``parse_statement`` → ``parse_pipeline_component``
         already handles function definitions and every control structure,
         including a control structure followed by ``|``/``&&``/``||``/``&``. So
-        there is no separate top-level grammar: a control structure at command
-        position is just a pipeline component like any other. ``_simplify_result``
-        restores the historical ``TopLevel``-rooted shape for a program that is a
-        single bare compound / function definition.
+        there is no separate top-level grammar (a control structure at command
+        position is just a pipeline component like any other) and no post-parse
+        root reshaping: a bare compound keeps its normal ``AndOrList ->
+        Pipeline`` ancestry, exactly like every other statement. Every parse —
+        including empty input — yields a ``Program``.
         """
-        cmd_list = self.statements.parse_command_list()
-        return cmd_list if cmd_list.statements else None
+        program = Program()
+        self.skip_newlines()
 
-    def _simplify_result(self, top_level: TopLevel) -> Union[CommandList, TopLevel]:
-        """Simplify single-item TopLevel to CommandList when possible."""
-        if not top_level.items:
-            return CommandList()
-        elif len(top_level.items) == 1:
-            item = top_level.items[0]
-            if isinstance(item, CommandList):
-                # A program that is exactly one bare compound / function
-                # definition keeps its historical TopLevel root (see
-                # _bare_top_level_compound). Multi-statement programs stay a
-                # CommandList — so `while ...; done; echo a` groups the same
-                # way as `echo a; while ...; done`, which the old top-level
-                # special case did not.
-                bare = self._bare_top_level_compound(item)
-                if bare is not None:
-                    return TopLevel(items=[bare])
-                return item
-            else:
-                # Other single items return TopLevel
-                return top_level
-        else:
-            return top_level
+        while not self.at_end():
+            # Capture the first token's (buffer-relative) line before parsing
+            # so any statement parse_statement did not itself stamp still gets
+            # a $LINENO stamp; parse_statement already stamps every statement
+            # it produces, so this is a belt-and-suspenders fallback that keeps
+            # every Program statement stamped. See ASTNode.line.
+            item_line = self.peek().line
+            command_list = self.statements.parse_command_list()
+            for stmt in command_list.statements:
+                if stmt.line is None:
+                    stmt.line = item_line
+                program.statements.append(stmt)
+            self.skip_separators()
 
-    # Compound-command nodes that the old top-level parser returned bare (as a
-    # direct TopLevel item) rather than wrapped in a CommandList: the
-    # CONTROL_KEYWORDS-headed structures plus `[[ ]]`/`(( ))`. Subshell/brace
-    # groups and simple commands were always CommandList-wrapped and stay so.
-    _BARE_TOP_LEVEL_TYPES = (
-        WhileLoop, UntilLoop, ForLoop, CStyleForLoop, IfConditional,
-        CaseConditional, SelectLoop, EnhancedTestStatement, ArithmeticEvaluation,
-    )
-
-    def _bare_top_level_compound(
-            self, cmd_list: CommandList) -> Optional[Statement]:
-        """The lone compound/function-def of a single-statement program.
-
-        Returns the unwrapped node when *cmd_list* is exactly one bare compound
-        command (one and-or list, one pipeline, no ``&&``/``||``, not
-        backgrounded, not negated, not ``time``-prefixed, one command) or one
-        function definition —
-        the shapes the previous top-level parser returned directly under
-        ``TopLevel``. Returns ``None`` otherwise, so the program stays a
-        ``CommandList``.
-        """
-        if len(cmd_list.statements) != 1:
-            return None
-        stmt = cmd_list.statements[0]
-        if isinstance(stmt, FunctionDef):
-            return stmt
-        if not isinstance(stmt, AndOrList):
-            return None
-        if stmt.operators or stmt.background or len(stmt.pipelines) != 1:
-            return None
-        pipeline = stmt.pipelines[0]
-        if pipeline.negated or pipeline.timed or len(pipeline.commands) != 1:
-            return None
-        command = pipeline.commands[0]
-        return command if isinstance(command, self._BARE_TOP_LEVEL_TYPES) else None
+        return program
 
     # === Delegation Methods ===
     # These methods delegate to specialized parsers, adding feature checks where needed.

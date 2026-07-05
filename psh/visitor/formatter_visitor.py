@@ -35,12 +35,12 @@ from ..ast_nodes import (
     ParameterExpansion,
     Pipeline,
     ProcessSubstitution,
+    Program,
     Redirect,
     SelectLoop,
     SimpleCommand,
     StatementList,
     SubshellGroup,
-    TopLevel,
     UnaryTestExpression,
     UntilLoop,
     VariableExpansion,
@@ -179,25 +179,26 @@ class FormatterVisitor(ASTVisitor[str]):
 
     # Top-level nodes
 
-    def visit_TopLevel(self, node: TopLevel) -> str:
-        """Format top-level script.
+    def visit_Program(self, node: Program) -> str:
+        """Format a program (the canonical root): one statement per line.
 
-        Items are paragraph-separated (a blank line between them) EXCEPT after a
-        backgrounded item: a multi-item TopLevel arises only from top-level `&`
-        (`echo a & echo b` → two items, the first background-terminated), and a
-        blank line after `&` is non-idempotent — re-parsing `echo a &\\n\\necho b`
-        yields one StatementList that the formatter rejoins with a single
-        newline. So join with one newline after a `&`-terminated item, keeping
-        format(format(x)) == format(x).
+        Statements are joined by a single newline, with each statement's
+        queued heredoc bodies flushed after its physical line (same mechanics
+        as :meth:`visit_StatementList`). There is deliberately NO blank-line
+        ("paragraph") separator between statements:
+
+        A background ``&`` is the sole terminator that ends one statement
+        without a ``;``/newline, so it is the only place a blank-line paragraph
+        separator could ever have applied — but a blank line after ``&`` is
+        non-idempotent (re-parsing ``a &\\n\\nb`` collapses it), so those
+        adjacencies also render with a single newline. Every adjacency
+        therefore renders with one ``\\n``. A statement's ``&`` still comes from
+        its own background flag — rendered by
+        ``visit_SimpleCommand``/``visit_AndOrList`` — never from the container
+        shape. This keeps ``format(format(x)) == format(x)``.
         """
-        parts = [self._flush_line(self.visit(item)) for item in node.items]
-        if not parts:
-            return ''
-        result = parts[0]
-        for part in parts[1:]:
-            sep = '\n' if result.rstrip().endswith(' &') else '\n\n'
-            result += sep + part
-        return result
+        parts = [self._flush_line(self.visit(stmt)) for stmt in node.statements]
+        return '\n'.join(parts)
 
     def visit_StatementList(self, node: StatementList) -> str:
         """Format a list of statements.

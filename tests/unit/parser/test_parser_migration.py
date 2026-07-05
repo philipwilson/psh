@@ -21,14 +21,25 @@ from psh.ast_nodes import (
     FunctionDef,
     IfConditional,
     Pipeline,
+    Program,
     SimpleCommand,
     StatementList,
     SubshellGroup,
-    TopLevel,
     WhileLoop,
 )
 from psh.lexer import tokenize
 from psh.parser import ParseError, parse
+
+
+def _sole_compound(ast):
+    """The single compound command of a one-statement Program.
+
+    A bare compound keeps its normal AndOrList -> Pipeline ancestry under the
+    canonical Program root (it is not unwrapped), so descend through it.
+    """
+    assert isinstance(ast, Program)
+    assert len(ast.statements) == 1
+    return ast.statements[0].pipelines[0].commands[0]
 
 
 class TestParserMigration:
@@ -49,8 +60,8 @@ class TestParserMigration:
         tokens = list(tokenize("ls -la"))
         ast = parse(tokens)
 
-        # PSH parser returns StatementList at top level
-        assert isinstance(ast, StatementList)
+        # PSH parser returns the canonical Program root
+        assert isinstance(ast, Program)
         assert len(ast.statements) == 1
 
         # Get the AndOrList
@@ -151,7 +162,7 @@ class TestParserMigration:
     def test_empty_command_list(self):
         tokens = list(tokenize(""))
         ast = parse(tokens)
-        assert isinstance(ast, StatementList)
+        assert isinstance(ast, Program)
         assert len(ast.statements) == 0
 
         # Multiple newlines
@@ -231,10 +242,7 @@ class TestAdvancedParsing:
         tokens = list(tokenize("if true; then echo yes; else echo no; fi"))
         ast = parse(tokens)
 
-        # Compound commands are wrapped in TopLevel
-        assert isinstance(ast, TopLevel)
-        assert len(ast.items) == 1
-        if_stmt = ast.items[0]
+        if_stmt = _sole_compound(ast)
         assert isinstance(if_stmt, IfConditional)
 
         # Check condition
@@ -255,10 +263,7 @@ class TestAdvancedParsing:
         tokens = list(tokenize("while test $x -lt 10; do echo $x; done"))
         ast = parse(tokens)
 
-        # Compound commands are wrapped in TopLevel
-        assert isinstance(ast, TopLevel)
-        assert len(ast.items) == 1
-        while_stmt = ast.items[0]
+        while_stmt = _sole_compound(ast)
         assert isinstance(while_stmt, WhileLoop)
 
         # Check condition
@@ -273,10 +278,7 @@ class TestAdvancedParsing:
         tokens = list(tokenize("for i in 1 2 3; do echo $i; done"))
         ast = parse(tokens)
 
-        # Compound commands are wrapped in TopLevel
-        assert isinstance(ast, TopLevel)
-        assert len(ast.items) == 1
-        for_stmt = ast.items[0]
+        for_stmt = _sole_compound(ast)
         assert isinstance(for_stmt, ForLoop)
 
         # Check variable name
@@ -294,10 +296,9 @@ class TestAdvancedParsing:
         tokens = list(tokenize("hello() { echo Hello World; }"))
         ast = parse(tokens)
 
-        # Functions are wrapped in TopLevel
-        assert isinstance(ast, TopLevel)
-        assert len(ast.items) == 1
-        func_def = ast.items[0]
+        assert isinstance(ast, Program)
+        assert len(ast.statements) == 1
+        func_def = ast.statements[0]
         assert isinstance(func_def, FunctionDef)
 
         # Check function name
@@ -319,10 +320,7 @@ class TestAdvancedParsing:
         tokens = list(tokenize(code))
         ast = parse(tokens)
 
-        # Case statements are wrapped in TopLevel
-        assert isinstance(ast, TopLevel)
-        assert len(ast.items) == 1
-        case_stmt = ast.items[0]
+        case_stmt = _sole_compound(ast)
         assert isinstance(case_stmt, CaseConditional)
 
         # Check expression to match
@@ -343,8 +341,8 @@ class TestAdvancedParsing:
         tokens = list(tokenize("(cd /tmp && echo hello)"))
         ast = parse(tokens)
 
-        # Subshells in command position return StatementList
-        assert isinstance(ast, StatementList)
+        # Subshells in command position are a normal statement under Program
+        assert isinstance(ast, Program)
         assert len(ast.statements) == 1
         pipeline = ast.statements[0].pipelines[0]
         assert len(pipeline.commands) == 1
@@ -380,7 +378,7 @@ EOF"""
         tokens = list(tokenize(code))
         ast = parse(tokens)
 
-        assert isinstance(ast, StatementList)
+        assert isinstance(ast, Program)
         # The parser treats heredoc content as separate statements
         # Just check that we have the cat command with heredoc redirect
         assert len(ast.statements) >= 1
