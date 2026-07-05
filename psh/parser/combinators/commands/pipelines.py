@@ -8,17 +8,9 @@ from typing import TYPE_CHECKING, List, Union, cast
 
 from ....ast_nodes import (
     AndOrList,
-    ArithmeticEvaluation,
     ASTNode,
-    CaseConditional,
-    CStyleForLoop,
-    EnhancedTestStatement,
-    ForLoop,
-    IfConditional,
+    Command,
     Pipeline,
-    SelectLoop,
-    UntilLoop,
-    WhileLoop,
 )
 from ....lexer.token_types import Token, TokenType
 from ..core import Parser, ParseResult, many, optional
@@ -140,12 +132,10 @@ class PipelineMixin(_Base):
                 commands.append(cmd_result.value)
                 pos = cmd_result.position
 
-            if len(commands) == 1 and not negated and not timed:
-                cmd = commands[0]
-                if isinstance(cmd, (IfConditional, WhileLoop, UntilLoop, ForLoop, CaseConditional,
-                                  SelectLoop, CStyleForLoop, ArithmeticEvaluation,
-                                  EnhancedTestStatement)):
-                    return ParseResult(success=True, value=cmd, position=pos)
+            # A single compound command (if/while/…) is wrapped in a Pipeline
+            # like any other command, matching the recursive descent parser's
+            # canonical AndOrList -> Pipeline -> compound ancestry (no root
+            # unwrapping — see the Program root contract).
             pipeline = Pipeline(commands=commands, negated=negated, pipe_stderr=pipe_stderr_list,
                                 timed=timed, time_posix=time_posix) if commands else None
             return ParseResult(success=True, value=pipeline, position=pos)
@@ -216,12 +206,6 @@ class PipelineMixin(_Base):
                         tokens, pos,
                         f"syntax error near unexpected token '{tokens[pos].value}'",
                     )
-                if not isinstance(value, AndOrList):
-                    # Unwrapped single compound (if/while/...): rewrap so the
-                    # background flag has an and-or list to live on. An
-                    # AndOrList holds compounds directly as pipeline elements
-                    # at runtime (established shape); the cast records that.
-                    value = AndOrList(pipelines=[cast(Pipeline, value)])
                 self._apply_background(value)
 
             return ParseResult(success=True, value=value, position=pos)
@@ -248,8 +232,14 @@ class PipelineMixin(_Base):
                 return
         and_or_list.background = True
 
-    def _build_and_or_list_from_parts(self, parse_result: tuple) -> Union[AndOrList, ASTNode]:
+    def _build_and_or_list_from_parts(self, parse_result: tuple) -> AndOrList:
         """Build an AndOrList from parsed components.
+
+        Always returns an ``AndOrList`` whose ``pipelines`` are ``Pipeline``
+        nodes — a lone compound command is wrapped, not returned bare, so the
+        combinator matches the recursive descent parser's canonical shape (and
+        the two parsers share one concrete AST, verified by the differential
+        parity tests).
 
         Args:
             parse_result: Tuple of (first_element, rest_pairs)
@@ -260,32 +250,18 @@ class PipelineMixin(_Base):
         first_element = parse_result[0]
         rest = parse_result[1]  # List of (operator, element) pairs
 
-        # Normalize first element to Pipeline if needed
-        if isinstance(first_element, Pipeline):
-            first_pipeline = first_element
-        else:
-            # Single command - add directly as pipeline element
-            first_pipeline = first_element
-
-        if not rest:
-            # Single element with no operators - return it directly instead of wrapping
-            # This prevents unnecessary AndOrList wrapping for standalone control structures
-            if isinstance(first_pipeline, (IfConditional, WhileLoop, UntilLoop, ForLoop,
-                                         CaseConditional, SelectLoop,
-                                         CStyleForLoop, ArithmeticEvaluation, EnhancedTestStatement)):
-                return first_pipeline
-            return AndOrList(pipelines=[first_pipeline])
-
-        pipelines = [first_pipeline]
+        pipelines = [self._as_pipeline(first_element)]
         operators = []
-
         for op_token, element in rest:
             operators.append(op_token.value)
-            # Normalize element to Pipeline if needed
-            if isinstance(element, Pipeline):
-                pipelines.append(element)
-            else:
-                # Single command - add directly as pipeline element
-                pipelines.append(element)
+            pipelines.append(self._as_pipeline(element))
 
         return AndOrList(pipelines=pipelines, operators=operators)
+
+    @staticmethod
+    def _as_pipeline(element: ASTNode) -> Pipeline:
+        """Wrap a bare command in a single-command Pipeline (pass a Pipeline
+        through unchanged), so an AndOrList never holds a bare command."""
+        if isinstance(element, Pipeline):
+            return element
+        return Pipeline(commands=[cast(Command, element)])

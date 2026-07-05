@@ -21,9 +21,9 @@ Design:
   offending snippet, and a standalone ``PSH_DIFFERENTIAL_SEED=<n>`` re-run with
   the same ITERS regenerates the exact sequence.
 * **Equivalence.** For each snippet: parse with both parsers.
-  - both succeed  -> ASTs must be equal after :func:`_normalize_wrappers`
-    (which peels the one inert representational difference between the parsers:
-    whether a lone compound is wrapped in a trivial ``AndOrList -> Pipeline``);
+  - both succeed  -> canonical ASTs must be equal, compared directly (both
+    parsers return the same ``Program`` root and the same
+    ``AndOrList -> Pipeline`` ancestry — no wrapper normalization);
   - both raise    -> agree it is a syntax error (message drift is out of scope
     here — :mod:`test_combinator_error_parity` owns that);
   - one succeeds, the other raises -> a real divergence, fail loudly.
@@ -309,48 +309,15 @@ class SnippetGenerator:
         return prog
 
 
-def _normalize_wrappers(node):
-    """Strip semantically-inert single-element Pipeline/AndOrList wrappers.
-
-    The two parsers disagree on ONE thing that this fuzzer would otherwise trip
-    on constantly: whether a lone compound command is wrapped in a trivial
-    ``AndOrList -> Pipeline`` when it sits in a list or as an and-or operand.
-    RD inserts the wrapper; the combinator returns the bare compound. Both mean
-    exactly the same thing (a one-command pipeline / one-pipeline and-or list is
-    executionally identical to its single element), so we canonicalize both
-    sides by peeling those inert wrappers. Wrappers that carry meaning —
-    negation, ``time``, ``|&`` stderr, ``&&``/``||`` operators, or backgrounding
-    — are left intact, so a genuine structural difference is still caught.
-    """
-    if isinstance(node, list):
-        return [_normalize_wrappers(x) for x in node]
-    if isinstance(node, tuple):
-        # e.g. IfConditional.elif_parts is a list of (condition, then) tuples;
-        # recurse so wrappers inside an elif condition are peeled too.
-        return tuple(_normalize_wrappers(x) for x in node)
-    if not isinstance(node, dict):
-        return node
-    node = {k: _normalize_wrappers(v) for k, v in node.items()}
-    t = node.get('type')
-    if t == 'Pipeline':
-        if (len(node.get('commands') or []) == 1
-                and not node.get('negated')
-                and not node.get('timed')
-                and not node.get('time_posix')
-                and not node.get('pipe_stderr')):
-            return node['commands'][0]
-    elif t == 'AndOrList':
-        if (len(node.get('pipelines') or []) == 1
-                and not node.get('operators')
-                and not node.get('background')):
-            return node['pipelines'][0]
-    return node
-
-
 def _outcome(parse_fn, source):
-    """Return ('ok', normalized_ast) or ('err', exc) for one parser."""
+    """Return ('ok', canonical_ast) or ('err', exc) for one parser.
+
+    No wrapper/root normalization: both parsers now return the same canonical
+    ``Program`` root with the same ``AndOrList -> Pipeline`` ancestry for every
+    construct, so the canonical ASTs are compared directly.
+    """
     try:
-        return 'ok', _normalize_wrappers(_canonical_ast(parse_fn(source)))
+        return 'ok', _canonical_ast(parse_fn(source))
     except Exception as exc:  # noqa: BLE001 — classify, don't crash the fuzzer
         return 'err', exc
 

@@ -694,27 +694,28 @@ class TestRealHeredocSeam:
 
     def test_body_populates_through_real_tokens(self):
         ast = self._parse('cat <<EOF\nhello seam\nEOF\n')
-        redirect = ast.items[0].pipelines[0].commands[0].redirects[0]
+        redirect = ast.statements[0].pipelines[0].commands[0].redirects[0]
         assert redirect.heredoc_key
         assert redirect.heredoc_content == 'hello seam\n'
         assert redirect.heredoc_quoted is False
 
     def test_quoted_delimiter_sets_quoted_flag(self):
         ast = self._parse("cat <<'EOF'\nvalue $x\nEOF\n")
-        redirect = ast.items[0].pipelines[0].commands[0].redirects[0]
+        redirect = ast.statements[0].pipelines[0].commands[0].redirects[0]
         assert redirect.heredoc_content == 'value $x\n'
         assert redirect.heredoc_quoted is True
 
     def test_two_heredocs_populate_independently(self):
         ast = self._parse('cat <<A; cat <<B\nfirst\nA\nsecond\nB\n')
-        first = ast.items[0].pipelines[0].commands[0].redirects[0]
-        second = ast.items[1].pipelines[0].commands[0].redirects[0]
+        first = ast.statements[0].pipelines[0].commands[0].redirects[0]
+        second = ast.statements[1].pipelines[0].commands[0].redirects[0]
         assert first.heredoc_content == 'first\n'
         assert second.heredoc_content == 'second\n'
 
     def test_compound_trailing_heredoc_populates(self):
         ast = self._parse('while read x; do echo $x; done <<EOF\nbody\nEOF\n')
-        loop = ast.items[0]
+        # Bare compound keeps its AndOrList -> Pipeline ancestry under Program.
+        loop = ast.statements[0].pipelines[0].commands[0]
         assert loop.redirects[0].heredoc_content == 'body\n'
 
     def test_execution_uses_active_combinator_parser(self, captured_shell, monkeypatch):

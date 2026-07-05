@@ -1,6 +1,14 @@
 """Tests for the integrated modular parser combinator."""
 
-from psh.ast_nodes import AndOrList, ForLoop, IfConditional, Pipeline, SimpleCommand, TopLevel, WhileLoop
+from psh.ast_nodes import (
+    AndOrList,
+    ForLoop,
+    IfConditional,
+    Pipeline,
+    Program,
+    SimpleCommand,
+    WhileLoop,
+)
 from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.parser import ParserCombinatorShellParser, create_parser_combinator_shell_parser
 from psh.parser.config import ParserConfig
@@ -12,6 +20,17 @@ def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:
     return Token(type=token_type, value=value, position=position)
 
 
+def _sole_compound(program):
+    """The single compound command of a one-statement Program.
+
+    Both parsers return a Program whose bare compound keeps its normal
+    AndOrList -> Pipeline ancestry (no root unwrapping), so descend through it.
+    """
+    assert isinstance(program, Program)
+    assert len(program.statements) == 1
+    return program.statements[0].pipelines[0].commands[0]
+
+
 class TestParserIntegration:
     """Test the integrated parser functionality."""
 
@@ -21,16 +40,16 @@ class TestParserIntegration:
 
         # Empty token list
         result = parser.parse([])
-        assert isinstance(result, TopLevel)
-        assert len(result.items) == 0
+        assert isinstance(result, Program)
+        assert len(result.statements) == 0
 
         # Only newline (no WHITESPACE token type)
         tokens = [
             make_token(TokenType.NEWLINE, "\n")
         ]
         result = parser.parse(tokens)
-        assert isinstance(result, TopLevel)
-        assert len(result.items) == 0
+        assert isinstance(result, Program)
+        assert len(result.statements) == 0
 
     def test_simple_command(self):
         """Test parsing a simple command."""
@@ -43,11 +62,11 @@ class TestParserIntegration:
         ]
 
         result = parser.parse(tokens)
-        assert isinstance(result, TopLevel)
-        assert len(result.items) == 1
+        assert isinstance(result, Program)
+        assert len(result.statements) == 1
 
         # Commands are wrapped in AndOrList -> Pipeline
-        stmt = result.items[0]
+        stmt = result.statements[0]
         assert isinstance(stmt, AndOrList)
         assert len(stmt.pipelines) == 1
         assert len(stmt.pipelines[0].commands) == 1
@@ -69,11 +88,11 @@ class TestParserIntegration:
         ]
 
         result = parser.parse(tokens)
-        assert isinstance(result, TopLevel)
-        assert len(result.items) == 1
+        assert isinstance(result, Program)
+        assert len(result.statements) == 1
 
         # Pipelines are wrapped in AndOrList
-        stmt = result.items[0]
+        stmt = result.statements[0]
         assert isinstance(stmt, AndOrList)
         assert len(stmt.pipelines) == 1
 
@@ -98,15 +117,11 @@ class TestParserIntegration:
         ]
 
         result = parser.parse(tokens)
-        assert isinstance(result, TopLevel)
 
-        # The parser combinator recognizes if/then/fi as keywords even from WORD tokens
-        # This is actually good behavior - it makes the parser more robust
-        assert len(result.items) == 1  # One if statement
-
-        # The item should be an IfConditional
-        assert isinstance(result.items[0], IfConditional)
-        if_stmt = result.items[0]
+        # The parser combinator recognizes if/then/fi as keywords even from WORD
+        # tokens. A bare compound keeps its AndOrList -> Pipeline ancestry.
+        if_stmt = _sole_compound(result)
+        assert isinstance(if_stmt, IfConditional)
 
         # Check the condition
         assert len(if_stmt.condition.statements) == 1
@@ -136,13 +151,9 @@ class TestParserIntegration:
         ]
 
         result = parser.parse(tokens)
-        assert isinstance(result, TopLevel)
 
-        # The parser combinator recognizes while/do/done as keywords even from WORD tokens
-        assert len(result.items) == 1  # One while loop
-
-        assert isinstance(result.items[0], WhileLoop)
-        while_loop = result.items[0]
+        while_loop = _sole_compound(result)
+        assert isinstance(while_loop, WhileLoop)
 
         # Check the condition
         assert len(while_loop.condition.statements) == 1
@@ -176,13 +187,9 @@ class TestParserIntegration:
         ]
 
         result = parser.parse(tokens)
-        assert isinstance(result, TopLevel)
 
-        # The parser combinator recognizes for/in/do/done as keywords even from WORD tokens
-        assert len(result.items) == 1  # One for loop
-
-        assert isinstance(result.items[0], ForLoop)
-        for_loop = result.items[0]
+        for_loop = _sole_compound(result)
+        assert isinstance(for_loop, ForLoop)
 
         # Check the variable
         assert for_loop.variable == "i"
@@ -215,9 +222,9 @@ class TestParserIntegration:
         # It needs proper integration between the parsers
         try:
             result = parser.parse(tokens)
-            assert isinstance(result, TopLevel)
+            assert isinstance(result, Program)
             # Just verify we get some result
-            assert result.items is not None
+            assert result.statements is not None
         except:
             # If parsing fails, that's expected with the current implementation
             pass
@@ -240,9 +247,9 @@ class TestParserIntegration:
         # but it may not be fully wired yet
         try:
             result = parser.parse(tokens)
-            assert isinstance(result, TopLevel)
+            assert isinstance(result, Program)
             # Just verify we get some result
-            assert result.items is not None
+            assert result.statements is not None
         except:
             # If parsing fails, that's expected with the current implementation
             pass
@@ -263,9 +270,9 @@ class TestParserIntegration:
         # but it may not be fully wired yet
         try:
             result = parser.parse(tokens)
-            assert isinstance(result, TopLevel)
+            assert isinstance(result, Program)
             # Just verify we get some result
-            assert result.items is not None
+            assert result.statements is not None
         except:
             # If parsing fails, that's expected with the current implementation
             pass
@@ -286,11 +293,11 @@ class TestParserIntegration:
         ]
 
         result = parser.parse(tokens)
-        assert isinstance(result, TopLevel)
-        assert len(result.items) == 3
+        assert isinstance(result, Program)
+        assert len(result.statements) == 3
 
         # Each statement is wrapped in AndOrList
-        for stmt in result.items:
+        for stmt in result.statements:
             assert isinstance(stmt, AndOrList)
             assert len(stmt.pipelines) == 1
             assert len(stmt.pipelines[0].commands) == 1
@@ -310,7 +317,7 @@ class TestParserIntegration:
 
         # Parse with heredocs
         result = parser.parse_with_heredocs(tokens, heredoc_contents)
-        assert isinstance(result, TopLevel)
+        assert isinstance(result, Program)
 
         # Note: The actual heredoc population would happen if the
         # redirect nodes had heredoc_key attributes set
@@ -395,7 +402,7 @@ class TestParserIntegration:
         try:
             result = parser.parse(tokens)
             # If it doesn't raise an error, that's OK for now
-            assert isinstance(result, TopLevel)
+            assert isinstance(result, Program)
         except ParseError as e:
             # If it does raise an error, verify it has context info
             assert e.error_context is not None

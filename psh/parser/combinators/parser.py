@@ -4,9 +4,9 @@ This module integrates all the parser combinator modules into a cohesive
 parser for shell commands using functional combinators.
 """
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, cast
 
-from ...ast_nodes import ASTNode, CommandList, Statement, StatementList, TopLevel
+from ...ast_nodes import ASTNode, Program, Statement, StatementList
 from ...lexer.keyword_normalizer import KeywordNormalizer
 from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
@@ -155,14 +155,14 @@ class ParserCombinatorShellParser:
         if self.heredoc_contents:
             self.heredoc_processor.populate_heredocs(ast, self.heredoc_contents)
 
-    def parse(self, tokens: List[Token]) -> Union[TopLevel, CommandList]:
+    def parse(self, tokens: List[Token]) -> Program:
         """Parse a list of tokens into an AST.
 
         Args:
             tokens: List of tokens from the lexer
 
         Returns:
-            The root AST node (either TopLevel or CommandList)
+            The canonical Program root (same as the recursive descent parser).
 
         Raises:
             ParseError: If parsing fails
@@ -171,7 +171,7 @@ class ParserCombinatorShellParser:
 
         # Empty input
         if start_pos >= len(tokens):
-            return TopLevel(items=[])
+            return Program(statements=[])
 
         # Parse the tokens
         result = self.top_level.parse(tokens, start_pos)
@@ -209,23 +209,16 @@ class ParserCombinatorShellParser:
 
         self._apply_heredocs(ast)
 
-        # Wrap in TopLevel if needed
-        if isinstance(ast, CommandList):
-            # Convert CommandList to TopLevel by putting statements as items
-            items: List[Union[Statement, StatementList]] = list(ast.statements)
-            return TopLevel(items=items)
-        elif isinstance(ast, StatementList):
-            # Convert StatementList to TopLevel
-            items = list(ast.statements)
-            return TopLevel(items=items)
-        elif isinstance(ast, TopLevel):
+        # Normalize to the canonical Program root: flatten a StatementList into
+        # Program.statements; wrap a lone Statement as a one-element program.
+        if isinstance(ast, StatementList):
+            return Program(statements=list(ast.statements))
+        if isinstance(ast, Program):
             return ast
-        else:
-            # Single statement - wrap it
-            return TopLevel(items=[ast])
+        return Program(statements=[cast(Statement, ast)])
 
     def parse_with_heredocs(self, tokens: List[Token],
-                           heredoc_contents: Dict[str, str]) -> Union[TopLevel, CommandList]:
+                           heredoc_contents: Dict[str, str]) -> Program:
         """Parse tokens with heredoc content support.
 
         This method performs a two-pass parse:
