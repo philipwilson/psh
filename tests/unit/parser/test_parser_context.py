@@ -50,7 +50,13 @@ class TestParserContext:
         assert ctx.peek() == tokens[0]
         assert ctx.peek(1) == tokens[1]
         assert ctx.peek(2) == tokens[2]
-        assert ctx.peek(5) == tokens[2]  # Should return EOF for out of bounds
+        # Out-of-bounds peek returns a synthetic EOF token (not the last real
+        # token echoed back — that caused nontermination on sentinel-free
+        # streams; see EOF-safe token stream fix / appraisal finding 4).
+        assert ctx.peek(5).type == TokenType.EOF
+        # Negative positions are rejected rather than wrapping around.
+        with pytest.raises(IndexError):
+            ctx.peek(-1)
 
         # Test advance
         token = ctx.advance()
