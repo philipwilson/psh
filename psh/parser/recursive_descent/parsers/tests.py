@@ -221,6 +221,41 @@ class TestParser(ParserSubcomponent):
 
         return Word(parts=parts)
 
+    # Tokens a conditional regex operand may NOT contain at the top level:
+    # shell control operators and redirection operators. bash's `[[ ]]` lexer
+    # treats these as metacharacters that terminate the conditional word, so
+    # they are a conditional-expression SYNTAX ERROR, not regex content. `|`
+    # (PIPE) is deliberately absent — a single `|` is a legal ERE alternation
+    # inside `[[ ]]` (`[[ ab =~ a|b ]]`). Grouping parens are validated
+    # separately by balanced-depth tracking. (Appraisal finding 5d.)
+    _REGEX_ILLEGAL_TYPES = frozenset({
+        TokenType.SEMICOLON, TokenType.DOUBLE_SEMICOLON,
+        TokenType.AMPERSAND, TokenType.PIPE_AND,
+        TokenType.REDIRECT_IN, TokenType.REDIRECT_OUT,
+        TokenType.REDIRECT_APPEND, TokenType.REDIRECT_READWRITE,
+        TokenType.REDIRECT_CLOBBER, TokenType.REDIRECT_DUP,
+        TokenType.HEREDOC, TokenType.HEREDOC_STRIP, TokenType.HERE_STRING,
+    })
+
+    # Bare redirection operators that the psh lexer leaves as plain WORDs when
+    # standalone (`[[ x =~ < ]]`), which bash still rejects as operand content.
+    _REGEX_ILLEGAL_WORD_VALUES = frozenset({'<', '>', '<>', '>>', '>|', '<<'})
+
+    def _reject_illegal_regex_token(self, tok) -> None:
+        """Raise a conditional syntax error if ``tok`` can't be regex content.
+
+        Unquoted shell separators / redirection operators terminate the
+        ``[[`` word in bash; emitting a PARSE error here (rather than letting
+        the token flow into the regex and fail later at match time) matches
+        bash's "syntax error in conditional expression" and finding 5d.
+        """
+        if (tok.type in self._REGEX_ILLEGAL_TYPES
+                or (tok.type == TokenType.WORD
+                    and tok.value in self._REGEX_ILLEGAL_WORD_VALUES)):
+            raise self.parser.error(
+                "syntax error in conditional expression: "
+                f"unexpected token '{tok.value}'", tok)
+
     def _parse_regex_operand(self) -> Word:
         """Collect the right-hand operand of `=~` as a multi-part Word.
 
@@ -232,22 +267,33 @@ class TestParser(ParserSubcomponent):
         evaluator can match a quoted sub-part literally (``a"."`` -> the
         ``.`` is a literal dot, bash).
 
+        An explicit operand policy (finding 5d) keeps psh in step with bash's
+        conditional grammar instead of consuming almost any token and failing
+        later at regex-compile time:
+
+        - Shell separators and redirection operators (`;`, `&`, `<`, `>`, ...)
+          are rejected as conditional syntax errors, not regex content.
+        - Grouping parens must be balanced; an unmatched `(` or a stray `)` is
+          a parse error, not a runtime "unbalanced parenthesis" regex warning.
+        - Legal ERE operators such as `|` are allowed, and quoted/escaped
+          metacharacters (`'a;b'`, `a\\;b`) arrive as single WORD/STRING tokens
+          and pass through untouched.
+
         A `]]` inside an open `(...)` group is part of the regex, not the
         terminator: `([[:alpha:]])` lexes as `( [[ :alpha: ]] )` (the inner
         `[[`/`]]` mis-tokenize as double brackets at command position), so the
         first `]]` must be kept and only the group-depth-0 `]]` closes the
         test — matching bash's `([[:alpha:]]+)` capture groups.
         """
-        if not self.parser.match_any(TokenGroups.WORD_LIKE) and \
-                self.parser.peek().type in (TokenType.DOUBLE_RBRACKET,
-                                            TokenType.AND_AND, TokenType.OR_OR):
+        stop = (TokenType.DOUBLE_RBRACKET, TokenType.AND_AND,
+                TokenType.OR_OR, TokenType.EOF, TokenType.NEWLINE)
+        # Empty operand: `=~` immediately followed by a terminator.
+        if self.parser.peek().type in stop:
             raise self.parser.error("Expected regex after =~")
 
         parts: List[WordPart] = []
         first = True
         paren_depth = 0
-        stop = (TokenType.DOUBLE_RBRACKET, TokenType.AND_AND,
-                TokenType.OR_OR, TokenType.EOF, TokenType.NEWLINE)
         while self.parser.current < len(self.parser.tokens):
             tok = self.parser.peek()
             # A `]]` still closes the test only at group depth 0; inside an
@@ -258,14 +304,25 @@ class TestParser(ParserSubcomponent):
             # After the first token, only keep going while glued (no whitespace).
             if not first and not getattr(tok, 'adjacent_to_previous', False):
                 break
+            # Shell separators / redirection operators are not regex content.
+            self._reject_illegal_regex_token(tok)
             if tok.type == TokenType.LPAREN:
                 paren_depth += 1
-            elif tok.type == TokenType.RPAREN and paren_depth > 0:
+            elif tok.type == TokenType.RPAREN:
+                if paren_depth == 0:
+                    raise self.parser.error(
+                        "syntax error in conditional expression: "
+                        "unexpected token ')'", tok)
                 paren_depth -= 1
             self.parser.advance()
             parts.append(self._token_part(tok))
             first = False
 
+        if paren_depth > 0:
+            raise self.parser.error(
+                "syntax error in conditional expression: unbalanced '('")
+        if not parts:
+            raise self.parser.error("Expected regex after =~")
         return Word(parts=parts)
 
     def _is_unary_test_operator(self, value: str) -> bool:

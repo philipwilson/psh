@@ -6486,3 +6486,49 @@
   stdout: "v\n"
   stderr: ""
   exit_code: 0
+
+# --- Conditional regex operand policy (finding 5d) ---
+# `=~` operand rejects unquoted shell separators / redirection operators and
+# requires balanced grouping (bash: conditional syntax error), but allows the
+# ERE alternation `|` and quoted/escaped metacharacters.
+- name: parsefix_regex_semicolon_is_error
+  command: "[[ x =~ ; ]]"
+  stdout: ""
+  stderr: "syntax error in conditional expression"
+  exit_code: 2
+
+- name: parsefix_regex_ampersand_is_error
+  command: "[[ x =~ & ]]"
+  stdout: ""
+  stderr: "syntax error in conditional expression"
+  exit_code: 2
+
+- name: parsefix_regex_unbalanced_paren_is_error
+  command: "[[ x =~ ( ]]"
+  stdout: ""
+  stderr: "syntax error in conditional expression"
+  exit_code: 2
+
+- name: parsefix_regex_stray_close_paren_is_error
+  command: "[[ a =~ a) ]]"
+  stdout: ""
+  stderr: "syntax error in conditional expression"
+  exit_code: 2
+
+- name: parsefix_regex_alternation_ok
+  command: "[[ ab =~ a|b ]] && echo yes"
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parsefix_regex_grouped_alternation_ok
+  command: "[[ ab =~ ^(a|b)+$ ]] && echo yes"
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parsefix_regex_quoted_separator_literal
+  command: "[[ 'x;y' =~ 'x;y' ]] && echo yes"
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0

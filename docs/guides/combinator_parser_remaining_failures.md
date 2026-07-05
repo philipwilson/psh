@@ -77,6 +77,32 @@ deferred to its own campaign (the combinator is educational and outside the
 production quality bar). The `array-spaced-append-init` entry was removed
 from the AST-parity corpus because it is no longer an array-parity case.
 
+## Known open gap: `=~` conditional-regex operand handling
+
+**Documented 2026-07-05 (parser-hardening campaign, appraisal finding 5d).**
+
+The combinator's `[[ ]]` parser (`psh/parser/combinators/special_commands.py`,
+`_parse_test_expression`) models only single-token binary/unary operand forms;
+its own docstring marks multi-token `=~` regexes as an explicit educational
+boundary. As a result its `=~` operand handling diverges from the
+recursive-descent parser (which enforces a bash-faithful operand policy):
+
+- It **under-accepts** legal multi-token regexes: `[[ ab =~ a|b ]]` and
+  `[[ ab =~ (a|b)+ ]]` are rejected (they are not three tokens), whereas rd +
+  bash accept them.
+- It **over-accepts** illegal single-token operands: `[[ x =~ ; ]]`,
+  `[[ x =~ & ]]`, `[[ x =~ < ]]`, `[[ x =~ ( ]]` parse as a binary test with a
+  one-token regex operand, whereas rd + bash reject them as a conditional
+  syntax error.
+
+Closing this needs a real multi-token regex-operand collector in the
+combinator (the rd parser's `_parse_regex_operand` with its
+separator/redirection/balanced-paren policy). That contradicts the combinator's
+stated single-token design boundary and is deferred to its own campaign. The rd
+side is pinned bash-correct in
+`tests/unit/parser/test_regex_operand_policy.py` and the `parsefix_regex_*`
+golden cases.
+
 ## History
 
 | Date | Failures | Notes |
