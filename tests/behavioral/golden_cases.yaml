@@ -5799,3 +5799,39 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# R18 Tier-2 (T2-E glue / traps / CLI / scripting)
+# =============================================================================
+
+# A signal trap queued by the FINAL statement (no later command boundary, no
+# EXIT trap) is flushed before the shell exits — bash runs it; psh used to
+# drop it. See SourceProcessor.execute_as_main.
+- name: r18t2_glue_pending_term_trap_at_eof
+  command: "trap 'echo GOT_TERM' TERM; echo before; kill -TERM $$"
+  stdout: "before\nGOT_TERM\n"
+  stderr: ""
+  exit_code: 0
+
+# A pending trap whose action itself exits: its status wins (bash).
+- name: r18t2_glue_pending_term_trap_exit_status
+  command: "trap 'echo GOT; exit 7' TERM; kill -TERM $$"
+  stdout: "GOT\n"
+  stderr: ""
+  exit_code: 7
+
+# `cd ""` (empty operand, not resolved via CDPATH) is a no-op success — bash
+# stays in the current directory; psh used to error on chdir("").
+- name: r18t2_glue_cd_empty_operand_noop
+  command: 'cd /usr; cd ""; echo "$?:$PWD"'
+  stdout: "0:/usr\n"
+  stderr: ""
+  exit_code: 0
+
+# bash's `source` returns 126 for a binary file (distinct from the 1 it
+# returns for a directory / unreadable file).
+- name: r18t2_glue_source_binary_returns_126
+  command: "source /bin/ls; echo rc=$?"
+  stdout: "rc=126\n"
+  stderr: "cannot execute binary file"
+  exit_code: 0

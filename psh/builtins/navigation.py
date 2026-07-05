@@ -104,6 +104,14 @@ class CdBuiltin(Builtin):
                             found_in_cdpath = True
                             break
 
+        # bash: `cd ""` (empty operand) is a no-op success — the shell stays
+        # in the current directory rather than erroring on chdir(""). CDPATH
+        # is still searched first (above), so `CDPATH=/usr cd ""` still
+        # changes to /usr; only an operand that CDPATH did not resolve
+        # short-circuits here (probe-verified against bash 5.2).
+        if actual_path == '' and not found_in_cdpath:
+            return 0
+
         try:
             # Compute the logical new directory path
             if os.path.isabs(actual_path):

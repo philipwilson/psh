@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from .exceptions import UnboundVariableError
 
 if TYPE_CHECKING:
+    from ..shell import Shell
     from .state import ShellState
 
 # Characters that need no quoting in `set -x` trace output. Anything else (a
@@ -79,18 +80,19 @@ class OptionHandler:
             raise UnboundVariableError(f"{var_name}: unbound variable")
 
     @staticmethod
-    def print_xtrace(state: 'ShellState', command_parts: list) -> None:
+    def print_xtrace(shell: 'Shell', command_parts: list) -> None:
         """
         Print xtrace output for a command.
 
         Args:
-            state: Shell state
+            shell: The shell (its expansion manager expands PS4 like bash)
             command_parts: List of command parts (already expanded)
         """
+        state = shell.state
         if not state.options.get('xtrace', False):
             return
 
-        ps4 = state.get_variable('PS4', '+ ')
+        ps4 = shell.expansion_manager.expand_ps4()
         trace_line = ps4 + ' '.join(xtrace_quote(str(part)) for part in command_parts)
         print(trace_line, file=state.stderr)
         state.stderr.flush()  # Ensure trace appears before command output

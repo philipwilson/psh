@@ -102,18 +102,20 @@ class TestPosixShortOptions:
 
     def test_single_set_option(self):
         opts, operands = parse_args(['-e', 'script.sh'])
-        assert opts['set_options'] == ['errexit']
+        assert opts['set_options'] == [('errexit', True)]
         assert operands == ['script.sh']
 
     def test_cluster_maps_each_char(self):
         opts, _ = parse_args(['-eux'])
-        assert opts['set_options'] == ['errexit', 'nounset', 'xtrace']
+        assert opts['set_options'] == [
+            ('errexit', True), ('nounset', True), ('xtrace', True)]
 
     def test_all_finding_short_options(self):
         opts, _ = parse_args(['-e', '-u', '-x', '-v', '-n', '-f', '-C'])
         assert opts['set_options'] == [
-            'errexit', 'nounset', 'xtrace', 'verbose',
-            'noexec', 'noglob', 'noclobber']
+            ('errexit', True), ('nounset', True), ('xtrace', True),
+            ('verbose', True), ('noexec', True), ('noglob', True),
+            ('noclobber', True)]
 
     def test_dash_s_sets_stdin_mode(self):
         opts, operands = parse_args(['-s', 'foo', 'bar'])
@@ -127,8 +129,78 @@ class TestPosixShortOptions:
 
     def test_short_options_stop_at_operand(self):
         opts, operands = parse_args(['-x', 'script.sh', '-e'])
-        assert opts['set_options'] == ['xtrace']
+        assert opts['set_options'] == [('xtrace', True)]
         assert operands == ['script.sh', '-e']
+
+
+class TestInvocationOptionForms:
+    """R18 T2-E (M-s3): -o/+o NAME, +flag (disable), and -c clustered.
+
+    Verified against bash 5.2 (`bash -o pipefail -c`, `bash +x -c`,
+    `bash -xc 'cmd'`, `bash -eo pipefail`).
+    """
+
+    def test_o_long_option_enables(self):
+        opts, operands = parse_args(['-o', 'pipefail', '-c', 'x'])
+        assert opts['set_options'] == [('pipefail', True)]
+        assert opts['command_mode'] is True
+        assert operands == ['x']
+
+    def test_plus_o_long_option_disables(self):
+        opts, _ = parse_args(['+o', 'pipefail', '-c', 'x'])
+        assert opts['set_options'] == [('pipefail', False)]
+
+    def test_plus_short_flag_disables(self):
+        opts, _ = parse_args(['+x', '-c', 'x'])
+        assert opts['set_options'] == [('xtrace', False)]
+
+    def test_plus_cluster_disables_each(self):
+        opts, _ = parse_args(['+ex'])
+        assert opts['set_options'] == [('errexit', False), ('xtrace', False)]
+
+    def test_c_clustered_with_short_flag(self):
+        # -xc 'cmd': -x enables xtrace, -c starts command mode.
+        opts, operands = parse_args(['-xc', 'echo hi'])
+        assert opts['set_options'] == [('xtrace', True)]
+        assert opts['command_mode'] is True
+        assert operands == ['echo hi']
+
+    def test_c_first_in_cluster(self):
+        opts, operands = parse_args(['-cx', 'echo hi'])
+        assert opts['set_options'] == [('xtrace', True)]
+        assert opts['command_mode'] is True
+        assert operands == ['echo hi']
+
+    def test_o_in_cluster_consumes_next_arg(self):
+        # -eo pipefail: -e enables errexit, -o consumes 'pipefail'.
+        opts, operands = parse_args(['-eo', 'pipefail', '-c', 'x'])
+        assert opts['set_options'] == [('errexit', True), ('pipefail', True)]
+        assert operands == ['x']
+
+    def test_o_attached_name(self):
+        opts, _ = parse_args(['-opipefail', '-c', 'x'])
+        assert opts['set_options'] == [('pipefail', True)]
+
+    def test_later_plus_overrides_earlier_minus(self):
+        # bash: last wins. Applied in order, so -x then +x leaves xtrace off.
+        opts, _ = parse_args(['-x', '+x', '-c', 'x'])
+        assert opts['set_options'] == [('xtrace', True), ('xtrace', False)]
+
+    def test_o_bad_name_exits_2(self):
+        with pytest.raises(SystemExit) as exc:
+            parse_args(['-o', 'nosuchoption', '-c', 'x'])
+        assert exc.value.code == 2
+
+    def test_o_missing_argument_exits_2(self):
+        with pytest.raises(SystemExit) as exc:
+            parse_args(['-o'])
+        assert exc.value.code == 2
+
+    def test_o_rejects_internal_option_name(self):
+        # `interactive` is INTERNAL — not user-settable by name (bash).
+        with pytest.raises(SystemExit) as exc:
+            parse_args(['-o', 'interactive', '-c', 'x'])
+        assert exc.value.code == 2
 
 
 class TestHelpVersionFlags:

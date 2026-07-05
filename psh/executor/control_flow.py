@@ -321,7 +321,7 @@ class ControlFlowExecutor:
                 # iteration (the expanded word list, quoted).
                 if self.state.options.get('xtrace'):
                     from ..core.options import xtrace_quote
-                    ps4 = self.state.get_variable('PS4', '+ ')
+                    ps4 = self.expansion_manager.expand_ps4()
                     words = ' '.join(xtrace_quote(w) for w in expanded_items)
                     header = f"{ps4}for {node.variable} in {words}".rstrip()
                     self.state.stderr.write(header + "\n")
@@ -484,7 +484,7 @@ class ControlFlowExecutor:
         # set -x: bash traces the `case WORD in` header (expanded subject, quoted).
         if self.state.options.get('xtrace'):
             from ..core.options import xtrace_quote
-            ps4 = self.state.get_variable('PS4', '+ ')
+            ps4 = self.expansion_manager.expand_ps4()
             self.state.stderr.write(f"{ps4}case {xtrace_quote(expr)} in\n")
 
         # Redirects apply to the whole case; pipeline context is neutralized
