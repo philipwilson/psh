@@ -46,18 +46,18 @@
   ],
   [
     "a= (1 2)",
-    "OK",
-    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[ArrayInitialization(name='a', elements=['1', '2'], is_append=False, words=[Word(parts=[LiteralPart(text='1', quoted=False, quote_char=None)], quote_type=None), Word(parts=[LiteralPart(text='2', quoted=False, quote_char=None)], quote_type=None)])], words=[])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
+    "ERR",
+    "ParseError: Parse error at position 3 (line 1, column 4): syntax error near unexpected token '('"
   ],
   [
     "a =(1 2)",
     "OK",
-    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[ArrayInitialization(name='a', elements=['1', '2'], is_append=False, words=[Word(parts=[LiteralPart(text='1', quoted=False, quote_char=None)], quote_type=None), Word(parts=[LiteralPart(text='2', quoted=False, quote_char=None)], quote_type=None)])], words=[])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
+    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[], words=[Word(parts=[LiteralPart(text='a', quoted=False, quote_char=None)], quote_type=None), Word(parts=[LiteralPart(text='=(1 2)', quoted=False, quote_char=None)], quote_type=None)])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
   ],
   [
     "a = (1 2)",
-    "OK",
-    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[ArrayInitialization(name='a', elements=['1', '2'], is_append=False, words=[Word(parts=[LiteralPart(text='1', quoted=False, quote_char=None)], quote_type=None), Word(parts=[LiteralPart(text='2', quoted=False, quote_char=None)], quote_type=None)])], words=[])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
+    "ERR",
+    "ParseError: Parse error at position 4 (line 1, column 5): syntax error near unexpected token '('"
   ],
   [
     "a[0]=v",
@@ -177,17 +177,17 @@
   [
     "a[0] =v",
     "OK",
-    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[ArrayElementAssignment(name='a', index=[Token(type=<TokenType.WORD: 1>, value='0', position=0, end_position=0, quote_type=None, line=None, column=None, adjacent_to_previous=False, is_keyword=False, parts=[], fd=None, var_fd=None, combined_redirect=False)], value='v', value_word=Word(parts=[LiteralPart(text='v', quoted=False, quote_char=None)], quote_type=None), is_append=False)], words=[])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
+    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[], words=[Word(parts=[LiteralPart(text='a[0]', quoted=False, quote_char=None)], quote_type=None), Word(parts=[LiteralPart(text='=v', quoted=False, quote_char=None)], quote_type=None)])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
   ],
   [
     "a[0] = v",
     "OK",
-    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[ArrayElementAssignment(name='a', index=[Token(type=<TokenType.WORD: 1>, value='0', position=0, end_position=0, quote_type=None, line=None, column=None, adjacent_to_previous=False, is_keyword=False, parts=[], fd=None, var_fd=None, combined_redirect=False)], value='v', value_word=Word(parts=[LiteralPart(text='v', quoted=False, quote_char=None)], quote_type=None), is_append=False)], words=[])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
+    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[], words=[Word(parts=[LiteralPart(text='a[0]', quoted=False, quote_char=None)], quote_type=None), Word(parts=[LiteralPart(text='=', quoted=False, quote_char=None)], quote_type=None), Word(parts=[LiteralPart(text='v', quoted=False, quote_char=None)], quote_type=None)])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
   ],
   [
     "a[0] += w",
     "OK",
-    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[ArrayElementAssignment(name='a', index=[Token(type=<TokenType.WORD: 1>, value='0', position=0, end_position=0, quote_type=None, line=None, column=None, adjacent_to_previous=False, is_keyword=False, parts=[], fd=None, var_fd=None, combined_redirect=False)], value='w', value_word=Word(parts=[LiteralPart(text='w', quoted=False, quote_char=None)], quote_type=None), is_append=True)], words=[])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
+    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[], words=[Word(parts=[LiteralPart(text='a[0]', quoted=False, quote_char=None)], quote_type=None), Word(parts=[LiteralPart(text='+=', quoted=False, quote_char=None)], quote_type=None), Word(parts=[LiteralPart(text='w', quoted=False, quote_char=None)], quote_type=None)])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
   ],
   [
     "a[0]",

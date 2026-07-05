@@ -47,6 +47,36 @@ python run_tests.py --combinator > tmp/combinator-results.txt 2>&1
 tail -15 tmp/combinator-results.txt
 ```
 
+## Known open gap: statement sequencing does not require a separator
+
+**Found 2026-07-05 (parser-hardening campaign, appraisal finding 5b).**
+
+The combinator's statement-list loop
+(`psh/parser/combinators/commands/statements.py`, `parse_statement_list`)
+consumes `optional(separators)` between statements, so it accepts two
+statements with **no** separator (`;`, newline, `&`, `|`, `&&`, `||`)
+between them. A word immediately followed by a compound command parses as
+two statements instead of a syntax error:
+
+```sh
+echo (x)        # combinator: two statements (`echo`, then subshell `(x)`)
+                # rd + bash:  syntax error near `(`
+```
+
+This surfaced (it was not caused) when array-initializer adjacency was
+fixed: `arr += (one two)` / `a= (x)` / `a = (x)` are no longer array
+initializers in either parser (matching bash), after which the rd parser
+reports a syntax error but the combinator falls into this sequencing gap
+and yields two statements. The rd side is pinned bash-correct
+(`echo (x)` → `ParseError`) in
+`tests/unit/parser/test_word_then_subshell_sequencing.py`.
+
+Fixing this properly means requiring a separator between statements in the
+combinator's core sequencing — a broad change with wide blast radius,
+deferred to its own campaign (the combinator is educational and outside the
+production quality bar). The `array-spaced-append-init` entry was removed
+from the AST-parity corpus because it is no longer an array-parity case.
+
 ## History
 
 | Date | Failures | Notes |

@@ -58,15 +58,23 @@ class ArrayParsers:
         if pos >= len(tokens) or tokens[pos].type.name != 'WORD':
             return False
 
+        # The '(' (and a separate '='/'+=' operator) must be lexically ADJACENT
+        # to the assignment head — bash only treats a glued `(` as an array
+        # initializer; `a= (x)`, `a =(x)`, `a = (x)`, `a += (x)` are syntax
+        # errors, not inits (finding 5b). Mirrors the recursive descent parser.
         value = tokens[pos].value
         if value.endswith('=') or value.endswith('+='):
-            return pos + 1 < len(tokens) and tokens[pos + 1].type.name == 'LPAREN'
+            return (pos + 1 < len(tokens)
+                    and tokens[pos + 1].type.name == 'LPAREN'
+                    and tokens[pos + 1].adjacent_to_previous)
 
         return (
             pos + 2 < len(tokens)
             and tokens[pos + 1].type.name == 'WORD'
             and tokens[pos + 1].value in ('=', '+=')
+            and tokens[pos + 1].adjacent_to_previous
             and tokens[pos + 2].type.name == 'LPAREN'
+            and tokens[pos + 2].adjacent_to_previous
         )
 
     @staticmethod
@@ -80,9 +88,13 @@ class ArrayParsers:
             if '=' in value:
                 equals_pos = value.index('+=') if '+=' in value else value.index('=')
                 return value.index('[') < equals_pos
+            # Split head `a[i]` + `=value` requires the operator token ADJACENT
+            # to `a[i]`; a space (`a[0] =v`) makes `a[0]` a command word, not an
+            # element assignment (finding 5c). Mirrors the recursive descent parser.
             return (
                 pos + 1 < len(tokens)
                 and tokens[pos + 1].type.name == 'WORD'
+                and tokens[pos + 1].adjacent_to_previous
                 and (
                     tokens[pos + 1].value.startswith('=')
                     or tokens[pos + 1].value.startswith('+=')
@@ -219,15 +231,18 @@ class ArrayParsers:
         if tail:
             parts.append(LiteralPart(tail))
 
-        consume_first = not tail
+        # A value token is part of the value only when lexically ADJACENT to the
+        # assignment head, for BOTH a non-empty inline tail and an empty one:
+        # `a[0]= v` is an empty assignment plus the separate command `v`, so the
+        # following non-adjacent word is NOT consumed (finding 5c). Mirrors the
+        # recursive descent parser (previously an empty tail consumed any word).
         while pos < len(tokens) and tokens[pos].type.name in _WORD_LIKE_TYPES:
-            if not consume_first and not getattr(tokens[pos], 'adjacent_to_previous', False):
+            if not getattr(tokens[pos], 'adjacent_to_previous', False):
                 break
             word_result = self.parse_word_as_word(tokens, pos)
             inner = word_result.value
             assert inner is not None  # success implies a value
             parts.extend(inner.parts)
             pos = word_result.position
-            consume_first = False
 
         return Word(parts=parts), ''.join(str(part) for part in parts), pos

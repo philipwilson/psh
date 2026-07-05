@@ -6439,3 +6439,50 @@
   stdout: ""
   stderr: "Expected 'do'"
   exit_code: 2
+
+# --- Array assignment adjacency (findings 5b, 5c) ---
+# A `(` is an array initializer only when glued to the assignment head; a
+# spaced `(` is a bash syntax error, not an init.
+- name: parsefix_array_init_adjacent_ok
+  command: "a=(x y z); echo \"${a[@]}\""
+  stdout: "x y z\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parsefix_array_append_adjacent_ok
+  command: "a=(p); a+=(q r); echo \"${a[@]}\""
+  stdout: "p q r\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parsefix_array_init_spaced_paren_is_error
+  command: "a= (x)"
+  stderr: "syntax error near unexpected token '('"
+  stdout: ""
+  exit_code: 2
+
+- name: parsefix_array_init_spaced_name_eq_is_error
+  command: "a = (x)"
+  stderr: "syntax error near unexpected token '('"
+  stdout: ""
+  exit_code: 2
+
+- name: parsefix_array_append_spaced_is_error
+  command: "a=(p); a += (x)"
+  stderr: "syntax error near unexpected token '('"
+  stdout: ""
+  exit_code: 2
+
+# Empty element value must NOT swallow a following non-adjacent word: `a[0]= v`
+# sets a[0] empty and runs `v` as a separate command (bash).
+- name: parsefix_element_empty_value_no_swallow
+  command: "a[0]= true; echo \"[${a[0]}]\""
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parsefix_element_adjacent_value_ok
+  command: "a[0]=v; echo \"${a[0]}\""
+  stdout: "v\n"
+  stderr: ""
+  exit_code: 0

@@ -60,7 +60,8 @@ def test_array_assignment_characterization(src, kind, frozen):
 def test_corpus_is_nonempty():
     kinds = {e[1] for e in FROZEN}
     assert len(FROZEN) >= 35
-    # Every corpus input now parses successfully: the only failing entries
-    # were the separate-bracket (``a [ i ] = v``) pinned-bug forms, which
-    # were fixed to fall through to normal simple-command parsing.
-    assert kinds == {"OK"}
+    # Both parse successes and failures appear: the spaced array-initializer
+    # forms ``a= (1 2)`` / ``a = (1 2)`` are now syntax errors (a non-adjacent
+    # ``(`` after an assignment head is not an array init, matching bash;
+    # appraisal finding 5b). The rest parse successfully.
+    assert kinds == {"OK", "ERR"}
