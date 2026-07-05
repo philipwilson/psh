@@ -192,3 +192,47 @@ def test_set_o_toggles_strict_errors(captured_shell):
     assert captured_shell.state.options['strict-errors'] is True
     captured_shell.run_command("set +o strict-errors")
     assert captured_shell.state.options['strict-errors'] is False
+
+
+# --- Trap-body internal defects go through the same last-resort policy -------
+#
+# A genuine internal defect raised while executing a trap action used to be
+# swallowed by an ad-hoc `except Exception` in TrapManager.execute_trap (it
+# printed "trap: error executing trap for ..." and returned), which DEFEATED
+# strict-errors — the one place a bug in a trap body should surface loudly. It
+# now routes through report_internal_defect, so a trap-body defect is
+# classified exactly like a defect anywhere else (see the direct-builtin tests
+# above). Expected shell errors and control-flow (return/break/continue) are
+# handled upstream by run_command and never reach that guard, so they are
+# unaffected (control-flow-in-traps is covered end-to-end in
+# tests/integration/job_control/test_trap_actions.py).
+
+
+def test_trap_defect_reraises_when_strict_on(captured_shell, boom_builtin):
+    """Strict ON: a defect in a trap action PROPAGATES, matching every other
+    site (before the fix the trap guard swallowed it)."""
+    captured_shell.state.options['strict-errors'] = True
+    captured_shell.run_command(f"trap '{boom_builtin}' USR1")
+    with pytest.raises(RuntimeError, match="boom from psh_test_boom"):
+        captured_shell.trap_manager.execute_trap('USR1')
+
+
+def test_trap_defect_swallowed_when_strict_off(captured_shell, boom_builtin):
+    """Strict OFF: a defect in a trap action is swallowed (no raise), exactly
+    as an ordinary defect is — the shell stays alive."""
+    captured_shell.state.options['strict-errors'] = False
+    captured_shell.run_command(f"trap '{boom_builtin}' USR1")
+    captured_shell.clear_output()
+    # Must not raise.
+    captured_shell.trap_manager.execute_trap('USR1')
+    assert "boom from psh_test_boom" in captured_shell.get_stderr()
+
+
+def test_trap_normal_action_unaffected(captured_shell, boom_builtin):
+    """A normal (non-defect) trap action still runs and never raises, even
+    under strict mode."""
+    captured_shell.state.options['strict-errors'] = True
+    captured_shell.run_command("trap 'echo trap-ran' USR1")
+    captured_shell.clear_output()
+    captured_shell.trap_manager.execute_trap('USR1')  # no raise
+    assert captured_shell.get_stdout() == "trap-ran\n"
