@@ -28,14 +28,18 @@ from .tokens import ArithTokenType
 # (0x.., 0.., base#n, "2*3", ...) is evaluated as an arithmetic sub-expression.
 _PLAIN_DECIMAL_RE = re.compile(r'[+-]?(?:0|[1-9][0-9]*)$')
 
-# Maximum re-entrancy depth of arithmetic evaluation. A variable whose value is
-# itself an expression is evaluated recursively (get_variable -> evaluate_
-# arithmetic), so a self-referential (`x="x+1"`) or too-deeply-chained
-# expression would exhaust the interpreter stack. Bounding it here matches
-# bash's EXPR_NEST_MAX (1024): a chain 1000 deep evaluates, one 1024 deep trips
-# a clean "expression recursion level exceeded" arithmetic error (status 1, the
-# line resumes) rather than a Python RecursionError leaking as an internal
-# defect.
+# bash's EXPR_NEST_MAX. A variable whose value is itself an expression is
+# evaluated recursively (get_variable -> evaluate_arithmetic), so a
+# self-referential (`x="x+1"`) or too-deeply-chained expression would exhaust
+# the interpreter stack. Bounding re-entrancy here trips a clean "expression
+# recursion level exceeded" arithmetic error (status 1, the line resumes)
+# instead of a Python RecursionError leaking as an internal defect. Tripping at
+# ``depth >= EXPR_NEST_MAX`` (not ``>``) lands psh on bash's EXACT observed
+# boundary — psh's counter increments once at the outer expression's entry, one
+# level ahead of bash's internal expr_depth, so ``>=`` cancels that offset.
+# Probe-verified against bash 5.2.26 (tmp/probes-r18t2-arith/
+# recursion_boundary.py): an a0=0; a1="a0+1"; ... self-reference chain 1022
+# deep evaluates in BOTH shells, 1023 deep trips in BOTH.
 _MAX_ARITH_RECURSION = 1024
 
 
@@ -438,7 +442,7 @@ def evaluate_arithmetic(expr: str, shell, expand: bool = True) -> int:
     depth = shell.state._arith_recursion_depth + 1
     shell.state._arith_recursion_depth = depth
     try:
-        if depth > _MAX_ARITH_RECURSION:
+        if depth >= _MAX_ARITH_RECURSION:
             raise ShellArithmeticError(
                 f"{expr.strip()}: expression recursion level exceeded")
         return _evaluate_arithmetic_inner(expr, shell, expand)

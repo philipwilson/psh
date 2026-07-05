@@ -57,19 +57,34 @@ class TestSelfReferentialExpression:
 
 
 class TestLegitReferenceChainBoundary:
-    """A finite chain up to bash's EXPR_NEST_MAX evaluates; beyond it trips."""
+    """The exact self-reference trip depth matches bash 5.2.26 (probe:
+    tmp/probes-r18t2-arith/recursion_boundary.py). For the chain
+    a0=0; a1="a0+1"; ...; aN="a{N-1}+1" then $(( aN )), BOTH shells evaluate
+    a 1022-deep chain and BOTH trip at 1023-deep. These tests PIN that
+    boundary so the +1-offset regression (psh tripping one level late) cannot
+    return."""
+
+    _MAX_OK = 1022    # deepest chain that still evaluates (bash == psh)
+    _FIRST_TRIP = 1023  # shallowest chain that trips (bash == psh)
 
     def _chain(self, depth, tail):
         return (f'a0=0; for i in $(seq 1 {depth}); do '
                 f'eval "a$i=a$((i-1))+1"; done; {tail}')
 
-    def test_chain_1000_evaluates(self):
-        r = _psh_c(self._chain(1000, 'echo $(( a1000 )); echo alive'))
-        assert r.stdout == "1000\nalive\n"
+    def test_chain_at_max_ok_depth_evaluates(self):
+        n = self._MAX_OK
+        r = _psh_c(self._chain(n, f'echo $(( a{n} )); echo alive'))
+        assert r.stdout == f"{n}\nalive\n"
+        assert "recursion level exceeded" not in r.stderr
         assert r.returncode == 0
 
-    def test_chain_1024_trips_bound(self):
-        r = _psh_c(self._chain(1024, 'echo $(( a1024 )) x; echo alive'))
+    def test_chain_at_first_trip_depth_trips(self):
+        n = self._FIRST_TRIP
+        # $(( )) word expansion: a discard-line error drops the rest of the
+        # line (the trailing `x`/`echo alive`), status 1 — not a crash.
+        r = _psh_c(self._chain(n, f'echo $(( a{n} )) x; echo alive'))
+        assert r.stdout == ""
         assert "expression recursion level exceeded" in r.stderr
         assert "RecursionError" not in r.stderr
         assert "Traceback" not in r.stderr
+        assert r.returncode == 1
