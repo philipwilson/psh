@@ -443,14 +443,22 @@ class TestCStyleForComparators:
 class TestCStyleForSyntaxVariations:
     """Test syntax variations and edge cases."""
 
-    def test_c_style_without_do_keyword(self, captured_shell):
-        """Test C-style for loop without optional 'do' keyword."""
+    def test_c_style_bare_command_without_do_is_syntax_error(self, captured_shell):
+        """A C-style for body must be `do LIST done` or a brace group `{ LIST }`;
+        a bare command with no `do`/`{` is a syntax error, matching bash
+        (`for ((...)) echo x; done` -> bash rc 2). Previously psh wrongly made
+        `do` optional and accepted this (appraisal finding 5a)."""
         shell = captured_shell
         result = shell.run_command('for ((i=0; i<3; i++)) echo $i; done')
-        assert result == 0
+        assert result == 2
+        assert shell.get_stdout() == ""
 
-        output = shell.get_stdout()
-        assert output == "0\n1\n2\n"
+    def test_c_style_brace_group_body(self, captured_shell):
+        """`for ((...)) { LIST; }` is a bash synonym for `do LIST done`."""
+        shell = captured_shell
+        result = shell.run_command('for ((i=0; i<3; i++)) { echo $i; }')
+        assert result == 0
+        assert shell.get_stdout() == "0\n1\n2\n"
 
     def test_whitespace_handling(self, captured_shell):
         """Test handling of various whitespace patterns."""

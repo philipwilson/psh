@@ -6396,3 +6396,46 @@
   stdout: "5\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# PARSER HARDENING (appraisal findings 4, 5a-e, 6, 14)
+# =============================================================================
+
+# --- C-style for body forms (finding 5a) ---
+# Body must be `do LIST done` or a brace group `{ LIST }`; a bare command with
+# no `do`/`{` is a syntax error (bash rc 2). `do` was wrongly optional before.
+- name: parsefix_cfor_brace_body
+  command: "for ((i=0; i<3; i++)) { echo $i; }"
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parsefix_cfor_brace_body_semicolon
+  command: "for ((i=0; i<2; i++)); { echo $i; }"
+  stdout: "0\n1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parsefix_cfor_brace_body_trailing_redirect
+  command: "for ((i=0; i<2; i++)) { echo $i; } | cat"
+  stdout: "0\n1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parsefix_cfor_do_still_works
+  command: "for ((i=0; i<2; i++)); do echo $i; done"
+  stdout: "0\n1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parsefix_cfor_bare_command_no_do_is_error
+  command: "for ((i=0; i<3; i++)) echo $i; done"
+  stdout: ""
+  stderr: "Expected 'do'"
+  exit_code: 2
+
+- name: parsefix_cfor_do_required_with_separator
+  command: "for ((i=0; i<3; i++)); echo $i; done"
+  stdout: ""
+  stderr: "Expected 'do'"
+  exit_code: 2
