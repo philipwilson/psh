@@ -49,6 +49,12 @@ from ..ast_nodes import (
     Word,
 )
 from .base import ASTVisitor
+from .formatter_quoting import (
+    escape_ansi_c,
+    escape_double_quoted,
+    format_word_list_item,
+    quote_scalar,
+)
 
 
 class FormatterVisitor(ASTVisitor[str]):
@@ -127,62 +133,6 @@ class FormatterVisitor(ASTVisitor[str]):
                                          or next_part.text[0] == '_')
 
     @staticmethod
-    def _escape_double_quoted(text: str) -> str:
-        """Re-escape a stored literal that will be re-wrapped in double quotes.
-
-        Inside ``"..."`` the lexer unescapes only ``\\"``, ``\\``` and ``\\\\``
-        (storing ``"``, `` ` ``, ``\\``); it KEEPS the backslash before ``$``
-        (``"a\\$b"`` stores ``a\\$b``) so the expansion phase can treat it as a
-        literal ``$``. So the stored text is essentially source-form, and the
-        OLD blanket ``\\`` -> ``\\\\`` doubling corrupted ``\\$`` into a live
-        ``\\`` + ``$expansion``. Re-emit so re-lexing yields the SAME stored
-        text: escape a bare ``"`` and `` ` ``, and double a backslash only when
-        it would otherwise pair with the following emitted char (another
-        backslash, a `` ` ``/``"`` we are escaping, or the closing quote) into
-        an unintended escape. A backslash before ``$`` (or any ordinary char)
-        stays single — the lexer keeps it verbatim.
-        """
-        out = []
-        n = len(text)
-        for i, ch in enumerate(text):
-            if ch == '"':
-                out.append('\\"')
-            elif ch == '`':
-                out.append('\\`')
-            elif ch == '\\':
-                nxt = text[i + 1] if i + 1 < n else ''
-                if nxt in ('`', '"', '\\', ''):
-                    out.append('\\\\')   # would form an escape with what follows
-                else:
-                    out.append('\\')     # \$ , \n , ... kept verbatim by the lexer
-            else:
-                out.append(ch)
-        return ''.join(out)
-
-    @staticmethod
-    def _escape_ansi_c(text: str) -> str:
-        """Re-escape a decoded ``$'...'`` value for re-emission as ``$'...'``.
-
-        The lexer DECODES the ANSI-C escapes into the stored value (``$'a\\tb'``
-        -> ``a<TAB>b``; ``$'q\\'x'`` -> ``q'x``), so re-wrapping the raw value in
-        ``$'...'`` would change it (a literal tab happens to survive, but a
-        literal ``'`` closes the quote early). Re-encode backslash, single quote
-        and control characters.
-        """
-        simple = {'\\': '\\\\', "'": "\\'", '\t': '\\t', '\n': '\\n',
-                  '\r': '\\r', '\a': '\\a', '\b': '\\b', '\f': '\\f',
-                  '\v': '\\v', '\x1b': '\\E'}
-        out = []
-        for ch in text:
-            if ch in simple:
-                out.append(simple[ch])
-            elif ord(ch) < 32 or ord(ch) == 127:
-                out.append(f'\\x{ord(ch):02x}')
-            else:
-                out.append(ch)
-        return ''.join(out)
-
-    @staticmethod
     def _format_word(word) -> str:
         """Format a Word by reconstructing from its parts with quoting.
 
@@ -211,13 +161,13 @@ class FormatterVisitor(ASTVisitor[str]):
         for qc, items in groups:
             if qc == '"':
                 content = ''.join(
-                    FormatterVisitor._escape_double_quoted(text)
+                    escape_double_quoted(text)
                     if isinstance(part, LiteralPart) else text
                     for part, text in items)
                 result.append(f'"{content}"')
             elif qc == "$'":
                 content = ''.join(
-                    FormatterVisitor._escape_ansi_c(text)
+                    escape_ansi_c(text)
                     if isinstance(part, LiteralPart) else text
                     for part, text in items)
                 result.append("$'" + content + "'")
@@ -409,21 +359,6 @@ class FormatterVisitor(ASTVisitor[str]):
 
         return '\n'.join(lines)
 
-    # Chars that force-quote a for/select list item: whitespace and the
-    # operators/quotes that would otherwise re-parse as syntax. Glob chars
-    # (`*?[]`), braces and `$` are deliberately NOT here — quoting them would
-    # suppress the globbing / brace / expansion the unquoted form performs.
-    _WORD_LIST_FORCE_QUOTE = set(" \t\n;|&<>()'\"`")
-
-    @classmethod
-    def _format_word_list_item(cls, item: str) -> str:
-        """Quote a for/select ``in`` list item only when needed (bash)."""
-        if item == '':
-            return '""'
-        if any(c in cls._WORD_LIST_FORCE_QUOTE for c in item):
-            return '"' + cls._escape_double_quoted(item) + '"'
-        return item
-
     def _format_loop_items(self, node) -> str:
         """Render a for/select ``in`` list from the item Words.
 
@@ -436,7 +371,7 @@ class FormatterVisitor(ASTVisitor[str]):
         """
         if node.item_words:
             return ' '.join(self._format_word(w) for w in node.item_words)
-        return ' '.join(self._format_word_list_item(i) for i in node.items)
+        return ' '.join(format_word_list_item(i) for i in node.items)
 
     def visit_ForLoop(self, node: ForLoop) -> str:
         """Format a for loop."""
@@ -736,15 +671,6 @@ class FormatterVisitor(ASTVisitor[str]):
 
     # Redirections
 
-    @staticmethod
-    def _quote_scalar(text: str, quote_type) -> str:
-        """Re-wrap a scalar (here-string word) in its original quotes."""
-        if not quote_type:
-            return text
-        if quote_type == "$'":
-            return f"$'{text}'"
-        return f"{quote_type}{text}{quote_type}"
-
     def _register_heredocs(self, redirects) -> None:
         """Queue the body + closing delimiter of any heredocs on a command.
 
@@ -823,7 +749,7 @@ class FormatterVisitor(ASTVisitor[str]):
         if node.type == '<<<':
             if node.target_word is not None:
                 return f"{op}{self._format_word(node.target_word)}"
-            return f"{op}{self._quote_scalar(node.target or '', node.quote_type)}"
+            return f"{op}{quote_scalar(node.target or '', node.quote_type)}"
 
         # fd duplication/close (2>&1, >&-). A move (`[n]>&m-`) keeps the
         # trailing '-' so it does not re-parse as a plain dup.
