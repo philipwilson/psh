@@ -206,7 +206,29 @@ class SourceProcessor(ScriptComponent):
 
     def _execute_buffered_command(self, complete: Complete, input_source,
                                   start_line: int, add_to_history: bool) -> int:
-        """Execute a complete buffered command with enhanced error reporting."""
+        """Execute a complete buffered command with enhanced error reporting.
+
+        This is the ERROR-MODEL skeleton for the buffered-command boundary;
+        the three phases it drives live in dedicated helpers so each reads
+        cleanly, while the try/except STRUCTURE and clause ORDER stay here
+        (they ARE the semantics — see the phase helpers):
+
+        1. ``_preprocess_command`` — line continuations + history
+           expansion/recording (may short-circuit on a history-expansion
+           failure);
+        2. ``_parse_command`` — tokenize and parse to an AST (raises
+           ``ParseError``/``UnclosedQuoteError``/lexer ``SyntaxError`` into
+           the clauses below);
+        3. ``_dispatch_execution`` — run the AST, resolving the control-flow
+           signals (``LoopBreak``/``LoopContinue``/``FunctionReturn``) and
+           ``TopLevelAbort`` discards.
+
+        Anything that escapes those phases is classified by
+        ``_classify_buffered_error`` in the final ``except Exception`` clause
+        (fatal expansion, runaway recursion, internal-defect guard). Every
+        phase is *called from within* this try, so an exception it raises is
+        caught by exactly the same clause the inline code hit.
+        """
         command_string = complete.text
         # Skip empty commands and pure single-line comments (a multi-line
         # buffer starting with a comment still contains commands; the lexer
@@ -231,99 +253,16 @@ class SourceProcessor(ScriptComponent):
         nested = getattr(self.shell, '_current_executor', None) is not None
 
         try:
-            # Process line continuations first
-            from .input_preprocessing import process_line_continuations
-            command_string = process_line_continuations(command_string)
+            preprocessed = self._preprocess_command(command_string, add_to_history)
+            if preprocessed is None:
+                # History expansion failed - this is the proper error path
+                # (the "event not found" message was already printed).
+                self.state.last_exit_code = 1
+                return 1
+            command_string = preprocessed
 
-            # Perform history expansion before tokenization. The accumulator
-            # already expanded silently for the completeness trial; this
-            # pass is the REPORTING one — it echoes the expansion like bash
-            # and prints "event not found" errors.
-            if (not self.state.is_script_mode and
-                    hasattr(self.shell, 'history_expander')):
-                expanded_command = self.shell.history_expander.expand_history(command_string)
-                if expanded_command is None:
-                    # History expansion failed - this is the proper error path
-                    self.state.last_exit_code = 1
-                    return 1
-                command_string = expanded_command
-
-            # Record in history (interactive use). This is the ONE history
-            # writer: it sees the complete logical command, so multi-line
-            # constructs land as a single joined entry (bash cmdhist).
-            # Done before parsing so that, like bash, commands with syntax
-            # errors are still recallable for editing.
-            # The command is passed RAW — bash stores the line verbatim
-            # (leading/trailing whitespace included), and the semantic
-            # filters inside add_to_history depend on the unmodified text:
-            # HISTCONTROL=ignorespace keys on the leading space, and
-            # ignoredups/HISTIGNORE compare/match the verbatim line. A
-            # pre-strip here made ignorespace a silent no-op on the real
-            # entry path (reappraisal #17 H7 privacy leak). Whitespace-only
-            # commands are still skipped (deliberate divergence: bash
-            # records them).
-            if add_to_history and command_string.strip():
-                from ..interactive.history_expansion import contains_history_reference
-                if not contains_history_reference(command_string):
-                    self.shell.add_history(command_string)
-
-            # Alias expansion is a token-stream transform applied at the
-            # lex->parse seam (see the expand_aliases calls below and in
-            # command_accumulator._trial_parse), not a runtime strategy.
-
-            # Reuse the accumulator's trial parse when it matches what we
-            # are about to execute (recursive-descent parser active and the
-            # reporting preprocessing reproduced the trial's source text);
-            # otherwise tokenize and parse here — exactly once either way.
-            if complete.ast is not None and command_string == complete.source:
-                self._debug_print_tokens(complete.tokens)
-                ast = complete.ast
-            elif contains_heredoc(command_string):
-                # Use the lexer with heredoc support. The source name and
-                # start line locate the buffer for the unterminated-heredoc
-                # warning ("delimited by end-of-file"): a script/sourced-file
-                # path prefixes it like bash's script name; the -c/stdin/eval
-                # pseudo-names map to the "psh" prefix (bash prints "bash:").
-                from ..lexer import tokenize_with_heredocs
-                name = input_source.get_name()
-                tokens, heredoc_map = tokenize_with_heredocs(
-                    command_string, strict=self.state.options.get('posix', False),
-                    shell_options=self.state.options,
-                    source_name=None if name.startswith(('<', '-')) else name,
-                    base_line=start_line if start_line > 0 else 1)
-                # Alias expansion is a token-stream transform at the
-                # lex→parse boundary (see AliasManager.expand_aliases).
-                tokens = self.shell.expand_aliases(tokens)
-                self._debug_print_tokens(tokens)
-                # Parse with heredoc map, honoring the active parser
-                from ..parser import parse_with_heredocs
-                ast = parse_with_heredocs(tokens, heredoc_map,
-                                          active_parser=self.shell.active_parser)
-            else:
-                tokens = tokenize(command_string, shell_options=self.state.options)
-                tokens = self.shell.expand_aliases(tokens)
-                self._debug_print_tokens(tokens)
-                # Parse with source text for better error messages and shell configuration
-                from ..parser import create_parser
-                parser = create_parser(
-                    tokens,
-                    active_parser=self.shell.active_parser,
-                    source_text=command_string,
-                    line_offset=max(0, start_line - 1),
-                )
-                ast = parser.parse()
-
-            # Convert the parser's buffer-relative $LINENO stamps to absolute
-            # source lines (offset by where this buffer began). Done once here
-            # so a function body bakes in its definition-site lines. See
-            # ASTNode.line and _offset_line_numbers.
-            if start_line > 1:
-                _offset_line_numbers(ast, start_line - 1)
-
-            # Debug: Print AST if requested
-            if self.state.debug_ast:
-                from ..utils.ast_debug import print_ast_debug
-                print_ast_debug(ast, self.shell.ast_format, self.shell)
+            ast = self._parse_command(complete, command_string, input_source,
+                                      start_line)
 
             # NoExec mode - parse and validate but don't execute
             if self.state.options.get('noexec', False):
@@ -333,68 +272,7 @@ class SourceProcessor(ScriptComponent):
             # Increment command number for successful parse
             self.state.command_number += 1
 
-            from ..core import FunctionReturn, LoopBreak, LoopContinue, TopLevelAbort
-            try:
-                # Handle TopLevel AST node (functions + commands)
-                if isinstance(ast, TopLevel):
-                    return self.shell.execute_toplevel(ast)
-                else:
-                    try:
-                        # Heredoc content is now pre-populated during parsing.
-                        # The parser returns a StatementList here (TopLevel
-                        # handled above); the cast records that invariant.
-                        exit_code = self.shell.execute_command_list(cast(StatementList, ast))
-                        return exit_code
-                    except (LoopBreak, LoopContinue) as e:
-                        # Break/continue outside of any loop is an error. Catch
-                        # only these — any other exception propagates to its own
-                        # handler.
-                        if nested or self.shell._loop_depth_seed > 0:
-                            # nested: e.g. `eval break` inside a loop — the
-                            # enclosing loop handles it. Seeded: a substitution
-                            # child forked inside a loop — run_child_shell ends
-                            # the child cleanly (status 0), matching bash's
-                            # silent `x=$(break)`.
-                            raise
-                        stmt_name = "break" if isinstance(e, LoopBreak) else "continue"
-                        print(f"{stmt_name}: only meaningful in a `for', `while', or `until' loop",
-                              file=sys.stderr)
-                        return 1
-            except TopLevelAbort as e:
-                # A fatal error (readonly/nameref-cycle assignment, failed
-                # arithmetic/parameter expansion, failglob) unwound the whole
-                # current command line (the rest of the command list and any
-                # enclosing if/loop/function on the same input). The error was
-                # already printed at the raise site; resume at the next
-                # buffered command (bash). This containment applies at EVERY
-                # buffered-command boundary — including the nested processors
-                # run by eval/source/trap actions: bash 5.2 (probe-verified,
-                # tmp/probes-r17t2-arith/) CONTAINS the discard there
-                # (`eval 'r=2; echo x'; echo after` kills x, runs after with
-                # $?=1; a sourced file resumes at its own next line).
-                # EXCEPTION: the assignment/subscript arithmetic-error family
-                # passes through eval/source to the top-level input loop
-                # (contain_nested=False — see arith_assignment_discard).
-                if nested and not e.contain_nested:
-                    raise
-                if e.errexit_immune:
-                    # Expansion-error discards bypass set -e (bash); a
-                    # readonly/failglob discard keeps its errexit effect.
-                    self.state.errexit_eligible = False
-                self.state.last_exit_code = e.status
-                return e.status
-            except FunctionReturn as e:
-                # `return` reaching a NON-nested top level only happens in a
-                # subshell-style child that inherited a function/sourced-file
-                # context (ShellState.adopt copies function_stack and
-                # source_depth): the child's input stops with that status,
-                # like end-of-sourced-file (bash: x=$(return 3; echo x)
-                # leaves x empty, $? = 3). Nested (eval, trap action) it
-                # propagates to the enclosing function/source handler.
-                if nested:
-                    raise
-                self.state.last_exit_code = e.exit_code
-                return e.exit_code
+            return self._dispatch_execution(ast, nested)
         except ParseError as e:
             # Same canonical rendering as the trial-parse error path.
             self._report_syntax_error(e, input_source, start_line,
@@ -412,55 +290,261 @@ class SourceProcessor(ScriptComponent):
             self.state.last_exit_code = 2
             return 2
         except Exception as e:
-            # Control-flow exceptions from nested execution propagate to
-            # their enclosing loop/function handlers; loop-control signals
-            # in a seeded substitution child propagate to run_child_shell
-            # (see the LoopBreak/LoopContinue handler above).
-            from ..builtins import FunctionReturn
-            from ..core import LoopBreak, LoopContinue
-            if isinstance(e, (LoopBreak, LoopContinue, FunctionReturn)):
-                if nested:
-                    raise
-                if (isinstance(e, (LoopBreak, LoopContinue))
-                        and self.shell._loop_depth_seed > 0):
-                    raise
-            # A fatal expansion error escaping a non-SimpleCommand context
-            # (case subject, for-loop words, array initializer, redirect
-            # target of a compound, ...) reaches this boundary directly:
-            # apply the same bash model the command path uses. We are AT the
-            # buffered-command boundary, so the discard-line family is
-            # already complete (returning the status IS the discard); the
-            # shell-exit family (:?/badsub/set -u) raises SystemExit for a
-            # non-interactive shell. Messages were printed at the raise
-            # site, except set -u which prints here.
-            from ..core import (
-                ExpansionError,
-                UnboundVariableError,
-                fatal_expansion_status,
+            return self._classify_buffered_error(e, input_source, start_line,
+                                                 nested)
+
+    def _preprocess_command(self, command_string: str,
+                            add_to_history: bool) -> Optional[str]:
+        """Preprocess a raw buffered command string before parsing.
+
+        Joins line continuations, performs (interactive) history expansion,
+        and records the command in history. Returns the preprocessed string,
+        or ``None`` when history expansion FAILED — the caller turns that
+        ``None`` into exit status 1 without parsing or executing.
+        """
+        # Process line continuations first
+        from .input_preprocessing import process_line_continuations
+        command_string = process_line_continuations(command_string)
+
+        # Perform history expansion before tokenization. The accumulator
+        # already expanded silently for the completeness trial; this
+        # pass is the REPORTING one — it echoes the expansion like bash
+        # and prints "event not found" errors.
+        if (not self.state.is_script_mode and
+                hasattr(self.shell, 'history_expander')):
+            expanded_command = self.shell.history_expander.expand_history(command_string)
+            if expanded_command is None:
+                # History expansion failed - signal the proper error path
+                return None
+            command_string = expanded_command
+
+        # Record in history (interactive use). This is the ONE history
+        # writer: it sees the complete logical command, so multi-line
+        # constructs land as a single joined entry (bash cmdhist).
+        # Done before parsing so that, like bash, commands with syntax
+        # errors are still recallable for editing.
+        # The command is passed RAW — bash stores the line verbatim
+        # (leading/trailing whitespace included), and the semantic
+        # filters inside add_to_history depend on the unmodified text:
+        # HISTCONTROL=ignorespace keys on the leading space, and
+        # ignoredups/HISTIGNORE compare/match the verbatim line. A
+        # pre-strip here made ignorespace a silent no-op on the real
+        # entry path (reappraisal #17 H7 privacy leak). Whitespace-only
+        # commands are still skipped (deliberate divergence: bash
+        # records them).
+        if add_to_history and command_string.strip():
+            from ..interactive.history_expansion import contains_history_reference
+            if not contains_history_reference(command_string):
+                self.shell.add_history(command_string)
+
+        # Alias expansion is a token-stream transform applied at the
+        # lex->parse seam (see the expand_aliases calls below and in
+        # command_accumulator._trial_parse), not a runtime strategy.
+        return command_string
+
+    def _parse_command(self, complete: Complete, command_string: str,
+                       input_source, start_line: int) -> ASTNode:
+        """Tokenize and parse a preprocessed command string into an AST.
+
+        Reuses the accumulator's trial-parse AST when it matches what we
+        are about to execute; otherwise tokenizes (with heredoc support
+        when needed) and parses here — exactly once either way. Stamps
+        absolute ``$LINENO`` lines and honours ``--debug-ast``. Lex/parse
+        failures raise (``ParseError``/``UnclosedQuoteError``/lexer
+        ``SyntaxError``) for the caller's error-model clauses.
+        """
+        # Reuse the accumulator's trial parse when it matches what we
+        # are about to execute (recursive-descent parser active and the
+        # reporting preprocessing reproduced the trial's source text);
+        # otherwise tokenize and parse here — exactly once either way.
+        if complete.ast is not None and command_string == complete.source:
+            self._debug_print_tokens(complete.tokens)
+            ast = complete.ast
+        elif contains_heredoc(command_string):
+            # Use the lexer with heredoc support. The source name and
+            # start line locate the buffer for the unterminated-heredoc
+            # warning ("delimited by end-of-file"): a script/sourced-file
+            # path prefixes it like bash's script name; the -c/stdin/eval
+            # pseudo-names map to the "psh" prefix (bash prints "bash:").
+            from ..lexer import tokenize_with_heredocs
+            name = input_source.get_name()
+            tokens, heredoc_map = tokenize_with_heredocs(
+                command_string, strict=self.state.options.get('posix', False),
+                shell_options=self.state.options,
+                source_name=None if name.startswith(('<', '-')) else name,
+                base_line=start_line if start_line > 0 else 1)
+            # Alias expansion is a token-stream transform at the
+            # lex→parse boundary (see AliasManager.expand_aliases).
+            tokens = self.shell.expand_aliases(tokens)
+            self._debug_print_tokens(tokens)
+            # Parse with heredoc map, honoring the active parser
+            from ..parser import parse_with_heredocs
+            ast = parse_with_heredocs(tokens, heredoc_map,
+                                      active_parser=self.shell.active_parser)
+        else:
+            tokens = tokenize(command_string, shell_options=self.state.options)
+            tokens = self.shell.expand_aliases(tokens)
+            self._debug_print_tokens(tokens)
+            # Parse with source text for better error messages and shell configuration
+            from ..parser import create_parser
+            parser = create_parser(
+                tokens,
+                active_parser=self.shell.active_parser,
+                source_text=command_string,
+                line_offset=max(0, start_line - 1),
             )
-            if isinstance(e, (ExpansionError, UnboundVariableError)):
-                if isinstance(e, UnboundVariableError):
-                    print(f"psh: {e}", file=sys.stderr)
-                rc = fatal_expansion_status(self.state, e, at_boundary=True)
-                self.state.last_exit_code = rc
-                return rc
-            if isinstance(e, RecursionError) and nested:
-                # Runaway recursion inside a nested source (eval/trap body):
-                # keep unwinding so the nearest enclosing function-call
-                # boundary can convert it to the FUNCNEST diagnostic. At the
-                # REAL top level (not nested) it falls through to the guard
-                # below, whose expected-error taxonomy reports it cleanly.
+            ast = parser.parse()
+
+        # Convert the parser's buffer-relative $LINENO stamps to absolute
+        # source lines (offset by where this buffer began). Done once here
+        # so a function body bakes in its definition-site lines. See
+        # ASTNode.line and _offset_line_numbers.
+        if start_line > 1:
+            _offset_line_numbers(ast, start_line - 1)
+
+        # Debug: Print AST if requested
+        if self.state.debug_ast:
+            from ..utils.ast_debug import print_ast_debug
+            print_ast_debug(ast, self.shell.ast_format, self.shell)
+
+        return ast
+
+    def _dispatch_execution(self, ast: ASTNode, nested: bool) -> int:
+        """Execute a parsed AST, resolving control-flow signals at the boundary.
+
+        Dispatches ``TopLevel`` (functions + commands) vs a plain
+        ``StatementList`` and translates the control-flow exceptions that
+        surface here. This is the inner try/except of the buffered boundary;
+        anything it does NOT handle (``ParseError`` cannot occur now, but a
+        fatal-expansion ``ExpansionError``, ``RecursionError`` or internal
+        defect can) propagates to ``_execute_buffered_command``'s clauses.
+        """
+        from ..core import FunctionReturn, LoopBreak, LoopContinue, TopLevelAbort
+        try:
+            # Handle TopLevel AST node (functions + commands)
+            if isinstance(ast, TopLevel):
+                return self.shell.execute_toplevel(ast)
+            else:
+                try:
+                    # Heredoc content is now pre-populated during parsing.
+                    # The parser returns a StatementList here (TopLevel
+                    # handled above); the cast records that invariant.
+                    exit_code = self.shell.execute_command_list(cast(StatementList, ast))
+                    return exit_code
+                except (LoopBreak, LoopContinue) as e:
+                    # Break/continue outside of any loop is an error. Catch
+                    # only these — any other exception propagates to its own
+                    # handler.
+                    if nested or self.shell._loop_depth_seed > 0:
+                        # nested: e.g. `eval break` inside a loop — the
+                        # enclosing loop handles it. Seeded: a substitution
+                        # child forked inside a loop — run_child_shell ends
+                        # the child cleanly (status 0), matching bash's
+                        # silent `x=$(break)`.
+                        raise
+                    stmt_name = "break" if isinstance(e, LoopBreak) else "continue"
+                    print(f"{stmt_name}: only meaningful in a `for', `while', or `until' loop",
+                          file=sys.stderr)
+                    return 1
+        except TopLevelAbort as e:
+            # A fatal error (readonly/nameref-cycle assignment, failed
+            # arithmetic/parameter expansion, failglob) unwound the whole
+            # current command line (the rest of the command list and any
+            # enclosing if/loop/function on the same input). The error was
+            # already printed at the raise site; resume at the next
+            # buffered command (bash). This containment applies at EVERY
+            # buffered-command boundary — including the nested processors
+            # run by eval/source/trap actions: bash 5.2 (probe-verified,
+            # tmp/probes-r17t2-arith/) CONTAINS the discard there
+            # (`eval 'r=2; echo x'; echo after` kills x, runs after with
+            # $?=1; a sourced file resumes at its own next line).
+            # EXCEPTION: the assignment/subscript arithmetic-error family
+            # passes through eval/source to the top-level input loop
+            # (contain_nested=False — see arith_assignment_discard).
+            if nested and not e.contain_nested:
                 raise
-            # Last-resort guard so an internal defect doesn't kill an
-            # interactive session (or re-raise under strict-errors so a test
-            # harness surfaces it) — see report_internal_defect for the policy.
-            from ..core import report_internal_defect
-            location = f"{input_source.get_name()}:{start_line}" if start_line > 0 else "command"
-            rc = report_internal_defect(
-                self.state, e, prefix=f"{location}: unexpected error: ",
-                stream=sys.stderr)
+            if e.errexit_immune:
+                # Expansion-error discards bypass set -e (bash); a
+                # readonly/failglob discard keeps its errexit effect.
+                self.state.errexit_eligible = False
+            self.state.last_exit_code = e.status
+            return e.status
+        except FunctionReturn as e:
+            # `return` reaching a NON-nested top level only happens in a
+            # subshell-style child that inherited a function/sourced-file
+            # context (ShellState.adopt copies function_stack and
+            # source_depth): the child's input stops with that status,
+            # like end-of-sourced-file (bash: x=$(return 3; echo x)
+            # leaves x empty, $? = 3). Nested (eval, trap action) it
+            # propagates to the enclosing function/source handler.
+            if nested:
+                raise
+            self.state.last_exit_code = e.exit_code
+            return e.exit_code
+
+    def _classify_buffered_error(self, e: Exception, input_source,
+                                 start_line: int, nested: bool) -> int:
+        """Classify an exception escaping parse/execute at the buffered boundary.
+
+        The body of ``_execute_buffered_command``'s final ``except Exception``
+        clause: it runs AFTER the ``ParseError``/``UnclosedQuoteError`` clauses
+        (they win for those types), so it sees only the residual exceptions.
+        Order matters — control-flow signals first, then the fatal-expansion
+        family, then runaway recursion, then the internal-defect guard.
+        Either returns an exit status or re-raises ``e`` (``raise e`` from here
+        propagates the SAME object with its ``__traceback__`` intact — as in
+        ``report_internal_defect`` — so the enclosing loop/function/source
+        handler catches it exactly as a bare ``raise`` in the clause would).
+        """
+        # Control-flow exceptions from nested execution propagate to
+        # their enclosing loop/function handlers; loop-control signals
+        # in a seeded substitution child propagate to run_child_shell
+        # (see the LoopBreak/LoopContinue handler in _dispatch_execution).
+        from ..builtins import FunctionReturn
+        from ..core import LoopBreak, LoopContinue
+        if isinstance(e, (LoopBreak, LoopContinue, FunctionReturn)):
+            if nested:
+                raise e
+            if (isinstance(e, (LoopBreak, LoopContinue))
+                    and self.shell._loop_depth_seed > 0):
+                raise e
+        # A fatal expansion error escaping a non-SimpleCommand context
+        # (case subject, for-loop words, array initializer, redirect
+        # target of a compound, ...) reaches this boundary directly:
+        # apply the same bash model the command path uses. We are AT the
+        # buffered-command boundary, so the discard-line family is
+        # already complete (returning the status IS the discard); the
+        # shell-exit family (:?/badsub/set -u) raises SystemExit for a
+        # non-interactive shell. Messages were printed at the raise
+        # site, except set -u which prints here.
+        from ..core import (
+            ExpansionError,
+            UnboundVariableError,
+            fatal_expansion_status,
+        )
+        if isinstance(e, (ExpansionError, UnboundVariableError)):
+            if isinstance(e, UnboundVariableError):
+                print(f"psh: {e}", file=sys.stderr)
+            rc = fatal_expansion_status(self.state, e, at_boundary=True)
             self.state.last_exit_code = rc
             return rc
+        if isinstance(e, RecursionError) and nested:
+            # Runaway recursion inside a nested source (eval/trap body):
+            # keep unwinding so the nearest enclosing function-call
+            # boundary can convert it to the FUNCNEST diagnostic. At the
+            # REAL top level (not nested) it falls through to the guard
+            # below, whose expected-error taxonomy reports it cleanly.
+            raise e
+        # Last-resort guard so an internal defect doesn't kill an
+        # interactive session (or re-raise under strict-errors so a test
+        # harness surfaces it) — see report_internal_defect for the policy.
+        from ..core import report_internal_defect
+        location = f"{input_source.get_name()}:{start_line}" if start_line > 0 else "command"
+        rc = report_internal_defect(
+            self.state, e, prefix=f"{location}: unexpected error: ",
+            stream=sys.stderr)
+        self.state.last_exit_code = rc
+        return rc
 
     def _debug_print_tokens(self, tokens) -> None:
         """Print the token stream when --debug-tokens is enabled."""

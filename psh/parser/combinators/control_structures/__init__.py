@@ -16,7 +16,7 @@ from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ...config import ParserConfig
 from ..commands import CommandParsers
-from ..core import Parser, ParseResult, fail_with, keyword
+from ..core import Parser, ParseResult, fail_with, keyword, many
 from ..tokens import TokenParsers
 from .conditionals import ConditionalParserMixin
 from .loops import LoopParserMixin
@@ -156,18 +156,13 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
         Returns:
             Tuple of (redirects, new_pos)
         """
-        redirects: List[Redirect] = []
-
-        while pos < len(tokens):
-            redir_result = self.commands.redirection.parse(tokens, pos)
-            if redir_result.success:
-                assert redir_result.value is not None
-                redirects.append(redir_result.value)
-                pos = redir_result.position
-                continue
-            break
-
-        return redirects, pos
+        # A trailing redirection list is exactly *zero or more* redirections,
+        # which is precisely ``many``: it applies ``redirection`` until it stops
+        # matching, gathering the results (and never fails — an empty list is a
+        # valid, successful parse).
+        result = many(self.commands.redirection).parse(tokens, pos)
+        redirects: List[Redirect] = list(result.value or [])
+        return redirects, result.position
 
     def _parse_do_separator(self, tokens: List[Token], pos: int) -> ParseResult[None]:
         """Parse separator followed by 'do' keyword."""

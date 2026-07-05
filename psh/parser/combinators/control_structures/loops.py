@@ -20,7 +20,7 @@ from ....ast_nodes import (
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import Token
-from ..core import Parser, ParseResult
+from ..core import ParseFailure, Parser, ParseResult, ParseSuccess, many
 from ..diagnostics import raise_committed_error
 
 if TYPE_CHECKING:
@@ -35,6 +35,32 @@ def _positional_params_word() -> Word:
     return Word(
         parts=[ExpansionPart(expansion=VariableExpansion('@'),
                              quoted=True, quote_char='"')])
+
+
+# Token types that can appear as a for/select ``in``-list item.
+_LOOP_ITEM_TOKEN_TYPES = frozenset({
+    'WORD', 'STRING', 'VARIABLE', 'COMPOSITE', 'COMMAND_SUB',
+    'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION', 'PARAM_EXPANSION',
+})
+
+
+def _parse_loop_item(tokens: List[Token], pos: int) -> ParseResult[Token]:
+    """Parse one for/select list item: a word-like token that isn't ``do``.
+
+    ``do`` is a WORD-typed keyword, so without this guard it would be swallowed
+    as a list item; rejecting it lets ``many`` end the list exactly at ``do``.
+    A separator (``;``/newline) or any other non-word token ends the list too,
+    simply by not matching here.
+    """
+    if (pos < len(tokens)
+            and tokens[pos].type.name in _LOOP_ITEM_TOKEN_TYPES
+            and not matches_keyword(tokens[pos], 'do')):
+        return ParseSuccess(tokens[pos], pos + 1)
+    return ParseFailure(pos, "Expected a for/select list item")
+
+
+#: One for/select ``in``-list item; ``many`` of these is the whole list.
+_loop_item = Parser(_parse_loop_item)
 
 
 class LoopParserMixin(_Base):
@@ -62,6 +88,19 @@ class LoopParserMixin(_Base):
                 word = WordBuilder.build_composite_word(group)
             item_words.append(word)
         return items, item_words
+
+    def _collect_loop_items(
+        self, tokens: List[Token], pos: int,
+    ) -> Tuple[List[str], List[Word], int]:
+        """Collect a for/select ``in``-list and build its item Words.
+
+        The list is ``many`` word-like item tokens (:data:`_loop_item`); it ends
+        at ``do``, a separator, or any other non-word token. Returns
+        ``(items, item_words, new_pos)``.
+        """
+        result = many(_loop_item).parse(tokens, pos)
+        items, item_words = self._build_loop_items(list(result.value or []))
+        return items, item_words, result.position
 
     def _build_while_loop(self) -> Parser[WhileLoop]:
         """Build parser for while/do/done loops."""
@@ -231,24 +270,9 @@ class LoopParserMixin(_Base):
             items: List[str]
             item_words: List[Word]
             if has_in_clause:
-                # Collect item tokens (words until 'do' or separator+do)
-                item_tokens: List[Token] = []
-                while pos < len(tokens):
-                    token = tokens[pos]
-                    if matches_keyword(token, 'do'):
-                        break
-                    if token.type.name in ['SEMICOLON', 'NEWLINE']:
-                        if (pos + 1 < len(tokens) and
-                            matches_keyword(tokens[pos + 1], 'do')):
-                            break
-                    if token.type.name in ['WORD', 'STRING', 'VARIABLE', 'COMPOSITE',
-                                            'COMMAND_SUB', 'COMMAND_SUB_BACKTICK',
-                                            'ARITH_EXPANSION', 'PARAM_EXPANSION']:
-                        item_tokens.append(token)
-                        pos += 1
-                    else:
-                        break
-                items, item_words = self._build_loop_items(item_tokens)
+                # The item list is `many` word-like tokens (stops at 'do', a
+                # separator, or any other token).
+                items, item_words, pos = self._collect_loop_items(tokens, pos)
             else:
                 # No explicit list - default to positional parameters ("$@")
                 items = ['$@']
@@ -431,24 +455,9 @@ class LoopParserMixin(_Base):
 
             pos += 1  # Skip 'in'
 
-            # Collect item tokens (words until 'do' or separator+do)
-            item_tokens: List[Token] = []
-            while pos < len(tokens):
-                token = tokens[pos]
-                if matches_keyword(token, 'do'):
-                    break
-                if token.type.name in ['SEMICOLON', 'NEWLINE']:
-                    if (pos + 1 < len(tokens) and
-                        matches_keyword(tokens[pos + 1], 'do')):
-                        break
-                if token.type.name in ['WORD', 'STRING', 'VARIABLE', 'COMPOSITE',
-                                      'COMMAND_SUB', 'COMMAND_SUB_BACKTICK',
-                                      'ARITH_EXPANSION', 'PARAM_EXPANSION']:
-                    item_tokens.append(token)
-                    pos += 1
-                else:
-                    break
-            items, item_words = self._build_loop_items(item_tokens)
+            # The item list is `many` word-like tokens (stops at 'do', a
+            # separator, or any other token).
+            items, item_words, pos = self._collect_loop_items(tokens, pos)
 
             # Skip separator and 'do'
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:

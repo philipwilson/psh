@@ -4,10 +4,10 @@ Function parsing for PSH shell.
 This module handles parsing of function definitions.
 """
 
-import re
 from typing import Optional, Tuple, cast
 
 from ....ast_nodes import CommandList, FunctionDef, Statement
+from ....core.assignment_utils import ASSIGNMENT_WORD_RE
 from ....lexer.token_types import TokenType
 from .base import ParserSubcomponent
 
@@ -15,8 +15,8 @@ from .base import ParserSubcomponent
 # subscript, then `=` or `+=`). An assignment word followed by `()` is a
 # SYNTAX ERROR in bash (`a=b() { :; }`, `a[0]=b() { :; }`), never a
 # function definition — while a NON-assignment word containing `=` is a
-# legal function name (`2=b()`, `a.b=c()` both define functions).
-_ASSIGNMENT_WORD_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])?\+?=')
+# legal function name (`2=b()`, `a.b=c()` both define functions). The
+# assignment-word shape is the shared ASSIGNMENT_WORD_RE.
 
 
 class FunctionParser(ParserSubcomponent):
@@ -67,7 +67,7 @@ class FunctionParser(ParserSubcomponent):
         # syntax error near '('; `arr=(...)` is an array initialization).
         # Returning False routes both to the command path, where the array
         # parser or the statement-boundary check produces the right result.
-        if _ASSIGNMENT_WORD_RE.match(name):
+        if ASSIGNMENT_WORD_RE.match(name):
             return False
         # A reserved word is never a `name()` function name (bash:
         # syntax error). `in` is the one keyword that lexes as a plain

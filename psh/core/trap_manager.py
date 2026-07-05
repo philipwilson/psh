@@ -309,8 +309,15 @@ class TrapManager:
             # already works: SystemExit is not an Exception.)
             raise
         except Exception as e:
-            # Trap execution failed, but don't crash the shell
-            print(f"trap: error executing trap for {signal_name}: {e}", file=self.state.stderr)
+            # Last-resort guard: a defect inside the trap action. Route it
+            # through the shared policy so a genuine internal defect is
+            # classified exactly like every other execution site — re-raised
+            # under strict-errors (so a test harness surfaces the bug),
+            # swallowed to a generic message otherwise. Expected shell errors
+            # (PshError/OSError/SyntaxError/...) are already handled upstream
+            # by run_command's own guards and never reach here.
+            from .internal_errors import report_internal_defect
+            report_internal_defect(self.state, e, stream=self.state.stderr)
 
     def list_signals(self) -> str:
         """Render the full signal listing for `trap -l`.

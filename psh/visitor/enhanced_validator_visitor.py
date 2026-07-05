@@ -21,6 +21,7 @@ from ..ast_nodes import (
     TopLevel,
     VariableExpansion,
 )
+from ..core.assignment_utils import SHELL_NAME
 from .constants import (
     COMMON_TYPOS,
     DANGEROUS_COMMANDS,
@@ -310,7 +311,7 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
             return []
         names: List[str] = []
         for clause in init_expr.split(','):
-            match = re.match(r'\s*([A-Za-z_][A-Za-z0-9_]*)\s*=', clause)
+            match = re.match(rf'\s*({SHELL_NAME})\s*=', clause)
             if match:
                 names.append(match.group(1))
         return names
