@@ -199,6 +199,20 @@ class ModularLexer:
 
     def _update_command_position_context(self, token_type: TokenType, token_value: str = '') -> None:
         """Update command position tracking based on token type and value."""
+        # Whether the token we are about to classify was ITSELF read at command
+        # position. `self.context.command_position` still holds the state set by
+        # the PREVIOUS token — the same value the recognizers just consulted to
+        # tokenize this one — so it is exactly "was this word eligible as a
+        # reserved word at its own position". Reserved-word/case transitions
+        # below are gated on this: a keyword-SPELLED WORD that appears as an
+        # ordinary argument (`echo if [[ x`) is NOT at command position, so it
+        # must not restore command position or open case state and thereby flip
+        # the classification of the following token (bash prints `if [[ x`; the
+        # ungated version mis-lexed `[[` as DOUBLE_LBRACKET → parse error). This
+        # mirrors the KeywordNormalizer, which only promotes a WORD to a keyword
+        # when `command_position` holds (see keyword_normalizer.py).
+        was_command_position = self.context.command_position
+
         # Shared separator set plus structural openers. Reserved-word keywords
         # are still WORD tokens at this stage, so they are handled by the
         # value-based check against LEXER_COMMAND_POSITION_WORDS below (the
@@ -250,8 +264,14 @@ class ModularLexer:
         elif token_type == TokenType.RPAREN and self.context.arithmetic_depth > 0:
             self.context.arithmetic_depth -= 1
 
-        # Track case statement context for proper [ tokenization
-        if token_type == TokenType.WORD and token_value == 'case':
+        # Track case statement context for proper [ tokenization. Only a `case`
+        # at command position opens case state — an argument that merely spells
+        # `case` (`echo case ...`) must not (gated like the keyword branch
+        # below). The `in`/`esac`/terminator transitions that follow stay
+        # guarded by case_expecting_in / case_depth, which are only ever set
+        # here, so they are transitively gated on this same eligibility check.
+        if (token_type == TokenType.WORD and token_value == 'case'
+                and was_command_position):
             self.context.case_depth += 1
             self.context.case_expecting_in = True
         elif (token_type == TokenType.WORD and token_value == 'in'
@@ -282,11 +302,15 @@ class ModularLexer:
             # is part of the operand and must not flip command position.
             self.context.set_command_position()
         elif (token_type == TokenType.WORD and
-              token_value in LEXER_COMMAND_POSITION_WORDS):
+              token_value in LEXER_COMMAND_POSITION_WORDS and
+              was_command_position):
             # Keywords are emitted as WORD during tokenization (before
             # KeywordNormalizer runs). Treat keyword-valued words as
             # command-position setters so that operators like [[ are
-            # recognized correctly.
+            # recognized correctly — but ONLY when the word was itself at
+            # command position (a genuine keyword). An identically-spelled
+            # ARGUMENT (`echo if [[ x`) falls through to reset_command_position
+            # below, so the following `[[` stays a plain word, matching bash.
             self.context.set_command_position()
         elif token_type not in neutral_tokens:
             self.context.reset_command_position()

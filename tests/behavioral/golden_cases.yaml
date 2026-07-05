@@ -6258,3 +6258,63 @@
   stdout: "0\n1\n2\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# LEXER FIX D1 — keyword-spelled arguments do not restore command position
+# (fix/lex-fixes: ModularLexer eligibility gate). Bash prints the keyword-like
+# arg literally; psh used to mis-lex the following `[[`/`((` as an operator.
+# =============================================================================
+
+- name: lexfix_arg_if_double_bracket
+  command: "echo if [[ x"
+  stdout: "if [[ x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_while_double_bracket
+  command: "echo while [[ x"
+  stdout: "while [[ x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_time_double_bracket
+  command: "echo time [[ x"
+  stdout: "time [[ x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_printf_for_double_bracket
+  command: "printf '%s\\n' for [["
+  stdout: "for\n[[\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_case_x_in
+  command: "echo case x in"
+  stdout: "case x in\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_if_after_separator
+  command: "false; echo if [[ x"
+  stdout: "if [[ x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_arg_if_in_command_sub
+  command: "echo $(echo if [[ x)"
+  stdout: "if [[ x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_real_if_still_works
+  command: "if [[ -n x ]]; then echo y; fi"
+  stdout: "y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_real_case_glob_pattern_still_works
+  command: "case ab in [a-z]*) echo hit;; esac"
+  stdout: "hit\n"
+  stderr: ""
+  exit_code: 0
