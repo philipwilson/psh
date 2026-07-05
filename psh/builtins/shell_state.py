@@ -19,6 +19,13 @@ class HistoryBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Display command history."""
+        # NOTE: deliberately NOT parse_flags(). This is a `[n] | -c` dispatch on
+        # args[1], not a getopt loop: a numeric `n` operand (`history 5`) is not
+        # a flag, and the bad-input messages/exit codes differ from the shared
+        # helper's contract — `-5`/`-d`/`-w` yield "numeric argument required"
+        # (or bare "invalid option") at exit 1, and `--` is itself "numeric
+        # argument required", whereas parse_flags would emit "-X: invalid
+        # option" + a usage line at exit 2 and treat `--` as end-of-options.
         if len(args) > 1:
             # Check for -c flag to clear history
             if args[1] == '-c':
