@@ -4,6 +4,7 @@ Command parsing for PSH shell.
 This module handles parsing of commands, pipelines, and command arguments.
 """
 
+from dataclasses import replace
 from typing import List, Optional, Tuple
 
 from ....ast_nodes import (
@@ -439,11 +440,19 @@ class CommandParser(ParserSubcomponent):
         # `time` is a reserved word only at the START of a pipeline — the
         # prefix loop in parse_pipeline consumed any leading TIME tokens, so
         # one reaching here follows a `|`. bash runs the EXTERNAL time there
-        # (`echo a | time cat` -> /usr/bin/time); demote it to a plain word.
+        # (`echo a | time cat` -> /usr/bin/time); interpret it as a plain word.
+        #
+        # Substitute a WORD copy in the parser's OWN token list rather than
+        # mutating the token in place: create_context() copied the token LIST
+        # but not the token OBJECTS, so an in-place `tok.type = WORD` was
+        # visible to the caller and to any other parser sharing the stream.
+        # Replacing the list slot leaves every caller-owned token untouched,
+        # keeping the parser observationally pure w.r.t. its input (finding 14).
         if self.parser.match(TokenType.TIME):
-            tok = self.parser.peek()
-            tok.type = TokenType.WORD
-            tok.is_keyword = False
+            idx = self.parser.current
+            self.parser.ctx.tokens[idx] = replace(
+                self.parser.ctx.tokens[idx],
+                type=TokenType.WORD, is_keyword=False)
 
         compound = self._parse_compound_component()
         if compound is not None:

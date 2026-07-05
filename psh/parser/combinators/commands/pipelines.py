@@ -4,6 +4,7 @@ This module provides the mixin building pipelines (``|``/``|&`` chains, with
 optional ``!`` negation) and and-or lists (``&&``/``||`` chains).
 """
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, List, Union, cast
 
 from ....ast_nodes import (
@@ -115,14 +116,23 @@ class PipelineMixin(_Base):
                 # `time` is a reserved word only at the START of a pipeline
                 # (consumed by the prefix above). A TIME token reaching here
                 # follows a `|`, where bash runs the EXTERNAL time
-                # (`echo a | time cat` -> /usr/bin/time); demote it to a plain
-                # word so it parses as an ordinary command. Mirrors the
+                # (`echo a | time cat` -> /usr/bin/time); interpret it as a
+                # plain word so it parses as an ordinary command. Mirrors the
                 # recursive descent parser (commands.py parse_pipeline_component).
+                #
+                # Substitute a WORD copy in a LOCAL list rather than mutating
+                # the caller-owned token in place: the token stream is shared
+                # with the caller and with the recursive-descent parser, and
+                # parser execution must be observationally pure w.r.t. its
+                # input (finding 14). The local list is the same length, so the
+                # returned position stays valid against the original `tokens`.
+                element_tokens = tokens
                 if pos < len(tokens) and tokens[pos].type == TokenType.TIME:
-                    tokens[pos].type = TokenType.WORD
-                    tokens[pos].is_keyword = False
+                    element_tokens = list(tokens)
+                    element_tokens[pos] = replace(
+                        tokens[pos], type=TokenType.WORD, is_keyword=False)
 
-                cmd_result = self._pipeline_element.parse(tokens, pos)
+                cmd_result = self._pipeline_element.parse(element_tokens, pos)
                 if not cmd_result.success:
                     raise_committed_error(
                         tokens,
