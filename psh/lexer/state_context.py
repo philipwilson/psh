@@ -35,6 +35,27 @@ class LexerContext:
     # (see word_scanners.cached_assignment_prefix_map).
     assignment_map_cache: Optional[Tuple[str, bytearray]] = None
 
+    def copy(self) -> "LexerContext":
+        """A snapshot of the cross-line state, for resuming a lexer.
+
+        Carries every semantic field (command position, bracket / case /
+        arithmetic state) but drops ``assignment_map_cache`` — that cache is
+        keyed by input-string identity, so a fresh lexer over a new input
+        rebuilds it lazily. Used by the heredoc driver to seed the next
+        logical command's lexer with the state left by the previous one
+        instead of re-lexing the whole accumulated prefix.
+        """
+        return LexerContext(
+            bracket_depth=self.bracket_depth,
+            command_position=self.command_position,
+            arithmetic_depth=self.arithmetic_depth,
+            posix_mode=self.posix_mode,
+            case_depth=self.case_depth,
+            case_expecting_in=self.case_expecting_in,
+            in_case_pattern=self.in_case_pattern,
+            assignment_map_cache=None,
+        )
+
     def reset_command_position(self) -> None:
         """Reset to non-command position."""
         self.command_position = False

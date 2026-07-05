@@ -17,22 +17,11 @@ so a healthy implementation sits near 2x. K = 3 leaves generous headroom
 while failing decisively on any per-prefix re-lexing regression.
 """
 
-import pytest
-
 import psh.lexer.heredoc_lexer as heredoc_lexer_module
 from psh.lexer.heredoc_lexer import HeredocLexer
 
 # Generous linear bound: total characters lexed per source character.
 K = 3
-
-# NOTE: this file is committed BEFORE the incremental-lexing fix, so both
-# tests are expected to FAIL on the quadratic implementation. The xfail
-# markers keep the gate green until the fix commit flips them off (removing
-# the markers). strict=True turns an unexpected PASS into a failure, so the
-# markers cannot silently mask a fix.
-_XFAIL_UNTIL_FIX = pytest.mark.xfail(
-    strict=True,
-    reason="quadratic per-prefix re-lexing; fixed by the incremental-lexing commit")
 
 
 def _chars_lexed(source: str) -> int:
@@ -60,7 +49,6 @@ def _source(command_lines: int) -> str:
             + '\ncat <<EOF\nbody\nEOF\n')
 
 
-@_XFAIL_UNTIL_FIX
 def test_heredoc_discovery_is_linear():
     """Characters lexed must stay within K * source length at every scale.
 
@@ -76,7 +64,6 @@ def test_heredoc_discovery_is_linear():
             f"(ratio {chars / len(source):.1f}, bound {K})")
 
 
-@_XFAIL_UNTIL_FIX
 def test_heredoc_discovery_does_not_grow_per_line():
     """Doubling the command-line count must not raise the per-char ratio.
 
