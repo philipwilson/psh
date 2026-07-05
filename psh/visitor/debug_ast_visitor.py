@@ -36,7 +36,6 @@ from ..ast_nodes import (
     SimpleCommand,
     StatementList,
     SubshellGroup,
-    TopLevel,
     UnaryTestExpression,
     UntilLoop,
     # Control structures
@@ -94,14 +93,9 @@ class DebugASTVisitor(ASTVisitor[str]):
         result = self._format_header("Program")
         return result + self._visit_children(node.statements)
 
-    def visit_TopLevel(self, node: TopLevel) -> str:
-        """Format top-level script."""
-        result = self._format_header("TopLevel")
-        return result + self._visit_children(node.items)
-
     def visit_StatementList(self, node: StatementList) -> str:
-        """Format statement list (alias: CommandList)."""
-        result = self._format_header("CommandList")
+        """Format a statement list."""
+        result = self._format_header("StatementList")
         return result + self._visit_children(node.statements)
 
     # Command nodes

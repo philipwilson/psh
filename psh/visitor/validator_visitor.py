@@ -35,7 +35,6 @@ from ..ast_nodes import (
     SimpleCommand,
     StatementList,
     SubshellGroup,
-    TopLevel,
     UntilLoop,
     # Control structures
     WhileLoop,
@@ -129,11 +128,6 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         """Validate a program (the canonical root)."""
         for statement in node.statements:
             self.visit(statement)
-
-    def visit_TopLevel(self, node: TopLevel) -> None:
-        """Validate top-level script."""
-        for item in node.items:
-            self.visit(item)
 
     def visit_StatementList(self, node: StatementList) -> None:
         """Validate a list of statements."""

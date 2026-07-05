@@ -29,7 +29,7 @@ from psh.parser import parse
 def _find_test_expr(node) -> TestExpression:
     """Walk the parsed AST to the EnhancedTestStatement's expression."""
     cur = node
-    # Descend through TopLevel/StatementList/AndOrList/Pipeline wrappers.
+    # Descend through Program/StatementList/AndOrList/Pipeline wrappers.
     seen = 0
     while cur is not None and not isinstance(cur, EnhancedTestStatement):
         seen += 1

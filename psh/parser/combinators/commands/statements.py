@@ -7,7 +7,7 @@ every compound body and the top-level list.
 
 from typing import TYPE_CHECKING, List, Union
 
-from ....ast_nodes import AndOrList, CommandList, FunctionDef
+from ....ast_nodes import AndOrList, FunctionDef, StatementList
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ..core import Parser, ParseResult, many1, optional
@@ -45,7 +45,7 @@ class StatementMixin(_Base):
 
     def build_statement_list(self, terminators: frozenset = frozenset(),
                              terminator_types: frozenset = frozenset(),
-                             ) -> Parser[CommandList]:
+                             ) -> Parser[StatementList]:
         """Build a statement list that stops at (without consuming) a terminator.
 
         This is the recursion-based replacement for slicing a compound body out
@@ -80,7 +80,7 @@ class StatementMixin(_Base):
                 return True
             return any(matches_keyword(tok, kw) for kw in terminators)
 
-        def parse_statement_list(tokens: List[Token], pos: int) -> ParseResult[CommandList]:
+        def parse_statement_list(tokens: List[Token], pos: int) -> ParseResult[StatementList]:
             statements: List = []
             current_pos = optional(separators).parse(tokens, pos).position
 
@@ -97,7 +97,7 @@ class StatementMixin(_Base):
 
             return ParseResult(
                 success=True,
-                value=CommandList(statements=statements),
+                value=StatementList(statements=statements),
                 position=current_pos,
             )
 

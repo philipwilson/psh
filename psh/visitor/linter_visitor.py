@@ -17,7 +17,6 @@ from ..ast_nodes import (
     Program,
     Redirect,
     SimpleCommand,
-    TopLevel,
     Word,
 )
 from .analysis_helpers import RedirectTraversalMixin
@@ -167,13 +166,6 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         """Visit a program (the canonical root)."""
         for statement in node.statements:
             self.visit(statement)
-        self._check_program_level_issues()
-
-    def visit_TopLevel(self, node: TopLevel) -> None:
-        """Visit top-level script."""
-        # Visit all items
-        for item in node.items:
-            self.visit(item)
         self._check_program_level_issues()
 
     def _check_program_level_issues(self) -> None:

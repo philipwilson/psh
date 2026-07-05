@@ -3,13 +3,13 @@
 
 from typing import Dict, List, Optional, Tuple
 
-from ..ast_nodes import CommandList
+from ..ast_nodes import StatementList
 from .exceptions import FunctionDefinitionError
 
 
 class Function:
     """Represents a shell function definition."""
-    def __init__(self, name: str, body: CommandList, readonly: bool = False,
+    def __init__(self, name: str, body: StatementList, readonly: bool = False,
                  redirects: Optional[List] = None, exported: bool = False,
                  trace: bool = False):
         self.name = name
@@ -35,7 +35,7 @@ class FunctionManager:
     def __init__(self):
         self.functions: Dict[str, Function] = {}
 
-    def define_function(self, name: str, body: CommandList,
+    def define_function(self, name: str, body: StatementList,
                         redirects: Optional[List] = None) -> None:
         """Define or redefine a function.
 

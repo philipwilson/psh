@@ -1,6 +1,6 @@
 """Tests for command and pipeline parsers."""
 
-from psh.ast_nodes import AndOrList, CommandList, Pipeline, SimpleCommand, Word
+from psh.ast_nodes import AndOrList, Pipeline, SimpleCommand, StatementList, Word
 from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.commands import (
     CommandParsers,
@@ -322,7 +322,7 @@ class TestStatementLists:
 
         result = parsers.statement_list.parse(tokens, 0)
         assert result.success is True
-        assert isinstance(result.value, CommandList)
+        assert isinstance(result.value, StatementList)
         assert len(result.value.statements) == 3
 
     def test_parse_statements_with_newlines(self):
@@ -339,7 +339,7 @@ class TestStatementLists:
 
         result = parsers.statement_list.parse(tokens, 0)
         assert result.success is True
-        assert isinstance(result.value, CommandList)
+        assert isinstance(result.value, StatementList)
         assert len(result.value.statements) == 3
 
     def test_parse_empty_statement_list(self):
@@ -349,7 +349,7 @@ class TestStatementLists:
         tokens = []
         result = parsers.statement_list.parse(tokens, 0)
         assert result.success is True
-        assert isinstance(result.value, CommandList)
+        assert isinstance(result.value, StatementList)
         assert len(result.value.statements) == 0
 
     def test_parse_with_leading_trailing_separators(self):
@@ -366,7 +366,7 @@ class TestStatementLists:
 
         result = parsers.statement_list.parse(tokens, 0)
         assert result.success is True
-        assert isinstance(result.value, CommandList)
+        assert isinstance(result.value, StatementList)
         assert len(result.value.statements) == 1
 
 

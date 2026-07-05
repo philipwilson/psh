@@ -6,7 +6,7 @@ This module handles parsing of function definitions.
 
 from typing import Optional, Tuple, cast
 
-from ....ast_nodes import CommandList, FunctionDef, Statement
+from ....ast_nodes import FunctionDef, Statement, StatementList
 from ....core.assignment_utils import ASSIGNMENT_WORD_RE
 from ....lexer.token_types import TokenType
 from .base import ParserSubcomponent
@@ -129,7 +129,7 @@ class FunctionParser(ParserSubcomponent):
 
         return FunctionDef(name, body, redirects=redirects)
 
-    def parse_compound_command(self) -> CommandList:
+    def parse_compound_command(self) -> StatementList:
         """Parse a compound command { ... }"""
         if self.parser.match(TokenType.LBRACE):
             # Brace group
@@ -148,7 +148,7 @@ class FunctionParser(ParserSubcomponent):
             # Subshell body: keep the SubshellGroup node so each call forks
             # (f() (cd /; ...) must not change the caller's state — bash).
             subshell = self.parser.commands.parse_subshell_group()
-            cmd_list = CommandList()
+            cmd_list = StatementList()
             # A subshell group is a CompoundCommand AND a Statement at runtime;
             # mypy can't see the intersection from the parse method's type.
             cmd_list.statements.append(cast(Statement, subshell))
@@ -159,7 +159,7 @@ class FunctionParser(ParserSubcomponent):
             stmt = self.parser.control_structures.parse_control_structure()
             # Wrap in command list (a control structure is both a
             # CompoundCommand and a Statement; mypy can't see the intersection).
-            cmd_list = CommandList()
+            cmd_list = StatementList()
             cmd_list.statements.append(cast(Statement, stmt))
             return cmd_list
         else:

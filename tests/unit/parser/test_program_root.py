@@ -30,19 +30,8 @@ from psh.parser.recursive_descent.support.utils import (
 
 
 def _statements(src):
-    """Statements the current parser produces for *src* (root shape agnostic).
-
-    Handles the Program root as well as the transitional TopLevel/StatementList
-    roots so these visitor tests exercise the new Program handlers from the very
-    first commit, before the parser is switched over.
-    """
-    root = parse(tokenize(src))
-    if hasattr(root, 'statements'):
-        return list(root.statements)
-    flat = []
-    for item in root.items:  # TopLevel.items: Statement or StatementList
-        flat.extend(item.statements if hasattr(item, 'statements') else [item])
-    return flat
+    """The statements the parser produces for *src* (always a Program root)."""
+    return list(parse(tokenize(src)).statements)
 
 
 def _program(src):

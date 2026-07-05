@@ -37,7 +37,6 @@ from ..ast_nodes import (
     StatementList,
     # Other
     SubshellGroup,
-    TopLevel,
     UntilLoop,
     WhileLoop,
 )
@@ -81,7 +80,7 @@ class SequenceContext:
     stop_on_out_of_loop: bool
 
 
-# The parsed-program root (and the legacy TopLevel root): report an out-of-loop
+# The parsed-program root: report an out-of-loop
 # break/continue and keep going; own ^C handling.
 ROOT_SEQUENCE = SequenceContext(
     catch_keyboard_interrupt=True,
@@ -150,15 +149,6 @@ class ExecutorVisitor(ASTVisitor[int]):
     def visit_Program(self, node: Program) -> int:
         """Execute a parsed program (the canonical root)."""
         return self._execute_sequence(node.statements, context=ROOT_SEQUENCE)
-
-    def visit_TopLevel(self, node: TopLevel) -> int:
-        """Execute a legacy TopLevel root (tooling/back-compat).
-
-        No parser produces a TopLevel anymore — both return Program — but the
-        node still exists, so this keeps identical top-level sequencing over
-        its ``items``.
-        """
-        return self._execute_sequence(node.items, context=ROOT_SEQUENCE)
 
     def visit_StatementList(self, node: StatementList) -> int:
         """Execute a nested statement list (loop/if/function/group body)."""
@@ -310,11 +300,11 @@ class ExecutorVisitor(ASTVisitor[int]):
     def _execute_background_list(self, node: AndOrList) -> int:
         """Run a whole and-or list (or a backgrounded compound command) in
         a background subshell: `a && b &`, `while ...; done &` (POSIX)."""
-        from ..ast_nodes import CommandList
+        from ..ast_nodes import StatementList
         foreground_copy = AndOrList()
         foreground_copy.pipelines = node.pipelines
         foreground_copy.operators = node.operators
-        statements = CommandList()
+        statements = StatementList()
         statements.statements.append(foreground_copy)
         return self.subshell_executor._execute_background_subshell(statements, [])
 
