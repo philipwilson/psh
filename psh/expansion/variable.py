@@ -408,6 +408,15 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             else:
                 return True, self._ifs_star_separator().join(results)
 
+        # ${#name[sub]} length on an UNSET name is 0 WITHOUT evaluating the
+        # subscript (bash): ${#a[1//]} is 0 when a is unset, though a bad
+        # subscript on a SET name still errors — that falls through to the
+        # validating subscript access below. (Every other operator, including
+        # the bare form and ${a[1//]:-x}, does evaluate the subscript even on
+        # an unset name.)
+        if operator == '#' and operand is None and var is None:
+            return True, '0'
+
         # Regular indexed/associative element access — through the
         # canonical subscript evaluator, so a scalar with subscript
         # resolves like bash (${x[0]} of a scalar x is $x). The scalar

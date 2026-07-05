@@ -456,6 +456,24 @@ entire program before executing, so a runtime `set -o posix` cannot influence
 parsing — still rejects it at *execution* time (status 1) and continues. Both
 reject the name; only the posix abort-vs-continue flow differs.
 
+### Case Modification and Unicode
+
+The case-mods `${var^}` `${var^^}` `${var,}` `${var,,}` `${var~}` `${var~~}`
+(and the `declare -u`/`-l` attributes) map each character to at most one
+character, so they never change a string's length — `${x^^}` on `straße`
+gives `STRAßE`, not `STRASSE`. This matches bash, and is the fix for a former
+PSH bug where `ß` expanded to `SS`.
+
+PSH's case conversion is **Unicode-aware and locale-independent**: `${x,,}` on
+`İ` (Turkish dotted capital I) always yields `i`, and accented letters, Greek,
+and Cyrillic map correctly regardless of `LC_ALL`/`LANG`. bash, by contrast,
+delegates to the host C library, so its case conversion depends on the locale
+(in the `C`/`POSIX` locale bash only maps ASCII) and on the libc's Unicode
+version. The two shells therefore agree on ASCII and common accented text in a
+UTF-8 locale, but can differ on rare/recent codepoints (titlecase digraphs like
+`ǅ`, polytonic Greek, Roman numerals, circled letters) or in the `C` locale —
+these are host-dependent in bash itself.
+
 ### Here Document Behavior
 
 ```bash
@@ -617,7 +635,7 @@ fi
 | Brace expansion | Yes | Yes | Full support |
 | Process substitution | Yes | Yes | Full support |
 | Tilde expansion | Yes | Yes | Full support |
-| Case modification | Yes | Yes | ${var^^}, ${var,,}, etc. |
+| Case modification | Yes | Yes | ${var^^}, ${var,,}, ${var~~} toggle, patterns, arrays; length-safe Unicode |
 | **Control Structures** |
 | if/then/else/fi | Yes | Yes | Full support |
 | while/until/do/done | Yes | Yes | Full support |

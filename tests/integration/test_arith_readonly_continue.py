@@ -84,12 +84,18 @@ class TestArithReadonlyContinuesMinusCList:
         assert "circular name reference" in r.stderr
         assert r.returncode == 0
 
-    def test_enhanced_test_arith_operand(self):
+    def test_enhanced_test_arith_operand_discards_line(self):
+        # A readonly write inside $(( )) WORD EXPANSION (here the [[ ]]
+        # operand) is a DISCARD-LINE error (bash) — unlike the (( ))
+        # arithmetic COMMAND above, which merely fails and continues. bash
+        # prints the message and drops the rest of the current line, so the
+        # trailing `echo after`/`echo val` do NOT run (probe-verified against
+        # bash 5.2, tmp/probes-r18t2-arith/). Still no internal-defect leak.
         r = _psh_c('readonly r=5; [[ $((r=9)) -eq 9 ]]; echo after=$?; echo val=$r')
-        assert r.stdout == "after=1\nval=5\n"
+        assert r.stdout == ""
         assert "r: readonly variable" in r.stderr
         assert "unexpected error" not in r.stderr
-        assert r.returncode == 0
+        assert r.returncode == 1
 
 
 class TestArithReadonlyScriptFileResumesNextLine:
@@ -109,6 +115,62 @@ class TestArithReadonlyScriptFileResumesNextLine:
                         'echo after=$?\necho val=${a[0]}\n')
         assert r.stdout == "after=1\nval=1\n"
         assert "a: readonly variable" in r.stderr
+        assert r.returncode == 0
+
+
+class TestReadonlyInDollarArithDiscardsLine:
+    """A readonly write inside $(( )) WORD EXPANSION is a discard-line error.
+
+    Distinct from the (( )) arithmetic COMMAND (which fails and continues,
+    above): the $(( )) word-expansion form drops the REST OF THE CURRENT LINE
+    (same-line `;` tail, `&&`/`||` tail) and resumes at the next input line —
+    like the $((1/0)) / bad-subscript word-expansion errors. Unlike those,
+    though, it is NOT immune to `set -e` (a readonly discard exits under
+    errexit). It IS contained at the eval boundary. Probe-verified against
+    bash 5.2 (tmp/probes-r18t2-arith/).
+    """
+
+    def test_same_line_tail_discarded(self):
+        r = _psh_c('readonly r=0; echo $((r=5)); echo same; echo done')
+        assert r.stdout == ""
+        assert "r: readonly variable" in r.stderr
+        assert r.returncode == 1
+
+    def test_resumes_next_line(self, tmp_path):
+        r = _psh_script(tmp_path,
+                        'readonly r=0\necho $((r=5)) after\necho next\n')
+        assert r.stdout == "next\n"
+        assert "r: readonly variable" in r.stderr
+        assert r.returncode == 0
+
+    def test_multiline_c_resumes_next_line(self):
+        r = _psh_c('readonly r=0\necho $((r=5)); echo same\necho next')
+        assert r.stdout == "next\n"
+        assert r.returncode == 0
+
+    def test_readonly_value_unchanged(self):
+        r = _psh_c('readonly r=7; echo $((r=5)) x; echo r=$r')
+        assert r.stdout == ""
+        assert r.returncode == 1
+
+    def test_contained_at_eval_boundary(self):
+        # eval discards only the offending line; its next line and the command
+        # after eval both run.
+        r = _psh_c("readonly r=0; m='echo $((r=5)) after\necho next'; "
+                   'eval "$m"; echo done')
+        assert r.stdout == "next\ndone\n"
+        assert r.returncode == 0
+
+    def test_errexit_exits(self):
+        # NOT errexit-immune (unlike $((1/0))): under set -e the shell exits.
+        r = _psh_c('set -e; readonly r=0; echo $((r=5)) A\necho NEXT')
+        assert r.stdout == ""
+        assert r.returncode == 1
+
+    def test_div0_errexit_immune_for_contrast(self):
+        # The word-arithmetic expansion errors ARE immune: the next line runs.
+        r = _psh_c('set -e; echo $((1/0)) A\necho NEXT')
+        assert r.stdout == "NEXT\n"
         assert r.returncode == 0
 
 

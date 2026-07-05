@@ -105,10 +105,13 @@ class FunctionParser(ParserSubcomponent):
                 self.parser.expect(TokenType.WORD)  # raise the usual error
             name = self._consume_name_tokens()
 
-            # Optional parentheses
-            if self.parser.match(TokenType.LPAREN):
-                self.parser.advance()
-                self.parser.expect(TokenType.RPAREN)
+            # Optional EMPTY parentheses `()` after the name. Only an immediate
+            # `( )` is the marker; a `(` with content is a subshell BODY
+            # (`function f ( echo x )`), left for parse_compound_command below.
+            if (self.parser.match(TokenType.LPAREN) and
+                    self.parser.peek(1).type == TokenType.RPAREN):
+                self.parser.advance()  # (
+                self.parser.advance()  # )
         else:
             # POSIX style: name()
             name = self._consume_name_tokens()

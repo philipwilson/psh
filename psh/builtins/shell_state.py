@@ -354,9 +354,19 @@ class LocalBuiltin(Builtin):
                     # expanded this argument; expanding again here would run
                     # single-quoted text like '$(cmd)' a second time.
                     if append:
-                        from ..core import resolve_append_assignment
-                        _, var_value = resolve_append_assignment(
-                            shell.state.scope_manager, var_name + '+', var_value)
+                        # ``local x+=v`` appends only to an x ALREADY local in
+                        # THIS scope; a fresh local starts from empty even when
+                        # an outer scope has x (bash: g(){ local x+=INNER;}
+                        # called under f's ``local x=out`` yields ``INNER``, not
+                        # ``outINNER``). resolve_append_assignment reads the
+                        # innermost instance, so gate it on the current scope.
+                        cur = shell.state.scope_manager.current_scope.variables.get(var_name)
+                        if cur is not None and not cur.is_unset:
+                            from ..core import resolve_append_assignment
+                            _, var_value = resolve_append_assignment(
+                                shell.state.scope_manager, var_name + '+', var_value)
+                        # else: fresh local — the raw RHS IS the value (an -i
+                        # flag, if any, is applied by create_local's transform).
 
                     # Attribute transforms (-u/-l/-i) are applied by the single
                     # chokepoint in create_local -> ScopeManager._apply_attributes,

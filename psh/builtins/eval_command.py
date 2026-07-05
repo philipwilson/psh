@@ -41,6 +41,11 @@ class EvalBuiltin(Builtin):
         # add_to_history=False prevents eval commands from polluting history.
         # Anchor $LINENO at the eval command's own line (bash behavior): the
         # eval string's line 1 reports the line eval was invoked on, not 1.
+        # line_oriented=True processes the (possibly multi-line) string
+        # PHYSICAL-line-by-line like a script, so a word-arithmetic / readonly
+        # discard-line error inside it discards only the offending line and
+        # resumes at the next — matching bash (`eval 'echo a\necho $((1/0))\n
+        # echo c'` prints a and c, not just a).
         base_line = shell.state.scope_manager.get_current_line_number()
         return shell.run_command(command_string, add_to_history=False,
-                                 base_line=base_line)
+                                 base_line=base_line, line_oriented=True)

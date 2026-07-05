@@ -31,6 +31,14 @@ class KeywordNormalizer:
 
         command_position = True
         pending_in: Optional[str] = None
+        # One-shot: set when a `function` keyword is seen, consumed by the very
+        # next token (the function name). bash allows ANY compound command as a
+        # `function NAME` body (`function f for ...; do ...; done`), so the
+        # token after the name is at command position — this flag forces that so
+        # the body's leading reserved word (`for`/`if`/`while`/`case`/...) is
+        # recognized. (The `NAME()` form already reaches command position via
+        # the closing `)`.)
+        function_name_pending = False
         # One-shot: the token right after `for`/`select`/`case` is the loop
         # variable / case subject — bash never reads it as the `in` keyword
         # (`for in in 1 2` and `case in in in) ...` are valid bash).
@@ -130,6 +138,12 @@ class KeywordNormalizer:
                 token, command_position, pending_in
             )
 
+            # The token just processed was the `function NAME` name — its body
+            # (a compound command) starts at command position.
+            if function_name_pending:
+                command_position = True
+                function_name_pending = False
+
             # Both flags are one-shot: consumed by this token.
             subject_pending = False
             case_pattern_start = next_pattern_start
@@ -138,6 +152,8 @@ class KeywordNormalizer:
             if token.type in {TokenType.FOR, TokenType.SELECT, TokenType.CASE}:
                 pending_in = token.type.name.lower()
                 subject_pending = True
+            elif token.type == TokenType.FUNCTION:
+                function_name_pending = True
 
         return tokens
 

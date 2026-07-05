@@ -27,6 +27,18 @@ class TestXtraceConformance(ConformanceTest):
     def test_xtrace_can_be_turned_off(self):
         self.assert_identical_behavior('set -x; echo on; set +x; echo off')
 
+    def test_xtrace_expands_ps4_lineno(self):
+        # The user guide ships `PS4='+ line ${LINENO}: '`; bash expands PS4
+        # (parameter/command/arithmetic) on each trace line (R18 T2-E M-s1).
+        self.assert_identical_behavior(
+            "PS4='+ ${LINENO}: '\nset -x\necho a\necho b")
+
+    def test_xtrace_expands_ps4_command_substitution(self):
+        self.assert_identical_behavior("PS4='[$(echo TAG)] '\nset -x\necho a")
+
+    def test_xtrace_expands_ps4_arithmetic(self):
+        self.assert_identical_behavior("PS4='$((1+1))> '\nset -x\n:")
+
 
 class TestVerboseConformance(ConformanceTest):
     """``set -v`` echoes input lines to stderr as the shell reads them."""
