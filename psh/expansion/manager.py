@@ -9,10 +9,10 @@ public entry points (`expand_arguments`, `expand_word_to_fields`,
 `expand_assignment_value_word`, `expand_word_as_pattern`,
 `expand_string_variables`) that the executor calls.
 """
-import re
 from typing import TYPE_CHECKING, List, Optional
 
 from ..ast_nodes import SimpleCommand
+from ..core.assignment_utils import ASSIGNMENT_PREFIX_RE
 from .command_sub import CommandSubstitution
 from .glob import GlobExpander
 from .tilde import TildeExpander
@@ -37,9 +37,6 @@ if TYPE_CHECKING:
 #: prefixes (bash 5.2 loses declaration semantics through them — verified).
 DECLARATION_BUILTINS = frozenset(
     {'alias', 'declare', 'typeset', 'export', 'local', 'readonly'})
-
-#: ``NAME=`` / ``NAME+=`` at the start of a word (valid identifier only).
-_ASSIGNMENT_PREFIX_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*\+?=')
 
 
 class ExpansionManager:
@@ -160,7 +157,7 @@ class ExpansionManager:
                 break
         if '=' not in text:
             return None
-        m = _ASSIGNMENT_PREFIX_RE.match(text)
+        m = ASSIGNMENT_PREFIX_RE.match(text)
         return m.group(0) if m else None
 
     def expand_word_to_fields(self, word,

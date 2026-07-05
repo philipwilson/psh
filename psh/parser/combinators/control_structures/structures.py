@@ -15,7 +15,7 @@ from ....ast_nodes import (
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ...recursive_descent.helpers import ParseError
-from ..core import Parser, ParseResult
+from ..core import Parser, ParseResult, many
 from ..diagnostics import (
     error_context_for_token,
     is_missing_nested_terminator,
@@ -47,14 +47,11 @@ class StructureParserMixin(_Base):
         Returns:
             Tuple of (redirects list, new position)
         """
-        redirects = []
-        while pos < len(tokens):
-            redir_result = self.commands.redirection.parse(tokens, pos)
-            if not redir_result.success:
-                break
-            redirects.append(redir_result.value)
-            pos = redir_result.position
-        return redirects, pos
+        # Zero or more redirections trailing the body — a plain ``many``: it
+        # applies ``redirection`` until it stops matching and returns the list
+        # gathered (never failing, so an empty list is a valid parse).
+        result = many(self.commands.redirection).parse(tokens, pos)
+        return list(result.value or []), result.position
 
     def _build_function_name(self) -> Parser[str]:
         """Parse a valid function name."""
