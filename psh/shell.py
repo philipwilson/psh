@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO
 from .ast_nodes import (
     Program,
     StatementList,
-    TopLevel,
 )
 from .builtins import registry as builtin_registry
 from .core import ShellState
@@ -386,12 +385,8 @@ class Shell:
         return self._execute_with_visitor(program)
 
     def execute_command_list(self, command_list: StatementList) -> int:
-        """Execute a command list"""
+        """Execute a nested command list (a subshell/brace-group body)."""
         return self._execute_with_visitor(command_list)
-
-    def execute_toplevel(self, toplevel: TopLevel) -> int:
-        """Execute a top-level script/input containing functions and commands."""
-        return self._execute_with_visitor(toplevel)
 
     def _execute_with_visitor(self, node: Any) -> int:
         """Execute an AST node, reusing the active executor when nested.
