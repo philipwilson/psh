@@ -39,7 +39,7 @@ jobs:
         run: python run_tests.py --parallel --compare-bash --census --coverage
 
       # Extended RD-vs-combinator parser differential. The full suite above
-      # already runs this fuzzer at its fast default (300 snippets); here we
+      # already runs this fuzzer at its fast default (150 snippets); here we
       # widen it enormously and rotate the seed per run so coverage of the
       # grammar accumulates over nightly runs. The seed is echoed (and embedded
       # in any failure message) so a divergence reproduces with a one-liner.

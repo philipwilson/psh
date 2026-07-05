@@ -59,24 +59,32 @@ MAX_COMPOUNDS = int(os.environ.get("PSH_DIFFERENTIAL_MAX_COMPOUNDS", "4"))
 
 
 # ---------------------------------------------------------------------------
-# GRAMMAR NOTES — productions deliberately EXCLUDED because they exercise
-# PRE-EXISTING RD-vs-combinator divergences (all out of scope for T2-H; each is
-# a candidate for a future parity cluster). Excluding them keeps this detector
-# GREEN so it can flag NEW drift:
-#   * A compound command as a non-leading PIPELINE stage (`case ... esac | cmd`)
-#     — the combinator rejects it. Compounds appear only as and-or operands /
-#     whole statements here, never as pipeline stages.
-#   * A `time`/`!` prefix on a COMPOUND (`time -p for ...`) — RD and combinator
-#     disagree. Prefixes are applied only to pipelines of simple commands.
-#   * A composite (adjacent-token) word as a `case` SUBJECT (`case a"b"c in`)
-#     — the combinator errors; and an EXPANSION in a `for`-item list or `case`
-#     subject (`${y}`) — RD strips `${...}`->`$...` in the legacy `items`/`expr`
-#     string fields while the combinator keeps the braces. See _ITEM_WORDS /
-#     _CASE_SUBJECTS.
-#   * bare `]` / `}` / `[` as a *command name* — the combinator's word_like
-#     omits RBRACKET/RBRACE (a separate pre-existing WORD_LIKE parity gap).
-#   * repeated / interleaved `!` and `time` prefixes (`! time`, `time !`,
-#     `! ! cmd`) — a documented combinator gap (pipelines.py comment).
+# GRAMMAR NOTES — productions deliberately EXCLUDED, so the detector stays GREEN
+# and any failure means a NEW drift. Two flavours: GENUINE divergences (a
+# pre-existing RD-vs-combinator gap, each a candidate for a future parity
+# cluster) and CONSERVATIVE simplifications (the parsers actually agree; the
+# exclusion only costs some fuzzer coverage and masks nothing).
+#   * CONSERVATIVE — a compound command as a non-leading PIPELINE stage
+#     (`case ... esac | cmd`, `if ...; fi | cmd`, `foo | { ...; }`). The two
+#     parsers AGREE on these (verified across if/while/until/case/brace/
+#     subshell/[[/(( , leading and non-leading, `|` and `|&`). Excluded only to
+#     keep pipeline stages uniformly simple-command-based; compounds still
+#     appear as and-or operands / whole statements.
+#   * GENUINE — a `time -p` prefix on a NON-BRACE compound (`time -p for ...`,
+#     `time -p if ...`, `time -p while ...`, `time -p case ...`): RD wrongly
+#     rejects it while the combinator and bash accept. Narrowly the `time -p`
+#     case — plain `time` (no `-p`) on a compound, `time -p { ...; }`, and `!`
+#     on any compound all AGREE. Prefixes are applied only to simple pipelines.
+#   * GENUINE — a composite (adjacent-token) word as a `case` SUBJECT
+#     (`case a"b"c in`): the combinator errors "Expected 'in'". And an EXPANSION
+#     in a `for`-item list or `case` subject (`${y}`): RD strips `${...}`->`$...`
+#     in the legacy `items`/`expr` string fields while the combinator keeps the
+#     braces. See _ITEM_WORDS / _CASE_SUBJECTS.
+#   * GENUINE — bare `]` / `}` / `[` as a *command name*: the combinator's
+#     word_like omits RBRACKET/RBRACE (a separate pre-existing WORD_LIKE gap).
+#   * GENUINE — repeated / interleaved `!` and `time` prefixes: the combinator
+#     rejects `! time cmd` and `time time cmd` (RD accepts both) — a documented
+#     combinator gap (pipelines.py comment). (`time ! cmd` and `! ! cmd` AGREE.)
 # Mid-pipeline `time` (`cmd | time cmd2`), C-for empty sections, and
 # bash-permissive function names — the three things T2-H fixed — ARE generated.
 # ---------------------------------------------------------------------------
