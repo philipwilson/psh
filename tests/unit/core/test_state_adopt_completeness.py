@@ -37,6 +37,10 @@ ADOPT_EXCLUSIONS = {
     'rcfile': "per-invocation CLI flag, like norc",
     'edit_mode': "line-editor configuration; children never run the "
                  "interactive editor",
+    '_arith_recursion_depth': "transient arithmetic-evaluation re-entrancy "
+                              "counter (unwound by finally); a forked child "
+                              "begins a fresh evaluation context, so it must "
+                              "start at 0, never inherit the parent's",
 }
 
 

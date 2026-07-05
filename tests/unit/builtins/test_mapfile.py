@@ -102,6 +102,22 @@ class TestMapfileErrors:
         assert r.returncode == 2
         assert "not supported" in r.stderr
 
+    def test_quantum_option_unsupported(self):
+        # -c quantum is only meaningful with -C; psh honest-errors both
+        # rather than silently ignoring them.
+        r = _run('mapfile -c 2 a', "hi\n")
+        assert r.returncode == 2
+        assert "not supported" in r.stderr
+
+    def test_callback_does_not_consume_input_or_create_array(self):
+        # The honest error fires BEFORE any input is read: the target array
+        # must not be created (regression guard against a silent
+        # input-consuming no-op — R18 T2-G).
+        r = _run('mapfile -C cb arr; declare -p arr', "a\nb\nc\n")
+        assert r.returncode != 0
+        assert "not supported" in r.stderr
+        assert "arr=" not in r.stdout
+
     def test_extra_args_ignored(self):
         # bash uses the first arg and ignores the rest (exit 0).
         r = _run('mapfile -t a b <<< hi; echo "rc=$? a=${a[0]}"')

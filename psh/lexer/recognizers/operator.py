@@ -413,6 +413,14 @@ class OperatorRecognizer(ContextualRecognizer):
 
         # [[ and ]] have special context rules
         if operator == '[[':
+            # Inside a case pattern, `[[` begins a glob bracket expression whose
+            # first member is a POSIX character class (`[[:alpha:]])`), not the
+            # `[[` conditional operator — mirror the `[` guard below. Without
+            # this, a case arm whose pattern starts with `[[:...:]]` on its own
+            # line (where the newline flips command position back on) mis-lexes
+            # the leading `[[` as DOUBLE_LBRACKET.
+            if context.in_case_pattern:
+                return False
             # [[ is only valid at command position
             return context.command_position
 

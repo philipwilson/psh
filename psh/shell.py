@@ -274,6 +274,17 @@ class Shell:
         self.state.options['emacs'] = live_interactive
         self.state.options['histexpand'] = live_interactive
 
+        # Job control / monitor mode ('m' in $-) is on by default for a shell
+        # bash considers interactive that can also control the terminal: the
+        # REPL and `bash -i`/`-ic` turn it on, plain `-c`/scripts leave it off.
+        # The option is COSMETIC in psh — real job control keys off
+        # supports_job_control, not this flag — so it exists purely to make
+        # `$-` and `set -o monitor` report truthfully (bash-probed:
+        # tmp/probes-r18t2-interactive/probe_mi1_*).
+        self.state.options['monitor'] = (
+            (live_interactive or force_interactive)
+            and self.state.supports_job_control)
+
         if live_interactive and not self.state.norc:
             from .interactive import load_rc_file
             load_rc_file(self)
@@ -444,7 +455,7 @@ class Shell:
         return self.alias_manager.expand_aliases(tokens)
 
     def run_command(self, command_string: str, add_to_history: bool = True,
-                    base_line: int = 1) -> int:
+                    base_line: int = 1, line_oriented: bool = False) -> int:
         """Execute a command string using the unified input system.
 
         ``base_line`` is the absolute source line the command text begins at,
@@ -452,10 +463,18 @@ class Shell:
         that bash anchors at the invoking command's line — ``eval`` and trap
         actions — pass ``scope_manager.get_current_line_number()`` so $LINENO
         inside reflects that line rather than resetting to 1.
+
+        ``line_oriented`` reads the string PHYSICAL-line-by-line (like a script
+        file / ``-c``) instead of as one chunk, so a discard-line error inside
+        it (a word-arithmetic failure, an assignment to a readonly variable in
+        ``$(( ))``) is contained to the offending line and execution resumes at
+        the next line — matching bash's ``eval`` (``eval 'echo a\\necho $((1/0))
+        \\necho c'`` prints a and c). ``eval`` passes True.
         """
         from .scripting.input_sources import StringInput
 
         # Use the unified execution system for consistency
-        input_source = StringInput(command_string, "<command>")
+        input_source = StringInput(command_string, "<command>",
+                                   split_lines=line_oriented)
         return self.script_manager.execute_from_source(
             input_source, add_to_history, base_line=base_line)

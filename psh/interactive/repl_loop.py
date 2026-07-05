@@ -67,6 +67,11 @@ class REPLLoop(InteractiveComponent):
                 # Check for stopped jobs (from Ctrl-Z)
                 self.job_manager.notify_stopped_jobs()
 
+                # bash runs PROMPT_COMMAND after job notices and before PS1
+                # (never before a PS2 continuation — hence here, once per
+                # logical command, not inside read_command).
+                self._run_prompt_command()
+
                 # Set terminal title to idle state before each prompt
                 set_terminal_title(idle_title(self.shell))
 
@@ -134,3 +139,33 @@ class REPLLoop(InteractiveComponent):
         if hasattr(self.shell, 'trap_manager'):
             self.shell.trap_manager.execute_exit_trap()
         self.history_manager.save_to_file()
+
+    def _run_prompt_command(self):
+        """Run $PROMPT_COMMAND before the primary prompt, bash-style.
+
+        bash executes PROMPT_COMMAND before each PS1: as a command string,
+        or — in bash 5.x — each element of an array in order. The user's
+        ``$?`` is preserved across it (a PROMPT_COMMAND that runs ``true``
+        must not clobber the exit status the next prompt/command sees), and
+        it is never recorded in history. A failing PROMPT_COMMAND reports
+        its error but does not escape (the REPL loop's own handler is the
+        final backstop). Behavior pinned to bash 5.2 —
+        tmp/probes-r18t2-interactive/probe_mi2_*.
+        """
+        from ..core.variables import AssociativeArray, IndexedArray
+
+        var = self.state.scope_manager.get_variable_object('PROMPT_COMMAND')
+        if var is None:
+            return
+        if isinstance(var.value, (IndexedArray, AssociativeArray)):
+            commands = var.value.all_elements()
+        else:
+            commands = [var.as_string()]
+
+        saved_exit_code = self.state.last_exit_code
+        try:
+            for command in commands:
+                if command.strip():
+                    self.shell.run_command(command, add_to_history=False)
+        finally:
+            self.state.last_exit_code = saved_exit_code

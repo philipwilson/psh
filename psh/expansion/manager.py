@@ -263,6 +263,35 @@ class ExpansionManager:
         return self.variable_expander.expand_string_variables(
             text, quote_ctx=quote_ctx)
 
+    def expand_ps4(self) -> str:
+        """Expand the ``PS4`` xtrace prefix like bash.
+
+        Every ``set -x`` trace line is prefixed with ``PS4`` (default ``+ ``).
+        bash expands it on each use with parameter, command, and arithmetic
+        expansion (but no word splitting or globbing) — so a common
+        ``PS4='+ ${LINENO}: '`` reports the traced line. The SINGLE PS4
+        expansion helper: every xtrace emission site routes through here.
+        A value with no expansion sigil is returned untouched (the fast,
+        overwhelmingly common case), and an expansion that raises falls back
+        to the raw value so tracing itself never aborts the shell.
+        """
+        ps4 = self.shell.state.get_variable('PS4', '+ ')
+        if '$' not in ps4 and '`' not in ps4:
+            return ps4
+        # Disable xtrace while expanding PS4: a command/arithmetic
+        # substitution INSIDE PS4 would otherwise be traced too, and tracing
+        # it re-expands PS4, recursing forever (`PS4='$(cmd) '`). bash
+        # suppresses tracing during PS4 expansion for the same reason.
+        options = self.shell.state.options
+        saved_xtrace = options.get('xtrace', False)
+        options['xtrace'] = False
+        try:
+            return self.expand_string_variables(ps4)
+        except Exception:
+            return ps4
+        finally:
+            options['xtrace'] = saved_xtrace
+
     def expand_string_tildes(self, text: str) -> str:
         """Value-context tilde expansion of a raw string: an unquoted ``~``/
         ``~user`` prefix at the start and after each ``:`` is expanded

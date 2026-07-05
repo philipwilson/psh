@@ -91,6 +91,22 @@ def print_help() -> None:
     print(HELP_TEXT)
 
 
+def _resolve_long_option(name: str) -> "str | None":
+    """Resolve a ``-o NAME`` / ``+o NAME`` token to its canonical option name.
+
+    Returns the registered option name, or ``None`` if NAME is not a
+    user-settable option.  Mirrors the ``set -o`` check: any registered
+    non-INTERNAL option name is accepted (psh's ``set -o`` is a deliberate
+    superset of bash's set/shopt split), normalizing ``_`` vs ``-``.
+    """
+    from .core.option_registry import OPTION_REGISTRY, OptionCategory
+    for candidate in (name, name.replace('-', '_'), name.replace('_', '-')):
+        spec = OPTION_REGISTRY.get(candidate)
+        if spec is not None and spec.category is not OptionCategory.INTERNAL:
+            return candidate
+    return None
+
+
 def _value_option(argv: List[str], i: int, name: str) -> Tuple[str, int]:
     """Read the value of ``name VALUE`` or ``name=VALUE`` at position *i*.
 
@@ -114,6 +130,13 @@ def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
     untouched (``psh script.sh -i foo`` passes both args through as
     $1/$2).  ``--`` (or the historical lone ``-``) ends options
     explicitly; an unknown option in flag position exits with status 2.
+
+    Both ``-`` and ``+`` short-option clusters are accepted: a leading
+    ``-`` ENABLES each flag, a leading ``+`` DISABLES it (bash ``set +x``).
+    ``-o NAME`` / ``+o NAME`` set a long option by name, and ``-c`` may be
+    clustered (``-xc 'cmd'``). Each set-option is recorded as a
+    ``(name, enable)`` pair so a later ``+x`` / ``-x`` overrides an earlier
+    one (bash: last wins).
     """
     options: Dict[str, object] = {
         "debug_ast": False,
@@ -148,7 +171,7 @@ def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
         if arg in ("--", "-"):
             i += 1
             break
-        if not arg.startswith("-"):
+        if not arg.startswith(("-", "+")):
             break
         if arg in _FLAG_TABLE:
             for key, value in _FLAG_TABLE[arg]:
@@ -168,22 +191,51 @@ def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
         elif arg == "--parser" or arg.startswith("--parser="):
             options["parser_type"], i = _value_option(argv, i, "--parser")
         elif not arg.startswith("--") and len(arg) > 1:
-            # A single-dash short-option cluster: -e, -eux, -s, ... Each
-            # char sets a shell option (bash -e/-u/-x/-v/-n/-f/-C) or is -s
-            # (read stdin, remaining operands become positionals) or -i.
-            for ch in arg[1:]:
+            # A short-option cluster: -e, -eux, -s, -xc, +x, -o NAME, ...
+            # A leading '-' ENABLES each set-option, '+' DISABLES it (bash
+            # `set +x`). Each char sets a shell option (bash -e/-u/-x/-v/
+            # -n/-f/-C), or is -s (read stdin), -i (interactive), -c (a
+            # command string follows), or -o/+o (a long option by NAME).
+            enable = arg[0] == "-"
+            sign = arg[0]
+            j = 1
+            while j < len(arg):
+                ch = arg[j]
                 if ch in _SHORT_SET_OPTIONS:
-                    cast(List[str], options["set_options"]).append(
-                        SHORT_TO_LONG[ch])
+                    cast(List[Tuple[str, bool]], options["set_options"]).append(
+                        (SHORT_TO_LONG[ch], enable))
                 elif ch == "s":
                     options["stdin_mode"] = True
                 elif ch == "i":
                     options["force_interactive"] = True
+                elif ch == "c":
+                    options["command_mode"] = True
+                elif ch == "o":
+                    # -o/+o NAME: NAME is the rest of this cluster if any
+                    # (`-opipefail`), else the next argument (`-o pipefail`).
+                    name = arg[j + 1:]
+                    if name:
+                        j = len(arg)  # remainder is the NAME, not more flags
+                    elif i + 1 < len(argv):
+                        name = argv[i + 1]
+                        i += 1
+                    else:
+                        print(f"psh: {sign}o: option requires an argument",
+                              file=sys.stderr)
+                        sys.exit(2)
+                    long_name = _resolve_long_option(name)
+                    if long_name is None:
+                        print(f"psh: {name}: invalid option name",
+                              file=sys.stderr)
+                        sys.exit(2)
+                    cast(List[Tuple[str, bool]], options["set_options"]).append(
+                        (long_name, enable))
                 else:
-                    print(f"psh: -{ch}: invalid option", file=sys.stderr)
+                    print(f"psh: {sign}{ch}: invalid option", file=sys.stderr)
                     print("Try 'psh --help' for more information.",
                           file=sys.stderr)
                     sys.exit(2)
+                j += 1
             i += 1
         else:
             print(f"psh: {arg}: invalid option", file=sys.stderr)
@@ -306,8 +358,8 @@ def main():
 
     # Apply POSIX short options set on the command line (-e/-u/-x/-v/-n/-f/-C)
     # BEFORE any input runs, so they govern the whole run and show up in $-.
-    for long_name in cast(List[str], opts["set_options"]):
-        shell.state.options[long_name] = True
+    for long_name, value in cast(List[Tuple[str, bool]], opts["set_options"]):
+        shell.state.options[long_name] = value
 
     # Apply --parser selection
     if opts["parser_type"] is not None:

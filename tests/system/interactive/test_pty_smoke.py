@@ -945,3 +945,114 @@ class TestPtyReadSilent:
             assert 'swordfish' not in child.before
         finally:
             child.close(force=True)
+
+
+@pytest.mark.serial
+class TestPtyInteractiveClusterR18:
+    """R18 T2-F interactive cluster (bash 5.2-pinned; probes in
+    tmp/probes-r18t2-interactive/).
+
+    Its own fixture with an ISOLATED HISTFILE (a fresh HOME per test) so
+    PROMPT_COMMAND execution never touches a shared history file.
+    """
+
+    @pytest.fixture
+    def psh_iso(self, tmp_path):
+        env = {
+            'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
+            'HOME': str(tmp_path), 'TERM': 'xterm', 'PS1': 'PSH$ ',
+            'HISTFILE': str(tmp_path / '.psh_history'),
+            'PYTHONUNBUFFERED': '1', 'PYTHONPATH': PSH_ROOT,
+        }
+        child = pexpect.spawn(
+            sys.executable, ['-u', '-m', 'psh', '--norc', '--force-interactive'],
+            timeout=10, encoding='utf-8', env=env)
+        child.send('\r')
+        child.expect(PROMPT)
+        yield child
+        child.close(force=True)
+
+    # --- M-i1: monitor mode / $- ------------------------------------------
+
+    def test_monitor_letter_in_dash_when_interactive(self, psh_iso):
+        # bash: an interactive shell with job control carries 'm' in $-.
+        # Sentinel is built at runtime so 'HAS_5M' never appears in the
+        # typed command line.
+        psh_iso.send('d=$-\r')
+        psh_iso.expect(PROMPT)
+        psh_iso.send('case $d in *m*) echo HAS_$((2+3))M ;; *) echo NO_M ;; esac\r')
+        psh_iso.expect('HAS_5M')
+        psh_iso.expect(PROMPT)
+
+    def test_set_o_monitor_reads_on_when_interactive(self, psh_iso):
+        psh_iso.send('set -o | grep monitor\r')
+        psh_iso.expect(r'monitor\s+on')
+        psh_iso.expect(PROMPT)
+
+    # --- M-i2: PROMPT_COMMAND ---------------------------------------------
+
+    def test_prompt_command_string_runs_before_each_prompt(self, psh_iso):
+        psh_iso.send("PROMPT_COMMAND='echo tick_$((7+7))'\r")
+        psh_iso.expect('tick_14')          # runs before the very next prompt
+        psh_iso.expect(PROMPT)
+        psh_iso.send('echo body_$((1+2))\r')
+        psh_iso.expect('body_3')
+        psh_iso.expect('tick_14')          # and again before the following one
+        psh_iso.expect(PROMPT)
+
+    def test_prompt_command_array_runs_each_element(self, psh_iso):
+        psh_iso.send("PROMPT_COMMAND=('echo a_$((2+2))' 'echo b_$((3+3))')\r")
+        psh_iso.expect('a_4')
+        psh_iso.expect('b_6')
+        psh_iso.expect(PROMPT)
+
+    def test_prompt_command_preserves_exit_status(self, psh_iso):
+        # A PROMPT_COMMAND running `true` must not clobber the user's $?.
+        psh_iso.send("PROMPT_COMMAND='true'\r")
+        psh_iso.expect(PROMPT)
+        psh_iso.send('(exit 37)\r')
+        psh_iso.expect(PROMPT)
+        psh_iso.send('echo rc_$?\r')
+        psh_iso.expect('rc_37')
+        psh_iso.expect(PROMPT)
+
+    def test_prompt_command_not_run_at_ps2_continuation(self, psh_iso):
+        psh_iso.send("PROMPT_COMMAND='echo pc_$((8+8))'\r")
+        psh_iso.expect('pc_16')
+        psh_iso.expect(PROMPT)
+        psh_iso.send('echo cont_\\\r')       # line continuation -> PS2
+        psh_iso.expect('> ')                 # PS2: PROMPT_COMMAND must NOT run
+        psh_iso.send('end\r')
+        psh_iso.expect('cont_end')
+        # exactly one pc_16 between the two primary prompts (none at PS2)
+        assert psh_iso.before.count('pc_16') == 0
+        psh_iso.expect('pc_16')              # runs again before the next prompt
+        psh_iso.expect(PROMPT)
+
+    # --- M-i3: background completion notices ------------------------------
+
+    def test_background_terminated_notice(self, psh_iso):
+        psh_iso.send('sleep 30 &\r')
+        psh_iso.expect(r'\[1\] \d+')
+        psh_iso.expect(PROMPT)
+        psh_iso.send('kill -TERM %1\r')
+        # Drive another prompt so the async notice is emitted (it trails the
+        # sync command's output — SIGCHLD is processed on the next REPL
+        # iteration). Assert the notice says 'Terminated', not 'Done' (the
+        # M-i3 bug labelled every completed bg job 'Done'); waiting for
+        # whichever word appears first is robust to the notice's timing.
+        psh_iso.send('echo sync_$((6+6))\r')
+        idx = psh_iso.expect(['Terminated', r'Done\s'], timeout=8)
+        assert idx == 0, "a SIGTERM'd bg job must notice 'Terminated', not 'Done'"
+
+    # --- M-i5: trailing space after a unique file completion --------------
+
+    def test_tab_unique_file_adds_trailing_space(self, psh_iso, tmp_path):
+        psh_iso.send(f'cd {tmp_path}\r')
+        psh_iso.expect(PROMPT)
+        psh_iso.send('echo x > uniquenamefile.txt\r')
+        psh_iso.expect(PROMPT)
+        # Complete the unique prefix, then type a second word with NO leading
+        # space. A trailing space after the completion => two echo args.
+        psh_iso.send('echo uniquenamef\tSECOND_$((5+4))\r')
+        psh_iso.expect(r'uniquenamefile\.txt SECOND_9')

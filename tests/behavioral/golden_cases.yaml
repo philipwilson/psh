@@ -5801,6 +5801,403 @@
   exit_code: 0
 
 # =============================================================================
+# R18 TIER-2 (T2-A): arithmetic / eval error-path edges
+# =============================================================================
+
+# Compound assignment reads the LHS BEFORE evaluating the RHS (bash): an
+# embedded ++/-- of the same variable in the RHS does not feed back into the
+# left-operand read.
+- name: r18t2_arith_compound_reads_lhs_first
+  command: "c=1; echo $((c+=c++))"
+  stdout: "2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_arith_compound_minus_reads_lhs_first
+  command: "c=5; echo $((c-=c++))"
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_arith_array_compound_reads_lhs_first
+  command: "a=(1 2 3); echo $((a[1]+=a[1]++)); echo ${a[1]}"
+  stdout: "4\n4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_arith_plain_assign_last_write_wins
+  command: "c=1; echo $((c=c++)); echo $c"
+  stdout: "1\n1\n"
+  stderr: ""
+  exit_code: 0
+
+# A readonly write inside $(( )) word expansion discards the rest of the line.
+- name: r18t2_arith_readonly_in_dollar_arith_discards_line
+  command: "readonly r=0; echo $((r=5)); echo same; echo done"
+  stdout: ""
+  stderr: "readonly variable"
+  exit_code: 1
+
+# A self-referential expression variable trips a bounded arithmetic error;
+# the (( )) command form continues the line.
+- name: r18t2_arith_self_ref_paren_continues
+  command: 'x="x+1"; (( x )); echo rc=$?; echo alive'
+  stdout: "rc=1\nalive\n"
+  stderr: "expression recursion level exceeded"
+  exit_code: 0
+
+# A finite reference chain within bash's EXPR_NEST_MAX still evaluates.
+- name: r18t2_arith_ref_chain_within_limit
+  command: 'a0=0; for i in $(seq 1 500); do eval "a$i=a$((i-1))+1"; done; echo $(( a500 ))'
+  stdout: "500\n"
+  stderr: ""
+  exit_code: 0
+
+# A bad subscript on an UNSET array is a fatal expansion error (not empty).
+- name: r18t2_arith_unset_bad_subscript_fatal
+  command: 'echo "[${a[1//]}]" after'
+  stdout: ""
+  stderr: "Unexpected token"
+  exit_code: 1
+
+# ${#name[sub]} on an unset name is 0 without evaluating the subscript.
+- name: r18t2_arith_unset_length_form_zero
+  command: 'echo "[${#a[1//]}]" after'
+  stdout: "[0] after\n"
+  stderr: ""
+  exit_code: 0
+
+# A scalar's subscript is arithmetic; index 0 addresses the value.
+- name: r18t2_arith_scalar_index_zero_is_value
+  command: 'x=5; echo "[${x[1-1]}]"'
+  stdout: "[5]\n"
+  stderr: ""
+  exit_code: 0
+
+# eval processes its argument line-by-line: a word-arith error inside it
+# drops only the offending line and resumes at the next.
+- name: r18t2_arith_eval_multiline_line_discard
+  command: |
+    eval 'echo one
+    echo $((1/0))
+    echo three'; echo after
+  stdout: "one\nthree\nafter\n"
+  stderr: "Division by zero"
+# R18 Tier-2 (T2-E glue / traps / CLI / scripting)
+# =============================================================================
+
+# A signal trap queued by the FINAL statement (no later command boundary, no
+# EXIT trap) is flushed before the shell exits — bash runs it; psh used to
+# drop it. See SourceProcessor.execute_as_main.
+- name: r18t2_glue_pending_term_trap_at_eof
+  command: "trap 'echo GOT_TERM' TERM; echo before; kill -TERM $$"
+  stdout: "before\nGOT_TERM\n"
+  stderr: ""
+  exit_code: 0
+
+# A pending trap whose action itself exits: its status wins (bash).
+- name: r18t2_glue_pending_term_trap_exit_status
+  command: "trap 'echo GOT; exit 7' TERM; kill -TERM $$"
+  stdout: "GOT\n"
+  stderr: ""
+  exit_code: 7
+
+# `cd ""` (empty operand, not resolved via CDPATH) is a no-op success — bash
+# stays in the current directory; psh used to error on chdir("").
+- name: r18t2_glue_cd_empty_operand_noop
+  command: 'cd /usr; cd ""; echo "$?:$PWD"'
+  stdout: "0:/usr\n"
+  stderr: ""
+  exit_code: 0
+
+# bash's `source` returns 126 for a binary file (distinct from the 1 it
+# returns for a directory / unreadable file).
+- name: r18t2_glue_source_binary_returns_126
+  command: "source /bin/ls; echo rc=$?"
+  stdout: "rc=126\n"
+  stderr: "cannot execute binary file"
+# CASE-TOGGLE OPERATORS + LENGTH-SAFE CASE MAPPING (reappraisal #18, T2-D)
+# =============================================================================
+
+- name: r18t2_expansion_toggle_first_lower
+  command: 'x=hello; echo "${x~}"'
+  stdout: "Hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_toggle_first_upper
+  command: 'x=HELLO; echo "${x~}"'
+  stdout: "hELLO\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_toggle_all_mixed
+  command: 'x=HeLLo123; echo "${x~~}"'
+  stdout: "hEllO123\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_toggle_all_pattern_range
+  command: 'x=abcABC; echo "${x~~[a-c]}"'
+  stdout: "ABCABC\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_toggle_first_pattern_nomatch
+  command: 'x=hello; echo "${x~l}"'
+  stdout: "hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_toggle_array_all
+  command: 'a=(foo BAR bAz); echo "${a[@]~~}"'
+  stdout: "FOO bar BaZ\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_upper_length_safe_sharp_s
+  command: 'x=straße; echo "${x^^}"'
+  stdout: "STRAßE\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_upper_length_safe_ligature
+  command: 'x=ﬀ; echo "${x^^}"'
+  stdout: "ﬀ\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_expansion_declare_upper_length_safe
+  command: 'declare -u x=straße; echo "$x"'
+  stdout: "STRAßE\n"
+# R18 Tier-2 T2-C — lexer/parser narrow fixes
+# =============================================================================
+
+# M-cc1: a case pattern that starts with a POSIX character class on its own
+# line no longer mis-lexes the leading `[[` as the `[[` conditional operator.
+- name: r18t2_lexparse_case_charclass_alpha_ownline
+  command: "c=x; case $c in\n[[:alpha:]]) echo letter ;;\n*) echo other ;;\nesac"
+  stdout: "letter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_case_charclass_digit_ownline
+  command: "c=5; case $c in\n[[:digit:]]) echo digit ;;\n*) echo other ;;\nesac"
+  stdout: "digit\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_case_charclass_negated_space_ownline
+  command: "c=x; case $c in\n[![:space:]]) echo nonspace ;;\n*) echo space ;;\nesac"
+  stdout: "nonspace\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_case_charclass_nested_ownline
+  command: "c=a; case $c in\n[[:alpha:][:digit:]]) echo alnum ;;\n*) echo other ;;\nesac"
+  stdout: "alnum\n"
+  stderr: ""
+  exit_code: 0
+
+# M-p1: empty / dangling-operand [[ ]] tests are syntax errors, not rc0/rc1.
+- name: r18t2_lexparse_dbracket_empty
+  command: "[[ ]]"
+  stdout: ""
+  stderr: "Expected test operand"
+  exit_code: 2
+
+- name: r18t2_lexparse_dbracket_empty_negated
+  command: "[[ ! ]]"
+  stdout: ""
+  stderr: "Expected test operand"
+  exit_code: 2
+
+- name: r18t2_lexparse_dbracket_dangling_or
+  command: "[[ x || ]]"
+  stdout: ""
+  stderr: "Expected test operand"
+  exit_code: 2
+
+- name: r18t2_lexparse_dbracket_dangling_and
+  command: "[[ x && ]]"
+  stdout: ""
+  stderr: "Expected test operand"
+  exit_code: 2
+
+# M-p2: `function NAME` accepts any compound command as its body, not just { }.
+- name: r18t2_lexparse_function_for_body
+  command: "function f for i in 1 2; do echo $i; done\nf"
+  stdout: "1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_function_if_body
+  command: "function f if true; then echo hi; fi\nf"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_function_case_body
+  command: "function f case x in x) echo matched ;; esac\nf"
+  stdout: "matched\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_function_subshell_body
+  command: "function f ( echo subshell )\nf"
+  stdout: "subshell\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_function_empty_parens_brace_body
+  command: "function f ( ) { echo hi; }\nf"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# T1-5 leftover: a nested bare `((` inside a C-style for header no longer fuses
+# the following `do` body into a single WORD.
+- name: r18t2_lexparse_cfor_nested_paren_semi_do
+  command: "for ((i=0; i<((5)-1); i++)); do echo x; done"
+  stdout: "x\nx\nx\nx\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_lexparse_cfor_nested_paren_newline_do
+  command: "for ((i=0; i<((5)-1); i++))\ndo echo y\ndone"
+  stdout: "y\ny\ny\ny\n"
+  stderr: ""
+  exit_code: 0
+# R18 TIER-2 T2-B: CORE STATE (temp-env scoping, id vars, array/local append)
+# =============================================================================
+
+- name: r18t2_corestate_tempenv_declare_g_survives
+  command: 'X=outer; f() { declare -g X=2; }; X=1 f; echo "$X"'
+  stdout: "2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_tempenv_export_survives
+  command: 'X=outer; f() { export X=2; }; X=1 f; declare -p X'
+  stdout: "declare -x X=\"2\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_tempenv_plain_write_discarded
+  command: 'X=outer; f() { X=2; }; X=1 f; echo "$X"'
+  stdout: "outer\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_tempenv_declare_g_then_plain
+  command: 'X=outer; f() { declare -g X=2; X=3; }; X=1 f; echo "$X"'
+  stdout: "2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_uid_readonly_assignment
+  command: "UID=0"
+  stdout: ""
+  stderr: "readonly variable"
+  exit_code: 1
+
+- name: r18t2_corestate_local_redeclare_uppercase_append
+  command: 'f() { local -u x=ab; local x+=cd; echo "$x"; }; f'
+  stdout: "ABCD\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_local_redeclare_integer_append
+  command: 'f() { local -i n=5; local n+=3; echo "$n"; }; f'
+  stdout: "8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_array_append_uppercase_element
+  command: 'declare -u a; a+=(three); echo "${a[0]}"'
+  stdout: "THREE\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_nameref_tempenv_no_export_leak
+  command: 'declare -n r=a; a=orig; r=x true; declare -p a'
+  stdout: "declare -- a=\"orig\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_integer_array_elem0_append
+  command: 'declare -ai a=(5 6); a+=3; echo "${a[0]}"'
+  stdout: "8\n"
+  stderr: ""
+  exit_code: 0
+# BUILTINS FEATURE GAPS (reappraisal #18 Tier-2 T2-G)
+# =============================================================================
+
+- name: r18t2_builtins_ulimit_set_get_soft_nofile
+  command: "ulimit -S -n 256; ulimit -n"
+  stdout: "256\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_builtins_ulimit_set_both_when_no_hs
+  command: "ulimit -n 256; echo $(ulimit -Sn) $(ulimit -Hn)"
+  stdout: "256 256\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_builtins_ulimit_file_size_block_factor
+  command: "ulimit -S -f 100; ulimit -f"
+  stdout: "100\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_builtins_ulimit_invalid_option
+  command: "ulimit -Z"
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+- name: r18t2_builtins_history_store_and_list
+  command: "set -o history; history -s alpha; history -s beta; history"
+  stdout: "    1  alpha\n    2  beta\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_builtins_history_delete_offset
+  command: "set -o history; history -s a; history -s b; history -s c; history -d 2; history"
+  stdout: "    1  a\n    2  c\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_builtins_history_write_to_stdout
+  command: "set -o history; history -s x; history -w /dev/stdout"
+  stdout: "x\n"
+  stderr: ""
+  exit_code: 0
+# R18 T2-F INTERACTIVE CLUSTER
+# =============================================================================
+# The monitor ('m') flag is on only for a genuinely interactive shell with
+# job control; a non-interactive `-c` shell leaves it off, matching bash.
+# (The interactive on-case is covered by the PTY suite — not expressible as a
+# non-interactive golden case.)
+
+- name: r18t2_interactive_dollar_dash_c_no_monitor
+  command: "echo $-"
+  stdout: "hBc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_interactive_set_o_monitor_enables_m
+  command: "set -o monitor; case $- in *m*) echo has_m;; *) echo no_m;; esac"
+  stdout: "has_m\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_interactive_set_plus_o_monitor_clears_m
+  command: "set -o monitor; set +o monitor; case $- in *m*) echo has_m;; *) echo no_m;; esac"
+  stdout: "no_m\n"
+  stderr: ""
+  exit_code: 0
 # REAPPRAISAL #18 T2-H — combinator parser parity (RD/bash anchors)
 #
 # These pin the RD-vs-bash side of the parity triangle for constructs where

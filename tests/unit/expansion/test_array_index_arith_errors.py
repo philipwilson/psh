@@ -84,3 +84,70 @@ class TestArrayIndexArithmeticErrors:
     def test_valid_arithmetic_index_still_works(self, captured_shell):
         captured_shell.run_command('arr=(a b c d); i=2; echo "${arr[i+1]}"')
         assert captured_shell.get_stdout() == "d\n"
+
+
+class TestUnsetAndScalarSubscriptValidation:
+    """An UNSET array (undeclared name) is treated as indexed by bash, so its
+    subscript is still arithmetic-evaluated and a bad one is fatal — psh used
+    to silently accept it and expand to empty. A scalar's subscript is
+    arithmetic too (index 0 addresses the value). Probe-verified against bash
+    5.2 (tmp/probes-r18t2-arith/).
+    """
+
+    def _assert_fatal(self, shell, fragment="Unexpected token"):
+        assert shell.get_stdout() == ""
+        assert fragment in shell.get_stderr()
+        assert "Traceback" not in shell.get_stderr()
+
+    def test_unset_bad_subscript_is_fatal(self, captured_shell):
+        # ${a[1//]} on an unset a: bash errors + discards; not silent empty.
+        rc = captured_shell.run_command('echo "[${a[1//]}]" after')
+        assert rc == 1
+        self._assert_fatal(captured_shell)
+
+    def test_unset_bad_base_subscript_is_fatal(self, captured_shell):
+        rc = captured_shell.run_command('echo "[${a[08]}]" after')
+        assert rc == 1
+        self._assert_fatal(captured_shell, "value too great for base")
+
+    def test_unset_operator_bad_subscript_is_fatal(self, captured_shell):
+        # Even the :- operator form evaluates the subscript on an unset name
+        # (bash): ${a[1//]:-def} errors rather than yielding "def".
+        rc = captured_shell.run_command('echo "[${a[1//]:-def}]" after')
+        assert rc == 1
+        self._assert_fatal(captured_shell)
+
+    def test_unset_valid_subscript_is_empty(self, captured_shell):
+        # A subscript that EVALUATES cleanly yields empty (element absent),
+        # status 0 — the validation must not break the ordinary unset read.
+        rc = captured_shell.run_command('echo "[${a[1+1]}]" after')
+        assert rc == 0
+        assert captured_shell.get_stdout() == "[] after\n"
+        assert captured_shell.get_stderr() == ""
+
+    def test_unset_length_form_is_zero_without_validation(self, captured_shell):
+        # ${#name[sub]} on an UNSET name is 0 without evaluating the subscript
+        # (bash): the ONE operator that does not validate. ${#a[1//]} is 0.
+        rc = captured_shell.run_command('echo "[${#a[1//]}]" after')
+        assert rc == 0
+        assert captured_shell.get_stdout() == "[0] after\n"
+        assert captured_shell.get_stderr() == ""
+
+    def test_scalar_index_zero_addresses_value(self, captured_shell):
+        # A scalar's subscript is ARITHMETIC: index 0 (here 1-1) is $x.
+        rc = captured_shell.run_command('x=5; echo "[${x[1-1]}]"')
+        assert rc == 0
+        assert captured_shell.get_stdout() == "[5]\n"
+
+    def test_scalar_bad_subscript_is_fatal(self, captured_shell):
+        rc = captured_shell.run_command('x=5; echo "[${x[1//]}]" after')
+        assert rc == 1
+        self._assert_fatal(captured_shell)
+
+    def test_declared_assoc_unset_key_never_validates(self, captured_shell):
+        # A DECLARED associative array uses literal keys — "1//" is just an
+        # absent key, not an arithmetic error (bash).
+        rc = captured_shell.run_command('declare -A h; echo "[${h[1//]}]" after')
+        assert rc == 0
+        assert captured_shell.get_stdout() == "[] after\n"
+        assert captured_shell.get_stderr() == ""
