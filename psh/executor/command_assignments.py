@@ -197,7 +197,7 @@ class CommandAssignments:
             value = self._expand_value(value, value_word)
             if xtrace:
                 from ..core.options import xtrace_quote
-                ps4 = self.state.get_variable('PS4', '+ ')
+                ps4 = self.expansion_manager.expand_ps4()
                 # bash quotes the assignment VALUE (`x='a;b'`), not `x=`.
                 self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
                 self.state.stderr.flush()
@@ -253,7 +253,8 @@ class CommandAssignments:
     # Prefix assignments (FOO=bar cmd)
     # ------------------------------------------------------------------
 
-    def apply_prefix(self, raw_assignments: List[RawAssignment]) -> PrefixOutcome:
+    def apply_prefix(self, raw_assignments: List[RawAssignment],
+                     temp_scope: bool = False) -> PrefixOutcome:
         """Apply variable assignments for command execution.
 
         For command-prefixed assignments (FOO=bar cmd), we need to:
@@ -262,6 +263,17 @@ class CommandAssignments:
 
         Values are expanded one at a time as they are applied, so each
         sees the assignments to its left (`A=1 B=$A cmd` gives B=1, bash).
+
+        ``temp_scope`` selects bash's *temporary variable context* model,
+        used when the command resolves to a shell FUNCTION: the caller has
+        already pushed a dedicated temp-env scope (``push_temp_env_scope``),
+        so each prefix variable becomes an EXPORTED local of that scope
+        (``set_temp_env_var``) rather than a save-and-restore write to the
+        enclosing scope. This is what makes a body's ``declare -g``/``export``
+        write survive the return (it targets the global, below the temp
+        layer) while a plain body assignment is discarded (it updates the
+        temp layer). The caller pops the scope afterwards, so no per-variable
+        ``saved`` snapshot is produced in this mode.
 
         A readonly assignment does NOT abort the command (bash 5.2,
         probe-verified): the error is reported, that one assignment is
@@ -295,10 +307,33 @@ class CommandAssignments:
                 # set -x: a command-prefix assignment (`x=5 cmd`) is traced
                 # before the command itself (bash), value-quoted like a pure one.
                 from ..core.options import xtrace_quote
-                ps4 = self.state.get_variable('PS4', '+ ')
+                ps4 = self.expansion_manager.expand_ps4()
                 self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
             var, resolved = resolve_append_assignment(
                 self.state.scope_manager, var, value)
+            # A nameref prefix (``declare -n r=a; r=x cmd``) writes THROUGH to
+            # the target, so key the save/restore (and env) on the target name.
+            # Otherwise the save was keyed on ``r`` while set_variable mutated
+            # ``a``, and restore left ``a`` exported (bash: ``declare --``).
+            # A subscripted target (nameref to an array element) is left as-is —
+            # set_variable routes that through the element setter.
+            write_name = self.state.scope_manager.resolve_nameref_name(var)
+            if '[' not in write_name:
+                var = write_name
+            if temp_scope:
+                # Function call: the caller pushed a temp-env scope; place the
+                # variable there as an exported local (env sync is automatic
+                # via the variable_changed observer). A readonly shadowed name
+                # is reported and skipped, exactly like the save/restore path.
+                try:
+                    self.state.scope_manager.set_temp_env_var(var, resolved)
+                except ReadonlyVariableError as e:
+                    print(f"psh: {e.name}: readonly variable",
+                          file=self.state.stderr)
+                    assignment_error = True
+                    continue
+                assignments.append((var, resolved))
+                continue
             # Save shell state, environment value, and prior export status
             # (first write wins if the same variable is assigned twice). The
             # state snapshot is scope-aware: None means the variable was

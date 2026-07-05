@@ -24,6 +24,15 @@ def _parse_for_analysis(shell: 'Shell', content: str) -> Any:
     reported as a real command.)
     """
     from ..utils import contains_heredoc
+
+    # Join backslash-newline continuations before tokenizing, exactly as the
+    # execution path does (SourceProcessor._preprocess_command). The lexer
+    # does NOT collapse a continuation in every context (`then\`, inside
+    # `[[ ]]`), so without this the analysis modes reported false syntax
+    # errors on valid scripts that execute fine.
+    from .input_preprocessing import process_line_continuations
+    content = process_line_continuations(content)
+
     if contains_heredoc(content):
         from ..lexer import tokenize_with_heredocs
         from ..parser import parse_with_heredocs

@@ -1,82 +1,200 @@
 """Shell state related builtins (history, version, local)."""
 
-from typing import TYPE_CHECKING, List
+import re
+from typing import TYPE_CHECKING, List, Optional
 
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .registry import builtin
 
 if TYPE_CHECKING:
+    from ..interactive.history_manager import HistoryManager
     from ..shell import Shell
+
+
+_HISTORY_USAGE = ("usage: history [-c] [-d offset] [n] or history -anrw "
+                  "[filename] or history -ps arg [arg...]")
 
 
 @builtin
 class HistoryBuiltin(Builtin):
-    """Display command history."""
+    """Display or manipulate the command history list."""
 
     @property
     def name(self) -> str:
         return "history"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        """Display command history."""
-        # NOTE: deliberately NOT parse_flags(). This is a `[n] | -c` dispatch on
-        # args[1], not a getopt loop: a numeric `n` operand (`history 5`) is not
-        # a flag, and the bad-input messages/exit codes differ from the shared
-        # helper's contract — `-5`/`-d`/`-w` yield "numeric argument required"
-        # (or bare "invalid option") at exit 1, and `--` is itself "numeric
-        # argument required", whereas parse_flags would emit "-X: invalid
-        # option" + a usage line at exit 2 and treat `--` as end-of-options.
-        if len(args) > 1:
-            # Check for -c flag to clear history
-            if args[1] == '-c':
-                # Route through the HistoryManager so the file-sync marker
-                # (_file_synced_len) is reset too. Clearing state.history
-                # directly left the marker stale, so commands added AFTER the
-                # clear were dropped from HISTFILE on save (data loss).
-                hist_mgr = getattr(
-                    getattr(shell, 'interactive_manager', None),
-                    'history_manager', None)
-                if hist_mgr is not None:
-                    hist_mgr.clear_history()
-                else:
-                    shell.state.history.clear()
-                return 0
+        """Display or manipulate command history.
 
-            try:
-                count = int(args[1])
-                if count < 0:
-                    self.error(f"{args[1]}: invalid option", shell)
-                    return 1
-            except ValueError:
-                self.error(f"{args[1]}: numeric argument required", shell)
-                return 1
-        else:
-            # Default to showing last 10 commands (bash behavior)
-            count = 10
+        NOTE: deliberately NOT parse_flags(). This is a hand dispatch because
+        bash's ``history`` conflates a numeric ``n`` operand (``history 5``,
+        show the last 5) with option letters, and its bad-input messages/exit
+        codes (``abc: numeric argument required`` at 1, ``-5: invalid option``
+        at 2, ``5: history position out of range`` for ``-d``) diverge from the
+        shared helper's contract.
+        """
+        if len(args) <= 1:
+            return self._display(shell, None)
 
-        # Calculate the starting index
+        first = args[1]
+        # Anything beginning with '-' (other than a bare '-') is an option;
+        # bash even rejects '-5' as an invalid option rather than a count.
+        if first.startswith('-') and first != '-':
+            return self._dispatch_flag(first, args[2:], shell)
+
+        # Otherwise a numeric operand: show the last N entries.
+        try:
+            count = int(first)
+        except ValueError:
+            self.error(f"{first}: numeric argument required", shell)
+            return 1
+        return self._display(shell, count)
+
+    # -- display ------------------------------------------------------------
+
+    def _display(self, shell: 'Shell', count: Optional[int]) -> int:
         history = shell.state.history
-        start = max(0, len(history) - count)
-        history_slice = history[start:]
-
-        # Print with line numbers
-        start_num = len(history) - len(history_slice) + 1
-        for i, cmd in enumerate(history_slice):
+        if count is None:
+            entries = history           # bash lists the WHOLE history
+        else:
+            entries = history[max(0, len(history) - count):]
+        start_num = len(history) - len(entries) + 1
+        for i, cmd in enumerate(entries):
             self.write_line(f"{start_num + i:5d}  {cmd}", shell)
-
         return 0
+
+    # -- option dispatch ----------------------------------------------------
+
+    def _dispatch_flag(self, flag: str, rest: List[str], shell: 'Shell') -> int:
+        hist_mgr = self._history_manager(shell)
+        if hist_mgr is None:
+            # No interactive history manager available (unexpected); the only
+            # thing we can still honor without one is clearing the raw list.
+            if flag == '-c':
+                shell.state.history.clear()
+                return 0
+            return 0
+
+        if flag == '-c':
+            # Route through the manager so the file-sync markers reset too —
+            # clearing state.history directly left them stale and dropped
+            # post-clear commands from HISTFILE on save (data loss).
+            hist_mgr.clear_history()
+            return 0
+
+        if flag in ('-w', '-r', '-a', '-n'):
+            path = rest[0] if rest else None
+            method = {
+                '-w': hist_mgr.write_history,
+                '-r': hist_mgr.read_history,
+                '-a': hist_mgr.append_history,
+                '-n': hist_mgr.read_new_history,
+            }[flag]
+            if not method(path):
+                target = path or shell.state.history_file
+                self.error(f"{target}: cannot access history file", shell)
+                return 1
+            return 0
+
+        if flag == '-d':
+            return self._delete(rest, shell, hist_mgr)
+
+        if flag == '-s':
+            # Store the args as one entry, without executing them.
+            if rest:
+                hist_mgr.store_entry(' '.join(rest))
+            return 0
+
+        if flag == '-p':
+            # Perform history expansion on args and print without storing.
+            # Implementing this needs the interactive '!' expansion engine;
+            # be honest rather than echo a misleadingly-unexpanded result.
+            self.error("-p: history expansion not supported by psh", shell)
+            return 2
+
+        return self._usage_error(f"{flag}: invalid option", shell)
+
+    def _delete(self, rest: List[str], shell: 'Shell',
+                hist_mgr: 'HistoryManager') -> int:
+        if not rest:
+            return self._usage_error("-d: option requires an argument", shell)
+        spec = rest[0]
+        n = len(shell.state.history)
+
+        # Single offset (a positive position, or negative from the end).
+        try:
+            idx = self._resolve_offset(int(spec), n)
+        except ValueError:
+            idx = None
+        else:
+            if idx is None:
+                self.error(f"{spec}: history position out of range", shell)
+                return 1
+            hist_mgr.delete_entry(idx + 1, idx + 1)
+            return 0
+
+        # Range form: start-end (both 1-based, inclusive).
+        m = re.fullmatch(r'(\d+)-(\d+)', spec)
+        if m:
+            lo = self._resolve_offset(int(m.group(1)), n)
+            hi = self._resolve_offset(int(m.group(2)), n)
+            if lo is None or hi is None or lo > hi:
+                self.error(f"{spec}: history position out of range", shell)
+                return 1
+            hist_mgr.delete_entry(lo + 1, hi + 1)
+            return 0
+
+        # Non-numeric argument — bash reports it as out of range, not a
+        # "numeric argument required".
+        self.error(f"{spec}: history position out of range", shell)
+        return 1
+
+    @staticmethod
+    def _resolve_offset(offset: int, n: int) -> Optional[int]:
+        """Map a 1-based history position (negative = from the end) to a 0-based
+        index, or None when out of range."""
+        if offset > 0:
+            idx = offset - 1
+        elif offset < 0:
+            idx = n + offset
+        else:
+            return None
+        return idx if 0 <= idx < n else None
+
+    def _usage_error(self, message: str, shell: 'Shell') -> int:
+        self.error(message, shell)
+        self.error(_HISTORY_USAGE, shell)
+        return 2
+
+    @staticmethod
+    def _history_manager(shell: 'Shell') -> 'Optional[HistoryManager]':
+        return getattr(getattr(shell, 'interactive_manager', None),
+                       'history_manager', None)
 
     @property
     def help(self) -> str:
-        return """history: history [n] | history -c
+        return """history: history [n] | history -c | history -d offset[-end]
+       history -anrw [filename] | history -s arg [arg...]
 
-    Display the command history list with line numbers.
+    Display or manipulate the command history list.
+
+    With no options, list the whole history with line numbers; a numeric N
+    lists only the last N entries.
 
     Options:
-      n     Show only the last n entries
-      -c    Clear the history list
+      -c           Clear the history list
+      -d offset    Delete the entry at OFFSET (negative counts from the end;
+                   OFFSET-END deletes a range)
+      -a [file]    Append new history since the last write/append to FILE
+                   (default: $HISTFILE)
+      -n [file]    Read history lines from FILE not already read into memory
+      -r [file]    Read (append) FILE's contents into the history list
+      -w [file]    Write the whole history list to FILE
+      -s arg ...   Store ARGs as a single entry, without executing them
 
-    Default is to show the last 10 commands."""
+    The -p (expand-and-print) option is not supported.
+
+    Default is to show the entire history."""
 
 
 @builtin
@@ -236,9 +354,19 @@ class LocalBuiltin(Builtin):
                     # expanded this argument; expanding again here would run
                     # single-quoted text like '$(cmd)' a second time.
                     if append:
-                        from ..core import resolve_append_assignment
-                        _, var_value = resolve_append_assignment(
-                            shell.state.scope_manager, var_name + '+', var_value)
+                        # ``local x+=v`` appends only to an x ALREADY local in
+                        # THIS scope; a fresh local starts from empty even when
+                        # an outer scope has x (bash: g(){ local x+=INNER;}
+                        # called under f's ``local x=out`` yields ``INNER``, not
+                        # ``outINNER``). resolve_append_assignment reads the
+                        # innermost instance, so gate it on the current scope.
+                        cur = shell.state.scope_manager.current_scope.variables.get(var_name)
+                        if cur is not None and not cur.is_unset:
+                            from ..core import resolve_append_assignment
+                            _, var_value = resolve_append_assignment(
+                                shell.state.scope_manager, var_name + '+', var_value)
+                        # else: fresh local — the raw RHS IS the value (an -i
+                        # flag, if any, is applied by create_local's transform).
 
                     # Attribute transforms (-u/-l/-i) are applied by the single
                     # chokepoint in create_local -> ScopeManager._apply_attributes,

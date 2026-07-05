@@ -98,6 +98,16 @@ class OperatorDebrisWordRecognizer(TokenRecognizer):
             # Stop at operators (but not brackets - they might be part of
             # glob patterns)
             if char in _HARD_OPERATORS:
+                # A `!` immediately after a bracket-glob `[` is the negation
+                # marker of a `[!...]` character class (bash's `[!chars]`),
+                # not a terminator. Without this the debris word splits
+                # `[!x]` into `[` `!x`, which the recursive-descent parser
+                # re-joins but the combinator's case-pattern path does not —
+                # so a case arm like `[![:space:]])` diverged between parsers.
+                if char == '!' and value.endswith('['):
+                    value += char
+                    pos += 1
+                    continue
                 break
 
             # Stop at quotes and expansions

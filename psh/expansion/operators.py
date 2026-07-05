@@ -521,7 +521,8 @@ class OperatorOpsMixin(_Base):
     # element of "${arr[@]<op>...}". The single source of truth is _value_op;
     # both _apply_operator (scalar) and _apply_op_per_element consume it.
     _VALUE_OPERATORS = frozenset({
-        '#', '##', '%', '%%', '/', '//', '/#', '/%', '^', '^^', ',', ',,',
+        '#', '##', '%', '%%', '/', '//', '/#', '/%',
+        '^', '^^', ',', ',,', '~', '~~',
     })
 
     def _value_op(self, operator: str, value: str, operand: Optional[str],
@@ -545,8 +546,8 @@ class OperatorOpsMixin(_Base):
             return pe.remove_longest_suffix(value, self._expand_pattern_operand(operand))
         if operator in ('/', '//', '/#', '/%'):
             return self._substitute(operator, value, operand)
-        # Case mods: an absent pattern (parser emits '') defaults to '?' —
-        # every character matches.
+        # Case mods (^ ^^ upper, , ,, lower, ~ ~~ toggle): an absent pattern
+        # (parser emits '') defaults to '?' — every character matches.
         if operator == '^':
             return pe.uppercase_first(value, self._expand_pattern_operand(operand) or '?')
         if operator == '^^':
@@ -555,6 +556,10 @@ class OperatorOpsMixin(_Base):
             return pe.lowercase_first(value, self._expand_pattern_operand(operand) or '?')
         if operator == ',,':
             return pe.lowercase_all(value, self._expand_pattern_operand(operand) or '?')
+        if operator == '~':
+            return pe.toggle_first(value, self._expand_pattern_operand(operand) or '?')
+        if operator == '~~':
+            return pe.toggle_all(value, self._expand_pattern_operand(operand) or '?')
         return None
 
     def _apply_op_per_element(self, operator, value, operand, var_name):
