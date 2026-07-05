@@ -29,13 +29,23 @@ class ModularLexer:
     process substitution, comments, literals/words).
     """
 
-    def __init__(self, input_string: str, config: Optional[LexerConfig] = None):
+    def __init__(self, input_string: str, config: Optional[LexerConfig] = None,
+                 initial_context: Optional[LexerContext] = None):
         """
         Initialize the modular lexer.
 
         Args:
             input_string: The input string to tokenize
             config: Optional lexer configuration
+            initial_context: Optional cross-line state to resume from. The
+                heredoc driver passes the context left by the previous logical
+                command so a per-command tokenization behaves exactly like the
+                tail of a single from-scratch pass over the joined command
+                text — without re-lexing the accumulated prefix. It is used
+                as-is (and mutated during tokenization), so callers pass a
+                fresh :meth:`LexerContext.copy`; it must already carry the
+                intended ``posix_mode``. When omitted a fresh context is
+                created and seeded from ``config``.
         """
         self.input = input_string
         self.config = config or LexerConfig()
@@ -45,10 +55,12 @@ class ModularLexer:
         self.position_tracker = PositionTracker(input_string)
 
         # State management
-        self.context = LexerContext()
-
-        # Set posix_mode in context from config
-        self.context.posix_mode = self.config.posix_mode
+        if initial_context is not None:
+            self.context = initial_context
+        else:
+            self.context = LexerContext()
+            # Set posix_mode in context from config
+            self.context.posix_mode = self.config.posix_mode
 
         # Token recognizer system
         self.registry = RecognizerRegistry()
