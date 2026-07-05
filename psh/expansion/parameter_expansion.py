@@ -7,6 +7,10 @@ substitution, substring, case modification, name matching). Parsing of the
 import re
 from typing import TYPE_CHECKING, List, Optional, Union
 
+# Length-safe (single-codepoint) case mapping — see unicode_support for why
+# str.upper()/str.lower() are wrong here (ß -> "SS" grows the string).
+from ..lexer.unicode_support import simple_lower, simple_upper, toggle_case
+
 # Canonical pattern engine lives in pattern.py; re-exported here because
 # many call sites import PatternMatcher from this module.
 from .pattern import PatternMatcher
@@ -433,21 +437,32 @@ class ParameterExpansion:
     def uppercase_first(self, value: str, pattern: str = '?') -> str:
         """Uppercase the first char if it matches the pattern."""
         if value and self._char_matches(value[0], pattern):
-            return value[0].upper() + value[1:]
+            return simple_upper(value[0]) + value[1:]
         return value
 
     def uppercase_all(self, value: str, pattern: str = '?') -> str:
         """Uppercase every char matching the pattern."""
-        return ''.join(c.upper() if self._char_matches(c, pattern) else c
+        return ''.join(simple_upper(c) if self._char_matches(c, pattern) else c
                        for c in value)
 
     def lowercase_first(self, value: str, pattern: str = '?') -> str:
         """Lowercase the first char if it matches the pattern."""
         if value and self._char_matches(value[0], pattern):
-            return value[0].lower() + value[1:]
+            return simple_lower(value[0]) + value[1:]
         return value
 
     def lowercase_all(self, value: str, pattern: str = '?') -> str:
         """Lowercase every char matching the pattern."""
-        return ''.join(c.lower() if self._char_matches(c, pattern) else c
+        return ''.join(simple_lower(c) if self._char_matches(c, pattern) else c
+                       for c in value)
+
+    def toggle_first(self, value: str, pattern: str = '?') -> str:
+        """Toggle the case of the first char if it matches the pattern (${x~})."""
+        if value and self._char_matches(value[0], pattern):
+            return toggle_case(value[0]) + value[1:]
+        return value
+
+    def toggle_all(self, value: str, pattern: str = '?') -> str:
+        """Toggle the case of every char matching the pattern (${x~~})."""
+        return ''.join(toggle_case(c) if self._char_matches(c, pattern) else c
                        for c in value)

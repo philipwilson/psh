@@ -265,10 +265,14 @@ class TestScanStrategy:
     def test_operator_chars_in_operand_do_not_match(self):
         assert triple('v:-a:b-c') == ('v', ':-', 'a:b-c')
 
-    def test_unrecognized_text_is_plain(self):
-        # ${v~~} (bash's undocumented case-toggle) is not implemented;
-        # historical behavior: a plain (unset) name.
-        assert triple('v~~') == ('v~~', None, None)
+    def test_case_toggle_operators(self):
+        # ${v~} / ${v~~} are the case-toggle case-mods (siblings of ^/^^ and
+        # ,/,,); an absent pattern yields word ''. ~~ is the two-char op, so
+        # it beats ~ at the same position.
+        assert triple('v~') == ('v', '~', '')
+        assert triple('v~~') == ('v', '~~', '')
+        assert triple('v~[a-z]') == ('v', '~', '[a-z]')
+        assert triple('v~~[a-z]') == ('v', '~~', '[a-z]')
 
 
 class TestStrRoundTrip:

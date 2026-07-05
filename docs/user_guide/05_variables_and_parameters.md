@@ -502,7 +502,26 @@ psh$ for word in $words; do
 > done
 psh$ echo "$result"
 The Quick Brown Fox 
+
+# Toggle case: ${var~} flips the first character, ${var~~} flips all
+psh$ x="Hello World"
+psh$ echo ${x~}               # First character
+hello World
+psh$ echo ${x~~}              # All characters
+hELLO wORLD
+
+# Toggle only characters matching a pattern
+psh$ echo ${x~~[a-z]}         # Toggle lowercase letters only
+HELLO WORLD
 ```
+
+All six case-mods (`^` `^^` upper, `,` `,,` lower, `~` `~~` toggle) also apply
+per element to arrays: `${arr[@]~~}` toggles every element. Case conversion is
+Unicode-aware and length-preserving — like bash, a single character maps to at
+most one character, so `${x^^}` on `straße` yields `STRAßE` (the `ß` is left
+alone, not expanded to `SS`). This mapping is locale-independent in psh;
+see [Differences from Bash](17_differences_from_bash.md) for the rare
+codepoints where a host's C library differs.
 
 ### Variable Name Matching
 
