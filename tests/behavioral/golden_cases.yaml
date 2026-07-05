@@ -6068,3 +6068,65 @@
   stdout: "y\ny\ny\ny\n"
   stderr: ""
   exit_code: 0
+# R18 TIER-2 T2-B: CORE STATE (temp-env scoping, id vars, array/local append)
+# =============================================================================
+
+- name: r18t2_corestate_tempenv_declare_g_survives
+  command: 'X=outer; f() { declare -g X=2; }; X=1 f; echo "$X"'
+  stdout: "2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_tempenv_export_survives
+  command: 'X=outer; f() { export X=2; }; X=1 f; declare -p X'
+  stdout: "declare -x X=\"2\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_tempenv_plain_write_discarded
+  command: 'X=outer; f() { X=2; }; X=1 f; echo "$X"'
+  stdout: "outer\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_tempenv_declare_g_then_plain
+  command: 'X=outer; f() { declare -g X=2; X=3; }; X=1 f; echo "$X"'
+  stdout: "2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_uid_readonly_assignment
+  command: "UID=0"
+  stdout: ""
+  stderr: "readonly variable"
+  exit_code: 1
+
+- name: r18t2_corestate_local_redeclare_uppercase_append
+  command: 'f() { local -u x=ab; local x+=cd; echo "$x"; }; f'
+  stdout: "ABCD\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_local_redeclare_integer_append
+  command: 'f() { local -i n=5; local n+=3; echo "$n"; }; f'
+  stdout: "8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_array_append_uppercase_element
+  command: 'declare -u a; a+=(three); echo "${a[0]}"'
+  stdout: "THREE\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_nameref_tempenv_no_export_leak
+  command: 'declare -n r=a; a=orig; r=x true; declare -p a'
+  stdout: "declare -- a=\"orig\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_corestate_integer_array_elem0_append
+  command: 'declare -ai a=(5 6); a+=3; echo "${a[0]}"'
+  stdout: "8\n"
+  stderr: ""
+  exit_code: 0

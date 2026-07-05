@@ -8,11 +8,22 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from .exceptions import ReadonlyVariableError
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
-# Variables whose value is computed on read but whose assignment is honored
+# Variables whose value is computed on read but whose assignment is HONORED
 # (SECONDS resets the elapsed-time baseline; RANDOM seeds the generator).
 # RANDOM additionally MUTATES generator state on each read, so name-only
 # inspection paths (nameref resolution) must not route through its read.
 _COMPUTED_SPECIAL_VARS = frozenset({'SECONDS', 'RANDOM'})
+
+# Computed-on-read specials whose assignment has NO EFFECT (bash: "assigning
+# a value to BASHPID/SRANDOM has no effect"), and which lose their special
+# behavior once `unset`. BASHPID is the current process pid (differs from $$
+# in a subshell); SRANDOM is a fresh 32-bit value from a good entropy source
+# on each read (unrelated to RANDOM's seed).
+_IGNORE_ASSIGN_SPECIAL_VARS = frozenset({'BASHPID', 'SRANDOM'})
+
+# Every computed-on-read special. Name-only inspection (nameref resolution)
+# must not route through their read, since RANDOM/SRANDOM vary per read.
+_ALL_COMPUTED_SPECIAL_VARS = _COMPUTED_SPECIAL_VARS | _IGNORE_ASSIGN_SPECIAL_VARS
 
 
 def _intrand32(seed: int) -> int:
@@ -40,6 +51,11 @@ class VariableScope:
         self.variables: Dict[str, Variable] = {}
         self.parent = parent
         self.name = name or 'anonymous'
+        # True for a command's temp-env prefix layer (``X=1 func``). A plain
+        # body assignment updates this layer (discarded on return), but the
+        # ``export``/``declare -g`` builtins write PAST it to the variable's
+        # real home (bash) — see set_variable(skip_temp_env=...).
+        self.is_temp_env = False
         # `local -` snapshot: (set-option values, edit_mode) saved when the
         # function ran `local -`; restored by the function-return path so the
         # options changed inside the function revert (bash). None if unused.
@@ -51,6 +67,7 @@ class VariableScope:
     def copy(self) -> 'VariableScope':
         """Create a deep copy of this scope."""
         new_scope = VariableScope(parent=None, name=self.name)
+        new_scope.is_temp_env = self.is_temp_env
         for name, var in self.variables.items():
             new_scope.variables[name] = var.copy()
         return new_scope
@@ -148,6 +165,45 @@ class ScopeManager:
         self._debug_print(f"Pushing scope for function: {name or 'anonymous'}")
         return new_scope
 
+    def push_temp_env_scope(self) -> VariableScope:
+        """Push a scope holding a command's temp-env prefix assignments.
+
+        bash treats ``X=1 func`` as a *temporary variable context* layered
+        UNDER the function's own locals: the prefix vars shadow globals for
+        the duration of the call, a plain assignment in the body updates
+        this temporary layer (and is discarded on return), while a
+        ``declare -g``/``export`` in the body reaches PAST it to the real
+        global and therefore SURVIVES the return. Modelling the temp-env as
+        a genuine scope reproduces all of that exactly — see
+        ``CommandAssignments.apply_prefix``. Named distinctly from a
+        function scope so ``--debug-scopes`` output stays legible.
+        """
+        scope = self.push_scope(name='tempenv')
+        scope.is_temp_env = True
+        return scope
+
+    def set_temp_env_var(self, name: str, value: Any) -> None:
+        """Create one temp-env prefix variable in the current (temp-env) scope.
+
+        The variable is EXPORTED for the command's duration (bash places a
+        prefix assignment in the command's environment) but does NOT inherit
+        the shadowed variable's other attributes: ``declare -i X=5; X=abc f``
+        gives the body a plain exported ``X="abc"``, not an integer-evaluated
+        ``0`` (probe-verified against bash 5.2 — the value is stored raw). A
+        readonly shadowed variable blocks the assignment with
+        ReadonlyVariableError, exactly like any prefix assignment to a
+        readonly name. The env sync happens through the variable_changed
+        observer (this var is the innermost exported instance of the name).
+        """
+        name = self.resolve_nameref_name(name)
+        existing = self.get_variable_object(name)
+        if existing is not None and existing.is_readonly:
+            raise ReadonlyVariableError(name)
+        self.current_scope.variables[name] = Variable(
+            name=name, value=value, attributes=VarAttributes.EXPORT)
+        self._notify_path_changed(name)
+        self._notify_variable_changed(name)
+
     def pop_scope(self) -> Optional[VariableScope]:
         """Remove scope on function exit."""
         if len(self.scope_stack) > 1:
@@ -212,12 +268,13 @@ class ScopeManager:
         rejects the write with "circular name reference".
         """
         from .exceptions import NamerefCycleError
-        # Dynamically computed special variables (e.g. RANDOM, SECONDS) are
-        # never namerefs, and probing them through get_variable_object here
-        # would fire their side effects (advancing the RANDOM generator) on
-        # what is meant to be a name-only inspection. Resolve them to
-        # themselves without touching the computed read path.
-        if (name in _COMPUTED_SPECIAL_VARS
+        # Dynamically computed special variables (e.g. RANDOM, SECONDS,
+        # SRANDOM, BASHPID) are never namerefs, and probing them through
+        # get_variable_object here would fire their side effects (advancing
+        # the RANDOM generator, drawing a fresh SRANDOM) on what is meant to
+        # be a name-only inspection. Resolve them to themselves without
+        # touching the computed read path.
+        if (name in _ALL_COMPUTED_SPECIAL_VARS
                 and name not in self._computed_special_deactivated):
             return name
         seen = set()
@@ -255,6 +312,22 @@ class ScopeManager:
         self._debug_print(f"Variable lookup: {name} not found in any scope")
         return None
 
+    def _innermost_scope_with(self, name: str,
+                              skip_temp_env: bool = False) -> Optional[VariableScope]:
+        """Innermost scope whose dict holds *name* (tombstones count), or None.
+
+        The single scope-search used to pick a write target. With
+        ``skip_temp_env`` it steps past a command's temp-env prefix layer, so
+        the ``export``/``declare -g`` builtins reach the variable's real home
+        while a plain assignment still lands on the temp layer (bash).
+        """
+        for scope in reversed(self.scope_stack):
+            if skip_temp_env and scope.is_temp_env:
+                continue
+            if name in scope.variables:
+                return scope
+        return None
+
     def get_declared_variable_object(self, name: str) -> Optional[Variable]:
         """Scope-chain lookup that also finds declared-but-unset variables.
 
@@ -273,7 +346,8 @@ class ScopeManager:
 
     def set_variable(self, name: str, value: Any,
                      attributes: VarAttributes = VarAttributes.NONE,
-                     local: bool = False, global_scope: bool = False):
+                     local: bool = False, global_scope: bool = False,
+                     skip_temp_env: bool = False):
         """Set variable with attributes in appropriate scope.
 
         Args:
@@ -288,6 +362,13 @@ class ScopeManager:
                    global. The existence/readonly/attribute-merge checks
                    then consult the global instance, not the innermost
                    visible one.
+            skip_temp_env: If True (the ``export`` builtin / ``cd``'s PWD
+                   write), the innermost-scope search that picks the target
+                   and the existence/readonly check both SKIP a command's
+                   temp-env prefix layer, so ``X=1 f; f(){ export X=2; }``
+                   writes the real global X (which survives the return),
+                   matching bash — a plain body ``X=2`` still updates the
+                   temp layer. No effect when no temp-env scope is present.
         """
         # Redirect writes through a nameref to its target, EXCEPT when we are
         # defining the nameref itself (NAMEREF in the new attributes), where the
@@ -324,12 +405,28 @@ class ScopeManager:
             # spuriously advance the RANDOM generator.
             return
 
+        # BASHPID / SRANDOM: assignment has NO EFFECT (bash) — silently drop it
+        # (still computed on read). Skipped once `unset` deactivates the name
+        # and for array assignments.
+        if (name in _IGNORE_ASSIGN_SPECIAL_VARS
+                and name not in self._computed_special_deactivated
+                and not (attributes & VarAttributes.NAMEREF)
+                and not isinstance(value, (IndexedArray, AssociativeArray))):
+            return
+
         # Check if variable exists. `declare -g` targets the global scope, so
         # its existence/readonly/attribute-merge checks must look at the global
         # instance (a same-named local is irrelevant); a global tombstone reads
         # as absent, like get_variable_object.
         if global_scope:
             existing = self.global_scope.variables.get(name)
+            if existing is not None and existing.is_unset:
+                existing = None
+        elif skip_temp_env:
+            # export/cd write past a temp-env layer to the variable's real
+            # home; the readonly/merge check must consult THAT instance.
+            sc = self._innermost_scope_with(name, skip_temp_env=True)
+            existing = sc.variables.get(name) if sc is not None else None
             if existing is not None and existing.is_unset:
                 existing = None
         else:
@@ -360,12 +457,9 @@ class ScopeManager:
             # local (tombstone) counts — bash rebinds ``local x; unset x;
             # x=new`` (and an assignment from a CALLED function) in the
             # declaring scope. With no instance anywhere, create a global.
-            for scope in reversed(self.scope_stack):
-                if name in scope.variables:
-                    target_scope = scope
-                    break
-            else:
-                target_scope = self.global_scope
+            # ``skip_temp_env`` (export/cd) steps past a temp-env prefix layer.
+            sc = self._innermost_scope_with(name, skip_temp_env=skip_temp_env)
+            target_scope = sc if sc is not None else self.global_scope
             scope_name = target_scope.name
 
         # Create or update variable
@@ -430,19 +524,40 @@ class ScopeManager:
             if name in scope.variables and scope.variables[name].is_readonly:
                 raise ReadonlyVariableError(name)
 
-        # bash: a local inherits the EXPORT attribute (and only that) of
-        # the variable it shadows — probe: ``declare -xi N=5; f() { local
-        # N; declare -p N; }; f`` prints ``declare -x N`` (no -i). The
-        # exported local is what children see while the function runs.
-        shadowed = self.get_variable_object(name)
-        if shadowed is not None and shadowed.is_exported:
-            attributes |= VarAttributes.EXPORT
+        # Re-declaring a variable ALREADY local in this scope MERGES its
+        # existing attributes (bash): ``local -u x=ab; local x+=cd`` keeps
+        # -u so the appended value uppercases to ``ABCD``, and ``local -i
+        # n=5; local n+=3`` keeps -i so the append arithmetic-adds to ``8``.
+        # A same-scope tombstone (``local x; unset x``) does NOT count — a
+        # later ``local x=v`` starts fresh.
+        existing_local = self.current_scope.variables.get(name)
+        redeclare = existing_local is not None and not existing_local.is_unset
+        if redeclare:
+            assert existing_local is not None  # narrow for type-checker
+            attributes = existing_local.attributes | attributes
+        else:
+            # New local: inherit ONLY the EXPORT attribute of the variable it
+            # shadows — probe: ``declare -xi N=5; f() { local N; declare -p N;
+            # }; f`` prints ``declare -x N`` (no -i). The exported local is
+            # what children see while the function runs.
+            shadowed = self.get_variable_object(name)
+            if shadowed is not None and shadowed.is_exported:
+                attributes |= VarAttributes.EXPORT
 
         if value is not None:
             transformed_value = self._apply_attributes(value, attributes)
             var = Variable(name=name, value=transformed_value, attributes=attributes)
             self.current_scope.variables[name] = var
             self._debug_print(f"Creating local variable: {name} = {transformed_value}")
+            self._notify_variable_changed(name)
+        elif redeclare:
+            # Value-less re-declare of an existing local (``local -u x=hi;
+            # local x``): keep the value untouched, only merge the attributes
+            # — bash does NOT re-apply a case attribute to the existing value
+            # (``local x`` leaves x as ``hi``, now shown ``declare -u``).
+            assert existing_local is not None  # narrow for type-checker
+            existing_local.attributes = attributes
+            self._debug_print(f"Re-declaring local (attrs only): {name}")
             self._notify_variable_changed(name)
         else:
             # Create a declared-but-unset local (``local var``): it
@@ -476,16 +591,17 @@ class ScopeManager:
         unset of the tombstone is a no-op, but the same cell seen from a
         DEEPER scope is removed outright like any outer instance.
         """
-        # SECONDS/RANDOM lose their special computed behavior once unset and
-        # become ordinary variables (bash: after `unset SECONDS`, a later
-        # `SECONDS=foo` stores the literal string). Record the deactivation
-        # and drop any recorded baseline/seed, then fall through so the name
-        # is also cleared from the scope chain.
-        if name in _COMPUTED_SPECIAL_VARS:
+        # Computed specials (SECONDS/RANDOM/BASHPID/SRANDOM) lose their special
+        # behavior once unset and become ordinary variables (bash: after
+        # `unset SECONDS`, a later `SECONDS=foo` stores the literal string;
+        # `unset BASHPID` makes $BASHPID empty). Record the deactivation and
+        # drop any recorded baseline/seed, then fall through so the name is
+        # also cleared from the scope chain.
+        if name in _ALL_COMPUTED_SPECIAL_VARS:
             self._computed_special_deactivated.add(name)
             if name == 'SECONDS':
                 self._seconds_base = None
-            else:
+            elif name == 'RANDOM':
                 self._random_seed = None
 
         for scope in reversed(self.scope_stack):
@@ -626,17 +742,25 @@ class ScopeManager:
             return Variable(name='EPOCHSECONDS', value=str(int(time.time())))
         elif name == 'EPOCHREALTIME':
             return Variable(name='EPOCHREALTIME', value=f"{time.time():.6f}")
-        elif name == 'PPID':
-            if self._shell is not None:
-                return Variable(name='PPID',
-                                value=str(self._shell.state.initial_ppid))
-        elif name == 'UID':
-            return Variable(name='UID', value=str(os.getuid()))
-        elif name == 'EUID':
-            return Variable(name='EUID', value=str(os.geteuid()))
+        elif name == 'BASHPID':
+            # The CURRENT process pid — differs from $$ (shell_pid) inside a
+            # subshell / command substitution (bash). Read live via getpid so
+            # a forked child reports its own pid. Integer attribute, like bash.
+            return Variable(name='BASHPID', value=str(os.getpid()),
+                            attributes=VarAttributes.INTEGER)
+        elif name == 'SRANDOM':
+            # bash 5.1+: a fresh 32-bit value from a good entropy source on
+            # each read, UNRELATED to RANDOM's seed. os.urandom is unbuffered
+            # and independent of Python's (seedable) random module.
+            return Variable(
+                name='SRANDOM',
+                value=str(int.from_bytes(os.urandom(4), 'big')),
+                attributes=VarAttributes.INTEGER)
+        # UID/EUID/PPID are stored as real readonly-integer variables at shell
+        # startup (see ShellState.__init__), NOT computed here — that is what
+        # makes them assignment- and unset-proof and lists them in declare -p.
         elif name == 'PIPESTATUS':
             if self._shell is not None:
-                from .variables import IndexedArray, VarAttributes
                 arr = IndexedArray()
                 for i, st in enumerate(self._shell.state.pipestatus):
                     arr.set(i, str(st))
@@ -654,7 +778,6 @@ class ScopeManager:
             # caller, ... — the call stack, innermost first. function_stack is
             # pushed on entry (last = current), so reverse it.
             if self._shell and hasattr(self._shell, 'state') and self._shell.state.function_stack:
-                from .variables import IndexedArray, VarAttributes
                 arr = IndexedArray()
                 for i, fname in enumerate(reversed(self._shell.state.function_stack)):
                     arr.set(i, fname)
