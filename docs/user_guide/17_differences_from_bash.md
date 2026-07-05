@@ -309,8 +309,8 @@ f(){ trap 'echo ret' RETURN; }; f   # prints: ret
 complete -F _my_func mycommand  # Command not found
 compgen -W "words" -- prefix    # Command not found
 
-# Basic tab completion for files, directories, and commands
-# IS available in interactive mode
+# Basic tab completion for files and directories IS available in
+# interactive mode; command-name and variable-name completion are not.
 ```
 
 ### Missing Builtins

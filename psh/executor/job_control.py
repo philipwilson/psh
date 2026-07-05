@@ -29,6 +29,44 @@ def abnormal_termination_message(status: int) -> Optional[str]:
     return message
 
 
+def background_completion_label(status: Optional[int]) -> str:
+    """bash's state label for a COMPLETED background job's async notice.
+
+    This is the BACKGROUND analogue of :func:`abnormal_termination_message`
+    (the foreground diagnostic), and it differs in two bash-pinned ways
+    (probes: tmp/probes-r18t2-interactive/probe_mi3_*):
+
+    * A signal death shows the signal description (``Terminated: 15``,
+      ``Killed: 9``, ``Interrupt: 2``, ``Broken pipe: 13`` — libc
+      ``strsignal`` text, ``(core dumped)`` appended when a core was
+      written). Unlike the foreground case — which stays silent for SIGINT
+      and SIGPIPE — the background notice announces SIGINT.
+    * A normal exit shows ``Done`` (code 0) or ``Exit N`` (nonzero) — the
+      Done/Exit-N split the foreground diagnostic never needs.
+
+    This function names the label for EVERY status, SIGPIPE included
+    (``Broken pipe: 13``). The one place bash withholds a bg SIGPIPE notice —
+    an INTERACTIVE shell — is handled by the caller
+    (:meth:`JobManager._print_completion_notice`), not here, since it is a
+    display policy that depends on the shell mode, not on the status.
+
+    ``status`` is the raw waitpid status of the process that set ``$?`` (the
+    last in the pipeline); None (never reaped) is treated as a clean Done.
+    """
+    if status is None:
+        return "Done"
+    if os.WIFSIGNALED(status):
+        sig = os.WTERMSIG(status)
+        label = signal.strsignal(sig) or f"Signal {sig}"
+        if os.WCOREDUMP(status):
+            label += " (core dumped)"
+        return label
+    if os.WIFEXITED(status):
+        code = os.WEXITSTATUS(status)
+        return "Done" if code == 0 else f"Exit {code}"
+    return "Done"
+
+
 def exit_status_from_wait_status(status: int) -> int:
     """Convert a raw waitpid() status into a shell exit status.
 
@@ -418,13 +456,45 @@ class JobManager:
         if message is not None:
             print(message, file=self._notification_stream())
 
+    def _sigpipe_suppressed(self, status: Optional[int]) -> bool:
+        """True when bash would print NO notice for this completed bg job.
+
+        bash withholds the bg-job notice for a SIGPIPE death — and only
+        SIGPIPE — in INTERACTIVE shells (a broken pipe at the terminal is
+        usually benign); a non-interactive script announces it as
+        ``Broken pipe: 13``. Every other signal/exit is announced in both.
+        Verified against bash 5.2.26 (tmp/probes-r18t2-interactive: interactive
+        default AND `set -b` stay silent; `-c … wait` announces).
+        """
+        if status is None or not os.WIFSIGNALED(status):
+            return False
+        if os.WTERMSIG(status) != signal.SIGPIPE:
+            return False
+        return bool(self.shell_state is not None
+                    and self.shell_state.options.get('interactive'))
+
+    def _print_completion_notice(self, job: 'Job') -> None:
+        """Print bash's async completion notice for a finished bg job.
+
+        The state label is bash-accurate — ``Done``/``Exit N`` for a normal
+        exit and the signal description otherwise — via
+        :func:`background_completion_label`. An interactive shell withholds
+        the SIGPIPE notice (see :meth:`_sigpipe_suppressed`); the job is still
+        reaped by the caller either way.
+        """
+        status = job.processes[-1].status if job.processes else None
+        if self._sigpipe_suppressed(status):
+            return
+        label = background_completion_label(status)
+        print(f"\n[{job.job_id}]+  {label:<24}{job.command}",
+              file=self._notification_stream())
+
     def notify_completed_jobs(self):
         """Print notifications for completed background jobs."""
         completed = []
         for job_id, job in list(self.jobs.items()):
             if job.state == JobState.DONE and not job.notified and not job.foreground:
-                print(f"\n[{job.job_id}]+  Done                    {job.command}",
-                      file=self._notification_stream())
+                self._print_completion_notice(job)
                 job.notified = True
                 completed.append(job_id)
 
@@ -733,8 +803,7 @@ class JobManager:
         if (self.shell_state and self.shell_state.options.get('notify', False) and
             old_state != JobState.DONE and job.state == JobState.DONE and
             not job.foreground and not job.notified):
-            print(f"\n[{job.job_id}]+  Done                    {job.command}",
-                  file=self._notification_stream())
+            self._print_completion_notice(job)
             job.notified = True
 
         if collect_all_statuses:

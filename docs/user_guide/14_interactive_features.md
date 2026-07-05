@@ -164,7 +164,7 @@ psh$ ^S            # Forward search
 
 ## 14.3 Tab Completion
 
-Tab completion helps you type commands faster by automatically completing file names, directory paths, and commands.
+Tab completion helps you type commands faster by automatically completing file names and directory paths. (Command-name and variable-name completion, which bash also offers, are not implemented — completion is path-based only.)
 
 ### Basic Tab Completion
 
