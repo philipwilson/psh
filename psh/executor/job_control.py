@@ -29,7 +29,7 @@ def abnormal_termination_message(status: int) -> Optional[str]:
     return message
 
 
-def background_completion_label(status: Optional[int]) -> Optional[str]:
+def background_completion_label(status: Optional[int]) -> str:
     """bash's state label for a COMPLETED background job's async notice.
 
     This is the BACKGROUND analogue of :func:`abnormal_termination_message`
@@ -37,12 +37,18 @@ def background_completion_label(status: Optional[int]) -> Optional[str]:
     (probes: tmp/probes-r18t2-interactive/probe_mi3_*):
 
     * A signal death shows the signal description (``Terminated: 15``,
-      ``Killed: 9``, ``Interrupt: 2`` — libc ``strsignal`` text, ``(core
-      dumped)`` appended when a core was written). Unlike the foreground
-      case, the background notice DOES announce SIGINT — but, like it, stays
-      SILENT for SIGPIPE (returns None, so no line is printed).
+      ``Killed: 9``, ``Interrupt: 2``, ``Broken pipe: 13`` — libc
+      ``strsignal`` text, ``(core dumped)`` appended when a core was
+      written). Unlike the foreground case — which stays silent for SIGINT
+      and SIGPIPE — the background notice announces SIGINT.
     * A normal exit shows ``Done`` (code 0) or ``Exit N`` (nonzero) — the
       Done/Exit-N split the foreground diagnostic never needs.
+
+    This function names the label for EVERY status, SIGPIPE included
+    (``Broken pipe: 13``). The one place bash withholds a bg SIGPIPE notice —
+    an INTERACTIVE shell — is handled by the caller
+    (:meth:`JobManager._print_completion_notice`), not here, since it is a
+    display policy that depends on the shell mode, not on the status.
 
     ``status`` is the raw waitpid status of the process that set ``$?`` (the
     last in the pipeline); None (never reaped) is treated as a clean Done.
@@ -51,8 +57,6 @@ def background_completion_label(status: Optional[int]) -> Optional[str]:
         return "Done"
     if os.WIFSIGNALED(status):
         sig = os.WTERMSIG(status)
-        if sig == signal.SIGPIPE:
-            return None
         label = signal.strsignal(sig) or f"Signal {sig}"
         if os.WCOREDUMP(status):
             label += " (core dumped)"
@@ -452,19 +456,36 @@ class JobManager:
         if message is not None:
             print(message, file=self._notification_stream())
 
+    def _sigpipe_suppressed(self, status: Optional[int]) -> bool:
+        """True when bash would print NO notice for this completed bg job.
+
+        bash withholds the bg-job notice for a SIGPIPE death — and only
+        SIGPIPE — in INTERACTIVE shells (a broken pipe at the terminal is
+        usually benign); a non-interactive script announces it as
+        ``Broken pipe: 13``. Every other signal/exit is announced in both.
+        Verified against bash 5.2.26 (tmp/probes-r18t2-interactive: interactive
+        default AND `set -b` stay silent; `-c … wait` announces).
+        """
+        if status is None or not os.WIFSIGNALED(status):
+            return False
+        if os.WTERMSIG(status) != signal.SIGPIPE:
+            return False
+        return bool(self.shell_state is not None
+                    and self.shell_state.options.get('interactive'))
+
     def _print_completion_notice(self, job: 'Job') -> None:
         """Print bash's async completion notice for a finished bg job.
 
         The state label is bash-accurate — ``Done``/``Exit N`` for a normal
         exit and the signal description otherwise — via
-        :func:`background_completion_label`. That helper returns None for
-        SIGPIPE, where bash prints no notice at all; the caller still marks
-        the job notified/reaped, so a SIGPIPE'd bg job vanishes silently.
+        :func:`background_completion_label`. An interactive shell withholds
+        the SIGPIPE notice (see :meth:`_sigpipe_suppressed`); the job is still
+        reaped by the caller either way.
         """
         status = job.processes[-1].status if job.processes else None
-        label = background_completion_label(status)
-        if label is None:
+        if self._sigpipe_suppressed(status):
             return
+        label = background_completion_label(status)
         print(f"\n[{job.job_id}]+  {label:<24}{job.command}",
               file=self._notification_stream())
 

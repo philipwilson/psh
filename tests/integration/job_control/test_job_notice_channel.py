@@ -19,6 +19,7 @@ from io import StringIO
 from psh.executor.job_control import (
     JobManager,
     JobState,
+    abnormal_termination_message,
     background_completion_label,
 )
 
@@ -140,9 +141,23 @@ class TestBackgroundCompletionLabel:
         assert (background_completion_label(_signaled_status(signal.SIGINT))
                 == signal.strsignal(signal.SIGINT))
 
-    def test_sigpipe_is_silent(self):
-        # bash prints no notice for a SIGPIPE'd bg job.
-        assert background_completion_label(_signaled_status(signal.SIGPIPE)) is None
+    def test_sigpipe_is_announced_for_background(self):
+        # bash 5.2.26 announces a SIGPIPE'd bg job as 'Broken pipe: 13'
+        # (verifier oracle). Unlike the foreground path, the bg notice is
+        # NOT silent for SIGPIPE.
+        assert (background_completion_label(_signaled_status(signal.SIGPIPE))
+                == signal.strsignal(signal.SIGPIPE))
+
+    def test_foreground_diagnostic_stays_silent_for_sigint_and_sigpipe(self):
+        # The fg/bg asymmetry: the FOREGROUND diagnostic
+        # (abnormal_termination_message) is silent for SIGINT and SIGPIPE —
+        # `yes | head` and a Ctrl-C'd command print no signal line — even
+        # though the BACKGROUND notice announces both.
+        assert abnormal_termination_message(_signaled_status(signal.SIGPIPE)) is None
+        assert abnormal_termination_message(_signaled_status(signal.SIGINT)) is None
+        # A non-suppressed signal still produces the fg diagnostic.
+        assert (abnormal_termination_message(_signaled_status(signal.SIGTERM))
+                == signal.strsignal(signal.SIGTERM))
 
     def test_core_dumped_suffix(self):
         label = background_completion_label(
@@ -176,12 +191,30 @@ class TestCompletionNoticeStates:
         jm.notify_completed_jobs()
         assert "[1]+  Exit 3" in state.stderr.getvalue()
 
-    def test_sigpipe_notice_is_silent_but_reaped(self):
+    def test_sigpipe_notice_announced_noninteractive_and_reaped(self):
+        # Non-interactive (default _make_manager): bash announces the SIGPIPE'd
+        # bg job ('Broken pipe: 13'), and the job is still removed.
         jm, state = _make_manager()
         self._finished_job(jm, _signaled_status(signal.SIGPIPE))
         jm.notify_completed_jobs()
-        # No line printed, and the job is still removed from the table.
+        assert f"[1]+  {signal.strsignal(signal.SIGPIPE)}" in state.stderr.getvalue()
+        assert jm.get_job(1) is None
+
+    def test_sigpipe_notice_suppressed_when_interactive_but_reaped(self):
+        # Interactive: bash withholds the SIGPIPE notice (only SIGPIPE, only
+        # interactively), yet the job is still reaped from the table.
+        jm, state = _make_manager(interactive=True)
+        self._finished_job(jm, _signaled_status(signal.SIGPIPE))
+        jm.notify_completed_jobs()
         assert state.stderr.getvalue() == ""
+        assert jm.get_job(1) is None
+
+    def test_terminated_notice_announced_when_interactive(self):
+        # Only SIGPIPE is suppressed interactively — SIGTERM is still announced.
+        jm, state = _make_manager(interactive=True)
+        self._finished_job(jm, _signaled_status(signal.SIGTERM))
+        jm.notify_completed_jobs()
+        assert f"[1]+  {signal.strsignal(signal.SIGTERM)}" in state.stderr.getvalue()
         assert jm.get_job(1) is None
 
     def test_done_notice_unchanged_for_clean_exit(self):
