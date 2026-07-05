@@ -54,6 +54,40 @@ PARITY_CORPUS = [
                  id='c-style-for-double-paren-update'),
     pytest.param('for ((i=(0); (i<3); (i++))); do echo $i; done',
                  id='c-style-for-parens-all-three-sections'),
+    # C-style for headers with empty sections (reappraisal #18 T2-H): the
+    # DOUBLE_SEMICOLON swallow and the mandatory-second-semicolon rule must
+    # split init/condition/update identically on both parsers.
+    pytest.param('for ((i=0; ; i++)); do echo $i; done',
+                 id='c-style-for-empty-condition-spaced'),
+    pytest.param('for ((i=0;;i++)); do echo $i; done',
+                 id='c-style-for-empty-condition-fused'),
+    pytest.param('for ((;;)); do echo hi; done',
+                 id='c-style-for-all-sections-empty'),
+    pytest.param('for ((;i<3;)); do echo $i; done',
+                 id='c-style-for-only-condition'),
+    pytest.param('for ((i=0;i<3;)); do echo $i; done',
+                 id='c-style-for-empty-update'),
+    # `time` is a reserved word only at the START of a pipeline. Mid-pipeline
+    # it is an ordinary command (bash runs the external time); both parsers
+    # must demote it to a word there (reappraisal #18 T2-H).
+    pytest.param('echo a | time cat', id='time-mid-pipeline'),
+    pytest.param('echo hi | time wc -l', id='time-mid-pipeline-args'),
+    pytest.param('a | b | time c', id='time-third-pipeline-stage'),
+    pytest.param('echo a | time -p cat', id='time-mid-pipeline-dash-p'),
+    pytest.param('time echo a | cat', id='time-leading-pipeline'),
+    # bash-permissive name() function names (reappraisal #18 T2-H): the
+    # combinator must accept any composite of name-able tokens that is not an
+    # assignment word or reserved word, matching RD.
+    pytest.param('9() { echo x; }', id='function-name-digit-leading'),
+    pytest.param('123abc() { echo x; }', id='function-name-digits-then-alpha'),
+    pytest.param('a.b() { echo x; }', id='function-name-dot'),
+    pytest.param('foo-bar() { echo x; }', id='function-name-hyphen'),
+    pytest.param('a+b() { echo x; }', id='function-name-plus-split-tokens'),
+    pytest.param('[x() { echo x; }', id='function-name-leading-bracket'),
+    pytest.param('echo:() { echo x; }', id='function-name-colon'),
+    pytest.param('2=b() { echo x; }', id='function-name-nonassignment-equals'),
+    pytest.param('function a=b { echo x; }',
+                 id='function-keyword-assignment-word-name'),
     pytest.param('(( ((1+2)) == 3 ))',
                  id='arithmetic-command-nested-double-paren'),
     pytest.param('case $x in a) ;; b|c) ;; *) ;; esac',

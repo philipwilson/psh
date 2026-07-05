@@ -19,7 +19,6 @@ from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.commands import CommandParsers
 from psh.parser.combinators.control_structures import ControlStructureParsers, create_control_structure_parsers
 from psh.parser.combinators.parser import ParserCombinatorShellParser
-from psh.parser.recursive_descent.helpers import ParseError
 
 
 def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:
@@ -443,13 +442,17 @@ class TestFunctionDefinitions:
         assert isinstance(result.value, FunctionDef)
         assert result.value.name == "myfunc"
 
-    def test_invalid_function_name(self):
-        """Test that invalid function names are handled."""
+    def test_digit_leading_function_name(self):
+        """bash accepts a name() function whose name starts with a digit.
+
+        `1func() { ...; }` is a valid function definition in bash (and the
+        recursive descent parser); the combinator's name parser must not
+        impose an identifier shape. Regression pin for appraisal #18 T2-H.
+        """
         parsers = ControlStructureParsers()
         command_parsers = CommandParsers()
         parsers.set_command_parsers(command_parsers)
 
-        # Name starting with digit - parser currently accepts any WORD token
         tokens = [
             make_token(TokenType.WORD, "1func"),
             make_token(TokenType.LPAREN, "("),
@@ -459,19 +462,26 @@ class TestFunctionDefinitions:
             make_token(TokenType.RBRACE, "}")
         ]
 
-        # The parser detects WORD followed by '(' ')' and commits to function
-        # parsing.  An invalid name raises ParseError instead of returning
-        # success=False, preventing fallthrough to simple-command parsing.
-        with pytest.raises(ParseError):
-            parsers.function_def.parse(tokens, 0)
+        result = parsers.function_def.parse(tokens, 0)
+        assert result.success is True
+        assert isinstance(result.value, FunctionDef)
+        assert result.value.name == "1func"
 
     def test_reserved_word_function_name(self):
-        """Test that reserved words as function names are handled."""
+        """A reserved word (in KEYWORDS) is never a name() function name.
+
+        bash rejects `if() { ...; }` as a syntax error. The commit heuristic
+        excludes reserved words, so with a WORD-typed `if` the function-def
+        parser declines (success=False) and routes to the command/keyword
+        path rather than committing. Mirrors the recursive descent parser's
+        is_function_def, which returns False for reserved words.
+        """
         parsers = ControlStructureParsers()
         command_parsers = CommandParsers()
         parsers.set_command_parsers(command_parsers)
 
-        # Using 'if' as function name - will be parsed as if statement instead
+        # Hand-built WORD 'if' (real tokenization emits an IF keyword token,
+        # which the name parser also rejects since IF is not a name token).
         tokens = [
             make_token(TokenType.WORD, "if"),
             make_token(TokenType.LPAREN, "("),
@@ -481,11 +491,56 @@ class TestFunctionDefinitions:
             make_token(TokenType.RBRACE, "}")
         ]
 
-        # 'if' is a reserved word — _build_function_name rejects it.
-        # Since the test creates a WORD token (not an IF keyword token),
-        # _build_function_def sees WORD+( and commits, then raises ParseError.
-        with pytest.raises(ParseError, match="(?i)reserved word"):
-            parsers.function_def.parse(tokens, 0)
+        result = parsers.function_def.parse(tokens, 0)
+        assert result.success is False
+
+    def test_permissive_function_names_match_bash(self):
+        """bash-valid non-identifier function names parse end to end.
+
+        Names like `a.b`, `foo+bar`, `[x`, `9`, `echo:` and `]` are all legal
+        `name()` function names in bash. Each must parse as a FunctionDef
+        through the full (wired) combinator. Regression pin for #18 T2-H.
+        """
+        cases = {
+            "9() { echo x; }": "9",
+            "123abc() { echo x; }": "123abc",
+            "a.b() { echo x; }": "a.b",
+            "foo-bar() { echo x; }": "foo-bar",
+            "a+b() { echo x; }": "a+b",
+            "[x() { echo x; }": "[x",
+            "echo:() { echo x; }": "echo:",
+            "2=b() { echo x; }": "2=b",
+            "]() { echo x; }": "]",
+        }
+        for source, name in cases.items():
+            ast = parse_combinator(source)
+            fn = ast.items[0]
+            assert isinstance(fn, FunctionDef), source
+            assert fn.name == name, source
+
+    def test_assignment_word_is_not_a_function(self):
+        """An assignment word followed by () is never a function definition.
+
+        `arr=()` is an array initialization and `a=b()` / `a[0]=b()` are
+        syntax errors in bash — none define a function. The commit heuristic
+        excludes assignment words (ASSIGNMENT_WORD_RE) so they route to the
+        command/array path. Mirrors the recursive descent parser.
+        """
+        parsers = ControlStructureParsers()
+        command_parsers = CommandParsers()
+        parsers.set_command_parsers(command_parsers)
+
+        for name in ("arr=", "a=b", "a[0]=b"):
+            tokens = [
+                make_token(TokenType.WORD, name),
+                make_token(TokenType.LPAREN, "("),
+                make_token(TokenType.RPAREN, ")"),
+                make_token(TokenType.LBRACE, "{"),
+                make_token(TokenType.WORD, "echo"),
+                make_token(TokenType.RBRACE, "}")
+            ]
+            result = parsers.function_def.parse(tokens, 0)
+            assert result.success is False, name
 
 
 class TestCompoundCommands:
