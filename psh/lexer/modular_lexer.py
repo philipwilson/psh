@@ -232,10 +232,23 @@ class ModularLexer:
             self.context.bracket_depth += 1
         elif token_type == TokenType.DOUBLE_RBRACKET:
             self.context.bracket_depth -= 1
+        # Track arithmetic-paren nesting by counting *individual* parens, so a
+        # nested group balances regardless of how the lexer fuses adjacent
+        # parens. `((` opens two levels, `))` closes two, and single `(`/`)`
+        # met inside arithmetic adjust one level each. The greedy lexer fuses
+        # `((5)` into `(( 5` (DOUBLE_LPAREN) but closes it with two separate
+        # `)` — counting per paren keeps the depth balanced so the enclosing
+        # `))` returns us to depth 0 (e.g. `for ((i=0; i<((5)-1); i++))`).
+        # Without this the depth never reaches 0 and the lexer stays in
+        # arithmetic mode past the header, fusing the `do` body into one WORD.
         elif token_type == TokenType.DOUBLE_LPAREN:
-            self.context.enter_arithmetic()
+            self.context.arithmetic_depth += 2
         elif token_type == TokenType.DOUBLE_RPAREN:
-            self.context.exit_arithmetic()
+            self.context.arithmetic_depth = max(0, self.context.arithmetic_depth - 2)
+        elif token_type == TokenType.LPAREN and self.context.arithmetic_depth > 0:
+            self.context.arithmetic_depth += 1
+        elif token_type == TokenType.RPAREN and self.context.arithmetic_depth > 0:
+            self.context.arithmetic_depth -= 1
 
         # Track case statement context for proper [ tokenization
         if token_type == TokenType.WORD and token_value == 'case':

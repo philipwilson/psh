@@ -16,7 +16,9 @@ class LexerContext:
     bracket_depth: int = 0  # [[ ]] nesting (replaces in_double_brackets)
     command_position: bool = True
 
-    # $((...)) tracking
+    # Arithmetic paren nesting inside a `(( ))` command / C-style for header,
+    # counted per individual paren (`((`/`))` = 2, single `(`/`)` = 1). Note:
+    # `$((...))` expansion is a single token and never touches this counter.
     arithmetic_depth: int = 0
 
     # Configuration flags for Unicode/POSIX compliance
@@ -32,15 +34,6 @@ class LexerContext:
     # shared by ModularLexer's quote dispatch and the literal recognizer
     # (see word_scanners.cached_assignment_prefix_map).
     assignment_map_cache: Optional[Tuple[str, bytearray]] = None
-
-    def enter_arithmetic(self) -> None:
-        """Enter $((...)) context."""
-        self.arithmetic_depth += 1
-
-    def exit_arithmetic(self) -> None:
-        """Exit $((...)) context."""
-        if self.arithmetic_depth > 0:
-            self.arithmetic_depth -= 1
 
     def reset_command_position(self) -> None:
         """Reset to non-command position."""
