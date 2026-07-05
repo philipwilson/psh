@@ -20,7 +20,7 @@ from ....ast_nodes import (
     UntilLoop,
     WhileLoop,
 )
-from ....lexer.token_types import Token
+from ....lexer.token_types import Token, TokenType
 from ..core import Parser, ParseResult, many, optional
 from ..diagnostics import raise_committed_error
 
@@ -119,6 +119,16 @@ class PipelineMixin(_Base):
                 # bash allows a newline (line continuation) after a pipe
                 # operator before the next stage; skip any.
                 pos = many(self.tokens.newline).parse(tokens, pos).position
+
+                # `time` is a reserved word only at the START of a pipeline
+                # (consumed by the prefix above). A TIME token reaching here
+                # follows a `|`, where bash runs the EXTERNAL time
+                # (`echo a | time cat` -> /usr/bin/time); demote it to a plain
+                # word so it parses as an ordinary command. Mirrors the
+                # recursive descent parser (commands.py parse_pipeline_component).
+                if pos < len(tokens) and tokens[pos].type == TokenType.TIME:
+                    tokens[pos].type = TokenType.WORD
+                    tokens[pos].is_keyword = False
 
                 cmd_result = self._pipeline_element.parse(tokens, pos)
                 if not cmd_result.success:

@@ -4,7 +4,7 @@ This module provides mixin parsers for function definitions, subshell
 groups, and brace groups.
 """
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ....ast_nodes import (
     BraceGroup,
@@ -12,7 +12,10 @@ from ....ast_nodes import (
     StatementList,
     SubshellGroup,
 )
+from ....core.assignment_utils import ASSIGNMENT_WORD_RE
+from ....lexer.constants import KEYWORDS
 from ....lexer.keyword_defs import matches_keyword
+from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import Token
 from ...recursive_descent.helpers import ParseError
 from ..core import Parser, ParseResult, many
@@ -27,6 +30,35 @@ if TYPE_CHECKING:
     _Base = ControlStructureProtocol
 else:
     _Base = object
+
+
+# Token types that can serve as (part of) a function name in the POSIX
+# ``name()`` form. bash is permissive: any word that is not a reserved word
+# and not an assignment works (``my-func``, ``.dot``, ``f.g``, ``foo+bar``,
+# ``9``, even ``[`` and ``]``). Mirrors the recursive descent parser's
+# ``FunctionParser.NAME_TOKENS``.
+_NAME_TOKEN_TYPES = frozenset({'WORD', 'LBRACKET', 'RBRACKET'})
+
+
+def _peek_function_name(tokens: List[Token], pos: int) -> Optional[Tuple[str, int]]:
+    """Peek a (possibly multi-token) function name at ``pos``.
+
+    Mirrors the recursive descent parser's ``FunctionParser._peek_name_tokens``:
+    the lexer splits some plain words at assignment-operator candidates
+    (``foo+bar`` lexes as WORD ``foo`` + WORD ``+bar``; ``2=b`` as ``2`` +
+    ``=b``) and ``[foo]`` spans LBRACKET/WORD/RBRACKET, so adjacent name-able
+    tokens are rejoined here. Composites carrying expansions or quoted parts
+    are rejected (psh does not expand function names). Returns
+    ``(name, token_count)`` or None.
+    """
+    if pos >= len(tokens) or tokens[pos].type.name not in _NAME_TOKEN_TYPES:
+        return None
+    composite = TokenStream(tokens, pos).peek_composite_sequence()
+    if composite:
+        if not all(t.type.name in _NAME_TOKEN_TYPES for t in composite):
+            return None
+        return ''.join(t.value for t in composite), len(composite)
+    return tokens[pos].value, 1
 
 
 class StructureParserMixin(_Base):
@@ -54,43 +86,22 @@ class StructureParserMixin(_Base):
         return list(result.value or []), result.position
 
     def _build_function_name(self) -> Parser[str]:
-        """Parse a valid function name."""
+        """Parse a function name (possibly spanning several adjacent tokens).
+
+        bash is permissive about ``name()`` names — ``9``, ``a.b``, ``foo+bar``,
+        ``[x``, ``]`` are all valid — so this consumes any composite of
+        name-able tokens without imposing an identifier shape. The POSIX-form
+        gate in :meth:`_build_function_def` is where assignment words and
+        reserved words are rejected (bash rejects those only in the POSIX form;
+        the ``function`` keyword form accepts ``function a=b { ...; }``).
+        Mirrors the recursive descent parser's ``_consume_name_tokens``.
+        """
         def parse_function_name(tokens: List[Token], pos: int) -> ParseResult[str]:
-            """Parse and validate function name."""
-            if pos >= len(tokens):
+            candidate = _peek_function_name(tokens, pos)
+            if candidate is None:
                 return ParseResult(success=False, error="Expected function name", position=pos)
-
-            token = tokens[pos]
-            if token.type.name != 'WORD':
-                return ParseResult(success=False, error="Expected function name", position=pos)
-
-            # Validate function name (must start with letter or underscore)
-            name = token.value
-            if not name:
-                return ParseResult(success=False, error="Empty function name", position=pos)
-
-            # First character must be letter or underscore
-            if not (name[0].isalpha() or name[0] == '_'):
-                return ParseResult(success=False,
-                                 error=f"Invalid function name: {name} (must start with letter or underscore)",
-                                 position=pos)
-
-            # Rest must be alphanumeric, underscore, or hyphen
-            for char in name[1:]:
-                if not (char.isalnum() or char in '_-'):
-                    return ParseResult(success=False,
-                                     error=f"Invalid function name: {name} (contains invalid character '{char}')",
-                                     position=pos)
-
-            # Check it's not a reserved word
-            reserved = {'if', 'then', 'else', 'elif', 'fi', 'while', 'do', 'done',
-                       'for', 'case', 'esac', 'function', 'in', 'select'}
-            if name in reserved:
-                return ParseResult(success=False,
-                                 error=f"Reserved word cannot be function name: {name}",
-                                 position=pos)
-
-            return ParseResult(success=True, value=name, position=pos + 1)
+            name, count = candidate
+            return ParseResult(success=True, value=name, position=pos + count)
 
         return Parser(parse_function_name)
 
@@ -309,24 +320,31 @@ class StructureParserMixin(_Base):
                     result.error or "Invalid function definition",
                 )
 
-            # For POSIX form: if we see WORD followed by '(' ')', commit to
-            # function parsing.  This prevents ``123func()`` from falling
-            # through to simple-command parsing.
-            # Exclude words containing '=' (assignments like ``arr=()``).
-            if (pos < len(tokens) and tokens[pos].type.name == 'WORD'
-                    and '=' not in tokens[pos].value
-                    and pos + 1 < len(tokens) and tokens[pos + 1].value == '('
-                    and pos + 2 < len(tokens) and tokens[pos + 2].value == ')'):
-                # Committed — must be a function definition
-                result = posix_fn.parse(tokens, pos)
-                if not result.success:
-                    # Hard error — raise ParseError to prevent fallthrough
-                    raise_committed_error(
-                        tokens,
-                        result.position,
-                        result.error or "Invalid function definition",
-                    )
-                return result
+            # POSIX form: a (possibly multi-token) name immediately followed
+            # by '(' ')' commits to function parsing — this keeps a bad body
+            # (``9func() { }``) from falling through to simple-command parsing.
+            # An assignment word (``arr=()``, ``a=b()``) is never a function
+            # name (bash: array init or syntax error), and neither is a
+            # reserved word; both are excluded so they route to the command
+            # path. Mirrors the recursive descent parser's is_function_def.
+            candidate = _peek_function_name(tokens, pos)
+            if (candidate is not None
+                    and not ASSIGNMENT_WORD_RE.match(candidate[0])
+                    and candidate[0] not in KEYWORDS):
+                count = candidate[1]
+                if (pos + count + 1 < len(tokens)
+                        and tokens[pos + count].type.name == 'LPAREN'
+                        and tokens[pos + count + 1].type.name == 'RPAREN'):
+                    # Committed — must be a function definition
+                    result = posix_fn.parse(tokens, pos)
+                    if not result.success:
+                        # Hard error — raise ParseError to prevent fallthrough
+                        raise_committed_error(
+                            tokens,
+                            result.position,
+                            result.error or "Invalid function definition",
+                        )
+                    return result
 
             return ParseResult(success=False, error="Not a function definition", position=pos)
 

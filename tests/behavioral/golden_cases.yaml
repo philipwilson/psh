@@ -5799,3 +5799,65 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# REAPPRAISAL #18 T2-H — combinator parser parity (RD/bash anchors)
+#
+# These pin the RD-vs-bash side of the parity triangle for constructs where
+# the combinator had diverged from RD. The RD==combinator side is pinned by
+# tests/parser_differential/; together they lock combinator==bash.
+# =============================================================================
+
+- name: r18t2_combinator_func_name_digit_leading
+  command: "9() { echo nine; }; 9"
+  stdout: "nine\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_combinator_func_name_dot
+  command: "a.b() { echo dot; }; a.b"
+  stdout: "dot\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_combinator_func_name_hyphen
+  command: "foo-bar() { echo dash; }; foo-bar"
+  stdout: "dash\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_combinator_func_name_plus_split_tokens
+  command: "a+b() { echo plus; }; a+b"
+  stdout: "plus\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_combinator_func_name_leading_bracket
+  command: "[x() { echo br; }; [x"
+  stdout: "br\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_combinator_func_name_nonassignment_equals
+  command: "2=b() { echo two; }; 2=b"
+  stdout: "two\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_combinator_cstyle_for_empty_condition
+  command: "for ((i=0;;i++)); do echo $i; [ $i -ge 2 ] && break; done"
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_combinator_cstyle_for_all_sections_empty
+  command: "for ((;;)); do echo hi; break; done"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t2_combinator_cstyle_for_only_condition
+  command: "i=0; for ((;i<3;)); do echo $i; i=$((i+1)); done"
+  stdout: "0\n1\n2\n"
+  stderr: ""
+  exit_code: 0

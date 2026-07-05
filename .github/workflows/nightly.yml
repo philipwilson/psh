@@ -38,6 +38,20 @@ jobs:
       - name: Run Full Parallel Suite (with bash golden phase + coverage)
         run: python run_tests.py --parallel --compare-bash --census --coverage
 
+      # Extended RD-vs-combinator parser differential. The full suite above
+      # already runs this fuzzer at its fast default (300 snippets); here we
+      # widen it enormously and rotate the seed per run so coverage of the
+      # grammar accumulates over nightly runs. The seed is echoed (and embedded
+      # in any failure message) so a divergence reproduces with a one-liner.
+      - name: RD-vs-Combinator Parser Differential (extended fuzz)
+        env:
+          PSH_DIFFERENTIAL_SEED: ${{ github.run_number }}
+          PSH_DIFFERENTIAL_ITERS: "40000"
+        run: |
+          echo "differential seed=$PSH_DIFFERENTIAL_SEED iters=$PSH_DIFFERENTIAL_ITERS"
+          python -m pytest -p no:cacheprovider -o addopts="" \
+            tests/parser_differential/test_combinator_random_differential.py
+
       - name: Upload Coverage Report
         if: always()
         uses: actions/upload-artifact@v4
