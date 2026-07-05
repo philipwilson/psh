@@ -116,11 +116,22 @@ def normalize_identifier(name: str, posix_mode: bool = False, case_sensitive: bo
 # We reproduce the 1:1 (Unicode "simple") mapping instead: a codepoint is
 # case-mapped only when its Unicode mapping is itself a single codepoint;
 # otherwise it is left unchanged. This is length-safe by construction and is
-# what glibc/newer-libc bash produces. (macOS's frozen libc case tables lag the
-# Unicode version, so a handful of recent/rare codepoints — titlecase digraphs
-# ǅǈǋǲ, polytonic-Greek iota-subscript, Roman numerals, circled letters — map
-# under this rule but not under macOS bash; they DO map under Linux bash, and
-# case-mapping is host-libc-dependent regardless, so we follow Unicode.)
+# what glibc/newer-libc bash produces. Two rare/exotic divergences remain, in
+# OPPOSITE directions:
+#
+#   (a) We map, macOS bash doesn't (Linux bash does): recent/rare codepoints
+#       whose single-codepoint mapping postdates macOS's frozen libc case
+#       tables — titlecase digraphs ǅǈǋǲ, Roman numerals, circled letters. We
+#       follow Unicode/Linux; case-mapping is host-libc-dependent regardless.
+#
+#   (b) We don't map, but bash maps on ALL platforms: the 27 polytonic-Greek
+#       iota-subscript codepoints U+1F80..U+1FF3 (e.g. `${x^^}` on ᾳ is ᾼ,
+#       U+1FBC, in bash everywhere). Their Python full-upper is TWO codepoints
+#       (ᾳ -> "ΑΙ"), so the length guard rejects it and we leave them
+#       unchanged. This is an all-platform psh limitation driven by length
+#       safety, not a macOS artifact — a faithful fix needs the Unicode SIMPLE
+#       (single-codepoint) uppercase tables, which Python does not expose.
+#       Still strictly better than the old full-mapping, which grew the string.
 
 
 def _simple_upper_char(char: str) -> str:
