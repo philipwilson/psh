@@ -549,10 +549,13 @@ class ScopeManager:
         # bash applies NEITHER (declare -ul leaves the value unfolded).
         both_case = VarAttributes.UPPERCASE | VarAttributes.LOWERCASE
         if (attributes & both_case) != both_case:
+            # Length-safe (single-codepoint) mapping like bash — str.upper()/
+            # str.lower() would grow the value (ß -> "SS"); see unicode_support.
+            from ..lexer.unicode_support import simple_lower, simple_upper
             if attributes & VarAttributes.UPPERCASE:
-                return str_value.upper()
+                return simple_upper(str_value)
             if attributes & VarAttributes.LOWERCASE:
-                return str_value.lower()
+                return simple_lower(str_value)
 
         return str_value
 

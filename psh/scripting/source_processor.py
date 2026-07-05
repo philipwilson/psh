@@ -67,6 +67,15 @@ class SourceProcessor(ScriptComponent):
         try:
             exit_code = self.execute_from_source(
                 input_source, add_to_history=add_to_history)
+            # Fire any signal trap queued by the FINAL statement but not yet
+            # run at a command boundary — e.g. a script whose last statement
+            # is `kill -TERM $$` with a TERM trap installed. The statement
+            # loop runs pending traps at the START of each item, so a trap
+            # queued by the last item has no later boundary to fire at; bash
+            # runs it before the shell exits (and before the EXIT trap). A
+            # trap action that itself runs `exit N` raises SystemExit here,
+            # caught below so N becomes the status (bash).
+            self.shell.trap_manager.run_pending_traps()
         except SystemExit as exc:
             code = exc.code
             exit_code = code if isinstance(code, int) else (0 if code is None else 1)

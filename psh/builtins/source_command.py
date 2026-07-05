@@ -54,9 +54,16 @@ class SourceBuiltin(Builtin):
             self.error(f"{filename}: No such file or directory", shell)
             return 1
 
-        # Validate the script file
+        # Validate the script file. The shared validator returns the codes
+        # bash uses for the script-INVOCATION path (`psh file`): 126 for a
+        # directory, unreadable file, or binary. bash's `source` diverges —
+        # it returns 1 for a directory or unreadable file and reserves 126
+        # for a binary file (probe-verified vs bash 5.2). The validator has
+        # already printed the diagnostic; remap the non-binary failures here.
         validation_result = shell.script_manager.script_validator.validate_script_file(script_path)
         if validation_result != 0:
+            if os.path.isdir(script_path) or not os.access(script_path, os.R_OK):
+                return 1
             return validation_result
 
         # Save current shell state. bash NEVER changes $0 (script_name) when
