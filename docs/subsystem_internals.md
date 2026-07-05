@@ -152,7 +152,7 @@ Parser (main orchestrator)
 └── FunctionParser        Function definitions
 ```
 
-**Entry point**: `Parser.parse()` (`parser.py:362`) processes top-level items (functions or statements) until EOF, producing a `TopLevel` or `CommandList` AST node.
+**Entry point**: `Parser.parse()` processes top-level statements (functions or command lists) until EOF, producing a single canonical `Program` AST node for every parse.
 
 ### 2.2 Parser Context
 
@@ -170,11 +170,15 @@ Parser (main orchestrator)
 #### Statement Level (`parsers/statements.py`)
 
 ```
-TopLevel      → (FunctionDef | CommandList)*
-CommandList   → Statement (';' | '\n' Statement)*
-Statement     → AndOrList
+Program       → StatementList             # the single canonical root
+StatementList → Statement (';' | '\n' Statement)*
+Statement     → FunctionDef | AndOrList
 AndOrList     → Pipeline (('&&' | '||') Pipeline)*
 ```
+
+`Program` is the root of every parse; nested command bodies (loop/if/function/
+group interiors) use `StatementList`. A bare compound keeps its normal
+`AndOrList → Pipeline` ancestry — it is not unwrapped at the root.
 
 - `parse_command_list()` (lines 33-58): Parses semicolon/newline-separated statements
 - `parse_and_or_list()` (lines 83-104): Handles `&&`/`||` chains with left-to-right associativity
@@ -194,13 +198,13 @@ SimpleCommand → [assignments...] [arguments...] [redirects...] ['&']
 #### Control Structures (`parsers/control_structures.py`, 470 lines)
 
 ```
-IfStatement    → 'if' CommandList ';' 'then' CommandList ('elif' ...)* ['else' CommandList] 'fi'
-WhileLoop      → 'while' CommandList ';' 'do' CommandList ';' 'done'
-UntilLoop      → 'until' CommandList ';' 'do' CommandList ';' 'done'
-ForLoop        → 'for' WORD ['in' WORD*] ';' 'do' CommandList ';' 'done'
-CStyleForLoop  → 'for' '((' init ';' cond ';' update '))' ';' 'do' CommandList ';' 'done'
-CaseStatement  → 'case' WORD 'in' (pattern ')' CommandList ';;')* 'esac'
-SelectLoop     → 'select' WORD 'in' WORD* ';' 'do' CommandList ';' 'done'
+IfStatement    → 'if' StatementList ';' 'then' StatementList ('elif' ...)* ['else' StatementList] 'fi'
+WhileLoop      → 'while' StatementList ';' 'do' StatementList ';' 'done'
+UntilLoop      → 'until' StatementList ';' 'do' StatementList ';' 'done'
+ForLoop        → 'for' WORD ['in' WORD*] ';' 'do' StatementList ';' 'done'
+CStyleForLoop  → 'for' '((' init ';' cond ';' update '))' ';' 'do' StatementList ';' 'done'
+CaseStatement  → 'case' WORD 'in' (pattern ')' StatementList ';;')* 'esac'
+SelectLoop     → 'select' WORD 'in' WORD* ';' 'do' StatementList ';' 'done'
 ```
 
 Each has a `parse_*_statement()` method and a neutral variant (`parse_control_structure_neutral()`) for use in pipelines where the control structure runs in a subshell.
@@ -488,8 +492,8 @@ ExecutorVisitor
 
 | Method | Delegates To |
 |--------|-------------|
-| `visit_TopLevel` | Iterates top-level statements |
-| `visit_StatementList` | Executes statements, implements errexit |
+| `visit_Program` | Executes the root's statements (via `_execute_sequence`, root context) |
+| `visit_StatementList` | Executes a nested body (via `_execute_sequence`, nested context) |
 | `visit_AndOrList` | Short-circuit `&&`/`\|\|` evaluation |
 | `visit_Pipeline` | `PipelineExecutor` |
 | `visit_SimpleCommand` | `CommandExecutor` |

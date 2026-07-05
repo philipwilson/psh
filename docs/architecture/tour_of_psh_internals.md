@@ -39,7 +39,7 @@ Our command at each stage:
 | Input | the string `echo "Hello, $USER" \| wc -c > out.txt`, unchanged (no continuations, no history, no braces) |
 | Tokenization | 8 tokens; the quoted string is ONE token carrying two sub-parts |
 | Keyword normalization | unchanged (no word is at command position AND a reserved word) |
-| Parsing | `StatementList → AndOrList → Pipeline → [SimpleCommand, SimpleCommand]`, with a `Redirect` hanging off the second command |
+| Parsing | `Program → AndOrList → Pipeline → [SimpleCommand, SimpleCommand]`, with a `Redirect` hanging off the second command |
 | Expansion | `$USER` → `pwilson` inside the double quotes — one field, no splitting |
 | Execution | two forked children in one process group: `echo` (builtin, runs in-process in its child), `wc` (external, applies `> out.txt` then execs) |
 | Exit status | `wc`'s status (0); `PIPESTATUS=(0 0)`; `out.txt` contains `      15` |
@@ -200,7 +200,7 @@ tree view shows the shape:
 ```bash
 $ python -m psh --debug-ast -c 'echo "Hello, $USER" | wc -c > out.txt'
 === AST Debug Output (recursive_descent) ===
-└── StatementList
+└── Program
     └── statements: [1 items]
         └── AndOrList
             └── pipelines: [1 items]
@@ -225,10 +225,11 @@ The descent mirrors the grammar: `StatementParser.parse_and_or_list`
 `&&`/`||` chains (ours has none — one pipeline), `parse_pipeline()`
 (`psh/parser/recursive_descent/parsers/commands.py`) collects
 `|`-separated commands, and `parse_command()` builds each
-`SimpleCommand`. Even a lone `echo hi` gets the full
-StatementList→AndOrList→Pipeline wrapping — uniformity is cheaper
-than special cases, and the executor short-circuits single-command
-pipelines anyway (§7).
+`SimpleCommand`. Every parse yields a single `Program` root, and even a
+lone `echo hi` gets the full `Program→AndOrList→Pipeline` wrapping (a
+bare compound is not unwrapped) — uniformity is cheaper than special
+cases, and the executor short-circuits single-command pipelines anyway
+(§7).
 
 Two details deserve a closer look, and for them
 `--debug-ast=pretty` prints every field. Its output is one long

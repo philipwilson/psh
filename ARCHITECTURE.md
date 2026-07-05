@@ -447,8 +447,8 @@ class Parser(ContextBaseParser):
         self.arithmetic = ArithmeticParser(self)
         # ... other specialized parsers
 
-    def parse(self) -> Union[CommandList, TopLevel]:
-        """Parse the token stream into an AST."""
+    def parse(self) -> Program:
+        """Parse the token stream into the canonical Program root."""
         ...
 ```
 

@@ -93,24 +93,28 @@ View the Abstract Syntax Tree (AST) that PSH creates. PSH supports multiple AST 
 ```bash
 $ python -m psh --debug-ast -c "if [ -f /etc/passwd ]; then echo exists; fi"
 === AST Debug Output (recursive_descent) ===
-+-- TopLevel
-    +-- items: [1 items]
-        +-- IfConditional
-            |-- condition:
-            |   +-- StatementList
-            |       +-- statements: [1 items]
-            |           +-- AndOrList
-            |               +-- pipelines: [1 items]
-            |                   +-- Pipeline
-            |                       +-- commands: [1 items]
-            |                           +-- SimpleCommand
-            |                               +-- arguments: ...
-            +-- then_part:
-                +-- StatementList
-                    ...
++-- Program
+    +-- statements: [1 items]
+        +-- AndOrList
+            +-- pipelines: [1 items]
+                +-- Pipeline
+                    +-- commands: [1 items]
+                        +-- IfConditional
+                            |-- condition:
+                            |   +-- StatementList
+                            |       +-- statements: [1 items]
+                            |           +-- AndOrList ...
+                            +-- then_part:
+                                +-- StatementList
+                                    ...
 ======================
 exists
 ```
+
+Every parse produces a single `Program` root whose `statements` are the
+ordinary statements of the input. Each statement keeps its normal
+`AndOrList -> Pipeline` structure — even a bare compound command like the `if`
+above is a pipeline component, not a special top-level node.
 
 You can select different AST formats:
 

@@ -187,16 +187,15 @@ class FormatterVisitor(ASTVisitor[str]):
         as :meth:`visit_StatementList`). There is deliberately NO blank-line
         ("paragraph") separator between statements:
 
-        The grammar only starts a new top-level "item" after a background ``&``
-        (``&`` is the sole terminator that ends a command list without a
-        ``;``/newline). The former ``visit_TopLevel`` joined such
-        ``&``-terminated items with a single newline (its ``\\n\\n`` branch was
-        unreachable from real parser output — the ``&``-ending test always
-        selected ``\\n``), and joined ``;``/newline-separated statements within
-        an item with a single newline too. So every adjacency renders with one
-        ``\\n``. A statement's ``&`` still comes from its own background flag —
-        rendered by ``visit_SimpleCommand``/``visit_AndOrList`` — never from the
-        container shape. This keeps ``format(format(x)) == format(x)``.
+        A background ``&`` is the sole terminator that ends one statement
+        without a ``;``/newline, so it is the only place a blank-line paragraph
+        separator could ever have applied — but a blank line after ``&`` is
+        non-idempotent (re-parsing ``a &\\n\\nb`` collapses it), so those
+        adjacencies also render with a single newline. Every adjacency
+        therefore renders with one ``\\n``. A statement's ``&`` still comes from
+        its own background flag — rendered by
+        ``visit_SimpleCommand``/``visit_AndOrList`` — never from the container
+        shape. This keeps ``format(format(x)) == format(x)``.
         """
         parts = [self._flush_line(self.visit(stmt)) for stmt in node.statements]
         return '\n'.join(parts)
