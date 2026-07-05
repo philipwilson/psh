@@ -6367,3 +6367,32 @@
   stdout: "a\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# LEXER FIX D3 — POSIX mode reaches lexer config (fix/lex-fixes).
+# Under `set -o posix` the lexer restricts $var identifiers to ASCII, matching
+# the executor's name validation. psh is codepoint-aware while bash classifies
+# identifier BYTES (locale-dependent byte-soup), so the Unicode-under-posix
+# cases are psh_only — a documented deliberate divergence. `set -o posix` is on
+# its own line because a -c line is tokenized in one pass before it executes.
+# =============================================================================
+
+- name: lexfix_posix_unicode_var_becomes_literal
+  command: "set -o posix\necho \"[$ünïcödé]\""
+  stdout: "[$ünïcödé]\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: lexfix_nonposix_unicode_var_lenient
+  command: "ünïcödé=5; echo \"[$ünïcödé]\""
+  stdout: "[5]\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: lexfix_posix_ascii_var_unchanged
+  command: "set -o posix\nx=5; echo $x"
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0

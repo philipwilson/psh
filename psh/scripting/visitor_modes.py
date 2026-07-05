@@ -42,7 +42,9 @@ def _parse_for_analysis(shell: 'Shell', content: str) -> Any:
         return parse_with_heredocs(tokens, heredoc_map)
     from ..lexer import tokenize
     from ..parser import parse
-    return parse(tokenize(content))
+    # Pass shell_options so analysis/validation tokenizes in the SAME mode the
+    # execution path would (posix/extglob) — mirroring the heredoc branch above.
+    return parse(tokenize(content, shell_options=shell.state.options))
 
 
 def _report_syntax_error(location: str, exc: Exception) -> int:
