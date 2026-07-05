@@ -453,6 +453,14 @@ class ControlStructureParser(ParserSubcomponent):
             else:
                 break
 
+        # An alternative must contribute at least one word part. bash rejects
+        # empty alternatives — `x|)`, `(|x)`, `()`, `(x|)` — as a syntax error.
+        # A QUOTED-empty pattern (`''`) is legal and DOES produce a (quoted)
+        # part, so it is not caught here (finding 5e).
+        if not word_parts:
+            token = self.parser.peek()
+            raise self.parser.error(unexpected_token_message(token), token)
+
         return CasePattern(pattern=''.join(text_parts),
                            word=Word(parts=word_parts))
 

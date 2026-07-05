@@ -6532,3 +6532,35 @@
   stdout: "yes\n"
   stderr: ""
   exit_code: 0
+
+# --- Empty case-pattern alternatives (finding 5e) ---
+# An empty alternative is a bash syntax error; a QUOTED-empty pattern is legal.
+- name: parsefix_case_empty_alt_after_bar_is_error
+  command: "case x in x|) echo m ;; esac"
+  stdout: ""
+  stderr: "unexpected token"
+  exit_code: 2
+
+- name: parsefix_case_empty_alt_before_bar_is_error
+  command: "case x in (|x) echo m ;; esac"
+  stdout: ""
+  stderr: "unexpected token"
+  exit_code: 2
+
+- name: parsefix_case_fully_empty_alt_is_error
+  command: "case x in () echo m ;; esac"
+  stdout: ""
+  stderr: "unexpected token"
+  exit_code: 2
+
+- name: parsefix_case_legal_alternation_ok
+  command: "case y in x|y) echo m ;; esac"
+  stdout: "m\n"
+  stderr: ""
+  exit_code: 0
+
+- name: parsefix_case_quoted_empty_pattern_ok
+  command: "case '' in ''|x) echo m ;; esac"
+  stdout: "m\n"
+  stderr: ""
+  exit_code: 0
