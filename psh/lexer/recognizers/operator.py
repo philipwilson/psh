@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Optional, Set, Tuple
 
 from ..state_context import LexerContext
 from ..token_types import Token, TokenType
-from ..unicode_support import is_identifier_char, is_identifier_start
+from ..unicode_support import is_identifier_char, is_identifier_start, is_whitespace
 from .base import ContextualRecognizer
 from .literal import extglob_active
 
@@ -71,8 +71,17 @@ class OperatorRecognizer(ContextualRecognizer):
 
     @staticmethod
     def _is_shell_token_delimiter(char: str) -> bool:
-        """Return True when char can delimit a standalone shell token."""
-        return char.isspace() or char in '|&;(){}[]<>'
+        """Return True when char can delimit a standalone shell token.
+
+        Whitespace here is SHELL whitespace (space/tab/newline via
+        ``is_whitespace``), NOT Python's ``str.isspace()``: bash's token
+        separators are only the POSIX blanks plus newline. A non-breaking
+        space or other Unicode Zs/control character is an ordinary word
+        character, so ``!<NBSP>false`` is one command word (status 127 like
+        bash) rather than the ``!`` negation operator followed by a word
+        (which inverted the status to 0).
+        """
+        return is_whitespace(char) or char in '|&;(){}[]<>'
 
     def _try_fd_duplication(self, input_text: str, pos: int) -> bool:
         """Check if position starts a file descriptor duplication pattern."""
@@ -380,7 +389,13 @@ class OperatorRecognizer(ContextualRecognizer):
                         if candidate == '{':
                             if next_pos < len(input_text):
                                 nxt = input_text[next_pos]
-                                if not (nxt.isspace() or nxt in '|&;()<>\n'):
+                                # SHELL whitespace only (see
+                                # _is_shell_token_delimiter): `{` opens a brace
+                                # group only when a real blank/newline or a
+                                # command operator follows. `{<NBSP>echo` is one
+                                # word in bash (not a brace group), so a Unicode
+                                # non-blank must NOT enable LBRACE here.
+                                if not (is_whitespace(nxt) or nxt in '|&;()<>\n'):
                                     continue
 
                     # Check if operator is valid in current context

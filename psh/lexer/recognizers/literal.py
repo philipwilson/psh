@@ -135,10 +135,17 @@ class LiteralRecognizer(ContextualRecognizer):
                 if char == '}' and not context.command_position:
                     return True
                 # A brace is "standalone" (operator) only when followed by
-                # whitespace, a command operator, or EOF. When followed by
-                # another brace (e.g. {{1..3},...} nesting) or word chars, it is
-                # part of a word — note '{'/'}' are NOT in this set.
-                if next_pos >= len(input_text) or input_text[next_pos] in ' \t\n\r;|&()<>':
+                # SHELL whitespace (space/tab/newline via is_whitespace — NOT
+                # Python str.isspace(): a CR/NBSP is an ordinary word char), a
+                # command operator, or EOF. When followed by another brace
+                # (e.g. {{1..3},...} nesting) or word chars, it is part of a
+                # word — note '{'/'}' are NOT in this set. This set MUST match
+                # the operator recognizer's brace-standalone check, or a `{`
+                # neither recognizer claims (e.g. `{<CR>echo`) trips the
+                # fail-loud no-progress guard.
+                if (next_pos >= len(input_text)
+                        or is_whitespace(input_text[next_pos])
+                        or input_text[next_pos] in ';|&()<>'):
                     return False  # Standalone brace — let operator handle it
                 return True  # Attached to word chars — part of word
             return False

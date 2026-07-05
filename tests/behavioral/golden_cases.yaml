@@ -6318,3 +6318,52 @@
   stdout: "hit\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# LEXER FIX D2 — shell whitespace classification (space/tab/newline only)
+# (fix/lex-fixes). A non-breaking space / CR / other Unicode whitespace is an
+# ordinary word character; it must not turn `!` into negation, `{` into a
+# brace group, or a following `#` into a comment. `\xA0` is U+00A0 (NBSP).
+# =============================================================================
+
+- name: lexfix_ws_nbsp_between_words
+  command: "echo a\xA0b"
+  stdout: "a\xA0b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_ws_nbsp_after_bang_false
+  command: "!\xA0false"
+  stdout: ""
+  stderr: "command not found"
+  exit_code: 127
+
+- name: lexfix_ws_nbsp_after_bang_true
+  command: "!\xA0true"
+  stdout: ""
+  stderr: "command not found"
+  exit_code: 127
+
+- name: lexfix_ws_nbsp_before_brace_group
+  command: "{\xA0echo hi; }"
+  stdout: ""
+  stderr: null
+  exit_code: 2
+
+- name: lexfix_ws_bang_space_still_negation
+  command: "! false"
+  stdout: ""
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_ws_brace_group_still_group
+  command: "{ echo hi; }"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: lexfix_ws_space_before_hash_is_comment
+  command: "echo a #b"
+  stdout: "a\n"
+  stderr: ""
+  exit_code: 0
