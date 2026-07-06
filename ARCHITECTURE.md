@@ -532,9 +532,9 @@ class ParserContext:
     current: int = 0
     config: ParserConfig = field(default_factory=ParserConfig)
 
-    # Error handling
-    errors: List[ParseError] = field(default_factory=list)
-    fatal_error: Optional[ParseError] = None
+    # Pre-collected heredoc bodies (heredoc-aware parse only), keyed by the
+    # lexer-assigned heredoc_key; None otherwise.
+    heredoc_map: Optional[Mapping[str, object]] = None
 
     # Source context
     source_text: Optional[str] = None
@@ -567,33 +567,27 @@ parse-tree -f dot "for i in 1 2 3; do echo $i; done"
 show-ast "case $var in pattern) echo match;; esac"
 ```
 
-### 3.10 Error Collection
+### 3.10 Parse Errors and Diagnostics
 
-Multi-error collection is implemented at the `ParserContext` level
-(there is no separate recovery subsystem):
+There is no error-collection / recovery subsystem. `ParserContext.consume()`
+raises a `ParseError` on the first unexpected token, so a parse either
+succeeds or raises — it never returns a partial or fabricated AST. (An earlier
+`collect_errors` mode recorded errors and returned the unexpected token
+without consuming it, yielding a completed-looking AST after a missing
+required token; its collected errors were never read, and it was removed.)
 
-```python
-# In ParserContext (recursive_descent/context.py)
-def add_error(self, error: ParseError) -> None:
-    """Add error to the error list, checking for fatal errors."""
-    if len(self.errors) < self.config.max_errors:
-        self.errors.append(error)
-    if (hasattr(error.error_context, 'severity') and
-        error.error_context.severity == ErrorSeverity.FATAL):
-        self.fatal_error = error
+`ParseError` exposes one unambiguous diagnostic interface:
 
-def can_continue_parsing(self) -> bool:
-    """Check if parsing can continue."""
-    if self.at_end() or self.fatal_error:
-        return False
-    if self.config.collect_errors:
-        return len(self.errors) < self.config.max_errors
-    return True
-```
+- `error.summary` — the short reason ("Expected 'then', got end of input").
+- `error.render()` — the rich presentation: position, source line, `^` caret,
+  suggestions, and surrounding token context.
+- `str(error)` delegates to `render()`.
 
-With the default `collect_errors=False`, parsing stops on the first
-error; with `collect_errors=True`, errors accumulate in `ctx.errors`
-up to `max_errors`.
+Both the execution path and the analysis modes (`--validate`/`--format`/
+`--metrics`/`--security`/`--lint`) print `render()`, so a syntax error reads
+the same everywhere. (The caret line additionally needs the parser to be given
+`source_text`; the execution path supplies it, the analysis parse path does
+not yet — see appraisal finding 12.)
 
 ### 3.11 Recursive Descent Implementation
 

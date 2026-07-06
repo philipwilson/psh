@@ -159,30 +159,34 @@ class ErrorContext:
     context_before: List[str] = field(default_factory=list)
     context_after: List[str] = field(default_factory=list)
 
-    def format_error(self) -> str:
-        """Format a detailed error message."""
-        # Main error message
-        parts = []
+    def summary(self) -> str:
+        """The short reason clause only — no position, caret, or suggestions.
 
-        parts.append(f"Parse error at position {self.position}")
+        This is the one-line "what went wrong" ("Expected 'then', got end of
+        input"). :meth:`format_error` prefixes it with position/line/column and
+        appends the caret, suggestions, and token context.
+        """
+        if self.expected:
+            if len(self.expected) == 1:
+                reason = f"Expected {self.expected[0]}"
+            else:
+                expected_str = ", ".join(self.expected[:-1]) + f" or {self.expected[-1]}"
+                reason = f"Expected {expected_str}"
+            return f"{reason}, got {self._token_description(self.token)}"
+        elif self.message:
+            return self.message
+        else:
+            return f"Unexpected {self._token_description(self.token)}"
+
+    def format_error(self) -> str:
+        """Format a detailed error message (position, caret, suggestions)."""
+        parts = [f"Parse error at position {self.position}"]
 
         if self.line is not None and self.column is not None:
             parts.append(f" (line {self.line}, column {self.column})")
 
         parts.append(": ")
-
-        # Error description
-        if self.expected:
-            if len(self.expected) == 1:
-                parts.append(f"Expected {self.expected[0]}")
-            else:
-                expected_str = ", ".join(self.expected[:-1]) + f" or {self.expected[-1]}"
-                parts.append(f"Expected {expected_str}")
-            parts.append(f", got {self._token_description(self.token)}")
-        elif self.message:
-            parts.append(self.message)
-        else:
-            parts.append(f"Unexpected {self._token_description(self.token)}")
+        parts.append(self.summary())
 
         error_msg = "".join(parts)
 
@@ -211,11 +215,23 @@ class ErrorContext:
 
 
 class ParseError(PshError):
-    """Enhanced parse error with context."""
+    """Enhanced parse error with context.
+
+    One unambiguous diagnostic interface:
+
+    * :attr:`summary` — the short reason ("Expected 'then', got end of input").
+    * :meth:`render` — the rich presentation (position, source line, caret,
+      suggestions, token context).
+    * ``str(error)`` delegates to :meth:`render`.
+
+    ``.message`` is kept as an alias of :attr:`summary` (the short reason) so a
+    caller never has to guess whether it is the raw reason or the full render.
+    """
 
     def __init__(self, error_context: ErrorContext):
         self.error_context = error_context
-        self.message = error_context.message or error_context.format_error()
+        # .message is the SHORT reason (== summary), never the full render.
+        self.message = error_context.summary()
         # Structural "incomplete input" signal: the parser failed AT the end
         # of the token stream, so more input could make the parse succeed.
         # Interactive/script line-continuation logic keys off this instead
@@ -235,3 +251,12 @@ class ParseError(PshError):
         # so no caller has to string-match the message.
         self.missing_terminator: Optional[str] = None
         super().__init__(error_context.format_error())
+
+    @property
+    def summary(self) -> str:
+        """The short reason clause (no position/caret/suggestions)."""
+        return self.error_context.summary()
+
+    def render(self) -> str:
+        """The rich diagnostic: position, source line, caret, suggestions."""
+        return self.error_context.format_error()

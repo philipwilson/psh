@@ -158,11 +158,11 @@ clean ParseError instead of a Python RecursionError.)
 class ParserContext:
     tokens: List[Token]      # Token stream
     current: int             # Current position
-
-    # Error handling
     config: ParserConfig
-    errors: List[ParseError]
-    fatal_error: Optional[ParseError]
+
+    # Pre-collected heredoc bodies (heredoc-aware parse only), keyed by the
+    # lexer-assigned heredoc_key; None otherwise.
+    heredoc_map: Optional[Mapping[str, object]]
 
     # Source context (for error messages)
     source_text: Optional[str]
@@ -171,6 +171,12 @@ class ParserContext:
     # Resource limit (see above)
     nesting_depth: int
 ```
+
+Parse errors: `consume()` raises a `ParseError` on the first unexpected token
+(no error-collection mode). `ParseError` has one diagnostic interface —
+`error.summary` (short reason), `error.render()` (rich: position, source line,
+caret, suggestions), and `str(error)` delegating to `render()`. Execution and
+analysis (`--validate` etc.) both print `render()`.
 
 ### 4. TokenGroups for Matching
 
