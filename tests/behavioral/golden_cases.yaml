@@ -6476,9 +6476,14 @@
 # Empty element value must NOT swallow a following non-adjacent word: `a[0]= v`
 # sets a[0] empty and runs `v` as a separate command (bash).
 - name: parsefix_element_empty_value_no_swallow
+  # The parser must NOT swallow `true` as the value of `a[0]=` (so a[0] stays
+  # empty and `true` is a separate command). In command-PREFIX position an
+  # array-element assignment is "not a valid identifier" in bash (F7): the
+  # array is never created, the diagnostic goes to stderr, and the command
+  # runs — so ${a[0]} is empty regardless. stdout/exit_code still match bash.
   command: "a[0]= true; echo \"[${a[0]}]\""
   stdout: "[]\n"
-  stderr: ""
+  stderr: "not a valid identifier"
   exit_code: 0
 
 - name: parsefix_element_adjacent_value_ok
@@ -6712,3 +6717,55 @@
   stdout: "<a><b>\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: array assignments join the status/transaction model (F7)
+# =============================================================================
+
+- name: exec_p1a_array_elem_cmdsub_status
+  command: "a[0]=$(false); echo \"$?\""
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_array_elem_cmdsub_ok
+  command: "a[0]=$(true); echo \"$?\""
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_array_init_cmdsub_status
+  command: "a=($(sh -c 'exit 7')); echo \"$?\""
+  stdout: "7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_array_two_elems_ok
+  command: "a[0]=x a[1]=y; echo \"${a[0]}${a[1]}\""
+  stdout: "xy\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_prefix_array_not_identifier
+  command: "a[0]=x echo RAN; declare -p a 2>/dev/null || echo NOARRAY"
+  stdout: "RAN\nNOARRAY\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
+- name: exec_p1a_bg_scalar_assignment_status
+  command: "x=$(false) & p=$!; wait \"$p\"; echo \"$?\""
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_bg_array_elem_cmdsub_status
+  command: "a[0]=$(false) & p=$!; wait \"$p\"; echo \"rc=$?\""
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_array_first_failure_aborts
+  command: "unset a b; a[-1]=x b[0]=y; echo AFTER"
+  stdout: ""
+  stderr: "bad array subscript"
+  exit_code: 1

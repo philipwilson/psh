@@ -216,11 +216,20 @@ class CommandExecutor:
             # Phase 1: Extract raw assignments (before expansion)
             raw_assignments = self.assignments.extract(node)
 
+            # Track command substitutions run while expanding assignment
+            # values. The clear must happen HERE — before ANY value expansion
+            # (array element/init value, scalar value, OR command word) — so a
+            # bare assignment's status is the last command substitution run
+            # while expanding it: `a[0]=$(false)` -> 1, `a=($(sh -c 'exit
+            # 7'))` -> 7, `V=v $(false)` -> 1 (F7). Previously it cleared AFTER
+            # the array-assignment preamble, wiping the array value's status.
+            self.state.last_cmdsub_status = None
+
             # A backgrounded pure / bare-array assignment (`x=5 &`, `a[0]=v &`)
             # runs in a forked SUBSHELL (bash): the assignment mutates the child
             # (which then exits), never the parent, and a background job / $! is
             # created. Without this, `x=5 & wait; echo $x` wrongly printed 5.
-            # This is checked BEFORE applying any array assignment below, so the
+            # This is checked BEFORE applying any array assignment, so the
             # parent is never touched.
             is_pure_assignment = (
                 raw_assignments and len(raw_assignments) == len(node.words))
@@ -229,47 +238,26 @@ class CommandExecutor:
             if node.background and (is_pure_assignment or is_bare_array_assignment):
                 return self._run_background_assignment(node, raw_assignments)
 
-            # Handle array assignments first. Their exit status matters when
-            # there is no command word (a bare `a[i]=v` / `a[i]+=v`): bash
-            # reports a failed subscript assignment (e.g. out-of-range
-            # negative index → "bad array subscript") as exit 1.
-            array_assignment_status = 0
-            if node.array_assignments:
+            # Prefix-position array element assignment (`a[0]=x cmd`): bash does
+            # NOT accept an array-element subscript as a command-prefix
+            # identifier — it prints "`a[0]': not a valid identifier", does NOT
+            # create the array, and still runs the command (F7). A scalar
+            # prefix `X=v cmd` is handled normally by _run_command below.
+            if node.array_assignments and node.words:
                 for assignment in node.array_assignments:
-                    array_assignment_status = self._handle_array_assignment(
-                        assignment)
+                    print(f"psh: `{self._array_assignment_lhs(assignment)}': "
+                          "not a valid identifier", file=self.state.stderr)
+                return self._run_command(node, context, raw_assignments)
 
-            # Track command substitutions run while expanding assignment
-            # values: a pure assignment's exit status is 0 unless a command
-            # substitution ran, in which case it is that substitution's
-            # status (bash). The clear must happen HERE — before COMMAND
-            # word expansion, not inside apply_pure — because the
-            # determining substitution can run while expanding command
-            # words that expand to nothing (`V=v $(false)` reports 1).
-            self.state.last_cmdsub_status = None
+            # Bare array assignment(s) with no command word (`a[i]=v`,
+            # `a=(...)`): applied in the current shell under the SAME status
+            # model as a pure scalar assignment (F7).
+            if is_bare_array_assignment:
+                return self._run_bare_array_assignment(node)
 
             # Pure assignment (only NAME=value words, no command word)?
             if is_pure_assignment:
                 return self._run_pure_assignment(node, raw_assignments)
-
-            # Bare array element assignment(s) with no command word
-            # (`a[i]=v`): the array assignment status IS the command status.
-            # A failed assignment (e.g. out-of-range subscript) aborts a
-            # non-interactive `-c`/script invocation with status 1, exactly
-            # like a readonly assignment error (CommandAssignments.apply_pure)
-            # — but is non-fatal when reading a script from stdin.
-            if is_bare_array_assignment:
-                if node.redirects:
-                    # The element was already assigned above (bash order:
-                    # `a[0]=x > /bad/y` still assigns); a redirect failure
-                    # prints the one diagnostic shape and fails with 1.
-                    with self.io_manager.guarded_redirections(
-                            node.redirects) as ok:
-                        if not ok:
-                            return 1
-                if array_assignment_status != 0 and self.state.is_script_mode:
-                    sys.exit(array_assignment_status)
-                return array_assignment_status
 
             # Actual command invocation (command word present).
             return self._run_command(node, context, raw_assignments)
@@ -296,22 +284,82 @@ class CommandExecutor:
 
         ``x=5 &`` applies the assignment in the child (which immediately exits),
         so the PARENT's variables are untouched; a background job is registered
-        and ``$!`` is set. Returns 0 (a backgrounded command's status is success).
+        and ``$!`` is set. The FOREGROUND call returns 0 (a backgrounded
+        command's own status is success), but the JOB's exit status is the
+        assignment's OWN status collected in the child (F7:
+        ``x=$(false) & wait $!`` -> 1, ``a[-1]=x & wait $!`` -> nonzero) — not
+        an unconditional 0.
         """
         launcher = self.shell.process_launcher
         command_string = " ".join(str(a) for a in node.args) or "assignment"
 
         def execute_fn() -> int:
-            # In the forked child only: apply the assignment(s), then exit.
+            # In the forked child only. Clear the cmdsub tracker so the child's
+            # own value expansion determines the status, then apply and RETURN
+            # the assignment's status (a fatal discard raises to the launcher
+            # child, which maps it to the exit code).
+            self.state.last_cmdsub_status = None
             if node.array_assignments:
-                for assignment in node.array_assignments:
-                    self._handle_array_assignment(assignment)
-            if raw_assignments:
-                self._run_pure_assignment(node, raw_assignments)
-            return 0
+                return self._run_bare_array_assignment(node)
+            return self._run_pure_assignment(node, raw_assignments)
 
         return launcher.launch_background_job(
             execute_fn, command_string, command_string, is_shell_process=True)
+
+    def _run_bare_array_assignment(self, node: 'SimpleCommand') -> int:
+        """Run bare array assignment(s) with no command word (`a[0]=v`, `a=(1 2)`).
+
+        Joins the same status model as a pure scalar assignment
+        (:meth:`CommandAssignments.apply_pure`) rather than the old separate
+        preamble (F7):
+
+        - Assignments apply left to right; each element/init value expansion
+          records ``state.last_cmdsub_status`` (the caller cleared it first).
+        - The command's status is that last command-substitution status if one
+          ran while expanding (bash: ``a[0]=$(false)`` -> 1,
+          ``a=($(sh -c 'exit 7'))`` -> 7), else 0. A SUCCESSFUL operation whose
+          value's substitution failed is NOT an operation failure.
+        - A failed assignment OPERATION (bad subscript, readonly) is fatal: it
+          stops later assignments (first-failure — bash's ``a[-1]=x b[0]=y``
+          does NOT assign ``b``) and discards the current command like any
+          assignment/subscript error — ``SystemExit`` under ``-c``, abort of
+          the current top-level command otherwise (``arith_assignment_discard``,
+          the same discard the arithmetic-subscript path already uses).
+        - Redirections apply after the assignments (bash order); a setup
+          failure prints the one diagnostic and fails with 1.
+        """
+        from ..core import arith_assignment_discard
+        for assignment in node.array_assignments:
+            if self._handle_array_assignment(assignment) != 0:
+                # Operation failure (diagnostic already printed by the array
+                # executor): first-failure stop + discard the current command.
+                arith_assignment_discard(self.state)
+        if node.redirects:
+            with self.io_manager.guarded_redirections(node.redirects) as ok:
+                if not ok:
+                    return 1
+        if self.state.last_cmdsub_status is not None:
+            return self.state.last_cmdsub_status
+        return 0
+
+    @staticmethod
+    def _array_assignment_lhs(assignment) -> str:
+        """Render an array assignment's left-hand side for a diagnostic.
+
+        ``a[0]`` for an element assignment, ``a`` for a whole-array init — used
+        only for the "not a valid identifier" prefix-position message (F7), so
+        the exact index rendering is not compared against bash's.
+        """
+        from ..ast_nodes import ArrayElementAssignment
+        if isinstance(assignment, ArrayElementAssignment):
+            index = assignment.index
+            if isinstance(index, list):
+                index_text = ''.join(
+                    getattr(tok, 'value', str(tok)) for tok in index)
+            else:
+                index_text = str(index)
+            return f"{assignment.name}[{index_text}]"
+        return getattr(assignment, 'name', '?')
 
     def _run_command(self, node: 'SimpleCommand', context: 'ExecutionContext',
                      raw_assignments: List['RawAssignment']) -> int:
