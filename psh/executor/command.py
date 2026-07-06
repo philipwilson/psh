@@ -50,24 +50,26 @@ class RedirectionMode(Enum):
         Python-stream level and saved/restored around the single command
         (``_execute_builtin_with_redirections``), so they do not persist.
 
-    EXTERNAL_DEFERRED
-        An external command. Its redirections are NOT applied here — they
-        are set up inside the forked child (``setup_child_redirections``).
-        Applying them in the parent too would resolve ``2>&1`` against
-        already-redirected fds and run heredoc/target command
-        substitutions twice.
+    CHILD_DEFERRED
+        A command whose forked child owns redirection setup: an external
+        command, and any BACKGROUNDED builtin or function. Its redirections
+        are NOT applied here — they are set up once inside the forked child
+        (``setup_child_redirections``). Applying them in the parent too would
+        resolve ``2>&1`` against already-redirected fds and, worse, run
+        heredoc/target command substitutions TWICE (F3): once in the parent
+        and once in the child.
 
     FD_LEVEL_WINDOW
-        Everything else — functions, aliases, and builtins that run in a
-        pipeline or in a forked child. Redirections are applied at the fd
-        level via ``io_manager.with_redirections`` (a save/restore window)
-        because in a forked child builtins use ``os.write()`` on raw fds,
-        so ``os.dup2()`` redirection is required rather than Python-level
-        ``sys.stdout`` replacement.
+        Everything else — functions, aliases, and FOREGROUND builtins that
+        run in a pipeline or in a forked child. Redirections are applied at
+        the fd level via ``io_manager.with_redirections`` (a save/restore
+        window) because in a forked child builtins use ``os.write()`` on raw
+        fds, so ``os.dup2()`` redirection is required rather than
+        Python-level ``sys.stdout`` replacement.
     """
 
     BUILTIN_INPROCESS = "builtin_inprocess"
-    EXTERNAL_DEFERRED = "external_deferred"
+    CHILD_DEFERRED = "child_deferred"
     FD_LEVEL_WINDOW = "fd_level_window"
 
 
@@ -710,7 +712,7 @@ class CommandExecutor:
         """
         strategy = resolution.strategy
         persist = resolution.prefix_assignments_persist
-        mode = self._decide_redirection_mode(strategy, context)
+        mode = self._decide_redirection_mode(strategy, context, node.background)
 
         if mode is RedirectionMode.BUILTIN_INPROCESS:
             status = self._execute_builtin_with_redirections(
@@ -719,10 +721,11 @@ class CommandExecutor:
             return ExecutionResult(status=status,
                                    prefix_assignments_persist=persist)
 
-        if mode is RedirectionMode.EXTERNAL_DEFERRED:
-            # External commands apply their redirections in the
-            # forked child (setup_child_redirections); see the mode
-            # docstring for why we must NOT apply them here too.
+        if mode is RedirectionMode.CHILD_DEFERRED:
+            # The forked child (external, or a backgrounded builtin/function)
+            # applies its own redirections (setup_child_redirections); see the
+            # mode docstring for why we must NOT apply them here too — doing so
+            # would run the redirect targets' substitutions twice (F3).
             status = strategy.execute(
                 cmd_name, args, self.shell, context,
                 node.redirects, node.background,
@@ -751,7 +754,8 @@ class CommandExecutor:
                                    prefix_assignments_persist=persist)
 
     def _decide_redirection_mode(
-        self, strategy: 'ExecutionStrategy', context: 'ExecutionContext'
+        self, strategy: 'ExecutionStrategy', context: 'ExecutionContext',
+        background: bool = False,
     ) -> RedirectionMode:
         """Select how a matched strategy's redirections are applied.
 
@@ -763,18 +767,28 @@ class CommandExecutor:
             strategy,
             (SpecialBuiltinExecutionStrategy, BuiltinExecutionStrategy),
         )
+        if background and (
+                is_builtin or isinstance(strategy, FunctionExecutionStrategy)):
+            # A BACKGROUNDED builtin or function runs in a forked child that
+            # installs its own redirections. The parent must not install them
+            # too, or the redirect targets' command/process substitutions run
+            # twice (F3). (External commands already defer below; the
+            # background decision has to come first so a backgrounded builtin
+            # does not take the in-process save/restore path.)
+            return RedirectionMode.CHILD_DEFERRED
+
         if is_builtin and not context.in_pipeline and not self.state.in_forked_child:
-            # A builtin running in this process (not a pipeline, not a
-            # forked child): redirect at the Python-stream level and
+            # A foreground builtin running in this process (not a pipeline, not
+            # a forked child): redirect at the Python-stream level and
             # save/restore around the one command.
             return RedirectionMode.BUILTIN_INPROCESS
 
         if isinstance(strategy, ExternalExecutionStrategy):
             # External commands redirect inside their own forked child.
-            return RedirectionMode.EXTERNAL_DEFERRED
+            return RedirectionMode.CHILD_DEFERRED
 
-        # Functions, aliases, and builtins that run in a pipeline or forked
-        # child: apply fd-level redirections in a save/restore window.
+        # Functions, aliases, and foreground builtins that run in a pipeline or
+        # forked child: apply fd-level redirections in a save/restore window.
         return RedirectionMode.FD_LEVEL_WINDOW
 
     def _execute_builtin_with_redirections(self, cmd_name: str, args: List[str],

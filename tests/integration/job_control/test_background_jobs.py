@@ -43,8 +43,10 @@ class TestBackgroundJobCreation:
         result = shell.run_command('echo "background output" > /tmp/bg_test &')
         assert result == 0
 
-        # Wait a moment for job to complete
-
+        # The backgrounded builtin creates the redirect file in the forked
+        # child (bash; F3), so wait for the job before reading the file rather
+        # than racing it.
+        shell.run_command('wait')
 
         # Check the output was written
         cat_result = shell.run_command('cat /tmp/bg_test')

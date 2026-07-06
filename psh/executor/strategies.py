@@ -283,7 +283,8 @@ class SpecialBuiltinExecutionStrategy(ExecutionStrategy):
         """Execute a special builtin command."""
         if background:
             # Special builtins can run in background with subshell
-            return self._execute_in_background(cmd_name, args, shell, context, redirects)
+            return self._execute_in_background(
+                cmd_name, args, shell, context, redirects, invocation)
 
         builtin = shell.builtin_registry.get(cmd_name)
         if not builtin:
@@ -293,11 +294,12 @@ class SpecialBuiltinExecutionStrategy(ExecutionStrategy):
 
     def _execute_in_background(self, cmd_name: str, args: List[str],
                               shell: 'Shell', context: 'ExecutionContext',
-                              redirects: Optional[List['Redirect']]) -> int:
+                              redirects: Optional[List['Redirect']],
+                              invocation: Optional['BuiltinContext'] = None) -> int:
         """Execute special builtin in background (subshell)."""
         # Use same background execution logic as regular builtins
         return BuiltinExecutionStrategy()._execute_builtin_in_background(
-            cmd_name, args, shell, context, redirects
+            cmd_name, args, shell, context, redirects, invocation
         )
 
 
@@ -318,7 +320,8 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
         """Execute a builtin command."""
         if background:
             # Run builtin in background by forking a subshell (bash compatibility)
-            return self._execute_builtin_in_background(cmd_name, args, shell, context, redirects)
+            return self._execute_builtin_in_background(
+                cmd_name, args, shell, context, redirects, invocation)
 
         builtin = shell.builtin_registry.get(cmd_name)
         if not builtin:
@@ -337,28 +340,50 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
 
     def _execute_builtin_in_background(self, cmd_name: str, args: List[str],
                                      shell: 'Shell', context: 'ExecutionContext',
-                                     redirects: Optional[List['Redirect']] = None) -> int:
-        """Execute a builtin command in background by forking a subshell."""
-        # The launcher applies the unified child signal policy on fork
+                                     redirects: Optional[List['Redirect']] = None,
+                                     invocation: Optional['BuiltinContext'] = None) -> int:
+        """Execute a builtin command in the background as a forked shell child.
+
+        A backgrounded builtin can itself run shell code (``eval``, ``.``,
+        ``source``), so it goes through ``run_background_shell_child`` — the
+        SAME shared bg-child runner as ``( ... ) &`` / ``{ ...; } &`` / a
+        backgrounded function (F16). That runner gives it the async-list
+        signal defaults, resets inherited parent traps, and — crucially — runs
+        a body-set EXIT trap on completion, so ``eval 'trap "..." EXIT; ...' &``
+        fires the trap like bash. It also goes through
+        ``execute_builtin_guarded`` (defect-to-status, EBADF/EPIPE handling)
+        and preserves the ``BuiltinContext`` (array initializers for a
+        backgrounded declaration builtin).
+
+        Redirections are installed exactly ONCE, here in the child
+        (``setup_child_redirections``); the parent defers them (F3).
+        """
+        # The launcher applies the unified child signal policy on fork.
         launcher = shell.process_launcher
 
-        # Create execution function
         def execute_fn():
-            # Apply redirections if any
-            if redirects:
-                from ..ast_nodes import SimpleCommand
-                temp_command = SimpleCommand(redirects=redirects)
-                shell.io_manager.setup_child_redirections(temp_command)
+            from .child_policy import run_background_shell_child
 
-            # Execute the builtin
-            builtin = shell.builtin_registry.get(cmd_name)
-            if builtin:
-                return builtin.execute([cmd_name] + args, shell)
-            else:
-                return 127
+            def body() -> int:
+                # Apply redirections once in the child.
+                if redirects:
+                    from ..ast_nodes import SimpleCommand
+                    temp_command = SimpleCommand(redirects=redirects)
+                    shell.io_manager.setup_child_redirections(temp_command)
 
+                builtin = shell.builtin_registry.get(cmd_name)
+                if builtin is None:
+                    return 127
+                return execute_builtin_guarded(
+                    builtin, cmd_name, args, shell, invocation)
+
+            return run_background_shell_child(shell, body)
+
+        # The child keeps running shell code (eval/source can start pipelines
+        # or set traps), so mark it a shell process.
         return launcher.launch_background_job(
-            execute_fn, f"{cmd_name} {' '.join(args)}", cmd_name)
+            execute_fn, f"{cmd_name} {' '.join(args)}", cmd_name,
+            is_shell_process=True)
 
 
 class FunctionExecutionStrategy(ExecutionStrategy):

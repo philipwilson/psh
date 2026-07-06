@@ -6662,3 +6662,25 @@
   stdout: "rc=127\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: background builtins run EXIT trap via shared runner (F16)
+# =============================================================================
+
+- name: exec_p1a_bg_eval_exit_trap
+  command: "eval 'trap \"echo bye\" EXIT; echo body' & wait \"$!\"; echo \"rc=$?\""
+  stdout: "body\nbye\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_bg_eval_exit_code
+  command: "eval 'exit 7' & p=$!; wait \"$p\"; echo \"rc=$?\""
+  stdout: "rc=7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_bg_false_wait_status
+  command: "false & p=$!; wait \"$p\"; echo \"rc=$?\""
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
