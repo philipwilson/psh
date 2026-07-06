@@ -18,6 +18,17 @@ It delegates the actual per-string expansion to ``BraceExpander``; this module
 only handles the token-stream concerns (run gathering, quote/opaque-token
 encoding, command-prefix and ``[[ ]]``-region tracking).
 
+Out-of-band metadata (INTERIM design, F3 / expansion Phase-1a): composite runs
+and the range-empty marker are carried through the core expander as single
+placeholder characters embedded in the string. Because any code point can
+appear verbatim in user input, those placeholders are chosen per expansion to
+AVOID every code point present in the run (see ``_first_free_codepoint``), so a
+literal ``U+E000``/``U+F8FF`` is never mistaken for a sentinel and deleted or
+misdecoded. This escape-free "dodge the input" scheme is collision-proof but
+still in-band; the intended end state is to move brace expansion into the
+structured ``Word`` stage so metadata is genuinely out-of-band (expansion
+improvement-plan finding 3, "preferred design"; a later cross-doc campaign).
+
 This module is in mypy's checked scope; keep it clean.
 """
 
@@ -26,7 +37,28 @@ import re
 from typing import Any, List, Tuple
 
 from ..core.assignment_utils import ASSIGNMENT_WORD_RE, NAME_RE
-from .brace_expansion import _RANGE_EMPTY, BraceExpander, BraceExpansionError
+from .brace_expansion import BraceExpander, BraceExpansionError
+
+
+def _first_free_codepoint(forbidden: set, start: int = 0xE000) -> str:
+    """A code point (private-use area upward) not present in ``forbidden``.
+
+    Brace expansion carries out-of-band metadata — the range-empty sentinel and
+    the composite-run placeholders — as single characters inside the string it
+    hands the core expander. Because ANY code point can appear verbatim in user
+    input, those sentinels must avoid the code points actually present, or a
+    literal ``U+F8FF``/``U+E000`` would collide and be deleted or misdecoded
+    (F3, expansion Phase-1a). Generated range elements are always ASCII, so
+    starting in the BMP private-use area (``U+E000``) also keeps sentinels clear
+    of them.
+    """
+    cp = start
+    while cp <= 0x10FFFF:
+        if cp not in forbidden:
+            return chr(cp)
+        cp += 1
+    raise BraceExpansionError(
+        "brace expansion: no free sentinel code point")
 
 # Assignment words (name=, name[idx]=, name+=) share the canonical
 # ASSIGNMENT_WORD_RE: brace expansion is suppressed on them in command-prefix
@@ -175,6 +207,10 @@ class TokenBraceExpander:
             tok = run[0]
             if (tok.type == TokenType.WORD and tok.quote_type is None
                     and tok.value and '{' in tok.value):
+                # Pick a range-empty sentinel absent from this word so a
+                # literal occurrence of the default is not stripped (F3).
+                range_empty = _first_free_codepoint(set(map(ord, tok.value)))
+                self._core._range_empty = range_empty
                 try:
                     expansions = self._core._expand_braces(tok.value)
                 except BraceExpansionError:
@@ -183,11 +219,11 @@ class TokenBraceExpander:
                     # bash drops results that expand to the empty string
                     # ({a,,b} -> a b); an empty item fused with a prefix/postfix
                     # is non-empty and survives (a{,b} -> a ab). A range backslash
-                    # becomes a KEPT empty word (carried as the _RANGE_EMPTY
+                    # becomes a KEPT empty word (carried as the range-empty
                     # sentinel so it survives this filter), so drop only true
                     # empties, then decode the sentinel to ''.
                     expansions = [e for e in expansions if e != '']
-                    expansions = [self._decode_range_empty(e) for e in expansions]
+                    expansions = [e.replace(range_empty, '') for e in expansions]
                     return self._make_word_tokens(tok, expansions)
             return list(run)
 
@@ -200,11 +236,6 @@ class TokenBraceExpander:
         if composite is not None:
             return composite
         return list(run)
-
-    @staticmethod
-    def _decode_range_empty(value: str) -> str:
-        """Replace any ``_RANGE_EMPTY`` sentinel chars with the empty string."""
-        return value.replace(_RANGE_EMPTY, '')
 
     def _expand_composite(self, run):
         """Expand braces across a composite run of tokens.
@@ -221,6 +252,10 @@ class TokenBraceExpander:
             (e.g. $((..)), $(..), $var)  (opaque; never structural).
         Placeholders are decoded afterwards to rebuild each result word. Returns
         the new token list, or None if nothing expanded.
+
+        Placeholders and the range-empty sentinel are chosen to AVOID every code
+        point present in the run, so a literal private-use character in the input
+        (e.g. U+E000, U+F8FF) is never mistaken for one and corrupted (F3).
         """
         from ..lexer.token_types import TokenType
 
@@ -229,12 +264,26 @@ class TokenBraceExpander:
         part_map = {}   # placeholder -> (TokenPart expansion, quote_type)
         tok_map = {}    # placeholder -> whole token
         encoded = []
-        next_pu = 0xE000
+        # Code points already present verbatim in the run: placeholders and the
+        # range-empty sentinel must dodge these (generated range elements are
+        # always ASCII, so the private-use start also keeps them clear of those).
+        forbidden = {ord(c) for tok in run for c in (tok.value or '')}
+        next_cp = [0xE000]
 
         def new_placeholder():
-            nonlocal next_pu
-            pu = chr(next_pu); next_pu += 1
-            return pu
+            cp = next_cp[0]
+            while cp in forbidden:
+                cp += 1
+            if cp > 0x10FFFF:
+                raise BraceExpansionError(
+                    "brace expansion: no free placeholder code point")
+            next_cp[0] = cp + 1
+            return chr(cp)
+
+        # Reserve the range-empty sentinel first, so it collides with neither a
+        # placeholder nor an input code point.
+        range_empty = new_placeholder()
+        self._core._range_empty = range_empty
 
         for tok in run:
             if tok.type == TokenType.WORD and tok.quote_type is None:
@@ -280,12 +329,12 @@ class TokenBraceExpander:
             return None  # nothing structural to expand
 
         # 3. Decode each result and emit tokens. A range backslash carried as
-        #    the _RANGE_EMPTY sentinel contributes nothing to a composite word
+        #    the range-empty sentinel contributes nothing to a composite word
         #    (x{Z..a}y -> xy), so strip it before emitting.
         out = []
         first_word = True
         for result in results:
-            result = result.replace(_RANGE_EMPTY, '')
+            result = result.replace(range_empty, '')
             if not result:
                 continue  # bash drops fully-empty results
             leading_adjacent = (
