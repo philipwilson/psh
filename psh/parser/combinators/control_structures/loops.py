@@ -384,37 +384,57 @@ class LoopParserMixin(_Base):
             else:
                 raise_committed_error(tokens, pos, "Expected '))' to close C-style for")
 
-            # Skip optional separator and optional 'do' keyword.
-            # PSH (like some shells) allows omitting 'do' for C-style for loops:
-            #   for ((i=0; i<3; i++)) echo $i; done
+            # The body is EITHER `do LIST done` OR a brace group `{ LIST }` —
+            # bash accepts both for the C-style for (the brace group is a
+            # documented synonym for do..done) and REQUIRES one of them: a bare
+            # command with no `do`/`{` is a syntax error. Separators before the
+            # body keyword are optional. Mirrors the recursive descent parser
+            # (recursive_descent/.../_parse_c_style_for) so RD and combinator
+            # accept/reject these forms identically.
             if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
                 pos += 1
-            if pos < len(tokens) and matches_keyword(tokens[pos], 'do'):
+
+            if pos < len(tokens) and tokens[pos].type.name == 'LBRACE':
+                # Brace-group body: `for ((...)) { list; }`. build_statement_list
+                # stops at (without consuming) the enclosing '}'.
+                pos += 1  # Skip '{'
+                empty_body_error_pos = pos
+                body_result = self.commands.build_statement_list().parse(tokens, pos)
+                if not body_result.success:
+                    raise_committed_error(tokens, body_result.position,
+                                          body_result.error or "Failed to parse for body")
+                assert body_result.value is not None
+                close_pos = body_result.position
+                if not body_result.value.statements:
+                    raise_committed_error(tokens, empty_body_error_pos, "Expected command in for body")
+                if close_pos >= len(tokens) or tokens[close_pos].type.name != 'RBRACE':
+                    raise_committed_error(tokens, close_pos, "Expected '}' to close C-style for loop")
+                pos = close_pos + 1  # Skip '}'
+            else:
+                # `do LIST done` form; `do` is required.
+                if pos >= len(tokens) or not matches_keyword(tokens[pos], 'do'):
+                    raise_committed_error(tokens, pos, "Expected 'do' in for loop")
                 pos += 1  # Skip 'do'
                 # Skip optional separator after 'do'
                 empty_body_error_pos = pos
                 if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
                     empty_body_error_pos = pos
                     pos += 1
-            else:
-                empty_body_error_pos = pos
 
-            # Parse the body by recursion up to (not consuming) the matching 'done'.
-            body_result = self.commands.build_statement_list(frozenset({'done'})).parse(tokens, pos)
-            if not body_result.success:
-                # Committed to a for loop past 'do' — raise hard (see while).
-                raise_committed_error(tokens, body_result.position,
-                                      body_result.error or "Failed to parse for body")
-            assert body_result.value is not None  # success implies a body
-            done_pos = body_result.position
-
-            if done_pos >= len(tokens) or not matches_keyword(tokens[done_pos], 'done'):
-                raise_committed_error(tokens, done_pos, "Expected 'done' to close C-style for loop",
-                                      terminator='done')
-            if not body_result.value.statements:
-                raise_committed_error(tokens, empty_body_error_pos, "Expected command in for body")
-
-            pos = done_pos + 1  # Skip 'done'
+                # Parse the body by recursion up to (not consuming) 'done'.
+                body_result = self.commands.build_statement_list(frozenset({'done'})).parse(tokens, pos)
+                if not body_result.success:
+                    # Committed to a for loop past 'do' — raise hard (see while).
+                    raise_committed_error(tokens, body_result.position,
+                                          body_result.error or "Failed to parse for body")
+                assert body_result.value is not None  # success implies a body
+                done_pos = body_result.position
+                if done_pos >= len(tokens) or not matches_keyword(tokens[done_pos], 'done'):
+                    raise_committed_error(tokens, done_pos, "Expected 'done' to close C-style for loop",
+                                          terminator='done')
+                if not body_result.value.statements:
+                    raise_committed_error(tokens, empty_body_error_pos, "Expected command in for body")
+                pos = done_pos + 1  # Skip 'done'
 
             # Parse trailing redirections ('&' is handled at and-or level)
             redirects, pos = self._parse_trailing_redirects(tokens, pos)

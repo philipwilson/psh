@@ -136,6 +136,11 @@ class ArrayParser(ParserSubcomponent):
         """``arr[i]`` (no ``=``) + a following ``=value``/``+=`` token."""
         if not self._peek_is_assignment_operator(1):
             return None
+        # The operator token must be lexically ADJACENT to the ``arr[i]`` token.
+        # A space before it (`a[0] =v`) means `a[0]` is a command word and `=v`
+        # an argument, not an element assignment — matching bash (finding 5c).
+        if not self.parser.peek(1).adjacent_to_previous:
+            return None
         bracket_pos = value.index('[')
         close_bracket_pos = value.index(']')
         op_token = self.parser.peek(1)
@@ -155,9 +160,12 @@ class ArrayParser(ParserSubcomponent):
         token = self.parser.peek()
         value = token.value
 
-        # Single token ending with '=' or '+=', then LPAREN.
+        # Single token ending with '=' or '+=', then an ADJACENT LPAREN.
+        # bash only treats `(` as an array initializer when it is glued to the
+        # assignment head; `a= (x)` is a syntax error, not an init (finding 5b).
         if (value.endswith('=') or value.endswith('+=')) and '=' in value:
-            if self.parser.peek(1).type != TokenType.LPAREN:
+            if (self.parser.peek(1).type != TokenType.LPAREN
+                    or not self.parser.peek(1).adjacent_to_previous):
                 return None
             is_append = value.endswith('+=')
             name = value[:-2] if is_append else value[:-1]
@@ -169,10 +177,14 @@ class ArrayParser(ParserSubcomponent):
                 head_token_count=1,
             )
 
-        # Separate tokens: name + '=' / '+=' + LPAREN.
+        # Separate tokens: name + '=' / '+=' + LPAREN, all lexically ADJACENT.
+        # `a+=(x)` (glued) is an init; `a += (x)`, `a =(x)`, `a = (x)` (any gap)
+        # are syntax errors in bash, not inits (finding 5b).
         op_token = self.parser.peek(1)
         if (op_token.type == TokenType.WORD and op_token.value in ('=', '+=')
-                and self.parser.peek(2).type == TokenType.LPAREN):
+                and op_token.adjacent_to_previous
+                and self.parser.peek(2).type == TokenType.LPAREN
+                and self.parser.peek(2).adjacent_to_previous):
             return AssignmentCandidate(
                 name=value,
                 operator=op_token.value,
@@ -260,9 +272,15 @@ class ArrayParser(ParserSubcomponent):
         here into a single value Word with per-part quote context.
         """
         from ....ast_nodes import LiteralPart, WordPart
+        # A continuation word is part of the value only when lexically ADJACENT
+        # to the assignment head — for BOTH a non-empty inline tail
+        # (`a[0]=pre$x`) and an empty one (`a[0]=`). A space breaks it:
+        # `a[0]= v` is an empty assignment plus the separate command `v`, so the
+        # value is Word(parts=[]) and the following word is NOT consumed
+        # (finding 5c). (Previously an empty tail consumed any following word.)
         has_continuation = (
             self.parser.match_any(TokenGroups.WORD_LIKE)
-            and (not tail or self.parser.peek().adjacent_to_previous))
+            and self.parser.peek().adjacent_to_previous)
         if tail:
             parts: List[WordPart] = [LiteralPart(tail)]
             if has_continuation:

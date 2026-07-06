@@ -277,16 +277,22 @@ class ControlStructureParser(ParserSubcomponent):
         # Parse increment
         increment = self.parser.arithmetic.parse_arithmetic_section_until_double_rparen()
 
-        # Skip optional semicolon and newlines before DO (or body)
+        # The body is EITHER `do LIST done` OR a brace group `{ LIST }` — bash
+        # accepts both for the C-style for (the brace group is a documented
+        # synonym for do..done), and REQUIRES one of them: a bare command with
+        # no `do`/`{` is a syntax error (bash rc 2). Separators before the body
+        # keyword are optional. Trailing redirections attach to the whole loop
+        # in either form. (Prior to this fix `do` was wrongly treated as
+        # optional, so `for ((...)); echo x; done` was accepted.)
         self.parser.skip_separators()
-
-        # DO keyword is optional in C-style for loops
-        if self.parser.match(TokenType.DO):
-            self.parser.advance()
+        if self.parser.match(TokenType.LBRACE):
+            body = self._parse_c_style_for_brace_body()
+        else:
+            self.parser.expect(TokenType.DO)
             self.parser.skip_newlines()
-
-        body = self.parser.statements.parse_required_command_list_until(TokenType.DONE)
-        self.parser.expect(TokenType.DONE)
+            body = self.parser.statements.parse_required_command_list_until(
+                TokenType.DONE)
+            self.parser.expect(TokenType.DONE)
         self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
 
@@ -298,6 +304,26 @@ class ControlStructureParser(ParserSubcomponent):
             redirects=redirects,
             background=False
         )
+
+    def _parse_c_style_for_brace_body(self) -> StatementList:
+        """Parse the `{ LIST }` body form of a C-style for loop.
+
+        Bash accepts `for ((...)) { list; }` as a synonym for
+        `for ((...)) do list; done`. This mirrors ``parse_brace_group``'s
+        inner rules (space after ``{``, a ``;``/newline before ``}``, at least
+        one command) but returns the body as a StatementList — the brace group
+        here is the loop body itself, so trailing redirections are parsed by
+        the caller and attach to the whole loop.
+        """
+        self.parser.expect(TokenType.LBRACE)
+        self.parser.skip_newlines()
+        body = self.parser.statements.parse_command_list_until(TokenType.RBRACE)
+        self.parser.skip_newlines()
+        if not body.statements:
+            raise self.parser.error(
+                unexpected_token_message(self.parser.peek()))
+        self.parser.expect(TokenType.RBRACE)
+        return body
 
 
     # === Case Statement Parsing ===
@@ -426,6 +452,14 @@ class ControlStructureParser(ParserSubcomponent):
                     word_parts.extend(word.parts)
             else:
                 break
+
+        # An alternative must contribute at least one word part. bash rejects
+        # empty alternatives — `x|)`, `(|x)`, `()`, `(x|)` — as a syntax error.
+        # A QUOTED-empty pattern (`''`) is legal and DOES produce a (quoted)
+        # part, so it is not caught here (finding 5e).
+        if not word_parts:
+            token = self.parser.peek()
+            raise self.parser.error(unexpected_token_message(token), token)
 
         return CasePattern(pattern=''.join(text_parts),
                            word=Word(parts=word_parts))

@@ -47,6 +47,62 @@ python run_tests.py --combinator > tmp/combinator-results.txt 2>&1
 tail -15 tmp/combinator-results.txt
 ```
 
+## Known open gap: statement sequencing does not require a separator
+
+**Found 2026-07-05 (parser-hardening campaign, appraisal finding 5b).**
+
+The combinator's statement-list loop
+(`psh/parser/combinators/commands/statements.py`, `parse_statement_list`)
+consumes `optional(separators)` between statements, so it accepts two
+statements with **no** separator (`;`, newline, `&`, `|`, `&&`, `||`)
+between them. A word immediately followed by a compound command parses as
+two statements instead of a syntax error:
+
+```sh
+echo (x)        # combinator: two statements (`echo`, then subshell `(x)`)
+                # rd + bash:  syntax error near `(`
+```
+
+This surfaced (it was not caused) when array-initializer adjacency was
+fixed: `arr += (one two)` / `a= (x)` / `a = (x)` are no longer array
+initializers in either parser (matching bash), after which the rd parser
+reports a syntax error but the combinator falls into this sequencing gap
+and yields two statements. The rd side is pinned bash-correct
+(`echo (x)` → `ParseError`) in
+`tests/unit/parser/test_word_then_subshell_sequencing.py`.
+
+Fixing this properly means requiring a separator between statements in the
+combinator's core sequencing — a broad change with wide blast radius,
+deferred to its own campaign (the combinator is educational and outside the
+production quality bar). The `array-spaced-append-init` entry was removed
+from the AST-parity corpus because it is no longer an array-parity case.
+
+## Known open gap: `=~` conditional-regex operand handling
+
+**Documented 2026-07-05 (parser-hardening campaign, appraisal finding 5d).**
+
+The combinator's `[[ ]]` parser (`psh/parser/combinators/special_commands.py`,
+`_parse_test_expression`) models only single-token binary/unary operand forms;
+its own docstring marks multi-token `=~` regexes as an explicit educational
+boundary. As a result its `=~` operand handling diverges from the
+recursive-descent parser (which enforces a bash-faithful operand policy):
+
+- It **under-accepts** legal multi-token regexes: `[[ ab =~ a|b ]]` and
+  `[[ ab =~ (a|b)+ ]]` are rejected (they are not three tokens), whereas rd +
+  bash accept them.
+- It **over-accepts** illegal single-token operands: `[[ x =~ ; ]]`,
+  `[[ x =~ & ]]`, `[[ x =~ < ]]`, `[[ x =~ ( ]]` parse as a binary test with a
+  one-token regex operand, whereas rd + bash reject them as a conditional
+  syntax error.
+
+Closing this needs a real multi-token regex-operand collector in the
+combinator (the rd parser's `_parse_regex_operand` with its
+separator/redirection/balanced-paren policy). That contradicts the combinator's
+stated single-token design boundary and is deferred to its own campaign. The rd
+side is pinned bash-correct in
+`tests/unit/parser/test_regex_operand_policy.py` and the `parsefix_regex_*`
+golden cases.
+
 ## History
 
 | Date | Failures | Notes |

@@ -120,7 +120,26 @@ class Parser(ContextBaseParser):
         root reshaping: a bare compound keeps its normal ``AndOrList ->
         Pipeline`` ancestry, exactly like every other statement. Every parse —
         including empty input — yields a ``Program``.
+
+        Recursive-descent parsing of nested compounds consumes Python stack.
+        Under ``Shell`` the ``MAX_NESTING_DEPTH`` guard pre-empts stack
+        exhaustion (``Shell`` raises the interpreter recursion limit at
+        construction), but the parser is a public API usable WITHOUT ``Shell``,
+        under the interpreter's default limit — where deeply nested input trips
+        a raw ``RecursionError`` first. Convert it to a clean ``ParseError`` at
+        this boundary so parser safety does not depend on shell initialization
+        (appraisal finding 6). This does not lower ``MAX_NESTING_DEPTH`` or
+        touch the process recursion limit, so shell-context behavior (1000-deep
+        nesting works under ``Shell``'s raised limit) is unchanged.
         """
+        try:
+            return self._parse_program()
+        except RecursionError:
+            raise self.error(
+                "input too deeply nested to parse") from None
+
+    def _parse_program(self) -> Program:
+        """Parse the token stream into a ``Program`` (see :meth:`parse`)."""
         program = Program()
         self.skip_newlines()
 

@@ -71,6 +71,13 @@ class ParserContext:
     # context is discarded with its parser.
     open_constructs: List[str] = field(default_factory=list)
 
+    # Cached synthetic EOF returned when the cursor is past the token list.
+    # Built lazily on first past-end access (see _synthetic_eof) so repeated
+    # out-of-range peeks return one stable object rather than a fresh token
+    # each time. Not part of the public state; excluded from init/repr.
+    _eof_token: Optional[Token] = field(default=None, init=False, repr=False,
+                                        compare=False)
+
     def __post_init__(self):
         """Initialize derived state."""
         if self.source_text and not self.source_lines:
@@ -95,23 +102,66 @@ class ParserContext:
 
     # === Token Access Methods ===
 
+    def _synthetic_eof(self) -> Token:
+        """Return a stable synthetic EOF token for out-of-range access.
+
+        The lexer normally supplies a trailing EOF, but the parser is a
+        public API that accepts any ``List[Token]``. When the cursor moves
+        past the end of a sentinel-free stream we return a synthetic EOF
+        (positioned just after the last real token so diagnostics point at
+        end of input) rather than echoing the last real token — echoing
+        caused non-termination, since ``at_end()`` never saw an EOF and
+        ``advance()`` could not move forward.
+        """
+        if self._eof_token is None:
+            if self.tokens:
+                last = self.tokens[-1]
+                pos = last.end_position or last.position
+                self._eof_token = Token(
+                    TokenType.EOF, "", pos, end_position=pos,
+                    line=last.line, column=last.column)
+            else:
+                self._eof_token = Token(TokenType.EOF, "", 0)
+        return self._eof_token
+
     def peek(self, offset: int = 0) -> Token:
-        """Look at current token + offset without consuming."""
+        """Look at current token + offset without consuming.
+
+        Positions past the end of the token list yield a stable synthetic
+        EOF (see :meth:`_synthetic_eof`); this supports both EOF-terminated
+        and sentinel-free token streams. Negative positions are rejected —
+        the parser never looks before the start of the stream.
+        """
         pos = self.current + offset
+        if pos < 0:
+            raise IndexError(
+                f"Parser peek at negative token position {pos} "
+                f"(current={self.current}, offset={offset})")
         if pos < len(self.tokens):
             return self.tokens[pos]
-        return self.tokens[-1] if self.tokens else Token(TokenType.EOF, "", 0)
+        return self._synthetic_eof()
 
     def advance(self) -> Token:
-        """Consume and return current token."""
+        """Consume and return current token.
+
+        May advance to ``len(tokens)`` (one past the last token) so that a
+        sentinel-free stream reaches the end and ``at_end()`` becomes true;
+        further advances stay parked at the end and return synthetic EOF.
+        """
         token = self.peek()
-        if self.current < len(self.tokens) - 1:
+        if self.current < len(self.tokens):
             self.current += 1
         return token
 
     def at_end(self) -> bool:
-        """Check if at end of tokens."""
-        return self.peek().type == TokenType.EOF
+        """Check if at end of tokens.
+
+        True once the cursor reaches the end of the stream (``current >=
+        len(tokens)``, the sentinel-free case) or lands on an explicit EOF
+        token (the normal lexer-terminated case).
+        """
+        return self.current >= len(self.tokens) or \
+            self.tokens[self.current].type == TokenType.EOF
 
     def match(self, *token_types: TokenType) -> bool:
         """Check if current token matches any of the given types."""
