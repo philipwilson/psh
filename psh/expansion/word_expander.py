@@ -38,6 +38,7 @@ from ..ast_nodes import (
     LiteralPart,
     ProcessSubstitution,
     Word,
+    WordPart,
 )
 from .glob import GLOB_METACHARS, has_glob_metacharacters
 from .operands import DQ_WORD
@@ -114,6 +115,16 @@ class WordExpander:
         # initializer elements use a tilde-free policy).
         if policy.assignment_tilde:
             st.assign_prefix = self.manager.assignment_word_prefix(word)
+
+        # A colon-bounded leading tilde extent that spills into following
+        # parts (``~:$X`` -> ``$HOME:$X``, $X kept verbatim): pre-expand it
+        # into one literal so the walk sees the verbatim rest as ordinary
+        # text. (The single-literal-part case is handled in
+        # _walk_literal_part via _leading_tilde_expandable.)
+        extent_parts = self._collapse_leading_tilde_extent(word)
+        if extent_parts is not None:
+            word = Word(parts=extent_parts)
+            st.assign_prefix = None  # synthetic word is not assignment-shaped
 
         for part_index, part in enumerate(word.parts):
             if isinstance(part, LiteralPart):
@@ -228,6 +239,95 @@ class WordExpander:
             if ch == '\\':
                 return False
         return not parts_follow
+
+    def _collapse_leading_tilde_extent(
+            self, word: Word) -> Optional[List[WordPart]]:
+        """Collapse a colon-bounded leading tilde extent spanning parts.
+
+        bash's tilde WORD runs from a word-leading ``~`` to the first
+        UNQUOTED ``/`` (or word end); a ``:`` inside it delimits the
+        expandable prefix, and the remainder of the tilde word is taken
+        VERBATIM — the parameter/command/arithmetic expansions in it do NOT
+        run (``~:$X`` -> ``$HOME:$X`` with the ``$X`` intact; probed bash
+        5.2). ``_walk_literal_part`` handles a tilde word confined to the
+        leading literal part; this handles the remainder spilling into the
+        following parts.
+
+        Returns a new parts list — the expanded prefix and verbatim
+        remainder collapsed into one pre-expanded unquoted ``LiteralPart``,
+        followed by any parts past the tilde-word boundary — or ``None``
+        when the special case does not apply (the normal walk then owns the
+        word). Bails to ``None`` wherever bash would NOT tilde-expand: an
+        unexpandable prefix, or a quote/backslash anywhere in the tilde
+        word.
+        """
+        parts = word.parts
+        if len(parts) < 2:
+            # 0/1 parts: nothing spills; _walk_literal_part owns the tilde.
+            return None
+        first = parts[0]
+        if (not isinstance(first, LiteralPart) or first.quoted
+                or not first.text.startswith('~')):
+            return None
+
+        # The prefix must be ':'-bounded, with NO '/' anywhere in the leading
+        # literal: a '/' bounds the tilde word within this literal, so the
+        # remainder never spills into following parts (the single-part case,
+        # owned by _walk_literal_part). A backslash is a quoted char that
+        # disables tilde expansion entirely.
+        lead = first.text
+        colon = -1
+        for i in range(1, len(lead)):
+            ch = lead[i]
+            if ch == '\\' or ch == '/':
+                return None
+            if ch == ':' and colon == -1:
+                colon = i
+        if colon == -1:
+            return None  # prefix runs into following parts with no ':' bound
+
+        # The prefix must actually expand; an unknown user or out-of-range
+        # dirstack index leaves the word literal in bash (and the rest then
+        # expands normally, which the ordinary walk already does).
+        expanded_lead = self.manager.expand_tilde(lead)
+        if expanded_lead == lead:
+            return None
+
+        # Consume following parts as verbatim source until the first
+        # unquoted '/' in a literal part (the tilde-word boundary). Any
+        # quoted part or backslash disables tilde -> bail to the normal walk.
+        verbatim: List[str] = []
+        resume: List[WordPart] = []
+        for idx in range(1, len(parts)):
+            part = parts[idx]
+            if getattr(part, 'quoted', False):
+                return None
+            if isinstance(part, ExpansionPart):
+                # str(part) is psh's canonical pre-expansion source rendering
+                # (the same one display_text/SimpleCommand.args use).
+                verbatim.append(str(part))
+                continue
+            if isinstance(part, LiteralPart):
+                text = part.text
+                slash = -1
+                for j, ch in enumerate(text):
+                    if ch == '\\':
+                        return None
+                    if ch == '/':
+                        slash = j
+                        break
+                if slash == -1:
+                    verbatim.append(text)
+                    continue
+                verbatim.append(text[:slash])
+                resume = [LiteralPart(text[slash:], quoted=False)]
+                resume.extend(parts[idx + 1:])
+                break
+            return None  # unknown WordPart kind: stay conservative
+
+        collapsed = LiteralPart(expanded_lead + ''.join(verbatim),
+                                quoted=False)
+        return [collapsed] + resume
 
     def _walk_expansion_part(self, word: Word, part: ExpansionPart,
                              st: _WalkState,
