@@ -6684,3 +6684,31 @@
   stdout: "rc=1\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: compound redirections cover header expansion (F4)
+# =============================================================================
+
+- name: exec_p1a_for_header_reads_redirected_stdin
+  command: "for x in $(cat); do printf '<%s>' \"$x\"; done <<< item; echo"
+  stdout: "<item>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_case_subject_reads_redirected_stdin
+  command: "case \"$(cat)\" in item) echo yes ;; *) echo no ;; esac <<< item"
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_cstyle_for_init_reads_redirected_stdin
+  command: "for ((i=$(cat); i<4; i++)); do printf '%s' \"$i\"; done <<< 2; echo"
+  stdout: "23\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_for_multiword_header_reads_redirected_stdin
+  command: "for x in $(cat); do printf '<%s>' \"$x\"; done <<< 'a b'; echo"
+  stdout: "<a><b>\n"
+  stderr: ""
+  exit_code: 0
