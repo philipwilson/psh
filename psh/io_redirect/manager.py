@@ -492,12 +492,16 @@ class IOManager:
         (``F_DUPFD`` shares the open file description, so the truncation the
         original ``open`` already did stands) and drop the low slot.
         """
-        f = open(target, mode)
+        # surrogateescape so a builtin can write shell values carrying
+        # non-UTF-8 bytes (surrogate escapes, e.g. from `x=$(printf '\xff')`)
+        # to a redirected file, matching bash's byte transparency and the
+        # sys.stdout/stderr policy set at psh's entry point.
+        f = open(target, mode, errors='surrogateescape')
         if f.fileno() >= 3:
             return cast(TextIO, f)
         high_fd = fcntl.fcntl(f.fileno(), fcntl.F_DUPFD, 3)
         f.close()  # frees the low slot; high_fd keeps the file open
-        return cast(TextIO, os.fdopen(high_fd, mode))
+        return cast(TextIO, os.fdopen(high_fd, mode, errors='surrogateescape'))
 
     def _dup_output_fd_for_children(self, source_fd: int, target_fd: int,
                                     frame: BuiltinRedirectFrame):
@@ -609,7 +613,8 @@ class IOManager:
             # Validates dup_fd and dup2's m onto fd n (independent of a later
             # reassignment of m); fd n's target is now a snapshot of m's.
             self._builtin_redirect_fd_level(redirect, frame)
-            f = os.fdopen(os.dup(redirect.dup_fd), 'w', buffering=1)
+            f = os.fdopen(os.dup(redirect.dup_fd), 'w', buffering=1,
+                          errors='surrogateescape')
             frame.opened_streams.append(f)
             if redirect.fd == 1:
                 frame.snapshot.note_stdout()

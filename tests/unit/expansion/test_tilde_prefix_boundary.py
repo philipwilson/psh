@@ -15,9 +15,15 @@ Operand contexts (${u:-~:y}, ${v#~:}, ${w/q/~:z}) consume the whole
 tilde word verbatim on success — bash's tilde_find_word semantics.
 All expectations bash-5.2-verified (tmp/probes-r17t2-startilde/).
 
-Known documented divergence (deliberate): for a WORD like ``~:$X`` bash
-5.2 expands the tilde and pastes the remaining parts verbatim ($X stays
-unexpanded); psh keeps the tilde literal and expands $X normally.
+WORD context (expansion Phase-1a F10, 2026-07-05): a colon-bounded tilde
+prefix whose verbatim remainder spills into following parts now matches
+bash — ``echo ~:$X`` expands the tilde and pastes ``$X`` VERBATIM
+(``/h:$X``), the tilde word running to the first unquoted ``/``. See
+_collapse_leading_tilde_extent. Residual: a braced simple var with no
+operator (``~:${X}``) renders as ``$X`` not ``${X}`` in the verbatim
+remainder — the parser folds ``${X}`` and ``$X`` to the same
+VariableExpansion, so the braces are unrecoverable (an AST source-fidelity
+limitation, not specific to tilde).
 """
 
 
@@ -234,9 +240,68 @@ class TestPrefixEndHelper:
         assert pe('~+:x') == 2
         assert pe('~a:b/c') == 2
 
-    def test_word_context_divergence_documented(self, captured_shell):
-        # DOCUMENTED divergence from bash 5.2 (see module docstring): for
-        # the WORD ~:$X bash pastes "$X" verbatim after the expanded
-        # tilde; psh keeps the tilde literal and expands $X normally.
+
+class TestWordTildeExtent:
+    """WORD context: a colon-bounded tilde prefix consumes the rest of the
+    tilde word (to the first unquoted '/') verbatim across parts (F10).
+
+    All expectations bash-5.2-verified (HOME=/h, X=hello)."""
+
+    def test_colon_bounded_rest_verbatim(self, captured_shell):
+        # The headline case: $X is NOT expanded after a ':'-bounded tilde.
         captured_shell.run_command('HOME=/h; X=hello; echo ~:$X')
+        assert captured_shell.get_stdout() == "/h:$X\n"
+
+    def test_slash_ends_extent_then_expands(self, captured_shell):
+        # The first '/' bounds the tilde word; $X after it expands normally.
+        captured_shell.run_command('HOME=/h; X=hello; echo ~:a/$X')
+        assert captured_shell.get_stdout() == "/h:a/hello\n"
+
+    def test_expansion_before_slash_verbatim(self, captured_shell):
+        # $X is inside the tilde word (before the literal '/y'): verbatim.
+        captured_shell.run_command('HOME=/h; X=hello; echo ~:$X/y')
+        assert captured_shell.get_stdout() == "/h:$X/y\n"
+
+    def test_multiple_colons_all_verbatim(self, captured_shell):
+        captured_shell.run_command('HOME=/h; X=hello; echo ~:$X:$X')
+        assert captured_shell.get_stdout() == "/h:$X:$X\n"
+
+    def test_command_substitution_verbatim(self, captured_shell):
+        captured_shell.run_command('HOME=/h; echo ~:$(echo hi)')
+        assert captured_shell.get_stdout() == "/h:$(echo hi)\n"
+
+    def test_arithmetic_verbatim(self, captured_shell):
+        captured_shell.run_command('HOME=/h; echo ~:$((1+1))')
+        assert captured_shell.get_stdout() == "/h:$((1+1))\n"
+
+    def test_param_operator_verbatim(self, captured_shell):
+        captured_shell.run_command('HOME=/h; X=hello; echo ~:${X#h}')
+        assert captured_shell.get_stdout() == "/h:${X#h}\n"
+
+    def test_dirstack_prefix_verbatim(self, captured_shell):
+        captured_shell.run_command('HOME=/h; X=hello; cd /tmp; echo ~+:$X')
+        assert captured_shell.get_stdout() == "/tmp:$X\n"
+
+    def test_unknown_user_normal_walk(self, captured_shell):
+        # Unexpandable prefix -> literal, and $X then expands (bash).
+        captured_shell.run_command('X=hello; echo ~nosuchuserxyz:$X')
+        assert captured_shell.get_stdout() == "~nosuchuserxyz:hello\n"
+
+    def test_quote_in_extent_suppresses(self, captured_shell):
+        # A quote anywhere in the tilde word disables the tilde (bash).
+        captured_shell.run_command('HOME=/h; X=hello; echo ~:"$X"')
         assert captured_shell.get_stdout() == "~:hello\n"
+
+    def test_backslash_in_extent_suppresses(self, captured_shell):
+        captured_shell.run_command(r'HOME=/h; X=hello; echo ~:$X\/y')
+        assert captured_shell.get_stdout() == "~:hello/y\n"
+
+    def test_loop_item_context(self, captured_shell):
+        captured_shell.run_command(
+            'HOME=/h; X=hello; for i in ~:$X; do echo "$i"; done')
+        assert captured_shell.get_stdout() == "/h:$X\n"
+
+    def test_array_init_context(self, captured_shell):
+        captured_shell.run_command(
+            'HOME=/h; X=hello; a=(~:$X); echo "${a[0]}"')
+        assert captured_shell.get_stdout() == "/h:$X\n"

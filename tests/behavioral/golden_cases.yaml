@@ -6564,3 +6564,97 @@
   stdout: "m\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# COMMAND SUBSTITUTION BYTE POLICY (expansion Phase-1a F1)
+# NUL bytes are stripped (one warning per substitution); other bytes
+# round-trip via surrogateescape through output, external argv, and env.
+# Byte sources/sinks use python3 and report bytes as integer lists so the
+# expectations stay ASCII-clean (no raw non-UTF-8 bytes in the YAML) and
+# platform-stable (no `od` spacing).
+# =============================================================================
+
+- name: expn_p1a_cmdsub_high_byte_output_roundtrip
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([255]))''); printf %s "$x" | python3 -c ''import sys;sys.stdout.write(str(list(sys.stdin.buffer.read())))'''
+  stdout: "[255]"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_high_byte_argv_roundtrip
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([255]))''); python3 -c ''import sys,os;sys.stdout.write(str(list(os.fsencode(sys.argv[1]))))'' "$x"'
+  stdout: "[255]"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_high_byte_env_roundtrip
+  command: 'export X=$(python3 -c ''import os;os.write(1,bytes([255]))''); python3 -c ''import os,sys;sys.stdout.write(str(list(os.environb[b"X"])))'''
+  stdout: "[255]"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_low_byte_0x80_roundtrip
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([128]))''); printf %s "$x" | python3 -c ''import sys;sys.stdout.write(str(list(sys.stdin.buffer.read())))'''
+  stdout: "[128]"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_valid_utf8_unchanged
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([0xc3,0xa9]))''); printf %s "$x" | python3 -c ''import sys;sys.stdout.write(str(list(sys.stdin.buffer.read())))'''
+  stdout: "[195, 169]"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_nul_stripped_and_warns
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([97,0,98]))''); printf "<%s>" "$x"'
+  stdout: "<ab>"
+  stderr: "ignored null byte in input"
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_multi_nul_one_warning
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([97,0,98,0,99]))''); printf "<%s>" "$x"'
+  stdout: "<abc>"
+  stderr: "ignored null byte in input"
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_heredoc_byte_roundtrip
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([255,97]))''); cat <<< "$x" | python3 -c ''import sys;sys.stdout.write(str(list(sys.stdin.buffer.read())))'''
+  stdout: "[255, 97, 10]"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# BRACE EXPANSION RESOURCE BUDGET (expansion Phase-1a F4)
+# In-budget ranges expand exactly like bash; a runaway expansion is a loud
+# O(1) error (exit 2), never a silent restore-the-literal. The limit itself is
+# a DELIBERATE divergence (bash has no limit) — see docs 17.3.
+# =============================================================================
+
+# In-budget: matches bash. `set --` + $# keeps the golden output tiny and
+# platform-stable (no huge stdout, no `wc` padding).
+- name: expn_p1a_brace_large_range_expands
+  command: "set -- {1..20000}; echo $#"
+  stdout: "20000\n"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_brace_at_limit_expands
+  command: "set -- {1..100000}; echo $#"
+  stdout: "100000\n"
+  stderr: ""
+  exit_code: 0
+
+# Over budget: loud typed error, exit 2, and (preemptive cardinality) fast —
+# psh_only because bash has no limit and would try to build the whole thing.
+- name: expn_p1a_brace_over_limit_loud
+  command: "echo {1..1000000000}"
+  stdout: ""
+  stderr: "brace expansion: 1000000000 items exceeds the limit of 100000"
+  exit_code: 2
+  psh_only: true
+
+- name: expn_p1a_brace_product_over_limit_loud
+  command: "echo {a,b}{1..100000}"
+  stdout: ""
+  stderr: "brace expansion: 200000 items exceeds the limit of 100000"
+  exit_code: 2
+  psh_only: true

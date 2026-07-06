@@ -291,10 +291,34 @@ def _read_all_stdin() -> str:
     return stdin.read()
 
 
+def _enable_byte_transparent_output() -> None:
+    """Let surrogate-escaped bytes round-trip back out through stdout/stderr.
+
+    psh decodes non-UTF-8 input (scripts, stdin, command substitution) with
+    surrogateescape, so shell values can carry arbitrary bytes as lone
+    surrogates. The default text streams encode with errors='strict', which
+    raises on those surrogates (`x=$(printf '\\xff'); printf %s "$x"` would
+    crash). Reconfiguring the streams to surrogateescape makes the parent-path
+    builtin output boundary re-encode each surrogate to its original byte,
+    matching bash's byte transparency and the forked-child fd-level writes.
+    Only affects the standalone `python -m psh` entry point (not embedders,
+    whose overridden streams are untouched)."""
+    for name in ('stdout', 'stderr'):
+        stream = getattr(sys, name, None)
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(errors='surrogateescape')
+        except (OSError, ValueError):
+            pass
+
+
 def main():
     """Main entry point for psh command."""
     import atexit
     atexit.register(_neutralize_closed_std_streams)
+    _enable_byte_transparent_output()
     opts, operands = parse_args(sys.argv[1:])
 
     # --version wins over --help regardless of order (bash does the same);
