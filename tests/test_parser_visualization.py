@@ -8,74 +8,96 @@ from psh.parser.visualization import AsciiTreeRenderer, ASTDotGenerator, ASTPret
 from psh.parser.visualization.ascii_tree import CompactAsciiTreeRenderer, DetailedAsciiTreeRenderer
 
 
+def _pretty(src, **kwargs):
+    ast = Parser(tokenize(src)).parse()
+    return ASTPrettyPrinter(**kwargs).visit(ast)
+
+
+# Raw dataclass repr signatures that must NEVER appear (they signal the printer
+# fell through to repr() instead of visiting a child structurally).
+_RAW_REPR_SIGNATURES = ("AndOrList(", "Pipeline(", "SimpleCommand(",
+                        "IfConditional(", "pipelines=[", "commands=[",
+                        "statements=[")
+
+
 class TestASTPrettyPrinter:
-    """Test the AST pretty printer."""
+    """Structural tests for the AST pretty printer.
 
-    def test_simple_command_formatting(self):
-        """Test formatting of simple commands."""
-        tokens = tokenize("echo hello world")
-        parser = Parser(tokens)
-        ast = parser.parse()
+    These assert the printer VISITS the current AST (correct field names, no
+    raw dataclass repr), which the previous substring-only tests could not —
+    a raw ``repr`` also contains "SimpleCommand"/"echo", so the stale printer
+    passed those while emitting garbage.
+    """
 
-        formatter = ASTPrettyPrinter()
-        output = formatter.visit(ast)
+    def test_no_raw_dataclass_repr_leaks(self):
+        for src in ("echo hello world", "echo a | grep b",
+                    "if true; then echo hi; elif false; then echo x; fi",
+                    "for i in 1 2 3; do echo $i; done",
+                    "case $x in a) echo a;; esac"):
+            out = _pretty(src)
+            for sig in _RAW_REPR_SIGNATURES:
+                assert sig not in out, f"raw repr {sig!r} leaked for {src!r}:\n{out}"
 
-        assert "SimpleCommand" in output
-        assert "echo" in output
-        assert "hello" in output
-        assert "world" in output
+    def test_program_root_is_visited(self):
+        out = _pretty("echo hello")
+        # The old printer had no visit_Program and dumped a raw repr here.
+        assert out.startswith("Program:")
+        assert "statements: [" in out
 
-    def test_pipeline_formatting(self):
-        """Test formatting of pipelines."""
-        tokens = tokenize("echo hello | grep world")
-        parser = Parser(tokens)
-        ast = parser.parse()
+    def test_simple_command_shows_words(self):
+        out = _pretty("echo hello world")
+        assert "SimpleCommand:" in out
+        assert "words: [" in out
+        for word in ("echo", "hello", "world"):
+            assert repr(word) in out  # LiteralPart text: 'echo' etc.
 
-        formatter = ASTPrettyPrinter()
-        output = formatter.visit(ast)
+    def test_and_or_list_shows_pipelines_and_operators(self):
+        # The stale printer read obsolete left/operator/right here.
+        out = _pretty("echo a && echo b || echo c")
+        assert "AndOrList:" in out
+        assert "pipelines: [" in out
+        assert "operators: [" in out
+        assert "'&&'" in out
+        assert "'||'" in out
 
-        assert "Pipeline" in output
-        assert "echo" in output
-        assert "grep" in output
+    def test_if_statement_shows_condition_and_then_part(self):
+        out = _pretty("if true; then echo hi; fi")
+        assert "IfConditional:" in out
+        assert "condition:" in out
+        assert "then_part:" in out
 
-    def test_if_statement_formatting(self):
-        """Test formatting of if statements."""
-        tokens = tokenize("if true; then echo hi; fi")
-        parser = Parser(tokens)
-        ast = parser.parse()
+    def test_for_loop_shows_items_not_iterable(self):
+        # The stale printer read the obsolete `iterable` attribute.
+        out = _pretty("for i in 1 2 3; do echo $i; done")
+        assert "ForLoop:" in out
+        assert "variable: 'i'" in out
+        assert "items: [" in out
+        assert "'1'" in out and "'2'" in out and "'3'" in out
+        assert "iterable" not in out
 
-        formatter = ASTPrettyPrinter()
-        output = formatter.visit(ast)
+    def test_c_style_for_shows_current_fields(self):
+        # The stale printer read obsolete init/update instead of *_expr.
+        out = _pretty("for ((i=0; i<3; i++)); do echo $i; done")
+        assert "CStyleForLoop:" in out
+        assert "init_expr:" in out
+        assert "update_expr:" in out
 
-        assert "IfConditional" in output
-        assert "condition" in output
-        assert "then_part" in output
+    def test_case_shows_expr_and_items(self):
+        # The stale printer read obsolete expression/cases.
+        out = _pretty("case $x in a) echo a;; b) echo b;; esac")
+        assert "CaseConditional:" in out
+        assert "items: [" in out
+        assert "CaseItem:" in out
 
-    def test_compact_mode(self):
-        """Test compact formatting mode."""
-        tokens = tokenize("echo hello")
-        parser = Parser(tokens)
-        ast = parser.parse()
+    def test_compact_mode_inlines_scalar_leaf_nodes(self):
+        # Compact mode renders all-scalar nodes (e.g. LiteralPart) on one line.
+        out = _pretty("echo hi", compact_mode=True)
+        assert "LiteralPart(" in out  # inlined form: LiteralPart(text='echo', ...)
 
-        formatter = ASTPrettyPrinter(compact_mode=True)
-        output = formatter.visit(ast)
-
-        # Compact mode should produce shorter output
-        lines = output.split('\n')
-        assert len(lines) <= 5  # Should be more compact
-
-    def test_position_display(self):
-        """Test position information display."""
-        tokens = tokenize("echo hello")
-        parser = Parser(tokens)
-        ast = parser.parse()
-
-        formatter = ASTPrettyPrinter(show_positions=True)
-        output = formatter.visit(ast)
-
-        # Position display is enabled, output should be valid
-        assert isinstance(output, str)
-        assert len(output) > 0
+    def test_position_display_is_valid(self):
+        out = _pretty("echo hello", show_positions=True)
+        assert isinstance(out, str)
+        assert out.startswith("Program")
 
 
 class TestASTDotGenerator:

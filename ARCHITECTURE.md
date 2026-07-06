@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.653.0
+**Current Version**: 0.654.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -413,7 +413,7 @@ The parser combinator is a functional parser implementation demonstrating elegan
 Both parser implementations share common infrastructure:
 
 #### Parser Configuration System
-- **`psh/parser/config.py`** - ParserConfig with parsing-mode, error-handling, and bash-compatibility options (preset constructor `strict_posix()`; derive variants with `clone(**overrides)`)
+- **`psh/parser/config.py`** - ParserConfig (error-handling options only; derive variants with `clone(**overrides)`, which rejects unknown fields). The production grammar is not feature-configurable — see Section 3.6.
 
 #### Centralized State Management
 - **`psh/parser/recursive_descent/context.py`** - ParserContext class for unified state management
@@ -424,7 +424,10 @@ AST validation lives in `psh/visitor/` (e.g. `ValidatorVisitor` and `EnhancedVal
 
 #### Parse Tree Visualization
 - **`psh/parser/visualization/`** - Multi-format AST visualization
-  - `ast_formatter.py` - Pretty printer for human-readable AST output
+  - `ast_formatter.py` - Pretty printer: a generic, structure-driven dump that
+    walks each node's dataclass fields and recurses into children (no per-node
+    methods to drift from the AST). Exhaustive counterpart to the summarized
+    ASCII tree.
   - `dot_generator.py` - Graphviz DOT format for visual diagrams
   - `ascii_tree.py` - ASCII tree renderer for terminal display
 
@@ -452,9 +455,11 @@ class Parser(ContextBaseParser):
         ...
 ```
 
-With `config.collect_errors=True`, errors accumulate in `ctx.errors`
-(up to `config.max_errors`) via `ParserContext.add_error()` instead of
-raising immediately; `ctx.can_continue_parsing()` decides when to stop.
+There is no error-collection mode: `ParserContext.consume()` raises a
+`ParseError` on the first unexpected token, so a parse either succeeds or
+raises — it never returns a partial/fabricated AST. (An earlier
+`collect_errors` recovery mode did the latter and its collected errors were
+never read; it was removed.)
 
 ### 3.4 Grammar Overview
 
@@ -493,41 +498,29 @@ The dual parser architecture provides unique advantages:
 
 ### 3.6 Parser Configuration System
 
-The parser supports comprehensive configuration for different parsing modes and behaviors:
+**The production grammar is NOT feature-configurable.** Compound-command
+dispatch calls the specialized sub-parsers directly, so `[[ ]]` and `(( ))`
+are always accepted regardless of configuration. The former strict-POSIX and
+feature-gate fields (`parsing_mode`, `enable_arithmetic`,
+`allow_bash_conditionals`, `allow_bash_arithmetic`) and their guard machinery
+were a façade — bypassed on every live path — and were removed. POSIX/bash
+behavior that IS honored lives in the lexer (`posix` tokenize mode) and
+runtime options, not in `ParserConfig`.
 
 ```python
 @dataclass
 class ParserConfig:
-    """Parser configuration options (only fields the parser actually reads)"""
-    # Core parsing mode: BASH_COMPAT (default) or STRICT_POSIX
-    parsing_mode: ParsingMode = ParsingMode.BASH_COMPAT
-
-    # Error handling: STRICT (stop on first error) or COLLECT
-    error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
-    max_errors: int = 10
-    collect_errors: bool = False
-
-    # Language features
-    enable_arithmetic: bool = True
-
-    # Bash compatibility
-    allow_bash_conditionals: bool = True   # [[ ]]
-    allow_bash_arithmetic: bool = True     # (( ))
-
-    @classmethod
-    def strict_posix(cls) -> 'ParserConfig':
-        """Strict POSIX compliance mode"""
-        return cls(
-            parsing_mode=ParsingMode.STRICT_POSIX,
-            error_handling=ErrorHandlingMode.STRICT,
-            allow_bash_conditionals=False,
-            allow_bash_arithmetic=False,
-        )
+    """Parser configuration options (currently empty)."""
 ```
 
-Derive variants with `config.clone(**overrides)`. Feature checks go
-through `is_feature_enabled()` / `should_allow()`, which `getattr` with
-a default of `False`, so removed fields safely read as disabled.
+`ParserConfig` carries no options today — the production parser has none.
+It is retained as the parser's single configuration object and extension
+point: it threads through the factory, `ParserContext`, and every sub-parser,
+so a genuinely grammar-affecting option could be added here in one place.
+`config.clone(**overrides)` delegates to `dataclasses.replace` and raises on
+an unknown field name. No live path passes a non-default config;
+`create_parser()` / `parse_with_heredocs()` always construct a default
+`ParserConfig()`.
 
 ### 3.7 Centralized ParserContext
 
@@ -542,9 +535,9 @@ class ParserContext:
     current: int = 0
     config: ParserConfig = field(default_factory=ParserConfig)
 
-    # Error handling
-    errors: List[ParseError] = field(default_factory=list)
-    fatal_error: Optional[ParseError] = None
+    # Pre-collected heredoc bodies (heredoc-aware parse only), keyed by the
+    # lexer-assigned heredoc_key; None otherwise.
+    heredoc_map: Optional[Mapping[str, object]] = None
 
     # Source context
     source_text: Optional[str] = None
@@ -577,33 +570,27 @@ parse-tree -f dot "for i in 1 2 3; do echo $i; done"
 show-ast "case $var in pattern) echo match;; esac"
 ```
 
-### 3.10 Error Collection
+### 3.10 Parse Errors and Diagnostics
 
-Multi-error collection is implemented at the `ParserContext` level
-(there is no separate recovery subsystem):
+There is no error-collection / recovery subsystem. `ParserContext.consume()`
+raises a `ParseError` on the first unexpected token, so a parse either
+succeeds or raises — it never returns a partial or fabricated AST. (An earlier
+`collect_errors` mode recorded errors and returned the unexpected token
+without consuming it, yielding a completed-looking AST after a missing
+required token; its collected errors were never read, and it was removed.)
 
-```python
-# In ParserContext (recursive_descent/context.py)
-def add_error(self, error: ParseError) -> None:
-    """Add error to the error list, checking for fatal errors."""
-    if len(self.errors) < self.config.max_errors:
-        self.errors.append(error)
-    if (hasattr(error.error_context, 'severity') and
-        error.error_context.severity == ErrorSeverity.FATAL):
-        self.fatal_error = error
+`ParseError` exposes one unambiguous diagnostic interface:
 
-def can_continue_parsing(self) -> bool:
-    """Check if parsing can continue."""
-    if self.at_end() or self.fatal_error:
-        return False
-    if self.config.collect_errors:
-        return len(self.errors) < self.config.max_errors
-    return True
-```
+- `error.summary` — the short reason ("Expected 'then', got end of input").
+- `error.render()` — the rich presentation: position, source line, `^` caret,
+  suggestions, and surrounding token context.
+- `str(error)` delegates to `render()`.
 
-With the default `collect_errors=False`, parsing stops on the first
-error; with `collect_errors=True`, errors accumulate in `ctx.errors`
-up to `max_errors`.
+Both the execution path and the analysis modes (`--validate`/`--format`/
+`--metrics`/`--security`/`--lint`) print `render()`, so a syntax error reads
+the same everywhere. (The caret line additionally needs the parser to be given
+`source_text`; the execution path supplies it, the analysis parse path does
+not yet — see appraisal finding 12.)
 
 ### 3.11 Recursive Descent Implementation
 

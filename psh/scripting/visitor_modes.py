@@ -48,14 +48,17 @@ def _parse_for_analysis(shell: 'Shell', content: str) -> Any:
 
 
 def _report_syntax_error(location: str, exc: Exception) -> int:
-    """Print a one-line syntax-error diagnostic (like the execution path) and
-    return 2 (bash's exit status for a syntax error under ``-n``).
+    """Print a syntax-error diagnostic and return 2 (bash's exit status for a
+    syntax error under ``-n``).
 
     A lex/parse failure must NOT escape as an uncaught Python traceback — that
-    defeats the entire purpose of ``--validate`` and friends.
+    defeats the entire purpose of ``--validate`` and friends. For a ParseError
+    this now renders the FULL diagnostic (position, source line, caret,
+    suggestions) — the same rich form the execution path prints — instead of
+    the bare one-line reason it used to show.
     """
     from ..parser import ParseError
-    message = exc.message if isinstance(exc, ParseError) else f"syntax error: {exc}"
+    message = exc.render() if isinstance(exc, ParseError) else f"syntax error: {exc}"
     print(f"psh: {location}: {message}", file=sys.stderr)
     return 2
 

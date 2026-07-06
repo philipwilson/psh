@@ -267,11 +267,12 @@ class CommandAccumulator:
             # trial AST — which the execution path reuses — matches what the
             # execution seam produces.
             tokens = self.shell.expand_aliases(tokens)
+            # Thread the heredoc map into the parser so each `<<`/`<<-` Redirect
+            # gets its body attached at construction (no post-parse AST walk).
             parser = Parser(tokens, source_text=preview,
-                            line_offset=line_offset)
+                            line_offset=line_offset, heredoc_map=heredoc_map)
             self._open_constructs = parser.ctx.open_constructs
             ast = parser.parse()
-            parser.utils.populate_heredoc_content(ast, heredoc_map)
         else:
             tokens = tokenize(preview, shell_options=self.state.options)
             tokens = self.shell.expand_aliases(tokens)

@@ -155,7 +155,7 @@ class StructureParserMixin(_Base):
             body_result = self.commands.build_statement_list().parse(tokens, pos)
         except ParseError as error:
             if is_missing_nested_terminator(error):
-                raise_committed_error(tokens, len(tokens) - 1, error.message)
+                raise_committed_error(tokens, len(tokens) - 1, error.summary)
             raise
         if not body_result.success:
             return ParseResult(success=False,

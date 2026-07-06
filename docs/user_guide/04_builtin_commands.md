@@ -1765,20 +1765,25 @@ psh$ parser-mode
 # Available modes
 psh$ parser-mode posix          # Strict POSIX compliance
 psh$ parser-mode bash           # Bash-compatible (default)
-psh$ parser-mode permissive     # Permissive with error collection
-psh$ parser-mode educational    # Educational with debugging
 ```
 
+The production grammar is not otherwise feature-configurable, so `parser-mode`
+only toggles POSIX vs. bash behavior (equivalent to `set -o posix`).
+
 ### parser-config - Parser Configuration
+
+`parser-config` is a thin front-end over the shell options that genuinely
+affect how input is lexed, parsed, and expanded (`posix`, `braceexpand`,
+`histexpand`).
 
 ```bash
 # Show current config
 psh$ parser-config show
 
 # Enable/disable features
-psh$ parser-config enable arrays
-psh$ parser-config disable brace-expand
-psh$ parser-config strict       # Enable strict POSIX mode
+psh$ parser-config enable brace-expand
+psh$ parser-config disable history-expand
+psh$ parser-config strict       # Enable strict POSIX mode (set -o posix)
 ```
 
 ### signals - Show Signal State
