@@ -316,27 +316,28 @@ Word AST nodes carry per-part quote context (`LiteralPart.quoted`, `ExpansionPar
 
 **Unified control structures** implement both `Statement` and `CompoundCommand` with an `ExecutionContext` enum (`STATEMENT` or `PIPELINE`), allowing them to appear in pipelines (e.g., `while read line; do ...; done | sort`).
 
-### 2.5 Error Handling and Recovery
+### 2.5 Error Handling
 
-The parser supports three error handling modes via `ParserConfig`:
+The parser is strict: the first syntax error raises `ParseError` immediately
+(`ParserContext.consume()` always raises — there is no error-collection or
+recovery mode; the dormant collection machinery was removed in v0.654 because
+it could return fabricated ASTs for invalid input).
 
-- **STRICT**: Raises `ParseError` immediately on first error
-- **COLLECT**: Collects multiple errors and continues parsing
-- **RECOVER**: Attempts recovery using panic mode synchronization
-
-`ParseError` includes an `ErrorContext` with token, position, line/column, suggestions, and error code. The error catalog (`psh/parser/errors.py`) defines error templates like `E001: Missing ';' before 'then'`.
-
-Recovery uses **panic mode**: skip tokens until reaching a synchronization point (e.g., `fi`, `done`, `;`, `EOF`).
+`ParseError` carries an `ErrorContext` with token, position, and line/column.
+The diagnostic interface is two-level: `error.summary` is the short reason
+clause, `error.render()` (== `str(error)`) is the rich presentation with
+source line, caret, and suggestions. Execution and analysis modes both use the
+rich render; nothing consults `.message` for presentation.
 
 ### 2.6 Parser Configuration
 
-`ParserConfig` (`psh/parser/config.py`, 349 lines) controls parsing behavior:
-
-- **Modes**: `STRICT_POSIX`, `BASH_COMPAT` (default), `PERMISSIVE`, `EDUCATIONAL`
-- **Feature toggles**: `enable_arithmetic`, `enable_arrays`, `allow_bash_conditionals`, `enable_process_substitution`
-- **Error handling**: `collect_errors`, `enable_error_recovery`
-- **Debugging**: `trace_parsing`, `profile_parsing`
-- **AST options**: Word AST nodes are always built (per-part quote context)
+`ParserConfig` (`psh/parser/config.py`) is intentionally minimal: after the
+v0.654 honest-configuration cleanup it carries no feature gates or modes —
+grammar dispatch never consulted them (features like `[[ ]]`/`(( ))` are
+always parsed; POSIX restrictions are runtime/lexer concerns, not parser
+config). The empty dataclass is retained as the extension point threaded
+through the parser constructors; `clone()` (via `dataclasses.replace`)
+rejects unknown fields.
 
 ---
 
