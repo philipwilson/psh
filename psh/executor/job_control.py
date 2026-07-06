@@ -138,8 +138,19 @@ class Job:
                 break
 
     def all_processes_stopped(self) -> bool:
-        """Check if all processes in job are stopped."""
-        return all(p.stopped for p in self.processes)
+        """True when the job counts as STOPPED (F10).
+
+        A job is stopped when every process that has NOT completed is stopped —
+        NOT when *all* processes are stopped. A pipeline mixing a completed
+        member (``stopped=False``) with a stopped member is stopped: none of
+        its still-live processes is running. Requiring all-stopped left such a
+        pipeline classified as running.
+
+        Only meaningful together with the all-completed check in
+        :meth:`update_state` (which handles the empty non-completed set), so
+        here an all-completed job returns True harmlessly.
+        """
+        return all(p.stopped for p in self.processes if not p.completed)
 
     def all_processes_completed(self) -> bool:
         """Check if all processes in job are completed."""
@@ -150,7 +161,12 @@ class Job:
         return any(not p.stopped and not p.completed for p in self.processes)
 
     def update_state(self):
-        """Update job state based on process states."""
+        """Update job state based on process states.
+
+        all-completed -> DONE; else every non-completed process stopped ->
+        STOPPED; else RUNNING (F10). The DONE check comes first so the STOPPED
+        predicate is only consulted when at least one process is still live.
+        """
         if self.all_processes_completed():
             self.state = JobState.DONE
         elif self.all_processes_stopped():
