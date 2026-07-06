@@ -128,7 +128,7 @@ PARITY_CORPUS = [
     # combinator parses `arr +=` and `(one two)` as two statements — a
     # PRE-EXISTING combinator word-then-`(subshell)` sequencing gap (repro:
     # `echo (x)`), out of scope for finding 5b/5c and tracked in
-    # docs/architecture/combinator_parser_remaining_failures.md. It is not an
+    # docs/guides/combinator_parser_remaining_failures.md. It is not an
     # array-parity case anymore, so it does not belong in this corpus.
     pytest.param('(echo hi) > out.txt', id='subshell-redirect'),
     pytest.param('{ echo hi; } > out.txt', id='brace-redirect'),

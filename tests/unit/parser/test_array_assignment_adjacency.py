@@ -5,9 +5,13 @@ assignment head, and only consumes an element value that is adjacent to `=`:
 
 - `a=(x)` / `a+=(x)` are inits; `a= (x)`, `a =(x)`, `a = (x)`, `a += (x)`
   (any whitespace gap) are NOT — bash reports a syntax error (finding 5b).
-- `a[0]=v` assigns v; `a[0]= v` is an EMPTY assignment plus a separate command
-  `v` (the non-adjacent word is not swallowed); `a[0] =v` is the command
-  `a[0]` with argument `=v`, not an element assignment (finding 5c).
+- `a[0]=v` assigns v; in `a[0]= v` the non-adjacent `v` is NOT the element
+  value — psh parses an empty `a[0]=` assignment with `v` as a following
+  word (bash treats `a[0]=` as a command prefix and rejects it as an
+  invalid identifier; that residual divergence is pre-existing and out of
+  scope here — the adjacency fix only stops swallowing `v` into the value);
+  `a[0] =v` is the command `a[0]` with argument `=v`, not an element
+  assignment (finding 5c).
 
 Both parsers must agree on whether the head is an array assignment. (The
 downstream handling of a rejected spaced-init — rd raises a syntax error while
