@@ -33,10 +33,12 @@ differences ledger.
 from __future__ import annotations
 
 import locale as _locale
+import re
 import sys
+import unicodedata
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Mapping, Optional
+from typing import Callable, Dict, Mapping, Optional, Tuple
 
 
 class LocaleMode(Enum):
@@ -147,6 +149,24 @@ class LocaleService:
             return toggle_case(s)
         return _ascii_toggle(s)
 
+    # --- POSIX character-class membership (LC_CTYPE) ----------------------
+    def in_class(self, ch: str, name: str) -> bool:
+        """Whether *ch* belongs to POSIX class *name* under the active locale.
+
+        C/OTHER mode uses the fixed ASCII class tables (byte-identical to psh's
+        historical behaviour; full 8-bit-locale ctype fidelity is a non-goal);
+        UTF-8 mode consults the host libc's ``iswctype`` (via ctypes) so it is
+        byte-faithful to the same bash on this host, with a pure-Python
+        (``str.is*`` / ``unicodedata``) fallback if ctypes is unavailable.
+
+        This per-character predicate is the shape the finding-#6 pattern engine
+        will consume; the regex path uses :func:`posix_class_ranges` instead.
+        """
+        if self.profile.ctype_mode is LocaleMode.UTF8:
+            member = _class_member_fn(name)
+            return member(ord(ch)) if member is not None else False
+        return _ascii_in_class(ch, name)
+
     # --- collation (LC_COLLATE) -------------------------------------------
     def collate_key(self, s: str):
         """Sort key reproducing the active ``LC_COLLATE`` order.
@@ -238,3 +258,176 @@ def _activate(svc: "LocaleService") -> None:
 def active_locale() -> Optional["LocaleService"]:
     """The process's active locale service, or None before any shell exists."""
     return _active
+
+
+# --- POSIX character-class membership machinery ----------------------------
+#
+# The one class-interpretation chokepoint is the glob->regex converter
+# (extglob._bracket_to_regex), which substitutes a regex character-class body
+# for each ``[:name:]``. In C/OTHER mode that body is the fixed ASCII range
+# table (glob._POSIX_CLASSES) — byte-identical to psh's historical behaviour.
+# In a UTF-8 locale stdlib ``re`` cannot express "Unicode letter", so we
+# instead compute the class's membership set ONCE per (locale, class) by
+# sweeping every codepoint through the host libc's ``iswctype`` (ctypes), then
+# compress it into explicit ``\Uxxxxxxxx`` ranges and splice THAT into the
+# regex. The sweep of the full 0x110000 range costs ~0.3s (ctypes) the first
+# time a given class is used in a UTF-8 locale; every subsequent use is a cache
+# hit, and the C-mode fast path never sweeps at all. (Measured alternatives:
+# a BMP-only sweep is ~16x faster but silently drops astral letters/digits; a
+# per-codepoint memoized predicate avoids the up-front cost but cannot stay on
+# the single shared regex path. The full lazy sweep keeps every match site —
+# case / [[ == ]] / ${x#pat} / pathname — on one converter, which is the
+# v0.638 design.) ctypes is the maximum-fidelity backend: iswctype is the same
+# call bash makes, so it is byte-identical to the host's own bash on macOS AND
+# glibc (which genuinely disagree on e.g. whether ٣ is a digit). A pure-Python
+# ``str.is*`` / ``unicodedata`` fallback covers the (rare) case where ctypes or
+# libc is unavailable; it is close but not byte-identical (documented).
+
+_MAX_CODEPOINT = 0x110000
+
+# Cache: (ctype_locale_name, class_name) -> regex-class body, or None if the
+# name is not a POSIX class. In-process; a UTF-8 process resolves each class
+# once. Keyed by locale name so it survives across LocaleService instances in
+# one process (e.g. subshells sharing the parent's locale).
+_RANGE_CACHE: Dict[Tuple[str, str], Optional[str]] = {}
+
+_LIBC_UNSET = object()
+_libc: object = _LIBC_UNSET  # host libc handle, or None if unavailable
+
+
+def _get_libc() -> object:
+    """Lazily load the host libc with wctype/iswctype bound (or None)."""
+    global _libc
+    if _libc is _LIBC_UNSET:
+        _libc = _load_libc()
+    return _libc
+
+
+def _load_libc() -> object:
+    """Bind the host libc's wctype/iswctype via ctypes, portable across
+    macOS (libc.dylib) and Linux (libc.so.6). Returns None on any failure so
+    the caller falls back to the pure-Python predicates — never a crash.
+
+    ``wchar_t`` is 32-bit on both platforms (verified), so ``ord(ch)`` fed to
+    ``iswctype`` covers astral codepoints; ``wctype_t`` is ``unsigned long`` on
+    both (macOS ``__darwin_wctype_t``, glibc ``wctype_t``)."""
+    try:
+        import ctypes
+        import ctypes.util
+        libname = ctypes.util.find_library("c")
+        libc = ctypes.CDLL(libname, use_errno=True) if libname \
+            else ctypes.CDLL(None, use_errno=True)
+        libc.wctype.restype = ctypes.c_ulong
+        libc.wctype.argtypes = [ctypes.c_char_p]
+        libc.iswctype.restype = ctypes.c_int
+        libc.iswctype.argtypes = [ctypes.c_int, ctypes.c_ulong]
+        return libc
+    except Exception:
+        return None
+
+
+def _ctypes_member_fn(name: str) -> Optional[Callable[[int], bool]]:
+    """A ``(codepoint) -> bool`` membership predicate backed by the host libc's
+    ``iswctype`` under the active locale, or None if libc/this class is
+    unavailable. iswctype (NOT the isw* narrow functions, which disagree with it
+    on macOS for e.g. ٣) is what bash uses, so this is host-bash-faithful."""
+    libc = _get_libc()
+    if libc is None:
+        return None
+    try:
+        handle = libc.wctype(name.encode("ascii"))  # type: ignore[attr-defined]
+    except Exception:
+        return None
+    if not handle:
+        return None  # libc does not know this class name
+    isw = libc.iswctype  # type: ignore[attr-defined]
+    return lambda cp: bool(isw(cp, handle))
+
+
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+# Pure-Python fallback predicates (used only when ctypes/libc is unavailable).
+# Close to macOS bash for the common classes; the digit/punct/space edges where
+# glibc/macOS/Python differ are a documented approximation of the fallback.
+_PY_PREDICATES: Dict[str, Callable[[int], bool]] = {
+    "alpha": lambda cp: chr(cp).isalpha(),
+    "upper": lambda cp: chr(cp).isupper(),
+    "lower": lambda cp: chr(cp).islower(),
+    "digit": lambda cp: chr(cp).isdigit(),
+    "alnum": lambda cp: chr(cp).isalnum(),
+    "space": lambda cp: chr(cp).isspace(),
+    "blank": lambda cp: chr(cp) in " \t" or unicodedata.category(chr(cp)) == "Zs",
+    "xdigit": lambda cp: chr(cp) in _HEX_DIGITS,
+    "punct": lambda cp: unicodedata.category(chr(cp))[0] in ("P", "S"),
+    "cntrl": lambda cp: unicodedata.category(chr(cp)) == "Cc",
+    "graph": lambda cp: chr(cp).isprintable() and not chr(cp).isspace(),
+    "print": lambda cp: chr(cp).isprintable(),
+}
+
+
+def _class_member_fn(name: str) -> Optional[Callable[[int], bool]]:
+    """Membership predicate for POSIX class *name* under the active locale:
+    the host libc (ctypes) if available, else the pure-Python fallback, else
+    None if *name* is not a known POSIX class."""
+    fn = _ctypes_member_fn(name)
+    if fn is not None:
+        return fn
+    return _PY_PREDICATES.get(name)
+
+
+def _range_token(lo: int, hi: int) -> str:
+    """A ``\\U``-escaped single codepoint or ``lo-hi`` range for a regex class."""
+    if lo == hi:
+        return f"\\U{lo:08x}"
+    return f"\\U{lo:08x}-\\U{hi:08x}"
+
+
+def _sweep_ranges(member: Callable[[int], bool]) -> str:
+    """Sweep every codepoint and compress the members into a regex-class body
+    of ``\\U``-escaped ranges (safe to splice inside ``[...]``)."""
+    parts = []
+    start: Optional[int] = None
+    for cp in range(_MAX_CODEPOINT):
+        if member(cp):
+            if start is None:
+                start = cp
+        elif start is not None:
+            parts.append(_range_token(start, cp - 1))
+            start = None
+    if start is not None:
+        parts.append(_range_token(start, _MAX_CODEPOINT - 1))
+    return "".join(parts)
+
+
+def posix_class_ranges(name: str) -> Optional[str]:
+    """Regex character-class body for POSIX ``[:name:]`` under the active locale,
+    to be spliced INSIDE a regex ``[...]`` (no brackets). Returns None if *name*
+    is not a POSIX class (the caller keeps the ``[:name:]`` text literal).
+
+    C/OTHER mode (or no active service): the fixed ASCII range table, i.e.
+    psh's historical behaviour. UTF-8 mode: the host libc's ``iswctype``
+    membership swept into explicit ``\\U`` ranges, lazily and cached per
+    (locale, class).
+    """
+    loc = active_locale()
+    if loc is None or loc.profile.ctype_mode is not LocaleMode.UTF8:
+        from ..expansion.glob import _POSIX_CLASSES
+        return _POSIX_CLASSES.get(name)
+    key = (loc.profile.ctype_name, name)
+    if key not in _RANGE_CACHE:
+        member = _class_member_fn(name)
+        _RANGE_CACHE[key] = _sweep_ranges(member) if member is not None else None
+    return _RANGE_CACHE[key]
+
+
+_ASCII_CLASS_RE: Dict[str, Optional["re.Pattern[str]"]] = {}
+
+
+def _ascii_in_class(ch: str, name: str) -> bool:
+    """C/OTHER-mode single-char membership, exact to the ASCII class table."""
+    if name not in _ASCII_CLASS_RE:
+        from ..expansion.glob import _POSIX_CLASSES
+        body = _POSIX_CLASSES.get(name)
+        _ASCII_CLASS_RE[name] = re.compile(f"[{body}]") if body else None
+    pat = _ASCII_CLASS_RE[name]
+    return bool(pat.match(ch)) if pat is not None else False

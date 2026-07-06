@@ -355,12 +355,23 @@ def _bracket_to_regex(content: str, ic: bool = False) -> str:
             continue
         out.append(ch)
         i += 1
-    from .glob import _POSIX_CLASS_RE, _POSIX_CLASSES
+    # POSIX [:class:] names resolve through the locale service: the fixed ASCII
+    # range table in the C/POSIX locale (byte-identical to psh's historical
+    # behaviour) and the host libc's iswctype membership (swept to explicit
+    # codepoint ranges) in a UTF-8 locale, so `[[:alpha:]]` matches é there just
+    # as bash does. Changing this ONE chokepoint fixes case / [[ == ]] /
+    # ${x#pat} / pathname matching together (the v0.638 unified converter).
+    from ..core.locale_service import posix_class_ranges
+    from .glob import _POSIX_CLASS_RE
+
+    def _sub(m: 're.Match[str]') -> str:
+        r = posix_class_ranges(m.group(1))
+        return r if r is not None else m.group(0)  # unknown name: keep literal
+
     body = ''.join(out)
 
     if not ic:
-        translated = _POSIX_CLASS_RE.sub(
-            lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)), body)
+        translated = _POSIX_CLASS_RE.sub(_sub, body)
         regex = f'[{negate}{translated}]'
     else:
         # Case-insensitive: protect [:upper:]/[:lower:] from the ambient
@@ -368,13 +379,12 @@ def _bracket_to_regex(content: str, ic: bool = False) -> str:
         has_upper = '[:upper:]' in body
         has_lower = '[:lower:]' in body
         rest = body.replace('[:upper:]', '').replace('[:lower:]', '')
-        rest = _POSIX_CLASS_RE.sub(
-            lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)), rest)
+        rest = _POSIX_CLASS_RE.sub(_sub, rest)
         alts = []
         if has_upper:
-            alts.append('(?-i:[A-Z])')
+            alts.append(f'(?-i:[{posix_class_ranges("upper")}])')
         if has_lower:
-            alts.append('(?-i:[a-z])')
+            alts.append(f'(?-i:[{posix_class_ranges("lower")}])')
         if rest:
             alts.append(f'[{rest}]')  # folds under the caller's IGNORECASE
         group = '|'.join(alts)

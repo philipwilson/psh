@@ -20,17 +20,17 @@ class TestShoptBasic:
     def test_shopt_all_default_off(self, captured_shell):
         """Test that all shopt options default to off.
 
-        Exception: expand_aliases defaults to ON. psh always expands aliases
-        (a parse-time token transform — the deliberate divergence from bash's
-        interactive-only default), so the recognized expand_aliases no-op gate
-        is reported on.
+        Exceptions default ON: expand_aliases (psh always expands aliases — a
+        parse-time token transform, the deliberate divergence from bash's
+        interactive-only default) and globasciiranges (bash 5 default ON —
+        bracket ranges use ASCII bounds regardless of locale).
         """
         shell = captured_shell
         result = shell.run_command('shopt')
         assert result == 0
         output = shell.get_stdout()
         for line in output.strip().split('\n'):
-            if line.startswith('expand_aliases'):
+            if line.startswith(('expand_aliases', 'globasciiranges')):
                 assert line.endswith('on')
             else:
                 assert line.endswith('off')

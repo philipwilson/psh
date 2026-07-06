@@ -138,3 +138,109 @@ class TestCaseConversionLocaleGated(ConformanceTest):
     def test_array_upper_utf8(self):
         self.assert_identical_behavior(
             'a=(café naïve); echo "${a[@]^^}"', env=UTF8)
+
+
+class TestPosixClassMembership(ConformanceTest):
+    """POSIX [:class:] membership is locale-sensitive across ALL match sites
+    (design §2a-2c). The host-libc iswctype backend makes assert_identical valid
+    on macOS AND the Linux nightly. Under C, classes are ASCII-only (unchanged);
+    under UTF-8, é is [:alpha:], ٣ is [:digit:] on this host, etc.
+    """
+
+    # [[ string == [[:class:]] ]]
+    def test_alpha_eacute_c(self):
+        self.assert_identical_behavior('[[ é == [[:alpha:]] ]]; echo $?', env=C)
+
+    def test_alpha_eacute_utf8(self):
+        self.assert_identical_behavior('[[ é == [[:alpha:]] ]]; echo $?', env=UTF8)
+
+    def test_alpha_cjk_utf8(self):
+        self.assert_identical_behavior('[[ 中 == [[:alpha:]] ]]; echo $?', env=UTF8)
+
+    def test_upper_Eacute_utf8(self):
+        self.assert_identical_behavior('[[ É == [[:upper:]] ]]; echo $?', env=UTF8)
+
+    def test_lower_eacute_utf8(self):
+        self.assert_identical_behavior('[[ é == [[:lower:]] ]]; echo $?', env=UTF8)
+
+    def test_upper_eacute_negative_utf8(self):
+        # é is lower, not upper — no-match in both.
+        self.assert_identical_behavior('[[ é == [[:upper:]] ]]; echo $?', env=UTF8)
+
+    def test_digit_arabic_utf8(self):
+        self.assert_identical_behavior('[[ ٣ == [[:digit:]] ]]; echo $?', env=UTF8)
+
+    def test_digit_fullwidth_utf8(self):
+        self.assert_identical_behavior('[[ ３ == [[:digit:]] ]]; echo $?', env=UTF8)
+
+    def test_alnum_arabic_utf8(self):
+        self.assert_identical_behavior('[[ ٣ == [[:alnum:]] ]]; echo $?', env=UTF8)
+
+    def test_punct_laquo_utf8(self):
+        self.assert_identical_behavior('[[ « == [[:punct:]] ]]; echo $?', env=UTF8)
+
+    def test_negated_class_utf8(self):
+        self.assert_identical_behavior(
+            '[[ é == [^[:digit:]] ]]; echo $?', env=UTF8)
+
+    # case
+    def test_case_alpha_c(self):
+        self.assert_identical_behavior(
+            'case é in [[:alpha:]]) echo yes;; *) echo no;; esac', env=C)
+
+    def test_case_alpha_utf8(self):
+        self.assert_identical_behavior(
+            'case é in [[:alpha:]]) echo yes;; *) echo no;; esac', env=UTF8)
+
+    def test_case_digit_arabic_utf8(self):
+        self.assert_identical_behavior(
+            'case ٣ in [[:digit:]]) echo yes;; *) echo no;; esac', env=UTF8)
+
+    # ${var#pat} / ${var##pat*}
+    def test_param_strip_alpha_c(self):
+        self.assert_identical_behavior('x=éxyz; echo "${x#[[:alpha:]]}"', env=C)
+
+    def test_param_strip_alpha_utf8(self):
+        self.assert_identical_behavior('x=éxyz; echo "${x#[[:alpha:]]}"', env=UTF8)
+
+    def test_param_strip_all_alpha_utf8(self):
+        self.assert_identical_behavior('x=éé9; echo "${x##[[:alpha:]]*}"', env=UTF8)
+
+    # =~ (ERE) honours the locale too
+    def test_ere_alpha_c(self):
+        self.assert_identical_behavior('[[ é =~ ^[[:alpha:]]$ ]]; echo $?', env=C)
+
+    def test_ere_alpha_utf8(self):
+        self.assert_identical_behavior('[[ é =~ ^[[:alpha:]]$ ]]; echo $?', env=UTF8)
+
+    # pathname expansion (self-contained corpus)
+    def test_glob_alpha_class_utf8(self):
+        self.assert_identical_behavior(f"{MKFILES} echo [[:alpha:]]*", env=UTF8)
+
+    def test_glob_digit_class_utf8(self):
+        self.assert_identical_behavior(f"{MKFILES} echo [[:digit:]]*", env=UTF8)
+
+    def test_glob_lower_class_utf8(self):
+        self.assert_identical_behavior(f"{MKFILES} echo [[:lower:]]*", env=UTF8)
+
+    def test_glob_alpha_class_c(self):
+        self.assert_identical_behavior(f"{MKFILES} echo [[:alpha:]]*", env=C)
+
+
+class TestRangesAndGlobasciiranges(ConformanceTest):
+    """Bracket RANGES [a-z] stay ASCII in every locale (globasciiranges on,
+    bash 5 default), and `shopt globasciiranges` is recognized (design §2d)."""
+
+    def test_range_eacute_not_in_az_utf8(self):
+        self.assert_identical_behavior('[[ é == [a-z] ]]; echo $?', env=UTF8)
+
+    def test_range_B_not_in_az_utf8(self):
+        self.assert_identical_behavior('[[ B == [a-z] ]]; echo $?', env=UTF8)
+
+    def test_shopt_globasciiranges_query(self):
+        # bash reports it `on`; psh used to error "invalid shell option name".
+        self.assert_identical_behavior('shopt globasciiranges', env=C)
+
+    def test_shopt_set_globasciiranges_ok(self):
+        self.assert_identical_behavior(
+            'shopt -s globasciiranges; echo $?', env=C)

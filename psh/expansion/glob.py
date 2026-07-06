@@ -5,6 +5,8 @@ import re
 import warnings
 from typing import TYPE_CHECKING, Iterator, List, Tuple
 
+from ..core.locale_service import LocaleMode
+
 if TYPE_CHECKING:
     from ..shell import Shell
 
@@ -72,10 +74,20 @@ def translate_posix_classes(pattern: str) -> str:
     regex, not a glob). Unknown class names (not real POSIX classes) are left
     verbatim. A ``[:class:]`` that was ``re.escape``-d (a quoted operand part)
     is not matched here, so quoted text stays literal.
+
+    Locale-aware: like ``==``/``case``, bash's ``=~`` honours the locale for
+    classes (``[[ é =~ ^[[:alpha:]]$ ]]`` is true under a UTF-8 locale, false
+    under C), so the substituted ranges come from the locale service — the ASCII
+    table in the C locale (unchanged) and the host libc's iswctype membership in
+    a UTF-8 locale.
     """
-    return _POSIX_CLASS_RE.sub(
-        lambda m: _POSIX_CLASSES.get(m.group(1), m.group(0)), pattern
-    )
+    from ..core.locale_service import posix_class_ranges
+
+    def _sub(m: 're.Match[str]') -> str:
+        r = posix_class_ranges(m.group(1))
+        return r if r is not None else m.group(0)
+
+    return _POSIX_CLASS_RE.sub(_sub, pattern)
 
 
 def normalize_bracket_expressions(pattern: str) -> str:
@@ -187,13 +199,22 @@ class GlobExpander:
         nocaseglob = self.state.options.get('nocaseglob', False)
 
         if nocaseglob:
-            matches = self._glob_nocase(pattern, dotglob)
+            matches = self._glob_walk(pattern, dotglob, ignorecase=True)
         elif globstar and any(c == '**' for c in pattern.split(os.sep)):
             # A bare `**` component under shopt -s globstar: bash's recursive
             # scan does NOT descend through symlinked directories, but
             # Python's glob.glob(recursive=True) does (and can loop) — use
             # the symlink-aware walker instead.
             matches = self._expand_globstar(pattern, dotglob)
+        elif (self.state.locale.profile.ctype_mode is LocaleMode.UTF8
+              and _POSIX_CLASS_RE.search(pattern)):
+            # A POSIX [:class:] in a UTF-8 locale: stdlib glob.glob/fnmatch
+            # (below) cannot express "Unicode letter", so route through the
+            # shared regex converter (which resolves classes via the locale
+            # service's iswctype membership) so `[[:alpha:]]*` matches é etc.,
+            # matching bash. Only this case diverts; plain patterns and the C
+            # locale keep the fast, well-tested glob.glob path.
+            matches = self._glob_walk(pattern, dotglob, ignorecase=False)
         else:
             # Without a `**` component the recursive flag is irrelevant
             # (globstar off leaves `**` behaving as `*`, same as glob.glob).
@@ -214,13 +235,18 @@ class GlobExpander:
         """Sort glob matches in the active collation order (empty-safe)."""
         return sorted(matches, key=self.state.locale.collate_key) if matches else []
 
-    def _glob_nocase(self, pattern: str, dotglob: bool) -> List[str]:
-        """Case-insensitive pathname expansion (shopt -s nocaseglob).
+    def _glob_walk(self, pattern: str, dotglob: bool,
+                   ignorecase: bool) -> List[str]:
+        """Pathname expansion by walking the pattern component by component and
+        matching each against directory entries via the shared regex converter.
 
-        Walks the pattern component by component, matching each against the
-        directory entries case-insensitively. Used only when nocaseglob is set,
-        so the default (case-sensitive) path is untouched.
+        Used for two paths that stdlib ``glob.glob`` cannot serve: ``nocaseglob``
+        (``ignorecase=True``) and — in a UTF-8 locale — a pattern containing a
+        POSIX ``[:class:]`` (``ignorecase=False``), where the converter resolves
+        the class through the locale service. The default case-sensitive,
+        classless path stays on ``glob.glob``.
         """
+        flags = re.IGNORECASE if ignorecase else 0
         sep = os.sep
         if pattern.startswith(sep):
             current = [sep]
@@ -234,9 +260,9 @@ class GlobExpander:
                 continue
             has_magic = has_glob_metacharacters(comp)
             if has_magic:
-                regex = _compile_component(comp, ignorecase=True)
+                regex = _compile_component(comp, ignorecase=ignorecase)
             else:
-                regex = re.compile(re.escape(comp) + r'\Z', re.IGNORECASE)
+                regex = re.compile(re.escape(comp) + r'\Z', flags)
 
             nxt = []
             for base in current:

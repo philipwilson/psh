@@ -157,6 +157,63 @@ class TestCaseGating:
         assert svc.upper("café") == "CAFé"
 
 
+class TestClassMembership:
+    """POSIX class membership + the range machinery.
+
+    UTF-8 membership uses the host libc's iswctype (needs setlocale), so those
+    checks snapshot/restore the process locale. C-mode checks are side-effect
+    free (apply=False, ASCII tables).
+    """
+
+    def test_c_mode_in_class_ascii(self):
+        svc = LocaleService({"LC_ALL": "C"}, apply=False)
+        assert svc.in_class("a", "alpha") is True
+        assert svc.in_class("é", "alpha") is False   # ASCII-only in C
+        assert svc.in_class("5", "digit") is True
+        assert svc.in_class("٣", "digit") is False
+
+    def test_posix_class_ranges_c_mode_is_ascii_table(self):
+        from psh.core.locale_service import posix_class_ranges
+        from psh.expansion.glob import _POSIX_CLASSES
+        LocaleService({"LC_ALL": "C"}, apply=False)  # activate C
+        assert posix_class_ranges("alpha") == _POSIX_CLASSES["alpha"]
+        assert posix_class_ranges("digit") == _POSIX_CLASSES["digit"]
+        assert posix_class_ranges("not_a_class") is None
+
+    def test_range_token_format(self):
+        from psh.core.locale_service import _range_token
+        assert _range_token(0x61, 0x61) == "\\U00000061"
+        assert _range_token(0x61, 0x7a) == "\\U00000061-\\U0000007a"
+
+    def test_sweep_ranges_compresses(self):
+        from psh.core.locale_service import _sweep_ranges
+        # members {0x41..0x43, 0x61} -> "\U..41-\U..43\U..61"
+        members = {0x41, 0x42, 0x43, 0x61}
+        body = _sweep_ranges(lambda cp: cp in members)
+        assert body == "\\U00000041-\\U00000043\\U00000061"
+
+    def test_utf8_in_class_host_faithful(self):
+        # ctypes iswctype under a UTF-8 locale — snapshot/restore the process
+        # locale (setlocale is global).
+        saved = _locale.setlocale(_locale.LC_ALL)
+        try:
+            svc = LocaleService({"LC_ALL": "en_US.UTF-8"}, apply=True, warn=False)
+            if svc.profile.ctype_mode is not LocaleMode.UTF8:
+                return  # locale unavailable on this host; conformance covers it
+            assert svc.in_class("é", "alpha") is True
+            assert svc.in_class("é", "digit") is False
+            assert svc.in_class("É", "upper") is True
+        finally:
+            _locale.setlocale(_locale.LC_ALL, saved)
+
+
+class TestGlobasciirangesRegistered:
+    def test_registered_default_on(self):
+        from psh.core.option_registry import OPTION_REGISTRY, SHOPT_OPTION_NAMES
+        assert "globasciiranges" in SHOPT_OPTION_NAMES
+        assert OPTION_REGISTRY["globasciiranges"].default is True
+
+
 class TestActiveRegistration:
     def test_construction_registers_active(self):
         svc = LocaleService({"LC_ALL": "C"}, apply=False)

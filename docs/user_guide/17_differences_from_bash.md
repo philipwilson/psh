@@ -51,6 +51,7 @@ shopt -s nullglob    # Non-matching globs expand to nothing
 shopt -s globstar    # Enable ** recursive globbing
 shopt -s nocaseglob  # Case-insensitive globbing
 shopt -s extglob     # Enable extended glob patterns: ?(p) *(p) +(p) @(p) !(p)
+shopt globasciiranges # ON by default (bash 5): [a-z] ranges use ASCII bounds
 ```
 
 ### Extended Glob Patterns (extglob)
@@ -464,15 +465,53 @@ character, so they never change a string's length — `${x^^}` on `straße`
 gives `STRAßE`, not `STRASSE`. This matches bash, and is the fix for a former
 PSH bug where `ß` expanded to `SS`.
 
-PSH's case conversion is **Unicode-aware and locale-independent**: `${x,,}` on
-`İ` (Turkish dotted capital I) always yields `i`, and accented letters, Greek,
-and Cyrillic map correctly regardless of `LC_ALL`/`LANG`. bash, by contrast,
-delegates to the host C library, so its case conversion depends on the locale
-(in the `C`/`POSIX` locale bash only maps ASCII) and on the libc's Unicode
-version. The two shells therefore agree on ASCII and common accented text in a
-UTF-8 locale, but can differ on rare/recent codepoints (titlecase digraphs like
-`ǅ`, polytonic Greek, Roman numerals, circled letters) or in the `C` locale —
-these are host-dependent in bash itself.
+PSH's case conversion is **locale-gated**, like bash: in a `*.UTF-8` locale it
+is Unicode-aware (`${x,,}` on `İ` yields `i`; accented letters, Greek, and
+Cyrillic map correctly), while in the `C`/`POSIX` locale it maps ASCII only and
+leaves every non-ASCII codepoint unchanged (`${x^^}` on `café` is `CAFé`, as in
+bash-C). The two shells can still differ on rare/recent codepoints (titlecase
+digraphs like `ǅ`, polytonic Greek, Roman numerals, circled letters), which are
+host-libc-dependent in bash itself. See "Locale Support" below.
+
+### Locale Support (LC_CTYPE / LC_COLLATE)
+
+PSH reads the effective locale from the environment **at startup** — bash's
+precedence `LC_ALL > LC_{CTYPE,COLLATE} > LANG`, empty values skipped, an
+unusable name warned-and-ignored (falling back to `C`) — and honours it for:
+
+- **Collation** (`LC_COLLATE`): glob-result ordering (`echo *`) and the
+  `[[ < ]]` / `[[ > ]]` string comparisons use `strcoll`/`strxfrm`, so under a
+  UTF-8 locale `echo *` is dictionary-ordered and `[[ a < B ]]` is true, matching
+  bash. (bash's `test`/`[` `<`/`>` use byte order in *every* locale — PSH matches
+  that too.)
+- **Case conversion** (`LC_CTYPE`): see above.
+- **POSIX character classes** (`LC_CTYPE`): `[[:alpha:]]`, `[[:digit:]]`, etc.
+  in `[[ == ]]`, `case`, `${var#pat}`, `[[ =~ ]]`, and pathname expansion match
+  according to the locale (so `[[ é == [[:alpha:]] ]]` is true under a UTF-8
+  locale). Membership is resolved through the host C library's `iswctype`, so it
+  is byte-faithful to the same `bash` on the same machine — including places
+  where platforms genuinely disagree (macOS treats `٣`/`３` as `[[:digit:]]`;
+  glibc does not).
+
+`shopt globasciiranges` is recognized and defaults **on** (bash 5): bracket
+*ranges* like `[a-z]` use ASCII/codepoint bounds regardless of locale.
+
+**Deliberate limitations** (documented differences):
+
+- **Startup-only locale.** Re-reading `LC_*`/`LANG` when they are *assigned
+  mid-script* (bash reacts immediately) is not yet implemented — a deferred
+  stage (see `docs/architecture/locale_service_design_2026-07-06.md` §5.2).
+- **`shopt -u globasciiranges`** (collation-ordered ranges in a UTF-8 locale) is
+  accepted but its off-behaviour is not implemented; ranges stay ASCII.
+- **Non-UTF-8 8-bit locales** (e.g. `ISO8859-1`): collation is honoured, but
+  character classes and case fall back to ASCII tables (full 8-bit ctype
+  fidelity is a non-goal).
+- **Byte vs. character model.** In the `C` locale bash processes input as
+  *bytes*, so a multibyte character like `é` counts as two "characters"
+  (`[[ é == ?? ]]` is true in bash-C). PSH is Unicode-native — `é` is always one
+  character — so single-character patterns (`?`, `[^[:digit:]]`) can differ from
+  bash in the `C` locale. This is a pre-existing shell-wide model difference, not
+  specific to character classes.
 
 ### Here Document Behavior
 
