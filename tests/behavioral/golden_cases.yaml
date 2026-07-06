@@ -6974,3 +6974,32 @@
   stdout: "100% done\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# FD REMAPPING — collision-safe descriptor setup with 0/1/2 closed, and
+# rolling (O(1)) pipeline construction (execution F5/F6, expansion F2).
+# =============================================================================
+
+- name: fdremap_closed_stdin_pipeline
+  command: "exec 0<&-; printf x | cat"
+  stdout: "x"
+  stderr: ""
+  exit_code: 0
+
+- name: fdremap_closed_stdin_pipeline_3stage
+  command: "exec 0<&-; printf x | cat | cat"
+  stdout: "x"
+  stderr: ""
+  exit_code: 0
+
+- name: fdremap_closed_stdin_cmdsub
+  command: "exec 0<&-; v=$(printf hi); printf '%s' \"$v\""
+  stdout: "hi"
+  stderr: ""
+  exit_code: 0
+
+- name: fdremap_long_pipeline_rolling
+  command: "printf start | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat"
+  stdout: "start"
+  stderr: ""
+  exit_code: 0
