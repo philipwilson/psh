@@ -6564,3 +6564,60 @@
   stdout: "m\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# COMMAND SUBSTITUTION BYTE POLICY (expansion Phase-1a F1)
+# NUL bytes are stripped (one warning per substitution); other bytes
+# round-trip via surrogateescape through output, external argv, and env.
+# Byte sources/sinks use python3 and report bytes as integer lists so the
+# expectations stay ASCII-clean (no raw non-UTF-8 bytes in the YAML) and
+# platform-stable (no `od` spacing).
+# =============================================================================
+
+- name: expn_p1a_cmdsub_high_byte_output_roundtrip
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([255]))''); printf %s "$x" | python3 -c ''import sys;sys.stdout.write(str(list(sys.stdin.buffer.read())))'''
+  stdout: "[255]"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_high_byte_argv_roundtrip
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([255]))''); python3 -c ''import sys,os;sys.stdout.write(str(list(os.fsencode(sys.argv[1]))))'' "$x"'
+  stdout: "[255]"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_high_byte_env_roundtrip
+  command: 'export X=$(python3 -c ''import os;os.write(1,bytes([255]))''); python3 -c ''import os,sys;sys.stdout.write(str(list(os.environb[b"X"])))'''
+  stdout: "[255]"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_low_byte_0x80_roundtrip
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([128]))''); printf %s "$x" | python3 -c ''import sys;sys.stdout.write(str(list(sys.stdin.buffer.read())))'''
+  stdout: "[128]"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_valid_utf8_unchanged
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([0xc3,0xa9]))''); printf %s "$x" | python3 -c ''import sys;sys.stdout.write(str(list(sys.stdin.buffer.read())))'''
+  stdout: "[195, 169]"
+  stderr: ""
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_nul_stripped_and_warns
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([97,0,98]))''); printf "<%s>" "$x"'
+  stdout: "<ab>"
+  stderr: "ignored null byte in input"
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_multi_nul_one_warning
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([97,0,98,0,99]))''); printf "<%s>" "$x"'
+  stdout: "<abc>"
+  stderr: "ignored null byte in input"
+  exit_code: 0
+
+- name: expn_p1a_cmdsub_heredoc_byte_roundtrip
+  command: 'x=$(python3 -c ''import os;os.write(1,bytes([255,97]))''); cat <<< "$x" | python3 -c ''import sys;sys.stdout.write(str(list(sys.stdin.buffer.read())))'''
+  stdout: "[255, 97, 10]"
+  stderr: ""
+  exit_code: 0
