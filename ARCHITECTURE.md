@@ -424,7 +424,10 @@ AST validation lives in `psh/visitor/` (e.g. `ValidatorVisitor` and `EnhancedVal
 
 #### Parse Tree Visualization
 - **`psh/parser/visualization/`** - Multi-format AST visualization
-  - `ast_formatter.py` - Pretty printer for human-readable AST output
+  - `ast_formatter.py` - Pretty printer: a generic, structure-driven dump that
+    walks each node's dataclass fields and recurses into children (no per-node
+    methods to drift from the AST). Exhaustive counterpart to the summarized
+    ASCII tree.
   - `dot_generator.py` - Graphviz DOT format for visual diagrams
   - `ascii_tree.py` - ASCII tree renderer for terminal display
 
