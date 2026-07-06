@@ -1,0 +1,124 @@
+"""Core-state Phase 1: the ``env`` builtin must isolate process state (C1/P0).
+
+psh ran ``env CMD`` in an in-process child Shell, so ``env`` could NOT isolate
+cwd, umask, resource limits, signal dispositions, or process replacement, and
+its in-process child leaked Python-owned mutations (arrays, functions, traps)
+into the parent. bash's ``env`` is an EXTERNAL command: it builds the child
+environment and execs the argv; it does not resolve shell builtins at all.
+
+These run psh in a SUBPROCESS (process-state and signal behaviour need a real
+process). xfail(strict=True): each flips when Commit 3 makes standard ``env``
+external argv execution. The USR1-disposition leak also depends on the
+signal-disposition lease (Commit 5) for in-process shells.
+"""
+
+import subprocess
+import sys
+
+import pytest
+
+PSH = [sys.executable, "-m", "psh", "--norc", "-c"]
+BASH = ["/opt/homebrew/bin/bash", "--noprofile", "--norc", "-c"]
+
+
+def _run(argv, cmd):
+    return subprocess.run(argv + [cmd], capture_output=True, text=True,
+                          timeout=20, stdin=subprocess.DEVNULL)
+
+
+def _psh(cmd):
+    return _run(PSH, cmd)
+
+
+# --------------------------------------------------------------------------
+# env does not terminate / replace / mutate the parent process.
+# --------------------------------------------------------------------------
+
+@pytest.mark.xfail(strict=True, reason="P0: env runs in-process, so `env exit "
+                   "7` exits psh. External env can't find `exit`. Commit 3.")
+def test_env_exit_does_not_kill_shell():
+    r = _psh("env exit 7; echo AFTER")
+    assert "AFTER" in r.stdout, "env exit terminated the parent shell"
+
+
+@pytest.mark.xfail(strict=True, reason="P0: env exec replaces the psh process. "
+                   "External env can't find `exec`. Commit 3.")
+def test_env_exec_does_not_replace_shell():
+    r = _psh("env exec /bin/echo inner; echo AFTER")
+    assert "AFTER" in r.stdout, "env exec replaced the parent process"
+
+
+@pytest.mark.xfail(strict=True, reason="P0: env cd changes the parent's real "
+                   "cwd. External env can't run cd. Commit 3.")
+def test_env_cd_does_not_change_cwd():
+    # Compare the REAL getcwd (via /bin/pwd) before/after — env cd running
+    # in-process calls os.chdir, changing the whole process's cwd even though
+    # the parent's $PWD variable stays old.
+    r = _psh('s=$(/bin/pwd); env cd /; e=$(/bin/pwd); '
+             '[ "$s" = "$e" ] && echo CWD_OK || echo "CWD_CHANGED:$e"')
+    assert "CWD_OK" in r.stdout, f"env cd changed the parent cwd: {r.stdout!r}"
+
+
+@pytest.mark.xfail(strict=True, reason="P0: env umask changes the parent's "
+                   "umask. External env can't run umask. Commit 3.")
+def test_env_umask_does_not_change_umask():
+    r = _psh('before=$(umask); env umask 077; after=$(umask); '
+             'test "$before" = "$after" && echo UMASK_OK')
+    assert "UMASK_OK" in r.stdout, "env umask changed the parent umask"
+
+
+# --------------------------------------------------------------------------
+# env's (former) in-process child leaked Python-owned mutations.
+# --------------------------------------------------------------------------
+
+@pytest.mark.xfail(strict=True, reason="C1: env's in-process child mutated the "
+                   "parent's array. External env is isolated. Commit 3.")
+def test_env_unset_array_no_leak():
+    r = _psh('a=(x y); env unset "a[0]"; printf "<%s>\\n" "${a[*]}"')
+    assert "<x y>" in r.stdout, "env unset leaked into the parent array"
+
+
+@pytest.mark.xfail(strict=True, reason="C1: env's in-process child made the "
+                   "parent function readonly. External env is isolated. Commit 3.")
+def test_env_readonly_f_no_leak():
+    r = _psh('f(){ :; }; env readonly -f f; f(){ echo REDEFINED; }; f')
+    assert "REDEFINED" in r.stdout, "env readonly -f leaked into the parent"
+
+
+# --------------------------------------------------------------------------
+# Signal-disposition leak: env's in-process child installed a process-global
+# USR1 handler that swallowed the signal in the parent (H2).
+# --------------------------------------------------------------------------
+
+@pytest.mark.serial
+@pytest.mark.xfail(strict=True, reason="H2: env's in-process child installs a "
+                   "USR1 handler that leaks into the parent process, which "
+                   "then swallows USR1. Commit 3 (external env) + Commit 5 "
+                   "(disposition lease).")
+def test_env_trap_usr1_no_disposition_leak():
+    # A process with the default USR1 disposition terminates on delivery.
+    # If the child's trap leaked, psh survives and prints SURVIVED.
+    r = _psh('env trap ":" USR1; kill -USR1 $$; sleep 0.3; echo SURVIVED')
+    assert "SURVIVED" not in r.stdout, "USR1 disposition leaked into the parent"
+    assert r.returncode != 0, "parent should have died on USR1"
+
+
+# --------------------------------------------------------------------------
+# Regressions: forms that already behave correctly must stay byte-identical
+# to bash (bare env dump keyset, NAME=VALUE overlay printing).
+# --------------------------------------------------------------------------
+
+@pytest.mark.serial
+class TestEnvOutputParityRegression:
+    def test_env_assignment_overlay_prints(self):
+        # `env FOO=bar printenv FOO` prints the overlaid value (both shells).
+        cmd = "env FOO=bar printenv FOO"
+        assert _psh(cmd).stdout == _run(BASH, cmd).stdout == "bar\n"
+
+    def test_env_unset_removes_from_child_env(self):
+        cmd = "export FOO=parent; env -u FOO sh -c 'echo ${FOO-gone}'"
+        assert _psh(cmd).stdout == _run(BASH, cmd).stdout
+
+    def test_env_i_clears_environment(self):
+        cmd = "export FOO=x; env -i sh -c 'echo ${FOO-empty}'"
+        assert _psh(cmd).stdout == _run(BASH, cmd).stdout == "empty\n"
