@@ -6809,3 +6809,49 @@
   stderr: ""
   exit_code: 0
   psh_only: true
+
+# =============================================================================
+# EXECUTOR PHASE-1a: POSIX special-builtin semantics are mode-aware (F9)
+# =============================================================================
+
+- name: exec_p1a_default_prefix_special_temporary
+  command: "unset X; X=new :; printf '<%s>\\n' \"${X-unset}\""
+  stdout: "<unset>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_posix_prefix_special_persists
+  command: "set -o posix; unset X; X=new :; printf '<%s>\\n' \"${X-unset}\""
+  stdout: "<new>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_default_prefix_dot_temporary
+  command: "unset X; X=new . /dev/null; printf '<%s>\\n' \"${X-unset}\""
+  stdout: "<unset>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_posix_prefix_dot_persists
+  command: "set -o posix; unset X; X=new . /dev/null; printf '<%s>\\n' \"${X-unset}\""
+  stdout: "<new>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_default_function_shadows_special
+  command: "export() { echo FUNC; }; unset Q; export Q=1; echo \"Q=<${Q-unset}>\""
+  stdout: "FUNC\nQ=<unset>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_posix_special_precedence_over_function
+  command: "export() { echo FUNC; }; set -o posix; unset Q; export Q=1; echo \"Q=<${Q-unset}>\""
+  stdout: "Q=<1>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_regular_builtin_prefix_temporary_both_modes
+  command: "unset X; X=new true; printf '<%s>' \"${X-unset}\"; set -o posix; X=new2 true; printf '<%s>\\n' \"${X-unset}\""
+  stdout: "<unset><unset>\n"
+  stderr: ""
+  exit_code: 0

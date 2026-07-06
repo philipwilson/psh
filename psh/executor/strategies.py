@@ -255,14 +255,22 @@ class ExecutionStrategy(ABC):
         pass
 
 
-# POSIX special builtins. Their prefix assignments persist after the
-# command (POSIX). Lookup-wise they do NOT take precedence over functions:
-# bash applies the POSIX special-builtins-first order only in POSIX mode,
-# and in default mode functions shadow them (`exit(){ ...; }; exit` runs
-# the function) — psh follows bash's default.
+# The complete POSIX special-builtin registry (policy data). Two mode-aware
+# consequences, both decided in CommandExecutor._resolve_command (F9):
+#
+#   - Prefix-assignment persistence: `VAR=v <special>` leaves VAR set ONLY in
+#     POSIX mode. In default (bash) mode the prefix is temporary, exactly like
+#     any other builtin (`X=new :; echo ${X-unset}` -> unset).
+#   - Lookup precedence: in default mode functions shadow special builtins
+#     (`exit(){ ...; }; exit` runs the function); in POSIX mode special
+#     builtins take precedence over functions.
+#
+# Must be COMPLETE, including `.` and `times` (they are special too — so a
+# POSIX-mode `X=v . file` persists X). `source` is a bash extension, NOT a
+# POSIX special builtin, so it is deliberately absent.
 POSIX_SPECIAL_BUILTINS = {
-    ':', 'break', 'continue', 'eval', 'exec', 'exit', 'export',
-    'readonly', 'return', 'set', 'shift', 'trap', 'unset'
+    '.', ':', 'break', 'continue', 'eval', 'exec', 'exit', 'export',
+    'readonly', 'return', 'set', 'shift', 'times', 'trap', 'unset'
 }
 
 

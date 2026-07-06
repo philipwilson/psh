@@ -720,11 +720,15 @@ class CommandExecutor:
     def _resolve_command(self, cmd_name: str) -> Optional[CommandResolution]:
         """Resolve a command name to the strategy that will run it.
 
-        Walks the priority-ordered strategy list (functions > builtins >
-        external, bash's default-mode order) and returns the first match as a
-        :class:`CommandResolution`. The persistence policy — previously the
-        ``isinstance(strategy, SpecialBuiltinExecutionStrategy)`` check — is
-        recorded here as the ``prefix_assignments_persist`` field.
+        Lookup order and prefix-assignment persistence are BOTH mode-aware
+        (F9), decided here once from ``set -o posix``:
+
+        - Default (bash) mode: functions > (special|regular) builtins >
+          external — functions shadow even special builtins. A prefix before a
+          special builtin is TEMPORARY, like any builtin.
+        - POSIX mode: special builtins > functions > regular builtins >
+          external — special builtins take precedence over functions. A prefix
+          before a special builtin PERSISTS.
 
         There is no command-word bypass here. Aliases are expanded earlier as
         a token-stream transform (the `\\cmd` backslash naturally avoids alias
@@ -736,12 +740,22 @@ class CommandExecutor:
         Returns None only if no strategy matches (unreachable in practice,
         since ExternalExecutionStrategy is the catch-all).
         """
-        for strategy in self.strategies:
+        posix = self.state.options.get('posix', False)
+        strategies = self.strategies
+        if posix:
+            # POSIX lookup precedence: special builtins ahead of functions.
+            special = [s for s in self.strategies
+                       if isinstance(s, SpecialBuiltinExecutionStrategy)]
+            rest = [s for s in self.strategies
+                    if not isinstance(s, SpecialBuiltinExecutionStrategy)]
+            strategies = special + rest
+        for strategy in strategies:
             if strategy.can_execute(cmd_name, self.shell):
                 return CommandResolution(
                     strategy=strategy,
-                    prefix_assignments_persist=isinstance(
-                        strategy, SpecialBuiltinExecutionStrategy),
+                    prefix_assignments_persist=(
+                        posix and isinstance(
+                            strategy, SpecialBuiltinExecutionStrategy)),
                 )
         return None
 
