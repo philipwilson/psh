@@ -22,40 +22,80 @@ if TYPE_CHECKING:
     from .job_control import Job, JobManager
 
 
+def _close_quiet(fd: Optional[int]) -> None:
+    """Close ``fd`` if set, ignoring an already-closed / invalid descriptor."""
+    if fd is None:
+        return
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+
+
 class PipelineContext:
-    """Context for managing pipeline execution state."""
+    """Rolling pipe construction and process tracking for one pipeline.
+
+    One pipe is created per command boundary, just before forking the command
+    that writes into it; after that fork the parent releases the descriptors it
+    no longer needs and carries the boundary's read end forward as the next
+    command's stdin. The parent therefore holds O(1) pipe descriptors
+    regardless of pipeline length — the old design pre-opened all N-1 pipes,
+    so the parent held O(N) and long pipelines hit EMFILE under an ordinary
+    RLIMIT_NOFILE.
+    """
 
     def __init__(self, job_manager: 'JobManager'):
         self.job_manager = job_manager
-        self.pipes: List[Tuple[int, int]] = []
         self.processes: List[int] = []
         self.job: Optional['Job'] = None
+        # Rolling state: the read end carried from the previous boundary, and
+        # the pipe (read end / write end) created for the current command's
+        # outgoing boundary.
+        self._prev_read: Optional[int] = None
+        self._pending_read: Optional[int] = None
+        self._cur_write: Optional[int] = None
 
-    def add_pipe(self) -> int:
-        """Add a new pipe for the pipeline."""
-        self.pipes.append(os.pipe())
-        return len(self.pipes) - 1
+    def open_boundary(self, has_next: bool) -> Tuple[Optional[int], Optional[int], List[int]]:
+        """Prepare the current command's endpoints just before forking it.
 
-    def get_stdin_fd(self, index: int) -> Optional[int]:
-        """Get stdin file descriptor for command at index."""
-        if index > 0 and index <= len(self.pipes):
-            return self.pipes[index - 1][0]
-        return None
+        Creates the outgoing pipe when the command has a successor, and returns
+        ``(stdin_fd, stdout_fd, owned)`` — the endpoints the child wires onto
+        0/1 and the full set of pipe descriptors it inherits and must close
+        (``remap_fds`` keeps the ones serving as its stdin/stdout).
+        """
+        stdin_fd = self._prev_read
+        if has_next:
+            self._pending_read, self._cur_write = os.pipe()
+            stdout_fd: Optional[int] = self._cur_write
+        else:
+            self._pending_read = None
+            self._cur_write = None
+            stdout_fd = None
+        owned = [fd for fd in (self._prev_read, self._pending_read,
+                               self._cur_write) if fd is not None]
+        return stdin_fd, stdout_fd, owned
 
-    def get_stdout_fd(self, index: int) -> Optional[int]:
-        """Get stdout file descriptor for command at index."""
-        if index < len(self.pipes):
-            return self.pipes[index][1]
-        return None
+    def advance(self) -> None:
+        """Release parent-side descriptors after forking the current command.
 
-    def close_pipes(self):
-        """Close all pipes in parent process."""
-        for read_fd, write_fd in self.pipes:
-            try:
-                os.close(read_fd)
-                os.close(write_fd)
-            except OSError:
-                pass
+        The previous boundary's read end and this command's write end are now
+        held by their child(ren); the parent closes its copies and carries the
+        new boundary's read end forward as the next command's stdin. Only child
+        N holds a given write end, so the reader downstream gets EOF when that
+        child exits.
+        """
+        _close_quiet(self._prev_read)
+        _close_quiet(self._cur_write)
+        self._prev_read = self._pending_read
+        self._pending_read = None
+        self._cur_write = None
+
+    def close_open_fds(self) -> None:
+        """Close any pipe descriptors still open in the parent (error cleanup)."""
+        _close_quiet(self._prev_read)
+        _close_quiet(self._pending_read)
+        _close_quiet(self._cur_write)
+        self._prev_read = self._pending_read = self._cur_write = None
 
     def add_process(self, pid: int):
         """Add a process to the pipeline."""
@@ -116,12 +156,10 @@ class PipelineExecutor:
             self.state.pipestatus = [status]
             return status
 
-        # Multi-command pipeline
+        # Multi-command pipeline. Pipes are created incrementally during the
+        # fork loop below (rolling construction), so the parent never holds
+        # more than one boundary's descriptors at a time.
         pipeline_ctx = PipelineContext(self.job_manager)
-
-        # Create pipes
-        for _ in range(len(node.commands) - 1):
-            pipeline_ctx.add_pipe()
 
         # Check if pipeline runs in background (last command determines)
         is_background = node.commands[-1].background if node.commands else False
@@ -151,8 +189,10 @@ class PipelineExecutor:
         # This replaces the time.sleep() polling loop with atomic synchronization
         sync_pipe_r, sync_pipe_w = os.pipe()
 
+        n = len(node.commands)
         try:
-            # Fork processes for each command
+            # Fork processes for each command, creating each pipe just before
+            # the command that writes into it (rolling construction).
             for i, command in enumerate(node.commands):
                 # $BASH_COMMAND: bash records each pipeline element in the
                 # PARENT as it dispatches it (an ERR trap after `a | b`
@@ -167,11 +207,22 @@ class PipelineExecutor:
                 else:
                     role = ProcessRole.PIPELINE_MEMBER
 
+                # Open this command's outgoing pipe (when it has a successor)
+                # and collect the endpoints it wires and the descriptors it
+                # inherits and must close.
+                stdin_fd, stdout_fd, owned = pipeline_ctx.open_boundary(
+                    has_next=(i < n - 1))
+                this_pipe_stderr = bool(
+                    node.pipe_stderr and i < len(node.pipe_stderr)
+                    and node.pipe_stderr[i])
+                is_last = (i == n - 1)
+
                 # Create execution function for this command
-                def make_execute_fn(cmd_index, cmd_node):
+                def make_execute_fn(cmd_node, s_in, s_out, own, pstderr, last):
                     """Create execution function for pipeline command.
 
-                    This closure captures the command index and node for execution.
+                    This closure captures this command's node and pipe endpoints
+                    for execution.
                     """
                     def execute_fn():
                         # Create forked context. Each pipeline component runs
@@ -182,14 +233,13 @@ class PipelineExecutor:
                         # silent (bash), not "only meaningful in a loop".
                         child_context = pipeline_context.fork_context()
 
-                        # Set up pipeline redirections (stdin/stdout, and stderr for |&)
+                        # Wire stdin/stdout onto this member's pipe endpoints
+                        # (collision-safe; closes the endpoints it doesn't use).
                         self._setup_pipeline_redirections(
-                            cmd_index, pipeline_ctx,
-                            pipe_stderr=node.pipe_stderr if node.pipe_stderr else None
-                        )
+                            s_in, s_out, own, pipe_stderr=pstderr)
 
                         # For the last command in foreground pipeline, restore terminal signals
-                        if cmd_index == len(node.commands) - 1 and not is_background:
+                        if last and not is_background:
                             signal.signal(signal.SIGTTOU, signal.SIG_DFL)
                             signal.signal(signal.SIGTTIN, signal.SIG_DFL)
 
@@ -226,10 +276,16 @@ class PipelineExecutor:
                 )
 
                 # Launch the process
-                pid, pgid = self.launcher.launch(make_execute_fn(i, command), config)
+                pid, pgid = self.launcher.launch(
+                    make_execute_fn(command, stdin_fd, stdout_fd, owned,
+                                    this_pipe_stderr, is_last), config)
 
                 pids.append(pid)
                 pipeline_ctx.add_process(pid)
+                # Release the parent's copies of the endpoints just handed to
+                # this child; carry the boundary read end forward as the next
+                # command's stdin.
+                pipeline_ctx.advance()
 
             # All children forked and process groups set
             # Signal children by closing sync pipe
@@ -253,8 +309,9 @@ class PipelineExecutor:
             proc_entries = [(pid, self._command_to_string(node.commands[i]))
                             for i, pid in enumerate(pids)]
 
-            # Close pipes in parent
-            pipeline_ctx.close_pipes()
+            # Rolling construction has already closed every data-pipe descriptor
+            # in the parent as each child was forked, so there is nothing left
+            # to close here.
 
             if is_background:
                 # Background pipeline: register the job and print the
@@ -288,8 +345,11 @@ class PipelineExecutor:
                 os.close(sync_pipe_w)
             except OSError:
                 pass
-            # Clean up pipes on error
-            pipeline_ctx.close_pipes()
+            # Clean up any pipe descriptors still open in the parent (a pipe
+            # created for the boundary whose fork raised, plus the carried read
+            # end) — bounded scope: already-launched children are not reaped
+            # here (full transactional launch is out of scope).
+            pipeline_ctx.close_open_fds()
             # Reclaim the terminal for the shell on error
             if not is_background:
                 self.job_manager.restore_shell_foreground()
@@ -369,29 +429,45 @@ class PipelineExecutor:
         if message is not None:
             print(message, file=self.state.stderr)
 
-    def _setup_pipeline_redirections(self, index: int, pipeline_ctx: PipelineContext,
-                                     pipe_stderr: Optional[List[bool]] = None):
-        """Set up stdin/stdout for command in pipeline."""
-        # Redirect stdin from previous pipe
-        stdin_fd = pipeline_ctx.get_stdin_fd(index)
+    def _setup_pipeline_redirections(self, stdin_fd: Optional[int],
+                                     stdout_fd: Optional[int],
+                                     owned: List[int],
+                                     pipe_stderr: bool = False) -> None:
+        """Wire this pipeline member's stdin/stdout onto its pipe endpoints.
+
+        Built as one collision-safe remap rather than raw dup2s + a blanket
+        close loop. The blanket loop was unsafe when descriptors 0 or 1 began
+        closed (``exec 0<&-``, ``exec 1>&-``): ``os.pipe()`` then hands an
+        endpoint back AS fd 0 or 1, ``dup2(fd, fd)`` is a no-op, and the loop
+        destroys the live endpoint (D1/D2). remap_fds promotes endpoints out of
+        the way, resolves the closed-fd remapping cycle, and closes every pipe
+        descriptor this child ``owns`` except the ones now serving as its
+        stdin/stdout.
+
+        ``owned`` is exactly this member's inherited pipe endpoints (its own
+        stdin/stdout ends plus its outgoing pipe's read end, which belongs to
+        the next member) — O(1) per member under rolling construction.
+
+        NOTE (verifier finding, v0.653): under rolling construction the SYNC
+        pipe is created before any data pipe, so with fds 0/1 closed it is the
+        sync pipe — not a data endpoint — that occupies the low descriptors.
+        That ordering is co-responsible for the D1/D2 fix: reverting this
+        method to raw dup2s currently passes the closed-fd matrix because of
+        it. Keep BOTH: the ordering is an emergent property of rolling
+        construction, while this remap is the explicit, self-contained
+        guarantee that survives future reorderings.
+        """
+        pairs: List[Tuple[int, int]] = []
         if stdin_fd is not None:
-            os.dup2(stdin_fd, 0)
-
-        # Redirect stdout to next pipe
-        stdout_fd = pipeline_ctx.get_stdout_fd(index)
+            pairs.append((stdin_fd, 0))
         if stdout_fd is not None:
-            os.dup2(stdout_fd, 1)
+            pairs.append((stdout_fd, 1))
+            # ``|&``: this member's stderr joins its stdout at the same pipe.
+            if pipe_stderr:
+                pairs.append((stdout_fd, 2))
 
-        # If |& was used, also redirect stderr to the pipe
-        # pipe_stderr[i] is True if |& connects command i to command i+1
-        if pipe_stderr and index < len(pipe_stderr) and pipe_stderr[index]:
-            # stderr goes to same place as stdout (already pointing at pipe)
-            os.dup2(1, 2)
-
-        # Close all pipe file descriptors in child
-        for read_fd, write_fd in pipeline_ctx.pipes:
-            os.close(read_fd)
-            os.close(write_fd)
+        from ..io_redirect import remap_fds
+        remap_fds(pairs, owned=owned)
 
     def _pipeline_to_string(self, node: 'Pipeline') -> str:
         """Convert pipeline to string representation."""

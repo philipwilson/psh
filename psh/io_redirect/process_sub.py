@@ -32,6 +32,16 @@ def create_process_substitution(
     # Create pipe
     # For <(cmd), parent reads from pipe, child writes to it
     read_fd, write_fd = os.pipe()
+    # Keep the parent's read end — exposed to the consumer as /dev/fd/N — above
+    # the standard descriptors. When fd 0/1/2 began closed (e.g. `exec 1>&-`),
+    # os.pipe() can hand the read end back AS a low fd, and /dev/fd/1 then
+    # aliases the (closed) shell stdout so the consumer's open fails
+    # (EACCES on macOS). bash likewise keeps its process-substitution
+    # descriptors high.
+    if read_fd <= 2:
+        promoted = fcntl.fcntl(read_fd, fcntl.F_DUPFD, 3)
+        os.close(read_fd)
+        read_fd = promoted
     parent_fd = read_fd
     child_fd = write_fd
     child_stdout = child_fd
@@ -51,11 +61,13 @@ def create_process_substitution(
         # policy, child Shell, exception -> exit-code mapping, stream
         # flush, os._exit). We supply the fd plumbing and the body.
         def _io_setup() -> None:
-            # Close parent's end of pipe, wire ours onto stdio.
-            os.close(parent_fd)
-            os.dup2(child_stdout, 1)
-            # Close the pipe fd we duplicated
-            os.close(child_fd)
+            # Wire the pipe write end onto stdout collision-safely and drop the
+            # parent's read end. When fd 1 began closed, os.pipe() can return
+            # the write end AS fd 1; the old close(parent);dup2(write,1);
+            # close(write) then destroyed the substitution's own stdout
+            # (`printf: write error`). remap_fds handles the collision.
+            from .fd_remap import remap_fds
+            remap_fds({child_stdout: 1}, owned=[parent_fd, child_fd])
 
         def _body(child_shell: 'Shell') -> int:
             return _execute_process_substitution_body(cmd_str, child_shell)
@@ -143,7 +155,15 @@ def _create_write_process_substitution(cmd_str: str, shell: 'Shell') -> Tuple[No
                 finally:
                     signal.alarm(0)
                     signal.signal(signal.SIGALRM, old_handler)
-                os.dup2(fd, 0)
+                # Wire the FIFO read end onto stdin collision-safely, then
+                # relinquish it (fd = None) so the outer finally does not
+                # re-close what is now this child's stdin. When fd 0 began
+                # closed, os.open() can return the FIFO AS fd 0; the old
+                # dup2(0,0)+close(0) destroyed the substitution body's stdin
+                # (`cat: stdin: Bad file descriptor`). remap_fds handles it.
+                from .fd_remap import remap_fds
+                remap_fds({fd: 0}, owned=[fd])
+                fd = None
                 # Unlink the FIFO and its temp dir now that the read end is
                 # open. The O_RDONLY open above returns only once a writer is
                 # connected (FIFO rendezvous), so the consuming command already

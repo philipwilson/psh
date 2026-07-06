@@ -20,7 +20,13 @@ RedirectPlanner (shared planning phase)
 (Heredocs and here-strings live inside `FileRedirector` — there is no
 separate heredoc handler.)
 
-The package exports only `IOManager` via `__init__.py`.
+The package exports `IOManager` and the `remap_fds` collision-safe
+descriptor-remapping utility (`fd_remap.py`) via `__init__.py`. `remap_fds`
+installs a set of source→destination fd remaps for a forked child safely even
+when descriptors 0/1/2 begin closed (it promotes endpoints out of the way and
+resolves remapping cycles); it is shared by the pipeline executor and command
+substitution (and, per the audit, process substitution) so no fork site
+reinvents the unsafe `dup2` + blanket-close recipe.
 
 ## Key Files
 
