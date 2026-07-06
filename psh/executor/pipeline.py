@@ -447,6 +447,15 @@ class PipelineExecutor:
         ``owned`` is exactly this member's inherited pipe endpoints (its own
         stdin/stdout ends plus its outgoing pipe's read end, which belongs to
         the next member) — O(1) per member under rolling construction.
+
+        NOTE (verifier finding, v0.653): under rolling construction the SYNC
+        pipe is created before any data pipe, so with fds 0/1 closed it is the
+        sync pipe — not a data endpoint — that occupies the low descriptors.
+        That ordering is co-responsible for the D1/D2 fix: reverting this
+        method to raw dup2s currently passes the closed-fd matrix because of
+        it. Keep BOTH: the ordering is an emergent property of rolling
+        construction, while this remap is the explicit, self-contained
+        guarantee that survives future reorderings.
         """
         pairs: List[Tuple[int, int]] = []
         if stdin_fd is not None:
