@@ -287,25 +287,29 @@ class TestParseWithHeredocs:
 
 
 # ===========================================================================
-# Codex Review Finding 4: create_configured_parser() config mutation
+# Codex Review Finding 4: ParserConfig.clone() config mutation
 # ===========================================================================
 
-class TestCreateConfiguredParserNoMutation:
-    """Tests that create_configured_parser() does not mutate parent config."""
+class TestParserConfigCloneNoMutation:
+    """clone() returns an independent copy and never mutates the original.
 
-    def test_create_configured_parser_no_mutation(self):
-        """Child parser with collect_errors=True should not mutate parent config."""
-        tokens = tokenize('echo hello')
-        parent = Parser(tokens, source_text='echo hello')
-        assert parent.config.collect_errors is False
+    (Formerly guarded create_configured_parser(), a test-only helper removed
+    with the parser-config façade; clone() is the surviving API.)
+    """
 
-        child_tokens = tokenize('echo world')
-        child = parent.create_configured_parser(child_tokens, collect_errors=True)
+    def test_clone_no_mutation(self):
+        """A cloned config with an override must not mutate the source config."""
+        from psh.parser import ParserConfig
+
+        parent = ParserConfig()
+        assert parent.collect_errors is False
+
+        child = parent.clone(collect_errors=True)
 
         # Child should have the override
-        assert child.config.collect_errors is True
+        assert child.collect_errors is True
         # Parent config must be unchanged
-        assert parent.config.collect_errors is False
+        assert parent.collect_errors is False
 
 
 # ===========================================================================

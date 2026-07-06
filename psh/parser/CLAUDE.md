@@ -384,29 +384,31 @@ appropriate WordBuilder method.
 
 ## Configuration
 
-`ParserConfig` (`psh/parser/config.py`) controls parser behavior. Only
-fields actually read by parser code exist; feature checks go through
-`is_feature_enabled()` / `should_allow()`, which `getattr` with a default
-of `False`:
+`ParserConfig` (`psh/parser/config.py`) is the parser's single configuration
+object. **The production grammar is NOT feature-configurable**: compound
+dispatch (`commands.py`, `control_structures.py`) calls the specialized
+sub-parsers directly, so `[[ ]]` and `(( ))` are always accepted. The former
+strict-POSIX / feature-gate fields (`parsing_mode`, `enable_arithmetic`,
+`allow_bash_conditionals`, `allow_bash_arithmetic`) plus their
+`strict_posix` / `is_feature_enabled` / `should_allow` /
+`check_posix_compliance` methods were a façade — bypassed on every live
+path — and were removed. POSIX/bash behavior that IS honored lives in the
+lexer (`posix` tokenize mode) and runtime options, not here.
 
 ```python
 @dataclass
 class ParserConfig:
-    parsing_mode: ParsingMode = ParsingMode.BASH_COMPAT  # or STRICT_POSIX
-
-    # Error handling
+    # Error handling (read by ParserContext)
     error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
     max_errors: int = 10
     collect_errors: bool = False
-
-    # Language features
-    enable_arithmetic: bool = True
-    allow_bash_conditionals: bool = True   # [[ ]]
-    allow_bash_arithmetic: bool = True     # (( ))
 ```
 
-Use `ParserConfig.strict_posix()` for a POSIX-mode config and
-`config.clone(**overrides)` to derive variants. Error collection
-(`collect_errors=True`) is implemented at the `ParserContext` level:
-errors accumulate in `ctx.errors` (up to `max_errors`) instead of raising
-immediately.
+`config.clone(**overrides)` delegates to `dataclasses.replace`, so an unknown
+field name raises `TypeError` (a misspelled override no longer silently
+no-ops). No live path passes a non-default config; `create_parser()` /
+`parse_with_heredocs()` always construct a default `ParserConfig()`.
+
+The `parser-config` / `parser-mode` builtins do NOT drive `ParserConfig`; they
+toggle the shell options that really affect lexing/parsing/expansion (`posix`,
+`braceexpand`, `histexpand`).

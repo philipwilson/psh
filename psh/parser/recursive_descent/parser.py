@@ -7,11 +7,7 @@ to specialized parser modules for different language constructs.
 
 from typing import List, Optional
 
-from ...ast_nodes import (
-    ArithmeticEvaluation,
-    EnhancedTestStatement,
-    Program,
-)
+from ...ast_nodes import Program
 from ...lexer.token_types import Token
 from ..config import ParserConfig
 from .base_context import ContextBaseParser
@@ -65,32 +61,6 @@ class Parser(ContextBaseParser):
         self.arrays = ArrayParser(self)
         self.functions = FunctionParser(self)
         self.utils = ParserUtils(self)
-
-    def create_configured_parser(self, tokens: List[Token], **overrides) -> 'Parser':
-        """Create a new parser with the same configuration.
-
-        Uses config.clone() so the child parser gets an independent copy
-        of the configuration, avoiding mutation of the parent's config.
-        """
-        # Separate config-level overrides from context-level overrides
-        config_overrides = {k: v for k, v in overrides.items()
-                           if k in ParserConfig.__dataclass_fields__}
-        ctx_overrides = {k: v for k, v in overrides.items()
-                        if k not in config_overrides}
-
-        # Clone config with overrides applied atomically
-        ctx = create_context(
-            tokens=tokens,
-            config=self.ctx.config.clone(**config_overrides),
-            source_text=self.ctx.source_text
-        )
-
-        # Apply context-level overrides
-        for key, value in ctx_overrides.items():
-            if hasattr(ctx, key):
-                setattr(ctx, key, value)
-
-        return Parser(tokens=[], ctx=ctx)
 
     @property
     def tokens(self) -> List[Token]:
@@ -158,21 +128,5 @@ class Parser(ContextBaseParser):
             self.skip_separators()
 
         return program
-
-    # === Delegation Methods ===
-    # These methods delegate to specialized parsers, adding feature checks where needed.
-
-    def parse_enhanced_test_statement(self) -> EnhancedTestStatement:
-        """Parse an enhanced test statement ([[ ... ]])."""
-        if not self.should_allow('bash_conditionals'):
-            self.check_posix_compliance('[[ ]] enhanced test syntax', '[ ] test command')
-        return self.tests.parse_enhanced_test_statement()
-
-    def parse_arithmetic_command(self) -> ArithmeticEvaluation:
-        """Parse an arithmetic command ((...)). """
-        self.require_feature('arithmetic', 'Arithmetic evaluation is disabled')
-        if not self.should_allow('bash_arithmetic'):
-            self.check_posix_compliance('(( )) arithmetic syntax', 'expr command')
-        return self.arithmetic.parse_arithmetic_command()
 
 

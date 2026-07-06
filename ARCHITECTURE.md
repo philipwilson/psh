@@ -413,7 +413,7 @@ The parser combinator is a functional parser implementation demonstrating elegan
 Both parser implementations share common infrastructure:
 
 #### Parser Configuration System
-- **`psh/parser/config.py`** - ParserConfig with parsing-mode, error-handling, and bash-compatibility options (preset constructor `strict_posix()`; derive variants with `clone(**overrides)`)
+- **`psh/parser/config.py`** - ParserConfig (error-handling options only; derive variants with `clone(**overrides)`, which rejects unknown fields). The production grammar is not feature-configurable — see Section 3.6.
 
 #### Centralized State Management
 - **`psh/parser/recursive_descent/context.py`** - ParserContext class for unified state management
@@ -493,41 +493,29 @@ The dual parser architecture provides unique advantages:
 
 ### 3.6 Parser Configuration System
 
-The parser supports comprehensive configuration for different parsing modes and behaviors:
+**The production grammar is NOT feature-configurable.** Compound-command
+dispatch calls the specialized sub-parsers directly, so `[[ ]]` and `(( ))`
+are always accepted regardless of configuration. The former strict-POSIX and
+feature-gate fields (`parsing_mode`, `enable_arithmetic`,
+`allow_bash_conditionals`, `allow_bash_arithmetic`) and their guard machinery
+were a façade — bypassed on every live path — and were removed. POSIX/bash
+behavior that IS honored lives in the lexer (`posix` tokenize mode) and
+runtime options, not in `ParserConfig`.
 
 ```python
 @dataclass
 class ParserConfig:
     """Parser configuration options (only fields the parser actually reads)"""
-    # Core parsing mode: BASH_COMPAT (default) or STRICT_POSIX
-    parsing_mode: ParsingMode = ParsingMode.BASH_COMPAT
-
-    # Error handling: STRICT (stop on first error) or COLLECT
+    # Error handling
     error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
     max_errors: int = 10
     collect_errors: bool = False
-
-    # Language features
-    enable_arithmetic: bool = True
-
-    # Bash compatibility
-    allow_bash_conditionals: bool = True   # [[ ]]
-    allow_bash_arithmetic: bool = True     # (( ))
-
-    @classmethod
-    def strict_posix(cls) -> 'ParserConfig':
-        """Strict POSIX compliance mode"""
-        return cls(
-            parsing_mode=ParsingMode.STRICT_POSIX,
-            error_handling=ErrorHandlingMode.STRICT,
-            allow_bash_conditionals=False,
-            allow_bash_arithmetic=False,
-        )
 ```
 
-Derive variants with `config.clone(**overrides)`. Feature checks go
-through `is_feature_enabled()` / `should_allow()`, which `getattr` with
-a default of `False`, so removed fields safely read as disabled.
+Derive variants with `config.clone(**overrides)`, which delegates to
+`dataclasses.replace` and raises on an unknown field name. No live path passes
+a non-default config; `create_parser()` / `parse_with_heredocs()` always
+construct a default `ParserConfig()`.
 
 ### 3.7 Centralized ParserContext
 

@@ -12,7 +12,7 @@ from unittest.mock import Mock
 import pytest
 
 from psh.lexer.token_types import Token, TokenType
-from psh.parser.config import ParserConfig, ParsingMode
+from psh.parser.config import ParserConfig
 from psh.parser.recursive_descent.context import ParserContext
 from psh.parser.recursive_descent.helpers import ParseError
 from psh.parser.recursive_descent.support.context_factory import create_context
@@ -163,16 +163,16 @@ class TestParserContextFactory:
     def test_create_with_config(self):
         """Test context creation with custom config."""
         tokens = [Token(TokenType.WORD, "test", 0)]
-        config = ParserConfig(parsing_mode=ParsingMode.STRICT_POSIX)
+        config = ParserConfig(collect_errors=True)
 
         ctx = create_context(tokens, config)
 
-        assert ctx.config.parsing_mode == ParsingMode.STRICT_POSIX
+        assert ctx.config.collect_errors is True
 
     def test_create_default(self):
-        """Test default context creation (bash-compatible by default)."""
+        """Test default context creation."""
         tokens = [Token(TokenType.WORD, "test", 0)]
 
         ctx = create_context(tokens)
 
-        assert ctx.config.parsing_mode == ParsingMode.BASH_COMPAT
+        assert ctx.config.collect_errors is False

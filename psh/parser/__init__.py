@@ -6,7 +6,7 @@ The parser converts tokens into an Abstract Syntax Tree (AST) with metadata supp
 context-aware parsing, semantic analysis, and enhanced error recovery.
 """
 
-from .config import ErrorHandlingMode, ParserConfig, ParsingMode
+from .config import ErrorHandlingMode, ParserConfig
 from .recursive_descent.context import ParserContext
 from .recursive_descent.helpers import ErrorContext, ParseError
 
@@ -46,6 +46,29 @@ def parse(tokens, config=None):
     return Parser(tokens, config=config).parse()
 
 
+# Accepted parser-selection names. The shell only ever passes the canonical
+# 'recursive_descent'/'combinator' (validated by --parser / parser-select), but
+# these factories are a public API, so they validate the name themselves rather
+# than treating every non-'combinator' string as recursive descent.
+_RECURSIVE_DESCENT_NAMES = frozenset({'rd', 'recursive_descent'})
+_COMBINATOR_NAMES = frozenset({'combinator'})
+
+
+def _use_combinator(active_parser: str) -> bool:
+    """Return True for the combinator parser, False for recursive descent.
+
+    Raises ``ValueError`` for any unrecognized name — an unknown parser must
+    fail loudly instead of silently falling through to recursive descent.
+    """
+    if active_parser in _COMBINATOR_NAMES:
+        return True
+    if active_parser in _RECURSIVE_DESCENT_NAMES:
+        return False
+    raise ValueError(
+        f"unknown parser {active_parser!r}: expected one of "
+        "'recursive_descent'/'rd' or 'combinator'")
+
+
 def parse_with_heredocs(tokens, heredoc_map, active_parser='rd'):
     """Parse tokens with heredoc content using the selected implementation.
 
@@ -53,10 +76,10 @@ def parse_with_heredocs(tokens, heredoc_map, active_parser='rd'):
         tokens: List of tokens (heredoc bodies absent; operator tokens carry
             ``heredoc_key`` attributes linking them to ``heredoc_map``).
         heredoc_map: Map of heredoc keys to ``{'content', 'quoted'}`` entries.
-        active_parser: ``'rd'`` for recursive descent (default),
-            ``'combinator'`` for the combinator parser.
+        active_parser: ``'recursive_descent'``/``'rd'`` (default) or
+            ``'combinator'``. Any other name raises ``ValueError``.
     """
-    if active_parser == 'combinator':
+    if _use_combinator(active_parser):
         from .combinators.parser import ParserCombinatorShellParser
 
         return ParserCombinatorShellParser(ParserConfig()).parse_with_heredocs(
@@ -72,8 +95,8 @@ def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0):
 
     Args:
         tokens: List of tokens to parse.
-        active_parser: ``'rd'`` for recursive descent (default),
-            ``'combinator'`` for the combinator parser.
+        active_parser: ``'recursive_descent'``/``'rd'`` (default) or
+            ``'combinator'``. Any other name raises ``ValueError``.
         source_text: Optional source text for error reporting.
         line_offset: Number of source lines before this fragment in the
             enclosing input, so errors report absolute line numbers.
@@ -83,7 +106,7 @@ def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0):
     """
     config = ParserConfig()
 
-    if active_parser == 'combinator':
+    if _use_combinator(active_parser):
         from .combinators.parser import ParserCombinatorShellParser
 
         pc = ParserCombinatorShellParser(config)

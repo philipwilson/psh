@@ -3,7 +3,6 @@
 from typing import AbstractSet, Optional
 
 from ...lexer.token_types import Token, TokenType
-from ..config import ParsingMode
 from .context import ParserContext
 from .helpers import ParseError
 
@@ -67,32 +66,6 @@ class ContextBaseParser:
             return self.ctx.can_continue_parsing()
         else:
             raise error
-
-    # === Configuration Queries ===
-
-    def is_feature_enabled(self, feature: str) -> bool:
-        """Check if a parsing feature is enabled."""
-        return self.ctx.config.is_feature_enabled(feature)
-
-    def should_allow(self, capability: str) -> bool:
-        """Check if a parsing capability should be allowed."""
-        return self.ctx.config.should_allow(capability)
-
-    def require_feature(self, feature: str, error_message: Optional[str] = None) -> None:
-        """Require that a feature is enabled, otherwise raise an error."""
-        if not self.is_feature_enabled(feature):
-            message = error_message or f"{feature} is not enabled in current parsing mode"
-            error = self.error(message)
-            self.add_error(error)
-
-    def check_posix_compliance(self, feature: str, alternative: Optional[str] = None) -> None:
-        """Check POSIX compliance for a feature."""
-        if self.ctx.config.parsing_mode == ParsingMode.STRICT_POSIX:
-            message = f"{feature} is not POSIX compliant"
-            if alternative:
-                message += f". Use {alternative} instead"
-            error = self.error(message)
-            self.add_error(error)
 
     # === Utility Methods ===
 
