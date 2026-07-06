@@ -263,49 +263,102 @@ class TestParseWithHeredocs:
     Parser.parse_with_heredocs method was removed in v0.256.0.
     """
 
+    def _first_heredoc_redirect(self, ast):
+        from psh.ast_nodes import Redirect
+        reds = [r for r in _find_nodes(ast, Redirect) if r.type in ('<<', '<<-')]
+        assert len(reds) == 1
+        return reds[0]
+
     def test_parse_with_heredocs_dict_format(self):
-        """Dict-format heredoc map should not crash."""
+        """Dict-format map attaches content (and quoted) at construction."""
+        from psh.lexer import tokenize_with_heredocs
         from psh.parser import parse_with_heredocs
-        tokens = tokenize('cat <<EOF\nEOF')
-        heredoc_map = {
-            'heredoc_0_EOF': {'content': 'hello world', 'quoted': False}
-        }
-        # Should not raise
+        # tokenize_with_heredocs sets each `<<` token's heredoc_key — the
+        # production path. (Attachment is now key-driven; there is no
+        # delimiter-suffix fallback for keyless hand-built tokens.)
+        tokens, heredoc_map = tokenize_with_heredocs('cat <<EOF\nhello world\nEOF')
         ast = parse_with_heredocs(tokens, heredoc_map)
-        assert ast is not None
+        red = self._first_heredoc_redirect(ast)
+        assert red.heredoc_content == 'hello world\n'
+        assert red.heredoc_quoted is False
 
     def test_parse_with_heredocs_string_format(self):
-        """String-format heredoc map should still work (backward compat)."""
+        """String-valued map entries (legacy, non-dict) still attach as content."""
+        from psh.lexer import tokenize_with_heredocs
         from psh.parser import parse_with_heredocs
-        tokens = tokenize('cat <<EOF\nEOF')
-        heredoc_map = {
-            'heredoc_0_EOF': 'hello world'
-        }
-        # Should not raise
-        ast = parse_with_heredocs(tokens, heredoc_map)
-        assert ast is not None
+        tokens, heredoc_map = tokenize_with_heredocs('cat <<EOF\nhello world\nEOF')
+        # Replace the dict entry with a bare string under the same key.
+        key = next(iter(heredoc_map))
+        string_map = {key: 'hello world\n'}
+        ast = parse_with_heredocs(tokens, string_map)
+        red = self._first_heredoc_redirect(ast)
+        assert red.heredoc_content == 'hello world\n'
+
+    def test_missing_map_entry_fails_loudly(self):
+        """A heredoc redirect whose key is absent from the map is a hard error.
+
+        (F9: no silent None / delimiter-suffix guessing — attachment is
+        key-driven and a missing collected body raises during the parse.)
+        """
+        from psh.lexer import tokenize_with_heredocs
+        from psh.parser import parse_with_heredocs
+        tokens, _ = tokenize_with_heredocs('cat <<EOF\nhello\nEOF')
+        with pytest.raises(ParseError):
+            parse_with_heredocs(tokens, {})  # key present on token, absent from map
 
 
 # ===========================================================================
-# Codex Review Finding 4: create_configured_parser() config mutation
+# Codex Review Finding 4: ParserConfig.clone() config mutation
 # ===========================================================================
 
-class TestCreateConfiguredParserNoMutation:
-    """Tests that create_configured_parser() does not mutate parent config."""
+class TestParserConfigCloneNoMutation:
+    """clone() returns an independent copy and never mutates the original.
 
-    def test_create_configured_parser_no_mutation(self):
-        """Child parser with collect_errors=True should not mutate parent config."""
-        tokens = tokenize('echo hello')
-        parent = Parser(tokens, source_text='echo hello')
-        assert parent.config.collect_errors is False
+    (Formerly guarded create_configured_parser(), a test-only helper removed
+    with the parser-config façade; clone() — now a dataclasses.replace wrapper
+    over an empty config — is the surviving API.)
+    """
 
-        child_tokens = tokenize('echo world')
-        child = parent.create_configured_parser(child_tokens, collect_errors=True)
+    def test_clone_returns_independent_instance(self):
+        """clone() returns a new object, never the same instance."""
+        from psh.parser import ParserConfig
 
-        # Child should have the override
-        assert child.config.collect_errors is True
-        # Parent config must be unchanged
-        assert parent.config.collect_errors is False
+        parent = ParserConfig()
+        child = parent.clone()
+
+        assert child == parent
+        assert child is not parent
+
+
+# ===========================================================================
+# Appraisal Finding 3: error collection removed — a syntax error never yields
+# an executable AST (the old collect_errors mode returned a completed
+# IfConditional for `if true; then echo x`, then let it execute).
+# ===========================================================================
+
+class TestSyntaxErrorNeverExecutes:
+    """A parse error must raise, never produce a runnable Program."""
+
+    def test_incomplete_if_raises_not_returns_program(self):
+        """`if true; then echo x` (no fi) raises instead of a partial AST."""
+        with pytest.raises(ParseError):
+            parse("if true; then echo x")
+
+    def test_incomplete_if_executes_nothing_in_command_mode(self):
+        """-c: exit 2 and the body command must NOT run."""
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', 'if true; then echo RAN'],
+            capture_output=True, text=True, timeout=30)
+        assert result.returncode == 2
+        assert 'RAN' not in result.stdout
+
+    def test_incomplete_if_executes_nothing_in_validate_mode(self):
+        """--validate: exit 2 and nothing runs."""
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '--validate', '-c', 'if true; then echo RAN'],
+            capture_output=True, text=True, timeout=30)
+        assert result.returncode == 2
+        assert 'RAN' not in result.stdout
 
 
 # ===========================================================================

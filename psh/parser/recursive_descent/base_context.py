@@ -3,7 +3,6 @@
 from typing import AbstractSet, Optional
 
 from ...lexer.token_types import Token, TokenType
-from ..config import ParsingMode
 from .context import ParserContext
 from .helpers import ParseError
 
@@ -55,44 +54,6 @@ class ContextBaseParser:
 
         error_context = self.ctx._create_error_context(message, token)
         return ParseError(error_context)
-
-    def should_collect_errors(self) -> bool:
-        """Check if errors should be collected rather than thrown."""
-        return self.ctx.should_collect_errors()
-
-    def add_error(self, error: ParseError) -> bool:
-        """Add error to context and return whether parsing should continue."""
-        if self.ctx.config.collect_errors:
-            self.ctx.add_error(error)
-            return self.ctx.can_continue_parsing()
-        else:
-            raise error
-
-    # === Configuration Queries ===
-
-    def is_feature_enabled(self, feature: str) -> bool:
-        """Check if a parsing feature is enabled."""
-        return self.ctx.config.is_feature_enabled(feature)
-
-    def should_allow(self, capability: str) -> bool:
-        """Check if a parsing capability should be allowed."""
-        return self.ctx.config.should_allow(capability)
-
-    def require_feature(self, feature: str, error_message: Optional[str] = None) -> None:
-        """Require that a feature is enabled, otherwise raise an error."""
-        if not self.is_feature_enabled(feature):
-            message = error_message or f"{feature} is not enabled in current parsing mode"
-            error = self.error(message)
-            self.add_error(error)
-
-    def check_posix_compliance(self, feature: str, alternative: Optional[str] = None) -> None:
-        """Check POSIX compliance for a feature."""
-        if self.ctx.config.parsing_mode == ParsingMode.STRICT_POSIX:
-            message = f"{feature} is not POSIX compliant"
-            if alternative:
-                message += f". Use {alternative} instead"
-            error = self.error(message)
-            self.add_error(error)
 
     # === Utility Methods ===
 

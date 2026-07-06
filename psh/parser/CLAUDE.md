@@ -158,11 +158,11 @@ clean ParseError instead of a Python RecursionError.)
 class ParserContext:
     tokens: List[Token]      # Token stream
     current: int             # Current position
-
-    # Error handling
     config: ParserConfig
-    errors: List[ParseError]
-    fatal_error: Optional[ParseError]
+
+    # Pre-collected heredoc bodies (heredoc-aware parse only), keyed by the
+    # lexer-assigned heredoc_key; None otherwise.
+    heredoc_map: Optional[Mapping[str, object]]
 
     # Source context (for error messages)
     source_text: Optional[str]
@@ -171,6 +171,12 @@ class ParserContext:
     # Resource limit (see above)
     nesting_depth: int
 ```
+
+Parse errors: `consume()` raises a `ParseError` on the first unexpected token
+(no error-collection mode). `ParseError` has one diagnostic interface —
+`error.summary` (short reason), `error.render()` (rich: position, source line,
+caret, suggestions), and `str(error)` delegating to `render()`. Execution and
+analysis (`--validate` etc.) both print `render()`.
 
 ### 4. TokenGroups for Matching
 
@@ -298,9 +304,18 @@ def parse_pipeline_component(self) -> Command:
 
 ### Heredoc Collection
 
-Heredocs are parsed in two phases:
-1. Tokenization collects the `<<EOF` marker
-2. Parser collects heredoc content after the command line
+Heredocs are handled in two phases:
+1. The lexer (`tokenize_with_heredocs`) collects each body separately and
+   stamps a `heredoc_key` on the `<<`/`<<-` operator token; the bodies live
+   in a `heredoc_map` returned alongside the tokens.
+2. The parser attaches the body to the `Redirect` node AS IT IS CONSTRUCTED —
+   `parse_with_heredocs` / the interactive trial parse thread the map into
+   `Parser(..., heredoc_map=...)`, and `RedirectionParser._attach_heredoc_body`
+   looks the body up by key. Attachment is key-driven: a heredoc redirect whose
+   key is absent from the map is a hard error (no post-parse AST walk, no
+   delimiter-suffix guessing). The former post-parse `populate_heredoc_content`
+   AST walk was removed. (The educational combinator keeps its own
+   `HeredocProcessor` visitor with identical observable attachment.)
 
 ## Testing
 
@@ -384,29 +399,34 @@ appropriate WordBuilder method.
 
 ## Configuration
 
-`ParserConfig` (`psh/parser/config.py`) controls parser behavior. Only
-fields actually read by parser code exist; feature checks go through
-`is_feature_enabled()` / `should_allow()`, which `getattr` with a default
-of `False`:
+`ParserConfig` (`psh/parser/config.py`) is the parser's single configuration
+object. **The production grammar is NOT feature-configurable**: compound
+dispatch (`commands.py`, `control_structures.py`) calls the specialized
+sub-parsers directly, so `[[ ]]` and `(( ))` are always accepted. The former
+strict-POSIX / feature-gate fields (`parsing_mode`, `enable_arithmetic`,
+`allow_bash_conditionals`, `allow_bash_arithmetic`) plus their
+`strict_posix` / `is_feature_enabled` / `should_allow` /
+`check_posix_compliance` methods were a façade — bypassed on every live
+path — and were removed. So was the `collect_errors` error-collection mode:
+it drove an unsafe recovery that returned a fabricated AST after a missing
+required token, and its collected errors were never read. `consume()` now
+always raises on the first unexpected token. POSIX/bash behavior that IS
+honored lives in the lexer (`posix` tokenize mode) and runtime options, not
+here.
 
 ```python
 @dataclass
 class ParserConfig:
-    parsing_mode: ParsingMode = ParsingMode.BASH_COMPAT  # or STRICT_POSIX
-
-    # Error handling
-    error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
-    max_errors: int = 10
-    collect_errors: bool = False
-
-    # Language features
-    enable_arithmetic: bool = True
-    allow_bash_conditionals: bool = True   # [[ ]]
-    allow_bash_arithmetic: bool = True     # (( ))
+    """Currently empty — the production parser has no options."""
 ```
 
-Use `ParserConfig.strict_posix()` for a POSIX-mode config and
-`config.clone(**overrides)` to derive variants. Error collection
-(`collect_errors=True`) is implemented at the `ParserContext` level:
-errors accumulate in `ctx.errors` (up to `max_errors`) instead of raising
-immediately.
+`ParserConfig` is retained as the parser's single configuration object and
+extension point (it threads through the factory, `ParserContext`, and every
+sub-parser). `config.clone(**overrides)` delegates to `dataclasses.replace`,
+so an unknown field name raises `TypeError` (a misspelled override no longer
+silently no-ops). No live path passes a non-default config; `create_parser()`
+/ `parse_with_heredocs()` always construct a default `ParserConfig()`.
+
+The `parser-config` / `parser-mode` builtins do NOT drive `ParserConfig`; they
+toggle the shell options that really affect lexing/parsing/expansion (`posix`,
+`braceexpand`, `histexpand`).

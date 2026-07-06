@@ -370,22 +370,6 @@ class TestParserIntegration:
         assert "EXPANSION PARSERS" in explanation
         assert "COMMAND PARSERS" in explanation
 
-    def test_configuration(self):
-        """Test parser configuration."""
-        # Create with custom config
-        config = ParserConfig(
-            enable_arithmetic=False,
-            allow_bash_conditionals=False
-        )
-        parser = ParserCombinatorShellParser(config=config)
-
-        assert parser.config.enable_arithmetic is False
-        assert parser.config.allow_bash_conditionals is False
-
-        # Reconfigure
-        parser.configure(enable_arithmetic=True)
-        assert parser.config.enable_arithmetic is True
-
     def test_error_handling(self):
         """Test parse error handling."""
         parser = ParserCombinatorShellParser()

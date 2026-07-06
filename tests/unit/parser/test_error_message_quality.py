@@ -131,3 +131,58 @@ class TestEofErrorsGetRichContext:
         assert err.unclosed_expansion == "command"
         assert err.error_context.line == 1
         assert err.error_context.source_line == "echo $(foo"
+
+
+class TestDiagnosticInterface:
+    """F11: one unambiguous ParseError diagnostic interface.
+
+    summary = the short reason; render() = the rich presentation;
+    str(error) delegates to render(); .message is an alias of summary.
+    """
+
+    def test_summary_is_the_short_reason(self):
+        err = _parse_error("if true; then echo x")
+        assert err.summary == "Expected 'fi', got end of input"
+        # No position/caret/suggestions leak into the summary.
+        assert "Parse error at position" not in err.summary
+        assert "^" not in err.summary
+
+    def test_render_is_the_rich_form(self):
+        err = _parse_error("if true; then echo x")
+        rendered = err.render()
+        assert "Parse error at position" in rendered
+        assert "Expected 'fi', got end of input" in rendered
+        assert "\n" in rendered  # multi-line: source line + caret + suggestions
+
+    def test_str_delegates_to_render(self):
+        err = _parse_error("if true; then echo x")
+        assert str(err) == err.render()
+
+    def test_message_is_alias_of_summary(self):
+        err = _parse_error("if true; then echo x")
+        assert err.message == err.summary
+
+
+class TestAnalysisModeRendersRichDiagnostic:
+    """F11 (deliberate delta): analysis modes now print the rich diagnostic
+    (position, reason, suggestions, token context) instead of the bare
+    one-line reason they used to show.
+
+    (The source-line + caret additionally require the parser to be given
+    source_text, which the analysis parse path does not yet thread — that is
+    appraisal finding 12, out of this campaign's scope.)
+    """
+
+    @pytest.mark.parametrize("mode", ["--validate", "--format", "--metrics",
+                                      "--security", "--lint"])
+    def test_analysis_mode_emits_rich_diagnostic(self, mode):
+        import subprocess
+        import sys
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', mode, '-c', 'if true; then echo x'],
+            capture_output=True, text=True, timeout=30)
+        assert result.returncode == 2
+        # Rich diagnostic elements (not the former bare one-liner):
+        assert "Parse error at position" in result.stderr
+        assert "Expected 'fi', got end of input" in result.stderr
+        assert "Add 'fi' to close if statement" in result.stderr  # suggestion

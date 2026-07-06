@@ -5,13 +5,9 @@ This module contains the main Parser class that orchestrates parsing by delegati
 to specialized parser modules for different language constructs.
 """
 
-from typing import List, Optional
+from typing import List, Mapping, Optional
 
-from ...ast_nodes import (
-    ArithmeticEvaluation,
-    EnhancedTestStatement,
-    Program,
-)
+from ...ast_nodes import Program
 from ...lexer.token_types import Token
 from ..config import ParserConfig
 from .base_context import ContextBaseParser
@@ -25,7 +21,6 @@ from .parsers.redirections import RedirectionParser
 from .parsers.statements import StatementParser
 from .parsers.tests import TestParser
 from .support.context_factory import create_context
-from .support.utils import ParserUtils
 
 
 class Parser(ContextBaseParser):
@@ -34,7 +29,8 @@ class Parser(ContextBaseParser):
     def __init__(self, tokens: List[Token],
                  source_text: Optional[str] = None,
                  config: Optional[ParserConfig] = None, ctx: Optional[ParserContext] = None,
-                 line_offset: int = 0):
+                 line_offset: int = 0,
+                 heredoc_map: Optional[Mapping[str, object]] = None):
         # Create or use provided context
         if ctx is not None:
             # Use provided context directly
@@ -45,11 +41,14 @@ class Parser(ContextBaseParser):
 
             # Create context. line_offset carries the number of source lines
             # before this fragment, so error messages report absolute lines.
+            # heredoc_map (when given) lets RedirectionParser attach here-doc
+            # bodies as each Redirect is constructed.
             ctx = create_context(
                 tokens=tokens,
                 config=config,
                 source_text=source_text,
-                line_offset=line_offset
+                line_offset=line_offset,
+                heredoc_map=heredoc_map,
             )
             super().__init__(ctx)
 
@@ -64,33 +63,6 @@ class Parser(ContextBaseParser):
         self.redirections = RedirectionParser(self)
         self.arrays = ArrayParser(self)
         self.functions = FunctionParser(self)
-        self.utils = ParserUtils(self)
-
-    def create_configured_parser(self, tokens: List[Token], **overrides) -> 'Parser':
-        """Create a new parser with the same configuration.
-
-        Uses config.clone() so the child parser gets an independent copy
-        of the configuration, avoiding mutation of the parent's config.
-        """
-        # Separate config-level overrides from context-level overrides
-        config_overrides = {k: v for k, v in overrides.items()
-                           if k in ParserConfig.__dataclass_fields__}
-        ctx_overrides = {k: v for k, v in overrides.items()
-                        if k not in config_overrides}
-
-        # Clone config with overrides applied atomically
-        ctx = create_context(
-            tokens=tokens,
-            config=self.ctx.config.clone(**config_overrides),
-            source_text=self.ctx.source_text
-        )
-
-        # Apply context-level overrides
-        for key, value in ctx_overrides.items():
-            if hasattr(ctx, key):
-                setattr(ctx, key, value)
-
-        return Parser(tokens=[], ctx=ctx)
 
     @property
     def tokens(self) -> List[Token]:
@@ -158,21 +130,5 @@ class Parser(ContextBaseParser):
             self.skip_separators()
 
         return program
-
-    # === Delegation Methods ===
-    # These methods delegate to specialized parsers, adding feature checks where needed.
-
-    def parse_enhanced_test_statement(self) -> EnhancedTestStatement:
-        """Parse an enhanced test statement ([[ ... ]])."""
-        if not self.should_allow('bash_conditionals'):
-            self.check_posix_compliance('[[ ]] enhanced test syntax', '[ ] test command')
-        return self.tests.parse_enhanced_test_statement()
-
-    def parse_arithmetic_command(self) -> ArithmeticEvaluation:
-        """Parse an arithmetic command ((...)). """
-        self.require_feature('arithmetic', 'Arithmetic evaluation is disabled')
-        if not self.should_allow('bash_arithmetic'):
-            self.check_posix_compliance('(( )) arithmetic syntax', 'expr command')
-        return self.arithmetic.parse_arithmetic_command()
 
 

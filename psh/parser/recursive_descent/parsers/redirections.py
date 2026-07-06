@@ -116,16 +116,51 @@ class RedirectionParser(ParserSubcomponent):
         redirect = Redirect(
             type=token.value,
             target=delimiter,
-            heredoc_content=None,  # Content filled later
+            heredoc_content=None,  # Filled from the heredoc map below, if present
             heredoc_quoted=heredoc_quoted,
             fd=token.fd
         )
 
-        # Store the heredoc key if available
-        if hasattr(token, 'heredoc_key'):
-            redirect.heredoc_key = token.heredoc_key
+        # The lexer assigns a heredoc_key to each `<<`/`<<-` operator token
+        # (see HeredocLexer._mark_heredoc_tokens); its *presence* signals that
+        # the body was collected separately and lives in the heredoc map.
+        heredoc_key = getattr(token, 'heredoc_key', None)
+        if heredoc_key is not None:
+            redirect.heredoc_key = heredoc_key
 
+        self._attach_heredoc_body(redirect)
         return redirect
+
+    def _attach_heredoc_body(self, redirect: Redirect) -> None:
+        """Attach the collected here-document body to *redirect* when parsing
+        heredoc-aware (``ctx.heredoc_map`` present).
+
+        Replaces the former post-parse ``populate_heredoc_content`` AST walk:
+        the body is set as the ``Redirect`` is constructed, so there is no
+        second traversal and no delimiter-suffix guessing. On the heredoc-aware
+        path a heredoc redirect MUST carry a ``heredoc_key`` that is present in
+        the map — a missing key or entry is a hard error, not a silent None.
+        When parsing without a map (``ctx.heredoc_map is None``, e.g. a bare
+        ``Parser(tokens)``), the body stays None exactly as before.
+        """
+        heredoc_map = self.parser.ctx.heredoc_map
+        if heredoc_map is None:
+            return
+
+        key = redirect.heredoc_key
+        if key is None:
+            raise self.parser.error(
+                "here document operator has no collected-body key")
+        if key not in heredoc_map:
+            raise self.parser.error(
+                f"here document body not collected (key {key!r})")
+
+        info = heredoc_map[key]
+        if isinstance(info, dict):
+            redirect.heredoc_content = info['content']
+            redirect.heredoc_quoted = info.get('quoted', False)
+        elif isinstance(info, str):
+            redirect.heredoc_content = info
 
     def _parse_here_string(self, token: Token) -> Redirect:
         """Parse here string redirect."""
