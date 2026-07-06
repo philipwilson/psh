@@ -211,10 +211,10 @@ class TokenBraceExpander:
                 # literal occurrence of the default is not stripped (F3).
                 range_empty = _first_free_codepoint(set(map(ord, tok.value)))
                 self._core._range_empty = range_empty
-                try:
-                    expansions = self._core._expand_braces(tok.value)
-                except BraceExpansionError:
-                    expansions = [tok.value]
+                # A budget overflow (BraceExpansionError) is NOT caught here:
+                # it propagates as a loud SyntaxError-class diagnostic instead
+                # of the old silent restore-the-literal behavior (F4).
+                expansions = self._core._expand_braces(tok.value)
                 if not (len(expansions) == 1 and expansions[0] == tok.value):
                     # bash drops results that expand to the empty string
                     # ({a,,b} -> a b); an empty item fused with a prefix/postfix
@@ -321,10 +321,9 @@ class TokenBraceExpander:
         encoded_str = ''.join(encoded)
 
         # 2. Expand using the shared core (sees only unquoted braces/commas).
-        try:
-            results = self._core._expand_braces(encoded_str)
-        except BraceExpansionError:
-            return None
+        #    A budget overflow propagates loudly (F4); it is not swallowed
+        #    into a silent literal restore.
+        results = self._core._expand_braces(encoded_str)
         if len(results) == 1 and results[0] == encoded_str:
             return None  # nothing structural to expand
 
