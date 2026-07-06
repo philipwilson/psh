@@ -371,27 +371,38 @@ class PipelineExecutor:
 
     def _setup_pipeline_redirections(self, index: int, pipeline_ctx: PipelineContext,
                                      pipe_stderr: Optional[List[bool]] = None):
-        """Set up stdin/stdout for command in pipeline."""
-        # Redirect stdin from previous pipe
+        """Wire this pipeline member's stdin/stdout onto the pipe endpoints.
+
+        Built as one collision-safe remap rather than raw dup2s + a blanket
+        close loop. The blanket loop was unsafe when descriptors 0 or 1 began
+        closed (``exec 0<&-``, ``exec 1>&-``): ``os.pipe()`` then hands an
+        endpoint back AS fd 0 or 1, ``dup2(fd, fd)`` is a no-op, and the loop
+        destroys the live endpoint (D1/D2). remap_fds promotes endpoints out of
+        the way, resolves the closed-fd remapping cycle, and closes every pipe
+        descriptor this child owns except the ones now serving as its stdin/
+        stdout.
+        """
         stdin_fd = pipeline_ctx.get_stdin_fd(index)
-        if stdin_fd is not None:
-            os.dup2(stdin_fd, 0)
-
-        # Redirect stdout to next pipe
         stdout_fd = pipeline_ctx.get_stdout_fd(index)
+
+        pairs: List[Tuple[int, int]] = []
+        if stdin_fd is not None:
+            pairs.append((stdin_fd, 0))
         if stdout_fd is not None:
-            os.dup2(stdout_fd, 1)
+            pairs.append((stdout_fd, 1))
+            # ``|&``: this member's stderr joins its stdout at the same pipe.
+            # pipe_stderr[i] is True when |& connects command i to command i+1,
+            # which is exactly when this member has a stdout pipe endpoint.
+            if pipe_stderr and index < len(pipe_stderr) and pipe_stderr[index]:
+                pairs.append((stdout_fd, 2))
 
-        # If |& was used, also redirect stderr to the pipe
-        # pipe_stderr[i] is True if |& connects command i to command i+1
-        if pipe_stderr and index < len(pipe_stderr) and pipe_stderr[index]:
-            # stderr goes to same place as stdout (already pointing at pipe)
-            os.dup2(1, 2)
+        # Every pipe endpoint is inherited by this child and must be closed,
+        # except the ones remap_fds keeps as destinations. With all N-1 pipes
+        # pre-opened, that is the whole list (commit 4 makes this O(1)).
+        owned = [fd for pipe in pipeline_ctx.pipes for fd in pipe]
 
-        # Close all pipe file descriptors in child
-        for read_fd, write_fd in pipeline_ctx.pipes:
-            os.close(read_fd)
-            os.close(write_fd)
+        from ..io_redirect import remap_fds
+        remap_fds(pairs, owned=owned)
 
     def _pipeline_to_string(self, node: 'Pipeline') -> str:
         """Convert pipeline to string representation."""
