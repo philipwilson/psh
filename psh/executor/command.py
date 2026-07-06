@@ -358,14 +358,22 @@ class CommandExecutor:
                 words=node.words[command_start_index:],
             )
 
-            # Check for the `\cmd` bypass mechanism before expansion
-            command_node, bypass_aliases, bypass_functions = \
+            # A leading backslash on the command word (`\ls`, `\echo`) is a
+            # QUOTE. It suppresses ALIAS expansion — handled upstream: the
+            # backslash stays in the lexer token, so `\ls` never matched the
+            # alias name `ls` during the token-stream transform — and, after
+            # quote removal, also makes bash treat the word as NOT a
+            # declaration builtin (so `\export foo=$x` word-splits the value).
+            # It does NOT suppress function or builtin lookup (F2): once the
+            # backslash is stripped the plain name participates in normal
+            # function -> builtin -> external resolution.
+            command_node, backslash_quoted = \
                 self._strip_backslash_bypass(command_node)
 
-            # Expand command arguments (before assignments apply)
+            # Expand command arguments (before assignments apply). A
+            # backslash-quoted command word is not declaration-eligible.
             expanded_args = self._expand_arguments(
-                command_node,
-                declaration_eligible=not (bypass_aliases or bypass_functions))
+                command_node, declaration_eligible=not backslash_quoted)
 
             if not expanded_args:
                 # The command words produced ZERO fields — an unquoted
@@ -405,8 +413,7 @@ class CommandExecutor:
             # the layer) and pop it in the finally; a mid-expansion error still
             # unwinds cleanly because the push precedes apply_prefix.
             is_function_call = (
-                not bypass_functions
-                and self.function_manager.get_function(cmd_name) is not None)
+                self.function_manager.get_function(cmd_name) is not None)
             if is_function_call and raw_assignments:
                 self.state.scope_manager.push_temp_env_scope()
                 pushed_temp_scope = True
@@ -434,9 +441,10 @@ class CommandExecutor:
             # Special handling for exec builtin (needs access to
             # redirections). A user-defined exec() function shadows the
             # builtin (bash), so the special case only applies when no
-            # function will take the lookup.
-            if cmd_name == 'exec' and (bypass_functions or
-                                       not self.function_manager.get_function('exec')):
+            # function will take the lookup — including for `\exec`, which
+            # (F2) no longer bypasses the function.
+            if cmd_name == 'exec' and \
+                    not self.function_manager.get_function('exec'):
                 return self._handle_exec_builtin(node, expanded_args, prefix.applied)
 
             # Deliver structured array initializers to declaration
@@ -455,8 +463,7 @@ class CommandExecutor:
                           if pending_inits else EMPTY_BUILTIN_CONTEXT)
             # Execute the command using the appropriate strategy
             result = self._execute_with_strategy(
-                cmd_name, cmd_args, node, context,
-                bypass_aliases, bypass_functions, invocation,
+                cmd_name, cmd_args, node, context, invocation,
             )
             prefix_assignments_persist = result.prefix_assignments_persist
             return result.status
@@ -472,19 +479,29 @@ class CommandExecutor:
                 self.assignments.restore(saved_vars)
 
     def _strip_backslash_bypass(self, command_node: 'SimpleCommand'):
-        """Handle the `\\cmd` alias/function bypass.
+        """Strip a leading backslash on the command word (`\\ls`, `\\echo`).
 
-        A leading backslash on the command word (e.g. ``\\ls``) makes the
-        shell skip alias and function lookup. Strip the backslash from
-        the first Word's LiteralPart so expansion (and the derived
-        ``.args`` view) sees the plain name.
+        A leading backslash is a QUOTE on the command word. Its two observable
+        effects (bash):
+
+        - It suppresses ALIAS expansion — but that is already handled upstream:
+          the backslash is preserved in the lexer token, so `\\ls` never
+          matched the alias name `ls` during the token-stream alias transform.
+        - After quote removal the word is not recognized as a declaration
+          builtin, so `\\export foo=$x` word-splits its argument.
+
+        It does NOT suppress function or builtin lookup (F2). This method
+        therefore only strips the backslash from the first Word's LiteralPart
+        (so expansion and the derived ``.args`` view see the plain name) and
+        reports whether a backslash was present.
 
         Returns:
-            (command_node, bypass_aliases, bypass_functions). The node is
-            a rewritten copy when a bypass was found, otherwise unchanged.
+            (command_node, backslash_quoted). The node is a rewritten copy
+            when a backslash was stripped, otherwise unchanged; the flag drives
+            declaration-builtin eligibility only.
         """
         if not (command_node.args and command_node.args[0].startswith('\\')):
-            return command_node, False, False
+            return command_node, False
 
         from ..ast_nodes import LiteralPart, SimpleCommand, Word
 
@@ -511,7 +528,7 @@ class CommandExecutor:
             background=command_node.background,
             words=modified_words,
         )
-        return command_node, True, True
+        return command_node, True
 
     def _handle_execution_error(self, e: Exception) -> int:
         """Map an exception raised during command execution to an exit status.
@@ -610,8 +627,6 @@ class CommandExecutor:
 
     def _execute_with_strategy(self, cmd_name: str, args: List[str],
                               node: 'SimpleCommand', context: 'ExecutionContext',
-                              bypass_aliases: bool = False,
-                              bypass_functions: bool = False,
                               invocation: BuiltinContext = EMPTY_BUILTIN_CONTEXT
                               ) -> ExecutionResult:
         """Resolve the command to a strategy, then invoke it.
@@ -632,8 +647,7 @@ class CommandExecutor:
             builtins), which the caller uses to decide whether to restore
             the prefix assignments.
         """
-        resolution = self._resolve_command(
-            cmd_name, bypass_aliases, bypass_functions)
+        resolution = self._resolve_command(cmd_name)
         if resolution is None:
             # Should never happen: ExternalExecutionStrategy.can_execute
             # always matches. Preserves the historical 127 fallback.
@@ -653,46 +667,26 @@ class CommandExecutor:
         return self._invoke_resolution(
             resolution, cmd_name, args, node, context, invocation)
 
-    def _resolve_command(self, cmd_name: str,
-                         bypass_aliases: bool = False,
-                         bypass_functions: bool = False
-                         ) -> Optional[CommandResolution]:
+    def _resolve_command(self, cmd_name: str) -> Optional[CommandResolution]:
         """Resolve a command name to the strategy that will run it.
 
         Walks the priority-ordered strategy list (functions > builtins >
-        external, bash's default-mode order; aliases are expanded earlier
-        as a token-stream transform, not here), honoring the ``\\cmd``
-        bypass exclusions, and returns the first match as a
+        external, bash's default-mode order) and returns the first match as a
         :class:`CommandResolution`. The persistence policy — previously the
-        ``isinstance(strategy, SpecialBuiltinExecutionStrategy)`` check —
-        is recorded here as the ``prefix_assignments_persist`` field.
+        ``isinstance(strategy, SpecialBuiltinExecutionStrategy)`` check — is
+        recorded here as the ``prefix_assignments_persist`` field.
+
+        There is no command-word bypass here. Aliases are expanded earlier as
+        a token-stream transform (the `\\cmd` backslash naturally avoids alias
+        expansion because the leading-backslash WORD never matches an alias
+        name), and `\\cmd` does NOT bypass functions or builtins (F2). The
+        `command`/`builtin` builtins, which DO bypass functions, resolve their
+        target internally rather than through this method.
 
         Returns None only if no strategy matches (unreachable in practice,
         since ExternalExecutionStrategy is the catch-all).
         """
-        # Note: The 'command' builtin handles its own bypass logic internally
-
-        # Create strategy list based on bypass requirements.
-        # bypass_aliases is now a no-op at this layer: aliases are expanded
-        # at the lex→parse boundary (AliasManager.expand_aliases), so there
-        # is no runtime alias strategy to exclude. The `\\cmd` backslash is
-        # still stripped earlier (_strip_backslash_bypass) and naturally
-        # avoids alias expansion because the leading-backslash WORD never
-        # matches an alias name during the token transform.
-        strategies_to_exclude: List[type[ExecutionStrategy]] = []
-        if bypass_functions:
-            strategies_to_exclude.append(FunctionExecutionStrategy)
-            # Note: bypass_functions should NOT exclude special builtins
-
-        if strategies_to_exclude:
-            strategies_to_use = [
-                strategy for strategy in self.strategies
-                if not any(isinstance(strategy, exc_type) for exc_type in strategies_to_exclude)
-            ]
-        else:
-            strategies_to_use = self.strategies
-
-        for strategy in strategies_to_use:
+        for strategy in self.strategies:
             if strategy.can_execute(cmd_name, self.shell):
                 return CommandResolution(
                     strategy=strategy,

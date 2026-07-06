@@ -6616,3 +6616,49 @@
   stdout: "rc=0\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: backslash quoting suppresses aliases, not functions (F2)
+# =============================================================================
+
+- name: exec_p1a_backslash_calls_function
+  command: "f() { echo FUNC; }; \\f"
+  stdout: "FUNC\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_function_shadows_builtin
+  command: "echo() { printf 'FUNCTION\\n'; }; \\echo hi"
+  stdout: "FUNCTION\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_export_function_not_builtin
+  command: "export() { echo FUNCTION; }; \\export X=y; printf 'X=<%s>\\n' \"${X-unset}\""
+  stdout: "FUNCTION\nX=<unset>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_exit_function
+  command: "exit() { echo EXITFUNC; }; \\exit; echo after"
+  stdout: "EXITFUNC\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_echo_builtin_no_function
+  command: "\\echo hi"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_export_builtin_no_function
+  command: "unset X; \\export X=y; printf 'X=<%s>\\n' \"${X-unset}\""
+  stdout: "X=<y>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_suppresses_alias
+  command: "alias e='echo A'; \\e 2>/dev/null; echo \"rc=$?\""
+  stdout: "rc=127\n"
+  stderr: ""
+  exit_code: 0
