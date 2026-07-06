@@ -100,6 +100,11 @@ CLAIM_TESTS = {
     'DEBUG/ERR/RETURN traps': (
         'bash/test_trap_signal_spec_conformance.py',
         "trap 'echo RET' RETURN"),
+    # F15 (2026-07-06) — row flipped from "Partial (TIMEFORMAT not honored)"
+    # once TIMEFORMAT was implemented; a %-free format is deterministic.
+    'time keyword': (
+        'bash/test_timeformat_conformance.py',
+        'TIMEFORMAT="CUSTOM_FMT"; { time true; } 2>&1'),
 }
 
 
@@ -141,9 +146,8 @@ PARTIAL_ROW_PROBES = {
         'shopt -s lastpipe 2>/dev/null; echo hi | read x; echo "x=$x"',
     # Note claims read -e/-i (readline editing) are unsupported.
     'read options': 'read -e x <<< hello 2>/dev/null; echo "got:$x"',
-    # Note claims TIMEFORMAT is not honored (a %-free TIMEFORMAT makes
-    # bash's output deterministic, so implementing it would match exactly).
-    'time keyword': 'TIMEFORMAT="CUSTOM_FMT"; { time true; } 2>&1',
+    # ('time keyword' was flipped to Full support in F15 (2026-07-06) once
+    # TIMEFORMAT was honored — see CLAIM_TESTS above.)
 }
 
 

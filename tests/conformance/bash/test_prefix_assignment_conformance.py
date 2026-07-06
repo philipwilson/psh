@@ -6,10 +6,12 @@ to leave it set-but-empty because the apply_prefix snapshot went through
 ``state.get_variable()``'s ``''`` default, which cannot represent unset.
 The whole probe matrix (bash 5.2) is pinned here.
 
-Deliberately NOT pinned to bash: ``W=1 :`` — psh implements the POSIX
-special-builtin persistence rule (the assignment persists), which bash
-only does in ``--posix`` mode; that documented choice is unchanged and
-covered by the existing assignment batteries.
+``W=1 :`` (a prefix before a POSIX special builtin) is now mode-aware
+(F9, 2026-07-06): temporary in default mode (matching bash), persisting
+ONLY under ``set -o posix``. psh previously persisted it in BOTH modes — a
+non-conformant divergence the execution-subsystem review flagged. The
+mode-aware behavior is pinned by the exec_p1a_* golden cases and
+tests/integration/test_special_builtin_modes.py.
 """
 
 import os

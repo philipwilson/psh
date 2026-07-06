@@ -308,14 +308,16 @@ class ControlFlowExecutor:
             return 1
 
         exit_status = 0
-        # Expand items - handle all types of expansion, respecting quote types
-        expanded_items = self._expand_loop_items(node)
-
         with self._loop_depth(context), \
                 self._compound_redirections(node) as applied, \
                 self._pipeline_context_disabled(context):
             if not applied:
                 return 1
+            # Expand the item list INSIDE the redirect scope (F4): a command
+            # substitution in the words (`for x in $(cat); do ...; done <
+            # input`) must read the loop's redirected stdin, not the outer
+            # one. Quote types are respected.
+            expanded_items = self._expand_loop_items(node)
             for item in expanded_items:
                 # set -x: bash re-traces the `for VAR in WORDS` header on EACH
                 # iteration (the expanded word list, quoted).
@@ -370,34 +372,38 @@ class ControlFlowExecutor:
         """
         exit_status = 0
         with self._loop_depth(context):
-            # bash runs the DEBUG trap before each arithmetic step of a C-style
-            # for: the init, every condition test, and every update (plus the
-            # body commands fire their own). So `for ((i=0;i<1;i++)); do echo w;
-            # done` fires D before init, cond, echo, update, then the final
-            # cond. $BASH_COMMAND is the step's own text: ((i=0)), ((i<1)), ...
-            self._set_arith_step_bash_command(node.init_expr)
-            self.shell.trap_manager.execute_debug_trap()
-            # Evaluate init expression (before redirects, matching prior
-            # behavior: an init error returns 1 without opening redirects).
-            if node.init_expr:
-                try:
-                    evaluate_arithmetic(node.init_expr, self.shell)
-                except (ReadonlyVariableError, NamerefCycleError) as e:
-                    # `readonly z; for ((z=0; ...))`: bash reports, the loop
-                    # never runs (status 1), and execution continues.
-                    from .strategies import report_assignment_error
-                    return report_assignment_error(self.state, e)
-                except (ValueError, ArithmeticError) as e:
-                    print(f"psh: ((: {e}", file=self.state.stderr)
-                    return 1
-
-            # Redirects apply to the whole loop; pipeline context is
-            # neutralized for the body (uniform with while/for — see
+            # Redirects apply to the whole loop, INCLUDING the init expression
+            # (F4): `for ((i=$(cat); ...)); do ...; done < num` must read the
+            # loop's redirected stdin. Install them first, then run the init
+            # DEBUG trap and init evaluation inside the scope. Pipeline context
+            # is neutralized for the body (uniform with while/for — see
             # _pipeline_context_disabled).
             with self._compound_redirections(node) as applied, \
                     self._pipeline_context_disabled(context):
                 if not applied:
                     return 1
+
+                # bash runs the DEBUG trap before each arithmetic step of a
+                # C-style for: the init, every condition test, and every update
+                # (plus the body commands fire their own). So `for
+                # ((i=0;i<1;i++)); do echo w; done` fires D before init, cond,
+                # echo, update, then the final cond. $BASH_COMMAND is the step's
+                # own text: ((i=0)), ((i<1)), ...
+                self._set_arith_step_bash_command(node.init_expr)
+                self.shell.trap_manager.execute_debug_trap()
+                # Evaluate init expression.
+                if node.init_expr:
+                    try:
+                        evaluate_arithmetic(node.init_expr, self.shell)
+                    except (ReadonlyVariableError, NamerefCycleError) as e:
+                        # `readonly z; for ((z=0; ...))`: bash reports, the loop
+                        # never runs (status 1), and execution continues.
+                        from .strategies import report_assignment_error
+                        return report_assignment_error(self.state, e)
+                    except (ValueError, ArithmeticError) as e:
+                        print(f"psh: ((: {e}", file=self.state.stderr)
+                        return 1
+
                 while True:
                     # Evaluate condition
                     self._set_arith_step_bash_command(node.condition_expr)
@@ -463,36 +469,40 @@ class ControlFlowExecutor:
         Returns:
             Exit status code
         """
-        # bash runs the DEBUG trap before the `case` command (the subject
-        # eval), with $BASH_COMMAND = the pre-expansion header `case $x in `
-        # (the stamped node renders as the header lazily on read).
-        self.shell.trap_manager.set_bash_command(node)
-        self.shell.trap_manager.execute_debug_trap()
-
-        # Expand the subject. The parser carries a Word (per-part quote
-        # context), so expand it quote-aware — tilde/parameter/command/
-        # arithmetic expansion and quote removal, but NO splitting/globbing
-        # — and a single-quoted subject stays literal. Manually built ASTs
-        # (subject_word=None) fall back to legacy flat-string re-expansion.
-        if node.subject_word is not None:
-            expr = self.expansion_manager.expand_word_as_subject(node.subject_word)
-        else:
-            expr = node.expr
-            if '$' in expr:
-                expr = self.expansion_manager.expand_string_variables(expr)
-
-        # set -x: bash traces the `case WORD in` header (expanded subject, quoted).
-        if self.state.options.get('xtrace'):
-            from ..core.options import xtrace_quote
-            ps4 = self.expansion_manager.expand_ps4()
-            self.state.stderr.write(f"{ps4}case {xtrace_quote(expr)} in\n")
-
-        # Redirects apply to the whole case; pipeline context is neutralized
-        # for commands inside the construct.
+        # Redirects apply to the whole case, INCLUDING the subject eval (F4):
+        # `case "$(cat)" in ... esac < input` must read the redirected stdin.
+        # Install them first, then run the DEBUG trap / subject expansion /
+        # xtrace header inside the scope. Pipeline context is neutralized for
+        # commands inside the construct.
         with self._compound_redirections(node) as applied, \
                 self._pipeline_context_disabled(context):
             if not applied:
                 return 1
+
+            # bash runs the DEBUG trap before the `case` command (the subject
+            # eval), with $BASH_COMMAND = the pre-expansion header `case $x in`
+            # (the stamped node renders as the header lazily on read).
+            self.shell.trap_manager.set_bash_command(node)
+            self.shell.trap_manager.execute_debug_trap()
+
+            # Expand the subject. The parser carries a Word (per-part quote
+            # context), so expand it quote-aware — tilde/parameter/command/
+            # arithmetic expansion and quote removal, but NO splitting/globbing
+            # — and a single-quoted subject stays literal. Manually built ASTs
+            # (subject_word=None) fall back to legacy flat-string re-expansion.
+            if node.subject_word is not None:
+                expr = self.expansion_manager.expand_word_as_subject(node.subject_word)
+            else:
+                expr = node.expr
+                if '$' in expr:
+                    expr = self.expansion_manager.expand_string_variables(expr)
+
+            # set -x: bash traces the `case WORD in` header (expanded, quoted).
+            if self.state.options.get('xtrace'):
+                from ..core.options import xtrace_quote
+                ps4 = self.expansion_manager.expand_ps4()
+                self.state.stderr.write(f"{ps4}case {xtrace_quote(expr)} in\n")
+
             # Try each case item
             fall_through = False
             for case_item in node.items:
@@ -566,17 +576,18 @@ class ControlFlowExecutor:
         """
         exit_status = 0
         with self._loop_depth(context):
-            # Expand items - handle all types of expansion, respecting quote types
-            expanded_items = self._expand_loop_items(node)
-
-            # Empty list - exit immediately
-            if not expanded_items:
-                return 0
-
             with self._compound_redirections(node) as applied, \
                     self._pipeline_context_disabled(context):
                 if not applied:
                     return 1
+                # Expand the item list INSIDE the redirect scope (F4) so a
+                # command substitution in the words reads the loop's
+                # redirected stdin. Respects quote types.
+                expanded_items = self._expand_loop_items(node)
+
+                # Empty list - exit immediately
+                if not expanded_items:
+                    return 0
                 try:
                     # Get PS3 prompt (default "#? " if not set)
                     ps3 = self.state.get_variable("PS3", "#? ")

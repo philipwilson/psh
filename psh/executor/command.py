@@ -50,24 +50,26 @@ class RedirectionMode(Enum):
         Python-stream level and saved/restored around the single command
         (``_execute_builtin_with_redirections``), so they do not persist.
 
-    EXTERNAL_DEFERRED
-        An external command. Its redirections are NOT applied here — they
-        are set up inside the forked child (``setup_child_redirections``).
-        Applying them in the parent too would resolve ``2>&1`` against
-        already-redirected fds and run heredoc/target command
-        substitutions twice.
+    CHILD_DEFERRED
+        A command whose forked child owns redirection setup: an external
+        command, and any BACKGROUNDED builtin or function. Its redirections
+        are NOT applied here — they are set up once inside the forked child
+        (``setup_child_redirections``). Applying them in the parent too would
+        resolve ``2>&1`` against already-redirected fds and, worse, run
+        heredoc/target command substitutions TWICE (F3): once in the parent
+        and once in the child.
 
     FD_LEVEL_WINDOW
-        Everything else — functions, aliases, and builtins that run in a
-        pipeline or in a forked child. Redirections are applied at the fd
-        level via ``io_manager.with_redirections`` (a save/restore window)
-        because in a forked child builtins use ``os.write()`` on raw fds,
-        so ``os.dup2()`` redirection is required rather than Python-level
-        ``sys.stdout`` replacement.
+        Everything else — functions, aliases, and FOREGROUND builtins that
+        run in a pipeline or in a forked child. Redirections are applied at
+        the fd level via ``io_manager.with_redirections`` (a save/restore
+        window) because in a forked child builtins use ``os.write()`` on raw
+        fds, so ``os.dup2()`` redirection is required rather than
+        Python-level ``sys.stdout`` replacement.
     """
 
     BUILTIN_INPROCESS = "builtin_inprocess"
-    EXTERNAL_DEFERRED = "external_deferred"
+    CHILD_DEFERRED = "child_deferred"
     FD_LEVEL_WINDOW = "fd_level_window"
 
 
@@ -214,11 +216,20 @@ class CommandExecutor:
             # Phase 1: Extract raw assignments (before expansion)
             raw_assignments = self.assignments.extract(node)
 
+            # Track command substitutions run while expanding assignment
+            # values. The clear must happen HERE — before ANY value expansion
+            # (array element/init value, scalar value, OR command word) — so a
+            # bare assignment's status is the last command substitution run
+            # while expanding it: `a[0]=$(false)` -> 1, `a=($(sh -c 'exit
+            # 7'))` -> 7, `V=v $(false)` -> 1 (F7). Previously it cleared AFTER
+            # the array-assignment preamble, wiping the array value's status.
+            self.state.last_cmdsub_status = None
+
             # A backgrounded pure / bare-array assignment (`x=5 &`, `a[0]=v &`)
             # runs in a forked SUBSHELL (bash): the assignment mutates the child
             # (which then exits), never the parent, and a background job / $! is
             # created. Without this, `x=5 & wait; echo $x` wrongly printed 5.
-            # This is checked BEFORE applying any array assignment below, so the
+            # This is checked BEFORE applying any array assignment, so the
             # parent is never touched.
             is_pure_assignment = (
                 raw_assignments and len(raw_assignments) == len(node.words))
@@ -227,47 +238,26 @@ class CommandExecutor:
             if node.background and (is_pure_assignment or is_bare_array_assignment):
                 return self._run_background_assignment(node, raw_assignments)
 
-            # Handle array assignments first. Their exit status matters when
-            # there is no command word (a bare `a[i]=v` / `a[i]+=v`): bash
-            # reports a failed subscript assignment (e.g. out-of-range
-            # negative index → "bad array subscript") as exit 1.
-            array_assignment_status = 0
-            if node.array_assignments:
+            # Prefix-position array element assignment (`a[0]=x cmd`): bash does
+            # NOT accept an array-element subscript as a command-prefix
+            # identifier — it prints "`a[0]': not a valid identifier", does NOT
+            # create the array, and still runs the command (F7). A scalar
+            # prefix `X=v cmd` is handled normally by _run_command below.
+            if node.array_assignments and node.words:
                 for assignment in node.array_assignments:
-                    array_assignment_status = self._handle_array_assignment(
-                        assignment)
+                    print(f"psh: `{self._array_assignment_lhs(assignment)}': "
+                          "not a valid identifier", file=self.state.stderr)
+                return self._run_command(node, context, raw_assignments)
 
-            # Track command substitutions run while expanding assignment
-            # values: a pure assignment's exit status is 0 unless a command
-            # substitution ran, in which case it is that substitution's
-            # status (bash). The clear must happen HERE — before COMMAND
-            # word expansion, not inside apply_pure — because the
-            # determining substitution can run while expanding command
-            # words that expand to nothing (`V=v $(false)` reports 1).
-            self.state.last_cmdsub_status = None
+            # Bare array assignment(s) with no command word (`a[i]=v`,
+            # `a=(...)`): applied in the current shell under the SAME status
+            # model as a pure scalar assignment (F7).
+            if is_bare_array_assignment:
+                return self._run_bare_array_assignment(node)
 
             # Pure assignment (only NAME=value words, no command word)?
             if is_pure_assignment:
                 return self._run_pure_assignment(node, raw_assignments)
-
-            # Bare array element assignment(s) with no command word
-            # (`a[i]=v`): the array assignment status IS the command status.
-            # A failed assignment (e.g. out-of-range subscript) aborts a
-            # non-interactive `-c`/script invocation with status 1, exactly
-            # like a readonly assignment error (CommandAssignments.apply_pure)
-            # — but is non-fatal when reading a script from stdin.
-            if is_bare_array_assignment:
-                if node.redirects:
-                    # The element was already assigned above (bash order:
-                    # `a[0]=x > /bad/y` still assigns); a redirect failure
-                    # prints the one diagnostic shape and fails with 1.
-                    with self.io_manager.guarded_redirections(
-                            node.redirects) as ok:
-                        if not ok:
-                            return 1
-                if array_assignment_status != 0 and self.state.is_script_mode:
-                    sys.exit(array_assignment_status)
-                return array_assignment_status
 
             # Actual command invocation (command word present).
             return self._run_command(node, context, raw_assignments)
@@ -294,22 +284,82 @@ class CommandExecutor:
 
         ``x=5 &`` applies the assignment in the child (which immediately exits),
         so the PARENT's variables are untouched; a background job is registered
-        and ``$!`` is set. Returns 0 (a backgrounded command's status is success).
+        and ``$!`` is set. The FOREGROUND call returns 0 (a backgrounded
+        command's own status is success), but the JOB's exit status is the
+        assignment's OWN status collected in the child (F7:
+        ``x=$(false) & wait $!`` -> 1, ``a[-1]=x & wait $!`` -> nonzero) — not
+        an unconditional 0.
         """
         launcher = self.shell.process_launcher
         command_string = " ".join(str(a) for a in node.args) or "assignment"
 
         def execute_fn() -> int:
-            # In the forked child only: apply the assignment(s), then exit.
+            # In the forked child only. Clear the cmdsub tracker so the child's
+            # own value expansion determines the status, then apply and RETURN
+            # the assignment's status (a fatal discard raises to the launcher
+            # child, which maps it to the exit code).
+            self.state.last_cmdsub_status = None
             if node.array_assignments:
-                for assignment in node.array_assignments:
-                    self._handle_array_assignment(assignment)
-            if raw_assignments:
-                self._run_pure_assignment(node, raw_assignments)
-            return 0
+                return self._run_bare_array_assignment(node)
+            return self._run_pure_assignment(node, raw_assignments)
 
         return launcher.launch_background_job(
             execute_fn, command_string, command_string, is_shell_process=True)
+
+    def _run_bare_array_assignment(self, node: 'SimpleCommand') -> int:
+        """Run bare array assignment(s) with no command word (`a[0]=v`, `a=(1 2)`).
+
+        Joins the same status model as a pure scalar assignment
+        (:meth:`CommandAssignments.apply_pure`) rather than the old separate
+        preamble (F7):
+
+        - Assignments apply left to right; each element/init value expansion
+          records ``state.last_cmdsub_status`` (the caller cleared it first).
+        - The command's status is that last command-substitution status if one
+          ran while expanding (bash: ``a[0]=$(false)`` -> 1,
+          ``a=($(sh -c 'exit 7'))`` -> 7), else 0. A SUCCESSFUL operation whose
+          value's substitution failed is NOT an operation failure.
+        - A failed assignment OPERATION (bad subscript, readonly) is fatal: it
+          stops later assignments (first-failure — bash's ``a[-1]=x b[0]=y``
+          does NOT assign ``b``) and discards the current command like any
+          assignment/subscript error — ``SystemExit`` under ``-c``, abort of
+          the current top-level command otherwise (``arith_assignment_discard``,
+          the same discard the arithmetic-subscript path already uses).
+        - Redirections apply after the assignments (bash order); a setup
+          failure prints the one diagnostic and fails with 1.
+        """
+        from ..core import arith_assignment_discard
+        for assignment in node.array_assignments:
+            if self._handle_array_assignment(assignment) != 0:
+                # Operation failure (diagnostic already printed by the array
+                # executor): first-failure stop + discard the current command.
+                arith_assignment_discard(self.state)
+        if node.redirects:
+            with self.io_manager.guarded_redirections(node.redirects) as ok:
+                if not ok:
+                    return 1
+        if self.state.last_cmdsub_status is not None:
+            return self.state.last_cmdsub_status
+        return 0
+
+    @staticmethod
+    def _array_assignment_lhs(assignment) -> str:
+        """Render an array assignment's left-hand side for a diagnostic.
+
+        ``a[0]`` for an element assignment, ``a`` for a whole-array init — used
+        only for the "not a valid identifier" prefix-position message (F7), so
+        the exact index rendering is not compared against bash's.
+        """
+        from ..ast_nodes import ArrayElementAssignment
+        if isinstance(assignment, ArrayElementAssignment):
+            index = assignment.index
+            if isinstance(index, list):
+                index_text = ''.join(
+                    getattr(tok, 'value', str(tok)) for tok in index)
+            else:
+                index_text = str(index)
+            return f"{assignment.name}[{index_text}]"
+        return getattr(assignment, 'name', '?')
 
     def _run_command(self, node: 'SimpleCommand', context: 'ExecutionContext',
                      raw_assignments: List['RawAssignment']) -> int:
@@ -358,19 +408,37 @@ class CommandExecutor:
                 words=node.words[command_start_index:],
             )
 
-            # Check for the `\cmd` bypass mechanism before expansion
-            command_node, bypass_aliases, bypass_functions = \
+            # A leading backslash on the command word (`\ls`, `\echo`) is a
+            # QUOTE. It suppresses ALIAS expansion — handled upstream: the
+            # backslash stays in the lexer token, so `\ls` never matched the
+            # alias name `ls` during the token-stream transform — and, after
+            # quote removal, also makes bash treat the word as NOT a
+            # declaration builtin (so `\export foo=$x` word-splits the value).
+            # It does NOT suppress function or builtin lookup (F2): once the
+            # backslash is stripped the plain name participates in normal
+            # function -> builtin -> external resolution.
+            command_node, backslash_quoted = \
                 self._strip_backslash_bypass(command_node)
 
-            # Expand command arguments (before assignments apply)
+            # Expand command arguments (before assignments apply). A
+            # backslash-quoted command word is not declaration-eligible.
             expanded_args = self._expand_arguments(
-                command_node,
-                declaration_eligible=not (bypass_aliases or bypass_functions))
+                command_node, declaration_eligible=not backslash_quoted)
 
-            if not expanded_args or not expanded_args[0]:
-                # The command words expanded to nothing: the assignments
-                # affect the current shell environment (bash: after
-                # `V=v $EMPTY`, $V is v).
+            if not expanded_args:
+                # The command words produced ZERO fields — an unquoted
+                # empty/unset expansion vanished entirely (`$empty`). There
+                # is no command, so any prefix assignments affect the current
+                # shell (bash: after `V=v $EMPTY`, $V is v).
+                #
+                # A QUOTED empty word (`''`, `""`, `"$empty"`) is different:
+                # it produces ONE empty field, i.e. an attempted invocation
+                # of a command whose name is the empty string. That must NOT
+                # take this pure-assignment path (it would wrongly persist a
+                # prefix assignment); it flows through normal resolution
+                # below, where command lookup fails with status 127 — bash
+                # prints "` `: command not found" and does not persist the
+                # prefix (F1).
                 if raw_assignments:
                     return self.assignments.apply_pure(node, raw_assignments)
                 return 0
@@ -395,8 +463,7 @@ class CommandExecutor:
             # the layer) and pop it in the finally; a mid-expansion error still
             # unwinds cleanly because the push precedes apply_prefix.
             is_function_call = (
-                not bypass_functions
-                and self.function_manager.get_function(cmd_name) is not None)
+                self.function_manager.get_function(cmd_name) is not None)
             if is_function_call and raw_assignments:
                 self.state.scope_manager.push_temp_env_scope()
                 pushed_temp_scope = True
@@ -424,9 +491,10 @@ class CommandExecutor:
             # Special handling for exec builtin (needs access to
             # redirections). A user-defined exec() function shadows the
             # builtin (bash), so the special case only applies when no
-            # function will take the lookup.
-            if cmd_name == 'exec' and (bypass_functions or
-                                       not self.function_manager.get_function('exec')):
+            # function will take the lookup — including for `\exec`, which
+            # (F2) no longer bypasses the function.
+            if cmd_name == 'exec' and \
+                    not self.function_manager.get_function('exec'):
                 return self._handle_exec_builtin(node, expanded_args, prefix.applied)
 
             # Deliver structured array initializers to declaration
@@ -445,8 +513,7 @@ class CommandExecutor:
                           if pending_inits else EMPTY_BUILTIN_CONTEXT)
             # Execute the command using the appropriate strategy
             result = self._execute_with_strategy(
-                cmd_name, cmd_args, node, context,
-                bypass_aliases, bypass_functions, invocation,
+                cmd_name, cmd_args, node, context, invocation,
             )
             prefix_assignments_persist = result.prefix_assignments_persist
             return result.status
@@ -462,19 +529,29 @@ class CommandExecutor:
                 self.assignments.restore(saved_vars)
 
     def _strip_backslash_bypass(self, command_node: 'SimpleCommand'):
-        """Handle the `\\cmd` alias/function bypass.
+        """Strip a leading backslash on the command word (`\\ls`, `\\echo`).
 
-        A leading backslash on the command word (e.g. ``\\ls``) makes the
-        shell skip alias and function lookup. Strip the backslash from
-        the first Word's LiteralPart so expansion (and the derived
-        ``.args`` view) sees the plain name.
+        A leading backslash is a QUOTE on the command word. Its two observable
+        effects (bash):
+
+        - It suppresses ALIAS expansion — but that is already handled upstream:
+          the backslash is preserved in the lexer token, so `\\ls` never
+          matched the alias name `ls` during the token-stream alias transform.
+        - After quote removal the word is not recognized as a declaration
+          builtin, so `\\export foo=$x` word-splits its argument.
+
+        It does NOT suppress function or builtin lookup (F2). This method
+        therefore only strips the backslash from the first Word's LiteralPart
+        (so expansion and the derived ``.args`` view see the plain name) and
+        reports whether a backslash was present.
 
         Returns:
-            (command_node, bypass_aliases, bypass_functions). The node is
-            a rewritten copy when a bypass was found, otherwise unchanged.
+            (command_node, backslash_quoted). The node is a rewritten copy
+            when a backslash was stripped, otherwise unchanged; the flag drives
+            declaration-builtin eligibility only.
         """
         if not (command_node.args and command_node.args[0].startswith('\\')):
-            return command_node, False, False
+            return command_node, False
 
         from ..ast_nodes import LiteralPart, SimpleCommand, Word
 
@@ -501,7 +578,7 @@ class CommandExecutor:
             background=command_node.background,
             words=modified_words,
         )
-        return command_node, True, True
+        return command_node, True
 
     def _handle_execution_error(self, e: Exception) -> int:
         """Map an exception raised during command execution to an exit status.
@@ -600,8 +677,6 @@ class CommandExecutor:
 
     def _execute_with_strategy(self, cmd_name: str, args: List[str],
                               node: 'SimpleCommand', context: 'ExecutionContext',
-                              bypass_aliases: bool = False,
-                              bypass_functions: bool = False,
                               invocation: BuiltinContext = EMPTY_BUILTIN_CONTEXT
                               ) -> ExecutionResult:
         """Resolve the command to a strategy, then invoke it.
@@ -622,8 +697,7 @@ class CommandExecutor:
             builtins), which the caller uses to decide whether to restore
             the prefix assignments.
         """
-        resolution = self._resolve_command(
-            cmd_name, bypass_aliases, bypass_functions)
+        resolution = self._resolve_command(cmd_name)
         if resolution is None:
             # Should never happen: ExternalExecutionStrategy.can_execute
             # always matches. Preserves the historical 127 fallback.
@@ -643,51 +717,45 @@ class CommandExecutor:
         return self._invoke_resolution(
             resolution, cmd_name, args, node, context, invocation)
 
-    def _resolve_command(self, cmd_name: str,
-                         bypass_aliases: bool = False,
-                         bypass_functions: bool = False
-                         ) -> Optional[CommandResolution]:
+    def _resolve_command(self, cmd_name: str) -> Optional[CommandResolution]:
         """Resolve a command name to the strategy that will run it.
 
-        Walks the priority-ordered strategy list (functions > builtins >
-        external, bash's default-mode order; aliases are expanded earlier
-        as a token-stream transform, not here), honoring the ``\\cmd``
-        bypass exclusions, and returns the first match as a
-        :class:`CommandResolution`. The persistence policy — previously the
-        ``isinstance(strategy, SpecialBuiltinExecutionStrategy)`` check —
-        is recorded here as the ``prefix_assignments_persist`` field.
+        Lookup order and prefix-assignment persistence are BOTH mode-aware
+        (F9), decided here once from ``set -o posix``:
+
+        - Default (bash) mode: functions > (special|regular) builtins >
+          external — functions shadow even special builtins. A prefix before a
+          special builtin is TEMPORARY, like any builtin.
+        - POSIX mode: special builtins > functions > regular builtins >
+          external — special builtins take precedence over functions. A prefix
+          before a special builtin PERSISTS.
+
+        There is no command-word bypass here. Aliases are expanded earlier as
+        a token-stream transform (the `\\cmd` backslash naturally avoids alias
+        expansion because the leading-backslash WORD never matches an alias
+        name), and `\\cmd` does NOT bypass functions or builtins (F2). The
+        `command`/`builtin` builtins, which DO bypass functions, resolve their
+        target internally rather than through this method.
 
         Returns None only if no strategy matches (unreachable in practice,
         since ExternalExecutionStrategy is the catch-all).
         """
-        # Note: The 'command' builtin handles its own bypass logic internally
-
-        # Create strategy list based on bypass requirements.
-        # bypass_aliases is now a no-op at this layer: aliases are expanded
-        # at the lex→parse boundary (AliasManager.expand_aliases), so there
-        # is no runtime alias strategy to exclude. The `\\cmd` backslash is
-        # still stripped earlier (_strip_backslash_bypass) and naturally
-        # avoids alias expansion because the leading-backslash WORD never
-        # matches an alias name during the token transform.
-        strategies_to_exclude: List[type[ExecutionStrategy]] = []
-        if bypass_functions:
-            strategies_to_exclude.append(FunctionExecutionStrategy)
-            # Note: bypass_functions should NOT exclude special builtins
-
-        if strategies_to_exclude:
-            strategies_to_use = [
-                strategy for strategy in self.strategies
-                if not any(isinstance(strategy, exc_type) for exc_type in strategies_to_exclude)
-            ]
-        else:
-            strategies_to_use = self.strategies
-
-        for strategy in strategies_to_use:
+        posix = self.state.options.get('posix', False)
+        strategies = self.strategies
+        if posix:
+            # POSIX lookup precedence: special builtins ahead of functions.
+            special = [s for s in self.strategies
+                       if isinstance(s, SpecialBuiltinExecutionStrategy)]
+            rest = [s for s in self.strategies
+                    if not isinstance(s, SpecialBuiltinExecutionStrategy)]
+            strategies = special + rest
+        for strategy in strategies:
             if strategy.can_execute(cmd_name, self.shell):
                 return CommandResolution(
                     strategy=strategy,
-                    prefix_assignments_persist=isinstance(
-                        strategy, SpecialBuiltinExecutionStrategy),
+                    prefix_assignments_persist=(
+                        posix and isinstance(
+                            strategy, SpecialBuiltinExecutionStrategy)),
                 )
         return None
 
@@ -706,7 +774,7 @@ class CommandExecutor:
         """
         strategy = resolution.strategy
         persist = resolution.prefix_assignments_persist
-        mode = self._decide_redirection_mode(strategy, context)
+        mode = self._decide_redirection_mode(strategy, context, node.background)
 
         if mode is RedirectionMode.BUILTIN_INPROCESS:
             status = self._execute_builtin_with_redirections(
@@ -715,10 +783,11 @@ class CommandExecutor:
             return ExecutionResult(status=status,
                                    prefix_assignments_persist=persist)
 
-        if mode is RedirectionMode.EXTERNAL_DEFERRED:
-            # External commands apply their redirections in the
-            # forked child (setup_child_redirections); see the mode
-            # docstring for why we must NOT apply them here too.
+        if mode is RedirectionMode.CHILD_DEFERRED:
+            # The forked child (external, or a backgrounded builtin/function)
+            # applies its own redirections (setup_child_redirections); see the
+            # mode docstring for why we must NOT apply them here too — doing so
+            # would run the redirect targets' substitutions twice (F3).
             status = strategy.execute(
                 cmd_name, args, self.shell, context,
                 node.redirects, node.background,
@@ -747,7 +816,8 @@ class CommandExecutor:
                                    prefix_assignments_persist=persist)
 
     def _decide_redirection_mode(
-        self, strategy: 'ExecutionStrategy', context: 'ExecutionContext'
+        self, strategy: 'ExecutionStrategy', context: 'ExecutionContext',
+        background: bool = False,
     ) -> RedirectionMode:
         """Select how a matched strategy's redirections are applied.
 
@@ -759,18 +829,28 @@ class CommandExecutor:
             strategy,
             (SpecialBuiltinExecutionStrategy, BuiltinExecutionStrategy),
         )
+        if background and (
+                is_builtin or isinstance(strategy, FunctionExecutionStrategy)):
+            # A BACKGROUNDED builtin or function runs in a forked child that
+            # installs its own redirections. The parent must not install them
+            # too, or the redirect targets' command/process substitutions run
+            # twice (F3). (External commands already defer below; the
+            # background decision has to come first so a backgrounded builtin
+            # does not take the in-process save/restore path.)
+            return RedirectionMode.CHILD_DEFERRED
+
         if is_builtin and not context.in_pipeline and not self.state.in_forked_child:
-            # A builtin running in this process (not a pipeline, not a
-            # forked child): redirect at the Python-stream level and
+            # A foreground builtin running in this process (not a pipeline, not
+            # a forked child): redirect at the Python-stream level and
             # save/restore around the one command.
             return RedirectionMode.BUILTIN_INPROCESS
 
         if isinstance(strategy, ExternalExecutionStrategy):
             # External commands redirect inside their own forked child.
-            return RedirectionMode.EXTERNAL_DEFERRED
+            return RedirectionMode.CHILD_DEFERRED
 
-        # Functions, aliases, and builtins that run in a pipeline or forked
-        # child: apply fd-level redirections in a save/restore window.
+        # Functions, aliases, and foreground builtins that run in a pipeline or
+        # forked child: apply fd-level redirections in a save/restore window.
         return RedirectionMode.FD_LEVEL_WINDOW
 
     def _execute_builtin_with_redirections(self, cmd_name: str, args: List[str],

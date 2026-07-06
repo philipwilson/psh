@@ -101,25 +101,45 @@ class TestLoopDepthLeak:
 
 
 class TestSpecialBuiltinAssignmentPersistence:
-    """Fix 1c: Assignments before special builtins should persist (POSIX)."""
+    """Special-builtin prefix persistence is MODE-AWARE (F9, 2026-07-06).
 
-    def test_export_prefix_assignment_persists(self):
-        """FOO=1 export BAR=2; echo $FOO should print 1."""
-        result = _psh('FOO=1 export BAR=2; printf "%s\\n" "$FOO"')
-        assert result.returncode == 0
-        assert result.stdout.strip() == "1"
+    The original "Fix 1c" made a prefix before a special builtin persist in
+    ALL modes; bash only does this under ``set -o posix``. In default mode the
+    prefix is temporary, like any builtin. These tests now pin both modes.
+    """
 
-    def test_readonly_prefix_assignment_persists(self):
-        """FOO=hello readonly BAR=world; echo $FOO should print hello."""
-        result = _psh('FOO=hello readonly BAR=world; printf "%s\\n" "$FOO"')
+    def test_export_prefix_temporary_in_default_mode(self):
+        """FOO=1 export BAR=2 -> FOO is NOT persisted in default (bash) mode."""
+        result = _psh('unset FOO; FOO=1 export BAR=2; printf "<%s>\\n" "${FOO-unset}"')
         assert result.returncode == 0
-        assert result.stdout.strip() == "hello"
+        assert result.stdout.strip() == "<unset>"
 
-    def test_eval_prefix_assignment_persists(self):
-        """X=42 eval echo ok; echo $X should print 42."""
-        result = _psh('X=42 eval echo ok; printf "%s\\n" "$X"')
+    def test_export_prefix_persists_in_posix_mode(self):
+        """Under set -o posix the prefix persists for the special builtin."""
+        result = _psh('set -o posix; unset FOO; FOO=1 export BAR=2; printf "<%s>\\n" "${FOO-unset}"')
         assert result.returncode == 0
-        assert "42" in result.stdout
+        assert result.stdout.strip() == "<1>"
+
+    def test_readonly_prefix_temporary_in_default_mode(self):
+        result = _psh('unset FOO; FOO=hello readonly BAR=world; printf "<%s>\\n" "${FOO-unset}"')
+        assert result.returncode == 0
+        assert result.stdout.strip() == "<unset>"
+
+    def test_readonly_prefix_persists_in_posix_mode(self):
+        result = _psh('set -o posix; unset FOO; FOO=hello readonly BAR=world; printf "<%s>\\n" "${FOO-unset}"')
+        assert result.returncode == 0
+        assert result.stdout.strip() == "<hello>"
+
+    def test_eval_prefix_temporary_in_default_mode(self):
+        result = _psh('unset X; X=42 eval echo ok; printf "<%s>\\n" "${X-unset}"')
+        assert result.returncode == 0
+        assert "ok" in result.stdout
+        assert "<unset>" in result.stdout
+
+    def test_eval_prefix_persists_in_posix_mode(self):
+        result = _psh('set -o posix; unset X; X=42 eval echo ok; printf "<%s>\\n" "${X-unset}"')
+        assert result.returncode == 0
+        assert "<42>" in result.stdout
 
     def test_regular_builtin_assignment_does_not_persist(self):
         """FOO=bar echo hi; echo $FOO should NOT print bar (non-special)."""

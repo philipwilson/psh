@@ -6476,9 +6476,14 @@
 # Empty element value must NOT swallow a following non-adjacent word: `a[0]= v`
 # sets a[0] empty and runs `v` as a separate command (bash).
 - name: parsefix_element_empty_value_no_swallow
+  # The parser must NOT swallow `true` as the value of `a[0]=` (so a[0] stays
+  # empty and `true` is a separate command). In command-PREFIX position an
+  # array-element assignment is "not a valid identifier" in bash (F7): the
+  # array is never created, the diagnostic goes to stderr, and the command
+  # runs — so ${a[0]} is empty regardless. stdout/exit_code still match bash.
   command: "a[0]= true; echo \"[${a[0]}]\""
   stdout: "[]\n"
-  stderr: ""
+  stderr: "not a valid identifier"
   exit_code: 0
 
 - name: parsefix_element_adjacent_value_ok
@@ -6658,3 +6663,314 @@
   stderr: "brace expansion: 200000 items exceeds the limit of 100000"
   exit_code: 2
   psh_only: true
+
+# =============================================================================
+# EXECUTOR PHASE-1a: quoted empty command vs zero-field expansion (F1)
+# =============================================================================
+
+- name: exec_p1a_empty_quoted_command_is_127
+  command: "''; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=127\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: exec_p1a_empty_doublequote_command_is_127
+  command: "\"\"; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=127\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: exec_p1a_empty_quoted_var_command_is_127
+  command: "empty=; \"$empty\"; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=127\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: exec_p1a_empty_unquoted_var_is_zero_fields
+  command: "empty=; $empty; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_prefix_empty_quoted_no_persist
+  command: "unset X; X=v ''; printf 'rc=%s X=<%s>\\n' \"$?\" \"${X-unset}\""
+  stdout: "rc=127 X=<unset>\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: exec_p1a_prefix_empty_unquoted_persists
+  command: "unset X; empty=; X=v $empty; printf 'rc=%s X=<%s>\\n' \"$?\" \"${X-unset}\""
+  stdout: "rc=0 X=<v>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_empty_command_with_arg_is_127
+  command: "'' arg; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=127\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: exec_p1a_redirect_only_no_command_ok
+  command: "> /dev/null; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: backslash quoting suppresses aliases, not functions (F2)
+# =============================================================================
+
+- name: exec_p1a_backslash_calls_function
+  command: "f() { echo FUNC; }; \\f"
+  stdout: "FUNC\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_function_shadows_builtin
+  command: "echo() { printf 'FUNCTION\\n'; }; \\echo hi"
+  stdout: "FUNCTION\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_export_function_not_builtin
+  command: "export() { echo FUNCTION; }; \\export X=y; printf 'X=<%s>\\n' \"${X-unset}\""
+  stdout: "FUNCTION\nX=<unset>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_exit_function
+  command: "exit() { echo EXITFUNC; }; \\exit; echo after"
+  stdout: "EXITFUNC\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_echo_builtin_no_function
+  command: "\\echo hi"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_export_builtin_no_function
+  command: "unset X; \\export X=y; printf 'X=<%s>\\n' \"${X-unset}\""
+  stdout: "X=<y>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_backslash_suppresses_alias
+  command: "alias e='echo A'; \\e 2>/dev/null; echo \"rc=$?\""
+  stdout: "rc=127\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: background builtins run EXIT trap via shared runner (F16)
+# =============================================================================
+
+- name: exec_p1a_bg_eval_exit_trap
+  command: "eval 'trap \"echo bye\" EXIT; echo body' & wait \"$!\"; echo \"rc=$?\""
+  stdout: "body\nbye\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_bg_eval_exit_code
+  command: "eval 'exit 7' & p=$!; wait \"$p\"; echo \"rc=$?\""
+  stdout: "rc=7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_bg_false_wait_status
+  command: "false & p=$!; wait \"$p\"; echo \"rc=$?\""
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: compound redirections cover header expansion (F4)
+# =============================================================================
+
+- name: exec_p1a_for_header_reads_redirected_stdin
+  command: "for x in $(cat); do printf '<%s>' \"$x\"; done <<< item; echo"
+  stdout: "<item>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_case_subject_reads_redirected_stdin
+  command: "case \"$(cat)\" in item) echo yes ;; *) echo no ;; esac <<< item"
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_cstyle_for_init_reads_redirected_stdin
+  command: "for ((i=$(cat); i<4; i++)); do printf '%s' \"$i\"; done <<< 2; echo"
+  stdout: "23\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_for_multiword_header_reads_redirected_stdin
+  command: "for x in $(cat); do printf '<%s>' \"$x\"; done <<< 'a b'; echo"
+  stdout: "<a><b>\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: array assignments join the status/transaction model (F7)
+# =============================================================================
+
+- name: exec_p1a_array_elem_cmdsub_status
+  command: "a[0]=$(false); echo \"$?\""
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_array_elem_cmdsub_ok
+  command: "a[0]=$(true); echo \"$?\""
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_array_init_cmdsub_status
+  command: "a=($(sh -c 'exit 7')); echo \"$?\""
+  stdout: "7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_array_two_elems_ok
+  command: "a[0]=x a[1]=y; echo \"${a[0]}${a[1]}\""
+  stdout: "xy\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_prefix_array_not_identifier
+  command: "a[0]=x echo RAN; declare -p a 2>/dev/null || echo NOARRAY"
+  stdout: "RAN\nNOARRAY\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
+- name: exec_p1a_bg_scalar_assignment_status
+  command: "x=$(false) & p=$!; wait \"$p\"; echo \"$?\""
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_bg_array_elem_cmdsub_status
+  command: "a[0]=$(false) & p=$!; wait \"$p\"; echo \"rc=$?\""
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_array_first_failure_aborts
+  command: "unset a b; a[-1]=x b[0]=y; echo AFTER"
+  stdout: ""
+  stderr: "bad array subscript"
+  exit_code: 1
+
+# =============================================================================
+# EXECUTOR PHASE-1a: prefix array += is pure and env-safe (F8)
+# =============================================================================
+
+- name: exec_p1a_prefix_array_append_command_runs
+  command: "a=(x y); a+=z /usr/bin/true; echo \"rc=$?\"; declare -p a"
+  stdout: "rc=0\ndeclare -a a=([0]=\"x\" [1]=\"y\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_prefix_array_append_env_view
+  command: "a=(x y); a+=z printenv a"
+  stdout: "xz\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_prefix_array_append_child_scalar
+  command: "a=(x y); a+=z sh -c 'echo \"a=$a\"'; declare -p a"
+  stdout: "a=xz\ndeclare -a a=([0]=\"x\" [1]=\"y\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_prefix_assoc_append_restores
+  command: "declare -A h=([k]=v); h+=z /usr/bin/true; echo \"rc=$?\"; declare -p h"
+  stdout: "rc=0\ndeclare -A h=([k]=\"v\" )\n"
+  stderr: ""
+  exit_code: 0
+
+# DELIBERATE DIVERGENCE (psh_only): bash's integer-array `+=` prefix onto an
+# external command is buggy — it emits a garbled "operand expected" syntax
+# error (a control character leaks into its exported form) and returns 1. psh
+# does the sane thing: serialize element 0's scalar view into the environment,
+# run the command (rc 0), and restore the array to (1 2 3).
+- name: exec_p1a_prefix_int_array_append_sane
+  command: "declare -ai a=(1 2 3); a+=10 /usr/bin/true; echo \"rc=$?\"; declare -p a"
+  stdout: "rc=0\ndeclare -ai a=([0]=\"1\" [1]=\"2\" [2]=\"3\")\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+# =============================================================================
+# EXECUTOR PHASE-1a: POSIX special-builtin semantics are mode-aware (F9)
+# =============================================================================
+
+- name: exec_p1a_default_prefix_special_temporary
+  command: "unset X; X=new :; printf '<%s>\\n' \"${X-unset}\""
+  stdout: "<unset>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_posix_prefix_special_persists
+  command: "set -o posix; unset X; X=new :; printf '<%s>\\n' \"${X-unset}\""
+  stdout: "<new>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_default_prefix_dot_temporary
+  command: "unset X; X=new . /dev/null; printf '<%s>\\n' \"${X-unset}\""
+  stdout: "<unset>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_posix_prefix_dot_persists
+  command: "set -o posix; unset X; X=new . /dev/null; printf '<%s>\\n' \"${X-unset}\""
+  stdout: "<new>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_default_function_shadows_special
+  command: "export() { echo FUNC; }; unset Q; export Q=1; echo \"Q=<${Q-unset}>\""
+  stdout: "FUNC\nQ=<unset>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_posix_special_precedence_over_function
+  command: "export() { echo FUNC; }; set -o posix; unset Q; export Q=1; echo \"Q=<${Q-unset}>\""
+  stdout: "Q=<1>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_regular_builtin_prefix_temporary_both_modes
+  command: "unset X; X=new true; printf '<%s>' \"${X-unset}\"; set -o posix; X=new2 true; printf '<%s>\\n' \"${X-unset}\""
+  stdout: "<unset><unset>\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: TIMEFORMAT is honored (F15)
+# =============================================================================
+# Only %-free / deterministic formats compare cleanly against bash (timing
+# values are non-deterministic; directive SHAPES are pinned by
+# tests/integration/test_timeformat.py).
+
+- name: exec_p1a_timeformat_literal
+  command: "TIMEFORMAT=\"CUSTOM_FMT\"; { time true; } 2>&1"
+  stdout: "CUSTOM_FMT\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_timeformat_empty_suppresses
+  command: "TIMEFORMAT=; { time true; } 2>&1; echo END"
+  stdout: "END\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_timeformat_percent_percent
+  command: "TIMEFORMAT=\"100%% done\"; { time true; } 2>&1"
+  stdout: "100% done\n"
+  stderr: ""
+  exit_code: 0

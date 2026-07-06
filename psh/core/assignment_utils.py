@@ -9,6 +9,7 @@ regex family (see below), so the ``NAME=value`` / ``NAME[sub]=value`` /
 lexer-adjacent, parser, expansion and printf modules that recognise them.
 """
 
+import copy
 import re
 from typing import Tuple
 
@@ -119,6 +120,13 @@ def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str,
     var_obj = scope_manager.get_variable_object(target)
     container = var_obj.value if var_obj is not None else None
     if isinstance(container, (IndexedArray, AssociativeArray)):
+        # Append PURELY: work on a COPY so resolution never mutates the live
+        # array (F8). The caller decides whether to install the result
+        # permanently (bare `a+=z`) or temporarily with rollback (prefix
+        # `a+=z cmd`) — and a prefix append must be able to snapshot the
+        # ORIGINAL array for restore, which a pre-snapshot in-place mutation
+        # (the prior bug) destroyed, leaving `a` mutated after the command.
+        container = copy.deepcopy(container)
         key: object = 0 if isinstance(container, IndexedArray) else '0'
         old0 = container.get(key) or ''  # type: ignore[arg-type]
         if var_obj.attributes & VarAttributes.INTEGER and value.strip():

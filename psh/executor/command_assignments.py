@@ -381,9 +381,15 @@ class CommandAssignments:
             if saved is not None:
                 saved_vars[var] = saved
             assignments.append((var, resolved))
-            # Also set in shell.env for external commands (scalar in practice;
-            # see the assignments-list note above for the array corner case).
-            self.shell.env[var] = cast(str, resolved)
+            # Also set in shell.env for external commands. A scalar `+=` prefix
+            # onto an ARRAY (`a+=z cmd`) resolves to an array object; serialize
+            # it to its scalar view (element 0) via as_string() — an array
+            # object must NEVER reach execve's environment (F8: it raised
+            # "expected str ... not IndexedArray" and left the array mutated).
+            if isinstance(resolved, (IndexedArray, AssociativeArray)):
+                self.shell.env[var] = resolved.as_string()
+            else:
+                self.shell.env[var] = cast(str, resolved)
 
         return PrefixOutcome(saved_vars, assignments, assignment_error)
 

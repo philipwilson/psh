@@ -130,13 +130,21 @@ def test_redirection_error_handling(shell_with_temp_dir):
 
 
 def test_redirection_with_background_job(shell_with_temp_dir):
-    """Test redirection with background jobs."""
+    """Test redirection with background jobs.
+
+    A backgrounded builtin's redirection is created in the forked child, not
+    eagerly in the parent (bash; F3) — so the file appears asynchronously.
+    `wait` for the background job before asserting the file exists, rather
+    than relying on a race (psh used to create the file eagerly in the parent
+    as a side effect of the double-install bug).
+    """
     temp_file = 'background_output.txt'
 
     result = shell_with_temp_dir.run_command(f'echo "background" > {temp_file} &')
     assert result == 0
 
-    # Give the background job time to complete
+    # Wait for the background job to complete (the child creates the file).
+    shell_with_temp_dir.run_command('wait')
 
     # Verify file was created
     assert os.path.exists(temp_file)

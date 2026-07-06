@@ -349,7 +349,7 @@ wait -n                 # Waits for the next background job to finish
 
 # time keyword (reserved word; times pipelines/compounds, default & -p formats)
 time echo hello         # Times the command; `time while ...; done`, `time { ...; }` work too
-                        # (TIMEFORMAT is not yet honored)
+TIMEFORMAT='elapsed=%R'; time echo hi   # Custom TIMEFORMAT is honored (%R/%U/%S/%P, %l long form, empty = no report)
 
 # Call-stack introspection arrays
 echo ${BASH_SOURCE[0]}  # Not available (empty)
@@ -715,7 +715,7 @@ fi
 | BASH_SOURCE / BASH_LINENO | Yes | No | Not populated |
 | FUNCNAME | Yes | Yes | Full support (nested call stack, `c b a`); only the bash `main`/`source` base frames are absent — they arrive with BASH_SOURCE/BASH_LINENO |
 | wait -n | Yes | Yes | Waits for the next job; `-n` / `-p VAR` |
-| time keyword | Yes | Partial | Times pipelines (default & `-p` formats); `TIMEFORMAT` not honored |
+| time keyword | Yes | Yes | Full support (times pipelines/compounds; default, `-p`, and custom `TIMEFORMAT` formats) |
 | ${!prefix*} name matching | Yes | Yes | Full support |
 | **PSH-Specific** |
 | --debug-ast | No | Yes | Multiple output formats |
