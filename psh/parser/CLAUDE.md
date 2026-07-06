@@ -298,9 +298,18 @@ def parse_pipeline_component(self) -> Command:
 
 ### Heredoc Collection
 
-Heredocs are parsed in two phases:
-1. Tokenization collects the `<<EOF` marker
-2. Parser collects heredoc content after the command line
+Heredocs are handled in two phases:
+1. The lexer (`tokenize_with_heredocs`) collects each body separately and
+   stamps a `heredoc_key` on the `<<`/`<<-` operator token; the bodies live
+   in a `heredoc_map` returned alongside the tokens.
+2. The parser attaches the body to the `Redirect` node AS IT IS CONSTRUCTED —
+   `parse_with_heredocs` / the interactive trial parse thread the map into
+   `Parser(..., heredoc_map=...)`, and `RedirectionParser._attach_heredoc_body`
+   looks the body up by key. Attachment is key-driven: a heredoc redirect whose
+   key is absent from the map is a hard error (no post-parse AST walk, no
+   delimiter-suffix guessing). The former post-parse `populate_heredoc_content`
+   AST walk was removed. (The educational combinator keeps its own
+   `HeredocProcessor` visitor with identical observable attachment.)
 
 ## Testing
 

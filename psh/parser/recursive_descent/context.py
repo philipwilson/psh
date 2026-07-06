@@ -6,7 +6,7 @@ configuration, and source text for error messages.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Mapping, Optional
 
 from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
@@ -31,6 +31,14 @@ class ParserContext:
     tokens: List[Token]
     current: int = 0
     config: ParserConfig = field(default_factory=ParserConfig)
+
+    # Pre-collected heredoc bodies, keyed by the lexer-assigned ``heredoc_key``
+    # on each ``<<``/``<<-`` operator token. Present only on the heredoc-aware
+    # parse path (``parse_with_heredocs`` / the interactive trial parse); None
+    # otherwise. When present, RedirectionParser attaches the body to the
+    # ``Redirect`` node AS IT IS CONSTRUCTED (no second AST walk), and a
+    # heredoc redirect whose key is missing from the map is a hard error.
+    heredoc_map: Optional[Mapping[str, object]] = None
 
     # Source context
     source_text: Optional[str] = None

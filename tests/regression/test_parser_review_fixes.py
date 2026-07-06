@@ -263,27 +263,48 @@ class TestParseWithHeredocs:
     Parser.parse_with_heredocs method was removed in v0.256.0.
     """
 
+    def _first_heredoc_redirect(self, ast):
+        from psh.ast_nodes import Redirect
+        reds = [r for r in _find_nodes(ast, Redirect) if r.type in ('<<', '<<-')]
+        assert len(reds) == 1
+        return reds[0]
+
     def test_parse_with_heredocs_dict_format(self):
-        """Dict-format heredoc map should not crash."""
+        """Dict-format map attaches content (and quoted) at construction."""
+        from psh.lexer import tokenize_with_heredocs
         from psh.parser import parse_with_heredocs
-        tokens = tokenize('cat <<EOF\nEOF')
-        heredoc_map = {
-            'heredoc_0_EOF': {'content': 'hello world', 'quoted': False}
-        }
-        # Should not raise
+        # tokenize_with_heredocs sets each `<<` token's heredoc_key — the
+        # production path. (Attachment is now key-driven; there is no
+        # delimiter-suffix fallback for keyless hand-built tokens.)
+        tokens, heredoc_map = tokenize_with_heredocs('cat <<EOF\nhello world\nEOF')
         ast = parse_with_heredocs(tokens, heredoc_map)
-        assert ast is not None
+        red = self._first_heredoc_redirect(ast)
+        assert red.heredoc_content == 'hello world\n'
+        assert red.heredoc_quoted is False
 
     def test_parse_with_heredocs_string_format(self):
-        """String-format heredoc map should still work (backward compat)."""
+        """String-valued map entries (legacy, non-dict) still attach as content."""
+        from psh.lexer import tokenize_with_heredocs
         from psh.parser import parse_with_heredocs
-        tokens = tokenize('cat <<EOF\nEOF')
-        heredoc_map = {
-            'heredoc_0_EOF': 'hello world'
-        }
-        # Should not raise
-        ast = parse_with_heredocs(tokens, heredoc_map)
-        assert ast is not None
+        tokens, heredoc_map = tokenize_with_heredocs('cat <<EOF\nhello world\nEOF')
+        # Replace the dict entry with a bare string under the same key.
+        key = next(iter(heredoc_map))
+        string_map = {key: 'hello world\n'}
+        ast = parse_with_heredocs(tokens, string_map)
+        red = self._first_heredoc_redirect(ast)
+        assert red.heredoc_content == 'hello world\n'
+
+    def test_missing_map_entry_fails_loudly(self):
+        """A heredoc redirect whose key is absent from the map is a hard error.
+
+        (F9: no silent None / delimiter-suffix guessing — attachment is
+        key-driven and a missing collected body raises during the parse.)
+        """
+        from psh.lexer import tokenize_with_heredocs
+        from psh.parser import parse_with_heredocs
+        tokens, _ = tokenize_with_heredocs('cat <<EOF\nhello\nEOF')
+        with pytest.raises(ParseError):
+            parse_with_heredocs(tokens, {})  # key present on token, absent from map
 
 
 # ===========================================================================

@@ -5,7 +5,7 @@ This module contains the main Parser class that orchestrates parsing by delegati
 to specialized parser modules for different language constructs.
 """
 
-from typing import List, Optional
+from typing import List, Mapping, Optional
 
 from ...ast_nodes import Program
 from ...lexer.token_types import Token
@@ -21,7 +21,6 @@ from .parsers.redirections import RedirectionParser
 from .parsers.statements import StatementParser
 from .parsers.tests import TestParser
 from .support.context_factory import create_context
-from .support.utils import ParserUtils
 
 
 class Parser(ContextBaseParser):
@@ -30,7 +29,8 @@ class Parser(ContextBaseParser):
     def __init__(self, tokens: List[Token],
                  source_text: Optional[str] = None,
                  config: Optional[ParserConfig] = None, ctx: Optional[ParserContext] = None,
-                 line_offset: int = 0):
+                 line_offset: int = 0,
+                 heredoc_map: Optional[Mapping[str, object]] = None):
         # Create or use provided context
         if ctx is not None:
             # Use provided context directly
@@ -41,11 +41,14 @@ class Parser(ContextBaseParser):
 
             # Create context. line_offset carries the number of source lines
             # before this fragment, so error messages report absolute lines.
+            # heredoc_map (when given) lets RedirectionParser attach here-doc
+            # bodies as each Redirect is constructed.
             ctx = create_context(
                 tokens=tokens,
                 config=config,
                 source_text=source_text,
-                line_offset=line_offset
+                line_offset=line_offset,
+                heredoc_map=heredoc_map,
             )
             super().__init__(ctx)
 
@@ -60,7 +63,6 @@ class Parser(ContextBaseParser):
         self.redirections = RedirectionParser(self)
         self.arrays = ArrayParser(self)
         self.functions = FunctionParser(self)
-        self.utils = ParserUtils(self)
 
     @property
     def tokens(self) -> List[Token]:
