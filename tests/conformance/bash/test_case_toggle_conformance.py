@@ -8,13 +8,13 @@ lower case-mods. Separately, bash's case-mod maps each codepoint to at most
 one codepoint (no ß -> "SS" length growth).
 
 Verified against bash 5.2. The conformance harness pins LC_ALL=C, where bash
-case-maps ASCII only and leaves every non-ASCII byte untouched. psh's mapping
-is Unicode-aware and locale-independent, so the two agree ONLY on codepoints
-that psh also leaves unchanged: ASCII, plus the length-safety cases ß, ﬀ, ΐ
-(no single-codepoint case, so both shells leave them). Codepoints psh actively
-maps to a different codepoint (İ -> i, café -> CAFÉ, Ω -> ω) diverge from
-C-locale bash and are covered by unit tests instead
-(tests/unit/lexer/test_case_mapping.py), not here.
+case-maps ASCII only and leaves every non-ASCII byte untouched. As of the
+locale service (Stage 2) psh case mapping is locale-GATED, so under C it too
+maps ASCII only — psh and bash now agree on every codepoint under C. The cases
+psh actively maps only in a UTF-8 locale (İ -> i, café -> CAFÉ, Ω -> ω) are
+covered against a UTF-8 locale in test_locale_conformance.py (and the pure
+mapping in tests/unit/lexer/test_case_mapping.py); the length-safety cases (ß,
+ﬀ, ΐ stay put in EVERY locale) are pinned here.
 """
 
 import os

@@ -40,11 +40,21 @@ PSH = [sys.executable, '-m', 'psh', '-c']
 BASH = ['bash', '-c']
 
 
+# These tests compare how bash and psh RENDER Unicode identifier names (é,
+# naïve, café) in diagnostics, which is only well-defined in a UTF-8 locale:
+# under LC_ALL=C (the suite-wide pin) bash escapes é to ``$'\303\251'`` while
+# psh keeps it as UTF-8, so the byte-equality assertion below would spuriously
+# fail. Pin an explicit UTF-8 locale for these subprocesses (overrides the
+# suite pin for these children only). C.UTF-8 is portable across the macOS gate
+# and the Linux nightly.
+_UTF8_ENV = {**os.environ, 'LC_ALL': 'C.UTF-8', 'LANG': 'C.UTF-8'}
+
+
 def _run(argv, command):
     # errors='replace': bash expanding an invalid ``$é`` can emit non-UTF-8
     # bytes; we only assert on exit codes and ASCII substrings for those cases.
     return subprocess.run(argv + [command], capture_output=True, text=True,
-                          errors='replace', timeout=30)
+                          errors='replace', timeout=30, env=_UTF8_ENV)
 
 
 def _tail(stderr):

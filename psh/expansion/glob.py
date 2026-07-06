@@ -172,7 +172,7 @@ class GlobExpander:
                     # globstar walker recurses properly (and handles the
                     # extglob components via _match_glob_component), where
                     # _expand_extglob would treat `**` as a single level.
-                    return sorted(self._expand_globstar(
+                    return self._sorted(self._expand_globstar(
                         pattern, self.state.options.get('dotglob', False)))
                 return self._expand_extglob(pattern)
 
@@ -204,14 +204,15 @@ class GlobExpander:
             matches = glob.glob(normalize_bracket_expressions(pattern),
                                 include_hidden=dotglob)
 
-        # Byte (C-locale) ordering. bash sorts glob results with strcoll() in
-        # the current LC_COLLATE, so this diverges from bash in a non-C locale
-        # (`[a-c]*` -> `aa aB banana` in bash vs `aB aa banana` here). Matching
-        # bash would need a process-global locale.setlocale() at startup plus a
-        # locale.strxfrm sort key; that is intentionally deferred as the same
-        # known limitation as `[[ < ]]` / `[ < ]` collation (see
-        # executor/enhanced_test_evaluator.py and builtins/test_command.py).
-        return sorted(matches) if matches else []
+        # Order glob results in the current LC_COLLATE, like bash. The locale
+        # service's collate_key is a codepoint key in the C locale (byte order,
+        # psh's historical behaviour) and locale.strxfrm in a UTF-8/OTHER locale
+        # (`[a-c]*` -> `aa aB banana` matching bash, not `aB aa banana`).
+        return self._sorted(matches)
+
+    def _sorted(self, matches: List[str]) -> List[str]:
+        """Sort glob matches in the active collation order (empty-safe)."""
+        return sorted(matches, key=self.state.locale.collate_key) if matches else []
 
     def _glob_nocase(self, pattern: str, dotglob: bool) -> List[str]:
         """Case-insensitive pathname expansion (shopt -s nocaseglob).
@@ -444,7 +445,7 @@ class GlobExpander:
             bases = self._match_glob_component(comp, bases, dotglob)
             if not bases:
                 return []
-        return sorted(bases)
+        return self._sorted(bases)
 
     def _match_glob_component(self, comp: str, bases: List[str],
                               dotglob: bool) -> List[str]:

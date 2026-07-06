@@ -592,4 +592,10 @@ def expand_extglob(pattern: str, directory: str = '.',
         if _matches(entry):
             matches.append(entry)
 
-    return sorted(matches)
+    # Order per-directory entries in the active collation (the final glob-level
+    # sort re-orders across directories; this keeps single-component extglob
+    # results collation-ordered too). Module-level function, so reach the
+    # process-active locale rather than a shell handle; codepoint order if none.
+    from ..core.locale_service import active_locale
+    loc = active_locale()
+    return sorted(matches, key=loc.collate_key) if loc else sorted(matches)

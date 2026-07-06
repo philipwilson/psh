@@ -6,6 +6,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .exceptions import ReadonlyVariableError
+from .locale_service import active_locale
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
 # Variables whose value is computed on read but whose assignment is HONORED
@@ -665,13 +666,17 @@ class ScopeManager:
         # bash applies NEITHER (declare -ul leaves the value unfolded).
         both_case = VarAttributes.UPPERCASE | VarAttributes.LOWERCASE
         if (attributes & both_case) != both_case:
-            # Length-safe (single-codepoint) mapping like bash — str.upper()/
-            # str.lower() would grow the value (ß -> "SS"); see unicode_support.
-            from ..lexer.unicode_support import simple_lower, simple_upper
+            # declare -u/-l case-fold through the locale service: length-safe
+            # (ß stays ß, not "SS") AND locale-gated — bash's declare -u folds
+            # ASCII only under the C locale (`declare -u café` is CAFé), Unicode
+            # under UTF-8 (CAFÉ). A shell-less ScopeManager (isolated tests)
+            # falls back to the process-active locale, else leaves the value.
+            loc = (self._shell.state.locale if self._shell is not None
+                   else active_locale())
             if attributes & VarAttributes.UPPERCASE:
-                return simple_upper(str_value)
+                return loc.upper(str_value) if loc else str_value
             if attributes & VarAttributes.LOWERCASE:
-                return simple_lower(str_value)
+                return loc.lower(str_value) if loc else str_value
 
         return str_value
 

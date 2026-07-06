@@ -7,10 +7,8 @@ substitution, substring, case modification, name matching). Parsing of the
 import re
 from typing import TYPE_CHECKING, List, Optional, Union
 
-# Length-safe (single-codepoint) case mapping — see unicode_support for why
-# str.upper()/str.lower() are wrong here (ß -> "SS" grows the string).
-from ..lexer.unicode_support import simple_lower, simple_upper, toggle_case
-
+# Case mapping for ^ ^^ , ,, ~ ~~ routes through the locale service
+# (self.state.locale.upper/lower/toggle): length-safe AND locale-gated.
 # Canonical pattern engine lives in pattern.py; re-exported here because
 # many call sites import PatternMatcher from this module.
 from .pattern import PatternMatcher
@@ -434,35 +432,41 @@ class ParameterExpansion:
             pattern, anchored=False, extglob_enabled=self._extglob)
         return re.fullmatch(regex, char) is not None
 
+    # ^ ^^ , ,, ~ ~~ route their per-char case mapping through the locale
+    # service: length-safe (ß stays ß) AND locale-gated (ASCII-only under the C
+    # locale, Unicode under UTF-8) — see LocaleService.upper/lower/toggle.
     def uppercase_first(self, value: str, pattern: str = '?') -> str:
         """Uppercase the first char if it matches the pattern."""
         if value and self._char_matches(value[0], pattern):
-            return simple_upper(value[0]) + value[1:]
+            return self.state.locale.upper(value[0]) + value[1:]
         return value
 
     def uppercase_all(self, value: str, pattern: str = '?') -> str:
         """Uppercase every char matching the pattern."""
-        return ''.join(simple_upper(c) if self._char_matches(c, pattern) else c
+        loc = self.state.locale
+        return ''.join(loc.upper(c) if self._char_matches(c, pattern) else c
                        for c in value)
 
     def lowercase_first(self, value: str, pattern: str = '?') -> str:
         """Lowercase the first char if it matches the pattern."""
         if value and self._char_matches(value[0], pattern):
-            return simple_lower(value[0]) + value[1:]
+            return self.state.locale.lower(value[0]) + value[1:]
         return value
 
     def lowercase_all(self, value: str, pattern: str = '?') -> str:
         """Lowercase every char matching the pattern."""
-        return ''.join(simple_lower(c) if self._char_matches(c, pattern) else c
+        loc = self.state.locale
+        return ''.join(loc.lower(c) if self._char_matches(c, pattern) else c
                        for c in value)
 
     def toggle_first(self, value: str, pattern: str = '?') -> str:
         """Toggle the case of the first char if it matches the pattern (${x~})."""
         if value and self._char_matches(value[0], pattern):
-            return toggle_case(value[0]) + value[1:]
+            return self.state.locale.toggle(value[0]) + value[1:]
         return value
 
     def toggle_all(self, value: str, pattern: str = '?') -> str:
         """Toggle the case of every char matching the pattern (${x~~})."""
-        return ''.join(toggle_case(c) if self._char_matches(c, pattern) else c
+        loc = self.state.locale
+        return ''.join(loc.toggle(c) if self._char_matches(c, pattern) else c
                        for c in value)

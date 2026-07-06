@@ -133,12 +133,13 @@ class TestExpressionEvaluator:
             return not self._pattern_match(
                 left, self._rhs_pattern(expr.right_word))
         elif expr.operator == '<':
-            # Unicode codepoint order. bash's `[[ < ]]` honours LC_COLLATE, so
-            # this diverges from bash in a non-C locale (a known limitation —
-            # `[ < ]`/test uses codepoint order too; see builtins/test_command.py).
-            return left < right
+            # bash's `[[ < ]]` honours LC_COLLATE; the locale service compares
+            # by codepoint in the C locale (byte order) and by locale.strcoll
+            # in a UTF-8/OTHER locale (so `[[ a < B ]]` is true under en_US.UTF-8,
+            # matching bash).
+            return self.state.locale.compare(left, right) < 0
         elif expr.operator == '>':
-            return left > right
+            return self.state.locale.compare(left, right) > 0
         elif expr.operator == '=~':
             # Regex matching; populate BASH_REMATCH with the full match and
             # capture groups (cleared to an empty array on no match), like bash.
