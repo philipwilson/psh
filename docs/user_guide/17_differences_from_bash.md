@@ -512,6 +512,14 @@ unusable name warned-and-ignored (falling back to `C`) — and honours it for:
   character — so single-character patterns (`?`, `[^[:digit:]]`) can differ from
   bash in the `C` locale. This is a pre-existing shell-wide model difference, not
   specific to character classes.
+- **Bare-C environments and PEP 538.** If PSH starts in an *unpinned*
+  effectively-C environment (no locale variables, or `LANG=C` alone, with
+  `LC_ALL` unset/empty), CPython's PEP 538 locale coercion rewrites `LC_CTYPE`
+  to a UTF-8 locale before PSH reads it — so character classes behave as UTF-8
+  where bash would use C (`[[ é == [[:alpha:]] ]]` true vs. bash's false). An
+  explicit `LC_ALL=C` disables coercion and is fully bash-faithful; collation is
+  unaffected (`LC_COLLATE` is not coerced). Startup coercion detection is
+  deferred to the Stage-4 locale-reactivity work.
 
 ### Here Document Behavior
 

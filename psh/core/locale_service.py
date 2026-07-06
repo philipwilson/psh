@@ -20,9 +20,19 @@ compromise: bash's locale is process-global too, and psh is a single-threaded
 shell. Embedding psh inside a multithreaded Python host that also cares about
 its own locale is a documented non-goal. To keep the common case side-effect
 free, the service calls ``setlocale`` **only** when a category resolves to a
-non-C locale — under ``LC_ALL=C`` (the pinned test-suite locale, and psh's
-default when nothing is set) it touches nothing and every primitive is
-byte-identical to the old codepoint/ASCII behaviour.
+non-C locale — under an explicit ``LC_ALL=C`` (the pinned test-suite locale)
+it touches nothing and every primitive is byte-identical to the old
+codepoint/ASCII behaviour.
+
+**PEP 538 caveat (verifier finding, v0.655).** "Nothing set" is NOT C mode on
+CPython 3.7+: when the interpreter starts under an effectively-C locale with
+``LC_ALL`` empty/unset, PEP 538 coercion rewrites ``os.environ['LC_CTYPE']``
+to a UTF-8 locale *before* this service reads it, so bare-C/``LANG=C``-only
+environments compute UTF-8 ctype mode where bash would use C (observable on
+character classes: ``[[ é == [[:alpha:]] ]]`` is true here, false in bash-C).
+An explicit ``LC_ALL=C`` disables coercion and is fully bash-faithful. See the
+differences ledger; startup coercion detection is deferred to the Stage-4
+locale-reactivity work.
 
 Startup-only for now: the profile is read once from the environment at shell
 construction. Reacting to mid-script ``LC_*``/``LANG`` assignment (bash does)
