@@ -367,10 +367,20 @@ class CommandExecutor:
                 command_node,
                 declaration_eligible=not (bypass_aliases or bypass_functions))
 
-            if not expanded_args or not expanded_args[0]:
-                # The command words expanded to nothing: the assignments
-                # affect the current shell environment (bash: after
-                # `V=v $EMPTY`, $V is v).
+            if not expanded_args:
+                # The command words produced ZERO fields — an unquoted
+                # empty/unset expansion vanished entirely (`$empty`). There
+                # is no command, so any prefix assignments affect the current
+                # shell (bash: after `V=v $EMPTY`, $V is v).
+                #
+                # A QUOTED empty word (`''`, `""`, `"$empty"`) is different:
+                # it produces ONE empty field, i.e. an attempted invocation
+                # of a command whose name is the empty string. That must NOT
+                # take this pure-assignment path (it would wrongly persist a
+                # prefix assignment); it flows through normal resolution
+                # below, where command lookup fails with status 127 — bash
+                # prints "` `: command not found" and does not persist the
+                # prefix (F1).
                 if raw_assignments:
                     return self.assignments.apply_pure(node, raw_assignments)
                 return 0

@@ -32,6 +32,15 @@ def exec_external(full_args: List[str], env: dict,
     re-executes it with itself). We re-exec the file through psh. Only
     returns by raising OSError.
     """
+    if not full_args or not full_args[0]:
+        # A quoted empty command word (`''`, `"$empty"`) is an attempted
+        # invocation of a command whose name is the empty string (F1).
+        # Python's execve rejects an empty argv[0] with ValueError, but bash
+        # reports it as an ordinary lookup failure ("command not found", 127).
+        # Raise FileNotFoundError so the shared report path
+        # (report_exec_failure -> format_exec_failure) produces that.
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT),
+                                full_args[0] if full_args else '')
     try:
         if resolved_path is not None:
             os.execve(resolved_path, full_args, env)

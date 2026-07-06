@@ -6564,3 +6564,55 @@
   stdout: "m\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: quoted empty command vs zero-field expansion (F1)
+# =============================================================================
+
+- name: exec_p1a_empty_quoted_command_is_127
+  command: "''; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=127\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: exec_p1a_empty_doublequote_command_is_127
+  command: "\"\"; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=127\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: exec_p1a_empty_quoted_var_command_is_127
+  command: "empty=; \"$empty\"; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=127\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: exec_p1a_empty_unquoted_var_is_zero_fields
+  command: "empty=; $empty; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_prefix_empty_quoted_no_persist
+  command: "unset X; X=v ''; printf 'rc=%s X=<%s>\\n' \"$?\" \"${X-unset}\""
+  stdout: "rc=127 X=<unset>\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: exec_p1a_prefix_empty_unquoted_persists
+  command: "unset X; empty=; X=v $empty; printf 'rc=%s X=<%s>\\n' \"$?\" \"${X-unset}\""
+  stdout: "rc=0 X=<v>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_empty_command_with_arg_is_127
+  command: "'' arg; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=127\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: exec_p1a_redirect_only_no_command_ok
+  command: "> /dev/null; printf 'rc=%s\\n' \"$?\""
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
