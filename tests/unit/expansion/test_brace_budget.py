@@ -1,0 +1,93 @@
+"""Brace expansion resource budget (expansion Phase-1a F4).
+
+The 10,000-item limit used to be checked only AFTER the intermediate lists were
+built, so ``{1..1000000000}`` generated a billion strings before the guard
+fired, and ``TokenBraceExpander`` then SILENTLY restored the literal token — so
+``echo {1..20000}`` printed the 11-byte literal where bash prints 108,894 bytes.
+
+Now the cardinality is computed BEFORE generating (O(1) fast-fail for a
+pathological range), the limit is a generous 100,000 (``{1..20000}`` and even
+``{1..100000}`` expand and match bash), and exceeding it raises a LOUD typed
+error (a diagnostic on stderr and exit status 2) instead of a silent restore.
+
+Keeping any limit is a DELIBERATE divergence from bash (which has none); it is a
+resource guard, documented in docs/user_guide/17_differences_from_bash.md.
+All in-budget expectations bash-5.2-verified.
+"""
+import time
+
+import pytest
+
+from psh.expansion.brace_expansion import BraceExpander, BraceExpansionError
+
+
+class TestInBudgetMatchesBash:
+    def test_large_range_expands(self, captured_shell):
+        rc = captured_shell.run_command("set -- {1..20000}; echo $#")
+        assert rc == 0
+        assert captured_shell.get_stdout() == "20000\n"
+
+    def test_at_limit_expands(self, captured_shell):
+        rc = captured_shell.run_command("set -- {1..100000}; echo $#")
+        assert rc == 0
+        assert captured_shell.get_stdout() == "100000\n"
+
+    def test_everyday_range_unaffected(self, captured_shell):
+        rc = captured_shell.run_command("echo {1..3}")
+        assert rc == 0
+        assert captured_shell.get_stdout() == "1 2 3\n"
+
+    def test_char_range_unaffected(self, captured_shell):
+        rc = captured_shell.run_command("echo {a..e}")
+        assert rc == 0
+        assert captured_shell.get_stdout() == "a b c d e\n"
+
+
+class TestOverBudgetIsLoud:
+    def test_numeric_over_limit_exits_2_with_diagnostic(self, captured_shell):
+        rc = captured_shell.run_command("echo {1..100001}")
+        assert rc == 2  # bash uses 2 for the syntax-error class
+        assert "brace expansion: 100001 items exceeds the limit" in \
+            captured_shell.get_stderr()
+        # NOT silently restored to the literal, and nothing printed.
+        assert captured_shell.get_stdout() == ""
+
+    def test_product_over_limit_is_loud(self, captured_shell):
+        rc = captured_shell.run_command("echo {a,b}{1..100000}")
+        assert rc == 2
+        assert "200000 items exceeds the limit" in captured_shell.get_stderr()
+        assert captured_shell.get_stdout() == ""
+
+    def test_nested_list_over_limit_is_loud(self, captured_shell):
+        rc = captured_shell.run_command("echo {{1..60000},{1..60000}}")
+        assert rc == 2
+        assert "120000 items exceeds the limit" in captured_shell.get_stderr()
+
+
+class TestPathologicalFailsFast:
+    def test_billion_range_is_o1_not_generated(self, captured_shell):
+        # The diagnostic reports the FULL cardinality (1e9) — proof it was
+        # computed preemptively, not by generating a billion strings.
+        start = time.time()
+        rc = captured_shell.run_command("echo {1..1000000000}")
+        elapsed = time.time() - start
+        assert rc == 2
+        assert "1000000000 items exceeds the limit" in \
+            captured_shell.get_stderr()
+        # Preemptive: an O(1) check, nowhere near the minutes a billion-item
+        # generation would take. Generous bound to tolerate a slow CI host.
+        assert elapsed < 5.0, f"took {elapsed:.1f}s — did it generate?"
+
+
+class TestCoreBudget:
+    """Unit-level checks on the core expander's preemptive budget."""
+
+    def test_direct_numeric_over_limit_raises(self):
+        expander = BraceExpander()
+        with pytest.raises(BraceExpansionError) as exc:
+            expander._expand_braces("{1..1000000000}")
+        assert "1000000000" in str(exc.value)
+
+    def test_direct_in_budget_ok(self):
+        expander = BraceExpander()
+        assert len(expander._expand_braces("{1..5}")) == 5

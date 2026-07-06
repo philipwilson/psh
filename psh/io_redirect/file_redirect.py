@@ -182,7 +182,10 @@ class FileRedirector:
         """
         import tempfile
         tmp = tempfile.TemporaryFile()
-        tmp.write(content.encode())
+        # surrogateescape so a heredoc/here-string body carrying non-UTF-8
+        # bytes (surrogate escapes, e.g. a byte from `x=$(printf '\xff')`)
+        # reaches the reader as its original byte, matching bash.
+        tmp.write(content.encode('utf-8', errors='surrogateescape'))
         tmp.flush()
         tmp.seek(0)
         # Hand the body to target_fd through the shared fd-preserving primitive.
@@ -567,7 +570,11 @@ class FileRedirector:
         target_fd itself — replacing it later (a second ``exec >file``)
         closes only the dup.
         """
-        return os.fdopen(os.dup(target_fd), 'w', buffering=1)
+        # surrogateescape so builtin writes of shell values carrying non-UTF-8
+        # bytes (surrogate escapes) round-trip to the file, matching bash and
+        # the sys.stdout/stderr byte policy set at psh's entry point.
+        return os.fdopen(os.dup(target_fd), 'w', buffering=1,
+                         errors='surrogateescape')
 
     def _rebind_output_stream(self, target_fd: int):
         """Point the shell's Python-level stdout/stderr at a redirected fd.

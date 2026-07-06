@@ -114,7 +114,10 @@ class Builtin(ABC):
         be copied into each builtin.
         """
         if shell.state.in_forked_child:
-            os.write(1, text.encode('utf-8', errors='replace'))
+            # surrogateescape (not 'replace') so bytes carried in as surrogate
+            # escapes — e.g. a non-UTF-8 byte from `x=$(printf '\xff')` — write
+            # back out as their original byte, matching bash's byte transparency.
+            os.write(1, text.encode('utf-8', errors='surrogateescape'))
         else:
             stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
             stdout.write(text)

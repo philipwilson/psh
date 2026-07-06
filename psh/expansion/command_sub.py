@@ -146,8 +146,23 @@ class CommandSubstitution:
                 if self.shell.state.options.get('debug-expansion-detail'):
                     print(f"[EXPANSION] Command substitution '{cmd_sub}' exit code: {exit_code}", file=self.shell.state.stderr)
 
-                # Decode output
-                output = output_bytes.decode('utf-8', errors='replace')
+                # Decode under psh's shell byte policy. Bash strips NUL
+                # bytes from a substitution — they cannot survive in a C
+                # string / argv / environment — and warns once regardless of
+                # how many were dropped. Arbitrary non-UTF-8 bytes round-trip
+                # via surrogateescape (not the U+FFFD replacement that
+                # errors='replace' produced), so `x=$(printf '\xff')`
+                # preserves the byte on the way back out through builtin
+                # output and external exec, both of which re-encode surrogate
+                # escapes to their original bytes. This matches the
+                # surrogateescape decode already used for script input
+                # (__main__.py, scripting/input_sources.py).
+                if b'\x00' in output_bytes:
+                    output_bytes = output_bytes.replace(b'\x00', b'')
+                    print("psh: warning: command substitution: "
+                          "ignored null byte in input",
+                          file=self.shell.state.stderr)
+                output = output_bytes.decode('utf-8', errors='surrogateescape')
 
                 # Strip all trailing newlines (POSIX requirement)
                 output = output.rstrip('\n')

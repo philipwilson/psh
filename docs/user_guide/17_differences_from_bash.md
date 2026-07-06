@@ -538,6 +538,25 @@ factorial_iter() {
 }
 ```
 
+### Brace Expansion Item Limit
+
+Bash imposes no limit on brace expansion. As a resource guard (like the
+recursion-depth limit above), PSH caps a single brace expansion at 100,000
+generated items. Ordinary bash-style usage is unaffected and matches bash
+exactly — even large ranges such as `{1..20000}` (108,894 bytes) or
+`{1..100000}` expand normally. Only a genuinely runaway expansion is rejected,
+and it fails **loudly and immediately** — PSH computes the cardinality before
+generating, so a pathological range is an O(1) diagnostic, not a hang:
+
+```bash
+echo {1..100000}          # Works (matches bash)
+echo {1..1000000000}      # PSH: error, exit 2 (bash would try to build it)
+# psh: brace expansion: 1000000000 items exceeds the limit of 100000
+```
+
+This is a deliberate divergence: bash would attempt the full (enormous)
+expansion. PSH never silently falls back to the literal text on overflow.
+
 ## 17.4 PSH-Specific Features
 
 PSH includes features not found in Bash, designed for education and development.
