@@ -29,6 +29,7 @@ Manager            (arrays)    State    Manager
 | `variables.py` | `Variable`, `VarAttributes`, `IndexedArray`, `AssociativeArray` |
 | `option_registry.py` | `OPTION_REGISTRY` (single source of truth for all shell options) + `ShellOptions` (registry-backed, dict-compatible container; `ShellState.options`) |
 | `options.py` | `OptionHandler` - option *behavior* helpers (nounset check, xtrace print) |
+| `locale_service.py` | `LocaleService` (on `ShellState.locale`) - effective LC_CTYPE/LC_COLLATE from env at startup; the one home for collation (`collate_key`/`compare`), locale-gated case mapping (`upper`/`lower`/`toggle`), and POSIX character-class membership (`in_class`, `posix_class_ranges` — host libc `iswctype` via ctypes). See `docs/architecture/locale_service_design_2026-07-06.md` |
 | `functions.py` | `FunctionManager` - shell function definitions |
 | `exceptions.py` | `PshError` root + error classes, and control-flow signals (`LoopBreak`, etc.) |
 | `internal_errors.py` | Expected-error taxonomy + `report_internal_defect` (strict-errors guard) |

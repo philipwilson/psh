@@ -145,6 +145,15 @@ class ConformanceTestFramework:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    # Decode as UTF-8 explicitly rather than the parent process's
+                    # preferred encoding: the suite runs under LC_ALL=C (ASCII
+                    # preferred encoding), so a locale-pinned test whose shell
+                    # emits UTF-8 (e.g. `echo *` over accented filenames under
+                    # en_US.UTF-8) would otherwise raise a decode error that got
+                    # mislabelled as shell stderr. surrogateescape is lossless,
+                    # so psh-vs-bash byte comparison stays exact.
+                    encoding="utf-8",
+                    errors="surrogateescape",
                     timeout=timeout,
                     env=test_env,
                     cwd=temp_dir

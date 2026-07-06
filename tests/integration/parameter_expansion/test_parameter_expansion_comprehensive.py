@@ -413,8 +413,17 @@ class TestCaseModification:
         assert content == ""
 
     def test_unicode_handling(self, shell_with_temp_dir):
-        """Test case modification with unicode."""
+        """Test case modification with unicode (UTF-8 locale).
+
+        Case mapping is now locale-gated (LocaleService): under the suite's
+        pinned C locale bash uppercases ASCII only (café -> CAFé), so this test
+        pins a UTF-8 ctype mode on the shell to exercise the Unicode mapping
+        (café -> CAFÉ). apply=False keeps it side-effect free — case mapping
+        uses the length-safe simple_upper, no process setlocale needed.
+        """
+        from psh.core.locale_service import LocaleService
         shell = shell_with_temp_dir
+        shell.state.locale = LocaleService({'LC_ALL': 'en_US.UTF-8'}, apply=False)
 
         shell.run_command('text="café"')
         shell.run_command('echo ${text^^} > output.txt')

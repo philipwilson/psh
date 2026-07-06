@@ -106,6 +106,12 @@ _SPECS = [
     _spec("nocaseglob", False, OptionCategory.SHOPT),
     _spec("nocasematch", False, OptionCategory.SHOPT),
     _spec("globstar", False, OptionCategory.SHOPT),
+    _spec("globasciiranges", True, OptionCategory.SHOPT,
+          notes="ON by default (bash 5): bracket RANGES like [a-z] use "
+                "ASCII/codepoint bounds regardless of locale, which is already "
+                "how psh interprets ranges. Registered so `shopt "
+                "globasciiranges` stops erroring; the OFF (collation-range) "
+                "behaviour is a documented deferral, see locale_service_design"),
     _spec("inherit_errexit", False, OptionCategory.SHOPT,
           notes="command-substitution children keep set -e instead of "
                 "clearing it (bash 4.4+; POSIX mode also keeps it)"),

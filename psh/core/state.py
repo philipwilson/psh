@@ -7,6 +7,7 @@ from ..version import __version__
 from .command_hash import CommandHashTable
 from .execution_state import ExecutionState
 from .history_state import HistoryState
+from .locale_service import LocaleService
 from .option_registry import ShellOptions
 from .scope import ScopeManager
 from .stream_bindings import StreamBindings
@@ -47,6 +48,15 @@ class ShellState:
         # Environment and variables (the ONE read of os.environ — see
         # the class docstring for the environment policy)
         self.env = os.environ.copy()
+
+        # Central locale service: resolves the effective LC_CTYPE/LC_COLLATE
+        # from the environment (bash precedence) and owns the process
+        # ``setlocale`` calls. In the C/POSIX locale it is side-effect free and
+        # every primitive stays byte-identical to psh's old codepoint/ASCII
+        # behaviour; a ``*.UTF-8`` locale enables faithful collation, case
+        # mapping, and character-class membership. Startup-only for now
+        # (mid-script LC_* reactivity is a documented deferral).
+        self.locale = LocaleService(self.env)
 
         # Initialize enhanced scope manager for variable scoping with attributes
         self.scope_manager = ScopeManager()
@@ -269,6 +279,11 @@ class ShellState:
         reappraisal #15 found).
         """
         self.env = parent.env.copy()
+        # A subshell inherits the parent's locale (the process ``setlocale`` is
+        # already applied and is inherited across fork). Share the parent's
+        # service rather than recomputing — startup-only reactivity means the
+        # profile cannot have diverged from the parent's environment.
+        self.locale = parent.locale
         # Copy global variables as whole Variable objects to preserve
         # attributes (export, readonly, arrays, ...).
         for name, var in parent.scope_manager.global_scope.variables.items():

@@ -1,0 +1,443 @@
+"""Central locale service: effective locale + faithful ctype/collation primitives.
+
+Before this module psh was *locale-blind*: it never called ``setlocale`` and so
+classified characters with fixed ASCII tables, case-mapped unconditionally, and
+sorted glob results / compared ``[[ < ]]`` operands by Unicode codepoint — which
+is only correct in the ``C``/``POSIX`` locale. bash, by contrast, honours
+``LC_CTYPE`` (character classes + case) and ``LC_COLLATE`` (ordering + string
+comparison) from the environment. This service is the one place that:
+
+* computes the **effective** ``LC_CTYPE`` and ``LC_COLLATE`` from the environment
+  using bash's precedence ``LC_ALL > LC_{CTYPE,COLLATE} > LANG > C`` (an empty
+  value is skipped, exactly as bash does), and
+* owns the process ``setlocale`` calls and exposes faithful primitives:
+  collation (:meth:`collate_key` / :meth:`compare`, Stage 1), case mapping
+  (Stage 2), and POSIX character-class membership (Stage 3).
+
+**Why process-global ``setlocale`` is acceptable here.** ``setlocale`` mutates
+process-global C-library state and is not thread-safe. That is faithful, not a
+compromise: bash's locale is process-global too, and psh is a single-threaded
+shell. Embedding psh inside a multithreaded Python host that also cares about
+its own locale is a documented non-goal. To keep the common case side-effect
+free, the service calls ``setlocale`` **only** when a category resolves to a
+non-C locale — under an explicit ``LC_ALL=C`` (the pinned test-suite locale)
+it touches nothing and every primitive is byte-identical to the old
+codepoint/ASCII behaviour.
+
+**PEP 538 caveat (verifier finding, v0.655).** "Nothing set" is NOT C mode on
+CPython 3.7+: when the interpreter starts under an effectively-C locale with
+``LC_ALL`` empty/unset, PEP 538 coercion rewrites ``os.environ['LC_CTYPE']``
+to a UTF-8 locale *before* this service reads it, so bare-C/``LANG=C``-only
+environments compute UTF-8 ctype mode where bash would use C (observable on
+character classes: ``[[ é == [[:alpha:]] ]]`` is true here, false in bash-C).
+An explicit ``LC_ALL=C`` disables coercion and is fully bash-faithful. See the
+differences ledger; startup coercion detection is deferred to the Stage-4
+locale-reactivity work.
+
+Startup-only for now: the profile is read once from the environment at shell
+construction. Reacting to mid-script ``LC_*``/``LANG`` assignment (bash does)
+is a deliberate deferral — see
+``docs/architecture/locale_service_design_2026-07-06.md`` (§5.2 Stage 4) and the
+differences ledger.
+"""
+from __future__ import annotations
+
+import locale as _locale
+import re
+import sys
+import unicodedata
+from dataclasses import dataclass
+from enum import Enum, auto
+from typing import Callable, Dict, Mapping, Optional, Tuple
+
+
+class LocaleMode(Enum):
+    """How a locale category is interpreted.
+
+    ``C`` — POSIX/C: ASCII-only classes, ASCII-only case mapping, codepoint
+    collation (byte-identical to psh's pre-locale behaviour, no ``setlocale``).
+    ``UTF8`` — a ``*.UTF-8`` locale: Unicode classes/case, ``strxfrm`` collation.
+    ``OTHER`` — a non-UTF-8, non-C locale (e.g. an 8-bit ``ISO8859`` locale):
+    documented fallback — ASCII class tables + ASCII case (full ctype fidelity
+    in 8-bit locales is a non-goal) but real ``strxfrm`` collation.
+    """
+    C = auto()
+    UTF8 = auto()
+    OTHER = auto()
+
+
+@dataclass(frozen=True)
+class LocaleProfile:
+    """The two effective locales a shell runs under, resolved and applied."""
+    ctype_name: str
+    collate_name: str
+    ctype_mode: LocaleMode
+    collate_mode: LocaleMode
+
+
+#: Category-variable precedence chains (bash: ``LC_ALL`` overrides the specific
+#: category, which overrides ``LANG``). An empty string is treated as unset.
+_CTYPE_VARS = ("LC_ALL", "LC_CTYPE", "LANG")
+_COLLATE_VARS = ("LC_ALL", "LC_COLLATE", "LANG")
+
+
+def _classify(name: str) -> LocaleMode:
+    """Map a locale NAME to its interpretation mode."""
+    up = name.upper()
+    if up in ("C", "POSIX", ""):
+        return LocaleMode.C
+    if up.endswith("UTF-8") or up.endswith("UTF8"):
+        return LocaleMode.UTF8
+    return LocaleMode.OTHER
+
+
+def _effective(env: Mapping[str, str], chain: tuple) -> str:
+    """First non-empty value along a precedence *chain*, else ``"C"``."""
+    for var in chain:
+        val = env.get(var)
+        if val:  # non-empty -> wins (bash skips empty LC_*/LANG values)
+            return val
+    return "C"
+
+
+class LocaleService:
+    """Owns the process locale and exposes faithful ctype/collation primitives.
+
+    One instance lives on shell state (``shell.state.locale``), created at
+    startup from ``state.env``.
+    """
+
+    def __init__(self, env: Mapping[str, str], *, apply: bool = True,
+                 warn: bool = True) -> None:
+        collate_name = _effective(env, _COLLATE_VARS)
+        ctype_name = _effective(env, _CTYPE_VARS)
+        collate_mode = _classify(collate_name)
+        ctype_mode = _classify(ctype_name)
+
+        if apply:
+            # setlocale is process-global; only touch a category that needs a
+            # non-C locale. On failure warn (like bash) and fall back to C for
+            # that category so the shell still runs.
+            if collate_mode is not LocaleMode.C and not _try_setlocale(
+                    _locale.LC_COLLATE, collate_name, warn):
+                collate_name, collate_mode = "C", LocaleMode.C
+            if ctype_mode is not LocaleMode.C and not _try_setlocale(
+                    _locale.LC_CTYPE, ctype_name, warn):
+                ctype_name, ctype_mode = "C", LocaleMode.C
+
+        self.profile = LocaleProfile(ctype_name, collate_name,
+                                     ctype_mode, collate_mode)
+        _activate(self)
+
+    # --- case mapping (LC_CTYPE) ------------------------------------------
+    #
+    # bash case-maps with the C library's towupper/towlower, which is
+    # locale-sensitive: in a UTF-8 locale it maps Unicode (é->É), but in the C
+    # locale it maps ASCII ONLY and leaves every non-ASCII codepoint untouched
+    # (verified: `${x^^}` on é is é under C, É under en_US.UTF-8; likewise
+    # `declare -u café` is CAFé under C, CAFÉ under UTF-8). psh used to map
+    # Unicode unconditionally, so it over-eagerly upper-cased é even under C.
+    # UTF-8 mode delegates to the length-safe ``simple_*`` mappings (1:1
+    # codepoint, so ß stays ß rather than growing to "SS"); C/OTHER mode uses
+    # the ASCII-only gate below. These are the ONE place ^^ / ,, / ~~ / @U / @L /
+    # @u / declare -u / declare -l resolve their case mapping.
+    def upper(self, s: str) -> str:
+        if self.profile.ctype_mode is LocaleMode.UTF8:
+            from ..lexer.unicode_support import simple_upper
+            return simple_upper(s)
+        return _ascii_upper(s)
+
+    def lower(self, s: str) -> str:
+        if self.profile.ctype_mode is LocaleMode.UTF8:
+            from ..lexer.unicode_support import simple_lower
+            return simple_lower(s)
+        return _ascii_lower(s)
+
+    def toggle(self, s: str) -> str:
+        if self.profile.ctype_mode is LocaleMode.UTF8:
+            from ..lexer.unicode_support import toggle_case
+            return toggle_case(s)
+        return _ascii_toggle(s)
+
+    # --- POSIX character-class membership (LC_CTYPE) ----------------------
+    def in_class(self, ch: str, name: str) -> bool:
+        """Whether *ch* belongs to POSIX class *name* under the active locale.
+
+        C/OTHER mode uses the fixed ASCII class tables (byte-identical to psh's
+        historical behaviour; full 8-bit-locale ctype fidelity is a non-goal);
+        UTF-8 mode consults the host libc's ``iswctype`` (via ctypes) so it is
+        byte-faithful to the same bash on this host, with a pure-Python
+        (``str.is*`` / ``unicodedata``) fallback if ctypes is unavailable.
+
+        This per-character predicate is the shape the finding-#6 pattern engine
+        will consume; the regex path uses :func:`posix_class_ranges` instead.
+        """
+        if self.profile.ctype_mode is LocaleMode.UTF8:
+            member = _class_member_fn(name)
+            return member(ord(ch)) if member is not None else False
+        return _ascii_in_class(ch, name)
+
+    # --- collation (LC_COLLATE) -------------------------------------------
+    def collate_key(self, s: str):
+        """Sort key reproducing the active ``LC_COLLATE`` order.
+
+        In C mode this is the string itself (codepoint order); in UTF-8/OTHER
+        mode it is ``locale.strxfrm(s)``, which reproduces bash's ``strcoll``
+        ordering exactly (verified against macOS bash; tracks glibc on Linux).
+        Undecodable input falls back to the codepoint key rather than raising.
+        """
+        if self.profile.collate_mode is LocaleMode.C:
+            return s
+        try:
+            return _locale.strxfrm(s)
+        except (ValueError, _locale.Error):
+            return s
+
+    def compare(self, a: str, b: str) -> int:
+        """Three-way comparison of two strings under ``LC_COLLATE``.
+
+        Returns a negative/zero/positive int for ``a<b`` / ``a==b`` / ``a>b``,
+        for ``[[ a < b ]]`` / ``[ a \\< b ]``. Codepoint order in C mode,
+        ``locale.strcoll`` sign otherwise (with a codepoint fallback on error).
+        """
+        if self.profile.collate_mode is LocaleMode.C:
+            return (a > b) - (a < b)
+        try:
+            r = _locale.strcoll(a, b)
+            return (r > 0) - (r < 0)
+        except (ValueError, _locale.Error):
+            return (a > b) - (a < b)
+
+
+def _ascii_upper(s: str) -> str:
+    """Uppercase ASCII letters only (C-locale ``towupper``); leave the rest."""
+    return "".join(c.upper() if "a" <= c <= "z" else c for c in s)
+
+
+def _ascii_lower(s: str) -> str:
+    """Lowercase ASCII letters only (C-locale ``towlower``); leave the rest."""
+    return "".join(c.lower() if "A" <= c <= "Z" else c for c in s)
+
+
+def _ascii_toggle(s: str) -> str:
+    """Toggle ASCII-letter case only (C-locale); leave every other codepoint."""
+    out = []
+    for c in s:
+        if "a" <= c <= "z":
+            out.append(c.upper())
+        elif "A" <= c <= "Z":
+            out.append(c.lower())
+        else:
+            out.append(c)
+    return "".join(out)
+
+
+def _try_setlocale(category: int, name: str, warn: bool) -> bool:
+    """``setlocale(category, name)``; on failure warn like bash and return False."""
+    try:
+        _locale.setlocale(category, name)
+        return True
+    except _locale.Error:
+        if warn:
+            cat = {getattr(_locale, "LC_CTYPE", None): "LC_CTYPE",
+                   getattr(_locale, "LC_COLLATE", None): "LC_COLLATE"}.get(
+                       category, "LC_ALL")
+            # bash prints e.g. "bash: warning: setlocale: LC_CTYPE: cannot
+            # change locale (bogus): No such file or directory".
+            print(f"psh: warning: setlocale: {cat}: cannot change locale "
+                  f"({name})", file=sys.stderr)
+        return False
+
+
+# --- process-active service ------------------------------------------------
+#
+# The glob->regex converter (extglob.py) and pattern code are stateless
+# module-level functions with no shell handle, but character-class membership
+# is a function of the process-global locale — which is exactly what this
+# reflects. The most-recently-constructed service registers itself here so
+# those functions can ask "what does [:alpha:] mean right now?". Consistent
+# with setlocale itself being process-global.
+_active: Optional["LocaleService"] = None
+
+
+def _activate(svc: "LocaleService") -> None:
+    global _active
+    _active = svc
+
+
+def active_locale() -> Optional["LocaleService"]:
+    """The process's active locale service, or None before any shell exists."""
+    return _active
+
+
+# --- POSIX character-class membership machinery ----------------------------
+#
+# The one class-interpretation chokepoint is the glob->regex converter
+# (extglob._bracket_to_regex), which substitutes a regex character-class body
+# for each ``[:name:]``. In C/OTHER mode that body is the fixed ASCII range
+# table (glob._POSIX_CLASSES) — byte-identical to psh's historical behaviour.
+# In a UTF-8 locale stdlib ``re`` cannot express "Unicode letter", so we
+# instead compute the class's membership set ONCE per (locale, class) by
+# sweeping every codepoint through the host libc's ``iswctype`` (ctypes), then
+# compress it into explicit ``\Uxxxxxxxx`` ranges and splice THAT into the
+# regex. The sweep of the full 0x110000 range costs ~0.3s (ctypes) the first
+# time a given class is used in a UTF-8 locale; every subsequent use is a cache
+# hit, and the C-mode fast path never sweeps at all. (Measured alternatives:
+# a BMP-only sweep is ~16x faster but silently drops astral letters/digits; a
+# per-codepoint memoized predicate avoids the up-front cost but cannot stay on
+# the single shared regex path. The full lazy sweep keeps every match site —
+# case / [[ == ]] / ${x#pat} / pathname — on one converter, which is the
+# v0.638 design.) ctypes is the maximum-fidelity backend: iswctype is the same
+# call bash makes, so it is byte-identical to the host's own bash on macOS AND
+# glibc (which genuinely disagree on e.g. whether ٣ is a digit). A pure-Python
+# ``str.is*`` / ``unicodedata`` fallback covers the (rare) case where ctypes or
+# libc is unavailable; it is close but not byte-identical (documented).
+
+_MAX_CODEPOINT = 0x110000
+
+# Cache: (ctype_locale_name, class_name) -> regex-class body, or None if the
+# name is not a POSIX class. In-process; a UTF-8 process resolves each class
+# once. Keyed by locale name so it survives across LocaleService instances in
+# one process (e.g. subshells sharing the parent's locale).
+_RANGE_CACHE: Dict[Tuple[str, str], Optional[str]] = {}
+
+_LIBC_UNSET = object()
+_libc: object = _LIBC_UNSET  # host libc handle, or None if unavailable
+
+
+def _get_libc() -> object:
+    """Lazily load the host libc with wctype/iswctype bound (or None)."""
+    global _libc
+    if _libc is _LIBC_UNSET:
+        _libc = _load_libc()
+    return _libc
+
+
+def _load_libc() -> object:
+    """Bind the host libc's wctype/iswctype via ctypes, portable across
+    macOS (libc.dylib) and Linux (libc.so.6). Returns None on any failure so
+    the caller falls back to the pure-Python predicates — never a crash.
+
+    ``wchar_t`` is 32-bit on both platforms (verified), so ``ord(ch)`` fed to
+    ``iswctype`` covers astral codepoints; ``wctype_t`` is ``unsigned long`` on
+    both (macOS ``__darwin_wctype_t``, glibc ``wctype_t``)."""
+    try:
+        import ctypes
+        import ctypes.util
+        libname = ctypes.util.find_library("c")
+        libc = ctypes.CDLL(libname, use_errno=True) if libname \
+            else ctypes.CDLL(None, use_errno=True)
+        libc.wctype.restype = ctypes.c_ulong
+        libc.wctype.argtypes = [ctypes.c_char_p]
+        libc.iswctype.restype = ctypes.c_int
+        libc.iswctype.argtypes = [ctypes.c_int, ctypes.c_ulong]
+        return libc
+    except Exception:
+        return None
+
+
+def _ctypes_member_fn(name: str) -> Optional[Callable[[int], bool]]:
+    """A ``(codepoint) -> bool`` membership predicate backed by the host libc's
+    ``iswctype`` under the active locale, or None if libc/this class is
+    unavailable. iswctype (NOT the isw* narrow functions, which disagree with it
+    on macOS for e.g. ٣) is what bash uses, so this is host-bash-faithful."""
+    libc = _get_libc()
+    if libc is None:
+        return None
+    try:
+        handle = libc.wctype(name.encode("ascii"))  # type: ignore[attr-defined]
+    except Exception:
+        return None
+    if not handle:
+        return None  # libc does not know this class name
+    isw = libc.iswctype  # type: ignore[attr-defined]
+    return lambda cp: bool(isw(cp, handle))
+
+
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+# Pure-Python fallback predicates (used only when ctypes/libc is unavailable).
+# Close to macOS bash for the common classes; the digit/punct/space edges where
+# glibc/macOS/Python differ are a documented approximation of the fallback.
+_PY_PREDICATES: Dict[str, Callable[[int], bool]] = {
+    "alpha": lambda cp: chr(cp).isalpha(),
+    "upper": lambda cp: chr(cp).isupper(),
+    "lower": lambda cp: chr(cp).islower(),
+    "digit": lambda cp: chr(cp).isdigit(),
+    "alnum": lambda cp: chr(cp).isalnum(),
+    "space": lambda cp: chr(cp).isspace(),
+    "blank": lambda cp: chr(cp) in " \t" or unicodedata.category(chr(cp)) == "Zs",
+    "xdigit": lambda cp: chr(cp) in _HEX_DIGITS,
+    "punct": lambda cp: unicodedata.category(chr(cp))[0] in ("P", "S"),
+    "cntrl": lambda cp: unicodedata.category(chr(cp)) == "Cc",
+    "graph": lambda cp: chr(cp).isprintable() and not chr(cp).isspace(),
+    "print": lambda cp: chr(cp).isprintable(),
+}
+
+
+def _class_member_fn(name: str) -> Optional[Callable[[int], bool]]:
+    """Membership predicate for POSIX class *name* under the active locale:
+    the host libc (ctypes) if available, else the pure-Python fallback, else
+    None if *name* is not a known POSIX class."""
+    fn = _ctypes_member_fn(name)
+    if fn is not None:
+        return fn
+    return _PY_PREDICATES.get(name)
+
+
+def _range_token(lo: int, hi: int) -> str:
+    """A ``\\U``-escaped single codepoint or ``lo-hi`` range for a regex class."""
+    if lo == hi:
+        return f"\\U{lo:08x}"
+    return f"\\U{lo:08x}-\\U{hi:08x}"
+
+
+def _sweep_ranges(member: Callable[[int], bool]) -> str:
+    """Sweep every codepoint and compress the members into a regex-class body
+    of ``\\U``-escaped ranges (safe to splice inside ``[...]``)."""
+    parts = []
+    start: Optional[int] = None
+    for cp in range(_MAX_CODEPOINT):
+        if member(cp):
+            if start is None:
+                start = cp
+        elif start is not None:
+            parts.append(_range_token(start, cp - 1))
+            start = None
+    if start is not None:
+        parts.append(_range_token(start, _MAX_CODEPOINT - 1))
+    return "".join(parts)
+
+
+def posix_class_ranges(name: str) -> Optional[str]:
+    """Regex character-class body for POSIX ``[:name:]`` under the active locale,
+    to be spliced INSIDE a regex ``[...]`` (no brackets). Returns None if *name*
+    is not a POSIX class (the caller keeps the ``[:name:]`` text literal).
+
+    C/OTHER mode (or no active service): the fixed ASCII range table, i.e.
+    psh's historical behaviour. UTF-8 mode: the host libc's ``iswctype``
+    membership swept into explicit ``\\U`` ranges, lazily and cached per
+    (locale, class).
+    """
+    loc = active_locale()
+    if loc is None or loc.profile.ctype_mode is not LocaleMode.UTF8:
+        from ..expansion.glob import _POSIX_CLASSES
+        return _POSIX_CLASSES.get(name)
+    key = (loc.profile.ctype_name, name)
+    if key not in _RANGE_CACHE:
+        member = _class_member_fn(name)
+        _RANGE_CACHE[key] = _sweep_ranges(member) if member is not None else None
+    return _RANGE_CACHE[key]
+
+
+_ASCII_CLASS_RE: Dict[str, Optional["re.Pattern[str]"]] = {}
+
+
+def _ascii_in_class(ch: str, name: str) -> bool:
+    """C/OTHER-mode single-char membership, exact to the ASCII class table."""
+    if name not in _ASCII_CLASS_RE:
+        from ..expansion.glob import _POSIX_CLASSES
+        body = _POSIX_CLASSES.get(name)
+        _ASCII_CLASS_RE[name] = re.compile(f"[{body}]") if body else None
+    pat = _ASCII_CLASS_RE[name]
+    return bool(pat.match(ch)) if pat is not None else False

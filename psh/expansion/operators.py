@@ -414,12 +414,17 @@ class OperatorOpsMixin(_Base):
         Per-element operators (Q/U/u/L/E/P/a) are also invoked once per element
         for ``${arr[@]@OP}`` by the array branch of expand_parameter_direct.
         """
+        # @U/@L/@u case-transform through the locale service: length-safe
+        # (ß stays ß, not "SS") and locale-gated (ASCII-only under C), exactly
+        # like ^^ / ,, . Raw str.upper()/str.lower() grew ß -> "SS" and ignored
+        # the locale — both wrong vs bash.
+        loc = self.shell.state.locale
         if op == 'U':
-            return value.upper()
+            return loc.upper(value)
         if op == 'L':
-            return value.lower()
+            return loc.lower(value)
         if op == 'u':
-            return value[:1].upper() + value[1:]
+            return loc.upper(value[:1]) + value[1:]
         if op == 'Q':
             return self._shell_quote(value)
         if op == 'E':

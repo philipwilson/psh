@@ -429,14 +429,13 @@ class ArrayOperationExecutor:
             value = current + expanded_value
         else:
             value = expanded_value
-        # Length-safe (single-codepoint) mapping like bash — see
-        # unicode_support (str.upper()/str.lower() would grow ß -> "SS").
+        # declare -u/-l on array elements fold through the locale service:
+        # length-safe (ß stays ß) AND locale-gated (ASCII-only under C, Unicode
+        # under UTF-8) — the same policy as scalar declare -u/-l and ${x^^}.
         if is_upper:
-            from ..lexer.unicode_support import simple_upper
-            return simple_upper(value)
+            return self.state.locale.upper(value)
         if is_lower:
-            from ..lexer.unicode_support import simple_lower
-            return simple_lower(value)
+            return self.state.locale.lower(value)
         return value
 
     # Helper methods
