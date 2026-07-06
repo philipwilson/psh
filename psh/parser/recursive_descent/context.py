@@ -2,7 +2,7 @@
 
 This module provides the ParserContext class that consolidates all parser
 state into a single object: the token stream and position, the parser
-configuration, error collection, and source text for error messages.
+configuration, and source text for error messages.
 """
 
 from dataclasses import dataclass, field
@@ -12,7 +12,6 @@ from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
 from .helpers import (
     ErrorContext,
-    ErrorSeverity,
     ParseError,
     describe_token,
     token_display_name,
@@ -24,18 +23,14 @@ class ParserContext:
     """Centralized parser state management.
 
     Consolidates the parser's real state — token stream, position, config,
-    error collection, and source context — behind one object shared by the
-    main parser and all sub-parsers.
+    and source context — behind one object shared by the main parser and all
+    sub-parsers.
     """
 
     # Core parsing state
     tokens: List[Token]
     current: int = 0
     config: ParserConfig = field(default_factory=ParserConfig)
-
-    # Error handling
-    errors: List[ParseError] = field(default_factory=list)
-    fatal_error: Optional[ParseError] = None
 
     # Source context
     source_text: Optional[str] = None
@@ -177,16 +172,12 @@ class ParserContext:
             f"Expected {token_display_name(token_type)}, "
             f"got {describe_token(current)}")
 
-        # Create error with context
+        # Create error with context and raise. (There is no error-collection
+        # mode: a parse either succeeds or raises here — it never returns a
+        # partial/fabricated AST after a missing required token.)
         error_context = self._create_error_context(message, current,
                                                    expected_type=token_type)
-        error = ParseError(error_context)
-
-        if self.config.collect_errors:
-            self.add_error(error)
-            return current  # Return current token to continue parsing
-        else:
-            raise error
+        raise ParseError(error_context)
 
     def _create_error_context(self, message: str, token: Token,
                               expected_type: Optional[TokenType] = None):
@@ -273,32 +264,3 @@ class ParserContext:
             suggestion = self._EXPECT_SUGGESTIONS.get(expected_type)
             if suggestion:
                 error_context.suggestions.append(suggestion)
-
-    # === Error Collection ===
-
-    def should_collect_errors(self) -> bool:
-        """Check if errors should be collected rather than thrown."""
-        return self.config.collect_errors or bool(self.errors)
-
-    def add_error(self, error: ParseError) -> None:
-        """Add error to the error list, checking for fatal errors."""
-        if len(self.errors) < self.config.max_errors:
-            self.errors.append(error)
-
-        # Check if this is a fatal error
-        if (hasattr(error.error_context, 'severity') and
-            error.error_context.severity == ErrorSeverity.FATAL):
-            self.fatal_error = error
-
-    def can_continue_parsing(self) -> bool:
-        """Check if parsing can continue."""
-        if self.at_end():
-            return False
-
-        if self.fatal_error:
-            return False
-
-        if self.config.collect_errors:
-            return len(self.errors) < self.config.max_errors
-
-        return True

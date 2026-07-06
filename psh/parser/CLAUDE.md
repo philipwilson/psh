@@ -392,22 +392,25 @@ strict-POSIX / feature-gate fields (`parsing_mode`, `enable_arithmetic`,
 `allow_bash_conditionals`, `allow_bash_arithmetic`) plus their
 `strict_posix` / `is_feature_enabled` / `should_allow` /
 `check_posix_compliance` methods were a façade — bypassed on every live
-path — and were removed. POSIX/bash behavior that IS honored lives in the
-lexer (`posix` tokenize mode) and runtime options, not here.
+path — and were removed. So was the `collect_errors` error-collection mode:
+it drove an unsafe recovery that returned a fabricated AST after a missing
+required token, and its collected errors were never read. `consume()` now
+always raises on the first unexpected token. POSIX/bash behavior that IS
+honored lives in the lexer (`posix` tokenize mode) and runtime options, not
+here.
 
 ```python
 @dataclass
 class ParserConfig:
-    # Error handling (read by ParserContext)
-    error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
-    max_errors: int = 10
-    collect_errors: bool = False
+    """Currently empty — the production parser has no options."""
 ```
 
-`config.clone(**overrides)` delegates to `dataclasses.replace`, so an unknown
-field name raises `TypeError` (a misspelled override no longer silently
-no-ops). No live path passes a non-default config; `create_parser()` /
-`parse_with_heredocs()` always construct a default `ParserConfig()`.
+`ParserConfig` is retained as the parser's single configuration object and
+extension point (it threads through the factory, `ParserContext`, and every
+sub-parser). `config.clone(**overrides)` delegates to `dataclasses.replace`,
+so an unknown field name raises `TypeError` (a misspelled override no longer
+silently no-ops). No live path passes a non-default config; `create_parser()`
+/ `parse_with_heredocs()` always construct a default `ParserConfig()`.
 
 The `parser-config` / `parser-mode` builtins do NOT drive `ParserConfig`; they
 toggle the shell options that really affect lexing/parsing/expansion (`posix`,

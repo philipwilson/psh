@@ -6,7 +6,7 @@ The parser converts tokens into an Abstract Syntax Tree (AST) with metadata supp
 context-aware parsing, semantic analysis, and enhanced error recovery.
 """
 
-from .config import ErrorHandlingMode, ParserConfig
+from .config import ParserConfig
 from .recursive_descent.context import ParserContext
 from .recursive_descent.helpers import ErrorContext, ParseError
 

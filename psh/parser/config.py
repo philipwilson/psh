@@ -1,46 +1,34 @@
 """Parser configuration for PSH.
 
-The production grammar is NOT feature-configurable: compound-command dispatch
-calls the specialized sub-parsers directly, so ``[[ ]]`` and ``(( ))`` are
-always accepted regardless of configuration. The former strict-POSIX and
-feature-gate fields (``parsing_mode``, ``enable_arithmetic``,
-``allow_bash_conditionals``, ``allow_bash_arithmetic``) were a façade —
-bypassed on every live path — and were removed. POSIX/bash behavior that IS
-honored lives in the lexer (``posix`` tokenize mode) and runtime options, not
-here.
+The production grammar is NOT configurable. Compound-command dispatch calls
+the specialized sub-parsers directly, so ``[[ ]]`` and ``(( ))`` are always
+accepted. The former strict-POSIX / feature-gate fields were a façade, and the
+error-collection fields (``collect_errors``/``max_errors``/``error_handling``)
+drove an unsafe recovery mode that returned fabricated ASTs and whose collected
+errors were never read — all removed.
 
-Only the error-collection fields below remain; they are read by
-``ParserContext``.
+``ParserConfig`` therefore carries no options today. It is retained as the
+parser's single configuration object and extension point: it threads through
+the factory, ``ParserContext``, and every sub-parser, so a genuinely
+grammar-affecting option can be added here in one place if one is ever needed.
+POSIX/bash behavior that IS honored lives in the lexer (``posix`` tokenize
+mode) and runtime options, not here.
 """
 
 from dataclasses import dataclass, replace
-from enum import Enum
-
-
-class ErrorHandlingMode(Enum):
-    """Error handling strategies."""
-    STRICT = "strict"                # Stop on first error
-    COLLECT = "collect"              # Collect multiple errors
 
 
 @dataclass
 class ParserConfig:
     """Parser configuration options.
 
-    Fields present here are actually read by parser code. Feature gates and
-    strict-POSIX modes were removed because production dispatch bypassed them.
+    Currently empty: the production parser has no grammar-affecting options.
     """
-
-    # === Error Handling ===
-    error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
-    max_errors: int = 10
-    collect_errors: bool = False
 
     def clone(self, **overrides) -> 'ParserConfig':
         """Return a copy with *overrides* applied.
 
         Delegates to :func:`dataclasses.replace`, so an unknown field name
-        raises ``TypeError`` instead of being silently ignored (the previous
-        custom implementation dropped typos without any signal).
+        raises ``TypeError`` instead of being silently ignored.
         """
         return replace(self, **overrides)

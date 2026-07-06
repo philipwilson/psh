@@ -294,22 +294,50 @@ class TestParserConfigCloneNoMutation:
     """clone() returns an independent copy and never mutates the original.
 
     (Formerly guarded create_configured_parser(), a test-only helper removed
-    with the parser-config façade; clone() is the surviving API.)
+    with the parser-config façade; clone() — now a dataclasses.replace wrapper
+    over an empty config — is the surviving API.)
     """
 
-    def test_clone_no_mutation(self):
-        """A cloned config with an override must not mutate the source config."""
+    def test_clone_returns_independent_instance(self):
+        """clone() returns a new object, never the same instance."""
         from psh.parser import ParserConfig
 
         parent = ParserConfig()
-        assert parent.collect_errors is False
+        child = parent.clone()
 
-        child = parent.clone(collect_errors=True)
+        assert child == parent
+        assert child is not parent
 
-        # Child should have the override
-        assert child.collect_errors is True
-        # Parent config must be unchanged
-        assert parent.collect_errors is False
+
+# ===========================================================================
+# Appraisal Finding 3: error collection removed — a syntax error never yields
+# an executable AST (the old collect_errors mode returned a completed
+# IfConditional for `if true; then echo x`, then let it execute).
+# ===========================================================================
+
+class TestSyntaxErrorNeverExecutes:
+    """A parse error must raise, never produce a runnable Program."""
+
+    def test_incomplete_if_raises_not_returns_program(self):
+        """`if true; then echo x` (no fi) raises instead of a partial AST."""
+        with pytest.raises(ParseError):
+            parse("if true; then echo x")
+
+    def test_incomplete_if_executes_nothing_in_command_mode(self):
+        """-c: exit 2 and the body command must NOT run."""
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '-c', 'if true; then echo RAN'],
+            capture_output=True, text=True, timeout=30)
+        assert result.returncode == 2
+        assert 'RAN' not in result.stdout
+
+    def test_incomplete_if_executes_nothing_in_validate_mode(self):
+        """--validate: exit 2 and nothing runs."""
+        result = subprocess.run(
+            [sys.executable, '-m', 'psh', '--validate', '-c', 'if true; then echo RAN'],
+            capture_output=True, text=True, timeout=30)
+        assert result.returncode == 2
+        assert 'RAN' not in result.stdout
 
 
 # ===========================================================================

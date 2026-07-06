@@ -452,9 +452,11 @@ class Parser(ContextBaseParser):
         ...
 ```
 
-With `config.collect_errors=True`, errors accumulate in `ctx.errors`
-(up to `config.max_errors`) via `ParserContext.add_error()` instead of
-raising immediately; `ctx.can_continue_parsing()` decides when to stop.
+There is no error-collection mode: `ParserContext.consume()` raises a
+`ParseError` on the first unexpected token, so a parse either succeeds or
+raises — it never returns a partial/fabricated AST. (An earlier
+`collect_errors` recovery mode did the latter and its collected errors were
+never read; it was removed.)
 
 ### 3.4 Grammar Overview
 
@@ -505,17 +507,17 @@ runtime options, not in `ParserConfig`.
 ```python
 @dataclass
 class ParserConfig:
-    """Parser configuration options (only fields the parser actually reads)"""
-    # Error handling
-    error_handling: ErrorHandlingMode = ErrorHandlingMode.STRICT
-    max_errors: int = 10
-    collect_errors: bool = False
+    """Parser configuration options (currently empty)."""
 ```
 
-Derive variants with `config.clone(**overrides)`, which delegates to
-`dataclasses.replace` and raises on an unknown field name. No live path passes
-a non-default config; `create_parser()` / `parse_with_heredocs()` always
-construct a default `ParserConfig()`.
+`ParserConfig` carries no options today — the production parser has none.
+It is retained as the parser's single configuration object and extension
+point: it threads through the factory, `ParserContext`, and every sub-parser,
+so a genuinely grammar-affecting option could be added here in one place.
+`config.clone(**overrides)` delegates to `dataclasses.replace` and raises on
+an unknown field name. No live path passes a non-default config;
+`create_parser()` / `parse_with_heredocs()` always construct a default
+`ParserConfig()`.
 
 ### 3.7 Centralized ParserContext
 

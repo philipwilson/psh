@@ -7,8 +7,6 @@ save/restore — machinery that was never read by the parser and was removed
 in v0.256.0.)
 """
 
-from unittest.mock import Mock
-
 import pytest
 
 from psh.lexer.token_types import Token, TokenType
@@ -34,7 +32,6 @@ class TestParserContext:
         assert ctx.tokens == tokens
         assert ctx.current == 0
         assert isinstance(ctx.config, ParserConfig)
-        assert ctx.errors == []
 
     def test_token_access(self):
         """Test token access methods."""
@@ -94,51 +91,27 @@ class TestParserContext:
             Token(TokenType.EOF, "", 5)
         ]
 
-        config = ParserConfig(collect_errors=False)
+        config = ParserConfig()
         ctx = ParserContext(tokens=tokens, config=config)
 
         with pytest.raises(ParseError):
             ctx.consume(TokenType.SEMICOLON)
 
-    def test_consume_error_collect(self):
-        """Test consume error in error collection mode."""
+    def test_consume_error_always_raises(self):
+        """consume() ALWAYS raises on an unexpected token.
+
+        There is no error-collection mode: a parse either succeeds or raises,
+        so a missing required token can never yield a partial/fabricated AST.
+        """
         tokens = [
             Token(TokenType.WORD, "echo", 0),
             Token(TokenType.EOF, "", 5)
         ]
 
-        config = ParserConfig(collect_errors=True)
-        ctx = ParserContext(tokens=tokens, config=config)
+        ctx = ParserContext(tokens=tokens, config=ParserConfig())
 
-        # Should not raise, but add to errors
-        token = ctx.consume(TokenType.SEMICOLON)
-        assert token == tokens[0]  # Returns current token
-        assert len(ctx.errors) == 1
-        assert isinstance(ctx.errors[0], ParseError)
-
-    def test_error_state_queries(self):
-        """Test error-related state queries."""
-        config = ParserConfig(
-            collect_errors=True,
-            max_errors=5
-        )
-        # Add a token so we're not at end
-        tokens = [Token(TokenType.WORD, "test", 0)]
-        ctx = ParserContext(tokens=tokens, config=config)
-
-        assert ctx.should_collect_errors()
-        assert ctx.can_continue_parsing()
-
-        # Add errors up to limit
-        for _ in range(4):  # Changed to 4 to stay under limit
-            ctx.errors.append(Mock(spec=ParseError))
-
-        # Should still be able to continue under limit
-        assert ctx.can_continue_parsing()
-
-        # Add one more error to reach limit
-        ctx.errors.append(Mock(spec=ParseError))
-        assert not ctx.can_continue_parsing()
+        with pytest.raises(ParseError):
+            ctx.consume(TokenType.SEMICOLON)
 
     def test_source_lines_derived_from_text(self):
         """source_lines is split from source_text for error display."""
@@ -161,13 +134,13 @@ class TestParserContextFactory:
         assert ctx.source_text is None
 
     def test_create_with_config(self):
-        """Test context creation with custom config."""
+        """Test context creation with a caller-supplied config."""
         tokens = [Token(TokenType.WORD, "test", 0)]
-        config = ParserConfig(collect_errors=True)
+        config = ParserConfig()
 
         ctx = create_context(tokens, config)
 
-        assert ctx.config.collect_errors is True
+        assert ctx.config is config
 
     def test_create_default(self):
         """Test default context creation."""
@@ -175,4 +148,4 @@ class TestParserContextFactory:
 
         ctx = create_context(tokens)
 
-        assert ctx.config.collect_errors is False
+        assert isinstance(ctx.config, ParserConfig)

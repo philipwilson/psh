@@ -55,18 +55,6 @@ class ContextBaseParser:
         error_context = self.ctx._create_error_context(message, token)
         return ParseError(error_context)
 
-    def should_collect_errors(self) -> bool:
-        """Check if errors should be collected rather than thrown."""
-        return self.ctx.should_collect_errors()
-
-    def add_error(self, error: ParseError) -> bool:
-        """Add error to context and return whether parsing should continue."""
-        if self.ctx.config.collect_errors:
-            self.ctx.add_error(error)
-            return self.ctx.can_continue_parsing()
-        else:
-            raise error
-
     # === Utility Methods ===
 
     def skip_newlines(self):
