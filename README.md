@@ -247,7 +247,7 @@ PSH includes two parser implementations with deliberately different statuses:
 - **Parser Selection**: Use `parser-select combinator` builtin (or `--parser combinator`) to switch implementations interactively
 
 ### Project Statistics
-- **Lines of Code**: ~62,800 lines of production code in `psh/` across 241 Python files, plus ~95,900 lines of tests in `tests/` (493 Python files)
+- **Lines of Code**: ~65,200 lines of production code in `psh/` across 244 Python files, plus ~102,600 lines of tests in `tests/` (548 Python files)
 - **Test Coverage**: 14,104 tests in 538 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
