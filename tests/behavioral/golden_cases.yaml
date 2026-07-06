@@ -6769,3 +6769,43 @@
   stdout: ""
   stderr: "bad array subscript"
   exit_code: 1
+
+# =============================================================================
+# EXECUTOR PHASE-1a: prefix array += is pure and env-safe (F8)
+# =============================================================================
+
+- name: exec_p1a_prefix_array_append_command_runs
+  command: "a=(x y); a+=z /usr/bin/true; echo \"rc=$?\"; declare -p a"
+  stdout: "rc=0\ndeclare -a a=([0]=\"x\" [1]=\"y\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_prefix_array_append_env_view
+  command: "a=(x y); a+=z printenv a"
+  stdout: "xz\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_prefix_array_append_child_scalar
+  command: "a=(x y); a+=z sh -c 'echo \"a=$a\"'; declare -p a"
+  stdout: "a=xz\ndeclare -a a=([0]=\"x\" [1]=\"y\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_prefix_assoc_append_restores
+  command: "declare -A h=([k]=v); h+=z /usr/bin/true; echo \"rc=$?\"; declare -p h"
+  stdout: "rc=0\ndeclare -A h=([k]=\"v\" )\n"
+  stderr: ""
+  exit_code: 0
+
+# DELIBERATE DIVERGENCE (psh_only): bash's integer-array `+=` prefix onto an
+# external command is buggy — it emits a garbled "operand expected" syntax
+# error (a control character leaks into its exported form) and returns 1. psh
+# does the sane thing: serialize element 0's scalar view into the environment,
+# run the command (rc 0), and restore the array to (1 2 3).
+- name: exec_p1a_prefix_int_array_append_sane
+  command: "declare -ai a=(1 2 3); a+=10 /usr/bin/true; echo \"rc=$?\"; declare -p a"
+  stdout: "rc=0\ndeclare -ai a=([0]=\"1\" [1]=\"2\" [2]=\"3\")\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
