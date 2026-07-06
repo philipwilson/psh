@@ -7,7 +7,7 @@ maintaining compatibility with the existing execution engine.
 
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Iterable, Optional
 
 from psh.visitor import ASTVisitor
 
@@ -335,26 +335,89 @@ class ExecutorVisitor(ASTVisitor[int]):
         finally:
             real = time.monotonic() - start_real
             end = os.times()
+            # user/sys are process-wide os.times() children deltas. CAVEAT:
+            # a background job reaped concurrently during this pipeline
+            # contaminates the deltas (its CPU is attributed here). Per-child
+            # rusage via wait4() is a later phase (F15 covers the report
+            # FORMAT only); the values may over-count under concurrent bg work.
             user = (end.user - start.user) + (end.children_user - start.children_user)
             system = (end.system - start.system) + (end.children_system - start.children_system)
             self._report_time(node, real, user, system)
         return status
 
     @staticmethod
-    def _format_time_long(seconds: float) -> str:
-        """bash default `%lR` style: `<min>m<sec>.<ms>s` (e.g. 0m0.003s)."""
-        minutes = int(seconds // 60)
-        return f"{minutes}m{seconds - minutes * 60:.3f}s"
+    def _fmt_time_directive(seconds: float, precision: int, long_form: bool) -> str:
+        """One R/U/S time value for TIMEFORMAT: ``[NNm]SS.FFFs`` in long form
+        (``%lR`` -> ``0m0.003s``), otherwise plain seconds (``%R`` -> ``0.003``).
+        ``precision`` is the digit count after the decimal (0-3)."""
+        if long_form:
+            minutes = int(seconds // 60)
+            return f"{minutes}m{seconds - minutes * 60:.{precision}f}s"
+        return f"{seconds:.{precision}f}"
+
+    def _format_timeformat(self, fmt: str, real: float, user: float,
+                           system: float) -> str:
+        """Render a bash ``TIMEFORMAT`` string.
+
+        Directives: ``%%`` (literal ``%``), ``%[p][l]R/U/S`` (real/user/sys —
+        optional precision ``p`` 0-3 default 3, optional ``l`` long form), and
+        ``%P`` (CPU percentage ``(user+sys)/real*100`` — 2 decimals, and bash
+        accepts NO precision/``l`` modifier on it). An unrecognized directive
+        (or a trailing ``%``) keeps a literal ``%`` — a lenient divergence from
+        bash's "invalid format character" error for malformed specs like
+        ``%3P``, which is outside the documented directive set.
+        """
+        out = []
+        i, n = 0, len(fmt)
+        while i < n:
+            if fmt[i] != '%':
+                out.append(fmt[i])
+                i += 1
+                continue
+            j = i + 1
+            if j < n and fmt[j] == '%':
+                out.append('%')
+                i = j + 1
+                continue
+            precision: Optional[int] = None
+            if j < n and fmt[j].isdigit():
+                precision = int(fmt[j])
+                j += 1
+            long_form = False
+            if j < n and fmt[j] == 'l':
+                long_form = True
+                j += 1
+            if j < n and fmt[j] in ('R', 'U', 'S'):
+                p = 3 if precision is None else max(0, min(3, precision))
+                value = {'R': real, 'U': user, 'S': system}[fmt[j]]
+                out.append(self._fmt_time_directive(value, p, long_form))
+                i = j + 1
+            elif (j < n and fmt[j] == 'P'
+                  and precision is None and not long_form):
+                pct = (user + system) / real * 100 if real > 0 else 0.0
+                out.append(f"{pct:.2f}")
+                i = j + 1
+            else:
+                # Unrecognized/malformed directive: keep the literal '%'.
+                out.append('%')
+                i += 1
+        return ''.join(out)
 
     def _report_time(self, node: Pipeline, real: float, user: float, system: float) -> None:
         if node.time_posix:
-            # `time -p`: POSIX format, seconds with 2 decimals.
+            # `time -p`: POSIX format, seconds with 2 decimals. Independent of
+            # TIMEFORMAT (bash: -p forces this format).
             text = f"real {real:.2f}\nuser {user:.2f}\nsys {system:.2f}\n"
         else:
-            # bash default TIMEFORMAT: a leading blank line, then m/s form.
-            text = (f"\nreal\t{self._format_time_long(real)}"
-                    f"\nuser\t{self._format_time_long(user)}"
-                    f"\nsys\t{self._format_time_long(system)}\n")
+            # Honor $TIMEFORMAT (F15). Passing bash's default format as the
+            # get_variable default makes UNSET -> that default; an EMPTY value
+            # stays "" -> no report at all; any other value is parsed. bash
+            # appends a trailing newline after the formatted string.
+            default_fmt = "\nreal\t%3lR\nuser\t%3lU\nsys\t%3lS"
+            fmt = self.state.get_variable('TIMEFORMAT', default_fmt)
+            if fmt == "":
+                return
+            text = self._format_timeformat(fmt, real, user, system) + "\n"
         try:
             self.state.stderr.write(text)
             self.state.stderr.flush()

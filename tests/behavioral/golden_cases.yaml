@@ -6855,3 +6855,28 @@
   stdout: "<unset><unset>\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# EXECUTOR PHASE-1a: TIMEFORMAT is honored (F15)
+# =============================================================================
+# Only %-free / deterministic formats compare cleanly against bash (timing
+# values are non-deterministic; directive SHAPES are pinned by
+# tests/integration/test_timeformat.py).
+
+- name: exec_p1a_timeformat_literal
+  command: "TIMEFORMAT=\"CUSTOM_FMT\"; { time true; } 2>&1"
+  stdout: "CUSTOM_FMT\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_timeformat_empty_suppresses
+  command: "TIMEFORMAT=; { time true; } 2>&1; echo END"
+  stdout: "END\n"
+  stderr: ""
+  exit_code: 0
+
+- name: exec_p1a_timeformat_percent_percent
+  command: "TIMEFORMAT=\"100%% done\"; { time true; } 2>&1"
+  stdout: "100% done\n"
+  stderr: ""
+  exit_code: 0
