@@ -40,6 +40,14 @@ class ParserContext:
     # heredoc redirect whose key is missing from the map is a hard error.
     heredoc_map: Optional[Mapping[str, object]] = None
 
+    # Lexer options (the shell option dict, e.g. ``{'extglob': True, ...}``) in
+    # effect for this parse. A plain data dict, NOT a Shell reference. Used only
+    # to RE-LEX the body of a nested command/process substitution with the same
+    # option-sensitive lexing as the outer command (notably ``extglob``, which
+    # governs whether ``@(a|b)`` is an extglob pattern). None outside the live
+    # shell parse path (standalone parser use lexes with defaults).
+    lexer_options: Optional[Mapping[str, object]] = None
+
     # Source context
     source_text: Optional[str] = None
     source_lines: Optional[List[str]] = None
@@ -59,6 +67,16 @@ class ParserContext:
     # ArithParser.MAX_DEPTH). Flat &&/||/pipe/`;` chains parse iteratively
     # and never accumulate depth.
     nesting_depth: int = 0
+
+    # Nested modern-substitution depth (``$( $( ... ) )`` / process subs).
+    # Incremented by one for each ``$(...)``/``<(...)``/``>(...)`` body parsed
+    # at the outer parse (support/nested_parse.py), independently of
+    # ``nesting_depth`` because a substitution is not a compound command. It is
+    # capped so an adversarially deep substitution chain fails as a clean
+    # ParseError rather than an O(n^2) re-parse cascade — the interim cost of
+    # extracting-and-reparsing bodies until the lexer gains token-level
+    # substitution recursion (a separate campaign).
+    substitution_depth: int = 0
 
     # Open-construct trail for incomplete-input hints. Parse methods push a
     # name when they consume an opening keyword ('if', 'while', 'case',

@@ -69,7 +69,8 @@ def _use_combinator(active_parser: str) -> bool:
         "'recursive_descent'/'rd' or 'combinator'")
 
 
-def parse_with_heredocs(tokens, heredoc_map, active_parser='rd'):
+def parse_with_heredocs(tokens, heredoc_map, active_parser='rd',
+                        lexer_options=None):
     """Parse tokens with heredoc content using the selected implementation.
 
     Args:
@@ -78,16 +79,21 @@ def parse_with_heredocs(tokens, heredoc_map, active_parser='rd'):
         heredoc_map: Map of heredoc keys to ``{'content', 'quoted'}`` entries.
         active_parser: ``'recursive_descent'``/``'rd'`` (default) or
             ``'combinator'``. Any other name raises ``ValueError``.
+        lexer_options: Shell option dict in effect, threaded so a nested
+            substitution body is re-lexed with the same option-sensitive
+            lexing (extglob) as the outer command.
     """
     if _use_combinator(active_parser):
         from .combinators.parser import ParserCombinatorShellParser
 
         return ParserCombinatorShellParser(ParserConfig()).parse_with_heredocs(
             tokens, heredoc_map)
-    return utils_parse_with_heredocs(tokens, heredoc_map)
+    return utils_parse_with_heredocs(tokens, heredoc_map,
+                                     lexer_options=lexer_options)
 
 
-def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0):
+def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0,
+                  lexer_options=None):
     """Create a parser configured for the selected implementation.
 
     Chooses between the recursive descent parser and the combinator parser
@@ -100,6 +106,9 @@ def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0):
         source_text: Optional source text for error reporting.
         line_offset: Number of source lines before this fragment in the
             enclosing input, so errors report absolute line numbers.
+        lexer_options: Shell option dict in effect, threaded so a nested
+            substitution body is re-lexed with the same option-sensitive
+            lexing (extglob) as the outer command.
 
     Returns:
         Object with a ``.parse()`` method that returns an AST.
@@ -122,4 +131,4 @@ def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0):
         return _ParserWrapper(pc, tokens)
 
     return Parser(tokens, config=config, source_text=source_text,
-                  line_offset=line_offset)
+                  line_offset=line_offset, lexer_options=lexer_options)

@@ -8,7 +8,6 @@ from typing import List, Optional
 
 from ...ast_nodes import (
     ArithmeticExpansion,
-    CommandSubstitution,
     ExpansionPart,
     LiteralPart,
     Word,
@@ -18,8 +17,6 @@ from ..config import ParserConfig
 from ..recursive_descent.support.word_builder import (
     WordBuilder,
     strip_arithmetic,
-    strip_backtick,
-    strip_command_sub,
 )
 from .core import Parser, ParseResult, token
 
@@ -112,24 +109,12 @@ class ExpansionParsers:
             expansion = WordBuilder.parse_expansion_token(token)
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
-        elif token.type.name == 'COMMAND_SUB':
-            # Command substitution $(...)
-            cmd = strip_command_sub(token.value)
-
-            if not self._validate_command_substitution(cmd):
-                raise ValueError(f"Invalid command substitution: {token.value}")
-
-            expansion = CommandSubstitution(cmd, backtick_style=False)
-            return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
-
-        elif token.type.name == 'COMMAND_SUB_BACKTICK':
-            # Backtick command substitution
-            cmd = strip_backtick(token.value)
-
-            if not self._validate_command_substitution(cmd):
-                raise ValueError(f"Invalid command substitution: {token.value}")
-
-            expansion = CommandSubstitution(cmd, backtick_style=True)
+        elif token.type.name in ('COMMAND_SUB', 'COMMAND_SUB_BACKTICK'):
+            # Command substitution $(...) / `...`. Delegate to WordBuilder so
+            # the recursive-descent and combinator parsers build the SAME node:
+            # $(...) carries a nested Program (parsed now, rejecting invalid
+            # syntax at the outer parse); backticks keep program=None.
+            expansion = WordBuilder.parse_expansion_token(token)
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         elif token.type.name == 'ARITH_EXPANSION':
@@ -153,49 +138,6 @@ class ExpansionParsers:
         else:
             # Regular word token
             return Word(parts=[LiteralPart(text=token.value, quoted=is_quoted, quote_char=qt)])
-
-    def _validate_command_substitution(self, cmd_str: str) -> bool:
-        """Parse and validate command substitution content.
-
-        Returns True if valid, False if it contains invalid constructs like function definitions.
-
-        Args:
-            cmd_str: Command string to validate
-
-        Returns:
-            True if valid command substitution
-        """
-        try:
-            # Re-tokenize the command substitution content
-            from psh.lexer import tokenize
-            sub_tokens = list(tokenize(cmd_str))
-
-            # Check for function definitions at the start
-            if len(sub_tokens) >= 2:
-                # Check for function keyword
-                if sub_tokens[0].type.name == 'FUNCTION':
-                    return False
-                # Check for name followed by parentheses
-                if (sub_tokens[0].type.name == 'WORD' and
-                    len(sub_tokens) > 1 and sub_tokens[1].type.name == 'LPAREN'):
-                    # This might be a function definition
-                    # Look for closing paren and opening brace
-                    for i in range(2, len(sub_tokens)):
-                        if sub_tokens[i].type.name == 'RPAREN':
-                            if i + 1 < len(sub_tokens) and sub_tokens[i + 1].type.name == 'LBRACE':
-                                return False  # Function definition found
-                            break
-
-            # Educational-scope boundary: this is a shallow guard, not a full
-            # parse — it rejects only the one construct that matters here (a
-            # function definition inside command substitution) and otherwise
-            # accepts any content that tokenizes. A full validation would re-run
-            # the statement-list parser on the substring; that is left to the
-            # actual command-substitution execution path.
-            return True
-        except Exception:
-            # If tokenization fails, consider it invalid
-            return False
 
     def create_expansion_parser(self) -> Parser[Word]:
         """Create combined expansion parser that returns Word nodes.

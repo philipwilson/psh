@@ -295,7 +295,8 @@ class TestProcessSubstitution:
         assert result.success is True
         assert isinstance(result.value, ProcessSubstitution)
         assert result.value.direction == "in"
-        assert result.value.command == "ls -la"
+        assert result.value.source == "ls -la"
+        assert result.value.program is not None
 
     def test_output_process_substitution(self):
         """Test >(command) process substitution."""
@@ -309,21 +310,21 @@ class TestProcessSubstitution:
         assert result.success is True
         assert isinstance(result.value, ProcessSubstitution)
         assert result.value.direction == "out"
-        assert result.value.command == "tee log.txt"
+        assert result.value.source == "tee log.txt"
+        assert result.value.program is not None
 
     def test_incomplete_process_substitution(self):
-        """Test incomplete process substitution (missing closing paren)."""
+        """An incomplete process substitution (missing closing paren) is now
+        rejected: building the node parses the body via the shared WordBuilder,
+        which reports the unterminated substitution rather than silently
+        accepting a malformed token (the lexer never emits this from real
+        input, but the builder is strict)."""
+        from psh.parser.recursive_descent.helpers import ParseError
+
         parsers = SpecialCommandParsers()
-
-        tokens = [
-            make_token(TokenType.PROCESS_SUB_IN, "<(incomplete")
-        ]
-
-        result = parsers.process_substitution.parse(tokens, 0)
-        assert result.success is True
-        assert isinstance(result.value, ProcessSubstitution)
-        assert result.value.direction == "in"
-        assert result.value.command == "incomplete"
+        tokens = [make_token(TokenType.PROCESS_SUB_IN, "<(incomplete")]
+        with pytest.raises((ParseError, SyntaxError)):
+            parsers.process_substitution.parse(tokens, 0)
 
 
 class TestConvenienceFunctions:

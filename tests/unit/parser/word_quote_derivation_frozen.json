@@ -238,6 +238,20 @@
         false,
         "\"",
         "\"pre$(echo hi)post\""
+      ],
+      [
+        null,
+        false,
+        true,
+        null,
+        "echo"
+      ],
+      [
+        null,
+        false,
+        true,
+        null,
+        "hi"
       ]
     ],
     "echo \"$@\"": [
@@ -318,6 +332,20 @@
         false,
         null,
         "$(echo hi)"
+      ],
+      [
+        null,
+        false,
+        true,
+        null,
+        "echo"
+      ],
+      [
+        null,
+        false,
+        true,
+        null,
+        "hi"
       ]
     ],
     "echo \"*\"": [
@@ -801,6 +829,20 @@
         false,
         "\"",
         "\"pre$(echo hi)post\""
+      ],
+      [
+        null,
+        false,
+        true,
+        null,
+        "echo"
+      ],
+      [
+        null,
+        false,
+        true,
+        null,
+        "hi"
       ]
     ],
     "echo \"$@\"": [
@@ -881,6 +923,20 @@
         false,
         null,
         "$(echo hi)"
+      ],
+      [
+        null,
+        false,
+        true,
+        null,
+        "echo"
+      ],
+      [
+        null,
+        false,
+        true,
+        null,
+        "hi"
       ]
     ],
     "echo \"*\"": [

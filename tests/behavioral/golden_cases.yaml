@@ -7223,3 +7223,88 @@
   stdout: "Y\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# NESTED-PROGRAM SUBSTITUTIONS (modern $()/<()/>() carry a parsed Program)
+# Valid substitutions must behave exactly as before; invalid nested syntax is
+# rejected at parse time (exit-code divergence for -c is documented separately
+# and not golden-pinned here).
+# =============================================================================
+
+- name: nprog_cmdsub_basic
+  command: "echo before; echo $(echo hi); echo after"
+  stdout: "before\nhi\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_cmdsub_nested
+  command: "echo $(echo $(echo deep))"
+  stdout: "deep\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_cmdsub_multiline
+  command: "echo $(\necho one\necho two\n)"
+  stdout: "one two\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_cmdsub_control_structure
+  command: "echo $(if true; then echo yes; fi)"
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_cmdsub_loop
+  command: "echo $(for i in 1 2 3; do echo $i; done)"
+  stdout: "1 2 3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_cmdsub_heredoc_body
+  command: "echo $(cat <<EOF\nhi\nEOF\n)"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_cmdsub_function_def
+  command: "echo $(f() { echo fn; }; f)"
+  stdout: "fn\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_cmdsub_status_success
+  command: "echo $(true); echo $?"
+  stdout: "\n0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_cmdsub_assignment_status
+  command: "x=$(exit 7); echo $?"
+  stdout: "7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_backtick_basic
+  command: "echo before; echo `echo hi`; echo after"
+  stdout: "before\nhi\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_procsub_input
+  command: "cat <(echo a) <(echo b)"
+  stdout: "a\nb\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_alias_active_in_cmdsub
+  command: "shopt -s expand_aliases; alias ll='echo LL'; echo $(ll)"
+  stdout: "LL\n"
+  stderr: ""
+  exit_code: 0
+
+- name: nprog_extglob_in_cmdsub_case
+  command: "shopt -s extglob\necho $(case a in @(a|b)) echo m;; *) echo n;; esac)"
+  stdout: "m\n"
+  stderr: ""
+  exit_code: 0

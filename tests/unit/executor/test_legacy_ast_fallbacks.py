@@ -95,35 +95,55 @@ class TestClassARequiredCompatibility:
 class TestClassBParserMigrationBridge:
     """(b) CasePattern.word=None — combinator parser bridge."""
 
-    def test_combinator_emits_wordless_pattern(self):
-        """The combinator parser really produces CasePattern(word=None)
-        for a $(...) pattern it cannot build a Word for — the bridge is
-        reachable, not dead. If this starts failing because word is set,
-        the combinator gained support: reclassify the executor fallback."""
+    def test_combinator_builds_word_for_cmdsub_pattern(self):
+        """The combinator now BUILDS a Word for a ``$(...)`` case pattern.
+
+        This used to emit ``CasePattern(word=None)`` because the combinator's
+        shallow validator rejected a function-def command substitution. Since
+        modern substitutions carry a parsed ``Program`` (nested-program
+        campaign), ``build_word_from_token`` parses the body and builds the
+        Word — matching the recursive-descent parser. The executor's wordless
+        (``word=None``) CasePattern fallback is still exercised by
+        ``test_manual_wordless_pattern_expands_variables`` (manually-built
+        ASTs), so it remains reachable, not dead."""
+        from psh.ast_nodes import CommandSubstitution, ExpansionPart
         from psh.lexer import tokenize
+        from psh.parser import Parser
         from psh.parser.combinators.parser import ParserCombinatorShellParser
-        ast = ParserCombinatorShellParser().parse(
-            tokenize('case x in $(f() { :; })) echo a;; *) echo b;; esac'))
+
+        src = 'case x in $(f() { :; })) echo a;; *) echo b;; esac'
 
         import dataclasses
 
-        found = []
+        def first_pattern(ast):
+            found = []
 
-        def walk(node):
-            if isinstance(node, CaseConditional):
-                found.append(node)
-            if dataclasses.is_dataclass(node):
-                for f in dataclasses.fields(node):
-                    value = getattr(node, f.name)
-                    children = value if isinstance(value, list) else [value]
-                    for child in children:
-                        if dataclasses.is_dataclass(child):
-                            walk(child)
-        walk(ast)
-        assert found, "combinator did not produce a CaseConditional"
-        first_pattern = found[0].items[0].patterns[0]
-        assert first_pattern.word is None
-        assert first_pattern.pattern == '$(f() { :; })'
+            def walk(node):
+                if isinstance(node, CaseConditional):
+                    found.append(node)
+                if dataclasses.is_dataclass(node):
+                    for f in dataclasses.fields(node):
+                        value = getattr(node, f.name)
+                        children = value if isinstance(value, list) else [value]
+                        for child in children:
+                            if dataclasses.is_dataclass(child):
+                                walk(child)
+            walk(ast)
+            assert found, "no CaseConditional produced"
+            return found[0].items[0].patterns[0]
+
+        comb = first_pattern(ParserCombinatorShellParser().parse(tokenize(src)))
+        rd = first_pattern(Parser(tokenize(src), source_text=src).parse())
+
+        # Both parsers now build the SAME Word (parity), carrying a parsed
+        # CommandSubstitution program rather than a wordless string pattern.
+        assert comb.pattern == rd.pattern == '$(f() { :; })'
+        assert comb.word is not None and comb == rd
+        part = comb.word.parts[0]
+        assert isinstance(part, ExpansionPart)
+        assert isinstance(part.expansion, CommandSubstitution)
+        assert part.expansion.program is not None
+        assert part.expansion.source == 'f() { :; }'
 
     def test_combinator_wordless_pattern_executes_like_bash(self, captured_shell):
         """End-to-end through the legacy string path (bash 5.2 prints b)."""

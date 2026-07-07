@@ -74,11 +74,17 @@ class ExpansionEvaluator:
         )
 
     def _evaluate_command_sub(self, expansion: CommandSubstitution) -> str:
-        """Evaluate command substitution."""
+        """Evaluate command substitution.
+
+        The parsed ``program`` (built at the outer parse; None for backticks)
+        already rejected invalid syntax. Execution re-parses ``source`` against
+        the RUNTIME alias table so alias timing, byte, and status semantics
+        match bash, which re-parses substitution bodies at expansion time.
+        """
         if expansion.backtick_style:
-            cmd_sub = f"`{expansion.command}`"
+            cmd_sub = f"`{expansion.source}`"
         else:
-            cmd_sub = f"$({expansion.command})"
+            cmd_sub = f"$({expansion.source})"
         return self.expansion_manager.command_sub.execute(cmd_sub)
 
     def _evaluate_parameter(self, expansion: ParameterExpansion,
@@ -124,4 +130,4 @@ class ExpansionEvaluator:
         finishes (e.g. assignment values like ``x=<(cmd)``).
         """
         return self.shell.io_manager.create_process_substitution_for_expansion(
-            expansion.direction, expansion.command)
+            expansion.direction, expansion.source)

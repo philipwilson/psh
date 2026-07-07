@@ -9,9 +9,12 @@ context. The expansion nodes (``$var``, ``${...}``, ``$(...)``, ``$((...))``,
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from .base import ASTNode
+
+if TYPE_CHECKING:
+    from .commands import Program
 
 # A name renderable as a bare ``$name``: a plain identifier, a single special
 # parameter ($?, $@, $*, $#, $$, $!, $-, $0), or a single positional digit.
@@ -35,26 +38,45 @@ class ProcessSubstitution(Expansion):
     An Expansion so it can appear as an ExpansionPart inside a Word
     (embedded form, e.g. ``pre<(cmd)post``); a whole-word substitution is
     simply a Word with a single ProcessSubstitution part.
+
+    Carries the nested command parsed into a :class:`Program` (``program``) so
+    invalid syntax inside ``<(...)``/``>(...)`` is rejected during the OUTER
+    parse, and analysis visitors can descend into the body. ``source`` retains
+    the raw inner text for formatting/diagnostics and for execution, which
+    re-parses ``source`` against the runtime alias table (bash re-parses
+    substitution bodies at expansion time; see command_sub/process_sub).
     """
     direction: str  # 'in' or 'out'
-    command: str    # Command to execute
+    program: Optional['Program'] = None  # parsed nested command list
+    source: str = ''                     # raw inner text (no <()/>() wrapper)
 
     def __str__(self):
         symbol = '<' if self.direction == 'in' else '>'
-        return f"{symbol}({self.command})"
+        return f"{symbol}({self.source})"
 
 
 @dataclass
 class CommandSubstitution(Expansion):
-    """Represents command substitution $(...) or `...`."""
-    command: str  # The command to execute
-    backtick_style: bool = False  # True for `...`, False for $(...)
+    """Represents command substitution $(...) or `...`.
+
+    For modern ``$(...)`` the body is parsed into a :class:`Program`
+    (``program``) at the outer parse, so a syntax error inside rejects the
+    whole input buffer before any command runs (matching bash's read-time
+    validation). Legacy backticks are EXCLUDED — bash defers parts of backtick
+    parsing and continues around inner errors — so backtick nodes keep
+    ``program=None`` and are never eagerly parsed. ``source`` retains the raw
+    inner text; execution re-parses it against the runtime alias table (bash
+    re-parses at expansion time, so alias/status/byte semantics are unchanged).
+    """
+    program: Optional['Program'] = None  # parsed body ($() only; None for `...`)
+    source: str = ''                     # raw inner text (no $()/`` wrapper)
+    backtick_style: bool = False         # True for `...`, False for $(...)
 
     def __str__(self):
         if self.backtick_style:
-            return f"`{self.command}`"
+            return f"`{self.source}`"
         else:
-            return f"$({self.command})"
+            return f"$({self.source})"
 
 
 @dataclass
@@ -150,9 +172,9 @@ def _expansion_literal_text(expansion: Expansion) -> str:
         return f"${expansion.name}"
     elif isinstance(expansion, CommandSubstitution):
         if expansion.backtick_style:
-            return f"`{expansion.command}`"
+            return f"`{expansion.source}`"
         else:
-            return f"$({expansion.command})"
+            return f"$({expansion.source})"
     elif isinstance(expansion, ParameterExpansion):
         # Reconstruct parameter expansion syntax
         result = f"${{{expansion.parameter}"

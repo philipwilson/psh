@@ -561,15 +561,17 @@ class CommandParser(ParserSubcomponent):
                 self._check_for_unclosed_expansions(token)
             # Build composite word from multiple tokens.
             # Per-part quote context is handled inside build_composite_word().
+            # ctx binds embedded $()/<()/>() to this parse (nested validation).
             self.parser.current = stream.pos + len(composite)
-            return WordBuilder.build_composite_word(composite)
+            return WordBuilder.build_composite_word(composite, ctx=self.parser.ctx)
         else:
             # Single token
             if self.parser.match_any(TokenGroups.WORD_LIKE):
                 token = self.parser.advance()
                 self._check_for_unclosed_expansions(token)
                 quote_type = token.quote_type if token.type == TokenType.STRING else None
-                return WordBuilder.build_word_from_token(token, quote_type)
+                return WordBuilder.build_word_from_token(token, quote_type,
+                                                         ctx=self.parser.ctx)
             else:
                 raise self.parser.error("Expected word-like token")
 

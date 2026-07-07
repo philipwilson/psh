@@ -22,7 +22,7 @@ from ..ast_nodes import (
 from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
 from .constants import COMMON_COMMANDS, SHELL_BUILTINS, TEST_OPERATORS
-from .traversal import visit_children
+from .traversal import visit_children, visit_word_substitution_bodies
 from .word_analysis import (
     has_unquoted_variable_expansion,
     iter_variable_references,
@@ -257,6 +257,12 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
         # Apply the same checks to redirect targets (e.g. `cmd > $undefined.log`).
         self._visit_redirects(node)
+
+        # Lint the commands inside any $(...)/<(...)/>(...) argument. Visits the
+        # substitution body's statements (not its Program), so per-command
+        # checks fire on the inner commands without re-running the root-level
+        # (unused-var / error-handling) checks for each substitution.
+        visit_word_substitution_bodies(self, node)
 
     def visit_FunctionDef(self, node: FunctionDef) -> None:
         """Visit function definition."""

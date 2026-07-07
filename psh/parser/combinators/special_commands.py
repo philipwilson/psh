@@ -24,6 +24,7 @@ from ...ast_nodes import (
 from ...lexer.token_stream import TokenStream
 from ...lexer.token_types import Token
 from ..config import ParserConfig
+from ..recursive_descent.support.word_builder import WordBuilder
 from .commands import CommandParsers
 from .core import Parser, ParseResult
 from .diagnostics import raise_committed_error
@@ -309,33 +310,24 @@ class SpecialCommandParsers:
                 return ParseResult(success=False, error="Expected process substitution", position=pos)
 
             token = tokens[pos]
-            if token.type.name == 'PROCESS_SUB_IN':
-                direction = 'in'
-            elif token.type.name == 'PROCESS_SUB_OUT':
-                direction = 'out'
-            else:
+            if token.type.name not in ('PROCESS_SUB_IN', 'PROCESS_SUB_OUT'):
                 return ParseResult(success=False,
                                  error=f"Expected process substitution, got {token.type.name}",
                                  position=pos)
-
-            # Extract command from token value
-            # Token value format: "<(command)" or ">(command)"
-            token_value = token.value
-            if len(token_value) >= 3 and token_value.startswith(('<(', '>(')):
-                if token_value.endswith(')'):
-                    # Complete process substitution
-                    command = token_value[2:-1]  # Remove <( or >( and trailing )
-                else:
-                    # Incomplete process substitution (missing closing paren)
-                    command = token_value[2:]  # Remove <( or >(
-            else:
+            if not (len(token.value) >= 3 and token.value.startswith(('<(', '>('))):
                 return ParseResult(success=False,
-                                 error=f"Invalid process substitution format: {token_value}",
+                                 error=f"Invalid process substitution format: {token.value}",
                                  position=pos)
+
+            # Delegate to WordBuilder so both parsers build the SAME node: the
+            # body is parsed into a nested Program (rejecting invalid syntax at
+            # the outer parse) with the raw source retained for execution.
+            expansion = WordBuilder.parse_expansion_token(token)
+            assert isinstance(expansion, ProcessSubstitution)
 
             return ParseResult(
                 success=True,
-                value=ProcessSubstitution(direction=direction, command=command),
+                value=expansion,
                 position=pos + 1
             )
 

@@ -93,7 +93,7 @@ class TestIsVariableExpansion:
         assert word.is_variable_expansion is True
 
     def test_command_substitution(self):
-        word = Word(parts=[ExpansionPart(CommandSubstitution("echo hi"))])
+        word = Word(parts=[ExpansionPart(CommandSubstitution(source="echo hi"))])
         assert word.is_variable_expansion is False
 
     def test_arithmetic_expansion(self):

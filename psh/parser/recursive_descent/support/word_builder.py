@@ -73,12 +73,44 @@ def strip_process_sub(value: str) -> str:
     return value
 
 
+def _nested_program(source: str, token, ctx):
+    """Parse a modern substitution body into a Program at outer-parse time.
+
+    ``token`` is the substitution token (its ``.line`` locates the body in the
+    enclosing input); ``ctx`` is the active :class:`ParserContext` or None.
+    Errors report the enclosing line and the parent's compound-nesting budget
+    is carried in, so a syntax error inside ``$(...)``/``<(...)``/``>(...)``
+    rejects the outer parse cleanly. See support/nested_parse.py for why this
+    is alias-free (execution re-parses ``source`` with runtime aliases).
+    """
+    from .nested_parse import parse_nested_command
+    if ctx is not None:
+        base = getattr(ctx, 'line_offset', 0) or 0
+        depth = getattr(ctx, 'nesting_depth', 0) or 0
+        sub_depth = getattr(ctx, 'substitution_depth', 0) or 0
+        lexer_options = getattr(ctx, 'lexer_options', None)
+        tline = getattr(token, 'line', None) or 1
+        line_offset = base + max(0, tline - 1)
+    else:
+        line_offset, depth, sub_depth, lexer_options = 0, 0, 0, None
+    return parse_nested_command(source, line_offset=line_offset,
+                                initial_depth=depth,
+                                substitution_depth=sub_depth + 1,
+                                lexer_options=lexer_options)
+
+
 class WordBuilder:
     """Builds Word AST nodes from tokens."""
 
     @staticmethod
-    def parse_expansion_token(token: Token) -> Expansion:
-        """Parse an expansion token into an Expansion AST node."""
+    def parse_expansion_token(token: Token, ctx=None) -> Expansion:
+        """Parse an expansion token into an Expansion AST node.
+
+        ``ctx`` (the active ParserContext, when a parser is driving the build)
+        binds nested command/process substitutions to the enclosing parse for
+        line-offset and nesting-depth accounting; None yields a standalone
+        nested parse (used by tests and the combinator).
+        """
         token_type = token.type
         value = token.value
 
@@ -102,12 +134,19 @@ class WordBuilder:
             return VariableExpansion(name)
 
         elif token_type == TokenType.COMMAND_SUB:
-            # Command substitution $(...)
-            return CommandSubstitution(strip_command_sub(value), backtick_style=False)
+            # Command substitution $(...): parse the body NOW so invalid nested
+            # syntax rejects the outer parse (bash validates at read time).
+            src = strip_command_sub(value)
+            return CommandSubstitution(program=_nested_program(src, token, ctx),
+                                       source=src, backtick_style=False)
 
         elif token_type == TokenType.COMMAND_SUB_BACKTICK:
-            # Backtick command substitution `...`
-            return CommandSubstitution(strip_backtick(value), backtick_style=True)
+            # Legacy backtick `...`: EXCLUDED from eager parsing — bash defers
+            # backtick parsing and continues around inner errors, so keep the
+            # raw source and leave program=None (execution re-parses it).
+            return CommandSubstitution(program=None,
+                                       source=strip_backtick(value),
+                                       backtick_style=True)
 
         elif token_type == TokenType.ARITH_EXPANSION:
             # Arithmetic expansion $((...))
@@ -119,10 +158,13 @@ class WordBuilder:
 
         elif token_type in (TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT):
             # Process substitution <(cmd) or >(cmd) — may stand alone as a
-            # word or be embedded in a composite (pre<(cmd)post)
+            # word or be embedded in a composite (pre<(cmd)post). Parse the
+            # body eagerly (same read-time validation as $(...)).
             direction = 'in' if token_type == TokenType.PROCESS_SUB_IN else 'out'
+            src = strip_process_sub(value)
             return ProcessSubstitution(direction=direction,
-                                       command=strip_process_sub(value))
+                                       program=_nested_program(src, token, ctx),
+                                       source=src)
 
         else:
             # Fallback - treat as variable
@@ -144,11 +186,13 @@ class WordBuilder:
         return parse_parameter_expansion(value)
 
     @staticmethod
-    def token_part_to_word_part(tp) -> WordPart:
+    def token_part_to_word_part(tp, containing_token=None, ctx=None) -> WordPart:
         """Convert a lexer TokenPart into a Word AST WordPart node.
 
         Uses the TokenPart's expansion metadata to create either a
         LiteralPart or ExpansionPart with proper quote context.
+        ``containing_token``/``ctx`` bind an embedded command/process
+        substitution to the enclosing parse (line offset, nesting depth).
         """
         qt = tp.quote_type
         is_quoted = qt is not None
@@ -157,13 +201,15 @@ class WordBuilder:
             # A bare $ (empty variable name) is not a real expansion — keep literal
             if getattr(tp, 'expansion_type', None) == 'variable' and tp.value == '':
                 return LiteralPart('$', quoted=is_quoted, quote_char=qt)
-            expansion = WordBuilder._parse_token_part_expansion(tp)
+            expansion = WordBuilder._parse_token_part_expansion(
+                tp, containing_token, ctx)
             return ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)
         else:
             return LiteralPart(tp.value, quoted=is_quoted, quote_char=qt)
 
     @staticmethod
-    def _parse_token_part_expansion(tp) -> Expansion:
+    def _parse_token_part_expansion(tp, containing_token=None,
+                                    ctx=None) -> Expansion:
         """Convert a TokenPart's expansion metadata into an Expansion AST node.
 
         The TokenPart has ``expansion_type`` (variable, parameter, command,
@@ -185,13 +231,19 @@ class WordBuilder:
             return WordBuilder._parse_parameter_expansion(tp.value)
 
         elif etype == 'command':
-            return CommandSubstitution(strip_command_sub(tp.value), backtick_style=False)
+            src = strip_command_sub(tp.value)
+            return CommandSubstitution(
+                program=_nested_program(src, containing_token, ctx),
+                source=src, backtick_style=False)
 
         elif etype == 'arithmetic':
             return ArithmeticExpansion(strip_arithmetic(tp.value))
 
         elif etype == 'backtick':
-            return CommandSubstitution(strip_backtick(tp.value), backtick_style=True)
+            # Legacy backtick: not eagerly parsed (see parse_expansion_token).
+            return CommandSubstitution(program=None,
+                                       source=strip_backtick(tp.value),
+                                       backtick_style=True)
 
         else:
             # Unknown expansion type — treat as variable
@@ -216,8 +268,13 @@ class WordBuilder:
         return any(getattr(p, 'is_expansion', False) for p in parts)
 
     @staticmethod
-    def build_word_from_token(token: Token, quote_type: Optional[str] = None) -> Word:
-        """Build a Word from a single token."""
+    def build_word_from_token(token: Token, quote_type: Optional[str] = None,
+                              ctx=None) -> Word:
+        """Build a Word from a single token.
+
+        ``ctx`` (the active ParserContext, when a parser drives the build)
+        binds embedded substitutions to the enclosing parse.
+        """
         is_quoted = quote_type is not None
 
         # Check if token has decomposable parts from the lexer (RichToken)
@@ -226,26 +283,28 @@ class WordBuilder:
             # The parts carry the per-part quote context; the whole-word
             # quote_type is DERIVED from them (single quoted part -> its
             # quote char), so no field to set here.
-            word_parts = [WordBuilder.token_part_to_word_part(tp)
+            word_parts = [WordBuilder.token_part_to_word_part(tp, token, ctx)
                           for tp in (token.parts or [])]
             return Word(parts=word_parts)
 
         if token.type in EXPANSION_TYPES:
             # This is an expansion token. The part carries the quote context;
             # Word.quote_type is derived from it.
-            expansion = WordBuilder.parse_expansion_token(token)
+            expansion = WordBuilder.parse_expansion_token(token, ctx)
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=quote_type)])
         else:
             # This is a literal token. The part carries the quote context.
             return Word(parts=[LiteralPart(token.value, quoted=is_quoted, quote_char=quote_type)])
 
     @staticmethod
-    def build_composite_word(tokens: List[Token], quote_type: Optional[str] = None) -> Word:
+    def build_composite_word(tokens: List[Token], quote_type: Optional[str] = None,
+                             ctx=None) -> Word:
         """Build a Word from multiple tokens (for composite words).
 
         Each part carries its own quote context derived from the token's
         quote_type.  Composites don't have a single quote_type — each
-        part carries its own.
+        part carries its own. ``ctx`` binds embedded substitutions to the
+        enclosing parse.
         """
         parts: List[WordPart] = []
 
@@ -256,10 +315,10 @@ class WordBuilder:
             if WordBuilder.has_decomposable_parts(token) and qt == '"':
                 # Flatten decomposed parts into composite
                 for tp in (token.parts or []):
-                    parts.append(WordBuilder.token_part_to_word_part(tp))
+                    parts.append(WordBuilder.token_part_to_word_part(tp, token, ctx))
             elif token.type in EXPANSION_TYPES:
                 is_quoted = qt is not None
-                expansion = WordBuilder.parse_expansion_token(token)
+                expansion = WordBuilder.parse_expansion_token(token, ctx)
                 parts.append(ExpansionPart(expansion, quoted=is_quoted, quote_char=qt))
             else:
                 is_quoted = qt is not None

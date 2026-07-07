@@ -24,17 +24,18 @@ class TestExpansionASTNodes:
 
     def test_command_substitution(self):
         """Test CommandSubstitution node."""
-        # Modern style
-        cmd = CommandSubstitution("date +%Y", backtick_style=False)
+        # Modern style: source is the raw body; program is parsed elsewhere.
+        cmd = CommandSubstitution(source="date +%Y", backtick_style=False)
         assert str(cmd) == "$(date +%Y)"
-        assert cmd.command == "date +%Y"
+        assert cmd.source == "date +%Y"
         assert not cmd.backtick_style
 
-        # Backtick style
-        cmd2 = CommandSubstitution("hostname", backtick_style=True)
+        # Backtick style keeps program=None (bash defers backtick parsing).
+        cmd2 = CommandSubstitution(source="hostname", backtick_style=True)
         assert str(cmd2) == "`hostname`"
-        assert cmd2.command == "hostname"
+        assert cmd2.source == "hostname"
         assert cmd2.backtick_style
+        assert cmd2.program is None
 
     def test_parameter_expansion(self):
         """Test ParameterExpansion node."""
@@ -135,7 +136,8 @@ class TestWordBuilder:
         token = Token(TokenType.COMMAND_SUB, "$(date)", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, CommandSubstitution)
-        assert expansion.command == "date"
+        assert expansion.source == "date"
+        assert expansion.program is not None  # $() body parsed at build time
         assert not expansion.backtick_style
 
     def test_parse_backtick_token(self):
@@ -143,7 +145,8 @@ class TestWordBuilder:
         token = Token(TokenType.COMMAND_SUB_BACKTICK, "`hostname`", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, CommandSubstitution)
-        assert expansion.command == "hostname"
+        assert expansion.source == "hostname"
+        assert expansion.program is None  # backticks are not eagerly parsed
         assert expansion.backtick_style
 
     def test_parse_arithmetic_token(self):

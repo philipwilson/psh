@@ -158,8 +158,7 @@ class TestParser(ParserSubcomponent):
         # Single value test
         return UnaryTestExpression('-n', left_word)
 
-    @staticmethod
-    def _token_part(token) -> WordPart:
+    def _token_part(self, token) -> WordPart:
         """Build one WordPart from a [[ ]] operand token, preserving its
         own per-part quote context.
 
@@ -177,7 +176,7 @@ class TestParser(ParserSubcomponent):
         quote_char = token.quote_type if quoted else None
         if token.type in _EXPANSION_TOKENS:
             return ExpansionPart(
-                WordBuilder.parse_expansion_token(token),
+                WordBuilder.parse_expansion_token(token, self.parser.ctx),
                 quoted=quoted, quote_char=quote_char)
         return LiteralPart(token.value, quoted=quoted, quote_char=quote_char)
 
