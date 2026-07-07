@@ -78,7 +78,8 @@ psh/
 │   ├── manager.py           # Orchestrates expansion order; expand_word_to_fields
 │   ├── variable.py + arrays/operators/operands/fields mixins
 │   ├── parameter_expansion.py / command_sub.py / tilde.py / glob.py
-│   ├── pattern.py           # THE canonical shell-pattern engine
+│   ├── pattern_engine.py    # THE compiled shell-pattern engine (parse-once AST + memoized matcher, all 5 consumers)
+│   ├── pattern.py           # consumer dispatch facade (extglob→engine, plain glob→regex); extglob.py = scanning + glob→regex converter
 │   ├── arithmetic/ / brace_expansion.py / word_splitter.py / evaluator.py
 │   └── aliases.py           # AliasManager
 ├── executor/                # Visitor-based executor package

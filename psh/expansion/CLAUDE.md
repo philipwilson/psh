@@ -29,8 +29,9 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `operators.py` | `OperatorOpsMixin` - `${VAR:-...}`, `${VAR#...}`, `${VAR/p/r}`, case ops |
 | `operands.py` | `OperandOpsMixin` - expands pattern/replacement operands, `glob_escape()` |
 | `fields.py` | `FieldExpansionMixin` - `expand_to_fields()` for multi-field `$@`/array results |
-| `pattern.py` | `PatternMatcher` - THE canonical shell-pattern→regex converter/matcher |
-| `extglob.py` | Extended glob (`@(...)`, `!(...)`) pattern conversion and matching |
+| `pattern.py` | `match_shell_pattern()` - the consumer-facing dispatch facade: extglob → compiled engine, plain glob → regex; `PatternMatcher` still builds the plain-glob→regex |
+| `pattern_engine.py` | THE compiled shell-pattern engine: `compile_pattern()` (parse-once AST) + memoized `reachable_ends`/`fullmatch`/`match_at` (see "Pattern matching engine" below) |
+| `extglob.py` | Extglob scanning primitives (`_find_matching_paren`, `_split_pattern_list`, `_bracket_end`, `_bracket_match`), the glob→regex converter (`glob_to_regex_body`), and thin `extglob_fullmatch`/`extglob_match_at`/`_extglob_consume` that delegate to `pattern_engine` |
 | `parameter_expansion.py` | `ParameterExpansion` - string ops behind the operators (incl. `PATSUB_MATCH`) |
 | `command_sub.py` | `CommandSubstitution` - handles `$(cmd)` and `` `cmd` `` |
 | `tilde.py` | `TildeExpander` - handles `~` and `~user` |
@@ -244,6 +245,42 @@ operand are processed, and text that must stay literal is escaped with
 list of literal strings interleaved with the `PATSUB_MATCH` sentinel
 (defined in `parameter_expansion.py`), which stands for the matched text —
 this is how a literal `&` in a patsub replacement works.
+
+### Pattern matching engine (`pattern_engine.py`)
+
+One compiled representation matches shell patterns for **all five** consumers —
+`case`, `[[ string == pattern ]]`, `${var#/%/##/%%}` removal, `${var/}`
+substitution, and pathname extglob components — so glob/extglob semantics cannot
+drift between them.
+
+- **Parse once.** `compile_pattern(pattern)` builds a small AST (`Sequence` of
+  `Literal` / `AnyChar` / `Star` / `Bracket` / `Extglob`). `compile_cached`
+  memoizes it for hot loops. Parsing reuses `extglob.py`'s scanning primitives,
+  so bracket/escape/nesting handling matches the rest of the shell.
+- **Match with memoization.** `reachable_ends(root, s)` returns every index `k`
+  where the pattern fully matches `s[:k]`, evaluating each `(node, position)`
+  state at most once. That single reachable-end set serves every consumer:
+  full match (`len(s) in ends`), prefix/suffix removal (`min`/`max` and a
+  start-index scan), leftmost-longest substitution (`match_at` = `max` ends of
+  `s[pos:]`), and pathname-component matching (`for_pathname=True`).
+- **Why it exists.** It replaced two backends that were each exponential on a
+  different adversarial input (expansion appraisal finding #6): the Python-`re`
+  path blew up on ambiguous repetition (`*(a|aa)c`), and the former recursive
+  backtracking matcher (`_match_from`, now deleted) blew up on sequential
+  optional fan-out (`?(a)…!(z)`). Memoization makes both `O(nodes·positions)`.
+- **Policies stay outside the matcher.** `for_pathname` and `nocasematch`
+  (`ic`) are match-time arguments; bracket membership and case folding delegate
+  to the shared, locale-aware `extglob._bracket_match` / `_eq`, so v0.655 POSIX
+  `[:class:]` semantics are preserved exactly. dotglob/globstar/nullglob/
+  failglob/symlink handling live in the pathname walker (`glob.py`), not here.
+- **Not routed through it:** the plain-glob pathname fast path (`glob.glob` /
+  `_compile_component`'s glob→regex conversion). That is a *converter*, not the
+  matcher, and is linear — kept on stdlib/regex by design and byte-verified
+  against the old `fnmatch` path.
+
+Complexity is guarded deterministically by `count_states()` (see
+`tests/unit/expansion/test_pattern_engine_matcher.py`), which also property-tests
+`reachable_ends` equality against the former matcher over ~24k random cases.
 
 ### Indirection: `${!name}`
 
