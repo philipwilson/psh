@@ -4,6 +4,14 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.662.0 (2026-07-07) - One streaming input service — read/mapfile UTF-8 fidelity, no input draining
+- Builtins-appraisal findings 4+7: one record-oriented input service (`psh/builtins/input_reader.py` — incremental UTF-8 decoding, monotonic TOTAL `-t` deadline, injectable source/echo streams, typed DATA/EOF/TIMEOUT/ERROR outcomes) now backs both `read` and `mapfile` (the only stdin data consumers in builtins).
+- Multibyte fidelity on real fds: `read -N1`/`-n1` and plain `read` no longer mangle multibyte UTF-8 to U+FFFD, and `read -N1` no longer leaves an orphaned continuation byte in the stream — all bash-identical now. (The bug lived only on the raw `os.read` path; in-process text-layer probes structurally could not see it, which is why an earlier appraisal probe reported no repro.)
+- `mapfile -n N` no longer drains the remaining input into a hidden userspace buffer — like bash, the next consumer (builtin or external) sees the unconsumed lines, on pipes and regular files alike; `mapfile -u` with a bad fd now fails with rc 1, and negative/non-numeric `-n`/`-s`/`-O`/`-u` operands get bash's error messages.
+- `read -t` timeout is a monotonic total deadline (not reset per byte), pinned by a deterministic fake-clock test after adversarial mutation testing showed the property unpinned.
+- Ledgered divergence: `read -d DELIM` is character-oriented in psh vs byte-oriented in bash — identical for all ASCII delimiters (docs/user_guide/17_differences_from_bash.md). Invalid/truncated UTF-8 input still follows psh's shell-wide U+FFFD replace policy.
+- Suite grows to 13,643 (+44, including 8 input_* golden compare-bash cases).
+
 ## 0.661.0 (2026-07-07) - JobManager transactions — jobspec fidelity, wait -p, transactional pipeline launch
 - Executor-appraisal findings 11–14 + builtins jobspec cluster: `kill %job` signals the process group ONCE via `killpg` (was per-member); jobspec resolution returns typed results so `jobs %999`, invalid specs, and `%ambiguous` produce bash's errors and exit codes; `disown -a`/`-r` on an empty job table match bash; `bg` accepts multiple jobspecs; `fg` reclaims the terminal in a `try/finally` (a dying foreground job can no longer strand the shell without terminal control).
 - `wait -p VAR` is bash-faithful: VAR is unset up front and set only when a child is actually reported — non-child pids, invalid/nonexistent jobspecs, bare `wait`, and `wait -n` with nothing to reap all leave VAR truly UNSET (the truth table showed bash unsets rather than leaves-unchanged).
