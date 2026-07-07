@@ -41,7 +41,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 **Variables & Environment**
 | File | Commands |
 |------|----------|
-| `env_command.py` | `env` (runs command in nested child Shell; owns process-fd binding helpers) |
+| `env_command.py` | `env` (standard external command: builds the child env and execs the argv through the normal external launcher — does NOT resolve shell builtins/functions, so it isolates process state; passes `use_hash=False` so it re-searches the overridden PATH rather than the shell command hash — D3) |
 | `environment.py` | `export`, `set`, `unset` |
 | `shell_options.py` | `shopt` |
 | `shell_state.py` | `history`, `version`, `local` |
@@ -72,9 +72,9 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 | File | Commands |
 |------|----------|
 | `test_command.py` | `test`, `[` |
-| `type_builtin.py` | `type` |
-| `hash_builtin.py` | `hash` (remembered command locations; the table itself is `shell.state.command_hash`) |
-| `command_builtin.py` | `command` |
+| `type_builtin.py` | `type` (thin adapter: maps options to a `ResolveQuery`, renders `CommandResolver.resolve`) |
+| `hash_builtin.py` | `hash` (remembered command locations; the table itself is `shell.state.command_hash`; PATH search via `CommandResolver.search_path`) |
+| `command_builtin.py` | `command` (`-v`/`-V` render `CommandResolver.resolve`; `-p` keeps builtin selection and only overrides the external search PATH) |
 
 **Aliases**
 | File | Commands |
@@ -233,6 +233,31 @@ provides PLUS bash-only names (e.g. `suspend`, `fc`) so analyzing
 bash scripts works cleanly. Both directions are pinned by
 `tests/unit/visitor/test_shell_builtins_pinned.py`: registering a new
 builtin without adding it there fails the suite.
+
+### 4. Command resolution goes through `CommandResolver`
+
+`psh/executor/command_resolver.py` is the ONE answer to "what does this
+command name mean?" — consumed by the executor's external path, `command`,
+`type`, and `hash`. Do NOT reimplement the PATH walk or hash consultation
+in a builtin.
+
+- `resolver.search_path(name, path)` — the single `$PATH` scan (empty
+  component = cwd, slash name kept as given, `X_OK` gated). Every PATH scan
+  uses it (`hash`, `exec -c`, and internally `type`/`command`).
+- `resolver.resolve(name, query)` — the ordered typed candidates
+  (`Alias`/`Keyword`/`Function`/`Builtin`/`HashedExternal`/`PathExternal`).
+  A `ResolveQuery` selects participation (function bypass), which PATH
+  (`command -p`, `env`), hash use (`type -a` ignores it), and first-vs-all
+  (`type -a`). `type` and `command -v`/`-V` build a query and RENDER the
+  result — no local lookup order.
+- `resolver.resolve_for_exec(name)` — the executor's external resolution
+  (consult+populate the hash, `checkhash`), returning the path to exec or
+  None to let `execvpe` walk PATH.
+
+Only the executor's exec path populates/checkhash-verifies the hash;
+introspection (`type`/`command -v`) consults it (counting a bash hit) but
+never remembers or verifies it. Because every surface renders the same
+resolver, a fact seeded one way (e.g. `hash -p`) is visible everywhere.
 
 ## Adding a New Builtin
 
