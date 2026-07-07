@@ -736,9 +736,14 @@ class ShellState:
         observer (:meth:`_sync_exported_variable`) keeps ``self.env`` —
         the live environment; os.environ is read once at startup and
         never written — in sync with the variable's export attribute.
+
+        allexport does NOT auto-export a computed dynamic special (bash:
+        ``set -a; RANDOM=5`` seeds RANDOM but leaves it unexported); only an
+        explicit ``export``/``readonly`` marks a special exported.
         """
-        attributes = (VarAttributes.EXPORT if self.options.get('allexport', False)
-                      else VarAttributes.NONE)
+        allexport = (self.options.get('allexport', False)
+                     and not self.scope_manager.is_dynamic_special(name))
+        attributes = VarAttributes.EXPORT if allexport else VarAttributes.NONE
         self.scope_manager.set_variable(name, value, attributes=attributes, local=False)
 
     def export_variable(self, name: str, value: str):

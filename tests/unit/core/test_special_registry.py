@@ -220,6 +220,21 @@ class TestExportMaterialization:
                     'printenv RANDOM >/dev/null; echo "rc=$?"')
         assert r.stdout == 'rc=1\n'
 
+    def test_allexport_does_not_auto_export_a_special(self):
+        # bash: `set -a; RANDOM=5` SEEDS RANDOM but does NOT export it —
+        # allexport's implicit export skips computed specials.
+        r = run_psh('set -a; RANDOM=5; printenv RANDOM >/dev/null; echo "rc=$?"')
+        assert r.stdout == 'rc=1\n'
+
+    def test_allexport_still_exports_a_normal_variable(self):
+        r = run_psh('set -a; FOO=hi; printenv FOO')
+        assert r.stdout == 'hi\n'
+
+    def test_explicit_export_after_allexport_special_still_works(self):
+        r = run_psh('set -a; RANDOM=5; export RANDOM; '
+                    'printenv RANDOM >/dev/null; echo "rc=$?"')
+        assert r.stdout == 'rc=0\n'
+
 
 class TestUnsetDeactivation:
     @pytest.mark.parametrize('name', ['EPOCHSECONDS', 'EPOCHREALTIME', 'LINENO',

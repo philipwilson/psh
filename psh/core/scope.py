@@ -121,6 +121,13 @@ class ScopeManager:
         """Set reference to shell instance for arithmetic evaluation."""
         self._shell = shell
 
+    def is_dynamic_special(self, name: str) -> bool:
+        """True if *name* is an ACTIVE dynamic special (RANDOM/SECONDS/...).
+
+        Public predicate for callers that must treat these specially — e.g.
+        ``set -a`` must not auto-export them (see ShellState.set_variable)."""
+        return self._special.has_lifecycle(name)
+
     def enable_debug(self, enabled: bool = True):
         """Enable or disable debug output for scope operations."""
         self._debug = enabled

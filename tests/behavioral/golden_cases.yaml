@@ -7596,3 +7596,15 @@
   stdout: "declare -irx RANDOM\n"
   stderr: ""
   exit_code: 0
+
+- name: corestate3_special_allexport_skips_special
+  command: 'set -a; RANDOM=5; printenv RANDOM >/dev/null; echo "rc=$?"'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_allexport_exports_normal_var
+  command: 'set -a; FOO=hi; printenv FOO'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
