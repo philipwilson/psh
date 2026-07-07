@@ -397,6 +397,45 @@ appropriate WordBuilder method.
    delimiters and delegates, so the AST carries fully classified
    (parameter, operator, word) triples.
 
+### Nested command/process substitutions carry a parsed Program
+
+`CommandSubstitution` and `ProcessSubstitution` (`ast_nodes/words.py`) carry
+`program` (the body parsed into a `Program`) **and** `source` (the raw inner
+text). For modern `$(...)`/`<(...)`/`>(...)`, `WordBuilder` parses the body at
+the OUTER parse via `support/nested_parse.py::parse_nested_command` (bound to
+the active `ParserContext` for line-offset and depth accounting). So invalid
+nested syntax (`echo $(if)`) is a `ParseError` that rejects the whole input
+buffer before any command runs — matching bash's read-time validation, which
+rejects even a substitution that would never execute (`false && echo $(if)`).
+
+Deliberate properties of the nested parse:
+
+- **Syntax-validation only, no alias expansion.** bash's read-time check does
+  not consult the alias table (`$(beg …; done)` with `alias beg='… do'` is a
+  read-time syntax error), and execution re-parses `source` against the RUNTIME
+  alias table (`alias ll=x; echo $(ll)` runs `x`). So `program` is the
+  alias-free syntactic view used for early rejection and analysis; command_sub /
+  process_sub still run the body from `source`. This double-parse mirrors bash
+  and keeps alias/byte/status/trap semantics byte-identical to before.
+- **Legacy backticks are excluded** (`program=None`, not eagerly parsed): bash
+  defers backtick parsing and continues around inner errors.
+- Depth is capped (`nested_parse.MAX_SUBSTITUTION_NESTING`, `ParserContext.`
+  `substitution_depth`) so an adversarially deep `$( $( … ) )` chain is a clean,
+  bounded `ParseError` rather than an O(n²) re-parse cascade — the interim cost
+  of extracting-and-reparsing bodies until the lexer gains token-level
+  substitution recursion (a separate campaign).
+- The combinator parser routes substitution nodes through the SAME `WordBuilder`
+  entry points, so parser-differential AST parity holds by direct comparison.
+
+**Known, documented divergences** (bash rejects at read time; psh validates at
+runtime — these route through the raw-string operand/arithmetic engines, not the
+Word AST, so they are out of scope until the expansion-subsystem structured
+work): `${x:-$(if)}` (parameter-expansion word), `$(( $(if) ))` (arithmetic
+operand), and `$(if)` inside a heredoc BODY. Also: a cmdsub-body syntax error in
+`bash -c` exits 127 (a quirk of bash's `-c` handling); psh uses its uniform
+syntax-error code 2. All are pinned in
+`tests/conformance/bash/test_nested_substitution_timing_conformance.py`.
+
 ## Configuration
 
 `ParserConfig` (`psh/parser/config.py`) is the parser's single configuration

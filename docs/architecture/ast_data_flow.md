@@ -206,8 +206,19 @@ migrating the `Redirect` node itself.
 
 `ProcessSubstitution` is an `Expansion` (`psh/ast_nodes/words.py`), so it appears as
 an ordinary `ExpansionPart` inside a Word — whole-word and embedded
-(`pre<(cmd)post`) forms are the same shape. Performed during Word
-expansion:
+(`pre<(cmd)post`) forms are the same shape.
+
+> **Nested Program**: `ProcessSubstitution` and `CommandSubstitution` carry
+> `program` (the body parsed into a `Program` at the OUTER parse by
+> `WordBuilder`, via `recursive_descent/support/nested_parse.py`) plus `source`
+> (the raw inner text). Invalid nested syntax is therefore rejected during the
+> outer parse, and analysis visitors descend into `program`. EXECUTION still
+> uses `source` (re-parsed against the runtime alias table), mirroring bash's
+> read-time-validate / expansion-time-execute double parse; backticks keep
+> `program=None`. See `psh/parser/CLAUDE.md` "Nested command/process
+> substitutions carry a parsed Program" for the full contract and divergences.
+
+Performed during Word expansion:
 
 - command words: `WordExpander.expand` handles the part type directly →
   `IOManager.create_process_substitution_for_expansion()` →
