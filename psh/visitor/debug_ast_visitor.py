@@ -406,7 +406,7 @@ class DebugASTVisitor(ASTVisitor[str]):
     def visit_ProcessSubstitution(self, node: ProcessSubstitution) -> str:
         """Format process substitution."""
         direction = '<' if node.direction == 'in' else '>'
-        return self._format_header("ProcessSub", f"{direction}({node.command})")
+        return self._format_header("ProcessSub", f"{direction}({node.source})")
 
     def generic_visit(self, node: ASTNode) -> str:
         """Default formatting for unknown nodes."""

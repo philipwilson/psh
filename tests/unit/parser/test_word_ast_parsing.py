@@ -87,7 +87,7 @@ class TestRecursiveDescentWordAST:
         assert len(word.parts) == 1
         assert isinstance(word.parts[0], ExpansionPart)
         assert isinstance(word.parts[0].expansion, CommandSubstitution)
-        assert word.parts[0].expansion.command == "date"
+        assert word.parts[0].expansion.source == "date"
         assert not word.parts[0].expansion.backtick_style
         assert str(word) == "$(date)"
 
@@ -96,7 +96,7 @@ class TestRecursiveDescentWordAST:
         assert len(word.parts) == 1
         assert isinstance(word.parts[0], ExpansionPart)
         assert isinstance(word.parts[0].expansion, CommandSubstitution)
-        assert word.parts[0].expansion.command == "hostname"
+        assert word.parts[0].expansion.source == "hostname"
         assert word.parts[0].expansion.backtick_style
         assert str(word) == "`hostname`"
 

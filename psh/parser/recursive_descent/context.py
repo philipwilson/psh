@@ -60,6 +60,16 @@ class ParserContext:
     # and never accumulate depth.
     nesting_depth: int = 0
 
+    # Nested modern-substitution depth (``$( $( ... ) )`` / process subs).
+    # Incremented by one for each ``$(...)``/``<(...)``/``>(...)`` body parsed
+    # at the outer parse (support/nested_parse.py), independently of
+    # ``nesting_depth`` because a substitution is not a compound command. It is
+    # capped so an adversarially deep substitution chain fails as a clean
+    # ParseError rather than an O(n^2) re-parse cascade — the interim cost of
+    # extracting-and-reparsing bodies until the lexer gains token-level
+    # substitution recursion (a separate campaign).
+    substitution_depth: int = 0
+
     # Open-construct trail for incomplete-input hints. Parse methods push a
     # name when they consume an opening keyword ('if', 'while', 'case',
     # 'brace', ...), retitle it at internal transitions ('if' → 'then' →

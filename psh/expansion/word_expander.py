@@ -355,7 +355,7 @@ class WordExpander:
         # result never field-splits, even with a pathological IFS).
         if isinstance(part.expansion, ProcessSubstitution):
             path = self.shell.io_manager.create_process_substitution_for_expansion(
-                part.expansion.direction, part.expansion.command)
+                part.expansion.direction, part.expansion.source)
             # The /dev/fd/N path is unquoted-but-unsplittable: it counts
             # against all_parts_quoted (so extglob may still be detected on
             # the joined word) yet is never field-split or globbed.
@@ -638,7 +638,7 @@ class WordExpander:
             elif isinstance(part, ExpansionPart):
                 if isinstance(part.expansion, ProcessSubstitution):
                     path = self.shell.io_manager.create_process_substitution_for_expansion(
-                        part.expansion.direction, part.expansion.command)
+                        part.expansion.direction, part.expansion.source)
                     result_parts.append(path)
                 else:
                     result_parts.append(str(self.manager.expand_expansion(

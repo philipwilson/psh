@@ -1,5 +1,7 @@
 """Tests for expansion and word-building parsers."""
 
+import pytest
+
 from psh.ast_nodes import (
     ArithmeticExpansion,
     CommandSubstitution,
@@ -177,7 +179,7 @@ class TestWordBuilding:
         assert len(word.parts) == 1
         assert isinstance(word.parts[0], ExpansionPart)
         assert isinstance(word.parts[0].expansion, CommandSubstitution)
-        assert word.parts[0].expansion.command == "echo test"
+        assert word.parts[0].expansion.source == "echo test"
         assert word.parts[0].expansion.backtick_style is False
 
     def test_build_word_from_backtick_command_sub(self):
@@ -191,7 +193,7 @@ class TestWordBuilding:
         assert len(word.parts) == 1
         assert isinstance(word.parts[0], ExpansionPart)
         assert isinstance(word.parts[0].expansion, CommandSubstitution)
-        assert word.parts[0].expansion.command == "pwd"
+        assert word.parts[0].expansion.source == "pwd"
         assert word.parts[0].expansion.backtick_style is True
 
     def test_build_word_from_arithmetic(self):
@@ -226,7 +228,7 @@ class TestWordBuilding:
         assert isinstance(word.parts[0], ExpansionPart)
         assert isinstance(word.parts[0].expansion, ProcessSubstitution)
         assert word.parts[0].expansion.direction == 'in'
-        assert word.parts[0].expansion.command == 'sort file.txt'
+        assert word.parts[0].expansion.source == 'sort file.txt'
 
     def test_build_word_from_process_sub_out(self):
         """Test building Word from output process substitution."""
@@ -240,7 +242,7 @@ class TestWordBuilding:
         assert isinstance(word.parts[0], ExpansionPart)
         assert isinstance(word.parts[0].expansion, ProcessSubstitution)
         assert word.parts[0].expansion.direction == 'out'
-        assert word.parts[0].expansion.command == 'gzip > output.gz'
+        assert word.parts[0].expansion.source == 'gzip > output.gz'
 
 
 class TestConvenienceFunctions:
@@ -301,30 +303,33 @@ class TestConvenienceFunctions:
 
 
 class TestValidation:
-    """Test validation of expansion content."""
+    """Command-substitution bodies are parsed into a nested Program.
 
-    def test_validate_command_substitution_valid(self):
-        """Test validation accepts valid command substitutions."""
+    Building a COMMAND_SUB word now parses the body (via the shared
+    WordBuilder): valid bodies produce a Program, a function definition is
+    accepted (bash allows it inside ``$(...)``), and a syntax error is raised
+    at build time — the old shallow function-def guard is gone.
+    """
+
+    def _cmdsub_expansion(self, body):
         parsers = ExpansionParsers()
+        token = make_token(TokenType.COMMAND_SUB, f"$({body})")
+        word = parsers.build_word_from_token(token)
+        return word.parts[0].expansion
 
-        # Simple commands should be valid
-        assert parsers._validate_command_substitution("echo hello") is True
-        assert parsers._validate_command_substitution("ls -la") is True
-        assert parsers._validate_command_substitution("pwd") is True
+    def test_valid_command_substitution_carries_program(self):
+        for body in ("echo hello", "ls -la", "pwd"):
+            exp = self._cmdsub_expansion(body)
+            assert exp.source == body
+            assert exp.program is not None
 
-    def test_validate_command_substitution_function_def(self):
-        """Test validation rejects function definitions."""
-        parsers = ExpansionParsers()
+    def test_function_definition_in_cmdsub_is_accepted(self):
+        # bash accepts a function definition inside $(...); the shallow
+        # combinator guard that used to reject it is gone.
+        exp = self._cmdsub_expansion("foo() { echo bar; }; foo")
+        assert exp.program is not None
 
-        # Function definitions should be invalid
-        assert parsers._validate_command_substitution("function foo { echo bar; }") is False
-        assert parsers._validate_command_substitution("foo() { echo bar; }") is False
-
-    def test_validate_command_substitution_invalid(self):
-        """Test validation rejects invalid syntax."""
-        parsers = ExpansionParsers()
-
-        # Our simplified validation only checks for function definitions
-        # It doesn't do full syntax validation (that would require full parsing)
-        # So "echo $(" would be considered "valid" until actual parsing
-        assert parsers._validate_command_substitution("echo $(") is True  # Simplified validation
+    def test_syntax_error_in_cmdsub_raises_at_build_time(self):
+        from psh.parser.recursive_descent.helpers import ParseError
+        with pytest.raises(ParseError):
+            self._cmdsub_expansion("if")
