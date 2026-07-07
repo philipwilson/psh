@@ -428,124 +428,30 @@ def _extglob_consume(pattern: str, s: str, for_pathname: bool = False,
                      ic: bool = False) -> set:
     """Set of lengths ``k`` such that *pattern* fully matches ``s[:k]``.
 
-    The core backtracking primitive. ``k in result`` means a complete match of
-    *pattern* consumes exactly the first ``k`` characters of *s*. Full-match is
-    ``len(s) in result``; prefix/suffix/substitution operators are built from
-    the reachable-length set (see ``parameter_expansion.py``).
-    """
-    return _match_from(pattern, 0, s, 0, for_pathname, ic)
+    ``k in result`` means a complete match of *pattern* consumes exactly the
+    first ``k`` characters of *s*. Full-match is ``len(s) in result``;
+    prefix/suffix/substitution operators are built from the reachable-length set
+    (see ``parameter_expansion.py``).
 
-
-def _match_from(pat: str, pi: int, s: str, si: int, fp: bool, ic: bool) -> set:
-    """Reachable end indices in *s* matching ``pat[pi:]`` from ``s[si]``."""
-    if pi == len(pat):
-        return {si}
-    ch = pat[pi]
-
-    if ch == '\\' and pi + 1 < len(pat):
-        if si < len(s) and _eq(s[si], pat[pi + 1], ic):
-            return _match_from(pat, pi + 2, s, si + 1, fp, ic)
-        return set()
-
-    if ch in _EXTGLOB_PREFIXES and pi + 1 < len(pat) and pat[pi + 1] == '(':
-        close = _find_matching_paren(pat, pi + 1)
-        if close is not None:
-            alts = _split_pattern_list(pat[pi + 2:close])
-            out: set = set()
-            for end in _element_ends(ch, alts, s, si, fp, ic):
-                out |= _match_from(pat, close + 1, s, end, fp, ic)
-            return out
-        # Unbalanced: treat the prefix char as a literal.
-        if si < len(s) and _eq(s[si], ch, ic):
-            return _match_from(pat, pi + 1, s, si + 1, fp, ic)
-        return set()
-
-    if ch == '?':
-        if si < len(s) and (not fp or s[si] != '/'):
-            return _match_from(pat, pi + 1, s, si + 1, fp, ic)
-        return set()
-
-    if ch == '*':
-        out = set()
-        end = si
-        while True:
-            out |= _match_from(pat, pi + 1, s, end, fp, ic)
-            if end >= len(s) or (fp and s[end] == '/'):
-                break
-            end += 1
-        return out
-
-    if ch == '[':
-        be = _bracket_end(pat, pi)
-        if be is not None:
-            cls = pat[pi + 1:be - 1]
-            if (si < len(s) and (not fp or s[si] != '/')
-                    and _bracket_match(cls, s[si], ic)):
-                return _match_from(pat, be, s, si + 1, fp, ic)
-            return set()
-        if si < len(s) and s[si] == '[':
-            return _match_from(pat, pi + 1, s, si + 1, fp, ic)
-        return set()
-
-    if si < len(s) and _eq(s[si], ch, ic):
-        return _match_from(pat, pi + 1, s, si + 1, fp, ic)
-    return set()
-
-
-def _alt_ends(alts: List[str], s: str, si: int, fp: bool, ic: bool) -> set:
-    """End indices where some alternative fully matches starting at ``s[si]``."""
-    out: set = set()
-    for alt in alts:
-        out |= _match_from(alt, 0, s, si, fp, ic)
-    return out
-
-
-def _element_ends(op: str, alts: List[str], s: str, si: int, fp: bool,
-                  ic: bool) -> set:
-    """End indices after matching ONE extglob element ``op(alts)`` from ``si``."""
-    if op == '@':
-        return _alt_ends(alts, s, si, fp, ic)
-    if op == '?':
-        return {si} | _alt_ends(alts, s, si, fp, ic)
-    if op == '+':
-        return _alt_closure(alts, s, _alt_ends(alts, s, si, fp, ic), fp, ic)
-    if op == '*':
-        return _alt_closure(alts, s, {si}, fp, ic)
-    if op == '!':
-        # Anything except a full match of one alternative: every span s[si:e]
-        # that does NOT itself fully match the alternatives. THIS is the case
-        # a regex cannot express.
-        positive = _alt_ends(alts, s, si, fp, ic)
-        out = set()
-        for end in range(si, len(s) + 1):
-            if fp and '/' in s[si:end]:
-                break
-            if end not in positive:
-                out.add(end)
-        return out
-    return set()
-
-
-def _alt_closure(alts: List[str], s: str, start: set, fp: bool, ic: bool) -> set:
-    """Zero-or-more closure of matching ``alts`` (for ``*(...)``/``+(...)``)."""
-    seen = set(start)
-    frontier = set(start)
-    while frontier:
-        nxt = set()
-        for p in frontier:
-            for end in _alt_ends(alts, s, p, fp, ic):
-                if end not in seen and end != p:  # skip empty matches (no loop)
-                    seen.add(end)
-                    nxt.add(end)
-        frontier = nxt
-    return seen
+    As of the compiled-pattern-engine work (expansion appraisal #6) this
+    delegates to the memoized matcher (``pattern_engine``): the pattern is
+    compiled once and each ``(node, position)`` state is evaluated at most once,
+    so the ``?(a)…!(z)`` fan-out that made the former recursive ``_match_from``
+    exponential is now polynomial. The reachable-end-set contract is unchanged —
+    verified equal to the former matcher over ~24k random cases. The import is
+    lazy to avoid a top-level cycle (``pattern_engine`` imports this module's
+    scanning/char primitives)."""
+    from .pattern_engine import compile_cached, reachable_ends
+    return set(reachable_ends(compile_cached(pattern), s,
+                              for_pathname=for_pathname, ic=ic))
 
 
 def extglob_fullmatch(pattern: str, string: str, for_pathname: bool = False,
                       ignorecase: bool = False) -> bool:
     """Whether *pattern* (which may contain negation) fully matches *string*."""
-    return len(string) in _extglob_consume(pattern, string, for_pathname,
-                                            ignorecase)
+    from .pattern_engine import compile_cached, fullmatch
+    return fullmatch(compile_cached(pattern), string,
+                     for_pathname=for_pathname, ic=ignorecase)
 
 
 def extglob_match_at(pattern: str, string: str, pos: int,
@@ -556,8 +462,9 @@ def extglob_match_at(pattern: str, string: str, pos: int,
     Used by the substitution operators (``${v/pat/r}``) to find a match extent
     at a given position; bash uses the longest match at the leftmost position.
     """
-    ends = _extglob_consume(pattern, string[pos:], for_pathname, ignorecase)
-    return max(ends) if ends else None
+    from .pattern_engine import compile_cached, match_at
+    return match_at(compile_cached(pattern), string, pos,
+                    for_pathname=for_pathname, ic=ignorecase)
 
 
 def expand_extglob(pattern: str, directory: str = '.',
@@ -577,21 +484,13 @@ def expand_extglob(pattern: str, directory: str = '.',
     except OSError:
         return []
 
-    # Negation patterns can't be a regex (see _extglob_consume); match per
-    # entry with the backtracking matcher. Other patterns use the fast regex.
-    if _contains_negation(pattern):
-        def _matches(entry: str) -> bool:
-            return extglob_fullmatch(pattern, entry)
-    else:
-        regex_str = extglob_to_regex(pattern, anchored=True,
-                                     from_start=True, for_pathname=False)
-        try:
-            compiled = re.compile(regex_str)
-        except re.error:
-            return []
-
-        def _matches(entry: str) -> bool:
-            return compiled.fullmatch(entry) is not None
+    # Match each entry through the compiled memoized engine (expansion #6): the
+    # pattern is compiled once (cached) and every entry is a bounded full match,
+    # so an ambiguous-repetition component like ``*(a|aa)c`` can no longer cause
+    # the catastrophic regex backtracking the former non-negation path had.
+    # Negation was already engine-only (a regex cannot express it).
+    def _matches(entry: str) -> bool:
+        return extglob_fullmatch(pattern, entry)
 
     matches = []
     for entry in entries:

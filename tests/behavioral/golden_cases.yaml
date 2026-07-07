@@ -7146,3 +7146,80 @@
 '
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# PATTERN ENGINE (expansion appraisal #6: one compiled memoized matcher)
+# Headline rows across all five shell-pattern consumers; verified vs bash 5.2.
+# =============================================================================
+
+- name: pateng_dbracket_star_extglob
+  command: "shopt -s extglob; [[ aaab == *(a)b ]] && echo Y || echo N"
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_remove_longest_prefix_extglob
+  command: 'shopt -s extglob; x=aaab; echo "${x##+(a)}"'
+  stdout: "b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_remove_shortest_suffix_glob
+  command: 'x=file.tar.gz; echo "${x%.*}"'
+  stdout: "file.tar\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_subst_all_extglob
+  command: 'shopt -s extglob; x=aXbXc; echo "${x//@(X)/-}"'
+  stdout: "a-b-c\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_negation_dbracket_match
+  command: "shopt -s extglob; [[ foo == !(*.txt) ]] && echo Y || echo N"
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_negation_dbracket_nomatch
+  command: "shopt -s extglob; [[ a.txt == !(*.txt) ]] && echo Y || echo N"
+  stdout: "N\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_case_posix_class
+  command: "case a in [[:alpha:]]) echo Y;; *) echo N;; esac"
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_leftmost_longest_prefix_subst
+  command: 'shopt -s extglob; x=aaX; echo "${x/#@(a|aa)/Z}"'
+  stdout: "ZX\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_nested_extglob_dbracket
+  command: "shopt -s extglob; x=abcabc; [[ $x == *(a@(b)c) ]] && echo Y || echo N"
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_embedded_negation_subst
+  command: 'shopt -s extglob; x=fooxbar; echo "${x/!(x)/Z}"'
+  stdout: "Z\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_ambiguous_repetition_nomatch
+  command: "shopt -s extglob; [[ aaaaab == *(a|aa)c ]] && echo Y || echo N"
+  stdout: "N\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pateng_ambiguous_repetition_match
+  command: "shopt -s extglob; [[ aaaaac == *(a|aa)c ]] && echo Y || echo N"
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
