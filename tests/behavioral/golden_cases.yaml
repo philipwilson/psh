@@ -7056,3 +7056,15 @@
   stdout: "5 10\n"
   stderr: "bad array subscript"
   exit_code: 0
+
+- name: cstate_trap_p_single_quote_reusable
+  command: "trap \"echo 'x'\" INT; trap -p INT"
+  stdout: "trap -- 'echo '\\''x'\\''' SIGINT\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_trap_p_dollar_literal
+  command: "trap 'echo $x' INT; trap -p INT"
+  stdout: "trap -- 'echo $x' SIGINT\n"
+  stderr: ""
+  exit_code: 0

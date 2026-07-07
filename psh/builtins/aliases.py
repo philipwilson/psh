@@ -10,12 +10,10 @@ if TYPE_CHECKING:
 
 
 def _quote_alias_value(value: str) -> str:
-    """Quote an alias value for reusable output, the way bash does.
-
-    bash's sh_single_quote(): wrap in single quotes, with each embedded
-    single quote rendered as '\\'' (close quote, escaped quote, reopen).
-    """
-    return "'" + value.replace("'", "'\\''") + "'"
+    """Quote an alias value for reusable output, the way bash does
+    (bash's sh_single_quote — the shared ``utils.escapes.single_quote``)."""
+    from ..utils.escapes import single_quote
+    return single_quote(value)
 
 
 @builtin

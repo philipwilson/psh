@@ -1,7 +1,9 @@
 """Trap management for PSH shell."""
 import signal
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from collections import deque
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from ..utils.escapes import single_quote
 from ..utils.signal_utils import (
     list_all_signals,
     signal_name_to_number,
@@ -21,8 +23,23 @@ class TrapManager:
 
         # Signal traps queued by the (async-signal-unsafe) Python handler;
         # executed at command boundaries via run_pending_traps(), so trap
-        # actions never re-enter the parser/executor mid-command.
-        self.pending_traps: list = []
+        # actions never re-enter the parser/executor mid-command. A deque so a
+        # burst of queued traps drains in O(1) per trap (popleft), not O(n)
+        # (list.pop(0) shifts every element — quadratic for a burst).
+        self.pending_traps: deque = deque()
+
+        # Signal-disposition lease (H2). For an UNMANAGED signal (USR1/ALRM/…)
+        # TrapManager installs a PROCESS-GLOBAL handler via signal.signal. This
+        # records the disposition that was in effect the FIRST time THIS shell
+        # changed each such signal, so Shell.close() can restore it — otherwise
+        # an in-process shell (a test, an embedded shell) leaves its handler
+        # installed in the hosting process after it is done (the child that set
+        # `trap ':' USR1` then swallows USR1 in the host). Forked children are
+        # unaffected: apply_child_signal_policy already reset their signals.
+        # Value is an opaque signal handler (signal.getsignal's return: a
+        # Handlers enum member, an int, a callable, or None) — Any keeps it
+        # assignable back through signal.signal without private-type imports.
+        self._leased_dispositions: Dict[int, Any] = {}
         # Re-entrancy guard: a DEBUG/ERR action must not fire DEBUG/ERR
         # traps for its own commands.
         self._in_debug_err_trap = False
@@ -91,6 +108,33 @@ class TrapManager:
         pseudo-signals (EXIT/DEBUG/ERR)."""
         return signal_name_to_number(signal_spec)
 
+    def _lease_disposition(self, signum: int, prior: Any) -> None:
+        """Record *signum*'s pre-install disposition for Shell.close() to
+        restore (H2). Called only AFTER a successful install, so a lease is
+        never recorded for an uncatchable signal (KILL/STOP), whose
+        ``signal.signal`` raised. A ``None`` prior (handler owned by non-Python
+        code, not restorable) is skipped. First lease per signal wins."""
+        if prior is not None:
+            self._leased_dispositions.setdefault(signum, prior)
+
+    def restore_leased_dispositions(self) -> None:
+        """Restore every process-global signal disposition this shell leased.
+
+        Called by ``Shell.close()`` so a transient IN-PROCESS shell (a test,
+        an embedded shell) leaves the hosting process's signal dispositions as
+        it found them, instead of leaking its trap handler (the H2 leak: after
+        an in-process ``trap ':' USR1`` the host would otherwise swallow USR1).
+        Idempotent — the lease map is drained, so a second call is a no-op.
+        Forked children reset their signals via the child policy and their
+        lease map dies with the process, so this is a no-op there.
+        """
+        while self._leased_dispositions:
+            signum, prior = self._leased_dispositions.popitem()
+            try:
+                signal.signal(signum, prior)
+            except (OSError, ValueError, TypeError):
+                pass  # signal became uncatchable / prior not restorable
+
     def _canonical_signal_key(self, signal_spec: str) -> Optional[str]:
         """Canonical ``trap_handlers`` key for a user signal spec.
 
@@ -139,9 +183,12 @@ class TrapManager:
                 self.queue_trap(_spec)
 
             try:
+                prior = signal.getsignal(signum)
                 signal.signal(signum, _queueing_handler)
             except (OSError, ValueError):
                 pass  # uncatchable (KILL/STOP) or not in main thread
+            else:
+                self._lease_disposition(signum, prior)
 
     def _ignore_signal(self, signal_spec: str):
         """Set signal to be ignored."""
@@ -154,9 +201,12 @@ class TrapManager:
         signum = self._signum(signal_spec)
         if signum is not None and signum not in self._MANAGED_SIGNALS:
             try:
+                prior = signal.getsignal(signum)
                 signal.signal(signum, signal.SIG_IGN)
             except (OSError, ValueError):
                 pass
+            else:
+                self._lease_disposition(signum, prior)
 
     def _reset_trap(self, signal_spec: str):
         """Reset signal to default behavior."""
@@ -358,11 +408,11 @@ class TrapManager:
         output_lines = []
         for signal_name in signals_to_show:
             action = self.state.trap_handlers[signal_name]
-            if action == '':
-                action_display = "''"
-            else:
-                # Quote the action for display
-                action_display = f"'{action}'"
+            # Render the action with the shared bash-style single-quote helper
+            # so it re-parses to itself: an embedded ' becomes '\'' (bash
+            # emits `trap -- 'echo '\''x'\''' SIGINT`, not the non-reusable
+            # `'echo 'x''`). The ignored ('') action renders as ''.
+            action_display = single_quote(action)
             display_name = self._canonical_trap_name(signal_name)
             output_lines.append(f"trap -- {action_display} {display_name}")
 
@@ -560,4 +610,4 @@ class TrapManager:
     def run_pending_traps(self):
         """Execute queued signal traps (called at command boundaries)."""
         while self.pending_traps:
-            self.execute_trap(self.pending_traps.pop(0))
+            self.execute_trap(self.pending_traps.popleft())

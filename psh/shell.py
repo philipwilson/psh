@@ -313,9 +313,11 @@ class Shell:
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        """Release the fd-backed resources this Shell owns (idempotent).
+        """Release the resources this Shell owns (idempotent).
 
-        Currently that is the SignalManager's SIGCHLD/SIGWINCH self-pipes.
+        That is the SignalManager's SIGCHLD/SIGWINCH self-pipes, plus any
+        process-global signal disposition a trap leased (restored so an
+        in-process shell does not leak its handler into the host).
         Safe to call more than once and safe on a shell that never allocated
         them (the self-pipes are created lazily, only when interactive signal
         handlers are installed) — and it only frees resources that the shell
@@ -334,6 +336,15 @@ class Shell:
             signal_manager = getattr(interactive_manager, 'signal_manager', None)
             if signal_manager is not None:
                 signal_manager.close()
+
+        # Restore any process-global signal dispositions this shell leased when
+        # a trap installed a handler for an unmanaged signal (H2). An
+        # in-process shell must leave the host's dispositions as it found them;
+        # a long-lived main shell never calls close() (its fds die with the
+        # process). Idempotent — the lease map is drained on restore.
+        trap_manager = getattr(self, 'trap_manager', None)
+        if trap_manager is not None:
+            trap_manager.restore_leased_dispositions()
 
     def __enter__(self) -> 'Shell':
         return self

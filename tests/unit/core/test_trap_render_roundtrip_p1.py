@@ -7,8 +7,8 @@ quotes, so an action containing a single quote produced non-reusable input.
 
 The round-trip test is the real proof: render ``trap -p``, feed it back to a
 fresh shell, and assert the re-derived rendering is identical. INT is a
-managed signal (no OS handler installed), so these are safe in-process.
-xfail(strict=True) flips when Commit 5 swaps in the shared single-quote helper.
+managed signal (no OS handler installed), so these are safe in-process. Fixed
+in Commit 5 by rendering the action through the shared ``single_quote`` helper.
 """
 
 import pytest
@@ -39,8 +39,6 @@ def _reparse_action(rendered_line):
         sh.close()
 
 
-@pytest.mark.xfail(strict=True, reason="H2: trap -p wraps the action in bare "
-                   "single quotes; an embedded ' is not escaped. Commit 5.")
 def test_single_quote_action_roundtrips():
     action = "echo 'x'"
     rendered = _render(action)
@@ -49,8 +47,6 @@ def test_single_quote_action_roundtrips():
     assert _reparse_action(rendered) == action
 
 
-@pytest.mark.xfail(strict=True, reason="H2: embedded single quotes break the "
-                   "round-trip until the shared quote helper is used. Commit 5.")
 @pytest.mark.parametrize("action", [
     "echo 'x'",
     "echo 'a' 'b'",

@@ -11,7 +11,8 @@ installing, restore it on ``close()``. This is for IN-PROCESS shells — forked
 children reset dispositions via the child signal policy and are unaffected.
 
 Serial: touches process-global signal dispositions. The test force-restores
-USR1 in a finally so a failure cannot pollute the runner.
+USR1 in a finally so a failure cannot pollute the runner. Fixed in Commit 5 by
+the SignalDispositionLease restored from Shell.close().
 """
 
 import signal
@@ -24,9 +25,6 @@ USR1 = signal.SIGUSR1
 
 
 @pytest.mark.serial
-@pytest.mark.xfail(strict=True, reason="H2: Shell.close() does not restore the "
-                   "process-global signal disposition an in-process trap "
-                   "installed. Fixed by SignalDispositionLease (Commit 5).")
 def test_close_restores_installed_disposition():
     prior = signal.getsignal(USR1)
     try:
