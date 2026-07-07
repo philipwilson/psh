@@ -1,24 +1,19 @@
 """Read builtin command implementation."""
 import io
 import os
-import select
 import sys
 import termios
 import time
 import tty
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from .base import Builtin
+from .input_reader import InputReader, Outcome, make_reader
 from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
-
-# A delimiter that can never equal a single decoded character, so the
-# char-read loop never stops early (used by ``read -N``). os.read(fd, 1)
-# decodes to at most one character, so a two-character marker never matches.
-_NO_DELIM = '\x00\x00'
 
 
 @builtin
@@ -85,8 +80,8 @@ class ReadBuiltin(Builtin):
         # a `read -p` from a pipe / here-string / redirected file writes no
         # prompt, so it stays out of captured output.
         if options['prompt'] and self._read_input_is_tty(shell, options['fd']):
-            sys.stderr.write(options['prompt'])
-            sys.stderr.flush()
+            shell.stderr.write(options['prompt'])
+            shell.stderr.flush()
 
         # `read -u FD`: the fd must be open, else bash errors with status 1
         # ("read: 9: invalid file descriptor: Bad file descriptor").
@@ -100,14 +95,16 @@ class ReadBuiltin(Builtin):
                 return 1
 
         try:
-            # Decide once whether input comes from sys.stdin or the real fd
-            use_sys_stdin = self._should_use_sys_stdin(options['fd'])
+            # A single streaming reader over the resolved source (real fd or an
+            # injected text stream) backs every mode below; it decodes UTF-8
+            # incrementally and never consumes past the record it is asked for.
+            reader = make_reader(shell, options['fd'])
 
             # `read -t 0` is a non-consuming poll: success (0) if the fd is
             # readable (data ready OR at EOF), 1 if a read would block. It
             # reads nothing and assigns no variables (bash).
             if options['timeout'] == 0:
-                return self._poll_input(options['fd'], use_sys_stdin)
+                return reader.poll_readable()
 
             delim = options['delimiter']
 
@@ -115,13 +112,13 @@ class ReadBuiltin(Builtin):
             # The result (after backslash processing unless -r) is assigned
             # whole to the first variable; rc is 1 only if EOF cut it short.
             if options['exact_chars'] is not None:
-                return self._read_exact(options, var_names, shell, use_sys_stdin)
+                return self._read_exact(options, var_names, shell, reader)
 
             # Read input based on options
             if options['timeout'] is not None:
                 line, read_status = self._read_with_timeout(
-                    options['fd'], options['timeout'], delim,
-                    options['max_chars'], options['silent'], use_sys_stdin
+                    reader, options['fd'], options['timeout'], delim,
+                    options['max_chars'], options['silent'], shell
                 )
                 # On timeout bash still ASSIGNS whatever partial input was read
                 # (splitting/clearing the variables normally), so fall through
@@ -129,12 +126,11 @@ class ReadBuiltin(Builtin):
                 # end via read_status.
             elif options['silent'] or options['max_chars'] is not None:
                 line, read_status = self._read_special(
-                    options['fd'], delim,
-                    options['max_chars'], options['silent'], use_sys_stdin
+                    reader, options['fd'], delim,
+                    options['max_chars'], options['silent'], shell
                 )
             else:
-                line, read_status = self._read_normal(
-                    options['fd'], delim, use_sys_stdin)
+                line, read_status = self._read_normal(reader, delim)
 
             # EOF before the delimiter is a read FAILURE (exit 1), but bash
             # still assigns whatever was read (a partial last line, or empty
@@ -159,7 +155,7 @@ class ReadBuiltin(Builtin):
                                  and options['timeout'] is None)
             if line_continuation:
                 line, read_status = self._read_continuations(
-                    line, options['fd'], delim, use_sys_stdin, read_status)
+                    line, reader, delim, read_status)
 
             # Decompose into (char, protected) pairs. Protected chars are
             # backslash-escaped: their backslash is removed and they are
@@ -209,8 +205,8 @@ class ReadBuiltin(Builtin):
             self.error(str(e), shell)
             return 1
 
-    def _read_continuations(self, line: str, fd: int, delim: str,
-                            use_sys_stdin: bool, status: str) -> Tuple[str, str]:
+    def _read_continuations(self, line: str, reader: InputReader, delim: str,
+                            status: str) -> Tuple[str, str]:
         """Honor backslash-<delimiter> line continuation (bash, non-raw).
 
         ``_read_normal`` stops at the first delimiter, so a line whose
@@ -222,11 +218,13 @@ class ReadBuiltin(Builtin):
 
         ``status`` is the status of the read that produced ``line``; the
         returned status is that of the LAST read performed, so a continuation
-        that ends at EOF (no closing delimiter) reports 'eof' (exit 1).
+        that ends at EOF (no closing delimiter) reports 'eof' (exit 1). The
+        same ``reader`` is reused so its incremental decode state carries
+        across the spliced reads.
         """
         while self._has_unescaped_trailing_backslash(line):
             line = line[:-1]  # remove the continuation backslash
-            nxt, status = self._read_normal(fd, delim, use_sys_stdin)
+            nxt, status = self._read_normal(reader, delim)
             if status == 'eof' and not nxt:
                 break  # EOF: nothing more to splice on
             if nxt.endswith(delim):
@@ -561,100 +559,57 @@ class ReadBuiltin(Builtin):
         except (OSError, AttributeError, ValueError):
             return True
 
-    def _poll_input(self, fd: int, use_sys_stdin: bool) -> int:
-        """`read -t 0`: return 0 if input is available on the fd (data ready
-        or EOF — both are "readable" to select), 1 if a read would block.
-        Consumes nothing."""
-        if use_sys_stdin:
-            # StringIO/test stdin can't be select()'d; treat as readable.
-            return 0
-        try:
-            ready, _, _ = select.select([fd], [], [], 0)
-        except (OSError, ValueError):
-            return 1
-        return 0 if ready else 1
+    @staticmethod
+    def _status(result) -> str:
+        """Map a :class:`ReadResult` to read's ('ok'|'eof'|'timeout') status.
 
-    def _read_chars(self, fd: int, *, delimiter: str, limit: Optional[int],
-                    use_sys_stdin: bool, echo: bool = False,
-                    timeout: Optional[float] = None,
-                    include_delimiter: bool = False) -> Tuple[str, str]:
-        """The single character-read loop behind every read mode.
-
-        Reads one character at a time from ``sys.stdin`` (StringIO/test
-        stdin) or the raw descriptor until the delimiter, EOF or a read
-        error, the character limit, or — when ``timeout`` is given — the
-        running time budget expires (the budget is shared across
-        characters, decremented after each one).
-
-        Returns ``(data, status)`` where status is one of:
-          'delim'   - stopped at the delimiter (included in ``data`` only
-                      when ``include_delimiter`` is set)
-          'eof'     - end of input or read error; ``data`` holds any
-                      partial input
-          'limit'   - ``limit`` characters were read
-          'timeout' - the time budget expired (timeout mode only)
+        DATA (a delimiter hit or the ``-n`` char count reached) is success;
+        EOF is a short read; TIMEOUT is a ``-t`` expiry. An ERROR outcome
+        re-raises the underlying OSError so ``execute``'s handler renders
+        bash's "read error: FD: <strerror>" message.
         """
-        chars: List[str] = []
-        remaining = timeout
-        max_count = limit if limit is not None else float('inf')
+        if result.outcome is Outcome.ERROR:
+            raise result.error or OSError("read error")
+        if result.outcome is Outcome.TIMEOUT:
+            return 'timeout'
+        if result.outcome is Outcome.EOF:
+            return 'eof'
+        return 'ok'
 
-        while len(chars) < max_count:
-            if remaining is not None:
-                start_time = time.time()
-                ready, _, _ = select.select([fd], [], [], remaining)
-                if not ready:
-                    return ''.join(chars), 'timeout'
+    def _echo(self, shell: 'Shell') -> Callable[[str], None]:
+        """An on-char callback that echoes each character to the shell stdout.
 
-            if use_sys_stdin:
-                char = sys.stdin.read(1)
-            else:
-                try:
-                    char = os.read(fd, 1).decode('utf-8', errors='replace')
-                except OSError:
-                    return ''.join(chars), 'eof'
+        Used by the tty ``-n``/``-N`` paths where raw mode has disabled the
+        terminal's own echo. Routing through ``shell.stdout`` (not the raw
+        ``sys.stdout`` global) keeps the echo injectable/capturable.
+        """
+        def on_char(ch: str) -> None:
+            shell.stdout.write(ch)
+            shell.stdout.flush()
+        return on_char
 
-            if not char:
-                return ''.join(chars), 'eof'
-            if char == delimiter:
-                if include_delimiter:
-                    chars.append(char)
-                return ''.join(chars), 'delim'
-            chars.append(char)
-
-            if echo:
-                sys.stdout.write(char)
-                sys.stdout.flush()
-
-            if remaining is not None:
-                remaining -= time.time() - start_time
-                if remaining <= 0:
-                    return ''.join(chars), 'timeout'
-
-        return ''.join(chars), 'limit'
-
-    def _read_normal(self, fd: int, delimiter: str,
-                     use_sys_stdin: bool) -> Tuple[str, str]:
+    def _read_normal(self, reader: InputReader,
+                     delimiter: str) -> Tuple[str, str]:
         """Read until the delimiter with no limit, echo, or timeout.
 
-        Returns ``(data, status)`` where status is 'ok' (the delimiter was
-        found) or 'eof' (input ended first — bash assigns whatever was read,
-        partial or empty, and reports failure). For the newline delimiter the
-        data keeps its trailing newline (execute() strips it only after escape
-        processing, so backslash-newline continuation can see it); a custom
-        delimiter is never included.
+        Returns ``(data, status)`` — 'ok' when the delimiter was found, 'eof'
+        when input ended first (bash assigns whatever was read, partial or
+        empty, and reports failure). For the newline delimiter the data keeps
+        its trailing newline (execute() strips it only after escape processing,
+        so backslash-newline continuation can see it); a custom delimiter is
+        never included.
         """
-        data, status = self._read_chars(
-            fd, delimiter=delimiter, limit=None, use_sys_stdin=use_sys_stdin,
-            include_delimiter=(delimiter == '\n'))
-        return data, ('ok' if status == 'delim' else 'eof')
+        result = reader.read_record(
+            delimiter=delimiter, include_delimiter=(delimiter == '\n'))
+        return result.data, self._status(result)
 
-    def _read_special(self, fd: int, delimiter: str, max_chars: Optional[int],
-                      silent: bool, use_sys_stdin: bool) -> Tuple[str, str]:
+    def _read_special(self, reader: InputReader, fd: int, delimiter: str,
+                      max_chars: Optional[int], silent: bool,
+                      shell: 'Shell') -> Tuple[str, str]:
         """Read with special modes (silent and/or character limit).
 
         Returns ``(data, status)`` — 'ok' when the delimiter was found or the
-        ``-n`` character limit was reached, 'eof' when input ended first
-        (bash assigns the partial/empty data and reports failure).
+        ``-n`` character limit was reached, 'eof' when input ended first.
         """
         if max_chars == 0:
             return '', 'ok'  # bash: read -n 0 reads nothing and succeeds
@@ -664,13 +619,13 @@ class ReadBuiltin(Builtin):
             # input without canonical line buffering. Raw mode disables echo,
             # so -n without -s echoes each character back manually.
             with self._terminal_raw_mode(fd, echo=not silent):
-                data, status = self._read_chars(
-                    fd, delimiter=delimiter, limit=max_chars,
-                    use_sys_stdin=False, echo=not silent)
+                result = reader.read_limited(
+                    delimiter=delimiter, max_chars=max_chars,
+                    on_char=None if silent else self._echo(shell))
                 if silent:
                     # Echo newline after silent input
-                    sys.stdout.write('\n')
-                    sys.stdout.flush()
+                    shell.stdout.write('\n')
+                    shell.stdout.flush()
         elif os.isatty(fd) and silent:
             # SILENT delimiter-terminated read (`read -s`, no -n): stay in
             # CANONICAL mode and clear only ECHO (bash's model). Raw mode
@@ -681,26 +636,24 @@ class ReadBuiltin(Builtin):
             # Ctrl-C's SIGINT is delivered (terminating a -c read) — all while
             # hiding the typed text.
             with self._terminal_noecho_mode(fd):
-                data, status = self._read_chars(
-                    fd, delimiter=delimiter, limit=None,
-                    use_sys_stdin=False,
+                result = reader.read_record(
+                    delimiter=delimiter,
                     include_delimiter=(delimiter == '\n'))
                 # Enter is not echoed (ECHO off); print the newline bash prints.
-                sys.stdout.write('\n')
-                sys.stdout.flush()
+                shell.stdout.write('\n')
+                shell.stdout.flush()
         elif max_chars is not None:
-            data, status = self._read_chars(
-                fd, delimiter=delimiter, limit=max_chars,
-                use_sys_stdin=use_sys_stdin)
+            result = reader.read_limited(
+                delimiter=delimiter, max_chars=max_chars)
         else:
             # Silent mode on a non-TTY is just a normal read (no echo to
             # suppress).
-            return self._read_normal(fd, delimiter, use_sys_stdin)
+            return self._read_normal(reader, delimiter)
 
-        return data, ('ok' if status in ('delim', 'limit') else 'eof')
+        return result.data, self._status(result)
 
     def _read_exact(self, options: Dict[str, Any], var_names: List[str],
-                    shell: 'Shell', use_sys_stdin: bool) -> int:
+                    shell: 'Shell', reader: InputReader) -> int:
         """Implement ``read -N count`` (read EXACTLY count characters).
 
         Unlike -n, the delimiter is ignored entirely and IFS does not split
@@ -713,19 +666,22 @@ class ReadBuiltin(Builtin):
         fd = options['fd']
         if count == 0:
             # bash: read -N 0 reads nothing and succeeds, clearing the var.
-            data, status = '', 'limit'
-        elif os.isatty(fd):
-            with self._terminal_raw_mode(fd, echo=True):
-                # No delimiter stop: pass a delimiter that cannot appear in a
-                # single decoded char (NUL would still match, so use a marker
-                # that _read_chars never compares true against) — simplest is
-                # to read raw and never treat any char as the delimiter.
-                data, status = self._read_chars(
-                    fd, delimiter=_NO_DELIM, limit=count,
-                    use_sys_stdin=False, echo=True)
+            data, ok = '', True
         else:
-            data, status = self._read_chars(
-                fd, delimiter=_NO_DELIM, limit=count, use_sys_stdin=use_sys_stdin)
+            # No delimiter stop: only the character count ends the read.
+            if os.isatty(fd):
+                with self._terminal_raw_mode(fd, echo=True):
+                    result = reader.read_limited(
+                        delimiter=None, max_chars=count,
+                        on_char=self._echo(shell))
+            else:
+                result = reader.read_limited(delimiter=None, max_chars=count)
+            if result.outcome is Outcome.ERROR:
+                raise result.error or OSError("read error")
+            data = result.data
+            # rc 0 only when the full count was read (DATA); a short read (EOF)
+            # is failure.
+            ok = result.outcome is Outcome.DATA
 
         # Backslash processing (bash applies it for -N too, unless -r).
         chars = self._process_escapes(data, options['raw_mode'])
@@ -739,36 +695,38 @@ class ReadBuiltin(Builtin):
             for name in var_names[1:]:
                 shell.state.set_variable(name, '')
 
-        # rc 1 when input was exhausted before reaching the requested count.
-        return 0 if status == 'limit' else 1
+        return 0 if ok else 1
 
-    def _read_with_timeout(self, fd: int, timeout: float, delimiter: str,
-                           max_chars: Optional[int], silent: bool,
-                           use_sys_stdin: bool) -> Tuple[str, str]:
+    def _read_with_timeout(self, reader: InputReader, fd: int, timeout: float,
+                           delimiter: str, max_chars: Optional[int],
+                           silent: bool, shell: 'Shell') -> Tuple[str, str]:
         """Read with timeout support.
 
         Returns ``(data, status)`` — 'timeout' (exit 142) when the budget
         expires, 'ok' when the delimiter/char-limit is satisfied, 'eof' when
-        input ends first (bash assigns the partial data and reports failure).
+        input ends first. The whole read shares ONE monotonic deadline, so
+        slowly-trickled input cannot outlast the timeout (the deadline bounds
+        every blocking byte read, not just the wait for the first one).
         """
         if max_chars == 0:
             return '', 'ok'  # bash: read -n 0 reads nothing and succeeds
+
+        deadline = time.monotonic() + timeout
 
         if os.isatty(fd) and max_chars is not None:
             # COUNT-terminated read (-n): raw mode, char-at-a-time, with the
             # time budget enforced across characters.
             with self._terminal_raw_mode(fd, echo=not silent):
-                data, status = self._read_chars(
-                    fd, delimiter=delimiter, limit=max_chars,
-                    use_sys_stdin=False, echo=not silent, timeout=timeout)
-                if silent and (data or status != 'timeout'):
+                result = reader.read_limited(
+                    delimiter=delimiter, max_chars=max_chars, deadline=deadline,
+                    on_char=None if silent else self._echo(shell))
+                if silent and (result.data
+                               or result.outcome is not Outcome.TIMEOUT):
                     # Echo newline after silent input (skipped only when
                     # the timeout expired before anything was typed).
-                    sys.stdout.write('\n')
-                    sys.stdout.flush()
-            if status == 'timeout':
-                return data, 'timeout'
-            return data, ('ok' if status in ('delim', 'limit') else 'eof')
+                    shell.stdout.write('\n')
+                    shell.stdout.flush()
+            return result.data, self._status(result)
 
         if os.isatty(fd) and silent:
             # SILENT delimiter-terminated read at a tty (`read -s -t`): as in
@@ -776,37 +734,25 @@ class ReadBuiltin(Builtin):
             # still terminates and signals still fire, with the time budget
             # enforced across the whole read.
             with self._terminal_noecho_mode(fd):
-                data, status = self._read_chars(
-                    fd, delimiter=delimiter, limit=None,
-                    use_sys_stdin=False, timeout=timeout,
-                    include_delimiter=(delimiter == '\n'))
-                if data or status != 'timeout':
-                    sys.stdout.write('\n')
-                    sys.stdout.flush()
-            if status == 'timeout':
-                return data, 'timeout'
-            return data, ('ok' if status in ('delim', 'limit') else 'eof')
+                result = reader.read_record(
+                    delimiter=delimiter,
+                    include_delimiter=(delimiter == '\n'), deadline=deadline)
+                if result.data or result.outcome is not Outcome.TIMEOUT:
+                    shell.stdout.write('\n')
+                    shell.stdout.flush()
+            return result.data, self._status(result)
 
-        # Simple case or non-TTY. StringIO test stdin can't be select()'d and
-        # never blocks, so it reads immediately with no budget enforcement.
-        if use_sys_stdin:
-            if max_chars is not None:
-                data, status = self._read_chars(
-                    fd, delimiter=delimiter, limit=max_chars,
-                    use_sys_stdin=True)
-                return data, ('ok' if status in ('delim', 'limit') else 'eof')
-            return self._read_normal(fd, delimiter, use_sys_stdin)
-
-        # Real fd: thread the time budget through the WHOLE read so the
-        # deadline bounds every blocking read, not just the wait for the
-        # first byte (bash saves the partial input and exits >128 on expiry).
-        data, status = self._read_chars(
-            fd, delimiter=delimiter, limit=max_chars,
-            use_sys_stdin=False, timeout=timeout,
-            include_delimiter=(max_chars is None and delimiter == '\n'))
-        if status == 'timeout':
-            return data, 'timeout'
-        return data, ('ok' if status in ('delim', 'limit') else 'eof')
+        # Non-TTY (pipe / file / StringIO). A text stream never blocks, so the
+        # reader simply ignores the deadline against it (as before); a real fd
+        # has every blocking read bounded by the shared deadline.
+        if max_chars is not None:
+            result = reader.read_limited(
+                delimiter=delimiter, max_chars=max_chars, deadline=deadline)
+        else:
+            result = reader.read_record(
+                delimiter=delimiter, include_delimiter=(delimiter == '\n'),
+                deadline=deadline)
+        return result.data, self._status(result)
 
     @contextmanager
     def _terminal_raw_mode(self, fd: int, echo: bool = True):

@@ -517,7 +517,15 @@ unusable name warned-and-ignored (falling back to `C`) — and honours it for:
   (`[[ é == ?? ]]` is true in bash-C). PSH is Unicode-native — `é` is always one
   character — so single-character patterns (`?`, `[^[:digit:]]`) can differ from
   bash in the `C` locale. This is a pre-existing shell-wide model difference, not
-  specific to character classes.
+  specific to character classes. The same principle governs `read`/`mapfile`
+  counts and delimiters: `read -N1`/`-n1` reads one *character* (a multibyte `é`
+  arrives whole, not split across two reads), and `read -d`/`mapfile -d` treats
+  the first *character* of the delimiter argument as the terminator. bash, by
+  contrast, terminates on the first *byte* of the `-d` argument, so a multibyte
+  delimiter like `-d é` splits on `0xC3` and leaves the trailing `0xA9` byte
+  stuck to the next field; PSH splits on the whole character. For the ordinary
+  ASCII delimiters (newline, `:`, `,`, `;`, NUL) byte and character coincide, so
+  this only surfaces with a multibyte `-d` delimiter.
 - **Bare-C environments and PEP 538.** If PSH starts in an *unpinned*
   effectively-C environment (no locale variables, or `LANG=C` alone, with
   `LC_ALL` unset/empty), CPython's PEP 538 locale coercion rewrites `LC_CTYPE`
