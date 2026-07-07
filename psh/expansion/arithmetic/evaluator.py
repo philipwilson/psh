@@ -128,6 +128,23 @@ class ArithmeticEvaluator:
             return _to_signed64(int(value))
         return evaluate_arithmetic(value, self.shell)
 
+    def _nameref_target(self, name: str) -> str:
+        """Resolve a nameref to its target name for array element ops.
+
+        ``declare -n r=h; (( r[foo] += 5 ))`` must act on ``h[foo]`` — and for
+        an associative ``h`` the subscript must stay the LITERAL key ``foo``,
+        not be arithmetic-evaluated (which wrote element ``[0]``). The write
+        path already resolves via ``store.set_element``; the key computation
+        and the read need the same resolution so all three agree on the
+        target's type and name. A non-nameref name is returned unchanged; a
+        cyclic nameref is left as-is (the store's write path emits the warning).
+        """
+        from ...core import NamerefCycleError
+        try:
+            return self.shell.state.scope_manager.resolve_nameref_name(name)
+        except NamerefCycleError:
+            return name
+
     def _array_key(self, name: str, index_node: ArithNode, index_text: str) -> Union[int, str]:
         """Resolve the subscript of an array reference to its lookup key.
 
@@ -138,7 +155,8 @@ class ArithmeticEvaluator:
         int.
         """
         from ...core import AssociativeArray
-        var = self.shell.state.scope_manager.get_variable_object(name)
+        var = self.shell.state.scope_manager.get_variable_object(
+            self._nameref_target(name))
         if var is not None and isinstance(var.value, AssociativeArray):
             return index_text
         return self.evaluate(index_node)
@@ -150,6 +168,7 @@ class ArithmeticEvaluator:
         arrays / scalars (see :meth:`_array_key`).
         """
         from ...core import AssociativeArray, IndexedArray, OptionHandler
+        name = self._nameref_target(name)
         var = self.shell.state.scope_manager.get_variable_object(name)
         if var is None:
             # set -u: an unset array/scalar referenced here is an error (bash).

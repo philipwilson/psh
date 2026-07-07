@@ -44,7 +44,16 @@ def test_literal_percent():
 
 
 def test_cpu_percent_two_decimals():
-    assert _psh_shape('TIMEFORMAT="cpu=%P"; { time true; } 2>&1') == "cpu=N.NN\n"
+    # %P is (user+sys)/real*100; under parallel-test load `real` for `time
+    # true` can stretch or the percentage can exceed 9, so the INTEGER part
+    # may have 1+ digits (0.00, 12.50, even 100.00). What %P must guarantee is
+    # exactly TWO decimal places — assert that on the raw output rather than
+    # via _psh_shape's digit-normalized "cpu=N.NN" (which pins one integer
+    # digit and flaked under load).
+    r = subprocess.run([sys.executable, "-m", "psh", "-c",
+                        'TIMEFORMAT="cpu=%P"; { time true; } 2>&1'],
+                       capture_output=True, text=True, timeout=15)
+    assert re.fullmatch(r"cpu=\d+\.\d{2}\n", r.stdout), repr(r.stdout)
 
 
 def test_precision_zero():
