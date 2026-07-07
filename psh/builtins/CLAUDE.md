@@ -245,7 +245,7 @@ in a builtin.
   component = cwd, slash name kept as given, `X_OK` gated). Every PATH scan
   uses it (`hash`, `exec -c`, and internally `type`/`command`).
 - `resolver.resolve(name, query)` — the ordered typed candidates
-  (`Alias`/`Keyword`/`Function`/`Builtin`/`HashedExternal`/`PathExternal`).
+  (`ALIAS`/`KEYWORD`/`FUNCTION`/`BUILTIN`/`HASHED`/`EXTERNAL`).
   A `ResolveQuery` selects participation (function bypass), which PATH
   (`command -p`, `env`), hash use (`type -a` ignores it), and first-vs-all
   (`type -a`). `type` and `command -v`/`-V` build a query and RENDER the
