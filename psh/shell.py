@@ -203,6 +203,11 @@ class Shell:
         self.script_manager = ScriptManager(self)
         self.interactive_manager = InteractiveManager(self)
 
+        # The one command-name resolver shared by the executor's external
+        # path, `command`, `type`, and `hash` (builtins appraisal finding 5).
+        from .executor.command_resolver import CommandResolver
+        self.command_resolver = CommandResolver(self)
+
         from .executor.process_launcher import ProcessLauncher
         self.process_launcher = ProcessLauncher(
             self.state, self.job_manager, self.io_manager,
