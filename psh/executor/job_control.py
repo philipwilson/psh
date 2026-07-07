@@ -145,7 +145,18 @@ class Process:
         self.completed = False
 
     def update_status(self, status: int):
-        """Update process status from waitpid result."""
+        """Update process status from a waitpid result.
+
+        A WIFCONTINUED report (only delivered when the waiter passes
+        ``WCONTINUED``) means the process was resumed by SIGCONT: it is running
+        again and has no exit status yet, so ``self.status`` is left untouched
+        (it will be set the next time the process stops or exits).
+        """
+        if hasattr(os, "WIFCONTINUED") and os.WIFCONTINUED(status):
+            self.stopped = False
+            self.completed = False
+            return
+
         self.status = status
 
         if os.WIFSTOPPED(status):
@@ -618,6 +629,41 @@ class JobManager:
                       file=self._notification_stream())
                 job.notified = True
 
+    def poll_job_states(self) -> None:
+        """Non-blocking refresh of tracked job states (WUNTRACED|WCONTINUED).
+
+        macOS does NOT raise SIGCHLD when a child is *continued* (verified on
+        10.x/14.x — SIGCHLD fires on stop and exit only), so the interactive
+        SIGCHLD handler never learns of an external ``kill -CONT``; a following
+        ``jobs`` would keep showing the job Stopped. bash refreshes job state
+        before listing, so ``jobs`` calls this to reap pending stop/continue/
+        exit transitions. It only updates job *state* (and clears ``notified``
+        on a stop/continue transition) — completion notices and job removal
+        stay with the REPL's :meth:`notify_completed_jobs`, so this does not
+        double-report. A blocking foreground wait sees continues directly
+        because its ``waitpid`` also passes ``WCONTINUED``.
+        """
+        flags = os.WNOHANG
+        if hasattr(os, "WUNTRACED"):
+            flags |= os.WUNTRACED
+        if hasattr(os, "WCONTINUED"):
+            flags |= os.WCONTINUED
+        while True:
+            try:
+                pid, status = os.waitpid(-1, flags)
+            except OSError:
+                break  # ECHILD: no tracked children left
+            if pid == 0:
+                break  # nothing changed state
+            job = self.get_job_by_pid(pid)
+            if job is None:
+                continue
+            job.update_process_status(pid, status)
+            job.update_state()
+            continued = hasattr(os, "WIFCONTINUED") and os.WIFCONTINUED(status)
+            if continued or job.state == JobState.STOPPED:
+                job.notified = False
+
     def list_jobs(self) -> List[str]:
         """Get formatted list of all jobs."""
         lines = []
@@ -824,10 +870,16 @@ class JobManager:
         exit_status = 0
         all_exit_statuses: List[int] = []
 
+        wait_flags = os.WUNTRACED
+        if hasattr(os, "WCONTINUED"):
+            # Recognize a resume (WIFCONTINUED) so a job continued out from
+            # under this wait is re-marked running rather than left stopped.
+            wait_flags |= os.WCONTINUED
+
         while job.any_process_running():
             try:
                 # Wait for any child in the job's process group
-                pid, status = os.waitpid(-job.pgid, os.WUNTRACED)
+                pid, status = os.waitpid(-job.pgid, wait_flags)
             except OSError as e:
                 if e.errno == errno.EINTR:
                     # Interrupted by a signal — keep waiting. (Python

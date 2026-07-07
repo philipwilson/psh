@@ -35,6 +35,14 @@ class JobsBuiltin(Builtin):
 
         manager = shell.job_manager
 
+        # Refresh job state before listing so a job resumed by an external
+        # `kill -CONT` shows Running (macOS raises no SIGCHLD on continue, so
+        # the interactive handler never saw it). Interactive only — a
+        # non-interactive shell has no SIGCHLD reaper and must not steal
+        # background children out from under a later `wait`.
+        if shell.state.options.get('interactive'):
+            manager.poll_job_states()
+
         # With operands, list ONLY the named jobs and diagnose any that do not
         # resolve (bash: "no such job" / "ambiguous job spec", rc=1). Without
         # operands, list every job. A bare integer operand is a job number.
