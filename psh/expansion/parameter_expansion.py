@@ -63,18 +63,13 @@ class ParameterExpansion:
         return str(len(value))
 
     def _neg(self, pattern: str) -> bool:
-        """Whether *pattern* needs the backtracking matcher rather than a regex.
+        """Whether *pattern* contains an extglob negation ``!(...)`` group.
 
-        Extglob negation ``!(...)`` — standalone OR embedded (``${v#x!(o)}``,
-        ``${v/a!(b)c/r}``) — cannot be expressed as a Python regex (see
-        ``extglob._extglob_consume``), so those operators match span-by-span via
-        the matcher. Non-negation patterns keep the fast regex path unchanged.
-
-        Used by the operators whose regex already yields the correct match
-        *extent* (prefix/suffix REMOVAL scans every candidate length; suffix
-        substitution ``/%`` end-anchors so its regex backtracks to the longest;
-        case ops match a single char): there, only negation forces the matcher.
-        The unanchored SUBSTITUTION operators need ``_use_matcher`` instead.
+        Standalone OR embedded (``${v#x!(o)}``, ``${v/a!(b)c/r}``). Retained for
+        the two operators whose behaviour is negation-*specific*: case-modifier
+        single-char matching (``_char_matches``) and the empty-match suppression
+        in ``substitute_first``. Prefix/suffix removal and substitution route on
+        ``_use_matcher`` (any extglob group) instead — see below.
         """
         if not self._extglob:
             return False
@@ -82,18 +77,22 @@ class ParameterExpansion:
         return _contains_negation(pattern)
 
     def _use_matcher(self, pattern: str) -> bool:
-        """Whether an unanchored substitution operator must use the matcher.
+        """Whether an operator must use the compiled engine rather than a regex.
 
-        ``${v/pat/r}`` / ``${v//pat/r}`` / ``${v/#pat/r}`` need the leftmost
-        match's LONGEST extent, but Python ``re`` alternation is leftmost-*match*:
-        it commits to the first alternative that lets the overall regex succeed,
-        never the longest — ``${v/#@(a|aa)/Z}`` on ``aaX`` gives ``ZaX`` not
-        ``ZX``, and even ``@(a|ab)b`` on ``abb`` stops at the first success
-        rather than extending to the whole string. The backtracking matcher
-        enumerates every reachable end index and takes the max, i.e. POSIX
-        leftmost-longest, so any extglob group (negation, which also isn't
-        regex-expressible, OR an alternation) routes through it; plain globs keep
-        the fast regex path.
+        True for ANY extglob group (negation or alternation) when extglob is on.
+        Two independent reasons the regex path is wrong or dangerous here:
+
+        * **Correctness:** the unanchored substitution operators need the
+          leftmost match's LONGEST extent, but Python ``re`` alternation is
+          leftmost-*match* — ``${v/#@(a|aa)/Z}`` on ``aaX`` gives ``ZaX`` not
+          ``ZX``. The engine enumerates every reachable end index and takes the
+          max (POSIX leftmost-longest).
+        * **Complexity:** ambiguous repetition with a forced-fail tail
+          (``${v##*(a|aa)c}``) makes the regex backtrack catastrophically
+          (seconds at ~40 chars); the memoized engine is linear-state.
+
+        So prefix/suffix REMOVAL and all SUBSTITUTION operators route any extglob
+        group through the engine; plain globs keep the fast regex path.
         """
         if not self._extglob:
             return False
@@ -125,7 +124,7 @@ class ParameterExpansion:
 
     def remove_shortest_prefix(self, value: str, pattern: str) -> str:
         """Remove shortest matching prefix."""
-        if self._neg(pattern):
+        if self._use_matcher(pattern):
             from .extglob import _extglob_consume
             lengths = _extglob_consume(pattern, value)
             return value[min(lengths):] if lengths else value
@@ -138,7 +137,7 @@ class ParameterExpansion:
 
     def remove_longest_prefix(self, value: str, pattern: str) -> str:
         """Remove longest matching prefix."""
-        if self._neg(pattern):
+        if self._use_matcher(pattern):
             from .extglob import _extglob_consume
             lengths = _extglob_consume(pattern, value)
             return value[max(lengths):] if lengths else value
@@ -151,7 +150,7 @@ class ParameterExpansion:
 
     def remove_shortest_suffix(self, value: str, pattern: str) -> str:
         """Remove shortest matching suffix."""
-        if self._neg(pattern):
+        if self._use_matcher(pattern):
             from .extglob import extglob_fullmatch
             # Shortest suffix removed = the largest start index whose suffix
             # matches the pattern.
@@ -171,7 +170,7 @@ class ParameterExpansion:
 
     def remove_longest_suffix(self, value: str, pattern: str) -> str:
         """Remove longest matching suffix."""
-        if self._neg(pattern):
+        if self._use_matcher(pattern):
             from .extglob import extglob_fullmatch
             # Longest suffix removed = the smallest start index whose suffix
             # matches the pattern.
@@ -362,9 +361,12 @@ class ParameterExpansion:
                           replacement: Union[str, list]) -> str:
         """Replace suffix match."""
         ic = self._nocasematch
-        if self._neg(pattern):
+        if self._use_matcher(pattern):
             from .extglob import extglob_fullmatch
-            # Longest suffix that matches = smallest start index.
+            # Any extglob group routes through the engine (like ${v/#}), not the
+            # end-anchored regex below: ambiguous repetition (${v/%*(a|aa)c/R})
+            # backtracks catastrophically there. Longest matching suffix =
+            # smallest start index whose suffix fully matches.
             for i in range(len(value) + 1):
                 if extglob_fullmatch(pattern, value[i:], ignorecase=ic):
                     return (value[:i]
