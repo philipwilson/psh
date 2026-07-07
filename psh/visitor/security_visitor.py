@@ -22,7 +22,7 @@ from ..ast_nodes import (
 from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
 from .constants import DANGEROUS_COMMANDS, SENSITIVE_COMMANDS
-from .traversal import visit_children
+from .traversal import visit_children, visit_word_substitution_bodies
 from .word_analysis import has_command_substitution
 
 
@@ -143,6 +143,10 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
         # Also check redirects on the command
         self._visit_redirects(node)
+
+        # Descend into any command/process substitutions in the arguments,
+        # so `$(eval "$x")` and friends are analysed inside substitutions too.
+        visit_word_substitution_bodies(self, node)
 
     def visit_Pipeline(self, node: Pipeline) -> None:
         """Analyze pipelines for security issues."""

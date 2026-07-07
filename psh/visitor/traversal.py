@@ -41,3 +41,28 @@ def visit_children(visitor, node: ASTNode) -> None:
     """Visit every direct ``ASTNode`` child of *node* with *visitor*."""
     for child in iter_child_nodes(node):
         visitor.visit(child)
+
+
+def visit_word_substitution_bodies(visitor, node: ASTNode) -> None:
+    """Descend into the parsed bodies of substitutions embedded in *node*'s Words.
+
+    Word-bearing nodes (``SimpleCommand`` args and assignment values) analyze
+    their words inline rather than dispatching them, so a modern command/process
+    substitution embedded in a word — and the nested ``Program`` it carries —
+    is otherwise never reached by an analysis visitor. For each such
+    substitution this visits the body's *statements* (not the ``Program`` node),
+    so per-command analysis (security, lint, metrics, validation) runs on the
+    inner commands WITHOUT re-triggering any program-level/root logic the
+    visitor attaches to ``visit_Program``. Backtick substitutions carry
+    ``program=None`` and are skipped.
+    """
+    from ..ast_nodes import ExpansionPart, Word
+    for child in iter_child_nodes(node):
+        if not isinstance(child, Word):
+            continue
+        for part in child.parts:
+            if isinstance(part, ExpansionPart):
+                program = getattr(part.expansion, 'program', None)
+                if program is not None:
+                    for statement in program.statements:
+                        visitor.visit(statement)
