@@ -2,9 +2,9 @@
 
 **A Production-Quality Educational Unix Shell Implementation**
 
-Python Shell (psh) is a POSIX-compliant shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
+Python Shell (psh) is a POSIX-style, bash-compatible shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.663.0 | **Tests**: 13,500+ | **POSIX Compliance**: ~98%
+**Current Version**: 0.663.0 | **Tests**: 14,900+ | **Compatibility**: POSIX + bash, verified against live bash
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -31,10 +31,10 @@ psh --format script.sh
 
 - 🔍 **CLI Analysis Tools**: Built-in script formatting, metrics, security analysis, and linting
 - 📚 **Educational Focus**: Clean, readable codebase designed for learning shell internals
-- 🧪 **Comprehensive Testing**: 8,400+ tests ensuring reliability and robustness
+- 🧪 **Comprehensive Testing**: 14,900+ tests ensuring reliability and robustness
 - 🏗️ **Modern Architecture**: Component-based design with unified lexer and visitor pattern integration
 - 🎓 **Dual Parser Implementation**: Production recursive descent parser, plus an educational parser-combinator alternative for comparing parsing paradigms
-- 📋 **POSIX Compliant**: ~98% compliance with robust bash compatibility
+- 📋 **POSIX + bash compatible**: behavior is conformance-tested against live bash (see the compatibility matrix in the user guide)
 - 🎯 **Feature Complete**: Supports advanced shell programming with arrays, functions, and control structures
 
 ## CLI Analysis Tools ✨
@@ -207,7 +207,7 @@ Requires Python 3.12 or later.
 
 ```bash
 # Clone and install
-git clone https://github.com/philipwilsonTHG/psh.git
+git clone https://github.com/philipwilson/psh.git
 cd psh
 pip install -e .
 
@@ -247,8 +247,8 @@ PSH includes two parser implementations with deliberately different statuses:
 - **Parser Selection**: Use `parser-select combinator` builtin (or `--parser combinator`) to switch implementations interactively
 
 ### Project Statistics
-- **Lines of Code**: ~65,200 lines of production code in `psh/` across 244 Python files, plus ~102,600 lines of tests in `tests/` (548 Python files)
-- **Test Coverage**: 14,104 tests in 538 test files
+- **Lines of Code**: ~67,800 lines of production code in `psh/` across 252 Python files, plus ~108,700 lines of tests in `tests/` (593 Python files)
+- **Test Coverage**: 14,962 tests in 584 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
@@ -262,19 +262,27 @@ Canonical testing commands for contributors and CI are maintained in
 
 Use the provided test runner for correct handling of all tests:
 
-```bash
-# Smart mode (recommended) - handles subshell tests correctly
-python run_tests.py
+Three validation tiers (named the same here, in `run_tests.py`, and in
+[`docs/testing_source_of_truth.md`](docs/testing_source_of_truth.md)):
 
-# Parallel mode (~4x faster)
+```bash
+# standard tier — THE local gate (whole suite, parallel + serial + subshells)
 python run_tests.py --parallel
 
-# Quick mode - skip slow tests
+# quick tier — curated smoke subset (unit + fast integration), parallel, ~20s
 python run_tests.py --quick
 
-# All tests with capture disabled (simpler but noisy)
+# smart serial mode (same phases as the gate, without xdist)
+python run_tests.py
+
+# all tests with capture disabled (simpler but noisy)
 python run_tests.py --all-nocapture
 ```
+
+The **quick** tier is for fast local iteration and is **not** sufficient to
+merge; the **standard** `--parallel` run is the gate. A nightly workflow runs
+the **full** tier (standard plus live-bash conformance and coverage) on Linux
+as a backstop — see the testing source of truth for the exact CI contract.
 
 ### Running Tests Manually
 
@@ -299,25 +307,38 @@ python -m pytest tests/ --cov=psh --cov-report=html
 
 **Note:** As of v0.195.0 the full suite passes under normal pytest capture; the `-s` flag is no longer required for subshell tests (a `read` builtin fix made it read the real redirected file descriptor). `run_tests.py` still works and remains the recommended runner.
 
-**Current test status**: the full suite (12,686 collected tests across 485
-test files) passes locally via `python run_tests.py --parallel`, with a few
-hundred tests skipped as platform-specific or interactive. Run the command
-for exact pass/skip totals on your platform — see
+**Current test status**: the full suite (see the Test Coverage count above)
+passes locally via `python run_tests.py --parallel`, with a few hundred tests
+skipped as platform-specific or interactive. Run the command for exact
+pass/skip totals on your platform — see
 [`docs/testing_source_of_truth.md`](docs/testing_source_of_truth.md).
 
-## POSIX Compliance
+## POSIX and Bash Compatibility
 
-PSH achieves approximately **98% POSIX compliance** and **92% bash compatibility**:
+PSH targets POSIX shell semantics with a large set of bash extensions. The
+project does **not** publish a single compliance percentage — there is no
+mechanical POSIX oracle behind such a number. Instead, compatibility is
+established by **conformance tests that compare PSH against live bash** on the
+same host (`tests/conformance/`, `find_bash()` picks the newest available
+bash). POSIX-scoped cases live under `tests/conformance/posix/` and
+bash-extension cases under `tests/conformance/bash/`; each asserts identical
+stdout/stderr/exit status or a catalogued, documented difference.
 
-### Compliance Highlights
-- ✅ **Shell Grammar**: 98% - All major constructs supported
-- ✅ **Parameter Expansion**: 95% - All standard forms implemented
-- ✅ **I/O Redirection**: 95% - Complete standard redirection support
-- ✅ **Control Structures**: 100% - Full if/while/for/case support
-- ✅ **Built-in Commands**: 95% - Most essential commands implemented
+The authoritative, per-feature picture is the compatibility table in
+[`docs/user_guide/17_differences_from_bash.md`](docs/user_guide/17_differences_from_bash.md),
+which marks every feature Full / Partial / No and is kept honest by a meta-test
+(`tests/conformance/test_claims_have_tests.py`) that requires a proving
+conformance test for each "Full support" claim.
 
-### Bash Compatibility
-PSH includes many bash extensions while maintaining POSIX compliance:
+### Broadly supported
+- ✅ **Shell Grammar**: all major constructs (pipelines, lists, compound commands)
+- ✅ **Parameter Expansion**: the standard `${...}` forms plus bash string operators
+- ✅ **I/O Redirection**: files, fds, heredocs, here-strings, process substitution
+- ✅ **Control Structures**: `if`/`while`/`until`/`for`/`case`, C-style `for`, `select`
+- ✅ **Built-in Commands**: the POSIX special builtins plus common bash builtins
+
+### Bash extensions
+PSH includes many bash extensions on top of the POSIX core:
 - Associative arrays with `declare -A`
 - Enhanced test operators `[[ ]]` with regex support
 - Brace expansion and process substitution
@@ -329,8 +350,8 @@ PSH includes many bash extensions while maintaining POSIX compliance:
 
 While PSH implements most shell features, some limitations remain:
 
-- **RETURN Traps**: `trap` supports signal traps plus the EXIT, DEBUG, and ERR pseudo-signals, but not RETURN
 - **Deep Recursion**: Recursive functions hit Python stack limits
+- **Programmable completion**: `complete`/`compgen` and coprocesses are not implemented (see `docs/missing_features.md`)
 - **Some Advanced Features**: Minor gaps in specialized POSIX utilities
 
 See [CHANGELOG.md](CHANGELOG.md) and `docs/reviews/` for recent fixes, and

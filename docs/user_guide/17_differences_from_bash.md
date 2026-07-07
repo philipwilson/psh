@@ -4,7 +4,7 @@ While PSH implements many shell features compatible with Bash, there are importa
 
 ## 17.1 Supported Features Overview
 
-PSH v0.221.0 has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps.
+PSH has near-complete compatibility with Bash for core shell programming. Most common Bash scripts run without modification. This section highlights what is fully supported before discussing the remaining gaps. Every "Full support" claim in the compatibility table below is backed by a conformance test that compares PSH against live bash (enforced by `tests/conformance/test_claims_have_tests.py`).
 
 ### Shell Options
 

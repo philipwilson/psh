@@ -1,4 +1,8 @@
-"""Conformance tests for the test/[/[[ file-operator cluster (reappraisal #18 T1-2).
+"""Conformance tests for the POSIX test/[ file-operator cluster (reappraisal #18 T1-2).
+
+The bash `[[ ]]` parallels of these operators live in
+``tests/conformance/bash/test_enhanced_test_operators_conformance.py`` — `[[ ]]`
+is a bash extension and is kept out of the POSIX tree.
 
 Pins three families of behavior to bash:
 
@@ -51,11 +55,9 @@ class TestFilePermsAnyFileType(ConformanceTest):
     def test_test_word_form_x_on_dir(self):
         self.assert_identical_behavior('mkdir d; test -x d; echo $?')
 
-    def test_enhanced_x_on_dir(self):
-        self.assert_identical_behavior('mkdir d; [[ -x d ]]; echo $?')
-
-    def test_enhanced_r_on_dev_null(self):
-        self.assert_identical_behavior('[[ -r /dev/null ]]; echo $?')
+    # The bash `[[ ]]` parallels of these operators live in
+    # tests/conformance/bash/test_enhanced_test_operators_conformance.py
+    # (kept out of the POSIX tree — `[[ ]]` is a bash extension).
 
     def test_r_on_fifo(self):
         self.assert_identical_behavior('mkfifo p; [ -r p ]; echo $?')
@@ -80,9 +82,6 @@ class TestFilePermsAnyFileType(ConformanceTest):
 
     def test_test_word_form_s_on_dir(self):
         self.assert_identical_behavior('mkdir d; test -s d; echo $?')
-
-    def test_enhanced_s_on_dir(self):
-        self.assert_identical_behavior('mkdir d; [[ -s d ]]; echo $?')
 
     def test_s_on_empty_file_is_false(self):
         # Regression guard: -s stays FALSE for a zero-length regular file.
@@ -122,12 +121,6 @@ class TestNtOtExistenceAsymmetry(ConformanceTest):
 
     def test_test_word_form_nt(self):
         self.assert_identical_behavior('touch a; test a -nt b; echo $?')
-
-    def test_enhanced_nt_rebuild_idiom(self):
-        self.assert_identical_behavior('touch src; [[ src -nt missing ]]; echo $?')
-
-    def test_enhanced_ot_source_missing(self):
-        self.assert_identical_behavior('touch b; [[ a -ot b ]]; echo $?')
 
     def test_nt_by_mtime_still_works(self):
         # The ordinary mtime comparison (both exist) is unaffected.

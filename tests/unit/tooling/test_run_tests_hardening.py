@@ -237,3 +237,29 @@ def test_run_command_orphan_holding_output_does_not_wedge(monkeypatch):
     assert 'child-done' in out
     assert elapsed < 6, f"run_command wedged on an orphan-held pipe ({elapsed:.1f}s)"
     assert rc == 0
+
+
+def test_run_command_kills_group_on_interrupt(monkeypatch):
+    """Ctrl-C (or any early exit) while a phase runs must group-kill the child
+    before propagating — otherwise the child pytest and its xdist workers are
+    orphaned (appraisal finding C4). The timeout path already did this; this
+    pins the interrupt path.
+    """
+    monkeypatch.setattr(run_tests, 'emit', lambda *a, **k: None)
+    killed = []
+
+    class _FakeProc:
+        pid = 424242
+        returncode = None
+
+        def wait(self, timeout=None):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(run_tests.subprocess, 'Popen',
+                        lambda *a, **k: _FakeProc())
+    monkeypatch.setattr(run_tests, '_kill_process_group',
+                        lambda proc: killed.append(proc.pid))
+
+    with pytest.raises(KeyboardInterrupt):
+        run_tests.run_command([sys.executable, '-c', 'pass'], 'interrupt probe')
+    assert killed == [424242], "interrupted phase did not group-kill its child"

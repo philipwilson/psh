@@ -21,6 +21,31 @@ conformance and coverage on Linux as a safety net — but it is a backstop,
 not the gate. (The local gate runs on macOS; see root `CLAUDE.md` for the
 known platform-divergent code paths the nightly is responsible for.)
 
+## Validation tiers and the CI contract
+
+Three tiers, used at different moments. They are named consistently here, in
+`run_tests.py`, and in the README:
+
+| Tier | Command | Scope | When |
+| --- | --- | --- | --- |
+| **quick** | `python run_tests.py --quick` | Curated smoke subset (unit tree + fast integration areas), parallel, ~20s | Tight local iteration |
+| **standard** (the gate) | `python run_tests.py --parallel` | Whole suite: parallel + serial + subshell phases | Before every merge, locally |
+| **full** (nightly backstop) | `nightly.yml` | Standard **plus** live bash conformance, coverage, on Linux | Nightly on `main` |
+
+What runs where, stated plainly so the truth surface is honest:
+
+- **Per-PR CI does not run.** GitHub's `tests.yml` is intentionally disabled
+  (`state: disabled_manually`). There is no automated per-PR gate; the standard
+  tier run on the author's machine **is** the gate.
+- **Nightly** (`nightly.yml`) runs the full tier on Linux as a backstop, not a
+  precondition for merge.
+- **Release** uses the same standard tier plus the version/stat sync checks in
+  `tests/unit/tooling/` (README statistics, doc pointers, version sync).
+
+The quick tier is for signal during development only — it deliberately omits
+the serial/subprocess-heavy areas and the performance suite, so a green quick
+run is **not** sufficient to merge.
+
 ## Canonical commands
 
 ### 1) Full suite — THE gate (recommended)
@@ -41,14 +66,18 @@ What it does:
 > Redirect output to a file so failures can be inspected without re-running:
 > `python run_tests.py --parallel > tmp/test-results.txt 2>&1; tail -15 tmp/test-results.txt`
 
-### 2) Fast inner-loop subset
+### 2) Quick tier — fast inner-loop smoke subset
 
 ```bash
-python run_tests.py --quick    # skips tests marked `slow`
+python run_tests.py --quick    # curated smoke subset, parallel (~20s)
 ```
 
-Use during development for a faster signal. It is **not** the gate — run the
-full `--parallel` suite before merging.
+Runs the whole `tests/unit/` tree plus the fast, in-process integration areas
+(control flow, parameter expansion, arrays, functions, variables, pipelines) in
+parallel — about 8,300 tests in ~20s. It omits the serial/subprocess-heavy
+areas (redirection, subshells, job control, interactive, scripting) and the
+performance suite. Use it during development for a faster signal. It is **not**
+the gate — run the standard `--parallel` suite before merging.
 
 ### 3) Manual focused runs
 

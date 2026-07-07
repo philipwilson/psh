@@ -1,4 +1,22 @@
-# PSH Subsystem Internals
+# PSH Subsystem Internals (ARCHIVED — historical design note)
+
+> **This is a historical snapshot, archived on 2026-07-08 from
+> `docs/subsystem_internals.md`.** It had drifted out of sync with the tree —
+> it referenced structures that no longer exist (`psh/lexer/state_machine.py`,
+> a monolithic `psh/ast_nodes.py`; the lexer is now a recognizer architecture
+> and the AST nodes live in the `psh/ast_nodes/` package). Rather than keep
+> re-truthing a narrative that overlaps the maintained docs, it was retired
+> here (house precedent: `ARCHITECTURE.llm`, retired v0.311.0).
+>
+> **For current architecture, read instead:**
+> - [`ARCHITECTURE.md`](../../ARCHITECTURE.md) — the maintained architecture guide (incl. the Quick Map).
+> - The per-subsystem `psh/*/CLAUDE.md` files — focused, current guidance.
+> - [`docs/architecture/tour_of_psh_internals.md`](../architecture/tour_of_psh_internals.md) — one command traced end-to-end through every stage.
+>
+> Everything below is preserved verbatim as it stood; treat specific file
+> paths, line numbers, and sizes as of its era, not as current fact.
+
+---
 
 This document describes how the four core subsystems of PSH work: lexing, parsing, expansion, and evaluation. Together they form the pipeline that transforms raw shell input into executed commands.
 

@@ -77,10 +77,10 @@ class TestBashBuiltins(ConformanceTest):
             assert bool(result.psh_result.stderr) == bool(result.bash_result.stderr), cmd
 
     def test_read_builtin(self):
-        """Test read builtin compatibility."""
-        # Basic read functionality
-        self.check_behavior('echo "test" | read var; echo $var')
-        # Read from pipe behavior might differ
+        """`read` in a pipeline runs in a subshell, so the assignment does not
+        survive to the parent — both shells print an empty line for $var
+        (neither enables lastpipe)."""
+        self.assert_identical_behavior('echo "test" | read var; echo $var')
 
     def test_test_builtin(self):
         """Test test/[ builtin compatibility."""
@@ -243,10 +243,8 @@ class TestBashBraceExpansion(ConformanceTest):
         assert 'c' in result.psh_result.stdout
 
     def test_nested_brace_expansion(self):
-        """Test nested brace expansion."""
-        self.check_behavior('echo {a,b{1,2}}')
-        # Should expand properly in both shells
-        # Exact format might differ but should contain all combinations
+        """Nested brace expansion produces the same fields in both shells."""
+        self.assert_identical_behavior('echo {a,b{1,2}}')
 
 
 class TestBashArithmeticExpansion(ConformanceTest):
@@ -301,10 +299,13 @@ class TestBashGlobbing(ConformanceTest):
         Note: extglob must be enabled on a PREVIOUS line for the tokenizer
         to recognize the patterns. Same-line shopt+pattern won't work
         in bash or psh because tokenization happens before execution.
+
+        With no matching files in the temp dir, an extglob pattern is left
+        literal by both shells, so the results are identical.
         """
-        self.check_behavior('shopt -s extglob\necho @(a|b)')
-        self.check_behavior('shopt -s extglob\necho +(a|b)')
-        self.check_behavior('shopt -s extglob\necho *(a|b)')
+        self.assert_identical_behavior('shopt -s extglob\necho @(a|b)')
+        self.assert_identical_behavior('shopt -s extglob\necho +(a|b)')
+        self.assert_identical_behavior('shopt -s extglob\necho *(a|b)')
 
     def test_brace_globbing_interaction(self):
         """Test interaction between braces and globbing."""
@@ -328,14 +329,13 @@ class TestBashJobControl(ConformanceTest):
         assert result.bash_result.exit_code == 0
 
     def test_job_control_commands(self):
-        """Test job control commands."""
-        # These tests are complex in non-interactive mode
-        result1 = self.check_behavior('jobs')
-        self.check_behavior('sleep 1 & jobs')
+        """`jobs` output matches bash in non-interactive mode.
 
-        # Should succeed in both shells
-        assert result1.psh_result.exit_code == 0
-        assert result1.bash_result.exit_code == 0
+        With no jobs, both shells print nothing; a running background job is
+        listed in the same "[1]+  Running ... &" format.
+        """
+        self.assert_identical_behavior('jobs')
+        self.assert_identical_behavior('sleep 1 & jobs')
 
 
 class TestBashHistory(ConformanceTest):
@@ -357,9 +357,9 @@ class TestBashHistory(ConformanceTest):
         assert 'command not found' in bash_result.stderr
 
     def test_history_commands(self):
-        """Test history-related commands."""
-        self.check_behavior('history')
-        # History command behavior might differ
+        """In non-interactive -c mode neither shell has a history list, so
+        `history` prints nothing in both."""
+        self.assert_identical_behavior('history')
 
 
 class TestBashOptions(ConformanceTest):
@@ -368,10 +368,8 @@ class TestBashOptions(ConformanceTest):
     def test_set_options(self):
         """Test set options (POSIX and bash)."""
         self.assert_identical_behavior('set -e; true')
-
-        # These might have different behavior
-        self.check_behavior('set -o pipefail; true')
-        self.check_behavior('set -u; true')
+        self.assert_identical_behavior('set -o pipefail; true')
+        self.assert_identical_behavior('set -u; true')
 
     def test_set_euo_pipefail_strict_mode(self):
         """The canonical strict-mode idiom: trailing 'o' in a cluster."""
@@ -442,10 +440,8 @@ class TestBashRedirection(ConformanceTest):
         self.assert_identical_behavior('cat < /dev/null')
 
     def test_here_documents(self):
-        """Test here documents (POSIX)."""
-        # Here document tests are complex - check basic syntax
-        self.check_behavior('cat << EOF\nhello\nEOF')
-        # Both should handle here documents
+        """A basic here-document feeds its body to the command identically."""
+        self.assert_identical_behavior('cat << EOF\nhello\nEOF')
 
     def test_here_strings(self):
         """Here-strings (<<<) including bareword operands."""
@@ -607,10 +603,8 @@ class TestBashMiscellaneous(ConformanceTest):
         self.assert_identical_behavior('x=$(echo dynamic); echo $x')
 
     def test_export_functionality(self):
-        """Test export functionality."""
-        # Basic export
-        self.check_behavior('export VAR=value; env | grep VAR')
-        # Should appear in environment
+        """An exported variable appears in the child `env` output identically."""
+        self.assert_identical_behavior("export VAR=value; env | grep '^VAR='")
 
     def test_env_option_compatibility(self):
         """Test env option compatibility for ignore/unset behavior."""
