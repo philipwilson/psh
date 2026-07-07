@@ -68,6 +68,26 @@ def test_nested_negation_not_exponential():
 
 
 @pytest.mark.timeout(30)
+def test_parameter_operators_not_exponential():
+    """The ${var...} pattern operators drive the engine, not a regex.
+
+    Both suffix substitution (``${v/%*(a|aa)c/R}``) and longest-prefix removal
+    (``${v##*(a|aa)c}``) ran the exponential regex path before the flip
+    (~7s / ~9s at 38 chars); through the engine they are sub-millisecond. Driven
+    end-to-end through a real Shell so the operator routing is exercised, not
+    just the matcher primitive.
+    """
+    from psh.shell import Shell
+    sh = Shell()
+    subject = "a" * 40 + "b"
+    for op in ("${x/%*(a|aa)c/R}", "${x/#*(a|aa)c/R}", "${x##*(a|aa)c}",
+               "${x%%*(a|aa)c}"):
+        script = 'shopt -s extglob; x=' + subject + '; : "' + op + '"'
+        dt = _elapsed(lambda s=script: sh.run_command(s))
+        assert dt < 0.5, f"{op} took {dt:.3f}s"
+
+
+@pytest.mark.timeout(30)
 def test_long_subject_plain_glob_is_linear():
     """A plain glob against a 10k-char subject is not the pathological case.
 

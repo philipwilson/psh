@@ -361,9 +361,12 @@ class ParameterExpansion:
                           replacement: Union[str, list]) -> str:
         """Replace suffix match."""
         ic = self._nocasematch
-        if self._neg(pattern):
+        if self._use_matcher(pattern):
             from .extglob import extglob_fullmatch
-            # Longest suffix that matches = smallest start index.
+            # Any extglob group routes through the engine (like ${v/#}), not the
+            # end-anchored regex below: ambiguous repetition (${v/%*(a|aa)c/R})
+            # backtracks catastrophically there. Longest matching suffix =
+            # smallest start index whose suffix fully matches.
             for i in range(len(value) + 1):
                 if extglob_fullmatch(pattern, value[i:], ignorecase=ic):
                     return (value[:i]

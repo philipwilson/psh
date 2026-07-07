@@ -91,11 +91,15 @@ ROWS = [
 # Pre-existing psh<->bash divergences NOT introduced by the engine work. Excluded
 # from the equality lock and asserted stable so a regression here is still caught.
 KNOWN_DIVERGENCES = {
-    # ${x/?(y)/z} / ${x//?(y)/z} on an EMPTY subject: bash suppresses the
-    # zero-width match for the ?() quantifier specifically; psh (the old regex
-    # path AND the matcher) emits it. Per-quantifier quirk, not derivable from
-    # the match extent; documented as left-as-is in parameter_expansion.py.
-    "q4_sub1", "q4_sub2",
+    # Empty-subject zero-width substitution quirk (PRE-EXISTING; confirmed on
+    # base main b3f18815 before this campaign). On an EMPTY subject bash
+    # suppresses the zero-width match for a zero-width-capable extglob group in
+    # the unanchored (${x/}, ${x//}) and prefix-anchored (${x/#}) substitution
+    # forms; psh emits it. Not derivable from the match extent -- the matcher
+    # returns the correct reachable-end set {0}, and the SUFFIX form (${x/%})
+    # already matches bash, so this is a bash operator-and-anchor-specific empty
+    # quirk, left as-is (out of scope for the pattern-engine work).
+    "q4_sub1", "q4_sub2", "q4_sub3", "neg7_sub3",
 }
 
 
@@ -119,7 +123,9 @@ def _render(rid, subj, pat, quoted):
         f"printf '{rid}_rem3=%s\\n' \"${{s%{p}}}\"; "
         f"printf '{rid}_rem4=%s\\n' \"${{s%%{p}}}\"",
         f"s={_shq(subj)}; printf '{rid}_sub1=%s\\n' \"${{s/{p}/Z}}\"; "
-        f"printf '{rid}_sub2=%s\\n' \"${{s//{p}/Z}}\"",
+        f"printf '{rid}_sub2=%s\\n' \"${{s//{p}/Z}}\"; "
+        f"printf '{rid}_sub3=%s\\n' \"${{s/#{p}/Z}}\"; "
+        f"printf '{rid}_sub4=%s\\n' \"${{s/%{p}/Z}}\"",
     ]
 
 
@@ -170,11 +176,16 @@ def test_known_divergences_are_still_divergent():
     """
     script = ("shopt -s extglob\n"
               "s=''; printf 'q4_sub1=%s\\n' \"${s/?(x)/Z}\"\n"
-              "s=''; printf 'q4_sub2=%s\\n' \"${s//?(x)/Z}\"\n")
+              "s=''; printf 'q4_sub2=%s\\n' \"${s//?(x)/Z}\"\n"
+              "s=''; printf 'q4_sub3=%s\\n' \"${s/#?(x)/Z}\"\n"
+              "s=''; printf 'neg7_sub3=%s\\n' \"${s/#!(x)/Z}\"\n"
+              # The SUFFIX form is NOT part of the quirk: bash and psh agree.
+              "s=''; printf 'q4_sub4=%s\\n' \"${s/%?(x)/Z}\"\n")
     bt = _tags(_run(BASH, script, {"LC_ALL": "C"}).stdout)
     pt = _tags(_run(PSH, script, {"LC_ALL": "C"}).stdout)
-    assert bt.get("q4_sub1") == "" and pt.get("q4_sub1") == "Z"
-    assert bt.get("q4_sub2") == "" and pt.get("q4_sub2") == "Z"
+    for k in ("q4_sub1", "q4_sub2", "q4_sub3", "neg7_sub3"):
+        assert bt.get(k) == "" and pt.get(k) == "Z", k
+    assert bt.get("q4_sub4") == "Z" and pt.get("q4_sub4") == "Z"
 
 
 # Pathname (glob) fileset: no case-colliding names (APFS is case-insensitive).
