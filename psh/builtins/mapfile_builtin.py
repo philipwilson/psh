@@ -195,10 +195,14 @@ class MapfileBuiltin(Builtin):
         from ..core import IndexedArray, VarAttributes
 
         if have_origin:
-            # Do not clear: overlay onto the existing array (or a new one).
+            # Overlay onto a COPY of the existing array, not the live one: if
+            # the variable is readonly, set_variable rejects the assignment
+            # below and the live array must stay untouched (P1.2 — a failed
+            # operation does not mutate a readonly value; `readonly a=(old);
+            # mapfile -O 1 a` leaves a=(old)).
             var = shell.state.scope_manager.get_variable_object(name)
             if var is not None and isinstance(var.value, IndexedArray):
-                array = var.value
+                array = var.value.copy()
             else:
                 array = IndexedArray()
         else:

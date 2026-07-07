@@ -7032,3 +7032,27 @@
   stdout: "1\n"
   stderr: ""
   exit_code: 0
+
+- name: cstate_readonly_element_unset_refused
+  command: "a=(x y); readonly a; unset 'a[0]'; echo \"${a[*]}\""
+  stdout: "x y\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: cstate_unset_sparse_negative_noop
+  command: "a=([5]=F [10]=T); unset 'a[-2]'; echo \"${!a[*]}\""
+  stdout: "5 10\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_unset_sparse_negative_last
+  command: "a=([5]=F [10]=T); unset 'a[-1]'; echo \"${!a[*]}\""
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_unset_sparse_negative_oob_bad_subscript
+  command: "a=([5]=F [10]=T); unset 'a[-12]'; echo \"${!a[*]}\""
+  stdout: "5 10\n"
+  stderr: "bad array subscript"
+  exit_code: 0

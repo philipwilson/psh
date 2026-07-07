@@ -335,15 +335,19 @@ class LocalBuiltin(Builtin):
                     existing = (shell.state.scope_manager.get_variable_object(var_name)
                                 if append else None)
                     into: object
+                    # Build += into a COPY, not the live array: if the target
+                    # is readonly, create_local rejects the assignment and the
+                    # live array must stay untouched (C2/P1.2 — a failed
+                    # operation does not mutate a readonly value).
                     if attributes & VarAttributes.ASSOC_ARRAY:
-                        into = (existing.value
+                        into = (existing.value.copy()
                                 if existing is not None
                                 and isinstance(existing.value, AssociativeArray)
                                 else None)
                         array = self._build_assoc_array(array_init, into, shell)
                         shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ASSOC_ARRAY)
                     else:
-                        into = (existing.value
+                        into = (existing.value.copy()
                                 if existing is not None
                                 and isinstance(existing.value, IndexedArray)
                                 else None)

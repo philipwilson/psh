@@ -14,11 +14,10 @@ sparse ``unset 'a[-2]'`` removed the wrong slot.
 
 Invariants are asserted on the shell's own array objects (bash aborts the
 whole ``-c`` on an assignment error while psh continues, so the full line is
-not directly bash-comparable — the mutation state is). xfail(strict=True):
-each flips when Commit 4 lands.
+not directly bash-comparable — the mutation state is). Fixed in Commit 4:
+readonly checked before element unset; the append/overlay routes build into a
+COPY committed atomically; unset shares read/write negative-index resolution.
 """
-
-import pytest
 
 from psh.core.variables import IndexedArray
 
@@ -32,32 +31,24 @@ def _array(shell, name):
 # Readonly enforcement on every array mutation route.
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="C2: unset 'a[0]' removes a readonly "
-                   "element (no readonly check); fixed in Commit 4")
 def test_readonly_element_unset_refused(captured_shell):
     rc = captured_shell.run_command("a=(x y); readonly a; unset 'a[0]'")
     assert rc == 1
     assert _array(captured_shell, "a").all_elements() == ["x", "y"]
 
 
-@pytest.mark.xfail(strict=True, reason="P1.2: declare a+=() builds into the "
-                   "live array before set_variable rejects; fixed in Commit 4")
 def test_readonly_declare_append_no_mutation(captured_shell):
     rc = captured_shell.run_command("readonly -a a=(x); declare a+=(y)")
     assert rc == 1
     assert _array(captured_shell, "a").all_elements() == ["x"]
 
 
-@pytest.mark.xfail(strict=True, reason="P1.2: mapfile -O overlays the live "
-                   "array before rejection; fixed in Commit 4")
 def test_readonly_mapfile_origin_no_mutation(captured_shell):
     rc = captured_shell.run_command("readonly -a a=(old); mapfile -t -O 1 a <<< new")
     assert rc == 1
     assert _array(captured_shell, "a").all_elements() == ["old"]
 
 
-@pytest.mark.xfail(strict=True, reason="P1.2: local a+=() builds into the "
-                   "live outer array before the readonly check; fixed Commit 4")
 def test_readonly_local_append_no_mutation(captured_shell):
     rc = captured_shell.run_command(
         "readonly -a a=(x); f() { local a+=(y); }; f")
@@ -69,8 +60,6 @@ def test_readonly_local_append_no_mutation(captured_shell):
 # Sparse negative-subscript unset must match read/write (highest+1+n).
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="C2: unset uses indices()[n] instead of "
-                   "the highest+1+n formula; fixed in Commit 4")
 def test_sparse_negative_unset_matches_bash():
     # a[5],a[10]; unset a[-2] -> slot 9 (unset) -> no-op like bash.
     from psh.shell import Shell
