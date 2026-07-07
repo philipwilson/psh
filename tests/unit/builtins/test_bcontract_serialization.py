@@ -136,6 +136,24 @@ def test_array_declare_p_matches_bash():
     assert pout == bout
 
 
+@pytest.mark.xfail(
+    reason="task #15: PRE-EXISTING (confirmed on base main) — eval-ing a "
+    "declare -p explicit-index array with an escaped $ re-expands it. The "
+    "declare -p OUTPUT is byte-identical to bash; the defect is in re-parsing "
+    "`declare -a a=([1]=\"z\\$w\")` (array-init parser/expansion), outside the "
+    "serializer. Documents the DESIRED bash-matching round-trip; XPASSes when "
+    "#15 lands.",
+    strict=False)
+def test_array_with_escaped_dollar_roundtrips():
+    """value with a literal $ in an array element -> declare -p -> eval in a
+    fresh psh should preserve it (bash does). Currently the escaped $ from
+    declare -p's `[1]="z\\$w"` re-expands on eval."""
+    script = ("a=('x y' 'z$w'); line=$(declare -p a); unset a; "
+              "eval \"$line\"; printf '[%s]' \"${a[@]}\"")
+    _, pout, _ = run(PSH, script)
+    assert pout == "[x y][z$w]"
+
+
 def test_set_lists_array_in_bracket_form():
     """`set` shows an array with the reusable `([0]=..)` form, not one word."""
     script = "a=('x y' 'z'); set | grep -a '^a='"
