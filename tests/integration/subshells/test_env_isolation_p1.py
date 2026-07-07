@@ -71,15 +71,16 @@ def test_env_umask_does_not_change_umask():
 # env's (former) in-process child leaked Python-owned mutations.
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="C1: env's in-process child mutated the "
-                   "parent's array. External env is isolated. Commit 3.")
+# NOTE: the array/function leaks below were SHARED-IDENTITY leaks — the env
+# in-process child shared the parent's array value and Function object. Commit
+# 2's clone_for_child deep-clones both, so these are isolated even while env is
+# still in-process; Commit 3 (external env) is what fixes the process-state
+# leaks (exit/exec/cd/umask) above.
 def test_env_unset_array_no_leak():
     r = _psh('a=(x y); env unset "a[0]"; printf "<%s>\\n" "${a[*]}"')
     assert "<x y>" in r.stdout, "env unset leaked into the parent array"
 
 
-@pytest.mark.xfail(strict=True, reason="C1: env's in-process child made the "
-                   "parent function readonly. External env is isolated. Commit 3.")
 def test_env_readonly_f_no_leak():
     r = _psh('f(){ :; }; env readonly -f f; f(){ echo REDEFINED; }; f')
     assert "REDEFINED" in r.stdout, "env readonly -f leaked into the parent"

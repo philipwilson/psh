@@ -11,13 +11,11 @@ clone of its parent. Two failure classes:
    are shared across the child boundary, so a child mutation (or the env
    builtin's in-process child) changes the parent.
 
-Written xfail(strict=True): they FAIL at base (adopt) and each flips to a
-real pass when ``ShellState.clone_for_child`` lands (Commit 2). The
-graph-independence walker is the durable replacement for the textual
-adopt drift-lock (``test_state_adopt_completeness``).
+Fixed by ``ShellState.clone_for_child`` (an exact clone: no fresh
+``os.environ`` import, no seeded defaults, deep-copied arrays and per-instance
+Function metadata). The graph-independence walker below is the durable
+replacement for the textual adopt drift-lock (``test_state_adopt_completeness``).
 """
-
-import pytest
 
 from psh.core.variables import AssociativeArray, IndexedArray
 from psh.shell import Shell
@@ -40,8 +38,6 @@ def _make_parent():
 # Resurrection: an absent parent name must stay absent in the child.
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="C1: fresh-init os.environ import "
-                   "resurrects HOME in the child; fixed by clone_for_child")
 def test_unset_home_stays_absent_in_child():
     parent = Shell(norc=True)
     try:
@@ -56,8 +52,6 @@ def test_unset_home_stays_absent_in_child():
         parent.close()
 
 
-@pytest.mark.xfail(strict=True, reason="C1: seeded PS4 default resurrects in "
-                   "the child; fixed by clone_for_child")
 def test_unset_ps4_stays_absent_in_child():
     parent = Shell(norc=True)
     try:
@@ -75,8 +69,6 @@ def test_unset_ps4_stays_absent_in_child():
 # Independence: mutating the child must never touch the parent.
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="C1: Variable.copy shares the array "
-                   "value; child mutation leaks to parent")
 def test_indexed_array_is_independent():
     parent = _make_parent()
     try:
@@ -94,8 +86,6 @@ def test_indexed_array_is_independent():
         parent.close()
 
 
-@pytest.mark.xfail(strict=True, reason="C1: associative array value shared "
-                   "across child boundary")
 def test_assoc_array_is_independent():
     parent = _make_parent()
     try:
@@ -111,8 +101,6 @@ def test_assoc_array_is_independent():
         parent.close()
 
 
-@pytest.mark.xfail(strict=True, reason="C1: FunctionManager.copy shares the "
-                   "Function object; child readonly/redef leaks to parent")
 def test_function_metadata_is_independent():
     parent = _make_parent()
     try:
@@ -179,9 +167,6 @@ def _mutable_identity_map(shell):
     return out
 
 
-@pytest.mark.xfail(strict=True, reason="C1: arrays and Function objects share "
-                   "identity across the child boundary; fixed by "
-                   "clone_for_child deep-cloning")
 def test_child_shares_no_mutable_identity_with_parent():
     parent = _make_parent()
     try:

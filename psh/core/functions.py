@@ -28,6 +28,21 @@ class Function:
         self.redirects = redirects or []
         self.source_location = None  # Could add file:line info later
 
+    def copy(self) -> 'Function':
+        """Independent copy for a child shell.
+
+        The ``body`` AST is shared (immutable once parsed), but the MUTABLE
+        metadata — ``readonly``/``exported``/``trace`` and the ``redirects``
+        list — is copied so a child marking the function readonly (or the
+        env builtin's in-process child) cannot leak that into the parent's
+        function.
+        """
+        new = Function(self.name, self.body, readonly=self.readonly,
+                       redirects=list(self.redirects), exported=self.exported,
+                       trace=self.trace)
+        new.source_location = self.source_location
+        return new
+
 
 class FunctionManager:
     """Manages shell function definitions."""
@@ -116,15 +131,17 @@ class FunctionManager:
         self.functions.clear()
 
     def copy(self) -> 'FunctionManager':
-        """Create a shallow copy of all functions.
+        """Independent copy of all functions for a child shell.
 
-        Note: For now, we share AST nodes between instances since they're
-        immutable once created. If we need true isolation later, we can
-        implement deep copying.
+        Each ``Function`` object is copied (``Function.copy``), not shared:
+        the body AST stays shared (immutable), but the mutable
+        ``readonly``/``exported``/``trace``/``redirects`` metadata is
+        per-instance, so a child's ``readonly -f``/``export -f``/redefinition
+        cannot leak back into the parent (the C1 function-metadata defect).
         """
         new_manager = FunctionManager()
-        # Shallow copy is sufficient since we don't modify AST nodes
-        new_manager.functions = self.functions.copy()
+        new_manager.functions = {
+            name: func.copy() for name, func in self.functions.items()}
         return new_manager
 
     def _is_invalid_name(self, name: str) -> bool:
