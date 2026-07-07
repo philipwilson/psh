@@ -216,12 +216,16 @@ class IndexedArray:
         return new
 
     def all_elements(self) -> List[str]:
-        """Get all elements in order, skipping unset indices."""
-        result = []
-        for i in range(self._max_index + 1):
-            if i in self._elements:
-                result.append(self._elements[i])
-        return result
+        """Get all elements in ascending index order.
+
+        Iterates the STORED indices (O(n log n) in the number of set
+        elements), not ``range(max_index + 1)`` — a sparse array can select a
+        very large highest index (``a[10000000]=x``), so the old
+        max-index scan was O(max_index) and a denial-of-service surface on
+        ``"${a[*]}"``. ``_elements`` holds only set indices, so sorting them
+        yields the same ascending sequence the scan produced.
+        """
+        return [self._elements[i] for i in sorted(self._elements)]
 
     def indices(self) -> List[int]:
         """Get all defined indices in sorted order."""
