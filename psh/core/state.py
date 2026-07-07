@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Set
 
 from ..version import __version__
 from .command_hash import CommandHashTable
+from .environment import is_environ_shell_name
 from .execution_state import ExecutionState
 from .getopts_state import GetoptsState
 from .history_state import HistoryState
@@ -108,10 +109,16 @@ class ShellState:
         # Shell version variable for compatibility
         self.scope_manager.set_variable('PSH_VERSION', __version__)
 
-        # Import environment variables into scope manager with EXPORT attribute
-        # This ensures they're properly tracked as exported variables
+        # Import inherited environment entries as exported shell variables —
+        # but ONLY those whose name is a valid shell identifier. An entry with
+        # an invalid name (``bad-name``, ``a.b``, a non-ASCII name) stays in
+        # ``self.env`` as an OPAQUE inherited entry: it is passed to children
+        # and shown by ``printenv``, but is NOT a shell variable (no scope
+        # entry, so ``declare -p`` / ``set`` / ``compgen -v`` / ``export -p``
+        # do not list it) — bash's behaviour (core-state appraisal H3).
         for name, value in self.env.items():
-            self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
+            if is_environ_shell_name(name):
+                self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
 
         # From here on, every write/unset/attribute-change of a variable
         # re-derives that name's entry in the live environment, so a plain

@@ -62,3 +62,67 @@ class TestRandomSeedConformance(ConformanceTest):
     def test_unset_makes_ordinary_variable(self):
         self.assert_identical_behavior(
             'unset RANDOM; RANDOM=hi; echo "[$RANDOM]"')
+
+
+class TestSpecialUnsetDeactivationConformance(ConformanceTest):
+    """`unset` deactivates EVERY dynamic special (appraisal H1), not just
+    SECONDS/RANDOM: a later assignment then stores the literal string."""
+
+    def test_unset_epochseconds_then_assign(self):
+        self.assert_identical_behavior(
+            'unset EPOCHSECONDS; EPOCHSECONDS=hello; echo "[$EPOCHSECONDS]"')
+
+    def test_unset_epochrealtime_then_assign(self):
+        self.assert_identical_behavior(
+            'unset EPOCHREALTIME; EPOCHREALTIME=hello; echo "[$EPOCHREALTIME]"')
+
+    def test_unset_lineno_then_assign(self):
+        self.assert_identical_behavior(
+            'unset LINENO; LINENO=hello; echo "[$LINENO]"')
+
+    def test_unset_bashpid_then_assign(self):
+        self.assert_identical_behavior(
+            'unset BASHPID; BASHPID=hello; echo "[$BASHPID]"')
+
+
+class TestSpecialExportMaterializationConformance(ConformanceTest):
+    """`export`-ing a computed special materialises a SNAPSHOT of its value
+    into the environment (appraisal H1)."""
+
+    def test_export_seconds_with_value_snapshots(self):
+        # export SECONDS=100 seeds the baseline AND snapshots 100 into the env
+        # a child sees.
+        self.assert_identical_behavior(
+            'export SECONDS=100; printenv SECONDS')
+
+    def test_export_random_visible_to_child(self):
+        # The exact value is unpredictable, but a child must find SOME value.
+        self.assert_identical_behavior(
+            'export RANDOM; printenv RANDOM >/dev/null; echo "rc=$?"')
+
+    def test_export_then_export_n_removes_entry(self):
+        self.assert_identical_behavior(
+            'export EPOCHSECONDS; export -n EPOCHSECONDS; '
+            'printenv EPOCHSECONDS >/dev/null; echo "rc=$?"')
+
+
+class TestSpecialDeclarePConformance(ConformanceTest):
+    """`declare -p NAME` lists a computed special with its attributes
+    (appraisal H1). The value is stripped so the comparison is deterministic
+    despite RANDOM / clock values differing between the shells."""
+
+    def test_declare_p_random_integer(self):
+        self.assert_identical_behavior("declare -p RANDOM | sed 's/=.*//'")
+
+    def test_declare_p_seconds_integer(self):
+        self.assert_identical_behavior("declare -p SECONDS | sed 's/=.*//'")
+
+    def test_declare_p_epochseconds_plain(self):
+        self.assert_identical_behavior("declare -p EPOCHSECONDS | sed 's/=.*//'")
+
+    def test_declare_p_lineno_plain(self):
+        self.assert_identical_behavior("declare -p LINENO | sed 's/=.*//'")
+
+    def test_declare_p_readonly_export_random(self):
+        self.assert_identical_behavior(
+            "readonly RANDOM; export RANDOM; declare -p RANDOM | sed 's/=.*//'")
