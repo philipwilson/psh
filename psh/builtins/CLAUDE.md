@@ -381,6 +381,15 @@ def execute(self, args, shell):
     line = shell.stdin.readline()
 ```
 
+For anything more than a casual one-line read, use the shared streaming
+reader (`psh/builtins/input_reader.py`, `make_reader(shell, fd)`) rather
+than reading the shell's stdin directly. It decodes UTF-8 incrementally and,
+crucially, reads a non-seekable source one record at a time so it never
+consumes past what you asked for — the property that lets `read`/`mapfile`
+leave the rest of a pipe readable for the next consumer. A bulk read of the
+whole descriptor drains the pipe and starves whatever runs next; that was the
+historical `mapfile -n1` drain bug.
+
 ### Working with Job Control
 
 ```python

@@ -7376,3 +7376,58 @@
   stdout: "rc=0\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# STREAMING INPUT SERVICE (read / mapfile)
+# ASCII-only I/O so the LC_ALL=C golden harness stays bash-faithful; the
+# multibyte-UTF-8 behavior is a documented C-locale divergence covered by the
+# read/mapfile unit tests.
+# =============================================================================
+
+- name: input_read_leaves_rest_for_cat
+  command: '{ read x; echo "got=$x"; cat; } <<< $''a\nb\nc'''
+  stdout: "got=a\nb\nc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: input_read_N3_exact
+  command: "read -N3 x <<< 'abcdef'; echo \"[$x]\""
+  stdout: "[abc]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: input_read_n2_limit
+  command: "read -n2 x <<< 'abcdef'; echo \"[$x]\""
+  stdout: "[ab]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: input_mapfile_n1_leaves_rest
+  command: '{ mapfile -t -n1 v; printf "v=%s;" "${v[0]}"; cat; } <<< $''a\nb\nc'''
+  stdout: "v=a;b\nc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: input_mapfile_skip_count_leaves_rest
+  command: '{ mapfile -t -s1 -n1 v; printf "v=%s;" "${v[0]}"; cat; } <<< $''a\nb\nc\nd'''
+  stdout: "v=b;c\nd\n"
+  stderr: ""
+  exit_code: 0
+
+- name: input_mapfile_badfd_errors
+  command: "mapfile -u99 a; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "invalid file descriptor"
+  exit_code: 0
+
+- name: input_mapfile_negative_count
+  command: "mapfile -n-1 a <<< x; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "invalid line count"
+  exit_code: 0
+
+- name: input_mapfile_negative_origin
+  command: "mapfile -O-1 a <<< x; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "invalid array origin"
+  exit_code: 0

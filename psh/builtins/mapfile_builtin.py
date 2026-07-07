@@ -1,14 +1,25 @@
 """mapfile / readarray builtin: read lines from input into an indexed array."""
-import io
 import os
-import sys
 from typing import TYPE_CHECKING, List
 
 from .base import Builtin
+from .input_reader import Outcome, make_reader
 from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
+
+
+class _OptionError(ValueError):
+    """A mapfile option/value error carrying bash's exit code for it.
+
+    bash distinguishes an invalid *option* (usage error, status 2) from an
+    invalid option *value* — a bad count/origin/fd (status 1).
+    """
+
+    def __init__(self, message: str, rc: int) -> None:
+        super().__init__(message)
+        self.rc = rc
 
 
 @builtin
@@ -81,32 +92,33 @@ class MapfileBuiltin(Builtin):
                         j += 1
                         continue
                     if ch not in arg_flags:
-                        self.error(f"-{ch}: invalid option", shell)
-                        return 2
+                        # Invalid option is a usage error (bash: status 2).
+                        raise _OptionError(f"-{ch}: invalid option", 2)
                     # Argument is the rest of the cluster, else the next word.
                     if j + 1 < len(cluster):
                         val = cluster[j + 1:]
                     else:
                         i += 1
                         if i >= n:
-                            raise ValueError(f"-{ch}: option requires an argument")
+                            raise _OptionError(
+                                f"-{ch}: option requires an argument", 2)
                         val = args[i]
                     if ch == 'd':
                         delim = val[0] if val else '\0'
                     elif ch == 'n':
-                        count = self._to_int(val, '-n')
+                        count = self._count(val)
                     elif ch == 'O':
-                        origin = self._to_int(val, '-O')
+                        origin = self._origin(val)
                         have_origin = True
                     elif ch == 's':
-                        skip = self._to_int(val, '-s')
+                        skip = self._count(val)
                     elif ch == 'u':
-                        fd = self._to_int(val, '-u')
+                        fd = self._fd(val)
                     break  # argument consumed the remainder of the cluster
                 i += 1
-        except ValueError as e:
+        except _OptionError as e:
             self.error(str(e), shell)
-            return 2
+            return e.rc
 
         rest = args[i:]
         # bash uses the first non-option argument as the array and ignores any
@@ -122,63 +134,67 @@ class MapfileBuiltin(Builtin):
             self.error(f"`{array_name}': not a valid identifier", shell)
             return 1
 
-        # Read and split input into lines (each keeps its trailing delimiter,
-        # except possibly the final unterminated line).
-        data = self._read_all(fd)
-        lines = self._split_lines(data, delim)
+        # A -u file descriptor must be open (bash: "N: invalid file descriptor:
+        # Bad file descriptor", status 1) — a silent no-op used to hide this.
+        if fd != 0:
+            try:
+                os.fstat(fd)
+            except OSError as e:
+                self.error(
+                    f"{fd}: invalid file descriptor: {e.strerror or e}", shell)
+                return 1
 
-        if skip > 0:
-            lines = lines[skip:]
-        if count > 0:
-            lines = lines[:count]
+        lines = self._read_lines(shell, fd, delim, skip, count)
         if strip:
             lines = [ln[:-1] if ln.endswith(delim) else ln for ln in lines]
 
         self._assign(shell, array_name, lines, origin, have_origin)
         return 0
 
-    @staticmethod
-    def _to_int(value: str, flag: str) -> int:
-        try:
-            return int(value)
-        except ValueError:
-            raise ValueError(f"{flag}: {value}: invalid number") from None
+    def _read_lines(self, shell: 'Shell', fd: int, delim: str,
+                    skip: int, count: int) -> List[str]:
+        """Read the requested records, leaving the rest of the stream intact.
 
-    def _read_all(self, fd: int) -> str:
-        """Read all input from the descriptor (or sys.stdin under test capture)."""
-        if self._use_sys_stdin(fd):
-            return sys.stdin.read()
-        chunks = []
-        while True:
-            try:
-                block = os.read(fd, 65536)
-            except OSError:
-                break
-            if not block:
-                break
-            chunks.append(block)
-        return b''.join(chunks).decode('utf-8', errors='replace')
+        With a line ``count`` (``-n``), records are read one at a time through
+        the shared :class:`InputReader` and reading STOPS once ``skip + count``
+        records have been consumed. This is what fixes the historical drain
+        bug: ``mapfile -n1`` used to slurp the whole descriptor into a userspace
+        buffer, so a following ``cat`` on the same pipe saw nothing; now only
+        the needed records are consumed and the rest is left for the next
+        consumer, exactly as bash does.
 
-    def _use_sys_stdin(self, fd: int) -> bool:
-        """Mirror ReadBuiltin: prefer the real OS fd when it is valid."""
-        if 'DontReadFromInput' in sys.stdin.__class__.__name__:
-            return False
-        try:
-            sys.stdin.fileno()
-        except (AttributeError, io.UnsupportedOperation):
-            return True
-        try:
-            os.fstat(fd)
-            return False
-        except (OSError, AttributeError, ValueError):
-            return True
+        With no count (``count == 0``) mapfile reads to EOF regardless, so a
+        bulk drain is behaviorally identical to bash (nothing is left over
+        either way) and avoids reading a large file one byte at a time.
+        """
+        reader = make_reader(shell, fd)
+        if count == 0:
+            all_lines = self._split_lines(reader.read_all(), delim)
+            return all_lines[skip:] if skip else all_lines
+
+        lines: List[str] = []
+        discarded = 0
+        while len(lines) < count:
+            result = reader.read_record(delimiter=delim, include_delimiter=True)
+            # A pure EOF (or read error) with nothing buffered ends the input.
+            if result.data == '' and result.outcome is not Outcome.DATA:
+                break
+            # Otherwise result.data is a record: either delimiter-terminated or
+            # a final line without a trailing delimiter (bash keeps that too).
+            if discarded < skip:
+                discarded += 1
+            else:
+                lines.append(result.data)
+            if result.outcome is not Outcome.DATA:
+                break  # EOF/error reached on this final record; nothing left
+        return lines
 
     @staticmethod
     def _split_lines(data: str, delim: str) -> List[str]:
-        """Split *data* into lines, each retaining its trailing *delim*.
+        """Split *data* into records, each retaining its trailing *delim*.
 
-        A final line without a trailing delimiter is still included. Empty
-        input yields no lines (bash behaviour).
+        A final record without a trailing delimiter is still included; empty
+        input yields no records (bash behaviour).
         """
         lines = []
         start = 0
@@ -189,6 +205,42 @@ class MapfileBuiltin(Builtin):
         if start < len(data):
             lines.append(data[start:])
         return lines
+
+    # -- value validation (bash exit codes and messages) --------------------
+
+    @staticmethod
+    def _count(value: str) -> int:
+        """A -n / -s line count: a non-negative integer (bash)."""
+        try:
+            parsed = int(value)
+            if parsed < 0:
+                raise ValueError
+        except ValueError:
+            raise _OptionError(f"{value}: invalid line count", 1) from None
+        return parsed
+
+    @staticmethod
+    def _origin(value: str) -> int:
+        """An -O array origin: a non-negative integer (bash)."""
+        try:
+            parsed = int(value)
+            if parsed < 0:
+                raise ValueError
+        except ValueError:
+            raise _OptionError(f"{value}: invalid array origin", 1) from None
+        return parsed
+
+    @staticmethod
+    def _fd(value: str) -> int:
+        """A -u file descriptor: a non-negative integer (bash)."""
+        try:
+            parsed = int(value)
+            if parsed < 0:
+                raise ValueError
+        except ValueError:
+            raise _OptionError(
+                f"{value}: invalid file descriptor specification", 1) from None
+        return parsed
 
     def _assign(self, shell: 'Shell', name: str, lines: List[str],
                 origin: int, have_origin: bool) -> None:
