@@ -31,7 +31,6 @@ from typing import TYPE_CHECKING, List
 
 from .base import Builtin
 from .registry import builtin
-from .type_builtin import TypeBuiltin
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -140,7 +139,8 @@ class HashBuiltin(Builtin):
                 continue
             if shell.builtin_registry.has(name):
                 continue
-            paths = TypeBuiltin._find_in_path(name, shell.env.get('PATH', ''))
+            paths = shell.command_resolver.search_path(
+                name, shell.env.get('PATH', ''))
             if paths:
                 table.insert(name, paths[0])
             else:

@@ -1,12 +1,23 @@
 """Command builtin for bypassing aliases and functions."""
 
-from typing import TYPE_CHECKING, List
+import os
+from typing import TYPE_CHECKING, List, Optional
 
 from .base import Builtin
 from .registry import builtin
 
 if TYPE_CHECKING:
+    from ..executor.command_resolver import Candidate
     from ..shell import Shell
+
+
+def _default_path() -> str:
+    """bash's ``command -p`` search path: a value guaranteed to find the
+    standard utilities. Matches bash, which uses ``confstr(_CS_PATH)``."""
+    try:
+        return os.confstr("CS_PATH") or "/usr/bin:/bin"
+    except (ValueError, OSError):
+        return "/usr/bin:/bin"
 
 
 @builtin
@@ -37,118 +48,100 @@ class CommandBuiltin(Builtin):
 
         # Handle description modes (-v and -V)
         if show_description or verbose_description:
-            return self._show_command_info(operands, verbose_description, shell)
+            return self._show_command_info(
+                operands, verbose_description, shell, use_default_path)
 
-        # Execute the command, bypassing aliases and functions
-        if use_default_path:
-            # Use a secure default PATH
-            old_path = shell.env.get('PATH', '')
-            shell.env['PATH'] = '/usr/bin:/bin'
-            try:
-                return self._execute_external_command(command_name, command_args, shell)
-            finally:
-                shell.env['PATH'] = old_path
-        else:
-            # Check if it's a builtin first
-            builtin_obj = shell.builtin_registry.get(command_name)
-            if builtin_obj is not None:
-                # Run the builtin through the shared guard (uniform
-                # broken-pipe / OSError / defect handling and BuiltinContext),
-                # bypassing only the function lookup `command` is meant to skip.
-                # Any `> file` redirect on the `command ...` word is already
-                # applied around this builtin by the executor (fd + stream), so
-                # the guarded builtin — and anything it spawns — sees it.
-                from ..executor.strategies import execute_builtin_guarded
-                return execute_builtin_guarded(
-                    builtin_obj, command_name, command_args[1:], shell)
-            else:
-                # Execute external command
-                return self._execute_external_command(command_name, command_args, shell)
+        # `command` bypasses aliases and FUNCTIONS but still selects builtins
+        # (bash) — `-p` only changes the PATH used for the EXTERNAL search, it
+        # does not force external execution. Any `> file` redirect on the
+        # `command ...` word is already applied around this builtin by the
+        # executor, so the guarded builtin — and anything it spawns — sees it.
+        builtin_obj = shell.builtin_registry.get(command_name)
+        if builtin_obj is not None:
+            from ..executor.strategies import execute_builtin_guarded
+            return execute_builtin_guarded(
+                builtin_obj, command_name, command_args[1:], shell)
 
-    def _show_command_info(self, names: List[str], verbose: bool, shell: 'Shell') -> int:
+        # External: with -p search the default path authoritatively (the child
+        # still inherits the shell's real PATH); otherwise the normal path with
+        # the command hash.
+        path_override = _default_path() if use_default_path else None
+        return self._execute_external_command(
+            command_name, command_args, shell,
+            path_override=path_override, use_hash=not use_default_path)
+
+    def _show_command_info(self, names: List[str], verbose: bool, shell: 'Shell',
+                           use_default_path: bool = False) -> int:
         """Display information about commands (bash `command -v` / `-V`).
 
-        Lookup order follows `type`: alias > keyword > function > builtin >
-        PATH. Returns 0 if at least one name was found, 1 otherwise (bash).
+        Renders the shared resolver's result so the lookup order, hash
+        consultation, and PATH walk match `type` and the executor exactly.
+        `command` reports functions here (it only bypasses them for
+        execution). Returns 0 if at least one name resolved, else 1.
         """
-        from .type_builtin import TypeBuiltin
+        from ..executor.command_resolver import ResolveQuery
+
+        resolver = shell.command_resolver
+        query = ResolveQuery(path=_default_path() if use_default_path else None)
 
         any_found = False
         for name in names:
-            # Aliases (command -v prints the alias definition line)
-            alias_value = shell.alias_manager.get_alias(name)
-            if alias_value is not None:
+            cand = resolver.resolve(name, query).first
+            if cand is None:
+                # Not found: -v is silent, -V prints an error (bash)
                 if verbose:
-                    self.write_line(f"{name} is aliased to `{alias_value}'", shell)
-                else:
-                    escaped_value = alias_value.replace("'", "'\"'\"'")
-                    self.write_line(f"alias {name}='{escaped_value}'", shell)
-                any_found = True
+                    self.error(f"{name}: not found", shell)
                 continue
-
-            # Shell keywords
-            if name in TypeBuiltin.SHELL_KEYWORDS:
-                if verbose:
-                    self.write_line(f"{name} is a shell keyword", shell)
-                else:
-                    self.write_line(name, shell)
-                any_found = True
-                continue
-
-            # Functions (-V prints the definition, like `declare -f`)
-            func = shell.function_manager.get_function(name)
-            if func is not None:
-                if verbose:
-                    from ..visitor import format_function_definition
-                    self.write_line(f"{name} is a function", shell)
-                    self.write_line(
-                        format_function_definition(name, func), shell)
-                else:
-                    self.write_line(name, shell)
-                any_found = True
-                continue
-
-            # Builtins
-            if shell.builtin_registry.has(name):
-                if verbose:
-                    self.write_line(f"{name} is a shell builtin", shell)
-                else:
-                    self.write_line(name, shell)
-                any_found = True
-                continue
-
-            # PATH search (also handles names containing a slash)
-            paths = TypeBuiltin._find_in_path(name, shell.env.get('PATH', ''))
-            if paths:
-                if verbose:
-                    self.write_line(f"{name} is {paths[0]}", shell)
-                else:
-                    self.write_line(paths[0], shell)
-                any_found = True
-                continue
-
-            # Not found: -v is silent, -V prints an error (bash)
-            if verbose:
-                self.error(f"{name}: not found", shell)
+            any_found = True
+            self._render_info(name, cand, verbose, shell)
 
         return 0 if any_found else 1
 
-    def _execute_external_command(self, command_name: str, args: List[str], shell: 'Shell') -> int:
+    def _render_info(self, name: str, cand: 'Candidate', verbose: bool,
+                     shell: 'Shell') -> None:
+        """Render one candidate for `command -v` (reusable) or `-V` (verbose)."""
+        from ..executor.command_resolver import CandidateKind
+
+        if verbose:
+            if cand.kind is CandidateKind.ALIAS:
+                self.write_line(f"{name} is aliased to `{cand.alias_value}'", shell)
+            elif cand.kind is CandidateKind.KEYWORD:
+                self.write_line(f"{name} is a shell keyword", shell)
+            elif cand.kind is CandidateKind.FUNCTION:
+                from ..visitor import format_function_definition
+                self.write_line(f"{name} is a function", shell)
+                self.write_line(
+                    format_function_definition(name, cand.function), shell)
+            elif cand.kind is CandidateKind.BUILTIN:
+                self.write_line(f"{name} is a shell builtin", shell)
+            elif cand.kind is CandidateKind.HASHED:
+                self.write_line(f"{name} is hashed ({cand.path})", shell)
+            else:  # EXTERNAL
+                self.write_line(f"{name} is {cand.path}", shell)
+            return
+
+        # -v: a reusable form.
+        if cand.kind is CandidateKind.ALIAS:
+            escaped = (cand.alias_value or "").replace("'", "'\"'\"'")
+            self.write_line(f"alias {name}='{escaped}'", shell)
+        elif cand.is_file and cand.path is not None:
+            self.write_line(cand.path, shell)
+        else:  # keyword / function / builtin
+            self.write_line(name, shell)
+
+    def _execute_external_command(self, command_name: str, args: List[str],
+                                  shell: 'Shell', *,
+                                  path_override: Optional[str] = None,
+                                  use_hash: bool = True) -> int:
         """Execute an external command using PSH's external execution strategy."""
         # Use PSH's existing external execution strategy which handles
         # process management, job control, and signal handling correctly
         from ..executor import ExecutionContext, ExternalExecutionStrategy
 
-        # Create execution context
-        context = ExecutionContext()
-
-        # Create and use external strategy
-        external_strategy = ExternalExecutionStrategy()
-
-        # Execute using PSH's proven external command execution
-        return external_strategy.execute(
-            command_name, args[1:], shell, context,
-            redirects=None, background=False
+        return ExternalExecutionStrategy().execute(
+            command_name, args[1:], shell, ExecutionContext(),
+            redirects=None, background=False,
+            path_override=path_override, use_hash=use_hash,
         )
 
     @property

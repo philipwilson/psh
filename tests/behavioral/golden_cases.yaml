@@ -7310,6 +7310,52 @@
   exit_code: 0
 
 # =============================================================================
+# COMMAND RESOLUTION (shared CommandResolver — builtins appraisal finding 5)
+# =============================================================================
+
+- name: resolver_command_p_runs_cd_builtin
+  command: "command -p cd / && pwd"
+  stdout: "/\n"
+  stderr: ""
+  exit_code: 0
+
+- name: resolver_command_p_runs_export_builtin
+  command: "command -p export FOO=1; echo ${FOO-unset}"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: resolver_hash_p_visible_to_command_v
+  command: "hash -p /tmp/custom-path xcmd; command -v xcmd"
+  stdout: "/tmp/custom-path\n"
+  stderr: ""
+  exit_code: 0
+
+- name: resolver_hash_p_visible_to_command_V
+  command: "hash -p /tmp/custom-path xcmd; command -V xcmd"
+  stdout: "xcmd is hashed (/tmp/custom-path)\n"
+  stderr: ""
+  exit_code: 0
+
+- name: resolver_hash_p_visible_to_type_P
+  command: "hash -p /tmp/custom-path xcmd; type -P xcmd"
+  stdout: "/tmp/custom-path\n"
+  stderr: ""
+  exit_code: 0
+
+- name: resolver_type_a_ignores_hash
+  command: "hash -p /tmp/custom-path xcmd; type -a xcmd 2>/dev/null; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: resolver_env_override_re_searches_path
+  command: "ls / >/dev/null; env PATH=/nonexistent ls / >/dev/null 2>&1; echo rc=$?"
+  stdout: "rc=127\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
 # JOB CONTROL (JobManager transactions campaign)
 # =============================================================================
 

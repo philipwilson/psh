@@ -77,13 +77,13 @@ class EnvBuiltin(Builtin):
         parent never observes env_map. The argv is passed as a list — never
         quoted into source text and reparsed.
 
-        KNOWN EDGE (verifier finding, v0.656; fix belongs to the shared
-        CommandResolver work): the direct ``shell.state.env`` swap bypasses the
-        PATH observer, so ``command_hash`` is NOT cleared — after a command has
-        been auto-hashed, ``env PATH=/override <same-cmd>`` execs the HASHED
-        path where bash re-searches the overridden PATH. Non-corrupting
-        (wrong lookup, not state damage); resolver campaign should bypass or
-        clear the hash when env overrides PATH.
+        ``use_hash=False`` (D3 fix, resolver campaign): ``env`` is conceptually
+        a separate program, so it must NOT consult the shell's command hash —
+        the forked child ``execvpe``s against *env_map*'s PATH instead. Without
+        it, after a command was auto-hashed, ``env PATH=/override <same-cmd>``
+        would exec the stale HASHED path where bash re-searches the overridden
+        PATH (the direct ``shell.state.env`` swap bypasses the PATH observer, so
+        ``command_hash`` is not cleared).
         """
         from ..executor import ExecutionContext, ExternalExecutionStrategy
 
@@ -92,7 +92,7 @@ class EnvBuiltin(Builtin):
         try:
             return ExternalExecutionStrategy().execute(
                 command_args[0], command_args[1:], shell, ExecutionContext(),
-                redirects=None, background=False)
+                redirects=None, background=False, use_hash=False)
         finally:
             shell.state.env = saved_env
 

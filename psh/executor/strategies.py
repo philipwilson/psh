@@ -477,55 +477,54 @@ class ExternalExecutionStrategy(ExecutionStrategy):
         """External commands are the fallback - always return True."""
         return True
 
-    @staticmethod
-    def resolve_via_hash_table(cmd_name: str, shell: 'Shell') -> Optional[str]:
-        """Consult and populate the command hash table (bash hashing).
-
-        Runs parent-side, before the fork, so the table on shell.state
-        records both new resolutions and hit counts (bash: running an
-        external command remembers its path with 1 hit; each later run
-        increments). Returns the path to exec directly, or None to fall
-        back to execvpe's own PATH walk (slash names, hashing disabled
-        via ``set +h``, or a PATH miss — the forked child then produces
-        the usual "command not found").
-
-        Re-verify semantics are bash 5.2's, probe-verified: by default a
-        remembered path is exec'd blindly even if the file is gone (the
-        exec fails with "No such file or directory", 127, and the hit
-        still counts); under ``shopt -s checkhash`` the stale entry is
-        dropped here and PATH is searched afresh.
-        """
-        if '/' in cmd_name or not shell.state.options.get('hashcmds', True):
-            return None
-        table = shell.state.command_hash
-        cached = table.lookup(cmd_name)  # counts the hit (bash)
-        if cached is not None:
-            if shell.state.options.get('checkhash') and not (
-                    os.path.isfile(cached) and os.access(cached, os.X_OK)):
-                table.remove(cmd_name)  # stale: fall through to re-search
-            else:
-                return cached
-        from ..builtins.type_builtin import TypeBuiltin
-        paths = TypeBuiltin._find_in_path(cmd_name, shell.env.get('PATH', ''))
-        if paths:
-            table.insert(cmd_name, paths[0], hits=1)
-            return paths[0]
-        return None
-
     def execute(self, cmd_name: str, args: List[str],
                 shell: 'Shell', context: 'ExecutionContext',
                 redirects: Optional[List['Redirect']] = None,
                 background: bool = False,
                 visitor=None,
-                invocation: Optional['BuiltinContext'] = None) -> int:
-        """Execute an external command."""
+                invocation: Optional['BuiltinContext'] = None,
+                *, path_override: Optional[str] = None,
+                use_hash: bool = True) -> int:
+        """Execute an external command.
+
+        Resolution goes through the shared :class:`CommandResolver` BEFORE
+        forking, so a remembered location and its hit count land on the
+        parent's state (pipeline members run in the forked child, whose
+        table is a fork-copy — matching bash, where ``ls | cat`` leaves the
+        parent table untouched).
+
+        Two overrides serve the wrappers that build their own environment:
+
+        - ``path_override`` (``command -p``): search that PATH authoritatively
+          — no shell-hash consult, remember the find, and if the name is not
+          in that PATH report "command not found" rather than letting
+          ``execvpe`` fall back to the live PATH. The child still inherits the
+          shell's real PATH (bash does not export the default path).
+        - ``use_hash=False`` (``env`` with a PATH override): skip the command
+          hash entirely so ``execvpe`` re-searches the (overridden) environment
+          PATH, matching bash — the D3 fix (a stale shell hash must not run the
+          old path when ``env PATH=... cmd`` changes the search).
+        """
         full_args = [cmd_name] + args
-        # Resolve through the command hash table BEFORE forking, so the
-        # remembered location and hit count land on the parent's state.
-        # (Pipeline members run this in the forked child — their table is
-        # a fork-copy, matching bash, where `ls | cat` leaves the parent
-        # table untouched.)
-        resolved_path = self.resolve_via_hash_table(cmd_name, shell)
+        force_not_found = False
+        if path_override is not None:
+            # command -p: authoritative search in the given PATH; the shell
+            # hash is neither consulted nor a fallback, but a find IS
+            # remembered (bash overwrites any prior entry).
+            if '/' in cmd_name:
+                resolved_path = None
+            else:
+                matches = shell.command_resolver.search_path(cmd_name, path_override)
+                resolved_path = matches[0] if matches else None
+                if resolved_path is not None:
+                    shell.state.command_hash.insert(cmd_name, resolved_path, hits=1)
+                else:
+                    force_not_found = True
+        elif use_hash:
+            resolved_path = shell.command_resolver.resolve_for_exec(cmd_name)
+        else:
+            # env override: no shell hash; execvpe walks the (overridden) env.
+            resolved_path = None
 
         if context.in_pipeline:
             # In pipeline, use exec to replace current process
@@ -550,6 +549,9 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                 # This helps when execvpe creates a new process
                 os.setpgid(0, current_pgid)
 
+                if force_not_found:
+                    raise FileNotFoundError(errno.ENOENT,
+                                            os.strerror(errno.ENOENT), cmd_name)
                 exec_external(full_args, shell.env, resolved_path)
             except OSError as e:
                 os._exit(report_exec_failure(full_args[0], e, resolved_path))
@@ -585,6 +587,9 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                       file=sys.stderr)
 
             try:
+                if force_not_found:
+                    raise FileNotFoundError(errno.ENOENT,
+                                            os.strerror(errno.ENOENT), cmd_name)
                 exec_external(full_args, shell.env, resolved_path)
             except OSError as e:
                 return report_exec_failure(full_args[0], e, resolved_path)

@@ -31,6 +31,7 @@ Executor  Executor   Executor   Executor  Executor
 | `child_policy.py` | The "becoming a healthy child process" chapter: `fork_with_signal_window()`, `apply_child_signal_policy()`, `run_child_shell()` (shared substitution-child runner), `flush_child_streams()` |
 | `job_control.py` | `JobManager`, `Job`, `JobState`, `Process` - job table and waiting (moved into the package in v0.285) |
 | `strategies.py` | Execution strategies for different command types, plus shared helpers `report_exec_failure()` and `execute_builtin_guarded()` |
+| `command_resolver.py` | `CommandResolver` - the ONE command-name resolution service (PATH walk, ordered typed candidates, executor exec resolution). Consumed by the external strategy and by `command`/`type`/`hash`; see `psh/builtins/CLAUDE.md` "Command resolution" |
 | `enhanced_test_evaluator.py` | `[[ ]]` test expression evaluation |
 | `context.py` | `ExecutionContext` - execution state |
 
