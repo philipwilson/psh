@@ -333,6 +333,55 @@ def test_divergence_c_mode_exit_code_is_127_in_bash():
     assert b.stdout == p.stdout == ""           # neither executes anything
 
 
+# ==========================================================================
+# LEXER-OPTION FIDELITY: the nested parse must re-lex the substitution body
+# with the SAME shell options (extglob) as the outer command. `shopt -s
+# extglob` on its own line runs before the next line — and its $() body — is
+# parsed, so the body's `@(a|b)` is a valid extglob pattern at parse time.
+# Regression pin for the lexer_options threading (create_parser AND the
+# CommandAccumulator trial parse); dropping either wrongly rejects the body.
+# ==========================================================================
+
+_EXTGLOB_VALID = (
+    "shopt -s extglob\n"
+    "echo $(case a in @(a|b)) echo m;; *) echo n;; esac)")
+
+
+@pytest.mark.skipif(BASH is None, reason="bash not available")
+def test_extglob_pattern_in_cmdsub_relexes_via_c():
+    p = _psh_c(_EXTGLOB_VALID)
+    b = _bash_c(_EXTGLOB_VALID)
+    assert p.stdout == b.stdout == "m\n", (repr(p.stdout), repr(b.stdout))
+    assert p.returncode == b.returncode == 0, (p.returncode, b.returncode)
+
+
+@pytest.mark.skipif(BASH is None, reason="bash not available")
+def test_extglob_pattern_in_cmdsub_relexes_via_script_file():
+    # The script-file path re-parses through the source processor rather than
+    # reusing the accumulator's trial AST, so this pins the create_parser
+    # threading site independently of the -c/accumulator path above.
+    p = _run_file([sys.executable, "-m", "psh"], _EXTGLOB_VALID + "\n", env=_ENV)
+    b = _run_file([BASH], _EXTGLOB_VALID + "\n")
+    assert p.stdout == b.stdout == "m\n", (repr(p.stdout), repr(b.stdout))
+    assert p.returncode == b.returncode == 0, (p.returncode, b.returncode)
+
+
+@pytest.mark.skipif(BASH is None, reason="bash not available")
+def test_extglob_cmdsub_body_syntax_error_still_rejects():
+    # extglob is enabled for the body, but a genuine syntax error inside the
+    # (properly closed) substitution must still reject at parse — the re-lex
+    # does not make the nested parser lenient. `before` runs (line 2), the
+    # cmdsub on line 3 rejects, `after` never runs.
+    cmd = ("shopt -s extglob\necho before\n"
+           "echo $(case a in @(a|b)) echo m;; esac; fi)\necho after")
+    p = _psh_c(cmd)
+    b = _bash_c(cmd)
+    assert b.returncode != 0 and "after" not in b.stdout      # bash rejects
+    assert p.returncode != 0, p.stdout                         # psh rejects too
+    assert "after" not in p.stdout, repr(p.stdout)
+    assert "Traceback (most recent call last)" not in p.stderr, p.stderr[-300:]
+
+
 @pytest.mark.skipif(BASH is None, reason="bash not available")
 def test_divergence_param_expansion_word_cmdsub_stays_runtime():
     """`${x:-$(if)}`: the ``$(if)`` lives inside the parameter-expansion default

@@ -45,10 +45,28 @@ class TestLinterDescendsIntoSubstitutions:
     def _lint_messages(self, src):
         v = LinterVisitor()
         v.visit(_ast(src))
-        return [str(i) for i in v.issues]
+        return [i.message for i in v.issues]
+
+    # The dangerous-command warning is emitted ONLY when the linter visits the
+    # inner ``eval`` SimpleCommand, i.e. only when descent happens. (Assert the
+    # exact message — the outer word ``x=$(eval "$y")`` otherwise appears
+    # verbatim in an unrelated "Function ... is called but not defined" message,
+    # so a loose ``"eval" in msg`` substring check would pass WITHOUT descent.)
+    _DANGEROUS_EVAL = "Use of potentially dangerous command 'eval'"
 
     def test_dangerous_command_inside_cmdsub_is_linted(self):
-        # A dangerous command used only inside $(...) is still linted; visiting
-        # the body's statements must not duplicate the root-level checks.
         msgs = self._lint_messages('x=$(eval "$y")')
-        assert any("eval" in m for m in msgs), msgs
+        assert self._DANGEROUS_EVAL in msgs, msgs
+
+    def test_no_double_lint_of_program_level_checks(self):
+        # Descending into the body visits its STATEMENTS, not its Program, so
+        # the root-level "no error handling" info fires exactly once.
+        msgs = self._lint_messages('x=$(eval "$y"); z=$(eval "$w")')
+        no_err = [m for m in msgs if "no explicit error handling" in m]
+        assert len(no_err) <= 1, msgs
+
+    def test_backtick_body_not_linted_for_danger(self):
+        # Backticks carry program=None: no descent, so the inner eval is not
+        # flagged as a dangerous command (this is the negative control that
+        # proves the previous assertion is gated on descent, not a substring).
+        assert self._DANGEROUS_EVAL not in self._lint_messages('x=`eval "$y"`')

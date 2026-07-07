@@ -7225,3 +7225,9 @@
   stdout: "LL\n"
   stderr: ""
   exit_code: 0
+
+- name: nprog_extglob_in_cmdsub_case
+  command: "shopt -s extglob\necho $(case a in @(a|b)) echo m;; *) echo n;; esac)"
+  stdout: "m\n"
+  stderr: ""
+  exit_code: 0
