@@ -7003,3 +7003,104 @@
   stdout: "start"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# CORE-STATE PHASE 1 (cstate_*): env external execution, child isolation,
+# array mutation invariants, trap -p round-trip, getopts source switch.
+# =============================================================================
+
+- name: cstate_env_exit_is_external_no_kill
+  command: "env exit 7; echo AFTER"
+  stdout: "AFTER\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: cstate_env_var_overlay_to_external
+  command: "env FOO=bar printenv FOO"
+  stdout: "bar\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_env_cd_does_not_change_cwd
+  command: "s=$(/bin/pwd); env cd / 2>/dev/null; e=$(/bin/pwd); [ \"$s\" = \"$e\" ] && echo SAME"
+  stdout: "SAME\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_env_i_only_explicit_vars
+  command: "export KEEP=x; env -i ONLY=1 printenv ONLY"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_readonly_element_unset_refused
+  command: "a=(x y); readonly a; unset 'a[0]'; echo \"${a[*]}\""
+  stdout: "x y\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: cstate_unset_sparse_negative_noop
+  command: "a=([5]=F [10]=T); unset 'a[-2]'; echo \"${!a[*]}\""
+  stdout: "5 10\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_unset_sparse_negative_last
+  command: "a=([5]=F [10]=T); unset 'a[-1]'; echo \"${!a[*]}\""
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_unset_sparse_negative_oob_bad_subscript
+  command: "a=([5]=F [10]=T); unset 'a[-12]'; echo \"${!a[*]}\""
+  stdout: "5 10\n"
+  stderr: "bad array subscript"
+  exit_code: 0
+
+- name: cstate_trap_p_single_quote_reusable
+  command: "trap \"echo 'x'\" INT; trap -p INT"
+  stdout: "trap -- 'echo '\\''x'\\''' SIGINT\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_trap_p_dollar_literal
+  command: "trap 'echo $x' INT; trap -p INT"
+  stdout: "trap -- 'echo $x' SIGINT\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_getopts_source_word_change
+  command: "getopts abc o -ab; echo \"$o $OPTIND\"; getopts abc o -c; echo \"$o $OPTIND\""
+  stdout: "a 1\nc 2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_getopts_optind_reset_restarts
+  command: "set -- -ab; getopts ab o; echo \"$o\"; OPTIND=1; getopts ab o; echo \"$o $OPTIND\""
+  stdout: "a\na 1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_getopts_cluster_preserved
+  command: "getopts ab o -ab; echo \"$o $OPTIND\"; getopts ab o -ab; echo \"$o $OPTIND\""
+  stdout: "a 1\nb 2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_sparse_array_star_ascending
+  command: "a=([10]=ten [2]=two [100]=hundred); echo \"${a[*]}\""
+  stdout: "two ten hundred\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_sparse_array_indices_ascending
+  command: "a=([10]=ten [2]=two [100]=hundred); echo \"${!a[*]}\""
+  stdout: "2 10 100\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_sparse_array_for_loop_order
+  command: "a=([10000000]=big [0]=small [5]=mid); for v in \"${a[@]}\"; do echo \"$v\"; done"
+  stdout: "small\nmid\nbig\n"
+  stderr: ""
+  exit_code: 0

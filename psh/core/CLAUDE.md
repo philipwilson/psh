@@ -291,19 +291,27 @@ pinned by `tests/unit/core/test_scope_tombstones.py` and the
 `unset_*` cases in `tests/behavioral/golden_cases.yaml`
 (re-run against real bash via `--compare-bash`).
 
-### Subshell-Style Inheritance: `ShellState.adopt()`
+### Subshell-Style Inheritance: `ShellState.clone_for_child()`
 
-Child shells for `( ... )` subshells, command/process substitution and the
-`env` builtin's in-process child are built with `Shell.for_subshell(parent)`
-(v0.314). The pure state-copying half is `ShellState.adopt(parent_state)`
-(`state.py`): it copies the live environment, every variable scope as
-whole `Variable` objects (preserving export/readonly/array attributes),
-positional parameters, shell options, `$?`, script mode, PIPESTATUS,
-`$PPID` and `$$`, then re-syncs exports into the environment. Mode flags
-(`interactive`, `stdin_mode`, `emacs`) are recomputed afterwards by
-`Shell._init_interactive`. Jobs are never copied — those are
-shell-specific (the Shell-level half, copying function/alias managers,
-lives in `Shell._inherit_from_parent`).
+Child shells for `( ... )` subshells and command/process substitution are
+built with `Shell.for_subshell(parent)` (v0.314). The pure state-copying half
+is `ShellState.clone_for_child(parent_state, context)` (`state.py`, v0.656,
+replacing the old build-then-overlay `adopt`): it builds the child via
+`__new__` and assigns every inheritable field EXACTLY from the parent — no
+fresh `os.environ` import and no seeded defaults, so a name the parent unset
+stays unset in the child (no resurrection). Mutable inheritable data (env,
+variable scopes with DEEP-copied arrays, command hash, options, execution
+state, history, positional params, function stack, directory stack, traps) is
+deep-cloned; process-local data (streams, terminal, arithmetic re-entrancy) is
+reset; the locale is shared. `$PPID`/`$$` stay stable across subshells; RANDOM
+reseeds. Mode flags (`interactive`, `stdin_mode`, `emacs`) are recomputed
+afterwards by `Shell._init_interactive`. Jobs are never copied. The Shell-level
+half (copying function/alias managers — per-instance `Function` metadata so a
+child's `readonly -f`/redefinition can't leak) lives in
+`Shell._inherit_from_parent`. Completeness is guarded by
+`tests/unit/core/test_state_adopt_completeness.py` (a name drift-lock plus a
+graph-independence identity walk). The `env` builtin is no longer an in-process
+child — standard `env` runs the command externally (v0.656).
 
 ### Exception Hierarchy (`exceptions.py`)
 
@@ -349,8 +357,8 @@ a shell error.
 `state.env` is the live environment from then on and is passed
 EXPLICITLY to every child: `execvpe(args, shell.env)` in
 `executor/strategies.py` and `builtins/core.py`, and
-`Shell.for_subshell(parent)` copies it (via `ShellState.adopt`) for
-subshell-style children.
+`Shell.for_subshell(parent)` copies it (via `ShellState.clone_for_child`)
+for subshell-style children.
 Nothing writes `os.environ` after startup — such a write would be
 invisible to children and only leak state into the hosting Python
 process (the pre-v0.312 `FOO=bar exec` leak).

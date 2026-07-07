@@ -43,7 +43,8 @@ class TestAdoptedFields:
         child = Shell.for_subshell(captured_shell)
         # The clustered-option walk (-ab) continues in the child: bash's
         # $(getopts ab o; echo $o) sees b after the parent consumed a.
-        assert child.state._getopts_charpos == captured_shell.state._getopts_charpos
+        assert (child.state.getopts_state.char_offset
+                == captured_shell.state.getopts_state.char_offset)
         child.run_command("getopts ab o")
         assert child.state.get_variable("o") == "b"
 

@@ -1,15 +1,22 @@
-"""The ``env`` builtin (display/modify environment, run command with overrides).
+"""The ``env`` builtin (display environment, run command with overrides).
 
-Split out of ``environment.py`` because ``env`` is unusual among the
-environment builtins: it runs a command in a nested in-process child Shell
-and carries its own process-fd binding helpers (really an I/O concern) to
-make redirections reach forked grandchildren correctly.
+bash-faithful model (v0.656): standard ``env`` is an EXTERNAL command. With a
+command it builds the exact child environment and execs the argv through the
+shell's normal external launcher — it does NOT resolve shell builtins,
+functions, or aliases (``/usr/bin/env`` is external, so ``env cd`` /
+``env export`` / ``env somefunc`` are "No such file or directory", exactly as
+in bash). This is what makes ``env`` isolate process state: ``env exit 7`` can
+no longer terminate psh, ``env exec`` cannot replace it, and ``env cd`` /
+``env umask`` / ``env ulimit`` cannot mutate the parent's cwd / umask / limits,
+because the command runs in a forked child, never in the shell process.
+
+Running the command in an in-process child ``Shell`` (the pre-v0.656 design)
+could isolate only Python-owned state; process-level cwd/umask/limits/signal
+dispositions and process replacement/termination always leaked. That approach —
+and its ``builtins-through-env`` extension — was dropped (see the ledger note
+in the core-state Phase 1 campaign).
 """
 
-import io
-import os
-import shlex
-import sys
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from .base import Builtin
@@ -21,14 +28,14 @@ if TYPE_CHECKING:
 
 @builtin
 class EnvBuiltin(Builtin):
-    """Display or modify environment variables."""
+    """Display environment variables or run a command with a modified one."""
 
     @property
     def name(self) -> str:
         return "env"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        """Display environment variables or run command with modified environment."""
+        """Display environment variables or run a command externally."""
         # Keep shell.env in sync with exported scope variables first.
         shell.state.scope_manager.sync_exports_to_environment(shell.env)
 
@@ -46,52 +53,48 @@ class EnvBuiltin(Builtin):
             env_map.pop(name, None)
         env_map.update(assignments)
 
-        # No command: print environment with temporary overrides.
+        # No command: print the (temporarily overridden) environment.
         if not command_args:
             self._print_environment(env_map, shell)
             return 0
 
-        # Command mode: env deliberately does its own "executor" work here.
-        # The command runs in an isolated in-process child Shell (not a fork)
-        # so builtin side effects (export/unset/cd) cannot leak into the
-        # parent, while env's environment overrides apply only to the child.
-        # See _bind_process_fds_to_streams() for why fds are juggled around
-        # the child run.
-        command_text = " ".join(shlex.quote(arg) for arg in command_args)
+        # Command mode: run the argv EXTERNALLY with env_map. env does not
+        # resolve shell builtins/functions (bash-faithful). Redirections on the
+        # env invocation itself were already applied at the fd level by the
+        # builtin-redirection setup, so the forked child inherits them.
+        return self._exec_external(command_args, env_map, shell)
 
-        from ..core import VarAttributes
-        from ..shell import Shell
+    def _exec_external(self, command_args: List[str], env_map: Dict[str, str],
+                       shell: 'Shell') -> int:
+        """Run *command_args* through the shell's external launcher with the
+        constructed environment.
 
-        # norc=True: env's child runs one command, like a subshell — it must
-        # not source ~/.pshrc. With norc=False, `env cmd` in an interactive
-        # shell (tty stdin → child looks interactive) sourced the rc file,
-        # leaking its output; bash's env never does. Matches for_subshell's
-        # default and the substitution children.
-        child_shell = Shell.for_subshell(shell, norc=True)
-        child_shell.state.options.update(shell.state.options)
-        child_shell.stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
-        child_shell.stderr = shell.stderr if hasattr(shell, 'stderr') else sys.stderr
-        child_shell.stdin = shell.stdin if hasattr(shell, 'stdin') else sys.stdin
+        Delegates to ``ExternalExecutionStrategy`` (the single fork + job
+        control + execvp-search + 126/127-diagnostics path — the same one the
+        ``command`` builtin uses), temporarily installing *env_map* as the
+        live environment so the forked child execs with exactly it. The swap is
+        confined to the (blocking) foreground run and restored afterwards; the
+        parent never observes env_map. The argv is passed as a list — never
+        quoted into source text and reparsed.
 
-        self._configure_child_export_attributes(child_shell, clear_env, unset_names)
-        child_shell.env.clear()
-        child_shell.env.update(env_map)
+        KNOWN EDGE (verifier finding, v0.656; fix belongs to the shared
+        CommandResolver work): the direct ``shell.state.env`` swap bypasses the
+        PATH observer, so ``command_hash`` is NOT cleared — after a command has
+        been auto-hashed, ``env PATH=/override <same-cmd>`` execs the HASHED
+        path where bash re-searches the overridden PATH. Non-corrupting
+        (wrong lookup, not state damage); resolver campaign should bypass or
+        clear the hash when env overrides PATH.
+        """
+        from ..executor import ExecutionContext, ExternalExecutionStrategy
 
-        # Apply env overrides to child's exported environment only.
-        for key, value in assignments.items():
-            child_shell.state.scope_manager.set_variable(
-                key, value, attributes=VarAttributes.EXPORT, local=False
-            )
-            child_shell.env[key] = value
-
-        fd_backups = self._bind_process_fds_to_streams(child_shell)
+        saved_env = shell.state.env
+        shell.state.env = env_map
         try:
-            return child_shell.run_command(command_text, add_to_history=False)
+            return ExternalExecutionStrategy().execute(
+                command_args[0], command_args[1:], shell, ExecutionContext(),
+                redirects=None, background=False)
         finally:
-            self._restore_process_fds(fd_backups)
-            # Release the child's own fd-backed resources (signal self-pipes).
-            # It shares the parent's stdio streams, which close() leaves alone.
-            child_shell.close()
+            shell.state.env = saved_env
 
     def _parse_invocation(
         self, argv: List[str], shell: 'Shell'
@@ -136,21 +139,6 @@ class EnvBuiltin(Builtin):
 
         return clear_env, unset_names, assignments, argv[idx:]
 
-    def _configure_child_export_attributes(
-        self, shell: 'Shell', clear_env: bool, unset_names: List[str]
-    ) -> None:
-        """Prevent child export sync from reintroducing env entries removed by env options."""
-        from ..core import VarAttributes
-
-        scope_manager = shell.state.scope_manager
-        if clear_env:
-            for var in scope_manager.all_variables_with_attributes():
-                if var.is_exported:
-                    scope_manager.remove_attribute(var.name, VarAttributes.EXPORT)
-
-        for name in unset_names:
-            scope_manager.remove_attribute(name, VarAttributes.EXPORT)
-
     def _is_env_assignment(self, arg: str) -> bool:
         """Check whether an argument is an env assignment token."""
         if '=' not in arg:
@@ -163,54 +151,14 @@ class EnvBuiltin(Builtin):
         for key, value in sorted(env_map.items()):
             self.write_line(f"{key}={value}", shell)
 
-    def _bind_process_fds_to_streams(self, shell: 'Shell') -> List[Tuple[int, int]]:
-        """Align process fds 0/1/2 with the shell's stream objects.
-
-        Why env needs this: unlike most builtins, `env CMD` runs CMD in a
-        nested in-process Shell (see execute()). External commands launched
-        by that child shell fork+exec and inherit the *process-level* fds,
-        not the parent shell's stream objects — so when env itself was
-        redirected at the shell level (e.g. `env cmd > file` captured into
-        shell.stdout), the grandchild would write to the wrong place.
-        Temporarily dup2() each stream's fd over 0/1/2 so forked commands
-        see the same redirections. Returns (target_fd, backup_fd) pairs for
-        _restore_process_fds().
-        """
-        backups: List[Tuple[int, int]] = []
-        stream_to_fd = (
-            (shell.stdin if hasattr(shell, 'stdin') else sys.stdin, 0),
-            (shell.stdout if hasattr(shell, 'stdout') else sys.stdout, 1),
-            (shell.stderr if hasattr(shell, 'stderr') else sys.stderr, 2),
-        )
-
-        for stream, target_fd in stream_to_fd:
-            try:
-                stream_fd = stream.fileno()
-            except (AttributeError, io.UnsupportedOperation, ValueError):
-                continue
-
-            if stream_fd == target_fd:
-                continue
-
-            backup_fd = os.dup(target_fd)
-            os.dup2(stream_fd, target_fd)
-            backups.append((target_fd, backup_fd))
-
-        return backups
-
-    def _restore_process_fds(self, backups: List[Tuple[int, int]]) -> None:
-        """Restore fds previously redirected by _bind_process_fds_to_streams."""
-        for target_fd, backup_fd in reversed(backups):
-            os.dup2(backup_fd, target_fd)
-            os.close(backup_fd)
-
     @property
     def help(self) -> str:
         return """env: env [OPTION]... [-] [name=value ...] [command [args ...]]
 
-    Display environment variables or run a command with modified environment.
+    Display environment variables or run a command with a modified environment.
     With no arguments, print all environment variables.
     With -i (or -), start with an empty environment.
     With -u NAME, remove NAME from the environment for this invocation.
     With name=value pairs and no command, print the modified environment.
-    With a command, run it with temporary environment overrides."""
+    With a command, run it EXTERNALLY with the modified environment (env does
+    not run shell builtins or functions, matching /usr/bin/env)."""

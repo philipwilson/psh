@@ -66,9 +66,17 @@ class VariableScope:
         return f"VariableScope(name={self.name}, vars={list(self.variables.keys())})"
 
     def copy(self) -> 'VariableScope':
-        """Create a deep copy of this scope."""
+        """Create a deep copy of this scope.
+
+        Copies ``is_temp_env`` and the ``local -`` ``dash_snapshot`` (a nested
+        ``(set-options dict, edit_mode)`` — deep-copied so a child restoring
+        it cannot mutate the parent's saved options) alongside every variable.
+        """
         new_scope = VariableScope(parent=None, name=self.name)
         new_scope.is_temp_env = self.is_temp_env
+        if self.dash_snapshot is not None:
+            opts, edit_mode = self.dash_snapshot
+            new_scope.dash_snapshot = (dict(opts), edit_mode)
         for name, var in self.variables.items():
             new_scope.variables[name] = var.copy()
         return new_scope
@@ -134,6 +142,31 @@ class ScopeManager:
         self._seconds_assigned_at = parent._seconds_assigned_at
         self._computed_special_deactivated = set(parent._computed_special_deactivated)
         self._current_line_number = parent._current_line_number
+
+    def clone(self) -> 'ScopeManager':
+        """Build an independent ScopeManager for a child shell (clone_for_child).
+
+        Copies every scope via ``VariableScope.copy`` (whole ``Variable``
+        objects with deep-copied array values), the debug flag, and the
+        computed-special bookkeeping (``adopt_special_state``: SECONDS
+        baseline, deactivated specials, current line — RANDOM state is
+        deliberately reset there). The observers and the ``_shell``
+        back-reference are left unset: the owning ``ShellState`` re-wires the
+        observers and ``Shell.set_shell`` installs the back-reference.
+
+        Crucially, NO variable is created through ``set_variable``, so the
+        child's variable keyset is EXACTLY the parent's — no seeded defaults
+        and no ``os.environ`` re-import can resurrect a name the parent unset
+        (the C1 resurrection defect).
+        """
+        new = ScopeManager()
+        new.global_scope = self.global_scope.copy()
+        new.scope_stack = [new.global_scope]
+        for scope in self.scope_stack[1:]:
+            new.scope_stack.append(scope.copy())
+        new._debug = self._debug
+        new.adopt_special_state(self)
+        return new
 
     def _notify_path_changed(self, name: str) -> None:
         """Fire the PATH observer when *name* is PATH (post-nameref)."""

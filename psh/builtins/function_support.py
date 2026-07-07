@@ -388,7 +388,11 @@ class DeclareBuiltin(Builtin):
             # existing array (bash).
             existing = (self._get_variable_with_attributes(shell, name)
                         if append else None)
-            into: Any = (existing.value
+            # Build the += append into a COPY, not the live array: if the
+            # variable is readonly, _set_variable_with_attributes rejects the
+            # assignment and the live array must stay untouched (bash: a failed
+            # operation does not mutate a readonly value). C2/P1.2.
+            into: Any = (existing.value.copy()
                          if existing is not None
                          and isinstance(existing.value, AssociativeArray)
                          else None)
@@ -403,7 +407,8 @@ class DeclareBuiltin(Builtin):
             # existing array's highest index (bash).
             existing = (self._get_variable_with_attributes(shell, name)
                         if append else None)
-            into = (existing.value
+            # Copy (not the live array) — see the associative branch above.
+            into = (existing.value.copy()
                     if existing is not None
                     and isinstance(existing.value, IndexedArray)
                     else None)

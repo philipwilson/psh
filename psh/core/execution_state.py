@@ -71,19 +71,25 @@ class ExecutionState:
         # runs (bash).
         self.bash_command: object = ""
 
+    # Fields a subshell child does NOT inherit — each child sets its own
+    # (``in_forked_child`` is stamped by the fork site). Everything else in
+    # __slots__ is inherited, so a new execution field is copied automatically
+    # rather than being silently forgotten (the v0.453 $! bug class).
+    _NOT_INHERITED = frozenset({"in_forked_child"})
+
     def copy_into(self, other: "ExecutionState") -> None:
         """Copy the inheritable execution state into ``other`` (for subshell
-        adoption). ``pipestatus`` is copied as a fresh list; ``in_forked_child``
-        is deliberately NOT copied — the child sets it itself. ``in_substitution``
-        IS copied so a ( ) subshell nested inside a command substitution inherits
-        the suppression (bash is silent for the whole substitution).
+        adoption), derived from ``__slots__`` rather than a handwritten list.
+
+        Lists (``pipestatus``) are copied as fresh lists so the child cannot
+        mutate the parent's. ``in_substitution`` IS copied so a ( ) subshell
+        nested inside a command substitution inherits the abnormal-termination
+        suppression (bash is silent for the whole substitution).
         """
-        other.last_exit_code = self.last_exit_code
-        other.last_bg_pid = self.last_bg_pid
-        other.foreground_pgid = self.foreground_pgid
-        other.command_number = self.command_number
-        other.pipestatus = list(self.pipestatus)
-        other.errexit_eligible = self.errexit_eligible
-        other.last_cmdsub_status = self.last_cmdsub_status
-        other.in_substitution = self.in_substitution
-        other.bash_command = self.bash_command
+        for name in self.__slots__:
+            if name in self._NOT_INHERITED:
+                continue
+            value = getattr(self, name)
+            if isinstance(value, list):
+                value = list(value)
+            setattr(other, name, value)

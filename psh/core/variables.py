@@ -105,10 +105,20 @@ class Variable:
             return str(self.value)
 
     def copy(self) -> 'Variable':
-        """Create a copy of this variable."""
+        """Create an independent copy of this variable.
+
+        Array values are DEEP-copied (via IndexedArray/AssociativeArray.copy)
+        so a child shell mutating an element cannot reach back into the
+        parent's array — the copy the child boundary requires. Scalar values
+        (str/int) are immutable and shared safely. ``attributes`` is an
+        immutable ``Flag``.
+        """
+        value = self.value
+        if isinstance(value, (IndexedArray, AssociativeArray)):
+            value = value.copy()
         return Variable(
             name=self.name,
-            value=self.value,  # Note: arrays would need deep copy
+            value=value,
             attributes=self.attributes
         )
 
@@ -198,13 +208,24 @@ class IndexedArray:
             if index == self._max_index:
                 self._max_index = max(self._elements.keys()) if self._elements else -1
 
+    def copy(self) -> 'IndexedArray':
+        """Independent deep copy (elements dict + max index)."""
+        new = IndexedArray()
+        new._elements = dict(self._elements)
+        new._max_index = self._max_index
+        return new
+
     def all_elements(self) -> List[str]:
-        """Get all elements in order, skipping unset indices."""
-        result = []
-        for i in range(self._max_index + 1):
-            if i in self._elements:
-                result.append(self._elements[i])
-        return result
+        """Get all elements in ascending index order.
+
+        Iterates the STORED indices (O(n log n) in the number of set
+        elements), not ``range(max_index + 1)`` — a sparse array can select a
+        very large highest index (``a[10000000]=x``), so the old
+        max-index scan was O(max_index) and a denial-of-service surface on
+        ``"${a[*]}"``. ``_elements`` holds only set indices, so sorting them
+        yields the same ascending sequence the scan produced.
+        """
+        return [self._elements[i] for i in sorted(self._elements)]
 
     def indices(self) -> List[int]:
         """Get all defined indices in sorted order."""
@@ -260,6 +281,12 @@ class AssociativeArray:
         key = str(key)
         if key in self._elements:
             del self._elements[key]
+
+    def copy(self) -> 'AssociativeArray':
+        """Independent deep copy (preserves insertion order)."""
+        new = AssociativeArray()
+        new._elements = dict(self._elements)
+        return new
 
     def all_elements(self) -> List[str]:
         """Get all values in insertion order for bash compatibility."""

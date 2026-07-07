@@ -154,12 +154,16 @@ class TestEnvBuiltin:
         output = output_path.read_text()
         assert "REDIR_SCOPE=ok" in output
 
-    def test_env_command_does_not_leak_builtin_side_effects(self, shell, temp_dir):
-        """Builtins executed via env should not mutate parent shell state."""
+    def test_env_does_not_resolve_shell_builtins(self, shell, temp_dir):
+        """env runs commands EXTERNALLY — it does not resolve shell builtins
+        (bash-faithful: /usr/bin/env is external). `env export X=42` therefore
+        fails to find an external `export` (status 127) and cannot mutate the
+        parent shell. (v0.656 replaced the in-process child that used to run
+        the builtin; the old test pinned the divergent rc=0.)"""
         check_path = Path(temp_dir) / "env_builtin_leak_check.txt"
 
         result = shell.run_command('env TEMP_ENV=1 export INNER_ONLY=42')
-        assert result == 0
+        assert result == 127  # bash: "env: export: No such file or directory"
 
         result = shell.run_command(f'echo "${{INNER_ONLY:-missing}}" > "{check_path}"')
         assert result == 0

@@ -61,6 +61,12 @@ def _ensure_recursion_headroom() -> None:
 
 
 class Shell:
+    # Explicit attribute type: ``_create_state`` assigns ``self.state`` from a
+    # clone of ``parent_shell.state`` (a child) or a fresh ShellState. That
+    # self-referential RHS (``parent_shell.state``) would otherwise force the
+    # type checker into a has-type inference cycle when computing Shell.state.
+    state: ShellState
+
     def __init__(self, args: Optional[List[str]] = None, script_name: Optional[str] = None,
                  debug_ast: bool = False, debug_tokens: bool = False, debug_scopes: bool = False,
                  debug_expansion: bool = False, debug_expansion_detail: bool = False,
@@ -77,7 +83,7 @@ class Shell:
 
         self._create_state(args, script_name, debug_ast, debug_tokens, debug_scopes,
                            debug_expansion, debug_expansion_detail, debug_exec,
-                           debug_exec_fork, norc, rcfile)
+                           debug_exec_fork, norc, rcfile, parent_shell)
 
         # `-c command` mode ('c' in $-). Set BEFORE _init_interactive so the
         # rc/history/line-editing decision sees it (bash never sources rc for
@@ -126,18 +132,30 @@ class Shell:
                       debug_ast: bool, debug_tokens: bool, debug_scopes: bool,
                       debug_expansion: bool, debug_expansion_detail: bool,
                       debug_exec: bool, debug_exec_fork: bool,
-                      norc: bool, rcfile: Optional[str]) -> None:
+                      norc: bool, rcfile: Optional[str],
+                      parent_shell: Optional['Shell'] = None) -> None:
         """Phase 1: create the central ShellState.
 
-        Before: nothing exists. After: ``self.state`` holds fresh defaults
-        (environment snapshot, options, variable scopes, execution state)
-        and its scope manager can reach back to this shell for arithmetic
-        evaluation.
+        Before: nothing exists. After: ``self.state`` holds either fresh
+        defaults (top-level shell: environment snapshot, options, variable
+        scopes, execution state) or — for a child shell — an EXACT clone of
+        the parent's state (``ShellState.clone_for_child``: no fresh
+        ``os.environ`` import, no seeded defaults, deep-copied arrays and
+        per-instance function metadata). Either way its scope manager can
+        reach back to this shell for arithmetic evaluation.
+
+        Assigning ``self.state`` in this one method (rather than also directly
+        in ``__init__``) keeps its inferred type unambiguous for the type
+        checker.
         """
-        self.state = ShellState(args, script_name, debug_ast,
-                                debug_tokens, debug_scopes, debug_expansion,
-                                debug_expansion_detail, debug_exec, debug_exec_fork,
-                                norc, rcfile)
+        if parent_shell is not None:
+            self.state = ShellState.clone_for_child(
+                parent_shell.state, norc=norc, rcfile=rcfile)
+        else:
+            self.state = ShellState(args, script_name, debug_ast,
+                                    debug_tokens, debug_scopes, debug_expansion,
+                                    debug_expansion_detail, debug_exec, debug_exec_fork,
+                                    norc, rcfile)
         self.state.scope_manager.set_shell(self)
 
     def _init_managers(self) -> None:
@@ -155,17 +173,18 @@ class Shell:
         self.job_manager.set_shell_state(self.state)
 
     def _inherit_from_parent(self, parent: 'Shell') -> None:
-        """Phase 3 (child shells only): adopt the parent's state.
+        """Phase 3 (child shells only): adopt the parent's managers.
 
-        Before: state and the basic managers hold fresh defaults. After:
-        ``self.state`` carries the parent's environment, variables, options,
-        ``$?``, PIPESTATUS, ``$PPID``/``$$`` (see ``ShellState.adopt``) and
-        this shell owns COPIES of the parent's functions and aliases. Jobs
-        are not inherited — those are shell-specific. Must run before
-        ``_init_shell_components``, whose components capture references to
-        the (possibly replaced) function manager.
+        ``self.state`` was already cloned from the parent in ``__init__`` (see
+        ``ShellState.clone_for_child``, which carries the environment,
+        variables, options, ``$?``, PIPESTATUS, ``$PPID``/``$$`` and the rest).
+        This phase copies the remaining Shell-level managers: this shell owns
+        COPIES of the parent's functions and aliases (so a child's
+        ``readonly -f`` / redefinition cannot leak back). Jobs are not
+        inherited — those are shell-specific. Must run before
+        ``_init_shell_components``, whose components capture references to the
+        (possibly replaced) function manager.
         """
-        self.state.adopt(parent.state)
         self.function_manager = parent.function_manager.copy()
         self.alias_manager = parent.alias_manager.copy()
 
@@ -294,9 +313,11 @@ class Shell:
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        """Release the fd-backed resources this Shell owns (idempotent).
+        """Release the resources this Shell owns (idempotent).
 
-        Currently that is the SignalManager's SIGCHLD/SIGWINCH self-pipes.
+        That is the SignalManager's SIGCHLD/SIGWINCH self-pipes, plus any
+        process-global signal disposition a trap leased (restored so an
+        in-process shell does not leak its handler into the host).
         Safe to call more than once and safe on a shell that never allocated
         them (the self-pipes are created lazily, only when interactive signal
         handlers are installed) — and it only frees resources that the shell
@@ -315,6 +336,15 @@ class Shell:
             signal_manager = getattr(interactive_manager, 'signal_manager', None)
             if signal_manager is not None:
                 signal_manager.close()
+
+        # Restore any process-global signal dispositions this shell leased when
+        # a trap installed a handler for an unmanaged signal (H2). An
+        # in-process shell must leave the host's dispositions as it found them;
+        # a long-lived main shell never calls close() (its fds die with the
+        # process). Idempotent — the lease map is drained on restore.
+        trap_manager = getattr(self, 'trap_manager', None)
+        if trap_manager is not None:
+            trap_manager.restore_leased_dispositions()
 
     def __enter__(self) -> 'Shell':
         return self

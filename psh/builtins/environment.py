@@ -592,19 +592,34 @@ class UnsetBuiltin(Builtin):
             # bash: unsetting an element of a nonexistent variable succeeds
             return True
 
+        # A readonly array/assoc forbids element removal too — check BEFORE
+        # mutating so a failed unset never changes the value (bash: `readonly
+        # a; unset 'a[0]'` -> "a: cannot unset: readonly variable", rc=1, array
+        # intact). The whole-array (@/*) and scalar paths route through
+        # scope_manager.unset_variable, which already enforces this.
+        if var_obj.is_readonly and isinstance(
+                var_obj.value, (IndexedArray, AssociativeArray)):
+            self.error(f"{array_name}: cannot unset: readonly variable", shell)
+            return False
+
         if isinstance(var_obj.value, AssociativeArray):
             var_obj.value.unset(expander.expand_array_index(index_expr))
             return True
 
         if isinstance(var_obj.value, IndexedArray):
             index = expander._eval_array_index(index_expr)
-            if index < 0:
-                # Negative subscripts count back from the end (bash)
-                indices = var_obj.value.indices()
-                if -index > len(indices):
-                    self.error(f"[{index_expr}]: bad array subscript", shell)
-                    return False
-                index = indices[index]
+            # Negative subscripts resolve through the SAME "one past the top"
+            # formula as read/write (resolve_write_index: highest_index+1+n),
+            # not the old count-into-defined-indices scheme which diverged from
+            # bash on sparse arrays (a[5],a[10]: unset 'a[-2]' -> slot 9, a
+            # no-op; the old code removed index 5). An out-of-range negative is
+            # "bad array subscript" (rc=1), like bash.
+            from ..core import ArraySubscriptError
+            try:
+                index = var_obj.value.resolve_write_index(index)
+            except ArraySubscriptError:
+                self.error(f"[{index_expr}]: bad array subscript", shell)
+                return False
             var_obj.value.unset(index)
             return True
 

@@ -1,4 +1,5 @@
 """Shell state management."""
+import enum
 import os
 import sys
 from typing import Any, Dict, Optional, Set
@@ -6,6 +7,7 @@ from typing import Any, Dict, Optional, Set
 from ..version import __version__
 from .command_hash import CommandHashTable
 from .execution_state import ExecutionState
+from .getopts_state import GetoptsState
 from .history_state import HistoryState
 from .locale_service import LocaleService
 from .option_registry import ShellOptions
@@ -13,6 +15,28 @@ from .scope import ScopeManager
 from .stream_bindings import StreamBindings
 from .terminal_state import TerminalState
 from .variables import VarAttributes
+
+
+class ChildContext(enum.Enum):
+    """How a child shell relates to its parent's OS process.
+
+    ``SUBSHELL`` — a forked child: ``( )`` subshells, command/process
+    substitution, backgrounded compounds. The clone runs in the forked
+    process.
+
+    ``IN_PROCESS`` — a child ``Shell`` sharing the parent's OS process (no
+    fork). Named for completeness; standard ``env`` became external argv
+    execution (v0.656), so there is no live in-process caller today — an
+    embedding that wants one calls ``clone_for_child(context=IN_PROCESS)``
+    directly.
+
+    Both contexts share identical clone policy in Phase 1; the distinction is
+    named now so a future policy split (e.g. process-local resource handling)
+    has an explicit hook.
+    """
+
+    SUBSHELL = "subshell"
+    IN_PROCESS = "in_process"
 
 
 class ShellState:
@@ -60,6 +84,12 @@ class ShellState:
 
         # Initialize enhanced scope manager for variable scoping with attributes
         self.scope_manager = ScopeManager()
+
+        # getopts continuation cursor (typed). Created BEFORE the
+        # variable_changed observer is wired below, because that observer bumps
+        # getopts_state.optind_writes on every OPTIND assignment (the signal
+        # getopts uses to detect a script `OPTIND=...` restart).
+        self.getopts_state = GetoptsState()
 
         # Remembered command locations (the `hash` builtin / bash's
         # COMMAND EXECUTION hashing). Any PATH write empties it — the
@@ -111,12 +141,6 @@ class ShellState:
         self.positional_params = args if args else []
         self.script_name = script_name or "psh"
         self.is_script_mode = script_name is not None and script_name != "psh"
-
-        # getopts within-argument cursor (the character position inside a
-        # clustered option arg, e.g. -abc). Tracked here — like OPTIND — so a
-        # cluster spans calls WITHOUT mutating the positional parameters.
-        self._getopts_charpos: int = 1
-        self._getopts_charpos_optind: Optional[int] = None
 
         # Centralized shell options dictionary
         # Shell options live in a registry-backed, dict-compatible container
@@ -253,81 +277,122 @@ class ShellState:
         return self.env.get('PSH_STRICT_ERRORS', '').lower() in ('1', 'true',
                                                                   'yes')
 
-    def adopt(self, parent: 'ShellState') -> None:
-        """Copy inheritable execution state from a parent shell's state.
+    @classmethod
+    def clone_for_child(cls, parent: 'ShellState',
+                        context: ChildContext = ChildContext.SUBSHELL,
+                        *, norc: bool = True,
+                        rcfile: Optional[str] = None) -> 'ShellState':
+        """Build an EXACT independent clone of *parent* for a child shell.
 
-        This is the pure state-copying half of subshell creation (the
-        Shell-level half — function/alias manager copies — lives in
-        ``Shell._inherit_from_parent``). It copies the live environment,
-        every variable scope (whole ``Variable`` objects, preserving
-        attributes), positional parameters, shell options (set -e,
-        pipefail, ...), ``$?``, script mode, ``$0``, PIPESTATUS, ``$PPID``
-        and ``$$``, the function/source context (FUNCNAME, ``return`` in
-        a sourced file), traps (listing-only — see below), the directory
-        stack, command history, the getopts cursor and the scope
-        manager's computed-special state (SECONDS baseline), then
-        re-syncs exported variables (including local exports) into the
-        environment.
+        This replaces the old construct-a-fresh-state-then-overlay ``adopt``
+        path (``Shell._create_state`` used to build a fully seeded state that
+        ``adopt`` immediately overwrote). The clone does NO fresh
+        ``os.environ`` import and seeds NO defaults, so the child's variable
+        AND environment keysets are EXACTLY the parent's: a name the parent
+        unset stays unset in the child (the C1 resurrection defect — e.g.
+        ``unset HOME`` no longer resurrects from the child's fresh import, and
+        ``unset PS4`` no longer resurrects the ``+ `` default), and the
+        discarded fresh initialization is gone (E2).
 
-        Mode flags ('interactive', 'stdin_mode', 'emacs') are recomputed
-        afterwards by ``Shell._init_interactive`` and overwrite their
-        copies. Jobs are never copied — those are shell-specific.
+        Each component is cloned with its mapped copy policy:
 
-        Every ``__init__`` field must be handled here or justified on the
-        exclusion list in tests/unit/core/test_state_adopt_completeness.py
-        (the drift-lock for the seven silently-uncopied fields
-        reappraisal #15 found).
+        * mutable inheritable data (env, scopes with deep-copied arrays,
+          command hash, options, execution state, history, positional params,
+          function stack, directory stack, traps) is deep-cloned so a child
+          mutation never reaches the parent;
+        * process-local data (streams, terminal capabilities, the arithmetic
+          re-entrancy counter) is reset for the child process;
+        * derived state (the exported-environment sync, inherited-trap set) is
+          recomputed; and
+        * the locale service is shared (startup-only; the process
+          ``setlocale`` is already applied and inherited across fork).
+
+        ``$PPID``/``$$`` stay stable across subshells (POSIX); RANDOM's
+        generator state is deliberately reset (bash reseeds it in a subshell);
+        traps are reset-for-listing per subshell semantics (kept LISTABLE via
+        ``inherited_traps`` until the child's first trap modification).
+
+        The Shell-level half — function/alias manager copies and the
+        ``scope_manager.set_shell`` back-reference — lives in
+        ``Shell._inherit_from_parent`` / ``Shell.__init__``. Mode flags
+        ('interactive', 'stdin_mode', 'emacs') are recomputed afterwards by
+        ``Shell._init_interactive``. Jobs are never copied.
+
+        The *context* is recorded for a future policy split (SUBSHELL vs
+        IN_PROCESS); both share identical policy in Phase 1.
         """
+        self = cls.__new__(cls)
+
+        # Process-local streams: fresh. A forked child inherits fds at the OS
+        # level; each child installs its own overrides (subshell pipes,
+        # capture buffers) rather than the parent's.
+        self.streams = StreamBindings()
+
+        # Environment + variable scopes: EXACT copies, no import, no seeding.
         self.env = parent.env.copy()
-        # A subshell inherits the parent's locale (the process ``setlocale`` is
-        # already applied and is inherited across fork). Share the parent's
-        # service rather than recomputing — startup-only reactivity means the
-        # profile cannot have diverged from the parent's environment.
         self.locale = parent.locale
-        # Copy global variables as whole Variable objects to preserve
-        # attributes (export, readonly, arrays, ...).
-        for name, var in parent.scope_manager.global_scope.variables.items():
-            self.scope_manager.global_scope.variables[name] = var.copy()
-        # Copy all nested scopes to inherit local variables and their
-        # attributes (skip global — already copied above).
-        for scope in parent.scope_manager.scope_stack[1:]:
-            self.scope_manager.scope_stack.append(scope.copy())
-        self.positional_params = parent.positional_params.copy()
-        self.options.update(parent.options)
-        # bash: subshell-style children inherit the command hash table
-        # (probe: `hash ls; (hash)` lists the entry in the subshell).
+        # clone() copies every scope (whole Variable objects, arrays deep) and
+        # the computed-special state WITHOUT any set_variable call, so the
+        # child keyset matches the parent's exactly.
+        self.scope_manager = parent.scope_manager.clone()
+
+        # Command hash table (bash: `hash ls; (hash)` lists it in the subshell)
+        # + PATH observer. The lambda reads self.command_hash at call time.
         self.command_hash = parent.command_hash.copy()
-        # Inherit the per-command execution state as a unit — $? ($last_exit_code),
-        # $! (last_bg_pid; subshells inherit it, bash: `sleep 1 & ( echo $! )`),
-        # PIPESTATUS, errexit eligibility, etc. Copying via the sub-object means a
-        # new execution field can't be silently forgotten here (the v0.453 $! bug).
-        parent.execution.copy_into(self.execution)
+        self.scope_manager.path_changed = lambda: self.command_hash.clear()
+        self.scope_manager.variable_changed = self._sync_exported_variable
+
+        self.positional_params = parent.positional_params.copy()
         self.script_name = parent.script_name
         self.is_script_mode = parent.is_script_mode
-        self.initial_ppid = parent.initial_ppid
-        self.shell_pid = parent.shell_pid
-        # Function/source context: ${FUNCNAME[@]} is visible in subshells
-        # (bash: f() { (echo ${FUNCNAME[0]}); }; f prints f), and `return`
-        # is legal in a child of a function or sourced-file context.
-        self.function_stack = parent.function_stack.copy()
-        self.source_depth = parent.source_depth
+
         # getopts cursor: a clustered-option walk (-ab) spans into children
         # (bash: set -- -ab; getopts ab o; $(getopts ab o; echo $o) sees b).
-        self._getopts_charpos = parent._getopts_charpos
-        self._getopts_charpos_optind = parent._getopts_charpos_optind
-        # Command history: the child sees the parent's entries, but its own
-        # additions must not leak back (fresh list, shared settings).
+        self.getopts_state = parent.getopts_state.copy()
+
+        # Shell options (set -e, pipefail, debug flags, ...).
+        self.options = ShellOptions()
+        self.options.update(parent.options)
+
+        # RC policy is per-invocation (children skip rc files by default),
+        # never inherited.
+        self.norc = norc
+        self.rcfile = rcfile
+
+        # Per-command execution state as a unit — $?/$!/PIPESTATUS/errexit
+        # eligibility. copy_into leaves in_forked_child False (the fork site
+        # stamps it).
+        self.execution = ExecutionState()
+        parent.execution.copy_into(self.execution)
+
+        # Command history: child sees the parent's entries; its appends do not
+        # leak back (fresh list, shared settings).
         self.history_state = parent.history_state.copy()
-        # pushd/popd stack ((dirs) shows the parent's stack). Created
-        # lazily by the directory-stack builtins, hence the guard.
-        if hasattr(parent, 'directory_stack'):
-            self.directory_stack = parent.directory_stack.copy()
-        # Traps: bash RESETS non-ignored traps in a subshell-style child —
-        # they never fire there — but keeps them LISTABLE (the POSIX
-        # saved=$(trap) idiom) until the child's first trap modification
-        # (TrapManager.drop_inherited_traps). Ignored ('') traps remain
-        # genuinely in effect. ERR/DEBUG escape the reset under
-        # set -E (errtrace) / set -T (functrace), as in bash.
+        self.edit_mode = parent.edit_mode
+
+        # Function/source context: ${FUNCNAME[@]} is visible in subshells and
+        # `return` is legal in a child of a function/sourced-file context.
+        self.function_stack = parent.function_stack.copy()
+        self.source_depth = parent.source_depth
+
+        # Process-local arithmetic re-entrancy: a fresh evaluation context.
+        self._arith_recursion_depth = 0
+
+        # $PPID / $$ stay stable across subshells (POSIX).
+        self.initial_ppid = parent.initial_ppid
+        self.shell_pid = parent.shell_pid
+
+        # Terminal capabilities: re-detected per process (a forked child may
+        # have different fds), matching the fresh-init behaviour adopt relied
+        # on. This keeps the not-a-terminal invariant that A5 will tighten.
+        self.terminal = TerminalState()
+        self.terminal.detect(debug=self.options.get('debug-exec', False))
+
+        # Traps: bash RESETS non-ignored inherited traps in a subshell-style
+        # child (they never fire there) but keeps them LISTABLE (the POSIX
+        # saved=$(trap) idiom) until the child's first trap modification.
+        # Ignored ('') traps remain in effect. ERR/DEBUG escape the reset
+        # under set -E / set -T.
         self.trap_handlers = dict(parent.trap_handlers)
         live = set()
         if self.options.get('errtrace'):
@@ -338,11 +403,16 @@ class ShellState:
             name for name, action in self.trap_handlers.items()
             if action != '' and name not in live
         }
-        # SECONDS baseline, deactivated specials, current line number
-        # (RANDOM's generator state deliberately stays fresh — see method).
-        self.scope_manager.adopt_special_state(parent.scope_manager)
-        # Sync all exported variables (including local exports) to environment
+
+        # pushd/popd stack ((dirs) shows the parent's). Created lazily, hence
+        # the guard.
+        if hasattr(parent, 'directory_stack'):
+            self.directory_stack = parent.directory_stack.copy()
+
+        # Re-sync exported variables (including local exports) into the child
+        # environment.
         self.scope_manager.sync_exports_to_environment(self.env)
+        return self
 
     # stdin/stdout/stderr delegate to the explicit StreamBindings object
     # (self.streams). Each returns the live sys.* stream unless a caller
@@ -692,6 +762,13 @@ class ShellState:
             self.env[name] = var.as_string()
         else:
             self.env.pop(name, None)
+
+        if name == 'OPTIND':
+            # Every OPTIND assignment (getopts' own advance AND a script
+            # `OPTIND=...`) bumps the counter; getopts compares it to the value
+            # it recorded after its own write to detect a script restart —
+            # including a same-value `OPTIND=$OPTIND` (bash restarts the scan).
+            self.getopts_state.optind_writes += 1
 
         if name == 'IGNOREEOF':
             # sv_ignoreeof (bash): the `ignoreeof` option tracks whether

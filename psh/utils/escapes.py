@@ -172,12 +172,25 @@ def quote_printf_q(value: str) -> str:
     return ''.join(ch if ch in _Q_SAFE else '\\' + ch for ch in value)
 
 
+def single_quote(s: str) -> str:
+    """Wrap *s* in single quotes so it re-parses to itself (bash sh_single_quote).
+
+    Each embedded single quote becomes ``'\\''`` (close quote, escaped quote,
+    reopen); ``''`` for the empty string. UNLIKE :func:`quote_at_q`, this never
+    switches to the ``$'...'`` ANSI-C form — control characters (newlines,
+    tabs) are embedded LITERALLY inside the single quotes. That is what bash's
+    ``trap -p`` and ``set``/``export`` reusable output do, so it round-trips
+    an arbitrary command string through the shell lexer unchanged.
+    """
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
 def quote_at_q(s: str) -> str:
     """Quote a string so it can be reused as shell input (bash ${var@Q}).
 
     Empty -> ''. Strings with control characters use the $'...' ANSI-C
     form with octal escapes; otherwise a single-quoted form (``'a b'``)
-    with embedded quotes escaped as ``'\\''``.
+    with embedded quotes escaped as ``'\\''`` (see :func:`single_quote`).
     """
     if s == '':
         return "''"
@@ -194,4 +207,4 @@ def quote_at_q(s: str) -> str:
             else:
                 out.append(c)
         return "$'" + ''.join(out) + "'"
-    return "'" + s.replace("'", "'\\''") + "'"
+    return single_quote(s)
