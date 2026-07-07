@@ -588,13 +588,15 @@ class DeclareBuiltin(Builtin):
             return 0
 
     def _print_simple_declaration(self, var: Variable, shell: 'Shell'):
-        """Print variable in simple format (NAME=value)."""
-        if isinstance(var.value, (IndexedArray, AssociativeArray)):
-            # Arrays can't be shown in simple format, use declare format
-            self._print_declaration(var, shell)
-        else:
-            # Simple format without quotes or escaping
-            self.write_line(f"{var.name}={var.value}", shell)
+        """Print variable in bash's plain-``declare`` (no-arg) form.
+
+        Identical to the ``set`` listing: ``name=value`` with a single-quoted
+        scalar (``$'...'`` for control chars) and the bare ``([0]="..")`` array
+        form — no ``declare`` prefix and no attribute flags (those belong to
+        ``declare -p``). The old code emitted unquoted scalars and prefixed
+        arrays with ``declare -a``/``-A``, neither of which matches bash."""
+        from .declare_format import format_assignment_reuse
+        self.write_line(format_assignment_reuse(var), shell)
 
     def _print_declaration(self, var: Variable, shell: 'Shell'):
         """Print variable declaration in reusable format

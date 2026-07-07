@@ -28,15 +28,14 @@ class ExitBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Exit the shell with optional exit code (bash semantics)."""
-        if len(args) > 2:
-            # bash: "too many arguments" is an error that does NOT exit the
-            # shell — it reports and returns 1, the shell keeps running.
-            self.error("too many arguments", shell)
-            return 1
-
         # Bare `exit` uses the status of the last command ($?), not 0.
         exit_code = shell.state.last_exit_code
-        if len(args) == 2:
+        if len(args) >= 2:
+            # Validate the FIRST operand BEFORE checking the operand count.
+            # bash: `exit abc 7` reports "abc: numeric argument required" and
+            # exits with 2 (the bad first operand wins over the extra one);
+            # only a VALID first operand followed by extras is "too many
+            # arguments". (Probe-verified against bash 5.2.)
             try:
                 # bash wraps the code modulo 256 (so `exit 257` -> 1,
                 # `exit -1` -> 255); & 0xFF matches for negatives too.
@@ -44,6 +43,15 @@ class ExitBuiltin(Builtin):
             except ValueError:
                 self.error(f"{args[1]}: numeric argument required", shell)
                 exit_code = 2
+            else:
+                if len(args) > 2:
+                    # Valid first operand + extras: a usage error that discards
+                    # the rest of the current input unit but does NOT exit the
+                    # shell (bash: `exit 7 8` reports "too many arguments",
+                    # rc 1, and the rest of the line / `-c` string is dropped).
+                    self.error("too many arguments", shell)
+                    from ..core import special_builtin_usage_discard
+                    special_builtin_usage_discard(shell.state, 1)
 
         # bash: the FIRST interactive exit attempt with stopped jobs is
         # blocked with "There are stopped jobs."; a second consecutive

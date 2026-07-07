@@ -142,14 +142,32 @@ class CdBuiltin(Builtin):
             # bash (`declare -p PWD` → declare -x ...), and the export
             # observer keeps shell.env in sync. The direct env writes
             # stay for shells whose state is a test mock (see except).
+            #
+            # The cwd has ALREADY changed (os.chdir succeeded); bash updates
+            # PWD and OLDPWD INDEPENDENTLY — a readonly OLDPWD still lets PWD
+            # update (and vice versa) — reports the readonly variable, and does
+            # NOT undo the directory change. The old order set OLDPWD first and
+            # let its ReadonlyVariableError skip the PWD update, so
+            # `readonly OLDPWD; cd /` left PWD stale (bash updates it).
+            from ..core import ReadonlyVariableError
             shell.env['OLDPWD'] = current_dir
             shell.env['PWD'] = logical_new_dir
-            try:
-                shell.state.export_variable('OLDPWD', current_dir)
-                shell.state.export_variable('PWD', logical_new_dir)
-            except (AttributeError, TypeError):
-                # Handle case where shell.state is a mock
-                pass
+            readonly_name = None
+            for vname, vval in (('OLDPWD', current_dir),
+                                ('PWD', logical_new_dir)):
+                try:
+                    shell.state.export_variable(vname, vval)
+                except ReadonlyVariableError as e:
+                    readonly_name = e.name
+                except (AttributeError, TypeError):
+                    # Handle case where shell.state is a mock
+                    pass
+            if readonly_name is not None:
+                # bash reports `NAME: readonly variable` (no `cd:` prefix),
+                # rc 1, but the directory change stands.
+                self.write_error_line(
+                    f"psh: {readonly_name}: readonly variable", shell)
+                return 1
 
             # Print new directory for cd - command
             if print_new_dir:

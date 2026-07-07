@@ -141,6 +141,28 @@ def arith_assignment_discard(state: 'ShellState') -> NoReturn:
     raise TopLevelAbort(1, errexit_immune=True, contain_nested=False)
 
 
+def special_builtin_usage_discard(state: 'ShellState', status: int = 1) -> NoReturn:
+    """Discard the current input unit after a special-builtin USAGE error.
+
+    bash 5.2 (probe-verified, tmp bcontract battery): ``exit 7 8`` (too many
+    arguments, valid first operand) and ``shift 1 2`` report the usage error
+    but DO NOT exit the shell and DO NOT run the rest of the current input
+    unit. The discard is identical in shape to
+    :func:`arith_assignment_discard`: the rest of the current line dies
+    (killing ``&&``/``||`` tails, an enclosing group/function/loop on the same
+    input), execution resumes at the NEXT top-level input line, the discard
+    passes THROUGH ``eval``/``source`` (contained only at fork boundaries), and
+    it is errexit-immune (the next line runs even under ``set -e``). Both
+    behaviours hold in default AND POSIX mode. Under ``-c`` the whole string is
+    the input unit, so it is abandoned with ``status``.
+
+    The caller must already have printed the error message.
+    """
+    if state.options.get('command_mode'):
+        raise SystemExit(status)
+    raise TopLevelAbort(status, errexit_immune=True, contain_nested=False)
+
+
 def report_internal_defect(state: 'ShellState', exc: BaseException, *,
                            prefix: str = '', stream: TextIO) -> int:
     """Handle an UNEXPECTED exception escaping command execution.

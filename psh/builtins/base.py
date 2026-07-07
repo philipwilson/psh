@@ -104,6 +104,21 @@ class Builtin(ABC):
         """Return detailed help text for the builtin."""
         return f"{self.synopsis}\n    {self.description}"
 
+    @staticmethod
+    def write_all_fd(fd: int, data: bytes) -> None:
+        """Write every byte of *data* to *fd*, looping until done.
+
+        ``os.write`` may write fewer bytes than requested (a full pipe, a slow
+        consumer), so a single call can silently truncate large output. This
+        is the write-all primitive the fd-level builtin output paths use;
+        an underlying error (EBADF/EPIPE) raises ``OSError`` for the caller to
+        turn into a failed exit status, matching bash.
+        """
+        mv = memoryview(data)
+        while mv:
+            written = os.write(fd, mv)
+            mv = mv[written:]
+
     def write(self, text: str, shell: 'Shell') -> None:
         """Write to the builtin's stdout.
 
@@ -117,7 +132,8 @@ class Builtin(ABC):
             # surrogateescape (not 'replace') so bytes carried in as surrogate
             # escapes — e.g. a non-UTF-8 byte from `x=$(printf '\xff')` — write
             # back out as their original byte, matching bash's byte transparency.
-            os.write(1, text.encode('utf-8', errors='surrogateescape'))
+            # write_all loops so a partial os.write never truncates the output.
+            self.write_all_fd(1, text.encode('utf-8', errors='surrogateescape'))
         else:
             stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
             stdout.write(text)
