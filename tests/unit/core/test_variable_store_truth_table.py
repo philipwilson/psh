@@ -5,7 +5,6 @@ campaign (core-state appraisal Phase 2 / builtins appraisal finding 3). It has
 two halves:
 
 1. THE FOUR INTENDED FIXES (``TestFixN...``), each marked
-   ``@pytest.mark.xfail(strict=True)`` at commit 1. They assert the CORRECT
    (bash 5.2) behavior, so they xfail until the declaration engine lands, then
    XPASS — strict mode turns that XPASS into a failure, forcing the marker's
    removal in the fixing commit (the "xfail flip").
@@ -32,13 +31,11 @@ import pytest
 # ==========================================================================
 
 class TestFix1IntegerAppendThroughExport:
-    @pytest.mark.xfail(strict=True, reason="FIX1: export n+= must use integer-append (store)")
     def test_export_integer_append_value(self, captured_shell):
         rc = captured_shell.run_command('declare -i n=2; export n+=3; echo "$n"')
         assert rc == 0
         assert captured_shell.get_stdout() == "5\n"
 
-    @pytest.mark.xfail(strict=True, reason="FIX1: export n+= integer declare -p")
     def test_export_integer_append_declare_p(self, captured_shell):
         rc = captured_shell.run_command('declare -i n=2; export n+=3; declare -p n')
         assert rc == 0
@@ -65,23 +62,19 @@ class TestFix1IntegerAppendThroughExport:
 # ==========================================================================
 
 class TestFix2IncompatibleArrayConversion:
-    @pytest.mark.xfail(strict=True, reason="FIX2: declare -A on indexed array must fail rc=1")
     def test_indexed_to_assoc_returns_1(self, captured_shell):
         rc = captured_shell.run_command('a=(x y); declare -A a')
         assert rc == 1
 
-    @pytest.mark.xfail(strict=True, reason="FIX2: declare -A on indexed must preserve indexed")
     def test_indexed_to_assoc_preserves_indexed(self, captured_shell):
         captured_shell.run_command('a=(x y); declare -A a 2>/dev/null; declare -p a')
         assert captured_shell.get_stdout() == 'declare -a a=([0]="x" [1]="y")\n'
 
-    @pytest.mark.xfail(strict=True, reason="FIX2: empty indexed array also blocks -A")
     def test_empty_indexed_to_assoc_returns_1(self, captured_shell):
         rc = captured_shell.run_command('declare -a e; declare -A e')
         assert rc == 1
 
     # The error message is still printed (bash prints it even in the rc=1 case).
-    @pytest.mark.xfail(strict=True, reason="FIX2: conversion error message + rc=1")
     def test_indexed_to_assoc_prints_error(self, captured_shell):
         rc = captured_shell.run_command('a=(x y); declare -A a')
         assert rc == 1
@@ -105,21 +98,18 @@ class TestFix2IncompatibleArrayConversion:
 # ==========================================================================
 
 class TestFix3DeclareGThroughLocalShadow:
-    @pytest.mark.xfail(strict=True, reason="FIX3: declare -g x+= reads global base")
     def test_g_string_append_reads_global(self, captured_shell):
         rc = captured_shell.run_command(
             'x=G; f(){ local x=L; declare -g x+=A; }; f; echo "$x"')
         assert rc == 0
         assert captured_shell.get_stdout() == "GA\n"
 
-    @pytest.mark.xfail(strict=True, reason="FIX3: local instance unchanged by declare -g")
     def test_g_append_leaves_local_untouched(self, captured_shell):
         rc = captured_shell.run_command(
             'x=G; f(){ local x=L; declare -g x+=A; echo "in=$x"; }; f; echo "out=$x"')
         assert rc == 0
         assert captured_shell.get_stdout() == "in=L\nout=GA\n"
 
-    @pytest.mark.xfail(strict=True, reason="FIX3: integer -g append reads global base")
     def test_g_integer_append_reads_global(self, captured_shell):
         # Non-coincidental values: string-concat "1"+"5"="15" != arithmetic
         # 100+5=105, so this genuinely distinguishes reading the global base.
@@ -128,7 +118,6 @@ class TestFix3DeclareGThroughLocalShadow:
         assert rc == 0
         assert captured_shell.get_stdout() == "105\n"
 
-    @pytest.mark.xfail(strict=True, reason="FIX3: nested-depth -g append reads global base")
     def test_g_append_nested_depth(self, captured_shell):
         rc = captured_shell.run_command(
             'x=G; g(){ declare -g x+=B; }; f(){ local x=L; g; }; f; echo "$x"')
@@ -154,7 +143,6 @@ class TestFix4DeclarePnNamerefsOnly:
     def _nonempty_lines(text):
         return [ln for ln in text.splitlines() if ln.strip()]
 
-    @pytest.mark.xfail(strict=True, reason="FIX4: declare -pn lists namerefs only")
     def test_declare_pn_lists_only_namerefs(self, captured_shell):
         rc = captured_shell.run_command('a=1; declare -n r=a; declare -pn')
         assert rc == 0
@@ -163,7 +151,6 @@ class TestFix4DeclarePnNamerefsOnly:
         assert all(ln.startswith("declare -n ") for ln in lines), lines
         assert 'declare -n r="a"' in lines
 
-    @pytest.mark.xfail(strict=True, reason="FIX4: declare -p -n split-flag form")
     def test_declare_p_n_split_form(self, captured_shell):
         rc = captured_shell.run_command('a=1; declare -n r=a; declare -p -n')
         assert rc == 0
@@ -171,7 +158,6 @@ class TestFix4DeclarePnNamerefsOnly:
         assert all(ln.startswith("declare -n ") for ln in lines), lines
         assert 'declare -n r="a"' in lines
 
-    @pytest.mark.xfail(strict=True, reason="FIX4: declare -n listing form")
     def test_declare_n_listing_form(self, captured_shell):
         rc = captured_shell.run_command('a=1; declare -n r=a; declare -n')
         assert rc == 0

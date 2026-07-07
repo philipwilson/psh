@@ -7,7 +7,7 @@ process-fd binding helpers.
 
 from typing import TYPE_CHECKING, List
 
-from ..core import ReadonlyVariableError
+from ..core import ReadonlyVariableError, VarAttributes
 from ..core.option_registry import (
     OPTION_REGISTRY,
     SHORT_TO_LONG,
@@ -121,9 +121,6 @@ class ExportBuiltin(Builtin):
                         status = rc
                     continue
 
-            if append and value is not None:
-                value = (shell.state.get_variable(key) or '') + value
-
             if print_mode:
                 if key in shell.env:
                     self.write_line(
@@ -134,10 +131,20 @@ class ExportBuiltin(Builtin):
                 if unexport:
                     # export -n NAME[=value]: optionally assign, remove export attr
                     if value is not None:
+                        if append:
+                            value = (shell.state.get_variable(key) or '') + value
                         shell.state.set_variable(key, value)
                     self._remove_export(key, shell)
                 elif value is not None:
-                    shell.state.export_variable(key, value)
+                    # export NAME[+]=value through the single declaration-engine
+                    # chokepoint. FIX1: an append reads the export target's base
+                    # (past a temp-env layer) and honors its integer attribute,
+                    # so `declare -i n=2; export n+=3` is 5, not a textual "23".
+                    from .declaration_engine import DeclarationEngine
+                    DeclarationEngine(shell).commit_scalar(
+                        key, value, append=append,
+                        add_attributes=VarAttributes.EXPORT,
+                        local=False, skip_temp_env=True)
                 else:
                     self._export_existing(key, shell)
             except ReadonlyVariableError as e:
@@ -157,7 +164,6 @@ class ExportBuiltin(Builtin):
         appears until it is assigned (bash: ``export FOO; printenv FOO``
         fails, then ``FOO=now`` makes it visible to children).
         """
-        from ..core.variables import VarAttributes
         scope_manager = shell.state.scope_manager
         if scope_manager.get_variable_object(key) is not None:
             scope_manager.apply_attribute(key, VarAttributes.EXPORT)
@@ -221,7 +227,6 @@ class ExportBuiltin(Builtin):
 
     def _remove_export(self, name: str, shell: 'Shell') -> None:
         """Remove the export attribute from a variable (export -n)."""
-        from ..core.variables import VarAttributes
         var = shell.state.scope_manager.get_variable_object(name)
         if var is not None and var.is_exported:
             var.attributes &= ~VarAttributes.EXPORT

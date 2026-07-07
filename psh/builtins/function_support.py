@@ -48,6 +48,13 @@ class DeclareBuiltin(Builtin):
         # Handle different modes
         if options['functions'] or options['function_names']:
             return self._handle_functions(options, positional, shell)
+        elif options['nameref'] and not positional:
+            # `declare -n` / `declare -pn` / `declare -p -n` with no names lists
+            # ONLY nameref variables (bash). The old paths omitted nameref from
+            # the listing filter and dumped every variable (builtins appraisal
+            # finding 3). Named forms (`declare -pn r`) still print the named
+            # variable's own declaration through _print_variables below.
+            return self._list_namerefs(shell)
         elif options['print']:
             return self._print_variables(options, positional, shell)
         elif not positional and any([
@@ -314,6 +321,21 @@ class DeclareBuiltin(Builtin):
                 self._print_declaration(var, shell)
         return 0
 
+    def _list_namerefs(self, shell: 'Shell') -> int:
+        """List only nameref variables in reusable ``declare -n`` form.
+
+        The no-name listing filter for ``declare -n`` / ``declare -pn`` /
+        ``declare -p -n`` (bash lists namerefs only). Uses the shared declaration
+        formatter so a nameref prints its OWN target (``declare -n r="a"``)
+        without dereferencing.
+        """
+        from .declare_format import format_declaration
+        for var in sorted(shell.state.scope_manager.all_variables_with_attributes(),
+                          key=lambda v: v.name):
+            if var.is_nameref:
+                self.write_line(format_declaration(var), shell)
+        return 0
+
     def _declare_assignment(self, arg: str, options: dict, attributes: VarAttributes,
                             shell: 'Shell', context: BuiltinContext) -> int:
         """Apply one `NAME=value` / `NAME+=value` declaration argument."""
@@ -433,14 +455,24 @@ class DeclareBuiltin(Builtin):
                 attributes | VarAttributes.ARRAY, options['global'])
 
         else:
-            # Regular variable assignment
-            # The enhanced scope manager will apply attribute transformations
-            final_value: object = value
-            if append:
-                from ..core import resolve_append_assignment
-                _, final_value = resolve_append_assignment(
-                    shell.state.scope_manager, name + '+', value)
-            self._set_variable_with_attributes(shell, name, final_value, attributes, options['global'])
+            # Regular scalar assignment / append — routed through the single
+            # declaration-engine chokepoint (store.assign / store.append). This
+            # makes ``declare -g x+=A`` read the append base from the GLOBAL
+            # target (not the local shadow) and honor the target's integer
+            # attribute (builtins appraisal finding 3). Attribute transforms are
+            # applied by the store; a readonly target raises ReadonlyVariableError.
+            from ..core import TargetScope
+            from .declaration_engine import (
+                DeclarationAssignment,
+                DeclarationEngine,
+                DeclarationRequest,
+            )
+            request = DeclarationRequest(
+                target_scope=(TargetScope.GLOBAL if options['global']
+                              else TargetScope.DEFAULT),
+                add_attributes=attributes)
+            DeclarationEngine(shell).commit_request_scalar(
+                request, DeclarationAssignment(name, value, append=append))
         return 0
 
     def _declare_bare_name(self, arg: str, options: dict, attributes: VarAttributes,
@@ -452,13 +484,17 @@ class DeclareBuiltin(Builtin):
             self.error(f"`{arg}': not a valid identifier", shell)
             return 1
 
+        from .declaration_engine import ArrayKind, DeclarationEngine
         if options['array']:
             # Check for array type conflict first. Use the scope declare writes
             # to, so a local `declare -a` in a function doesn't convert an
             # outer-scope scalar.
             existing = self._existing_in_target_scope(shell, arg, options['global'])
-            if existing and existing.is_assoc_array:
-                self.error(f"{arg}: cannot convert associative to indexed array", shell)
+            # An incompatible conversion (associative -> indexed) fails with
+            # status 1 and PRESERVES the existing array (shared engine check).
+            conv_err = DeclarationEngine.array_conversion_error(existing, ArrayKind.INDEXED)
+            if conv_err:
+                self.error(f"{arg}: {conv_err}", shell)
                 return 1
             if existing and existing.is_indexed_array:
                 # Re-declaring an existing indexed array keeps its elements (bash).
@@ -477,20 +513,15 @@ class DeclareBuiltin(Builtin):
         elif options['assoc_array']:
             # Check for array type conflict first (scope declare writes to).
             existing = self._existing_in_target_scope(shell, arg, options['global'])
-            if existing and existing.is_indexed_array:
-                # Bash behavior: print error but continue, convert to associative array
-                self.error(f"{arg}: cannot convert indexed to associative array", shell)
-                # Convert indexed array content to associative array
-                new_assoc = AssociativeArray()
-                if isinstance(existing.value, IndexedArray):
-                    # Copy indexed array elements as string keys
-                    for index in existing.value.indices():
-                        new_assoc.set(str(index), existing.value.get(index) or "")
-                # Completely replace the variable with new associative array
-                # Remove old attributes and set only the new ones
-                shell.state.scope_manager.unset_variable(arg)
-                self._set_variable_with_attributes(shell, arg, new_assoc, attributes, options['global'])
-            elif existing and existing.is_assoc_array:
+            # An incompatible conversion (indexed -> associative) FAILS with
+            # status 1 and PRESERVES the indexed array — bash does NOT convert
+            # (builtins appraisal finding 3; the old code's convert-and-continue
+            # was wrong, and applied even to an empty indexed array).
+            conv_err = DeclarationEngine.array_conversion_error(existing, ArrayKind.ASSOC)
+            if conv_err:
+                self.error(f"{arg}: {conv_err}", shell)
+                return 1
+            if existing and existing.is_assoc_array:
                 # Re-declaring an existing associative array keeps its keys (bash).
                 self._set_variable_with_attributes(shell, arg, existing.value, attributes, options['global'])
             elif (existing is not None
