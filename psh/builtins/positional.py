@@ -22,17 +22,26 @@ class ShiftBuiltin(Builtin):
         # Default shift count is 1
         n = 1
 
-        # Parse optional argument
         if len(args) > 1:
+            # bash validates the FIRST operand before the operand count:
+            # `shift x y` reports "x: numeric argument required" (rc 1, the
+            # shell continues), while `shift 1 2` — a VALID count with an extra
+            # operand — is "too many arguments", a usage error that discards
+            # the rest of the current input unit (both modes; probe-verified
+            # against bash 5.2).
             try:
                 n = int(args[1])
             except ValueError:
-                self.error("numeric argument required", shell)
+                self.error(f"{args[1]}: numeric argument required", shell)
                 return 1
+            if len(args) > 2:
+                self.error("too many arguments", shell)
+                from ..core import special_builtin_usage_discard
+                special_builtin_usage_discard(shell.state, 1)
 
-        # Validate shift count
+        # Validate shift count (bash: "N: shift count out of range")
         if n < 0:
-            self.error("shift count must be non-negative", shell)
+            self.error(f"{args[1]}: shift count out of range", shell)
             return 1
 
         # Check if we have enough parameters to shift

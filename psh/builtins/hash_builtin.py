@@ -97,8 +97,14 @@ class HashBuiltin(Builtin):
             return self._hash_names(names, shell, table)
 
         if opts['l']:
+            # Reusable form: the path and name are quoted so a value with a
+            # space/quote/metachar (`hash -p '/tmp/a b' foo`) re-parses to the
+            # same word (bash). Uses the shared reusable-word quoter.
+            from ..visitor.formatter_quoting import quote_word_reuse
             for name, path, _hits in table.entries():
-                self.write_line(f"builtin hash -p {path} {name}", shell)
+                self.write_line(
+                    f"builtin hash -p {quote_word_reuse(path)} "
+                    f"{quote_word_reuse(name)}", shell)
             return 0
 
         if opts['r']:

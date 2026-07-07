@@ -7376,3 +7376,92 @@
   stdout: "rc=0\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# BUILTIN CONTRACTS (set/shift/exit argument+abort, serialization, dir stack,
+# nameref riders — fix/builtin-contracts campaign, pinned to bash 5.2.26)
+# =============================================================================
+
+- name: bcontract_set_empty_operand
+  command: 'set ""; echo "$#:[$1]"'
+  stdout: "1:[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bcontract_set_lone_dash_keeps_params
+  command: 'set a b c; set -; echo "$#"'
+  stdout: "3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bcontract_set_dash_then_args
+  command: 'set - a b; echo "$#:[$1]"'
+  stdout: "2:[a]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bcontract_set_reusable_space
+  command: "x='a b'; set | grep -a '^x='"
+  stdout: "x='a b'\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bcontract_set_reusable_glob
+  command: "x='a*b'; set | grep -a '^x='"
+  stdout: "x='a*b'\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bcontract_shift_too_many_discards
+  command: 'set -- a b c; shift 1 2; echo survived'
+  stdout: ""
+  stderr: "too many arguments"
+  exit_code: 1
+
+- name: bcontract_shift_bad_first_operand
+  command: 'set -- a b c; shift x y; echo "n=$#"'
+  stdout: "n=3\n"
+  stderr: "numeric argument required"
+  exit_code: 0
+
+- name: bcontract_exit_too_many_discards
+  command: 'exit 7 8; echo survived'
+  stdout: ""
+  stderr: "too many arguments"
+  exit_code: 1
+
+- name: bcontract_exit_bad_first_operand_exits_two
+  command: 'exit abc 7; echo survived'
+  stdout: ""
+  stderr: "numeric argument required"
+  exit_code: 2
+
+- name: bcontract_hash_l_quotes_path
+  command: "hash -p '/tmp/a b' foo; hash -l"
+  stdout: "builtin hash -p '/tmp/a b' foo\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bcontract_nameref_assoc_arith_key
+  command: 'declare -A h; declare -n r=h; (( r[foo]=5 )); echo "${h[foo]} ${h[0]-x}"'
+  stdout: "5 x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bcontract_nameref_unset_element
+  command: 'a=(x y z); declare -n r=a; unset "r[1]"; echo "${a[@]}"'
+  stdout: "x z\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bcontract_cd_readonly_oldpwd_updates_pwd
+  command: 'cd /tmp; readonly OLDPWD; cd /; echo "PWD=$PWD"'
+  stdout: "PWD=/\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: bcontract_pushd_swap_transactional
+  command: 'cd /tmp; pushd -n /nonexistent_zz >/dev/null 2>&1; pushd >/dev/null 2>&1; echo "$(pwd) $(dirs +0)"'
+  stdout: "/tmp /tmp\n"
+  stderr: ""
+  exit_code: 0

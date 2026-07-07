@@ -10,6 +10,27 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+def _chdir_or_error(builtin: 'Builtin', target: str, shell: 'Shell') -> bool:
+    """os.chdir(*target*), reporting a bash-style diagnostic on failure.
+
+    Returns True on success, False on failure (message already printed). Shared
+    by pushd/popd so a failed cd never leaves the stack out of sync with the
+    cwd — callers mutate the stack only after this returns True.
+    """
+    try:
+        os.chdir(target)
+        return True
+    except FileNotFoundError:
+        builtin.error(f"{target}: No such file or directory", shell)
+    except NotADirectoryError:
+        builtin.error(f"{target}: Not a directory", shell)
+    except PermissionError:
+        builtin.error(f"{target}: Permission denied", shell)
+    except OSError as e:
+        builtin.error(f"{target}: {e.strerror or e}", shell)
+    return False
+
+
 def format_directory_for_display(directory: str, no_tilde: bool = False) -> str:
     """Render a stack entry for display, abbreviating $HOME as ``~``.
 
@@ -145,20 +166,22 @@ class PushdBuiltin(Builtin):
             return self._pushd_no_cd(args[2:], stack, shell)
 
         if len(args) == 1:
-            # No arguments - swap top two directories
-            new_dir = stack.swap_top_two()
-            if new_dir is None:
-                self.error("directory stack empty", shell)
+            # No arguments - swap top two directories. TRANSACTIONAL: chdir to
+            # the would-be new top FIRST, and only swap if that succeeds — a
+            # failed chdir must leave stack[0] == cwd (the core invariant). The
+            # old order swapped first, so a bad entry (e.g. planted by
+            # `pushd -n /nonexistent`) ended up at stack[0] while cwd was
+            # unchanged.
+            if stack.size() < 2:
+                self.error("no other directory", shell)
                 return 1
-
-            try:
-                os.chdir(new_dir)
-                self._update_pwd_vars(new_dir, shell)
-                self._print_stack(stack, shell)
-                return 0
-            except (FileNotFoundError, NotADirectoryError, PermissionError) as e:
-                self.error(str(e), shell)
+            target = stack.stack[1]
+            if not _chdir_or_error(self, target, shell):
                 return 1
+            stack.swap_top_two()
+            self._update_pwd_vars(target, shell)
+            self._print_stack(stack, shell)
+            return 0
 
         arg = args[1]
 
@@ -166,27 +189,28 @@ class PushdBuiltin(Builtin):
         if arg.startswith('+') or arg.startswith('-'):
             try:
                 offset = int(arg)
-                if arg.startswith('-'):
-                    # Bash-verified: -N counts from the RIGHT, 0-based
-                    # (-0 is the bottom of the stack), so the left index
-                    # to rotate to the top is size-1-N.
-                    offset = stack.size() - 1 + offset
-                new_dir = stack.rotate(offset)
-                if new_dir is None:
-                    self.error("directory stack empty", shell)
-                    return 1
-
-                try:
-                    os.chdir(new_dir)
-                    self._update_pwd_vars(new_dir, shell)
-                    self._print_stack(stack, shell)
-                    return 0
-                except (FileNotFoundError, NotADirectoryError, PermissionError) as e:
-                    self.error(str(e), shell)
-                    return 1
             except ValueError:
                 self.error(f"invalid rotation argument: {arg}", shell)
                 return 1
+            if stack.size() <= 1:
+                # bash uses "directory stack empty" for the +N/-N rotate form
+                # (and "no other directory" for the no-arg swap above).
+                self.error("directory stack empty", shell)
+                return 1
+            if arg.startswith('-'):
+                # Bash-verified: -N counts from the RIGHT, 0-based
+                # (-0 is the bottom of the stack), so the left index
+                # to rotate to the top is size-1-N.
+                offset = stack.size() - 1 + offset
+            # TRANSACTIONAL: the entry that would become the new top is
+            # stack[offset % size]; chdir to it FIRST, rotate only on success.
+            target = stack.stack[offset % stack.size()]
+            if not _chdir_or_error(self, target, shell):
+                return 1
+            stack.rotate(offset)
+            self._update_pwd_vars(target, shell)
+            self._print_stack(stack, shell)
+            return 0
 
         # Regular directory argument
         directory = arg
@@ -355,20 +379,16 @@ class PopdBuiltin(Builtin):
             return 1
 
         if len(args) == 1:
-            # No arguments - pop current directory
-            new_dir = stack.pop()
-            if new_dir is None:
-                self.error("directory stack empty", shell)
+            # No arguments - pop current directory. TRANSACTIONAL: the new top
+            # would be stack[1]; chdir there FIRST and pop only on success, so a
+            # failed chdir leaves the stack intact and stack[0] == cwd.
+            target = stack.stack[1]
+            if not _chdir_or_error(self, target, shell):
                 return 1
-
-            try:
-                os.chdir(new_dir)
-                self._update_pwd_vars(new_dir, shell)
-                self._print_stack(stack, shell)
-                return 0
-            except (FileNotFoundError, NotADirectoryError, PermissionError) as e:
-                self.error(str(e), shell)
-                return 1
+            stack.pop()
+            self._update_pwd_vars(target, shell)
+            self._print_stack(stack, shell)
+            return 0
 
         # Handle index arguments (+N, -N)
         arg = args[1]
@@ -392,18 +412,13 @@ class PopdBuiltin(Builtin):
                 return 1
 
             if index == 0:
-                # Popping current directory - change to new top
-                new_dir = stack.pop(0)
-                if new_dir is None:
-                    self.error("directory stack empty", shell)
+                # Popping the current directory - change to new top FIRST
+                # (transactional): chdir to stack[1], pop only on success.
+                target = stack.stack[1]
+                if not _chdir_or_error(self, target, shell):
                     return 1
-
-                try:
-                    os.chdir(new_dir)
-                    self._update_pwd_vars(new_dir, shell)
-                except (FileNotFoundError, NotADirectoryError, PermissionError) as e:
-                    self.error(str(e), shell)
-                    return 1
+                stack.pop(0)
+                self._update_pwd_vars(target, shell)
             else:
                 # Popping non-current directory - don't change directories
                 stack.pop(index)

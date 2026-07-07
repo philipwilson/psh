@@ -28,7 +28,6 @@ Unsupported zsh flags (accepted nowhere; reported as an error): -z, -c, -C,
 """
 
 import fnmatch
-import os
 import sys
 from typing import TYPE_CHECKING, List, Tuple
 
@@ -94,8 +93,9 @@ class PrintBuiltin(Builtin):
             result = format_printf(opts['format'], rest)
             for message in result.errors:
                 self.error(message, shell)
-            self._write(result.output, opts['fd'], shell)
-            return result.exit_code
+            write_rc = self._write(result.output, opts['fd'], shell)
+            # A write failure fails the command even if the format was valid.
+            return result.exit_code or write_rc
 
         # -s: append to history instead of printing.
         if opts['history']:
@@ -124,8 +124,7 @@ class PrintBuiltin(Builtin):
         if not terminate and not opts['no_newline']:
             output += opts['terminator']
 
-        self._write(output, opts['fd'], shell)
-        return 0
+        return self._write(output, opts['fd'], shell)
 
     def _parse_options(self, args: List[str]) -> Tuple[dict, List[str]]:
         """Parse print options; returns (options dict, remaining args)."""
@@ -233,8 +232,12 @@ class PrintBuiltin(Builtin):
 
         return opts, args[i:]
 
-    def _write(self, text: str, fd: int, shell: 'Shell') -> None:
-        """Write ``text`` to the requested file descriptor."""
+    def _write(self, text: str, fd: int, shell: 'Shell') -> int:
+        """Write ``text`` to the requested file descriptor.
+
+        Returns 0 on success, 1 on a write/descriptor failure (`print -u99`
+        reports the bad descriptor and the whole command fails, matching zsh
+        — the old code caught the error but returned success)."""
         is_forked_child = shell.state.in_forked_child
 
         # fd 1 in the parent process should go through shell.stdout so
@@ -243,18 +246,21 @@ class PrintBuiltin(Builtin):
             stream = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
             stream.write(text)
             stream.flush()
-            return
+            return 0
         if fd == 2 and not is_forked_child:
             stream = shell.stderr if hasattr(shell, 'stderr') else sys.stderr
             stream.write(text)
             stream.flush()
-            return
+            return 0
 
-        # Otherwise write directly to the numeric descriptor.
+        # Otherwise write every byte directly to the numeric descriptor
+        # (write-all: os.write may write fewer bytes than requested).
         try:
-            os.write(fd, text.encode('utf-8', errors='replace'))
+            self.write_all_fd(fd, text.encode('utf-8', errors='surrogateescape'))
         except OSError as e:
             self.error(f"-u: {fd}: {e.strerror}", shell)
+            return 1
+        return 0
 
     @property
     def help(self) -> str:

@@ -266,9 +266,15 @@ class SetBuiltin(Builtin):
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Set shell options and positional parameters."""
         if len(args) == 1:
-            # No arguments, display all variables
-            for var, value in sorted(shell.state.variables.items()):
-                self.write_line(f"{var}={value}", shell)
+            # No arguments: display all variables in bash's reusable
+            # single-quote form (`x='a b'`, `$'a\nb'`, arrays as
+            # `a=([0]="..")`), identical to plain `declare`. The old
+            # `f"{var}={value}"` emitted unquoted values and str()'d arrays to
+            # a single space-joined word — not re-parseable.
+            from .declare_format import format_assignment_reuse
+            for var in sorted(shell.state.scope_manager.all_variables_with_attributes(),
+                              key=lambda v: v.name):
+                self.write_line(format_assignment_reuse(var), shell)
             return 0
 
         # Short option (-e, -u, ...) → long name, from the option registry
@@ -281,6 +287,21 @@ class SetBuiltin(Builtin):
         i = 1
         while i < len(args):
             arg = args[i]
+
+            # A lone '-' or '+' ends option processing WITHOUT becoming a
+            # positional parameter (bash/POSIX). '-' additionally resets -v/-x.
+            # Any following words become the positional parameters; with NO
+            # following word the parameters are left unchanged — unlike '--',
+            # which clears them. (Probe-verified against bash 5.2: `set a b c;
+            # set -` leaves $# at 3, `set - x` sets $1=x, `set -x; set -` clears
+            # xtrace.)
+            if arg in ('-', '+'):
+                if arg == '-':
+                    shell.state.options['verbose'] = False
+                    shell.state.options['xtrace'] = False
+                if i + 1 < len(args):
+                    shell.state.positional_params = args[i + 1:]
+                return 0
 
             # -- separates options from positional parameters
             if arg == '--':
@@ -308,8 +329,10 @@ class SetBuiltin(Builtin):
 
             # Short option clusters like -eux / +eux. A trailing 'o' consumes
             # the next argument as a long option name, so `set -euo pipefail`
-            # works like bash.
-            if arg[0] in '-+' and len(arg) > 1:
+            # works like bash. ``arg[:1]`` (not ``arg[0]``) so an EMPTY operand
+            # (`set ""`) falls through to the positional-parameter branch below
+            # instead of raising IndexError.
+            if arg[:1] in ('-', '+') and len(arg) > 1:
                 enable = arg.startswith('-')
                 sign = arg[0]
                 cluster = arg[1:]
@@ -572,11 +595,19 @@ class UnsetBuiltin(Builtin):
         expand_array_index) rather than re-implementing them here.
         Returns True on success, False on error (caller sets status 1).
         """
-        from ..core import AssociativeArray, IndexedArray
+        from ..core import AssociativeArray, IndexedArray, NamerefCycleError
 
         bracket_pos = var.find('[')
         array_name = var[:bracket_pos]
         index_expr = var[bracket_pos+1:-1]
+        # Resolve a nameref target: `declare -n r=a; unset "r[1]"` unsets a[1]
+        # (bash). The main loop skips its nameref resolution for a subscripted
+        # name (`'[' in var`), so it happens here on the array-name part.
+        try:
+            array_name = shell.state.scope_manager.resolve_nameref_name(array_name)
+        except NamerefCycleError as e:
+            shell.state.scope_manager.warn_nameref_cycle(e.name)
+            return True
         var_obj = shell.state.scope_manager.get_variable_object(array_name)
         expander = shell.expansion_manager.variable_expander
 

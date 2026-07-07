@@ -33,6 +33,7 @@ from .internal_errors import (
     arith_assignment_discard,
     fatal_expansion_status,
     report_internal_defect,
+    special_builtin_usage_discard,
 )
 from .options import OptionHandler
 from .scope import ScopeManager, VariableScope
@@ -72,6 +73,7 @@ __all__ = [
     'report_internal_defect',
     'fatal_expansion_status',
     'arith_assignment_discard',
+    'special_builtin_usage_discard',
     # Traps
     'TrapManager',
     # Assignment utilities

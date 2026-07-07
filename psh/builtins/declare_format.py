@@ -34,6 +34,24 @@ def escape_value(value: str) -> str:
     return value
 
 
+def quote_scalar_double(value: str) -> str:
+    """A scalar value for ``declare -p`` output: double-quoted, but ``$'...'``
+    (ANSI-C) when it contains control characters — matching bash 5.2
+    (``declare -- x=$'a\\nb'``). The reusable-word quoting authority lives in
+    ``formatter_quoting``; this is the double-quote (``declare -p``) variant."""
+    from ..visitor.formatter_quoting import ansi_c_encode, has_control_char
+    if has_control_char(value):
+        return "$'" + ansi_c_encode(value) + "'"
+    return '"' + escape_value(value) + '"'
+
+
+def quote_array_element(value: str) -> str:
+    """One array element for reusable output (``declare -p`` and ``set``):
+    ``"..."`` normally, ``$'...'`` when it holds control characters
+    (bash: ``declare -a a=([0]=$'p\\nq' [1]="r s")``)."""
+    return quote_scalar_double(value)
+
+
 # Characters that force an associative-array KEY to be double-quoted in
 # `declare -p` output (bash leaves "plain" keys — alnum plus -._/:@+ — bare).
 _KEY_NEEDS_QUOTE = set(' \t\n"\'\\$`*?[]{}()<>|&;~#!=')
@@ -59,23 +77,49 @@ def format_declaration(var: Variable) -> str:
     if var.attributes & VarAttributes.UNSET:
         return f"declare {flag_str} {var.name}"
 
+    value_str = _format_array_or_scalar(var)
+    return f"declare {flag_str} {var.name}{value_str}"
+
+
+def _format_array_or_scalar(var: Variable) -> str:
+    """The ``=<value>`` tail shared by ``declare -p`` and the ``set`` /
+    plain-``declare`` listing: array elements are double-quoted (``$'...'``
+    for control chars), a scalar goes through *scalar_fn*."""
     if isinstance(var.value, IndexedArray):
         # declare -a name=([0]="val" [1]="val")
-        elements = [f'[{idx}]="{escape_value(var.value.get(idx) or "")}"'
+        elements = [f'[{idx}]={quote_array_element(var.value.get(idx) or "")}'
                     for idx in var.value.indices()]
-        value_str = f"=({' '.join(elements)})" if elements else "=()"
-    elif isinstance(var.value, AssociativeArray):
+        return f"=({' '.join(elements)})" if elements else "=()"
+    if isinstance(var.value, AssociativeArray):
         # declare -A name=([key]="val" [key2]="val2" )  — note bash's trailing
         # space before ')' for associative arrays, and keys quoted only when
         # needed. (psh iterates sorted; bash uses hash order — an accepted,
         # deterministic divergence since bash's order is unspecified.)
-        elements = [f'[{format_assoc_key(key)}]="{escape_value(val)}"'
+        elements = [f'[{format_assoc_key(key)}]={quote_array_element(val)}'
                     for key, val in sorted(var.value.items())]
-        value_str = f"=({' '.join(elements)} )" if elements else "=()"
-    else:
-        value_str = f'="{escape_value(str(var.value))}"'
+        return f"=({' '.join(elements)} )" if elements else "=()"
+    return f"={quote_scalar_double(str(var.value))}"
 
-    return f"declare {flag_str} {var.name}{value_str}"
+
+def format_assignment_reuse(var: Variable) -> str:
+    r"""Format one variable as bash's ``set`` / plain-``declare`` (no-arg)
+    listing does: ``name=value`` with a SINGLE-QUOTED scalar (``$'...'`` for
+    control chars), no ``declare`` prefix and no attribute flags. Arrays use
+    the same ``([0]="..." ...)`` element form as ``declare -p``.
+
+    An unset (declared-but-no-value) variable prints just its name (bash omits
+    the ``=``). Probe-verified against bash 5.2: ``x='a b'``, ``x=$'a\nb'``,
+    ``a=([0]="x y")``.
+    """
+    from ..visitor.formatter_quoting import quote_word_reuse
+    if var.attributes & VarAttributes.UNSET:
+        return var.name
+    if isinstance(var.value, (IndexedArray, AssociativeArray)):
+        return f"{var.name}{_format_array_or_scalar(var)}"
+    s = str(var.value)
+    # An empty scalar stays bare (bash: `x=`); a non-empty one is quote-when-
+    # needed. quote_word_reuse('') would give `''`, wrong for an assignment RHS.
+    return f"{var.name}={quote_word_reuse(s) if s else ''}"
 
 
 # The attribute filters ``declare -p<flags>`` selects on. NAMEREF is
