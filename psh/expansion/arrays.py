@@ -183,30 +183,20 @@ class ArrayOpsMixin(_Base):
             array_name = self._resolve_array_name(var_name[:bracket_pos])
             index_expr = var_name[bracket_pos + 1:-1]
 
-            from ..core import AssociativeArray, IndexedArray
+            from ..core import AssociativeArray
             var = self.state.scope_manager.get_variable_object(array_name)
 
-            # A readonly array forbids element writes too (bash: ``a=(1 2);
-            # readonly a; a[0]=X`` errors). The gate is the array variable,
-            # not the subscript, so report the array name.
-            if var is not None and var.is_readonly:
-                from ..core import ReadonlyVariableError
-                raise ReadonlyVariableError(array_name)
-
-            if var and isinstance(var.value, IndexedArray):
-                var.value.set(self._eval_array_index(index_expr), value)
-            elif var and isinstance(var.value, AssociativeArray):
-                expanded_key = self.expand_assoc_key(index_expr)
-                var.value.set(expanded_key, value)
+            # An associative array keys on the expanded literal subscript; an
+            # indexed array (or a not-yet-created one) keys on the arithmetic
+            # value. The store then owns the readonly guard, negative-index
+            # resolution, create-if-absent, and observer notification — this
+            # write never touches ``.value.set`` directly (core-state C2).
+            key: "int | str"
+            if var is not None and isinstance(var.value, AssociativeArray):
+                key = self.expand_assoc_key(index_expr)
             else:
-                # Array doesn't exist yet; create an indexed array
-                arr = IndexedArray()
-                arr.set(self._eval_array_index(index_expr), value)
-                from ..core import VarAttributes
-                self.state.scope_manager.set_variable(
-                    array_name, arr,
-                    attributes=VarAttributes.ARRAY,
-                )
+                key = self._eval_array_index(index_expr)
+            self.state.scope_manager.store.set_element(array_name, key, value)
         else:
             self.state.set_variable(var_name, value)
 

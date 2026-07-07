@@ -169,46 +169,23 @@ class ArithmeticEvaluator:
         ``key`` is a str for associative arrays and an int for indexed
         arrays / a freshly created indexed array.
         """
-        from ...core import (
-            ArraySubscriptError,
-            AssociativeArray,
-            IndexedArray,
-            NamerefCycleError,
-            ReadonlyVariableError,
-            VarAttributes,
-        )
+        from ...core import ArraySubscriptError, NamerefCycleError
         from .errors import ShellArithmeticError
-        var = self.shell.state.scope_manager.get_variable_object(name)
-        # A readonly array (or scalar) forbids element writes exactly like
-        # the SimpleCommand `a[0]=9` path (executor/array.py): bash reports
-        # "a: readonly variable", the evaluation aborts with status 1, and
-        # the value is unchanged. Without this, `readonly -a a=(1 2);
-        # (( a[0]=9 ))` was a silent write. The nameref/creation fallthrough
-        # below is covered too: scope_manager.set_variable re-checks.
-        if var is not None and var.is_readonly:
-            raise ReadonlyVariableError(name)
+        # The store owns the readonly guard (aborts, unchanged, exactly like the
+        # SimpleCommand `a[0]=9` path), nameref resolution (so `declare -n r=arr;
+        # (( r[0]=9 ))` sets arr[0] IN PLACE instead of replacing arr), negative-
+        # index resolution, create-if-absent, and observers — no direct
+        # `.value.set` here (core-state C2).
         try:
-            if var is not None and isinstance(var.value, IndexedArray):
-                var.value.set(int(key), str(value))
-            elif var is not None and isinstance(var.value, AssociativeArray):
-                var.value.set(str(key), str(value))
-            else:
-                # No array yet (and not a plain scalar to clobber as scalar):
-                # create an indexed array, matching `arr[i]=` semantics.
-                arr = IndexedArray()
-                arr.set(int(key), str(value))
-                self.shell.state.scope_manager.set_variable(
-                    name, arr, attributes=VarAttributes.ARRAY,
-                )
+            self.shell.state.scope_manager.store.set_element(name, key, str(value))
         except ArraySubscriptError as e:
             # Surface as an arithmetic error so `(( ))` reports it like bash
             # ("NAME[SUB]: bad array subscript") rather than as an internal
             # defect under strict-errors.
             raise ShellArithmeticError(f"{name}[{e.subscript}]: {e}") from e
         except NamerefCycleError as e:
-            # Cyclic-nameref write through the creation/nameref fallthrough:
-            # warn and drop the assignment, like set_variable() above
-            # (bash: `(( na[0]=5 ))` warns, status from the value).
+            # Cyclic-nameref write: warn and drop the assignment (bash:
+            # `(( na[0]=5 ))` warns, status from the value).
             self.shell.state.scope_manager.warn_nameref_cycle(e.name)
 
     def _eval_array_assignment(self, node: 'ArrayAssignmentNode') -> int:

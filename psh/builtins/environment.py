@@ -229,9 +229,14 @@ class ExportBuiltin(Builtin):
         """Remove the export attribute from a variable (export -n)."""
         var = shell.state.scope_manager.get_variable_object(name)
         if var is not None and var.is_exported:
-            var.attributes &= ~VarAttributes.EXPORT
-        # state.env is the live environment; os.environ is read-once at
-        # startup and never written.
+            # Route through the store (no direct .attributes write, C2); its
+            # observer re-derives the live-environment entry.
+            shell.state.scope_manager.store.remove_attributes(
+                name, VarAttributes.EXPORT)
+        # state.env is the live environment; os.environ is read-once at startup
+        # and never written. Belt-and-braces for a name that is only an env
+        # entry (not a shell variable): the observer above only fires when a
+        # variable exists, so keep the explicit pop + resync.
         shell.state.env.pop(name, None)
         shell.state.scope_manager.sync_exports_to_environment(shell.state.env)
 
@@ -607,25 +612,25 @@ class UnsetBuiltin(Builtin):
             self.error(f"{array_name}: cannot unset: readonly variable", shell)
             return False
 
-        if isinstance(var_obj.value, AssociativeArray):
-            var_obj.value.unset(expander.expand_array_index(index_expr))
-            return True
-
-        if isinstance(var_obj.value, IndexedArray):
-            index = expander._eval_array_index(index_expr)
-            # Negative subscripts resolve through the SAME "one past the top"
-            # formula as read/write (resolve_write_index: highest_index+1+n),
-            # not the old count-into-defined-indices scheme which diverged from
-            # bash on sparse arrays (a[5],a[10]: unset 'a[-2]' -> slot 9, a
-            # no-op; the old code removed index 5). An out-of-range negative is
-            # "bad array subscript" (rc=1), like bash.
+        if isinstance(var_obj.value, (IndexedArray, AssociativeArray)):
+            # Route through the store's element-unset transaction: it owns the
+            # negative-index resolution (the SAME one-past-the-top formula as
+            # read/write, so sparse `unset 'a[-2]'` matches bash) and the
+            # observer, so this never touches `.value.unset` directly (C2). An
+            # associative array keys on the expanded literal subscript; an
+            # indexed array keys on the arithmetic value. An out-of-range
+            # negative subscript is "bad array subscript" (rc=1), like bash.
             from ..core import ArraySubscriptError
+            key: "int | str"
+            if isinstance(var_obj.value, AssociativeArray):
+                key = expander.expand_array_index(index_expr)
+            else:
+                key = expander._eval_array_index(index_expr)
             try:
-                index = var_obj.value.resolve_write_index(index)
+                shell.state.scope_manager.store.unset_element(array_name, key)
             except ArraySubscriptError:
                 self.error(f"[{index_expr}]: bad array subscript", shell)
                 return False
-            var_obj.value.unset(index)
             return True
 
         # Scalar variable: bash treats it as a one-element array, so
