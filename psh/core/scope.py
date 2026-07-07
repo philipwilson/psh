@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .exceptions import ReadonlyVariableError
 from .locale_service import active_locale
+from .variable_store import VariableStore
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
 # Variables whose value is computed on read but whose assignment is HONORED
@@ -90,6 +91,11 @@ class ScopeManager:
         self.scope_stack: List[VariableScope] = [self.global_scope]
         self._debug = False
         self._shell = None  # Reference to shell for arithmetic evaluation
+        # The authoritative variable-mutation service (core-state Phase 2). It
+        # shares this manager's scope stack and observers; every child manager
+        # from ``clone()`` builds a fresh store, so writes never cross the child
+        # boundary. See psh/core/variable_store.py.
+        self.store = VariableStore(self)
 
         # Observer fired whenever PATH is assigned, declared local, or
         # unset — installed by ShellState to empty the command hash table

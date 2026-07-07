@@ -118,6 +118,48 @@ class ScopeManager:
         UNSET tombstones make lookup return None."""
 ```
 
+### 4. Variable-mutation model — the `VariableStore`
+
+Every variable WRITE goes through one authoritative service,
+`scope_manager.store` (a `VariableStore`, in `variable_store.py`). It is the
+single transaction boundary, so readonly enforcement, nameref resolution,
+negative-index resolution, and the env/PATH observers cannot be bypassed by a
+caller that forgets a guard (core-state appraisal C2 / Phase 2).
+
+```python
+store = shell.state.scope_manager.store
+store.assign(name, value, attributes=..., local=..., global_scope=...)
+store.append(name, value, global_scope=...)   # target-scope-aware append base
+store.set_element(name, key, value)           # guarded array-element write
+store.unset_element(name, key)                # guarded array-element unset
+store.add_attributes(name, attrs, global_scope=...)
+store.remove_attributes(name, attrs, global_scope=...)
+store.unset(name)
+```
+
+- Whole-variable ops are a typed facade over the `ScopeManager` authority
+  (`set_variable`/`create_local`/`apply_attribute`/`remove_attribute`) — that is
+  where the actual `.value`/`.attributes` writes live.
+- `append` reads the append base from the scope the write TARGETS (so
+  `declare -g x+=A` reads the global base, not a local shadow) and honors the
+  target's integer attribute (`export n+=3` on `-i n` appends arithmetically).
+- `set_element`/`unset_element` own the ONE negative-subscript formula
+  (`IndexedArray.resolve_write_index`), validate readonly BEFORE mutating, and
+  fire the observers.
+- The four declaration builtins (`declare`/`export`/`readonly`, with
+  `readonly` delegating to `declare -r`) run their SCALAR path through one
+  `DeclarationEngine` (`builtins/declaration_engine.py`) that commits via the
+  store. `local` keeps `ScopeManager.create_local` (its redeclare-merge,
+  exported-shadow inheritance, and same-scope tombstone semantics are
+  local-specific) — folding it into the store is Phase 4.
+
+**Write-ban invariant** (`tests/unit/core/test_variable_store_write_ban.py`):
+no production code outside `variable_store.py` and `scope.py` may write
+`X.value.set/.unset/.clear/.append(` or `.attributes =/|=/&=`. Route new
+mutations through the store. Known Phase-4 gap: `executor/array.py` still mutates
+an existing array via a local alias (`array = var_obj.value; array.set(...)`),
+which the textual ban cannot see; it is already readonly-guarded (P1).
+
 ## State Components
 
 ### Variables

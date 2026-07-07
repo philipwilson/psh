@@ -7104,3 +7104,45 @@
   stdout: "small\nmid\nbig\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# VARIABLE STORE / DECLARATION ENGINE (campaign 2026-07-07)
+# The four declaration-family fixes + the arithmetic nameref-array collateral
+# fix, pinned against real bash via --compare-bash.
+# =============================================================================
+
+- name: varstore_export_integer_append
+  command: 'declare -i n=2; export n+=3; echo "$n"'
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: varstore_declare_A_on_indexed_preserved
+  command: 'a=(x y); declare -A a 2>/dev/null; declare -p a'
+  stdout: 'declare -a a=([0]="x" [1]="y")
+
+'
+  stderr: ""
+  exit_code: 0
+
+- name: varstore_declare_g_append_reads_global
+  command: 'x=G; f(){ local x=L; declare -g x+=A; }; f; echo "$x"'
+  stdout: "GA\n"
+  stderr: ""
+  exit_code: 0
+
+- name: varstore_declare_pn_namerefs_only
+  command: 'a=1; declare -n r=a; declare -pn'
+  stdout: 'declare -n r="a"
+
+'
+  stderr: ""
+  exit_code: 0
+
+- name: varstore_arith_nameref_array_element_in_place
+  command: 'declare -n r=arr; arr=(1 2); (( r[0]=9 )); declare -p arr'
+  stdout: 'declare -a arr=([0]="9" [1]="2")
+
+'
+  stderr: ""
+  exit_code: 0
