@@ -636,6 +636,50 @@ class TestPtyJobControl:
         psh.send('kill %1\r')      # clean up the stopped job
         psh.expect(PROMPT)
 
+    def test_kill_stop_then_cont_toggles_bg_job_state(self, psh):
+        """`kill -STOP %1` then `kill -CONT %1` toggle a bg job Stopped/Running.
+
+        The CONT half exercises WCONTINUED: the SIGCHLD path must recognize the
+        resume (WIFCONTINUED) and re-mark the job Running, otherwise `jobs`
+        would keep showing it Stopped. `sleep 41` is a sentinel command string.
+        """
+        psh.send('sleep 41 &\r')
+        psh.expect(r'\[1\]')
+        psh.expect(PROMPT)
+        psh.send('kill -STOP %1\r')
+        psh.expect(PROMPT)
+        time.sleep(0.3)            # let the SIGCHLD stop-notice be processed
+        psh.send('jobs\r')
+        psh.expect('Stopped', timeout=8)
+        psh.expect('sleep 41')
+        psh.expect(PROMPT)
+        psh.send('kill -CONT %1\r')
+        psh.expect(PROMPT)
+        time.sleep(0.3)            # let the WCONTINUED resume-notice be processed
+        psh.send('jobs\r')
+        psh.expect('Running', timeout=8)
+        psh.expect('sleep 41')
+        psh.expect(PROMPT)
+        psh.send('kill %1\r')      # cleanup
+        psh.expect(PROMPT)
+
+    def test_bg_resumes_stopped_job_to_running(self, psh):
+        """`bg %1` resumes a stopped bg job; `jobs` then shows it Running."""
+        psh.send('sleep 42 &\r')
+        psh.expect(r'\[1\]')
+        psh.expect(PROMPT)
+        psh.send('kill -STOP %1\r')
+        psh.expect(PROMPT)
+        time.sleep(0.3)
+        psh.send('bg %1\r')
+        psh.expect('sleep 42', timeout=8)   # bg prints "[1]+ sleep 42 &"
+        psh.expect(PROMPT)
+        psh.send('jobs\r')
+        psh.expect('Running', timeout=8)
+        psh.expect(PROMPT)
+        psh.send('kill %1\r')      # cleanup
+        psh.expect(PROMPT)
+
 
 class TestPtyPortedLegacy:
     """Behaviors ported from the deleted legacy interactive suites

@@ -3,7 +3,11 @@ import os
 import signal
 from typing import TYPE_CHECKING, List
 
-from ..executor.job_control import JobState
+from ..executor.job_control import (
+    JobSpecOutcome,
+    JobState,
+    jobspec_error_messages,
+)
 from .base import Builtin
 from .registry import builtin
 
@@ -25,32 +29,64 @@ class JobsBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the jobs builtin."""
-        opts, _operands = self.parse_flags(args, shell, flags='lp')
+        opts, operands = self.parse_flags(args, shell, flags='lp')
         if opts is None:
             return 2  # bash: invalid option is a usage error
 
         manager = shell.job_manager
+
+        # Refresh job state before listing so a job resumed by an external
+        # `kill -CONT` shows Running (macOS raises no SIGCHLD on continue, so
+        # the interactive handler never saw it). Interactive only — a
+        # non-interactive shell has no SIGCHLD reaper and must not steal
+        # background children out from under a later `wait`.
+        if shell.state.options.get('interactive'):
+            manager.poll_job_states()
+
+        # With operands, list ONLY the named jobs and diagnose any that do not
+        # resolve (bash: "no such job" / "ambiguous job spec", rc=1). Without
+        # operands, list every job. A bare integer operand is a job number.
+        exit_status = 0
+        if operands:
+            jobs_to_list = []
+            for spec in operands:
+                result = manager.resolve_job_spec(spec, bare='jobnum')
+                if result.outcome is JobSpecOutcome.FOUND:
+                    jobs_to_list.append(result.job)
+                else:
+                    for msg in jobspec_error_messages(result, spec,
+                                                      jobs_style=True):
+                        self.error(msg, shell)
+                    exit_status = 1
+        else:
+            jobs_to_list = [manager.jobs[job_id]
+                            for job_id in sorted(manager.jobs.keys())]
+
+        for job in jobs_to_list:
+            self._render_job(job, opts, manager, shell)
+        return exit_status
+
+    def _render_job(self, job, opts, manager, shell: 'Shell') -> None:
+        """Emit one job in the requested format (-p PIDs / -l long / plain)."""
         if opts['p']:
             # Show only PIDs (-p wins over -l, like bash)
-            for job_id in sorted(manager.jobs.keys()):
-                for proc in manager.jobs[job_id].processes:
-                    self.write_line(str(proc.pid), shell)
+            for proc in job.processes:
+                self.write_line(str(proc.pid), shell)
         elif opts['l']:
             # Long format: add the PID column (bash jobs -l). For pipeline
             # jobs the remaining process PIDs follow on indented lines.
-            for job_id in sorted(manager.jobs.keys()):
-                job = manager.jobs[job_id]
-                pids = [proc.pid for proc in job.processes] or [job.pgid]
-                line = job.format_status(job == manager.current_job,
-                                         job == manager.previous_job,
-                                         pid=pids[0])
-                self.write_line(line, shell)
-                for pid in pids[1:]:
-                    self.write_line(f"     {pid}", shell)
+            pids = [proc.pid for proc in job.processes] or [job.pgid]
+            line = job.format_status(job == manager.current_job,
+                                     job == manager.previous_job,
+                                     pid=pids[0])
+            self.write_line(line, shell)
+            for pid in pids[1:]:
+                self.write_line(f"     {pid}", shell)
         else:
-            for line in manager.list_jobs():
-                self.write_line(line, shell)
-        return 0
+            self.write_line(
+                job.format_status(job == manager.current_job,
+                                  job == manager.previous_job),
+                shell)
 
 
 @builtin
@@ -63,22 +99,21 @@ class FgBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the fg builtin."""
+        jm = shell.job_manager
         # Determine which job to foreground
-        if len(args) > 1:
-            job_spec = args[1]
-            job = shell.job_manager.parse_job_spec(job_spec)
-            if job is None:
-                self.error(f"{job_spec}: no such job", shell)
-                return 1
-        else:
+        if len(args) <= 1:
             # No argument - use current job
-            if not shell.job_manager.jobs:
+            job = jm.current_job
+            if job is None:
                 self.error("no current job", shell)
                 return 1
-            job = shell.job_manager.current_job
-            if job is None:
-                self.error("%+: no such job", shell)
+        else:
+            result = jm.resolve_job_spec(args[1])
+            if result.outcome is not JobSpecOutcome.FOUND or result.job is None:
+                for msg in jobspec_error_messages(result, args[1]):
+                    self.error(msg, shell)
                 return 1
+            job = result.job
 
         # Print the command being resumed
         self.write_line(job.command, shell)
@@ -86,35 +121,36 @@ class FgBuiltin(Builtin):
         # Give it terminal control FIRST, before sending SIGCONT — a resumed
         # job that reads the terminal before the transfer would be stopped
         # again by SIGTTIN.
-        shell.job_manager.set_foreground_job(job)
+        jm.set_foreground_job(job)
         job.foreground = True
-        if not shell.job_manager.transfer_terminal_control(job.pgid, "fg builtin"):
+        if not jm.transfer_terminal_control(job.pgid, "fg builtin"):
+            # The terminal transfer failed: undo the foreground promotion so we
+            # do not leave a job marked foreground/current with the shell still
+            # in the background (bash keeps its bookkeeping consistent here).
+            jm.finish_foreground_job(False, job)
             if not shell.state.supports_job_control:
                 self.error("no job control in this shell", shell)
             else:
                 self.error("can't set terminal control", shell)
             return 1
 
-        # Continue stopped job
-        if job.state == JobState.STOPPED:
-            # Mark processes as running again
-            for proc in job.processes:
-                if proc.stopped:
-                    proc.stopped = False
-            job.state = JobState.RUNNING
+        try:
+            # Continue a stopped job (SIGCONT to its process group).
+            if job.state == JobState.STOPPED:
+                job.mark_running()
+                job.state = JobState.RUNNING
+                os.killpg(job.pgid, signal.SIGCONT)
 
-            # Send SIGCONT to the process group
-            os.killpg(job.pgid, signal.SIGCONT)
-
-        # Wait for it
-        exit_status = shell.job_manager.wait_for_job(job)
-
-        # Reclaim the terminal and clear foreground-job bookkeeping
-        shell.job_manager.restore_shell_foreground()
+            exit_status = jm.wait_for_job(job)
+        finally:
+            # ALWAYS reclaim the terminal and clear foreground-job bookkeeping,
+            # even if wait_for_job raised — otherwise a failed wait would strand
+            # the terminal with the (possibly dead) job's process group.
+            jm.restore_shell_foreground()
 
         # Remove job if completed
         if job.state == JobState.DONE:
-            shell.job_manager.remove_job(job.job_id)
+            jm.remove_job(job.job_id)
 
         return exit_status
 
@@ -128,34 +164,38 @@ class BgBuiltin(Builtin):
         return "bg"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
-        """Execute the bg builtin."""
-        # Determine which job to background
-        if len(args) > 1:
-            job_spec = args[1]
-            job = shell.job_manager.parse_job_spec(job_spec)
+        """Execute the bg builtin.
+
+        bash accepts multiple jobspecs (``bg %1 %2``) and resumes each; psh
+        used to look at only ``args[1]``.
+        """
+        jm = shell.job_manager
+        specs = args[1:]
+        if not specs:
+            job = jm.current_job
             if job is None:
-                self.error(f"{job_spec}: no such job", shell)
-                return 1
-        else:
-            # No argument - use current job
-            if not shell.job_manager.jobs:
                 self.error("no current job", shell)
                 return 1
-            job = shell.job_manager.current_job
-            if job is None:
-                self.error("%+: no such job", shell)
-                return 1
+            return self._resume_in_background(job, shell)
 
-        # Resume job in background
+        exit_status = 0
+        for spec in specs:
+            result = jm.resolve_job_spec(spec)
+            if result.outcome is not JobSpecOutcome.FOUND or result.job is None:
+                for msg in jobspec_error_messages(result, spec):
+                    self.error(msg, shell)
+                exit_status = 1
+                continue
+            self._resume_in_background(result.job, shell)
+        return exit_status
+
+    def _resume_in_background(self, job, shell: 'Shell') -> int:
+        """Resume one stopped job in the background (SIGCONT to its group)."""
         if job.state == JobState.STOPPED:
-            # Mark processes as running again
-            for proc in job.processes:
-                if proc.stopped:
-                    proc.stopped = False
+            job.mark_running()
             job.state = JobState.RUNNING
             job.foreground = False
 
-            # Send SIGCONT to resume
             os.killpg(job.pgid, signal.SIGCONT)
             self.write_line(f"[{job.job_id}]+ {job.command} &", shell)
         return 0
@@ -223,13 +263,22 @@ class WaitBuiltin(Builtin):
                 break
         operands = args[i:]
 
+        # bash unsets the -p VAR up front (before waiting) and sets it only when
+        # a job is actually reported. So a wait that reports nothing — a
+        # non-child pid, an invalid pid, %nonexistent, or a bare wait-for-all —
+        # leaves VAR UNSET (not merely unchanged, and not empty). Clear it here;
+        # the report paths below set it via set_variable only on a real pid.
+        if pid_var is not None:
+            shell.state.scope_manager.unset_variable(pid_var)
+
         if wait_n:
             return self._wait_for_next(operands, pid_var, shell)
         if not operands:
-            # No arguments - wait for all children
+            # No arguments - wait for all children. VAR stays unset (cleared
+            # above): there is no single reported job.
             return self._wait_for_all(shell)
         # Wait for specific processes/jobs
-        return self._wait_for_specific(operands, shell)
+        return self._wait_for_specific(operands, pid_var, shell)
 
     def _wait_for_next(self, operands: List[str], pid_var, shell: 'Shell') -> int:
         """`wait -n`: return when the NEXT single job completes (bash).
@@ -344,9 +393,16 @@ class WaitBuiltin(Builtin):
 
         return 0
 
-    def _wait_for_specific(self, specs: List[str], shell: 'Shell') -> int:
-        """Wait for specific processes or jobs."""
+    def _wait_for_specific(self, specs: List[str], pid_var,
+                           shell: 'Shell') -> int:
+        """Wait for specific processes or jobs.
+
+        With ``-p VAR`` (``pid_var``), VAR is set to the pid of the job whose
+        exit status is returned — the LAST operand (bash). This applies with or
+        without ``-n``; the earlier code assigned VAR only on the ``-n`` path.
+        """
         exit_status = 0
+        reported_pid = None
 
         for spec in specs:
             if spec.startswith('%'):
@@ -357,6 +413,8 @@ class WaitBuiltin(Builtin):
                     exit_status = 127
                     continue
 
+                if job.processes:
+                    reported_pid = job.processes[-1].pid
                 if job.state == JobState.DONE:
                     # Already completed - get exit status from last process
                     if job.processes:
@@ -386,9 +444,14 @@ class WaitBuiltin(Builtin):
                     exit_status = 127
                     continue
 
+                # -p VAR is set only once the pid is confirmed to be (or to
+                # have been) our child. bash leaves VAR unset for a pid that is
+                # not a child, so reported_pid is assigned inside each
+                # child-confirmed branch below — never before this check.
                 # Check if it's a known job
                 job = shell.job_manager.get_job_by_pid(pid)
                 if job:
+                    reported_pid = pid
                     # Wait for the entire job containing this PID
                     if job.state != JobState.DONE:
                         if job.state == JobState.STOPPED:
@@ -416,6 +479,7 @@ class WaitBuiltin(Builtin):
                     # retained, and a bare `wait` clears prior retention.)
                     remembered = shell.job_manager.get_remembered_status(pid)
                     if remembered is not None:
+                        reported_pid = pid
                         exit_status = remembered
                         continue
 
@@ -424,11 +488,13 @@ class WaitBuiltin(Builtin):
                         _, status = os.waitpid(pid, os.WNOHANG)
                         if status != 0:
                             # Process already terminated
+                            reported_pid = pid
                             exit_status = self._extract_exit_status(status)
                         else:
                             # Process still running - wait for it
                             try:
                                 _, status = os.waitpid(pid, 0)
+                                reported_pid = pid
                                 exit_status = self._extract_exit_status(status)
                             except (ChildProcessError, OSError):
                                 self.error(f"pid {pid} is not a child of this shell", shell)
@@ -436,6 +502,11 @@ class WaitBuiltin(Builtin):
                     except (ChildProcessError, OSError):
                         self.error(f"pid {pid} is not a child of this shell", shell)
                         exit_status = 127
+
+        # -p VAR: store the pid of the job whose status is returned (the last
+        # resolved operand). bash sets this with or without -n.
+        if pid_var is not None and reported_pid is not None:
+            shell.state.set_variable(pid_var, str(reported_pid))
 
         return exit_status
 

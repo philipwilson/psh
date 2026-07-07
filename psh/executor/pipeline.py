@@ -5,6 +5,7 @@ This module provides the PipelineContext class and PipelineExecutor for
 handling pipeline execution with proper process management and job control.
 """
 
+import errno
 import os
 import signal
 import sys
@@ -336,24 +337,72 @@ class PipelineExecutor:
             return self._wait_for_foreground_pipeline(job, node, original_pgid)
 
         except (OSError, ValueError):
-            # Clean up sync pipe on error
-            try:
-                os.close(sync_pipe_r)
-            except OSError:
-                pass
-            try:
-                os.close(sync_pipe_w)
-            except OSError:
-                pass
-            # Clean up any pipe descriptors still open in the parent (a pipe
-            # created for the boundary whose fork raised, plus the carried read
-            # end) — bounded scope: already-launched children are not reaped
-            # here (full transactional launch is out of scope).
-            pipeline_ctx.close_open_fds()
-            # Reclaim the terminal for the shell on error
-            if not is_background:
-                self.job_manager.restore_shell_foreground()
+            # A pipe()/fork()/setpgid() failure part-way through the launch loop
+            # (F13). Roll the partial launch back transactionally rather than
+            # leaking it: the children already forked are blocked on the sync
+            # pipe (or, for the leader, already running), and closing the sync
+            # pipe alone would RELEASE them to run an incomplete pipeline and
+            # then linger as zombies. No Job record exists yet (it is created
+            # only after the loop completes), so there is nothing to unpublish.
+            self._rollback_partial_launch(
+                pipeline_ctx, sync_pipe_r, sync_pipe_w, pgid, is_background)
             raise
+
+    def _rollback_partial_launch(self, pipeline_ctx: 'PipelineContext',
+                                 sync_pipe_r: int, sync_pipe_w: int,
+                                 pgid: Optional[int],
+                                 is_background: bool) -> None:
+        """Undo a partially-launched pipeline (F13): signal, release, reap.
+
+        Order matters. The launched members are SIGKILLed FIRST — before the
+        sync gate is released — so none of them proceeds to run the incomplete
+        pipeline; a member blocked on the sync-pipe read dies from the signal
+        regardless. Only THEN is the sync pipe closed and every launched child
+        reaped, so nothing is left running and nothing becomes a zombie. The
+        terminal is finally reclaimed for the shell. Only the expected
+        setpgid()-race errors are swallowed while signalling.
+        """
+        launched = list(pipeline_ctx.processes)
+
+        # 1. Signal the partial process group once (the members share the
+        #    leader's pgid), then each pid individually in case a setpgid race
+        #    left a just-forked child briefly outside the group.
+        if pgid is not None and launched:
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except OSError:
+                pass
+        for pid in launched:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # already gone
+            except OSError:
+                pass
+
+        # 2. Release the sync gate (any member the signal has not yet felled
+        #    unblocks and is immediately killed by the pending SIGKILL).
+        _close_quiet(sync_pipe_r)
+        _close_quiet(sync_pipe_w)
+
+        # 3. Reap every launched child so none is left as a zombie. The kill
+        #    above guarantees each exits promptly, so this does not block.
+        for pid in launched:
+            while True:
+                try:
+                    os.waitpid(pid, 0)
+                    break
+                except OSError as e:
+                    if e.errno == errno.EINTR:
+                        continue
+                    break  # ECHILD: already reaped elsewhere
+
+        # 4. Close any pipe descriptors still open in the parent.
+        pipeline_ctx.close_open_fds()
+
+        # 5. Reclaim the terminal for the shell.
+        if not is_background:
+            self.job_manager.restore_shell_foreground()
 
     def _wait_for_foreground_pipeline(self, job: 'Job', node: 'Pipeline', original_pgid: Optional[int] = None) -> int:
         """Wait for a foreground pipeline to complete."""

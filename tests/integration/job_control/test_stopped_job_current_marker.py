@@ -41,7 +41,9 @@ def _foreground_job(jm, pid, command):
 
 
 def _stop(job):
-    job.processes[0].stopped = True
+    # 0x7f is a WIFSTOPPED waitpid status; route it through the counter-aware
+    # update_process_status rather than poking the (now read-only) flag.
+    job.update_process_status(job.processes[0].pid, 0x7f)
     job.update_state()
     assert job.state == JobState.STOPPED
 
@@ -91,7 +93,7 @@ def test_second_stopped_job_demotes_first_to_previous():
 def test_completed_foreground_job_does_not_become_current():
     jm = _manager()
     job = _foreground_job(jm, 555, "true")
-    job.processes[0].completed = True
+    job.update_process_status(job.processes[0].pid, 0)  # WIFEXITED, code 0
     job.update_state()
     assert job.state == JobState.DONE
 

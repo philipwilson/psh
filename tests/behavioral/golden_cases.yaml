@@ -7354,3 +7354,25 @@
   stdout: "rc=127\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# JOB CONTROL (JobManager transactions campaign)
+# =============================================================================
+
+- name: jobmgr_jobs_no_such_job
+  command: "jobs %999; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "no such job"
+  exit_code: 0
+
+- name: jobmgr_disown_all_empty_succeeds
+  command: "disown -a; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: jobmgr_disown_running_empty_succeeds
+  command: "disown -r; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0

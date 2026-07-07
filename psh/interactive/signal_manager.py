@@ -327,6 +327,10 @@ class SignalManager(InteractiveComponent):
                     wait_flags = os.WNOHANG
                     if hasattr(os, "WUNTRACED"):
                         wait_flags |= os.WUNTRACED
+                    if hasattr(os, "WCONTINUED"):
+                        # Learn about jobs resumed outside fg/bg (e.g. an
+                        # external `kill -CONT`) so `jobs` shows them Running.
+                        wait_flags |= os.WCONTINUED
                     pid, status = os.waitpid(-1, wait_flags)
                     if pid == 0:
                         break
@@ -336,13 +340,18 @@ class SignalManager(InteractiveComponent):
                         job.update_process_status(pid, status)
                         job.update_state()
 
-                        # Check if entire job is stopped
-                        if job.state == JobState.STOPPED and job.foreground:
-                            # Stopped foreground job - mark as not notified so it will be shown
+                        # A stop or continue transition is news: clear the
+                        # notified flag so the next `jobs`/notice re-reports the
+                        # new state (bash resets its notification bookkeeping on
+                        # every state change).
+                        continued = (hasattr(os, "WIFCONTINUED")
+                                     and os.WIFCONTINUED(status))
+                        if continued or job.state == JobState.STOPPED:
                             job.notified = False
 
-                            # The foreground job just stopped — take the
-                            # terminal back so the shell can show a prompt
+                        # A foreground job that just stopped: take the terminal
+                        # back so the shell can show a prompt.
+                        if job.state == JobState.STOPPED and job.foreground:
                             self.job_manager.transfer_terminal_control(os.getpgrp(), "SignalManager:SIGCHLD")
 
                 except OSError:

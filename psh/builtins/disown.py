@@ -39,8 +39,10 @@ class DisownBuiltin(Builtin):
         # Get job manager
         job_manager = shell.job_manager
 
-        if disown_all:
-            # Disown all jobs
+        # Both -a (all jobs) and -r (all RUNNING jobs) select the whole set —
+        # -r does not need -a. The earlier code only branched here for -a, so a
+        # lone `disown -r` fell through to the current-job path.
+        if disown_all or running_only:
             return self._disown_all_jobs(job_manager, running_only, mark_no_hup, shell)
 
         if not job_specs:
@@ -72,14 +74,9 @@ class DisownBuiltin(Builtin):
                 # Disown all jobs
                 jobs_to_disown.append(job)
 
-        if not jobs_to_disown:
-            if running_only:
-                self.error("no running jobs", shell)
-            else:
-                self.error("no jobs", shell)
-            return 1
-
-        # Disown each job
+        # bash: `disown -a` / `disown -r` on an empty (or all-not-running)
+        # table SUCCEEDS silently — the selection is empty, not an error.
+        # Disown each selected job.
         for job in jobs_to_disown:
             self._disown_job(job, mark_no_hup, job_manager, shell)
 

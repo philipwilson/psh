@@ -400,28 +400,28 @@ self.write_line(job.command, shell)
 shell.job_manager.set_foreground_job(job)   # restores job.tmodes (TCSANOW)
 job.foreground = True
 if not shell.job_manager.transfer_terminal_control(job.pgid, "fg builtin"):
+    shell.job_manager.finish_foreground_job(False, job)  # undo the promotion
     ...error...
 
-if job.state == JobState.STOPPED:
-    for proc in job.processes:
-        proc.stopped = False
-    job.state = JobState.RUNNING
-    os.killpg(job.pgid, signal.SIGCONT)
-
-exit_status = shell.job_manager.wait_for_job(job)
-
-# Reclaim the terminal and clear foreground-job bookkeeping
-shell.job_manager.restore_shell_foreground()
+try:
+    if job.state == JobState.STOPPED:
+        job.mark_running()          # counter-aware: STOPPED procs -> RUNNING
+        job.state = JobState.RUNNING
+        os.killpg(job.pgid, signal.SIGCONT)
+    exit_status = shell.job_manager.wait_for_job(job)
+finally:
+    # Reclaim the terminal even if the wait was interrupted.
+    shell.job_manager.restore_shell_foreground()
 ```
 
 ### Background a Job
 
-From `BgBuiltin.execute` (trimmed):
+From `BgBuiltin.execute` (trimmed — bg accepts multiple jobspecs, one resumed
+per operand):
 
 ```python
 if job.state == JobState.STOPPED:
-    for proc in job.processes:
-        proc.stopped = False
+    job.mark_running()              # counter-aware: STOPPED procs -> RUNNING
     job.state = JobState.RUNNING
     job.foreground = False
     os.killpg(job.pgid, signal.SIGCONT)

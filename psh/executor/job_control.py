@@ -5,6 +5,7 @@ import os
 import signal
 import sys
 import termios
+from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Literal, Optional, Sequence, Tuple, Union, overload
 
@@ -89,29 +90,97 @@ class JobState(Enum):
     DONE = "done"
 
 
+class JobSpecOutcome(Enum):
+    """Category of a jobspec resolution (bash's get_job_spec outcomes).
+
+    A bare ``Optional[Job]`` cannot tell "no such job" apart from "ambiguous
+    job spec" or "the current/previous job does not exist" — bash prints a
+    different diagnostic for each. :meth:`JobManager.resolve_job_spec` returns
+    one of these so the job builtins can render the exact bash wording.
+    """
+    FOUND = "found"
+    NO_SUCH_JOB = "no_such_job"
+    AMBIGUOUS = "ambiguous"
+
+
+@dataclass(frozen=True)
+class JobSpecResult:
+    """Typed outcome of :meth:`JobManager.resolve_job_spec`.
+
+    ``job`` is set only for :attr:`JobSpecOutcome.FOUND`. ``pattern`` carries
+    the search text (the spec without its leading ``%`` and any ``?``) that
+    bash names in the ``<pattern>: ambiguous job spec`` diagnostic.
+    """
+    outcome: JobSpecOutcome
+    job: "Optional[Job]" = None
+    pattern: str = ""
+
+
+def jobspec_error_messages(result: JobSpecResult, spec: str,
+                           *, jobs_style: bool = False) -> List[str]:
+    """The diagnostic line(s) bash prints for a failed jobspec resolution.
+
+    An ambiguous spec yields ``<pattern>: ambiguous job spec``; bash's
+    ``jobs`` builtin then additionally prints ``<spec>: no such job`` (two
+    lines), while ``kill``/``fg``/``bg``/``disown`` print only the ambiguous
+    line — select that with ``jobs_style``. Every other failure yields
+    ``<spec>: no such job``. Each string is prefixed with the builtin name by
+    the caller's ``self.error``.
+    """
+    if result.outcome is JobSpecOutcome.AMBIGUOUS:
+        messages = [f"{result.pattern}: ambiguous job spec"]
+        if jobs_style:
+            messages.append(f"{spec}: no such job")
+        return messages
+    return [f"{spec}: no such job"]
+
+
+class ProcessState(Enum):
+    """A single process's lifecycle state.
+
+    Replaces the former ``stopped``/``completed`` boolean pair (kept as
+    read-only properties on :class:`Process` for existing readers). The enum
+    removes the awkward "a completed process has ``stopped=False``" case that
+    the job-state predicates had to special-case, and lets :class:`Job`
+    maintain O(1) per-state counters.
+    """
+    RUNNING = "running"
+    STOPPED = "stopped"
+    COMPLETED = "completed"
+
+
 class Process:
     """Represents a single process in a job."""
     def __init__(self, pid: int, command: str):
         self.pid = pid
         self.command = command
         self.status: Optional[int] = None  # Will be set by waitpid
-        self.stopped = False
-        self.completed = False
+        self.state = ProcessState.RUNNING
 
-    def update_status(self, status: int):
-        """Update process status from waitpid result."""
-        self.status = status
+    @property
+    def stopped(self) -> bool:
+        return self.state is ProcessState.STOPPED
 
+    @property
+    def completed(self) -> bool:
+        return self.state is ProcessState.COMPLETED
+
+    @staticmethod
+    def classify(status: int) -> Tuple[ProcessState, bool]:
+        """Map a waitpid status to a (state, store_status) pair.
+
+        ``store_status`` is False for a WIFCONTINUED report (only delivered
+        when the waiter passes ``WCONTINUED``): a resumed process is running
+        again and has no exit status yet, so the recorded ``status`` must be
+        left untouched (set later when it next stops or exits).
+        """
+        if hasattr(os, "WIFCONTINUED") and os.WIFCONTINUED(status):
+            return ProcessState.RUNNING, False
         if os.WIFSTOPPED(status):
-            self.stopped = True
-            self.completed = False
-        elif os.WIFEXITED(status) or os.WIFSIGNALED(status):
-            self.stopped = False
-            self.completed = True
-        else:
-            # Process is running
-            self.stopped = False
-            self.completed = False
+            return ProcessState.STOPPED, True
+        if os.WIFEXITED(status) or os.WIFSIGNALED(status):
+            return ProcessState.COMPLETED, True
+        return ProcessState.RUNNING, True
 
 
 class Job:
@@ -125,47 +194,91 @@ class Job:
         self.foreground = True
         self.notified = False
         self.tmodes: Optional[list] = None  # Terminal modes when suspended
+        # O(1) lookup/accounting: pid -> index in self.processes, and a live
+        # count per ProcessState so update_state() need not scan the list.
+        self._pid_index: Dict[int, int] = {}
+        self._counts: Dict[ProcessState, int] = {
+            ProcessState.RUNNING: 0,
+            ProcessState.STOPPED: 0,
+            ProcessState.COMPLETED: 0,
+        }
+        # Back-reference set by JobManager.create_job so add_process can keep
+        # the manager's global pid index in sync.
+        self._manager: "Optional[JobManager]" = None
 
     def add_process(self, pid: int, command: str):
-        """Add a process to this job."""
+        """Add a process to this job (RUNNING), updating the indexes/counters."""
+        self._pid_index[pid] = len(self.processes)
         self.processes.append(Process(pid, command))
+        self._counts[ProcessState.RUNNING] += 1
+        if self._manager is not None:
+            self._manager.pid_index[pid] = self
+
+    def index_of(self, pid: int) -> Optional[int]:
+        """O(1) index of ``pid`` within this job's process list, or None."""
+        return self._pid_index.get(pid)
+
+    def _set_process_state(self, proc: Process, new_state: ProcessState) -> None:
+        """Transition one process's state, keeping the per-state counters exact."""
+        if proc.state is new_state:
+            return
+        self._counts[proc.state] -= 1
+        proc.state = new_state
+        self._counts[new_state] += 1
 
     def update_process_status(self, pid: int, status: int):
-        """Update status of a specific process."""
+        """Update the state of the process ``pid`` from a waitpid status (O(1))."""
+        idx = self._pid_index.get(pid)
+        if idx is None:
+            return
+        proc = self.processes[idx]
+        new_state, store_status = Process.classify(status)
+        if store_status:
+            proc.status = status
+        self._set_process_state(proc, new_state)
+
+    def mark_running(self) -> None:
+        """Mark every stopped process running again (fg/bg resume)."""
         for proc in self.processes:
-            if proc.pid == pid:
-                proc.update_status(status)
-                break
+            if proc.state is ProcessState.STOPPED:
+                self._set_process_state(proc, ProcessState.RUNNING)
+
+    def mark_orphaned_completed(self) -> None:
+        """Mark still-running processes completed (reaped elsewhere, no status).
+
+        Used by the wait path when the process group yields ECHILD while some
+        processes are still marked running: they were reaped by another path
+        (e.g. the SIGCHLD handler) before this wait could see them.
+        """
+        for proc in self.processes:
+            if proc.state is ProcessState.RUNNING:
+                self._set_process_state(proc, ProcessState.COMPLETED)
 
     def all_processes_stopped(self) -> bool:
-        """True when the job counts as STOPPED (F10).
+        """True when the job counts as STOPPED (F10): no process still running.
 
-        A job is stopped when every process that has NOT completed is stopped —
-        NOT when *all* processes are stopped. A pipeline mixing a completed
-        member (``stopped=False``) with a stopped member is stopped: none of
-        its still-live processes is running. Requiring all-stopped left such a
-        pipeline classified as running.
-
-        Only meaningful together with the all-completed check in
-        :meth:`update_state` (which handles the empty non-completed set), so
-        here an all-completed job returns True harmlessly.
+        Equivalent to "every non-completed process is stopped" — with a live
+        RUNNING counter that is simply ``RUNNING == 0``. An all-completed job
+        returns True here harmlessly; :meth:`update_state` checks all-completed
+        first.
         """
-        return all(p.stopped for p in self.processes if not p.completed)
+        return self._counts[ProcessState.RUNNING] == 0
 
     def all_processes_completed(self) -> bool:
         """Check if all processes in job are completed."""
-        return all(p.completed for p in self.processes)
+        return self._counts[ProcessState.COMPLETED] == len(self.processes)
 
     def any_process_running(self) -> bool:
         """Check if any process is still running."""
-        return any(not p.stopped and not p.completed for p in self.processes)
+        return self._counts[ProcessState.RUNNING] > 0
 
     def update_state(self):
-        """Update job state based on process states.
+        """Update job state from the per-state counters (O(1)).
 
         all-completed -> DONE; else every non-completed process stopped ->
         STOPPED; else RUNNING (F10). The DONE check comes first so the STOPPED
         predicate is only consulted when at least one process is still live.
+        An empty process list counts as DONE (COMPLETED == 0 == len).
         """
         if self.all_processes_completed():
             self.state = JobState.DONE
@@ -208,6 +321,10 @@ class JobManager:
         self.next_job_id = 1
         self.current_job: Optional[Job] = None
         self.previous_job: Optional[Job] = None
+        # pid -> owning Job, maintained by Job.add_process / remove_job so
+        # get_job_by_pid is O(1) rather than a scan over every process of
+        # every job (the F14 O(N^2) status-processing path).
+        self.pid_index: Dict[int, Job] = {}
         # pid -> remembered exit status of a job reaped by an EXPLICIT
         # `wait <pid>` and already removed, so a repeated explicit
         # `wait <pid>` returns the same status bash retains (rather than
@@ -249,6 +366,7 @@ class JobManager:
         if not self.jobs:
             self.next_job_id = 1
         job = Job(self.next_job_id, pgid, command)
+        job._manager = self  # so add_process keeps self.pid_index in sync
         self.jobs[self.next_job_id] = job
         self.next_job_id += 1
         return job
@@ -257,6 +375,10 @@ class JobManager:
         """Remove a job from tracking."""
         if job_id in self.jobs:
             job = self.jobs[job_id]
+
+            # Drop this job's pids from the global index.
+            for proc in job.processes:
+                self.pid_index.pop(proc.pid, None)
 
             # Update current/previous references
             if job == self.current_job:
@@ -311,12 +433,8 @@ class JobManager:
         return self.jobs.get(job_id)
 
     def get_job_by_pid(self, pid: int) -> Optional[Job]:
-        """Find job containing the given PID."""
-        for job in self.jobs.values():
-            for proc in job.processes:
-                if proc.pid == pid:
-                    return job
-        return None
+        """Find the job containing the given PID (O(1) via the pid index)."""
+        return self.pid_index.get(pid)
 
     def get_job_by_pgid(self, pgid: int) -> Optional[Job]:
         """Find job by process group ID."""
@@ -572,6 +690,41 @@ class JobManager:
                       file=self._notification_stream())
                 job.notified = True
 
+    def poll_job_states(self) -> None:
+        """Non-blocking refresh of tracked job states (WUNTRACED|WCONTINUED).
+
+        macOS does NOT raise SIGCHLD when a child is *continued* (verified on
+        10.x/14.x — SIGCHLD fires on stop and exit only), so the interactive
+        SIGCHLD handler never learns of an external ``kill -CONT``; a following
+        ``jobs`` would keep showing the job Stopped. bash refreshes job state
+        before listing, so ``jobs`` calls this to reap pending stop/continue/
+        exit transitions. It only updates job *state* (and clears ``notified``
+        on a stop/continue transition) — completion notices and job removal
+        stay with the REPL's :meth:`notify_completed_jobs`, so this does not
+        double-report. A blocking foreground wait sees continues directly
+        because its ``waitpid`` also passes ``WCONTINUED``.
+        """
+        flags = os.WNOHANG
+        if hasattr(os, "WUNTRACED"):
+            flags |= os.WUNTRACED
+        if hasattr(os, "WCONTINUED"):
+            flags |= os.WCONTINUED
+        while True:
+            try:
+                pid, status = os.waitpid(-1, flags)
+            except OSError:
+                break  # ECHILD: no tracked children left
+            if pid == 0:
+                break  # nothing changed state
+            job = self.get_job_by_pid(pid)
+            if job is None:
+                continue
+            job.update_process_status(pid, status)
+            job.update_state()
+            continued = hasattr(os, "WIFCONTINUED") and os.WIFCONTINUED(status)
+            if continued or job.state == JobState.STOPPED:
+                job.notified = False
+
     def list_jobs(self) -> List[str]:
         """Get formatted list of all jobs."""
         lines = []
@@ -582,34 +735,68 @@ class JobManager:
             lines.append(job.format_status(is_current, is_previous))
         return lines
 
-    def parse_job_spec(self, spec: str) -> Optional[Job]:
-        """Parse job specification like %1, %+, %-, %string."""
+    def resolve_job_spec(self, spec: str, *, bare: str = 'pid') -> JobSpecResult:
+        """Resolve a jobspec into a typed result (bash get_job_spec semantics).
+
+        Handles ``%%``/``%+`` and empty (current job), ``%-`` (previous),
+        ``%N`` (job number), ``%str`` (command prefix) and ``%?str`` (command
+        substring). A prefix/substring matching more than one job is
+        :attr:`JobSpecOutcome.AMBIGUOUS`; no match is
+        :attr:`JobSpecOutcome.NO_SUCH_JOB`; a missing current/previous job is
+        also ``NO_SUCH_JOB`` (bash renders ``%+: no such job``).
+
+        ``bare`` selects how an operand with no ``%`` is read: ``'pid'`` (a
+        process id, as ``kill``/``wait``/``disown`` accept) or ``'jobnum'`` (a
+        job number, as bash's ``jobs`` treats a bare integer — ``jobs 1`` is
+        ``jobs %1``).
+        """
+        def resolved(job: "Optional[Job]") -> JobSpecResult:
+            if job is not None:
+                return JobSpecResult(JobSpecOutcome.FOUND, job)
+            return JobSpecResult(JobSpecOutcome.NO_SUCH_JOB)
+
         if not spec:
-            return self.current_job
+            return resolved(self.current_job)
 
         if not spec.startswith('%'):
-            # Try to parse as PID
+            if bare == 'jobnum' and spec.isdigit():
+                return resolved(self.get_job(int(spec)))
             try:
                 pid = int(spec)
-                return self.get_job_by_pid(pid)
             except ValueError:
-                return None
+                return JobSpecResult(JobSpecOutcome.NO_SUCH_JOB)
+            return resolved(self.get_job_by_pid(pid))
 
-        spec = spec[1:]  # Remove %
+        body = spec[1:]  # strip the leading %
+        if body in ('', '+', '%'):
+            return resolved(self.current_job)
+        if body == '-':
+            return resolved(self.previous_job)
+        if body.isdigit():
+            return resolved(self.get_job(int(body)))
 
-        if spec == '+' or spec == '' or spec == '%':
-            return self.current_job
-        elif spec == '-':
-            return self.previous_job
-        elif spec.isdigit():
-            job_id = int(spec)
-            return self.get_job(job_id)
+        if body.startswith('?'):
+            pattern = body[1:]
+            matches = [j for j in self.jobs.values() if pattern in j.command]
         else:
-            # Match by command prefix
-            for job in self.jobs.values():
-                if job.command.startswith(spec):
-                    return job
-            return None
+            pattern = body
+            matches = [j for j in self.jobs.values()
+                       if j.command.startswith(pattern)]
+        if len(matches) == 1:
+            return JobSpecResult(JobSpecOutcome.FOUND, matches[0])
+        if len(matches) > 1:
+            return JobSpecResult(JobSpecOutcome.AMBIGUOUS, pattern=pattern)
+        return JobSpecResult(JobSpecOutcome.NO_SUCH_JOB)
+
+    def parse_job_spec(self, spec: str) -> Optional[Job]:
+        """The resolved Job for a jobspec, or None (back-compat shim).
+
+        Drops the typed diagnostics of :meth:`resolve_job_spec` (an ambiguous
+        spec resolves to None here). Prefer ``resolve_job_spec`` in new code so
+        no-such-job / ambiguous / current-unavailable can be reported the way
+        bash does.
+        """
+        return self.resolve_job_spec(spec).job
 
     def terminal_pgid_if_owned(self) -> Optional[int]:
         """The terminal's foreground pgid, when this shell owns the terminal.
@@ -744,10 +931,16 @@ class JobManager:
         exit_status = 0
         all_exit_statuses: List[int] = []
 
+        wait_flags = os.WUNTRACED
+        if hasattr(os, "WCONTINUED"):
+            # Recognize a resume (WIFCONTINUED) so a job continued out from
+            # under this wait is re-marked running rather than left stopped.
+            wait_flags |= os.WCONTINUED
+
         while job.any_process_running():
             try:
                 # Wait for any child in the job's process group
-                pid, status = os.waitpid(-job.pgid, os.WUNTRACED)
+                pid, status = os.waitpid(-job.pgid, wait_flags)
             except OSError as e:
                 if e.errno == errno.EINTR:
                     # Interrupted by a signal — keep waiting. (Python
@@ -762,9 +955,7 @@ class JobManager:
                     # Mark them completed so the stored-status fallback
                     # below runs — otherwise a job whose processes all
                     # died could incorrectly report exit status 0.
-                    for proc in job.processes:
-                        if not proc.stopped and not proc.completed:
-                            proc.completed = True
+                    job.mark_orphaned_completed()
                 break
 
             # Update process status
@@ -773,18 +964,17 @@ class JobManager:
             # Extract exit status
             proc_exit_status = exit_status_from_wait_status(status)
 
-            # Find which process this is
-            for i, proc in enumerate(job.processes):
-                if proc.pid == pid:
-                    if collect_all_statuses:
-                        # Store exit status at the correct index
-                        while len(all_exit_statuses) <= i:
-                            all_exit_statuses.append(0)
-                        all_exit_statuses[i] = proc_exit_status
+            # Record it at the reaped process's index (O(1) — no scan).
+            i = job.index_of(pid)
+            if i is not None:
+                if collect_all_statuses:
+                    while len(all_exit_statuses) <= i:
+                        all_exit_statuses.append(0)
+                    all_exit_statuses[i] = proc_exit_status
 
-                    # If this was the last process in the pipeline
-                    if i == len(job.processes) - 1:
-                        exit_status = proc_exit_status
+                # If this was the last process in the pipeline
+                if i == len(job.processes) - 1:
+                    exit_status = proc_exit_status
 
         # If processes were already reaped by the SIGCHLD notification path,
         # derive the exit status from the statuses it recorded. If the LAST
