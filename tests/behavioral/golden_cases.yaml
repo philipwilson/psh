@@ -7348,3 +7348,9 @@
   stdout: "rc=1\n"
   stderr: ""
   exit_code: 0
+
+- name: resolver_env_override_re_searches_path
+  command: "ls / >/dev/null; env PATH=/nonexistent ls / >/dev/null 2>&1; echo rc=$?"
+  stdout: "rc=127\n"
+  stderr: ""
+  exit_code: 0

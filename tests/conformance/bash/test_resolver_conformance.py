@@ -13,8 +13,8 @@ Two groups:
 - ``TestResolverLocks`` — resolution facts that ALREADY match bash. They
   are the regression guard for routing the four surfaces through one
   resolver: the refactor must not change any of them.
-- ``TestResolverDrift`` — the probe-verified DEFECTS. xfail(strict) until
-  the resolver lands, then the marker is removed in the fixing commit.
+- ``TestResolverDrift`` — the probe-verified DEFECTS the shared resolver
+  fixed (authored xfail-strict, un-xfailed as each fix landed).
 
 Error-message PREFIXES differ (``psh:`` vs ``bash: line N:``), so any case
 that provokes a diagnostic redirects stderr and compares ``$?``.
@@ -22,8 +22,6 @@ that provokes a diagnostic redirects stderr and compares ``$?``.
 
 import os
 import sys
-
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
@@ -117,7 +115,7 @@ class TestResolverLocks(ConformanceTest):
 
 
 class TestResolverDrift(ConformanceTest):
-    """Probe-verified drift the shared resolver fixes. xfail until it lands."""
+    """Probe-verified drift the shared resolver fixed (all now pass)."""
 
     # DEFECT 1: command -p keeps builtin selection; -p only changes the
     # PATH used for the EXTERNAL search.
@@ -164,7 +162,6 @@ class TestResolverDrift(ConformanceTest):
         self.assert_identical_behavior(MK + 'type -P ./prog')
 
     # DEFECT 4 (D3): env override must re-search PATH, not reuse the shell hash.
-    @pytest.mark.xfail(strict=True, reason="resolver: env reuses the shell command hash (D3)")
     def test_env_override_re_searches_path(self):
         self.assert_identical_behavior(
             'ls / >/dev/null; env PATH=/nonexistent ls / >/dev/null 2>&1; echo rc=$?')
