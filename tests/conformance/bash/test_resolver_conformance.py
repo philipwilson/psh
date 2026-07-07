@@ -121,56 +121,45 @@ class TestResolverDrift(ConformanceTest):
 
     # DEFECT 1: command -p keeps builtin selection; -p only changes the
     # PATH used for the EXTERNAL search.
-    @pytest.mark.xfail(strict=True, reason="resolver: command -p bypasses builtins")
     def test_command_p_runs_cd_builtin(self):
         self.assert_identical_behavior('command -p cd / && pwd')
 
-    @pytest.mark.xfail(strict=True, reason="resolver: command -p bypasses builtins")
     def test_command_p_runs_export_builtin(self):
         self.assert_identical_behavior('command -p export FOO=1; echo ${FOO-unset}')
 
-    @pytest.mark.xfail(strict=True, reason="resolver: command -p mutates child PATH")
     def test_command_p_child_keeps_original_path(self):
         # -p uses the default path only for the search; the child inherits the
         # shell's real PATH (psh's old env-mutation approach corrupted it).
         self.assert_identical_behavior("command -p sh -c 'echo \"$PATH\"'")
 
     # DEFECT 2: hash -p seeds a fact all surfaces must see.
-    @pytest.mark.xfail(strict=True, reason="resolver: command -v misses hash entries")
     def test_hash_p_visible_to_command_v(self):
         self.assert_identical_behavior(
             'hash -p /tmp/custom-path customcmd; command -v customcmd; echo rc=$?')
 
-    @pytest.mark.xfail(strict=True, reason="resolver: command -V misses hash entries")
     def test_hash_p_visible_to_command_V(self):
         self.assert_identical_behavior(
             'hash -p /tmp/custom-path customcmd; command -V customcmd')
 
-    @pytest.mark.xfail(strict=True, reason="resolver: type -P ignores hash entries")
     def test_hash_p_visible_to_type_P(self):
         self.assert_identical_behavior(
             'hash -p /tmp/custom-path customcmd; type -P customcmd')
 
     # DEFECT 3: an empty PATH component denotes the cwd.
-    @pytest.mark.xfail(strict=True, reason="resolver: empty PATH component skipped")
     def test_empty_path_component_type_P(self):
         self.assert_identical_behavior(MK + 'PATH=:/usr/bin type -P prog')
 
-    @pytest.mark.xfail(strict=True, reason="resolver: empty PATH component skipped")
     def test_empty_path_component_command_v(self):
         self.assert_identical_behavior(MK + 'PATH=:/usr/bin command -v prog')
 
-    @pytest.mark.xfail(strict=True, reason="resolver: empty PATH component skipped")
     def test_empty_path_component_type_bare(self):
         self.assert_identical_behavior(MK + 'PATH=:/usr/bin type prog')
 
-    @pytest.mark.xfail(strict=True, reason="resolver: empty PATH component skipped")
     def test_trailing_empty_path_component(self):
         self.assert_identical_behavior(MK + 'PATH=/usr/bin: type -P prog')
 
     # Bonus drift exposed by the map: bash reports a slash-containing name
     # AS GIVEN; _find_in_path abspath'd it (only relative names discriminate).
-    @pytest.mark.xfail(strict=True, reason="resolver: slash name abspath'd, not kept as given")
     def test_relative_slash_name_kept_as_given(self):
         self.assert_identical_behavior(MK + 'type -P ./prog')
 

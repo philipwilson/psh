@@ -212,8 +212,8 @@ class ExecBuiltin(Builtin):
         env = {} if opts['c'] else shell.env
         exec_file = command[0]
         if opts['c'] and '/' not in exec_file:
-            from .type_builtin import TypeBuiltin
-            found = TypeBuiltin._find_in_path(exec_file, shell.env.get('PATH', ''))
+            found = shell.command_resolver.search_path(
+                exec_file, shell.env.get('PATH', ''))
             if found:
                 exec_file = found[0]
 

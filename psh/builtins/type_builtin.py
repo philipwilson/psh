@@ -1,25 +1,25 @@
-"""Type builtin command to display command type information."""
+"""The ``type`` builtin: report how a name would be interpreted.
 
-import os
+A thin adapter over the shared :class:`~psh.executor.command_resolver.CommandResolver`:
+it maps ``type``'s options to a :class:`ResolveQuery`, asks the resolver
+for the ordered candidates, and renders them. All lookup order, the PATH
+walk (empty component = cwd), and hash consultation live in the resolver,
+so ``type``, ``command -v``/``-V``, ``hash``, and the executor cannot drift.
+"""
+
 from typing import TYPE_CHECKING, List
 
 from .base import Builtin
 from .registry import builtin
 
 if TYPE_CHECKING:
+    from ..executor.command_resolver import Candidate
     from ..shell import Shell
 
 
 @builtin
 class TypeBuiltin(Builtin):
     """Display information about command types."""
-
-    # Reserved words reported as "keyword" (bash's list)
-    SHELL_KEYWORDS = frozenset({
-        'if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for',
-        'select', 'while', 'until', 'do', 'done', 'in', 'function',
-        'time', '{', '}', '!', '[[', ']]', 'coproc',
-    })
 
     @property
     def name(self) -> str:
@@ -45,132 +45,72 @@ class TypeBuiltin(Builtin):
         if not names:
             return 0
 
+        from ..executor.command_resolver import ResolveQuery
+
+        # Map the options to one resolver query. -P (force a disk lookup)
+        # excludes alias/keyword/function/builtin; -f suppresses aliases,
+        # keywords and functions (psh's historical -f scope — bash suppresses
+        # only functions; see the resolver campaign notes). -a collects every
+        # match and, like bash, ignores the hash.
+        query = ResolveQuery(
+            use_aliases=not force_path and not file_only,
+            use_keywords=not force_path and not file_only,
+            use_functions=not force_path and not file_only,
+            use_builtins=not force_path,
+            consult_hash=not show_all,
+            use_path=True,
+            all_matches=show_all,
+        )
+
+        resolver = shell.command_resolver
         exit_code = 0
         for name in names:
-            found = False
-
-            # Check aliases first (unless -f is specified)
-            if not file_only and not force_path and name in shell.alias_manager.aliases:
-                alias_value = shell.alias_manager.aliases[name]
-                if type_only:
-                    self.write_line("alias", shell)
-                elif path_only:
-                    # Path only mode doesn't show aliases
-                    pass
-                else:
-                    self.write_line(f"{name} is aliased to `{alias_value}'", shell)
-                found = True
-                if not show_all:
-                    continue
-
-            # Check shell keywords (bash order: alias > keyword > function)
-            if not force_path and not file_only and name in self.SHELL_KEYWORDS:
-                if type_only:
-                    self.write_line("keyword", shell)
-                elif path_only:
-                    pass
-                else:
-                    self.write_line(f"{name} is a shell keyword", shell)
-                found = True
-                if not show_all:
-                    continue
-
-            # Check functions (unless -P or -f is specified)
-            if not force_path and not file_only and name in shell.function_manager.functions:
-                if type_only:
-                    self.write_line("function", shell)
-                elif path_only:
-                    # Path only mode doesn't show functions
-                    pass
-                else:
-                    # Print the body too (bash; same as `command -V`).
-                    from ..visitor import format_function_definition
-                    func = shell.function_manager.get_function(name)
-                    self.write_line(f"{name} is a function", shell)
-                    if func is not None:
-                        self.write_line(
-                            format_function_definition(name, func), shell)
-                found = True
-                if not show_all:
-                    continue
-
-            # Check builtins (unless -P is specified). Use has() so aliased
-            # builtin names (e.g. `readarray` for mapfile) are recognised too.
-            if not force_path and shell.builtin_registry.has(name):
-                if type_only:
-                    self.write_line("builtin", shell)
-                elif path_only:
-                    # Path only mode doesn't show builtins
-                    pass
-                else:
-                    self.write_line(f"{name} is a shell builtin", shell)
-                found = True
-                if not show_all:
-                    continue
-
-            # A command hashed by the shell takes precedence over a fresh
-            # PATH search (bash reports "NAME is hashed (PATH)"). Consulted
-            # only for the non-`-a` file lookup, and not under -P (which
-            # forces a fresh PATH search); the lookup counts as a hit, bash.
-            hashed_path = None
-            if not force_path and not show_all:
-                hashed_path = shell.state.command_hash.lookup(name)
-
-            # Check in PATH
-            paths = self._find_in_path(name, shell.env.get('PATH', ''))
-            if hashed_path is not None or paths:
-                if type_only:
-                    self.write_line("file", shell)
-                elif path_only or force_path:
-                    # -p / -P print ONLY the path (no "name is " banner), bash.
-                    # -p prefers the hashed location; -P forces a PATH search.
-                    candidates = paths if force_path else (
-                        [hashed_path] if hashed_path is not None else paths)
-                    for path in candidates:
-                        self.write_line(path, shell)
-                        if not show_all:
-                            break
-                elif hashed_path is not None:
-                    self.write_line(f"{name} is hashed ({hashed_path})", shell)
-                else:
-                    for path in paths:
-                        self.write_line(f"{name} is {path}", shell)
-                        if not show_all:
-                            break
-                found = True
-
-            # If not found anywhere
-            if not found:
+            candidates = resolver.resolve(name, query).candidates
+            if not candidates:
+                # bash prints "not found" only for the bare form; -t/-p are
+                # silent (psh also leaves -P silent-less — preserved).
                 if not type_only and not path_only:
                     self.error(f"{name}: not found", shell)
                 exit_code = 1
+                continue
+            # Non-`-a` reports only the highest-precedence match.
+            shown = candidates if show_all else candidates[:1]
+            for cand in shown:
+                self._render(name, cand, shell, type_only, path_only, force_path)
 
         return exit_code
 
-    @staticmethod
-    def _find_in_path(name: str, path_str: str) -> List[str]:
-        """Find all occurrences of a command in PATH.
+    def _render(self, name: str, cand: 'Candidate', shell: 'Shell',
+                type_only: bool, path_only: bool, force_path: bool) -> None:
+        """Print one candidate in the surface the options select."""
+        from ..executor.command_resolver import CandidateKind
 
-        Shared with CommandBuiltin (`command -v` / `-V`)."""
-        if not path_str:
-            return []
+        if type_only:
+            self.write_line(_TYPE_WORD[cand.kind.value], shell)
+            return
 
-        # If name contains a slash, check it directly
-        if '/' in name:
-            if os.path.isfile(name) and os.access(name, os.X_OK):
-                return [os.path.abspath(name)]
-            return []
+        if path_only or force_path:
+            # -p / -P print ONLY a path, and only for a disk-file candidate
+            # (a file candidate always carries a path).
+            if cand.is_file and cand.path is not None:
+                self.write_line(cand.path, shell)
+            return
 
-        # Search in PATH
-        found_paths = []
-        for dir_path in path_str.split(':'):
-            if not dir_path:
-                continue
-            full_path = os.path.join(dir_path, name)
-            if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
-                found_paths.append(full_path)
-
-        return found_paths
+        # Bare form: the descriptive banner.
+        if cand.kind is CandidateKind.ALIAS:
+            self.write_line(f"{name} is aliased to `{cand.alias_value}'", shell)
+        elif cand.kind is CandidateKind.KEYWORD:
+            self.write_line(f"{name} is a shell keyword", shell)
+        elif cand.kind is CandidateKind.FUNCTION:
+            from ..visitor import format_function_definition
+            self.write_line(f"{name} is a function", shell)
+            self.write_line(format_function_definition(name, cand.function), shell)
+        elif cand.kind is CandidateKind.BUILTIN:
+            self.write_line(f"{name} is a shell builtin", shell)
+        elif cand.kind is CandidateKind.HASHED:
+            self.write_line(f"{name} is hashed ({cand.path})", shell)
+        else:  # EXTERNAL
+            self.write_line(f"{name} is {cand.path}", shell)
 
     @property
     def help(self) -> str:
@@ -201,3 +141,15 @@ class TypeBuiltin(Builtin):
 
     Exit Status:
     Returns success if all of the NAMEs are found; fails if any are not found."""
+
+
+# `type -t` words, keyed by CandidateKind.value (so this module needs no
+# load-time import of the executor). Hashed and PATH externals both "file".
+_TYPE_WORD = {
+    "alias": "alias",
+    "keyword": "keyword",
+    "function": "function",
+    "builtin": "builtin",
+    "hashed": "file",
+    "external": "file",
+}
