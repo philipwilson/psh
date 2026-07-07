@@ -62,8 +62,13 @@ def test_jobs_bare_integer_is_job_number():
 
 
 def test_jobs_ambiguous_prefix():
-    # Two jobs sharing the "sleep" prefix -> ambiguous; bash's `jobs` prints
-    # BOTH the ambiguous line and a following "no such job" line.
+    # Two jobs sharing the "sleep" prefix -> ambiguous. This DELIBERATELY pins
+    # INTERACTIVE bash: `bash -i` prints both the "ambiguous job spec" and a
+    # following "no such job" line and returns 1. Bash is mode-inconsistent
+    # here — `bash -c` prints only the first line and returns 0 — so this is a
+    # psh-only assertion (not a golden/compare-bash case, which would flake
+    # against bash -c); psh renders the interactive-style diagnostic in every
+    # mode. See docs/user_guide/17_differences_from_bash.md (Job Control).
     out, err, rc = _psh(
         "sleep 5 & sleep 6 & jobs %sleep; echo rc=$?; "
         "kill %1 %2 2>/dev/null; wait 2>/dev/null")

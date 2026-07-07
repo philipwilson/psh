@@ -52,6 +52,38 @@ def test_wait_n_p_still_works():
     assert "match" in out
 
 
+# wait -p sets VAR only when a job is actually reported. bash UNSETS the
+# variable up front (it ends truly unset, not merely unchanged, and not empty)
+# and sets it only on a reported pid. Truth table vs bash 5.2.26:
+#   non-child pid / invalid pid / %nonexistent / bare wait-for-all -> UNSET
+#   real or reaped child                                            -> pid
+# (with and without -n). The bug was that a non-child pid still set VAR=pid,
+# because reported_pid was assigned before the is-it-our-child check.
+
+def test_wait_p_unset_for_non_child_pid():
+    out, err, rc = _psh(
+        'FIN=seed; wait -p FIN 99999999 2>/dev/null; echo "state=${FIN-UNSET}"')
+    assert "state=UNSET" in out
+
+
+def test_wait_p_unset_for_nonexistent_jobspec():
+    out, err, rc = _psh(
+        'FIN=seed; wait -p FIN %9 2>/dev/null; echo "state=${FIN-UNSET}"')
+    assert "state=UNSET" in out
+
+
+def test_wait_p_unset_for_bare_wait_for_all():
+    out, err, rc = _psh(
+        'FIN=seed; sleep 0.1 & wait -p FIN 2>/dev/null; echo "state=${FIN-UNSET}"')
+    assert "state=UNSET" in out
+
+
+def test_wait_p_unset_for_non_child_pid_with_n():
+    out, err, rc = _psh(
+        'FIN=seed; wait -n -p FIN 99999999 2>/dev/null; echo "state=${FIN-UNSET}"')
+    assert "state=UNSET" in out
+
+
 # ---- disown -a / -r on an empty table ---------------------------------------
 
 def test_disown_a_empty_succeeds():

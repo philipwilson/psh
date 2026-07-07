@@ -263,12 +263,19 @@ class WaitBuiltin(Builtin):
                 break
         operands = args[i:]
 
+        # bash unsets the -p VAR up front (before waiting) and sets it only when
+        # a job is actually reported. So a wait that reports nothing — a
+        # non-child pid, an invalid pid, %nonexistent, or a bare wait-for-all —
+        # leaves VAR UNSET (not merely unchanged, and not empty). Clear it here;
+        # the report paths below set it via set_variable only on a real pid.
+        if pid_var is not None:
+            shell.state.scope_manager.unset_variable(pid_var)
+
         if wait_n:
             return self._wait_for_next(operands, pid_var, shell)
         if not operands:
-            # No arguments - wait for all children. bash leaves a -p variable
-            # unset in this case (there is no single reported job), so pid_var
-            # is deliberately ignored here.
+            # No arguments - wait for all children. VAR stays unset (cleared
+            # above): there is no single reported job.
             return self._wait_for_all(shell)
         # Wait for specific processes/jobs
         return self._wait_for_specific(operands, pid_var, shell)
@@ -437,10 +444,14 @@ class WaitBuiltin(Builtin):
                     exit_status = 127
                     continue
 
-                reported_pid = pid
+                # -p VAR is set only once the pid is confirmed to be (or to
+                # have been) our child. bash leaves VAR unset for a pid that is
+                # not a child, so reported_pid is assigned inside each
+                # child-confirmed branch below — never before this check.
                 # Check if it's a known job
                 job = shell.job_manager.get_job_by_pid(pid)
                 if job:
+                    reported_pid = pid
                     # Wait for the entire job containing this PID
                     if job.state != JobState.DONE:
                         if job.state == JobState.STOPPED:
@@ -468,6 +479,7 @@ class WaitBuiltin(Builtin):
                     # retained, and a bare `wait` clears prior retention.)
                     remembered = shell.job_manager.get_remembered_status(pid)
                     if remembered is not None:
+                        reported_pid = pid
                         exit_status = remembered
                         continue
 
@@ -476,11 +488,13 @@ class WaitBuiltin(Builtin):
                         _, status = os.waitpid(pid, os.WNOHANG)
                         if status != 0:
                             # Process already terminated
+                            reported_pid = pid
                             exit_status = self._extract_exit_status(status)
                         else:
                             # Process still running - wait for it
                             try:
                                 _, status = os.waitpid(pid, 0)
+                                reported_pid = pid
                                 exit_status = self._extract_exit_status(status)
                             except (ChildProcessError, OSError):
                                 self.error(f"pid {pid} is not a child of this shell", shell)

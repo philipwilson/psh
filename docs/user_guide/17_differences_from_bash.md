@@ -212,6 +212,12 @@ disown -h %1   # Mark job to not receive SIGHUP
 disown -a      # Remove all jobs
 ```
 
+For an ambiguous `%prefix` (one matching more than one job), PSH prints
+`ambiguous job spec` followed by `no such job` and returns 1 in every mode —
+this matches **interactive** bash. Bash is mode-inconsistent here: a
+non-interactive `bash -c` prints only the `ambiguous job spec` line and returns
+0. PSH deliberately renders the interactive-style diagnostic regardless of mode.
+
 ### Process Substitution
 
 ```bash
