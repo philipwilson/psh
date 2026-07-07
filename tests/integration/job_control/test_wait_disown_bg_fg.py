@@ -89,8 +89,9 @@ def test_bg_resumes_multiple_jobspecs(monkeypatch):
     j2.add_process(222, "sleep 6")
     for job in (j1, j2):
         for proc in job.processes:
-            proc.stopped = True
-        job.state = JobState.STOPPED
+            job.update_process_status(proc.pid, 0x7f)  # WIFSTOPPED
+        job.update_state()
+        assert job.state is JobState.STOPPED
 
     cont = []
     monkeypatch.setattr("os.killpg", lambda pgid, sig: cont.append((pgid, sig)))
@@ -118,9 +119,9 @@ def test_bg_reports_bad_jobspec_but_resumes_good(monkeypatch):
     jm = JobManager()
     j1 = jm.create_job(pgid=111, command="sleep 5")
     j1.add_process(111, "sleep 5")
-    for proc in j1.processes:
-        proc.stopped = True
-    j1.state = JobState.STOPPED
+    j1.update_process_status(111, 0x7f)  # WIFSTOPPED
+    j1.update_state()
+    assert j1.state is JobState.STOPPED
 
     monkeypatch.setattr("os.killpg", lambda pgid, sig: None)
 

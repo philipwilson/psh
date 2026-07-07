@@ -54,7 +54,7 @@ class TestNotificationStream:
     def test_done_notice_on_stderr(self, capsys):
         jm, state = _make_manager()
         job = _add_background_job(jm)
-        job.processes[0].completed = True
+        job.update_process_status(job.processes[0].pid, 0)  # WIFEXITED, code 0
         job.update_state()
         assert job.state == JobState.DONE
 
@@ -70,7 +70,7 @@ class TestNotificationStream:
     def test_stopped_notice_on_stderr(self, capsys):
         jm, state = _make_manager()
         job = _add_background_job(jm, command="cat")
-        job.processes[0].stopped = True
+        job.update_process_status(job.processes[0].pid, 0x7f)  # WIFSTOPPED
         job.update_state()
         assert job.state == JobState.STOPPED
 
@@ -171,8 +171,9 @@ class TestCompletionNoticeStates:
 
     def _finished_job(self, jm, status, command="sleep 30"):
         job = _add_background_job(jm, command=command)
-        job.processes[0].status = status
-        job.processes[0].completed = True
+        # `status` is a real waitpid status (WIFEXITED / WIFSIGNALED), so
+        # update_process_status records it and marks the process COMPLETED.
+        job.update_process_status(job.processes[0].pid, status)
         job.update_state()
         assert job.state == JobState.DONE
         return job

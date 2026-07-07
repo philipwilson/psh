@@ -137,9 +137,7 @@ class FgBuiltin(Builtin):
         try:
             # Continue a stopped job (SIGCONT to its process group).
             if job.state == JobState.STOPPED:
-                for proc in job.processes:
-                    if proc.stopped:
-                        proc.stopped = False
+                job.mark_running()
                 job.state = JobState.RUNNING
                 os.killpg(job.pgid, signal.SIGCONT)
 
@@ -194,9 +192,7 @@ class BgBuiltin(Builtin):
     def _resume_in_background(self, job, shell: 'Shell') -> int:
         """Resume one stopped job in the background (SIGCONT to its group)."""
         if job.state == JobState.STOPPED:
-            for proc in job.processes:
-                if proc.stopped:
-                    proc.stopped = False
+            job.mark_running()
             job.state = JobState.RUNNING
             job.foreground = False
 

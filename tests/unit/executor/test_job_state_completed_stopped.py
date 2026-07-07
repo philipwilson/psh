@@ -14,12 +14,20 @@ from psh.executor.job_control import Job, JobState
 
 
 def _job(*states):
-    """Build a Job whose processes have the given (completed, stopped) flags."""
+    """Build a Job whose processes have the given (completed, stopped) flags.
+
+    States are applied through update_process_status with real waitpid statuses
+    (0 == WIFEXITED code 0; 0x7f == WIFSTOPPED) so the per-state counters stay
+    exact — `completed`/`stopped` are read-only properties of ProcessState now.
+    """
     job = Job(1, 1000, "pipeline")
     for i, (completed, stopped) in enumerate(states):
         job.add_process(100 + i, f"p{i}")
-        job.processes[i].completed = completed
-        job.processes[i].stopped = stopped
+        if completed:
+            job.update_process_status(100 + i, 0)
+        elif stopped:
+            job.update_process_status(100 + i, 0x7f)
+        # else: leave RUNNING (the state after add_process)
     return job
 
 
