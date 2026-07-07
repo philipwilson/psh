@@ -76,6 +76,14 @@ class EnvBuiltin(Builtin):
         confined to the (blocking) foreground run and restored afterwards; the
         parent never observes env_map. The argv is passed as a list — never
         quoted into source text and reparsed.
+
+        KNOWN EDGE (verifier finding, v0.656; fix belongs to the shared
+        CommandResolver work): the direct ``shell.state.env`` swap bypasses the
+        PATH observer, so ``command_hash`` is NOT cleared — after a command has
+        been auto-hashed, ``env PATH=/override <same-cmd>`` execs the HASHED
+        path where bash re-searches the overridden PATH. Non-corrupting
+        (wrong lookup, not state damage); resolver campaign should bypass or
+        clear the hash when env overrides PATH.
         """
         from ..executor import ExecutionContext, ExternalExecutionStrategy
 
