@@ -113,17 +113,23 @@ class GetoptsBuiltin(Builtin):
 
         arg_index = optind - 1  # 0-based index of the current arg
 
-        # Within-arg character cursor: 1 = first char after the leading '-'.
-        # Reset to 1 whenever OPTIND moves to a different argument (which
-        # includes a user `OPTIND=1` reset between calls).
-        sp = getattr(shell.state, '_getopts_charpos', 1)
-        if getattr(shell.state, '_getopts_charpos_optind', None) != optind:
-            sp = 1
+        # Within-arg character cursor (1 = first char after the leading '-'),
+        # from the typed GetoptsState. It is preserved ONLY while the scan
+        # continues on the SAME argument source at the SAME OPTIND and the
+        # script has not reassigned OPTIND since getopts last wrote it; any of
+        # those changing restarts at 1 (bash). This is what stops a shorter
+        # next word from overrunning the stale offset (the old "string index
+        # out of range" crash) and makes a manual `OPTIND=1` restart the scan.
+        source = tuple(argv)
+        gs = shell.state.getopts_state
+        sp = gs.char_offset if gs.cursor_valid_for(source, optind) else 1
 
         def advance(new_optind: int, new_sp: int) -> None:
+            # The OPTIND write bumps getopts_state.optind_writes (observer);
+            # gs.advance then records that as expected_writes, so only a LATER
+            # script OPTIND assignment invalidates the cursor.
             shell.state.set_variable('OPTIND', str(new_optind))
-            shell.state._getopts_charpos = new_sp
-            shell.state._getopts_charpos_optind = new_optind
+            gs.advance(source, new_optind, new_sp)
 
         # Check if we've processed all arguments
         if arg_index >= len(argv):

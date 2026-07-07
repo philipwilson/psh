@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Set
 from ..version import __version__
 from .command_hash import CommandHashTable
 from .execution_state import ExecutionState
+from .getopts_state import GetoptsState
 from .history_state import HistoryState
 from .locale_service import LocaleService
 from .option_registry import ShellOptions
@@ -84,6 +85,12 @@ class ShellState:
         # Initialize enhanced scope manager for variable scoping with attributes
         self.scope_manager = ScopeManager()
 
+        # getopts continuation cursor (typed). Created BEFORE the
+        # variable_changed observer is wired below, because that observer bumps
+        # getopts_state.optind_writes on every OPTIND assignment (the signal
+        # getopts uses to detect a script `OPTIND=...` restart).
+        self.getopts_state = GetoptsState()
+
         # Remembered command locations (the `hash` builtin / bash's
         # COMMAND EXECUTION hashing). Any PATH write empties it — the
         # scope manager fires the observer below for every PATH
@@ -134,12 +141,6 @@ class ShellState:
         self.positional_params = args if args else []
         self.script_name = script_name or "psh"
         self.is_script_mode = script_name is not None and script_name != "psh"
-
-        # getopts within-argument cursor (the character position inside a
-        # clustered option arg, e.g. -abc). Tracked here — like OPTIND — so a
-        # cluster spans calls WITHOUT mutating the positional parameters.
-        self._getopts_charpos: int = 1
-        self._getopts_charpos_optind: Optional[int] = None
 
         # Centralized shell options dictionary
         # Shell options live in a registry-backed, dict-compatible container
@@ -347,8 +348,7 @@ class ShellState:
 
         # getopts cursor: a clustered-option walk (-ab) spans into children
         # (bash: set -- -ab; getopts ab o; $(getopts ab o; echo $o) sees b).
-        self._getopts_charpos = parent._getopts_charpos
-        self._getopts_charpos_optind = parent._getopts_charpos_optind
+        self.getopts_state = parent.getopts_state.copy()
 
         # Shell options (set -e, pipefail, debug flags, ...).
         self.options = ShellOptions()
@@ -762,6 +762,13 @@ class ShellState:
             self.env[name] = var.as_string()
         else:
             self.env.pop(name, None)
+
+        if name == 'OPTIND':
+            # Every OPTIND assignment (getopts' own advance AND a script
+            # `OPTIND=...`) bumps the counter; getopts compares it to the value
+            # it recorded after its own write to detect a script restart —
+            # including a same-value `OPTIND=$OPTIND` (bash restarts the scan).
+            self.getopts_state.optind_writes += 1
 
         if name == 'IGNOREEOF':
             # sv_ignoreeof (bash): the `ignoreeof` option tracks whether

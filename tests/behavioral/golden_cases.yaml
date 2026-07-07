@@ -7068,3 +7068,21 @@
   stdout: "trap -- 'echo $x' SIGINT\n"
   stderr: ""
   exit_code: 0
+
+- name: cstate_getopts_source_word_change
+  command: "getopts abc o -ab; echo \"$o $OPTIND\"; getopts abc o -c; echo \"$o $OPTIND\""
+  stdout: "a 1\nc 2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_getopts_optind_reset_restarts
+  command: "set -- -ab; getopts ab o; echo \"$o\"; OPTIND=1; getopts ab o; echo \"$o $OPTIND\""
+  stdout: "a\na 1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_getopts_cluster_preserved
+  command: "getopts ab o -ab; echo \"$o $OPTIND\"; getopts ab o -ab; echo \"$o $OPTIND\""
+  stdout: "a 1\nb 2\n"
+  stderr: ""
+  exit_code: 0

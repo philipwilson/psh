@@ -11,11 +11,9 @@ Probed bash 5.2 semantics (tmp/probe_getopts.sh):
   - it resets to 1 when the option word or argument source changes;
   - it resets whenever OPTIND is ASSIGNED (even to the same value).
 
-xfail(strict=True) on the crash/reset cases; regressions pin the cases psh
-already gets right. Fixed by the typed GetoptsState in Commit 6.
+The crash/reset cases are fixed by the typed GetoptsState (Commit 6);
+regressions pin the cases psh already got right.
 """
-
-import pytest
 
 from psh.shell import Shell
 
@@ -36,9 +34,6 @@ def _run(script):
         sh.close()
 
 
-@pytest.mark.xfail(strict=True, reason="A3: cursor keyed only to OPTIND; a "
-                   "shorter next word overruns -> string index out of range. "
-                   "Fixed by GetoptsState (Commit 6).")
 def test_explicit_source_word_change_no_crash():
     rc, out = _run(
         'getopts abc o -ab; echo "1 $o $OPTIND"; '
@@ -48,8 +43,6 @@ def test_explicit_source_word_change_no_crash():
     assert "string index out of range" not in out
 
 
-@pytest.mark.xfail(strict=True, reason="A3: switching explicit->positional "
-                   "source at the same OPTIND overruns. Fixed Commit 6.")
 def test_argv_to_positional_switch_no_crash():
     rc, out = _run(
         'set -- -x; getopts ab o -ab; echo "1 $o"; '
@@ -59,8 +52,6 @@ def test_argv_to_positional_switch_no_crash():
     assert "string index out of range" not in out
 
 
-@pytest.mark.xfail(strict=True, reason="A3: manual OPTIND=1 mid-cluster does "
-                   "not reset the within-word cursor. Fixed Commit 6.")
 def test_optind_reset_midcluster_restarts():
     rc, out = _run(
         'set -- -ab; getopts ab o; echo "1 $o"; '
