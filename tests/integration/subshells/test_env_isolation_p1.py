@@ -7,9 +7,12 @@ into the parent. bash's ``env`` is an EXTERNAL command: it builds the child
 environment and execs the argv; it does not resolve shell builtins at all.
 
 These run psh in a SUBPROCESS (process-state and signal behaviour need a real
-process). xfail(strict=True): each flips when Commit 3 makes standard ``env``
-external argv execution. The USR1-disposition leak also depends on the
-signal-disposition lease (Commit 5) for in-process shells.
+process). Fixed by making standard ``env`` external argv execution (v0.656):
+exit/exec/cd/umask no longer touch the parent, and — because the command runs
+externally rather than in an in-process child — the USR1 trap is never
+installed in the parent, so the parent dies on USR1 like bash. (The
+signal-disposition lease still matters for OTHER in-process shells; see
+tests/unit/core/test_signal_disposition_lease_p1.py.)
 """
 
 import subprocess
@@ -34,22 +37,16 @@ def _psh(cmd):
 # env does not terminate / replace / mutate the parent process.
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="P0: env runs in-process, so `env exit "
-                   "7` exits psh. External env can't find `exit`. Commit 3.")
 def test_env_exit_does_not_kill_shell():
     r = _psh("env exit 7; echo AFTER")
     assert "AFTER" in r.stdout, "env exit terminated the parent shell"
 
 
-@pytest.mark.xfail(strict=True, reason="P0: env exec replaces the psh process. "
-                   "External env can't find `exec`. Commit 3.")
 def test_env_exec_does_not_replace_shell():
     r = _psh("env exec /bin/echo inner; echo AFTER")
     assert "AFTER" in r.stdout, "env exec replaced the parent process"
 
 
-@pytest.mark.xfail(strict=True, reason="P0: env cd changes the parent's real "
-                   "cwd. External env can't run cd. Commit 3.")
 def test_env_cd_does_not_change_cwd():
     # Compare the REAL getcwd (via /bin/pwd) before/after — env cd running
     # in-process calls os.chdir, changing the whole process's cwd even though
@@ -59,12 +56,19 @@ def test_env_cd_does_not_change_cwd():
     assert "CWD_OK" in r.stdout, f"env cd changed the parent cwd: {r.stdout!r}"
 
 
-@pytest.mark.xfail(strict=True, reason="P0: env umask changes the parent's "
-                   "umask. External env can't run umask. Commit 3.")
 def test_env_umask_does_not_change_umask():
     r = _psh('before=$(umask); env umask 077; after=$(umask); '
              'test "$before" = "$after" && echo UMASK_OK')
     assert "UMASK_OK" in r.stdout, "env umask changed the parent umask"
+
+
+def test_env_ulimit_does_not_change_limits():
+    # `env ulimit` (external → not found) must not touch the parent's limits;
+    # an in-process child running the ulimit builtin could make an
+    # irreversible hard-limit reduction.
+    r = _psh('before=$(ulimit -n); env ulimit -n 64; after=$(ulimit -n); '
+             'test "$before" = "$after" && echo ULIMIT_OK')
+    assert "ULIMIT_OK" in r.stdout, "env ulimit changed the parent limits"
 
 
 # --------------------------------------------------------------------------
@@ -92,10 +96,6 @@ def test_env_readonly_f_no_leak():
 # --------------------------------------------------------------------------
 
 @pytest.mark.serial
-@pytest.mark.xfail(strict=True, reason="H2: env's in-process child installs a "
-                   "USR1 handler that leaks into the parent process, which "
-                   "then swallows USR1. Commit 3 (external env) + Commit 5 "
-                   "(disposition lease).")
 def test_env_trap_usr1_no_disposition_leak():
     # A process with the default USR1 disposition terminates on delivery.
     # If the child's trap leaked, psh survives and prints SURVIVED.

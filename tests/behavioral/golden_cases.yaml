@@ -7003,3 +7003,32 @@
   stdout: "start"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# CORE-STATE PHASE 1 (cstate_*): env external execution, child isolation,
+# array mutation invariants, trap -p round-trip, getopts source switch.
+# =============================================================================
+
+- name: cstate_env_exit_is_external_no_kill
+  command: "env exit 7; echo AFTER"
+  stdout: "AFTER\n"
+  stderr: "command not found"
+  exit_code: 0
+
+- name: cstate_env_var_overlay_to_external
+  command: "env FOO=bar printenv FOO"
+  stdout: "bar\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_env_cd_does_not_change_cwd
+  command: "s=$(/bin/pwd); env cd / 2>/dev/null; e=$(/bin/pwd); [ \"$s\" = \"$e\" ] && echo SAME"
+  stdout: "SAME\n"
+  stderr: ""
+  exit_code: 0
+
+- name: cstate_env_i_only_explicit_vars
+  command: "export KEEP=x; env -i ONLY=1 printenv ONLY"
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
