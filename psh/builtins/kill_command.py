@@ -4,6 +4,7 @@ import os
 import signal
 from typing import TYPE_CHECKING, List, Tuple
 
+from ..executor.job_control import JobSpecOutcome, jobspec_error_messages
 from ..utils.signal_utils import (
     list_all_signals,
     signal_name_to_number,
@@ -83,13 +84,12 @@ class KillBuiltin(Builtin):
             self.error("no process specified", shell)
             return 2
 
-        # Resolve targets to actual PIDs
-        pids = self._resolve_targets(targets, shell)
-        if not pids:
-            return 1
-
-        # Send signals to processes
-        return self._send_signals(signal_num, pids, shell)
+        # Signal each target; success if at least one was delivered (bash).
+        success_count = 0
+        for target in targets:
+            if self._signal_target(signal_num, target, shell):
+                success_count += 1
+        return 0 if success_count > 0 else 1
 
     def _parse_args(self, args: List[str]) -> Tuple[int, List[str], bool]:
         """Parse kill command arguments.
@@ -163,60 +163,56 @@ class KillBuiltin(Builtin):
             raise ValueError(f"invalid signal name: {signal_str}")
         return num
 
-    def _resolve_targets(self, targets: List[str], shell: 'Shell') -> List[int]:
-        """Resolve target specifications to actual PIDs."""
-        pids = []
+    def _signal_target(self, signal_num: int, target: str,
+                       shell: 'Shell') -> bool:
+        """Deliver ``signal_num`` to one target; True if it was delivered.
 
-        for target in targets:
-            try:
-                if target.startswith('%'):
-                    # Job specification
-                    job = shell.job_manager.parse_job_spec(target)
-                    if job is None:
-                        self.error(f"{target}: no such job", shell)
-                        continue
+        A ``%jobspec`` signals the job's process group ONCE via
+        ``os.killpg(job.pgid, ...)`` — bash signals the group, not each
+        recorded member PID. The old per-member expansion raised a spurious
+        "No such process" for a pipeline member that had already exited even
+        though the live members were signalled successfully.
 
-                    # Add all process PIDs from the job
-                    for process in job.processes:
-                        pids.append(process.pid)
-                else:
-                    # Process ID
-                    pid = int(target)
-                    pids.append(pid)
-            except ValueError:
-                self.error(f"{target}: invalid process id", shell)
-                continue
-            except (OSError, KeyError) as e:
-                self.error(f"{target}: {e}", shell)
-                continue
+        A bare operand is a process id: ``0`` signals the current process
+        group, a negative value signals process group ``abs(pid)``, and a
+        positive value signals that one process.
+        """
+        if target.startswith('%'):
+            result = shell.job_manager.resolve_job_spec(target)
+            if result.outcome is not JobSpecOutcome.FOUND or result.job is None:
+                for msg in jobspec_error_messages(result, target):
+                    self.error(msg, shell)
+                return False
+            pgid = result.job.pgid
+            return self._deliver(lambda: os.killpg(pgid, signal_num),
+                                 target, shell)
 
-        return pids
+        try:
+            pid = int(target)
+        except ValueError:
+            self.error(f"{target}: invalid process id", shell)
+            return False
 
-    def _send_signals(self, signal_num: int, pids: List[int], shell: 'Shell') -> int:
-        """Send signal to list of PIDs."""
-        success_count = 0
+        if pid == 0:
+            return self._deliver(
+                lambda: os.killpg(os.getpgrp(), signal_num), pid, shell)
+        if pid < 0:
+            return self._deliver(
+                lambda: os.killpg(abs(pid), signal_num), pid, shell)
+        return self._deliver(lambda: os.kill(pid, signal_num), pid, shell)
 
-        for pid in pids:
-            try:
-                if pid == 0:
-                    # Signal current process group
-                    os.killpg(os.getpgrp(), signal_num)
-                elif pid < 0:
-                    # Signal process group
-                    os.killpg(abs(pid), signal_num)
-                else:
-                    # Signal individual process
-                    os.kill(pid, signal_num)
-                success_count += 1
-            except ProcessLookupError:
-                self.error(f"({pid}) - No such process", shell)
-            except PermissionError:
-                self.error(f"({pid}) - Operation not permitted", shell)
-            except OSError as e:
-                self.error(f"({pid}) - {e}", shell)
-
-        # Return 0 if at least one signal was sent successfully
-        return 0 if success_count > 0 else 1
+    def _deliver(self, action, who, shell: 'Shell') -> bool:
+        """Run a signal-sending ``action``, reporting the bash diagnostic."""
+        try:
+            action()
+            return True
+        except ProcessLookupError:
+            self.error(f"({who}) - No such process", shell)
+        except PermissionError:
+            self.error(f"({who}) - Operation not permitted", shell)
+        except OSError as e:
+            self.error(f"({who}) - {e}", shell)
+        return False
 
     def _list_signals(self, specs: List[str], shell: 'Shell') -> int:
         """Implement `kill -l [sigspec...]` (bash-compatible).

@@ -5,6 +5,7 @@ import os
 import signal
 import sys
 import termios
+from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Literal, Optional, Sequence, Tuple, Union, overload
 
@@ -87,6 +88,51 @@ class JobState(Enum):
     RUNNING = "running"
     STOPPED = "stopped"
     DONE = "done"
+
+
+class JobSpecOutcome(Enum):
+    """Category of a jobspec resolution (bash's get_job_spec outcomes).
+
+    A bare ``Optional[Job]`` cannot tell "no such job" apart from "ambiguous
+    job spec" or "the current/previous job does not exist" — bash prints a
+    different diagnostic for each. :meth:`JobManager.resolve_job_spec` returns
+    one of these so the job builtins can render the exact bash wording.
+    """
+    FOUND = "found"
+    NO_SUCH_JOB = "no_such_job"
+    AMBIGUOUS = "ambiguous"
+
+
+@dataclass(frozen=True)
+class JobSpecResult:
+    """Typed outcome of :meth:`JobManager.resolve_job_spec`.
+
+    ``job`` is set only for :attr:`JobSpecOutcome.FOUND`. ``pattern`` carries
+    the search text (the spec without its leading ``%`` and any ``?``) that
+    bash names in the ``<pattern>: ambiguous job spec`` diagnostic.
+    """
+    outcome: JobSpecOutcome
+    job: "Optional[Job]" = None
+    pattern: str = ""
+
+
+def jobspec_error_messages(result: JobSpecResult, spec: str,
+                           *, jobs_style: bool = False) -> List[str]:
+    """The diagnostic line(s) bash prints for a failed jobspec resolution.
+
+    An ambiguous spec yields ``<pattern>: ambiguous job spec``; bash's
+    ``jobs`` builtin then additionally prints ``<spec>: no such job`` (two
+    lines), while ``kill``/``fg``/``bg``/``disown`` print only the ambiguous
+    line — select that with ``jobs_style``. Every other failure yields
+    ``<spec>: no such job``. Each string is prefixed with the builtin name by
+    the caller's ``self.error``.
+    """
+    if result.outcome is JobSpecOutcome.AMBIGUOUS:
+        messages = [f"{result.pattern}: ambiguous job spec"]
+        if jobs_style:
+            messages.append(f"{spec}: no such job")
+        return messages
+    return [f"{spec}: no such job"]
 
 
 class Process:
@@ -582,34 +628,68 @@ class JobManager:
             lines.append(job.format_status(is_current, is_previous))
         return lines
 
-    def parse_job_spec(self, spec: str) -> Optional[Job]:
-        """Parse job specification like %1, %+, %-, %string."""
+    def resolve_job_spec(self, spec: str, *, bare: str = 'pid') -> JobSpecResult:
+        """Resolve a jobspec into a typed result (bash get_job_spec semantics).
+
+        Handles ``%%``/``%+`` and empty (current job), ``%-`` (previous),
+        ``%N`` (job number), ``%str`` (command prefix) and ``%?str`` (command
+        substring). A prefix/substring matching more than one job is
+        :attr:`JobSpecOutcome.AMBIGUOUS`; no match is
+        :attr:`JobSpecOutcome.NO_SUCH_JOB`; a missing current/previous job is
+        also ``NO_SUCH_JOB`` (bash renders ``%+: no such job``).
+
+        ``bare`` selects how an operand with no ``%`` is read: ``'pid'`` (a
+        process id, as ``kill``/``wait``/``disown`` accept) or ``'jobnum'`` (a
+        job number, as bash's ``jobs`` treats a bare integer — ``jobs 1`` is
+        ``jobs %1``).
+        """
+        def resolved(job: "Optional[Job]") -> JobSpecResult:
+            if job is not None:
+                return JobSpecResult(JobSpecOutcome.FOUND, job)
+            return JobSpecResult(JobSpecOutcome.NO_SUCH_JOB)
+
         if not spec:
-            return self.current_job
+            return resolved(self.current_job)
 
         if not spec.startswith('%'):
-            # Try to parse as PID
+            if bare == 'jobnum' and spec.isdigit():
+                return resolved(self.get_job(int(spec)))
             try:
                 pid = int(spec)
-                return self.get_job_by_pid(pid)
             except ValueError:
-                return None
+                return JobSpecResult(JobSpecOutcome.NO_SUCH_JOB)
+            return resolved(self.get_job_by_pid(pid))
 
-        spec = spec[1:]  # Remove %
+        body = spec[1:]  # strip the leading %
+        if body in ('', '+', '%'):
+            return resolved(self.current_job)
+        if body == '-':
+            return resolved(self.previous_job)
+        if body.isdigit():
+            return resolved(self.get_job(int(body)))
 
-        if spec == '+' or spec == '' or spec == '%':
-            return self.current_job
-        elif spec == '-':
-            return self.previous_job
-        elif spec.isdigit():
-            job_id = int(spec)
-            return self.get_job(job_id)
+        if body.startswith('?'):
+            pattern = body[1:]
+            matches = [j for j in self.jobs.values() if pattern in j.command]
         else:
-            # Match by command prefix
-            for job in self.jobs.values():
-                if job.command.startswith(spec):
-                    return job
-            return None
+            pattern = body
+            matches = [j for j in self.jobs.values()
+                       if j.command.startswith(pattern)]
+        if len(matches) == 1:
+            return JobSpecResult(JobSpecOutcome.FOUND, matches[0])
+        if len(matches) > 1:
+            return JobSpecResult(JobSpecOutcome.AMBIGUOUS, pattern=pattern)
+        return JobSpecResult(JobSpecOutcome.NO_SUCH_JOB)
+
+    def parse_job_spec(self, spec: str) -> Optional[Job]:
+        """The resolved Job for a jobspec, or None (back-compat shim).
+
+        Drops the typed diagnostics of :meth:`resolve_job_spec` (an ambiguous
+        spec resolves to None here). Prefer ``resolve_job_spec`` in new code so
+        no-such-job / ambiguous / current-unavailable can be reported the way
+        bash does.
+        """
+        return self.resolve_job_spec(spec).job
 
     def terminal_pgid_if_owned(self) -> Optional[int]:
         """The terminal's foreground pgid, when this shell owns the terminal.

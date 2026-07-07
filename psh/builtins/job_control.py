@@ -3,7 +3,11 @@ import os
 import signal
 from typing import TYPE_CHECKING, List
 
-from ..executor.job_control import JobState
+from ..executor.job_control import (
+    JobSpecOutcome,
+    JobState,
+    jobspec_error_messages,
+)
 from .base import Builtin
 from .registry import builtin
 
@@ -25,32 +29,56 @@ class JobsBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the jobs builtin."""
-        opts, _operands = self.parse_flags(args, shell, flags='lp')
+        opts, operands = self.parse_flags(args, shell, flags='lp')
         if opts is None:
             return 2  # bash: invalid option is a usage error
 
         manager = shell.job_manager
+
+        # With operands, list ONLY the named jobs and diagnose any that do not
+        # resolve (bash: "no such job" / "ambiguous job spec", rc=1). Without
+        # operands, list every job. A bare integer operand is a job number.
+        exit_status = 0
+        if operands:
+            jobs_to_list = []
+            for spec in operands:
+                result = manager.resolve_job_spec(spec, bare='jobnum')
+                if result.outcome is JobSpecOutcome.FOUND:
+                    jobs_to_list.append(result.job)
+                else:
+                    for msg in jobspec_error_messages(result, spec,
+                                                      jobs_style=True):
+                        self.error(msg, shell)
+                    exit_status = 1
+        else:
+            jobs_to_list = [manager.jobs[job_id]
+                            for job_id in sorted(manager.jobs.keys())]
+
+        for job in jobs_to_list:
+            self._render_job(job, opts, manager, shell)
+        return exit_status
+
+    def _render_job(self, job, opts, manager, shell: 'Shell') -> None:
+        """Emit one job in the requested format (-p PIDs / -l long / plain)."""
         if opts['p']:
             # Show only PIDs (-p wins over -l, like bash)
-            for job_id in sorted(manager.jobs.keys()):
-                for proc in manager.jobs[job_id].processes:
-                    self.write_line(str(proc.pid), shell)
+            for proc in job.processes:
+                self.write_line(str(proc.pid), shell)
         elif opts['l']:
             # Long format: add the PID column (bash jobs -l). For pipeline
             # jobs the remaining process PIDs follow on indented lines.
-            for job_id in sorted(manager.jobs.keys()):
-                job = manager.jobs[job_id]
-                pids = [proc.pid for proc in job.processes] or [job.pgid]
-                line = job.format_status(job == manager.current_job,
-                                         job == manager.previous_job,
-                                         pid=pids[0])
-                self.write_line(line, shell)
-                for pid in pids[1:]:
-                    self.write_line(f"     {pid}", shell)
+            pids = [proc.pid for proc in job.processes] or [job.pgid]
+            line = job.format_status(job == manager.current_job,
+                                     job == manager.previous_job,
+                                     pid=pids[0])
+            self.write_line(line, shell)
+            for pid in pids[1:]:
+                self.write_line(f"     {pid}", shell)
         else:
-            for line in manager.list_jobs():
-                self.write_line(line, shell)
-        return 0
+            self.write_line(
+                job.format_status(job == manager.current_job,
+                                  job == manager.previous_job),
+                shell)
 
 
 @builtin
