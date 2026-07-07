@@ -38,6 +38,7 @@ from .options import OptionHandler
 from .scope import ScopeManager, VariableScope
 from .state import ShellState
 from .trap_manager import TrapManager
+from .variable_store import TargetScope, VariableStore
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
 __all__ = [
@@ -60,6 +61,9 @@ __all__ = [
     # Scope management
     'ScopeManager',
     'VariableScope',
+    # Variable-mutation service (core-state Phase 2)
+    'VariableStore',
+    'TargetScope',
     # State
     'ShellState',
     # Options
