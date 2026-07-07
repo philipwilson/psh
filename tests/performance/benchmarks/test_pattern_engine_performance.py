@@ -11,13 +11,12 @@ inputs (expansion appraisal finding #6):
   e.g. ``?(a)…?(a)!(z)`` on ``"a"*k + "b"`` (0.05s→0.21s→0.87s at k=14/16/18),
   because ``_match_from`` recomputes ``(position, subject-index)`` states.
 
-Until the compiled memoized engine replaces both backends these guards are
-``xfail(strict=True)``: the assertions fail (the old engines exceed the budget),
-so a strict-xpass would flag that a fix landed and the marker should be removed.
-The engine flip removes the ``xfail`` markers; commit 5 adds deterministic
-state-count guards (the durable, non-timing assertions).
+Since the compiled memoized engine (``pattern_engine``) now backs every extglob
+consumer, these are live assertions (no longer ``xfail``). The deterministic,
+non-timing state-count guards in ``tests/unit/expansion/test_pattern_engine_matcher.py``
+are the primary complexity guarantee; these timing guards are a coarse backstop.
 
-Budgets are chosen with a wide margin: the exponential backends take
+Budgets are chosen with a wide margin: the former exponential backends took
 hundreds of milliseconds to seconds at these sizes, the memoized engine takes
 well under a millisecond, so the 0.1s budget sits unambiguously between them.
 """
@@ -36,8 +35,6 @@ BUDGET = 0.1  # seconds; exponential backends blow past it, memoized stays << it
 
 
 @pytest.mark.timeout(30)
-@pytest.mark.xfail(strict=True,
-                   reason="regex path is exponential until the pattern engine flip")
 def test_ambiguous_repetition_not_exponential():
     """case / [[ == ]] on ``*(a|aa)c`` vs a forced-fail subject stays fast."""
     from psh.expansion.pattern import match_shell_pattern
@@ -49,8 +46,6 @@ def test_ambiguous_repetition_not_exponential():
 
 
 @pytest.mark.timeout(30)
-@pytest.mark.xfail(strict=True,
-                   reason="matcher recomputes states until the pattern engine flip")
 def test_sequential_optional_not_exponential():
     """Negation-routed matcher on ``?(a)…?(a)!(z)`` stays fast."""
     from psh.expansion.extglob import extglob_fullmatch
@@ -62,8 +57,6 @@ def test_sequential_optional_not_exponential():
 
 
 @pytest.mark.timeout(30)
-@pytest.mark.xfail(strict=True,
-                   reason="negation matcher recomputes states until the flip")
 def test_nested_negation_not_exponential():
     """Nested negation over an ambiguous body stays fast."""
     from psh.expansion.extglob import extglob_fullmatch

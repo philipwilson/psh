@@ -73,9 +73,14 @@ def match_shell_pattern(string: str, pattern: str,
     ``[[:upper:]]``/``[[:lower:]]`` stay case-sensitive under
     ``nocasematch``, matching bash (see ``_bracket_to_regex``).
     """
-    from .extglob import _contains_negation, extglob_fullmatch
-    if extglob_enabled and _contains_negation(pattern):
-        # Negation isn't expressible as a Python regex; use the matcher.
+    from .extglob import contains_extglob, extglob_fullmatch
+    if extglob_enabled and contains_extglob(pattern):
+        # ANY extglob group routes through the compiled memoized engine, not a
+        # regex: negation was never regex-expressible, and ambiguous repetition
+        # (``*(a|aa)c``) makes Python ``re`` backtrack catastrophically. The
+        # engine is linear-state and returns the same full-match result
+        # (verified vs the former regex backend over thousands of cases).
+        # Plain globs (no extglob group) keep the fast, well-tested regex path.
         return extglob_fullmatch(pattern, string, ignorecase=ignorecase)
 
     regex = PatternMatcher().shell_pattern_to_regex(
