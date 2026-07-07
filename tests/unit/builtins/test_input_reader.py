@@ -34,6 +34,24 @@ def _pipe(data: bytes) -> int:
     return r
 
 
+class _FakeClock:
+    """A scripted stand-in for the ``time`` module's ``monotonic``.
+
+    Returns the next value from ``schedule`` on each call and pins to the last
+    value once exhausted. Lets a deadline test advance *simulated* time without
+    real sleeps, so it never flakes under parallel load.
+    """
+
+    def __init__(self, schedule):
+        self._schedule = list(schedule)
+        self._i = 0
+
+    def monotonic(self) -> float:
+        i = min(self._i, len(self._schedule) - 1)
+        self._i += 1
+        return self._schedule[i]
+
+
 class TestUtf8Decoding:
     def test_multibyte_record_decodes_whole(self):
         fd = _pipe("héllo wörld\n".encode("utf-8"))
@@ -125,6 +143,40 @@ class TestDeadline:
             os.close(w)
         assert result.outcome is Outcome.TIMEOUT
         assert 0.2 < elapsed < 2.0  # generous margin for parallel load
+
+
+class TestTotalDeadline:
+    """The -t deadline bounds the WHOLE read, not each byte.
+
+    A per-byte reset is a real bash-divergent escape: bytes trickled a@0.0s,
+    b@0.6s, c@1.2s into ``read -t 1`` give bash rc=142 x="ab" (the total budget
+    expires between b and c), but a mutant that re-arms the budget per byte
+    reads all of "abc". The idle-pipe timeout test above cannot tell these
+    apart — only a trickle can.
+
+    This is driven through the reader's clock seam (a fake ``time`` with a
+    scripted ``monotonic``) so it is deterministic and never load-sensitive:
+    every byte is already present on the pipe, so ``select`` never blocks and no
+    real time passes; the deadline is crossed purely by the simulated clock. An
+    absolute/total deadline therefore stops mid-stream on schedule, while a
+    per-byte reset (which ignores elapsed time) would consume the whole pipe.
+    """
+
+    def test_absolute_deadline_stops_midstream(self, monkeypatch):
+        import psh.builtins.input_reader as ir
+        # One monotonic() reading per byte-read attempt: 0.0 (a), 0.6 (b),
+        # 1.2 (c) — the third is past the 1.0 deadline, so 'c' is never taken.
+        monkeypatch.setattr(ir, "time", _FakeClock([0.0, 0.6, 1.2, 2.0]))
+        fd = _pipe(b"abc")  # all present at once; timing is purely the clock
+        try:
+            result = ir.InputReader(fd=fd).read_limited(
+                delimiter=None, max_chars=10, deadline=1.0)
+        finally:
+            os.close(fd)
+        assert result.data == "ab", (
+            "read consumed past the total deadline — the -t budget must not "
+            "re-arm per byte")
+        assert result.outcome is Outcome.TIMEOUT
 
 
 class TestReadAll:
