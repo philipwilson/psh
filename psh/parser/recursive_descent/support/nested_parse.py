@@ -24,7 +24,7 @@ This is a SYNTAX-VALIDATION parse, with three deliberate properties:
   ``ParseError`` rather than a Python ``RecursionError`` traceback.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Mapping, Optional
 
 if TYPE_CHECKING:
     from ....ast_nodes import Program
@@ -40,7 +40,9 @@ MAX_SUBSTITUTION_NESTING = 100
 
 def parse_nested_command(source: str, *, line_offset: int = 0,
                          initial_depth: int = 0,
-                         substitution_depth: int = 0) -> 'Program':
+                         substitution_depth: int = 0,
+                         lexer_options: Optional[Mapping[str, object]] = None
+                         ) -> 'Program':
     """Parse ``source`` (a substitution body, delimiters stripped) to a Program.
 
     Raises :class:`ParseError` on invalid syntax (the caller lets it propagate
@@ -48,9 +50,12 @@ def parse_nested_command(source: str, *, line_offset: int = 0,
     nesting budget so a compound inside the body counts toward
     ``MAX_NESTING_DEPTH``; ``substitution_depth`` is the depth of THIS body in a
     ``$( $( ... ) )`` chain and is checked against ``MAX_SUBSTITUTION_NESTING``
-    before any work, so an over-deep chain fails cheaply. Imports are local to
-    avoid an import cycle with the parser package, which reaches this module
-    through ``WordBuilder``.
+    before any work, so an over-deep chain fails cheaply. ``lexer_options`` (the
+    shell option dict in effect) is threaded to the tokenizer so the body is
+    re-lexed with the same option-sensitive lexing as the outer command — most
+    importantly ``extglob``, which governs whether ``@(a|b)`` is an extglob
+    pattern. Imports are local to avoid an import cycle with the parser package,
+    which reaches this module through ``WordBuilder``.
     """
     from ....lexer import tokenize_with_heredocs
     from ....lexer.token_types import Token, TokenType
@@ -65,9 +70,9 @@ def parse_nested_command(source: str, *, line_offset: int = 0,
             message="command substitution nested too deeply",
             position=0, line=1, column=1))
 
-    tokens, heredoc_map = tokenize_with_heredocs(source)
+    tokens, heredoc_map = tokenize_with_heredocs(source, shell_options=lexer_options)
     parser = Parser(tokens, source_text=source, line_offset=line_offset,
-                    heredoc_map=heredoc_map)
+                    heredoc_map=heredoc_map, lexer_options=lexer_options)
     parser.ctx.nesting_depth = initial_depth
     parser.ctx.substitution_depth = substitution_depth
     return parser.parse()

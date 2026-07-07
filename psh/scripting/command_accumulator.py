@@ -269,15 +269,20 @@ class CommandAccumulator:
             tokens = self.shell.expand_aliases(tokens)
             # Thread the heredoc map into the parser so each `<<`/`<<-` Redirect
             # gets its body attached at construction (no post-parse AST walk).
+            # lexer_options mirrors the execution lexing so a nested substitution
+            # body re-lexes with the same options (extglob) — this trial AST is
+            # reused by the execution path.
             parser = Parser(tokens, source_text=preview,
-                            line_offset=line_offset, heredoc_map=heredoc_map)
+                            line_offset=line_offset, heredoc_map=heredoc_map,
+                            lexer_options=self.state.options)
             self._open_constructs = parser.ctx.open_constructs
             ast = parser.parse()
         else:
             tokens = tokenize(preview, shell_options=self.state.options)
             tokens = self.shell.expand_aliases(tokens)
             parser = Parser(tokens, source_text=preview,
-                            line_offset=line_offset)
+                            line_offset=line_offset,
+                            lexer_options=self.state.options)
             self._open_constructs = parser.ctx.open_constructs
             ast = parser.parse()
         return ast, tokens

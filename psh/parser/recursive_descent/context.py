@@ -40,6 +40,14 @@ class ParserContext:
     # heredoc redirect whose key is missing from the map is a hard error.
     heredoc_map: Optional[Mapping[str, object]] = None
 
+    # Lexer options (the shell option dict, e.g. ``{'extglob': True, ...}``) in
+    # effect for this parse. A plain data dict, NOT a Shell reference. Used only
+    # to RE-LEX the body of a nested command/process substitution with the same
+    # option-sensitive lexing as the outer command (notably ``extglob``, which
+    # governs whether ``@(a|b)`` is an extglob pattern). None outside the live
+    # shell parse path (standalone parser use lexes with defaults).
+    lexer_options: Optional[Mapping[str, object]] = None
+
     # Source context
     source_text: Optional[str] = None
     source_lines: Optional[List[str]] = None

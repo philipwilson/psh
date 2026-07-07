@@ -386,10 +386,13 @@ class SourceProcessor(ScriptComponent):
             # lex→parse boundary (see AliasManager.expand_aliases).
             tokens = self.shell.expand_aliases(tokens)
             self._debug_print_tokens(tokens)
-            # Parse with heredoc map, honoring the active parser
+            # Parse with heredoc map, honoring the active parser. lexer_options
+            # threads the shell options so a nested substitution body is re-lexed
+            # with the same option-sensitive lexing (extglob) as this command.
             from ..parser import parse_with_heredocs
             ast = parse_with_heredocs(tokens, heredoc_map,
-                                      active_parser=self.shell.active_parser)
+                                      active_parser=self.shell.active_parser,
+                                      lexer_options=self.state.options)
         else:
             tokens = tokenize(command_string, shell_options=self.state.options)
             tokens = self.shell.expand_aliases(tokens)
@@ -401,6 +404,9 @@ class SourceProcessor(ScriptComponent):
                 active_parser=self.shell.active_parser,
                 source_text=command_string,
                 line_offset=max(0, start_line - 1),
+                # Thread shell options so a nested substitution body re-lexes
+                # with the same option-sensitive lexing (extglob) as this command.
+                lexer_options=self.state.options,
             )
             ast = parser.parse()
 

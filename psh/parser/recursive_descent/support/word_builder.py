@@ -88,13 +88,15 @@ def _nested_program(source: str, token, ctx):
         base = getattr(ctx, 'line_offset', 0) or 0
         depth = getattr(ctx, 'nesting_depth', 0) or 0
         sub_depth = getattr(ctx, 'substitution_depth', 0) or 0
+        lexer_options = getattr(ctx, 'lexer_options', None)
         tline = getattr(token, 'line', None) or 1
         line_offset = base + max(0, tline - 1)
     else:
-        line_offset, depth, sub_depth = 0, 0, 0
+        line_offset, depth, sub_depth, lexer_options = 0, 0, 0, None
     return parse_nested_command(source, line_offset=line_offset,
                                 initial_depth=depth,
-                                substitution_depth=sub_depth + 1)
+                                substitution_depth=sub_depth + 1,
+                                lexer_options=lexer_options)
 
 
 class WordBuilder:
