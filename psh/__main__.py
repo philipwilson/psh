@@ -37,11 +37,13 @@ _FLAG_TABLE: Dict[str, List[Tuple[str, object]]] = {
     "--norc": [("norc", True)],
 }
 
-# POSIX short options that set a shell option (bash: -e -u -x -v -n -f -C).
-# Each maps to its long name via the option registry (the single source of
-# truth); a cluster like -eux enables all three. -s (stdin) and -i
-# (interactive) are handled separately as they are not shell options.
-_SHORT_SET_OPTIONS = frozenset("euxvnfC")
+# Short options that set a shell option (bash: -e -u -x -v -n -f -C -B; every
+# `set` single-letter option is also a valid invocation option, so `psh +B`
+# disables brace expansion like `bash +B`). Each maps to its long name via the
+# option registry (the single source of truth); a cluster like -eux enables all
+# three. -s (stdin) and -i (interactive) are handled separately as they are not
+# shell options.
+_SHORT_SET_OPTIONS = frozenset("euxvnfCB")
 
 HELP_TEXT = """Usage: psh [options] [script [args...]]
        psh [options] -c command [args...]

@@ -487,7 +487,8 @@ class Shell:
         """
         if not self.state.options.get('expand_aliases', True):
             return tokens
-        return self.alias_manager.expand_aliases(tokens)
+        return self.alias_manager.expand_aliases(
+            tokens, shell_options=self.state.options)
 
     def run_command(self, command_string: str, add_to_history: bool = True,
                     base_line: int = 1, line_oriented: bool = False) -> int:

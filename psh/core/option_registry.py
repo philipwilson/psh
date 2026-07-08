@@ -90,7 +90,7 @@ _SPECS = [
     _spec("ignoreeof", False, OptionCategory.SET),
     _spec("nolog", False, OptionCategory.SET),
     _spec("posix", False, OptionCategory.SET),
-    _spec("braceexpand", True, OptionCategory.SET, dollar_dash="B"),
+    _spec("braceexpand", True, OptionCategory.SET, short_flag="B", dollar_dash="B"),
     _spec("histexpand", True, OptionCategory.SET, dollar_dash="H"),
     _spec("history", True, OptionCategory.SET),
     _spec("emacs", False, OptionCategory.SET),
