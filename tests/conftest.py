@@ -17,6 +17,15 @@ import pytest
 PSH_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PSH_ROOT))
 
+# On macOS with XQuartz installed, DISPLAY points at a launchd socket that
+# AUTO-STARTS XQuartz the moment any X11-capable client the suite spawns
+# connects to it (a GUI popping up mid-test-run). Strip it here, at import
+# time, so every test process — including xdist workers — and every
+# subprocess they spawn inherits an X11-free environment. XAUTHORITY goes
+# with it. No psh or bash behavior under test depends on either.
+os.environ.pop("DISPLAY", None)
+os.environ.pop("XAUTHORITY", None)
+
 from psh.core import ReadonlyVariableError
 from psh.executor.job_control import JobState
 from psh.shell import Shell
