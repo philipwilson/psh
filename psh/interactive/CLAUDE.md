@@ -403,7 +403,7 @@ self.write_line(job.command, shell)
 shell.job_manager.set_foreground_job(job)   # restores job.tmodes (TCSANOW)
 job.foreground = True
 if not shell.job_manager.transfer_terminal_control(job.pgid, "fg builtin"):
-    shell.job_manager.finish_foreground_job(False, job)  # undo the promotion
+    shell.job_manager.finish_foreground_job(False, job)  # clear foreground_job + restore tmodes
     ...error...
 
 try:

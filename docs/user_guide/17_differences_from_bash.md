@@ -425,12 +425,13 @@ an in-progress `wait` immediately. Making the notice truly immediate would
 require a line-editor redesign to watch the `SIGCHLD` pipe; it is
 deliberately out of scope.
 
-One further small cosmetic gap: psh always marks a completed background job
-`[N]+  Done …`, whereas bash blanks the marker (`[N]   Done …`) when the
-completed job is *not* the current job — the rare case of several
-simultaneous background jobs where an earlier one finishes first. psh
-cannot currently distinguish this because a foreground command overwrites
-its "current job" pointer, so the notice keeps the common-case `+`.
+The completion-notice marker itself is now bash-faithful: psh marks a
+finishing background job `[N]+  Done …` only when it is the current job
+(`%+`), and `[N]   Done …` (a blank marker, never `-`) otherwise. A
+foreground command no longer overwrites the background job's `%+`, so a bg
+job keeps its current/previous (`%+`/`%-`) standing across intervening
+foreground commands — matching bash for `jobs`, `kill %+`, `wait %+`, and
+bare `fg`/`bg`.
 
 ### Quote Handling
 
