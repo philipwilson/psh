@@ -133,6 +133,10 @@ class ConformanceTestFramework:
         test_env = os.environ.copy()
         test_env['LC_ALL'] = 'C'
         test_env['LANG'] = 'C'
+        # Belt-and-braces alongside the conftest strip: an inherited DISPLAY
+        # would let any X11-capable child auto-start XQuartz on macOS.
+        test_env.pop('DISPLAY', None)
+        test_env.pop('XAUTHORITY', None)
         if env:
             test_env.update(env)
 

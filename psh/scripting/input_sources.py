@@ -3,6 +3,7 @@
 This module provides different input sources for the shell:
 - FileInput: Read commands from script files
 - StringInput: Read commands from strings (for -c option)
+- StdinInput: Read commands LAZILY from fd 0 (a script delivered on stdin)
 
 (Interactive REPL input is handled by psh/interactive/, not here.)
 """
@@ -165,6 +166,69 @@ class StringInput(InputSource):
 
     def get_name(self) -> str:
         return self.name
+
+    def get_line_number(self) -> int:
+        return self.line_number
+
+
+class StdinInput(InputSource):
+    """Lazy, line-at-a-time input source over fd 0 for a script ON STDIN.
+
+    bash reads a script delivered on standard input (``cmds | psh``,
+    ``psh < file``, ``psh -s``) LAZILY: it consumes just enough of fd 0 to run
+    the current command and leaves the rest readable, so a ``read``/``cat``/
+    ``mapfile`` inside the script consumes the SUBSEQUENT physical lines as data
+    (``printf 'read x\\ncat\\n...' | bash``). psh used to slurp ALL of fd 0 into
+    a ``StringInput`` up front, draining it so every in-script stdin consumer
+    saw immediate EOF — silent wrong output (scripting appraisal 2026-07-07 #1).
+
+    This reads one physical line at a time straight from fd 0 through the shared
+    record-oriented ``InputReader`` (the same never-over-read primitive ``read``
+    and ``mapfile`` use), so the shell's command source and the runtime ``read``
+    stream are the SAME lazily-consumed fd. It works identically for a pipe and
+    a seekable file: ``os.read`` advances the one shared file offset either way,
+    and byte-at-a-time reads never consume past the newline that ends the line.
+
+    Each physical line is decoded with ``errors='surrogateescape'`` (like the
+    ``FileInput`` script path), so a non-UTF-8 script byte round-trips instead
+    of crashing the shell. The line delimiter (the newline byte) is stripped;
+    a trailing CR is KEPT (bash keeps it on the stdin path — this is NOT the
+    FileInput CRLF divergence).
+    """
+
+    _NEWLINE = 0x0A  # b'\n'
+
+    def __init__(self, fd: int = 0, name: str = "<stdin>"):
+        # Import here (not at module load) so scripting/ does not import the
+        # builtins package at import time; by the time a StdinInput is built the
+        # shell is fully constructed and psh.builtins is loaded.
+        from ..builtins.input_reader import InputReader
+        self._reader = InputReader(fd=fd)
+        self._name = name
+        self.line_number = 0
+        self._eof = False
+
+    def read_line(self) -> Optional[str]:
+        """Read the next physical line from fd 0, or None at EOF.
+
+        Consumes exactly one line's bytes (up to and including its newline) and
+        no more, leaving the remainder of fd 0 intact for an in-script ``read``/
+        ``cat``/``mapfile``. A closed/invalid fd 0 surfaces as immediate EOF.
+        """
+        if self._eof:
+            return None
+        record = self._reader.read_record_bytes(delimiter_byte=self._NEWLINE)
+        if record is None:
+            self._eof = True
+            return None
+        self.line_number += 1
+        return record.decode('utf-8', errors='surrogateescape')
+
+    def is_interactive(self) -> bool:
+        return False
+
+    def get_name(self) -> str:
+        return self._name
 
     def get_line_number(self) -> int:
         return self.line_number
