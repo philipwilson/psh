@@ -11,7 +11,9 @@ correct current value), so this guard is written with an AST walk that flags
 only *assignment/augmented-assignment/del targets* whose subscript base ends in
 ``.variables`` — never a read. It scans every test module plus the Python code
 fences embedded in the developer docs, so the guidance and the fixtures stay
-honest together.
+honest together. The ``docs/reviews/`` archive is exempt (see REVIEWS_DIR):
+those are historical audits that quote the broken pattern as *evidence* of the
+bug they reported, not guidance a reader should copy.
 
 To set a variable in a test, use ``shell.set_variable(name, value)`` (or the
 scope-manager API); to remove one, use ``scope_manager.unset_variable(name)``.
@@ -25,6 +27,14 @@ HERE = os.path.dirname(__file__)
 TESTS_ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 REPO_ROOT = os.path.abspath(os.path.join(TESTS_ROOT, '..'))
 DOCS_ROOT = os.path.join(REPO_ROOT, 'docs')
+# docs/reviews/ is exempt from the docs scan: those are point-in-time
+# historical audits that legitimately QUOTE broken code as evidence of the bug
+# they reported (e.g. the core-state appraisal quotes `del state.variables[...]`
+# to document the C5 finding). The guard's purpose is *live guidance* docs
+# (test_pattern_guide.md, subsystem CLAUDE-adjacent notes) where a reader copies
+# the example — a reviewer's citation of a bug is not a write a reader should
+# copy. The tests/ scan stays exhaustive.
+REVIEWS_DIR = os.path.join(DOCS_ROOT, 'reviews')
 
 _PY_FENCE = re.compile(r'```(?:python|py)\n(.*?)```', re.DOTALL)
 
@@ -72,9 +82,15 @@ def _python_test_files():
 
 
 def _doc_files():
+    """Yield live-guidance doc *.md paths, skipping the historical review
+    archive (see REVIEWS_DIR — reviews quote broken code on purpose)."""
     if not os.path.isdir(DOCS_ROOT):
         return
-    for root, _dirs, names in os.walk(DOCS_ROOT):
+    for root, dirs, names in os.walk(DOCS_ROOT):
+        # Prune the reviews archive from the walk (skips it and its subtree).
+        if os.path.abspath(root) == REVIEWS_DIR:
+            dirs[:] = []
+            continue
         for name in names:
             if name.endswith('.md'):
                 yield os.path.join(root, name)
@@ -125,3 +141,27 @@ def test_guard_flags_writes_and_clears_reads():
     assert _writes_to_variables("y = shell.state.variables['x']") == []
     assert _writes_to_variables("assert shell.state.variables['x'] == 1") == []
     assert _writes_to_variables("os.path.join(s.state.variables['PWD'], 'f')") == []
+
+
+def test_docs_scan_exempts_reviews_but_still_bites_live_docs():
+    """Self-test for the docs/reviews/ exemption.
+
+    The historical review archive is skipped (a review that quotes a broken
+    ``state.variables[...] = ...`` as evidence must not fail the guard), but
+    live guidance docs are still scanned AND a write in a live-doc code fence
+    is still flagged — so the exemption narrows the scope without blinding it.
+    """
+    scanned = set(_doc_files())
+    reviews_prefix = REVIEWS_DIR + os.sep
+    assert not any(p.startswith(reviews_prefix) for p in scanned), (
+        "docs/reviews/ must be exempt from the docs write-scan")
+    # A live guidance doc IS scanned (so a violation there would be caught).
+    live_doc = os.path.join(DOCS_ROOT, 'test_pattern_guide.md')
+    assert live_doc in scanned, (
+        "live guidance docs must still be scanned")
+    # And a write in a live-doc python fence still bites.
+    fence = "```python\nshell.state.variables['x'] = 1\n```"
+    hits = []
+    for m in _PY_FENCE.finditer(fence):
+        hits.extend(_writes_to_variables(m.group(1)))
+    assert hits == [1], "a write in a live-doc code fence must still be flagged"
