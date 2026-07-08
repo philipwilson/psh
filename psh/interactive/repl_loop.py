@@ -59,10 +59,19 @@ class REPLLoop(InteractiveComponent):
                 if hasattr(self.shell, 'interactive_manager'):
                     self.shell.interactive_manager.signal_manager.process_sigchld_notifications()
 
-                # Check for completed background jobs (only if notify option is disabled)
-                # When notify is enabled, jobs are notified immediately when they complete
-                if not self.state.options.get('notify', False):
-                    self.job_manager.notify_completed_jobs()
+                # Report completed background jobs before the next prompt.
+                # bash with `set -b`/`set -o notify` prints these the instant
+                # the child is reaped — even while the shell sits idle at the
+                # prompt. psh cannot match that immediacy while blocked in the
+                # line editor's select() (it multiplexes only stdin and the
+                # SIGWINCH pipe, not the SIGCHLD pipe), so it emits at the next
+                # reaping opportunity — here — for BOTH notify states. Skipping
+                # this under `notify` used to drop the notice entirely AND leak
+                # the job as a stale DONE (notify_completed_jobs is the only
+                # reaper of finished background jobs); the synchronous wait path
+                # still emits immediately for jobs reaped by an in-progress
+                # `wait`, and marks them notified so this call won't double-report.
+                self.job_manager.notify_completed_jobs()
 
                 # Check for stopped jobs (from Ctrl-Z)
                 self.job_manager.notify_stopped_jobs()
@@ -97,7 +106,10 @@ class REPLLoop(InteractiveComponent):
                     self.job_manager.note_simple_command('exit')
                     if not self.job_manager.confirm_exit_with_stopped_jobs():
                         continue
-                    print()  # New line before exit
+                    # bash echoes "exit" (to stderr) on the EOF that actually
+                    # leaves the shell; the newline also moves the cursor off
+                    # the prompt line the Ctrl-D left it on.
+                    print('exit', file=sys.stderr)
                     break
 
                 if command.strip():

@@ -833,7 +833,7 @@ set +o vi         # Disable vi mode
 # Additional options:
 set -o ignoreeof  # Ignore Ctrl-D (require exit command)
 set -o noclobber  # Prevent overwriting files with >
-set -o notify     # Immediate job notifications
+set -o notify     # Report finished background jobs at the next prompt (see ch. 17.3)
 set -o allexport  # Export all variables
 ```
 

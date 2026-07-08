@@ -155,9 +155,10 @@ class REPLLoop(InteractiveComponent):
                 if hasattr(self.shell, 'interactive_manager'):
                     self.shell.interactive_manager.signal_manager.process_sigchld_notifications()
 
-                # 2. Notify completed/stopped background jobs
-                if not self.state.options.get('notify', False):
-                    self.job_manager.notify_completed_jobs()
+                # 2. Notify completed/stopped background jobs (both notify
+                #    states report here, at the next reaping opportunity —
+                #    psh can't emit mid-idle; see the notify note below)
+                self.job_manager.notify_completed_jobs()
                 self.job_manager.notify_stopped_jobs()
 
                 # 3. Idle terminal title, then read a (possibly multi-line) command
@@ -251,12 +252,14 @@ the components together:
   active/accepted/aborted, plus repaint/redispatch flags) that the
   editor renders via the renderer's prompt-override repaint. Ctrl-R/
   Ctrl-S continue backward/forward, Ctrl-G aborts (restoring the
-  pre-search line), Enter accepts the match into the buffer (a second
-  Enter executes), and any other control character accepts AND is
-  re-dispatched normally. The editor exposes `history`/`history_pos`/
-  `original_line`/`search_mode` as properties delegating to these
-  components. Pinned by `tests/unit/interactive/test_history_nav.py`
-  and the PTY ctrl-r test (which pins the `(bck-i-search)` prompt).
+  pre-search line), Enter runs readline's accept-line (accepts the
+  match AND executes it on this single keystroke, via the same
+  redispatch path the control-key terminators use), and any other
+  control character accepts AND is re-dispatched normally. The editor
+  exposes `history`/`history_pos`/`original_line`/`search_mode` as
+  properties delegating to these components. Pinned by
+  `tests/unit/interactive/test_history_nav.py` and the PTY ctrl-r test
+  (which pins the bash-faithful `(reverse-i-search)` prompt).
 - **Key dispatch**: `keybindings.py` maps keys to action names
   (`EmacsKeyBindings`, `ViKeyBindings`, selected via `EditMode` /
   `set -o vi`). The editor's `_build_action_table()` maps every action
@@ -483,12 +486,12 @@ def notify_completed_jobs(self):
     completed = []
     for job_id, job in list(self.jobs.items()):
         if job.state == JobState.DONE and not job.notified and not job.foreground:
-            print(f"\n[{job.job_id}]+  Done                    {job.command}")
-            job.notified = True
-            completed.append(job_id)
-    # Remove completed jobs after notification
-    ...
-```
+            self._print_completion_notice(job)   # bash format: no leading
+            job.notified = True                   # blank line; marker is a
+            completed.append(job_id)              # hardcoded '+' (correct for
+    # Remove completed jobs after notification    # the common single-bg-job
+    ...                                           # case; multi-job marker gap
+```                                               # deferred — see guide 17.3
 
 ## Testing
 
@@ -555,8 +558,9 @@ python -m psh --debug-exec  # Debug process groups and signals
 
 - `state.last_bg_pid` updated for `$!`
 - `state.supports_job_control` checked before terminal ops
-- `state.options['notify']` (-b) enables immediate job-completion notifications;
-  `state.options['monitor']` (-m) is job control mode
+- `state.options['notify']` (-b) reports job completions at the next prompt
+  (psh can't emit mid-idle: the editor's select() doesn't watch the SIGCHLD
+  pipe — see user guide 17.3); `state.options['monitor']` (-m) is job control mode
 
 ### With Builtins (`psh/builtins/`)
 

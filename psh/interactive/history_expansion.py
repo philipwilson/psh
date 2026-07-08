@@ -27,6 +27,10 @@ def contains_history_reference(text: str) -> bool:
 # "no such event" and "malformed word designator" from a normal string result.
 _EVENT_NOT_FOUND = object()
 _BAD_WORD_SPECIFIER = object()
+# A :s/old/new/ (or :&) modifier that parsed correctly but whose `old` was not
+# present in the selected line: bash reports this as "substitution failed", a
+# distinct error class from a malformed/out-of-range "bad word specifier".
+_SUBSTITUTION_FAILED = object()
 _NOT_QUICK_SUB = object()  # leading text is not a ^old^new quick substitution
 
 
@@ -214,6 +218,13 @@ class HistoryExpander:
                             if report_errors:
                                 spec = command[j:self._word_designator_end(command, j)]
                                 print(f"psh: {spec}: bad word specifier",
+                                      file=sys.stderr)
+                            return None
+                        if selected[0] is _SUBSTITUTION_FAILED:
+                            # A :s/old/new/ whose `old` was not found: bash's
+                            # distinct "substitution failed" error class.
+                            if report_errors:
+                                print(f"psh: {selected[1]}: substitution failed",
                                       file=sys.stderr)
                             return None
 
@@ -509,9 +520,11 @@ class HistoryExpander:
     def apply_modifiers(self, text: str, command: str, k: int):
         """Apply a chain of ``:`` modifiers at ``command[k]`` to ``text``.
 
-        Returns ``(new_text, end_index)``, or ``_BAD_WORD_SPECIFIER`` on a
-        malformed/failed modifier (e.g. ``:&`` with no previous substitution,
-        or an unknown modifier letter). Supported: ``:h`` ``:t`` ``:r`` ``:e``
+        Returns ``(new_text, end_index)``, ``_BAD_WORD_SPECIFIER`` on a
+        malformed modifier (e.g. ``:&`` with no previous substitution, or an
+        unknown modifier letter), or ``(_SUBSTITUTION_FAILED, spec)`` when a
+        ``:s`` old-text is absent (``spec`` is the exact modifier text for the
+        "substitution failed" diagnostic). Supported: ``:h`` ``:t`` ``:r`` ``:e``
         (pathname head/tail/root/ext on the whole selection), ``:s/old/new/``
         and ``:gs//`` global, ``:&`` (repeat last sub, ``:g&`` global), and
         ``:p`` (print, don't execute — sets a flag the caller honors).
@@ -538,6 +551,10 @@ class HistoryExpander:
                 result = self._mod_subst(text, command, m, glob)
                 if result is _BAD_WORD_SPECIFIER:
                     return _BAD_WORD_SPECIFIER
+                if result[0] is _SUBSTITUTION_FAILED:
+                    # Carry the exact modifier spec (this ':' through the end
+                    # index) up for the "substitution failed" diagnostic.
+                    return _SUBSTITUTION_FAILED, command[k:result[1]]
                 text, k = result
             else:
                 return _BAD_WORD_SPECIFIER
@@ -571,8 +588,10 @@ class HistoryExpander:
 
     def _mod_subst(self, text: str, command: str, m: int, glob: bool):
         """Apply ``s<delim>old<delim>new<delim>`` (at ``command[m]=='s'``) or
-        ``&`` (repeat the last substitution). Returns ``(text, end)`` or
-        ``_BAD_WORD_SPECIFIER``."""
+        ``&`` (repeat the last substitution). Returns ``(text, end)`` on
+        success, ``(_SUBSTITUTION_FAILED, end)`` when ``old`` parsed but is
+        absent from ``text``, or ``_BAD_WORD_SPECIFIER`` on a malformed
+        modifier / missing previous substitution."""
         n = len(command)
         if command[m] == '&':
             if self._last_sub is None:
@@ -593,8 +612,10 @@ class HistoryExpander:
                 return _BAD_WORD_SPECIFIER
             self._last_sub = (old, new)
         if old not in text:
-            # bash treats a non-matching substitution as a failed expansion.
-            return _BAD_WORD_SPECIFIER
+            # bash reports this as "substitution failed" (not "bad word
+            # specifier"); return the end index so the caller can quote the
+            # exact modifier spec in the message.
+            return _SUBSTITUTION_FAILED, k
         replaced = text.replace(old, new) if glob else text.replace(old, new, 1)
         return replaced, k
 
