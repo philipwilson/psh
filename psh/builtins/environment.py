@@ -422,7 +422,7 @@ class SetBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """set: set [-abCefhmnuvx] [+abCefhmnuvx] [-o option] [arg ...]
+        return """set: set [-abBCefhmnuvx] [+abBCefhmnuvx] [-o option] [arg ...]
 
     Set shell options and positional parameters.
     With no arguments, print all shell variables.
@@ -430,6 +430,7 @@ class SetBuiltin(Builtin):
     Short options:
       -a                Enable allexport (auto-export all variables)
       -b                Enable notify (async job completion notifications)
+      -B                Enable braceexpand (brace expansion, on by default)
       -C                Enable noclobber (prevent file overwriting with >)
       -e                Enable errexit (exit on command failure)
       -f                Enable noglob (disable pathname expansion)

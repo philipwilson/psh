@@ -8,7 +8,9 @@ The lexer transforms shell command strings into token streams using a **modular 
 
 1. Tokenization via `ModularLexer`
 2. Keyword normalization
-3. Brace expansion over the token stream (`TokenBraceExpander`)
+3. Brace expansion over the token stream (`TokenBraceExpander`), gated by
+   the `braceexpand` shell option (`set -B`/`+B`; the live value seeds the
+   expander and same-stream `set` toggles are honoured)
 
 ```
 Input String → ModularLexer → KeywordNormalizer → TokenBraceExpander → Tokens

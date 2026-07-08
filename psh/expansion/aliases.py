@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Alias management for psh."""
 
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 from ..lexer import tokenize
 from ..lexer.token_types import Token, TokenType
@@ -53,7 +53,9 @@ class AliasManager:
         self.aliases.clear()
 
     def expand_aliases(self, tokens: List[Token],
-                       effective: Optional[Dict[str, str]] = None) -> List[Token]:
+                       effective: Optional[Dict[str, str]] = None,
+                       shell_options: Optional[Mapping[str, Any]] = None
+                       ) -> List[Token]:
         """Expand aliases on a token stream (the lex→parse-boundary transform).
 
         Aliases are expanded only in command position (see
@@ -105,7 +107,8 @@ class AliasManager:
                 if alias_value is not None:
                     self.expanding.add(token.value)
                     try:
-                        result.extend(self._expand_value(alias_value, effective))
+                        result.extend(self._expand_value(alias_value, effective,
+                                                         shell_options))
                         i += 1
 
                         # Trailing space chains expansion to the next word,
@@ -125,7 +128,8 @@ class AliasManager:
                             self.expanding.add(nxt.value)
                             try:
                                 result.extend(
-                                    self._expand_value(nxt_value, effective))
+                                    self._expand_value(nxt_value, effective,
+                                                       shell_options))
                                 i += 1
                             finally:
                                 self.expanding.remove(nxt.value)
@@ -141,12 +145,21 @@ class AliasManager:
 
         return result
 
-    def _expand_value(self, alias_value: str,
-                      effective: Dict[str, str]) -> List[Token]:
-        """Tokenize an alias value and recursively expand it (no EOF)."""
-        alias_tokens = [t for t in tokenize(alias_value)
+    def _expand_value(self, alias_value: str, effective: Dict[str, str],
+                      shell_options: Optional[Mapping[str, Any]] = None
+                      ) -> List[Token]:
+        """Tokenize an alias value and recursively expand it (no EOF).
+
+        ``shell_options`` (the live option mapping, when the caller has one)
+        is threaded to ``tokenize`` so the alias VALUE is lexed in the same
+        mode as the surrounding command — in particular ``set +B`` keeps
+        braces in the value literal (bash: alias text joins the input stream
+        and sees the same expansion settings).
+        """
+        alias_tokens = [t for t in tokenize(alias_value,
+                                            shell_options=shell_options)
                         if t.type != TokenType.EOF]
-        return self.expand_aliases(alias_tokens, effective)
+        return self.expand_aliases(alias_tokens, effective, shell_options)
 
     def _absorb_alias_command(self, tokens: List[Token], start: int,
                               effective: Dict[str, str]) -> int:
