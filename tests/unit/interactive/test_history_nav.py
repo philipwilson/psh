@@ -96,7 +96,7 @@ class TestHistorySearch:
         s = self.search()
         state = s.start()
         assert state.status == 'active'
-        assert state.prompt == "(bck-i-search)`': "
+        assert state.prompt == "(reverse-i-search)`': "
         assert state.line is None     # at the bottom: buffer untouched
         assert state.repaint
 
@@ -104,7 +104,7 @@ class TestHistorySearch:
         s = self.search()
         state = s.feed('f')
         assert state.status == 'active'
-        assert state.prompt == "(bck-i-search)`f': "
+        assert state.prompt == "(reverse-i-search)`f': "
         assert state.line == 'echo findme_16'
         assert state.cursor == len('echo f')   # just past the match
         assert state.history_pos == 0
@@ -117,7 +117,7 @@ class TestHistorySearch:
         # extending the pattern while the entry still matches keeps us on
         # it with a non-failed prompt (readline/bash).
         assert state.status == 'active'
-        assert state.prompt == "(bck-i-search)`findme': "
+        assert state.prompt == "(reverse-i-search)`findme': "
         assert state.line == 'echo findme_16'
         assert state.cursor == len('echo findme')
         assert state.history_pos == 0
@@ -126,7 +126,7 @@ class TestHistorySearch:
         s = self.search()
         state = s.feed('z')
         assert state.status == 'active'
-        assert state.prompt == "(failed-bck-i-search)`z': "
+        assert state.prompt == "(failed reverse-i-search)`z': "
         assert state.history_pos == len(self.HISTORY)
         assert state.line is None
 
@@ -137,7 +137,7 @@ class TestHistorySearch:
         s = self.search(['echo match'])
         s.feed('m')
         state = s.feed('a')
-        assert state.prompt == "(bck-i-search)`ma': "
+        assert state.prompt == "(reverse-i-search)`ma': "
         assert state.line == 'echo match'
         assert state.history_pos == 0
 
@@ -150,7 +150,7 @@ class TestHistorySearch:
             state = s.feed(ch)
         assert state.line == 'echo foo baz'   # newest match, not the older
         assert state.history_pos == 1
-        assert state.prompt == "(bck-i-search)`foo': "
+        assert state.prompt == "(reverse-i-search)`foo': "
 
     def test_ctrl_r_steps_off_current_match_to_older(self):
         # An explicit Ctrl-R moves off the current entry (even though it
@@ -163,7 +163,7 @@ class TestHistorySearch:
         assert state.line == 'echo foo bar'
         assert state.history_pos == 0
         state = s.feed('\x12')        # Ctrl-R: no more matches
-        assert state.prompt == "(failed-bck-i-search)`foo': "
+        assert state.prompt == "(failed reverse-i-search)`foo': "
         assert state.history_pos == 0
 
     def test_repeated_ctrl_r_moves_to_earlier_match(self):
@@ -182,15 +182,15 @@ class TestHistorySearch:
         state = s.feed('\x12')        # step past the oldest entry
         assert state.status == 'active'
         assert state.repaint
-        assert state.prompt == "(failed-bck-i-search)`x': "
+        assert state.prompt == "(failed reverse-i-search)`x': "
         assert state.history_pos == 0
 
     def test_ctrl_s_switches_to_forward_prompt(self):
         s = self.search(['a echo', 'b echo'], pos=0)
         state = s.feed('\x13')        # Ctrl-S: search forward
         assert state.status == 'active'
-        assert state.prompt.startswith('(fwd-i-search)') or \
-            state.prompt.startswith('(failed-fwd-i-search)')
+        assert state.prompt.startswith('(i-search)') or \
+            state.prompt.startswith('(failed i-search)')
         assert state.history_pos == 1
 
     def test_ctrl_g_aborts_restoring_position_and_original_line(self):
@@ -203,15 +203,17 @@ class TestHistorySearch:
         assert state.history_pos == len(self.HISTORY)
         assert state.prompt is None   # back to the normal prompt
 
-    def test_enter_accepts_current_match_without_executing(self):
-        # Accept puts the match in the buffer; a second Enter (outside
-        # the machine) executes it — pinned by the PTY ctrl-r test.
+    def test_enter_accepts_and_executes_current_match(self):
+        # readline accept-line: Enter accepts the match AND executes it on a
+        # single keystroke. The machine signals this by requesting redispatch
+        # of the Enter, so the editor's accept_line binding finishes the line
+        # (pinned end-to-end by the PTY ctrl-r test).
         s = self.search()
         s.feed('f')
         state = s.feed('\r')
         assert state.status == 'accepted'
         assert state.line == 'echo findme_16'
-        assert not state.redispatch
+        assert state.redispatch
 
     def test_accept_at_bottom_keeps_buffer(self):
         s = self.search()
@@ -226,7 +228,7 @@ class TestHistorySearch:
         state = s.feed('\x7f')        # back to 'e': inclusive re-search
         # 'echo b' still matches 'e', so shortening keeps us on it (bash
         # keeps the current entry on a pattern change).
-        assert state.prompt == "(bck-i-search)`e': "
+        assert state.prompt == "(reverse-i-search)`e': "
         assert state.line == 'echo b'
         assert state.history_pos == 1
 
