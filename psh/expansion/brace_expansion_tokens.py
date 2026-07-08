@@ -134,8 +134,13 @@ class TokenBraceExpander:
         moving brace expansion into the Word stage): a toggle inside a
         not-taken branch or a not-called function definition still flips the
         rest of the SAME parse unit, and loop bodies are expanded once with
-        the state at their position rather than per iteration. Subsequent
-        parse units always use the runtime option value.
+        the state at their position rather than per iteration. The scanner
+        also fires on a ``set`` that will not run as the builtin (a
+        function-shadowed ``set``), misses one that runs as a LATER pipeline
+        segment (``true | set +B`` — bash subshells it, so nothing should
+        toggle), and skips invalid cluster letters that would make the real
+        ``set`` abort (``set -zB``). All of these are same-parse-unit-only:
+        subsequent parse units always use the runtime option value.
         """
         if not tokens:
             return tokens
