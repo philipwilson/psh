@@ -145,8 +145,11 @@ class FgBuiltin(Builtin):
         finally:
             # ALWAYS reclaim the terminal and clear foreground-job bookkeeping,
             # even if wait_for_job raised — otherwise a failed wait would strand
-            # the terminal with the (possibly dead) job's process group.
-            jm.restore_shell_foreground()
+            # the terminal with the (possibly dead) job's process group. Route
+            # through finish_foreground_job so a job re-stopped during fg is
+            # promoted to %+ (bash's stopped-job priority), not left where it
+            # was in the rotation.
+            jm.finish_foreground_job(True, job)
 
         # Remove job if completed
         if job.state == JobState.DONE:

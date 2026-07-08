@@ -16,8 +16,6 @@ stays on stdout — these tests cover only asynchronous notifications.
 import signal
 from io import StringIO
 
-import pytest
-
 from psh.executor.job_control import (
     JobManager,
     JobState,
@@ -46,7 +44,9 @@ def _make_manager(**state_kwargs):
 def _add_background_job(jm, pid=12345, command="sleep 0.1"):
     job = jm.create_job(pid, command)
     job.add_process(pid, command)
-    job.foreground = False
+    # Register the rotation the way a real bg launch does: the new job becomes
+    # %+ (the completion-notice marker rule keys off current_job).
+    jm.register_background_job(job, shell_state=jm.shell_state, last_pid=pid)
     return job
 
 
@@ -230,26 +230,22 @@ class TestCompletionNoticeStates:
         assert "[1]+  Done" in out
         assert not out.startswith("\n")
 
-    @pytest.mark.xfail(reason="deferred: the notice hardcodes '+'; bash blanks "
-                       "the marker for a non-current completing bg job, but psh "
-                       "cannot tell (a foreground command clobbers current_job "
-                       "via set_foreground_job and never restores the bg job's "
-                       "%+). Fixing needs JobManager current_job tracking, out "
-                       "of scope for this notice-format change.", strict=True)
     def test_noncurrent_completed_job_uses_space_marker(self):
         # bash marks a terminating job '+' ONLY when it is the current job;
         # an earlier (non-current) job's Done notice shows a SPACE, never '-'
-        # (probe-pinned vs bash 5.2.26). This is the deferred half of F4.
+        # (PTY-pinned vs bash 5.2.26). Now that a foreground command no longer
+        # clobbers current_job (task #24), the notice renders the true marker.
         jm, state = _make_manager()
         older = _add_background_job(jm, pid=100, command="sleep 1")   # job 1
-        _add_background_job(jm, pid=200, command="sleep 5")           # job 2 (current)
-        jm.current_job = None   # what psh leaves behind after a foreground cmd
+        _add_background_job(jm, pid=200, command="sleep 5")           # job 2 (%+)
+        assert jm.current_job is not older   # job 2 is current; job 1 is %-
         older.update_process_status(older.processes[0].pid, 0)
         older.update_state()
         assert older.state == JobState.DONE
         jm.notify_completed_jobs()
         out = state.stderr.getvalue()
-        assert "[1]   Done" in out          # SPACE marker (bash) — psh emits '+'
+        assert "[1]   Done" in out          # SPACE marker (bash), never '-'
+        assert "[1]-" not in out
 
 
 class TestNotifyOptionChannel:

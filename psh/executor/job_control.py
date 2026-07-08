@@ -319,8 +319,17 @@ class JobManager:
     def __init__(self):
         self.jobs: Dict[int, Job] = {}
         self.next_job_id = 1
+        # The %+/%- rotation. In bash this contains ONLY background and stopped
+        # jobs; a foreground command never enters it. Mutated by
+        # register_background_job (a new bg job becomes %+), the stopped-job
+        # promotion in finish_foreground_job, and remove_job (recompute on
+        # removal) — NOT by a running foreground command.
         self.current_job: Optional[Job] = None
         self.previous_job: Optional[Job] = None
+        # The foreground job currently executing (or None). Tracked separately
+        # from the %+/%- rotation purely for terminal-mode handoff; a running
+        # foreground command must not displace a background job's %+.
+        self.foreground_job: Optional[Job] = None
         # pid -> owning Job, maintained by Job.add_process / remove_job so
         # get_job_by_pid is O(1) rather than a scan over every process of
         # every job (the F14 O(N^2) status-processing path).
@@ -444,16 +453,24 @@ class JobManager:
         return None
 
     def set_foreground_job(self, job: Optional[Job]):
-        """Set the current foreground job."""
-        # Save current job's terminal modes if it exists
-        if self.current_job and self.current_job != job:
+        """Track the executing foreground job (terminal-mode handoff only).
+
+        This does NOT touch the %+/%- rotation (current_job/previous_job). In
+        bash that rotation holds only background and stopped jobs — a running
+        foreground command must not displace a background job's %+ (a bg job
+        keeps %+ across intervening foreground commands). The rotation is owned
+        by register_background_job, the stopped-job promotion in
+        finish_foreground_job, and remove_job.
+        """
+        # Snapshot the outgoing foreground job's terminal modes so a later
+        # resume (fg) can restore them.
+        if self.foreground_job and self.foreground_job is not job:
             try:
-                self.current_job.tmodes = termios.tcgetattr(0)
+                self.foreground_job.tmodes = termios.tcgetattr(0)
             except (OSError, termios.error):
                 pass
-            self.previous_job = self.current_job
 
-        self.current_job = job
+        self.foreground_job = job
 
         # Restore job's terminal modes if it has them. TCSANOW — the
         # drain variants block on a pty whose master isn't being read.
@@ -623,19 +640,15 @@ class JobManager:
         # No leading blank line — bash prints none before the completion notice
         # (the stray '\n' here was a real bash-divergence).
         #
-        # The marker stays a hardcoded '+' for now. bash's true rule is '+' for
-        # the current background job and a blank otherwise (never '-' — probe-
-        # pinned vs bash 5.2.26), but psh cannot render it faithfully from
-        # this method: a FOREGROUND command clobbers current_job via
-        # set_foreground_job and does not restore the background job's %+, so
-        # by the time a bg job's notice fires current_job is stale/None. A '+'
-        # is correct for the overwhelmingly common single-background-job case
-        # (that job IS the current job in bash); the only divergence is a rare
-        # multi-background-job notice showing '+' where bash shows a blank.
-        # Rendering that correctly needs a JobManager fix to current_job
-        # tracking (out of scope for this notice-format change) — see the
-        # found-not-fixed ledger.
-        print(f"[{job.job_id}]+  {label:<24}{job.command}",
+        # bash's completion-notice marker is '+' for the CURRENT background job
+        # and a blank otherwise — never '-', even for the previous (%-) job
+        # (PTY-pinned vs bash 5.2.26: a single/current bg job's Done notice
+        # shows '[1]+  Done'; a non-current job completing while another is %+
+        # shows '[1]   Done' with three spaces). A foreground command no longer
+        # clobbers current_job, so the bg job that was %+ still is when its
+        # notice fires here.
+        marker = '+' if job is self.current_job else ' '
+        print(f"[{job.job_id}]{marker}  {label:<24}{job.command}",
               file=self._notification_stream())
 
     def notify_completed_jobs(self):
@@ -895,6 +908,14 @@ class JobManager:
         if self.shell_state is not None and hasattr(self.shell_state, 'foreground_pgid'):
             self.shell_state.foreground_pgid = None
 
+    def _promote_to_current(self, job: 'Job') -> None:
+        """Make ``job`` the current job (``%+``), demoting the old ``%+`` to
+        ``%-`` (bash). A no-op when ``job`` is already current."""
+        if self.current_job is job:
+            return
+        self.previous_job = self.current_job
+        self.current_job = job
+
     def finish_foreground_job(self, terminal_transferred: bool,
                               job: Optional['Job'] = None):
         """Tear down foreground-job state after a foreground job completes OR stops.
@@ -904,15 +925,13 @@ class JobManager:
         pytest, where control was never transferred) just clear the
         bookkeeping. Shared by the pipeline and external-command paths.
 
-        A foreground job STOPPED by Ctrl-Z (SIGTSTP) stays in the job table and
-        becomes the CURRENT job (``%+``) so a bare ``fg``/``bg`` resumes it
-        (bash). The teardown clears foreground tracking — which demotes the
-        stopped job to ``%-`` — so re-promote it to ``%+``, keeping the job that
-        was current before it as ``%-``.
+        A foreground job that RUNS TO COMPLETION never entered the ``%+``/``%-``
+        rotation (set_foreground_job no longer promotes it), so a background
+        job's ``%+`` is left exactly as it was. A foreground job STOPPED by
+        Ctrl-Z (SIGTSTP) stays in the job table and becomes the CURRENT job
+        (``%+``) so a bare ``fg``/``bg`` resumes it — bash's stopped-job
+        priority — demoting the job that was ``%+`` before it to ``%-``.
         """
-        # During foreground execution current_job IS this job; previous_job is
-        # whatever was current before it (set by set_foreground_job at launch).
-        prior_previous = self.previous_job
         if terminal_transferred:
             self.restore_shell_foreground()
         else:
@@ -921,8 +940,7 @@ class JobManager:
                 self.shell_state.foreground_pgid = None
 
         if job is not None and job.state == JobState.STOPPED:
-            self.current_job = job
-            self.previous_job = prior_previous if prior_previous is not job else None
+            self._promote_to_current(job)
 
     @overload
     def wait_for_job(self, job: Job,

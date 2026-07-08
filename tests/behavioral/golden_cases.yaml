@@ -7416,6 +7416,31 @@
   stderr: ""
   exit_code: 0
 
+# A foreground command must NOT steal %+ from a running background job — bash
+# keeps the bg job as %+ across intervening foreground commands (task #24). We
+# observe the marker via jobspec TARGETING (kill/wait), not `jobs` output,
+# because psh's job command text omits redirections (a separate cosmetic diff).
+# An EXTERNAL foreground command (/bin/echo) is required to trigger the old
+# bug — a builtin never created the foreground job that clobbered %+.
+
+- name: jobcur_fg_command_keeps_current_job
+  command: "sleep 30 >/dev/null 2>&1 & /bin/echo x >/dev/null; kill %+ && echo TARGETED"
+  stdout: "TARGETED\n"
+  stderr: ""
+  exit_code: 0
+
+- name: jobcur_fg_command_keeps_both_bg_markers
+  command: "sleep 30 >/dev/null 2>&1 & sleep 31 >/dev/null 2>&1 & /bin/echo x >/dev/null; kill %- && echo K1; kill %+ && echo K2"
+  stdout: "K1\nK2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: jobcur_wait_plus_targets_bg_after_fg
+  command: "sleep 0.2 >/dev/null 2>&1 & /bin/echo x >/dev/null; wait %+; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # STREAMING INPUT SERVICE (read / mapfile)
 # ASCII-only I/O so the LC_ALL=C golden harness stays bash-faithful; the
