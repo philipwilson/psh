@@ -620,15 +620,22 @@ class JobManager:
         if self._sigpipe_suppressed(status):
             return
         label = background_completion_label(status)
-        # bash marks a terminating job '+' ONLY when it is the current job;
-        # every other completing job — including the previous job — gets a
-        # blank marker, NOT '-' (probe-pinned vs bash 5.2.26: two bg jobs
-        # where the earlier, non-current one completes shows "[1]   Done").
-        # This deliberately differs from notify_stopped_jobs' +/-/space rule,
-        # which applies to still-live stopped jobs. No leading blank line —
-        # bash prints none before the notice.
-        marker = '+' if job == self.current_job else ' '
-        print(f"[{job.job_id}]{marker}  {label:<24}{job.command}",
+        # No leading blank line — bash prints none before the completion notice
+        # (the stray '\n' here was a real bash-divergence).
+        #
+        # The marker stays a hardcoded '+' for now. bash's true rule is '+' for
+        # the current background job and a blank otherwise (never '-' — probe-
+        # pinned vs bash 5.2.26), but psh cannot render it faithfully from
+        # this method: a FOREGROUND command clobbers current_job via
+        # set_foreground_job and does not restore the background job's %+, so
+        # by the time a bg job's notice fires current_job is stale/None. A '+'
+        # is correct for the overwhelmingly common single-background-job case
+        # (that job IS the current job in bash); the only divergence is a rare
+        # multi-background-job notice showing '+' where bash shows a blank.
+        # Rendering that correctly needs a JobManager fix to current_job
+        # tracking (out of scope for this notice-format change) — see the
+        # found-not-fixed ledger.
+        print(f"[{job.job_id}]+  {label:<24}{job.command}",
               file=self._notification_stream())
 
     def notify_completed_jobs(self):

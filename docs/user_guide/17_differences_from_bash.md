@@ -421,10 +421,16 @@ an empty prompt is announced at the next reaping opportunity (the next
 command boundary) rather than the moment it happens. Without `notify`, PSH
 already reports completions at the next prompt, so in practice the two
 notify states differ only in that `notify` also announces a job reaped by
-an in-progress `wait` immediately. The notice text itself is bash-accurate
-(`[N]+  Done …` for the current job, a blank marker for any other). Making
-the notice truly immediate would require a line-editor redesign to watch
-the `SIGCHLD` pipe; it is deliberately out of scope.
+an in-progress `wait` immediately. Making the notice truly immediate would
+require a line-editor redesign to watch the `SIGCHLD` pipe; it is
+deliberately out of scope.
+
+One further small cosmetic gap: psh always marks a completed background job
+`[N]+  Done …`, whereas bash blanks the marker (`[N]   Done …`) when the
+completed job is *not* the current job — the rare case of several
+simultaneous background jobs where an earlier one finishes first. psh
+cannot currently distinguish this because a foreground command overwrites
+its "current job" pointer, so the notice keeps the common-case `+`.
 
 ### Quote Handling
 

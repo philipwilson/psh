@@ -487,11 +487,11 @@ def notify_completed_jobs(self):
     for job_id, job in list(self.jobs.items()):
         if job.state == JobState.DONE and not job.notified and not job.foreground:
             self._print_completion_notice(job)   # bash format: no leading
-            job.notified = True                   # blank line; marker is '+'
-            completed.append(job_id)              # only for the current job,
-    # Remove completed jobs after notification    # else a blank (never '-')
-    ...
-```
+            job.notified = True                   # blank line; marker is a
+            completed.append(job_id)              # hardcoded '+' (correct for
+    # Remove completed jobs after notification    # the common single-bg-job
+    ...                                           # case; multi-job marker gap
+```                                               # deferred — see guide 17.3
 
 ## Testing
 
