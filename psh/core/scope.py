@@ -1,49 +1,12 @@
 """Hierarchical variable scope management with attribute support."""
 
-import os
-import random
-import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .exceptions import ReadonlyVariableError
 from .locale_service import active_locale
+from .special_registry import SpecialContext, SpecialParameterState
 from .variable_store import VariableStore
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
-
-# Variables whose value is computed on read but whose assignment is HONORED
-# (SECONDS resets the elapsed-time baseline; RANDOM seeds the generator).
-# RANDOM additionally MUTATES generator state on each read, so name-only
-# inspection paths (nameref resolution) must not route through its read.
-_COMPUTED_SPECIAL_VARS = frozenset({'SECONDS', 'RANDOM'})
-
-# Computed-on-read specials whose assignment has NO EFFECT (bash: "assigning
-# a value to BASHPID/SRANDOM has no effect"), and which lose their special
-# behavior once `unset`. BASHPID is the current process pid (differs from $$
-# in a subshell); SRANDOM is a fresh 32-bit value from a good entropy source
-# on each read (unrelated to RANDOM's seed).
-_IGNORE_ASSIGN_SPECIAL_VARS = frozenset({'BASHPID', 'SRANDOM'})
-
-# Every computed-on-read special. Name-only inspection (nameref resolution)
-# must not route through their read, since RANDOM/SRANDOM vary per read.
-_ALL_COMPUTED_SPECIAL_VARS = _COMPUTED_SPECIAL_VARS | _IGNORE_ASSIGN_SPECIAL_VARS
-
-
-def _intrand32(seed: int) -> int:
-    """Park-Miller minimal-standard generator with Schrage's method.
-
-    This is bash's ``intrand32`` (lib/sh/random.c); combined with the
-    high/low 16-bit XOR fold in the RANDOM read path it reproduces bash
-    5.x's ``$RANDOM`` sequence value-for-value for a given seed.
-    """
-    s = seed & 0xFFFFFFFF
-    if s == 0:
-        s = 123459876  # bash's guard against a zero seed inside the generator
-    h = s // 127773
-    low = s % 127773
-    t = 16807 * low - 2836 * h
-    if t < 0:
-        t += 0x7FFFFFFF
-    return t
 
 
 class VariableScope:
@@ -112,53 +75,23 @@ class ScopeManager:
         # ``export`` builtin).
         self.variable_changed: Optional[Callable[[str], None]] = None
 
-        # Special variable state
-        self._shell_start_time = time.time()
-        self._current_line_number = 1
-
-        # Settable computed variables (SECONDS, RANDOM). These are computed
-        # on read, but assignment is honored: SECONDS=N resets the baseline,
-        # RANDOM=N seeds the generator (bash behavior). State recorded here:
-        #   _seconds_base / _seconds_assigned_at : if set, SECONDS reads as
-        #       base + (now - assigned_at); otherwise now - shell_start.
-        #   _random_seed : if not None, RANDOM is reproducible from this seed.
-        #   _computed_special_deactivated : names that have been `unset` and
-        #       so lost their special behavior, becoming ordinary variables
-        #       (bash: after `unset SECONDS`, SECONDS is a plain variable).
-        self._seconds_base: Optional[int] = None
-        self._seconds_assigned_at: float = 0.0
-        self._random_seed: Optional[int] = None
-        self._random_last_value: int = 0
-        self._computed_special_deactivated: set = set()
-
-    def adopt_special_state(self, parent: 'ScopeManager') -> None:
-        """Copy the special-variable bookkeeping a subshell-style child
-        inherits (called from ``ShellState.adopt``): the shell start time
-        and SECONDS baseline (bash: ``SECONDS=500; (echo $SECONDS)``
-        prints 500), the deactivated-specials set (after ``unset SECONDS``
-        it stays a plain variable in children too), and the current line
-        number. RANDOM's generator state (_random_seed/_random_last_value)
-        is deliberately NOT copied: bash reseeds the generator in subshell
-        children (the child's sequence is unrelated to the parent's), and
-        a fresh unseeded state reproduces that; seeding inside the child
-        (``(RANDOM=42; echo $RANDOM)``) is still deterministic.
-        """
-        self._shell_start_time = parent._shell_start_time
-        self._seconds_base = parent._seconds_base
-        self._seconds_assigned_at = parent._seconds_assigned_at
-        self._computed_special_deactivated = set(parent._computed_special_deactivated)
-        self._current_line_number = parent._current_line_number
+        # Computed special-parameter lifecycle (RANDOM/SECONDS/LINENO/...).
+        # One typed object owns the SECONDS monotonic baseline, the RANDOM seed,
+        # the LINENO counter, the deactivated-on-unset set, and the persistent
+        # readonly/export overlay — see special_registry.py (appraisal H1).
+        self._special = SpecialParameterState()
 
     def clone(self) -> 'ScopeManager':
         """Build an independent ScopeManager for a child shell (clone_for_child).
 
         Copies every scope via ``VariableScope.copy`` (whole ``Variable``
         objects with deep-copied array values), the debug flag, and the
-        computed-special bookkeeping (``adopt_special_state``: SECONDS
-        baseline, deactivated specials, current line — RANDOM state is
-        deliberately reset there). The observers and the ``_shell``
-        back-reference are left unset: the owning ``ShellState`` re-wires the
-        observers and ``Shell.set_shell`` installs the back-reference.
+        computed-special bookkeeping (``SpecialParameterState.clone``: SECONDS
+        baseline, deactivated specials, current line, persistent attributes —
+        RANDOM's seed is deliberately reset there). The observers and the
+        ``_shell`` back-reference are left unset: the owning ``ShellState``
+        re-wires the observers and ``Shell.set_shell`` installs the
+        back-reference.
 
         Crucially, NO variable is created through ``set_variable``, so the
         child's variable keyset is EXACTLY the parent's — no seeded defaults
@@ -171,7 +104,7 @@ class ScopeManager:
         for scope in self.scope_stack[1:]:
             new.scope_stack.append(scope.copy())
         new._debug = self._debug
-        new.adopt_special_state(self)
+        new._special = self._special.clone()
         return new
 
     def _notify_path_changed(self, name: str) -> None:
@@ -187,6 +120,13 @@ class ScopeManager:
     def set_shell(self, shell):
         """Set reference to shell instance for arithmetic evaluation."""
         self._shell = shell
+
+    def is_dynamic_special(self, name: str) -> bool:
+        """True if *name* is an ACTIVE dynamic special (RANDOM/SECONDS/...).
+
+        Public predicate for callers that must treat these specially — e.g.
+        ``set -a`` must not auto-export them (see ShellState.set_variable)."""
+        return self._special.has_lifecycle(name)
 
     def enable_debug(self, enabled: bool = True):
         """Enable or disable debug output for scope operations."""
@@ -308,14 +248,12 @@ class ScopeManager:
         rejects the write with "circular name reference".
         """
         from .exceptions import NamerefCycleError
-        # Dynamically computed special variables (e.g. RANDOM, SECONDS,
-        # SRANDOM, BASHPID) are never namerefs, and probing them through
-        # get_variable_object here would fire their side effects (advancing
-        # the RANDOM generator, drawing a fresh SRANDOM) on what is meant to
-        # be a name-only inspection. Resolve them to themselves without
-        # touching the computed read path.
-        if (name in _ALL_COMPUTED_SPECIAL_VARS
-                and name not in self._computed_special_deactivated):
+        # Computed special variables are never namerefs, and probing them
+        # through get_variable_object here would fire their side effects
+        # (advancing the RANDOM generator, drawing a fresh SRANDOM, building the
+        # FUNCNAME/PIPESTATUS arrays) on what is meant to be a name-only
+        # inspection. Resolve them to themselves without touching the read path.
+        if self._special.is_computed(name):
             return name
         seen = set()
         current = name
@@ -378,7 +316,13 @@ class ScopeManager:
         attribute-less declared-unset cell — bare ``declare FOO`` /
         ``local FOO``, or a local unset in its own scope — is found too
         (bash shows ``declare -- FOO``).
+
+        An active dynamic special has no stored cell, so return its computed
+        value carrying the effective attributes — ``declare -p RANDOM`` shows
+        ``declare -ir RANDOM="..."`` like bash, rather than "not found".
         """
+        if self._special.has_lifecycle(name):
+            return self._get_special_variable(name)
         for scope in reversed(self.scope_stack):
             if name in scope.variables:
                 return scope.variables[name]
@@ -424,34 +368,22 @@ class ScopeManager:
                 self._shell.expansion_manager.set_var_or_array_element(name, value)
                 return
 
-        # Settable computed variables: SECONDS=N resets the elapsed-time
-        # baseline; RANDOM=N seeds the reproducible generator. bash honors
-        # the assignment without storing a plain variable (the value stays
-        # computed on read). Skipped once the name has been `unset` (it then
-        # behaves as an ordinary variable) and for array assignments.
-        if (name in _COMPUTED_SPECIAL_VARS
-                and name not in self._computed_special_deactivated
+        # Whole-variable assignment to an ACTIVE dynamic special (RANDOM/SECONDS
+        # seed; BASHPID/SRANDOM/EPOCH*/LINENO ignore the value). No stored
+        # variable is created: readonly is enforced from the persistent-attribute
+        # overlay, the value is applied by the special's assign policy, and any
+        # declaration attributes (``readonly RANDOM=5``, ``export SECONDS=100``)
+        # persist on the overlay — the observer then materialises an EXPORT
+        # snapshot into the environment. An array assignment or a nameref
+        # DEFINITION is not a special write and falls through.
+        if (self._special.has_lifecycle(name)
                 and not (attributes & VarAttributes.NAMEREF)
                 and not isinstance(value, (IndexedArray, AssociativeArray))):
-            n = self._coerce_computed_special_int(value)
-            if name == 'SECONDS':
-                self._seconds_base = n
-                self._seconds_assigned_at = time.time()
-            else:  # RANDOM
-                self._random_seed = n & 0xFFFFFFFF
-                self._random_last_value = 0
-            # No variable_changed/env-sync notification: these stay computed
-            # (never stored, never exported), and reading them to sync would
-            # spuriously advance the RANDOM generator.
-            return
-
-        # BASHPID / SRANDOM: assignment has NO EFFECT (bash) — silently drop it
-        # (still computed on read). Skipped once `unset` deactivates the name
-        # and for array assignments.
-        if (name in _IGNORE_ASSIGN_SPECIAL_VARS
-                and name not in self._computed_special_deactivated
-                and not (attributes & VarAttributes.NAMEREF)
-                and not isinstance(value, (IndexedArray, AssociativeArray))):
+            if self._special.attributes_for(name) & VarAttributes.READONLY:
+                raise ReadonlyVariableError(name)
+            self._special.assign(name, value)
+            self._special.add_attributes(name, attributes)
+            self._notify_variable_changed(name)
             return
 
         # Check if variable exists. `declare -g` targets the global scope, so
@@ -631,18 +563,19 @@ class ScopeManager:
         unset of the tombstone is a no-op, but the same cell seen from a
         DEEPER scope is removed outright like any outer instance.
         """
-        # Computed specials (SECONDS/RANDOM/BASHPID/SRANDOM) lose their special
-        # behavior once unset and become ordinary variables (bash: after
-        # `unset SECONDS`, a later `SECONDS=foo` stores the literal string;
-        # `unset BASHPID` makes $BASHPID empty). Record the deactivation and
-        # drop any recorded baseline/seed, then fall through so the name is
-        # also cleared from the scope chain.
-        if name in _ALL_COMPUTED_SPECIAL_VARS:
-            self._computed_special_deactivated.add(name)
-            if name == 'SECONDS':
-                self._seconds_base = None
-            elif name == 'RANDOM':
-                self._random_seed = None
+        # A dynamic special (SECONDS/RANDOM/BASHPID/SRANDOM/EPOCH*/LINENO) loses
+        # its special behavior once unset and becomes an ordinary variable
+        # (bash: after `unset SECONDS`, a later `SECONDS=foo` stores the literal
+        # string; `unset EPOCHSECONDS` makes it a plain unset name). A readonly
+        # special cannot be unset (bash: "cannot unset: readonly variable").
+        # An active special has no stored Variable, so deactivate and return —
+        # there is nothing to clear from the scope chain.
+        if self._special.has_lifecycle(name):
+            if self._special.attributes_for(name) & VarAttributes.READONLY:
+                raise ReadonlyVariableError(name)
+            self._special.deactivate(name)
+            self._notify_variable_changed(name)
+            return
 
         for scope in reversed(self.scope_stack):
             if name not in scope.variables:
@@ -665,19 +598,6 @@ class ScopeManager:
             self._notify_path_changed(name)
             self._notify_variable_changed(name)
             return
-
-    def _coerce_computed_special_int(self, value: Any) -> int:
-        """Parse an assignment to SECONDS/RANDOM as a plain integer.
-
-        bash parses these as a simple signed decimal integer, NOT a full
-        arithmetic expression: ``SECONDS=0x10`` and ``RANDOM=x`` both yield
-        0, while ``SECONDS=-5`` is accepted. (``SECONDS=$((2+3))`` works
-        because the arithmetic is expanded to ``5`` before assignment.)
-        """
-        try:
-            return int(str(value).strip())
-        except (ValueError, AttributeError):
-            return 0
 
     def _apply_attributes(self, value: Any, attributes: VarAttributes) -> Any:
         """Apply attribute transformations to value."""
@@ -751,91 +671,32 @@ class ScopeManager:
         return self.scope_stack[-1]
 
     def _get_special_variable(self, name: str) -> Optional[Variable]:
-        """Handle special shell variables that are computed dynamically."""
-        # SECONDS / RANDOM lose their special behavior once `unset`, becoming
-        # ordinary variables (bash). Returning None lets the normal scope
-        # lookup take over.
-        if name in self._computed_special_deactivated:
-            return None
-        if name == 'LINENO':
-            # Return current line number (simplified implementation)
-            return Variable(name='LINENO', value=str(self._current_line_number))
-        elif name == 'SECONDS':
-            # Seconds since shell start, or since the last `SECONDS=N`
-            # assignment reset the baseline (bash: SECONDS=N then reads
-            # return N + elapsed-since-assignment).
-            if self._seconds_base is not None:
-                elapsed = self._seconds_base + int(
-                    time.time() - self._seconds_assigned_at)
-            else:
-                elapsed = int(time.time() - self._shell_start_time)
-            return Variable(name='SECONDS', value=str(elapsed))
-        elif name == 'RANDOM':
-            # Random number in 0..32767. If RANDOM=N seeded the generator,
-            # the sequence is reproducible and matches bash value-for-value
-            # (bash 5.x Park-Miller minimal-standard generator). Otherwise
-            # fall back to Python's RNG for an unpredictable value.
-            if self._random_seed is not None:
-                self._random_seed = _intrand32(self._random_seed)
-                value = ((self._random_seed >> 16)
-                         ^ (self._random_seed & 0xFFFF)) & 0x7FFF
-            else:
-                value = random.randint(0, 32767)
-            return Variable(name='RANDOM', value=str(value))
-        elif name == 'EPOCHSECONDS':
-            return Variable(name='EPOCHSECONDS', value=str(int(time.time())))
-        elif name == 'EPOCHREALTIME':
-            return Variable(name='EPOCHREALTIME', value=f"{time.time():.6f}")
-        elif name == 'BASHPID':
-            # The CURRENT process pid — differs from $$ (shell_pid) inside a
-            # subshell / command substitution (bash). Read live via getpid so
-            # a forked child reports its own pid. Integer attribute, like bash.
-            return Variable(name='BASHPID', value=str(os.getpid()),
-                            attributes=VarAttributes.INTEGER)
-        elif name == 'SRANDOM':
-            # bash 5.1+: a fresh 32-bit value from a good entropy source on
-            # each read, UNRELATED to RANDOM's seed. os.urandom is unbuffered
-            # and independent of Python's (seedable) random module.
-            return Variable(
-                name='SRANDOM',
-                value=str(int.from_bytes(os.urandom(4), 'big')),
-                attributes=VarAttributes.INTEGER)
-        # UID/EUID/PPID are stored as real readonly-integer variables at shell
-        # startup (see ShellState.__init__), NOT computed here — that is what
-        # makes them assignment- and unset-proof and lists them in declare -p.
-        elif name == 'PIPESTATUS':
-            if self._shell is not None:
-                arr = IndexedArray()
-                for i, st in enumerate(self._shell.state.pipestatus):
-                    arr.set(i, str(st))
-                return Variable(name='PIPESTATUS', value=arr,
-                                attributes=VarAttributes.ARRAY)
-        elif name == 'BASH_COMMAND':
-            # The command currently being (or about to be) executed — or,
-            # inside a trap action, the command executing at the time of
-            # the trap (TrapManager.set_bash_command freezes it there).
-            if self._shell is not None:
-                return Variable(name='BASH_COMMAND',
-                                value=self._shell.state.bash_command)
-        elif name == 'FUNCNAME':
-            # FUNCNAME is an ARRAY (bash): [0] is the current function, [1] the
-            # caller, ... — the call stack, innermost first. function_stack is
-            # pushed on entry (last = current), so reverse it.
-            if self._shell and hasattr(self._shell, 'state') and self._shell.state.function_stack:
-                arr = IndexedArray()
-                for i, fname in enumerate(reversed(self._shell.state.function_stack)):
-                    arr.set(i, fname)
-                return Variable(name='FUNCNAME', value=arr,
-                                attributes=VarAttributes.ARRAY)
-            else:
-                # Not in a function, return empty string (bash behavior)
-                return Variable(name='FUNCNAME', value='')
+        """Compute a special variable's value through the special registry.
 
-        return None
+        Returns a fresh ``Variable`` (its value produced on the spot) for any
+        ACTIVE computed special, carrying that special's effective attributes
+        (declared defaults such as ``INTEGER`` for RANDOM, OR-ed with the
+        persistent readonly/export overlay). A deactivated dynamic special
+        (``unset``) is no longer computed, so this returns ``None`` and the
+        normal scope lookup takes over. A shell-view special whose compute needs
+        a not-yet-wired shell (e.g. PIPESTATUS before ``set_shell``) also returns
+        ``None``.
+
+        UID/EUID/PPID are stored as real readonly-integer variables at shell
+        startup (see ShellState.__init__), NOT computed here — that is what
+        makes them assignment- and unset-proof and lists them in declare -p.
+        """
+        if not self._special.is_computed(name):
+            return None
+        value = self._special.compute_value(name, SpecialContext(self._special, self._shell))
+        if value is None:
+            return None
+        return Variable(name=name, value=value,
+                        attributes=self._special.attributes_for(name))
 
     def set_current_line_number(self, line_number: int):
         """Update the current line number for LINENO variable."""
-        self._current_line_number = line_number
+        self._special.current_line_number = line_number
 
     def get_current_line_number(self) -> int:
         """Current line number backing $LINENO.
@@ -844,7 +705,7 @@ class ScopeManager:
         of the command that invoked them, instead of resetting to 1 — see
         Shell.run_command's ``base_line``.
         """
-        return self._current_line_number
+        return self._special.current_line_number
 
     def is_in_function(self) -> bool:
         """Check if we're currently in a function scope."""
@@ -925,7 +786,15 @@ class ScopeManager:
         the global is exported, the plain local is not). Skips arrays (never
         exported) and declared-but-unset cells (``export FOO`` has no entry
         until assigned).
+
+        An exported dynamic special (``export RANDOM``) has no stored cell; its
+        computed value is materialised as a SNAPSHOT — the env entry is the value
+        at export/change time and does not track later reads (bash). Computing it
+        here is why the observer captures that snapshot.
         """
+        if (self._special.has_lifecycle(name)
+                and (self._special.attributes_for(name) & VarAttributes.EXPORT)):
+            return self._get_special_variable(name)
         for scope in reversed(self.scope_stack):
             var = scope.variables.get(name)
             if (var is not None and var.is_exported
@@ -999,6 +868,13 @@ class ScopeManager:
         both succeed; only a value assignment fails). ``global_scope``
         (``declare -g``) targets the global instance past any local shadow.
         """
+        # An active dynamic special has no stored cell — record the attribute on
+        # its persistent overlay so ``readonly RANDOM`` / ``export SECONDS``
+        # persist (and EXPORT materialises via the observer + find_exported_instance).
+        if self._special.has_lifecycle(name):
+            self._special.add_attributes(name, attributes)
+            self._notify_variable_changed(name)
+            return
         var = self._find_variable_for_mutation(name, global_only=global_scope)
         if var:
             # Handle mutually exclusive attributes
@@ -1025,6 +901,16 @@ class ScopeManager:
         ``global_scope`` (``declare -g``) targets the global instance past
         any local shadow.
         """
+        # Active dynamic special: drop the attribute from its overlay. Removing
+        # EXPORT (``export -n RANDOM``) lets the observer delete its env entry;
+        # readonly cannot be removed (like any variable).
+        if self._special.has_lifecycle(name):
+            if (attributes & VarAttributes.READONLY
+                    and (self._special.attributes_for(name) & VarAttributes.READONLY)):
+                raise ReadonlyVariableError(name)
+            self._special.remove_attributes(name, attributes)
+            self._notify_variable_changed(name)
+            return
         var = self._find_variable_for_mutation(name, global_only=global_scope)
         if var:
             # Cannot remove readonly attribute
