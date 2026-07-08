@@ -308,11 +308,10 @@ class PushdBuiltin(Builtin):
     def _update_pwd_vars(self, directory: str, shell: 'Shell'):
         """Update PWD and OLDPWD environment variables."""
         old_pwd = shell.env.get('PWD', os.getcwd())
-        shell.env['OLDPWD'] = old_pwd
-        shell.env['PWD'] = directory
 
-        # Also update shell state variables (exported, like bash's
-        # declare -x PWD/OLDPWD; the export observer syncs shell.env)
+        # Update the exported PWD/OLDPWD shell variables (bash's declare -x
+        # PWD/OLDPWD); export_variable's observer keeps shell.env in sync — the
+        # single env interface, no direct poke (appraisal H3).
         try:
             shell.state.export_variable('OLDPWD', old_pwd)
             shell.state.export_variable('PWD', directory)
@@ -467,11 +466,10 @@ class PopdBuiltin(Builtin):
     def _update_pwd_vars(self, directory: str, shell: 'Shell'):
         """Update PWD and OLDPWD environment variables."""
         old_pwd = shell.env.get('PWD', os.getcwd())
-        shell.env['OLDPWD'] = old_pwd
-        shell.env['PWD'] = directory
 
-        # Also update shell state variables (exported, like bash's
-        # declare -x PWD/OLDPWD; the export observer syncs shell.env)
+        # Update the exported PWD/OLDPWD shell variables (bash's declare -x
+        # PWD/OLDPWD); export_variable's observer keeps shell.env in sync — the
+        # single env interface, no direct poke (appraisal H3).
         try:
             shell.state.export_variable('OLDPWD', old_pwd)
             shell.state.export_variable('PWD', directory)

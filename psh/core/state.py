@@ -2,7 +2,7 @@
 import enum
 import os
 import sys
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Iterable, Optional, Set
 
 from ..version import __version__
 from .command_hash import CommandHashTable
@@ -119,6 +119,28 @@ class ShellState:
         for name, value in self.env.items():
             if is_environ_shell_name(name):
                 self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
+
+        # The opaque inherited-environment base: the entries whose NAME is not a
+        # valid shell identifier (``bad-name``, ``a.b``, a non-ASCII name). They
+        # are NOT shell variables, so they never flow through the scope manager;
+        # they are passed to children and shown by ``printenv`` but not ``set`` /
+        # ``declare -p`` / ``export -p`` (bash; appraisal H3). Kept as an
+        # EXPLICIT typed store so the execution environment can be MATERIALIZED
+        # as opaque-base + exported-vars + command-overlay instead of derived by
+        # incremental mutation, and so a child clone inherits it exactly.
+        self._env_base: Dict[str, str] = {
+            name: value for name, value in self.env.items()
+            if not is_environ_shell_name(name)
+        }
+        # Command-local temporary-environment overlay (``VAR=x cmd`` over a
+        # builtin/external): the LITERAL strings this one command's process
+        # environment carries, composed on top of the exported variables at
+        # materialization. Empty except for the duration of such a command (a
+        # function call layers a temp-env SCOPE instead — see
+        # CommandAssignments.apply_prefix). The literal wins over the
+        # exported-variable value so ``RANDOM=5 cmd`` passes ``5`` and
+        # ``a+=z cmd`` passes the element-0 view, not a re-derived value.
+        self._env_overlay: Dict[str, str] = {}
 
         # From here on, every write/unset/attribute-change of a variable
         # re-derives that name's entry in the live environment, so a plain
@@ -337,6 +359,12 @@ class ShellState:
 
         # Environment + variable scopes: EXACT copies, no import, no seeding.
         self.env = parent.env.copy()
+        # Opaque inherited-env base and any active command-env overlay: copied
+        # exactly so the child materializes env from the same authorities (a
+        # child forked mid temp-env command inherits the overlay, like bash's
+        # `V=x eval '(printenv V)'`).
+        self._env_base = dict(parent._env_base)
+        self._env_overlay = dict(parent._env_overlay)
         self.locale = parent.locale
         # clone() copies every scope (whole Variable objects, arrays deep) and
         # the computed-special state WITHOUT any set_variable call, so the
@@ -758,22 +786,39 @@ class ShellState:
         self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT,
                                         local=False, skip_temp_env=True)
 
-    def _sync_exported_variable(self, name: str) -> None:
-        """Re-derive one name's live-environment entry from its variable.
+    def _materialize_env_name(self, name: str) -> None:
+        """Set ``self.env[name]`` from the ONE authoritative composition:
+        command overlay (wins) > innermost exported variable > opaque base >
+        absent.
 
-        Installed as ``scope_manager.variable_changed``; fired after any
-        write, unset, attribute change, or scope pop affecting *name*.
-        The entry reflects the innermost EXPORTED instance across scopes
-        (not merely the innermost visible one): a non-exported local
-        shadowing an exported outer variable leaves the outer's entry in
-        place (bash). Arrays are never exported, and a declared-but-unset
-        export (``export FOO``) has no entry until FOO is assigned.
+        This is the single place ``self.env`` is derived for a name, so no
+        caller needs to poke the dict directly (appraisal H3). The exported
+        instance is the innermost EXPORTED one across scopes (not merely the
+        innermost visible): a non-exported local shadowing an exported outer
+        leaves the outer's entry in place (bash). Arrays are never exported and
+        a declared-but-unset export (``export FOO``) has no entry until FOO is
+        assigned; both fall through to the opaque base (which cannot hold their
+        name, since exportable names are valid identifiers) and then to absent.
         """
+        if name in self._env_overlay:
+            self.env[name] = self._env_overlay[name]
+            return
         var = self.scope_manager.find_exported_instance(name)
         if var is not None:
             self.env[name] = var.as_string()
+        elif name in self._env_base:
+            self.env[name] = self._env_base[name]
         else:
             self.env.pop(name, None)
+
+    def _sync_exported_variable(self, name: str) -> None:
+        """Re-derive one name's live-environment entry, then run the couple of
+        variable-observer side effects (getopts restart, ignoreeof tracking).
+
+        Installed as ``scope_manager.variable_changed``; fired after any
+        write, unset, attribute change, or scope pop affecting *name*.
+        """
+        self._materialize_env_name(name)
 
         if name == 'OPTIND':
             # Every OPTIND assignment (getopts' own advance AND a script
@@ -790,6 +835,31 @@ class ShellState:
             # psh/interactive/eof_policy.py).
             self.options['ignoreeof'] = (
                 self.scope_manager.get_variable('IGNOREEOF') is not None)
+
+    def apply_command_env(self, assignments: Dict[str, str]) -> None:
+        """Compose a command-local temporary-environment overlay.
+
+        Used by a ``VAR=x cmd`` prefix over a builtin/external: the caller has
+        already bound each name as a shell variable (so ``$VAR`` resolves); this
+        records the LITERAL string each name contributes to *this command's*
+        process environment and materializes it (the overlay wins over the
+        exported-variable value). Paired with :meth:`restore_command_env`, this
+        replaces the previous per-name save-and-rollback of ``self.env``: env is
+        only ever written through the one materialization path (appraisal H3).
+        """
+        for name, value in assignments.items():
+            self._env_overlay[name] = value
+            self._materialize_env_name(name)
+
+    def restore_command_env(self, names: Iterable[str]) -> None:
+        """Drop a command's temp-env overlay entries and re-materialize each
+        name from the authoritative source (exported variable / opaque base /
+        absent). The caller restores the shell VARIABLES separately; this only
+        tears down the env overlay.
+        """
+        for name in names:
+            self._env_overlay.pop(name, None)
+            self._materialize_env_name(name)
 
     def get_positional_param(self, index: int) -> str:
         """Get positional parameter by index (1-based)."""

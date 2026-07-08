@@ -90,14 +90,11 @@ _SPECS = [
     _spec("ignoreeof", False, OptionCategory.SET),
     _spec("nolog", False, OptionCategory.SET),
     _spec("posix", False, OptionCategory.SET),
-    _spec("collect_errors", False, OptionCategory.SET),
     _spec("braceexpand", True, OptionCategory.SET, dollar_dash="B"),
     _spec("histexpand", True, OptionCategory.SET, dollar_dash="H"),
     _spec("history", True, OptionCategory.SET),
     _spec("emacs", False, OptionCategory.SET),
     _spec("vi", False, OptionCategory.SET),
-    _spec("parser-mode", "balanced", OptionCategory.SET, value_type=str,
-          notes="performance/balanced/development"),
     # shopt-managed bash-compat options.
     _spec("dotglob", False, OptionCategory.SHOPT),
     _spec("nullglob", False, OptionCategory.SHOPT),
@@ -173,13 +170,26 @@ class ShellOptions(MutableMapping):
         return self._values[name]
 
     def __setitem__(self, name: str, value: OptionValue) -> None:
-        if name not in OPTION_REGISTRY:
+        spec = OPTION_REGISTRY.get(name)
+        if spec is None:
             raise KeyError(
                 f"unknown shell option {name!r} (not in OPTION_REGISTRY)")
+        # Enforce the declared value type (core-state appraisal H4). A bool
+        # option must receive a real bool — `opts['errexit'] = 'false'` or
+        # `= 1` is a caller bug, not a truthy value. (bool is an int subclass,
+        # so isinstance(1, bool) is False, correctly rejecting int writes.)
+        if not isinstance(value, spec.value_type):
+            raise TypeError(
+                f"shell option {name!r} expects {spec.value_type.__name__}, "
+                f"got {type(value).__name__} {value!r}")
         self._values[name] = value
 
     def __delitem__(self, name: str) -> None:
-        del self._values[name]
+        # Registry keys are permanent: deleting one would make a typed accessor
+        # raise KeyError on the next read (core-state appraisal H4). Toggle the
+        # value instead of removing the key.
+        raise TypeError(
+            f"shell option {name!r} cannot be deleted (toggle its value)")
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._values)
