@@ -475,7 +475,10 @@ FOO=bar set | grep '^FOO='     # Bash: (nothing)   | PSH: FOO=bar
 ```
 
 This only matters when the prefixed command is itself an enumerator of the
-variable table, which is vanishingly rare in practice.
+variable table, which is vanishingly rare in practice. It is a known,
+pre-existing divergence that PSH deliberately defers: closing it requires
+modelling bash's separate temporary environment in the variable-lookup path,
+tracked as its own follow-up.
 
 ### Identifier (Name) Rules — Unicode Extension
 

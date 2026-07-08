@@ -7664,3 +7664,47 @@
   stdout: "SAME\n"
   stderr: ""
   exit_code: 0
+# Behavior-lock: the temp-env semantics that already matched bash must stay
+# matched across the mutate/rollback -> materialization-overlay swap. These are
+# the discriminating rows of the 27-case truth table (the rest are pinned by the
+# cases above / the pre-existing suite).
+- name: corestate4_prefix_external_env
+  command: 'V=hi env | grep "^V="'
+  stdout: "V=hi\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_left_to_right
+  command: 'A=1 B=$A env 2>/dev/null | grep "^B="'
+  stdout: "B=1\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_invisible_own_words
+  command: 'V=old; V=new printf "%s\n" "$V"'
+  stdout: "old\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_builtin_sees_var
+  command: 'printf "a:b" | { IFS=: read x y; printf "<%s|%s>\n" "$x" "$y"; }'
+  stdout: "<a|b>\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_function_declare_g_survives
+  command: 'f(){ declare -g G=global; }; X=1 f; printf "<%s>\n" "${G-UNSET}"'
+  stdout: "<global>\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_function_body_assign_discarded
+  command: 'f(){ X=changed; }; X=orig f; printf "<%s>\n" "${X-UNSET}"'
+  stdout: "<UNSET>\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_allexport_env
+  command: 'set -a; V=hi env | grep "^V="'
+  stdout: "V=hi\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_nameref_writes_through_temporary
+  command: 'declare -n r=a; r=x env >/dev/null; printf "<%s>\n" "${a-UNSET}"'
+  stdout: "<UNSET>\n"
+  stderr: ""
+  exit_code: 0
