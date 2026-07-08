@@ -91,16 +91,33 @@ def handle_visitor_mode_for_command(shell: 'Shell', command: str) -> int:
 
 
 def handle_visitor_mode_for_script(shell: 'Shell', script_path: str) -> int:
-    """Run the selected analysis mode over a script file."""
+    """Run the selected analysis mode over a script file.
+
+    Reads the file EXACTLY as the executor would — the same pre-flight
+    ``validate_script_file`` checks (so a missing file returns 127, a
+    directory/unreadable/binary file 126, matching ``psh script_path`` and
+    ``bash -n`` instead of a flat 1) and the same ``FileInput`` reader
+    (``errors='surrogateescape'``, CRLF-normalized). A non-UTF-8-but-valid
+    script that runs fine therefore also validates fine, instead of crashing
+    the analysis with a ``UnicodeDecodeError``.
+    """
+    from .input_sources import FileInput
+
+    # Pre-flight file checks (missing 127, directory/unreadable/binary 126)
+    # via the SAME validator the execution path uses.
+    validation_result = shell.script_manager.script_validator.validate_script_file(
+        script_path)
+    if validation_result != 0:
+        return validation_result
+
     try:
-        with open(script_path, 'r') as f:
-            content = f.read()
-    except FileNotFoundError:
-        print(f"psh: {script_path}: No such file or directory", file=sys.stderr)
-        return 1
-    except (OSError, ValueError) as e:
-        # ValueError covers UnicodeDecodeError on a non-UTF-8 file.
-        print(f"Error processing script: {e}", file=sys.stderr)
+        with FileInput(script_path) as file_input:
+            # Reconstruct the exact text the executor's accumulator sees:
+            # FileInput split the raw bytes into CR-normalized physical lines.
+            content = '\n'.join(file_input.lines)
+    except OSError as e:
+        # A race (file vanished after the pre-flight) or other read error.
+        print(f"psh: {script_path}: {e}", file=sys.stderr)
         return 1
     return handle_visitor_mode_for_content(shell, content, script_path)
 
