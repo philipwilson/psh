@@ -581,6 +581,12 @@ class FileRedirector:
 
         Only fds 1 and 2 have Python stream counterparts; for any other fd
         (``exec 3>file``) the descriptor-level redirect is all there is.
+
+        A permanent REOPEN after a permanent close also lands here, which
+        replaces the ``_RawFdStream`` a permanent close installed. That swap
+        is hygiene, not correctness — the raw stream would keep working
+        (it follows the fd number) — but rebinding restores normal buffered
+        block writes for the reopened stream.
         """
         if target_fd == 1:
             sys.stdout = self._stream_sharing_fd(1)
@@ -711,20 +717,38 @@ class FileRedirector:
         """Reach the stream universe for a permanent ``>&-`` output-fd close.
 
         The fd-level close already happened (``apply_fd_plan`` →
-        ``_redirect_close_fd``). The stream half only matters when an earlier
-        ``exec >file`` installed a state OVERRIDE — a *dup* of that file bound
-        as ``sys.std*`` and ``state.std*``. That dup does not reflect the
-        fd-level close, so a later builtin's write keeps leaking into the file
-        (``exec >f; exec >&-; echo two`` writing ``two`` into ``f``). Replace it
-        (and the override) with the shared ``_ClosedStream`` sentinel so the
-        write fails EBADF like bash, and hand the orphaned dup to
-        ``closed_dups`` to drop on success.
+        ``_redirect_close_fd``). But a builtin writes through the Python stream
+        object, not the raw fd, so the stream half must be handled too. The
+        stream left in ``sys.std*`` after the close is either:
 
-        With NO override, ``sys.std*`` is the natural stream WRAPPING the fd, so
-        the fd-level close alone already makes writes fail — and, crucially, a
-        later fd-level reopen (``exec 1>&-; f 1>&2`` redirecting the fd back to
-        a live target) heals it, exactly as bash does. Installing the sentinel
-        there would permanently shadow that reopen, so leave it untouched.
+        * the natural buffering ``TextIOWrapper`` that WRAPS the std fd (no
+          prior ``exec >file`` override — the common case), or
+        * a *dup* of an earlier ``exec >file`` target bound as
+          ``sys.std*``/``state.std*`` (the with-override case).
+
+        Both are wrong to leave in place. The natural wrapper BUFFERS a builtin's
+        post-close write; its flush fails EBADF, but the retained bytes later
+        flush into a REOPENED fd of the same number at shutdown (MED-1, the
+        exec-close-then-reopen leak). The override dup does not reflect the
+        fd-level close at all, so writes keep leaking into the old file
+        (``exec >f; exec >&-; echo two`` → ``two`` into ``f``).
+
+        Replace it with a ``_RawFdStream`` on the fd number (write→``os.write``):
+        no buffer to leak, yet transparent — a compound/function body that
+        re-points the fd at a live target at the fd level (``f 1>&2``,
+        ``{ ...; } >g``) still lands, exactly as the natural wrapper did. A
+        permanent reopen (``exec >&3``, ``exec >f``) routes through
+        ``_rebind_output_stream`` and installs a normal buffered stream, dropping
+        the raw one. Point the ``shell``/``state`` override at it too, so a
+        builtin writing through ``state.std*`` behaves identically.
+
+        The displaced stream is only handed to ``closed_dups`` (closed on
+        success) when it was an override *dup* — that dup owns a descriptor that
+        must not leak. The natural wrapper owns the std fd itself (already
+        closed) and is kept alive by ``sys.__std*__`` until shutdown; closing it
+        here could land an ``os.close`` on a same-``exec`` reopen of that fd
+        number, and it is harmless (swapped out before any write, so empty), so
+        leave it.
 
         Input closes (``<&-``) and closes of fd >= 3 have no output-stream
         counterpart: ``output_close_fd`` returns ``None`` and this is a no-op.
@@ -734,17 +758,17 @@ class FileRedirector:
         if target_fd is None:
             return
         _, stdout_ov, stderr_ov = self.state.streams.snapshot()
-        if (stdout_ov if target_fd == 1 else stderr_ov) is None:
-            return  # natural fd-wrapping stream: fd-level close/reopen suffices
-        displaced = io.swap_output_stream_closed(target_fd)
-        # Point the shell/state override at the same sentinel (sys.std* now
-        # holds it), so a builtin writing through state.stdout/stderr also
-        # fails rather than reaching the orphaned dup.
+        had_override = (stdout_ov if target_fd == 1 else stderr_ov) is not None
+        displaced = io.swap_output_stream_reopenable(target_fd)
+        # Point the shell/state override at the raw stream too (sys.std* now
+        # holds it), so a builtin writing through state.stdout/stderr behaves
+        # the same as one writing through sys.stdout/stderr.
         if target_fd == 1:
             self.shell.stdout = sys.stdout
         else:
             self.shell.stderr = sys.stderr
-        closed_dups.append(displaced)
+        if had_override:
+            closed_dups.append(displaced)
 
     @property
     def procsub_handler(self):

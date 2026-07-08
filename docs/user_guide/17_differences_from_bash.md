@@ -579,6 +579,35 @@ $HOME
 EOF
 ```
 
+### Permanent `exec` fd close, then reopen
+
+Closing a standard descriptor with `exec >&-` (or `exec 2>&-`) and later
+reopening it is handled to bash parity for command **output**:
+
+```bash
+exec 3>&1; exec >&-; echo LEAK; exec >&3 3>&-; echo end   # -> only `end`
+```
+
+The `echo LEAK` write fails (`write error: Bad file descriptor`) and is
+discarded; it never reappears when fd 1 is reopened — matching bash. A
+compound or function body that reopens the fd for its own duration still works
+(`exec 1>&-; f(){ echo a; }; f 1>&2` prints `a` on stderr).
+
+**Deliberate divergence — buffered *diagnostics* across a stderr close+reopen.**
+When a builtin's *error message* (not its normal output) is written to a stderr
+closed with `exec 2>&-` and stderr is then reopened, bash resurrects the
+buffered message onto the reopened descriptor (a C-stdio buffering artifact):
+
+```bash
+exec 3>&2; exec 2>&-; cd /nonexistent; exec 2>&3 3>&-; echo end >&2
+# bash stderr:  end<newline>cd: /nonexistent: No such file or directory
+# psh  stderr:  end
+```
+
+psh writes diagnostics straight to the descriptor, so a message that cannot be
+delivered (the fd is closed) is simply lost rather than re-emitted onto whatever
+later reuses that descriptor. Normal command output never leaks in either shell.
+
 ### Script on Standard Input
 
 When psh reads its script from standard input — `cmds | psh`, `psh < file`, or
