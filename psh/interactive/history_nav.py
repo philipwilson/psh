@@ -107,7 +107,7 @@ class SearchState:
       mode keeping the match), or 'aborted' (leave search mode
       restoring the pre-search line).
     - ``prompt``: the search prompt to paint while active (e.g.
-      ``(bck-i-search)`ls': ``); None means the normal prompt.
+      ``(reverse-i-search)`ls': ``); None means the normal prompt.
     - ``line``: the buffer text to show; None means "leave the buffer
       untouched" (no match landed yet, or nothing to restore).
     - ``cursor``: the cursor position within ``line`` while active
@@ -143,8 +143,9 @@ class HistorySearch:
     - backspace shortens the pattern and re-searches,
     - Ctrl-R / Ctrl-S move to the next match backward / forward,
     - Ctrl-G aborts (restoring position and original line),
-    - Enter accepts the current match into the buffer (it does NOT
-      execute — a second Enter does),
+    - Enter accepts the current match AND executes it on this single
+      keystroke (readline's accept-line), via the same redispatch path
+      the control-key terminators use,
     - any other control character accepts AND asks the editor to
       re-dispatch it (``redispatch=True``).
 
@@ -165,7 +166,7 @@ class HistorySearch:
         self.original_line = original_line
 
     def start(self) -> SearchState:
-        """The initial ``(bck-i-search)`': `` prompt state."""
+        """The initial ``(reverse-i-search)`': `` prompt state."""
         return self._state()
 
     def feed(self, char: str) -> SearchState:
@@ -176,8 +177,13 @@ class HistorySearch:
             return self._next(-1)
         if char == '\x13':                      # Ctrl-S - next match forward
             return self._next(1)
-        if char in ('\r', '\n'):                # Enter - accept search
-            return self.accept()
+        if char in ('\r', '\n'):                # Enter - accept AND execute
+            # readline runs accept-line: the match executes on this single
+            # Enter. Redispatch the Enter so the editor's accept_line binding
+            # fires (accepts the match into the buffer, then finishes the
+            # line). The ESC-terminated path (_accept_search) keeps the
+            # accept-without-execute behavior, matching bash.
+            return self.accept(redispatch=True)
         if char == '\x7f':                      # Backspace - shorten pattern
             if not self.pattern:
                 return self._state(repaint=False)
@@ -245,11 +251,13 @@ class HistorySearch:
     def _state(self, failed: bool = False, repaint: bool = True) -> SearchState:
         """The active-search render state: prompt text plus the current
         match with the cursor just past the matched text."""
-        direction = "bck" if self.direction < 0 else "fwd"
+        # bash/readline wording: backward is "reverse-i-search", forward is
+        # plain "i-search"; the failed variants prepend "failed " with a space.
+        base = "reverse-i-search" if self.direction < 0 else "i-search"
         if failed:
-            prompt = f"(failed-{direction}-i-search)`{self.pattern}': "
+            prompt = f"(failed {base})`{self.pattern}': "
         else:
-            prompt = f"({direction}-i-search)`{self.pattern}': "
+            prompt = f"({base})`{self.pattern}': "
 
         line: Optional[str] = None
         cursor = 0

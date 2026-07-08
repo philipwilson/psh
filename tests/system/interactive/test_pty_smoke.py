@@ -81,6 +81,13 @@ class TestPtyBasics:
         psh.sendeof()
         psh.expect(pexpect.EOF)
 
+    def test_ctrl_d_prints_exit_farewell(self, psh):
+        # bash echoes "exit" (to stderr) on the EOF that leaves the shell;
+        # psh printed only a bare newline before campaign #19 Finding 5.
+        psh.sendeof()
+        psh.expect('exit')
+        psh.expect(pexpect.EOF)
+
     def test_ctrl_c_at_prompt_clears_line(self, psh):
         psh.send('garbage_never_run')
         psh.sendintr()
@@ -553,6 +560,82 @@ class TestPtyJobControl:
         assert 'Done' not in file_text, file_text
         assert not re.search(r'\[1\] \d+', file_text), file_text
 
+    def test_set_o_notify_emits_bg_done_once_and_reaps(self, tmp_path):
+        """`set -b` / `set -o notify` must NOT drop the bg-completion notice.
+
+        Campaign #19 HIGH regression: with notify on, the async SIGCHLD
+        reaper marked a finished background job DONE but never emitted the
+        completion notice nor reaped it — so the notice was silently lost AND
+        the job leaked as a stale DONE entry (notify_completed_jobs, skipped
+        under notify, is the sole reaper of finished background jobs). psh
+        cannot match bash's truly-immediate-while-idle emission (the line
+        editor's select() does not watch the SIGCHLD pipe), but it must emit
+        exactly once at the next reaping opportunity and leave `jobs` empty.
+        """
+        import pty
+        import select
+
+        pid, fd = pty.fork()
+        if pid == 0:  # child
+            # Clean env — do NOT inherit the ambient DISPLAY/XAUTHORITY (they
+            # carry the XQuartz launchd socket and auto-start XQuartz; standing
+            # rule for test-spawned envs). Mirrors spawn_psh's fixed dict.
+            env = {
+                'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
+                'HOME': '/tmp',
+                'TERM': 'xterm',
+                'PS1': 'PSH$ ',
+                'PYTHONUNBUFFERED': '1',
+                'PYTHONPATH': PSH_ROOT,
+            }
+            os.execvpe(sys.executable, [
+                sys.executable, '-u', '-m', 'psh', '--norc',
+                '--force-interactive'], env)
+
+        def drain(seconds):
+            data = b''
+            end = time.time() + seconds
+            while time.time() < end:
+                r, _, _ = select.select([fd], [], [], 0.1)
+                if r:
+                    try:
+                        chunk = os.read(fd, 4096)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    data += chunk
+            return data
+
+        try:
+            out = drain(1.0)                       # first prompt
+            os.write(fd, b'set -b\r'); out += drain(0.4)
+            os.write(fd, b'sleep 0.2 &\r'); out += drain(0.5)
+            os.write(fd, b'sleep 0.6\r'); out += drain(1.2)   # bg finishes here
+            os.write(fd, b'jobs\r'); out += drain(0.6)        # must be empty
+            os.write(fd, b'exit\r'); out += drain(0.6)
+        finally:
+            try:
+                os.kill(pid, 9)
+            except ProcessLookupError:
+                pass
+            os.waitpid(pid, 0)
+            os.close(fd)
+
+        text = out.decode(errors='replace')
+        # The Done notice appears exactly once (it was ZERO before the fix:
+        # dropped under `set -b`) in the exact bash format: '+' marker (the
+        # single bg job is the current job), two spaces, then the state word
+        # left-justified in a 24-column field. F4 dropped the stray leading
+        # blank line and pinned the marker.
+        assert re.search(r'\[1\]\+  Done {20}sleep 0\.2', text), text
+        assert text.count('Done') == 1, text
+        # The job was reaped: the `jobs` listing shows no leftover entry, so
+        # the bg command text does not survive past the `jobs` command as a
+        # stale DONE (which is how the pre-fix leak surfaced).
+        after_jobs = text.split('jobs', 1)[-1]
+        assert 'sleep 0.2' not in after_jobs, text
+
     def test_background_job_notice_and_jobs(self, psh):
         psh.send('sleep 0.5 &\r')
         psh.expect(r'\[1\]')      # job notice with id
@@ -706,11 +789,16 @@ class TestPtyPortedLegacy:
         psh.expect('other_3')
         psh.expect(PROMPT)
         psh.send('\x12')          # ctrl-r enters reverse search
-        psh.expect('bck-i-search')
+        psh.expect('reverse-i-search')   # bash/readline wording (not bck-)
         psh.send('findme')        # incremental match on the older command
-        psh.send('\r')            # accept search result into the buffer
-        psh.send('\r')            # execute the recalled command
+        psh.send('\r')            # accept-line: recalls AND executes on ONE Enter
         psh.expect('findme_16')
+        psh.expect(PROMPT)
+        # The single Enter left a FRESH prompt (not the recalled line): a
+        # command typed next runs standalone, it does not concatenate onto
+        # the recalled command (the pre-fix two-Enter bug).
+        psh.send('echo tail_$((3+4))\r')
+        psh.expect('tail_7')
 
     def test_ctrl_l_clears_screen_and_keeps_session(self, psh):
         psh.send('echo before_$((2+2))\r')

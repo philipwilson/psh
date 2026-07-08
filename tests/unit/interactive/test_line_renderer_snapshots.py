@@ -178,8 +178,8 @@ class TestRedrawSnapshots:
         # Incremental search repaints with its own prompt while the
         # screen state still reflects the original prompt's geometry.
         s = Surface("PSH$ ", "ls -la", 6, 80, screen_prompt_len=5)
-        out = s.redraw(prompt="(bck-i-search)`ls': ")
-        assert out == "\r\x1b[J" + "(bck-i-search)`ls': ls -la\r\x1b[26C"
+        out = s.redraw(prompt="(reverse-i-search)`ls': ")
+        assert out == "\r\x1b[J" + "(reverse-i-search)`ls': ls -la\r\x1b[30C"
 
 
 class TestMoveCursorSnapshots:
