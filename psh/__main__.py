@@ -464,7 +464,7 @@ def main():
             # Interactive REPL (TTY attached)
             shell.interactive_manager.run_interactive_loop()
         else:
-            # Non-interactive: read all commands from stdin and execute as a
+            # Non-interactive: commands come from stdin and execute as a
             # script. With -i the interactive flag is still set (rc loaded,
             # history loaded) but commands come from the pipe — no REPL.
             # This IS script execution (bash treats `cmds | bash` exactly
@@ -477,14 +477,20 @@ def main():
             # discards the failing line and continues — probe-verified).
             if not _flag("force_interactive"):
                 shell.state.is_script_mode = True
-            script_content = _read_all_stdin()
-            if script_content.strip():
-                from .scripting.input_sources import StringInput
-                input_source = StringInput(script_content, "<stdin>")
-                exit_code = shell.script_manager.source_processor.execute_as_main(
-                    input_source, add_to_history=False)
-                sys.exit(exit_code)
-            sys.exit(0)
+            # Read fd 0 LAZILY — one command's lines at a time — so a `read`,
+            # `cat`, or `mapfile` INSIDE the script consumes the SUBSEQUENT
+            # stdin lines as data, sharing the one fd exactly as bash does.
+            # (The previous slurp of all of fd 0 into a StringInput drained
+            # it, so every in-script stdin consumer saw immediate EOF — the
+            # scripting appraisal 2026-07-07 finding #1.) A closed/empty fd 0
+            # simply yields no commands (exit 0). execute_as_main fires the
+            # EXIT trap exactly once, including on empty input (no trap set,
+            # so a no-op there).
+            from .scripting.input_sources import StdinInput
+            stdin_source = StdinInput(fd=0, name="<stdin>")
+            exit_code = shell.script_manager.source_processor.execute_as_main(
+                stdin_source, add_to_history=False)
+            sys.exit(exit_code)
 
 
 if __name__ == "__main__":

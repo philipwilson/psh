@@ -177,6 +177,56 @@ class InputReader:
                           include_delimiter=False, deadline=deadline,
                           on_char=on_char)
 
+    def read_record_bytes(self, *, delimiter_byte: int) -> Optional[bytes]:
+        """Read raw bytes up to (not including) ``delimiter_byte``, or to EOF.
+
+        The byte-oriented sibling of :meth:`read_record`: it never over-reads
+        the source, so the rest of the stream stays available to the next
+        consumer — the same guarantee that lets a ``read`` inside a stdin script
+        consume the SUBSEQUENT physical lines as data. It returns the bytes read
+        WITHOUT the delimiter, or ``None`` at a clean EOF (nothing buffered, the
+        source ended). A final record with no trailing delimiter returns its
+        bytes; the NEXT call then returns ``None``.
+
+        Unlike :meth:`read_record` this does not decode: the caller owns the
+        decode policy. The lazy stdin-as-script reader (``StdinInput``) splits on
+        the newline byte here and decodes each physical line with
+        ``errors='surrogateescape'`` so a non-UTF-8 script byte round-trips
+        exactly as the ``FileInput`` script path treats it — which the
+        ``errors='replace'`` char decode would not preserve.
+        """
+        if self._stream is not None:
+            # Already-decoded text source (e.g. a StringIO test stdin): read one
+            # char to the delimiter and re-encode with the surrogateescape
+            # policy the caller decodes with, keeping the return type uniform.
+            delim = chr(delimiter_byte)
+            chars: list = []
+            while True:
+                ch = self._stream.read(1)
+                if ch == '':
+                    if not chars:
+                        return None
+                    break
+                if ch == delim:
+                    break
+                chars.append(ch)
+            return ''.join(chars).encode('utf-8', errors='surrogateescape')
+        assert self._fd is not None  # exactly one of fd/stream is set
+        # Any bytes buffered mid-character by a prior char read cannot be the
+        # delimiter (it is an ASCII byte; a buffered byte is a multibyte
+        # continuation), so draining them first is safe.
+        buf = bytearray(self._partial)
+        self._partial.clear()
+        while True:
+            byte, outcome, _err = self._next_byte(None)
+            if outcome is not Outcome.DATA:
+                # EOF/ERROR before the delimiter: return the partial record, or
+                # None for a truly empty clean EOF.
+                return bytes(buf) if buf else None
+            if byte == delimiter_byte:
+                return bytes(buf)
+            buf.append(byte)
+
     # -- core loop -----------------------------------------------------------
 
     def _read(self, *, delimiter: Optional[str], max_chars: Optional[int],
