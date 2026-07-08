@@ -581,6 +581,12 @@ class FileRedirector:
 
         Only fds 1 and 2 have Python stream counterparts; for any other fd
         (``exec 3>file``) the descriptor-level redirect is all there is.
+
+        A permanent REOPEN after a permanent close also lands here, which
+        replaces the ``_RawFdStream`` a permanent close installed. That swap
+        is hygiene, not correctness — the raw stream would keep working
+        (it follows the fd number) — but rebinding restores normal buffered
+        block writes for the reopened stream.
         """
         if target_fd == 1:
             sys.stdout = self._stream_sharing_fd(1)
