@@ -113,7 +113,35 @@ class TokenBraceExpander:
             TokenType.RBRACE, TokenType.IF, TokenType.WHILE, TokenType.UNTIL,
         }
 
-    def expand(self, tokens):
+    def expand(self, tokens, enabled=True):
+        """Expand braces across ``tokens``.
+
+        ``enabled`` seeds the braceexpand state from the live shell option
+        (bash ``set -B``/``+B``, on by default). Because psh brace-expands at
+        tokenize time while bash does it at word-expansion time, a ``set``
+        that toggles the option DURING this token stream would otherwise only
+        take effect for the NEXT parse unit. So — mirroring the same-stream
+        ``alias`` absorption in AliasManager — a command-position ``set``
+        whose literal arguments toggle braceexpand (``-B``/``+B`` clusters,
+        ``-o``/``+o braceexpand``) flips the state for the REST of the stream,
+        making straight-line code (``set +B; echo {a,b}``) match bash. The
+        toggle applies AFTER the ``set`` command's own words (bash expands a
+        command's words before running it), is discarded when the command is
+        a pipeline segment or backgrounded (a subshell in bash), and is
+        scoped across ``( ... )`` subshells.
+
+        Known approximation (parse-time model; ledgered — the real fix is
+        moving brace expansion into the Word stage): a toggle inside a
+        not-taken branch or a not-called function definition still flips the
+        rest of the SAME parse unit, and loop bodies are expanded once with
+        the state at their position rather than per iteration. The scanner
+        also fires on a ``set`` that will not run as the builtin (a
+        function-shadowed ``set``), misses one that runs as a LATER pipeline
+        segment (``true | set +B`` — bash subshells it, so nothing should
+        toggle), and skips invalid cluster letters that would make the real
+        ``set`` abort (``set -zB``). All of these are same-parse-unit-only:
+        subsequent parse units always use the runtime option value.
+        """
         if not tokens:
             return tokens
         from ..lexer.token_types import TokenType
@@ -124,6 +152,8 @@ class TokenBraceExpander:
         out = []
         zone_active = True  # in a command-prefix (assignment-allowed) position
         in_test_expr = False  # between [[ and ]] — no brace expansion there
+        pending_toggle = None   # braceexpand state to adopt after this command
+        paren_stack = []        # enabled-state saved at each `(` (subshell scope)
         n = len(tokens)
         i = 0
 
@@ -176,15 +206,91 @@ class TokenBraceExpander:
                        and getattr(tokens[j + 1], 'adjacent_to_previous', False)):
                     j += 1
                 run = tokens[i:j + 1]
-                out.extend(self._expand_run(run, zone_active))
+                if enabled:
+                    out.extend(self._expand_run(run, zone_active))
+                else:
+                    out.extend(run)
+                # A command-position `set` may toggle braceexpand for the
+                # rest of this stream (see the expand() docstring).
+                if (zone_active and len(run) == 1
+                        and tok.type == TokenType.WORD
+                        and tok.quote_type is None and tok.value == 'set'):
+                    toggle = self._interpret_set_args(tokens, j + 1, n)
+                    if toggle is not None:
+                        pending_toggle = toggle
                 zone_active = self._zone_after_word(run[0], zone_active)
                 i = j + 1
             else:
                 out.append(tok)
-                zone_active = True if tok.type in reset_types else zone_active
+                if tok.type in reset_types:
+                    zone_active = True
+                    if tok.type == TokenType.LPAREN:
+                        if pending_toggle is not None:  # malformed source
+                            enabled, pending_toggle = pending_toggle, None
+                        paren_stack.append(enabled)
+                    elif tok.type == TokenType.RPAREN:
+                        # A subshell's toggle does not escape it (bash).
+                        pending_toggle = None
+                        if paren_stack:
+                            enabled = paren_stack.pop()
+                    elif tok.type in (TokenType.PIPE, TokenType.AMPERSAND):
+                        # A pipeline segment / background command runs in a
+                        # subshell in bash — its `set` does not persist.
+                        pending_toggle = None
+                    elif pending_toggle is not None:
+                        enabled, pending_toggle = pending_toggle, None
                 i += 1
 
         return out
+
+    def _interpret_set_args(self, tokens, start, n):
+        """Best-effort static read of a `set` command's braceexpand effect.
+
+        Scans the argument tokens from ``start`` up to the command's end,
+        interpreting only plain, unquoted, single-token literal words —
+        scanning stops conservatively at the first argument it cannot read
+        statically (an expansion, a quoted or composite word, a redirect).
+        Recognized toggles: ``B`` in a ``-``/``+`` cluster, and a cluster
+        ending in ``o`` whose following name is ``braceexpand``. Returns
+        True (enable) / False (disable) / None (no toggle seen). The RUNTIME
+        option value is still owned by SetBuiltin — this only keeps the
+        current token stream's expansion in step with it.
+        """
+        from ..lexer.token_types import TokenType
+        word_like = self._word_like()
+        reset_types = self._reset_types()
+        toggle = None
+        expect_o_name = None  # sign of a trailing-`o` cluster awaiting its name
+        j = start
+        while j < n and tokens[j].type not in reset_types:
+            tok = tokens[j]
+            composite = (j + 1 < n and tokens[j + 1].type in word_like
+                         and getattr(tokens[j + 1], 'adjacent_to_previous',
+                                     False))
+            if (tok.type != TokenType.WORD or tok.quote_type is not None
+                    or composite):
+                break  # not a plain literal word: stop interpreting
+            word = tok.value or ''
+            if expect_o_name is not None:
+                if word == 'braceexpand':
+                    toggle = (expect_o_name == '-')
+                expect_o_name = None
+                j += 1
+                continue
+            if word in ('--', '-', '+'):
+                break  # end of options: the rest are positional parameters
+            if word[:1] in ('-', '+') and len(word) > 1:
+                sign = word[0]
+                cluster = word[1:]
+                for pos, ch in enumerate(cluster):
+                    if ch == 'o' and pos == len(cluster) - 1:
+                        expect_o_name = sign
+                    elif ch == 'B':
+                        toggle = (sign == '-')
+            else:
+                break  # first non-option argument: positional parameters
+            j += 1
+        return toggle
 
     def _zone_after_word(self, first_tok, zone_active):
         from ..lexer.token_types import TokenType

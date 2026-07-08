@@ -62,7 +62,8 @@ def _make_config(strict: bool, shell_options: Optional[Mapping[str, Any]] = None
     return config
 
 
-def _post_lex(tokens: List[Token]) -> List[Token]:
+def _post_lex(tokens: List[Token],
+              shell_options: Optional[Mapping[str, Any]] = None) -> List[Token]:
     """The shared post-lex pipeline: keyword normalization, then brace
     expansion over the token stream.
 
@@ -72,13 +73,24 @@ def _post_lex(tokens: List[Token]) -> List[Token]:
     token stream), so generated characters are never re-lexed and quote/
     command-position context is available.
 
+    Brace expansion is gated by the ``braceexpand`` shell option (bash
+    ``set +B`` / ``set +o braceexpand``): when disabled, ``{a,b}`` and
+    ``{1..3}`` stay literal words. The live option value seeds the expander's
+    starting state; the expander additionally honours same-stream ``set``
+    toggles (see ``TokenBraceExpander.expand``), so ``set +B; echo {a,b}`` on
+    one line matches bash. The option defaults ON, so callers that tokenize
+    without shell options (analysis helpers) keep expanding.
+
     Note: misplaced case terminators (`;;` outside case, etc.) are rejected
     by the parser (see parsers/statements.py), not by a lexer pass.
     """
     from ..expansion.brace_expansion_tokens import TokenBraceExpander
 
     tokens = KeywordNormalizer().normalize(tokens)
-    return TokenBraceExpander().expand(tokens)
+    enabled = True
+    if shell_options is not None:
+        enabled = bool(shell_options.get('braceexpand', True))
+    return TokenBraceExpander().expand(tokens, enabled=enabled)
 
 
 def tokenize(input_string: str, strict: bool = True, shell_options: Optional[Mapping[str, Any]] = None) -> List[Token]:
@@ -98,7 +110,7 @@ def tokenize(input_string: str, strict: bool = True, shell_options: Optional[Map
         List of tokens representing the parsed command
     """
     lexer = ModularLexer(input_string, config=_make_config(strict, shell_options))
-    return _post_lex(lexer.tokenize())
+    return _post_lex(lexer.tokenize(), shell_options)
 
 
 def tokenize_with_heredocs(input_string: str, strict: bool = True,
@@ -134,7 +146,7 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True,
                          source_name=source_name, base_line=base_line,
                          warn_unterminated=warn_unterminated)
     tokens, heredoc_map = lexer.tokenize_with_heredocs()
-    return _post_lex(tokens), heredoc_map
+    return _post_lex(tokens, shell_options), heredoc_map
 
 
 __all__ = [

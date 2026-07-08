@@ -7778,6 +7778,133 @@
   exit_code: 0
 
 # =============================================================================
+# BRACEEXPAND OPTION (set -B/+B, set -o/+o braceexpand) — v0.672
+# psh brace-expands at tokenize time; same-line toggles are honoured by the
+# TokenBraceExpander same-stream `set` scanner. Bash 5.2.26 ground truth in
+# tmp probe battery (braceexpand campaign 2026-07-08).
+# =============================================================================
+
+- name: braceexp_off_list_same_line
+  command: "set +o braceexpand; echo {a,b}"
+  stdout: "{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_off_range_same_line
+  command: "set +B; echo {1..3}"
+  stdout: "{1..3}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_off_nested
+  command: "set +o braceexpand; echo {a,{b,c}}"
+  stdout: "{a,{b,c}}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_off_prepost
+  command: "set +B; echo pre{X,Y}post"
+  stdout: "pre{X,Y}post\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_toggle_off_on_off
+  command: "set +B; echo {a,b}; set -B; echo {a,b}; set +B; echo {a,b}"
+  stdout: "{a,b}\na b\n{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_plusB_status_zero
+  command: "set +B && echo ok"
+  stdout: "ok\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_dollar_dash_default_has_B
+  command: "case $- in *B*) echo hasB;; *) echo noB;; esac"
+  stdout: "hasB\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_dollar_dash_drops_B
+  command: "set +B; case $- in *B*) echo hasB;; *) echo noB;; esac"
+  stdout: "noB\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_set_plus_o_reusable_off
+  command: "set +B; set +o | grep braceexpand"
+  stdout: "set +o braceexpand\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_subshell_inherits_off
+  command: "set +B; (echo {a,b})"
+  stdout: "{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_subshell_toggle_scoped
+  command: "(set +B); echo {a,b}"
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_cmdsub_inherits_off
+  command: "set +B; echo $(echo {a,b})"
+  stdout: "{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_posix_mode_keeps_expansion
+  command: "set -o posix; echo {a,b}"
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_cluster_plus_xB
+  command: "set +xB; echo {a,b}"
+  stdout: "{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_euo_cluster_not_braceexpand
+  command: "set -euo pipefail; echo {a,b}"
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_for_loop_off
+  command: "set +B; for i in {1..3}; do echo $i; done"
+  stdout: "{1..3}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_composite_off
+  command: "set +B; x=F; echo \"$x\"{1,2}"
+  stdout: "F{1,2}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_set_own_args_expand_with_old_state
+  command: "set +B {a,b}; echo \"$#:$1\""
+  stdout: "2:a\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_pipeline_set_discarded
+  command: "set +B | cat; echo {a,b}"
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_mid_line_toggle
+  command: "echo {a,b}; set +B; echo {a,b}"
+  stdout: "a b\n{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
 # POSIX-MODE SPECIAL-BUILTIN EXIT-ON-ERROR (fix/posix-special-exit)
 # docs/reviews/posix_special_builtin_exit_matrix_2026-07-07.md, re-derived
 # live vs bash 5.2.26 (tmp/posixexit battery). With `set -o posix` a

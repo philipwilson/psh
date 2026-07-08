@@ -61,7 +61,8 @@ def test_defaults_match_history():
 
 def test_short_to_long_map():
     assert SHORT_TO_LONG == {
-        "a": "allexport", "b": "notify", "C": "noclobber", "e": "errexit",
+        "a": "allexport", "b": "notify", "B": "braceexpand", "C": "noclobber",
+        "e": "errexit",
         "E": "errtrace", "f": "noglob", "h": "hashcmds", "m": "monitor",
         "n": "noexec", "T": "functrace",
         "u": "nounset", "v": "verbose", "x": "xtrace",
@@ -104,11 +105,10 @@ _PRESENTATION_ONLY = {
     # `set -o`-listable for bash-compat but does not implement the logging
     # suppression (cosmetic).
     "nolog",
-    # KNOWN GAP (tracked follow-up): the brace expander does not yet consult
-    # this toggle, so `set +o braceexpand` is currently a no-op. NOT truly
-    # presentation-only — listed here so this meta-test stays honest until the
-    # expansion subsystem wires the option in.
-    "braceexpand",
+    # braceexpand is CONSUMED now: the post-lex pipeline (psh/lexer/__init__.py
+    # `_post_lex`) skips TokenBraceExpander when it is off, and alias values
+    # thread it through (psh/expansion/aliases.py). It left this allowlist when
+    # `set +B` / `set +o braceexpand` became real (the v0.669 gap).
 }
 
 
