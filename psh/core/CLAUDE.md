@@ -253,7 +253,13 @@ _spec("myoption", False, OptionCategory.SET, short_flag="M", dollar_dash="M"),
 
 `ShellState.options` is a `ShellOptions` (a registry-backed,
 dict-compatible container): reads/writes use the same `['key']`/`.get()` API,
-but a write with an unregistered name raises (typos fail loudly).
+but the registry is AUTHORITATIVE (appraisal H4) — a write with an unregistered
+name raises (typos fail loudly), a write with the wrong `value_type` raises (a
+bool option rejects `'false'`/`1`/`None`), and deleting a key is prohibited (it
+would make a typed accessor `KeyError`). Every SET/SHOPT option must be READ
+somewhere for behavior or listed in the `_PRESENTATION_ONLY` allowlist with a
+reason (`test_option_registry.py` consumer meta-test) — this is what keeps inert
+options (the retired `collect_errors` / phantom `parser-mode`) from returning.
 
 ### Adding a New Variable Attribute
 
@@ -442,15 +448,33 @@ process (the pre-v0.312 `FOO=bar exec` leak).
 At startup only inherited entries whose NAME is a valid shell identifier
 (`environment.is_environ_shell_name`, bash's ASCII `legal_identifier`) are
 imported as exported shell variables. An entry with an invalid name
-(`bad-name`, `a.b`, a non-ASCII name) stays in `state.env` as an OPAQUE
-inherited entry — passed to children and shown by `printenv`, but NOT a shell
-variable, so `set` / `declare -p` / `export -p` / `compgen -v` do not list it
-(bash; core-state appraisal H3). `sync_exports_to_environment` preserves opaque
-entries because it only removes env entries that ARE unexported shell variables.
-NOTE (Phase-4 deferral): direct `state.env[...]` pokes still exist (PWD/OLDPWD
-writes, temp-env prefix save/restore in `command_assignments.py`); routing every
-env mutation through one interface + materialising the execution env from
-opaque + exported + overlay is the remaining H3 work.
+(`bad-name`, `a.b`, a non-ASCII name) stays as an OPAQUE inherited entry — passed
+to children and shown by `printenv`, but NOT a shell variable, so `set` /
+`declare -p` / `export -p` / `compgen -v` do not list it (bash; appraisal H3).
+
+**One env interface + materialization (v0.669, Phase 4).** The opaque entries
+are held in an EXPLICIT typed store, `state._env_base`, and the execution
+environment is MATERIALIZED (not incrementally mutated) as
+`opaque-base + exported-vars + command-overlay`. `ShellState._materialize_env_name`
+is the ONE place `state.env[name]` is written — precedence
+**overlay > innermost exported variable > opaque base > absent** — and the
+`variable_changed` observer, `clone_for_child`, and the temp-env teardown all go
+through it. No production code poke `state.env[...]` directly.
+
+- **Command-env overlay** (`state._env_overlay`, `apply_command_env` /
+  `restore_command_env`): a `VAR=x cmd` prefix over a builtin/external records
+  the LITERAL string each name contributes to *that command's* process env and
+  composes it on top of the exported vars — the overlay WINS, so a computed
+  special (`RANDOM=5 cmd` → literal `5`) or array (`a+=z cmd` → element-0 view)
+  passes its literal rather than a re-derived value. Teardown re-materializes
+  each name from the (restored) variable / base, so there is no per-name env
+  save/rollback (`CommandAssignments.apply_prefix`/`restore`; a function call
+  uses a temp-env SCOPE instead — `set_temp_env_var`). POSIX special-builtin
+  persistence uses `commit()` (drop overlay, keep the exported vars).
+- **Known divergence (ledgered):** a builtin/external prefix var still appears in
+  `set` / `export -p` enumerations, where bash's separate `temporary_env` is
+  looked up by name but skipped by enumeration (`declare -p FOO`→`declare -x`,
+  `${FOO@a}`→x already match). Full fidelity is a scope.py follow-up (task #25).
 
 Exported variables are synced to `state.env`:
 

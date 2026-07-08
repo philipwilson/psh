@@ -81,15 +81,16 @@ class TestSetPlusOReusable:
         # shopt / debug / internal names must NOT appear (they aren't
         # `set -o`-settable, so eval would reject them).
         for name in ("dotglob", "extglob", "stdin_mode", "command_mode",
-                     "interactive", "debug-ast", "parser-mode"):
+                     "interactive", "debug-ast"):
             assert f" {name}" not in out, name
         # A representative SET option IS present.
         assert "errexit" in out
 
     def test_underscore_named_set_option_is_settable(self, captured_shell):
-        # collect_errors round-trips (the `_`->`-` normalization used to break
-        # it, so `set +o` emitted a name `set -o` then rejected).
-        result = captured_shell.run_command("set -o collect_errors; echo rc=$?")
+        # An underscore-named registered option round-trips (the `_`->`-`
+        # normalization used to break it, so `set +o` emitted a name `set -o`
+        # then rejected). inherit_errexit is a registered underscore option.
+        result = captured_shell.run_command("set -o inherit_errexit; echo rc=$?")
         assert result == 0
         assert captured_shell.get_stdout() == "rc=0\n"
         assert captured_shell.get_stderr() == ""

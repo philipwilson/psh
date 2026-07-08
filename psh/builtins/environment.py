@@ -230,15 +230,13 @@ class ExportBuiltin(Builtin):
         var = shell.state.scope_manager.get_variable_object(name)
         if var is not None and var.is_exported:
             # Route through the store (no direct .attributes write, C2); its
-            # observer re-derives the live-environment entry.
+            # observer re-derives the live-environment entry (removing it, since
+            # the variable is no longer exported) — the single env interface, no
+            # direct env poke (appraisal H3). A name that is only an inherited
+            # OPAQUE env entry cannot reach here: `export -n` rejects invalid
+            # identifiers, and every valid-identifier env entry is a variable.
             shell.state.scope_manager.store.remove_attributes(
                 name, VarAttributes.EXPORT)
-        # state.env is the live environment; os.environ is read-once at startup
-        # and never written. Belt-and-braces for a name that is only an env
-        # entry (not a shell variable): the observer above only fires when a
-        # variable exists, so keep the explicit pop + resync.
-        shell.state.env.pop(name, None)
-        shell.state.scope_manager.sync_exports_to_environment(shell.state.env)
 
     @property
     def help(self) -> str:
@@ -362,10 +360,10 @@ class SetBuiltin(Builtin):
     def _set_long_option(self, shell: 'Shell', name: str, enable: bool) -> int:
         """Set or unset one -o/+o long option. Returns 0 or an error status."""
         # Resolve to a real option key, accepting both spellings: registry
-        # keys use dashes for debug-* but underscores for collect_errors /
-        # strict-errors / stdin_mode / command_mode. Trying the raw name first
-        # keeps underscore options settable — so `eval "$(set +o)"` (which may
-        # emit e.g. `set +o collect_errors`) round-trips instead of erroring.
+        # keys use dashes for debug-* / strict-errors but underscores for
+        # stdin_mode / command_mode. Trying the raw name first keeps underscore
+        # options settable — so `eval "$(set +o)"` round-trips instead of
+        # erroring on an underscore name.
         raw = name.lower()
         option = raw if raw in shell.state.options else raw.replace('_', '-')
 

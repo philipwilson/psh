@@ -7647,3 +7647,107 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# --- Core-state Phase 4: env one-interface + temp-env overlay ----------------
+# A computed special / array prefix passes its LITERAL to the child (the
+# command-env overlay wins over the exported-variable value).
+- name: corestate4_random_prefix_literal
+  command: 'RANDOM=5 env | grep "^RANDOM="'
+  stdout: "RANDOM=5\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_array_scalar_append_prefix_env
+  command: 'a=(x y); a+=z env | grep "^a="'
+  stdout: "a=xz\n"
+  stderr: ""
+  exit_code: 0
+# A prefix over a non-special command is temporary (var + env restored).
+- name: corestate4_prefix_temporary_after
+  command: 'W=1 true; printf "<%s>\n" "${W-UNSET}"'
+  stdout: "<UNSET>\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_unset_restore
+  command: 'V=1 true; printf "%s\n" "${V+SET}"'
+  stdout: "\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_twice_last_wins
+  command: 'V=1 V=2 env 2>/dev/null | grep "^V="'
+  stdout: "V=2\n"
+  stderr: ""
+  exit_code: 0
+# export -n removes the live-env entry through the one interface (observer).
+- name: corestate4_export_n_removes_env
+  command: 'export FOO=bar; export -n FOO; env | grep "^FOO=" && echo STILL || echo GONE'
+  stdout: "GONE\n"
+  stderr: ""
+  exit_code: 0
+# POSIX special-builtin persistence (commit path): the var persists in env, and
+# a later reassignment materializes correctly (the overlay was dropped, not
+# left stale at "v").
+- name: corestate4_posix_persist_env
+  command: 'set -o posix; V=v :; env | grep "^V="'
+  stdout: "V=v\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_posix_persist_then_change
+  command: 'set -o posix; V=v :; V=w; env | grep "^V="; printf "<%s>\n" "$V"'
+  stdout: "V=w\n<w>\n"
+  stderr: ""
+  exit_code: 0
+# cd routes PWD/OLDPWD through the observer only: a readonly OLDPWD that blocks
+# the update must not leak the new value into a child's env. The child is a
+# DIRECT external printenv (NOT $(...) command substitution — cmdsub
+# re-materializes env before its fork and masks the leak). Leading `cd /`
+# normalizes OLDPWD to `/` so the expected output is cwd-independent; the pre-fix
+# raw poke printed `/tmp` here.
+- name: corestate4_cd_readonly_oldpwd_no_leak
+  command: 'cd /; cd /tmp; export OLDPWD; readonly OLDPWD; cd / 2>/dev/null; printenv OLDPWD'
+  stdout: "/\n"
+  stderr: ""
+  exit_code: 0
+# Behavior-lock: the temp-env semantics that already matched bash must stay
+# matched across the mutate/rollback -> materialization-overlay swap. These are
+# the discriminating rows of the 27-case truth table (the rest are pinned by the
+# cases above / the pre-existing suite).
+- name: corestate4_prefix_external_env
+  command: 'V=hi env | grep "^V="'
+  stdout: "V=hi\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_left_to_right
+  command: 'A=1 B=$A env 2>/dev/null | grep "^B="'
+  stdout: "B=1\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_invisible_own_words
+  command: 'V=old; V=new printf "%s\n" "$V"'
+  stdout: "old\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_builtin_sees_var
+  command: 'printf "a:b" | { IFS=: read x y; printf "<%s|%s>\n" "$x" "$y"; }'
+  stdout: "<a|b>\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_function_declare_g_survives
+  command: 'f(){ declare -g G=global; }; X=1 f; printf "<%s>\n" "${G-UNSET}"'
+  stdout: "<global>\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_function_body_assign_discarded
+  command: 'f(){ X=changed; }; X=orig f; printf "<%s>\n" "${X-UNSET}"'
+  stdout: "<UNSET>\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_allexport_env
+  command: 'set -a; V=hi env | grep "^V="'
+  stdout: "V=hi\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_nameref_writes_through_temporary
+  command: 'declare -n r=a; r=x env >/dev/null; printf "<%s>\n" "${a-UNSET}"'
+  stdout: "<UNSET>\n"
+  stderr: ""
+  exit_code: 0
