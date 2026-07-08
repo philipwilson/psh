@@ -16,8 +16,9 @@ the "body did not run" guarantee for input, output, and permission cases,
 across builtin and external command bodies.
 
 Most cases run psh in a subprocess: they exercise process-level fd state,
-which must not run in the test runner's own process (CLAUDE.md). The
-``integration/redirection`` path is auto-marked ``serial``.
+which must not run in the test runner's own process (CLAUDE.md); the one
+in-process case uses only per-command fd-1 redirects. Vetted xdist-safe, so
+this file runs in the parallel phase (campaign #21).
 """
 
 import os

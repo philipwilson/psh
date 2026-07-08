@@ -7,8 +7,8 @@ CLOEXEC and a forked child couldn't inherit it: ``cat /dev/fd/3 3<data`` saw
 EBADF where bash reads the file. The fix clears CLOEXEC in that shortcut so it
 is behaviorally identical to the ``dup2`` path.
 
-These run psh in a SUBPROCESS (external children + real fds; this directory is
-auto-marked ``serial`` by path). Every expected value is bash 5.2's output for
+These run psh in a SUBPROCESS (external children + real fds), so they are
+xdist-safe and run in the parallel phase (campaign #21). Every expected value is bash 5.2's output for
 the same script. PYTHONPATH pins THIS checkout (see run_psh).
 """
 

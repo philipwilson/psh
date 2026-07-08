@@ -16,8 +16,8 @@ serves every in-process compound dispatch site with one message format
 (``psh: TARGET: STRERROR``), matching the simple-command path.
 
 Runs psh in a subprocess: process-level fd state must not touch the test
-runner's own fds. The ``integration/redirection`` path is auto-marked
-``serial``.
+runner's own fds — which keeps it xdist-safe, so it runs in the parallel
+phase (vetted in campaign #21).
 """
 
 import subprocess
