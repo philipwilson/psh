@@ -564,7 +564,7 @@ bash. A `read`, `cat`, or `mapfile` inside the script therefore consumes the
 runtime input are the same lazily-consumed descriptor:
 
 ```bash
-printf '%s\n' 'read a' 'echo got:$a' 'X' | psh   # -> got:X  (read ate the 'X' line)
+printf '%s\n' 'read a' 'X' 'echo got:$a' | psh   # -> got:X  (read ate the 'X' line)
 printf '%s\n' 'echo START' 'cat' 'echo END' | psh  # -> START then 'echo END' (cat's data)
 ```
 
