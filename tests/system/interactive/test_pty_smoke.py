@@ -577,11 +577,20 @@ class TestPtyJobControl:
 
         pid, fd = pty.fork()
         if pid == 0:  # child
-            os.environ['PYTHONPATH'] = PSH_ROOT
-            os.environ['PS1'] = 'PSH$ '
-            os.execvp(sys.executable, [
+            # Clean env — do NOT inherit the ambient DISPLAY/XAUTHORITY (they
+            # carry the XQuartz launchd socket and auto-start XQuartz; standing
+            # rule for test-spawned envs). Mirrors spawn_psh's fixed dict.
+            env = {
+                'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
+                'HOME': '/tmp',
+                'TERM': 'xterm',
+                'PS1': 'PSH$ ',
+                'PYTHONUNBUFFERED': '1',
+                'PYTHONPATH': PSH_ROOT,
+            }
+            os.execvpe(sys.executable, [
                 sys.executable, '-u', '-m', 'psh', '--norc',
-                '--force-interactive'])
+                '--force-interactive'], env)
 
         def drain(seconds):
             data = b''
