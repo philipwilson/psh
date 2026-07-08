@@ -450,6 +450,33 @@ VAR= value        # Sets VAR to empty, then runs "value" as command
 VAR =value        # Tries to run "VAR" as command with arg "=value"
 ```
 
+### Temporary-Environment Prefix Assignments (`VAR=x cmd`)
+
+A `VAR=x cmd` prefix over a builtin or external command places `VAR` in that
+command's environment for its duration only. PSH gets the observable behavior
+right — `VAR` is passed to the child, visible to `$VAR` and `declare -p VAR`
+(as `declare -x VAR="x"`), left-to-right assignment works (`A=1 B=$A cmd`), and
+the assignment is undone afterward:
+
+```bash
+V=hi env | grep '^V='        # V=hi        (in the child's environment)
+V=hi printf '%s\n' "$V"      # (empty)     — the command's own words expand first
+W=1 true; echo "${W-unset}"  # unset       — temporary
+```
+
+The one difference is in *whole-list enumerations* run as the prefixed command
+itself. Bash keeps such a prefix in a separate temporary environment that name
+lookup consults but `set` / `export -p` do NOT enumerate; PSH binds it as a
+normal exported variable, so it also appears in those listings:
+
+```bash
+FOO=bar export -p | grep FOO   # Bash: (nothing)   | PSH: declare -x FOO="bar"
+FOO=bar set | grep '^FOO='     # Bash: (nothing)   | PSH: FOO=bar
+```
+
+This only matters when the prefixed command is itself an enumerator of the
+variable table, which is vanishingly rare in practice.
+
 ### Identifier (Name) Rules — Unicode Extension
 
 A single policy decides what counts as a valid variable/function *name*
