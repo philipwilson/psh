@@ -362,10 +362,10 @@ class SetBuiltin(Builtin):
     def _set_long_option(self, shell: 'Shell', name: str, enable: bool) -> int:
         """Set or unset one -o/+o long option. Returns 0 or an error status."""
         # Resolve to a real option key, accepting both spellings: registry
-        # keys use dashes for debug-* but underscores for collect_errors /
-        # strict-errors / stdin_mode / command_mode. Trying the raw name first
-        # keeps underscore options settable — so `eval "$(set +o)"` (which may
-        # emit e.g. `set +o collect_errors`) round-trips instead of erroring.
+        # keys use dashes for debug-* / strict-errors but underscores for
+        # stdin_mode / command_mode. Trying the raw name first keeps underscore
+        # options settable — so `eval "$(set +o)"` round-trips instead of
+        # erroring on an underscore name.
         raw = name.lower()
         option = raw if raw in shell.state.options else raw.replace('_', '-')
 
