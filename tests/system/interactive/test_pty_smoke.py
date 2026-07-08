@@ -615,8 +615,11 @@ class TestPtyJobControl:
 
         text = out.decode(errors='replace')
         # The Done notice appears exactly once (it was ZERO before the fix:
-        # dropped under `set -b`).
-        assert re.search(r'\[1\][-+ ]+Done\b', text), text
+        # dropped under `set -b`) in the exact bash format: '+' marker (the
+        # single bg job is the current job), two spaces, then the state word
+        # left-justified in a 24-column field. F4 dropped the stray leading
+        # blank line and pinned the marker.
+        assert re.search(r'\[1\]\+  Done {20}sleep 0\.2', text), text
         assert text.count('Done') == 1, text
         # The job was reaped: the `jobs` listing shows no leftover entry, so
         # the bg command text does not survive past the `jobs` command as a

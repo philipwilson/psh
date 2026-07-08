@@ -23,7 +23,7 @@ set -o braceexpand  # Enable brace expansion (on by default)
 set -o noclobber    # Prevent overwriting files with >
 set -o noglob       # Disable filename globbing
 set -o noexec       # Read commands but do not execute
-set -o notify       # Report background job status immediately
+set -o notify       # Report finished background jobs at the next prompt (see 17.3)
 set -o verbose      # Print input lines as they are read
 set -o ignoreeof    # Prevent Ctrl-D from exiting the shell
 set -o monitor      # Enable job control
@@ -407,6 +407,24 @@ everywhere, so examples work in scripts), not an oversight. If you are
 porting a PSH script to bash, either add `shopt -s expand_aliases` near
 the top or replace aliases with shell functions (which bash expands in
 all modes).
+
+### Background Job Notification Timing (`set -o notify`)
+
+`set -b` / `set -o notify` reports the completion of a background job
+*before the next prompt* in PSH. Bash reports it *immediately* — the
+instant the child is reaped, interrupting an idle prompt line to print the
+`[N]+  Done` notice asynchronously. PSH cannot match that immediacy while
+it is blocked in the line editor waiting for a keystroke: the editor's
+`select()` multiplexes only standard input and the terminal-resize pipe,
+not the `SIGCHLD` self-pipe, so a completion that arrives while you sit at
+an empty prompt is announced at the next reaping opportunity (the next
+command boundary) rather than the moment it happens. Without `notify`, PSH
+already reports completions at the next prompt, so in practice the two
+notify states differ only in that `notify` also announces a job reaped by
+an in-progress `wait` immediately. The notice text itself is bash-accurate
+(`[N]+  Done …` for the current job, a blank marker for any other). Making
+the notice truly immediate would require a line-editor redesign to watch
+the `SIGCHLD` pipe; it is deliberately out of scope.
 
 ### Quote Handling
 

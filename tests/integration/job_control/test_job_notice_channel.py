@@ -45,6 +45,12 @@ def _add_background_job(jm, pid=12345, command="sleep 0.1"):
     job = jm.create_job(pid, command)
     job.add_process(pid, command)
     job.foreground = False
+    # Mirror register_background_job's current/previous bookkeeping so the
+    # completion-notice marker matches real usage: the most-recently
+    # launched background job is the current job (bash's '+').
+    if jm.current_job is not job:
+        jm.previous_job = jm.current_job
+        jm.current_job = job
     return job
 
 
@@ -222,7 +228,27 @@ class TestCompletionNoticeStates:
         jm, state = _make_manager()
         self._finished_job(jm, _exited_status(0))
         jm.notify_completed_jobs()
-        assert "[1]+  Done" in state.stderr.getvalue()
+        # Single bg job is the current job -> '+' marker, no leading blank line.
+        out = state.stderr.getvalue()
+        assert "[1]+  Done" in out
+        assert not out.startswith("\n")     # bash prints no leading blank line
+
+    def test_noncurrent_completed_job_uses_space_marker(self):
+        # bash marks a terminating job '+' ONLY when it is the current job;
+        # an earlier (non-current) job's Done notice shows a SPACE, never '-'
+        # (probe-pinned vs bash 5.2.26: two bg jobs, the earlier completes
+        # while the newer stays current). Campaign #19 F4.
+        jm, state = _make_manager()
+        older = _add_background_job(jm, pid=100, command="sleep 1")   # job 1
+        _add_background_job(jm, pid=200, command="sleep 5")           # job 2 (current)
+        older.update_process_status(older.processes[0].pid, 0)
+        older.update_state()
+        assert older.state == JobState.DONE
+        jm.notify_completed_jobs()
+        out = state.stderr.getvalue()
+        assert "[1]   Done" in out          # SPACE marker
+        assert "[1]+  Done" not in out      # not current -> not '+'
+        assert "[1]-  Done" not in out      # bash never uses '-' on a Done notice
 
 
 class TestNotifyOptionChannel:

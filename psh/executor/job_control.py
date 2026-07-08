@@ -620,7 +620,15 @@ class JobManager:
         if self._sigpipe_suppressed(status):
             return
         label = background_completion_label(status)
-        print(f"\n[{job.job_id}]+  {label:<24}{job.command}",
+        # bash marks a terminating job '+' ONLY when it is the current job;
+        # every other completing job — including the previous job — gets a
+        # blank marker, NOT '-' (probe-pinned vs bash 5.2.26: two bg jobs
+        # where the earlier, non-current one completes shows "[1]   Done").
+        # This deliberately differs from notify_stopped_jobs' +/-/space rule,
+        # which applies to still-live stopped jobs. No leading blank line —
+        # bash prints none before the notice.
+        marker = '+' if job == self.current_job else ' '
+        print(f"[{job.job_id}]{marker}  {label:<24}{job.command}",
               file=self._notification_stream())
 
     def notify_completed_jobs(self):
