@@ -17,6 +17,7 @@ import pytest
 PSH_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PSH_ROOT))
 
+from psh.core import ReadonlyVariableError
 from psh.executor.job_control import JobState
 from psh.shell import Shell
 
@@ -111,17 +112,27 @@ def shell():
 
 @pytest.fixture
 def clean_shell():
-    """Create a shell instance with completely fresh environment.
+    """Create a shell instance with a minimal set of variables.
 
-    This fixture creates a shell with minimal environment setup,
-    useful for testing core functionality without interference.
+    Removes every shell variable except a small essential set so a test can
+    exercise core behavior without interference from the ambient environment.
+
+    ``shell.state.variables`` is a *derived* dict — the property rebuilds it
+    from the scope manager on every read (see ``ShellState.variables``), so
+    ``del shell.state.variables[name]`` mutates a throwaway copy and changes
+    nothing. Removal must go through the scope-manager API. Readonly specials
+    (UID/EUID/PPID) cannot be unset and are left in place.
     """
     shell_instance = Shell()
-    # Clear environment variables except essentials
     essential_vars = {'PATH', 'HOME', 'USER', 'SHELL'}
+    scope = shell_instance.state.scope_manager
     for var in list(shell_instance.state.variables.keys()):
-        if var not in essential_vars:
-            del shell_instance.state.variables[var]
+        if var in essential_vars:
+            continue
+        try:
+            scope.unset_variable(var)
+        except ReadonlyVariableError:
+            pass
     yield shell_instance
     _cleanup_shell(shell_instance)
 
@@ -157,16 +168,20 @@ def shell_with_temp_dir(shell, temp_dir):
     (fixed-name files like ``output.txt``) and caused flaky parallel failures.
     """
     original_cwd = os.getcwd()
-    original_pwd = shell.state.variables.get('PWD', original_cwd)
+    # Read via the API (reading the derived `variables` dict is fine); write
+    # via set_variable so the shell's real PWD actually changes — assigning to
+    # shell.state.variables['PWD'] mutates a throwaway derived dict and is a
+    # no-op (see ShellState.variables / the clean_shell fixture).
+    original_pwd = shell.state.get_variable('PWD', original_cwd)
 
     os.chdir(temp_dir)
-    shell.state.variables['PWD'] = temp_dir
+    shell.state.set_variable('PWD', temp_dir)
 
     try:
         yield shell
     finally:
         os.chdir(original_cwd)
-        shell.state.variables['PWD'] = original_pwd
+        shell.state.set_variable('PWD', original_pwd)
 
 
 @pytest.fixture

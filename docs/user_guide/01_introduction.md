@@ -11,7 +11,7 @@ PSH (Python Shell) is an educational Unix shell implementation written in Python
 - **Component Architecture**: Clean separation of concerns with visitor pattern for AST operations
 - **Comprehensive Features**: Implements 90+ shell features for real-world usability
 - **Pure Python**: No C extensions or complex dependencies
-- **Near-POSIX Compliance**: ~93% POSIX compliance as measured by conformance tests
+- **POSIX + bash compatible**: behavior is conformance-tested against live bash (the oracle); see the per-feature compatibility table in Chapter 17
 
 ## 1.2 Educational Purpose and Design Philosophy
 
@@ -49,7 +49,7 @@ By studying PSH, you can learn about:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/psh.git
+git clone https://github.com/philipwilson/psh.git
 cd psh
 
 # Install in development mode

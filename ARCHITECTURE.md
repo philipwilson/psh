@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.663.0
+**Current Version**: 0.664.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -394,7 +394,7 @@ The parser combinator is a functional parser implementation demonstrating elegan
 
 **Key Features:**
 - **Functional Composition**: Combinators compose to build complex parsers
-- **Near-Complete Feature Parity** (~95%): Supports nearly all shell constructs including:
+- **Near-Complete Feature Parity**: Supports nearly all shell constructs including:
   - Process substitution (`<(cmd)`, `>(cmd)`)
   - Compound commands (subshells, brace groups)
   - Arithmetic commands (`((expr))`)
@@ -490,7 +490,7 @@ The dual parser architecture provides unique advantages:
 - **Production vs. Research**: Production-ready recursive descent and elegant functional combinators
 
 **Technical Benefits:**
-- **Near-Complete Feature Parity**: Both parsers support nearly all shell constructs (~95%)
+- **Near-Complete Feature Parity**: Both parsers support nearly all shell constructs
 - **Unified AST**: Identical output regardless of parser choice
 - **Separation of Concerns**: Each parser module handles focused aspects
 - **Enhanced Maintainability**: Modular structure easier to understand and modify
@@ -1134,7 +1134,7 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 
 ### Dual Parser System
 - **Two Complete Implementations**: Recursive descent (production) and parser combinator (educational)
-- **Near-Complete Feature Parity**: Both parsers support nearly all shell constructs (~95%)
+- **Near-Complete Feature Parity**: Both parsers support nearly all shell constructs
 - **Educational Comparison**: Learn both imperative and functional parsing approaches
 - **Unified Output**: Identical AST regardless of parser choice
 - **Parser Selection**: Runtime switchable with `parser-select combinator` builtin

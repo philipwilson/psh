@@ -10,7 +10,7 @@ Usage:
     python run_tests.py --parallel         # Parallel execution (pytest-xdist)
     python run_tests.py --parallel 8       # Parallel with 8 workers
     python run_tests.py --all-nocapture    # Run ALL tests with -s flag
-    python run_tests.py --quick            # Run only fast tests
+    python run_tests.py --quick            # Curated fast smoke subset (parallel)
     python run_tests.py --help             # Show help
 
 Failure-safety guarantees (reappraisal #18 Tier-3 hardening):
@@ -48,6 +48,25 @@ DEFAULT_PHASE_TIMEOUT = 1800  # seconds
 
 # Conventional "command timed out" exit status (matches coreutils `timeout`).
 TIMEOUT_EXIT = 124
+
+# --- Quick smoke tier ---------------------------------------------------------
+#
+# `--quick` runs a curated, genuinely small smoke subset (finding C3 of the
+# 2026-07-06 tests/docs appraisal): the whole unit tree plus the fast,
+# in-process integration areas — no serial/subprocess-heavy dirs (redirection,
+# subshells, job_control, interactive, scripting), no performance suite. It
+# runs in parallel by default so it finishes in well under a minute (~8,300
+# tests in ~20s on a laptop) and is meant for tight local iteration, NOT as the
+# release gate. The gate remains `python run_tests.py --parallel` (all phases).
+QUICK_PATHS = [
+    'tests/unit/',
+    'tests/integration/control_flow/',
+    'tests/integration/parameter_expansion/',
+    'tests/integration/arrays/',
+    'tests/integration/functions/',
+    'tests/integration/variables/',
+    'tests/integration/pipeline/',
+]
 
 # Markers we key failure/masking decisions on.
 INTERNALERROR_TOKEN = 'INTERNALERROR>'
@@ -228,6 +247,14 @@ def run_command(cmd, description, env=None, parallel=False,
         except subprocess.TimeoutExpired:
             timed_out = True
             _kill_process_group(proc)
+        except BaseException:
+            # KeyboardInterrupt (Ctrl-C), SystemExit, or any early exit while a
+            # phase is running: kill the whole process group before propagating
+            # so the child pytest and its xdist workers / spawned `python -m psh`
+            # instances are not orphaned. The timeout path above already does
+            # this; this closes the interrupt gap (appraisal finding C4).
+            _kill_process_group(proc)
+            raise
         tmp.seek(0)
         output = tmp.read().decode('utf-8', errors='replace')
 
@@ -325,7 +352,7 @@ Examples:
   python run_tests.py --parallel         # Parallel mode (auto worker count)
   python run_tests.py --parallel 8       # Parallel with 8 workers
   python run_tests.py --all-nocapture    # All tests with -s (simpler but noisy)
-  python run_tests.py --quick            # Fast tests only
+  python run_tests.py --quick            # Curated fast smoke subset (parallel)
   python run_tests.py --verbose          # Verbose output
   python run_tests.py --subshells-only   # Just subshell tests
         """
@@ -340,7 +367,8 @@ Examples:
     parser.add_argument(
         '--quick', '-q',
         action='store_true',
-        help='Run only fast tests (skip slow performance tests)'
+        help='Run a curated fast smoke subset (unit tree + fast integration '
+             'areas), in parallel, for local iteration. Not the release gate.'
     )
 
     parser.add_argument(
@@ -487,15 +515,30 @@ def _run(args, results_path):
     if _RESULTS_FH is not None:
         emit(f"Persisting full run transcript to: {results_path}")
 
-    if args.all_nocapture:
+    if args.quick:
+        # Genuine smoke tier: a curated fast subset, run in parallel. Deliberately
+        # short-circuits the other modes — see QUICK_PATHS for the rationale.
+        workers = args.parallel if args.parallel else 'auto'
+        emit("\n" + "=" * 80)
+        emit(f"MODE: Quick smoke tier [parser: {parser_label}, parallel={workers}]")
+        emit("  Curated subset (unit + fast integration); NOT the release gate.")
+        emit("  Full gate: python run_tests.py --parallel")
+        emit("=" * 80)
+
+        cmd = base_cmd + QUICK_PATHS + ['-m', 'not serial and not slow',
+                                        '-n', workers]
+        exit_code, output = run_command(cmd, "Quick smoke tier", env=env,
+                                        parallel=True, timeout=timeout)
+        exit_codes.append(exit_code)
+        phase_outputs.append(output)
+
+    elif args.all_nocapture:
         # Simple mode: run everything with -s
         emit("\n" + "=" * 80)
         emit(f"MODE: Running ALL tests with capture disabled (-s flag) [parser: {parser_label}]")
         emit("=" * 80)
 
         cmd = base_cmd + ['tests/', '-s']
-        if args.quick:
-            cmd.extend(['-m', 'not slow'])
 
         exit_code, output = run_command(cmd, "All tests with capture disabled",
                                         env=env, timeout=timeout)
@@ -540,8 +583,6 @@ def _run(args, results_path):
         phase1_markers = []
         if args.parallel:
             phase1_markers.append('not serial')
-        if args.quick:
-            phase1_markers.append('not slow')
         if phase1_markers:
             cmd.extend(['-m', ' and '.join(phase1_markers)])
         if args.parallel:
@@ -562,10 +603,7 @@ def _run(args, results_path):
         # in parallel mode — they were excluded from Phase 1. Run without xdist.
         if args.parallel:
             cmd = base_cmd + ['tests/'] + non_subshell_ignores
-            serial_markers = ['serial']
-            if args.quick:
-                serial_markers.append('not slow')
-            cmd.extend(['-m', ' and '.join(serial_markers)])
+            cmd.extend(['-m', 'serial'])
             exit_code, output = run_command(
                 cmd, "Phase 1b: serial tests (process/signal/forked-fd, no xdist)",
                 env=env, timeout=timeout)
