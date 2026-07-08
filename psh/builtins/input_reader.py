@@ -188,12 +188,17 @@ class InputReader:
         source ended). A final record with no trailing delimiter returns its
         bytes; the NEXT call then returns ``None``.
 
-        Unlike :meth:`read_record` this does not decode: the caller owns the
-        decode policy. The lazy stdin-as-script reader (``StdinInput``) splits on
-        the newline byte here and decodes each physical line with
-        ``errors='surrogateescape'`` so a non-UTF-8 script byte round-trips
-        exactly as the ``FileInput`` script path treats it — which the
-        ``errors='replace'`` char decode would not preserve.
+        Unlike :meth:`read_record` this does not decode: **the caller owns the
+        decode policy**, and the two policies coexist deliberately. ``read`` and
+        ``mapfile`` go through :meth:`read_record`, which decodes incrementally
+        with ``errors='replace'`` (a bad byte becomes U+FFFD) — right for
+        interactive-style record reads that hand characters to the shell.
+        ``StdinInput`` instead splits on the newline byte here and batch-decodes
+        each physical line with ``errors='surrogateescape'``, so a non-UTF-8
+        SCRIPT byte round-trips exactly as the ``FileInput`` script path treats
+        it (the ``replace`` policy would destroy that round-trip). Because the
+        delimiter (newline) can never be a UTF-8 continuation byte, splitting at
+        the byte level before decoding is exact for either policy.
         """
         if self._stream is not None:
             # Already-decoded text source (e.g. a StringIO test stdin): read one

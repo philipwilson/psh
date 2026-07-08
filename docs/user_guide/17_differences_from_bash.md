@@ -555,6 +555,28 @@ $HOME
 EOF
 ```
 
+### Script on Standard Input
+
+When psh reads its script from standard input — `cmds | psh`, `psh < file`, or
+`psh -s` — it reads fd 0 lazily, one command's lines at a time, exactly like
+bash. A `read`, `cat`, or `mapfile` inside the script therefore consumes the
+*subsequent* physical lines as data, because the shell's command source and the
+runtime input are the same lazily-consumed descriptor:
+
+```bash
+printf '%s\n' 'read a' 'echo got:$a' 'X' | psh   # -> got:X  (read ate the 'X' line)
+printf '%s\n' 'echo START' 'cat' 'echo END' | psh  # -> START then 'echo END' (cat's data)
+```
+
+**Deliberate divergence — `mapfile` on a *seekable* stdin (`psh < file`).**
+`mapfile`/`readarray` with no line count reads to end-of-file. On a seekable fd,
+bash reads `mapfile` from the *end* of the file (it captures nothing and the
+rest of the script runs as commands) — a bash quirk that is inconsistent with
+bash's own `read`, `read -d ''`, and `cat` on the same seekable fd, and with its
+own `mapfile` on a *pipe*. psh is internally consistent instead: `mapfile`
+shares the fd position like every other consumer, on a seekable file and a pipe
+alike, so it captures the remaining lines. (On a pipe, psh and bash agree.)
+
 ### Debug Option Runtime Behavior
 
 ```bash
