@@ -625,14 +625,47 @@ def _run(args, results_path):
         # Phase 3 (opt-in): golden behavioral cases compared against bash.
         # Gated behind --compare-bash because it requires bash on PATH; the
         # comparison itself is locale-pinned (LC_ALL=C) so it is deterministic.
+        #
+        # Two runtime optimizations (campaign #21, test_performance appraisal
+        # 2026-07-07, items a+b):
+        #   (b) DE-DUPLICATE: run ONLY the psh-vs-bash comparison variant
+        #       (`test_golden_bash_comparison`). The psh-side assertion
+        #       (`test_golden`) ALREADY ran in Phase 1 (test collection includes
+        #       tests/behavioral/), so re-running it here was pure duplication.
+        #       This CHANGES the phase's canonical count — see the loud banner.
+        #       We match by function name (`-k test_golden_bash_comparison`), NOT
+        #       `-k comparison`: two case NAMES contain "comparison"
+        #       (arith_comparison_*), which `-k comparison` would wrongly also
+        #       select as their psh-only test_golden variant.
+        #   (a) PARALLELIZE: each comparison case is an isolated psh+bash
+        #       subprocess pair with no shared fd/signal/cwd state, so the phase
+        #       is xdist-safe. Run it under the same worker count as Phase 1.
+        #       Safety proof: the identical psh commands already run concurrently
+        #       across all workers as `test_golden` in the green Phase 1.
         if args.compare_bash:
+            emit("\n" + "-" * 80)
+            emit("COMPARE-BASH COUNTING CHANGED (campaign #21, item b):")
+            emit("  This phase now runs ONLY the bash-comparison variant")
+            emit("  (test_golden_bash_comparison), NOT the psh-only test_golden")
+            emit("  that already ran in Phase 1. New canonical total:")
+            emit("      1,119 passed / 0 failed / 23 skipped (psh_only cases)")
+            emit("  (was 2,261/0/23 = 1142 test_golden + 1119 comparison).")
+            emit("  Reconciliation anchor for future campaigns: 1,119 pairs.")
+            emit("-" * 80)
             cmd = base_cmd + [
                 'tests/behavioral/test_golden_behavior.py',
+                '-k', 'test_golden_bash_comparison',
                 '--compare-bash',
             ]
+            desc = "Phase 3: Golden behavioral comparison vs bash (comparison-only"
+            if args.parallel:
+                cmd.extend(['-n', args.parallel])
+                desc += f", parallel={args.parallel})"
+            else:
+                desc += ", serial)"
             exit_code, output = run_command(
-                cmd, "Phase 3: Golden behavioral comparison vs bash",
-                env=env, timeout=timeout)
+                cmd, desc, env=env, parallel=bool(args.parallel),
+                timeout=timeout)
             exit_codes.append(exit_code)
             phase_outputs.append(output)
 

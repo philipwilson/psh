@@ -18,8 +18,8 @@ Contract pinned to bash 5.2:
 - ``source file > f`` / ``2> f`` — likewise for a sourced file's commands;
 - a pure-builtin write and a builtin-in-a-pipeline are unaffected.
 
-Runs psh in a subprocess (process-level fd state). The
-``integration/redirection`` path is auto-marked ``serial``.
+Runs psh in a subprocess (process-level fd state), so it is xdist-safe and
+runs in the parallel phase (vetted in campaign #21).
 """
 
 import subprocess
