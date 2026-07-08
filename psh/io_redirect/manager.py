@@ -109,6 +109,70 @@ class _ClosedStream:
         pass
 
 
+class _RawFdStream:
+    """A minimal text stream that writes straight to a fixed fd via ``os.write``.
+
+    Installed as ``sys.stdout``/``sys.stderr`` for a builtin after a PERMANENT
+    ``exec >&-``/``2>&-`` closes fd 1/2 (see
+    ``FileRedirector._rebind_closed_output_stream``). It threads a needle the
+    natural ``TextIOWrapper`` and ``_ClosedStream`` each miss:
+
+    * **No buffering** — a write goes straight to the fd; on a CLOSED fd it
+      raises EBADF immediately and nothing is retained. The natural wrapper
+      instead BUFFERS the write, its flush fails EBADF, and the retained bytes
+      later flush into a REOPENED fd of the same number (the exec-close-then-
+      reopen leak, MED-1). ``_RawFdStream`` can't leak because it never holds
+      bytes.
+
+    * **Transparent** — it names the fd NUMBER, so if a compound/function
+      per-command redirect re-points that fd at a live target at the fd level
+      (``f 1>&2``, ``{ ...; } >g``, ``{ ...; } &>f``) the write simply follows
+      the fd, exactly as the natural wrapper did. ``_ClosedStream`` is opaque:
+      it always raises, so it would sever those legitimate reopens.
+
+    * **Owns nothing** — ``close()`` is a no-op and it never calls ``os.close``,
+      so displacing it (a later ``exec >&3`` reopen, or a rollback) can never
+      close the std fd out from under a fresh binding.
+
+    A permanent reopen (``exec >&3``, ``exec >f``) still routes through
+    ``_rebind_output_stream``, which installs a normal buffered fd-sharing
+    stream and drops this one.
+    """
+
+    def __init__(self, fd: int) -> None:
+        self._fd = fd
+
+    def write(self, text) -> int:
+        data = (text.encode('utf-8', 'surrogateescape')
+                if isinstance(text, str) else text)
+        view = memoryview(data)
+        while view:
+            view = view[os.write(self._fd, view):]
+        return len(text)
+
+    def writelines(self, lines) -> None:
+        for line in lines:
+            self.write(line)
+
+    def flush(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def fileno(self) -> int:
+        return self._fd
+
+    def writable(self) -> bool:
+        return True
+
+    def isatty(self) -> bool:
+        try:
+            return os.isatty(self._fd)
+        except OSError:
+            return False
+
+
 def _redirect_error_name(error: OSError, target: Optional[str]) -> str:
     """Pick the name bash prints in `psh: NAME: STRERROR` for a redirect error.
 
@@ -310,6 +374,29 @@ class IOManager:
             return displaced
         displaced = sys.stderr
         sys.stderr = cast(TextIO, _ClosedStream())
+        return displaced
+
+    @staticmethod
+    def swap_output_stream_reopenable(target_fd: int) -> TextIO:
+        """Point fd 1's/2's Python stream at a ``_RawFdStream`` and RETURN the
+        stream it displaced.
+
+        The permanent-``exec``-close counterpart of ``swap_output_stream_closed``.
+        A per-command close is temporary and never reopens the fd within the
+        command, so ``_ClosedStream`` (write→EBADF) is right there. A permanent
+        ``exec >&-`` is different: the fd may be REOPENED later (``exec >&3``) or
+        transiently by a compound/function body's own redirect (``f 1>&2``), and
+        the natural buffering wrapper it replaced would leak buffered bytes into
+        such a reopen. ``_RawFdStream`` writes straight to the fd number, so it
+        fails cleanly while the fd is closed yet follows it when a reopen makes
+        it live again — no buffer to leak, no legitimate reopen severed.
+        """
+        if target_fd == 1:
+            displaced = sys.stdout
+            sys.stdout = cast(TextIO, _RawFdStream(target_fd))
+            return displaced
+        displaced = sys.stderr
+        sys.stderr = cast(TextIO, _RawFdStream(target_fd))
         return displaced
 
     def _swap_closed_output_streams(self, redirects: List[Redirect]):

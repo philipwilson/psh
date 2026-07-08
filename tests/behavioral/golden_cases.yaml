@@ -1209,6 +1209,45 @@
   stderr: "a"
   exit_code: 0
 
+# MED-1 (io_redirect appraisal 2026-07-07): a builtin's write to a std fd
+# closed by permanent `exec >&-` must NEVER resurface when that fd is later
+# reopened. Before the fix the natural TextIOWrapper buffered LEAK and flushed
+# it into the reopened fd at shutdown; bash prints only `end`. Saved-fd reopen:
+- name: ioleak_exec_close_reopen_echo
+  command: 'exec 3>&1; exec >&-; echo LEAK; exec >&3 3>&-; echo end'
+  stdout: "end\n"
+  stderr: "write error: Bad file descriptor"
+  exit_code: 0
+
+- name: ioleak_exec_close_reopen_printf
+  command: 'exec 3>&1; exec >&-; printf LEAK; exec >&3 3>&-; echo end'
+  stdout: "end\n"
+  stderr: "write error: Bad file descriptor"
+  exit_code: 0
+
+# Several builtins between close and reopen: none may resurface.
+- name: ioleak_exec_close_multi_builtin
+  command: 'exec 3>&1; exec >&-; echo A; echo B; printf C; exec >&3 3>&-; echo end'
+  stdout: "end\n"
+  stderr: "write error: Bad file descriptor"
+  exit_code: 0
+
+# The "healing" reopen the old docstring wrongly called safe: close fd 1,
+# write, point fd 1 at fd 2. Nothing leaks onto fd 2 (stdout stays empty; the
+# stderr no-LEAK assertion is pinned in test_exec_close_output_leak.py).
+- name: ioleak_exec_close_heal_to_stderr
+  command: 'exec 3>&1; exec 1>&-; echo LEAK; exec 1>&2; echo end >&2'
+  stdout: ""
+  stderr: null
+  exit_code: 0
+
+# Close, reopen, close again, reopen: no accumulation across cycles.
+- name: ioleak_exec_double_close_reopen
+  command: 'exec 3>&1; exec >&-; echo L1; exec >&3; echo mid; exec >&-; echo L2; exec >&3 3>&-; echo end'
+  stdout: "mid\nend\n"
+  stderr: "write error: Bad file descriptor"
+  exit_code: 0
+
 # Cluster C1 (appraisal #15): a redirect on an in-process builtin reaches
 # the children it spawns (external command / pipeline / sourced file).
 - name: redirect_command_external_devnull_no_leak
