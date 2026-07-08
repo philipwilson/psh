@@ -167,3 +167,26 @@ class TestPosixSpecialBuiltinNoExit(_StatusConformance):
     # (pinned in tests/integration/test_posix_special_builtin_exit.py) but
     # 127 in bash's -c mode (the same ledgered -c artifact as bare `r=2`),
     # so it has no -c-shaped conformance row here.
+
+
+class TestPosixSuppressibleExit(_StatusConformance):
+    """Bounce F1: the suppressible/hard exit-class split, live vs bash.
+    Invalid-option and top-level-return exits are suppressed in
+    errexit-exempt contexts (through functions, not across eval/dot);
+    dot-file and readonly-assignment exits are hard even when guarded."""
+
+    def test_or_guard_suppresses_invalid_option(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; set -q || echo caught; echo rc=$?")
+
+    def test_if_guard_suppresses_through_function(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; f() { set -q; }; if f; then echo T; else echo F; fi")
+
+    def test_eval_boundary_not_suppressed(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; eval 'set -q' || echo caught; echo survived")
+
+    def test_hard_dot_missing_guarded_still_exits(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; if . /nonexistent/psh-conf-sup; then echo T; fi; echo x")

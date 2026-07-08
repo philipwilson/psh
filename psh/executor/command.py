@@ -1042,4 +1042,5 @@ class CommandExecutor:
                 # for redirect handling), so its usage outcome — an invalid
                 # option — resolves here: a direct special-builtin
                 # invocation, same policy as the guard's special_exit.
-                return special_builtin_usage_exit(self.state, e.status)
+                return special_builtin_usage_exit(self.shell, e.status,
+                                                  suppressible=e.suppressible)

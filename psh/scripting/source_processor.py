@@ -90,7 +90,30 @@ class SourceProcessor(ScriptComponent):
         lines for ``$LINENO`` (default 1 = no shift). It is >1 only for nested
         executions anchored at an invoking command's line (eval, trap actions);
         see Shell.run_command.
+
+        A NESTED run (eval / dot / trap action — an enclosing executor is
+        active) raises the POSIX suppressible-exit FLOOR to the entry-time
+        suppression depth for the duration of this source: bash's
+        posix-mode suppression of the invalid-option/return exit class does
+        NOT reach across an eval/dot boundary (``eval 'set -q' || x`` still
+        exits; a guard INSIDE the eval'd text suppresses again) — see
+        ``ExecutionContext.special_exit_floor``.
         """
+        executor = getattr(self.shell, '_current_executor', None)
+        if executor is None:
+            return self._run_from_source(input_source, add_to_history,
+                                         base_line)
+        saved_floor = executor.context.special_exit_floor
+        executor.context.special_exit_floor = executor.context.errexit_suppress
+        try:
+            return self._run_from_source(input_source, add_to_history,
+                                         base_line)
+        finally:
+            executor.context.special_exit_floor = saved_floor
+
+    def _run_from_source(self, input_source, add_to_history: bool = True,
+                         base_line: int = 1) -> int:
+        """The line-gathering loop of :meth:`execute_from_source`."""
         exit_code = 0
         command_start_line = 0
         accumulator = CommandAccumulator(self.shell)

@@ -121,7 +121,7 @@ EXIT STATUS
         if (args[1].startswith('-') and args[1] not in ('-', '--')):
             self.error(f"{args[1][:2]}: invalid option", shell)
             self.error(f"usage: {self.synopsis}", shell)
-            raise SpecialBuiltinUsageError(2)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
 
         # POSIX: -- ends option processing; the next argument is the action.
         # This is the standard defensive idiom: trap -- 'action' SIGNAL
@@ -152,6 +152,6 @@ EXIT STATUS
             # USAGE error (bash: `trap foo` prints the usage line, rc 2,
             # and a POSIX-mode non-interactive shell exits).
             self.error(f"usage: {self.synopsis}", shell)
-            raise SpecialBuiltinUsageError(2)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
 
         return shell.trap_manager.set_trap(operands[0], operands[1:])

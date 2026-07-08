@@ -194,7 +194,8 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
         raise
     except SpecialBuiltinUsageError as e:
         if special_exit:
-            return special_builtin_usage_exit(shell.state, e.status)
+            return special_builtin_usage_exit(shell, e.status,
+                                              suppressible=e.suppressible)
         return e.status
     except OSError as e:
         # The builtin's output fd was closed/broken (`pwd 1>&-`, a builtin

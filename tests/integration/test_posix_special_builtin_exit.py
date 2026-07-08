@@ -424,3 +424,208 @@ class TestPrefixAssignmentPosix:
         assert "RAN" in out
         assert "s=0" in out
         assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# Suppression: bash's TWO posix-exit classes (probe battery
+# tmp/posixexit/suppress_core.txt / suppress_rest.txt, bash 5.2.26).
+# SUPPRESSIBLE (invalid options, top-level return): errexit-exempt contexts
+# (if/while/until conditions, non-final &&/|| members, ! negation — through
+# functions/brace groups/subshells, NOT across an eval/dot boundary)
+# suppress the exit: the builtin merely fails. HARD (eval/dot syntax,
+# missing dot-file, readonly assignment): exits even when guarded.
+# ---------------------------------------------------------------------------
+
+# Guard templates: {c} is the failing command. Each guarded run appends
+# "echo survived rc=$?" on the NEXT line.
+GUARDS = [
+    ("if", "if {c}; then echo T; else echo F; fi"),
+    ("while", "while {c}; do break; done"),
+    ("until", "until {c}; do break; done"),
+    ("or", "{c} || echo caught"),
+    ("and", "{c} && echo also"),
+    ("bang", "! {c}"),
+    ("func", "g() {{ {c}; }}\nif g; then echo T; else echo F; fi"),
+]
+
+SUPPRESSIBLE_REPS = [
+    ("set -q", ""),
+    ("return", ""),
+]
+SUPPRESSIBLE_ONE_GUARD = [
+    ("export -q", ""),
+    ("readonly -q", ""),
+    ("unset -q", ""),
+    ("trap -q", ""),
+    ("trap foo", ""),
+    ("set -o nosuchoption", ""),
+    ("exec -q true", ""),
+]
+HARD_REPS = [
+    ("eval 'if'", "", 2),
+    (". /nonexistent/psh-posixexit-sup", "", 1),
+]
+HARD_ONE_GUARD = [
+    ("readonly r=2", "readonly r=1\n", 1),
+    ("export r=2", "readonly r=1\n", 1),
+    ("r=2", "readonly r=1\n", 1),
+]
+
+
+class TestPosixSuppressibleExitGuards:
+    """SUPPRESSIBLE class in every guard shape: the POSIX-mode shell
+    SURVIVES (bash). RED ON BRANCH TIP 43b1ba14 (which exited rc 2 for
+    all of these); base a3629202 was green here (never exited), so these
+    double as regression pins for the pre-campaign behavior."""
+
+    @pytest.mark.parametrize("gname,gtpl", GUARDS,
+                             ids=[g for g, _ in GUARDS])
+    @pytest.mark.parametrize("cmd,setup", SUPPRESSIBLE_REPS,
+                             ids=[c for c, _ in SUPPRESSIBLE_REPS])
+    def test_guard_suppresses_exit(self, cmd, setup, gname, gtpl, tmp_path):
+        body = ("set -o posix\n" + setup + gtpl.format(c=cmd)
+                + "\necho survived rc=$?\n")
+        rc, out, err = run_script(body, tmp_path)
+        assert "survived rc=" in out, (cmd, gname, out, err)
+        assert rc == 0, (cmd, gname, rc, err)
+
+    @pytest.mark.parametrize("cmd,setup", SUPPRESSIBLE_ONE_GUARD,
+                             ids=[c for c, _ in SUPPRESSIBLE_ONE_GUARD])
+    def test_or_guard_suppresses_each_builtin(self, cmd, setup, tmp_path):
+        body = ("set -o posix\n" + setup + cmd
+                + " || echo caught\necho survived rc=$?\n")
+        rc, out, err = run_script(body, tmp_path)
+        assert "caught" in out, (cmd, out, err)
+        assert out.endswith("survived rc=0\n"), (cmd, out)
+        assert rc == 0, (cmd, rc, err)
+
+    def test_and_guard_keeps_failure_status(self, tmp_path):
+        """`set -q && echo also`: suppressed, 'also' not run, $? = 2 (bash)."""
+        rc, out, err = run_script(
+            "set -o posix\nset -q && echo also\necho survived rc=$?\n",
+            tmp_path)
+        assert "also" not in out
+        assert out == "survived rc=2\n"
+        assert rc == 0
+
+
+class TestPosixHardExitNotSuppressed:
+    """HARD class in every guard shape: bash exits EVEN when guarded.
+    Defensive-green discriminators — a mutation making the hard class
+    suppressible turns each of these into a survival and fails them."""
+
+    @pytest.mark.parametrize("gname,gtpl", GUARDS,
+                             ids=[g for g, _ in GUARDS])
+    @pytest.mark.parametrize("cmd,setup,status", HARD_REPS,
+                             ids=[c for c, _, _ in HARD_REPS])
+    def test_guard_does_not_suppress(self, cmd, setup, status, gname, gtpl,
+                                     tmp_path):
+        body = ("set -o posix\n" + setup + gtpl.format(c=cmd)
+                + "\necho survived rc=$?\n")
+        rc, out, err = run_script(body, tmp_path)
+        assert "survived" not in out, (cmd, gname, out, err)
+        assert rc == status, (cmd, gname, rc, err)
+
+    @pytest.mark.parametrize("cmd,setup,status", HARD_ONE_GUARD,
+                             ids=[c for c, _, _ in HARD_ONE_GUARD])
+    def test_if_guard_does_not_suppress_assignment_errors(
+            self, cmd, setup, status, tmp_path):
+        body = ("set -o posix\n" + setup + "if " + cmd
+                + "; then echo T; else echo F; fi\necho survived rc=$?\n")
+        rc, out, err = run_script(body, tmp_path)
+        assert "survived" not in out, (cmd, out, err)
+        assert rc == status, (cmd, rc, err)
+
+
+class TestSuppressionBoundaries:
+    """The suppression reaches through functions/brace groups/subshells and
+    trap actions but NOT across an eval/dot boundary; guards INSIDE the
+    eval'd/sourced text re-establish it (probe-pinned to bash 5.2)."""
+
+    def test_guard_inside_eval_suppresses(self, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\neval 'set -q || echo in'\necho survived rc=$?\n",
+            tmp_path)
+        assert out == "in\nsurvived rc=0\n"
+        assert rc == 0
+
+    def test_guard_outside_eval_does_not_suppress(self, tmp_path):
+        """Defensive-green: `if eval 'set -q'` exits (eval boundary)."""
+        rc, out, err = run_script(
+            "set -o posix\nif eval 'set -q'; then echo T; else echo F; fi\n"
+            "echo survived\n", tmp_path)
+        assert "survived" not in out
+        assert rc == 2
+
+    def test_guard_outside_dot_does_not_suppress(self, tmp_path):
+        """Defensive-green: a guarded `.` of a file whose body has the
+        suppressible error still exits (dot boundary)."""
+        aux = tmp_path / "aux_sup.sh"
+        aux.write_text("set -q\n")
+        rc, out, err = run_script(
+            f"set -o posix\nif . {aux}; then echo T; else echo F; fi\n"
+            "echo survived\n", tmp_path)
+        assert "survived" not in out
+        assert rc == 2
+
+    def test_guard_inside_sourced_file_suppresses(self, tmp_path):
+        aux = tmp_path / "aux_sup2.sh"
+        aux.write_text("set -q || echo in\n")
+        rc, out, err = run_script(
+            f"set -o posix\n. {aux}\necho survived rc=$?\n", tmp_path)
+        assert out == "in\nsurvived rc=0\n"
+        assert rc == 0
+
+    def test_brace_group_transparent(self, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\n{ set -q; } || echo caught\necho survived rc=$?\n",
+            tmp_path)
+        assert out == "caught\nsurvived rc=0\n"
+        assert rc == 0
+
+    def test_subshell_interior_suppressed(self, tmp_path):
+        """The guard exemption crosses the fork: the subshell body
+        CONTINUES past the suppressed error (bash prints 'in')."""
+        rc, out, err = run_script(
+            "set -o posix\nif ( set -q; echo in ); then echo T; else echo F; "
+            "fi\necho survived rc=$?\n", tmp_path)
+        assert out == "in\nT\nsurvived rc=0\n"
+        assert rc == 0
+
+    def test_trap_action_interior_guard_suppresses(self, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\ntrap 'set -q || echo in' USR1\nkill -USR1 $$\n"
+            "echo survived rc=$?\n", tmp_path)
+        assert "in" in out
+        assert "survived" in out
+        assert rc == 0
+
+    def test_errexit_does_not_defeat_suppression(self, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\nset -e\nif set -q; then echo T; else echo F; fi\n"
+            "echo survived rc=$?\n", tmp_path)
+        assert out == "F\nsurvived rc=0\n"
+        assert rc == 0
+
+
+class TestInteractiveAndEmbeddedNoExit:
+    """The interactive/embedded no-exit arm (F3): the policy must never
+    fire when is_script_mode is False. Kills the fire-in-interactive
+    mutation: an embedded SystemExit would error the first test, and an
+    exiting -i shell would drop 'alive' in the second."""
+
+    def test_embedded_shell_returns_2_without_systemexit(self, captured_shell):
+        assert captured_shell.run_command("set -o posix") == 0
+        rc = captured_shell.run_command("set -q")  # SystemExit would escape
+        assert rc == 2
+        captured_shell.clear_output()
+        assert captured_shell.run_command("echo still-alive") == 0
+        assert captured_shell.get_stdout() == "still-alive\n"
+
+    def test_forced_interactive_pipe_survives(self):
+        p = subprocess.run(
+            PSH + ["--norc", "-i"],
+            input="set -o posix\nset -q\necho alive rc=$?\n",
+            capture_output=True, text=True, timeout=30)
+        assert "alive rc=2" in p.stdout
+        assert p.returncode == 0

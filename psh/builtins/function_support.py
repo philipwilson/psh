@@ -819,7 +819,7 @@ class ReadonlyBuiltin(Builtin):
             # Invalid option: special-builtin usage error (rc 2; exits a
             # POSIX-mode non-interactive shell). The `1bad=x` identifier
             # error stays a plain rc-1 operand error inside declare.
-            raise SpecialBuiltinUsageError(2)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
 
         if options['functions']:
             return self._handle_readonly_functions(names, shell)
@@ -967,7 +967,7 @@ class ReturnBuiltin(Builtin):
             # Usage error rc 2 (bash); a POSIX-mode non-interactive shell
             # exits with 2 (typed outcome, resolved at the builtin guard).
             self.error("can only `return' from a function or sourced script", shell)
-            raise SpecialBuiltinUsageError(2)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
 
         # Get return value
         if len(args) > 1:

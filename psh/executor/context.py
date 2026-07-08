@@ -34,6 +34,17 @@ class ExecutionContext:
     # this context, the exemption extends through them, as in bash.
     errexit_suppress: int = 0
 
+    # Floor for the POSIX special-builtin SUPPRESSIBLE-exit check: the
+    # suppressible class (invalid options / top-level return) is exempt from
+    # the posix-mode exit only when errexit_suppress rose ABOVE this floor —
+    # i.e. a guard established INSIDE the current eval/dot nesting. bash's
+    # suppression reaches through functions, brace groups and subshells but
+    # NOT through an eval/dot boundary (`eval 'set -q' || x` still exits,
+    # `eval 'set -q || echo in'` survives — probe-verified,
+    # tmp/posixexit/suppress_*.txt), so the nested SourceProcessor raises
+    # the floor to the entry-time depth for the duration of the nested text.
+    special_exit_floor: int = 0
+
     @contextmanager
     def errexit_suppressed(self):
         """Suppress set -e while executing a condition-like context."""
@@ -42,6 +53,12 @@ class ExecutionContext:
             yield
         finally:
             self.errexit_suppress -= 1
+
+    @property
+    def special_exit_suppressed(self) -> bool:
+        """True when a guard INSIDE the current eval/dot nesting is active
+        (the POSIX suppressible-exit exemption; see special_exit_floor)."""
+        return self.errexit_suppress > self.special_exit_floor
 
     def fork_context(self) -> 'ExecutionContext':
         """
@@ -57,6 +74,7 @@ class ExecutionContext:
             loop_depth=self.loop_depth,
             current_function=self.current_function,
             errexit_suppress=self.errexit_suppress,
+            special_exit_floor=self.special_exit_floor,
         )
 
     def pipeline_context_enter(self) -> 'ExecutionContext':
@@ -66,4 +84,5 @@ class ExecutionContext:
             loop_depth=self.loop_depth,
             current_function=self.current_function,
             errexit_suppress=self.errexit_suppress,
+            special_exit_floor=self.special_exit_floor,
         )

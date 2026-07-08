@@ -64,7 +64,7 @@ class ExportBuiltin(Builtin):
                         # SpecialBuiltinUsageError): POSIX-mode
                         # non-interactive shells exit with 2.
                         self.error(f"-{ch}: invalid option", shell)
-                        raise SpecialBuiltinUsageError(2)
+                        raise SpecialBuiltinUsageError(2, suppressible=True)
                 i += 1
             else:
                 break
@@ -368,7 +368,7 @@ class SetBuiltin(Builtin):
                         # non-interactive shell exits with 2, otherwise the
                         # guard turns it back into plain status 2.
                         self.error(f"invalid option: {sign}{opt_char}", shell)
-                        raise SpecialBuiltinUsageError(2)
+                        raise SpecialBuiltinUsageError(2, suppressible=True)
                 i += 1
                 continue
 
@@ -397,7 +397,7 @@ class SetBuiltin(Builtin):
         spec = OPTION_REGISTRY.get(option)
         if spec is not None and spec.category is OptionCategory.INTERNAL:
             self.error(f"{name}: invalid option name", shell)
-            raise SpecialBuiltinUsageError(2)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
 
         # Editor modes (silent, like bash)
         if option in ('vi', 'emacs'):
@@ -441,7 +441,7 @@ class SetBuiltin(Builtin):
         if enable:
             valid_opts = ['vi', 'emacs'] + list(sorted(shell.state.options.keys()))
             self.write_error_line(f"Valid options: {', '.join(valid_opts)}", shell)
-        raise SpecialBuiltinUsageError(2)
+        raise SpecialBuiltinUsageError(2, suppressible=True)
 
     @property
     def help(self) -> str:
@@ -550,7 +550,7 @@ class UnsetBuiltin(Builtin):
             # Invalid option: a special-builtin usage error (rc 2; exits a
             # POSIX-mode non-interactive shell). The -f/-v conflict and
             # readonly/unset failures below stay plain operand errors.
-            raise SpecialBuiltinUsageError(2)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
         if opts['f'] and opts['v']:
             # bash rejects -f and -v together regardless of operands.
             self.error(
