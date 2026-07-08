@@ -525,8 +525,14 @@ class CommandExecutor:
                 # revealing any global write the body made). Special builtins
                 # never take the function path, so persistence doesn't apply.
                 self.state.scope_manager.pop_scope()
-            elif saved_vars is not None and not prefix_assignments_persist:
-                self.assignments.restore(saved_vars)
+            elif saved_vars is not None:
+                if prefix_assignments_persist:
+                    # POSIX special builtin: the variables persist; still drop
+                    # the command-env overlay so later env reads see the
+                    # persisted (exported) variables, not a stale literal.
+                    self.assignments.commit(saved_vars)
+                else:
+                    self.assignments.restore(saved_vars)
 
     def _strip_backslash_bypass(self, command_node: 'SimpleCommand'):
         """Strip a leading backslash on the command word (`\\ls`, `\\echo`).
@@ -959,13 +965,13 @@ class CommandExecutor:
             # exec without command - apply redirections permanently
             # and make variable assignments permanent
             if assignments:
-                # Make assignments permanent by exporting them into the
-                # live environment (state.env; os.environ is read-once at
-                # startup and never written — children get state.env
-                # explicitly, so writing os.environ here only leaked).
+                # Make assignments permanent in shell state; the variable
+                # observer re-materializes the live environment (no direct env
+                # poke — one env interface, appraisal H3). os.environ is
+                # read-once at startup and never written; children get
+                # state.env explicitly.
                 for var, value in assignments:
                     self.state.set_variable(var, value)
-                    self.shell.env[var] = value
 
             if node.redirects:
                 try:

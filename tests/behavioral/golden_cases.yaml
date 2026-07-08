@@ -7608,3 +7608,59 @@
   stdout: "hi\n"
   stderr: ""
   exit_code: 0
+
+# --- Core-state Phase 4: env one-interface + temp-env overlay ----------------
+# A computed special / array prefix passes its LITERAL to the child (the
+# command-env overlay wins over the exported-variable value).
+- name: corestate4_random_prefix_literal
+  command: 'RANDOM=5 env | grep "^RANDOM="'
+  stdout: "RANDOM=5\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_array_scalar_append_prefix_env
+  command: 'a=(x y); a+=z env | grep "^a="'
+  stdout: "a=xz\n"
+  stderr: ""
+  exit_code: 0
+# A prefix over a non-special command is temporary (var + env restored).
+- name: corestate4_prefix_temporary_after
+  command: 'W=1 true; printf "<%s>\n" "${W-UNSET}"'
+  stdout: "<UNSET>\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_unset_restore
+  command: 'V=1 true; printf "%s\n" "${V+SET}"'
+  stdout: "\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_prefix_twice_last_wins
+  command: 'V=1 V=2 env 2>/dev/null | grep "^V="'
+  stdout: "V=2\n"
+  stderr: ""
+  exit_code: 0
+# export -n removes the live-env entry through the one interface (observer).
+- name: corestate4_export_n_removes_env
+  command: 'export FOO=bar; export -n FOO; env | grep "^FOO=" && echo STILL || echo GONE'
+  stdout: "GONE\n"
+  stderr: ""
+  exit_code: 0
+# POSIX special-builtin persistence (commit path): the var persists in env, and
+# a later reassignment materializes correctly (the overlay was dropped, not
+# left stale at "v").
+- name: corestate4_posix_persist_env
+  command: 'set -o posix; V=v :; env | grep "^V="'
+  stdout: "V=v\n"
+  stderr: ""
+  exit_code: 0
+- name: corestate4_posix_persist_then_change
+  command: 'set -o posix; V=v :; V=w; env | grep "^V="; printf "<%s>\n" "$V"'
+  stdout: "V=w\n<w>\n"
+  stderr: ""
+  exit_code: 0
+# cd routes PWD/OLDPWD through the observer only: a readonly OLDPWD that blocks
+# the update must not leak the new value into a child's env (self-verifying).
+- name: corestate4_cd_readonly_oldpwd_no_leak
+  command: 'cd /tmp; export OLDPWD; before=$OLDPWD; readonly OLDPWD; cd / 2>/dev/null; after=$(printenv OLDPWD); [ "$before" = "$after" ] && echo SAME || echo LEAK'
+  stdout: "SAME\n"
+  stderr: ""
+  exit_code: 0

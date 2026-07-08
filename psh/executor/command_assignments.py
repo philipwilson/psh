@@ -298,6 +298,11 @@ class CommandAssignments:
         # prefix position). It is stored as-is in state/env/the applied list,
         # exactly as before — hence the wider value type here.
         assignments: List[Tuple[str, object]] = []
+        # The command-env overlay: the LITERAL string each name contributes to
+        # this command's process environment. Composed onto the live env at the
+        # end via ShellState.apply_command_env (the overlay wins over the
+        # exported value, so a computed special / array passes its literal).
+        overlay: Dict[str, str] = {}
         assignment_error = False
 
         xtrace = self.state.options.get('xtrace')
@@ -358,9 +363,12 @@ class CommandAssignments:
                     state_snapshot = copy.deepcopy(existing_val)
                 else:
                     state_snapshot = self.state.scope_manager.get_variable(var)
+                # Only the variable snapshot is saved. The env entry is NOT
+                # snapshotted: restore() re-materializes it from the restored
+                # variable / opaque base through the one env interface, so a
+                # per-name env rollback is no longer needed (appraisal H3).
                 saved = {
                     'state': state_snapshot,
-                    'env': self.shell.env.get(var),  # May be None if not in env
                     'was_exported': bool(existing and existing.is_exported),
                 }
             try:
@@ -381,26 +389,35 @@ class CommandAssignments:
             if saved is not None:
                 saved_vars[var] = saved
             assignments.append((var, resolved))
-            # Also set in shell.env for external commands. A scalar `+=` prefix
+            # Record this name's literal env contribution. A scalar `+=` prefix
             # onto an ARRAY (`a+=z cmd`) resolves to an array object; serialize
             # it to its scalar view (element 0) via as_string() — an array
             # object must NEVER reach execve's environment (F8: it raised
             # "expected str ... not IndexedArray" and left the array mutated).
             if isinstance(resolved, (IndexedArray, AssociativeArray)):
-                self.shell.env[var] = resolved.as_string()
+                overlay[var] = resolved.as_string()
             else:
-                self.shell.env[var] = cast(str, resolved)
+                overlay[var] = cast(str, resolved)
+
+        # Compose all applied literals onto the live environment in one step,
+        # through the single env-materialization interface. set_variable above
+        # already fired the observer per name; the overlay wins over its derived
+        # value (needed for computed specials / arrays whose exported value is
+        # not the literal, and a harmless no-op for a plain scalar).
+        if overlay:
+            self.state.apply_command_env(overlay)
 
         return PrefixOutcome(saved_vars, assignments, assignment_error)
 
     def restore(self, saved_vars: Dict[str, dict]) -> None:
         """Restore variables after command execution.
 
-        Restores both shell state and shell.env to their original values.
-        Command-prefixed assignments (FOO=bar cmd) are always temporary,
-        even for exported variables. (The POSIX special-builtin
-        persistence exception is the dispatcher's: it simply does not
-        call restore in that case.)
+        Restores the shell VARIABLES to their saved values and tears down the
+        command-env overlay; the env entries then re-materialize from the
+        restored variables / opaque base through the one env interface.
+        Command-prefixed assignments (FOO=bar cmd) are always temporary, even
+        for exported variables. (The POSIX special-builtin persistence exception
+        is the dispatcher's: it calls :meth:`commit` instead of this.)
         """
         from ..core import VarAttributes
 
@@ -422,14 +439,19 @@ class CommandAssignments:
                     self.state.scope_manager.remove_attribute(
                         var, VarAttributes.EXPORT)
 
-            # Restore shell.env
-            old_env_value = saved['env']
-            if old_env_value is None:
-                # Variable wasn't in env before, remove it
-                if var in self.shell.env:
-                    del self.shell.env[var]
-            else:
-                self.shell.env[var] = old_env_value
+        # Drop the overlay and re-derive each name's env entry from the (now
+        # restored) variable / opaque base. Done after the variable restores so
+        # the re-materialization sees the restored values.
+        self.state.restore_command_env(saved_vars.keys())
+
+    def commit(self, saved_vars: Dict[str, dict]) -> None:
+        """Make the prefix assignments permanent (POSIX special-builtin rule,
+        ``VAR=v :``): keep the variables, but still drop the command-env overlay
+        so future env materializations read the (persisted, exported) variables
+        rather than a stale overlay literal. The variables stay exactly as
+        apply_prefix left them.
+        """
+        self.state.restore_command_env(saved_vars.keys())
 
     # ------------------------------------------------------------------
     # Value expansion

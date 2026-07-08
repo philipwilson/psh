@@ -138,10 +138,13 @@ class CdBuiltin(Builtin):
             if found_in_cdpath:
                 self.write_line(logical_new_dir, shell)
 
-            # Update PWD and OLDPWD: both carry the EXPORT attribute in
-            # bash (`declare -p PWD` → declare -x ...), and the export
-            # observer keeps shell.env in sync. The direct env writes
-            # stay for shells whose state is a test mock (see except).
+            # Update PWD and OLDPWD: both carry the EXPORT attribute in bash
+            # (`declare -p PWD` → declare -x ...), and export_variable's observer
+            # keeps shell.env in sync — the single env interface, no direct poke
+            # (appraisal H3). Routing solely through export_variable also fixes a
+            # stale-env leak: the old raw `shell.env['OLDPWD'] = ...` wrote even
+            # when a readonly OLDPWD rejected the variable update, so an external
+            # child saw the new value where bash keeps the old.
             #
             # The cwd has ALREADY changed (os.chdir succeeded); bash updates
             # PWD and OLDPWD INDEPENDENTLY — a readonly OLDPWD still lets PWD
@@ -150,8 +153,6 @@ class CdBuiltin(Builtin):
             # let its ReadonlyVariableError skip the PWD update, so
             # `readonly OLDPWD; cd /` left PWD stale (bash updates it).
             from ..core import ReadonlyVariableError
-            shell.env['OLDPWD'] = current_dir
-            shell.env['PWD'] = logical_new_dir
             readonly_name = None
             for vname, vval in (('OLDPWD', current_dir),
                                 ('PWD', logical_new_dir)):

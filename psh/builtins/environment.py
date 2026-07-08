@@ -230,15 +230,13 @@ class ExportBuiltin(Builtin):
         var = shell.state.scope_manager.get_variable_object(name)
         if var is not None and var.is_exported:
             # Route through the store (no direct .attributes write, C2); its
-            # observer re-derives the live-environment entry.
+            # observer re-derives the live-environment entry (removing it, since
+            # the variable is no longer exported) — the single env interface, no
+            # direct env poke (appraisal H3). A name that is only an inherited
+            # OPAQUE env entry cannot reach here: `export -n` rejects invalid
+            # identifiers, and every valid-identifier env entry is a variable.
             shell.state.scope_manager.store.remove_attributes(
                 name, VarAttributes.EXPORT)
-        # state.env is the live environment; os.environ is read-once at startup
-        # and never written. Belt-and-braces for a name that is only an env
-        # entry (not a shell variable): the observer above only fires when a
-        # variable exists, so keep the explicit pop + resync.
-        shell.state.env.pop(name, None)
-        shell.state.scope_manager.sync_exports_to_environment(shell.state.env)
 
     @property
     def help(self) -> str:
