@@ -7658,10 +7658,14 @@
   stderr: ""
   exit_code: 0
 # cd routes PWD/OLDPWD through the observer only: a readonly OLDPWD that blocks
-# the update must not leak the new value into a child's env (self-verifying).
+# the update must not leak the new value into a child's env. The child is a
+# DIRECT external printenv (NOT $(...) command substitution — cmdsub
+# re-materializes env before its fork and masks the leak). Leading `cd /`
+# normalizes OLDPWD to `/` so the expected output is cwd-independent; the pre-fix
+# raw poke printed `/tmp` here.
 - name: corestate4_cd_readonly_oldpwd_no_leak
-  command: 'cd /tmp; export OLDPWD; before=$OLDPWD; readonly OLDPWD; cd / 2>/dev/null; after=$(printenv OLDPWD); [ "$before" = "$after" ] && echo SAME || echo LEAK'
-  stdout: "SAME\n"
+  command: 'cd /; cd /tmp; export OLDPWD; readonly OLDPWD; cd / 2>/dev/null; printenv OLDPWD'
+  stdout: "/\n"
   stderr: ""
   exit_code: 0
 # Behavior-lock: the temp-env semantics that already matched bash must stay

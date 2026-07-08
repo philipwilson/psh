@@ -14,10 +14,18 @@ direct pokes. These pin:
   interface.
 """
 
+import os
 import subprocess
 import sys
 
 from psh.core.state import ShellState
+
+
+def _clean_env():
+    env = dict(os.environ)
+    for k in ("DISPLAY", "XAUTHORITY"):
+        env.pop(k, None)
+    return env
 
 
 def _fresh_state(monkeypatch, extra_env=None):
@@ -107,18 +115,22 @@ class TestPrefixLiteralPass:
 class TestCdReadonlyOldpwdNoLeak:
     """cd routes PWD/OLDPWD through export_variable's observer only; a readonly
     OLDPWD that rejects the update must NOT leak the new value into a child's
-    environment (the removed raw env poke did leak it). Self-verifying against
-    the value before the blocked cd — path-agnostic, and matches bash."""
+    environment (the removed raw env poke did leak it).
+
+    The child is a DIRECT external ``printenv`` — NOT ``$(printenv ...)``
+    command substitution, whose fork re-materializes the environment and would
+    mask the leak (that inert form was the verifier bounce). Leading ``cd /``
+    normalizes OLDPWD to ``/`` so the assertion is cwd-independent; the pre-fix
+    raw poke printed ``/tmp`` here (verified red-on-base)."""
 
     def test_readonly_oldpwd_keeps_old_value_in_child_env(self):
-        # `cd /tmp` sets OLDPWD; readonly freezes it; `cd /` cannot update it,
-        # so an external child (printenv) must still see the frozen value.
-        script = ('cd /tmp; export OLDPWD; before=$OLDPWD; readonly OLDPWD; '
-                  'cd / 2>/dev/null; after=$(printenv OLDPWD); '
-                  '[ "$before" = "$after" ] && echo SAME || '
-                  'echo "LEAK before=$before after=$after"')
+        script = ('cd /; cd /tmp; export OLDPWD; readonly OLDPWD; '
+                  'cd / 2>/dev/null; printenv OLDPWD')
+        env = _clean_env()
         r = subprocess.run(
             [sys.executable, "-m", "psh", "--norc", "-c", script],
-            capture_output=True, text=True, cwd="/",
+            capture_output=True, text=True, cwd="/", env=env,
         )
-        assert r.stdout == "SAME\n", r.stdout
+        # OLDPWD stays `/` (set by `cd /tmp`, frozen by readonly); the blocked
+        # `cd /` must not leak its attempted `/tmp` into the child's env.
+        assert r.stdout == "/\n", r.stdout
