@@ -524,13 +524,26 @@ class SourceProcessor(ScriptComponent):
             rc = fatal_expansion_status(self.state, e, at_boundary=True)
             self.state.last_exit_code = rc
             return rc
-        if isinstance(e, RecursionError) and nested:
-            # Runaway recursion inside a nested source (eval/trap body):
-            # keep unwinding so the nearest enclosing function-call
-            # boundary can convert it to the FUNCNEST diagnostic. At the
-            # REAL top level (not nested) it falls through to the guard
-            # below, whose expected-error taxonomy reports it cleanly.
-            raise e
+        if isinstance(e, RecursionError):
+            if nested:
+                # Runaway recursion inside a nested source (eval/trap body):
+                # keep unwinding so the nearest enclosing function-call
+                # boundary can convert it to the FUNCNEST diagnostic.
+                raise e
+            # At the REAL top level this is a function-less runaway — an
+            # infinite `source` chain, a deep `eval` chain, or a deeply
+            # nested compound at execution time. bash SEGFAULTS here (rc 139),
+            # so there is no message to match; psh degrades with a
+            # resource-limit diagnostic and rc 1. RecursionError is an
+            # EXPECTED shell error (psh's implicit FUNCNEST ceiling), so
+            # report it as a limit rather than through the internal-defect
+            # guard's "unexpected error:" prefix, which reads like a psh bug.
+            location = (f"{input_source.get_name()}:{start_line}"
+                        if start_line > 0 else "command")
+            print(f"psh: {location}: maximum recursion depth exceeded",
+                  file=sys.stderr)
+            self.state.last_exit_code = 1
+            return 1
         # Last-resort guard so an internal defect doesn't kill an
         # interactive session (or re-raise under strict-errors so a test
         # harness surfaces it) — see report_internal_defect for the policy.

@@ -139,3 +139,19 @@ def test_recursion_in_pipeline_member():
     r = _psh_c('g(){ g; }; g | cat; echo after=$?')
     assert r.stdout == 'after=0\n'  # last member (cat) exits 0, like bash
     assert 'Traceback' not in r.stderr
+
+
+def test_infinite_source_recursion_is_a_resource_limit(tmp_path):
+    """A function-less runaway (infinite `source`) reports a resource-limit
+    diagnostic at the top level, NOT the internal-defect "unexpected error:"
+    prefix (scripting appraisal 2026-07-07 finding #4).
+
+    bash SEGFAULTS on this (rc 139); psh degrades to rc 1 with a clean message.
+    """
+    selfrec = tmp_path / "selfrec.sh"
+    selfrec.write_text(f"source {selfrec}\n")
+    r = _psh_c(f"source {selfrec}")
+    assert r.returncode == 1
+    assert 'maximum recursion depth exceeded' in r.stderr
+    assert 'unexpected error' not in r.stderr
+    assert 'Traceback' not in r.stderr
