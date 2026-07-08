@@ -21,8 +21,9 @@ Every expectation below was probed against bash 5.2 first
 
 Cases that involve ``exec n>file`` (permanent, process-level fd
 redirection) run psh in a subprocess per the parallel-safety rules in
-CLAUDE.md. Purely per-command cases use the isolated shell fixture.
-This directory is auto-marked ``serial`` by conftest.
+CLAUDE.md. Purely per-command cases use the isolated shell fixture (fd-1/2
+redirects only). Vetted xdist-safe, so this file runs in the parallel phase
+(campaign #21).
 """
 
 import os

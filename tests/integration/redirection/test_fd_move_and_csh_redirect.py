@@ -3,7 +3,7 @@ all-or-nothing rollback of a failed `exec` redirection list.
 
 Regressions for reappraisal #16 Tier-2 (I/O). Every expected value below is
 bash 5.2's output for the same script. These manipulate real fds, so psh runs
-in a SUBPROCESS (the redirection package is auto-marked serial).
+in a SUBPROCESS — which keeps them xdist-safe in the parallel phase (campaign #21).
 """
 
 import os

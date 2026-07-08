@@ -459,16 +459,65 @@ def pytest_collection_modifyitems(config, items):
         # (flaked in the parallel phase, always passes serially / in isolation).
         "test_trap_signal_spec_conformance",
         "test_pty",
-        # The redirection suite forks for heredocs / here-strings / process
-        # substitution and manipulates fds; concurrently these clobber the xdist
-        # worker channel (each file can pass alone, but the dir flakes). Serial.
-        "integration/redirection",
     )
+
+    # The redirection suite forks for heredocs / here-strings / process
+    # substitution and manipulates fds in-process; concurrently those clobber
+    # the xdist worker channel (each file can pass alone, but the dir flakes).
+    # It therefore defaults to SERIAL — a NEW redirection file is serial until
+    # vetted (safe-by-default preserved).
+    #
+    # EXCEPTION (campaign #21, item d — test_performance appraisal 2026-07-07):
+    # the files below were individually audited as xdist-safe and opt OUT of the
+    # serial default into the parallel phase. Two safety classes qualify:
+    #   (1) SUBPROCESS-DRIVEN — every test runs psh via subprocess.run/Popen, so
+    #       all fd/fork/signal/exec effects happen inside the child, fully
+    #       isolated from the pytest worker; and
+    #   (2) PER-COMMAND IN-PROCESS — only fd-0/1/2 per-command redirects on the
+    #       in-process shell (psh saves/restores fds around each command — the
+    #       exact pattern already green across thousands of Phase-1 captured_shell
+    #       tests), plus ordinary external-command forks.
+    # Files that fork IN-PROCESS for heredoc/here-string/process-sub, do
+    # permanent `exec` fd changes in-process, manipulate fd>=3 in-process, or
+    # reap bg jobs at the worker level are NOT listed and stay serial (the 4
+    # unsafe + 3 mixed files: test_here_string_bareword, test_here_string_word_quoting,
+    # test_read_forked_fd, test_high_fd_redirection, test_advanced_redirection,
+    # test_heredoc, test_simple_redirection).
+    # See docs/reviews/parallel_test_safety_2026-06-06.md.
+    REDIRECTION_PARALLEL_SAFE = frozenset({
+        "test_builtin_dup_source_reassigned.py",
+        "test_builtin_redirect_child_visibility.py",
+        "test_builtin_redirect_nesting.py",
+        "test_child_fd_inheritance.py",
+        "test_compound_redirect_failure.py",
+        "test_exec_close_output_leak.py",
+        "test_exec_permanent_redirect.py",
+        "test_explicit_fd_heredoc_no_self_close.py",
+        "test_external_redirect_once.py",
+        "test_fd_move_and_csh_redirect.py",
+        "test_here_string_tilde.py",
+        "test_heredoc_composite_delimiter.py",
+        "test_large_heredoc.py",
+        "test_named_fd.py",
+        "test_noclobber_targets.py",
+        "test_process_sub_cleanup.py",
+        "test_process_sub_closed_fds.py",
+        "test_process_sub_embedded.py",
+        "test_redirect_error_messages.py",
+        "test_redirect_failure_paths.py",
+        "test_redirection_restore.py",
+        "test_script_fd_relocation.py",
+    })
 
     # Mark tests that need special handling
 
     for item in items:
-        if any(marker in str(item.fspath) for marker in serial_path_markers):
+        fspath = str(item.fspath)
+        if any(marker in fspath for marker in serial_path_markers):
+            item.add_marker(pytest.mark.serial)
+        elif "integration/redirection" in fspath and (
+                os.path.basename(fspath) not in REDIRECTION_PARALLEL_SAFE):
+            # Redirection file not on the vetted allowlist → serial default.
             item.add_marker(pytest.mark.serial)
 
         # Add markers based on test file location

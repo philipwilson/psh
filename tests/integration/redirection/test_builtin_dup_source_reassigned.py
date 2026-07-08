@@ -15,8 +15,8 @@ writes only to stdout, so it never exercised the misrouting. These pins VARY
 WHICH FD THE COMMAND WRITES TO — including a builtin that writes to BOTH
 streams (`type name nosuch`).
 
-Runs psh in a subprocess (process-level fd state). The
-`integration/redirection` path is auto-marked `serial`. Expectations verified
+Runs psh in a subprocess (process-level fd state), so it is xdist-safe and
+runs in the parallel phase (vetted in campaign #21). Expectations verified
 against bash 5.2.
 """
 
