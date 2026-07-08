@@ -26,6 +26,8 @@ Manager            (arrays)    State    Manager
 | `stream_bindings.py` | `StreamBindings` - stdin/stdout/stderr overrides (ShellState delegates) |
 | `command_hash.py` | `CommandHashTable` - remembered command locations (`hash` builtin; cleared via `ScopeManager.path_changed` on any PATH write) |
 | `scope.py` | `ScopeManager`, `VariableScope` - hierarchical scope management |
+| `special_registry.py` | `SPECIAL_REGISTRY` + `SpecialParameterState` - the single declarative table + typed lifecycle state for computed specials (RANDOM/SECONDS/LINENO/...); see "Computed Special Parameters" below |
+| `environment.py` | `is_environ_shell_name` - the one rule deciding which inherited env entries become shell variables vs stay opaque (appraisal H3) |
 | `variables.py` | `Variable`, `VarAttributes`, `IndexedArray`, `AssociativeArray` |
 | `option_registry.py` | `OPTION_REGISTRY` (single source of truth for all shell options) + `ShellOptions` (registry-backed, dict-compatible container; `ShellState.options`) |
 | `options.py` | `OptionHandler` - option *behavior* helpers (nounset check, xtrace print) |
@@ -393,7 +395,39 @@ shell-error path, give it a `PshError` subclass (e.g. `FunctionDefinitionError`)
 so it classifies as expected — do not let a bare Python exception stand in for
 a shell error.
 
-### Environment Policy (os.environ is read-once)
+### Computed Special Parameters (`special_registry.py`)
+
+The dynamically computed specials (`RANDOM`, `SECONDS`, `BASHPID`, `SRANDOM`,
+`EPOCHSECONDS`, `EPOCHREALTIME`, `LINENO`, plus the shell-view projections
+`PIPESTATUS`, `BASH_COMMAND`, `FUNCNAME`) are declared in ONE table,
+`SPECIAL_REGISTRY`, instead of scattered frozensets and an `if`-chain
+(core-state appraisal H1). Each row (`SpecialVarSpec`) declares its `compute`
+callable, `assign` policy (`SEED` resets SECONDS' baseline / seeds RANDOM;
+`IGNORE` drops the value; `NONE` = ordinary path), whether reading has side
+effects (guards nameref inspection), default attributes (INTEGER for the numeric
+ones), and `lifecycle`.
+
+`ScopeManager` holds one `SpecialParameterState` (`self._special`) that owns the
+SECONDS baseline (on `time.monotonic()`, so a wall-clock step never moves
+elapsed time), the RANDOM seed, the LINENO counter, the deactivated-on-`unset`
+set, and a persistent-attribute OVERLAY. Two categories:
+
+- **Dynamic specials** (`lifecycle=True`, the first seven): no stored `Variable`
+  exists while active. `set_variable`/`apply_attribute`/`remove_attribute`/
+  `unset_variable` intercept them via `has_lifecycle(name)`, so `readonly
+  RANDOM` / `export SECONDS` PERSIST on the overlay (enforced on later
+  assignment, materialised into `state.env` as a snapshot through
+  `find_exported_instance`, and shown by `declare -p NAME`), and `unset`
+  DEACTIVATES the name (it becomes an ordinary variable, bash).
+- **Shell-view specials** (`lifecycle=False`): computed read that SHADOWS any
+  stored variable; assignment/readonly/unset all take the ordinary path
+  (already bash-correct, so no interception).
+
+`UID`/`EUID`/`PPID` are NOT here — they are real readonly-integer variables
+seeded at startup. When adding a computed special, add a `SpecialVarSpec` row
+(and, for a `lifecycle` one, confirm the interception points cover it).
+
+### Environment Policy (os.environ is read-once; opaque inherited entries)
 
 `os.environ` is read ONCE at startup (`self.env = os.environ.copy()`);
 `state.env` is the live environment from then on and is passed
@@ -404,6 +438,19 @@ for subshell-style children.
 Nothing writes `os.environ` after startup — such a write would be
 invisible to children and only leak state into the hosting Python
 process (the pre-v0.312 `FOO=bar exec` leak).
+
+At startup only inherited entries whose NAME is a valid shell identifier
+(`environment.is_environ_shell_name`, bash's ASCII `legal_identifier`) are
+imported as exported shell variables. An entry with an invalid name
+(`bad-name`, `a.b`, a non-ASCII name) stays in `state.env` as an OPAQUE
+inherited entry — passed to children and shown by `printenv`, but NOT a shell
+variable, so `set` / `declare -p` / `export -p` / `compgen -v` do not list it
+(bash; core-state appraisal H3). `sync_exports_to_environment` preserves opaque
+entries because it only removes env entries that ARE unexported shell variables.
+NOTE (Phase-4 deferral): direct `state.env[...]` pokes still exist (PWD/OLDPWD
+writes, temp-env prefix save/restore in `command_assignments.py`); routing every
+env mutation through one interface + materialising the execution env from
+opaque + exported + overlay is the remaining H3 work.
 
 Exported variables are synced to `state.env`:
 

@@ -7520,3 +7520,91 @@
   stdout: "/tmp /tmp\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# CORE-STATE PHASE 3: computed special-parameter registry (appraisal H1)
+# =============================================================================
+
+- name: corestate3_special_readonly_random_fatal
+  command: 'readonly RANDOM; RANDOM=999; echo AFTER'
+  stdout: ""
+  stderr: "readonly variable"
+  exit_code: 1
+
+- name: corestate3_special_readonly_lineno_fatal
+  command: 'readonly LINENO; LINENO=999; echo AFTER'
+  stdout: ""
+  stderr: "readonly variable"
+  exit_code: 1
+
+- name: corestate3_special_readonly_special_reads
+  command: 'readonly RANDOM; r=$RANDOM; [ "$r" -ge 0 ] && [ "$r" -le 32767 ] && echo inrange'
+  stdout: "inrange\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_export_seconds_snapshot
+  command: 'export SECONDS=100; printenv SECONDS'
+  stdout: "100\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_export_random_child_sees_value
+  command: 'export RANDOM; printenv RANDOM >/dev/null; echo "rc=$?"'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_export_n_removes_entry
+  command: 'export EPOCHSECONDS; export -n EPOCHSECONDS; printenv EPOCHSECONDS >/dev/null; echo "rc=$?"'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_unset_epochseconds_literal
+  command: 'unset EPOCHSECONDS; EPOCHSECONDS=hello; echo "[$EPOCHSECONDS]"'
+  stdout: "[hello]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_unset_lineno_literal
+  command: 'unset LINENO; LINENO=hello; echo "[$LINENO]"'
+  stdout: "[hello]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_unset_bashpid_deactivates
+  command: 'unset BASHPID; echo "[$BASHPID]"; BASHPID=7; echo "$BASHPID"'
+  stdout: "[]\n7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_declare_p_random_integer
+  command: "declare -p RANDOM | sed 's/=.*//'"
+  stdout: "declare -i RANDOM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_declare_p_epochseconds_plain
+  command: "declare -p EPOCHSECONDS | sed 's/=.*//'"
+  stdout: "declare -- EPOCHSECONDS\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_declare_p_readonly_export_random
+  command: "readonly RANDOM; export RANDOM; declare -p RANDOM | sed 's/=.*//'"
+  stdout: "declare -irx RANDOM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_allexport_skips_special
+  command: 'set -a; RANDOM=5; printenv RANDOM >/dev/null; echo "rc=$?"'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: corestate3_special_allexport_exports_normal_var
+  command: 'set -a; FOO=hi; printenv FOO'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
