@@ -90,7 +90,30 @@ class SourceProcessor(ScriptComponent):
         lines for ``$LINENO`` (default 1 = no shift). It is >1 only for nested
         executions anchored at an invoking command's line (eval, trap actions);
         see Shell.run_command.
+
+        A NESTED run (eval / dot / trap action — an enclosing executor is
+        active) raises the POSIX suppressible-exit FLOOR to the entry-time
+        suppression depth for the duration of this source: bash's
+        posix-mode suppression of the invalid-option/return exit class does
+        NOT reach across an eval/dot boundary (``eval 'set -q' || x`` still
+        exits; a guard INSIDE the eval'd text suppresses again) — see
+        ``ExecutionContext.special_exit_floor``.
         """
+        executor = getattr(self.shell, '_current_executor', None)
+        if executor is None:
+            return self._run_from_source(input_source, add_to_history,
+                                         base_line)
+        saved_floor = executor.context.special_exit_floor
+        executor.context.special_exit_floor = executor.context.errexit_suppress
+        try:
+            return self._run_from_source(input_source, add_to_history,
+                                         base_line)
+        finally:
+            executor.context.special_exit_floor = saved_floor
+
+    def _run_from_source(self, input_source, add_to_history: bool = True,
+                         base_line: int = 1) -> int:
+        """The line-gathering loop of :meth:`execute_from_source`."""
         exit_code = 0
         command_start_line = 0
         accumulator = CommandAccumulator(self.shell)
@@ -150,6 +173,7 @@ class SourceProcessor(ScriptComponent):
                 self.state.last_exit_code = 2
                 # In non-interactive mode, exit immediately on parse errors
                 if not input_source.is_interactive():
+                    self._posix_syntax_abort(input_source)
                     return exit_code
                 continue
 
@@ -198,6 +222,40 @@ class SourceProcessor(ScriptComponent):
             detail = ctx.format_error()
         location = f"{filename}:{line}" if line > 0 else "command"
         print(f"psh: {location}: {detail}", file=sys.stderr)
+
+    def _posix_syntax_abort(self, input_source) -> None:
+        """POSIX-mode fatal SYNTAX error (bash 5.2, probe tmp/posixexit).
+
+        In POSIX mode a non-interactive shell exits with status 2 on a
+        syntax error — including inside ``eval`` and a sourced file, which
+        otherwise CONTAIN the rc-2 (``set -o posix; eval 'if'; echo x``
+        exits before x in bash). Called AFTER the error is reported and
+        ``last_exit_code`` set; a no-op (caller returns 2 as before) when:
+
+        - not in POSIX mode, or the shell is interactive/embedded
+          (``is_script_mode`` False) — default behavior is untouched;
+        - this input is a TRAP ACTION string (``posix_syntax_exit`` False —
+          bash does not exit when the action itself fails to parse, while
+          an eval nested INSIDE the action, a fresh input, still does);
+        - the error is an unclosed quote (bash: ``eval 'echo "x'`` returns
+          2 without exiting even in POSIX mode) — those never reach here
+          (the UnclosedQuoteError clause doesn't call this).
+
+        NESTED input (eval / sourced file — an enclosing executor exists)
+        raises the typed ``SpecialBuiltinUsageError(2)``: it surfaces from
+        the eval/./source builtin and resolves at the builtin guard, so a
+        ``command eval 'if'`` / ``command . file`` invocation — which
+        strips the special property — fails with 2 instead of exiting,
+        exactly like bash. The true top level raises SystemExit directly.
+        """
+        if not (self.state.options.get('posix')
+                and self.state.is_script_mode
+                and getattr(input_source, 'posix_syntax_exit', True)):
+            return
+        if getattr(self.shell, '_current_executor', None) is not None:
+            from ..core import SpecialBuiltinUsageError
+            raise SpecialBuiltinUsageError(2)
+        raise SystemExit(2)
 
     def _should_exit_on_error(self, exit_code: int, input_source) -> bool:
         """Whether errexit (`set -e`) aborts the whole source now.
@@ -287,6 +345,7 @@ class SourceProcessor(ScriptComponent):
             self._report_syntax_error(e, input_source, start_line,
                                       source_text=command_string)
             self.state.last_exit_code = 2  # Bash uses exit code 2 for syntax errors
+            self._posix_syntax_abort(input_source)
             return 2
         except UnclosedQuoteError as e:
             # An unterminated quote that survived line-gathering (e.g. an

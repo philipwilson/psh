@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING, List
 
+from ..core import SpecialBuiltinUsageError
 from .base import Builtin
 from .registry import builtin
 
@@ -110,6 +111,18 @@ EXIT STATUS
                 self.error(f"{spec}: invalid signal specification", shell)
             return 1 if invalid else 0
 
+        # Any other leading dash word is an INVALID OPTION (bash): an action
+        # beginning with '-' needs `--` first (`trap -- '-x' INT`), so
+        # `trap -q`, `trap -q 'x' INT` and `trap '-echo hi' INT` all report
+        # the first option character, print the usage line, and fail with
+        # the usage status 2 (probe-verified vs bash 5.2; a POSIX-mode
+        # non-interactive shell exits). A bare '-' (reset form) and '--'
+        # are not options.
+        if (args[1].startswith('-') and args[1] not in ('-', '--')):
+            self.error(f"{args[1][:2]}: invalid option", shell)
+            self.error(f"usage: {self.synopsis}", shell)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
+
         # POSIX: -- ends option processing; the next argument is the action.
         # This is the standard defensive idiom: trap -- 'action' SIGNAL
         arg_start = 1
@@ -135,7 +148,10 @@ EXIT STATUS
             return shell.trap_manager.remove_trap(operands)
 
         if len(operands) < 2:
+            # A single operand that is not a resettable signal spec is a
+            # USAGE error (bash: `trap foo` prints the usage line, rc 2,
+            # and a POSIX-mode non-interactive shell exits).
             self.error(f"usage: {self.synopsis}", shell)
-            return 2
+            raise SpecialBuiltinUsageError(2, suppressible=True)
 
         return shell.trap_manager.set_trap(operands[0], operands[1:])

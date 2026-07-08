@@ -204,7 +204,11 @@ class ExecBuiltin(Builtin):
         # -l prepends '-' to argv[0] (login-shell convention).
         opts, command = self.parse_flags(args, shell, flags='cl', value_flags='a')
         if opts is None:
-            return 2
+            # Invalid option: special-builtin usage error (rc 2; a
+            # POSIX-mode non-interactive shell exits — probe `exec -q`).
+            # Resolved by the caller (_handle_exec_builtin or the guard).
+            from ..core import SpecialBuiltinUsageError
+            raise SpecialBuiltinUsageError(2, suppressible=True)
 
         if not command:
             # exec with no command (with or without flags) - just succeed.

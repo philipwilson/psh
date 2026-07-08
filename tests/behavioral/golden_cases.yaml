@@ -7903,3 +7903,288 @@
   stdout: "a b\n{a,b}\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# POSIX-MODE SPECIAL-BUILTIN EXIT-ON-ERROR (fix/posix-special-exit)
+# docs/reviews/posix_special_builtin_exit_matrix_2026-07-07.md, re-derived
+# live vs bash 5.2.26 (tmp/posixexit battery). With `set -o posix` a
+# non-interactive shell EXITS on a special builtin's usage/syntax error
+# (invalid option, top-level return, missing ./source file, eval syntax,
+# readonly assignment) with the builtin's own status; operand errors
+# (bad identifier / signal spec, unset-readonly) do NOT exit; command/
+# builtin strip the exit; fork boundaries contain it. Under -c the whole
+# string is the input unit, so an exit (or discard) drops the tail.
+# =============================================================================
+
+- name: posixexit_set_invalid_option_exits
+  command: 'set -o posix; set -q; echo survived'
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+- name: posixexit_default_set_invalid_option_survives
+  command: 'set -q; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_export_invalid_option_exits
+  command: 'set -o posix; export -q; echo survived'
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+- name: posixexit_readonly_invalid_option_exits
+  command: 'set -o posix; readonly -q; echo survived'
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+- name: posixexit_unset_invalid_option_exits
+  command: 'set -o posix; unset -q; echo survived'
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+- name: posixexit_trap_invalid_option_exits
+  command: 'set -o posix; trap -q; echo survived'
+  stdout: ""
+  stderr: "-q: invalid option"
+  exit_code: 2
+
+- name: posixexit_set_o_bad_name_exits
+  command: 'set -o posix; set -o nosuchoption; echo survived'
+  stdout: ""
+  stderr: "nosuchoption: invalid option name"
+  exit_code: 2
+
+- name: posixexit_exec_invalid_option_exits
+  command: 'set -o posix; exec -q true; echo survived'
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+- name: posixexit_return_top_level_exits
+  command: 'set -o posix; return; echo survived'
+  stdout: ""
+  stderr: "can only `return' from a function or sourced script"
+  exit_code: 2
+
+- name: posixexit_dot_missing_exits
+  command: 'set -o posix; . /nonexistent/psh-posixexit-golden; echo survived'
+  stdout: ""
+  stderr: "No such file or directory"
+  exit_code: 1
+
+- name: posixexit_source_missing_exits
+  command: 'set -o posix; source /nonexistent/psh-posixexit-golden; echo survived'
+  stdout: ""
+  stderr: "No such file or directory"
+  exit_code: 1
+
+- name: posixexit_eval_syntax_exits
+  command: "set -o posix; eval 'if'; echo survived"
+  stdout: ""
+  stderr: "syntax error"
+  exit_code: 2
+
+- name: posixexit_eval_nested_special_exits
+  command: "set -o posix; eval 'set -q'; echo survived"
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+- name: posixexit_readonly_assign_exits
+  command: 'set -o posix; readonly r=1; readonly r=2; echo survived'
+  stdout: ""
+  stderr: "readonly variable"
+  exit_code: 1
+
+- name: posixexit_export_readonly_assign_exits
+  command: 'set -o posix; readonly r=1; export r=2; echo survived'
+  stdout: ""
+  stderr: "readonly variable"
+  exit_code: 1
+
+- name: posixexit_function_body_exits
+  command: 'set -o posix; f() { set -q; }; f; echo survived'
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+- name: posixexit_export_badid_survives
+  command: 'set -o posix; export 1bad=x; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
+- name: posixexit_trap_badsig_survives
+  command: "set -o posix; trap 'x' NOSUCHSIG; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "invalid signal specification"
+  exit_code: 0
+
+- name: posixexit_unset_readonly_survives
+  command: 'set -o posix; readonly r=1; unset r; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: "cannot unset: readonly variable"
+  exit_code: 0
+
+- name: posixexit_declare_readonly_survives
+  command: 'set -o posix; readonly r=1; declare r=2; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: posixexit_break_silent_rc0
+  command: 'set -o posix; break; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posixexit_continue_silent_rc0
+  command: 'set -o posix; continue; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posixexit_subshell_contained
+  command: 'set -o posix; ( set -q ); echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_cmdsub_contained
+  command: 'set -o posix; x=$(set -q); echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_pipeline_contained
+  command: 'set -o posix; set -q | cat; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_command_strips_exit
+  command: 'set -o posix; command set -q; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_builtin_strips_exit
+  command: 'set -o posix; builtin set -q; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_command_strips_eval_syntax
+  command: "set -o posix; command eval 'if'; echo rc=$?"
+  stdout: "rc=2\n"
+  stderr: "syntax error"
+  exit_code: 0
+
+- name: posixexit_toggle_off_survives
+  command: 'set -o posix; set +o posix; set -q; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_shift_range_message
+  command: 'set -o posix; shift 5; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: "5: shift count out of range"
+  exit_code: 0
+
+- name: posixexit_prefix_readonly_discard
+  command: 'set -o posix; readonly r=1; r=2 echo RAN; echo rc=$?'
+  stdout: ""
+  stderr: "readonly variable"
+  exit_code: 1
+
+# Under -c the WHOLE string (even multi-line) is one input unit in both
+# shells, so the too-many-arguments discard drops the trailing lines too;
+# next-LINE survival is pinned via script files in
+# tests/integration/test_posix_special_builtin_exit.py.
+- name: posixexit_return_toomany_discard_unit
+  command: "return 3 4; echo same\necho after"
+  stdout: ""
+  stderr: "too many arguments"
+  exit_code: 1
+
+- name: posixexit_break_toomany_discard
+  command: "for i in 1 2; do break 1 2; done\necho after"
+  stdout: ""
+  stderr: "too many arguments"
+  exit_code: 1
+
+- name: posixexit_trap_dash_action_invalid_option
+  command: "trap '-echo hi' INT; echo rc=$?"
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+# --- POSIX suppressible-exit class (bounce F1): invalid-option/return exits
+# are SUPPRESSED in errexit-exempt contexts (through functions, NOT across
+# an eval/dot boundary); the hard class (dot/eval-syntax/readonly-assign)
+# exits even when guarded. Probe: tmp/posixexit/suppress_*.txt.
+
+- name: posixexit_suppress_or_guard
+  command: 'set -o posix; set -q || echo caught; echo rc=$?'
+  stdout: "caught\nrc=0\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_suppress_if_guard
+  command: 'set -o posix; if set -q; then echo T; else echo F; fi'
+  stdout: "F\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_suppress_bang_guard
+  command: 'set -o posix; ! set -q; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_suppress_and_keeps_status
+  command: 'set -o posix; set -q && echo also; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_suppress_through_function
+  command: 'set -o posix; f() { set -q; }; f || echo caught; echo rc=$?'
+  stdout: "caught\nrc=0\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_suppress_return_if_guard
+  command: 'set -o posix; if return; then echo T; else echo F; fi'
+  stdout: "F\n"
+  stderr: "can only `return'"
+  exit_code: 0
+
+- name: posixexit_no_suppress_across_eval
+  command: "set -o posix; eval 'set -q' || echo caught"
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+- name: posixexit_suppress_inside_eval
+  command: "set -o posix; eval 'set -q || echo in'; echo rc=$?"
+  stdout: "in\nrc=0\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: posixexit_hard_dot_guarded_still_exits
+  command: 'set -o posix; if . /nonexistent/psh-pe-g; then echo T; else echo F; fi; echo x'
+  stdout: ""
+  stderr: "No such file or directory"
+  exit_code: 1
+
+- name: posixexit_hard_readonly_guarded_still_exits
+  command: 'set -o posix; readonly r=1; if export r=2; then echo T; else echo F; fi; echo x'
+  stdout: ""
+  stderr: "readonly variable"
+  exit_code: 1

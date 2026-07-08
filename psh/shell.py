@@ -491,7 +491,8 @@ class Shell:
             tokens, shell_options=self.state.options)
 
     def run_command(self, command_string: str, add_to_history: bool = True,
-                    base_line: int = 1, line_oriented: bool = False) -> int:
+                    base_line: int = 1, line_oriented: bool = False,
+                    posix_syntax_exit: bool = True) -> int:
         """Execute a command string using the unified input system.
 
         ``base_line`` is the absolute source line the command text begins at,
@@ -506,11 +507,17 @@ class Shell:
         ``$(( ))``) is contained to the offending line and execution resumes at
         the next line — matching bash's ``eval`` (``eval 'echo a\\necho $((1/0))
         \\necho c'`` prints a and c). ``eval`` passes True.
+
+        ``posix_syntax_exit=False`` exempts THIS string from the POSIX-mode
+        fatal-syntax-error policy — only trap actions pass it (bash does not
+        exit when the action string itself fails to parse; see
+        ``InputSource.posix_syntax_exit``).
         """
         from .scripting.input_sources import StringInput
 
         # Use the unified execution system for consistency
         input_source = StringInput(command_string, "<command>",
                                    split_lines=line_oriented)
+        input_source.posix_syntax_exit = posix_syntax_exit
         return self.script_manager.execute_from_source(
             input_source, add_to_history, base_line=base_line)

@@ -107,6 +107,47 @@ class TopLevelAbort(BaseException):
 
 # --- Errors -------------------------------------------------------------
 
+class SpecialBuiltinUsageError(PshError):
+    """Typed outcome: a POSIX special builtin hit a USAGE/SYNTAX error.
+
+    Raised by a special builtin's classified error branch AFTER it printed
+    its diagnostic — an invalid option (``set -q``, ``export -q``, ...),
+    ``return`` outside a function/sourced script, a missing/unreadable
+    ``.``/``source`` file, an assignment to a readonly variable via
+    ``readonly``/``export``, or a syntax error inside ``eval``/a sourced
+    file (raised at the nested buffered-command boundary). ``status``
+    carries the builtin's own exit status (2 for option/syntax usage
+    errors, 1 for the readonly/dot cases).
+
+    Converted by the ONE executor policy at the builtin guard
+    (``execute_builtin_guarded`` → ``special_builtin_usage_exit``): in
+    POSIX mode a NON-interactive shell (script/-c/piped stdin) EXITS with
+    ``status``; otherwise — default mode, interactive, or an invocation
+    through ``command``/``builtin`` (which strip the special property) —
+    the builtin simply fails with ``status``, byte-identical to the
+    pre-policy behavior. Operand/semantic errors (``export 1bad=x``,
+    ``trap 'x' NOSUCHSIG``, ``unset r`` on a readonly) deliberately do NOT
+    raise this. Truth table:
+    docs/reviews/posix_special_builtin_exit_matrix_2026-07-07.md.
+
+    ``suppressible`` records bash's TWO exit classes (probe-verified,
+    tmp/posixexit/suppress_core.txt + suppress_rest.txt): INVALID-OPTION
+    usage errors and a top-level ``return`` are SUPPRESSED in
+    errexit-exempt contexts (if/while/until conditions, non-final &&/||
+    members, ``!``-negated pipelines — reaching through functions, brace
+    groups and subshells, but NOT through an eval/dot boundary): the
+    builtin merely fails with ``status`` there (``set -o posix; set -q ||
+    echo caught`` survives, rc 0). The eval/dot SYNTAX errors,
+    missing/unreadable dot-file and readonly-assignment outcomes are HARD
+    (``suppressible=False``): bash exits even inside a guard
+    (``if . /missing; then`` exits rc 1).
+    """
+    def __init__(self, status: int = 2, suppressible: bool = False):
+        self.status = status
+        self.suppressible = suppressible
+        super().__init__("")
+
+
 class UnboundVariableError(PshError):
     """Raised when accessing unset variable with nounset option."""
     pass

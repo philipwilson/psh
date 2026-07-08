@@ -1,8 +1,14 @@
 """Function-related builtin commands."""
-import sys
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from ..core import AssociativeArray, IndexedArray, ReadonlyVariableError, VarAttributes, Variable
+from ..core import (
+    AssociativeArray,
+    IndexedArray,
+    ReadonlyVariableError,
+    SpecialBuiltinUsageError,
+    VarAttributes,
+    Variable,
+)
 
 # FunctionReturn now lives with its control-flow siblings in
 # core/exceptions.py; re-exported here because many call sites
@@ -810,7 +816,10 @@ class ReadonlyBuiltin(Builtin):
         # Parse options
         options, names = self._parse_readonly_options(args[1:], shell)
         if options is None:
-            return 2  # invalid option (bash usage-error status)
+            # Invalid option: special-builtin usage error (rc 2; exits a
+            # POSIX-mode non-interactive shell). The `1bad=x` identifier
+            # error stays a plain rc-1 operand error inside declare.
+            raise SpecialBuiltinUsageError(2, suppressible=True)
 
         if options['functions']:
             return self._handle_readonly_functions(names, shell)
@@ -838,11 +847,15 @@ class ReadonlyBuiltin(Builtin):
             except ReadonlyVariableError as e:
                 # bash prints the assignment error for `readonly x=2` WITHOUT
                 # the builtin name (unlike `declare`): just `x: readonly
-                # variable`. Emit that (via the psh assignment convention) and
-                # fail non-fatally — the rest of the command list continues.
+                # variable`. Emit that (via the psh assignment convention).
+                # Typed outcome: default mode fails non-fatally with rc 1
+                # (the rest of the command list continues); a POSIX-mode
+                # non-interactive shell exits rc 1 (assignment error in a
+                # special builtin — probe tmp/posixexit). `declare r=2` is
+                # NOT special and keeps its plain rc-1 path.
                 self.write_error_line(
                     f"psh: {e.name}: readonly variable", shell)
-                return 1
+                raise SpecialBuiltinUsageError(1) from None
 
     # readonly attribute flags forwarded to `declare -r` (bash accepts -aA).
     _READONLY_FORWARD_FLAGS = {'a': '-a', 'A': '-A'}
@@ -937,18 +950,24 @@ class ReturnBuiltin(Builtin):
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the return builtin."""
         if len(args) > 2:
-            # bash checks this before the in-function check: the error does
-            # NOT return, and a non-interactive shell aborts with status 1
-            # (return is a POSIX special builtin).
+            # bash checks this before the in-function check. `return 3 4`
+            # is the same too-many-arguments family as `exit 7 8`/`shift
+            # 1 2` (probe-verified, bash 5.2, tmp/posixexit): the error is
+            # reported and the CURRENT INPUT UNIT is discarded — it does
+            # NOT return from the function (the rest of the body on this
+            # line dies too) and does NOT exit the shell, in default AND
+            # POSIX mode; the next input line runs with $? = 1. (The old
+            # sys.exit(1) here made a non-interactive psh exit — bash
+            # survives.)
             self.error("too many arguments", shell)
-            shell.state.last_exit_code = 1
-            if shell.state.is_script_mode:
-                sys.exit(1)
-            return 1
+            from ..core import special_builtin_usage_discard
+            special_builtin_usage_discard(shell.state, 1)
 
         if not shell.state.function_stack and shell.state.source_depth == 0:
+            # Usage error rc 2 (bash); a POSIX-mode non-interactive shell
+            # exits with 2 (typed outcome, resolved at the builtin guard).
             self.error("can only `return' from a function or sourced script", shell)
-            return 2  # bash usage-error status
+            raise SpecialBuiltinUsageError(2, suppressible=True)
 
         # Get return value
         if len(args) > 1:

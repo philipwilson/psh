@@ -338,8 +338,14 @@ class TrapManager:
             # command (bash) — see set_bash_command.
             self._trap_action_depth += 1
             try:
+                # posix_syntax_exit=False: a parse failure of the ACTION
+                # string itself never triggers the POSIX-mode syntax exit
+                # (bash 5.2, probe tmp/posixexit: `trap 'if' USR1` survives
+                # in posix mode, while `trap "eval 'if'" USR1` — a nested
+                # source with its own input — exits).
                 self.shell.run_command(action, add_to_history=False,
-                                       base_line=base_line)
+                                       base_line=base_line,
+                                       posix_syntax_exit=False)
             finally:
                 self._trap_action_depth -= 1
 

@@ -11,6 +11,7 @@ import sys
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from ..core import SpecialBuiltinUsageError, special_builtin_usage_exit
 from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
@@ -159,7 +160,8 @@ def report_assignment_error(state: 'ShellState', exc: Exception) -> int:
 
 def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
                             shell: 'Shell',
-                            invocation: Optional['BuiltinContext'] = None) -> int:
+                            invocation: Optional['BuiltinContext'] = None,
+                            special_exit: bool = False) -> int:
     """Run a builtin, converting unexpected exceptions to exit status 1.
 
     Shared by the special-builtin and regular-builtin strategies:
@@ -168,6 +170,13 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
     - Control-flow exceptions (return / break / continue — e.g. raised
       inside ``eval``) and ``set -u`` violations propagate to their
       handlers rather than being converted to exit status 1.
+    - ``SpecialBuiltinUsageError`` (a special builtin's typed usage/syntax
+      outcome) resolves here: with ``special_exit`` (a DIRECT invocation —
+      both strategy paths pass it) the one POSIX exit policy applies
+      (``special_builtin_usage_exit``: POSIX + non-interactive → the shell
+      exits with the carried status); without it (``command``/``builtin``,
+      which strip the special property) the builtin simply fails with that
+      status.
     - Anything else is a builtin defect: print "psh: NAME: error" and
       return 1, surfacing the traceback under --debug-exec so the bug
       isn't hidden behind the generic message.
@@ -183,6 +192,11 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
     except SystemExit:
         # Some builtins like 'exit' raise SystemExit
         raise
+    except SpecialBuiltinUsageError as e:
+        if special_exit:
+            return special_builtin_usage_exit(shell, e.status,
+                                              suppressible=e.suppressible)
+        return e.status
     except OSError as e:
         # The builtin's output fd was closed/broken (`pwd 1>&-`, a builtin
         # writing into a closed pipe), so its write through the Python stream
@@ -298,7 +312,10 @@ class SpecialBuiltinExecutionStrategy(ExecutionStrategy):
         if not builtin:
             return 127  # Command not found
 
-        return execute_builtin_guarded(builtin, cmd_name, args, shell, invocation)
+        # Direct special-builtin invocation: the POSIX usage-error exit
+        # policy applies (special_exit; see execute_builtin_guarded).
+        return execute_builtin_guarded(builtin, cmd_name, args, shell,
+                                       invocation, special_exit=True)
 
     def _execute_in_background(self, cmd_name: str, args: List[str],
                               shell: 'Shell', context: 'ExecutionContext',
@@ -343,8 +360,12 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
                   f"in_forked_child={shell.state.in_forked_child}", file=sys.stderr)
 
         # The builtin will check shell.state.in_forked_child to determine its
-        # output method.
-        return execute_builtin_guarded(builtin, cmd_name, args, shell, invocation)
+        # output method. special_exit: this is a direct invocation, and the
+        # POSIX usage-error exit policy also covers `source` (a regular
+        # builtin here, but bash exits for its missing-file/syntax errors in
+        # POSIX mode exactly like `.` — probe-verified, tmp/posixexit).
+        return execute_builtin_guarded(builtin, cmd_name, args, shell,
+                                       invocation, special_exit=True)
 
     def _execute_builtin_in_background(self, cmd_name: str, args: List[str],
                                      shell: 'Shell', context: 'ExecutionContext',

@@ -2,6 +2,7 @@
 import os
 from typing import TYPE_CHECKING, List, Optional
 
+from ..core import SpecialBuiltinUsageError
 from .base import Builtin
 from .registry import builtin
 
@@ -51,8 +52,13 @@ class SourceBuiltin(Builtin):
         # Find the script file
         script_path = self._find_source_file(filename, shell)
         if script_path is None:
+            # Missing file: rc 1, and a POSIX-mode non-interactive shell
+            # EXITS (bash 5.2, probe tmp/posixexit — for BOTH the `.` and
+            # `source` names, so this raise also fires on the `source`
+            # regular-builtin strategy path); `command .`/`command source`
+            # strip the exit at the builtin guard.
             self.error(f"{filename}: No such file or directory", shell)
-            return 1
+            raise SpecialBuiltinUsageError(1)
 
         # Validate the script file. The shared validator returns the codes
         # bash uses for the script-INVOCATION path (`psh file`): 126 for a
@@ -62,8 +68,14 @@ class SourceBuiltin(Builtin):
         # already printed the diagnostic; remap the non-binary failures here.
         validation_result = shell.script_manager.script_validator.validate_script_file(script_path)
         if validation_result != 0:
-            if os.path.isdir(script_path) or not os.access(script_path, os.R_OK):
+            if os.path.isdir(script_path):
+                # A directory is a plain rc-1 failure — bash does NOT exit a
+                # POSIX-mode shell for it (probe: `. /` survives, rc 1).
                 return 1
+            if not os.access(script_path, os.R_OK):
+                # An unreadable file, like a missing one, exits a POSIX-mode
+                # non-interactive shell rc 1 (bash probe: Permission denied).
+                raise SpecialBuiltinUsageError(1)
             return validation_result
 
         # Save current shell state. bash NEVER changes $0 (script_name) when

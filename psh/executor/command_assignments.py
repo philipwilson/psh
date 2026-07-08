@@ -215,8 +215,15 @@ class CommandAssignments:
                 # but does NOT exit the shell — execution resumes at the next
                 # top-level command. Use e.name so a readonly array element
                 # write reports the array name (``a[0]=X`` → ``a: readonly
-                # variable``), like bash.
+                # variable``), like bash. In POSIX mode a variable-assignment
+                # error EXITS a non-interactive shell with rc 1 (bash 5.2,
+                # probe tmp/posixexit: `set -o posix; readonly r=1; r=2` —
+                # script/-c/stdin all exit; bash's -c oddly exits 127, a
+                # ledgered artifact not reproduced).
                 print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
+                if (self.state.options.get('posix')
+                        and self.state.is_script_mode):
+                    raise SystemExit(1) from None
                 raise TopLevelAbort(1) from None
             except NamerefCycleError as e:
                 # bash: writing through a circular nameref warns and aborts

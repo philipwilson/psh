@@ -15,6 +15,15 @@ from typing import List, Optional
 class InputSource(ABC):
     """Abstract base class for shell input sources."""
 
+    # Whether a syntax error in this source may trigger the POSIX-mode
+    # fatal-syntax-error policy (SourceProcessor._posix_syntax_abort).
+    # True for every real input (script file, -c, stdin, eval'd and
+    # sourced text); Shell.run_command sets it False for a TRAP ACTION
+    # string — bash does NOT exit when the action itself fails to parse,
+    # though anything nested deeper (an eval inside the action) does
+    # (probe-verified vs bash 5.2, tmp/posixexit).
+    posix_syntax_exit: bool = True
+
     @abstractmethod
     def read_line(self) -> Optional[str]:
         """Read the next line from the input source.

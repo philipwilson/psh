@@ -1,7 +1,10 @@
 # POSIX-mode special-builtin exit-on-error matrix (bash 5.2.26)
 
-Status: **deferred / found-not-fixed** during the builtins-contracts campaign
-(fix/builtin-contracts, 2026-07-07). Tracked as follow-up task #14.
+Status: **IMPLEMENTED in v0.673.0** (fix/posix-special-exit, 2026-07-08 —
+`SpecialBuiltinUsageError` + one executor policy, plus bash's suppression
+classes in errexit-suppressed contexts). Originally deferred / found-not-fixed
+during the builtins-contracts campaign (fix/builtin-contracts, 2026-07-07) and
+tracked as follow-up task #14.
 
 ## What this is (and what it is NOT)
 
@@ -15,10 +18,15 @@ in bash. The campaign delivered the first; this doc records the second.
    (`psh/core/internal_errors.py`), reusing the `TopLevelAbort(errexit_immune=
    True, contain_nested=False)` / `SystemExit`-under-`command_mode` machinery.
 
-2. **POSIX-mode special-builtin EXIT-on-error (this doc, NOT implemented).**
-   With `set -o posix`, certain special-builtin errors make a *non-interactive*
-   shell **exit** entirely (later lines do not run). psh does none of this
-   today; deferring is therefore zero-regression.
+2. **POSIX-mode special-builtin EXIT-on-error (this doc — implemented in
+   v0.673.0).** With `set -o posix`, certain special-builtin errors make a
+   *non-interactive* shell **exit** entirely (later lines do not run). Note
+   one refinement discovered during implementation: bash SUPPRESSES the exit
+   for the invalid-option/`return` class in errexit-suppressed contexts
+   (`if`/`while` conditions, left of `&&`/`||`, after `!`, through function
+   calls), while the eval/dot-syntax/missing-dot-file/readonly-assignment
+   class exits even when guarded; `eval`/`.` boundaries reset suppression
+   for their inner text.
 
 ## The matrix (bash 5.2.26, probe battery `tmp bcontract/matrix.py`)
 
@@ -33,7 +41,7 @@ ABSENT + nonzero rc ⇒ shell exited.
 | invalid OPTION: `readonly -q` | continue | **EXIT rc 2** |
 | invalid OPTION: `unset -q` | continue | **EXIT rc 2** |
 | invalid OPTION: `trap -q` | continue | **EXIT rc 2** |
-| `return` at top level | continue (rc 1) | **EXIT rc 2** |
+| `return` at top level | continue (rc 2) | **EXIT rc 2** |
 | `. /nonexistent` (dot missing file) | continue | **EXIT rc 1** |
 | `eval 'if'` (eval syntax error) | continue | **EXIT rc 2** |
 | assign to readonly via `readonly r=2` | continue | **EXIT rc 1** |

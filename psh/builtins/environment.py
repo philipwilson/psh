@@ -7,7 +7,7 @@ process-fd binding helpers.
 
 from typing import TYPE_CHECKING, List
 
-from ..core import ReadonlyVariableError, VarAttributes
+from ..core import ReadonlyVariableError, SpecialBuiltinUsageError, VarAttributes
 from ..core.option_registry import (
     OPTION_REGISTRY,
     SHORT_TO_LONG,
@@ -60,8 +60,11 @@ class ExportBuiltin(Builtin):
                     elif ch == 'f':
                         functions = True
                     else:
+                        # Usage error of a POSIX special builtin (see
+                        # SpecialBuiltinUsageError): POSIX-mode
+                        # non-interactive shells exit with 2.
                         self.error(f"-{ch}: invalid option", shell)
-                        return 2
+                        raise SpecialBuiltinUsageError(2, suppressible=True)
                 i += 1
             else:
                 break
@@ -76,6 +79,12 @@ class ExportBuiltin(Builtin):
             return 0
 
         status = 0
+        # Tracks a readonly ASSIGNMENT error (vs an identifier error, which
+        # is a plain rc-1 operand error): POSIX-mode non-interactive shells
+        # exit on it (probe: `set -o posix; readonly r=1; export r=2` exits
+        # rc 1 in bash 5.2). Deferred to the end so the remaining names are
+        # still processed exactly as before in every mode.
+        assignment_error = False
         for arg in names:
             if '=' in arg:
                 key, value = arg.split('=', 1)
@@ -116,6 +125,7 @@ class ExportBuiltin(Builtin):
                         self.write_error_line(
                             f"psh: {e.name}: readonly variable", shell)
                         status = 1
+                        assignment_error = True
                         continue
                     if rc != 0:
                         status = rc
@@ -149,10 +159,17 @@ class ExportBuiltin(Builtin):
                     self._export_existing(key, shell)
             except ReadonlyVariableError as e:
                 # bash reports `export x=2` on a readonly var WITHOUT the
-                # builtin name (like a plain assignment error), non-fatally.
+                # builtin name (like a plain assignment error), non-fatally
+                # in default mode.
                 self.write_error_line(
                     f"psh: {e.name}: readonly variable", shell)
                 status = 1
+                assignment_error = True
+        if assignment_error:
+            # Typed usage/assignment outcome: the guard returns 1 in default
+            # mode (byte-identical to the old `return 1`) and exits a
+            # POSIX-mode non-interactive shell.
+            raise SpecialBuiltinUsageError(1)
         return status
 
     def _export_existing(self, key: str, shell: 'Shell') -> None:
@@ -346,8 +363,12 @@ class SetBuiltin(Builtin):
                     elif opt_char in short_to_long:
                         shell.state.options[short_to_long[opt_char]] = enable
                     else:
+                        # Usage error of a POSIX special builtin: report,
+                        # then raise the typed outcome — in POSIX mode a
+                        # non-interactive shell exits with 2, otherwise the
+                        # guard turns it back into plain status 2.
                         self.error(f"invalid option: {sign}{opt_char}", shell)
-                        return 2
+                        raise SpecialBuiltinUsageError(2, suppressible=True)
                 i += 1
                 continue
 
@@ -376,7 +397,7 @@ class SetBuiltin(Builtin):
         spec = OPTION_REGISTRY.get(option)
         if spec is not None and spec.category is OptionCategory.INTERNAL:
             self.error(f"{name}: invalid option name", shell)
-            return 2
+            raise SpecialBuiltinUsageError(2, suppressible=True)
 
         # Editor modes (silent, like bash)
         if option in ('vi', 'emacs'):
@@ -414,11 +435,13 @@ class SetBuiltin(Builtin):
                 shell.state.scope_manager.enable_debug(enable)
             return 0
 
+        # Unknown -o/+o name: a usage error (bash: rc 2; POSIX-mode
+        # non-interactive shells exit — probe `set -o nosuchoption`).
         self.error(f"{name}: invalid option name", shell)
         if enable:
             valid_opts = ['vi', 'emacs'] + list(sorted(shell.state.options.keys()))
             self.write_error_line(f"Valid options: {', '.join(valid_opts)}", shell)
-        return 2
+        raise SpecialBuiltinUsageError(2, suppressible=True)
 
     @property
     def help(self) -> str:
@@ -525,7 +548,10 @@ class UnsetBuiltin(Builtin):
         """Unset variables and functions."""
         opts, names = self.parse_flags(args, shell, flags='fvn')
         if opts is None:
-            return 2  # invalid option (bash usage-error status)
+            # Invalid option: a special-builtin usage error (rc 2; exits a
+            # POSIX-mode non-interactive shell). The -f/-v conflict and
+            # readonly/unset failures below stay plain operand errors.
+            raise SpecialBuiltinUsageError(2, suppressible=True)
         if opts['f'] and opts['v']:
             # bash rejects -f and -v together regardless of operands.
             self.error(
