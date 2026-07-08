@@ -212,11 +212,17 @@ class InputReader:
                 chars.append(ch)
             return ''.join(chars).encode('utf-8', errors='surrogateescape')
         assert self._fd is not None  # exactly one of fd/stream is set
-        # Any bytes buffered mid-character by a prior char read cannot be the
-        # delimiter (it is an ASCII byte; a buffered byte is a multibyte
-        # continuation), so draining them first is safe.
-        buf = bytearray(self._partial)
+        # Drain any bytes a prior char read buffered mid-character (normally
+        # empty: StdinInput, the sole caller, never mixes char and byte reads
+        # on one reader). Honor a delimiter already among them and push the
+        # remainder back, so a mixed caller can never skip past a record end.
+        drained = bytes(self._partial)
         self._partial.clear()
+        split = drained.find(delimiter_byte)
+        if split != -1:
+            self._partial = bytearray(drained[split + 1:])
+            return drained[:split]
+        buf = bytearray(drained)
         while True:
             byte, outcome, _err = self._next_byte(None)
             if outcome is not Outcome.DATA:
