@@ -178,6 +178,17 @@ class TestStdinControlsStayCorrect:
                            cwd=REPO_ROOT, env=_env(), timeout=20)
         assert (p.returncode, p.stdout) == (b.returncode, b.stdout)
 
+    def test_stdin_script_can_redirect_fd0_midway(self, tmp_path):
+        """A stdin script that does `exec < file` reads its SUBSEQUENT commands
+        from the new fd 0 (the file), abandoning the rest of the pipe — because
+        the reader consumes fd 0 by NUMBER each line, not a cached descriptor.
+        Matches bash exactly."""
+        data = tmp_path / "data.txt"
+        data.write_text("FROMFILE\nSECOND\n")
+        script = f"echo before\nexec < {data}\nread x\necho got:$x\ncat\n".encode()
+        prc, pout, brc, bout = _both(script)
+        assert (prc, pout) == (brc, bout)
+
 
 class TestStdinTrivialInputs:
     @pytest.mark.parametrize("script", [b"", b"\n\n\n", b"# comment only\n",
