@@ -452,7 +452,7 @@ imported as exported shell variables. An entry with an invalid name
 to children and shown by `printenv`, but NOT a shell variable, so `set` /
 `declare -p` / `export -p` / `compgen -v` do not list it (bash; appraisal H3).
 
-**One env interface + materialization (v0.668, Phase 4).** The opaque entries
+**One env interface + materialization (v0.669, Phase 4).** The opaque entries
 are held in an EXPLICIT typed store, `state._env_base`, and the execution
 environment is MATERIALIZED (not incrementally mutated) as
 `opaque-base + exported-vars + command-overlay`. `ShellState._materialize_env_name`
