@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Alias management for psh."""
 
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 from ..lexer import tokenize
 from ..lexer.token_types import Token, TokenType
@@ -54,7 +54,7 @@ class AliasManager:
 
     def expand_aliases(self, tokens: List[Token],
                        effective: Optional[Dict[str, str]] = None,
-                       shell_options: Optional[Dict[str, object]] = None
+                       shell_options: Optional[Mapping[str, Any]] = None
                        ) -> List[Token]:
         """Expand aliases on a token stream (the lex→parse-boundary transform).
 
@@ -146,7 +146,7 @@ class AliasManager:
         return result
 
     def _expand_value(self, alias_value: str, effective: Dict[str, str],
-                      shell_options: Optional[Dict[str, object]] = None
+                      shell_options: Optional[Mapping[str, Any]] = None
                       ) -> List[Token]:
         """Tokenize an alias value and recursively expand it (no EOF).
 
