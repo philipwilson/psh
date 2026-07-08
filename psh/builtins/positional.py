@@ -47,7 +47,14 @@ class ShiftBuiltin(Builtin):
         # Check if we have enough parameters to shift
         param_count = len(shell.state.positional_params)
         if n > param_count:
-            # POSIX: return failure if n > $#
+            # POSIX: return failure if n > $#. bash is silent in default
+            # mode but reports the range error in POSIX mode — with the
+            # count when one was given (`shift: 5: shift count out of
+            # range`), without it for a bare `shift` (probe-verified,
+            # bash 5.2, tmp/posixexit). No exit either way (rc 1).
+            if shell.state.options.get('posix'):
+                prefix = f"{args[1]}: " if len(args) > 1 else ""
+                self.error(f"{prefix}shift count out of range", shell)
             return 1
 
         # Perform the shift

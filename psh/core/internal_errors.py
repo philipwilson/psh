@@ -163,6 +163,35 @@ def special_builtin_usage_discard(state: 'ShellState', status: int = 1) -> NoRet
     raise TopLevelAbort(status, errexit_immune=True, contain_nested=False)
 
 
+def special_builtin_usage_exit(state: 'ShellState', status: int) -> int:
+    """The ONE POSIX-mode special-builtin EXIT-on-error policy.
+
+    Applied where a ``SpecialBuiltinUsageError`` surfaces from a DIRECT
+    special-builtin invocation (the strategy paths of the builtin guard;
+    ``command``/``builtin`` invocations bypass it, stripping the special
+    property — bash/POSIX). bash 5.2, probe-verified
+    (docs/reviews/posix_special_builtin_exit_matrix_2026-07-07.md +
+    tmp/posixexit battery):
+
+    - In POSIX mode a NON-interactive shell — script file, ``-c``, piped
+      stdin, all covered by ``is_script_mode`` — EXITS with the builtin's
+      own status (2 for option/syntax usage errors; 1 for the readonly-
+      assignment and dot-file cases). The exit is NOT contained by
+      ``eval``/``source``/function calls/trap actions (``SystemExit``
+      passes through them), only by fork boundaries (subshells, command
+      substitution, pipeline members — the child exits, the parent
+      survives, exactly like bash).
+    - Otherwise (default mode; interactive or embedded shells, where
+      ``is_script_mode`` is False) the builtin simply FAILS with
+      ``status`` — byte-identical to the pre-policy behavior.
+
+    The message was already printed at the raise site.
+    """
+    if state.options.get('posix') and state.is_script_mode:
+        raise SystemExit(status)
+    return status
+
+
 def report_internal_defect(state: 'ShellState', exc: BaseException, *,
                            prefix: str = '', stream: TextIO) -> int:
     """Handle an UNEXPECTED exception escaping command execution.

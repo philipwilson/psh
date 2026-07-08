@@ -107,6 +107,34 @@ class TopLevelAbort(BaseException):
 
 # --- Errors -------------------------------------------------------------
 
+class SpecialBuiltinUsageError(PshError):
+    """Typed outcome: a POSIX special builtin hit a USAGE/SYNTAX error.
+
+    Raised by a special builtin's classified error branch AFTER it printed
+    its diagnostic — an invalid option (``set -q``, ``export -q``, ...),
+    ``return`` outside a function/sourced script, a missing/unreadable
+    ``.``/``source`` file, an assignment to a readonly variable via
+    ``readonly``/``export``, or a syntax error inside ``eval``/a sourced
+    file (raised at the nested buffered-command boundary). ``status``
+    carries the builtin's own exit status (2 for option/syntax usage
+    errors, 1 for the readonly/dot cases).
+
+    Converted by the ONE executor policy at the builtin guard
+    (``execute_builtin_guarded`` → ``special_builtin_usage_exit``): in
+    POSIX mode a NON-interactive shell (script/-c/piped stdin) EXITS with
+    ``status``; otherwise — default mode, interactive, or an invocation
+    through ``command``/``builtin`` (which strip the special property) —
+    the builtin simply fails with ``status``, byte-identical to the
+    pre-policy behavior. Operand/semantic errors (``export 1bad=x``,
+    ``trap 'x' NOSUCHSIG``, ``unset r`` on a readonly) deliberately do NOT
+    raise this. Truth table:
+    docs/reviews/posix_special_builtin_exit_matrix_2026-07-07.md.
+    """
+    def __init__(self, status: int = 2):
+        self.status = status
+        super().__init__("")
+
+
 class UnboundVariableError(PshError):
     """Raised when accessing unset variable with nounset option."""
     pass

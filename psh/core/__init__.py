@@ -26,6 +26,7 @@ from .exceptions import (
     NamerefCycleError,
     PshError,
     ReadonlyVariableError,
+    SpecialBuiltinUsageError,
     TopLevelAbort,
     UnboundVariableError,
 )
@@ -34,6 +35,7 @@ from .internal_errors import (
     fatal_expansion_status,
     report_internal_defect,
     special_builtin_usage_discard,
+    special_builtin_usage_exit,
 )
 from .options import OptionHandler
 from .scope import ScopeManager, VariableScope
@@ -49,6 +51,7 @@ __all__ = [
     'TopLevelAbort',
     'UnboundVariableError',
     'ReadonlyVariableError',
+    'SpecialBuiltinUsageError',
     'NamerefCycleError',
     'ExpansionError',
     'FatalExpansionError',
@@ -74,6 +77,7 @@ __all__ = [
     'fatal_expansion_status',
     'arith_assignment_discard',
     'special_builtin_usage_discard',
+    'special_builtin_usage_exit',
     # Traps
     'TrapManager',
     # Assignment utilities

@@ -296,8 +296,13 @@ def captured_shell():
     original_run_command = shell.run_command
 
     def capturing_run_command(command_string, add_to_history=True, base_line=1,
-                              line_oriented=False):
-        """Run command with output capture."""
+                              line_oriented=False, **kwargs):
+        """Run command with output capture.
+
+        ``**kwargs`` forwards any further Shell.run_command keyword
+        arguments (e.g. the trap manager's ``posix_syntax_exit=False``)
+        so the wrapper stays signature-compatible.
+        """
         # Replace sys streams during execution
         sys.stdout = captured_stdout
         sys.stderr = captured_stderr
@@ -311,7 +316,7 @@ def captured_shell():
 
         try:
             result = original_run_command(command_string, add_to_history,
-                                          base_line, line_oriented)
+                                          base_line, line_oriented, **kwargs)
         finally:
             # Always restore
             sys.stdout = original_sys_stdout

@@ -38,9 +38,13 @@ class LoopControlBuiltin(Builtin):
         depth = self._loop_depth(shell)
         if depth == 0:
             # bash: warn and continue with status 0 (the argument is not
-            # even validated when there is no enclosing loop).
-            self.error("only meaningful in a `for', `while', or `until' loop",
-                       shell)
+            # even validated when there is no enclosing loop). In POSIX
+            # mode the no-op is SILENT — bash prints nothing (matrix doc
+            # row, probe-verified vs bash 5.2).
+            if not shell.state.options.get('posix'):
+                self.error(
+                    "only meaningful in a `for', `while', or `until' loop",
+                    shell)
             return 0
         level = self._resolve_level(args, shell)
         if level is None:
@@ -63,15 +67,22 @@ class LoopControlBuiltin(Builtin):
         Returns the positive level to act on; 0 for the non-positive
         "loop count out of range" case (error already reported, caller exits
         the loop); or None when the command must NOT transfer control
-        because a hard argument error was reported (non-numeric / too many
-        arguments — a non-interactive shell aborts via sys.exit, an
-        interactive one sets the status and falls through).
+        because a non-numeric argument was reported (a non-interactive
+        shell aborts via sys.exit 128, like bash). The too-many-arguments
+        case never returns: it discards the current input unit.
         """
         if len(args) == 1:
             return 1
         if len(args) > 2:
-            self._report_arg_error("too many arguments", 1, shell)
-            return None
+            # Same too-many-arguments family as `exit 7 8` / `shift 1 2` /
+            # `return 3 4` (probe-verified, bash 5.2, tmp/posixexit):
+            # report and DISCARD the current input unit — the loop dies,
+            # the shell does NOT exit, and the next input line runs with
+            # $? = 1, in default AND POSIX mode. (The old sys.exit(1) path
+            # made a non-interactive psh exit — bash survives.)
+            self.error("too many arguments", shell)
+            from ..core import special_builtin_usage_discard
+            special_builtin_usage_discard(shell.state, 1)
 
         arg = args[1]
         try:
@@ -88,9 +99,10 @@ class LoopControlBuiltin(Builtin):
         return level
 
     def _report_arg_error(self, message: str, status: int, shell: 'Shell') -> None:
-        """Report a hard argument error. A non-interactive shell aborts with
-        the given status (break/continue are POSIX special builtins); an
-        interactive shell records the status and continues."""
+        """Report a non-numeric-argument error. A non-interactive shell
+        aborts with the given status — bash 5.2 exits 128 on `break x`
+        inside a loop, in default AND POSIX mode (probe tmp/posixexit) —
+        while an interactive shell records the status and continues."""
         self.error(message, shell)
         shell.state.last_exit_code = status
         if shell.state.is_script_mode:

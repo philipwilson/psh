@@ -18,9 +18,14 @@ from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
 
 from ..builtins.base import EMPTY_BUILTIN_CONTEXT, BuiltinContext
-from ..core import ReadonlyVariableError
+from ..core import (
+    ReadonlyVariableError,
+    SpecialBuiltinUsageError,
+    special_builtin_usage_exit,
+)
 from .command_assignments import CommandAssignments
 from .strategies import (
+    POSIX_SPECIAL_BUILTINS,
     BuiltinExecutionStrategy,
     ExecutionStrategy,
     ExternalExecutionStrategy,
@@ -482,6 +487,25 @@ class CommandExecutor:
                 if self.shell.state.is_script_mode:
                     sys.exit(1)
                 return 1
+
+            if prefix.failed and self.state.options.get('posix'):
+                # POSIX mode (probe tmp/posixexit, bash 5.2): a
+                # prefix-assignment error (`readonly r=1; r=2 cmd`) does
+                # NOT run the command. When the command is a POSIX special
+                # builtin, a non-interactive shell exits entirely (rc 1;
+                # bash's -c mode reports 127 there — the same ledgered -c
+                # artifact as the bare-assignment case). Otherwise it is
+                # the same DISCARD as a pure readonly assignment: the
+                # enclosing statement on this input line dies (an `if
+                # r=2 cmd; then` runs neither branch), contained at
+                # eval/source boundaries, next line runs with $? = 1.
+                # Default (bash) mode instead reports the error and RUNS
+                # the command (the path below).
+                if (cmd_name in POSIX_SPECIAL_BUILTINS
+                        and self.state.is_script_mode):
+                    sys.exit(1)
+                from ..core import TopLevelAbort
+                raise TopLevelAbort(1)
 
 
             # Handle xtrace option
@@ -1011,4 +1035,11 @@ class CommandExecutor:
                         print(f"psh: {e.filename or 'exec'}: {e.strerror}",
                               file=self.state.stderr)
                     return 1
-            return exec_builtin.execute(['exec'] + args, self.shell)
+            try:
+                return exec_builtin.execute(['exec'] + args, self.shell)
+            except SpecialBuiltinUsageError as e:
+                # exec bypasses the strategy guard (this direct path exists
+                # for redirect handling), so its usage outcome — an invalid
+                # option — resolves here: a direct special-builtin
+                # invocation, same policy as the guard's special_exit.
+                return special_builtin_usage_exit(self.state, e.status)
