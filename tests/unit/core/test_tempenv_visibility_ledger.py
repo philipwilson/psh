@@ -123,3 +123,21 @@ class TestAttributeBuiltinPromotesTemporaryEnv:
         cmd = 'f(){ V=hi export V; }; f; echo "[${V-GONE}]"'
         assert _psh(cmd).stdout == _bash(cmd).stdout
         assert _psh(cmd).stdout == "[hi]\n"
+
+
+# Accepted DELIBERATE DIVERGENCE (documented in docs/user_guide/
+# 17_differences_from_bash.md): a prefix over ``eval``/``source``/``.`` whose body
+# then runs a WHOLE-TABLE ENUMERATOR. bash makes the outer prefix visible to that
+# nested enumeration; psh consistently HIDES it (the temporary environment is
+# never a shell variable, so it never enters an enumeration, even one run by
+# eval). This is a NEW single-prefix divergence — base MATCHED bash here, so psh
+# is the one that changed — accepted because psh's consistent hiding is cleaner,
+# the corner is vanishingly rare, and the common direct-command/function cases
+# are a strict improvement. Pinned so the divergence stays intentional (a
+# regression back to bash's leak, or to some third behavior, is caught here).
+class TestNestedEvalEnumerationDivergesFromBash:
+    def test_eval_export_p_hides_prefix_var_unlike_bash(self):
+        cmd = 'FOO=bar eval \'export -p\' 2>&1 | grep "^declare -x FOO=" || echo NONE'
+        assert _psh(cmd).stdout == "NONE\n"                    # psh: consistently hides
+        assert 'declare -x FOO="bar"' in _bash(cmd).stdout     # bash: leaks into eval's enumeration
+        assert _psh(cmd).stdout != _bash(cmd).stdout           # the documented difference
