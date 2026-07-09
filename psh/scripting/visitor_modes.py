@@ -13,7 +13,8 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
-def _parse_for_analysis(shell: 'Shell', content: str) -> Any:
+def _parse_for_analysis(shell: 'Shell', content: str,
+                        drop_dangling_at_eof: bool = False) -> Any:
     """Parse *content* into an AST for analysis, heredoc-aware.
 
     Mirrors the execution path's parsing: when the input contains a heredoc,
@@ -31,7 +32,8 @@ def _parse_for_analysis(shell: 'Shell', content: str) -> Any:
     # `[[ ]]`), so without this the analysis modes reported false syntax
     # errors on valid scripts that execute fine.
     from .input_preprocessing import process_line_continuations
-    content = process_line_continuations(content)
+    content = process_line_continuations(
+        content, drop_dangling_at_eof=drop_dangling_at_eof)
 
     if contains_heredoc(content):
         from ..lexer import tokenize_with_heredocs
@@ -64,17 +66,23 @@ def _report_syntax_error(location: str, exc: Exception) -> int:
 
 
 def handle_visitor_mode_for_content(shell: 'Shell', content: str,
-                                    location: str) -> int:
+                                    location: str,
+                                    drop_dangling_at_eof: bool = False) -> int:
     """Run the selected analysis mode over *content* read from *location*.
 
     The SINGLE chokepoint every input channel routes through — ``-c`` command
     strings, script files, and piped stdin all analyze identical content
     identically (same output, same exit codes) and never execute it.
     *location* only labels diagnostics (``-c``, the script path, ``<stdin>``).
+    ``drop_dangling_at_eof`` mirrors the execution path's per-input-mode rule
+    for a trailing backslash at EOF (stream inputs — script file, stdin —
+    drop it; ``-c`` keeps it literal), so analysis sees the same text
+    execution would.
     """
     from ..core.exceptions import PshError
     try:
-        ast = _parse_for_analysis(shell, content)
+        ast = _parse_for_analysis(shell, content,
+                                  drop_dangling_at_eof=drop_dangling_at_eof)
         return apply_visitor_mode(shell, ast)
     except (PshError, SyntaxError) as e:
         # ParseError (PshError), LexerError (PshError+SyntaxError), and
@@ -119,7 +127,10 @@ def handle_visitor_mode_for_script(shell: 'Shell', script_path: str) -> int:
         # A race (file vanished after the pre-flight) or other read error.
         print(f"psh: {script_path}: {e}", file=sys.stderr)
         return 1
-    return handle_visitor_mode_for_content(shell, content, script_path)
+    # A script file is a stream input: a dangling backslash at EOF drops,
+    # exactly as the execution path treats it.
+    return handle_visitor_mode_for_content(shell, content, script_path,
+                                           drop_dangling_at_eof=True)
 
 
 def apply_visitor_mode(shell: 'Shell', ast: Any) -> int:

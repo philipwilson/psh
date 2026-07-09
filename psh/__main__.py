@@ -457,8 +457,10 @@ def main():
         # to analyze.)
         if visitor_mode:
             script_content = _read_all_stdin()
+            # A script on stdin is a stream input: a dangling backslash at
+            # EOF drops, exactly as the execution path treats it.
             exit_code = handle_visitor_mode_for_content(
-                shell, script_content, "<stdin>")
+                shell, script_content, "<stdin>", drop_dangling_at_eof=True)
             sys.exit(exit_code)
 
         stdin = sys.stdin

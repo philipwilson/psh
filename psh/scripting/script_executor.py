@@ -39,7 +39,11 @@ class ScriptExecutor(ScriptComponent):
         self.state.positional_params = script_args
 
         try:
-            with FileInput(script_path) as input_source:
+            # A script file ARGUMENT is a bash stream input: a dangling
+            # backslash at true EOF is dropped (a sourced file keeps it) —
+            # see InputSource.eof_drops_dangling_continuation.
+            with FileInput(script_path,
+                           eof_drops_dangling_continuation=True) as input_source:
                 # execute_as_main fires the EXIT trap exactly once when the
                 # script finishes — at end-of-file, on a `set -e` abort, or on
                 # an explicit `exit`. (A sourced file does NOT run this path;

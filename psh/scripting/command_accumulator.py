@@ -155,8 +155,17 @@ class CommandAccumulator:
         The execution path parses it and reports the error a truncated
         construct produces (e.g. "Expected FI, got EOF"), exactly as it
         always did for an EOF-terminated buffer.
+
+        End of input INSIDE a heredoc body keeps the buffer verbatim: the
+        heredoc is "delimited by end-of-file", so trailing empty lines and
+        the final newline are body CONTENT — stripping them changed a
+        ``<<EOF`` body's bytes (bash keeps them). Otherwise trailing
+        newlines are bare separators, stripped like ``_complete`` does
+        (with the same one-newline reprieve for a trailing continuation).
         """
-        result = Complete(text=self.buffer_text.rstrip('\n'))
+        text = (self.buffer_text if self._open_heredocs
+                else _strip_trailing_separators(self.buffer_text))
+        result = Complete(text=text)
         self.reset()
         return result
 
@@ -298,11 +307,35 @@ class CommandAccumulator:
             ast = tokens = None
         # Trailing newlines are bare statement separators — strip them from
         # both views so the execution path's own preprocessing of ``text``
-        # can be matched against ``source`` for AST reuse.
-        result = Complete(text=raw.rstrip('\n'), source=preview.rstrip('\n'),
+        # can be matched against ``source`` for AST reuse. One exception
+        # lives in _strip_trailing_separators: a newline consumed by a
+        # trailing continuation is NOT a bare separator.
+        result = Complete(text=_strip_trailing_separators(raw),
+                          source=preview.rstrip('\n'),
                           ast=ast, tokens=tokens, error=error)
         self.reset()
         return result
+
+
+def _strip_trailing_separators(raw: str) -> str:
+    """Strip trailing newlines from a gathered buffer — except the one a
+    trailing continuation consumes.
+
+    Trailing newlines are bare statement separators, EXCEPT when the text
+    left after stripping ends with an unescaped backslash: that backslash
+    and the following newline are a line-continuation PAIR (the buffer
+    gathered ``echo hi \\`` plus an empty final line), and stripping the
+    newline stranded the backslash as a literal word character —
+    ``echo hi \\<newline>`` at end of input runs ``echo hi`` in bash (every
+    input mode), not ``echo hi \\``. Keep exactly one newline back so
+    ``process_line_continuations`` joins the pair away. (A backslash that
+    is comment or single-quote content gets the newline back too — harmless,
+    since joining is context-aware and leaves those literal.)
+    """
+    text = raw.rstrip('\n')
+    if text != raw and _ends_with_line_continuation(text):
+        text += '\n'
+    return text
 
 
 def _ends_with_line_continuation(text: str) -> bool:
