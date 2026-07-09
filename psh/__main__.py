@@ -60,7 +60,7 @@ Options:
   -h, --help       Show this help message and exit
   -V, --version    Show version information and exit
   --norc           Do not read ~/.pshrc on startup
-  --posix           Enable POSIX mode at startup (like set -o posix)
+  --posix          Enable POSIX mode at startup (like set -o posix)
   --rcfile FILE    Read FILE instead of ~/.pshrc
   --parser PARSER  Select parser: recursive_descent (rd, default), combinator (pc, educational)
   --force-interactive Same as -i

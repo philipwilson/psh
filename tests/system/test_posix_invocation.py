@@ -123,6 +123,16 @@ class TestSpecialBuiltinExitCrossRelease:
         script.write_text(self.SCRIPT)
         p = _psh('--posix', str(script))
         b = _bash('--posix', str(script))
+        # --posix must be ACCEPTED (not rejected as an unknown flag) and only
+        # THEN exit on the special-builtin usage error, before `echo AFTER`.
+        # Asserting rc==2 + no-AFTER alone is vacuously true on a shell that
+        # rejects --posix ("invalid option", rc 2, empty stdout), so pin that
+        # the flag was honoured: no "invalid option" diagnostic. The non-posix
+        # control proves the script itself reaches `echo AFTER` — so its
+        # absence here is the posix exit, not an unrelated failure.
+        control = _psh(str(script))
+        assert 'AFTER' in control.stdout
+        assert 'invalid option' not in p.stderr
         assert p.returncode == b.returncode == 2
         assert 'AFTER' not in p.stdout
         assert 'AFTER' not in b.stdout
