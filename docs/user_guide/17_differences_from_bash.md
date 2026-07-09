@@ -850,6 +850,7 @@ fi
 | set -o allexport | Yes | Yes | Full support |
 | set -o noglob | Yes | Yes | Full support |
 | set -o verbose | Yes | Yes | Full support |
+| set -o posix / POSIXLY_CORRECT | Yes | Yes | Full support (posix mode via `set -o posix`, the `--posix` startup flag, or the `POSIXLY_CORRECT` variable/environment; two-way coupled to `POSIXLY_CORRECT` like bash — enabling binds it to `y`, disabling unsets it) |
 | **Signal Handling** |
 | trap command | Yes | Yes | Standard signals + EXIT/DEBUG/ERR/RETURN |
 | Signal handling | Yes | Yes | All standard signals |

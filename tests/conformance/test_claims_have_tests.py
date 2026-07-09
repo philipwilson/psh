@@ -76,6 +76,7 @@ CLAIM_TESTS = {
     'set -o allexport': ('bash/test_export_env_sync_conformance.py', 'set -a; FOO=auto; printenv FOO'),
     'set -o noglob': ('bash/test_array_init_conformance.py', 'set -f; a=(*.txt)'),
     'set -o verbose': ('bash/test_set_options_conformance.py', 'set -v\\necho hi\\necho bye'),
+    'set -o posix / POSIXLY_CORRECT': ('bash/test_posixly_correct_conformance.py', 'POSIXLY_CORRECT=1; set -o | grep posix'),
     'Here documents': ('posix/test_heredoc_fd_jobs_conformance.py', 'plain $USER text'),
     'Here strings': ('posix/test_heredoc_fd_jobs_conformance.py', 'here string $((2*3))'),
     'Enhanced test [[ ]]': ('bash/test_bash_compatibility.py', '[[ -f /dev/null ]]'),
