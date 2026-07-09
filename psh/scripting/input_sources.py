@@ -24,6 +24,24 @@ class InputSource(ABC):
     # (probe-verified vs bash 5.2, tmp/posixexit).
     posix_syntax_exit: bool = True
 
+    # Bash's two rules for a dangling backslash at TRUE end of input
+    # (a trailing ``\`` with no newline after it), probe-verified vs
+    # bash 5.2 (tmp/contcarry/):
+    #
+    # * STREAM inputs — a script file argument, a script on stdin, a
+    #   ``/dev/fd`` process-substitution script — DROP it: a file ending
+    #   ``echo hi \`` runs ``echo hi``. (bash reads these through its
+    #   getc layer, which discards a backslash followed by EOF.)
+    # * STRING inputs — ``-c``, ``eval``, and notably ``source``/``.``
+    #   (bash reads the sourced file into a string) — keep it as a
+    #   literal word character: ``bash -c 'echo hi \'`` prints ``hi \``.
+    #
+    # A backslash-NEWLINE pair at end of input is a normal continuation
+    # (joined with the empty remainder) in EVERY mode; this flag only
+    # governs the no-newline dangling case. SourceProcessor threads it
+    # into process_line_continuations(drop_dangling_at_eof=...).
+    eof_drops_dangling_continuation: bool = False
+
     @abstractmethod
     def read_line(self) -> Optional[str]:
         """Read the next line from the input source.
@@ -56,10 +74,19 @@ class InputSource(ABC):
 
 
 class FileInput(InputSource):
-    """Input source for reading commands from script files."""
+    """Input source for reading commands from script files.
 
-    def __init__(self, file_path: str):
+    ``eof_drops_dangling_continuation`` is per-USE, not per-class: a script
+    file ARGUMENT is a bash stream input (True — the script executor and
+    ``--validate`` pass it), while ``source``/``.`` and rc files are bash
+    STRING inputs (False, the default) even though psh reads all of them
+    through this class. See the base-class attribute for the bash rule.
+    """
+
+    def __init__(self, file_path: str,
+                 eof_drops_dangling_continuation: bool = False):
         self.file_path = file_path
+        self.eof_drops_dangling_continuation = eof_drops_dangling_continuation
         self.line_number = 0
         self.lines: List[str] = []
         self.current_line = 0
@@ -207,6 +234,10 @@ class StdinInput(InputSource):
 
     _NEWLINE = 0x0A  # b'\n'
 
+    # A script on stdin is a bash STREAM input: a dangling backslash at
+    # true EOF is dropped (see the base-class attribute).
+    eof_drops_dangling_continuation: bool = True
+
     def __init__(self, fd: int = 0, name: str = "<stdin>"):
         # Import here (not at module load) so scripting/ does not import the
         # builtins package at import time; by the time a StdinInput is built the
@@ -216,6 +247,7 @@ class StdinInput(InputSource):
         self._name = name
         self.line_number = 0
         self._eof = False
+        self._last_hit_delimiter = False
 
     def read_line(self) -> Optional[str]:
         """Read the next physical line from fd 0, or None at EOF.
@@ -223,13 +255,27 @@ class StdinInput(InputSource):
         Consumes exactly one line's bytes (up to and including its newline) and
         no more, leaving the remainder of fd 0 intact for an in-script ``read``/
         ``cat``/``mapfile``. A closed/invalid fd 0 surfaces as immediate EOF.
+
+        Line semantics match ``FileInput`` exactly: when the input's final
+        line is newline-TERMINATED, one empty final line is yielded at EOF
+        (``FileInput``'s ``split('\\n')`` produces it naturally; the record
+        reader strips the newline, so it is restored here). That final empty
+        line is what tells the gathering layer the input ended ``...\\<LF>``
+        (a joinable continuation) rather than ``...\\`` (a dangling one) —
+        the two shapes differ in bash. Costs no extra reads: it is emitted
+        only when EOF has already been observed.
         """
         if self._eof:
             return None
         record = self._reader.read_record_bytes(delimiter_byte=self._NEWLINE)
         if record is None:
             self._eof = True
+            if self._last_hit_delimiter:
+                self._last_hit_delimiter = False
+                self.line_number += 1
+                return ''
             return None
+        self._last_hit_delimiter = self._reader.last_record_hit_delimiter
         self.line_number += 1
         return record.decode('utf-8', errors='surrogateescape')
 

@@ -100,6 +100,11 @@ class InputReader:
         # Incremental UTF-8 decode state for the fd path: bytes gathered so far
         # for the character currently being assembled.
         self._partial = bytearray()
+        # Whether the most recent read_record_bytes record ended AT its
+        # delimiter (True) or at EOF/error (False). StdinInput consults it
+        # to tell a newline-terminated final line from an unterminated one
+        # — the record bytes alone cannot distinguish them.
+        self.last_record_hit_delimiter = False
 
     # -- polling -------------------------------------------------------------
 
@@ -206,6 +211,7 @@ class InputReader:
             # policy the caller decodes with, keeping the return type uniform.
             delim = chr(delimiter_byte)
             chars: list = []
+            self.last_record_hit_delimiter = False
             while True:
                 ch = self._stream.read(1)
                 if ch == '':
@@ -213,6 +219,7 @@ class InputReader:
                         return None
                     break
                 if ch == delim:
+                    self.last_record_hit_delimiter = True
                     break
                 chars.append(ch)
             return ''.join(chars).encode('utf-8', errors='surrogateescape')
@@ -226,6 +233,7 @@ class InputReader:
         split = drained.find(delimiter_byte)
         if split != -1:
             self._partial = bytearray(drained[split + 1:])
+            self.last_record_hit_delimiter = True
             return drained[:split]
         buf = bytearray(drained)
         while True:
@@ -233,8 +241,10 @@ class InputReader:
             if outcome is not Outcome.DATA:
                 # EOF/ERROR before the delimiter: return the partial record, or
                 # None for a truly empty clean EOF.
+                self.last_record_hit_delimiter = False
                 return bytes(buf) if buf else None
             if byte == delimiter_byte:
+                self.last_record_hit_delimiter = True
                 return bytes(buf)
             buf.append(byte)
 
