@@ -320,7 +320,9 @@ class SourceProcessor(ScriptComponent):
         nested = getattr(self.shell, '_current_executor', None) is not None
 
         try:
-            preprocessed = self._preprocess_command(command_string, add_to_history)
+            preprocessed = self._preprocess_command(
+                command_string, add_to_history,
+                drop_dangling_at_eof=input_source.eof_drops_dangling_continuation)
             if preprocessed is None:
                 # History expansion failed - this is the proper error path
                 # (the "event not found" message was already printed).
@@ -361,18 +363,26 @@ class SourceProcessor(ScriptComponent):
             return self._classify_buffered_error(e, input_source, start_line,
                                                  nested)
 
-    def _preprocess_command(self, command_string: str,
-                            add_to_history: bool) -> Optional[str]:
+    def _preprocess_command(self, command_string: str, add_to_history: bool,
+                            drop_dangling_at_eof: bool = False) -> Optional[str]:
         """Preprocess a raw buffered command string before parsing.
 
         Joins line continuations, performs (interactive) history expansion,
         and records the command in history. Returns the preprocessed string,
         or ``None`` when history expansion FAILED — the caller turns that
         ``None`` into exit status 1 without parsing or executing.
+
+        ``drop_dangling_at_eof`` is the input source's stream-vs-string rule
+        for a trailing backslash at true end of input (see
+        ``InputSource.eof_drops_dangling_continuation``). It is threaded to
+        every buffered command, but only the EOF-flushed buffer can actually
+        end with a joinable dangling continuation — mid-source, the
+        accumulator keeps reading instead of completing such a buffer.
         """
         # Process line continuations first
         from .input_preprocessing import process_line_continuations
-        command_string = process_line_continuations(command_string)
+        command_string = process_line_continuations(
+            command_string, drop_dangling_at_eof=drop_dangling_at_eof)
 
         # Perform history expansion before tokenization. The accumulator
         # already expanded silently for the completeness trial; this
