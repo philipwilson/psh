@@ -14,11 +14,77 @@ Keeping any limit is a DELIBERATE divergence from bash (which has none); it is a
 resource guard, documented in docs/user_guide/17_differences_from_bash.md.
 All in-budget expectations bash-5.2-verified.
 """
+import os
+import subprocess
+import sys
 import time
 
 import pytest
 
 from psh.expansion.brace_expansion import BraceExpander, BraceExpansionError
+
+
+def _run_psh(script):
+    """Run `script` through `psh -c` in a subprocess (faithful to the `-c`
+    path, where an escaping error would pick up the top-level source-processor
+    'unexpected error:' guard prefix). Returns (stdout, stderr, rc)."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("DISPLAY", "XAUTHORITY")}
+    r = subprocess.run([sys.executable, "-m", "psh", "-c", script],
+                       capture_output=True, text=True, env=env, timeout=30)
+    return r.stdout, r.stderr, r.returncode
+
+
+# `_OVER` overflows the 100,000-item budget in one range.
+_OVER = "{1..200000}"
+
+
+class TestBudgetOverflowConsistentAcrossContexts:
+    """A brace-budget overflow is an EXPECTED shell error and must present
+    IDENTICALLY in every field-producing context: a clean
+    ``psh: brace expansion: N items exceeds the limit`` on stderr, status 1,
+    empty stdout, shell continues — NEVER the top-level 'unexpected error:'
+    internal-defect guard.
+
+    Regression: for/select iterables expand OUTSIDE the SimpleCommand
+    try/except, so the overflow escaped to the source-processor guard and
+    printed ``psh: -c:1: unexpected error: brace expansion: ...`` (RED on tip
+    0d631682). Simple-command, array-init, and redirect were already clean.
+    """
+
+    def _assert_clean_overflow(self, script):
+        stdout, stderr, rc = _run_psh(script)
+        assert rc == 1, f"{script!r}: rc={rc} stderr={stderr!r}"
+        assert stdout == "", f"{script!r}: stdout={stdout!r}"
+        assert "brace expansion:" in stderr and "exceeds the limit" in stderr
+        assert "unexpected error" not in stderr, \
+            f"{script!r}: leaked internal-defect guard: {stderr!r}"
+
+    def test_simple_command(self):
+        self._assert_clean_overflow(f"echo {_OVER}")
+
+    def test_for_loop_iterable(self):
+        # The RED case on 0d631682.
+        self._assert_clean_overflow(f"for i in {_OVER}; do echo x; done")
+
+    def test_select_loop_iterable(self):
+        self._assert_clean_overflow(
+            f"select i in {_OVER}; do echo x; done </dev/null")
+
+    def test_array_init(self):
+        self._assert_clean_overflow(f"a=({_OVER})")
+
+    def test_redirect_target(self):
+        self._assert_clean_overflow(f"echo hi > {_OVER}")
+
+    def test_for_loop_overflow_shell_continues(self):
+        # Status 1 for the loop, but the line continues (like the simple
+        # command) — not a top-level abort.
+        stdout, stderr, rc = _run_psh(
+            f"for i in {_OVER}; do echo x; done; echo AFTER")
+        assert stdout == "AFTER\n"
+        assert rc == 0
+        assert "unexpected error" not in stderr
 
 
 class TestInBudgetMatchesBash:
