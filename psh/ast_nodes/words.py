@@ -106,6 +106,17 @@ class VariableExpansion(Expansion):
     """Represents simple variable expansion $var."""
     name: str  # Variable name without $
 
+    #: True when this came from BRACE-delimited ``${name}`` syntax rather than
+    #: bare ``$name``. The two are semantically identical, but brace expansion
+    #: (which runs before parameter expansion) fuses a trailing name-char run
+    #: into a BARE variable — ``$v{1,2}`` -> the names ``v1``/``v2`` — while a
+    #: delimited ``${v}{1,2}`` stays ``${v}1``/``${v}2`` (bash). The token-stream
+    #: brace expander encoded this in the token value (``v`` vs ``{v}``); the
+    #: Word AST needs it explicitly for WordBraceExpander's name fusion.
+    #: Excluded from ``__eq__``/``__repr__`` so AST-repr characterization
+    #: corpora and node-equality tests stay byte-identical.
+    braced: bool = field(default=False, compare=False, repr=False)
+
     def __str__(self):
         # A subscripted reference (``arr[@]``, ``arr[0]``) or any name with
         # non-identifier characters must render as ``${name}`` — a bare

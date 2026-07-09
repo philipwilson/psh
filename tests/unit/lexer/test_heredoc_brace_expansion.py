@@ -1,10 +1,12 @@
 """
 Tests for brace expansion on command lines that contain heredocs.
 
-Regression guard: tokenize_with_heredocs() omitted the TokenBraceExpander
-pass that tokenize() performs, so any command line containing a heredoc
-silently lost brace expansion (`cat <<EOF; echo {a,b}` printed `{a,b}`).
-Verified against bash 5.2.
+Behavior guard (bash 5.2): a command line containing a heredoc must still
+brace-expand its command part (`cat <<EOF; echo {a,b}` prints `a b`), and the
+heredoc BODY must stay literal. Since v0.678 brace expansion is a WORD-stage
+step, not a tokenize-time pass, so tokenization keeps `{a,b}` intact regardless
+of heredocs — the behavior is verified end-to-end by
+TestHeredocBraceExpansionEndToEnd below.
 """
 
 import subprocess
@@ -13,14 +15,15 @@ import sys
 from psh.lexer import tokenize_with_heredocs
 
 
-class TestTokenizeWithHeredocsBraceExpansion:
-    def test_brace_expansion_applied(self):
+class TestTokenizeWithHeredocsKeepsBracesIntact:
+    def test_command_braces_kept_as_word(self):
+        # No token-level expansion: `{a,b}` stays one WORD; the Word stage
+        # expands it at execution time.
         tokens, heredoc_map = tokenize_with_heredocs(
             'cat <<EOF; echo {a,b}\nhi\nEOF\n')
         values = [t.value for t in tokens]
-        assert 'a' in values
-        assert 'b' in values
-        assert '{a,b}' not in values
+        assert '{a,b}' in values
+        assert 'a' not in values
 
     def test_heredoc_body_not_brace_expanded(self):
         tokens, heredoc_map = tokenize_with_heredocs(
@@ -28,12 +31,12 @@ class TestTokenizeWithHeredocsBraceExpansion:
         bodies = ''.join(str(v) for v in heredoc_map.values())
         assert '{x,y}' in bodies
 
-    def test_sequence_expansion_applied(self):
+    def test_sequence_braces_kept_as_word(self):
         tokens, _ = tokenize_with_heredocs(
             'cat <<EOF; echo {1..3}\nhi\nEOF\n')
         values = [t.value for t in tokens]
-        assert [v for v in values if v in ('1', '2', '3')] == ['1', '2', '3']
-        assert '{1..3}' not in values
+        assert '{1..3}' in values
+        assert '2' not in values
 
 
 class TestHeredocBraceExpansionEndToEnd:

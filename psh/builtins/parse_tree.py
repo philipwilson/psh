@@ -81,8 +81,10 @@ class ParseTreeBuiltin(Builtin):
         command = " ".join(command_args)
 
         try:
-            # Parse the command
-            tokens = tokenize(command)
+            # Parse the command, honoring the live shell options (extglob,
+            # posix) so the displayed AST matches what the executor would
+            # tokenize — e.g. `shopt -s extglob; parse-tree '@(a|b)'`.
+            tokens = tokenize(command, shell_options=shell.state.options)
             parser = Parser(tokens, source_text=command)
             ast = parser.parse()
 

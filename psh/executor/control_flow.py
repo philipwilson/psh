@@ -316,8 +316,14 @@ class ControlFlowExecutor:
             # Expand the item list INSIDE the redirect scope (F4): a command
             # substitution in the words (`for x in $(cat); do ...; done <
             # input`) must read the loop's redirected stdin, not the outer
-            # one. Quote types are respected.
-            expanded_items = self._expand_loop_items(node)
+            # one. Quote types are respected. A brace-budget overflow in the
+            # iterable is an expected error, reported cleanly (not the
+            # top-level "unexpected error" guard) — see _report_loop_*.
+            from ..expansion.brace_expansion import BraceExpansionError
+            try:
+                expanded_items = self._expand_loop_items(node)
+            except BraceExpansionError as e:
+                return self._report_loop_brace_overflow(e)
             for item in expanded_items:
                 # set -x: bash re-traces the `for VAR in WORDS` header on EACH
                 # iteration (the expanded word list, quoted).
@@ -582,8 +588,13 @@ class ControlFlowExecutor:
                     return 1
                 # Expand the item list INSIDE the redirect scope (F4) so a
                 # command substitution in the words reads the loop's
-                # redirected stdin. Respects quote types.
-                expanded_items = self._expand_loop_items(node)
+                # redirected stdin. Respects quote types. A brace-budget
+                # overflow is reported cleanly (see _report_loop_brace_overflow).
+                from ..expansion.brace_expansion import BraceExpansionError
+                try:
+                    expanded_items = self._expand_loop_items(node)
+                except BraceExpansionError as e:
+                    return self._report_loop_brace_overflow(e)
 
                 # Empty list - exit immediately
                 if not expanded_items:
@@ -668,6 +679,23 @@ class ControlFlowExecutor:
         nothing (the previous command's text stands)."""
         if expr:
             self.shell.trap_manager.set_bash_command(f"(({expr}))")
+
+    def _report_loop_brace_overflow(self, e) -> int:
+        """Report a brace-expansion budget overflow in a for/select iterable.
+
+        A ``BraceExpansionError`` (over ``MAX_EXPANSION_ITEMS``) raised while
+        expanding the loop's word list is an EXPECTED shell error, not an
+        internal defect. Loop iterables expand via ``expand_word_to_fields``
+        OUTSIDE the SimpleCommand try/except, so — unlike ``echo {1..200000}``
+        or ``a=({1..200000})`` — it would otherwise escape to the top-level
+        source-processor guard and print as ``psh: <loc>: unexpected error:
+        ...``, which reads like a psh bug. Route it through the SAME clean
+        handler the simple-command path uses (``report_internal_defect``, which
+        recognizes it as an expected shell error): ``psh: brace expansion: N
+        items exceeds the limit`` on stderr, status 1, the shell continues.
+        """
+        from ..core import report_internal_defect
+        return report_internal_defect(self.state, e, stream=self.shell.stderr)
 
     def _expand_loop_items(self, node) -> List[str]:
         """Expand the item list of a for or select loop.

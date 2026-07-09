@@ -2,29 +2,28 @@
 
 Before v0.672 the option was registered (default ON, ``$-`` letter B) but a
 complete NO-OP: nothing consulted it, and ``set -B``/``set +B`` were rejected
-as invalid options. These tests pin the wired behavior at three levels:
+as invalid options. Since v0.678 brace expansion is a WORD-stage step (bash's
+own position), so a ``set``/``shopt`` that actually RUNS updates the LIVE
+option and the NEXT command's expansion honours it — no parse-time look-ahead
+scanner. These tests pin the wired behavior at three levels:
 
-- tokenize-level: the post-lex brace expander honours the seeded option value
-  AND same-stream ``set`` toggles (psh brace-expands at tokenize time, so a
-  same-line ``set +B; echo {a,b}`` needs the stream scanner to match bash);
+- runtime toggle: a same-line ``set +B; echo {a,b}`` and its ``set +o`` /
+  ``shopt -so/-uo braceexpand`` cousins take effect at RUNTIME, and — unlike
+  the old token-stream scanner — the 6 approximation classes (toggle in a
+  not-taken branch / uncalled function / shadowed builtin / pipeline segment,
+  invalid clusters, quoted operands) are now correct FOR FREE;
 - shell-level: toggling via ``set +o braceexpand`` / ``set +B`` affects later
   commands, ``$-`` and the ``set -o``/``set +o`` listings track;
 - CLI-level: ``psh -B``/``+B`` invocation flags (bash-compatible).
 
 Ground truth: bash 5.2.26 (see tests/behavioral/golden_cases.yaml braceexp_*
-for the bash-compared battery).
+for the bash-compared battery; the same commands were probed vs bash 5.2.26 in
+tmp/probe_brace.py).
 """
 
 import os
 import subprocess
 import sys
-
-from psh.lexer import tokenize
-
-
-def _values(command, shell_options=None):
-    return [t.value for t in tokenize(command, shell_options=shell_options)
-            if t.value]
 
 
 def _clean_env():
@@ -33,211 +32,143 @@ def _clean_env():
     return env
 
 
-# ---------------------------------------------------------------------------
-# Tokenize-level: the seeded option value
-# ---------------------------------------------------------------------------
-
-def test_tokenize_disabled_keeps_braces_literal():
-    assert _values("echo {a,b}", {"braceexpand": False}) == ["echo", "{a,b}"]
+def _run_psh(argv, script):
+    return subprocess.run(
+        [sys.executable, "-m", "psh", *argv, "-c", script],
+        capture_output=True, text=True, env=_clean_env(), timeout=15)
 
 
-def test_tokenize_disabled_keeps_range_literal():
-    assert _values("echo {1..3}", {"braceexpand": False}) == ["echo", "{1..3}"]
-
-
-def test_tokenize_enabled_expands():
-    assert _values("echo {a,b}", {"braceexpand": True}) == ["echo", "a", "b"]
-
-
-def test_tokenize_without_options_expands():
-    """Analysis callers that tokenize with no shell options keep expanding."""
-    assert _values("echo {a,b}") == ["echo", "a", "b"]
+def _out(script):
+    """stdout of running `script` through psh -c (subprocess: some cases fork
+    subshells/pipelines whose option scope only shows at fd level)."""
+    return _run_psh([], script).stdout
 
 
 # ---------------------------------------------------------------------------
-# Tokenize-level: same-stream `set` toggles (bash does brace expansion at
-# word-expansion time, so a same-line toggle applies to the words after it)
+# Runtime: the live option value gates expansion of the NEXT command
 # ---------------------------------------------------------------------------
 
-def test_same_stream_set_plus_B_disables_rest_of_stream():
-    assert _values("set +B; echo {a,b}") == ["set", "+B", ";", "echo", "{a,b}"]
+def test_default_expands():
+    assert _out("echo {a,b}") == "a b\n"
 
 
-def test_same_stream_set_plus_o_braceexpand():
-    assert _values("set +o braceexpand; echo {a,b}") == [
-        "set", "+o", "braceexpand", ";", "echo", "{a,b}"]
+def test_set_plusB_keeps_braces_literal():
+    assert _out("set +B; echo {a,b}") == "{a,b}\n"
 
 
-def test_same_stream_set_minus_B_reenables():
-    assert _values("set -B; echo {a,b}", {"braceexpand": False}) == [
-        "set", "-B", ";", "echo", "a", "b"]
+def test_set_plusB_keeps_range_literal():
+    assert _out("set +B; echo {1..3}") == "{1..3}\n"
 
 
-def test_same_stream_cluster_with_B():
-    assert _values("set +xB; echo {a,b}") == ["set", "+xB", ";", "echo", "{a,b}"]
+def test_set_plus_o_braceexpand_literal():
+    assert _out("set +o braceexpand; echo {a,b}") == "{a,b}\n"
 
 
-def test_same_stream_trailing_o_consumes_other_name():
-    """`set -euo pipefail`: the trailing o's name is pipefail, not braceexpand."""
-    assert _values("set -euo pipefail; echo {a,b}") == [
-        "set", "-euo", "pipefail", ";", "echo", "a", "b"]
+def test_set_minus_B_reenables():
+    assert _out("set +B; set -B; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_subshell_toggle_is_scoped():
-    """A subshell's `set +B` does not escape it (bash)."""
-    assert _values("(set +B); echo {a,b}") == [
-        "(", "set", "+B", ")", ";", "echo", "a", "b"]
+def test_cluster_with_B():
+    assert _out("set +xB; echo {a,b}") == "{a,b}\n"
 
 
-def test_same_stream_toggle_persists_inside_subshell():
-    assert _values("set +B; (echo {a,b})") == [
-        "set", "+B", ";", "(", "echo", "{a,b}", ")"]
+def test_trailing_o_name_is_pipefail_not_braceexpand():
+    # `set -euo pipefail`: the trailing o's name is pipefail; braceexpand
+    # stays ON, so {a,b} still expands.
+    assert _out("set -euo pipefail; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_pipeline_set_is_discarded():
-    """A pipeline-segment `set +B` runs in a subshell in bash: no effect."""
-    assert _values("set +B | cat; echo {a,b}") == [
-        "set", "+B", "|", "cat", ";", "echo", "a", "b"]
+def test_set_own_arguments_expand_then_toggle():
+    # bash expands a command's words BEFORE running it: `set +B a b` expands
+    # nothing here but sets $1/$2, and B is off only for LATER commands.
+    assert _out("set +B x{1,2}; echo \"$1 $2\"; echo {c,d}") == "x1 x2\n{c,d}\n"
 
 
-def test_same_stream_set_own_arguments_use_old_state():
-    """bash expands a command's words BEFORE running it: `set +B {a,b}`
-    still expands {a,b} into two positional parameters."""
-    assert _values("set +B {a,b}") == ["set", "+B", "a", "b"]
+def test_double_dash_stops_option_parsing():
+    # `set -- +B` sets a positional parameter; braceexpand stays ON.
+    assert _out("set -- +B; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_double_dash_stops_interpretation():
-    """`set -- +B` sets a positional parameter; it does not toggle."""
-    assert _values("set -- +B; echo {a,b}") == [
-        "set", "--", "+B", ";", "echo", "a", "b"]
-
-
-def test_same_stream_set_as_argument_not_interpreted():
-    """`set` outside command position (an argument) is not a toggle."""
-    assert _values("echo set +B; echo {a,b}") == [
-        "echo", "set", "+B", ";", "echo", "a", "b"]
+def test_set_as_argument_not_a_toggle():
+    assert _out("echo set +B; echo {a,b}") == "set +B\na b\n"
 
 
 # ---------------------------------------------------------------------------
-# Tokenize-level: same-stream `shopt -o` toggles (v0.674 fixlet). shopt with
-# -o operates on the set -o table, so `shopt -so/-uo braceexpand` toggles
-# brace expansion exactly like `set -o/+o braceexpand` — including same-line
-# (probe-pinned vs bash 5.2.26, tmp/optreflect/probe3_tip.txt).
+# Runtime: subshell / pipeline / background scoping (a toggle in a bash
+# subshell does not escape it) — now correct because the option is real state
 # ---------------------------------------------------------------------------
 
-def test_same_stream_shopt_uo_disables_rest_of_stream():
-    assert _values("shopt -uo braceexpand; echo {a,b}") == [
-        "shopt", "-uo", "braceexpand", ";", "echo", "{a,b}"]
+def test_subshell_toggle_is_scoped():
+    assert _out("(set +B); echo {a,b}") == "a b\n"
 
 
-def test_same_stream_shopt_so_reenables():
-    assert _values("shopt -so braceexpand; echo {a,b}",
-                   {"braceexpand": False}) == [
-        "shopt", "-so", "braceexpand", ";", "echo", "a", "b"]
+def test_toggle_persists_inside_subshell():
+    assert _out("set +B; (echo {a,b})") == "{a,b}\n"
 
 
-def test_same_stream_shopt_os_cluster_order():
-    assert _values("shopt -os braceexpand; echo {a,b}",
-                   {"braceexpand": False}) == [
-        "shopt", "-os", "braceexpand", ";", "echo", "a", "b"]
+def test_pipeline_segment_set_is_discarded():
+    assert _out("set +B | cat; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_shopt_split_flags():
-    assert _values("shopt -o -u braceexpand; echo {a,b}") == [
-        "shopt", "-o", "-u", "braceexpand", ";", "echo", "{a,b}"]
+def test_shopt_uo_reenables_across_commands():
+    assert _out("set +B; shopt -so braceexpand; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_shopt_split_flags_u_then_o():
-    assert _values("shopt -u -o braceexpand; echo {a,b}") == [
-        "shopt", "-u", "-o", "braceexpand", ";", "echo", "{a,b}"]
+def test_shopt_uo_disables():
+    assert _out("shopt -uo braceexpand; echo {a,b}") == "{a,b}\n"
 
 
-def test_same_stream_shopt_puo_still_toggles():
-    """bash: -s/-u WIN over -p when operands are given (toggle, no print)."""
-    assert _values("shopt -puo braceexpand; echo {a,b}") == [
-        "shopt", "-puo", "braceexpand", ";", "echo", "{a,b}"]
+def test_shopt_subshell_toggle_is_scoped():
+    assert _out(
+        "(shopt -uo braceexpand; echo {a,b}); echo {c,d}") == "{a,b}\nc d\n"
 
 
-def test_same_stream_shopt_unknown_sibling_does_not_derail():
-    """bash's -o toggle path applies valid names despite an invalid sibling."""
-    assert _values("shopt -uo nosuchopt braceexpand; echo {a,b}") == [
-        "shopt", "-uo", "nosuchopt", "braceexpand", ";", "echo", "{a,b}"]
+def test_shopt_s_without_o_is_not_a_toggle():
+    # braceexpand is a set -o name, NOT a shopt-table name: `shopt -s
+    # braceexpand` errors and does NOT change brace expansion.
+    assert _out("shopt -s braceexpand 2>/dev/null; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_shopt_pso_still_toggles():
-    """bash: -p does not suppress the toggle (`shopt -pso braceexpand` sets)."""
-    assert _values("shopt -pso braceexpand; echo {a,b}",
-                   {"braceexpand": False}) == [
-        "shopt", "-pso", "braceexpand", ";", "echo", "a", "b"]
+# ---------------------------------------------------------------------------
+# The 6 formerly-wrong approximation classes — now correct at runtime because
+# only a `set`/`shopt` that actually RUNS changes the option (task #30).
+# ---------------------------------------------------------------------------
+
+def test_class1_toggle_in_not_taken_branch_has_no_effect():
+    assert _out("if false; then set +B; fi; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_shopt_multiple_operands():
-    assert _values("shopt -uo errexit braceexpand; echo {a,b}") == [
-        "shopt", "-uo", "errexit", "braceexpand", ";", "echo", "{a,b}"]
+def test_class1_toggle_in_uncalled_function_has_no_effect():
+    assert _out("f() { set +B; }; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_shopt_double_dash_operands():
-    assert _values("shopt -uo -- braceexpand; echo {a,b}") == [
-        "shopt", "-uo", "--", "braceexpand", ";", "echo", "{a,b}"]
+def test_class2_loop_body_reads_option_per_iteration():
+    assert _out(
+        "for i in 1 2 3; do echo {a,b}; set +B; done") == "a b\n{a,b}\n{a,b}\n"
 
 
-def test_same_stream_shopt_own_arguments_use_old_state():
-    """bash expands shopt's own words BEFORE running it; the toggle applies
-    to the words AFTER the command."""
-    assert _values("shopt -uo braceexpand x{a,b}; echo tail{c,d}") == [
-        "shopt", "-uo", "braceexpand", "xa", "xb", ";", "echo", "tail{c,d}"]
+def test_class3_shadowed_set_does_not_toggle():
+    assert _out("set() { :; }; set +B; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_shopt_subshell_toggle_is_scoped():
-    assert _values("(shopt -uo braceexpand; echo {a,b}); echo {c,d}") == [
-        "(", "shopt", "-uo", "braceexpand", ";", "echo", "{a,b}", ")", ";",
-        "echo", "c", "d"]
+def test_class4_pipeline_segment_set_does_not_leak():
+    assert _out("true | set +B; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_shopt_s_without_o_is_not_a_toggle():
-    """GREEN CONTROL / discriminator (passes pre-fixlet): braceexpand is a
-    set -o name, NOT a shopt-table name — `shopt -s braceexpand` fails with
-    "invalid shell option name" and must NOT toggle the scanner."""
-    assert _values("shopt -s braceexpand; echo {a,b}",
-                   {"braceexpand": False}) == [
-        "shopt", "-s", "braceexpand", ";", "echo", "{a,b}"]
+def test_class5_invalid_cluster_does_not_toggle():
+    assert _out("set -zB 2>/dev/null; echo {a,b}") == "a b\n"
 
 
-def test_same_stream_shopt_u_without_o_is_not_a_toggle():
-    """GREEN CONTROL / discriminator: same for the -u direction."""
-    assert _values("shopt -u braceexpand; echo {a,b}") == [
-        "shopt", "-u", "braceexpand", ";", "echo", "a", "b"]
+def test_class6_quoted_operand_now_toggles():
+    # The token scanner could not read a quoted operand; the real builtin does.
+    assert _out('shopt -so "braceexpand"; set +o "braceexpand"; '
+                'echo {a,b}') == "{a,b}\n"
 
 
-def test_same_stream_shopt_background_toggle_is_discarded():
-    """GREEN CONTROL: a backgrounded shopt runs in a subshell (bash)."""
-    assert _values("shopt -uo braceexpand & echo {a,b}") == [
-        "shopt", "-uo", "braceexpand", "&", "echo", "a", "b"]
-
-
-def test_same_stream_shopt_su_conflict_is_not_a_toggle():
-    """GREEN CONTROL: `-s` with `-u` makes the real shopt abort (rc 1)."""
-    assert _values("shopt -uso braceexpand; echo {a,b}") == [
-        "shopt", "-uso", "braceexpand", ";", "echo", "a", "b"]
-
-
-def test_same_stream_shopt_flag_after_operand_is_not_a_toggle():
-    """GREEN CONTROL: flag parsing stops at the first operand — a later
-    `-uo` is an operand (invalid option name), not flags."""
-    assert _values("shopt braceexpand -uo; echo {a,b}") == [
-        "shopt", "braceexpand", "-uo", ";", "echo", "a", "b"]
-
-
-def test_same_stream_shopt_pipeline_toggle_is_discarded():
-    """GREEN CONTROL: a pipeline-segment shopt runs in a subshell (bash)."""
-    assert _values("shopt -uo braceexpand | cat; echo {a,b}") == [
-        "shopt", "-uo", "braceexpand", "|", "cat", ";", "echo", "a", "b"]
-
-
-def test_same_stream_shopt_o_alone_is_not_a_toggle():
-    """GREEN CONTROL: `shopt -o braceexpand` only LISTS the option state."""
-    assert _values("shopt -o braceexpand; echo {a,b}") == [
-        "shopt", "-o", "braceexpand", ";", "echo", "a", "b"]
+def test_function_body_expands_at_call_time():
+    # A function body brace-expands when it RUNS (reading the live option),
+    # not when it was defined.
+    assert _out("f() { echo {a,b}; }; set +B; f") == "{a,b}\n"
 
 
 # ---------------------------------------------------------------------------
@@ -317,14 +248,8 @@ def test_option_persists_into_command_substitution(captured_shell):
 
 
 # ---------------------------------------------------------------------------
-# CLI-level: -B / +B invocation flags
+# CLI-level: -B / +B invocation flags (_run_psh defined at module top)
 # ---------------------------------------------------------------------------
-
-def _run_psh(argv, script):
-    return subprocess.run(
-        [sys.executable, "-m", "psh", *argv, "-c", script],
-        capture_output=True, text=True, env=_clean_env(), timeout=15)
-
 
 def test_cli_plus_B_disables_brace_expansion():
     result = _run_psh(["+B"], "echo {a,b}")

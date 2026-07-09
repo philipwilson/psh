@@ -113,3 +113,83 @@ class TestLiteralBraceSuffix(ConformanceTest):
 
     def test_adjacent_groups_regression(self):
         self.assert_identical_behavior('echo {a,b}{c,d}')
+
+
+class TestWordStageRuntimeToggles(ConformanceTest):
+    """Brace expansion runs at the Word stage reading the LIVE braceexpand
+    option (task #30), so a `set`/`shopt` that actually RUNS updates it and the
+    next command honours it — the 6 same-stream approximation classes the old
+    token scanner got wrong are now bash-identical."""
+
+    def test_class1_toggle_in_not_taken_branch(self):
+        self.assert_identical_behavior('if false; then set +B; fi; echo {a,b}')
+
+    def test_class1_toggle_in_uncalled_function(self):
+        self.assert_identical_behavior('f() { set +B; }; echo {a,b}')
+
+    def test_class2_loop_body_per_iteration(self):
+        self.assert_identical_behavior(
+            'for i in 1 2 3; do echo {a,b}; set +B; done')
+
+    def test_class3_shadowed_set_does_not_toggle(self):
+        self.assert_identical_behavior('set() { :; }; set +B; echo {a,b}')
+
+    def test_class4_pipeline_segment_does_not_leak(self):
+        self.assert_identical_behavior('true | set +B; echo {a,b}')
+
+    def test_class5_invalid_cluster_does_not_toggle(self):
+        self.assert_identical_behavior('set -zB 2>/dev/null; echo {a,b}')
+
+    def test_class6_quoted_operand_toggles(self):
+        self.assert_identical_behavior(
+            'shopt -so "braceexpand"; set +o "braceexpand"; echo {a,b}')
+
+    def test_function_body_expands_at_call_time(self):
+        self.assert_identical_behavior('f() { echo {a,b}; }; set +B; f')
+
+    def test_straight_line_toggle_off(self):
+        self.assert_identical_behavior('set +B; echo {a,b}')
+
+    def test_straight_line_toggle_off_then_on(self):
+        self.assert_identical_behavior('set +B; set -B; echo {a,b}')
+
+
+class TestWordStageNonExpandingPositions(ConformanceTest):
+    """bash performs NO brace expansion in a case subject/pattern or a
+    here-string; the Word-stage move keeps them literal (the old token-stream
+    pass wrongly expanded them, corrupting parses/matches)."""
+
+    def test_case_subject_literal(self):
+        self.assert_identical_behavior('case {a,b} in *) echo sub;; esac')
+
+    def test_case_pattern_literal_no_match(self):
+        self.assert_identical_behavior(
+            'case abc in {a,b}*) echo m;; *) echo no;; esac')
+
+    def test_case_pattern_literal_exact(self):
+        self.assert_identical_behavior(
+            'case a in {a,b}) echo lit;; a) echo justa;; esac')
+
+    def test_herestring_literal(self):
+        self.assert_identical_behavior('cat <<< {a,b}')
+
+    def test_herestring_prefix_suffix_literal(self):
+        self.assert_identical_behavior('cat <<< a{1,2}b')
+
+
+class TestWordStageVariableFusion(ConformanceTest):
+    """Brace expansion precedes parameter expansion: a bare `$v` fuses a
+    trailing name-char run (`$v{1,2}` -> names v1/v2) while a brace-delimited
+    `${v}` does not (`${v}{1,2}` -> ${v}1/${v}2)."""
+
+    def test_bare_var_fuses(self):
+        self.assert_identical_behavior('v1=one v2=two; echo $v{1,2}')
+
+    def test_braced_var_does_not_fuse(self):
+        self.assert_identical_behavior('v1=one v2=two; echo ${v}{1,2}')
+
+    def test_quoted_var_does_not_fuse(self):
+        self.assert_identical_behavior('v=X; echo "$v"{1,2}')
+
+    def test_prefix_var_composite(self):
+        self.assert_identical_behavior('v1=one; echo pre$v{1,2}')

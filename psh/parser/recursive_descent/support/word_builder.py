@@ -127,7 +127,9 @@ class WordBuilder:
                 # Array subscripts (arr[@], arr[0]) are also simple.
                 if _SIMPLE_VAR_RE.match(inner) or \
                    _SPECIAL_VAR_RE.match(inner):
-                    name = inner
+                    # Brace-DELIMITED ${name}: does not fuse with a following
+                    # name-char run under brace expansion (see braced field).
+                    return VariableExpansion(inner, braced=True)
                 else:
                     # Contains operators — delegate to parameter expansion parser
                     return WordBuilder._parse_parameter_expansion(f"${{{inner}}}")
@@ -183,7 +185,14 @@ class WordBuilder:
         """
         if value.startswith('${') and value.endswith('}'):
             value = value[2:-1]
-        return parse_parameter_expansion(value)
+        parsed = parse_parameter_expansion(value)
+        # A ${name} / ${name[idx]} with no operator parses to a plain
+        # VariableExpansion; flag it as brace-delimited so WordBraceExpander
+        # does NOT fuse a following name-char run into it (${v}{1,2} stays
+        # ${v}1/${v}2, unlike bare $v{1,2} -> v1/v2).
+        if isinstance(parsed, VariableExpansion):
+            parsed.braced = True
+        return parsed
 
     @staticmethod
     def token_part_to_word_part(tp, containing_token=None, ctx=None) -> WordPart:

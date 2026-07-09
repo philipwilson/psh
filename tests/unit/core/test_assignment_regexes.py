@@ -105,10 +105,11 @@ class TestCallSitesRouteToCanonical:
         from psh.parser.recursive_descent.parsers import functions
         assert functions.ASSIGNMENT_WORD_RE is ASSIGNMENT_WORD_RE
 
-    def test_token_brace_expander_uses_canonical(self):
-        from psh.expansion import brace_expansion_tokens as bet
-        assert bet.ASSIGNMENT_WORD_RE is ASSIGNMENT_WORD_RE
-        assert bet.NAME_RE is NAME_RE
+    def test_word_brace_expander_uses_canonical(self):
+        # Brace expansion moved to the Word stage (v0.678); the fusion of a
+        # trailing name-char run into a bare $name uses the canonical NAME_RE.
+        from psh.expansion import brace_expansion_words as bew
+        assert bew.NAME_RE is NAME_RE
 
     def test_expansion_manager_uses_canonical_prefix(self):
         from psh.expansion import manager

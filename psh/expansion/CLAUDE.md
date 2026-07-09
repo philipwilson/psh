@@ -39,7 +39,7 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `word_splitter.py` | `WordSplitter` - splits on IFS (`split()`, `split_with_edges()`) |
 | `arithmetic/` | Arithmetic package: tokenizer/parser/evaluator (`evaluate_arithmetic()`); decomposed from `arithmetic.py` into `tokens.py`/`tokenizer.py`/`nodes.py`/`parser.py`/`evaluator.py`/`errors.py` |
 | `brace_expansion.py` | `BraceExpander` - textual per-word `{a,b}`, `{1..5}` |
-| `brace_expansion_tokens.py` | `TokenBraceExpander` - applies `BraceExpander` across the token stream (post-lex) |
+| `brace_expansion_words.py` | `WordBraceExpander` - applies `BraceExpander` to a parsed `Word` at the Word stage (`Word` → `List[Word]`, reading the live `braceexpand` option) |
 | `aliases.py` | `AliasManager` - alias storage and expansion |
 
 `VariableExpander` was decomposed in v0.279: it is now a thin facade,
@@ -131,9 +131,9 @@ class ExpansionEvaluator:
 The `expand_arguments()` method processes expansions in this order:
 
 ```
-1. Brace Expansion      {a,b,c}         → TokenBraceExpander (token stream, post-lex;
-                                          gated by the braceexpand option — set -B/+B,
-                                          incl. same-stream `set` toggles)
+1. Brace Expansion      {a,b,c}         → WordBraceExpander (Word stage, per command,
+                                          gated by the LIVE braceexpand option — set -B/+B;
+                                          Word → List[Word] before variable expansion)
 2. Tilde Expansion      ~, ~user        → TildeExpander
 3. Variable Expansion   $VAR, ${VAR}    → VariableExpander
 4. Command Substitution $(cmd), `cmd`   → CommandSubstitution
