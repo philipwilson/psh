@@ -123,9 +123,12 @@ class TokenBraceExpander:
         take effect for the NEXT parse unit. So — mirroring the same-stream
         ``alias`` absorption in AliasManager — a command-position ``set``
         whose literal arguments toggle braceexpand (``-B``/``+B`` clusters,
-        ``-o``/``+o braceexpand``) flips the state for the REST of the stream,
+        ``-o``/``+o braceexpand``), or a command-position ``shopt`` whose
+        flags combine ``o`` with ``s``/``u`` over a ``braceexpand`` operand
+        (``shopt -so/-uo braceexpand`` == ``set -o/+o braceexpand``, v0.674),
+        flips the state for the REST of the stream,
         making straight-line code (``set +B; echo {a,b}``) match bash. The
-        toggle applies AFTER the ``set`` command's own words (bash expands a
+        toggle applies AFTER the toggling command's own words (bash expands a
         command's words before running it), is discarded when the command is
         a pipeline segment or backgrounded (a subshell in bash), and is
         scoped across ``( ... )`` subshells.
@@ -135,11 +138,14 @@ class TokenBraceExpander:
         not-taken branch or a not-called function definition still flips the
         rest of the SAME parse unit, and loop bodies are expanded once with
         the state at their position rather than per iteration. The scanner
-        also fires on a ``set`` that will not run as the builtin (a
-        function-shadowed ``set``), misses one that runs as a LATER pipeline
+        also fires on a ``set``/``shopt`` that will not run as the builtin (a
+        function-shadowed one), misses one that runs as a LATER pipeline
         segment (``true | set +B`` — bash subshells it, so nothing should
-        toggle), and skips invalid cluster letters that would make the real
-        ``set`` abort (``set -zB``). All of these are same-parse-unit-only:
+        toggle), skips invalid cluster letters that would make the real
+        builtin abort (``set -zB``, ``shopt -zso braceexpand``), and does not
+        interpret quoted or dynamic arguments (``shopt -so "braceexpand"``
+        toggles in bash but not same-line here). All of these are
+        same-parse-unit-only:
         subsequent parse units always use the runtime option value.
         """
         if not tokens:
@@ -210,12 +216,16 @@ class TokenBraceExpander:
                     out.extend(self._expand_run(run, zone_active))
                 else:
                     out.extend(run)
-                # A command-position `set` may toggle braceexpand for the
-                # rest of this stream (see the expand() docstring).
+                # A command-position `set` or `shopt` may toggle braceexpand
+                # for the rest of this stream (see the expand() docstring).
                 if (zone_active and len(run) == 1
                         and tok.type == TokenType.WORD
-                        and tok.quote_type is None and tok.value == 'set'):
-                    toggle = self._interpret_set_args(tokens, j + 1, n)
+                        and tok.quote_type is None
+                        and tok.value in ('set', 'shopt')):
+                    if tok.value == 'set':
+                        toggle = self._interpret_set_args(tokens, j + 1, n)
+                    else:
+                        toggle = self._interpret_shopt_args(tokens, j + 1, n)
                     if toggle is not None:
                         pending_toggle = toggle
                 zone_active = self._zone_after_word(run[0], zone_active)
@@ -291,6 +301,64 @@ class TokenBraceExpander:
                 break  # first non-option argument: positional parameters
             j += 1
         return toggle
+
+    def _interpret_shopt_args(self, tokens, start, n):
+        """Best-effort static read of a `shopt` command's braceexpand effect.
+
+        The `shopt -o` mode operates on the set -o option table, so
+        ``shopt -so/-uo braceexpand`` toggles brace expansion exactly like
+        ``set -o/+o braceexpand`` — including for the rest of the SAME
+        stream. Grammar (probe-pinned vs bash 5.2, tmp/optreflect/probe3):
+        flag clusters only BEFORE the first operand (a later ``-uo`` is an
+        operand), ``--`` ends flags, and a toggle needs ``o`` together with
+        exactly ONE of ``s``/``u`` (the real shopt aborts on ``-s`` with
+        ``-u``) plus a literal ``braceexpand`` operand. ``-p``/``-q`` don't
+        suppress it (bash: ``shopt -pso braceexpand`` still sets); an
+        invalid sibling operand doesn't derail it (bash applies the valid
+        names). ``shopt -s braceexpand`` WITHOUT ``-o`` is NOT a toggle —
+        braceexpand is not a shopt-table name.
+
+        Same conservatism as :meth:`_interpret_set_args`: only plain,
+        unquoted, single-token literal words are interpreted; scanning
+        stops at the first argument it cannot read statically.
+        """
+        from ..lexer.token_types import TokenType
+        word_like = self._word_like()
+        reset_types = self._reset_types()
+        has_s = has_u = has_o = False
+        saw_braceexpand = False
+        in_operands = False
+        j = start
+        while j < n and tokens[j].type not in reset_types:
+            tok = tokens[j]
+            composite = (j + 1 < n and tokens[j + 1].type in word_like
+                         and getattr(tokens[j + 1], 'adjacent_to_previous',
+                                     False))
+            if (tok.type != TokenType.WORD or tok.quote_type is not None
+                    or composite):
+                break  # not a plain literal word: stop interpreting
+            word = tok.value or ''
+            if not in_operands and word == '--':
+                in_operands = True
+            elif not in_operands and word[:1] == '-' and len(word) > 1:
+                for ch in word[1:]:
+                    if ch == 's':
+                        has_s = True
+                    elif ch == 'u':
+                        has_u = True
+                    elif ch == 'o':
+                        has_o = True
+                    # p/q and even invalid letters are ignored — the same
+                    # approximation family as _interpret_set_args (see the
+                    # expand() docstring).
+            else:
+                in_operands = True
+                if word == 'braceexpand':
+                    saw_braceexpand = True
+            j += 1
+        if has_o and saw_braceexpand and (has_s != has_u):
+            return has_s
+        return None
 
     def _zone_after_word(self, first_tok, zone_active):
         from ..lexer.token_types import TokenType

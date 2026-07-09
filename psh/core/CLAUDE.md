@@ -404,7 +404,11 @@ a shell error.
 ### Computed Special Parameters (`special_registry.py`)
 
 The dynamically computed specials (`RANDOM`, `SECONDS`, `BASHPID`, `SRANDOM`,
-`EPOCHSECONDS`, `EPOCHREALTIME`, `LINENO`, plus the shell-view projections
+`EPOCHSECONDS`, `EPOCHREALTIME`, `LINENO`, the READONLY option-reflection
+pair `SHELLOPTS`/`BASHOPTS` — colon-joined sorted enabled set-o/shopt
+options computed live from `SET_O_OPTION_NAMES`/`SHOPT_OPTION_NAMES`,
+env-imported at startup and env-tracking via `ShellOptions.on_change` when
+exported — plus the shell-view projections
 `PIPESTATUS`, `BASH_COMMAND`, `FUNCNAME`) are declared in ONE table,
 `SPECIAL_REGISTRY`, instead of scattered frozensets and an `if`-chain
 (core-state appraisal H1). Each row (`SpecialVarSpec`) declares its `compute`

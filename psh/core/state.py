@@ -11,11 +11,40 @@ from .execution_state import ExecutionState
 from .getopts_state import GetoptsState
 from .history_state import HistoryState
 from .locale_service import LocaleService
-from .option_registry import ShellOptions
+from .option_registry import (
+    SET_O_OPTION_NAMES,
+    SHOPT_OPTION_NAMES,
+    ShellOptions,
+)
 from .scope import ScopeManager
+from .special_registry import SPECIAL_REGISTRY
 from .stream_bindings import StreamBindings
 from .terminal_state import TerminalState
 from .variables import VarAttributes
+
+
+def _colon_units(value: str):
+    """Yield colon-separated units exactly like bash's extract_colon_unit.
+
+    NOT a naive ``split(':')``: adjacent/leading/trailing colons yield empty
+    units, but a lone ``':'`` yields ONE empty unit (split would give two)
+    and an empty string yields none. Probe-pinned against bash 5.2's
+    SHELLOPTS import warnings (``':'`` warns once, ``'::'`` twice,
+    ``'errexit:'`` once, ``''`` not at all — tmp/optreflect/probe3).
+    """
+    i, n = 0, len(value)
+    while i < n:
+        if i and value[i] == ':':
+            i += 1
+        start = i
+        while i < n and value[i] != ':':
+            i += 1
+        if i == start:
+            if i < n:
+                i += 1
+            yield ''
+        else:
+            yield value[start:i]
 
 
 class ChildContext(enum.Enum):
@@ -117,6 +146,15 @@ class ShellState:
         # entry, so ``declare -p`` / ``set`` / ``compgen -v`` / ``export -p``
         # do not list it) — bash's behaviour (core-state appraisal H3).
         for name, value in self.env.items():
+            # A readonly dynamic special (SHELLOPTS/BASHOPTS) can never be
+            # assigned — the lifecycle interception would raise. Their
+            # inherited values are consumed by
+            # _import_option_reflection_from_env below (bash: the listed
+            # options are enabled and the variable is marked exported).
+            spec = SPECIAL_REGISTRY.get(name)
+            if (spec is not None and spec.lifecycle
+                    and spec.default_attributes & VarAttributes.READONLY):
+                continue
             if is_environ_shell_name(name):
                 self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
 
@@ -208,6 +246,14 @@ class ShellState:
 
         # Editor configuration
         self.edit_mode = 'emacs'
+
+        # SHELLOPTS/BASHOPTS inherited via the environment activate the listed
+        # options at startup and mark the (computed, readonly) variable
+        # exported (bash). Runs after the options container AND edit_mode
+        # exist; the on_change observer below then keeps any exported entry
+        # current on every option write.
+        self._import_option_reflection_from_env()
+        self.options.on_change = self._refresh_option_reflection_env
 
         # Function call stack
         self.function_stack = []
@@ -385,9 +431,13 @@ class ShellState:
         # (bash: set -- -ab; getopts ab o; $(getopts ab o; echo $o) sees b).
         self.getopts_state = parent.getopts_state.copy()
 
-        # Shell options (set -e, pipefail, debug flags, ...).
+        # Shell options (set -e, pipefail, debug flags, ...). The on_change
+        # observer is rewired to THIS state (the fresh container's is None, so
+        # the update itself doesn't fire it); the copied env already holds the
+        # parent's current SHELLOPTS/BASHOPTS entries.
         self.options = ShellOptions()
         self.options.update(parent.options)
+        self.options.on_change = self._refresh_option_reflection_env
 
         # RC policy is per-invocation (children skip rc files by default),
         # never inherited.
@@ -835,6 +885,76 @@ class ShellState:
             # psh/interactive/eof_policy.py).
             self.options['ignoreeof'] = (
                 self.scope_manager.get_variable('IGNOREEOF') is not None)
+
+    # bash spellings accepted at SHELLOPTS import: hashall is bash's name for
+    # psh's hashcmds. The _BASH_ONLY_SET_O names are real bash set -o options
+    # psh does not implement — silently skipped so a psh child of a bash
+    # parent (whose exported SHELLOPTS routinely carries
+    # interactive-comments) does not spew startup warnings.
+    _BASH_SET_O_ALIASES = {'hashall': 'hashcmds'}
+    _BASH_ONLY_SET_O = frozenset({
+        'interactive-comments', 'keyword', 'onecmd', 'physical', 'privileged',
+    })
+
+    def _import_option_reflection_from_env(self) -> None:
+        """Consume inherited SHELLOPTS/BASHOPTS at startup (bash).
+
+        Each valid option named in the colon-separated list is ENABLED before
+        any startup file or command runs, and the variable is marked exported
+        (bash exports SHELLOPTS/BASHOPTS only when they arrived via the
+        environment). An unknown SHELLOPTS name warns like bash's
+        "line 0: NAME: invalid option name"; an unknown BASHOPTS name is
+        silently ignored (probe-verified bash 5.2).
+        """
+        for env_name, table in (('SHELLOPTS', SET_O_OPTION_NAMES),
+                                ('BASHOPTS', SHOPT_OPTION_NAMES)):
+            raw = self.env.get(env_name)
+            if raw is None:
+                continue
+            # bash iterates the value with extract_colon_unit, so empty
+            # units (adjacent/leading/trailing colons) reach the unknown-name
+            # branch and WARN for SHELLOPTS (": invalid option name") while
+            # BASHOPTS' unknown-silent rule swallows them (v0.674 fixlet F2).
+            for opt in _colon_units(raw):
+                name = (self._BASH_SET_O_ALIASES.get(opt, opt)
+                        if env_name == 'SHELLOPTS' else opt)
+                if name in table:
+                    if name in ('vi', 'emacs'):
+                        # Keep edit_mode coupled exactly like `set -o vi`.
+                        self.edit_mode = name
+                        self.options['vi'] = (name == 'vi')
+                        self.options['emacs'] = (name == 'emacs')
+                    elif name == 'ignoreeof':
+                        # `set -o ignoreeof` binds IGNOREEOF=10; mirror it.
+                        self.scope_manager.set_variable('IGNOREEOF', '10')
+                        self.options['ignoreeof'] = True
+                    else:
+                        self.options[name] = True
+                elif env_name == 'SHELLOPTS' and opt not in self._BASH_ONLY_SET_O:
+                    print(f"psh: {opt}: invalid option name", file=self.stderr)
+            # Exported because it arrived via the environment; recorded on the
+            # special's persistent attribute overlay (the value itself stays
+            # computed). The env entry still holds the RAW inherited string at
+            # this point — the computed value needs the Shell wired
+            # (set_shell), so Shell.__init__ calls
+            # refresh_option_reflection_env() right after wiring.
+            self.scope_manager.apply_attribute(env_name, VarAttributes.EXPORT)
+
+    def refresh_option_reflection_env(self) -> None:
+        """Re-derive the SHELLOPTS/BASHOPTS environment entries.
+
+        An EXPORTED one materializes its current computed value (bash keeps
+        the exported entry tracking every option change); an unexported one
+        stays absent. Called by the options on_change observer and once by
+        Shell.__init__ after the scope manager's shell is wired.
+        """
+        self._materialize_env_name('SHELLOPTS')
+        self._materialize_env_name('BASHOPTS')
+
+    def _refresh_option_reflection_env(self, name: str) -> None:
+        # ShellOptions.on_change observer: any option write may change the
+        # computed SHELLOPTS/BASHOPTS values.
+        self.refresh_option_reflection_env()
 
     def apply_command_env(self, assignments: Dict[str, str]) -> None:
         """Compose a command-local temporary-environment overlay.

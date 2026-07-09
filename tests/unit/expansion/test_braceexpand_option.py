@@ -119,6 +119,128 @@ def test_same_stream_set_as_argument_not_interpreted():
 
 
 # ---------------------------------------------------------------------------
+# Tokenize-level: same-stream `shopt -o` toggles (v0.674 fixlet). shopt with
+# -o operates on the set -o table, so `shopt -so/-uo braceexpand` toggles
+# brace expansion exactly like `set -o/+o braceexpand` — including same-line
+# (probe-pinned vs bash 5.2.26, tmp/optreflect/probe3_tip.txt).
+# ---------------------------------------------------------------------------
+
+def test_same_stream_shopt_uo_disables_rest_of_stream():
+    assert _values("shopt -uo braceexpand; echo {a,b}") == [
+        "shopt", "-uo", "braceexpand", ";", "echo", "{a,b}"]
+
+
+def test_same_stream_shopt_so_reenables():
+    assert _values("shopt -so braceexpand; echo {a,b}",
+                   {"braceexpand": False}) == [
+        "shopt", "-so", "braceexpand", ";", "echo", "a", "b"]
+
+
+def test_same_stream_shopt_os_cluster_order():
+    assert _values("shopt -os braceexpand; echo {a,b}",
+                   {"braceexpand": False}) == [
+        "shopt", "-os", "braceexpand", ";", "echo", "a", "b"]
+
+
+def test_same_stream_shopt_split_flags():
+    assert _values("shopt -o -u braceexpand; echo {a,b}") == [
+        "shopt", "-o", "-u", "braceexpand", ";", "echo", "{a,b}"]
+
+
+def test_same_stream_shopt_split_flags_u_then_o():
+    assert _values("shopt -u -o braceexpand; echo {a,b}") == [
+        "shopt", "-u", "-o", "braceexpand", ";", "echo", "{a,b}"]
+
+
+def test_same_stream_shopt_puo_still_toggles():
+    """bash: -s/-u WIN over -p when operands are given (toggle, no print)."""
+    assert _values("shopt -puo braceexpand; echo {a,b}") == [
+        "shopt", "-puo", "braceexpand", ";", "echo", "{a,b}"]
+
+
+def test_same_stream_shopt_unknown_sibling_does_not_derail():
+    """bash's -o toggle path applies valid names despite an invalid sibling."""
+    assert _values("shopt -uo nosuchopt braceexpand; echo {a,b}") == [
+        "shopt", "-uo", "nosuchopt", "braceexpand", ";", "echo", "{a,b}"]
+
+
+def test_same_stream_shopt_pso_still_toggles():
+    """bash: -p does not suppress the toggle (`shopt -pso braceexpand` sets)."""
+    assert _values("shopt -pso braceexpand; echo {a,b}",
+                   {"braceexpand": False}) == [
+        "shopt", "-pso", "braceexpand", ";", "echo", "a", "b"]
+
+
+def test_same_stream_shopt_multiple_operands():
+    assert _values("shopt -uo errexit braceexpand; echo {a,b}") == [
+        "shopt", "-uo", "errexit", "braceexpand", ";", "echo", "{a,b}"]
+
+
+def test_same_stream_shopt_double_dash_operands():
+    assert _values("shopt -uo -- braceexpand; echo {a,b}") == [
+        "shopt", "-uo", "--", "braceexpand", ";", "echo", "{a,b}"]
+
+
+def test_same_stream_shopt_own_arguments_use_old_state():
+    """bash expands shopt's own words BEFORE running it; the toggle applies
+    to the words AFTER the command."""
+    assert _values("shopt -uo braceexpand x{a,b}; echo tail{c,d}") == [
+        "shopt", "-uo", "braceexpand", "xa", "xb", ";", "echo", "tail{c,d}"]
+
+
+def test_same_stream_shopt_subshell_toggle_is_scoped():
+    assert _values("(shopt -uo braceexpand; echo {a,b}); echo {c,d}") == [
+        "(", "shopt", "-uo", "braceexpand", ";", "echo", "{a,b}", ")", ";",
+        "echo", "c", "d"]
+
+
+def test_same_stream_shopt_s_without_o_is_not_a_toggle():
+    """GREEN CONTROL / discriminator (passes pre-fixlet): braceexpand is a
+    set -o name, NOT a shopt-table name — `shopt -s braceexpand` fails with
+    "invalid shell option name" and must NOT toggle the scanner."""
+    assert _values("shopt -s braceexpand; echo {a,b}",
+                   {"braceexpand": False}) == [
+        "shopt", "-s", "braceexpand", ";", "echo", "{a,b}"]
+
+
+def test_same_stream_shopt_u_without_o_is_not_a_toggle():
+    """GREEN CONTROL / discriminator: same for the -u direction."""
+    assert _values("shopt -u braceexpand; echo {a,b}") == [
+        "shopt", "-u", "braceexpand", ";", "echo", "a", "b"]
+
+
+def test_same_stream_shopt_background_toggle_is_discarded():
+    """GREEN CONTROL: a backgrounded shopt runs in a subshell (bash)."""
+    assert _values("shopt -uo braceexpand & echo {a,b}") == [
+        "shopt", "-uo", "braceexpand", "&", "echo", "a", "b"]
+
+
+def test_same_stream_shopt_su_conflict_is_not_a_toggle():
+    """GREEN CONTROL: `-s` with `-u` makes the real shopt abort (rc 1)."""
+    assert _values("shopt -uso braceexpand; echo {a,b}") == [
+        "shopt", "-uso", "braceexpand", ";", "echo", "a", "b"]
+
+
+def test_same_stream_shopt_flag_after_operand_is_not_a_toggle():
+    """GREEN CONTROL: flag parsing stops at the first operand — a later
+    `-uo` is an operand (invalid option name), not flags."""
+    assert _values("shopt braceexpand -uo; echo {a,b}") == [
+        "shopt", "braceexpand", "-uo", ";", "echo", "a", "b"]
+
+
+def test_same_stream_shopt_pipeline_toggle_is_discarded():
+    """GREEN CONTROL: a pipeline-segment shopt runs in a subshell (bash)."""
+    assert _values("shopt -uo braceexpand | cat; echo {a,b}") == [
+        "shopt", "-uo", "braceexpand", "|", "cat", ";", "echo", "a", "b"]
+
+
+def test_same_stream_shopt_o_alone_is_not_a_toggle():
+    """GREEN CONTROL: `shopt -o braceexpand` only LISTS the option state."""
+    assert _values("shopt -o braceexpand; echo {a,b}") == [
+        "shopt", "-o", "braceexpand", ";", "echo", "a", "b"]
+
+
+# ---------------------------------------------------------------------------
 # Shell-level: option toggling across commands, $- and listings
 # ---------------------------------------------------------------------------
 

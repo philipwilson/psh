@@ -157,6 +157,10 @@ class Shell:
                                     debug_expansion_detail, debug_exec, debug_exec_fork,
                                     norc, rcfile)
         self.state.scope_manager.set_shell(self)
+        # The computed SHELLOPTS/BASHOPTS values need the shell wired to
+        # evaluate; re-derive any EXPORTED env entry now (an inherited raw
+        # value is replaced by the live computed one — bash regenerates it).
+        self.state.refresh_option_reflection_env()
 
     def _init_managers(self) -> None:
         """Phase 2: managers that hold no reference back to the shell.
