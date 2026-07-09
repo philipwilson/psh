@@ -105,6 +105,46 @@ class TestUnifiedReadQuirks:
         r = _psh('read -r v; echo "rc=$? [$v]"', 'a\\tb\n')
         assert r.stdout == "rc=0 [a\\tb]\n"
 
+    # --- backslash-into-EOF: raw EOF (Case A) keeps bash's dangling marker,
+    #     but a newline-terminated record (Case B) is an ordinary continuation
+    #     with NO marker. The two are distinguished ONLY by whether a delimiter
+    #     followed the backslash. Probed vs bash 5.2.26.
+
+    def test_backslash_raw_eof_keeps_trailing_space(self):
+        """Case A: trailing backslash at RAW EOF (no newline after it). bash
+        keeps a dangling marker so the last field's trailing space survives IFS
+        trimming (x=`a `)."""
+        r = _psh('read x; echo "rc=$? [$x]"', 'a \\')
+        assert r.stdout == "rc=1 [a ]\n"
+
+    def test_backslash_newline_eof_strips_trailing_space(self):
+        """Case B: a record ending `\\` then a NORMAL trailing newline into EOF
+        is an ordinary continuation with NO marker — the trailing space is
+        stripped (x=`a`), matching bash. Regression pin: keeping the marker here
+        wrongly produced `a `."""
+        r = _psh('read x; echo "rc=$? [$x]"', 'a \\\n')
+        assert r.stdout == "rc=1 [a]\n"
+
+    def test_backslash_newline_eof_multivar_strips(self):
+        """Case B multi-var: the last field's trailing space is stripped
+        (y=`b`), unlike Case A raw-EOF which keeps it."""
+        r = _psh('read x y; echo "[$x][$y]"', 'a b \\\n')
+        assert r.stdout == "[a][b]\n"
+
+    def test_backslash_newline_eof_array_no_spurious_element(self):
+        """Case B array-length regression pin: `read -a` over a
+        newline-terminated `a b \\` yields a 2-element array (a, b) with NO
+        spurious trailing element — the buggy marker made it length 3."""
+        r = _psh('read -a arr; echo "${#arr[@]}"', 'a b \\\n')
+        assert r.stdout == "2\n"
+
+    def test_backslash_raw_eof_array_keeps_marker_element(self):
+        """Case A array (contrast): raw-EOF `a b \\` keeps the dangling marker,
+        so `read -a` produces a 3-element array — the element COUNT matches bash
+        (bash's 3rd element is its CTLESC leak; psh's is an empty string)."""
+        r = _psh('read -a arr; echo "${#arr[@]}"', 'a b \\')
+        assert r.stdout == "3\n"
+
 
 class TestReadFdAndPoll:
     """R14.A: `read -u FD` reads from a file descriptor; `read -t 0` polls."""

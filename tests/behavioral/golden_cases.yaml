@@ -8436,3 +8436,69 @@
   stdout: "[U]\noff\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# READ: TRAILING BACKSLASH-EOF LINE CONTINUATION (read_bseof_*)
+# =============================================================================
+# A non-raw `read` whose input ends in an unescaped backslash treats it as a
+# line continuation. Running into EOF, bash keeps a dangling quote marker that
+# preserves the LAST field's trailing IFS whitespace / delimiter (so `a \`
+# reads `a `, not `a`). psh matches that observable behavior without
+# reproducing bash's raw 0x01 (CTLESC) leak for the degenerate lone-backslash
+# case. `read -r` is unaffected (the backslash stays a literal word char).
+# Probed vs bash 5.2 (2026-07-09).
+
+- name: read_bseof_keeps_trailing_space
+  command: 'printf ''a \\'' | { read x; printf "[%s]" "$x"; }'
+  stdout: "[a ]"
+  stderr: ""
+  exit_code: 0
+
+- name: read_bseof_raw_keeps_literal_backslash
+  command: 'printf ''a \\'' | { read -r x; printf "[%s]" "$x"; }'
+  stdout: '[a \]'
+  stderr: ""
+  exit_code: 0
+
+- name: read_bseof_multivar_last_field_keeps_ws
+  command: 'printf ''a b \\'' | { read x y; printf "[%s][%s]" "$x" "$y"; }'
+  stdout: "[a][b ]"
+  stderr: ""
+  exit_code: 0
+
+- name: read_bseof_ifs_colon_keeps_trailing_delim
+  command: 'printf ''a:b:\\'' | { IFS=: read x y; printf "[%s][%s]" "$x" "$y"; }'
+  stdout: "[a][b:]"
+  stderr: ""
+  exit_code: 0
+
+# Case B (contrast): a record ending in `\` followed by a NORMAL trailing
+# NEWLINE into EOF is an ORDINARY continuation — bash keeps NO dangling marker,
+# so the last field's trailing whitespace/delimiter IS stripped and `read -a`
+# produces NO spurious empty element. (This is the common `while read` shape;
+# the marker is kept ONLY at raw EOF with no newline after the backslash. Rows
+# use `printf '... \\\n'` to terminate the record with a newline before EOF.)
+
+- name: read_bseof_newline_terminated_strips_trailing_space
+  command: 'printf ''a \\\n'' | { read x; printf "[%s]" "$x"; }'
+  stdout: "[a]"
+  stderr: ""
+  exit_code: 0
+
+- name: read_bseof_newline_terminated_multivar_strips
+  command: 'printf ''a b \\\n'' | { read x y; printf "[%s][%s]" "$x" "$y"; }'
+  stdout: "[a][b]"
+  stderr: ""
+  exit_code: 0
+
+- name: read_bseof_newline_terminated_array_length_two
+  command: 'printf ''a b \\\n'' | { read -a arr; printf "<%s>" "${#arr[@]}"; }'
+  stdout: "<2>"
+  stderr: ""
+  exit_code: 0
+
+- name: read_bseof_newline_terminated_ifs_colon_strips
+  command: 'printf ''a:b:\\\n'' | { IFS=: read x y; printf "[%s][%s]" "$x" "$y"; }'
+  stdout: "[a][b]"
+  stderr: ""
+  exit_code: 0

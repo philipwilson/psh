@@ -101,11 +101,17 @@ def test_escaped_quotes():
 
 
 def test_carriage_return_line_endings():
-    """Test Windows-style line endings."""
+    """A ``\\<CR><LF>`` is NOT a line continuation (bash only joins ``\\<LF>``).
+
+    The backslash escapes the CR into a literal CR word character and the LF
+    ends the command, so the text is left verbatim for the lexer rather than
+    spliced. (The file reader's documented dos2unix strip removes a trailing CR
+    before this runs; the CR-keeping stdin/-c paths match bash here.)
+    """
     from psh.scripting.input_preprocessing import process_line_continuations
 
     result = process_line_continuations("echo hello \\\r\nworld")
-    assert result == "echo hello world"
+    assert result == "echo hello \\\r\nworld"
 
 
 def test_empty_input():

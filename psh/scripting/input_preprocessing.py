@@ -28,6 +28,13 @@ def process_line_continuations(text: str,
       removed while the body is read, so a terminator on the joined-away
       next line fuses into the body (bash does the same).
 
+    Only a bare backslash-newline (``\\<LF>``) is a continuation. A
+    ``\\<CR><LF>`` is NOT joined — the backslash escapes the CR (a literal CR
+    word character) and the LF is a command boundary, exactly as bash treats
+    it. (The file reader's dos2unix normalization already strips a trailing CR
+    before this runs, so that documented divergence is unaffected; the
+    CR-keeping stdin/``-c`` paths now match bash here.)
+
     ``drop_dangling_at_eof`` selects bash's STREAM-input rule for a
     continuation with nothing after it: when *text* is the final gathered
     buffer of an input that reads through a byte stream (a script file,
@@ -108,15 +115,19 @@ def process_line_continuations(text: str,
 
 def _ends_with_continuation(line: str) -> bool:
     """True when *line* ends with an unescaped backslash (an odd-length
-    trailing run), tolerating the CR of ``\\<CR><LF>`` input."""
-    if line.endswith('\r'):
-        line = line[:-1]
+    trailing run).
+
+    A trailing ``\\<CR>`` is deliberately NOT a continuation: bash only honors
+    a bare backslash-newline pair, so ``\\<CR><LF>`` is a backslash escaping the
+    CR (a literal CR word character) followed by a command boundary, never a
+    join. On the file path a lone trailing CR is already dropped by the reader's
+    documented dos2unix normalization, so no CR reaches here; on the CR-keeping
+    stdin/``-c`` paths this rule matches bash instead of splicing the lines.
+    """
     run = len(line) - len(line.rstrip('\\'))
     return run % 2 == 1
 
 
 def _drop_continuation(line: str) -> str:
-    """Remove the continuation backslash (and the CR of ``\\<CR><LF>``)."""
-    if line.endswith('\r'):
-        line = line[:-1]
+    """Remove the trailing continuation backslash."""
     return line[:-1]
