@@ -11,8 +11,9 @@ public entry points (`expand_arguments`, `expand_word_to_fields`,
 """
 from typing import TYPE_CHECKING, List, Optional
 
-from ..ast_nodes import SimpleCommand
+from ..ast_nodes import SimpleCommand, Word
 from ..core.assignment_utils import ASSIGNMENT_PREFIX_RE
+from .brace_expansion_words import WordBraceExpander
 from .command_sub import CommandSubstitution
 from .glob import GlobExpander
 from .tilde import TildeExpander
@@ -53,6 +54,7 @@ class ExpansionManager:
         self.glob_expander = GlobExpander(shell)
         self.word_splitter = WordSplitter()
         self.word_expander = WordExpander(self)
+        self.brace_expander = WordBraceExpander()
 
         # Initialize expansion evaluator (lazy import to avoid circular dependencies)
         self._evaluator: Optional['ExpansionEvaluator'] = None
@@ -71,7 +73,7 @@ class ExpansionManager:
         Expand all arguments in a command using Word AST nodes.
 
         This method orchestrates all expansions in the correct order:
-        1. Brace expansion (handled by tokenizer)
+        1. Brace expansion (per word, via brace_expand_word — Word → List[Word])
         2. Tilde expansion
         3. Variable expansion
         4. Command substitution
@@ -105,23 +107,47 @@ class ExpansionManager:
         is_declaration = (declaration_eligible
                           and self.is_declaration_builtin_command(command))
 
-        for i, word in enumerate(command.words):
-            declaration_assignment = (
-                is_declaration and i > 0
-                and self.assignment_word_prefix(word) is not None)
-            policy = (DECLARATION_ASSIGNMENT if declaration_assignment
-                      else COMMAND_ARGUMENT)
-            expanded = self.word_expander.expand(word, policy)
-            if isinstance(expanded, list):
-                args.extend(expanded)
-            else:
-                args.append(expanded)
+        # Brace expansion (bash's first word-expansion step) runs here, per
+        # command, reading the LIVE braceexpand option — so a `set +B` that
+        # actually ran already updated it. `{a,b}` becomes MULTIPLE Words
+        # before variable expansion; declaration-builtin assignment args are
+        # brace-expanded too (bash: `declare foo={a,b}` sets foo twice). The
+        # command word is the first EMITTED field, so only fields past it can
+        # be declaration assignments.
+        first_field = True
+        for word in command.words:
+            for bword in self.brace_expand_word(word):
+                declaration_assignment = (
+                    is_declaration and not first_field
+                    and self.assignment_word_prefix(bword) is not None)
+                policy = (DECLARATION_ASSIGNMENT if declaration_assignment
+                          else COMMAND_ARGUMENT)
+                expanded = self.word_expander.expand(bword, policy)
+                if isinstance(expanded, list):
+                    args.extend(expanded)
+                else:
+                    args.append(expanded)
+                first_field = False
 
         # Debug: show post-expansion args
         if self.state.options.get('debug-expansion'):
             print(f"[EXPANSION] Word AST Result: {args}", file=self.state.stderr)
 
         return args
+
+    def brace_expand_word(self, word: Word) -> List[Word]:
+        """Brace-expand one Word into the Words it produces (bash step 1).
+
+        Gated on the LIVE ``braceexpand`` option (``set -B``/``+B``,
+        ``set ±o braceexpand``, CLI ``-B``/``+B``): when off, ``{a,b}`` stays a
+        single literal Word. Reading the option HERE — at word-expansion time,
+        per command — is what makes a runtime toggle correct without the
+        parse-time look-ahead the token-stream expander needed. Returns
+        ``[word]`` unchanged when the option is off or nothing expands.
+        """
+        if not self.state.options.get('braceexpand', True):
+            return [word]
+        return self.brace_expander.expand(word)
 
     def is_declaration_builtin_command(self, command: SimpleCommand) -> bool:
         """True if the command word literally names a declaration builtin.
@@ -173,11 +199,22 @@ class ExpansionManager:
 
         Returns a list: an unquoted expansion of an empty/unset value
         contributes zero fields; a quoted empty string contributes one.
+
+        This is the single funnel for the field-producing non-argument
+        contexts — for/select loop items, indexed/associative array-init
+        elements, and redirect targets — so brace expansion (bash step 1,
+        live-option-gated) applies to all of them here. A redirect target that
+        brace-expands to more than one field then trips the caller's
+        "ambiguous redirect" rule, matching bash.
         """
-        expanded = self.word_expander.expand(word, policy)
-        if isinstance(expanded, list):
-            return expanded
-        return [expanded]
+        fields: List[str] = []
+        for bword in self.brace_expand_word(word):
+            expanded = self.word_expander.expand(bword, policy)
+            if isinstance(expanded, list):
+                fields.extend(expanded)
+            else:
+                fields.append(expanded)
+        return fields
 
     def expand_assignment_value_word(self, word) -> str:
         """Expand a Word holding an assignment VALUE (the text after ``=``).

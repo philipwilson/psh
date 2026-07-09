@@ -87,11 +87,15 @@ class TestHeredocLexerUnit:
         assert body_of(hmap, 'E{a,b}F') == 'hello\n'
 
     def test_brace_expansion_still_works_after_heredoc_delimiter(self):
-        # Only the delimiter word is exempt; other words on the line expand.
+        # Brace expansion moved to the Word stage (v0.678): tokenization keeps
+        # `x{1,2}` as one WORD; it expands at execution time. The end-to-end
+        # behavior (the line's non-delimiter words still brace-expand while the
+        # heredoc body/delimiter stay literal) is verified in
+        # tests/unit/lexer/test_heredoc_brace_expansion.py.
         from psh.lexer import tokenize_with_heredocs as package_twh
         tokens, _ = package_twh('cat <<EOF x{1,2}\nbody\nEOF\n')
         values = [t.value for t in tokens]
-        assert 'x1' in values and 'x2' in values
+        assert 'x{1,2}' in values and 'x1' not in values
 
     def test_incomplete_heredoc_delimited_by_eof(self, capsys):
         """An unterminated heredoc is NOT dropped: like bash, the gathered

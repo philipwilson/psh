@@ -6687,20 +6687,22 @@
   stderr: ""
   exit_code: 0
 
-# Over budget: loud typed error, exit 2, and (preemptive cardinality) fast —
-# psh_only because bash has no limit and would try to build the whole thing.
+# Over budget: loud typed error, and (preemptive cardinality) fast — psh_only
+# because bash has no limit and would try to build the whole thing. Since v0.678
+# brace expansion is a Word-stage (runtime) step, so this is a runtime error
+# (exit 1), not the parse-time syntax-error class (exit 2) it once was.
 - name: expn_p1a_brace_over_limit_loud
   command: "echo {1..1000000000}"
   stdout: ""
   stderr: "brace expansion: 1000000000 items exceeds the limit of 100000"
-  exit_code: 2
+  exit_code: 1
   psh_only: true
 
 - name: expn_p1a_brace_product_over_limit_loud
   command: "echo {a,b}{1..100000}"
   stdout: ""
   stderr: "brace expansion: 200000 items exceeds the limit of 100000"
-  exit_code: 2
+  exit_code: 1
   psh_only: true
 
 # =============================================================================
@@ -8500,5 +8502,92 @@
 - name: read_bseof_newline_terminated_ifs_colon_strips
   command: 'printf ''a:b:\\\n'' | { IFS=: read x y; printf "[%s][%s]" "$x" "$y"; }'
   stdout: "[a][b]"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# Word-stage brace expansion (task #30): brace expansion moved from tokenize
+# time to the Word stage, where bash performs it. The 6 same-stream `set`/
+# `shopt` approximation classes the retired token scanner got wrong are now
+# correct FOR FREE — the LIVE braceexpand option is read per command at
+# execution time — and positions bash never brace-expands (case subject/
+# pattern, here-string) stay literal. Bash 5.2.26 ground truth (tmp/probe_brace.py).
+# =============================================================================
+
+- name: braceexp_ws_class1_not_taken_branch
+  command: "if false; then set +B; fi; echo {a,b}"
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_class1_uncalled_function
+  command: "f() { set +B; }; echo {a,b}"
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_class2_loop_per_iteration
+  command: "for i in 1 2 3; do echo {a,b}; set +B; done"
+  stdout: "a b\n{a,b}\n{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_class3_shadowed_set
+  command: "set() { :; }; set +B; echo {a,b}"
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_class4_pipeline_segment
+  command: "true | set +B; echo {a,b}"
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_class5_invalid_cluster
+  command: "set -zB 2>/dev/null; echo {a,b}"
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_class6_quoted_operand
+  command: 'shopt -so "braceexpand"; set +o "braceexpand"; echo {a,b}'
+  stdout: "{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_function_body_at_call_time
+  command: "f() { echo {a,b}; }; set +B; f"
+  stdout: "{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_case_subject_literal
+  command: "case {a,b} in *) echo sub;; esac"
+  stdout: "sub\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_case_pattern_literal
+  command: "case abc in {a,b}*) echo m;; *) echo no;; esac"
+  stdout: "no\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_herestring_literal
+  command: "cat <<< {a,b}"
+  stdout: "{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_var_fuse_bare
+  command: "v1=one v2=two; echo $v{1,2}"
+  stdout: "one two\n"
+  stderr: ""
+  exit_code: 0
+
+- name: braceexp_ws_var_no_fuse_braced
+  command: "v1=one v2=two; echo ${v}{1,2}"
+  stdout: "1 2\n"
   stderr: ""
   exit_code: 0

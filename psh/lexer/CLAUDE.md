@@ -8,12 +8,9 @@ The lexer transforms shell command strings into token streams using a **modular 
 
 1. Tokenization via `ModularLexer`
 2. Keyword normalization
-3. Brace expansion over the token stream (`TokenBraceExpander`), gated by
-   the `braceexpand` shell option (`set -B`/`+B`; the live value seeds the
-   expander and same-stream `set` toggles are honoured)
 
 ```
-Input String → ModularLexer → KeywordNormalizer → TokenBraceExpander → Tokens
+Input String → ModularLexer → KeywordNormalizer → Tokens
 ```
 
 There is no post-lexing validation pass: context rules like "`;;` only
@@ -21,11 +18,13 @@ inside `case`" are enforced by the parser (a `TokenTransformer` layer that
 appeared to validate this was removed as dead code — it appended every
 token unchanged).
 
-Note: brace expansion runs **after** tokenization (on the token stream), not as
-raw-text preprocessing — so generated characters are never re-lexed and quote /
-command-position context is available. See
-`psh/expansion/brace_expansion_tokens.py` (`TokenBraceExpander`, which delegates
-the per-word algorithm to `BraceExpander` in `brace_expansion.py`).
+Note: brace expansion is **NOT** a lexer pass. Since v0.678 it runs at the
+Word-expansion stage (`ExpansionManager.brace_expand_word` →
+`psh/expansion/brace_expansion_words.py` `WordBraceExpander`), where bash
+performs it — so `{a,b}` stays one WORD in the token stream and expands at
+execution time reading the LIVE `braceexpand` option. The old token-stream
+`TokenBraceExpander` (and its same-stream `set`/`shopt` toggle scanner) were
+retired.
 
 ## Key Files
 

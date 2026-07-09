@@ -44,9 +44,15 @@ class TestInBudgetMatchesBash:
 
 
 class TestOverBudgetIsLoud:
-    def test_numeric_over_limit_exits_2_with_diagnostic(self, captured_shell):
+    # Brace expansion moved to the Word stage (v0.678): a budget overflow is
+    # now a RUNTIME word-expansion error (exit 1), not the parse-time
+    # syntax-error class (exit 2) it was when expansion ran at tokenize time.
+    # bash has no limit here (deliberate psh divergence, no ground truth) — the
+    # invariant that matters is that it fails LOUDLY, never silently restoring
+    # the literal.
+    def test_numeric_over_limit_exits_1_with_diagnostic(self, captured_shell):
         rc = captured_shell.run_command("echo {1..100001}")
-        assert rc == 2  # bash uses 2 for the syntax-error class
+        assert rc == 1
         assert "brace expansion: 100001 items exceeds the limit" in \
             captured_shell.get_stderr()
         # NOT silently restored to the literal, and nothing printed.
@@ -54,13 +60,13 @@ class TestOverBudgetIsLoud:
 
     def test_product_over_limit_is_loud(self, captured_shell):
         rc = captured_shell.run_command("echo {a,b}{1..100000}")
-        assert rc == 2
+        assert rc == 1
         assert "200000 items exceeds the limit" in captured_shell.get_stderr()
         assert captured_shell.get_stdout() == ""
 
     def test_nested_list_over_limit_is_loud(self, captured_shell):
         rc = captured_shell.run_command("echo {{1..60000},{1..60000}}")
-        assert rc == 2
+        assert rc == 1
         assert "120000 items exceeds the limit" in captured_shell.get_stderr()
 
 
@@ -71,7 +77,7 @@ class TestPathologicalFailsFast:
         start = time.time()
         rc = captured_shell.run_command("echo {1..1000000000}")
         elapsed = time.time() - start
-        assert rc == 2
+        assert rc == 1
         assert "1000000000 items exceeds the limit" in \
             captured_shell.get_stderr()
         # Preemptive: an O(1) check, nowhere near the minutes a billion-item

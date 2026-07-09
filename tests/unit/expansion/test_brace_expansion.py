@@ -349,8 +349,8 @@ class TestBraceExpansionWithExpansions:
 
     Brace expansion is textual and runs before parameter/command/arithmetic
     expansion, so the items are split first and expanded afterwards. The
-    expansions are carried through the token-level brace expander as opaque
-    units (see TokenBraceExpander._expand_composite).
+    expansion parts are carried through the Word-stage brace expander as
+    opaque placeholders (see WordBraceExpander).
     """
 
     def test_list_of_arithmetic_items(self, shell, capsys):
@@ -727,13 +727,17 @@ class TestNoBraceExpansionInsideDoubleBrackets:
             (TokenType.DOUBLE_RBRACKET, ']]'),
         ]
 
-    def test_token_stream_expands_after_region(self):
-        # ...but the same brace group DOES expand once the region has closed.
+    def test_token_stream_keeps_brace_word_after_region(self):
+        # Brace expansion moved to the Word stage (v0.678): tokenization never
+        # expands braces, so `a{1,2}` stays ONE WORD in the token stream both
+        # inside and after a [[ ]] region. That the group DOES expand once the
+        # region has closed is verified behaviorally by
+        # test_expansion_still_works_outside_on_same_line.
         from psh.lexer import tokenize
         from psh.lexer.token_types import TokenType
         tokens = tokenize('[[ x == a{1,2} ]]; echo a{1,2}')
         words = [t.value for t in tokens if t.type == TokenType.WORD]
-        assert words == ['x', 'a{1,2}', 'echo', 'a1', 'a2']
+        assert words == ['x', 'a{1,2}', 'echo', 'a{1,2}']
 
     def test_unbalanced_double_lbracket_no_crash(self, shell, capsys):
         # Error input: parse error downstream, but no internal crash and

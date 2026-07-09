@@ -3,9 +3,10 @@
 Implements bash-style brace expansion. This module holds ``BraceExpander``, the
 purely textual per-word algorithm: given a string it expands every brace
 expression it contains, recursing through nesting and combining results with
-their surrounding prefix/suffix. ``TokenBraceExpander`` — which applies this
-algorithm across a token stream after tokenization — lives in
-``brace_expansion_tokens.py`` and delegates here.
+their surrounding prefix/suffix. ``WordBraceExpander`` — which applies this
+algorithm to a parsed :class:`~psh.ast_nodes.Word` at the Word-expansion stage
+(where bash performs brace expansion) — lives in ``brace_expansion_words.py``
+and delegates here.
 
 Supported forms:
 
@@ -37,7 +38,7 @@ from ..core.exceptions import PshError
 # decode it back to '' when emitting tokens.
 #
 # This is only the DEFAULT: any code point (including this one) can appear
-# verbatim in user input, so ``TokenBraceExpander`` overrides ``_range_empty``
+# verbatim in user input, so ``WordBraceExpander`` overrides ``_range_empty``
 # per expansion with a code point ABSENT from the specific input — a literal
 # occurrence of the default in user text is then never mistaken for the
 # sentinel (F3, expansion Phase-1a). Chosen in the BMP private-use area.
@@ -47,13 +48,15 @@ _RANGE_EMPTY = ''
 class BraceExpansionError(PshError, SyntaxError):
     """Raised when brace expansion exceeds its resource budget.
 
-    Also a ``SyntaxError`` (like ``LexerError``) because brace expansion runs
-    at tokenize time: the command accumulator's ``except SyntaxError`` then
-    routes it through the one canonical syntax-error surface (a diagnostic on
-    stderr and exit status 2), instead of the old silent restore-the-literal
-    behavior. DELIBERATE bash divergence: bash imposes no brace-expansion
-    limit; psh keeps a generous one (see ``MAX_EXPANSION_ITEMS``) purely as a
-    resource guard, and fails loudly rather than silently when it is hit.
+    Since v0.678 brace expansion runs at the Word-expansion stage (not tokenize
+    time), so this surfaces as a RUNTIME word-expansion error — a diagnostic on
+    stderr and exit status 1 — rather than the parse-time syntax-error class
+    (exit 2) it once was. It stays a ``SyntaxError`` subclass (like
+    ``LexerError``) for the shared PshError plumbing, but the important
+    invariant is that it fails LOUDLY, never the old silent
+    restore-the-literal. DELIBERATE bash divergence: bash imposes no
+    brace-expansion limit; psh keeps a generous one (see ``MAX_EXPANSION_ITEMS``)
+    purely as a resource guard, and fails loudly rather than silently when hit.
     """
     pass
 
@@ -70,8 +73,8 @@ class _BraceGroup:
 class BraceExpander:
     """Per-word brace expansion algorithm (lists, sequences, nesting).
 
-    Used by ``TokenBraceExpander`` to expand individual words; not invoked on
-    raw command lines.
+    Used by ``WordBraceExpander`` to expand the skeleton of individual Words;
+    not invoked on raw command lines.
 
     The phases, top to bottom:
 
@@ -94,7 +97,7 @@ class BraceExpander:
     MAX_EXPANSION_ITEMS = 100000
 
     #: Sentinel marking a cross-case range's backslash position as a KEPT empty
-    #: word (see the module ``_RANGE_EMPTY`` note). ``TokenBraceExpander`` sets
+    #: word (see the module ``_RANGE_EMPTY`` note). ``WordBraceExpander`` sets
     #: this per expansion to a code point absent from the input so a literal
     #: occurrence of the default is never treated as the sentinel (F3).
     _range_empty: str = _RANGE_EMPTY
@@ -169,9 +172,10 @@ class BraceExpander:
         # Each item carries the prefix and the WHOLE suffix; the caller re-runs
         # expansion on each result so a following group (`{a,b}{c,d}`) or a
         # literal-brace suffix (`{a,b}]` -> `a] b]`) is handled. The suffix is
-        # never a real shell operator here: brace expansion runs per-WORD on the
-        # token stream, so `;`/`|`/`)`/... are already separate tokens — only an
-        # escaped/quoted operator can sit in a word, and that attaches (bash).
+        # never a real shell operator here: brace expansion runs per-WORD (on a
+        # parser-delimited Word), so `;`/`|`/`)`/... are already separate tokens
+        # — only an escaped/quoted operator can sit in a word, and that
+        # attaches (bash).
         return [prefix + item + suffix for item in items]
 
     def _generate_items(self, content: str) -> Optional[List[str]]:

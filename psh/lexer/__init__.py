@@ -64,33 +64,22 @@ def _make_config(strict: bool, shell_options: Optional[Mapping[str, Any]] = None
 
 def _post_lex(tokens: List[Token],
               shell_options: Optional[Mapping[str, Any]] = None) -> List[Token]:
-    """The shared post-lex pipeline: keyword normalization, then brace
-    expansion over the token stream.
+    """The shared post-lex pipeline: keyword normalization.
 
-    Keywords are normalized first so the brace expander can see
-    command-prefix boundaries (separators, do/then, etc.) when deciding
-    assignment words. Brace expansion happens AFTER tokenization (on the
-    token stream), so generated characters are never re-lexed and quote/
-    command-position context is available.
-
-    Brace expansion is gated by the ``braceexpand`` shell option (bash
-    ``set +B`` / ``set +o braceexpand``): when disabled, ``{a,b}`` and
-    ``{1..3}`` stay literal words. The live option value seeds the expander's
-    starting state; the expander additionally honours same-stream ``set``
-    toggles (see ``TokenBraceExpander.expand``), so ``set +B; echo {a,b}`` on
-    one line matches bash. The option defaults ON, so callers that tokenize
-    without shell options (analysis helpers) keep expanding.
+    Brace expansion is NO LONGER a lexer pass — it moved to the Word stage
+    (``ExpansionManager.brace_expand_word``, driven by
+    ``psh.expansion.brace_expansion_words.WordBraceExpander``), where bash
+    performs it, so the LIVE ``braceexpand`` option is read per command at
+    execution time. That retired the token-stream expander and its
+    same-stream ``set``/``shopt`` toggle scanner (a 6-class parse-time
+    approximation). ``shell_options`` is retained on the signature for the
+    lexer-config path (``_make_config``: extglob/posix) but is no longer read
+    here.
 
     Note: misplaced case terminators (`;;` outside case, etc.) are rejected
     by the parser (see parsers/statements.py), not by a lexer pass.
     """
-    from ..expansion.brace_expansion_tokens import TokenBraceExpander
-
-    tokens = KeywordNormalizer().normalize(tokens)
-    enabled = True
-    if shell_options is not None:
-        enabled = bool(shell_options.get('braceexpand', True))
-    return TokenBraceExpander().expand(tokens, enabled=enabled)
+    return KeywordNormalizer().normalize(tokens)
 
 
 def tokenize(input_string: str, strict: bool = True, shell_options: Optional[Mapping[str, Any]] = None) -> List[Token]:
