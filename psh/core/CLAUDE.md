@@ -465,20 +465,31 @@ is the ONE place `state.env[name]` is written — precedence
 `variable_changed` observer, `clone_for_child`, and the temp-env teardown all go
 through it. No production code poke `state.env[...]` directly.
 
+- **Command temporary environment** (`ScopeManager.command_temp_env`, a
+  `List[Dict[str, Variable]]` stack): a `VAR=x cmd` prefix over a
+  builtin/external is bash's separate `temporary_env` — NAME LOOKUP consults it
+  (`get_variable_object` / `get_declared_variable_object` /
+  `find_exported_instance` check the stack; `$VAR`, `declare -p VAR`,
+  `${VAR@a}`, the command's own process env all see it) but whole-table
+  ENUMERATIONS skip it (`set` / `export -p` / `declare -p` no-name scan
+  `scope_stack`, which the separate stack is NOT part of). It is exported for
+  the command yet is not a shell variable, so it does not inherit the shadowed
+  var's attributes and vanishes on teardown; a plain body assignment write-
+  throughs to the layer while `export`/`declare -g` write past it, and `unset`
+  peels it to reveal the shell variable underneath. A function call instead uses
+  a temp-env SCOPE (`set_temp_env_var`), which IS enumerated in the body (bash
+  merges a function's prefix vars into its locals). `push_command_temp_env` /
+  `pop_command_temp_env` / `set_command_temp_env_var` own the stack; `restore`
+  pops it, `commit` (POSIX special builtin) promotes the bindings to real
+  exported vars then pops.
 - **Command-env overlay** (`state._env_overlay`, `apply_command_env` /
-  `restore_command_env`): a `VAR=x cmd` prefix over a builtin/external records
-  the LITERAL string each name contributes to *that command's* process env and
-  composes it on top of the exported vars — the overlay WINS, so a computed
-  special (`RANDOM=5 cmd` → literal `5`) or array (`a+=z cmd` → element-0 view)
-  passes its literal rather than a re-derived value. Teardown re-materializes
-  each name from the (restored) variable / base, so there is no per-name env
-  save/rollback (`CommandAssignments.apply_prefix`/`restore`; a function call
-  uses a temp-env SCOPE instead — `set_temp_env_var`). POSIX special-builtin
-  persistence uses `commit()` (drop overlay, keep the exported vars).
-- **Known divergence (ledgered):** a builtin/external prefix var still appears in
-  `set` / `export -p` enumerations, where bash's separate `temporary_env` is
-  looked up by name but skipped by enumeration (`declare -p FOO`→`declare -x`,
-  `${FOO@a}`→x already match). Full fidelity is a scope.py follow-up (task #25).
+  `restore_command_env`): the SEED path only — a prefix over a dynamic special
+  (`RANDOM=5 cmd` → literal `5`), an array-object append (`a+=z cmd` → element-0
+  view), or a nameref-to-element records the LITERAL string that name
+  contributes to the process env, composed on top of the exported vars (overlay
+  WINS). Plain temp-env vars need no overlay — they materialize through the
+  `variable_changed` observer + `find_exported_instance`. Teardown
+  re-materializes each name from the (restored) variable / base.
 
 Exported variables are synced to `state.env`:
 

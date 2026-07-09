@@ -8591,3 +8591,111 @@
   stdout: "1 2\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# TEMPORARY ENVIRONMENT (VAR=x cmd prefix over a builtin/external)
+# bash keeps the prefix in a SEPARATE temporary environment: name lookup
+# consults it, whole-table enumerations skip it, it is not a shell variable.
+# =============================================================================
+
+- name: tempenv_declare_p_specific_name_shows
+  command: "FOO=bar declare -p FOO"
+  stdout: "declare -x FOO=\"bar\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_dollar_via_eval
+  command: "FOO=bar eval 'echo [$FOO]'"
+  stdout: "[bar]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_hidden_from_export_p
+  command: "FOO=bar export -p | grep '^declare -x FOO=' || echo NONE"
+  stdout: "NONE\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_hidden_from_set
+  command: "FOO=bar set | grep '^FOO=' || echo NONE"
+  stdout: "NONE\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_hidden_from_declare_p_noname
+  command: "FOO=bar declare -p | grep '^declare -x FOO=' || echo NONE"
+  stdout: "NONE\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_override_shows_original_in_export_p
+  command: "export E=orig; E=temp export -p | grep '^declare -x E='"
+  stdout: "declare -x E=\"orig\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_no_integer_attribute_inheritance
+  command: "declare -i n=5; n=abc declare -p n"
+  stdout: "declare -x n=\"abc\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_gone_after_command
+  command: "FOO=bar true; echo \"[${FOO-GONE}]\""
+  stdout: "[GONE]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_unset_peels_revealing_real
+  command: "export G=global; G=temp eval 'unset G; echo [$G]'"
+  stdout: "[global]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_body_reassignment_discarded
+  command: "export G=global; G=temp eval 'G=new; echo [$G]'; echo [$G]"
+  stdout: "[new]\n[global]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_scalar_shadows_array_non_destructively
+  command: "a=(1 2 3); a=x eval 'echo [$a]'; echo \"[${a[@]}]\""
+  stdout: "[x]\n[1 2 3]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_read_ifs_prefix_idiom
+  command: 'IFS=: read a b c <<< "one:two:three"; echo "$a/$b/$c"'
+  stdout: "one/two/three\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_function_prefix_enumerated_in_body
+  command: 'f(){ set | grep "^FOO=" || echo NONE; }; FOO=bar f'
+  stdout: "FOO=bar\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_export_valueless_promotes
+  command: "V=hi export V; declare -p V"
+  stdout: "declare -x V=\"hi\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_readonly_valueless_promotes
+  command: "V=hi readonly V; declare -p V"
+  stdout: "declare -rx V=\"hi\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_export_promotes_temp_value_over_real
+  command: "export E=orig; E=temp export E; printenv E"
+  stdout: "temp\n"
+  stderr: ""
+  exit_code: 0
+
+- name: tempenv_export_in_function_promotes_to_global
+  command: 'f(){ V=hi export V; }; f; echo "[${V-GONE}]"'
+  stdout: "[hi]\n"
+  stderr: ""
+  exit_code: 0
