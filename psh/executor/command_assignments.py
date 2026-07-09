@@ -60,14 +60,20 @@ class PrefixOutcome(NamedTuple):
     """Result of applying prefix assignments before a command.
 
     ``saved`` is handed back to :meth:`CommandAssignments.restore` by the
-    dispatcher (opaque to it); ``applied`` is the expanded (name, value)
-    pairs that took effect (``exec`` without a command persists these);
-    ``failed`` is True when any assignment failed (readonly) — fatal
-    under ``set -e``.
+    dispatcher (opaque to it) — the save/restore snapshots for the few prefix
+    names that take the SEED path (dynamic specials, array-object appends,
+    nameref-to-element) rather than bash's temporary_env. ``applied`` is the
+    expanded (name, value) pairs that took effect (``exec`` without a command
+    persists these); ``failed`` is True when any assignment failed (readonly) —
+    fatal under ``set -e``. ``pushed_temp_env`` records whether a command
+    temporary-environment layer was opened (the common case — plain scalar
+    prefix vars over a builtin/external), so :meth:`restore`/:meth:`commit`
+    tear it down.
     """
     saved: Dict[str, dict]
     applied: List[Tuple[str, object]]  # value is str, or an array object (rare)
     failed: bool
+    pushed_temp_env: bool = False
 
 
 class CommandAssignments:
@@ -262,55 +268,58 @@ class CommandAssignments:
 
     def apply_prefix(self, raw_assignments: List[RawAssignment],
                      temp_scope: bool = False) -> PrefixOutcome:
-        """Apply variable assignments for command execution.
+        """Apply a command's ``NAME=value`` prefix assignments (``FOO=bar cmd``).
 
-        For command-prefixed assignments (FOO=bar cmd), we need to:
-        1. Set the variable in shell state (for builtins/functions that use $VAR)
-        2. Set the variable in shell.env (for external commands' environments)
+        bash's *temporary environment* model, three routes:
 
-        Values are expanded one at a time as they are applied, so each
-        sees the assignments to its left (`A=1 B=$A cmd` gives B=1, bash).
+        * ``temp_scope=True`` — the command resolves to a shell FUNCTION and the
+          caller has pushed a dedicated temp-env SCOPE (``push_temp_env_scope``).
+          Each prefix var becomes an EXPORTED local of that scope
+          (``set_temp_env_var``): visible to the body AND to enumerations run
+          inside it (bash merges a function's prefix vars into its locals), so a
+          body ``declare -g``/``export`` writing past the layer survives the
+          return while a plain body assignment is discarded. No per-variable
+          ``saved`` snapshot — the caller pops the scope.
 
-        ``temp_scope`` selects bash's *temporary variable context* model,
-        used when the command resolves to a shell FUNCTION: the caller has
-        already pushed a dedicated temp-env scope (``push_temp_env_scope``),
-        so each prefix variable becomes an EXPORTED local of that scope
-        (``set_temp_env_var``) rather than a save-and-restore write to the
-        enclosing scope. This is what makes a body's ``declare -g``/``export``
-        write survive the return (it targets the global, below the temp
-        layer) while a plain body assignment is discarded (it updates the
-        temp layer). The caller pops the scope afterwards, so no per-variable
-        ``saved`` snapshot is produced in this mode.
+        * a plain scalar over a BUILTIN/EXTERNAL — the common case. The var goes
+          into a command temporary-environment LAYER
+          (``set_command_temp_env_var``) that NAME LOOKUP consults (``$VAR``,
+          ``declare -p VAR``, ``${VAR@a}``, the exported-env materialization)
+          but whole-table ENUMERATIONS (``set`` / ``export -p`` / ``declare -p``
+          with no name) skip — exactly bash's separate ``temporary_env``. It is
+          exported into the command's OWN process environment yet is not a shell
+          variable, so it does not inherit the shadowed var's attributes
+          (``declare -i n=5; n=abc cmd`` -> the command sees plain ``abc``) and
+          it vanishes on teardown.
 
-        A readonly assignment does NOT abort the command (bash 5.2,
-        probe-verified): the error is reported, that one assignment is
-        skipped (the command's environment keeps the variable's old
-        value), the OTHER assignments still apply, and the command runs
-        with its own exit status. The caller handles ``set -e``, where
-        bash makes the assignment error fatal instead.
+        * a dynamic special / array-object append / nameref-to-element — these
+          take the legacy SEED path (a real ``set_variable`` with EXPORT plus a
+          per-name save/restore snapshot and a literal env overlay), because the
+          effect (seed RANDOM's generator; keep ``a=x cmd`` over an array
+          non-destructive; write through a nameref to an array element) cannot
+          be a plain temporary binding.
 
-        The assignment is EXPORTED for the duration of the command (bash:
-        ``FOO=bar cmd`` places FOO in cmd's environment whether or not FOO
-        is otherwise exported). Without the EXPORT attribute the variable
-        would be a plain shell var that ``env``/``sync_exports_to_environment``
-        drops from ``shell.env`` (so ``FOO=bar env`` printed nothing,
-        H5). The prior export status is snapshotted so :meth:`restore`
-        can take it away again for a previously-unexported variable.
+        Values are expanded one at a time so each sees the assignments to its
+        left (``A=1 B=$A cmd`` gives B=1, bash). A readonly assignment does NOT
+        abort the command (bash 5.2): the error is reported, that one assignment
+        is skipped, the others still apply, and the command runs. The caller
+        handles ``set -e``, where bash makes the assignment error fatal.
         """
         from ..core import VarAttributes
 
+        scope_manager = self.state.scope_manager
         saved_vars: Dict[str, dict] = {}
         # ``resolved`` is usually a str; resolve_append_assignment can return an
         # array object for a scalar ``+=`` onto an array variable (rare in
-        # prefix position). It is stored as-is in state/env/the applied list,
-        # exactly as before — hence the wider value type here.
+        # prefix position) — hence the wider value type on the applied list.
         assignments: List[Tuple[str, object]] = []
-        # The command-env overlay: the LITERAL string each name contributes to
-        # this command's process environment. Composed onto the live env at the
-        # end via ShellState.apply_command_env (the overlay wins over the
-        # exported value, so a computed special / array passes its literal).
+        # Literal env overlay for the SEED path only (specials/arrays whose
+        # exported value is not the literal string). Temp-env vars reach the
+        # environment through the variable_changed observer + find_exported_instance,
+        # so they need no overlay entry.
         overlay: Dict[str, str] = {}
         assignment_error = False
+        pushed_temp_env = False
 
         xtrace = self.state.options.get('xtrace')
         for var, value, value_word in raw_assignments:
@@ -321,24 +330,19 @@ class CommandAssignments:
                 from ..core.options import xtrace_quote
                 ps4 = self.expansion_manager.expand_ps4()
                 self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
-            var, resolved = resolve_append_assignment(
-                self.state.scope_manager, var, value)
+            var, resolved = resolve_append_assignment(scope_manager, var, value)
             # A nameref prefix (``declare -n r=a; r=x cmd``) writes THROUGH to
-            # the target, so key the save/restore (and env) on the target name.
-            # Otherwise the save was keyed on ``r`` while set_variable mutated
-            # ``a``, and restore left ``a`` exported (bash: ``declare --``).
-            # A subscripted target (nameref to an array element) is left as-is —
-            # set_variable routes that through the element setter.
-            write_name = self.state.scope_manager.resolve_nameref_name(var)
+            # the target, so key everything on the target name. A subscripted
+            # target (nameref to an array element) stays as-is — set_variable
+            # routes that through the element setter (a seed-path case).
+            write_name = scope_manager.resolve_nameref_name(var)
             if '[' not in write_name:
                 var = write_name
+
             if temp_scope:
-                # Function call: the caller pushed a temp-env scope; place the
-                # variable there as an exported local (env sync is automatic
-                # via the variable_changed observer). A readonly shadowed name
-                # is reported and skipped, exactly like the save/restore path.
+                # Function call: exported local of the pushed temp-env scope.
                 try:
-                    self.state.scope_manager.set_temp_env_var(var, resolved)
+                    scope_manager.set_temp_env_var(var, resolved)
                 except ReadonlyVariableError as e:
                     print(f"psh: {e.name}: readonly variable",
                           file=self.state.stderr)
@@ -346,49 +350,56 @@ class CommandAssignments:
                     continue
                 assignments.append((var, resolved))
                 continue
-            # Save shell state, environment value, and prior export status
-            # (first write wins if the same variable is assigned twice). The
-            # state snapshot is scope-aware: None means the variable was
-            # UNSET, so restore() can unset it again — bash restores `W=1
-            # true` to unset, and ${W+yes} stays empty afterwards.
-            # (state.get_variable()'s '' default could not represent unset;
-            # psh left W set-but-empty until 2026-06-13, Tier B10a.)
+
+            # A dynamic special (RANDOM/SECONDS seed), an array-object result
+            # (scalar ``+=`` onto an array), or a nameref-to-element target
+            # cannot be a plain temporary binding — take the seed path.
+            use_seed_path = (
+                scope_manager.is_dynamic_special(var)
+                or isinstance(resolved, (IndexedArray, AssociativeArray))
+                or '[' in write_name)
+
+            if not use_seed_path:
+                # Common case: a hidden command temporary-environment binding.
+                if not pushed_temp_env:
+                    scope_manager.push_command_temp_env()
+                    pushed_temp_env = True
+                try:
+                    scope_manager.set_command_temp_env_var(var, resolved)
+                except ReadonlyVariableError as e:
+                    # bash: report and skip; the real (readonly) variable keeps
+                    # its value, the other assignments apply, the command runs.
+                    print(f"psh: {e.name}: readonly variable",
+                          file=self.state.stderr)
+                    assignment_error = True
+                    continue
+                assignments.append((var, resolved))
+                continue
+
+            # Seed path: a real EXPORT write with a save/restore snapshot and a
+            # literal env overlay. The snapshot is scope-aware — None means the
+            # variable was UNSET, so restore() can re-unset it; an ARRAY is a
+            # DEEP COPY (the scalar write mutates element 0 in place, and
+            # restoring only element 0 would leave a spurious slot).
             saved = None
             if var not in saved_vars:
-                existing = self.state.scope_manager.get_variable_object(var)
-                # Snapshot the value for restore(). A scalar is saved as its
-                # string (None when unset, so restore can re-unset it). An
-                # ARRAY is saved as a DEEP COPY of the container, not its
-                # as_string() (element 0): the scalar assignment below mutates
-                # the live array's element 0 in place (bash keeps ``a=x cmd``
-                # non-destructive), and restoring only element 0 would leave a
-                # spurious [0]/["0"] on a sparse or associative array whose
-                # slot 0 did not exist beforehand.
+                existing = scope_manager.get_variable_object(var)
                 existing_val = existing.value if existing is not None else None
                 state_snapshot: object
                 if isinstance(existing_val, (IndexedArray, AssociativeArray)):
                     state_snapshot = copy.deepcopy(existing_val)
                 else:
-                    state_snapshot = self.state.scope_manager.get_variable(var)
-                # Only the variable snapshot is saved. The env entry is NOT
-                # snapshotted: restore() re-materializes it from the restored
-                # variable / opaque base through the one env interface, so a
-                # per-name env rollback is no longer needed (appraisal H3).
+                    state_snapshot = scope_manager.get_variable(var)
                 saved = {
                     'state': state_snapshot,
                     'was_exported': bool(existing and existing.is_exported),
                 }
             try:
-                # Export for the command's duration (see docstring): the
-                # prefix variable must reach an external command's (and the
-                # ``env`` builtin's) environment.
-                self.state.scope_manager.set_variable(
+                scope_manager.set_variable(
                     var, resolved, attributes=VarAttributes.EXPORT, local=False)
             except ReadonlyVariableError as e:
-                # bash: report and skip; earlier assignments stay applied
-                # (and are later restored), the command still runs. Use
-                # e.name so a readonly array element write reports the
-                # array name (``a[0]=X cmd`` → ``a: readonly variable``).
+                # Use e.name so a readonly array-element write reports the array
+                # name (``a[0]=X cmd`` -> ``a: readonly variable``).
                 print(f"psh: {e.name}: readonly variable",
                       file=self.state.stderr)
                 assignment_error = True
@@ -396,69 +407,73 @@ class CommandAssignments:
             if saved is not None:
                 saved_vars[var] = saved
             assignments.append((var, resolved))
-            # Record this name's literal env contribution. A scalar `+=` prefix
-            # onto an ARRAY (`a+=z cmd`) resolves to an array object; serialize
-            # it to its scalar view (element 0) via as_string() — an array
-            # object must NEVER reach execve's environment (F8: it raised
-            # "expected str ... not IndexedArray" and left the array mutated).
+            # An array object must never reach execve's environment (F8) —
+            # serialize to its scalar view (element 0).
             if isinstance(resolved, (IndexedArray, AssociativeArray)):
                 overlay[var] = resolved.as_string()
             else:
                 overlay[var] = cast(str, resolved)
 
-        # Compose all applied literals onto the live environment in one step,
-        # through the single env-materialization interface. set_variable above
-        # already fired the observer per name; the overlay wins over its derived
-        # value (needed for computed specials / arrays whose exported value is
-        # not the literal, and a harmless no-op for a plain scalar).
         if overlay:
             self.state.apply_command_env(overlay)
 
-        return PrefixOutcome(saved_vars, assignments, assignment_error)
+        return PrefixOutcome(saved_vars, assignments, assignment_error,
+                             pushed_temp_env)
 
-    def restore(self, saved_vars: Dict[str, dict]) -> None:
-        """Restore variables after command execution.
+    def restore(self, prefix: PrefixOutcome) -> None:
+        """Tear down a command's prefix assignments after it runs.
 
-        Restores the shell VARIABLES to their saved values and tears down the
-        command-env overlay; the env entries then re-materialize from the
-        restored variables / opaque base through the one env interface.
-        Command-prefixed assignments (FOO=bar cmd) are always temporary, even
-        for exported variables. (The POSIX special-builtin persistence exception
-        is the dispatcher's: it calls :meth:`commit` instead of this.)
+        The temporary-environment LAYER is popped (its bindings vanish; the env
+        entry reverts to the shell variable underneath). The few SEED-path names
+        are restored to their saved values — None means they were UNSET before —
+        and their literal env overlay is dropped, re-materializing from the
+        restored variable. Command-prefixed assignments are always temporary,
+        even for exported variables. (The POSIX special-builtin persistence
+        exception is the dispatcher's: it calls :meth:`commit` instead.)
         """
         from ..core import VarAttributes
 
-        for var, saved in saved_vars.items():
-            # Restore shell state variable. None means it was UNSET before
-            # the prefix applied — restore that, like bash (`W=1 true`
-            # leaves W unset, not set-but-empty).
+        if prefix.pushed_temp_env:
+            self.state.scope_manager.pop_command_temp_env()
+
+        for var, saved in prefix.saved.items():
             old_state_value = saved['state']
             if old_state_value is None:
                 self.state.scope_manager.unset_variable(var)
             else:
                 self.state.set_variable(var, old_state_value)
-                # apply_prefix exported the variable for the command's
-                # duration; if it was not exported before, take EXPORT back
-                # off (set_variable above merges attributes, so the EXPORT
-                # bit would otherwise linger). For a previously-exported
-                # variable EXPORT stays, as it should.
+                # apply_prefix exported the variable for the command's duration;
+                # if it was not exported before, take EXPORT back off (a
+                # previously-exported variable keeps it, as it should).
                 if not saved.get('was_exported'):
                     self.state.scope_manager.remove_attribute(
                         var, VarAttributes.EXPORT)
 
-        # Drop the overlay and re-derive each name's env entry from the (now
-        # restored) variable / opaque base. Done after the variable restores so
-        # the re-materialization sees the restored values.
-        self.state.restore_command_env(saved_vars.keys())
+        # Drop the seed-path overlay and re-derive each name's env entry from the
+        # (now restored) variable / opaque base.
+        self.state.restore_command_env(prefix.saved.keys())
 
-    def commit(self, saved_vars: Dict[str, dict]) -> None:
+    def commit(self, prefix: PrefixOutcome) -> None:
         """Make the prefix assignments permanent (POSIX special-builtin rule,
-        ``VAR=v :``): keep the variables, but still drop the command-env overlay
-        so future env materializations read the (persisted, exported) variables
-        rather than a stale overlay literal. The variables stay exactly as
-        apply_prefix left them.
+        ``VAR=v :``): the variables persist as real EXPORTED shell variables.
+
+        The temporary-environment bindings are PROMOTED to real exported vars
+        (so ``VAR=v : ; declare -p VAR`` shows them), then the layer is popped.
+        Seed-path variables stay exactly as apply_prefix left them; their env
+        overlay is dropped so later materializations read the persisted vars.
         """
-        self.state.restore_command_env(saved_vars.keys())
+        from ..core import VarAttributes
+
+        if prefix.pushed_temp_env:
+            scope_manager = self.state.scope_manager
+            layer = dict(scope_manager.command_temp_env[-1])
+            scope_manager.pop_command_temp_env()
+            for name, var in layer.items():
+                scope_manager.set_variable(
+                    name, var.value,
+                    attributes=VarAttributes.EXPORT, local=False)
+
+        self.state.restore_command_env(prefix.saved.keys())
 
     # ------------------------------------------------------------------
     # Value expansion

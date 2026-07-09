@@ -1,21 +1,21 @@
-"""Temporary-environment visibility ledger (opening artifact for the full
-``temporary_env`` follow-up).
+"""Temporary-environment visibility ledger (full ``temporary_env``, CLOSED
+2026-07-09).
 
-A ``VAR=x cmd`` prefix over a builtin/external binds ``VAR`` as an exported
-shell variable for the command's duration (PSH's Phase-4 model). bash instead
-keeps it in a SEPARATE temporary environment that NAME LOOKUP consults but the
-whole-table ENUMERATIONS (``set`` / ``export -p``) skip.
+A ``VAR=x cmd`` prefix over a builtin/external now keeps ``VAR`` in a SEPARATE
+temporary environment (ScopeManager.command_temp_env) that NAME LOOKUP consults
+but whole-table ENUMERATIONS (``set`` / ``export -p`` / ``declare -p`` with no
+name) skip — matching bash. It used to bind ``VAR`` as an exported shell
+variable for the command's duration (PSH's Phase-4 model), which LEAKED into
+those enumerations.
 
 This battery pins both halves against live bash:
 
-* the name-lookup behaviors PSH already matches (``$VAR``, ``declare -p VAR`` as
-  ``declare -x``, ``${VAR@a}``==x, external env, function binding, teardown) —
-  these are behavior-preservation locks for the mutate/rollback -> overlay
-  materialization swap; and
-* the THREE enumeration-visibility divergences PSH currently has, asserted as
-  the CURRENT psh behavior with a note that closing them (full temporary_env in
-  the variable-lookup path) is the tracked follow-up. When that lands, the three
-  ``divergence`` assertions flip to equal bash.
+* the name-lookup behaviors (``$VAR``, ``declare -p VAR`` as ``declare -x``,
+  ``${VAR@a}``==x, external env, function binding, teardown) — behavior-
+  preservation locks across the swap to the temporary-environment model; and
+* the THREE enumeration-visibility behaviors that were divergences before the
+  swap and now EQUAL bash (``set`` / ``export -p`` hide the prefix var; an
+  override shows the original exported value).
 
 Derived from the 16-case visibility probe run 2026-07-08 (worktree-psh vs bash).
 """
@@ -74,22 +74,52 @@ def test_name_lookup_behavior_matches_bash(label, cmd):
         f"{label}: psh {p.returncode} {p.stdout!r} != bash {b.returncode} {b.stdout!r}")
 
 
-# The three enumeration-visibility divergences: bash's temporary_env is skipped
-# by whole-table enumerations; PSH's exported binding is not. Asserted as the
-# CURRENT psh behavior — the tracked full-temporary_env follow-up flips these to
-# equal bash. If a future change makes psh match bash here, update this test.
-class TestKnownEnumerationDivergences:
-    def test_prefix_var_appears_in_export_p_unlike_bash(self):
+# The three enumeration-visibility divergences, NOW CLOSED (full temporary_env,
+# 2026-07-09): a ``VAR=x cmd`` prefix over a builtin/external is a SEPARATE
+# temporary environment (ScopeManager.command_temp_env) that name lookup
+# consults but whole-table enumerations skip — so ``set`` / ``export -p`` /
+# ``declare -p`` (no name) no longer list it, and an override shows the ORIGINAL
+# exported value. psh now EQUALS bash on all three.
+class TestEnumerationSkipsTemporaryEnv:
+    def test_prefix_var_hidden_from_export_p(self):
         cmd = 'FOO=bar export -p 2>&1 | grep "^declare -x FOO=" || echo NONE'
-        assert _bash(cmd).stdout == "NONE\n"                      # bash: hidden
-        assert _psh(cmd).stdout == 'declare -x FOO="bar"\n'       # psh: shown
+        assert _psh(cmd).stdout == _bash(cmd).stdout             # both: NONE
+        assert _psh(cmd).stdout == "NONE\n"
 
-    def test_prefix_var_appears_in_set_unlike_bash(self):
+    def test_prefix_var_hidden_from_set(self):
         cmd = 'FOO=bar set 2>&1 | grep "^FOO=" || echo NONE'
-        assert _bash(cmd).stdout == "NONE\n"                      # bash: hidden
-        assert _psh(cmd).stdout == "FOO=bar\n"                    # psh: shown
+        assert _psh(cmd).stdout == _bash(cmd).stdout             # both: NONE
+        assert _psh(cmd).stdout == "NONE\n"
 
-    def test_override_shows_temp_in_export_p_unlike_bash(self):
+    def test_override_shows_original_in_export_p(self):
         cmd = 'export E=orig; E=temp export -p 2>&1 | grep "^declare -x E="'
-        assert _bash(cmd).stdout == 'declare -x E="orig"\n'       # bash: original
-        assert _psh(cmd).stdout == 'declare -x E="temp"\n'        # psh: overridden
+        assert _psh(cmd).stdout == _bash(cmd).stdout             # both: orig
+        assert _psh(cmd).stdout == 'declare -x E="orig"\n'
+
+
+# The persistence row (`V=hi export V`): an attribute-setting builtin
+# (export/readonly/declare -x) named on a temporary-environment binding PROMOTES
+# it to a real exported/readonly shell variable that PERSISTS past the command,
+# carrying the temp value (which wins over any real same-name variable). Was a
+# no-op in psh (the attribute applied only to the scope stack, missing the temp
+# binding); now equals bash.
+class TestAttributeBuiltinPromotesTemporaryEnv:
+    def test_export_valueless_promotes(self):
+        cmd = 'V=hi export V; declare -p V 2>&1'
+        assert _psh(cmd).stdout == _bash(cmd).stdout
+        assert _psh(cmd).stdout == 'declare -x V="hi"\n'
+
+    def test_readonly_valueless_promotes_with_export(self):
+        cmd = 'V=hi readonly V; declare -p V 2>&1'
+        assert _psh(cmd).stdout == _bash(cmd).stdout
+        assert _psh(cmd).stdout == 'declare -rx V="hi"\n'
+
+    def test_export_promotes_temp_value_over_existing_real(self):
+        cmd = 'export E=orig; E=temp export E; declare -p E 2>&1'
+        assert _psh(cmd).stdout == _bash(cmd).stdout
+        assert _psh(cmd).stdout == 'declare -x E="temp"\n'
+
+    def test_export_in_function_promotes_to_global(self):
+        cmd = 'f(){ V=hi export V; }; f; echo "[${V-GONE}]"'
+        assert _psh(cmd).stdout == _bash(cmd).stdout
+        assert _psh(cmd).stdout == "[hi]\n"

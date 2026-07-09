@@ -177,8 +177,11 @@ class ReadBuiltin(Builtin):
             if eof_continuation:
                 chars.append(('', True))
 
-            # Get IFS value (default is space, tab, newline)
-            ifs = shell.state.variables.get('IFS', shell.env.get('IFS', ' \t\n'))
+            # Get IFS value (default is space, tab, newline). Use the LOOKUP
+            # path (not the ``state.variables`` enumeration) so a ``IFS=: read``
+            # command-prefix — bash's temporary_env, which enumerations skip —
+            # is honored: the canonical ``while IFS= read -r line`` idiom.
+            ifs = shell.state.get_variable('IFS', ' \t\n')
 
             # Handle assignment based on array option or number of variables
             if options['array_name']:

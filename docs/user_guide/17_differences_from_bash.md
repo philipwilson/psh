@@ -453,33 +453,35 @@ VAR =value        # Tries to run "VAR" as command with arg "=value"
 
 ### Temporary-Environment Prefix Assignments (`VAR=x cmd`)
 
-A `VAR=x cmd` prefix over a builtin or external command places `VAR` in that
-command's environment for its duration only. PSH gets the observable behavior
-right — `VAR` is passed to the child, visible to `$VAR` and `declare -p VAR`
-(as `declare -x VAR="x"`), left-to-right assignment works (`A=1 B=$A cmd`), and
-the assignment is undone afterward:
+A `VAR=x cmd` prefix over a builtin or external command places `VAR` in a
+*separate temporary environment* for that command's duration, exactly as bash
+does: name lookup consults it but whole-table enumerations skip it, and it is
+not a shell variable.
 
 ```bash
-V=hi env | grep '^V='        # V=hi        (in the child's environment)
-V=hi printf '%s\n' "$V"      # (empty)     — the command's own words expand first
-W=1 true; echo "${W-unset}"  # unset       — temporary
+V=hi env | grep '^V='          # V=hi        (in the child's environment)
+V=hi printf '%s\n' "$V"        # (empty)     — the command's own words expand first
+V=hi declare -p V              # declare -x V="hi"          (name lookup sees it)
+FOO=bar export -p | grep FOO   # (nothing)   — enumerations do NOT list it
+FOO=bar set | grep '^FOO='     # (nothing)
+declare -i n=5; n=abc env      # n=abc in the env — NOT a shell var, so no -i
+W=1 true; echo "${W-unset}"    # unset       — temporary
+V=hi export V; declare -p V    # declare -x V="hi" — export PROMOTES it (persists)
 ```
 
-The one difference is in *whole-list enumerations* run as the prefixed command
-itself. Bash keeps such a prefix in a separate temporary environment that name
-lookup consults but `set` / `export -p` do NOT enumerate; PSH binds it as a
-normal exported variable, so it also appears in those listings:
+Because the binding is not a shell variable it does not inherit a shadowed
+variable's attributes; a plain assignment inside an `eval`'d body updates the
+temporary binding (discarded afterward) and `unset` peels it to reveal the
+shell variable underneath. Naming the binding with `export` / `readonly`
+promotes it to a real, persistent variable (the temporary value wins over any
+existing same-name variable).
 
-```bash
-FOO=bar export -p | grep FOO   # Bash: (nothing)   | PSH: declare -x FOO="bar"
-FOO=bar set | grep '^FOO='     # Bash: (nothing)   | PSH: FOO=bar
-```
-
-This only matters when the prefixed command is itself an enumerator of the
-variable table, which is vanishingly rare in practice. It is a known,
-pre-existing divergence that PSH deliberately defers: closing it requires
-modelling bash's separate temporary environment in the variable-lookup path,
-tracked as its own follow-up.
+The one remaining difference is a deep corner: when the prefixed command is
+`eval` (or `source`) whose body then runs a *whole-table enumerator*, bash makes
+the outer prefix visible to that nested enumeration (`FOO=bar eval 'export -p'`
+lists `FOO`), asymmetrically — a nested inner prefix is still hidden. PSH
+consistently hides the temporary environment from all enumerations. This is
+vanishingly rare in practice.
 
 ### Identifier (Name) Rules — Unicode Extension
 

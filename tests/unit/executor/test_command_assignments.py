@@ -9,7 +9,8 @@ CommandExecutor's dispatch.
 Contract notes mirrored from the module docstring:
 - the DISPATCHER clears state.last_cmdsub_status before any expansion;
   tests do that explicitly before apply_pure.
-- restore() takes the PrefixOutcome.saved mapping opaquely.
+- restore()/commit() take the whole PrefixOutcome (they pop the command
+  temporary-environment layer and roll back any seed-path snapshots).
 """
 
 import dataclasses
@@ -133,7 +134,7 @@ class TestApplyPrefixAndRestore:
         node = first_simple_command('V=new W=1 true')
         outcome = ca.apply_prefix(ca.extract(node))
         assert shell.state.get_variable('V') == 'new'
-        ca.restore(outcome.saved)
+        ca.restore(outcome)
         assert shell.state.get_variable('V') == 'old'
         # bash 5.2 (pinned 2026-06-13): a previously-UNSET variable is
         # restored to UNSET, not set-but-empty — `W=1 true; echo ${W+yes}`
@@ -155,7 +156,7 @@ class TestApplyPrefixAndRestore:
         assert outcome.applied == [('A', '9'), ('B', '8')]
         assert shell.state.get_variable('RO') == '1'
         assert 'readonly variable' in shell.get_stderr()
-        ca.restore(outcome.saved)
+        ca.restore(outcome)
         # previously-unset variables return to UNSET after restore (bash):
         # see test_restore_returns_state_and_env
         assert shell.state.scope_manager.get_variable('A') is None
@@ -167,5 +168,5 @@ class TestApplyPrefixAndRestore:
         node = first_simple_command('x+=cd true')
         outcome = ca.apply_prefix(ca.extract(node))
         assert outcome.applied == [('x', 'abcd')]
-        ca.restore(outcome.saved)
+        ca.restore(outcome)
         assert shell.state.get_variable('x') == 'ab'

@@ -382,7 +382,7 @@ class CommandExecutor:
         """
         tokens_consumed = len(raw_assignments)
         prefix_assignments_persist = False
-        saved_vars = None
+        prefix = None
         pushed_temp_scope = False
 
         try:
@@ -477,7 +477,6 @@ class CommandExecutor:
             # expanded. Each value sees the assignments to its left.
             prefix = self.assignments.apply_prefix(
                 raw_assignments, temp_scope=pushed_temp_scope)
-            saved_vars = prefix.saved
 
             if prefix.failed and self.state.options.get('errexit'):
                 # bash: under set -e a prefix-assignment error (e.g.
@@ -549,14 +548,14 @@ class CommandExecutor:
                 # revealing any global write the body made). Special builtins
                 # never take the function path, so persistence doesn't apply.
                 self.state.scope_manager.pop_scope()
-            elif saved_vars is not None:
+            elif prefix is not None:
                 if prefix_assignments_persist:
-                    # POSIX special builtin: the variables persist; still drop
-                    # the command-env overlay so later env reads see the
-                    # persisted (exported) variables, not a stale literal.
-                    self.assignments.commit(saved_vars)
+                    # POSIX special builtin: the temporary bindings are promoted
+                    # to real exported vars (they persist); the seed-path overlay
+                    # is dropped so later env reads see the persisted variables.
+                    self.assignments.commit(prefix)
                 else:
-                    self.assignments.restore(saved_vars)
+                    self.assignments.restore(prefix)
 
     def _strip_backslash_bypass(self, command_node: 'SimpleCommand'):
         """Strip a leading backslash on the command word (`\\ls`, `\\echo`).
