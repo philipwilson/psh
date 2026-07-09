@@ -243,3 +243,56 @@ class TestShelloptsEnvImport:
     def test_no_env_no_export(self):
         r = run_psh('env | grep -c "^SHELLOPTS="')
         assert r.stdout.strip() == '0'
+
+
+class TestShelloptsEnvImportEmptySegments:
+    """Empty segments warn like bash (v0.674 fixlet F2).
+
+    bash iterates the value with extract_colon_unit, which yields empty
+    units for adjacent/leading/trailing colons but NOT like a naive
+    split(':'): ':' warns ONCE (not twice), '::' twice, 'errexit::x:' has
+    two empties, '' none at all. Probe-pinned (tmp/optreflect/probe3_tip.txt
+    b1-b7); message ": invalid option name" on stderr, non-fatal.
+    """
+
+    WARN = 'invalid option name'
+
+    def test_middle_empty_warns_once_and_still_activates(self):
+        r = run_psh('case ":$SHELLOPTS:" in *:nounset:*) echo on;; esac; echo ok',
+                    {'SHELLOPTS': 'errexit::nounset'})
+        assert r.stderr.count(self.WARN) == 1
+        assert 'psh: : invalid option name' in r.stderr
+        assert r.stdout == 'on\nok\n'
+
+    def test_trailing_colon_warns_once(self):
+        r = run_psh('echo ok', {'SHELLOPTS': 'errexit:'})
+        assert r.stderr.count(self.WARN) == 1
+        assert r.stdout == 'ok\n'
+
+    def test_leading_colon_warns_once(self):
+        r = run_psh('echo ok', {'SHELLOPTS': ':errexit'})
+        assert r.stderr.count(self.WARN) == 1
+
+    def test_lone_colon_warns_once_not_twice(self):
+        # The naive-split trap: ':' is two empty fields but ONE warning.
+        r = run_psh('echo ok', {'SHELLOPTS': ':'})
+        assert r.stderr.count(self.WARN) == 1
+
+    def test_double_colon_warns_twice(self):
+        r = run_psh('echo ok', {'SHELLOPTS': '::'})
+        assert r.stderr.count(self.WARN) == 2
+
+    def test_middle_empty_plus_trailing_warns_twice(self):
+        r = run_psh('echo ok', {'SHELLOPTS': 'errexit::nounset:'})
+        assert r.stderr.count(self.WARN) == 2
+
+    def test_empty_value_no_warning(self):
+        """GREEN CONTROL: an EMPTY value has no units at all."""
+        r = run_psh('echo ok', {'SHELLOPTS': ''})
+        assert r.stderr == ''
+
+    def test_bashopts_empty_segments_silent(self):
+        """GREEN CONTROL: BASHOPTS' unknown-silent rule covers empties."""
+        r = run_psh('echo ok', {'BASHOPTS': 'extglob::'})
+        assert r.stderr == ''
+        assert r.stdout == 'ok\n'

@@ -8266,3 +8266,32 @@
   stdout: "pre_no\npost_yes\n"
   stderr: ""
   exit_code: 0
+
+# --- v0.674 fixlet F1: same-line shopt -o braceexpand toggles (the shopt
+# surface must feed the v0.672 same-stream scanner like set does) ---
+
+- name: shellopts_shopt_so_braceexpand_same_line
+  command: 'set +B; shopt -so braceexpand; echo {a,b}'
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: shellopts_shopt_uo_braceexpand_same_line
+  command: 'shopt -uo braceexpand; echo {a,b}'
+  stdout: "{a,b}\n"
+  stderr: ""
+  exit_code: 0
+
+- name: shellopts_shopt_pso_braceexpand_same_line
+  command: 'set +B; shopt -pso braceexpand; echo {a,b}'
+  stdout: "a b\n"
+  stderr: ""
+  exit_code: 0
+
+# Discriminator (green pre-fixlet): braceexpand is NOT a shopt-table name,
+# so `shopt -s braceexpand` fails rc 1 and must NOT toggle the scanner.
+- name: shellopts_shopt_s_braceexpand_no_toggle
+  command: 'set +B; shopt -s braceexpand 2>/dev/null; echo rc=$?; echo {a,b}'
+  stdout: "rc=1\n{a,b}\n"
+  stderr: ""
+  exit_code: 0

@@ -23,6 +23,30 @@ from .terminal_state import TerminalState
 from .variables import VarAttributes
 
 
+def _colon_units(value: str):
+    """Yield colon-separated units exactly like bash's extract_colon_unit.
+
+    NOT a naive ``split(':')``: adjacent/leading/trailing colons yield empty
+    units, but a lone ``':'`` yields ONE empty unit (split would give two)
+    and an empty string yields none. Probe-pinned against bash 5.2's
+    SHELLOPTS import warnings (``':'`` warns once, ``'::'`` twice,
+    ``'errexit:'`` once, ``''`` not at all — tmp/optreflect/probe3).
+    """
+    i, n = 0, len(value)
+    while i < n:
+        if i and value[i] == ':':
+            i += 1
+        start = i
+        while i < n and value[i] != ':':
+            i += 1
+        if i == start:
+            if i < n:
+                i += 1
+            yield ''
+        else:
+            yield value[start:i]
+
+
 class ChildContext(enum.Enum):
     """How a child shell relates to its parent's OS process.
 
@@ -887,9 +911,11 @@ class ShellState:
             raw = self.env.get(env_name)
             if raw is None:
                 continue
-            for opt in raw.split(':'):
-                if not opt:
-                    continue
+            # bash iterates the value with extract_colon_unit, so empty
+            # units (adjacent/leading/trailing colons) reach the unknown-name
+            # branch and WARN for SHELLOPTS (": invalid option name") while
+            # BASHOPTS' unknown-silent rule swallows them (v0.674 fixlet F2).
+            for opt in _colon_units(raw):
                 name = (self._BASH_SET_O_ALIASES.get(opt, opt)
                         if env_name == 'SHELLOPTS' else opt)
                 if name in table:
