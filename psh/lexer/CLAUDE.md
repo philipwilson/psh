@@ -32,7 +32,7 @@ retired.
 |------|---------|
 | `__init__.py` | Entry point: `tokenize()` and `tokenize_with_heredocs()` (shared `_post_lex` pipeline) |
 | `modular_lexer.py` | Core tokenization engine (~650 lines) |
-| `state_context.py` | `LexerContext` - unified state management |
+| `state_context.py` | `LexicalState` (+ `LexicalRole`/`CasePhase`) - unified state; `LexerContext` alias |
 | `command_position.py` | Command-position vocabulary for all THREE tracking machines (lexer pass, normalizer, cmdsub scanner). Transition tables + asymmetries diagram: `docs/architecture/command_position.md` |
 | `cmdsub_scanner.py` | Grammar-aware `$(...)` extent scanner (`find_command_substitution_end` + maintenance contract) |
 | `constants.py` | Keywords and special variables (operators live in `OperatorRecognizer.OPERATORS`) |
@@ -83,21 +83,33 @@ class RecognizerRegistry:
 # - OperatorDebrisWordRecognizer: 10 (tried last; operator-debris words ], +=, =, [)
 ```
 
-### 2. LexerContext State
+### 2. LexicalState
 
-`LexerContext` tracks the cross-token state the recognizers consult:
+`LexicalState` (`state_context.py`) tracks the cross-token state the
+recognizers consult. Its single mutator is
+`command_position.advance_lexical_state` — the one lexer-stage
+command-position / case transition function.
 
 ```python
-@dataclass
-class LexerContext:
+class LexicalState:
+    role: LexicalRole              # command-position axis (COMMAND_POSITION / ARGUMENT)
     bracket_depth: int = 0         # [[ ]] nesting
-    command_position: bool = True  # At command position?
-    arithmetic_depth: int = 0      # $((...)) nesting
+    arithmetic_depth: int = 0      # $((...)) / (( )) nesting
     posix_mode: bool = False
     case_depth: int = 0            # case..esac nesting
-    case_expecting_in: bool = False
-    in_case_pattern: bool = False
+    case_expecting_in: bool = False  # between `case` and `in`
+    in_case_pattern: bool = False    # collecting case patterns
+    # command_position (bool) and case_phase (CasePhase view) are derived
+    # read-properties; recognizers read context.command_position unchanged.
 ```
+
+The command-position axis is a `LexicalRole` enum; `command_position` is a
+derived bool property. The case bits `case_expecting_in` and `in_case_pattern`
+are INDEPENDENT (a malformed `case x ;;` sets both), so they are stored
+separately rather than collapsed into one phase enum; `case_phase` is a
+read-only `CasePhase` summary. `LexerContext` remains as a backward-compatible
+alias of `LexicalState` (public import + the `command_position=` construction
+kwargs stay valid).
 
 Quote state is NOT tracked here: quotes are consumed whole by
 `UnifiedQuoteParser` within a single token, so no cross-token quote
@@ -209,7 +221,7 @@ by the `KeywordNormalizer` post-pass.)
 The lexer detects `arr[key]=value` and `arr=(a b c)` patterns:
 - `build_assignment_prefix_map` (in `recognizers/word_scanners.py`) marks
   every position inside a confirmed `NAME[...]=` subscript in one O(n)
-  pass; the map is cached on the `LexerContext` and shared by the quote
+  pass; the map is cached on the `LexicalState` and shared by the quote
   dispatch and the literal recognizer
 - `WordShapeTracker` (same module) maintains the forward word shape
   (`NEUTRAL → ASSIGN_NAME → ASSIGN_VALUE`) so the collect loop knows when

@@ -149,7 +149,7 @@ process substitution (160) before operators (150) so `<(` isn't read
 as `<`, operators before literals (70) so `|` terminates the word
 `-c` rather than joining it.
 
-**The lexer tracks command position.** `LexerContext.command_position`
+**The lexer tracks command position.** `LexicalState.command_position`
 (`psh/lexer/state_context.py`) is true at the start of a command and
 after `|`, `;`, `&&` — and false after a word. Our line toggles it:
 true at `echo`, false at the string, true again at `wc` after the
