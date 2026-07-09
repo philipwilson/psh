@@ -8401,3 +8401,38 @@
   stdout: "rc=1\n{a,b}\n"
   stderr: ""
   exit_code: 0
+
+# --- task #31: POSIXLY_CORRECT <-> posix option two-way coupling (bash
+# set_posix_mode). Assigning POSIXLY_CORRECT enables posix mode and $SHELLOPTS
+# lists it; set -o posix binds POSIXLY_CORRECT=y (kept if already set); set +o
+# posix unsets it. ---
+
+- name: posixly_correct_assign_enables_posix
+  command: 'case ":$SHELLOPTS:" in *:posix:*) echo on;; *) echo off;; esac; POSIXLY_CORRECT=1; case ":$SHELLOPTS:" in *:posix:*) echo on;; *) echo off;; esac'
+  stdout: "off\non\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posixly_correct_unset_disables_posix
+  command: 'POSIXLY_CORRECT=1; unset POSIXLY_CORRECT; case ":$SHELLOPTS:" in *:posix:*) echo on;; *) echo off;; esac'
+  stdout: "off\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posixly_correct_set_o_posix_binds_y
+  command: 'set -o posix; echo "[${POSIXLY_CORRECT-U}]"'
+  stdout: "[y]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posixly_correct_set_o_posix_keeps_custom
+  command: 'POSIXLY_CORRECT=custom; set -o posix; echo "[$POSIXLY_CORRECT]"'
+  stdout: "[custom]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: posixly_correct_set_plus_o_posix_unsets
+  command: 'POSIXLY_CORRECT=1; set +o posix; echo "[${POSIXLY_CORRECT-U}]"; case ":$SHELLOPTS:" in *:posix:*) echo on;; *) echo off;; esac'
+  stdout: "[U]\noff\n"
+  stderr: ""
+  exit_code: 0

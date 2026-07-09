@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, Optional, Set
 from ..version import __version__
 from .command_hash import CommandHashTable
 from .environment import is_environ_shell_name
+from .exceptions import ReadonlyVariableError
 from .execution_state import ExecutionState
 from .getopts_state import GetoptsState
 from .history_state import HistoryState
@@ -253,6 +254,21 @@ class ShellState:
         # exist; the on_change observer below then keeps any exported entry
         # current on every option write.
         self._import_option_reflection_from_env()
+        # POSIXLY_CORRECT present in the startup environment (any value,
+        # including empty) enables posix mode (bash); it was already imported as
+        # an exported shell variable by the env-import loop above. And if the
+        # SHELLOPTS import just above enabled posix via an inherited list naming
+        # it, bash binds POSIXLY_CORRECT the way `set -o posix` does. Both are
+        # done BEFORE on_change is wired: the variable-write path is safe
+        # pre-wiring, whereas firing the option observer here would materialize
+        # the computed SHELLOPTS value before the shell is fully wired. An
+        # inherited POSIXLY_CORRECT value is kept; the SHELLOPTS path binds "y".
+        if 'POSIXLY_CORRECT' in self.env:
+            self.options['posix'] = True
+        if (self.options.get('posix')
+                and self.scope_manager.get_variable('POSIXLY_CORRECT') is None):
+            self.scope_manager.set_variable(
+                'POSIXLY_CORRECT', 'y', local=False)
         self.options.on_change = self._refresh_option_reflection_env
 
         # Function call stack
@@ -886,6 +902,18 @@ class ShellState:
             self.options['ignoreeof'] = (
                 self.scope_manager.get_variable('IGNOREEOF') is not None)
 
+        if name == 'POSIXLY_CORRECT':
+            # sv_strict_posix (bash): the `posix` option tracks whether the
+            # POSIXLY_CORRECT variable exists at all — any value counts, even
+            # '' (assigning it enables posix mode, unsetting disables it). The
+            # reverse coupling (the posix option binding/unbinding the variable)
+            # lives in the option on_change observer
+            # (_couple_posixly_correct_variable); the two settle in one bounce
+            # (assigning finds the variable already present, so the observer
+            # leaves the value alone rather than clobbering it with "y").
+            self.options['posix'] = (
+                self.scope_manager.get_variable('POSIXLY_CORRECT') is not None)
+
     # bash spellings accepted at SHELLOPTS import: hashall is bash's name for
     # psh's hashcmds. The _BASH_ONLY_SET_O names are real bash set -o options
     # psh does not implement — silently skipped so a psh child of a bash
@@ -955,6 +983,38 @@ class ShellState:
         # ShellOptions.on_change observer: any option write may change the
         # computed SHELLOPTS/BASHOPTS values.
         self.refresh_option_reflection_env()
+        if name == 'posix':
+            self._couple_posixly_correct_variable()
+
+    def _couple_posixly_correct_variable(self) -> None:
+        """Keep POSIXLY_CORRECT in step with the posix option (bash
+        set_posix_mode / SET_INT_VAR of posixly_correct).
+
+        Enabling posix binds POSIXLY_CORRECT to ``y`` — but only when the
+        variable is not already set, so an inherited or user-supplied value is
+        preserved (bash: ``POSIXLY_CORRECT=custom; set -o posix`` keeps
+        ``custom``). The binding is NOT exported (bash: ``set -o posix`` leaves
+        it unexported). Disabling posix unsets the variable. The reverse
+        coupling (the variable's existence driving the option) lives in
+        :meth:`_sync_exported_variable`; setting/unsetting the variable here
+        re-enters that observer, which finds the option already in the target
+        state and stops — one bounce, no clobber.
+        """
+        posix_on = bool(self.options.get('posix', False))
+        var = self.scope_manager.get_variable('POSIXLY_CORRECT')
+        # A user-made-readonly POSIXLY_CORRECT is pathological; bash's internal
+        # bind/unbind of it is silent (`set +o posix` prints nothing even when
+        # the variable is readonly). Match that quiet best-effort rather than
+        # surfacing a "readonly variable" diagnostic the plain option toggle
+        # never produced before this coupling existed.
+        try:
+            if posix_on and var is None:
+                self.scope_manager.set_variable(
+                    'POSIXLY_CORRECT', 'y', local=False)
+            elif not posix_on and var is not None:
+                self.scope_manager.unset_variable('POSIXLY_CORRECT')
+        except ReadonlyVariableError:
+            pass
 
     def apply_command_env(self, assignments: Dict[str, str]) -> None:
         """Compose a command-local temporary-environment overlay.

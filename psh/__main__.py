@@ -60,6 +60,7 @@ Options:
   -h, --help       Show this help message and exit
   -V, --version    Show version information and exit
   --norc           Do not read ~/.pshrc on startup
+  --posix          Enable POSIX mode at startup (like set -o posix)
   --rcfile FILE    Read FILE instead of ~/.pshrc
   --parser PARSER  Select parser: recursive_descent (rd, default), combinator (pc, educational)
   --force-interactive Same as -i
@@ -187,6 +188,15 @@ def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
             i += 1
         elif arg in ("--version", "-V"):
             options["version"] = True
+            i += 1
+        elif arg == "--posix":
+            # bash `--posix`: enable posix mode at startup. Recorded as a
+            # set-option toggle so it applies through the same path as `-o
+            # posix` (main() writes shell.state.options after the shell is
+            # wired, firing the POSIXLY_CORRECT coupling — bash binds
+            # POSIXLY_CORRECT=y when --posix turns posix on).
+            cast(List[Tuple[str, bool]], options["set_options"]).append(
+                ("posix", True))
             i += 1
         elif arg == "--rcfile" or arg.startswith("--rcfile="):
             options["rcfile"], i = _value_option(argv, i, "--rcfile")
