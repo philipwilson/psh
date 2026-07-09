@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, Dict, Optional, Set
 
+from .option_registry import SET_O_OPTION_NAMES, SHOPT_OPTION_NAMES
 from .variables import IndexedArray, VarAttributes
 
 
@@ -162,6 +163,27 @@ def _compute_lineno(ctx: SpecialContext) -> str:
     return str(ctx.state.current_line_number)
 
 
+def _enabled_option_names(ctx: SpecialContext, names) -> Optional[str]:
+    """Colon-joined sorted list of the ENABLED options among *names* (bash's
+    SHELLOPTS/BASHOPTS value shape). None before the shell is wired, so the
+    ordinary variable lookup takes over (like the shell-view specials)."""
+    shell = ctx.shell
+    if shell is None or not hasattr(shell, "state"):
+        return None
+    options = shell.state.options
+    return ":".join(sorted(n for n in names if options.get(n)))
+
+
+def _compute_shellopts(ctx: SpecialContext) -> Optional[str]:
+    # The set -o option table (bash: SHELLOPTS reflects set -o, not shopt).
+    return _enabled_option_names(ctx, SET_O_OPTION_NAMES)
+
+
+def _compute_bashopts(ctx: SpecialContext) -> Optional[str]:
+    # The shopt option table (bash: BASHOPTS is SHELLOPTS' shopt twin).
+    return _enabled_option_names(ctx, SHOPT_OPTION_NAMES)
+
+
 def _compute_pipestatus(ctx: SpecialContext) -> Optional[IndexedArray]:
     shell = ctx.shell
     if shell is None:
@@ -210,6 +232,16 @@ _SPECS = (
                    lifecycle=True),
     SpecialVarSpec("LINENO", _compute_lineno, AssignPolicy.IGNORE,
                    lifecycle=True),
+    # Option-reflection variables: computed live from the option tables and
+    # READONLY BY DEFAULT (bash: `SHELLOPTS=x` → "readonly variable"; `unset
+    # SHELLOPTS` refused). The READONLY default attribute makes the lifecycle
+    # interceptions in ScopeManager raise before the assign policy is ever
+    # consulted, so IGNORE here is a formality. Not exported unless the name
+    # arrived via the environment (ShellState import) or an explicit `export`.
+    SpecialVarSpec("SHELLOPTS", _compute_shellopts, AssignPolicy.IGNORE,
+                   default_attributes=VarAttributes.READONLY, lifecycle=True),
+    SpecialVarSpec("BASHOPTS", _compute_bashopts, AssignPolicy.IGNORE,
+                   default_attributes=VarAttributes.READONLY, lifecycle=True),
     # Shell-view projections — computed read only; ordinary path for everything
     # else (already bash-correct, so no lifecycle).
     SpecialVarSpec("PIPESTATUS", _compute_pipestatus,

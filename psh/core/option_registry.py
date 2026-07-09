@@ -20,7 +20,7 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Dict, Iterator, Mapping, Optional, Union
+from typing import Callable, Dict, Iterator, Mapping, Optional, Union
 
 OptionValue = Union[bool, str]
 
@@ -135,6 +135,15 @@ SHOPT_OPTION_NAMES = tuple(
     s.name for s in _SPECS if s.category is OptionCategory.SHOPT
 )
 
+# The `set -o` option table: every user-visible on/off SET option. This is
+# the ONE list behind `set -o` / `set +o` listings, `shopt -o` (which operates
+# on the set -o table, bash), and the computed $SHELLOPTS value — bash keeps
+# all of these identical (probe: `diff <(set -o) <(shopt -o)` is empty).
+SET_O_OPTION_NAMES = tuple(sorted(
+    s.name for s in _SPECS
+    if s.category is OptionCategory.SET and s.value_type is bool
+))
+
 # $- letter order, bash-pinned: lowercase set flags, then uppercase, then the
 # invocation flags c/s last (see ShellOptions.option_string).
 DOLLAR_DASH_ORDER = ("a", "b", "e", "f", "h", "i", "m", "n", "u", "v", "x",
@@ -158,10 +167,15 @@ class ShellOptions(MutableMapping):
     option name fails loudly instead of silently creating a junk key.
     """
 
-    __slots__ = ("_values",)
+    __slots__ = ("_values", "on_change")
 
     def __init__(self, overrides: Optional[Mapping[str, OptionValue]] = None):
         self._values: Dict[str, OptionValue] = default_options()
+        # Post-write observer (name -> None). ShellState wires this AFTER
+        # construction to keep the exported dynamic SHELLOPTS/BASHOPTS
+        # environment entries current (bash regenerates the variable on every
+        # option change); None during __init__ so overrides don't fire it.
+        self.on_change: Optional[Callable[[str], None]] = None
         if overrides:
             for name, value in overrides.items():
                 self[name] = value
@@ -183,6 +197,8 @@ class ShellOptions(MutableMapping):
                 f"shell option {name!r} expects {spec.value_type.__name__}, "
                 f"got {type(value).__name__} {value!r}")
         self._values[name] = value
+        if self.on_change is not None:
+            self.on_change(name)
 
     def __delitem__(self, name: str) -> None:
         # Registry keys are permanent: deleting one would make a typed accessor

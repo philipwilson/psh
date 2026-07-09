@@ -43,6 +43,7 @@ class TestSpecialParameterStateClassification:
         assert {n for n, s in SPECIAL_REGISTRY.items() if s.lifecycle} == {
             'SECONDS', 'RANDOM', 'BASHPID', 'SRANDOM',
             'EPOCHSECONDS', 'EPOCHREALTIME', 'LINENO',
+            'SHELLOPTS', 'BASHOPTS',
         }
         assert {n for n, s in SPECIAL_REGISTRY.items() if not s.lifecycle} == {
             'PIPESTATUS', 'BASH_COMMAND', 'FUNCNAME',

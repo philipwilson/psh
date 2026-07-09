@@ -8188,3 +8188,81 @@
   stdout: ""
   stderr: "readonly variable"
   exit_code: 1
+
+# =============================================================================
+# OPTION REFLECTION: shopt -o + SHELLOPTS/BASHOPTS (task #10, probe-pinned
+# against bash 5.2.26 — tmp/optreflect batteries 2026-07-09)
+# =============================================================================
+
+- name: shellopts_membership_dynamic
+  command: 'case ":$SHELLOPTS:" in *:errexit:*) echo pre_yes;; *) echo pre_no;; esac; set -e; case ":$SHELLOPTS:" in *:errexit:*) echo mid_yes;; *) echo mid_no;; esac; set +e; case ":$SHELLOPTS:" in *:errexit:*) echo end_yes;; *) echo end_no;; esac'
+  stdout: "pre_no\nmid_yes\nend_no\n"
+  stderr: ""
+  exit_code: 0
+
+# The [ -n "$s" ] guard keeps this RED on a psh whose SHELLOPTS is empty
+# (an empty string is vacuously "sorted").
+- name: shellopts_value_sorted
+  command: 'set -ex 2>/dev/null; { s=$SHELLOPTS; t=$(printf %s "$s" | tr ":" "\n" | sort | paste -sd: -); [ -n "$s" ] && [ "$s" = "$t" ] && echo sorted; } 2>/dev/null'
+  stdout: "sorted\n"
+  exit_code: 0
+
+- name: shellopts_readonly_assign_refused
+  command: 'SHELLOPTS=xtrace'
+  stdout: ""
+  stderr: "SHELLOPTS: readonly variable"
+  exit_code: 1
+
+- name: shellopts_unset_refused
+  command: 'unset SHELLOPTS; echo rc=$?; case ":$SHELLOPTS:" in *:braceexpand:*) echo still;; esac'
+  stdout: "rc=1\nstill\n"
+  stderr: "cannot unset: readonly variable"
+  exit_code: 0
+
+- name: shellopts_prefix_assign_reports_and_runs
+  command: 'SHELLOPTS=xtrace echo RAN; echo rc=$?'
+  stdout: "RAN\nrc=0\n"
+  stderr: "SHELLOPTS: readonly variable"
+  exit_code: 0
+
+- name: shellopts_shopt_qo_query_rc
+  command: 'shopt -qo errexit; echo rc=$?; set -e; shopt -qo errexit; echo rc=$?'
+  stdout: "rc=1\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: shellopts_shopt_so_toggle
+  command: 'shopt -so errexit; case $- in *e*) echo has_e;; *) echo no_e;; esac; shopt -po errexit'
+  stdout: "has_e\nset -o errexit\n"
+  stderr: ""
+  exit_code: 0
+
+- name: shellopts_shopt_uo_toggle
+  command: 'set -e; shopt -uo errexit; case $- in *e*) echo has_e;; *) echo no_e;; esac; shopt -po errexit; echo rc=$?'
+  stdout: "no_e\nset +o errexit\nrc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: shellopts_shopt_flag_after_operand
+  command: 'shopt extglob -s 2>/dev/null; echo rc=$?; shopt -q extglob; echo rc=$?'
+  stdout: "extglob        \toff\nrc=1\nrc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: shellopts_shopt_su_conflict
+  command: 'shopt -su extglob 2>/dev/null; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: shellopts_shopt_so_unknown_rc0_quirk
+  command: 'shopt -so nosuchopt 2>/dev/null; echo rc=$?; shopt -qo nosuchopt 2>/dev/null; echo rc=$?'
+  stdout: "rc=0\nrc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bashopts_membership_dynamic
+  command: 'case ":$BASHOPTS:" in *:extglob:*) echo pre_yes;; *) echo pre_no;; esac; shopt -s extglob; case ":$BASHOPTS:" in *:extglob:*) echo post_yes;; *) echo post_no;; esac'
+  stdout: "pre_no\npost_yes\n"
+  stderr: ""
+  exit_code: 0

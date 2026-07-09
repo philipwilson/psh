@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, List
 from ..core import ReadonlyVariableError, SpecialBuiltinUsageError, VarAttributes
 from ..core.option_registry import (
     OPTION_REGISTRY,
+    SET_O_OPTION_NAMES,
     SHORT_TO_LONG,
     OptionCategory,
 )
@@ -19,6 +20,47 @@ from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
+
+
+def apply_set_o_option(shell: 'Shell', option: str, enable: bool) -> None:
+    """Apply one VALIDATED long-option toggle with its couplings.
+
+    The single toggle engine behind ``set -o/+o NAME`` and
+    ``shopt -so/-uo NAME`` (bash keeps the two surfaces exactly equivalent).
+    ``option`` must already be a real key of ``shell.state.options``; the
+    callers own name resolution and their differing unknown-name errors.
+    """
+    # Editor modes (silent, like bash): vi/emacs couple to edit_mode.
+    if option in ('vi', 'emacs'):
+        if enable:
+            shell.state.edit_mode = option
+            shell.state.options['vi'] = (option == 'vi')
+            shell.state.options['emacs'] = (option == 'emacs')
+        elif option == 'vi':
+            shell.state.edit_mode = 'emacs'
+            shell.state.options['vi'] = False
+        else:
+            shell.state.options['emacs'] = False
+        return
+
+    # ignoreeof couples to the IGNOREEOF variable exactly like bash's
+    # set_ignoreeof(): enabling binds IGNOREEOF=10, disabling unbinds it.
+    # The variable observer (ShellState's _sync_exported_variable, playing
+    # sv_ignoreeof) keeps the option flag tracking the variable's existence,
+    # so `IGNOREEOF=n` / `unset IGNOREEOF` flip it too; the explicit
+    # assignment below covers the variable-absent direction.
+    if option == 'ignoreeof':
+        if enable:
+            shell.state.set_variable('IGNOREEOF', '10')
+        else:
+            shell.state.scope_manager.unset_variable('IGNOREEOF')
+        shell.state.options['ignoreeof'] = enable
+        return
+
+    shell.state.options[option] = enable
+    # Special handling for debug-scopes
+    if option == 'debug-scopes':
+        shell.state.scope_manager.enable_debug(enable)
 
 
 @builtin
@@ -399,40 +441,10 @@ class SetBuiltin(Builtin):
             self.error(f"{name}: invalid option name", shell)
             raise SpecialBuiltinUsageError(2, suppressible=True)
 
-        # Editor modes (silent, like bash)
-        if option in ('vi', 'emacs'):
-            if enable:
-                shell.state.edit_mode = option
-                shell.state.options['vi'] = (option == 'vi')
-                shell.state.options['emacs'] = (option == 'emacs')
-            elif option == 'vi':
-                shell.state.edit_mode = 'emacs'
-                shell.state.options['vi'] = False
-            else:
-                shell.state.options['emacs'] = False
-            return 0
-
-        # ignoreeof couples to the IGNOREEOF variable exactly like
-        # bash's set_ignoreeof(): enabling binds IGNOREEOF=10, disabling
-        # unbinds it. The variable observer (ShellState's
-        # _sync_exported_variable, playing sv_ignoreeof) keeps the
-        # option flag tracking the variable's existence, so
-        # `IGNOREEOF=n` / `unset IGNOREEOF` flip it too; the explicit
-        # assignment below covers the variable-absent direction.
-        if option == 'ignoreeof':
-            if enable:
-                shell.state.set_variable('IGNOREEOF', '10')
-            else:
-                shell.state.scope_manager.unset_variable('IGNOREEOF')
-            shell.state.options['ignoreeof'] = enable
-            return 0
-
-        # Debug options and shell options
+        # Debug options and shell options (vi/emacs/ignoreeof couplings live
+        # in the shared toggle engine, also used by `shopt -so/-uo`).
         if option in shell.state.options:
-            shell.state.options[option] = enable
-            # Special handling for debug-scopes
-            if option == 'debug-scopes':
-                shell.state.scope_manager.enable_debug(enable)
+            apply_set_o_option(shell, option, enable)
             return 0
 
         # Unknown -o/+o name: a usage error (bash: rc 2; POSIX-mode
@@ -493,24 +505,21 @@ class SetBuiltin(Builtin):
     With arguments, set positional parameters ($1, $2, etc.)."""
 
     def _show_all_options(self, shell: 'Shell'):
-        """Show all shell options with bash-compatible formatting."""
-        # Define standard POSIX/bash options to show (exclude PSH debug options for conformance)
-        standard_options = {
-            'allexport', 'braceexpand', 'emacs', 'errexit', 'errtrace', 'functrace',
-            'hashall', 'histexpand', 'history', 'ignoreeof', 'interactive-comments',
-            'keyword', 'monitor', 'noclobber', 'noexec', 'noglob', 'nolog',
-            'notify', 'nounset', 'onecmd', 'physical', 'pipefail', 'posix',
-            'privileged', 'verbose', 'vi', 'xtrace'
-        }
+        """Show all shell options with bash-compatible formatting.
 
+        The names come from the registry's SET_O_OPTION_NAMES — the SAME
+        table behind `set +o`, `shopt -o` and $SHELLOPTS (bash keeps all of
+        these identical; `diff <(set -o) <(shopt -o)` is empty). A hardcoded
+        bash-name list used to live here, exactly the parallel map the
+        option registry exists to eliminate.
+        """
         # If PSH_SHOW_ALL_OPTIONS environment variable is set, show all options including debug
         show_all = shell.state.env.get('PSH_SHOW_ALL_OPTIONS', '').lower() in ('1', 'true', 'yes')
         if show_all:
             # Show all options including PSH-specific debug options
             options_to_show = list(shell.state.options.keys())
         else:
-            # Show only standard bash-compatible options for conformance
-            options_to_show = [opt for opt in standard_options if opt in shell.state.options]
+            options_to_show = list(SET_O_OPTION_NAMES)
 
         # Show options based on mode (standard vs all); Builtin.write_line
         # handles forked-child fd semantics. emacs/vi are printed from the
@@ -529,11 +538,10 @@ class SetBuiltin(Builtin):
         """Option names emitted by bare `set +o` (the reusable form).
 
         Only `set -o`-settable on/off options qualify: the SET category with a
-        boolean value type. shopt/debug/internal names and the str-valued
-        parser-mode are excluded so `eval "$(set +o)"` round-trips cleanly.
+        boolean value type (SET_O_OPTION_NAMES). shopt/debug/internal names
+        are excluded so `eval "$(set +o)"` round-trips cleanly.
         """
-        return [name for name, spec in OPTION_REGISTRY.items()
-                if spec.category is OptionCategory.SET and spec.value_type is bool]
+        return list(SET_O_OPTION_NAMES)
 
 
 @builtin
