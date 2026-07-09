@@ -1019,14 +1019,16 @@ class ShellState:
     def apply_command_env(self, assignments: Dict[str, str]) -> None:
         """Compose a command-local temporary-environment overlay.
 
-        Used by a ``VAR=x cmd`` prefix over a builtin/external: the caller has
-        already bound each name as a shell variable (so ``$VAR`` resolves); this
-        records the LITERAL string each name contributes to *this command's*
-        process environment and materializes it (the overlay wins over the
-        exported-variable value). Paired with :meth:`restore_command_env`, this
-        replaces the previous per-name save-and-rollback of ``self.env``: env is
-        only ever written through the one materialization path (appraisal H3).
-        """
+        Used by the SEED path of a ``VAR=x cmd`` prefix (a dynamic special, an
+        array-object append, or a nameref-to-element — the cases that bind a real
+        shell variable): it records the LITERAL string each name contributes to
+        *this command's* process environment and materializes it (the overlay
+        wins over the exported-variable value, so ``RANDOM=5 cmd`` passes ``5``
+        and an array passes its element-0 view). Plain scalar prefix vars go into
+        ``ScopeManager.command_temp_env`` instead and reach the env through the
+        observer + ``find_exported_instance`` — no overlay entry. Paired with
+        :meth:`restore_command_env`; env is only ever written through the one
+        materialization path (appraisal H3)."""
         for name, value in assignments.items():
             self._env_overlay[name] = value
             self._materialize_env_name(name)

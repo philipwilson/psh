@@ -81,6 +81,20 @@ class ScopeManager:
         # readonly/export overlay — see special_registry.py (appraisal H1).
         self._special = SpecialParameterState()
 
+        # Command temporary-environment layers (bash's ``temporary_env``) for a
+        # ``VAR=x cmd`` prefix over a BUILTIN or EXTERNAL command. Unlike the
+        # function-call temp-env, which is a real ``is_temp_env`` SCOPE that
+        # enumerations traverse (bash merges a function's prefix vars into its
+        # locals), this is a SEPARATE stack that only the NAME-LOOKUP path
+        # consults (``$VAR``, ``declare -p VAR``, ``${VAR@a}``, the exported-env
+        # materialization) while whole-table ENUMERATIONS (``set`` / ``export
+        # -p`` / ``declare -p`` with no name — all of which scan ``scope_stack``)
+        # skip it, exactly like bash. A stack (not a single dict) so a nested
+        # prefix over an ``eval``'d command stays visible under the outer one
+        # (``FOO=bar eval 'BAR=baz declare -p FOO BAR'`` shows both). See
+        # CommandAssignments.apply_prefix / restore / commit.
+        self.command_temp_env: List[Dict[str, Variable]] = []
+
     def clone(self) -> 'ScopeManager':
         """Build an independent ScopeManager for a child shell (clone_for_child).
 
@@ -105,6 +119,13 @@ class ScopeManager:
             new.scope_stack.append(scope.copy())
         new._debug = self._debug
         new._special = self._special.clone()
+        # A child (subshell / command substitution) that runs UNDER a command
+        # temporary-environment must still see the prefix vars — ``FOO=bar eval
+        # 'echo $(echo $FOO)'`` prints ``bar``. Copy each layer's Variables.
+        new.command_temp_env = [
+            {name: var.copy() for name, var in layer.items()}
+            for layer in self.command_temp_env
+        ]
         return new
 
     def _notify_path_changed(self, name: str) -> None:
@@ -183,6 +204,73 @@ class ScopeManager:
             name=name, value=value, attributes=VarAttributes.EXPORT)
         self._notify_path_changed(name)
         self._notify_variable_changed(name)
+
+    # ------------------------------------------------------------------
+    # Command temporary environment (``VAR=x cmd`` over a builtin/external)
+    # ------------------------------------------------------------------
+
+    def push_command_temp_env(self) -> Dict[str, 'Variable']:
+        """Open a new command temporary-environment layer and return it.
+
+        Paired with :meth:`pop_command_temp_env` by the command dispatcher's
+        try/finally, so the stack is strictly LIFO — a nested prefix over an
+        ``eval``'d command pushes ON TOP and pops first."""
+        layer: Dict[str, Variable] = {}
+        self.command_temp_env.append(layer)
+        return layer
+
+    def pop_command_temp_env(self) -> None:
+        """Discard the innermost command temp-env layer and re-derive the
+        environment for each name it held (the exported entry reverts to the
+        shell variable underneath, or disappears — bash restores ``E=temp
+        true`` to the pre-command ``E``)."""
+        if not self.command_temp_env:
+            return
+        layer = self.command_temp_env.pop()
+        for name in layer:
+            self._notify_path_changed(name)
+            self._notify_variable_changed(name)
+
+    def set_command_temp_env_var(self, name: str, value: Any) -> None:
+        """Bind one prefix variable in the innermost command temp-env layer.
+
+        The variable is EXPORTED for the command's duration (bash places a
+        prefix assignment in the command's environment) but is NOT a shell
+        variable: it does not inherit the shadowed variable's attributes
+        (``declare -i n=5; n=abc cmd`` gives the command a plain exported
+        ``n="abc"``, not ``0``) and whole-table enumerations never list it. A
+        readonly shadowed variable blocks the assignment, exactly like any
+        prefix assignment to a readonly name. The env sync happens through the
+        variable_changed observer (this layer is the innermost exported
+        instance of the name — see :meth:`find_exported_instance`)."""
+        real = None
+        for scope in reversed(self.scope_stack):
+            if name in scope.variables:
+                real = scope.variables[name]
+                break
+        if real is not None and real.is_readonly:
+            raise ReadonlyVariableError(name)
+        self.command_temp_env[-1][name] = Variable(
+            name=name, value=value, attributes=VarAttributes.EXPORT)
+        self._notify_path_changed(name)
+        self._notify_variable_changed(name)
+
+    def _command_temp_env_lookup(self, name: str) -> Optional['Variable']:
+        """Innermost command temp-env binding of *name*, or None."""
+        for layer in reversed(self.command_temp_env):
+            var = layer.get(name)
+            if var is not None:
+                return var
+        return None
+
+    def _command_temp_env_layer_with(self, name: str) -> Optional[Dict[str, 'Variable']]:
+        """Innermost command temp-env layer holding *name*, or None. Used by the
+        write-through (plain body assignment updates the temp binding) and unset
+        (removes the temp binding, revealing the shell variable) paths."""
+        for layer in reversed(self.command_temp_env):
+            if name in layer:
+                return layer
+        return None
 
     def pop_scope(self) -> Optional[VariableScope]:
         """Remove scope on function exit."""
@@ -276,6 +364,16 @@ class ScopeManager:
         if special_var is not None:
             return special_var
 
+        # A command temporary-environment binding (``VAR=x cmd`` over a
+        # builtin/external) SHADOWS the shell variable for name lookup — this is
+        # the "lookup consults" half of bash's temporary_env. Specials never
+        # enter this layer (they take the seed path), so the special check above
+        # correctly wins first.
+        if self.command_temp_env:
+            tv = self._command_temp_env_lookup(name)
+            if tv is not None:
+                return None if tv.is_unset else tv
+
         # Search from innermost to outermost scope
         for scope in reversed(self.scope_stack):
             if name in scope.variables:
@@ -323,6 +421,14 @@ class ScopeManager:
         """
         if self._special.has_lifecycle(name):
             return self._get_special_variable(name)
+        # A command temp-env binding is shown by ``declare -p NAME`` (name
+        # lookup), matching bash's ``FOO=bar declare -p FOO`` -> ``declare -x
+        # FOO="bar"``, while the no-name enumeration (all_variables_with_attributes)
+        # skips it.
+        if self.command_temp_env:
+            tv = self._command_temp_env_lookup(name)
+            if tv is not None:
+                return tv
         for scope in reversed(self.scope_stack):
             if name in scope.variables:
                 return scope.variables[name]
@@ -366,6 +472,24 @@ class ScopeManager:
             if ('[' in name and name.endswith(']') and self._shell is not None
                     and not isinstance(value, (IndexedArray, AssociativeArray))):
                 self._shell.expansion_manager.set_var_or_array_element(name, value)
+                return
+
+        # Write-through to a command temp-env binding: a PLAIN assignment while a
+        # ``VAR=x cmd`` prefix is active updates the temporary binding (and is
+        # discarded when the command ends), not a shell variable — bash: ``G=g;
+        # G=t eval 'G=new; echo $G'`` prints ``new`` yet leaves the outer G at
+        # ``g``. ``export``/``declare -g`` (skip_temp_env / global_scope) and a
+        # ``local`` all write PAST the layer to the variable's real home.
+        if (self.command_temp_env and not global_scope and not skip_temp_env
+                and not local and not (attributes & VarAttributes.NAMEREF)):
+            layer = self._command_temp_env_layer_with(name)
+            if layer is not None:
+                prior = layer[name]
+                layer[name] = Variable(
+                    name=name, value=value,
+                    attributes=prior.attributes | attributes)
+                self._notify_path_changed(name)
+                self._notify_variable_changed(name)
                 return
 
         # Whole-variable assignment to an ACTIVE dynamic special (RANDOM/SECONDS
@@ -563,6 +687,18 @@ class ScopeManager:
         unset of the tombstone is a no-op, but the same cell seen from a
         DEEPER scope is removed outright like any outer instance.
         """
+        # ``unset`` peels a command temp-env binding first, REVEALING the shell
+        # variable underneath (bash: ``export G=g; G=t eval 'unset G; echo $G'``
+        # prints ``g`` — the temporary binding is removed, not the real G). A
+        # further unset then removes the revealed variable normally.
+        if self.command_temp_env:
+            layer = self._command_temp_env_layer_with(name)
+            if layer is not None:
+                del layer[name]
+                self._notify_path_changed(name)
+                self._notify_variable_changed(name)
+                return
+
         # A dynamic special (SECONDS/RANDOM/BASHPID/SRANDOM/EPOCH*/LINENO) loses
         # its special behavior once unset and becomes an ordinary variable
         # (bash: after `unset SECONDS`, a later `SECONDS=foo` stores the literal
@@ -791,7 +927,18 @@ class ScopeManager:
         computed value is materialised as a SNAPSHOT — the env entry is the value
         at export/change time and does not track later reads (bash). Computing it
         here is why the observer captures that snapshot.
+
+        A command temp-env binding (``VAR=x cmd``) is always exported and
+        SHADOWS the real variable's env entry for the command's duration
+        (``export E=orig; E=temp printenv E`` prints ``temp``); on teardown the
+        entry reverts to the real E. This is the only enumeration-shaped path
+        that consults the temp layer, because the command's own PROCESS
+        environment must carry the prefix var — the whole-table enumerations
+        (``export -p`` etc.) do NOT go through here.
         """
+        tv = self._command_temp_env_lookup(name)
+        if tv is not None and tv.is_exported and not tv.is_array and not tv.is_unset:
+            return tv
         if (self._special.has_lifecycle(name)
                 and (self._special.attributes_for(name) & VarAttributes.EXPORT)):
             return self._get_special_variable(name)
@@ -875,6 +1022,25 @@ class ScopeManager:
             self._special.add_attributes(name, attributes)
             self._notify_variable_changed(name)
             return
+        # A command temp-env binding named by the EXPORT / READONLY "linkage"
+        # builtins (``export``/``readonly`` and their ``declare -x``/``-r``
+        # forms) is PROMOTED to a real variable carrying the temp value plus the
+        # attribute, so it PERSISTS past the command — bash: ``V=hi export V``
+        # leaves ``declare -x V="hi"``, and the temp value WINS over any real
+        # same-name var (``export E=orig; E=temp export E`` -> E is ``temp``).
+        # The temp binding is exported already, so its EXPORT rides along
+        # (``V=hi readonly V`` -> ``declare -rx``). Only export/readonly promote:
+        # a type/format attribute alone (``V=5 declare -i V``) does NOT — bash
+        # errors ``declare: V: not found`` there, since V is not a real variable.
+        # Written past the temp layer to the variable's real home.
+        promoting = attributes & (VarAttributes.EXPORT | VarAttributes.READONLY)
+        if promoting and not global_scope and self.command_temp_env:
+            tv = self._command_temp_env_lookup(name)
+            if tv is not None:
+                self.set_variable(name, tv.value,
+                                  attributes=tv.attributes | attributes,
+                                  local=False, skip_temp_env=True)
+                return
         var = self._find_variable_for_mutation(name, global_only=global_scope)
         if var:
             # Handle mutually exclusive attributes
