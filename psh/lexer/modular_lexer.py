@@ -2,18 +2,13 @@
 
 from typing import List, Optional
 
-from .command_position import (
-    COMMAND_GROUP_OPENERS,
-    LEXER_COMMAND_POSITION_WORDS,
-    PIPELINE_PREFIX_TOKENS,
-    STATEMENT_SEPARATORS,
-)
+from .command_position import advance_lexical_state
 from .expansion_parser import ExpansionContext, ExpansionParser
 from .position import LexerConfig, Position, PositionTracker, UnclosedQuoteError
 from .quote_parser import UnifiedQuoteParser
 from .recognizers import RecognizerRegistry
 from .recognizers.word_scanners import cached_assignment_prefix_map
-from .state_context import LexerContext
+from .state_context import LexicalState
 from .token_parts import RichToken, TokenPart
 from .token_types import Token, TokenType
 from .unicode_support import is_whitespace
@@ -30,7 +25,7 @@ class ModularLexer:
     """
 
     def __init__(self, input_string: str, config: Optional[LexerConfig] = None,
-                 initial_context: Optional[LexerContext] = None):
+                 initial_context: Optional[LexicalState] = None):
         """
         Initialize the modular lexer.
 
@@ -43,7 +38,7 @@ class ModularLexer:
                 tail of a single from-scratch pass over the joined command
                 text — without re-lexing the accumulated prefix. It is used
                 as-is (and mutated during tokenization), so callers pass a
-                fresh :meth:`LexerContext.copy`; it must already carry the
+                fresh :meth:`LexicalState.copy`; it must already carry the
                 intended ``posix_mode``. When omitted a fresh context is
                 created and seeded from ``config``.
         """
@@ -58,7 +53,7 @@ class ModularLexer:
         if initial_context is not None:
             self.context = initial_context
         else:
-            self.context = LexerContext()
+            self.context = LexicalState()
             # Set posix_mode in context from config
             self.context.posix_mode = self.config.posix_mode
 
@@ -210,122 +205,16 @@ class ModularLexer:
         return full_value
 
     def _update_command_position_context(self, token_type: TokenType, token_value: str = '') -> None:
-        """Update command position tracking based on token type and value."""
-        # Whether the token we are about to classify was ITSELF read at command
-        # position. `self.context.command_position` still holds the state set by
-        # the PREVIOUS token — the same value the recognizers just consulted to
-        # tokenize this one — so it is exactly "was this word eligible as a
-        # reserved word at its own position". Reserved-word/case transitions
-        # below are gated on this: a keyword-SPELLED WORD that appears as an
-        # ordinary argument (`echo if [[ x`) is NOT at command position, so it
-        # must not restore command position or open case state and thereby flip
-        # the classification of the following token (bash prints `if [[ x`; the
-        # ungated version mis-lexed `[[` as DOUBLE_LBRACKET → parse error). This
-        # mirrors the KeywordNormalizer, which only promotes a WORD to a keyword
-        # when `command_position` holds (see keyword_normalizer.py).
-        was_command_position = self.context.command_position
+        """Advance the lexical state after emitting a token.
 
-        # Shared separator set plus structural openers. Reserved-word keywords
-        # are still WORD tokens at this stage, so they are handled by the
-        # value-based check against LEXER_COMMAND_POSITION_WORDS below (the
-        # lexer never sees keyword token TYPES here; see command_position.py
-        # for the three machines that track command position).
-        #
-        # RPAREN also returns us to command position (handled by a guarded
-        # branch below, not this set), matching the normalizer
-        # (KeywordNormalizer._next_command_position). A `)` closes a
-        # function-definition header (`f() [[ ... ]]`), a case pattern
-        # (`x) [[ ... ]] ;;`) or a subshell, and in each valid case the next
-        # token starts a command — so an operator like `[[` right after it
-        # must be recognized. Without this, `[[` after `)` lexes as a plain
-        # WORD and the parser rejects the compound body / test. The guard
-        # excludes `)` inside a `[[ ... ]]` conditional, where a `)` is part
-        # of the regex/conditional operand (e.g. the group close in
-        # `=~ ([[:alpha:]]+)[[:space:]]+([[:alpha:]]+)`) and must NOT flip to
-        # command position, or the following `[[` is mis-lexed as the
-        # DOUBLE_LBRACKET operator.
-        command_starting_tokens = (
-            STATEMENT_SEPARATORS | COMMAND_GROUP_OPENERS | PIPELINE_PREFIX_TOKENS)
-
-        neutral_tokens = {
-            TokenType.REDIRECT_IN, TokenType.REDIRECT_OUT,
-            TokenType.REDIRECT_APPEND, TokenType.HEREDOC,
-            TokenType.HEREDOC_STRIP, TokenType.HERE_STRING
-        }
-
-        # Update bracket depth for [[ and ]]
-        if token_type == TokenType.DOUBLE_LBRACKET:
-            self.context.bracket_depth += 1
-        elif token_type == TokenType.DOUBLE_RBRACKET:
-            self.context.bracket_depth -= 1
-        # Track arithmetic-paren nesting by counting *individual* parens, so a
-        # nested group balances regardless of how the lexer fuses adjacent
-        # parens. `((` opens two levels, `))` closes two, and single `(`/`)`
-        # met inside arithmetic adjust one level each. The greedy lexer fuses
-        # `((5)` into `(( 5` (DOUBLE_LPAREN) but closes it with two separate
-        # `)` — counting per paren keeps the depth balanced so the enclosing
-        # `))` returns us to depth 0 (e.g. `for ((i=0; i<((5)-1); i++))`).
-        # Without this the depth never reaches 0 and the lexer stays in
-        # arithmetic mode past the header, fusing the `do` body into one WORD.
-        elif token_type == TokenType.DOUBLE_LPAREN:
-            self.context.arithmetic_depth += 2
-        elif token_type == TokenType.DOUBLE_RPAREN:
-            self.context.arithmetic_depth = max(0, self.context.arithmetic_depth - 2)
-        elif token_type == TokenType.LPAREN and self.context.arithmetic_depth > 0:
-            self.context.arithmetic_depth += 1
-        elif token_type == TokenType.RPAREN and self.context.arithmetic_depth > 0:
-            self.context.arithmetic_depth -= 1
-
-        # Track case statement context for proper [ tokenization. Only a `case`
-        # at command position opens case state — an argument that merely spells
-        # `case` (`echo case ...`) must not (gated like the keyword branch
-        # below). The `in`/`esac`/terminator transitions that follow stay
-        # guarded by case_expecting_in / case_depth, which are only ever set
-        # here, so they are transitively gated on this same eligibility check.
-        if (token_type == TokenType.WORD and token_value == 'case'
-                and was_command_position):
-            self.context.case_depth += 1
-            self.context.case_expecting_in = True
-        elif (token_type == TokenType.WORD and token_value == 'in'
-              and self.context.case_expecting_in):
-            self.context.case_expecting_in = False
-            self.context.in_case_pattern = True
-        elif (token_type == TokenType.WORD and token_value == 'esac'
-              and self.context.case_depth > 0):
-            self.context.case_depth -= 1
-            self.context.in_case_pattern = False
-        elif (token_type == TokenType.RPAREN
-              and self.context.case_depth > 0
-              and self.context.in_case_pattern):
-            self.context.in_case_pattern = False
-        elif (token_type in {TokenType.DOUBLE_SEMICOLON,
-                             TokenType.SEMICOLON_AMP,
-                             TokenType.AMP_SEMICOLON}
-              and self.context.case_depth > 0):
-            self.context.in_case_pattern = True
-
-        if token_type in command_starting_tokens:
-            self.context.set_command_position()
-        elif (token_type == TokenType.RPAREN
-              and self.context.bracket_depth == 0):
-            # `)` returns to command position (function header / case pattern
-            # / subshell close) — but only OUTSIDE a `[[ ]]` conditional. See
-            # the command_starting_tokens comment above: inside `[[ ]]` a `)`
-            # is part of the operand and must not flip command position.
-            self.context.set_command_position()
-        elif (token_type == TokenType.WORD and
-              token_value in LEXER_COMMAND_POSITION_WORDS and
-              was_command_position):
-            # Keywords are emitted as WORD during tokenization (before
-            # KeywordNormalizer runs). Treat keyword-valued words as
-            # command-position setters so that operators like [[ are
-            # recognized correctly — but ONLY when the word was itself at
-            # command position (a genuine keyword). An identically-spelled
-            # ARGUMENT (`echo if [[ x`) falls through to reset_command_position
-            # below, so the following `[[` stays a plain word, matching bash.
-            self.context.set_command_position()
-        elif token_type not in neutral_tokens:
-            self.context.reset_command_position()
+        A thin adapter over :func:`command_position.advance_lexical_state`, the
+        ONE lexer-stage command-position / case transition function. All the
+        transition logic (bracket / arithmetic depth, the case FSM, and the
+        command-position rule) lives there; see that function's docstring for
+        why the lexer, keyword normalizer, and cmdsub scanner deliberately keep
+        SEPARATE transitions.
+        """
+        advance_lexical_state(self.context, token_type, token_value)
 
     # Main tokenization
     def tokenize(self) -> List[Token]:
@@ -441,7 +330,7 @@ class ModularLexer:
         The answer for every position is precomputed in ONE forward O(n)
         pass over the input (lazily, on first use; see
         word_scanners.build_assignment_prefix_map) and cached on the
-        LexerContext, where the literal recognizer's
+        LexicalState, where the literal recognizer's
         scan_assignment_prefix consults the same map. The pre-map
         implementation scanned BACKWARD from each query position to the
         previous command separator, which was quadratic on long commands —
