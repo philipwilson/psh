@@ -165,9 +165,14 @@ class TestExistingBehaviorUnchanged:
         text = "echo 'a \\\nb'"
         assert process_line_continuations(text) == text
 
-    def test_crlf_continuation_still_joins(self):
+    def test_crlf_is_not_a_continuation(self):
+        # bash only honors a bare backslash-newline as a continuation. A
+        # ``\<CR><LF>`` is the backslash escaping the CR (a literal CR word
+        # char) followed by a command boundary — NOT a join. On the CR-keeping
+        # stdin/-c paths this text is left verbatim so the lexer can escape the
+        # CR (the file reader's dos2unix strip removes a trailing CR earlier).
         assert (process_line_continuations("echo a \\\r\nb")
-                == "echo a b")
+                == "echo a \\\r\nb")
 
     def test_trailing_backslash_at_eof_kept(self):
         assert process_line_continuations("echo hello\\") == "echo hello\\"

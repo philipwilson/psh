@@ -51,3 +51,15 @@ class TestVerboseConformance(ConformanceTest):
 
     def test_verbose_can_be_turned_off(self):
         self.assert_identical_behavior('set -v\necho a\nset +v\necho b')
+
+    def test_verbose_trailing_continuation_into_eof_no_blank_line(self):
+        # A trailing backslash-newline continuation that runs into end of input
+        # must echo the raw line ONCE — psh used to append a spurious blank line
+        # because the buffer kept a line-continuation "reprieve" newline that the
+        # verbose print() then doubled.
+        self.assert_identical_behavior('set -v\necho a\\\n')
+
+    def test_verbose_backslash_newline_continuation_pair(self):
+        # A backslash-newline pair mid-input echoes both physical lines verbatim
+        # (with the backslash) and executes the joined command.
+        self.assert_identical_behavior('set -v\necho a\\\nb\n')

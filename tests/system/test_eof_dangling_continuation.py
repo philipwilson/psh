@@ -220,9 +220,46 @@ class TestHeredocEofBodies:
 
 
 class TestValidateMode:
-    """--validate / -n analysis sees the same per-mode text execution does."""
+    """--validate / --format analysis sees the same per-mode text execution does.
+
+    The exit code alone is a weak pin: ``echo hi \\`` validates clean whether
+    the dangling backslash is DROPPED (``echo hi``) or KEPT (``echo hi \\``), so
+    a mutation that stopped the stream-input drop would still exit 0. These
+    pins observe the drop's EFFECT through ``--format`` (which prints the parsed
+    AST back as source) and contrast it with the ``-c`` string mode that keeps
+    the backslash — so flipping the script path's ``drop_dangling_at_eof`` is
+    caught, not silently tolerated.
+    """
 
     def test_script_dangling_bs_validates_clean(self, tmp_path):
         script = write_script(tmp_path, 'echo hi \\')
         result = run_psh('--validate', script)
         assert result.returncode == 0
+
+    def test_script_dangling_bs_is_dropped_not_kept(self, tmp_path):
+        # A script file is a STREAM input: the dangling backslash at true EOF
+        # is dropped, so the analysis parses `echo hi`, not `echo hi \`. The
+        # formatted round-trip shows exactly which text the parser saw.
+        script = write_script(tmp_path, 'echo hi \\')
+        result = run_psh('--format', script)
+        assert result.returncode == 0
+        assert result.stdout == 'echo hi\n'
+        # The kept-backslash form (`echo hi \`) is what a mutation would leave;
+        # assert it is NOT present so a surviving backslash fails loudly.
+        assert '\\' not in result.stdout
+
+    def test_string_mode_dangling_bs_is_kept(self):
+        # Contrast: a `-c` string is NOT a stream input, so the dangling
+        # backslash is KEPT as a literal word character and the formatter
+        # round-trips `echo hi \`. This pins that the drop is mode-specific.
+        result = run_psh('--format', '-c', 'echo hi \\')
+        assert result.returncode == 0
+        assert result.stdout == 'echo hi \\\n'
+
+    def test_script_dangling_bs_no_space_is_dropped(self, tmp_path):
+        # No space before the backslash: still dropped on the stream path, so
+        # the word is `hi` (not `hi\`).
+        script = write_script(tmp_path, 'echo hi\\')
+        result = run_psh('--format', script)
+        assert result.returncode == 0
+        assert result.stdout == 'echo hi\n'
