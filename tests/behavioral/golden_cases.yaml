@@ -8188,3 +8188,109 @@
   stdout: ""
   stderr: "readonly variable"
   exit_code: 1
+
+# =============================================================================
+# CONTINUATION CARRY AT EOF (contcarry_*)
+# =============================================================================
+# Trailing backslash(-newline) at end of a -c string, pinned to bash 5.2
+# (probe battery tmp/contcarry/, 2026-07-09). A backslash-NEWLINE pair at
+# EOF is a continuation joined with the empty remainder in EVERY input
+# mode; a dangling backslash with NO newline is kept literal in string
+# modes (-c, eval, source) and dropped in stream modes (script file,
+# stdin — exercised by subprocess tests, not runnable via -c).
+
+- name: contcarry_bs_newline_at_eof_joins
+  command: "echo hi \\\n"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: contcarry_dangling_bs_stays_literal_in_c
+  command: "echo hi \\"
+  stdout: "hi \\\n"
+  stderr: ""
+  exit_code: 0
+
+- name: contcarry_triple_bs_newline_at_eof
+  command: "echo hi \\\\\\\n"
+  stdout: "hi \\\n"
+  stderr: ""
+  exit_code: 0
+
+- name: contcarry_double_bs_at_eof_is_escaped_bs
+  command: "echo hi \\\\\n"
+  stdout: "hi \\\n"
+  stderr: ""
+  exit_code: 0
+
+- name: contcarry_chained_dangling_joins_to_empty
+  command: "echo hi \\\n\\\n"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: contcarry_complete_cmd_then_bs_newline
+  command: "echo one\necho two \\\n"
+  stdout: "one\ntwo\n"
+  stderr: ""
+  exit_code: 0
+
+- name: contcarry_bs_newline_then_empty_lines
+  command: "echo hi \\\n\n\n"
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: contcarry_only_bs_newline_is_empty_input
+  command: "\\\n"
+  stdout: ""
+  stderr: ""
+  exit_code: 0
+
+- name: contcarry_only_bs_runs_empty_command
+  command: "\\"
+  stdout: ""
+  stderr: "command not found"
+  exit_code: 127
+
+- name: contcarry_operator_then_bs_newline_syntax_error
+  command: "echo a && \\\n"
+  stdout: ""
+  stderr: "Expected command"
+  exit_code: 2
+
+- name: contcarry_funcdef_bs_newline_at_eof_defines
+  command: "f() {\necho body\n} \\\n"
+  stdout: ""
+  stderr: ""
+  exit_code: 0
+
+- name: contcarry_heredoc_body_bs_newline_at_eof_joins
+  command: "cat <<XX\nbody \\\n"
+  stdout: "body \n"
+  stderr: "delimited by end-of-file"
+  exit_code: 0
+
+- name: contcarry_heredoc_quoted_body_keeps_bs
+  command: "cat <<'XX'\nbody \\\n"
+  stdout: "body \\\n"
+  stderr: "delimited by end-of-file"
+  exit_code: 0
+
+- name: contcarry_heredoc_eof_keeps_trailing_blank_body_lines
+  command: "cat <<XX\nbody\n\n\n"
+  stdout: "body\n\n\n"
+  stderr: "delimited by end-of-file"
+  exit_code: 0
+
+- name: contcarry_heredoc_multi_continued_body_at_eof
+  command: "cat <<XX\nb1 \\\nb2 \\\n"
+  stdout: "b1 b2 \n"
+  stderr: "delimited by end-of-file"
+  exit_code: 0
+
+- name: contcarry_comment_bs_is_not_continuation
+  command: "echo hi # c \\\necho bye\n"
+  stdout: "hi\nbye\n"
+  stderr: ""
+  exit_code: 0

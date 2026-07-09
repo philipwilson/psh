@@ -245,3 +245,56 @@ class TestHeredocMarkerScan:
     def test_apostrophe_inside_backtick_not_carried_quote(self):
         _, quote = scan_line_heredoc_markers("echo `echo don't`")
         assert quote is None
+
+
+class TestDropDanglingAtEof:
+    """The ``drop_dangling_at_eof`` flag: bash's STREAM-input rule for a
+    continuation with nothing after it (script file / stdin / /dev/fd
+    inputs drop a trailing backslash at true EOF; string inputs — -c,
+    eval, source — keep it, which is the flag's default-False behavior).
+    Probe-verified vs bash 5.2 (tmp/contcarry/, 2026-07-09)."""
+
+    def test_default_keeps_dangling_backslash(self):
+        assert process_line_continuations("echo hi \\") == "echo hi \\"
+
+    def test_drop_dangling_command_text(self):
+        assert (process_line_continuations("echo hi \\",
+                                           drop_dangling_at_eof=True)
+                == "echo hi ")
+
+    def test_drop_after_join_still_dangling(self):
+        # join 'echo hi \'+'\' -> 'echo hi \' which dangles again: drop it.
+        assert (process_line_continuations("echo hi \\\n\\",
+                                           drop_dangling_at_eof=True)
+                == "echo hi ")
+
+    def test_escaped_backslash_not_dropped(self):
+        # An even run is an escaped backslash, not a continuation.
+        assert (process_line_continuations("echo hi \\\\",
+                                           drop_dangling_at_eof=True)
+                == "echo hi \\\\")
+
+    def test_comment_backslash_not_dropped(self):
+        assert (process_line_continuations("echo hi # c \\",
+                                           drop_dangling_at_eof=True)
+                == "echo hi # c \\")
+
+    def test_single_quote_backslash_not_dropped(self):
+        assert (process_line_continuations("echo 'hi \\",
+                                           drop_dangling_at_eof=True)
+                == "echo 'hi \\")
+
+    def test_unquoted_heredoc_body_dangling_dropped(self):
+        assert (process_line_continuations("cat <<XX\nbody \\",
+                                           drop_dangling_at_eof=True)
+                == "cat <<XX\nbody ")
+
+    def test_quoted_heredoc_body_dangling_kept(self):
+        text = "cat <<'XX'\nbody \\"
+        assert (process_line_continuations(text, drop_dangling_at_eof=True)
+                == text)
+
+    def test_mid_text_joins_unaffected(self):
+        assert (process_line_continuations("echo a \\\nb\necho c",
+                                           drop_dangling_at_eof=True)
+                == "echo a b\necho c")
