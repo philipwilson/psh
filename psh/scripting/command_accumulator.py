@@ -344,10 +344,16 @@ def _ends_with_line_continuation(text: str) -> bool:
     The backslash must be the FINAL character (like bash: ``echo \\ `` is
     an escaped space, not a continuation — the old interactive heuristic
     rstripped first and wrongly prompted for more input there).
+
+    Splitting on ``\\n`` (not ``str.splitlines``, which also breaks on ``\\r``)
+    keeps a trailing ``\\<CR>`` from looking like a bare trailing backslash:
+    bash only honors ``\\<LF>`` as a continuation, so ``echo a\\<CR><LF>`` is a
+    complete command (the backslash escapes the CR), not a request for more
+    input.
     """
     if not text:
         return False
-    last_line = text.splitlines()[-1]
+    last_line = text.split('\n')[-1]
     if not last_line.endswith('\\'):
         return False
     # An odd-length run of trailing backslashes means the final one is

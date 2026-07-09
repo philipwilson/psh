@@ -153,8 +153,9 @@ class ReadBuiltin(Builtin):
                                  and options['max_chars'] is None
                                  and not options['silent']
                                  and options['timeout'] is None)
+            eof_continuation = False
             if line_continuation:
-                line, read_status = self._read_continuations(
+                line, read_status, eof_continuation = self._read_continuations(
                     line, reader, delim, read_status)
 
             # Decompose into (char, protected) pairs. Protected chars are
@@ -162,6 +163,19 @@ class ReadBuiltin(Builtin):
             # exempt from IFS splitting/trimming (bash behavior). In raw
             # mode nothing is escaped.
             chars = self._process_escapes(line, options['raw_mode'])
+
+            # When a backslash line-continuation ran into EOF (no closing
+            # delimiter), bash leaves a dangling quoting marker (CTLESC) at the
+            # end of the field. That marker is a non-IFS "character", so it
+            # blocks the last field's trailing IFS whitespace / delimiter from
+            # being stripped: `printf 'a \' | read x` yields `a ` (space kept),
+            # and `IFS=: printf 'a:b:\' | read x y` yields y=`b:`. Model it as a
+            # protected empty pseudo-char here. We deliberately do NOT reproduce
+            # bash's further bug where the bare marker leaks to the user as a raw
+            # 0x01 SOH byte (`printf '\' | read x` -> $'\001' in bash); psh emits
+            # nothing there instead.
+            if eof_continuation:
+                chars.append(('', True))
 
             # Get IFS value (default is space, tab, newline)
             ifs = shell.state.variables.get('IFS', shell.env.get('IFS', ' \t\n'))
@@ -206,7 +220,7 @@ class ReadBuiltin(Builtin):
             return 1
 
     def _read_continuations(self, line: str, reader: InputReader, delim: str,
-                            status: str) -> Tuple[str, str]:
+                            status: str) -> Tuple[str, str, bool]:
         """Honor backslash-<delimiter> line continuation (bash, non-raw).
 
         ``_read_normal`` stops at the first delimiter, so a line whose
@@ -221,16 +235,23 @@ class ReadBuiltin(Builtin):
         that ends at EOF (no closing delimiter) reports 'eof' (exit 1). The
         same ``reader`` is reused so its incremental decode state carries
         across the spliced reads.
+
+        The third return value is ``True`` when the final continuation
+        backslash ran straight into EOF (no further line to splice). bash keeps
+        a dangling quote marker in that case, which the caller reproduces so the
+        last field's trailing whitespace/delimiter survives IFS trimming.
         """
+        eof_continuation = False
         while self._has_unescaped_trailing_backslash(line):
             line = line[:-1]  # remove the continuation backslash
             nxt, status = self._read_normal(reader, delim)
             if status == 'eof' and not nxt:
+                eof_continuation = True
                 break  # EOF: nothing more to splice on
             if nxt.endswith(delim):
                 nxt = nxt[:-1]
             line += nxt
-        return line, status
+        return line, status, eof_continuation
 
     @staticmethod
     def _has_unescaped_trailing_backslash(line: str) -> bool:

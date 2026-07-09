@@ -310,8 +310,14 @@ class SourceProcessor(ScriptComponent):
 
         # Verbose mode: echo input lines as they are read
         if self.state.options.get('verbose', False):
-            # Echo the command to stderr before execution
-            print(command_string, file=sys.stderr)
+            # Echo the command to stderr before execution. ``command_string``
+            # may carry ONE trailing newline that the accumulator kept as a
+            # line-continuation "reprieve" for preprocessing (see
+            # _strip_trailing_separators): a buffer like ``echo a\<newline>``
+            # whose backslash-newline pair runs into EOF. print() supplies the
+            # line's own trailing newline, so echoing the reprieve too would add
+            # a spurious blank line — bash echoes the raw line just once.
+            print(command_string.rstrip('\n'), file=sys.stderr)
 
         # Nested execution (eval, source, trap action) runs inside an outer
         # ExecutorVisitor: control-flow exceptions (break/continue/return)
