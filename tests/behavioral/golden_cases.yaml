@@ -8436,3 +8436,34 @@
   stdout: "[a][b:]"
   stderr: ""
   exit_code: 0
+
+# Case B (contrast): a record ending in `\` followed by a NORMAL trailing
+# NEWLINE into EOF is an ORDINARY continuation — bash keeps NO dangling marker,
+# so the last field's trailing whitespace/delimiter IS stripped and `read -a`
+# produces NO spurious empty element. (This is the common `while read` shape;
+# the marker is kept ONLY at raw EOF with no newline after the backslash. Rows
+# use `printf '... \\\n'` to terminate the record with a newline before EOF.)
+
+- name: read_bseof_newline_terminated_strips_trailing_space
+  command: 'printf ''a \\\n'' | { read x; printf "[%s]" "$x"; }'
+  stdout: "[a]"
+  stderr: ""
+  exit_code: 0
+
+- name: read_bseof_newline_terminated_multivar_strips
+  command: 'printf ''a b \\\n'' | { read x y; printf "[%s][%s]" "$x" "$y"; }'
+  stdout: "[a][b]"
+  stderr: ""
+  exit_code: 0
+
+- name: read_bseof_newline_terminated_array_length_two
+  command: 'printf ''a b \\\n'' | { read -a arr; printf "<%s>" "${#arr[@]}"; }'
+  stdout: "<2>"
+  stderr: ""
+  exit_code: 0
+
+- name: read_bseof_newline_terminated_ifs_colon_strips
+  command: 'printf ''a:b:\\\n'' | { IFS=: read x y; printf "[%s][%s]" "$x" "$y"; }'
+  stdout: "[a][b]"
+  stderr: ""
+  exit_code: 0

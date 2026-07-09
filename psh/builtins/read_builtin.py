@@ -236,21 +236,33 @@ class ReadBuiltin(Builtin):
         same ``reader`` is reused so its incremental decode state carries
         across the spliced reads.
 
-        The third return value is ``True`` when the final continuation
-        backslash ran straight into EOF (no further line to splice). bash keeps
-        a dangling quote marker in that case, which the caller reproduces so the
-        last field's trailing whitespace/delimiter survives IFS trimming.
+        The third return value is ``True`` only when the trailing backslash ran
+        into RAW EOF — the record that produced it ended at end-of-input with NO
+        delimiter after the backslash (``status == 'eof'``). bash keeps a
+        dangling quote marker there, which the caller reproduces so the last
+        field's trailing whitespace/delimiter survives IFS trimming. A proper
+        ``\\<delimiter>`` continuation that consumes its delimiter and only THEN
+        hits EOF is an ordinary join with NO marker — distinguished purely by the
+        INCOMING read status ('ok'/delimiter-found vs 'eof'/raw-EOF), which is
+        why the check gates on ``status`` BEFORE reading the next record rather
+        than on the subsequent read's status (that would be 'eof' either way).
         """
         eof_continuation = False
         while self._has_unescaped_trailing_backslash(line):
             line = line[:-1]  # remove the continuation backslash
-            nxt, status = self._read_normal(reader, delim)
-            if status == 'eof' and not nxt:
+            if status == 'eof':
+                # The backslash was at raw EOF (no delimiter after it): bash
+                # leaves its dangling marker here, and there is nothing left to
+                # splice on.
                 eof_continuation = True
-                break  # EOF: nothing more to splice on
+                break
+            nxt, status = self._read_normal(reader, delim)
             if nxt.endswith(delim):
                 nxt = nxt[:-1]
             line += nxt
+            # A clean \<delimiter> continuation that then hits EOF splices an
+            # empty tail and the (now backslash-free) line ends the loop with
+            # NO marker — exactly bash's behavior for `read` over `a \<newline>`.
         return line, status, eof_continuation
 
     @staticmethod
