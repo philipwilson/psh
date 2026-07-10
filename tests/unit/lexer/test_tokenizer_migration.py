@@ -14,7 +14,10 @@ import pytest
 PSH_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(PSH_ROOT))
 
-from psh.lexer import tokenize
+# Recognizer/normalizer-level token-type characterization; assert on the
+# pre-fusion stream (the public tokenize() composites adjacent word-like tokens).
+from lexer_test_helpers import tokenize_unfused as tokenize  # noqa: E402
+
 from psh.lexer.token_types import TokenType
 
 

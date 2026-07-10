@@ -12,17 +12,18 @@ stream so the equivalence is proven before any behavior moves.
 """
 
 import pytest
+from lexer_test_helpers import tokenize_unfused
 
 from psh.ast_nodes import Word
-from psh.lexer import tokenize
 from psh.lexer.token_types import TokenType
 from psh.lexer.word_fusion import WORD_LIKE_TYPES, sub_token_to_parts
 from psh.parser.recursive_descent.support.word_builder import WordBuilder
 
 
 def _first_word_run(src):
-    """The first maximal run of adjacent word-like tokens in ``src``."""
-    toks = [t for t in tokenize(src) if t.type != TokenType.EOF]
+    """The first maximal run of adjacent word-like tokens in the PRE-fusion
+    stream (the public ``tokenize`` now fuses the run into one token)."""
+    toks = [t for t in tokenize_unfused(src) if t.type != TokenType.EOF]
     run = []
     for t in toks:
         if not run:

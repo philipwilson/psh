@@ -280,8 +280,11 @@ class TestAnsiCQuoteMetadata:
     """
 
     def _tokens(self, src):
-        from psh.lexer import tokenize
-        return [t for t in tokenize(src) if t.type.name != 'EOF']
+        # ANSI-C metadata is a RECOGNIZER property (a $'...' value lexes as its
+        # own STRING before word fusion composites it into the assignment word);
+        # assert on the pre-fusion stream.
+        from lexer_test_helpers import tokenize_unfused
+        return [t for t in tokenize_unfused(src) if t.type.name != 'EOF']
 
     def _assignment_word(self, src):
         from psh.ast_nodes import SimpleCommand

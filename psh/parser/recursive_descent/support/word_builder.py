@@ -315,6 +315,15 @@ class WordBuilder:
         ``ctx`` (the active ParserContext, when a parser drives the build)
         binds embedded substitutions to the enclosing parse.
         """
+        # A fused WORD (word_fusion) carries the whole shell word's parts —
+        # one per constituent piece, already in the right per-part quote
+        # context. Map them straight through; this is the primary path now that
+        # the lexer emits one WORD per multi-piece word. (A plain single-piece
+        # WORD has no parts and falls through to the literal branch below.)
+        if token.type == TokenType.WORD and token.parts:
+            return Word(parts=[WordBuilder.token_part_to_word_part(tp, token, ctx)
+                               for tp in token.parts])
+
         is_quoted = quote_type is not None
 
         # Check if token has decomposable parts from the lexer (RichToken)

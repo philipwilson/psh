@@ -42,7 +42,6 @@ from typing import List, Optional
 
 from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, Word
 from ....lexer.token_types import Token, TokenType
-from ..helpers import TokenGroups
 from .base import ParserSubcomponent
 
 
@@ -68,6 +67,12 @@ class AssignmentCandidate:
     inline_tail: str = ""
     #: How many leading tokens the head occupies (name [+ operator]).
     head_token_count: int = 1
+    #: Char length of the ``name[subscript]operator`` prefix within the head
+    #: token's leading literal part — where the value begins. Word fusion now
+    #: merges an element's ``name[i]=`` head and its ``$x``/``"q"`` value into
+    #: ONE WORD, so the value is recovered by dropping this many chars from the
+    #: fused word's first (literal) part; see ``_element_value_from_head``.
+    head_len: int = 0
 
 
 class ArrayParser(ParserSubcomponent):
@@ -121,7 +126,8 @@ class ArrayParser(ParserSubcomponent):
             return None
         close_bracket_pos = value.index(']')
         subscript = value[bracket_pos + 1:close_bracket_pos]
-        tail = value[equals_pos + (2 if is_append else 1):]
+        head_len = equals_pos + (2 if is_append else 1)
+        tail = value[head_len:]
         return AssignmentCandidate(
             name=value[:bracket_pos],
             operator='+=' if is_append else '=',
@@ -130,6 +136,7 @@ class ArrayParser(ParserSubcomponent):
             subscript=subscript,
             inline_tail=tail,
             head_token_count=1,
+            head_len=head_len,
         )
 
     def _candidate_split_element(self, value: str) -> Optional[AssignmentCandidate]:
@@ -220,6 +227,7 @@ class ArrayParser(ParserSubcomponent):
             raise self.parser.error("Expected array assignment")
 
         # Consume the head tokens (name [+ separate operator]).
+        head_token = self.parser.peek()
         self.parser.advance()  # name (or name-with-subscript) token
         if candidate.head_token_count == 2 and not candidate.is_element:
             self.parser.advance()  # separate '=' / '+=' before '('
@@ -228,31 +236,20 @@ class ArrayParser(ParserSubcomponent):
             return self._parse_array_initialization(
                 candidate.name, is_append=(candidate.operator == '+='))
 
-        return self._parse_element(candidate)
+        return self._parse_element(candidate, head_token)
 
-    def _parse_element(self, candidate: AssignmentCandidate) -> ArrayElementAssignment:
+    def _parse_element(self, candidate: AssignmentCandidate,
+                       head_token: Token) -> ArrayElementAssignment:
         """Parse an element assignment from a normalized candidate.
 
-        Covers the single-token (``a[i]=v``) and split (``a[i]`` + ``=v``)
-        shapes; the name+subscript token has already been consumed.
+        The element's ``name[subscript]operator`` head and its value are one
+        (possibly word-fused) WORD; the value is recovered from that token's
+        parts, dropping the head prefix (``candidate.head_len`` chars).
         """
         is_append = candidate.operator == '+='
 
-        if candidate.head_token_count == 2:
-            # Split shape: the operator token follows. It may carry a tail
-            # value (e.g. "=v") or be a bare "="/"+=" with the value in
-            # adjacent continuation tokens.
-            op_token = self.parser.advance()
-            if op_token.value in ('=', '+='):
-                if not self.parser.match_any(TokenGroups.WORD_LIKE):
-                    raise self.parser.error("Expected value after '='")
-                tail = ''
-            else:
-                tail = op_token.value[2:] if is_append else op_token.value[1:]
-        else:
-            tail = candidate.inline_tail
-
-        value, value_word = self._parse_element_value(tail)
+        value, value_word = self._element_value_from_head(
+            head_token, candidate.head_len)
         subscript = candidate.subscript if candidate.subscript is not None else ''
         return ArrayElementAssignment(
             name=candidate.name,
@@ -262,36 +259,37 @@ class ArrayParser(ParserSubcomponent):
             value_word=value_word,
         )
 
-    def _parse_element_value(self, tail: str) -> tuple:
-        """Parse an element-assignment value into (value, word).
+    def _element_value_from_head(self, head_token: Token,
+                                 head_len: int) -> tuple:
+        """Extract an element assignment's (value_string, value_Word).
 
-        ``tail`` is literal value text that followed ``=``/``+=`` inside the
-        same token as the array name. The lexer splits expansions and quoted
-        segments into *adjacent* tokens (``a[0]=pre$x"y"`` arrives as
-        WORD ``a[0]=pre`` + VARIABLE ``x`` + STRING ``y``), which are merged
-        here into a single value Word with per-part quote context.
+        Word fusion merges the element's ``name[i]=`` head and its value (a
+        literal ``v``, an expansion ``$x``, a quoted ``"q"``, or any
+        concatenation) into ONE WORD. The value is the whole word MINUS the
+        ``name[subscript]operator`` prefix: drop ``head_len`` chars from the
+        leading literal part, keep any remainder plus the following parts. This
+        works for a plain literal head (``a[i]=v`` — one literal part, the value
+        is its tail) and a fused head (``a[0]=pre$x"y"`` — the head prefix and
+        ``pre`` share the first literal part; ``$x`` and ``"y"`` follow). A
+        space before the value (``a[i]= v``) is a separate command, never fused,
+        so the value is correctly empty here.
         """
-        from ....ast_nodes import LiteralPart, WordPart
-        # A continuation word is part of the value only when lexically ADJACENT
-        # to the assignment head — for BOTH a non-empty inline tail
-        # (`a[0]=pre$x`) and an empty one (`a[0]=`). A space breaks it:
-        # `a[0]= v` is an empty assignment plus the separate command `v`, so the
-        # value is Word(parts=[]) and the following word is NOT consumed
-        # (finding 5c). (Previously an empty tail consumed any following word.)
-        has_continuation = (
-            self.parser.match_any(TokenGroups.WORD_LIKE)
-            and self.parser.peek().adjacent_to_previous)
-        if tail:
-            parts: List[WordPart] = [LiteralPart(tail)]
-            if has_continuation:
-                parts.extend(self.parser.commands.parse_argument_as_word().parts)
-            word = Word(parts=parts)
-        elif has_continuation:
-            word = self.parser.commands.parse_argument_as_word()
-        else:
-            word = Word(parts=[])
-        value = word.display_text()
-        return value, word
+        from ....ast_nodes import LiteralPart
+        from ..support.word_builder import WordBuilder
+        full = WordBuilder.build_word_from_token(head_token, ctx=self.parser.ctx)
+        parts = list(full.parts)
+        value_parts: List = []
+        if parts:
+            first = parts[0]
+            # name[subscript]operator lives in the leading literal part.
+            remainder = getattr(first, 'text', '')[head_len:]
+            if remainder:
+                value_parts.append(LiteralPart(
+                    remainder, quoted=getattr(first, 'quoted', False),
+                    quote_char=getattr(first, 'quote_char', None)))
+            value_parts.extend(parts[1:])
+        word = Word(parts=value_parts)
+        return word.display_text(), word
 
     def _parse_array_initialization(self, name: str, is_append: bool = False) -> ArrayInitialization:
         """Parse array initialization: name=(elements)

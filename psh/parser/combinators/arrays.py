@@ -171,6 +171,12 @@ class ArrayParsers:
         head = tokens[pos]
         pos += 1
         value = head.value
+        # A word-fused element head (`a[i]=$x`, `a[0]="q"`) carries its value in
+        # this token's parts; recover it from there (see _element_value_from_parts).
+        # An un-fused stream (hand-built combinator test tokens) keeps the value
+        # in adjacent tokens, collected by _collect_element_value.
+        use_parts = False
+        head_len = 0
 
         if '[' in value and ']' in value:
             lbracket_pos = value.index('[')
@@ -181,7 +187,9 @@ class ArrayParsers:
             if '=' in value:
                 is_append = '+=' in value
                 equals_pos = value.index('+=') if is_append else value.index('=')
-                tail = value[equals_pos + (2 if is_append else 1):]
+                head_len = equals_pos + (2 if is_append else 1)
+                tail = value[head_len:]
+                use_parts = bool(head.parts)
             else:
                 if pos >= len(tokens) or tokens[pos].type.name != 'WORD':
                     return ParseResult(success=False, error="Expected '=' after array index", position=pos)
@@ -212,7 +220,10 @@ class ArrayParsers:
             pos += 1
             tail = ''
 
-        value_word, value_text, pos = self._collect_element_value(tokens, pos, tail)
+        if use_parts:
+            value_word, value_text = self._element_value_from_parts(head, head_len)
+        else:
+            value_word, value_text, pos = self._collect_element_value(tokens, pos, tail)
         return ParseResult(
             success=True,
             value=ArrayElementAssignment(
@@ -224,6 +235,29 @@ class ArrayParsers:
             ),
             position=pos,
         )
+
+    @staticmethod
+    def _element_value_from_parts(head: Token, head_len: int):
+        """Value (Word, text) of a word-fused element head, dropping the
+        ``name[subscript]operator`` prefix (``head_len`` chars) from its parts.
+
+        Mirrors the recursive-descent ``_element_value_from_head``: the head
+        prefix and any leading literal value share the first part; expansion /
+        quoted value pieces follow.
+        """
+        full = WordBuilder.build_word_from_token(head)
+        parts = list(full.parts)
+        value_parts: List[WordPart] = []
+        if parts:
+            first = parts[0]
+            remainder = getattr(first, 'text', '')[head_len:]
+            if remainder:
+                value_parts.append(LiteralPart(
+                    remainder, quoted=getattr(first, 'quoted', False),
+                    quote_char=getattr(first, 'quote_char', None)))
+            value_parts.extend(parts[1:])
+        word = Word(parts=value_parts)
+        return word, ''.join(str(part) for part in value_parts)
 
     def _collect_element_value(self, tokens: List[Token], pos: int, tail: str):
         """Collect literal tail plus adjacent value tokens into a Word."""

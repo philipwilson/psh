@@ -100,7 +100,12 @@ class TestSameStreamDefinitionOverlay:
         toks = [t for t in tokenize("alias ll='echo LL'; ll")
                 if t.type != TokenType.EOF]
         out = ' '.join(t.value for t in am.expand_aliases(toks))
-        assert out == "alias ll= echo LL ; echo LL"
+        # Word fusion merges the definition `ll='echo LL'` into one WORD (its
+        # value keeps the source quotes), but the overlay reads the quote-
+        # PROCESSED value from the parts, so the later `ll` still expands to the
+        # two words `echo LL` (verified end-to-end: `alias ll='echo LL'; ll`
+        # prints `LL`).
+        assert out == "alias ll='echo LL' ; echo LL"
 
     def test_unalias_in_stream_removes_overlay(self):
         am = AliasManager()

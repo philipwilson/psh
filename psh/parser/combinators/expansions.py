@@ -92,6 +92,14 @@ class ExpansionParsers:
         qt = getattr(token, 'quote_type', None)
         is_quoted = qt is not None and qt != 'mixed'
 
+        # A fused WORD (word_fusion) carries the whole shell word's parts, one
+        # per constituent piece — map them straight through. Primary path now
+        # that the lexer emits one WORD per multi-piece word. (A plain WORD has
+        # no parts and falls through to the literal branch below.)
+        if token.type.name == 'WORD' and token.parts:
+            return Word(parts=[WordBuilder.token_part_to_word_part(tp)
+                               for tp in token.parts])
+
         # Check for decomposable parts from the lexer (RichToken with expansions)
         if WordBuilder.has_decomposable_parts(token):
             # Parts carry per-part quote context; Word.quote_type is derived.

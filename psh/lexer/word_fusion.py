@@ -117,3 +117,78 @@ def sub_token_to_parts(token: Token) -> List[TokenPart]:
 
     # Plain WORD, bare '[' / ']', or any other value carried verbatim.
     return [TokenPart(value=value)]
+
+
+def _fuse_run(run: List[Token], source: str) -> Token:
+    """Fuse a run (len>=2) of adjacent word-like tokens into one WORD token.
+
+    The fused token's ``value`` is the source lexeme it spans (a Phase-C span
+    payoff — it round-trips ``source[position:end_position]``, unlike the
+    per-sub-token values which drop quotes/``$``); its ``parts`` concatenate
+    each sub-token's contribution. Operator-token fields (``fd``/``var_fd``/
+    ``combined_redirect``/``heredoc_key``/``array_init``) are never carried by a
+    word run, so they stay at their defaults.
+    """
+    start = run[0].position
+    end = run[-1].end_position
+    parts: List[TokenPart] = []
+    for tok in run:
+        parts.extend(sub_token_to_parts(tok))
+    return Token(
+        type=TokenType.WORD,
+        value=source[start:end],
+        position=start,
+        end_position=end,
+        quote_type=None,
+        line=run[0].line,
+        column=run[0].column,
+        adjacent_to_previous=run[0].adjacent_to_previous,
+        is_keyword=False,
+        parts=parts,
+    )
+
+
+def fuse_words(tokens: List[Token], source: str) -> List[Token]:
+    """Collapse each maximal run of adjacent word-like tokens into one WORD.
+
+    This is the lexer-stage relocation of the parser's ``peek_composite_sequence``:
+    a maximal run of word-like tokens (:data:`WORD_LIKE_TYPES`) where every token
+    after the first is ``adjacent_to_previous`` becomes a single WORD carrying
+    the run's parts, so the parser sees one token per shell word.
+
+    Runs of length 1 are left untouched — a standalone ``STRING`` / ``VARIABLE`` /
+    ``COMMAND_SUB`` / bare ``[`` keeps its kind (the parser's single-token word
+    build handles those unchanged). Fusion is SUPPRESSED inside ``(( ... ))`` and
+    C-style ``for (( ; ; ))`` headers (tracked by ``DOUBLE_LPAREN`` /
+    ``DOUBLE_RPAREN`` depth): those interiors are consumed by
+    ``collect_arithmetic_expression``, never composited, so fusing there would
+    change the reconstructed arithmetic expression (e.g. ``(( a["x"] ))``).
+    """
+    result: List[Token] = []
+    i = 0
+    n = len(tokens)
+    arith_depth = 0
+    while i < n:
+        tok = tokens[i]
+        if tok.type == TokenType.DOUBLE_LPAREN:
+            arith_depth += 1
+            result.append(tok)
+            i += 1
+            continue
+        if tok.type == TokenType.DOUBLE_RPAREN:
+            arith_depth = max(0, arith_depth - 1)
+            result.append(tok)
+            i += 1
+            continue
+        if arith_depth == 0 and tok.type in WORD_LIKE_TYPES:
+            j = i + 1
+            while (j < n and tokens[j].type in WORD_LIKE_TYPES
+                   and tokens[j].adjacent_to_previous):
+                j += 1
+            if j - i >= 2:
+                result.append(_fuse_run(tokens[i:j], source))
+                i = j
+                continue
+        result.append(tok)
+        i += 1
+    return result

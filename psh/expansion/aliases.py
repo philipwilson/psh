@@ -161,6 +161,24 @@ class AliasManager:
                         if t.type != TokenType.EOF]
         return self.expand_aliases(alias_tokens, effective, shell_options)
 
+    @staticmethod
+    def _alias_value_from_parts(tok: Token) -> str:
+        """Quote-processed value of a word-fused ``name=value`` definition.
+
+        The fused WORD's first part is the literal ``name=`` head; the value is
+        the head part's text after the ``=`` plus the values of the following
+        parts (a quoted part's value is already quote-stripped, an expansion
+        part's value is its source name/text — matching what the pre-fusion
+        separate value token exposed).
+        """
+        parts = tok.parts
+        first = parts[0].value
+        eq = first.find('=')
+        value = first[eq + 1:] if eq != -1 else ''
+        for part in parts[1:]:
+            value += part.value
+        return value
+
     def _absorb_alias_command(self, tokens: List[Token], start: int,
                               effective: Dict[str, str]) -> int:
         """Apply a same-stream ``alias``/``unalias`` command to ``effective``.
@@ -193,16 +211,26 @@ class AliasManager:
                 continue
 
             # alias definition forms:
-            #   WORD 'name=value'            (inline, possibly empty value)
-            #   WORD 'name='  + STRING/WORD  (quoted value in the next token)
+            #   WORD 'name=value'                 (plain literal, one token)
+            #   WORD 'name=<quoted/expansion>'    (word-fused: value in parts)
+            #   WORD 'name=' + STRING/WORD         (spaced value, separate token)
             if '=' in name:
                 key, _, inline_val = name.partition('=')
                 if not key:
                     i += 1
                     continue
-                if inline_val == '' and i + 1 < n and \
+                if tok.parts:
+                    # Word fusion merged `name=` with a quoted/expansion value
+                    # (`ll='echo LL'`, `x=$y`) into this one WORD. The raw token
+                    # value keeps the quotes; the parts carry the quote-PROCESSED
+                    # value the old separate value token exposed — reconstruct
+                    # from those (concatenate the part values after the '=').
+                    effective[key] = self._alias_value_from_parts(tok)
+                    i += 1
+                elif inline_val == '' and i + 1 < n and \
                         tokens[i + 1].type in (TokenType.STRING, TokenType.WORD):
-                    # `name=` followed by the value token (quoted value).
+                    # `name=` followed by a NON-adjacent value token (a space
+                    # kept them unfused, e.g. `alias x= y`).
                     effective[key] = tokens[i + 1].value
                     i += 2
                 else:
