@@ -5,7 +5,7 @@ represent expansions within command arguments.
 """
 
 import re
-from typing import List, Optional
+from typing import Optional
 
 from ....ast_nodes import (
     ArithmeticExpansion,
@@ -33,7 +33,6 @@ _SPECIAL_VAR_RE = re.compile(r'^[0-9$?!@*#-]$')
 EXPANSION_TYPES = frozenset({
     TokenType.VARIABLE, TokenType.COMMAND_SUB,
     TokenType.COMMAND_SUB_BACKTICK, TokenType.ARITH_EXPANSION,
-    TokenType.PARAM_EXPANSION,
     TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT,
 })
 
@@ -138,10 +137,6 @@ class WordBuilder:
         elif token_type == TokenType.ARITH_EXPANSION:
             # Arithmetic expansion $((...))
             return ArithmeticExpansion(strip_arithmetic(value))
-
-        elif token_type == TokenType.PARAM_EXPANSION:
-            # Complex parameter expansion ${var:-default} etc.
-            return WordBuilder._parse_parameter_expansion(value)
 
         elif token_type in (TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT):
             # Process substitution <(cmd) or >(cmd) — may stand alone as a
@@ -296,10 +291,9 @@ class WordBuilder:
         Public (with token_part_to_word_part) so the combinator parser can build
         the same Word AST without reaching into private helpers.
 
-        Returns True when the token is a RichToken (or at least has a
-        non-empty ``parts`` list) whose parts contain expansion information
-        that the WordBuilder should decompose rather than treating the token
-        value as a single opaque literal.
+        Returns True when the token has a non-empty ``parts`` list whose parts
+        contain expansion information that the WordBuilder should decompose
+        rather than treating the token value as a single opaque literal.
         """
         parts = getattr(token, 'parts', None)
         if not parts:
@@ -326,7 +320,7 @@ class WordBuilder:
 
         is_quoted = quote_type is not None
 
-        # Check if token has decomposable parts from the lexer (RichToken)
+        # Check if token has decomposable parts from the lexer
         if WordBuilder.has_decomposable_parts(token) and quote_type == '"':
             # Decompose double-quoted string using lexer's TokenPart data.
             # The parts carry the per-part quote context; the whole-word
@@ -344,33 +338,3 @@ class WordBuilder:
         else:
             # This is a literal token. The part carries the quote context.
             return Word(parts=[LiteralPart(token.value, quoted=is_quoted, quote_char=quote_type)])
-
-    @staticmethod
-    def build_composite_word(tokens: List[Token], quote_type: Optional[str] = None,
-                             ctx=None) -> Word:
-        """Build a Word from multiple tokens (for composite words).
-
-        Each part carries its own quote context derived from the token's
-        quote_type.  Composites don't have a single quote_type — each
-        part carries its own. ``ctx`` binds embedded substitutions to the
-        enclosing parse.
-        """
-        parts: List[WordPart] = []
-
-        for token in tokens:
-            qt = getattr(token, 'quote_type', None)
-
-            # Check if this STRING token has decomposable parts
-            if WordBuilder.has_decomposable_parts(token) and qt == '"':
-                # Flatten decomposed parts into composite
-                for tp in (token.parts or []):
-                    parts.append(WordBuilder.token_part_to_word_part(tp, token, ctx))
-            elif token.type in EXPANSION_TYPES:
-                is_quoted = qt is not None
-                expansion = WordBuilder.parse_expansion_token(token, ctx)
-                parts.append(ExpansionPart(expansion, quoted=is_quoted, quote_char=qt))
-            else:
-                is_quoted = qt is not None
-                parts.append(LiteralPart(token.value, quoted=is_quoted, quote_char=qt))
-
-        return Word(parts=parts)

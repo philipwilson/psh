@@ -150,52 +150,6 @@ class TokenStream:
 
         return tokens
 
-    def peek_composite_sequence(self) -> Optional[List[Token]]:
-        """Look ahead for adjacent tokens forming a composite argument.
-
-        Returns:
-            List of adjacent tokens that form a composite, or None if
-            current token is not part of a composite
-        """
-        if self.at_end():
-            return None
-
-        # Word-like tokens that can form composites
-        WORD_LIKE = {
-            TokenType.WORD, TokenType.STRING, TokenType.VARIABLE,
-            TokenType.COMMAND_SUB, TokenType.COMMAND_SUB_BACKTICK,
-            TokenType.ARITH_EXPANSION, TokenType.PARAM_EXPANSION,
-            TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT,
-            TokenType.LBRACKET, TokenType.RBRACKET
-        }
-
-        first_token = self.peek()
-        if not first_token or first_token.type not in WORD_LIKE:
-            return None
-
-        composite = [first_token]
-
-        # Look ahead for adjacent tokens
-        offset = 1
-        while True:
-            next_token = self.peek(offset)
-            if not next_token:
-                break
-
-            # Check if adjacent (using first-class field set by lexer)
-            if not next_token.adjacent_to_previous:
-                break
-
-            # Check if word-like
-            if next_token.type not in WORD_LIKE:
-                break
-
-            composite.append(next_token)
-            offset += 1
-
-        # Only return if we found a composite (more than one token)
-        return composite if len(composite) > 1 else None
-
     def save_position(self) -> int:
         """Save current position for later restoration."""
         return self.pos

@@ -43,14 +43,14 @@ class FunctionParser(ParserSubcomponent):
         """
         if not self.parser.match(*self.NAME_TOKENS):
             return None
-        from ....lexer.token_stream import TokenStream
-        stream = TokenStream(self.parser.tokens, self.parser.current)
-        composite = stream.peek_composite_sequence()
-        if composite:
-            if not all(t.type in self.NAME_TOKENS for t in composite):
-                return None
-            return ''.join(t.value for t in composite), len(composite)
-        return self.parser.peek().value, 1
+        # Word fusion already merged an adjacent name run (``foo``, ``[foo]``)
+        # into this one WORD. A name with an expansion or quoted piece
+        # (``foo$x``, ``foo"bar"``) carries those as parts — reject it (psh does
+        # not expand function names; bash errors on them at execution time).
+        token = self.parser.peek()
+        if any(p.is_expansion or p.quote_type is not None for p in token.parts):
+            return None
+        return token.value, 1
 
     def is_function_def(self) -> bool:
         """Check if current position starts a function definition."""

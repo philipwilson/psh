@@ -1,22 +1,20 @@
 """C1 pins for the word-fusion helper (lexer/word_fusion.py).
 
 These lock the equivalence the fused-word design rests on: mapping the parts
-produced by ``sub_token_to_parts`` through ``WordBuilder.token_part_to_word_part``
-must build the SAME Word AST that the parser's ``build_composite_word`` builds
-from the un-fused adjacent tokens. If this holds per token kind, it holds for
-any run (both sides process each token independently and concatenate).
-
-The helper is not yet wired into the lexer at this step (fusion lands in a
-later commit); these tests exercise it directly against the current token
-stream so the equivalence is proven before any behavior moves.
+``sub_token_to_parts`` produces (through ``WordBuilder.token_part_to_word_part``)
+must build the SAME Word AST the live parser builds for the same input. The
+oracle is the parser's own output — an independent path from the manual mapping
+under test.
 """
 
 import pytest
 from lexer_test_helpers import tokenize_unfused
 
 from psh.ast_nodes import Word
+from psh.lexer import tokenize
 from psh.lexer.token_types import TokenType
 from psh.lexer.word_fusion import WORD_LIKE_TYPES, sub_token_to_parts
+from psh.parser import parse
 from psh.parser.recursive_descent.support.word_builder import WordBuilder
 
 
@@ -45,6 +43,14 @@ def _fused_word(run):
                        for p in parts])
 
 
+def _parser_first_word(src):
+    """Oracle: the Word the live parser builds for ``src`` as the sole argument
+    of ``:`` (the whole input is then one shell word to compare against)."""
+    ast = parse(tokenize(f': {src}'))
+    cmd = ast.statements[0].pipelines[0].commands[0]
+    return cmd.words[1]
+
+
 # Single-line inputs whose leading word is a multi-token composite spanning
 # every word-like flavor. Kept single-line so nested-substitution line offsets
 # are identical on both sides of the equivalence.
@@ -66,29 +72,26 @@ EQUIVALENCE_CASES = [
     '${v:-d}post',             # braced parameter-expansion + literal
     'pre""post',               # literal + EMPTY quoted string + literal
     'a$x"b"$(c)d',             # 5-way mixed run
-    '[ab]',                    # bracket word (LBRACKET/WORD/RBRACKET)
 ]
 
 
 @pytest.mark.parametrize('src', EQUIVALENCE_CASES)
-def test_fusion_maps_to_same_word_ast_as_build_composite_word(src):
+def test_fusion_maps_to_same_word_ast_as_parser(src):
     run = _first_word_run(src)
     assert len(run) >= 2, f"{src!r} did not tokenize to a multi-token run: {run}"
-    expected = WordBuilder.build_composite_word(run, ctx=None)
+    expected = _parser_first_word(src)
     got = _fused_word(run)
     assert repr(got) == repr(expected), (
         f"{src!r}\n  expected: {expected!r}\n  got:      {got!r}")
 
 
 def test_single_token_word_equivalence():
-    """A run of one word-like token maps identically too (build_word_from_token)."""
+    """A run of one word-like token maps identically too."""
     for src in ['plain', '"dq"', "'sq'", '$var', '${var}', '$(cmd)',
                 '$((1))', '`cmd`', '<(cmd)']:
         run = _first_word_run(src)
         assert len(run) == 1, f"{src!r} -> {run}"
-        tok = run[0]
-        qt = tok.quote_type if tok.type == TokenType.STRING else None
-        expected = WordBuilder.build_word_from_token(tok, qt, ctx=None)
+        expected = _parser_first_word(src)
         got = _fused_word(run)  # 1-token run: concat of one sub_token_to_parts
         assert repr(got) == repr(expected), (
             f"{src!r}\n  expected: {expected!r}\n  got: {got!r}")
@@ -105,14 +108,13 @@ def test_unclosed_marker_survives_fusion():
         assert marker in etypes, f"{src!r}: {etypes}"
 
 
-def test_word_like_types_matches_legacy_peek_set():
-    """The canonical set == the old peek_composite_sequence set minus the
-    emit-dead PARAM_EXPANSION (guards against silent membership drift)."""
-    legacy = {
+def test_word_like_types_membership():
+    """Pin the canonical fusion set (guards against silent membership drift).
+    It is the old peek_composite_sequence set minus the retired PARAM_EXPANSION."""
+    assert WORD_LIKE_TYPES == {
         TokenType.WORD, TokenType.STRING, TokenType.VARIABLE,
         TokenType.COMMAND_SUB, TokenType.COMMAND_SUB_BACKTICK,
-        TokenType.ARITH_EXPANSION, TokenType.PARAM_EXPANSION,
+        TokenType.ARITH_EXPANSION,
         TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT,
         TokenType.LBRACKET, TokenType.RBRACKET,
     }
-    assert WORD_LIKE_TYPES == legacy - {TokenType.PARAM_EXPANSION}

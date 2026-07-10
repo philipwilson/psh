@@ -56,7 +56,6 @@ from .expansions import (
     create_expansion_parsers,
     parse_arithmetic_expansion,
     parse_command_substitution,
-    parse_parameter_expansion,
     parse_process_substitution,
     # Convenience functions
     parse_variable_expansion,
@@ -111,7 +110,6 @@ __all__ = [
     'parse_variable_expansion',
     'parse_command_substitution',
     'parse_arithmetic_expansion',
-    'parse_parameter_expansion',
     'parse_process_substitution',
     # Command parsers
     'CommandParsers',

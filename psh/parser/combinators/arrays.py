@@ -10,7 +10,6 @@ from ...ast_nodes import (
     Word,
     WordPart,
 )
-from ...lexer.token_stream import TokenStream
 from ...lexer.token_types import Token, TokenType
 from ..recursive_descent.support.word_builder import WordBuilder
 from .core import ParseResult
@@ -18,7 +17,7 @@ from .diagnostics import raise_committed_error
 from .tokens import TokenParsers
 
 _WORD_LIKE_TYPES = frozenset({
-    'WORD', 'STRING', 'VARIABLE', 'PARAM_EXPANSION', 'COMMAND_SUB',
+    'WORD', 'STRING', 'VARIABLE', 'COMMAND_SUB',
     'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION', 'PROCESS_SUB_IN', 'PROCESS_SUB_OUT',
 })
 
@@ -29,16 +28,12 @@ class ArrayParsers:
         self.tokens = token_parsers
 
     def parse_word_as_word(self, tokens: List[Token], pos: int) -> ParseResult:
-        """Parse one word-like shell word, including adjacent composite parts."""
-        stream = TokenStream(tokens, pos)
-        composite = stream.peek_composite_sequence()
-        if composite:
-            return ParseResult(
-                success=True,
-                value=WordBuilder.build_composite_word(composite),
-                position=pos + len(composite),
-            )
+        """Parse one word-like shell word.
 
+        Word fusion emits one WORD per shell word (carrying its parts), so this
+        consumes a single token; an un-fused hand-built stream is handled one
+        token at a time by the callers' adjacency loops.
+        """
         token_result = self.tokens.word_like.parse(tokens, pos)
         if not token_result.success:
             return ParseResult(success=False, error=token_result.error, position=pos)

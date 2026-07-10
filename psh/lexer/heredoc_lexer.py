@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 _DELIMITER_PART_TYPES = frozenset({
     TokenType.WORD, TokenType.STRING, TokenType.VARIABLE,
     TokenType.COMMAND_SUB, TokenType.COMMAND_SUB_BACKTICK,
-    TokenType.ARITH_EXPANSION, TokenType.PARAM_EXPANSION,
+    TokenType.ARITH_EXPANSION,
 })
 
 

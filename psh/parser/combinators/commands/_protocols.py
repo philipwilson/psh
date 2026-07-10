@@ -76,11 +76,6 @@ class CommandParsersProtocol(Protocol):
     @staticmethod
     def _parse_fd_dup_word(tok: "Token") -> Optional["Redirect"]: ...
 
-    @staticmethod
-    def _group_adjacent_tokens(
-        word_tokens: List["Token"],
-    ) -> List[List["Token"]]: ...
-
     def _build_simple_command(
         self,
         word_tokens: List["Token"],

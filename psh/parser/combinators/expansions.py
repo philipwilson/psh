@@ -40,9 +40,9 @@ class ExpansionParsers:
 
     def _initialize_parsers(self):
         """Initialize all expansion parsers."""
-        # Token parsers for different expansion types
+        # Token parsers for different expansion types. (PARAM_EXPANSION was
+        # retired with WordToken — the lexer emits VARIABLE for all ${...}.)
         self.variable = token('VARIABLE')
-        self.param_expansion = token('PARAM_EXPANSION')
         self.command_sub = token('COMMAND_SUB')
         self.command_sub_backtick = token('COMMAND_SUB_BACKTICK')
         self.arith_expansion = token('ARITH_EXPANSION')
@@ -52,7 +52,6 @@ class ExpansionParsers:
         # Combined expansion parser
         self.expansion = (
             self.variable
-            .or_else(self.param_expansion)
             .or_else(self.command_sub)
             .or_else(self.command_sub_backtick)
             .or_else(self.arith_expansion)
@@ -73,7 +72,7 @@ class ExpansionParsers:
             # Variables need the $ prefix
             return f"${token.value}"
         elif token.type.name in ['COMMAND_SUB', 'COMMAND_SUB_BACKTICK',
-                                 'ARITH_EXPANSION', 'PARAM_EXPANSION']:
+                                 'ARITH_EXPANSION']:
             # These already include their delimiters
             return token.value
         else:
@@ -100,7 +99,7 @@ class ExpansionParsers:
             return Word(parts=[WordBuilder.token_part_to_word_part(tp)
                                for tp in token.parts])
 
-        # Check for decomposable parts from the lexer (RichToken with expansions)
+        # Check for decomposable parts from the lexer (a token with expansion parts)
         if WordBuilder.has_decomposable_parts(token):
             # Parts carry per-part quote context; Word.quote_type is derived.
             word_parts = [WordBuilder.token_part_to_word_part(tp)
@@ -128,11 +127,6 @@ class ExpansionParsers:
         elif token.type.name == 'ARITH_EXPANSION':
             # Arithmetic expansion $((...))
             expansion = ArithmeticExpansion(strip_arithmetic(token.value))
-            return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
-
-        elif token.type.name == 'PARAM_EXPANSION':
-            # Parameter expansion - use WordBuilder to parse
-            expansion = WordBuilder.parse_expansion_token(token)
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         elif token.type.name in ('PROCESS_SUB_IN', 'PROCESS_SUB_OUT'):
@@ -208,7 +202,7 @@ class ExpansionParsers:
             True if token is an expansion
         """
         expansion_types = {
-            'VARIABLE', 'PARAM_EXPANSION', 'COMMAND_SUB',
+            'VARIABLE', 'COMMAND_SUB',
             'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION',
             'PROCESS_SUB_IN', 'PROCESS_SUB_OUT'
         }
@@ -254,15 +248,6 @@ def parse_arithmetic_expansion() -> Parser[Token]:
         Parser that matches $((expr)) tokens
     """
     return token('ARITH_EXPANSION')
-
-
-def parse_parameter_expansion() -> Parser[Token]:
-    """Create parser for parameter expansion tokens.
-
-    Returns:
-        Parser that matches ${param} tokens
-    """
-    return token('PARAM_EXPANSION')
 
 
 def parse_process_substitution() -> Parser[Token]:

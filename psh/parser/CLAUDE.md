@@ -370,27 +370,22 @@ Word(parts=[
 ### WordBuilder
 
 `WordBuilder` (`support/word_builder.py`) is the bridge between lexer
-tokens and the Word AST. It is the most complex single piece of the
-parser -- it handles RichToken decomposition, composite word merging,
-and parameter expansion operator parsing.
+tokens and the Word AST. It handles fused-word decomposition and
+parameter expansion operator parsing.
 
 **Entry point**: `CommandParser.parse_argument_as_word()` in
-`parsers/commands.py`. This method detects composite sequences via
-`TokenStream.peek_composite_sequence()`, then delegates to the
-appropriate WordBuilder method.
+`parsers/commands.py`. The lexer emits one WORD token per shell word
+(`lexer/word_fusion.py` fuses adjacent word pieces), so this consumes a
+single token and delegates to `WordBuilder`.
 
-**Three key operations**:
+**Two key operations**:
 
-1. **Single tokens** -- `build_word_from_token()`: Decomposes
-   double-quoted STRING tokens with `RichToken.parts` into
+1. **Word tokens** -- `build_word_from_token()`: maps a WORD token's
+   `parts` (and double-quoted STRING tokens' parts) into
    `LiteralPart`/`ExpansionPart` nodes with per-part quote context.
 
-2. **Composite tokens** -- `build_composite_word()`: Merges adjacent
-   tokens (e.g. `"hello"$USER'!'`) into a single `Word` with per-part
-   quote tracking.
-
-3. **Expansion tokens** -- `parse_expansion_token()`: Parses VARIABLE,
-   PARAM_EXPANSION, COMMAND_SUB, and ARITH_EXPANSION tokens into
+2. **Expansion tokens** -- `parse_expansion_token()`: Parses VARIABLE,
+   COMMAND_SUB, and ARITH_EXPANSION tokens into
    expansion AST nodes. The `${...}` operator grammar itself
    (`${var:-default}`, `${arr[@]:1:2}`, ...) lives in the single shared
    parser `psh/expansion/param_parser.py`; WordBuilder just strips the

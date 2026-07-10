@@ -17,7 +17,6 @@ from ....ast_nodes import (
     SubshellGroup,
     Word,
 )
-from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import Token, TokenType
 from ..helpers import ParseError, TokenGroups, unexpected_token_message
 from ..support.word_builder import WordBuilder
@@ -83,9 +82,8 @@ class CommandParser(ParserSubcomponent):
     def _check_for_unclosed_expansions(self, token: Token) -> None:
         """Check if a token contains unclosed expansions and raise appropriate errors."""
         # Check tokens that might contain expansions
-        if token.type not in [TokenType.WORD, TokenType.COMPOSITE, TokenType.COMMAND_SUB,
+        if token.type not in [TokenType.WORD, TokenType.COMMAND_SUB,
                               TokenType.COMMAND_SUB_BACKTICK, TokenType.ARITH_EXPANSION, TokenType.VARIABLE,
-                              TokenType.PARAM_EXPANSION,
                               TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT]:
             return
 
@@ -547,33 +545,19 @@ class CommandParser(ParserSubcomponent):
     def parse_argument_as_word(self) -> 'Word':
         """Parse an argument as a Word AST node with expansions.
 
-        Delegates to WordBuilder (support/word_builder.py) for token-to-Word
-        conversion. See WordBuilder for details on RichToken decomposition,
-        composite word building, and parameter expansion parsing.
+        The lexer emits one WORD per shell word (word fusion), so this consumes
+        a single word-like token. Delegates to WordBuilder for token-to-Word
+        conversion (a fused WORD carries its per-part quote context in its parts;
+        ``ctx`` binds embedded ``$()``/``<()``/``>()`` to this parse for nested
+        validation).
         """
-        # Check for composite tokens
-        stream = TokenStream(self.parser.tokens, self.parser.current)
-        composite = stream.peek_composite_sequence()
-
-        if composite:
-            # Check for unclosed expansions in composite parts
-            for token in composite:
-                self._check_for_unclosed_expansions(token)
-            # Build composite word from multiple tokens.
-            # Per-part quote context is handled inside build_composite_word().
-            # ctx binds embedded $()/<()/>() to this parse (nested validation).
-            self.parser.current = stream.pos + len(composite)
-            return WordBuilder.build_composite_word(composite, ctx=self.parser.ctx)
-        else:
-            # Single token
-            if self.parser.match_any(TokenGroups.WORD_LIKE):
-                token = self.parser.advance()
-                self._check_for_unclosed_expansions(token)
-                quote_type = token.quote_type if token.type == TokenType.STRING else None
-                return WordBuilder.build_word_from_token(token, quote_type,
-                                                         ctx=self.parser.ctx)
-            else:
-                raise self.parser.error("Expected word-like token")
+        if self.parser.match_any(TokenGroups.WORD_LIKE):
+            token = self.parser.advance()
+            self._check_for_unclosed_expansions(token)
+            quote_type = token.quote_type if token.type == TokenType.STRING else None
+            return WordBuilder.build_word_from_token(token, quote_type,
+                                                     ctx=self.parser.ctx)
+        raise self.parser.error("Expected word-like token")
 
     def parse_subshell_group(self) -> SubshellGroup:
         """Parse subshell group (...) that executes in isolated environment."""

@@ -19,7 +19,6 @@ from psh.parser.combinators.expansions import (
     create_expansion_parsers,
     parse_arithmetic_expansion,
     parse_command_substitution,
-    parse_parameter_expansion,
     parse_process_substitution,
     parse_variable_expansion,
 )
@@ -281,13 +280,6 @@ class TestConvenienceFunctions:
         """Test arithmetic expansion parser function."""
         parser = parse_arithmetic_expansion()
         tokens = [make_token(TokenType.ARITH_EXPANSION, "$((42))")]
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-
-    def test_parse_parameter_expansion(self):
-        """Test parameter expansion parser function."""
-        parser = parse_parameter_expansion()
-        tokens = [make_token(TokenType.PARAM_EXPANSION, "${USER:-nobody}")]
         result = parser.parse(tokens, 0)
         assert result.success is True
 

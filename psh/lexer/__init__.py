@@ -21,7 +21,7 @@ from .position import (
     UnclosedQuoteError,
 )
 from .state_context import LexerContext
-from .token_parts import RichToken, TokenPart
+from .token_parts import TokenPart
 from .token_types import Token
 from .unicode_support import (
     is_identifier_char,

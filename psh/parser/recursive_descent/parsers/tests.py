@@ -29,7 +29,6 @@ from .base import ParserSubcomponent
 #: live glob/regex, a quoted "$x" is literal).
 _EXPANSION_TOKENS = frozenset({
     TokenType.VARIABLE,
-    TokenType.PARAM_EXPANSION,
     TokenType.COMMAND_SUB,
     TokenType.COMMAND_SUB_BACKTICK,
     TokenType.ARITH_EXPANSION,

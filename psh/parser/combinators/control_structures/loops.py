@@ -39,8 +39,8 @@ def _positional_params_word() -> Word:
 
 # Token types that can appear as a for/select ``in``-list item.
 _LOOP_ITEM_TOKEN_TYPES = frozenset({
-    'WORD', 'STRING', 'VARIABLE', 'COMPOSITE', 'COMMAND_SUB',
-    'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION', 'PARAM_EXPANSION',
+    'WORD', 'STRING', 'VARIABLE', 'COMMAND_SUB',
+    'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION',
 })
 
 
@@ -71,22 +71,17 @@ class LoopParserMixin(_Base):
     ) -> Tuple[List[str], List[Word]]:
         """Build for/select item lists from collected item tokens.
 
-        Adjacent tokens are merged into composite words (``pre$x`` is ONE
-        item) and each item gets a Word AST node, expanded by the executor
-        through the canonical Word engine.
+        The lexer emits one WORD per shell word (word fusion), so each token is
+        one item; each gets a Word AST node, expanded by the executor through
+        the canonical Word engine. (``items`` is the legacy string view; the
+        executor iterates ``item_words``.)
         """
-        from ...recursive_descent.support.word_builder import WordBuilder
-
         items: List[str] = []
         item_words: List[Word] = []
-        for group in self.commands._group_adjacent_tokens(item_tokens):
-            items.append(''.join(
-                self.commands.expansions.format_token_value(t) for t in group))
-            if len(group) == 1:
-                word = self.commands.expansions.build_word_from_token(group[0])
-            else:
-                word = WordBuilder.build_composite_word(group)
-            item_words.append(word)
+        for tok in item_tokens:
+            items.append(self.commands.expansions.format_token_value(tok))
+            item_words.append(
+                self.commands.expansions.build_word_from_token(tok))
         return items, item_words
 
     def _collect_loop_items(

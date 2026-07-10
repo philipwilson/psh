@@ -158,11 +158,10 @@ class TestDemotedImports:
         assert words == ['echo', 'a\fb']
 
     def test_token_classes_importable(self):
-        """Test that TokenPart and RichToken are still importable."""
-        from psh.lexer import RichToken, TokenPart
+        """TokenPart is importable (RichToken was retired with WordToken)."""
+        from psh.lexer import TokenPart
 
         assert TokenPart is not None
-        assert RichToken is not None
 
     def test_lexer_context_importable(self):
         """Test that LexerContext is still importable."""
