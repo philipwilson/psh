@@ -1,3 +1,5 @@
+import dataclasses
+
 from psh.lexer.keyword_normalizer import KeywordNormalizer
 from psh.lexer.token_types import Token, TokenType
 
@@ -9,6 +11,35 @@ def make_word(value: str, token_type: TokenType = TokenType.WORD) -> Token:
         position=0,
         end_position=len(value)
     )
+
+
+def test_normalize_does_not_mutate_input_tokens():
+    """normalize() is non-mutating: it returns a NEW list of (re)classified
+    tokens and leaves the caller's tokens untouched. A regression that mutates
+    in place (e.g. via object.__setattr__ to bypass frozen) would change the
+    input objects, which the parsers — two of three callers pass their own
+    list — must never observe. (Verifier mutation arm (b), 2026-07-10: an
+    in-place variant killed 0 of 7,934 unit tests.)"""
+    tokens = [
+        make_word("if"),
+        make_word("x"),
+        make_word(";", TokenType.SEMICOLON),
+        make_word("then"),
+        make_word("echo"),
+        make_word("fi"),
+    ]
+    before = [dataclasses.astuple(t) for t in tokens]
+
+    result = KeywordNormalizer().normalize(tokens)
+
+    # The input tokens' full field-state is unchanged.
+    after = [dataclasses.astuple(t) for t in tokens]
+    assert after == before, "normalize() must not mutate its input tokens"
+    # And the classification genuinely happened — in the RETURNED list.
+    assert result is not tokens
+    assert result[0].type == TokenType.IF
+    assert result[3].type == TokenType.THEN
+    assert tokens[0].type == TokenType.WORD  # original still a WORD
 
 
 def test_normalizer_converts_loop_keywords():

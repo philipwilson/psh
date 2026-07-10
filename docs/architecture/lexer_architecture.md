@@ -339,7 +339,8 @@ Every token includes comprehensive metadata through the unified system:
 
 ## Performance Optimizations
 
-1. **Priority-based dispatch**: Most common tokens checked first
+1. **Ordered dispatch**: recognizers tried in a fixed registration order (the most
+   discriminating scanners first), first match wins
 2. **Character-based early exit**: Quick rejection of impossible tokens
 3. **Minimal state copying**: Efficient context management
 4. **Lazy metadata creation**: Only populated when needed
@@ -376,18 +377,17 @@ The architecture provides clear extension points:
 # Add to TokenType enum
 NEW_TOKEN = auto()
 
-# Create recognizer
+# Create recognizer (no priority — dispatch is registration order)
 class NewTokenRecognizer(TokenRecognizer):
-    priority = 85
-    
-    def can_recognize(self, char, context):
-        return char == '@' and context.is_special_mode
-    
-    def recognize(self, lexer, char):
-        # Recognition logic
-        return Token(TokenType.NEW_TOKEN, value, position)
+    def can_recognize(self, input_text, pos, context):
+        return input_text[pos] == '@' and context.is_special_mode
 
-# Register
+    def recognize(self, input_text, pos, context):
+        # Return (token, new_pos) or None
+        return Token(TokenType.NEW_TOKEN, value, pos), new_pos
+
+# Register at the right point in ModularLexer._setup_recognizers
+# (before anything it must pre-empt, after anything that should win over it)
 registry.register(NewTokenRecognizer())
 ```
 
