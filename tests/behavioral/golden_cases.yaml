@@ -9028,3 +9028,50 @@
   stdout: ""
   stderr: "readonly variable"
   exit_code: 127
+
+# =============================================================================
+# DYNAMIC LOCALE REACTIVITY (Locale Stage 4)
+# LC_*/LANG are reactive special variables: assigning, unsetting, or laying one
+# over a command re-resolves the effective locale mid-session (design §2g). The
+# harness pins LC_ALL=C, so each case sets the locale IN the command (a category
+# var needs `unset LC_ALL` first). PLATFORM-STABLE rows only — Unicode case
+# mapping (é↔É), é-as-a-letter, and a<B collation hold on both the macOS gate and
+# the Linux nightly; the ٣/NBSP/punct membership edges (macOS-vs-glibc) are kept
+# out of goldens and covered by the conformance suite instead.
+# =============================================================================
+
+- name: locale_reactive_lc_all_case_map
+  command: 'LC_ALL=en_US.UTF-8; x=é; echo "${x^^}"'
+  stdout: "É\n"
+  stderr: ""
+  exit_code: 0
+
+- name: locale_reactive_lc_all_revert_case_map
+  command: 'LC_ALL=en_US.UTF-8; LC_ALL=C; x=é; echo "${x^^}"'
+  stdout: "é\n"
+  stderr: ""
+  exit_code: 0
+
+- name: locale_reactive_lang_category_case_map
+  command: 'unset LC_ALL; LANG=en_US.UTF-8; x=é; echo "${x^^}"'
+  stdout: "É\n"
+  stderr: ""
+  exit_code: 0
+
+- name: locale_reactive_tempenv_declare_u
+  command: 'LC_ALL=en_US.UTF-8 declare -u x=café; echo "$x"'
+  stdout: "CAFÉ\n"
+  stderr: ""
+  exit_code: 0
+
+- name: locale_reactive_lc_all_classify_alpha
+  command: 'LC_ALL=en_US.UTF-8; [[ é == [[:alpha:]] ]] && echo yes || echo no'
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0
+
+- name: locale_reactive_lc_all_collation
+  command: 'LC_ALL=en_US.UTF-8; [[ a < B ]] && echo yes || echo no'
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0

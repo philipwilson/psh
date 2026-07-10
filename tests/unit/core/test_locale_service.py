@@ -218,3 +218,57 @@ class TestActiveRegistration:
     def test_construction_registers_active(self):
         svc = LocaleService({"LC_ALL": "C"}, apply=False)
         assert active_locale() is svc
+
+
+class TestReinit:
+    """Stage 4: reinit recomputes and re-applies the profile from a fresh env so
+    a live LC_*/LANG change takes effect. This pins the object-level contract
+    (profile is no longer frozen-for-life, and reinit re-activates); the
+    end-to-end reactivity is pinned live in tests/conformance/bash/
+    test_locale_conformance.py::TestDynamicLocaleReactivity. The UTF-8 rows
+    snapshot/restore the process locale (setlocale is global) and no-op on a host
+    lacking en_US.UTF-8."""
+
+    def test_reinit_c_to_utf8_changes_ctype_and_case(self):
+        saved = _locale.setlocale(_locale.LC_ALL)
+        try:
+            svc = LocaleService({"LC_ALL": "C"}, apply=False)
+            assert svc.profile.ctype_mode is LocaleMode.C
+            assert svc.upper("é") == "é"                 # ASCII-only in C
+            svc.reinit({"LC_ALL": "en_US.UTF-8"}, warn=False)
+            if svc.profile.ctype_mode is not LocaleMode.UTF8:
+                return  # locale unavailable on this host; conformance covers it
+            assert svc.upper("é") == "É"                 # now Unicode-mapped
+        finally:
+            _locale.setlocale(_locale.LC_ALL, saved)
+
+    def test_reinit_utf8_to_c_reverts(self):
+        saved = _locale.setlocale(_locale.LC_ALL)
+        try:
+            svc = LocaleService({"LC_ALL": "en_US.UTF-8"}, apply=True, warn=False)
+            if svc.profile.ctype_mode is not LocaleMode.UTF8:
+                return
+            svc.reinit({"LC_ALL": "C"}, warn=False)
+            assert svc.profile.ctype_mode is LocaleMode.C
+            assert svc.upper("é") == "é"                 # ASCII-only again
+        finally:
+            _locale.setlocale(_locale.LC_ALL, saved)
+
+    def test_reinit_respects_precedence(self):
+        # LC_ALL=C wins over an LC_CTYPE=en_US.UTF-8 — resolves to C-family, so
+        # no setlocale side effect.
+        svc = LocaleService({"LC_ALL": "C"}, apply=False)
+        svc.reinit({"LC_CTYPE": "en_US.UTF-8", "LC_ALL": "C"}, warn=False)
+        assert svc.profile.ctype_mode is LocaleMode.C
+
+    def test_reinit_empty_value_skipped(self):
+        svc = LocaleService({"LC_ALL": "C"}, apply=False)
+        svc.reinit({"LC_ALL": "", "LANG": "C"}, warn=False)
+        assert svc.profile.ctype_mode is LocaleMode.C
+
+    def test_reinit_reactivates(self):
+        svc = LocaleService({"LC_ALL": "C"}, apply=False)
+        newer = LocaleService({"LC_ALL": "C"}, apply=False)
+        assert active_locale() is newer            # most-recently-built wins
+        svc.reinit({"LC_ALL": "C"}, warn=False)
+        assert active_locale() is svc              # reinit re-registers
