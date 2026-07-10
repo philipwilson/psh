@@ -437,6 +437,16 @@ set, and a persistent-attribute OVERLAY. Two categories:
 seeded at startup. When adding a computed special, add a `SpecialVarSpec` row
 (and, for a `lifecycle` one, confirm the interception points cover it).
 
+**No-arg enumeration** (`set` / `declare -p` with no name, both iterating
+`all_variables_with_attributes`): only the two option-reflection specials
+`SHELLOPTS`/`BASHOPTS` are injected (bash lists them with values; the pair is
+`special_registry.OPTION_REFLECTION_SPECIALS`). Every other computed special —
+the dynamic clock/counter family AND the shell-view `FUNCNAME`/`PIPESTATUS`/
+`BASH_COMMAND` — is a DELIBERATE, documented divergence: it is listed only by
+explicit name (`declare -p RANDOM`), because bash's no-arg rendering of the
+dynamic ones is reference-state-dependent and internally inconsistent (see the
+`OPTION_REFLECTION_SPECIALS` docstring and the #34 core-state-polish ledger).
+
 ### Environment Policy (os.environ is read-once; opaque inherited entries)
 
 `os.environ` is read ONCE at startup (`self.env = os.environ.copy()`);

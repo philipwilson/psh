@@ -253,6 +253,26 @@ _SPECS = (
 
 SPECIAL_REGISTRY: Dict[str, SpecialVarSpec] = {spec.name: spec for spec in _SPECS}
 
+# The computed specials that no-arg ``set`` and ``declare -p`` ENUMERATE (bash
+# lists SHELLOPTS/BASHOPTS in both, with their values). They have no stored
+# variable cell, so ``ScopeManager.all_variables_with_attributes`` injects them.
+#
+# Every OTHER computed special is a DELIBERATE, DOCUMENTED DIVERGENCE from bash's
+# no-arg enumeration — psh lists them only by explicit name (``declare -p RANDOM``
+# / ``declare -p FUNCNAME`` work and match bash). Two reasons:
+#   * The dynamic clock/counter specials (RANDOM, SECONDS, LINENO, BASHPID,
+#     SRANDOM, the EPOCH clocks): bash's ``declare -p`` rendering of them is
+#     reference-state-dependent (an unreferenced ``SECONDS`` prints
+#     ``declare -- SECONDS`` with NO value, but after one read
+#     ``declare -i SECONDS="0"``) and internally inconsistent — a fragile artifact
+#     not worth reproducing.
+#   * The shell-view specials (FUNCNAME, PIPESTATUS, BASH_COMMAND): bash shows
+#     FUNCNAME/BASH_COMMAND in ``set``/``declare -p`` (FUNCNAME only while inside
+#     a function); psh has never enumerated them and this stays out of the #34
+#     scope (SHELLOPTS/BASHOPTS only).
+# See the core-state-polish ledger for the probe evidence behind this boundary.
+OPTION_REFLECTION_SPECIALS = ("SHELLOPTS", "BASHOPTS")
+
 
 class SpecialParameterState:
     """Typed lifecycle state for the dynamically computed special parameters.
