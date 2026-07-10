@@ -84,6 +84,22 @@ def exit_status_from_wait_status(status: int) -> int:
     return 0
 
 
+def _test_force_groupwait_echild() -> bool:
+    """Test-only fault-injection seam — DEFAULT OFF, inert in production.
+
+    When ``PSH_TEST_FORCE_GROUPWAIT_ECHILD`` is set in the environment, the
+    FIRST ``waitpid(-pgid)`` in :meth:`JobManager.wait_for_job` raises ECHILD
+    instead of reaping, simulating a group wait that misses a child still alive
+    in an unexpected process group (the task #37 reap-timing race, which is
+    otherwise impossible to reproduce standalone — see the dev ledger's
+    dual-setpgid ordering argument). It exists solely to make that window
+    deterministic for the regression pin. Consulted once per ``wait_for_job``
+    call; when the variable is unset this returns False and the seam is a
+    no-op, so production behavior is unchanged.
+    """
+    return bool(os.environ.get('PSH_TEST_FORCE_GROUPWAIT_ECHILD'))
+
+
 class JobState(Enum):
     RUNNING = "running"
     STOPPED = "stopped"
@@ -942,6 +958,36 @@ class JobManager:
         if job is not None and job.state == JobState.STOPPED:
             self._promote_to_current(job)
 
+    def _reclaim_orphaned_by_pid(self, job: 'Job') -> None:
+        """Reap a job's still-running processes by their specific pids.
+
+        The recovery arm of :meth:`wait_for_job`'s ECHILD branch: the group
+        wait ``waitpid(-job.pgid)`` found no member of the job's process group,
+        but a child that is alive (or a zombie) in an UNEXPECTED process group
+        is invisible to the group wait yet still reapable by ``waitpid(pid)``.
+        Reaping it here keeps a bare ``wait`` from returning with a tracked
+        child still unreaped (the task #37 rc=5 race: the leaked child would be
+        reaped by a later ``wait <pid>``).
+
+        Blocks per pid with ``WUNTRACED`` only (no ``WCONTINUED``): a still
+        RUNNING child is waited for until it exits or STOPS, and a stop is
+        recorded as STOPPED — alive, NOT completed — via
+        :meth:`Job.update_process_status`, matching psh's existing mid-wait
+        SIGSTOP handling and never hanging on a stopped child. A pid that is
+        genuinely gone (per-pid ECHILD — it was reaped by the SIGCHLD
+        notification path) is left untouched for the caller's
+        ``mark_orphaned_completed`` to finalize.
+        """
+        for proc in list(job.processes):
+            if proc.state is not ProcessState.RUNNING:
+                continue
+            try:
+                rpid, status = os.waitpid(proc.pid, os.WUNTRACED)
+            except OSError:
+                continue  # ECHILD/other: no longer reapable as our child
+            if rpid == proc.pid:
+                job.update_process_status(rpid, status)
+
     @overload
     def wait_for_job(self, job: Job,
                      collect_all_statuses: Literal[False] = ...) -> int: ...
@@ -970,8 +1016,14 @@ class JobManager:
             # under this wait is re-marked running rather than left stopped.
             wait_flags |= os.WCONTINUED
 
+        seam_armed = _test_force_groupwait_echild()
         while job.any_process_running():
             try:
+                if seam_armed:
+                    # Test-only fault injection (default off): pretend the
+                    # first group wait found no children in the group.
+                    seam_armed = False
+                    raise OSError(errno.ECHILD, 'test seam: forced group-wait ECHILD')
                 # Wait for any child in the job's process group
                 pid, status = os.waitpid(-job.pgid, wait_flags)
             except OSError as e:
@@ -982,12 +1034,19 @@ class JobManager:
                     continue
                 if e.errno == errno.ECHILD:
                     # No waitable children remain in the job's process
-                    # group, yet some processes are still marked running:
-                    # they were reaped elsewhere (e.g. the SIGCHLD
-                    # notification path) before we could wait on them.
-                    # Mark them completed so the stored-status fallback
-                    # below runs — otherwise a job whose processes all
-                    # died could incorrectly report exit status 0.
+                    # group, yet some processes are still marked running.
+                    # Before assuming they were reaped elsewhere (the
+                    # interactive SIGCHLD path), reclaim each by its specific
+                    # pid: a child alive/zombie in an UNEXPECTED process group
+                    # is invisible to waitpid(-pgid) but reapable by
+                    # waitpid(pid). A bare `wait` must not return leaving such
+                    # a child unreaped — it would resurface as a stray zombie
+                    # for a later `wait <pid>` (the task #37 rc=5 race).
+                    self._reclaim_orphaned_by_pid(job)
+                    # Any process still running after the reclaim is genuinely
+                    # gone (reaped elsewhere): mark it completed so the
+                    # stored-status fallback below runs — otherwise a job whose
+                    # processes all died could incorrectly report exit 0.
                     job.mark_orphaned_completed()
                 break
 

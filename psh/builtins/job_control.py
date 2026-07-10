@@ -352,6 +352,12 @@ class WaitBuiltin(Builtin):
             status = 0
             if job.processes and job.processes[-1].status is not None:
                 status = self._extract_exit_status(job.processes[-1].status)
+            # Retain the reaped job's per-pid status so a LATER explicit
+            # `wait <pid>` returns it, as bash does (`( exit 6 )& p=$!;
+            # wait -n; wait $p` -> 6, not 127). Like the explicit-wait paths,
+            # a subsequent bare `wait` still clears this (clear_remembered_
+            # statuses); only `wait -n` was previously dropping it.
+            jm.remember_job_statuses(job)
             jm.remove_job(job.job_id)
             return status
 

@@ -5836,6 +5836,44 @@
   stderr: "not a child of this shell"
   exit_code: 0
 
+# --- task #37 rider: `wait -n` retains the reaped job's status for a later
+# explicit `wait <pid>`, exactly as bash does. Base psh dropped it (a bare
+# remove_job with no remember_job_statuses), so the second wait returned 127. ---
+
+- name: r18t1_bgtrap_wait_n_remembers_for_explicit
+  command: "( exit 6 ) & p=$!; wait -n; echo a=$?; wait $p; echo b=$?"
+  stdout: "a=6\nb=6\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_bgtrap_wait_n_multi_remembers_first_finished
+  command: "( sleep 0.3; exit 3 ) & s=$!; ( exit 4 ) & f=$!; wait -n; echo a=$?; wait $s; echo b=$?; wait $f; echo c=$?"
+  stdout: "a=4\nb=3\nc=4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_bgtrap_wait_n_p_var_remembers
+  command: "( exit 6 ) & p=$!; wait -n -p GOT; echo a=$?; wait $p; echo b=$?"
+  stdout: "a=6\nb=6\n"
+  stderr: ""
+  exit_code: 0
+
+# Symmetric non-rider branches (already bash-matching; pinned against regression
+# from the rider change): a SECOND wait -n with nothing left is 127, and a bare
+# `wait` still CLEARS what wait -n remembered.
+
+- name: r18t1_bgtrap_wait_n_then_wait_n_nothing_left
+  command: "( exit 6 ) & p=$!; wait -n; echo a=$?; wait -n; echo b=$?"
+  stdout: "a=6\nb=127\n"
+  stderr: ""
+  exit_code: 0
+
+- name: r18t1_bgtrap_wait_n_bare_wait_clears_retention
+  command: "( exit 6 ) & p=$!; wait -n; echo a=$?; wait; echo b=$?; wait $p; echo c=$?"
+  stdout: "a=6\nb=0\nc=127\n"
+  stderr: "not a child of this shell"
+  exit_code: 0
+
 # --- reappraisal #18 Tier-3 (T3-5): identifier policy ---
 # One authoritative name predicate (unicode_support.is_valid_name) gated on
 # set -o posix. These cases all match bash EXACTLY (the deliberate
