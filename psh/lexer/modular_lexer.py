@@ -74,33 +74,44 @@ class ModularLexer:
         self.current_parts: List[TokenPart] = []
 
     def _setup_recognizers(self) -> None:
-        """Set up the token recognizers based on configuration."""
+        """Set up the token recognizers in dispatch order.
+
+        Recognizers are tried in the order registered here (the registry does
+        no priority sorting — see RecognizerRegistry). This list is therefore
+        the single, readable declaration of the dispatch sequence:
+
+        1. ProcessSubstitution — ``<(…)`` / ``>(…)`` before the operator
+           recognizer claims the leading ``<`` / ``>``.
+        2. Operator — structural operators and redirections.
+        3. Literal — words, identifiers, assignments.
+        4. Comment — ``#`` to end of line.
+        5. OperatorDebris — stray operator characters (``]``, ``+``, ``=``,
+           ``[``) that the literal recognizer rejects as word starts; tried
+           strictly LAST so it only fires after every other recognizer declines.
+
+        (Whitespace is not a recognizer: the main loop skips it directly via
+        ``_skip_whitespace()`` before dispatch, so a whitespace recognizer here
+        was never reached.)
+        """
         from .recognizers.comment import CommentRecognizer
         from .recognizers.literal import LiteralRecognizer
         from .recognizers.operator import OperatorRecognizer
         from .recognizers.operator_debris import OperatorDebrisWordRecognizer
         from .recognizers.process_sub import ProcessSubstitutionRecognizer
-        from .recognizers.whitespace import WhitespaceRecognizer
-
-        # Always add these core recognizers
-        self.registry.register(WhitespaceRecognizer())
-        self.registry.register(CommentRecognizer())
-
-        # Create a custom operator recognizer that respects config
-        operator_recognizer = OperatorRecognizer()
-        operator_recognizer.config = self.config  # Pass config to recognizer
-        self.registry.register(operator_recognizer)
-
-        # Create a custom literal recognizer that respects config
-        literal_recognizer = LiteralRecognizer()
-        literal_recognizer.config = self.config  # Pass config to recognizer
-        self.registry.register(literal_recognizer)
 
         self.registry.register(ProcessSubstitutionRecognizer())
 
-        # Operator-debris words (`]`, `+`, `=`, `[` starts). Lowest priority,
-        # so it is tried strictly last — after every other recognizer
-        # declines — exactly like the old step-4 fallback ordering.
+        # Operator and literal recognizers respect the lexer config.
+        operator_recognizer = OperatorRecognizer()
+        operator_recognizer.config = self.config
+        self.registry.register(operator_recognizer)
+
+        literal_recognizer = LiteralRecognizer()
+        literal_recognizer.config = self.config
+        self.registry.register(literal_recognizer)
+
+        self.registry.register(CommentRecognizer())
+
         self.registry.register(OperatorDebrisWordRecognizer())
 
     # Position management

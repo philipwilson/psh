@@ -284,11 +284,6 @@ class OperatorRecognizer(ContextualRecognizer):
 
         return None
 
-    @property
-    def priority(self) -> int:
-        """High priority for operators."""
-        return 150
-
     def can_recognize(
         self,
         input_text: str,

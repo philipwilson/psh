@@ -10,11 +10,6 @@ from .base import TokenRecognizer
 class ProcessSubstitutionRecognizer(TokenRecognizer):
     """Recognizes process substitution tokens <(...) and >(...)."""
 
-    @property
-    def priority(self) -> int:
-        """Higher priority than redirect/operator recognizers."""
-        return 160
-
     def can_recognize(
         self,
         input_text: str,

@@ -56,22 +56,6 @@ class TokenRecognizer(ABC):
         pass
 
     @property
-    @abstractmethod
-    def priority(self) -> int:
-        """
-        Recognition priority (higher = checked first).
-
-        Suggested priority ranges:
-        - 100-200: Operators and structural tokens
-        - 80-99: Keywords and reserved words
-        - 60-79: Literals and quoted strings
-        - 40-59: Identifiers and variable names
-        - 20-39: Whitespace and formatting
-        - 1-19: Fallback recognizers
-        """
-        pass
-
-    @property
     def name(self) -> str:
         """Human-readable name for this recognizer."""
         return self.__class__.__name__

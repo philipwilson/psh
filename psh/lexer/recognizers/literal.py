@@ -82,11 +82,6 @@ class LiteralRecognizer(ContextualRecognizer):
     }
 
     @property
-    def priority(self) -> int:
-        """Medium priority for literals."""
-        return 70
-
-    @property
     def _posix_mode(self) -> bool:
         return self.config.posix_mode if self.config else False
 

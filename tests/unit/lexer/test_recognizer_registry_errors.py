@@ -18,10 +18,6 @@ class _BoomRecognizer(TokenRecognizer):
     def recognize(self, input_text, pos, context):
         raise KeyError("internal defect")
 
-    @property
-    def priority(self):
-        return 100
-
 
 class _NoneRecognizer(TokenRecognizer):
     """Well-behaved recognizer that simply doesn't match."""
@@ -31,10 +27,6 @@ class _NoneRecognizer(TokenRecognizer):
 
     def recognize(self, input_text, pos, context):
         return None
-
-    @property
-    def priority(self):
-        return 50
 
 
 def test_recognizer_exception_propagates_with_context():
