@@ -3133,6 +3133,46 @@
   stderr: "invalid signal specification"
   exit_code: 0
 
+# trap flag handling (getopt over "lp"): clusters and split words parse like
+# bash, with -l dominating. Written as SELF-checking differentials so the
+# stdout pin is platform-independent (macOS vs Linux signal names differ);
+# --compare-bash re-runs each against real bash.
+- name: trap_lp_cluster_lists_like_l
+  command: 'trap "echo hi" INT; [ "$(trap -lp)" = "$(trap -l)" ] && echo SAME'
+  stdout: "SAME\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_pl_cluster_lists_like_l
+  command: 'trap "echo hi" INT; [ "$(trap -pl)" = "$(trap -l)" ] && echo SAME'
+  stdout: "SAME\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_p_l_split_words_list_like_l
+  command: 'trap "echo hi" INT; [ "$(trap -p -l)" = "$(trap -l)" ] && echo SAME'
+  stdout: "SAME\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_pp_doubled_shows_like_p
+  command: 'trap "echo h" INT; [ "$(trap -pp)" = "$(trap -p)" ] && echo SAME'
+  stdout: "SAME\n"
+  stderr: ""
+  exit_code: 0
+
+- name: trap_bad_option_char_rc2
+  command: "trap -lx 2>/dev/null"
+  stdout: ""
+  stderr: ""
+  exit_code: 2
+
+- name: set_o_invalid_name_rc2
+  command: "set -o nosuchopt 2>/dev/null"
+  stdout: ""
+  stderr: ""
+  exit_code: 2
+
 - name: trap_listing_numeric_order
   command: "trap true CHLD; trap true INT; trap true EXIT; trap"
   stdout: "trap -- 'true' EXIT\ntrap -- 'true' SIGINT\ntrap -- 'true' SIGCHLD\n"

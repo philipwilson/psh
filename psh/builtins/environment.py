@@ -448,11 +448,11 @@ class SetBuiltin(Builtin):
             return 0
 
         # Unknown -o/+o name: a usage error (bash: rc 2; POSIX-mode
-        # non-interactive shells exit — probe `set -o nosuchoption`).
+        # non-interactive shells exit — probe `set -o nosuchoption`). bash
+        # prints ONLY this one line — the old `Valid options: <45 names>`
+        # dump that used to follow (enable path only) had no bash analogue
+        # (probe-pinned vs bash 5.2: `set -o nosuchopt` is a single line).
         self.error(f"{name}: invalid option name", shell)
-        if enable:
-            valid_opts = ['vi', 'emacs'] + list(sorted(shell.state.options.keys()))
-            self.write_error_line(f"Valid options: {', '.join(valid_opts)}", shell)
         raise SpecialBuiltinUsageError(2, suppressible=True)
 
     @property

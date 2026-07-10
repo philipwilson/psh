@@ -106,13 +106,21 @@ class TestWriteHelpers:
         assert sh.stderr.getvalue() == 'Usage: fake [-ab]\n'
         assert sh.stdout.getvalue() == ''
 
-    def test_set_invalid_option_diagnostics_on_stderr(self, captured_shell):
-        """set -o badname: error + Valid options listing both on stderr."""
+    def test_set_invalid_option_is_single_stderr_line(self, captured_shell):
+        """set -o badname: ONE error line, no option dump (bash 5.2 parity).
+
+        bash prints only ``set: <name>: invalid option name`` with rc 2 — no
+        listing of valid options. psh used to append a ``Valid options: <45
+        names>`` dump on the enable path with no bash analogue (probe-pinned).
+        """
         rc = captured_shell.run_command('set -o nosuchopt')
         assert rc == 2
         err = captured_shell.get_stderr()
         assert 'set: nosuchopt: invalid option name' in err
-        assert 'Valid options:' in err
+        assert 'Valid options:' not in err
+        # Exactly one non-empty diagnostic line (no follow-on dump).
+        assert [ln for ln in err.splitlines() if ln.strip()] == \
+            ['set: nosuchopt: invalid option name']
         assert captured_shell.get_stdout() == ''
 
     def test_help_usage_error_on_stderr(self, captured_shell):
