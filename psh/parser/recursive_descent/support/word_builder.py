@@ -115,25 +115,10 @@ class WordBuilder:
         value = token.value
 
         if token_type == TokenType.VARIABLE:
-            # Simple variable like $USER or ${USER}
-            # Lexer already stripped the leading $, so value is just the name
-            # (e.g. 'USER', '$' for $$, '?' for $?, '{HOME}' for ${HOME})
-            name = value
-            if name.startswith('{') and name.endswith('}'):
-                inner = name[1:-1]
-                # Check if this is a simple variable name or a parameter expansion
-                # with operators. Simple names: alphanumeric/underscores, or special
-                # single-char vars ($, ?, #, !, @, *, 0-9).
-                # Array subscripts (arr[@], arr[0]) are also simple.
-                if _SIMPLE_VAR_RE.match(inner) or \
-                   _SPECIAL_VAR_RE.match(inner):
-                    # Brace-DELIMITED ${name}: does not fuse with a following
-                    # name-char run under brace expansion (see braced field).
-                    return VariableExpansion(inner, braced=True)
-                else:
-                    # Contains operators — delegate to parameter expansion parser
-                    return WordBuilder._parse_parameter_expansion(f"${{{inner}}}")
-            return VariableExpansion(name)
+            # Simple variable like $USER or ${USER}. Lexer already stripped the
+            # leading $, so value is just the name (e.g. 'USER', '$' for $$,
+            # '?' for $?, '{HOME}' for ${HOME}).
+            return WordBuilder._variable_name_to_expansion(value)
 
         elif token_type == TokenType.COMMAND_SUB:
             # Command substitution $(...): parse the body NOW so invalid nested
@@ -195,6 +180,31 @@ class WordBuilder:
         return parsed
 
     @staticmethod
+    def _variable_name_to_expansion(name: str) -> Expansion:
+        """Classify a ``VARIABLE``-token name into its Expansion node.
+
+        ``name`` is the lexer's stripped form: a bare name (``USER``, ``?``,
+        ``1``) or a brace-delimited body (``{HOME}``, ``{arr[@]}``, ``{x:-d}``).
+        A simple brace-delimited name becomes a brace-flagged
+        :class:`VariableExpansion`; an operator form delegates to the parameter
+        parser. Shared by ``parse_expansion_token`` (standalone/composite
+        tokens) and ``_parse_token_part_expansion`` (fused-word ``variable``
+        parts) so both build the identical node.
+        """
+        if name.startswith('{') and name.endswith('}'):
+            inner = name[1:-1]
+            # Simple names: alphanumeric/underscores, or special single-char
+            # vars ($, ?, #, !, @, *, 0-9); array subscripts (arr[@], arr[0])
+            # count as simple too.
+            if _SIMPLE_VAR_RE.match(inner) or _SPECIAL_VAR_RE.match(inner):
+                # Brace-DELIMITED ${name}: does not fuse with a following
+                # name-char run under brace expansion (see braced field).
+                return VariableExpansion(inner, braced=True)
+            # Contains operators — delegate to the parameter expansion parser.
+            return WordBuilder._parse_parameter_expansion(f"${{{inner}}}")
+        return VariableExpansion(name)
+
+    @staticmethod
     def token_part_to_word_part(tp, containing_token=None, ctx=None) -> WordPart:
         """Convert a lexer TokenPart into a Word AST WordPart node.
 
@@ -222,18 +232,25 @@ class WordBuilder:
         """Convert a TokenPart's expansion metadata into an Expansion AST node.
 
         The TokenPart has ``expansion_type`` (variable, parameter, command,
-        arithmetic, backtick) and ``value`` with varying conventions:
+        arithmetic, backtick, process_in, process_out) and ``value`` with
+        varying conventions:
         - variable: value is just the var name (e.g. ``HOME``)
         - parameter: value is the full ``${...}`` syntax
         - command: value is the full ``$(...)`` syntax
         - arithmetic: value is the full ``$((...))`` syntax
         - backtick: value is the full `` `...` `` syntax
+        - process_in/process_out: value is the full ``<(...)`` / ``>(...)`` syntax
         """
         etype = tp.expansion_type
 
         if etype == 'variable':
-            # TokenPart.value is the bare variable name (no $)
-            return VariableExpansion(tp.value)
+            # TokenPart.value is the VARIABLE-token name form: a bare name
+            # (``x``) from a quote-embedded ``$x``, or a brace body (``{v}``,
+            # ``{v:-d}``) from a fused ``${...}``. The shared classifier maps
+            # a simple braced name to VariableExpansion(braced=True) — matching
+            # the standalone/composite path — and operator forms to the
+            # parameter parser.
+            return WordBuilder._variable_name_to_expansion(tp.value)
 
         elif etype == 'parameter':
             # Value is the full ${...} syntax
@@ -253,6 +270,20 @@ class WordBuilder:
             return CommandSubstitution(program=None,
                                        source=strip_backtick(tp.value),
                                        backtick_style=True)
+
+        elif etype in ('process_in', 'process_out'):
+            # Process substitution <(...) / >(...) carried as a fused-word
+            # part. Same eager nested parse + node representation as
+            # parse_expansion_token, so a composite like ``pre<(cmd)`` builds
+            # the identical ProcessSubstitution. (No ``"..."`` inline form
+            # exists for process substitution; these parts only ever arise
+            # from word fusion — see lexer/word_fusion.py.)
+            direction = 'in' if etype == 'process_in' else 'out'
+            src = strip_process_sub(tp.value)
+            return ProcessSubstitution(
+                direction=direction,
+                program=_nested_program(src, containing_token, ctx),
+                source=src)
 
         else:
             # Unknown expansion type — treat as variable
