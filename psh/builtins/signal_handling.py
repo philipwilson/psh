@@ -112,7 +112,7 @@ EXIT STATUS
                     # POSIX-mode non-interactive shell exits). An action
                     # beginning with '-' needs `--` first (`trap -- '-x' INT`).
                     self.error(f"-{ch}: invalid option", shell)
-                    self.error(f"usage: {self.synopsis}", shell)
+                    self.usage(f"usage: {self.synopsis}", shell)
                     raise SpecialBuiltinUsageError(2, suppressible=True)
             i += 1
 
@@ -158,7 +158,7 @@ EXIT STATUS
             # A single operand that is not a resettable signal spec is a
             # USAGE error (bash: `trap foo` prints the usage line, rc 2,
             # and a POSIX-mode non-interactive shell exits).
-            self.error(f"usage: {self.synopsis}", shell)
+            self.usage(f"usage: {self.synopsis}", shell)
             raise SpecialBuiltinUsageError(2, suppressible=True)
 
         return shell.trap_manager.set_trap(operands[0], operands[1:])

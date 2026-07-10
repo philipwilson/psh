@@ -28,7 +28,7 @@ class TestNounsetScriptMode:
     def test_message_format_matches_bash(self):
         """bash: `x: unbound variable` (no dollar sign for plain names)."""
         result = run_psh('set -u; echo $undef')
-        assert result.stderr == 'psh: undef: unbound variable\n'
+        assert result.stderr == 'psh: line 1: undef: unbound variable\n'
 
     def test_aborts_script_with_127(self):
         result = run_psh('set -u; echo $undef; echo after')

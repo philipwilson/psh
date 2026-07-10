@@ -244,7 +244,10 @@ def report_internal_defect(state: 'ShellState', exc: BaseException, *,
         if state.options.get('debug-exec'):
             import traceback
             traceback.print_exc(file=stream)
-        print(f"psh: {prefix}{exc}", file=stream)
+        # bash location-prefixes these expected-shell-error reports (e.g. a
+        # readonly-assignment escaping `declare`): `<$0>: line N: declare: x:
+        # readonly variable`. See ShellState.error_location_prefix.
+        print(f"{state.error_location_prefix()}{prefix}{exc}", file=stream)
     except (OSError, ValueError):
         pass
     return 1

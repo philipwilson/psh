@@ -853,8 +853,7 @@ class ReadonlyBuiltin(Builtin):
                 # non-interactive shell exits rc 1 (assignment error in a
                 # special builtin — probe tmp/posixexit). `declare r=2` is
                 # NOT special and keeps its plain rc-1 path.
-                self.write_error_line(
-                    f"psh: {e.name}: readonly variable", shell)
+                self.report_error(f"{e.name}: readonly variable", shell)
                 raise SpecialBuiltinUsageError(1) from None
 
     # readonly attribute flags forwarded to `declare -r` (bash accepts -aA).
@@ -963,27 +962,29 @@ class ReturnBuiltin(Builtin):
             from ..core import special_builtin_usage_discard
             special_builtin_usage_discard(shell.state, 1)
 
+        # Validate the numeric argument FIRST — bash reports a bad numeric
+        # argument ("numeric argument required") BEFORE the can-only-return
+        # context check, so `return abc` OUTSIDE a function prints BOTH lines
+        # (both location-prefixed). Inside a function it prints only this line.
+        numeric_error = False
+        exit_code = shell.state.last_exit_code
+        if len(args) > 1:
+            try:
+                # Wrap return value to 0-255 range like bash does
+                exit_code = int(args[1]) % 256
+            except ValueError:
+                self.error(f"{args[1]}: numeric argument required", shell)
+                numeric_error = True
+                exit_code = 2
+
         if not shell.state.function_stack and shell.state.source_depth == 0:
             # Usage error rc 2 (bash); a POSIX-mode non-interactive shell
-            # exits with 2 (typed outcome, resolved at the builtin guard).
+            # exits with 2 (typed outcome, resolved at the builtin guard). The
+            # numeric error (if any) has already printed above.
             self.error("can only `return' from a function or sourced script", shell)
             raise SpecialBuiltinUsageError(2, suppressible=True)
 
-        # Get return value
-        if len(args) > 1:
-            try:
-                exit_code = int(args[1])
-                # Wrap return value to 0-255 range like bash does
-                exit_code = exit_code % 256
-            except ValueError:
-                # bash: the error still returns from the function/sourced
-                # file, with the usage-error status 2.
-                self.error(f"{args[1]}: numeric argument required", shell)
-                raise FunctionReturn(2) from None
-        else:
-            # With no arguments, return the current value of $?
-            exit_code = shell.state.last_exit_code
-
         # We can't actually "return" from the middle of execution in Python,
-        # so we'll use an exception for control flow
-        raise FunctionReturn(exit_code)
+        # so we'll use an exception for control flow. A bad numeric argument
+        # still returns from the function/sourced file, with status 2 (bash).
+        raise FunctionReturn(2 if numeric_error else exit_code)

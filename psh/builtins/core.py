@@ -258,11 +258,12 @@ class ExecBuiltin(Builtin):
             from ..executor.strategies import format_exec_failure
             if '/' in exec_file:
                 # A pathname (or a PATH-resolved file that vanished): bash
-                # reports "No such file or directory", no "exec:" prefix —
-                # so write_error_line (unprefixed), not error().
+                # reports "<$0>: line N: <file>: No such file or directory" —
+                # the location prefix but NO "exec:" builtin name, so
+                # report_error (not error(), which would add the name).
                 resolved = exec_file if exec_file != command[0] else None
                 message, status = format_exec_failure(command[0], e, resolved)
-                self.write_error_line(message, shell)
+                self.report_error(message, shell)
             else:
                 # A bare name PATH couldn't resolve: bash's exec builtin
                 # says "not found" (unlike plain-command "command not
@@ -272,15 +273,15 @@ class ExecBuiltin(Builtin):
             return self._exec_failed(shell, status)
         except OSError as e:
             restore_signals()
-            # bash prints TWO lines here: the shell-level execve failure
-            # ("/etc: Is a directory", unprefixed) followed by the exec
-            # builtin's own diagnostic ("exec: /etc: cannot execute: Is a
-            # directory"). format_exec_failure owns the first line's
-            # wording (shared with the forked exec paths).
+            # bash prints TWO location-prefixed lines here: the shell-level
+            # execve failure ("<$0>: line N: /etc: Is a directory", no builtin
+            # name) followed by the exec builtin's own diagnostic ("<$0>: line
+            # N: exec: /etc: cannot execute: Is a directory"). format_exec_failure
+            # owns the first line's wording (shared with the forked exec paths).
             from ..executor.strategies import format_exec_failure
             resolved = exec_file if exec_file != command[0] else None
             message, status = format_exec_failure(command[0], e, resolved)
-            self.write_error_line(message, shell)
+            self.report_error(message, shell)
             if os.path.isdir(exec_file):
                 detail = os.strerror(errno.EISDIR)
             else:

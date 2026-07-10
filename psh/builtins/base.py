@@ -144,13 +144,47 @@ class Builtin(ABC):
         self.write(text + '\n', shell)
 
     def error(self, message: str, shell: 'Shell') -> None:
-        """Print an error message to stderr."""
+        """Print a location-prefixed runtime error to stderr (bash ``builtin_error``).
+
+        The line is ``<$0>: [line N: ]<name>: <message>`` — the location prefix
+        (see :meth:`ShellState.error_location_prefix`) plus the builtin name.
+        Follow-up *usage* lines are NOT location-prefixed in bash; emit those
+        with :meth:`usage` (or a bare :meth:`write_error_line`), not this method.
+        Diagnostics bash prints WITHOUT the builtin name (assignment/readonly
+        failures) use :meth:`report_error`.
+        """
+        text = f"{shell.state.error_location_prefix()}{self.name}: {message}"
         if shell.state.in_forked_child:
-            os.write(2, f"{self.name}: {message}\n".encode('utf-8', errors='replace'))
+            os.write(2, (text + "\n").encode('utf-8', errors='replace'))
             return
         stderr = shell.stderr if hasattr(shell, 'stderr') else sys.stderr
-        print(f"{self.name}: {message}", file=stderr)
+        print(text, file=stderr)
         stderr.flush()
+
+    def report_error(self, message: str, shell: 'Shell') -> None:
+        """Print a location-prefixed error WITHOUT the builtin name (bash ``report_error``).
+
+        For diagnostics bash emits with the ``<$0>: [line N: ]`` prefix but no
+        builtin name — notably assignment failures like ``<$0>: line N: NAME:
+        readonly variable`` from ``export``/``cd`` writing a readonly variable.
+        """
+        text = f"{shell.state.error_location_prefix()}{message}"
+        if shell.state.in_forked_child:
+            os.write(2, (text + "\n").encode('utf-8', errors='replace'))
+            return
+        stderr = shell.stderr if hasattr(shell, 'stderr') else sys.stderr
+        print(text, file=stderr)
+        stderr.flush()
+
+    def usage(self, message: str, shell: 'Shell') -> None:
+        """Print an UNPREFIXED ``<name>: <message>`` line to stderr.
+
+        bash's ``builtin_usage()``: the usage line that follows an
+        option/argument error carries only the builtin name, NOT the
+        ``<$0>: line N:`` location prefix that :meth:`error` adds. Callers pass
+        the body (typically ``f"usage: {self.synopsis}"``).
+        """
+        self.write_error_line(f"{self.name}: {message}", shell)
 
     def write_error_line(self, text: str, shell: 'Shell') -> None:
         """Write one UNPREFIXED line to the builtin's stderr.
@@ -211,7 +245,7 @@ class Builtin(ABC):
                     opts[ch] = True
                 else:
                     self.error(f"-{ch}: invalid option", shell)
-                    self.error(f"usage: {self.synopsis}", shell)
+                    self.usage(f"usage: {self.synopsis}", shell)
                     return None, args
             i += 1
             if consumed_value:

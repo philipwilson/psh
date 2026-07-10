@@ -38,7 +38,7 @@ class ParseTreeBuiltin(Builtin):
     def execute(self, args: List[str], shell) -> int:
         """Execute the parse-tree builtin."""
         if len(args) < 2:
-            self.error("usage: parse-tree [options] command", shell)
+            self.usage("usage: parse-tree [options] command", shell)
             return 2
 
         # Parse options

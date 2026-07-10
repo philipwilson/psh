@@ -656,7 +656,7 @@ class CommandExecutor:
         if isinstance(e, ReadonlyVariableError):
             # Readonly assignment outside the command-prefix path (e.g.
             # array element assignment): status 1, script continues.
-            print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
+            print(f"{self.state.error_location_prefix()}{e.name}: readonly variable", file=self.state.stderr)
             return 1
 
         from ..core import NamerefCycleError

@@ -30,14 +30,14 @@ def run_psh(cmd, cwd=None):
 class TestPipelineCommandNotFound:
     def test_not_found_first_message_and_status(self):
         result = run_psh('nosuchcmd_zz123 | cat; echo rc=$?')
-        assert 'psh: nosuchcmd_zz123: command not found' in result.stderr
+        assert 'psh: line 1: nosuchcmd_zz123: command not found' in result.stderr
         assert '[Errno' not in result.stderr
         # The pipeline's exit status is cat's (0), like bash
         assert result.stdout == 'rc=0\n'
 
     def test_not_found_last_exits_127(self):
         result = run_psh('cat /dev/null | nosuchcmd_zz123; echo rc=$?')
-        assert 'psh: nosuchcmd_zz123: command not found' in result.stderr
+        assert 'psh: line 1: nosuchcmd_zz123: command not found' in result.stderr
         assert '[Errno' not in result.stderr
         assert result.stdout == 'rc=127\n'
 

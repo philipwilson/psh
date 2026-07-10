@@ -90,7 +90,7 @@ class TestSetOInvalidNameConformance(ConformanceTest):
         assert "set: nosuchopt: invalid option name" in bash.stdout
         # No option dump: psh emits exactly the error line + the echo output.
         assert "Valid options:" not in psh.stdout
-        assert psh.stdout == "set: nosuchopt: invalid option name\nrc=2\n"
+        assert psh.stdout == "psh: line 1: set: nosuchopt: invalid option name\nrc=2\n"
 
     def test_set_plus_o_badname_single_line_rc2(self):
         psh, bash = self._run("set +o nosuchopt 2>&1; echo rc=$?")

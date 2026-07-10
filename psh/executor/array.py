@@ -70,7 +70,7 @@ class ArrayOperationExecutor:
         # would raise afterwards but the in-place mutation would already persist.
         if var_obj is not None and var_obj.is_readonly:
             # bash names the variable as written (the nameref), not its target.
-            print(f"psh: {node.name}: readonly variable", file=self.state.stderr)
+            print(f"{self.state.error_location_prefix()}{node.name}: readonly variable", file=self.state.stderr)
             return 1
 
         if var_obj and isinstance(var_obj.value, AssociativeArray):
@@ -284,7 +284,7 @@ class ArrayOperationExecutor:
         # A readonly array forbids element writes (bash: ``a=(1 2);
         # readonly a; a[0]=X`` errors with status 1 and leaves a unchanged).
         if var_obj is not None and var_obj.is_readonly:
-            print(f"psh: {name}: readonly variable", file=self.state.stderr)
+            print(f"{self.state.error_location_prefix()}{name}: readonly variable", file=self.state.stderr)
             return 1
 
         # Determine index type - first check if it's numeric or string

@@ -71,7 +71,7 @@ class KillBuiltin(Builtin):
         """Main kill execution logic."""
         if len(args) == 1:
             # No arguments - show usage
-            self.error(f"usage: {self.synopsis}", shell)
+            self.usage(f"usage: {self.synopsis}", shell)
             return 2
 
         # Parse arguments

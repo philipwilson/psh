@@ -24,19 +24,19 @@ class TestReadErrorMessages:
         result = _run_psh('exec 0<&-; read x; echo rc=$?')
         assert result.stdout == 'rc=1\n'
         assert result.stderr.strip() == \
-            'read: read error: 0: Bad file descriptor'
+            'psh: line 1: read: read error: 0: Bad file descriptor'
 
     def test_read_r_after_closed_stdin(self):
         result = _run_psh('exec 0<&-; read -r a b; echo rc=$?')
         assert result.stdout == 'rc=1\n'
         assert result.stderr.strip() == \
-            'read: read error: 0: Bad file descriptor'
+            'psh: line 1: read: read error: 0: Bad file descriptor'
 
     def test_read_u_bad_fd_includes_strerror(self):
         result = _run_psh('read -u 9 x; echo rc=$?')
         assert result.stdout == 'rc=1\n'
         assert result.stderr.strip() == \
-            'read: 9: invalid file descriptor: Bad file descriptor'
+            'psh: line 1: read: 9: invalid file descriptor: Bad file descriptor'
 
     def test_no_raw_oserror_repr(self):
         for cmd in ('exec 0<&-; read x', 'read -u 9 x'):

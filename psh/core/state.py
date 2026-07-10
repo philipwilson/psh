@@ -374,6 +374,25 @@ class ShellState:
         return self.env.get('PSH_STRICT_ERRORS', '').lower() in ('1', 'true',
                                                                   'yes')
 
+    def error_location_prefix(self) -> str:
+        """bash's ``<$0>: [line N: ]`` location prefix for a runtime error.
+
+        The single source of truth for the diagnostic prefix bash prepends to
+        every runtime error — builtin errors, command-not-found, exec failures,
+        ``set -u``/``${x:?}`` expansion errors, readonly-assignment failures.
+        ``<$0>`` is the shell's invocation name (:attr:`script_name`: ``"psh"``
+        for ``-c``/stdin, the script path in script mode, the ``-c`` trailing
+        operand when given). ``line N:`` is added ONLY when the shell is
+        NON-interactive — at an interactive prompt bash omits it (``bash: cd:
+        ...``). Mirrors bash's ``get_name_for_error``/``builtin_error`` in
+        ``error.c``. Parse errors deliberately keep psh's own richer
+        ``psh: <src>:<line>:`` format and do NOT use this.
+        """
+        prog = self.script_name
+        if self.options.get('interactive'):
+            return f"{prog}: "
+        return f"{prog}: line {self.scope_manager.get_current_line_number()}: "
+
     @classmethod
     def clone_for_child(cls, parent: 'ShellState',
                         context: ChildContext = ChildContext.SUBSHELL,
