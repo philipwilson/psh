@@ -51,8 +51,8 @@
   ],
   [
     "a =(1 2)",
-    "OK",
-    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[], words=[Word(parts=[LiteralPart(text='a', quoted=False, quote_char=None)], quote_type=None), Word(parts=[LiteralPart(text='=(1 2)', quoted=False, quote_char=None)], quote_type=None)])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
+    "ERR",
+    "ParseError: Parse error at position 3 (line 1, column 4): syntax error near unexpected token '('"
   ],
   [
     "a = (1 2)",

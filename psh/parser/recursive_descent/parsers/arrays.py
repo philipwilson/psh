@@ -37,12 +37,43 @@ parse error; that machinery was removed so the words fall through to
 normal simple-command execution, matching bash.
 """
 
+import re
 from dataclasses import dataclass
 from typing import List, Optional
 
 from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, Word
 from ....lexer.token_types import Token, TokenType
 from .base import ParserSubcomponent
+
+# A valid assignment name is a portable identifier at the very start of the
+# word's UNQUOTED LEADING LITERAL.
+_NAME_START_RE = re.compile(r'[A-Za-z_][A-Za-z_0-9]*')
+
+
+def _unquoted_leading_literal(token: Token) -> str:
+    """The word's unquoted leading LITERAL text — the only place an array
+    assignment head may live.
+
+    Returns '' when the leading part is quoted or an expansion. Word fusion
+    merges a quoted/expansion prefix (``"q"a[0]=v``, ``${v}a[0]=v``, ``$x[0]=v``)
+    into ONE WORD whose raw value (``qa[0]=v``) looks like an assignment though
+    bash runs it as a command; keying the array-assignment classifier off the
+    UNQUOTED leading literal keeps psh in step (also handles ``a[0]$x=y``, where
+    the ``=`` sits past the leading literal in an expansion-split part).
+    """
+    parts = token.parts
+    if not parts:
+        return token.value
+    # Concatenate the maximal run of leading UNQUOTED LITERAL parts (stop at the
+    # first quoted / expansion part). `a+=` fuses to literal parts 'a'+'+=';
+    # `a[0]$x=y` stops the head at 'a[0]' (before the `$x` expansion part).
+    out = []
+    for p in parts:
+        if p.quote_type is None and not p.is_expansion and not p.is_variable:
+            out.append(p.value)
+        else:
+            break
+    return ''.join(out)
 
 
 @dataclass
@@ -94,7 +125,16 @@ class ArrayParser(ParserSubcomponent):
             return None
 
         token = self.parser.peek()
-        value = token.value
+        # An array assignment head (NAME[subscript]op / NAME=() must be a valid
+        # identifier at the START of the word's UNQUOTED LEADING LITERAL. A fused
+        # quoted/expansion prefix (`"q"a[0]=v`, `${v}a[0]=v`, `a[0]$x=y`) yields
+        # an empty/invalid leading literal and is NOT an assignment (bash runs it
+        # as a command / syntax-errors) — classify off `value` (the leading
+        # literal), never the raw fused lexeme.
+        value = _unquoted_leading_literal(token)
+        m = _NAME_START_RE.match(value)
+        if not m:
+            return None
 
         # --- Element assignment with subscript inside the name token ---
         if '[' in value and ']' in value:
@@ -163,9 +203,16 @@ class ArrayParser(ParserSubcomponent):
         )
 
     def _candidate_initializer(self) -> Optional[AssignmentCandidate]:
-        """``name=(`` / ``name+=(`` (one token) or ``name`` + ``=``/``+=`` + ``(``."""
-        token = self.parser.peek()
-        value = token.value
+        """``name=(`` / ``name+=(`` (one token) or ``name`` + ``=``/``+=`` + ``(``.
+
+        Classifies off the head token's UNQUOTED LEADING LITERAL (self-contained
+        so BOTH the statement-position and argument-position callers guard
+        identically), so a fused quoted/expansion prefix (`"q"a=(1 2)`) never
+        reaches the ``(`` init classifier as a valid ``name=`` head.
+        """
+        value = _unquoted_leading_literal(self.parser.peek())
+        if not _NAME_START_RE.match(value):
+            return None
 
         # Single token ending with '=' or '+=', then an ADJACENT LPAREN.
         # bash only treats `(` as an array initializer when it is glued to the
