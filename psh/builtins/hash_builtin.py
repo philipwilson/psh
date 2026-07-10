@@ -55,7 +55,7 @@ class HashBuiltin(Builtin):
             return 2
 
         # bash: with hashing disabled (set +h) every hash use fails.
-        if not shell.state.options.get('hashcmds', True):
+        if not shell.state.options.get('hashall', True):
             self.error("hashing disabled", shell)
             return 1
 

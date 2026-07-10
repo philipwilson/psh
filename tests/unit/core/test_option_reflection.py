@@ -13,9 +13,10 @@ Behaviour probe-pinned against /opt/homebrew/bin/bash 5.2.26
 - Inherited via the environment at startup, each listed valid option is
   ENABLED before anything runs and the variable becomes exported
   (declare -rx). Unknown SHELLOPTS names warn; unknown BASHOPTS names are
-  silently ignored (bash). bash-only set -o names (interactive-comments,
-  hashall, ...) are accepted silently: hashall aliases to hashcmds, the
-  rest are skipped so a psh child of a bash parent doesn't spew warnings.
+  silently ignored (bash). bash-only set -o names psh does not implement
+  (interactive-comments, keyword, ...) are skipped silently so a psh child
+  of a bash parent doesn't spew warnings. (`hashall` is psh's NATIVE name
+  since #34 — it imports like any other option, not via an alias.)
 
 The parallel live-bash comparison is the shellopts_* golden cases.
 """
@@ -47,7 +48,7 @@ class TestShelloptsDynamicValue:
     def test_defaults_present_errexit_absent(self, captured_shell):
         captured_shell.run_command('echo "$SHELLOPTS"')
         got = parts(captured_shell.get_stdout().strip())
-        assert 'braceexpand' in got and 'hashcmds' in got
+        assert 'braceexpand' in got and 'hashall' in got
         assert 'errexit' not in got
 
     def test_errexit_joins_and_leaves(self, captured_shell):
@@ -213,14 +214,27 @@ class TestShelloptsEnvImport:
         assert 'alive' in r.stdout
 
     def test_bash_only_names_silently_accepted(self):
-        # A bash parent's exported SHELLOPTS routinely carries these; psh
-        # must not spew warnings (hashall aliases to hashcmds, the others
-        # are known-bash names psh does not implement).
+        # A bash parent's exported SHELLOPTS routinely carries hashall (psh's
+        # NATIVE name too, since #34) and bash-only names psh does not
+        # implement (interactive-comments, ...) — neither must spew a warning.
         r = run_psh('echo "$SHELLOPTS"; echo ok', {
             'SHELLOPTS': 'braceexpand:hashall:interactive-comments'})
         assert r.stderr == ''
-        assert 'hashcmds' in parts(r.stdout.splitlines()[0])
+        assert 'hashall' in parts(r.stdout.splitlines()[0])
         assert 'ok' in r.stdout
+
+    def test_stale_hashcmds_name_warns(self):
+        # After the #34 hashcmds->hashall rename, a stale `hashcmds` in an
+        # inherited SHELLOPTS (e.g. exported by an older psh) is UNKNOWN — bash
+        # rejects it too ("hashcmds: invalid option name"). psh warns and still
+        # enables the valid names, rc 0 (bash-matched, probe 2026-07-10).
+        r = run_psh('echo "$SHELLOPTS"; echo alive', {
+            'SHELLOPTS': 'braceexpand:hashcmds:history'})
+        assert 'hashcmds: invalid option name' in r.stderr
+        assert r.returncode == 0
+        got = parts(r.stdout.splitlines()[0])
+        assert 'braceexpand' in got and 'history' in got
+        assert 'alive' in r.stdout
 
     def test_empty_value_noop(self):
         r = run_psh('echo "$SHELLOPTS"', {'SHELLOPTS': ''})

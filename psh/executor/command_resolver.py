@@ -257,7 +257,7 @@ class CommandResolver:
         ``ExternalExecutionStrategy.resolve_via_hash_table`` contract so the
         parent-side hit count and remembered location match bash exactly.
         """
-        if '/' in name or not self.shell.state.options.get('hashcmds', True):
+        if '/' in name or not self.shell.state.options.get('hashall', True):
             return None
         query = ResolveQuery(
             use_aliases=False, use_keywords=False, use_functions=False,

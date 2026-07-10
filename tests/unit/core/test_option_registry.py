@@ -28,7 +28,7 @@ EXPECTED_OPTIONS = {
     "debug-expansion-detail", "debug-exec", "debug-exec-fork",
     # set -o / short-flag
     "strict-errors", "errexit", "nounset", "xtrace", "allexport", "notify",
-    "noclobber", "noglob", "hashcmds", "monitor", "noexec", "verbose",
+    "noclobber", "noglob", "hashall", "monitor", "noexec", "verbose",
     "errtrace", "functrace",
     "pipefail", "ignoreeof", "nolog", "posix", "braceexpand",
     "histexpand", "history", "emacs", "vi",
@@ -42,7 +42,7 @@ EXPECTED_OPTIONS = {
 
 # Non-False defaults (everything else defaults to False).
 EXPECTED_NON_FALSE_DEFAULTS = {
-    "hashcmds": True, "braceexpand": True, "histexpand": True, "history": True,
+    "hashall": True, "braceexpand": True, "histexpand": True, "history": True,
     "expand_aliases": True, "stdin_mode": True,
     "globasciiranges": True,  # bash 5 default ON
 }
@@ -63,7 +63,7 @@ def test_short_to_long_map():
     assert SHORT_TO_LONG == {
         "a": "allexport", "b": "notify", "B": "braceexpand", "C": "noclobber",
         "e": "errexit",
-        "E": "errtrace", "f": "noglob", "h": "hashcmds", "m": "monitor",
+        "E": "errtrace", "f": "noglob", "h": "hashall", "m": "monitor",
         "n": "noexec", "T": "functrace",
         "u": "nounset", "v": "verbose", "x": "xtrace",
     }
@@ -245,20 +245,20 @@ def test_typed_accessors():
 
 @pytest.mark.parametrize("set_names,expected", [
     ([], ""),
-    (["hashcmds", "braceexpand"], "hB"),
-    (["errexit", "hashcmds", "braceexpand"], "ehB"),
-    (["allexport", "errexit", "noglob", "hashcmds", "nounset", "verbose",
+    (["hashall", "braceexpand"], "hB"),
+    (["errexit", "hashall", "braceexpand"], "ehB"),
+    (["allexport", "errexit", "noglob", "hashall", "nounset", "verbose",
       "xtrace", "braceexpand"], "aefhuvxB"),
     # invocation flags c/s come last
-    (["hashcmds", "braceexpand", "command_mode"], "hBc"),
-    (["hashcmds", "braceexpand", "stdin_mode"], "hBs"),
-    (["interactive", "hashcmds", "braceexpand", "histexpand", "command_mode"],
+    (["hashall", "braceexpand", "command_mode"], "hBc"),
+    (["hashall", "braceexpand", "stdin_mode"], "hBs"),
+    (["interactive", "hashall", "braceexpand", "histexpand", "command_mode"],
      "hiBHc"),
 ])
 def test_option_string_order(set_names, expected):
     opts = ShellOptions()
     # Clear the True-by-default letters that would otherwise appear.
-    for name in ("hashcmds", "braceexpand", "histexpand", "stdin_mode"):
+    for name in ("hashall", "braceexpand", "histexpand", "stdin_mode"):
         opts[name] = False
     for name in set_names:
         opts[name] = True

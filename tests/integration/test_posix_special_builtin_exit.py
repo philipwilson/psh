@@ -149,22 +149,41 @@ class TestInputModes:
         assert out == ""
         assert rc == 2
 
-    def test_c_mode_bare_readonly_assign_exits_rc1(self):
-        """Bare `r=2` on a readonly under -c: psh exits rc 1 — consistent
-        with its file/stdin status. DELIBERATE divergence: bash's -c mode
-        exits 127 here (an internal last_command_exit_value artifact;
-        bash file/stdin modes exit 1, which psh matches everywhere).
-        Defensive-green on base: the pre-existing TopLevelAbort discard
-        already dropped the whole -c unit with rc 1 (the stdin/file
-        shapes were the red ones)."""
+    def test_c_mode_bare_readonly_assign_exits_rc127(self):
+        """Bare `r=2` on a readonly under -c posix: psh exits rc 127, matching
+        bash 5.2 (probe 2026-07-10: `bash --posix -c` and `set -o posix; ...`
+        both exit 127; file/stdin exit 1). This SUPERSEDES the v0.677 ruling
+        that treated bash's 127 as "an artifact not reproduced": the new
+        evidence is sibling-consistency — psh ALREADY reproduces bash's
+        command_mode 127 for the fatal expansion-error family (`set -u`,
+        `${x:?}`) via fatal_expansion_status, and a readonly assignment is a
+        member of that same family. Leaving it at rc 1 made it the one
+        inconsistent sibling. The BUILTIN forms (readonly/export r=2, prefix
+        r=2 cmd) stay rc 1 via SpecialBuiltinUsageError — a distinct, bash-
+        correct code (see the stays-rc1 tests below)."""
         rc, out, err = run_c("set -o posix; readonly r=1; r=2; echo survived")
         assert out == ""
-        assert rc == 1
+        assert rc == 127
 
     def test_stdin_mode_bare_readonly_assign_exits_rc1(self):
         """RED-ON-BASE; bash stdin mode also exits rc 1."""
         rc, out, err = run_stdin(
             "set -o posix\nreadonly r=1\nr=2\necho survived\n")
+        assert out == ""
+        assert rc == 1
+
+    @pytest.mark.parametrize("case", [
+        "readonly r=1; readonly r=2",   # readonly builtin re-declaration
+        "readonly r=1; export r=2",     # export builtin
+        "readonly r=1; r=2 :",          # command-prefix assignment
+    ])
+    def test_c_mode_builtin_readonly_forms_stay_rc1(self, case):
+        """The OTHER branch of the readonly-exit axis: under -c posix the
+        BUILTIN/prefix forms exit rc 1 (SpecialBuiltinUsageError), NOT the
+        127 the bare plain assignment now uses (fatal_expansion_status). bash
+        5.2 gives exactly this split (probe 2026-07-10). This is the coupling
+        the verifier attacks — the two paths must produce different codes."""
+        rc, out, err = run_c("set -o posix; " + case + "; echo survived")
         assert out == ""
         assert rc == 1
 

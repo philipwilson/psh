@@ -76,7 +76,9 @@ _SPECS = [
     _spec("notify", False, OptionCategory.SET, short_flag="b", dollar_dash="b"),
     _spec("noclobber", False, OptionCategory.SET, short_flag="C", dollar_dash="C"),
     _spec("noglob", False, OptionCategory.SET, short_flag="f", dollar_dash="f"),
-    _spec("hashcmds", True, OptionCategory.SET, short_flag="h", dollar_dash="h"),
+    # bash's canonical set -o name is `hashall` (also `set -h`); psh matches it
+    # and rejects the old psh-only `hashcmds` spelling exactly as bash does (#34).
+    _spec("hashall", True, OptionCategory.SET, short_flag="h", dollar_dash="h"),
     _spec("monitor", False, OptionCategory.SET, short_flag="m", dollar_dash="m"),
     _spec("noexec", False, OptionCategory.SET, short_flag="n", dollar_dash="n"),
     _spec("verbose", False, OptionCategory.SET, short_flag="v", dollar_dash="v"),
