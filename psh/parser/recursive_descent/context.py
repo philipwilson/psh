@@ -8,6 +8,7 @@ configuration, and source text for error messages.
 from dataclasses import dataclass, field
 from typing import List, Mapping, Optional
 
+from ...lexer.position import SourceMap
 from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
 from .helpers import (
@@ -98,11 +99,18 @@ class ParserContext:
     # each time. Not part of the public state; excluded from init/repr.
     _eof_token: Optional[Token] = field(default=None, init=False, repr=False,
                                         compare=False)
+    # The source line-structure map for error display. Built from source_text;
+    # None when the parser was handed a bare token list (no source). Excluded
+    # from init/repr/compare like the EOF cache.
+    _source_map: Optional[SourceMap] = field(default=None, init=False,
+                                             repr=False, compare=False)
 
     def __post_init__(self):
         """Initialize derived state."""
-        if self.source_text and not self.source_lines:
-            self.source_lines = self.source_text.splitlines()
+        if self.source_text:
+            self._source_map = SourceMap(self.source_text)
+            if not self.source_lines:
+                self.source_lines = self._source_map.lines
 
     # === Open-construct trail (incomplete-input hints only) ===
 
@@ -214,8 +222,13 @@ class ParserContext:
         string).
         """
         source_line = None
-        if self.source_lines and token.line and 0 < token.line <= len(self.source_lines):
-            source_line = self.source_lines[token.line - 1]
+        if token.line:
+            if self._source_map is not None:
+                # The one source map provides the error-context line text.
+                source_line = self._source_map.line_text(token.line)
+            elif self.source_lines and 0 < token.line <= len(self.source_lines):
+                # Fallback for a context handed source_lines without source_text.
+                source_line = self.source_lines[token.line - 1]
 
         error_context = ErrorContext(
             token=token,

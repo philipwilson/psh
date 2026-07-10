@@ -267,7 +267,6 @@ class CommandAccumulator:
             from ..lexer import tokenize_with_heredocs
             tokens, heredoc_map = tokenize_with_heredocs(
                 preview,
-                strict=self.state.options.get('posix', False),
                 shell_options=self.state.options,
                 # A trial must never print the unterminated-heredoc warning:
                 # the execution pass re-lexes (or reuses this AST) and warns.

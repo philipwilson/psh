@@ -1,5 +1,7 @@
 """Tests for expansion and word-building parsers."""
 
+import dataclasses
+
 import pytest
 
 from psh.ast_nodes import (
@@ -145,8 +147,9 @@ class TestWordBuilding:
         """Test building Word from string token."""
         parsers = ExpansionParsers()
 
-        token = make_token(TokenType.STRING, "hello world")
-        token.quote_type = '"'  # Add quote type attribute
+        # Tokens are immutable; build with the quote type set.
+        token = dataclasses.replace(
+            make_token(TokenType.STRING, "hello world"), quote_type='"')
         word = parsers.build_word_from_token(token)
 
         assert isinstance(word, Word)

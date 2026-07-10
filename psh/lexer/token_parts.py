@@ -20,9 +20,13 @@ class TokenPart:
     end_pos: Position = field(default_factory=lambda: Position(0, 1, 1))
 
 
-@dataclass
+@dataclass(frozen=True)
 class RichToken(Token):
-    """Enhanced token with metadata about its parts."""
+    """Enhanced token with metadata about its parts.
+
+    ``frozen`` is required to match the (frozen) ``Token`` base — Python forbids
+    a non-frozen dataclass inheriting a frozen one.
+    """
     parts: List[TokenPart] = field(default_factory=list)
     is_composite: bool = False
 

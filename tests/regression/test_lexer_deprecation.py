@@ -175,16 +175,17 @@ class TestAPIStability:
     """Test that public API remains stable."""
 
     def test_tokenize_function_signature(self):
-        """Test tokenize function signature."""
-        # Should accept input_string and strict parameters
-        tokens1 = tokenize("echo test")
-        tokens2 = tokenize("echo test", strict=True)
-        tokens3 = tokenize("echo test", strict=False)
+        """Test tokenize function signature.
 
-        # All should work
+        The historical ``strict`` (batch/interactive) flag was retired in the
+        lexer R2 refactor — it selected between identical configs. tokenize()
+        now takes just the input string plus optional shell_options.
+        """
+        tokens1 = tokenize("echo test")
+        tokens2 = tokenize("echo test", shell_options={'posix': True})
+
         assert len(tokens1) > 0
         assert len(tokens2) > 0
-        assert len(tokens3) > 0
 
     def test_modular_lexer_api(self):
         """Test ModularLexer API stability."""

@@ -1,5 +1,6 @@
 """Keyword normalization pass for lexer output."""
 
+from dataclasses import replace
 from typing import List, Optional
 
 from .command_position import (
@@ -25,9 +26,17 @@ class KeywordNormalizer:
     RESET_TO_COMMAND_POSITION = RESET_TO_COMMAND_POSITION
 
     def normalize(self, tokens: List[Token]) -> List[Token]:
-        """Normalize reserved keywords in token list."""
+        """Normalize reserved keywords, returning a NEW list.
+
+        Classification does not mutate: a WORD promoted to a reserved keyword
+        is replaced by a fresh token (``dataclasses.replace``) in the returned
+        list; the caller's tokens are left untouched. Every input token appears
+        in the output, in order.
+        """
         if not tokens:
             return tokens
+
+        result: List[Token] = []
 
         command_position = True
         pending_in: Optional[str] = None
@@ -64,9 +73,13 @@ class KeywordNormalizer:
             # in_heredoc mode — otherwise we'd skip real tokens looking for a
             # delimiter that has already been consumed.
             if token.type in {TokenType.HEREDOC, TokenType.HEREDOC_STRIP}:
-                heredoc_already_collected = hasattr(token, 'heredoc_key')
+                # A collected body is signalled by a non-None heredoc_key (the
+                # declared field); its absence means body lines are still in the
+                # token stream and we must scan for the delimiter.
+                heredoc_already_collected = token.heredoc_key is not None
                 pending_heredoc_delim = True
                 command_position = False
+                result.append(token)
                 continue
 
             if pending_heredoc_delim:
@@ -77,6 +90,7 @@ class KeywordNormalizer:
                         in_heredoc = True
                 pending_heredoc_delim = False
                 command_position = False
+                result.append(token)
                 continue
 
             if in_heredoc:
@@ -85,6 +99,7 @@ class KeywordNormalizer:
                     in_heredoc = False
                     heredoc_delimiter = None
                 command_position = False
+                result.append(token)
                 continue
 
             next_pattern_start = False
@@ -119,8 +134,7 @@ class KeywordNormalizer:
                         converted_type = KEYWORD_TYPE_MAP.get(token_value)
 
             if converted_type:
-                token.type = converted_type
-                token.is_keyword = True
+                token = replace(token, type=converted_type, is_keyword=True)
             elif token.type == TokenType.IN:
                 # Already tagged as IN by lexer, clear pending state
                 if pending_in == 'case':
@@ -155,7 +169,9 @@ class KeywordNormalizer:
             elif token.type == TokenType.FUNCTION:
                 function_name_pending = True
 
-        return tokens
+            result.append(token)
+
+        return result
 
     def _next_command_position(
         self,

@@ -8,6 +8,7 @@ and comprehensive error handling with recovery capabilities.
 
 import bisect
 from dataclasses import dataclass
+from typing import Optional
 
 from ..core.exceptions import PshError
 
@@ -24,6 +25,60 @@ class Position:
 
     def __repr__(self) -> str:
         return f"Position(offset={self.offset}, line={self.line}, column={self.column})"
+
+
+class SourceMap:
+    """Immutable line/column + line-text map for one source string.
+
+    A single place that knows a source's line structure. The lexer resolves
+    token offsets to ``Position``s through :meth:`location`; the parser reads
+    error-context source lines through :meth:`line_text`.
+
+    Two line conventions are kept deliberately, matching pre-existing behavior
+    exactly: :meth:`location` counts lines by ``\\n`` only (the lexer's cursor
+    advances the line number solely on ``\\n``), while :meth:`line_text` uses
+    ``str.splitlines`` (what the parser's error context has always sliced). For
+    ordinary ``\\n``-delimited input the two agree; they differ only for input
+    containing bare ``\\r`` / other Unicode line boundaries, where both halves
+    reproduce the shell's long-standing behavior.
+    """
+
+    def __init__(self, source: str):
+        self._source = source
+        # Start offset of each line, counting boundaries at '\n' only.
+        starts = [0]
+        for i, ch in enumerate(source):
+            if ch == '\n':
+                starts.append(i + 1)
+        self._line_starts = starts
+        # Line text for error display (splitlines drops the terminators).
+        self._lines = source.splitlines()
+
+    @property
+    def line_starts(self) -> list:
+        """Offsets where each line begins ('\\n'-delimited). Copy — read-only."""
+        return list(self._line_starts)
+
+    @property
+    def lines(self) -> list:
+        """Source lines (``str.splitlines``), for error display. Copy."""
+        return list(self._lines)
+
+    def location(self, offset: int) -> Position:
+        """Resolve an absolute offset to a 1-based (line, column) Position.
+
+        Offsets are clamped into ``[0, len(source)]``.
+        """
+        offset = max(0, min(offset, len(self._source)))
+        line = bisect.bisect_right(self._line_starts, offset)
+        column = offset - self._line_starts[line - 1] + 1
+        return Position(offset, line, column)
+
+    def line_text(self, line: int) -> Optional[str]:
+        """Text of a 1-based line (splitlines semantics), or None if out of range."""
+        if 1 <= line <= len(self._lines):
+            return self._lines[line - 1]
+        return None
 
 
 class UnclosedQuoteError(SyntaxError):
@@ -127,7 +182,9 @@ class PositionTracker:
         self.position = 0
         self.line = 1
         self.column = 1
-        self.line_starts = [0]  # Track start position of each line
+        # The one line-structure map; get_position_at_offset delegates here
+        # instead of maintaining a second line_starts list.
+        self.source_map = SourceMap(input_text)
 
     def advance(self, count: int = 1) -> None:
         """Move position forward, updating line/column."""
@@ -136,7 +193,6 @@ class PositionTracker:
                 if self.input_text[self.position] == '\n':
                     self.line += 1
                     self.column = 1
-                    self.line_starts.append(self.position + 1)
                 else:
                     self.column += 1
                 self.position += 1
@@ -147,11 +203,4 @@ class PositionTracker:
 
     def get_position_at_offset(self, offset: int) -> Position:
         """Get position information for a specific offset."""
-        offset = max(0, min(offset, len(self.input_text)))
-
-        # Use binary search to find the line
-        line = bisect.bisect_right(self.line_starts, offset)
-        line_start = self.line_starts[line - 1]
-        column = offset - line_start + 1
-
-        return Position(offset, line, column)
+        return self.source_map.location(offset)

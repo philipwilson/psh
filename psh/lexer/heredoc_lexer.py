@@ -8,6 +8,7 @@ re-lexed each physical line with a fresh lexer, which broke any multi-line
 construct sharing a command with a heredoc.
 """
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from .heredoc_collector import HeredocCollector
@@ -305,19 +306,17 @@ class HeredocLexer:
     def _mark_heredoc_tokens(self, tokens: List[Token]) -> None:
         """Attach collector keys to heredoc operator tokens, in order.
 
-        KeywordNormalizer uses the presence of ``heredoc_key`` to know that
-        body lines are NOT in the token stream.
+        A non-None ``heredoc_key`` (the declared Token field) is the signal, to
+        KeywordNormalizer and the parser, that this heredoc's body lines are
+        NOT in the token stream. Tokens are immutable, so each marked token is
+        rebuilt in place with :func:`dataclasses.replace`.
         """
         keys = list(self.heredoc_collector.collected.keys())
         idx = 0
-        for token in tokens:
+        for i, token in enumerate(tokens):
             if token.type in (TokenType.HEREDOC, TokenType.HEREDOC_STRIP):
                 if idx < len(keys):
-                    # Dynamic attribute: its *presence* (checked via hasattr
-                    # in KeywordNormalizer / the parser) is the signal that
-                    # heredoc bodies are absent from the token stream, so it
-                    # is intentionally not a declared Token field.
-                    setattr(token, 'heredoc_key', keys[idx])
+                    tokens[i] = replace(token, heredoc_key=keys[idx])
                     idx += 1
 
 

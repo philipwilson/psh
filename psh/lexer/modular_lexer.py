@@ -1,5 +1,6 @@
 """Modular lexer using the token recognizer system."""
 
+from dataclasses import replace
 from typing import List, Optional
 
 from .command_position import advance_lexical_state
@@ -553,17 +554,18 @@ class ModularLexer:
             # Update position
             self.position = new_pos
 
-            # Add line/column information to token if missing
+            # Finalize line/column and adjacency on the recognizer's token.
+            # Tokens are immutable, so accumulate the changes and rebuild once.
+            updates: dict = {}
             if token.line is None or token.column is None:
-                # Get position at token start
                 start_position = self.position_tracker.get_position_at_offset(token.position)
-                token.line = start_position.line
-                token.column = start_position.column
-
-            # Compute adjacency
+                updates['line'] = start_position.line
+                updates['column'] = start_position.column
             if self.tokens:
                 prev = self.tokens[-1]
-                token.adjacent_to_previous = (token.position == prev.end_position)
+                updates['adjacent_to_previous'] = (token.position == prev.end_position)
+            if updates:
+                token = replace(token, **updates)
 
             # Add token
             self.tokens.append(token)

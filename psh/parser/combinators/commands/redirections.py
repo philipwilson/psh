@@ -94,8 +94,9 @@ class RedirectionMixin(_Base):
                                 heredoc_quoted=heredoc_quoted, fd=fd,
                                 var_fd=var_fd)
             # The lexer's collector key links this redirect to its body
-            # (populated post-parse by HeredocProcessor).
-            if hasattr(op_token, 'heredoc_key'):
+            # (populated post-parse by HeredocProcessor). A non-None key means a
+            # body was collected for this operator token.
+            if op_token.heredoc_key is not None:
                 redirect.heredoc_key = op_token.heredoc_key
             return ParseResult(success=True, value=redirect, position=pos)
 

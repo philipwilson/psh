@@ -396,15 +396,14 @@ class OperatorRecognizer(ContextualRecognizer):
                     # Check if operator is valid in current context
                     if self.is_valid_in_context(candidate, context):
                         token_type = self.OPERATORS[length][candidate]
+                        # combined_redirect marks &> and &>> (stdout+stderr).
                         token = Token(
                             token_type,
                             candidate,
                             pos,
-                            pos + length
+                            pos + length,
+                            combined_redirect=(candidate in ('&>', '&>>')),
                         )
-                        # Set combined_redirect flag for &> and &>>
-                        if candidate in ('&>', '&>>'):
-                            token.combined_redirect = True
                         return token, pos + length
 
         return None

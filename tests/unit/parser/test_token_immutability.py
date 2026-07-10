@@ -57,6 +57,18 @@ def test_combinator_parser_does_not_mutate_tokens(src):
     assert _snapshot(tokens) == before
 
 
+def test_token_is_frozen():
+    """Immutability is now structural: tokens are a frozen dataclass, so a
+    parser that tried to write to one would raise rather than silently mutate
+    the caller's stream."""
+    from psh.lexer.token_types import Token
+
+    assert Token.__dataclass_params__.frozen is True
+    tok = tokenize("echo hi")[0]
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        tok.type = TokenType.IF
+
+
 def test_post_pipe_time_token_stays_time_in_input():
     """The TIME token in `echo a | time cat` is unchanged in the caller's
     stream, but the parsed command still treats `time` as its command word."""
