@@ -538,9 +538,12 @@ host-libc-dependent in bash itself. See "Locale Support" below.
 
 ### Locale Support (LC_CTYPE / LC_COLLATE)
 
-PSH reads the effective locale from the environment **at startup** — bash's
-precedence `LC_ALL > LC_{CTYPE,COLLATE} > LANG`, empty values skipped, an
-unusable name warned-and-ignored (falling back to `C`) — and honours it for:
+PSH resolves the effective locale from the environment — bash's precedence
+`LC_ALL > LC_{CTYPE,COLLATE} > LANG`, empty values skipped, an unusable name
+warned-and-ignored (falling back to `C`) — at startup **and again whenever
+`LC_ALL`/`LC_CTYPE`/`LC_COLLATE`/`LANG` is assigned, unset, or laid over a
+command (`LC_ALL=C cmd`)**, exactly like bash's reactive special variables. It
+honours the effective locale for:
 
 - **Collation** (`LC_COLLATE`): glob-result ordering (`echo *`) and the
   `[[ < ]]` / `[[ > ]]` string comparisons use `strcoll`/`strxfrm`, so under a
@@ -561,9 +564,6 @@ unusable name warned-and-ignored (falling back to `C`) — and honours it for:
 
 **Deliberate limitations** (documented differences):
 
-- **Startup-only locale.** Re-reading `LC_*`/`LANG` when they are *assigned
-  mid-script* (bash reacts immediately) is not yet implemented — a deferred
-  stage (see `docs/architecture/locale_service_design_2026-07-06.md` §5.2).
 - **`shopt -u globasciiranges`** (collation-ordered ranges in a UTF-8 locale) is
   accepted but its off-behaviour is not implemented; ranges stay ASCII.
 - **Non-UTF-8 8-bit locales** (e.g. `ISO8859-1`): collation is honoured, but
@@ -583,14 +583,17 @@ unusable name warned-and-ignored (falling back to `C`) — and honours it for:
   stuck to the next field; PSH splits on the whole character. For the ordinary
   ASCII delimiters (newline, `:`, `,`, `;`, NUL) byte and character coincide, so
   this only surfaces with a multibyte `-d` delimiter.
-- **Bare-C environments and PEP 538.** If PSH starts in an *unpinned*
-  effectively-C environment (no locale variables, or `LANG=C` alone, with
-  `LC_ALL` unset/empty), CPython's PEP 538 locale coercion rewrites `LC_CTYPE`
-  to a UTF-8 locale before PSH reads it — so character classes behave as UTF-8
-  where bash would use C (`[[ é == [[:alpha:]] ]]` true vs. bash's false). An
-  explicit `LC_ALL=C` disables coercion and is fully bash-faithful; collation is
-  unaffected (`LC_COLLATE` is not coerced). Startup coercion detection is
-  deferred to the Stage-4 locale-reactivity work.
+- **PEP 538 residual (`PYTHONUTF8`).** In a bare or `LANG=C` environment
+  CPython's PEP 538 coercion rewrites `LC_CTYPE` to a UTF-8 target before PSH
+  starts; PSH detects and strips that phantom (via `sys.flags.utf8_mode` plus a
+  coercion-target value), so it now presents bash's C locale under those
+  environments — `[[ é == [[:alpha:]] ]]` is false, `$LC_CTYPE` is empty, and no
+  `LC_CTYPE` is passed to children, all matching bash. The one residual is a user
+  who *forces* CPython's UTF-8 mode (`PYTHONUTF8=1` / `-X utf8`) **and** genuinely
+  sets `LC_CTYPE=C.UTF-8`: the forced `utf8_mode` makes the genuine value look
+  coerced, so PSH strips it where bash keeps it. `PYTHONUTF8` is a Python runtime
+  knob, not a shell-user path; an explicit `LC_ALL=C` is always fully
+  bash-faithful.
 
 ### Here Document Behavior
 

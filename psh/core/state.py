@@ -103,14 +103,20 @@ class ShellState:
         # Environment and variables (the ONE read of os.environ — see
         # the class docstring for the environment policy)
         self.env = os.environ.copy()
+        # Undo PEP 538's C-locale coercion (see the method) BEFORE the locale
+        # service reads the env and BEFORE the import loop turns it into a
+        # variable, so the phantom LC_CTYPE never reaches classification,
+        # ``$LC_CTYPE``, or a child's environment.
+        self._strip_coerced_lc_ctype()
 
         # Central locale service: resolves the effective LC_CTYPE/LC_COLLATE
         # from the environment (bash precedence) and owns the process
         # ``setlocale`` calls. In the C/POSIX locale it is side-effect free and
         # every primitive stays byte-identical to psh's old codepoint/ASCII
         # behaviour; a ``*.UTF-8`` locale enables faithful collation, case
-        # mapping, and character-class membership. Startup-only for now
-        # (mid-script LC_* reactivity is a documented deferral).
+        # mapping, and character-class membership. Reactive as of Stage 4: the
+        # ``_sync_exported_variable`` observer re-derives it on any LC_*/LANG
+        # assignment, unset, or ``LC_ALL=C cmd`` temp-env prefix.
         self.locale = LocaleService(self.env)
 
         # Initialize enhanced scope manager for variable scoping with attributes
@@ -395,8 +401,12 @@ class ShellState:
           re-entrancy counter) is reset for the child process;
         * derived state (the exported-environment sync, inherited-trap set) is
           recomputed; and
-        * the locale service is shared (startup-only; the process
-          ``setlocale`` is already applied and inherited across fork).
+        * the locale service is shared (reactive as of Stage 4, but every
+          in-tree clone is a forked SUBSHELL — separate memory — so a child's
+          mid-session ``reinit`` mutates only its own copy and the process
+          ``setlocale`` is inherited across the fork; a future IN_PROCESS
+          embedding would need to give the child its own service and
+          save/restore the process locale around it).
 
         ``$PPID``/``$$`` stay stable across subshells (POSIX); RANDOM's
         generator state is deliberately reset (bash reseeds it in a subshell);
@@ -913,6 +923,61 @@ class ShellState:
             # leaves the value alone rather than clobbering it with "y").
             self.options['posix'] = (
                 self.scope_manager.get_variable('POSIXLY_CORRECT') is not None)
+
+        if name in self._LOCALE_VARS:
+            # bash treats LC_ALL/LC_CTYPE/LC_COLLATE/LANG as reactive special
+            # variables: assigning, unsetting, or laying one over a command
+            # (``LC_ALL=C cmd``) immediately re-resolves the effective locale.
+            # This observer fires on all of those — including temp-env setup AND
+            # its scope-pop teardown — so the locale tracks live state both into
+            # and out of a prefixed command (Stage 4).
+            self.locale.reinit(self._locale_env_snapshot())
+
+    #: The four variables the effective locale is resolved from; a write/unset
+    #: of any of them re-derives the locale profile (:meth:`_sync_exported_variable`).
+    _LOCALE_VARS = frozenset(('LC_ALL', 'LC_CTYPE', 'LC_COLLATE', 'LANG'))
+
+    #: PEP 538 rewrites ``os.environ['LC_CTYPE']`` to one of these when it
+    #: coerces the C locale (``sys.flags.utf8_mode`` is then 1, which a
+    #: genuinely user-set value leaves 0 — the discriminator).
+    _PEP538_COERCION_TARGETS = frozenset(('C.UTF-8', 'C.UTF8', 'UTF-8'))
+
+    def _strip_coerced_lc_ctype(self) -> None:
+        """Undo PEP 538's C-locale coercion so psh presents bash's locale view.
+
+        On CPython 3.7+ a shell started under an effectively-C environment (bare,
+        or ``LANG=C`` with no ``LC_ALL``/``LC_CTYPE``) has
+        ``os.environ['LC_CTYPE']`` silently rewritten to a UTF-8 target *before*
+        psh runs, and ``sys.flags.utf8_mode`` set. bash never sees that phantom:
+        under the same environment it uses the C locale, shows an empty
+        ``$LC_CTYPE``, and passes no ``LC_CTYPE`` to children. Dropping the
+        phantom from the inherited environment here (before it is imported as a
+        shell variable) makes all three match bash. A genuine ``LC_CTYPE`` the
+        user set is preserved: coercion is the only thing that pairs
+        ``utf8_mode`` with a coercion-target value, so a real ``en_US.UTF-8``
+        (utf8_mode 0) or any non-target value is untouched. The narrow residual —
+        a user who both sets ``LC_CTYPE=C.UTF-8`` and forces UTF-8 mode
+        (``PYTHONUTF8``/``-X utf8``) — is a documented corner (a Python runtime
+        knob, not a shell path; see docs/user_guide/17_differences_from_bash.md)."""
+        if not sys.flags.utf8_mode:
+            return
+        val = self.env.get('LC_CTYPE')
+        if val is not None and val.upper() in self._PEP538_COERCION_TARGETS:
+            del self.env['LC_CTYPE']
+
+    def _locale_env_snapshot(self) -> Dict[str, str]:
+        """The current values of the locale variables as bash resolves the
+        effective locale from — command temp-env overlay shadowing the shell
+        variable (exported OR not), via ``get_variable`` (v0.679 lookup-consults).
+        LC_*/LANG are valid identifiers, so an inherited one is already imported
+        as a variable and the opaque ``_env_base`` never holds them; a stripped
+        PEP 538 phantom is simply absent. Feeds :meth:`LocaleService.reinit`."""
+        snap: Dict[str, str] = {}
+        for name in self._LOCALE_VARS:
+            val = self.scope_manager.get_variable(name)
+            if val is not None:
+                snap[name] = val
+        return snap
 
     # bash set -o names psh does NOT implement (real bash options with no psh
     # analogue). At SHELLOPTS import they are silently skipped — NOT warned — so

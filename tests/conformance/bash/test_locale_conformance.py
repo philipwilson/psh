@@ -244,3 +244,105 @@ class TestRangesAndGlobasciiranges(ConformanceTest):
     def test_shopt_set_globasciiranges_ok(self):
         self.assert_identical_behavior(
             'shopt -s globasciiranges; echo $?', env=C)
+
+
+class TestDynamicLocaleReactivity(ConformanceTest):
+    """LC_ALL/LC_CTYPE/LC_COLLATE/LANG are REACTIVE special variables: assigning,
+    unsetting, or laying one over a command re-resolves the effective locale
+    mid-session, like bash (design §2g, Stage 4). Each row runs psh vs the SAME
+    live bash on this host, so class-membership/collation/case answers are
+    host-faithful on both the macOS gate and the Linux nightly. `en_US.UTF-8`
+    (é as a letter, é↑É case, a<B collation) is platform-stable."""
+
+    # --- assignment reacts, per name and per surface ---
+    def test_assign_lc_all_reacts_ctype(self):
+        self.assert_identical_behavior(
+            "LC_ALL=en_US.UTF-8; [[ é == [[:alpha:]] ]]; echo $?", env=C)
+
+    def test_assign_lc_all_reacts_collate(self):
+        self.assert_identical_behavior(
+            "LC_ALL=en_US.UTF-8; [[ a < B ]]; echo $?", env=C)
+
+    def test_assign_lc_all_reacts_case(self):
+        self.assert_identical_behavior(
+            'LC_ALL=en_US.UTF-8; x=é; echo "${x^^}"', env=C)
+
+    def test_export_lc_all_reacts(self):
+        self.assert_identical_behavior(
+            "export LC_ALL=en_US.UTF-8; [[ é == [[:alpha:]] ]]; echo $?", env=C)
+
+    def test_assign_lc_ctype_alone_reacts(self):
+        self.assert_identical_behavior(
+            "unset LC_ALL; LC_CTYPE=en_US.UTF-8; [[ é == [[:alpha:]] ]]; echo $?",
+            env=C)
+
+    def test_assign_lc_collate_alone_reacts(self):
+        self.assert_identical_behavior(
+            "unset LC_ALL; LC_COLLATE=en_US.UTF-8; [[ a < B ]]; echo $?", env=C)
+
+    def test_assign_lang_alone_reacts_ctype(self):
+        self.assert_identical_behavior(
+            "unset LC_ALL; LANG=en_US.UTF-8; [[ é == [[:alpha:]] ]]; echo $?",
+            env=C)
+
+    def test_assign_lang_alone_reacts_collate(self):
+        self.assert_identical_behavior(
+            "unset LC_ALL; LANG=en_US.UTF-8; [[ a < B ]]; echo $?", env=C)
+
+    # --- unset reverts (the symmetric half of every assign pin) ---
+    def test_unset_lc_all_reverts_to_c(self):
+        self.assert_identical_behavior(
+            "LC_ALL=en_US.UTF-8; unset LC_ALL; [[ é == [[:alpha:]] ]]; echo $?",
+            env=C)
+
+    def test_unset_lang_reverts_from_utf8_start(self):
+        self.assert_identical_behavior(
+            "unset LANG; [[ é == [[:alpha:]] ]]; echo $?", env=UTF8)
+
+    def test_assign_lc_ctype_c_reverts_from_utf8_start(self):
+        self.assert_identical_behavior(
+            "LC_CTYPE=C; [[ é == [[:alpha:]] ]]; echo $?", env=UTF8)
+
+    def test_assign_lc_collate_c_reverts_from_utf8_start(self):
+        self.assert_identical_behavior(
+            "LC_COLLATE=C; [[ a < B ]]; echo $?", env=UTF8)
+
+    # --- precedence: LC_ALL > LC_category > LANG, re-applied on each change ---
+    def test_lc_all_c_overrides_lc_ctype_utf8(self):
+        self.assert_identical_behavior(
+            "unset LC_ALL; LC_CTYPE=en_US.UTF-8; LC_ALL=C; "
+            "[[ é == [[:alpha:]] ]]; echo $?", env=C)
+
+    def test_lc_ctype_c_overrides_lang_utf8(self):
+        self.assert_identical_behavior(
+            "unset LC_ALL; LANG=en_US.UTF-8; LC_CTYPE=C; "
+            "[[ é == [[:alpha:]] ]]; echo $?", env=C)
+
+    # --- category independence: a ctype change leaves collation, and vice versa ---
+    def test_lc_ctype_change_leaves_collation(self):
+        self.assert_identical_behavior(
+            "unset LC_ALL; LC_CTYPE=en_US.UTF-8; [[ a < B ]]; echo $?", env=C)
+
+    def test_lc_collate_change_leaves_ctype(self):
+        self.assert_identical_behavior(
+            "unset LC_ALL; LC_COLLATE=en_US.UTF-8; [[ é == [[:alpha:]] ]]; echo $?",
+            env=C)
+
+    # --- non-exported assignment still changes the shell's OWN behavior, and is
+    #     not passed to children (LC_CTYPE is absent from the pinned ambient) ---
+    def test_unexported_assignment_reacts_but_not_exported(self):
+        self.assert_identical_behavior(
+            'unset LC_ALL; LC_CTYPE=en_US.UTF-8; '
+            '[[ é == [[:alpha:]] ]] && echo react=yes; '
+            'env | grep -c "^LC_CTYPE=" || true', env=C)
+
+    # --- temp-env overlay `LC_ALL=C cmd`: declare -u case-maps through the
+    #     service, so the prefix is observable and MUST revert after ---
+    def test_tempenv_prefix_up_case_map(self):
+        self.assert_identical_behavior(
+            'LC_ALL=en_US.UTF-8 declare -u x=café; echo "$x"', env=C)
+
+    def test_tempenv_prefix_down_then_revert(self):
+        self.assert_identical_behavior(
+            'LC_ALL=en_US.UTF-8; LC_ALL=C declare -u a=café; '
+            'declare -u b=café; echo "$a $b"', env=C)
