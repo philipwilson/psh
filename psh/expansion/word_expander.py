@@ -156,8 +156,9 @@ class WordExpander:
         elif part.quoted and part.quote_char == '"':
             # Double-quoted literal: after WordBuilder decomposition,
             # expansions are separate ExpansionPart nodes, so this
-            # LiteralPart is purely literal text.  But backslash
-            # escapes (\$, \\, \", \`) still need processing.
+            # LiteralPart is purely literal text.  The lexer already resolved
+            # the double-quote escapes; only the deferred \$ still needs
+            # stripping (process_dquote_escapes).
             if '\\' in text:
                 text = self.process_dquote_escapes(text)
             st.segments.append(ExpandedSegment(text, quoted=True))
@@ -613,7 +614,7 @@ class WordExpander:
                     prev_char = ''
                 elif part.quoted and part.quote_char == '"':
                     # Double-quoted: literal text (expansions are separate
-                    # ExpansionParts); process \$ \\ \" \` escapes
+                    # ExpansionParts); strip only the lexer-deferred \$
                     text = part.text
                     if '\\' in text:
                         text = self.process_dquote_escapes(text)
@@ -739,7 +740,7 @@ class WordExpander:
             if isinstance(part, LiteralPart):
                 # After WordBuilder decomposition, expansions are separate
                 # ExpansionPart nodes, so LiteralPart text is purely literal.
-                # But backslash escapes (\$, \\, \", \`) still need processing.
+                # The lexer resolved the dquote escapes; only \$ remains.
                 text = part.text
                 if '\\' in text:
                     text = self.process_dquote_escapes(text)
@@ -861,24 +862,29 @@ class WordExpander:
 
     @staticmethod
     def process_dquote_escapes(text: str) -> str:
-        """Process backslash escapes in double-quoted literal text.
+        """Strip the ONE deferred ``\\$`` escape in already-lexed double-quoted
+        literal text.
 
-        In double quotes, only ``\\$``, ``\\\\``, ``\\"``, and ``\\``` are
-        special escapes.  All other ``\\X`` sequences are kept literally.
+        The lexer FULLY resolves double-quote escapes into the STRING part value
+        already — ``\\\\`` -> ``\\``, ``\\"`` -> ``"``, ``\\``` -> `` ` ``,
+        ``\\<newline>`` dropped — EXCEPT ``\\$``, which it keeps verbatim so the
+        ``$`` is not mistaken for an expansion start (expansions are separate
+        ExpansionParts). This second pass removes only that backslash
+        (``\\$`` -> ``$``). Every other backslash is already final and MUST be
+        left untouched: re-applying the ``\\\\`` -> ``\\`` rule would collapse a
+        run of backslashes a SECOND time (``"a\\\\\\b"`` lexes to ``a\\\\b`` and
+        a re-collapse would wrongly yield ``a\\b``; bash keeps ``a\\\\b``).
         """
+        if '\\$' not in text:
+            return text
         result = []
         i = 0
-        while i < len(text):
-            if text[i] == '\\' and i + 1 < len(text):
-                nxt = text[i + 1]
-                if nxt in ('$', '\\', '"', '`'):
-                    result.append(nxt)
-                    i += 2
-                    continue
-                elif nxt == '\n':
-                    # Line continuation — drop both chars
-                    i += 2
-                    continue
+        n = len(text)
+        while i < n:
+            if text[i] == '\\' and i + 1 < n and text[i + 1] == '$':
+                result.append('$')
+                i += 2
+                continue
             result.append(text[i])
             i += 1
         return ''.join(result)

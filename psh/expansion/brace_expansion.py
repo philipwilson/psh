@@ -222,8 +222,11 @@ class BraceExpander:
                 continue
 
             if char == '{':
-                if i > 0 and text[i - 1] == '$':
-                    # Parameter expansion ${...}: skip past its close.
+                if (i > 0 and text[i - 1] == '$'
+                        and not self._dollar_is_escaped(text, i - 1)):
+                    # Parameter expansion ${...}: skip past its close. An
+                    # ESCAPED '$' (`\${a,b}`) is a literal '$', so its braces
+                    # ARE a brace expression — fall through to _match_group_at.
                     i = self._skip_parameter_expansion(text, i)
                     continue
                 group = self._match_group_at(text, i)
@@ -261,9 +264,11 @@ class BraceExpander:
                 continue
 
             if char == '{':
-                if depth > 0 and i > 0 and text[i - 1] == '$':
+                if (depth > 0 and i > 0 and text[i - 1] == '$'
+                        and not self._dollar_is_escaped(text, i - 1)):
                     # Nested parameter expansion: skip its braces wholesale so
-                    # a `}` inside it does not close our group.
+                    # a `}` inside it does not close our group. An ESCAPED '$'
+                    # is literal, so its braces stay part of the group.
                     i = self._skip_parameter_expansion(text, i)
                     continue
                 depth += 1
@@ -278,6 +283,24 @@ class BraceExpander:
 
         # No matching '}' for the opener.
         return None
+
+    @staticmethod
+    def _dollar_is_escaped(text: str, dollar_idx: int) -> bool:
+        """True when the ``$`` at ``dollar_idx`` is escaped — preceded by an
+        ODD run of backslashes.
+
+        An escaped ``$`` is a literal ``$``, not a ``${...}`` parameter-
+        expansion marker, so a following ``{a,b}`` IS a brace expression: bash
+        expands ``\\${a,b}`` to ``$a $b`` (the literal ``$`` distributes over the
+        two words). An even run (``\\\\${a,b}``) leaves the ``$`` live, so it
+        stays a ``${...}`` and its braces are skipped.
+        """
+        bs = 0
+        j = dollar_idx - 1
+        while j >= 0 and text[j] == '\\':
+            bs += 1
+            j -= 1
+        return bs % 2 == 1
 
     @staticmethod
     def _skip_parameter_expansion(text: str, dollar_brace_index: int) -> int:
