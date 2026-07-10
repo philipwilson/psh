@@ -9,10 +9,11 @@ These tests prove that behaviour against bash (trace to stderr with a
 """
 
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from conformance_framework import ConformanceTest
+from conformance_framework import ConformanceTest, find_bash
 
 
 class TestXtraceConformance(ConformanceTest):
@@ -63,3 +64,37 @@ class TestVerboseConformance(ConformanceTest):
         # A backslash-newline pair mid-input echoes both physical lines verbatim
         # (with the backslash) and executes the joined command.
         self.assert_identical_behavior('set -v\necho a\\\nb\n')
+
+
+class TestSetOInvalidNameConformance(ConformanceTest):
+    """``set -o BADNAME`` prints ONE line and fails with rc 2 — no dump.
+
+    bash emits only ``set: <name>: invalid option name`` (rc 2). psh used to
+    append a ``Valid options: <45 names>`` listing on the enable path with no
+    bash analogue. Compared by exit code + stderr content (not the leading
+    ``bash: line N:`` prefix, a separate systemic divergence, task #35).
+    """
+
+    def _run(self, cmd):
+        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
+                             capture_output=True, text=True)
+        bash = subprocess.run([find_bash(), '-c', cmd],
+                              capture_output=True, text=True)
+        return psh, bash
+
+    def test_set_o_badname_single_line_rc2(self):
+        psh, bash = self._run("set -o nosuchopt 2>&1; echo rc=$?")
+        assert psh.stdout.endswith("rc=2\n")
+        assert bash.stdout.endswith("rc=2\n")
+        assert "set: nosuchopt: invalid option name" in psh.stdout
+        assert "set: nosuchopt: invalid option name" in bash.stdout
+        # No option dump: psh emits exactly the error line + the echo output.
+        assert "Valid options:" not in psh.stdout
+        assert psh.stdout == "set: nosuchopt: invalid option name\nrc=2\n"
+
+    def test_set_plus_o_badname_single_line_rc2(self):
+        psh, bash = self._run("set +o nosuchopt 2>&1; echo rc=$?")
+        assert psh.stdout.endswith("rc=2\n")
+        assert bash.stdout.endswith("rc=2\n")
+        assert "set: nosuchopt: invalid option name" in psh.stdout
+        assert "Valid options:" not in psh.stdout
