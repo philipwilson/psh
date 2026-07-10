@@ -336,19 +336,40 @@ class CommandParser(ParserSubcomponent):
         return element_words, element_strings
 
     def _serialize_array_element(self, start_pos: int, end_pos: int) -> str:
-        """Token-faithful source rendering of one array element's tokens."""
-        parts = []
+        """Source-faithful rendering of one array element's tokens.
+
+        Word fusion merges an element's pieces into ONE WORD whose ``parts``
+        carry the DECODED, quote-stripped piece values (an ANSI-C ``$'a\\tb'``
+        arrives as a part valued ``a<TAB>b``). Re-wrapping each part's decoded
+        value in its quote (and re-``$``-ing variables) reproduces the
+        pre-fusion per-token serialization while — crucially — leaving NO
+        backslash escapes in the result. That matters because this string
+        becomes the array-init argument's flat text, which the declaration
+        builtin looks its structured init up by AFTER unquoted-escape
+        processing: a leftover ``\\t`` would make the parse-time key
+        (``$'a\\tb'``) miss the runtime lookup (``$'atb'``). A part valued from
+        the decoded content has no escapes, so key == lookup.
+        """
+        out = []
         for token in self.parser.tokens[start_pos:end_pos]:
-            if token.type == TokenType.STRING and token.quote_type:
-                parts.append(token.quote_type + token.value + token.quote_type)
+            if token.parts:
+                for p in token.parts:
+                    if p.is_variable:
+                        # '$' + name ('x' -> $x, '{x}' -> ${x}); keep any quote.
+                        v = '$' + p.value
+                        out.append(p.quote_type + v + p.quote_type
+                                   if p.quote_type else v)
+                    elif p.quote_type is not None:
+                        out.append(p.quote_type + p.value + p.quote_type)
+                    else:
+                        out.append(p.value)
+            elif token.type == TokenType.STRING and token.quote_type:
+                out.append(token.quote_type + token.value + token.quote_type)
             elif token.type == TokenType.VARIABLE:
-                # VARIABLE token values carry the name without the leading '$'
-                # ('x' or '{x}') — restore it so the consuming builtin can
-                # expand the element.
-                parts.append('$' + token.value)
+                out.append('$' + token.value)
             else:
-                parts.append(token.value)
-        return ''.join(parts)
+                out.append(token.value)
+        return ''.join(out)
 
     def parse_pipeline(self) -> Pipeline:
         """Parse a pipeline (commands connected by | or |&)."""
