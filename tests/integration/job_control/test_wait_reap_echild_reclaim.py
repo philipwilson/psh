@@ -64,6 +64,24 @@ def test_bare_wait_reclaims_slow_child_missed_by_group_wait():
     assert r.returncode == 0
 
 
+MULTI_PID_PIPELINE_CMD = (
+    'sleep 0.05 | bash -c "sleep 0.35; exit 7" & p=$!; wait; wait $p; echo rc=$?'
+)
+
+
+def test_bare_wait_reclaims_all_pipeline_procs():
+    """A multi-pid pipeline job: the reclaim must reap EVERY still-running
+    process by pid, not just the first. `$!` is the last process (exit 7); if
+    the reclaim stopped after the first proc, that second proc would leak past
+    the bare wait and be reaped by `wait $p` (rc=7). It must be reaped in the
+    reclaim so `wait $p` returns 127. (Guards the loop against a
+    first-proc-only regression, which the single-subshell pins cannot catch —
+    their lone leftover is mopped up by the orphan `waitpid(-1)` loop.)"""
+    r = _run(MULTI_PID_PIPELINE_CMD, seam=True)
+    assert r.stdout == "rc=127\n", (r.stdout, r.stderr)
+    assert r.returncode == 0
+
+
 def test_seam_inert_when_unset():
     """With the seam unset (production default), behavior is unchanged: the
     group wait reaps the child directly and `wait $p` returns 127."""
