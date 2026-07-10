@@ -914,12 +914,14 @@ class ShellState:
             self.options['posix'] = (
                 self.scope_manager.get_variable('POSIXLY_CORRECT') is not None)
 
-    # bash spellings accepted at SHELLOPTS import: hashall is bash's name for
-    # psh's hashcmds. The _BASH_ONLY_SET_O names are real bash set -o options
-    # psh does not implement — silently skipped so a psh child of a bash
-    # parent (whose exported SHELLOPTS routinely carries
-    # interactive-comments) does not spew startup warnings.
-    _BASH_SET_O_ALIASES = {'hashall': 'hashcmds'}
+    # Alias table for bash set -o spellings psh spells differently at SHELLOPTS
+    # import. Currently EMPTY: `hashall` became psh's native name in #34, so it
+    # imports directly, and a stale `hashcmds` (exported by an older psh) now
+    # warns like any unknown name — which is exactly what bash does with it. The
+    # _BASH_ONLY_SET_O names are real bash set -o options psh does not implement,
+    # silently skipped so a psh child of a bash parent (whose exported SHELLOPTS
+    # routinely carries interactive-comments) does not spew startup warnings.
+    _BASH_SET_O_ALIASES: Dict[str, str] = {}
     _BASH_ONLY_SET_O = frozenset({
         'interactive-comments', 'keyword', 'onecmd', 'physical', 'privileged',
     })

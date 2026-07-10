@@ -215,21 +215,32 @@ class CommandAssignments:
             try:
                 self.state.set_variable(var, resolved)
             except ReadonlyVariableError as e:
-                # bash: a readonly-variable assignment error aborts the
-                # whole CURRENT top-level command (the rest of the command
-                # list, and any enclosing if/loop/function on the same input)
-                # but does NOT exit the shell — execution resumes at the next
-                # top-level command. Use e.name so a readonly array element
-                # write reports the array name (``a[0]=X`` → ``a: readonly
-                # variable``), like bash. In POSIX mode a variable-assignment
-                # error EXITS a non-interactive shell with rc 1 (bash 5.2,
-                # probe tmp/posixexit: `set -o posix; readonly r=1; r=2` —
-                # script/-c/stdin all exit; bash's -c oddly exits 127, a
-                # ledgered artifact not reproduced).
+                # bash: a readonly-variable assignment error aborts the whole
+                # CURRENT top-level command (the rest of the command list, and
+                # any enclosing if/loop/function on the same input) but does NOT
+                # exit the shell in default mode — execution resumes at the next
+                # top-level command. Use e.name so a readonly array-element write
+                # reports the array name (``a[0]=X`` → ``a: readonly variable``),
+                # like bash.
+                #
+                # In POSIX mode a variable-assignment error EXITS a
+                # non-interactive shell, following bash's fatal expansion-error
+                # status model — the SAME one ``set -u`` / ``${x:?}`` already use
+                # (fatal_expansion_status): under ``-c`` (command_mode) the status
+                # is bash's 127, for a script file or piped stdin it is 1 (both
+                # probe-verified vs bash 5.2, 2026-07-10). Reproducing the ``-c``
+                # 127 for the PLAIN assignment (this #34 fix) supersedes the
+                # v0.677 "artifact not reproduced" call: psh already reproduces
+                # 127 for the sibling errors, so leaving readonly at 1 made it the
+                # one inconsistent member. The BUILTIN forms (readonly/export
+                # ``r=2``, prefix ``r=2 cmd``) stay rc 1 via
+                # SpecialBuiltinUsageError — a distinct, bash-correct code.
                 print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
-                if (self.state.options.get('posix')
-                        and self.state.is_script_mode):
-                    raise SystemExit(1) from None
+                if self.state.options.get('posix'):
+                    if self.state.options.get('command_mode'):
+                        raise SystemExit(127) from None
+                    if self.state.is_script_mode:
+                        raise SystemExit(1) from None
                 raise TopLevelAbort(1) from None
             except NamerefCycleError as e:
                 # bash: writing through a circular nameref warns and aborts

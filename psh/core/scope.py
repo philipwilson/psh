@@ -4,7 +4,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .exceptions import ReadonlyVariableError
 from .locale_service import active_locale
-from .special_registry import SpecialContext, SpecialParameterState
+from .special_registry import (
+    OPTION_REFLECTION_SPECIALS,
+    SpecialContext,
+    SpecialParameterState,
+)
 from .variable_store import VariableStore
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
@@ -886,6 +890,19 @@ class ScopeManager:
                     all_vars.pop(name, None)
                 else:
                     all_vars[name] = var
+
+        # Computed option-reflection specials (SHELLOPTS/BASHOPTS) have no stored
+        # cell but ARE enumerated by no-arg `set` and `declare -p` (bash lists
+        # both, with values). Injected here so both surfaces get them from ONE
+        # place. Their compute is side-effect-free (unlike RANDOM), and they are
+        # readonly so no real stored variable can shadow them — the `not in`
+        # guard is belt-and-suspenders. The dynamic clock/counter specials are
+        # deliberately excluded (see special_registry.OPTION_REFLECTION_SPECIALS).
+        for name in OPTION_REFLECTION_SPECIALS:
+            if name not in all_vars:
+                special = self._get_special_variable(name)
+                if special is not None:
+                    all_vars[name] = special
 
         return list(all_vars.values())
 

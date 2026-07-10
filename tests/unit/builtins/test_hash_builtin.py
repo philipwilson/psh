@@ -170,8 +170,8 @@ class TestHashingDisabled:
         assert rc == 1
         assert 'hash: hashing disabled' in captured_shell.get_stderr()
 
-    def test_hashcmds_on_by_default(self, captured_shell):
-        """bash has -h ON by default; $- contains 'h'."""
+    def test_hashall_on_by_default(self, captured_shell):
+        """bash has -h (hashall) ON by default; $- contains 'h'."""
         captured_shell.run_command('echo $-')
         assert 'h' in captured_shell.get_stdout()
 
