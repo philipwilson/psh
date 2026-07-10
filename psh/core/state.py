@@ -914,14 +914,12 @@ class ShellState:
             self.options['posix'] = (
                 self.scope_manager.get_variable('POSIXLY_CORRECT') is not None)
 
-    # Alias table for bash set -o spellings psh spells differently at SHELLOPTS
-    # import. Currently EMPTY: `hashall` became psh's native name in #34, so it
-    # imports directly, and a stale `hashcmds` (exported by an older psh) now
-    # warns like any unknown name — which is exactly what bash does with it. The
-    # _BASH_ONLY_SET_O names are real bash set -o options psh does not implement,
-    # silently skipped so a psh child of a bash parent (whose exported SHELLOPTS
-    # routinely carries interactive-comments) does not spew startup warnings.
-    _BASH_SET_O_ALIASES: Dict[str, str] = {}
+    # bash set -o names psh does NOT implement (real bash options with no psh
+    # analogue). At SHELLOPTS import they are silently skipped — NOT warned — so
+    # a psh child of a bash parent (whose exported SHELLOPTS routinely carries
+    # interactive-comments) does not spew startup warnings. No spelling-alias
+    # table is needed: `hashall` is psh's native name since #34, so it imports
+    # directly and a stale `hashcmds` warns like any unknown name, matching bash.
     _BASH_ONLY_SET_O = frozenset({
         'interactive-comments', 'keyword', 'onecmd', 'physical', 'privileged',
     })
@@ -946,8 +944,7 @@ class ShellState:
             # branch and WARN for SHELLOPTS (": invalid option name") while
             # BASHOPTS' unknown-silent rule swallows them (v0.674 fixlet F2).
             for opt in _colon_units(raw):
-                name = (self._BASH_SET_O_ALIASES.get(opt, opt)
-                        if env_name == 'SHELLOPTS' else opt)
+                name = opt
                 if name in table:
                     if name in ('vi', 'emacs'):
                         # Keep edit_mode coupled exactly like `set -o vi`.
