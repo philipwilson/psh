@@ -229,7 +229,17 @@ class TestDisownIntegration:
     """Test disown integration with other job control features."""
 
     def test_disown_then_fg_fails(self, shell, capsys, spawned_pids):
-        """Test that fg fails on disowned job."""
+        """Test that fg fails on disowned job.
+
+        Under `set -m` (job control on) the fg jobspec gate is passed and bash
+        reports `%1: no such job` — proving disown actually removed the job.
+        (Without monitor, fg reports `no job control` first, before resolution,
+        which would not prove the job is gone; bash-verified 5.2.26.)
+        """
+        # Enable job control so fg resolves the jobspec instead of short-circuiting
+        # on the "no job control" gate.
+        shell.run_command('set -m')
+
         # Start background job
         shell.run_command('sleep 30 &')
         spawned_pids.append(shell.state.last_bg_pid)
@@ -252,7 +262,11 @@ class TestDisownIntegration:
         # Cleanup: disowned PID SIGKILLed by exact id in the fixture.
 
     def test_disown_then_bg_fails(self, shell, capsys, spawned_pids):
-        """Test that bg fails on disowned job."""
+        """Test that bg fails on disowned job (see test_disown_then_fg_fails)."""
+        # Enable job control so bg resolves the jobspec (bash-verified: `%1: no
+        # such job` under set -m; `no job control` gate fires first otherwise).
+        shell.run_command('set -m')
+
         # Start background job
         shell.run_command('sleep 30 &')
         spawned_pids.append(shell.state.last_bg_pid)

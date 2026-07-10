@@ -1,7 +1,7 @@
 """Job control builtin commands."""
 import os
 import signal
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from ..executor.job_control import (
     JobSpecOutcome,
@@ -25,11 +25,13 @@ class JobsBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "jobs [-lp] [jobspec ...]"
+        # Only the flags psh implements are advertised; bash's full form
+        # (jobs [-lnprs] ... or jobs -x command [args]) awaits task #22 [#36].
+        return "jobs [-lprs] [jobspec ...]"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the jobs builtin."""
-        opts, operands = self.parse_flags(args, shell, flags='lp')
+        opts, operands = self.parse_flags(args, shell, flags='lprs')
         if opts is None:
             return 2  # bash: invalid option is a usage error
 
@@ -51,7 +53,7 @@ class JobsBuiltin(Builtin):
             jobs_to_list = []
             for spec in operands:
                 result = manager.resolve_job_spec(spec, bare='jobnum')
-                if result.outcome is JobSpecOutcome.FOUND:
+                if result.outcome is JobSpecOutcome.FOUND and result.job is not None:
                     jobs_to_list.append(result.job)
                 else:
                     for msg in jobspec_error_messages(result, spec,
@@ -62,9 +64,36 @@ class JobsBuiltin(Builtin):
             jobs_to_list = [manager.jobs[job_id]
                             for job_id in sorted(manager.jobs.keys())]
 
+        # -r/-s restrict to Running/Stopped jobs. When both are given bash lets
+        # the LAST-specified flag win (`jobs -rs` -> stopped, `jobs -sr` ->
+        # running), so consult the option order rather than the flag booleans.
+        state_filter = self._state_filter(args)
+        if state_filter is not None:
+            jobs_to_list = [job for job in jobs_to_list
+                            if job.state == state_filter]
+
         for job in jobs_to_list:
             self._render_job(job, opts, manager, shell)
         return exit_status
+
+    @staticmethod
+    def _state_filter(args: List[str]) -> 'Optional[JobState]':
+        """The Running/Stopped filter from -r/-s, last-specified wins (bash).
+
+        Scans the leading option arguments (parse_flags already validated them,
+        so every option char is one of l/p/r/s) and returns the JobState the
+        final r/s selects, or None when neither was given.
+        """
+        state_filter: Optional[JobState] = None
+        for arg in args[1:]:
+            if arg == '--' or not arg.startswith('-') or len(arg) == 1:
+                break
+            for ch in arg[1:]:
+                if ch == 'r':
+                    state_filter = JobState.RUNNING
+                elif ch == 's':
+                    state_filter = JobState.STOPPED
+        return state_filter
 
     def _render_job(self, job, opts, manager, shell: 'Shell') -> None:
         """Emit one job in the requested format (-p PIDs / -l long / plain)."""
@@ -100,15 +129,24 @@ class FgBuiltin(Builtin):
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the fg builtin."""
         jm = shell.job_manager
-        # Determine which job to foreground
+        # bash checks the job-control flag (psh: `set -m`/monitor) FIRST, before
+        # resolving any jobspec — so `fg %99` without job control reports
+        # "no job control", never "no such job".
+        if not shell.state.options.get('monitor'):
+            self.error("no job control", shell)
+            return 1
+
+        # Determine which job to foreground. A bare integer operand is a JOB
+        # NUMBER (bash: `fg 1` == `fg %1`), unlike wait/kill where it is a PID.
         if len(args) <= 1:
-            # No argument - use current job
+            # No argument - use current job. bash names the missing jobspec
+            # "current" in its diagnostic.
             job = jm.current_job
             if job is None:
-                self.error("no current job", shell)
+                self.error("current: no such job", shell)
                 return 1
         else:
-            result = jm.resolve_job_spec(args[1])
+            result = jm.resolve_job_spec(args[1], bare='jobnum')
             if result.outcome is not JobSpecOutcome.FOUND or result.job is None:
                 for msg in jobspec_error_messages(result, args[1]):
                     self.error(msg, shell)
@@ -120,19 +158,12 @@ class FgBuiltin(Builtin):
 
         # Give it terminal control FIRST, before sending SIGCONT — a resumed
         # job that reads the terminal before the transfer would be stopped
-        # again by SIGTTIN.
+        # again by SIGTTIN. The transfer is best-effort: with monitor on but no
+        # controlling terminal (a `set -m` non-interactive shell), bash still
+        # foregrounds and WAITS for the job, so a failed transfer must not abort.
         jm.set_foreground_job(job)
         job.foreground = True
-        if not jm.transfer_terminal_control(job.pgid, "fg builtin"):
-            # The terminal transfer failed: undo the foreground promotion so we
-            # do not leave a job marked foreground/current with the shell still
-            # in the background (bash keeps its bookkeeping consistent here).
-            jm.finish_foreground_job(False, job)
-            if not shell.state.supports_job_control:
-                self.error("no job control in this shell", shell)
-            else:
-                self.error("can't set terminal control", shell)
-            return 1
+        transferred = jm.transfer_terminal_control(job.pgid, "fg builtin")
 
         try:
             # Continue a stopped job (SIGCONT to its process group).
@@ -143,13 +174,13 @@ class FgBuiltin(Builtin):
 
             exit_status = jm.wait_for_job(job)
         finally:
-            # ALWAYS reclaim the terminal and clear foreground-job bookkeeping,
-            # even if wait_for_job raised — otherwise a failed wait would strand
-            # the terminal with the (possibly dead) job's process group. Route
-            # through finish_foreground_job so a job re-stopped during fg is
-            # promoted to %+ (bash's stopped-job priority), not left where it
-            # was in the rotation.
-            jm.finish_foreground_job(True, job)
+            # ALWAYS clear foreground-job bookkeeping, even if wait_for_job
+            # raised. Reclaim the terminal only when we actually transferred it
+            # (otherwise a failed wait would strand the terminal with the
+            # possibly-dead job's process group). Route through
+            # finish_foreground_job so a job re-stopped during fg is promoted to
+            # %+ (bash's stopped-job priority), not left where it was.
+            jm.finish_foreground_job(transferred, job)
 
         # Remove job if completed
         if job.state == JobState.DONE:
@@ -173,17 +204,23 @@ class BgBuiltin(Builtin):
         used to look at only ``args[1]``.
         """
         jm = shell.job_manager
+        # bash checks the job-control flag (psh: `set -m`/monitor) FIRST.
+        if not shell.state.options.get('monitor'):
+            self.error("no job control", shell)
+            return 1
+
         specs = args[1:]
         if not specs:
             job = jm.current_job
             if job is None:
-                self.error("no current job", shell)
+                self.error("current: no such job", shell)
                 return 1
             return self._resume_in_background(job, shell)
 
+        # A bare integer operand is a JOB NUMBER (bash: `bg 1` == `bg %1`).
         exit_status = 0
         for spec in specs:
-            result = jm.resolve_job_spec(spec)
+            result = jm.resolve_job_spec(spec, bare='jobnum')
             if result.outcome is not JobSpecOutcome.FOUND or result.job is None:
                 for msg in jobspec_error_messages(result, spec):
                     self.error(msg, shell)
@@ -193,14 +230,21 @@ class BgBuiltin(Builtin):
         return exit_status
 
     def _resume_in_background(self, job, shell: 'Shell') -> int:
-        """Resume one stopped job in the background (SIGCONT to its group)."""
+        """Resume one stopped job in the background (SIGCONT to its group).
+
+        The resume line carries the job's real marker (`+` current, `-`
+        previous, ` ` otherwise) at print time — bash's, not a hardcoded `+`.
+        """
         if job.state == JobState.STOPPED:
+            jm = shell.job_manager
             job.mark_running()
             job.state = JobState.RUNNING
             job.foreground = False
 
             os.killpg(job.pgid, signal.SIGCONT)
-            self.write_line(f"[{job.job_id}]+ {job.command} &", shell)
+            marker = ('+' if job is jm.current_job
+                      else '-' if job is jm.previous_job else ' ')
+            self.write_line(f"[{job.job_id}]{marker} {job.command} &", shell)
         return 0
 
 
