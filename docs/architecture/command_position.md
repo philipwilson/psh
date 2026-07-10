@@ -60,7 +60,11 @@ lexer pass sees **token types plus WORD values** (keywords aren't typed yet),
 and the normalizer sees **token types** (keywords now carry their own type). A
 single unified machine is intentionally not extracted — the per-stage
 differences below are irreducible — but the *vocabulary* is centralized so the
-three cannot silently drift apart.
+three cannot silently drift apart. (The lexer pass's own transition is
+consolidated into the single function
+`command_position.advance_lexical_state`, which mutates a
+`LexicalState`; it is deliberately LEXER-only and does **not** serve the other
+two stages — see that function's docstring.)
 
 ## Transition tables
 
@@ -82,8 +86,10 @@ Alphabet: raw word strings. It only tracks position finely enough to find
 
 `CMDPOS_KEEPING_WORDS` = `if then else elif fi while until do done { } ! time coproc`.
 
-### (2) lexer pass — `ModularLexer._update_command_position_context`
+### (2) lexer pass — `command_position.advance_lexical_state`
 
+(Invoked per emitted token via the thin adapter
+`ModularLexer._update_command_position_context`.)
 Alphabet: token types + WORD values (keywords are still `WORD`).
 
 | Input | Next position |
@@ -96,7 +102,7 @@ Alphabet: token types + WORD values (keywords are still `WORD`).
 
 `LEXER_COMMAND_POSITION_WORDS` = `if while until for case then do else elif`.
 (Case nesting, `[[ ]]` depth, and `$(( ))` depth are tracked by separate
-counters on `LexerContext`, not by this flag.)
+fields on `LexicalState`, not by this flag.)
 
 ### (3) keyword normalizer — `KeywordNormalizer._next_command_position`
 
@@ -150,7 +156,7 @@ thing the review asked to make visible:
 | Stage | Code | Vocabulary it consults |
 |-------|------|------------------------|
 | (1) scanner | `psh/lexer/cmdsub_scanner.py` (`find_command_substitution_end`) | `CMDPOS_KEEPING_WORDS` |
-| (2) lexer pass | `psh/lexer/modular_lexer.py` (`ModularLexer._update_command_position_context`) | `STATEMENT_SEPARATORS`, `COMMAND_GROUP_OPENERS`, `LEXER_COMMAND_POSITION_WORDS` |
+| (2) lexer pass | `psh/lexer/command_position.py` (`advance_lexical_state`, via `ModularLexer._update_command_position_context`) | `STATEMENT_SEPARATORS`, `COMMAND_GROUP_OPENERS`, `LEXER_COMMAND_POSITION_WORDS` |
 | (3) normalizer | `psh/lexer/keyword_normalizer.py` (`KeywordNormalizer._next_command_position`) | `STATEMENT_SEPARATORS`, `CASE_TERMINATORS`, `RESET_TO_COMMAND_POSITION` |
 | shared vocabulary | `psh/lexer/command_position.py` | — |
 | drift lock | `tests/unit/lexer/test_command_position_consistency.py` | asserts the set relationships above |

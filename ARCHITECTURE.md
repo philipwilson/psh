@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.679.0
+**Current Version**: 0.680.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -235,7 +235,7 @@ The lexer uses a unified, modular architecture with enhanced features as standar
 - **`psh/lexer/__init__.py`** - Clean public API
 
 #### State Management
-- **`psh/lexer/state_context.py`** - Unified LexerContext for all state
+- **`psh/lexer/state_context.py`** - `LexicalState`: explicit lexical state (role + case phase; `LexerContext` remains as a compatibility alias)
 
 #### Helper Functions
 - **`psh/lexer/pure_helpers.py`** - Stateless char-level helpers (QuoteState, delimiter matching, escape decoding)
@@ -264,7 +264,7 @@ class ModularLexer:
     """Modular lexer using pluggable token recognizers."""
     def __init__(self, input_string: str, config: Optional[LexerConfig] = None):
         self.position_tracker = PositionTracker(input_string)
-        self.context = LexerContext()          # cross-token lexer state
+        self.context = LexicalState()          # cross-token lexer state
         self.registry = RecognizerRegistry()   # priority-ordered recognizers
         self.expansion_parser = ExpansionParser(self.config)
         self.quote_parser = UnifiedQuoteParser(self.expansion_parser)
@@ -273,22 +273,31 @@ class ModularLexer:
 ### 2.2 Lexer State
 **File**: `psh/lexer/state_context.py`
 
-There is no token-by-token state machine: quotes and expansions are
+There is no token-by-token state machine for quotes and expansions: those are
 consumed whole by the dedicated parsers, and everything else is dispatched
-to recognizers. The only cross-token state is the small `LexerContext`
-dataclass, tracking exactly what the recognizers consult:
+to recognizers. The only cross-token state is the small `LexicalState`
+class (`LexerContext` is a compatibility alias), which stores the lexical
+role explicitly instead of a pile of booleans:
 
 ```python
-@dataclass
-class LexerContext:
-    bracket_depth: int = 0          # [[ ]] nesting
-    command_position: bool = True   # affects keyword/assignment recognition
-    arithmetic_depth: int = 0       # $((...)) nesting
+class LexicalState:                  # __slots__ class; kwargs construction
+    role: LexicalRole                # COMMAND_POSITION | ARGUMENT
+    bracket_depth: int = 0           # [[ ]] nesting
+    arithmetic_depth: int = 0        # $((...)) nesting
     posix_mode: bool = False
-    case_depth: int = 0             # case..esac nesting
-    case_expecting_in: bool = False
-    in_case_pattern: bool = False
+    case_depth: int = 0              # case..esac nesting
+    case_expecting_in: bool = False  # independent bits: (True, True) is
+    in_case_pattern: bool = False    #   reachable on malformed `case x ;;`
+    # command_position / case_phase are DERIVED read properties
 ```
+
+State advances through one pure transition function,
+`advance_lexical_state(state, token_type, token_value)` in
+`psh/lexer/command_position.py` — the single source of truth for the LEXER
+pass. It deliberately does not serve the keyword normalizer or the cmdsub
+scanner: those machines run at different pipeline stages over different
+alphabets (see the irreducibility note in `command_position.py`); they share
+vocabulary frozensets, not transitions.
 
 ### 2.3 Unified Token System
 **Files**: `psh/lexer/token_types.py`, `psh/lexer/token_parts.py`
