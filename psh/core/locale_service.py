@@ -24,21 +24,25 @@ non-C locale — under an explicit ``LC_ALL=C`` (the pinned test-suite locale)
 it touches nothing and every primitive is byte-identical to the old
 codepoint/ASCII behaviour.
 
-**PEP 538 caveat (verifier finding, v0.655).** "Nothing set" is NOT C mode on
-CPython 3.7+: when the interpreter starts under an effectively-C locale with
-``LC_ALL`` empty/unset, PEP 538 coercion rewrites ``os.environ['LC_CTYPE']``
-to a UTF-8 locale *before* this service reads it, so bare-C/``LANG=C``-only
-environments compute UTF-8 ctype mode where bash would use C (observable on
-character classes: ``[[ é == [[:alpha:]] ]]`` is true here, false in bash-C).
-An explicit ``LC_ALL=C`` disables coercion and is fully bash-faithful. See the
-differences ledger; startup coercion detection is deferred to the Stage-4
-locale-reactivity work.
-
-Startup-only for now: the profile is read once from the environment at shell
-construction. Reacting to mid-script ``LC_*``/``LANG`` assignment (bash does)
-is a deliberate deferral — see
-``docs/architecture/locale_service_design_2026-07-06.md`` (§5.2 Stage 4) and the
+**PEP 538 caveat (verifier finding, v0.655; resolved in Stage 4).** "Nothing
+set" is NOT C mode on CPython 3.7+: when the interpreter starts under an
+effectively-C locale with ``LC_ALL`` empty/unset, PEP 538 coercion rewrites
+``os.environ['LC_CTYPE']`` to a UTF-8 locale *before* this service reads it, so
+a bare-C/``LANG=C``-only environment would compute UTF-8 ctype where bash uses
+C. Stage 4 strips that phantom at startup (``ShellState._strip_coerced_lc_ctype``
+— detected by ``sys.flags.utf8_mode`` plus a coercion-target value), so psh now
+presents bash-C behaviour under those environments (empty ``$LC_CTYPE``, C
+classification, no ``LC_CTYPE`` leaked to children). An explicit ``LC_ALL=C``
+disables coercion and is likewise fully bash-faithful. The one residual is a
+user who forces UTF-8 mode with ``PYTHONUTF8`` while genuinely setting a
+``C.UTF-8`` ``LC_CTYPE`` — a Python-only knob, not a shell path; see the
 differences ledger.
+
+Reactive as of Stage 4: the startup profile is read once at construction, and
+:meth:`reinit` recomputes it whenever ``LC_*``/``LANG`` is assigned, unset, or
+laid over a command (``LC_ALL=C cmd``). ``ShellState`` rides its
+reactive-special observer to call ``reinit`` on those four names; see
+``docs/architecture/locale_service_design_2026-07-06.md`` (§5.2 Stage 4).
 """
 from __future__ import annotations
 
@@ -100,6 +104,29 @@ def _effective(env: Mapping[str, str], chain: tuple) -> str:
     return "C"
 
 
+def _resolve_profile(env: Mapping[str, str], *, apply: bool,
+                     warn: bool) -> LocaleProfile:
+    """Resolve the two effective locales from *env* (bash precedence) and,
+    when *apply*, drive the process ``setlocale``. Shared by startup
+    (:meth:`LocaleService.__init__`) and mid-session
+    (:meth:`LocaleService.reinit`). setlocale is process-global, so only a
+    category that resolves to a NON-C locale is touched; a category resolving to
+    C is left to the pure-Python C path. On a setlocale failure the shell warns
+    (like bash) and falls back to C for that category so it still runs."""
+    collate_name = _effective(env, _COLLATE_VARS)
+    ctype_name = _effective(env, _CTYPE_VARS)
+    collate_mode = _classify(collate_name)
+    ctype_mode = _classify(ctype_name)
+    if apply:
+        if collate_mode is not LocaleMode.C and not _try_setlocale(
+                _locale.LC_COLLATE, collate_name, warn):
+            collate_name, collate_mode = "C", LocaleMode.C
+        if ctype_mode is not LocaleMode.C and not _try_setlocale(
+                _locale.LC_CTYPE, ctype_name, warn):
+            ctype_name, ctype_mode = "C", LocaleMode.C
+    return LocaleProfile(ctype_name, collate_name, ctype_mode, collate_mode)
+
+
 class LocaleService:
     """Owns the process locale and exposes faithful ctype/collation primitives.
 
@@ -109,24 +136,24 @@ class LocaleService:
 
     def __init__(self, env: Mapping[str, str], *, apply: bool = True,
                  warn: bool = True) -> None:
-        collate_name = _effective(env, _COLLATE_VARS)
-        ctype_name = _effective(env, _CTYPE_VARS)
-        collate_mode = _classify(collate_name)
-        ctype_mode = _classify(ctype_name)
+        self.profile = _resolve_profile(env, apply=apply, warn=warn)
+        _activate(self)
 
-        if apply:
-            # setlocale is process-global; only touch a category that needs a
-            # non-C locale. On failure warn (like bash) and fall back to C for
-            # that category so the shell still runs.
-            if collate_mode is not LocaleMode.C and not _try_setlocale(
-                    _locale.LC_COLLATE, collate_name, warn):
-                collate_name, collate_mode = "C", LocaleMode.C
-            if ctype_mode is not LocaleMode.C and not _try_setlocale(
-                    _locale.LC_CTYPE, ctype_name, warn):
-                ctype_name, ctype_mode = "C", LocaleMode.C
+    def reinit(self, env: Mapping[str, str], *, warn: bool = True) -> None:
+        """Recompute and re-apply the effective profile from *env*.
 
-        self.profile = LocaleProfile(ctype_name, collate_name,
-                                     ctype_mode, collate_mode)
+        Called when a locale variable (``LC_ALL``/``LC_CTYPE``/``LC_COLLATE``/
+        ``LANG``) is assigned, unset, or laid over a command as a ``LC_ALL=C
+        cmd`` temp-env prefix — so classification, case mapping, and collation
+        track live ``LC_*``/``LANG`` state the way bash does (Stage 4). It reuses
+        the startup resolver, so the same precedence, empty-value skipping, and
+        setlocale-only-for-non-C policy apply: a revert TO C simply flips the
+        mode back to the pure-Python C path (byte-identical to the historical
+        behaviour) without touching the process libc locale — the C-mode
+        primitives never consult it, which also keeps in-process locale churn
+        from leaking between shells. *env* is the caller's current view of the
+        four variables (see ``ShellState._locale_env_snapshot``)."""
+        self.profile = _resolve_profile(env, apply=True, warn=warn)
         _activate(self)
 
     # --- case mapping (LC_CTYPE) ------------------------------------------

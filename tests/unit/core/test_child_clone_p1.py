@@ -123,9 +123,10 @@ def test_function_metadata_is_independent():
 # --------------------------------------------------------------------------
 
 # Objects/types shared across the child boundary BY POLICY (see the copy-policy
-# map): the locale service (startup-only), AST bodies (immutable), and scalar
-# str/int values (immutable). Everything else mutable must have distinct
-# identity in parent vs child.
+# map): the locale service (reactive as of Stage 4, but every in-tree clone is a
+# forked SUBSHELL, so a child reinit mutates only its own post-fork copy), AST
+# bodies (immutable), and scalar str/int values (immutable). Everything else
+# mutable must have distinct identity in parent vs child.
 
 def _mutable_identity_map(shell):
     """id(obj) -> description for every mutable object that must be

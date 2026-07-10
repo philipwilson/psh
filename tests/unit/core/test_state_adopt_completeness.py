@@ -72,8 +72,9 @@ def test_exclusion_list_names_real_fields():
 # --------------------------------------------------------------------------
 
 # Shared across the child boundary BY POLICY (copy-policy map): the locale
-# service (startup-only, immutable in practice). Scalar str/int values and AST
-# bodies are immutable and not walked.
+# service (reactive as of Stage 4, but shared safely — every in-tree clone forks,
+# so a child reinit stays in its own post-fork copy). Scalar str/int values and
+# AST bodies are immutable and not walked.
 _SHARED_BY_POLICY = {"locale"}
 
 
