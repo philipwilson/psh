@@ -3501,14 +3501,20 @@
   stderr: ""
   exit_code: 0
 
-# Indexed array-init with an ANSI-C escape value (word fusion R3): the
-# declaration builtin must recover the DECODED value ('y<TAB>z'), not the
-# escape-stripped source. Regression pin: the array-init flat text (the argv
-# the builtin looks its structured init up by) must carry no leftover
-# backslash escape, or the lookup misses and the value is lost.
-- name: indexed_array_init_ansi_c_value
-  command: "declare -a a=(x $'y\\tz' 'p q'); printf '%s|%s|%s' \"${a[0]}\" \"${a[1]}\" \"${a[2]}\""
-  stdout: "x|y\tz|p q"
+# Indexed array-init with a COMPOSITE ANSI-C element (word fusion R3): element
+# [1] `pre$'\tz'` fuses the literal `pre` with the ANSI-C `$'\tz'` into ONE word,
+# so _serialize_array_element hits the fused-parts branch and must emit the
+# DECODED value ('pre<TAB>z') with NO leftover backslash escape — else the
+# array-init flat text (the argv the declaration builtin looks its structured
+# init up by, AFTER unquoted-escape processing) mismatches and the WHOLE (...)
+# is stored as a scalar [0], losing the values. Crucially the element must be a
+# COMPOSITE: a lone `$'y\tz'` element is a single token that never exercises the
+# fused-parts path (the earlier single-token golden here passed even with the
+# fix reverted — it did not pin the fix). This one is RED on a faithful revert
+# of _serialize_array_element (recursive descent: '(pre$'\''ty'\'')').
+- name: indexed_array_init_composite_ansic_value
+  command: "declare -a a=(x pre$'\\tz' 'p q'); printf '%s|%s|%s' \"${a[0]}\" \"${a[1]}\" \"${a[2]}\""
+  stdout: "x|pre\tz|p q"
   stderr: ""
   exit_code: 0
 
