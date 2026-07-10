@@ -132,7 +132,9 @@ def test_bg_resumes_multiple_jobspecs(monkeypatch):
         pass
     shell = Shell()
     shell.job_manager = jm
-    shell.state = type("S", (), {"stdout": sys.stdout, "stderr": sys.stderr})()
+    # monitor on: bg gates on the job-control flag before resuming (task #9).
+    shell.state = type("S", (), {"stdout": sys.stdout, "stderr": sys.stderr,
+                                 "options": {"monitor": True}})()
 
     lines = []
     builtin = BgBuiltin()
@@ -161,6 +163,7 @@ def test_bg_reports_bad_jobspec_but_resumes_good(monkeypatch):
         pass
     shell = Shell()
     shell.job_manager = jm
+    shell.state = type("S", (), {"options": {"monitor": True}})()
 
     errors = []
     builtin = BgBuiltin()
@@ -196,7 +199,9 @@ def test_fg_restores_terminal_on_wait_exception(monkeypatch):
         pass
     shell = Shell()
     shell.job_manager = jm
-    shell.state = type("S", (), {"supports_job_control": True})()
+    # monitor on: fg gates on the job-control flag before foregrounding (task #9).
+    shell.state = type("S", (), {"supports_job_control": True,
+                                 "options": {"monitor": True}})()
 
     builtin = FgBuiltin()
     monkeypatch.setattr(builtin, "write_line", lambda msg, sh: None)

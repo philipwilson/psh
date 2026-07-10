@@ -4,6 +4,14 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.685.0 (2026-07-10) - Job cosmetics: jobs filters, fg/bg gating order, and bg markers match bash
+- `jobs` gains bash's `-r` (running only) and `-s` (stopped only) state filters, last-one-wins when combined (`-rs` → stopped); the usage synopsis is now `jobs [-lprs] [jobspec ...]` (deliberately advertising only implemented flags — `-n`/`-x` are a queued task).
+- `fg`/`bg` check job control FIRST, like bash: with the `monitor` option off they fail with `no job control` (rc 1) even for an explicit jobspec (`fg %99`), instead of leaking `no such job`. With monitor on but no current job, the bare forms report bash's `current: no such job`.
+- `fg 1`/`bg 1` treat a bare integer as a job number (`fg %1`), matching bash; `wait`/`kill` keep their PID semantics (guard-pinned).
+- `fg` with monitor on but no controlling tty now proceeds best-effort like bash — SIGCONT, wait, and propagate the job's exit status (`(exit 7) & fg %1` → rc 7) — instead of refusing with `no job control in this shell`. This also aligns psh with its own user guide, which already documented the bash behavior. (Known scoped divergence, queued: resuming a *stopped* job in this degenerate no-tty case returns 128+SIGSTOP rather than bash's run-to-completion.)
+- `bg`'s resume line uses the job's real `+`/`-`/space marker instead of a hardcoded `+`.
+- Truth-tabled against bash 5.2 before fixing; the job-id assignment/reuse seeds dissolved (psh already matches bash, regression-pinned). 15 new pins (12 demonstrated red-on-base) + 4 goldens; adversarially verified before ship (independent re-probe, per-fix and partial mutation testing, red-on-base reproduction — all clean; one pre-existing wait reap-timing flake ticketed separately with byte-identical-diff proof it predates this release). Suite grows to 14,840 gate-passed; compare-bash 1,272; goldens 1,295; collected 16,216; mypy 254.
+
 ## 0.684.0 (2026-07-10) - Builtins polish: trap flag clusters and set -o diagnostics match bash
 - `trap` now parses its options like bash (getopt over `lp`): clustered and repeated flags (`-lp`, `-pl`, `-ll`, `-pp`, split `-p -l`) all work, `-l` dominates `-p` when both are given, and an invalid option reports the actual offending character (`trap -lx` → `-x: invalid option`, rc 2) instead of always blaming `-l`. The `trap -l` listing and `trap -p` printing formats were already byte-identical to bash.
 - `set -o BADNAME` no longer prints psh's 45-name `Valid options:` dump after the error; like bash it prints only `set: BADNAME: invalid option name` and returns rc 2 (`set +o BADNAME` already matched).

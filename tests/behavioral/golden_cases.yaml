@@ -7500,6 +7500,39 @@
   stderr: ""
   exit_code: 0
 
+# fg/bg job-control gate + check order (task #9 [#27+#28]). bash checks the
+# job-control flag (psh: monitor / `set -m`) BEFORE resolving any jobspec, so
+# without it fg/bg report "no job control" (even for `fg %99`); with it and no
+# current job the missing jobspec is named "current". Only stdout+exit are
+# compared to bash — the diagnostic itself (and bash's `bash: line N:` prefix)
+# is stderr, so the byte-different prefix does not matter.
+- name: jobcos_fg_no_job_control_gate
+  command: "fg %99; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "no job control"
+  exit_code: 0
+
+- name: jobcos_bg_no_job_control_gate
+  command: "bg; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "no job control"
+  exit_code: 0
+
+- name: jobcos_fg_current_no_such_job
+  command: "set -m; fg; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "current: no such job"
+  exit_code: 0
+
+# A bare integer operand to fg is a JOB NUMBER (`fg 1` == `fg %1`); with monitor
+# on but no controlling terminal fg still foregrounds and WAITS, echoing the
+# command and returning its exit status (real stdout comparison vs bash).
+- name: jobcos_fg_bare_number_foregrounds
+  command: "set -m; sleep 0.3 & fg 1; echo rc=$?"
+  stdout: "sleep 0.3\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # STREAMING INPUT SERVICE (read / mapfile)
 # ASCII-only I/O so the LC_ALL=C golden harness stays bash-faithful; the
