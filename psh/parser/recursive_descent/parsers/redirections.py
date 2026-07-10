@@ -122,9 +122,9 @@ class RedirectionParser(ParserSubcomponent):
         )
 
         # The lexer assigns a heredoc_key to each `<<`/`<<-` operator token
-        # (see HeredocLexer._mark_heredoc_tokens); its *presence* signals that
+        # (see HeredocLexer._mark_heredoc_tokens); a non-None value signals that
         # the body was collected separately and lives in the heredoc map.
-        heredoc_key = getattr(token, 'heredoc_key', None)
+        heredoc_key = token.heredoc_key
         if heredoc_key is not None:
             redirect.heredoc_key = heredoc_key
 

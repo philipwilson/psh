@@ -27,21 +27,14 @@ def _types(text, **kw):
 # --- _make_config derives posix_mode from shell options ---------------------
 
 def test_make_config_default_posix_off():
-    assert _make_config(True).posix_mode is False
-    assert _make_config(False).posix_mode is False
+    assert _make_config().posix_mode is False
+    assert _make_config(None).posix_mode is False
 
 
 def test_make_config_posix_from_shell_options():
-    assert _make_config(True, {"posix": True}).posix_mode is True
-    assert _make_config(True, {"posix": False}).posix_mode is False
-    assert _make_config(True, {}).posix_mode is False
-
-
-def test_make_config_strict_does_not_imply_posix():
-    """`strict` (batch vs interactive) must NOT set posix_mode — posix comes
-    solely from shell options."""
-    assert _make_config(True).posix_mode is False   # strict/batch, no posix
-    assert _make_config(False).posix_mode is False   # interactive, no posix
+    assert _make_config({"posix": True}).posix_mode is True
+    assert _make_config({"posix": False}).posix_mode is False
+    assert _make_config({}).posix_mode is False
 
 
 # --- lexer identifier behavior gated on posix -------------------------------

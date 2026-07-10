@@ -33,9 +33,9 @@ from .unicode_support import (
 )
 
 
-def _make_config(strict: bool, shell_options: Optional[Mapping[str, Any]] = None) -> LexerConfig:
-    """Build the lexer config for an entry point (batch vs interactive,
-    shell options like extglob and posix applied).
+def _make_config(shell_options: Optional[Mapping[str, Any]] = None) -> LexerConfig:
+    """Build the lexer config for an entry point (shell options like extglob
+    and posix applied).
 
     ``posix_mode`` is taken from the active shell options (``set -o posix``) so
     the lexer's POSIX-aware identifier paths (variable-name extraction in
@@ -46,14 +46,11 @@ def _make_config(strict: bool, shell_options: Optional[Mapping[str, Any]] = None
     the ASCII portable set, consistent with the executor/state-layer name
     validation (`set -o posix` gating in function/read/declare/for/assignment).
 
-    ``strict`` (batch-vs-interactive) currently selects between identical
-    configs and is retained only for the public API; POSIX mode is NOT derived
-    from it (see the module ``tokenize`` docstring).
+    (The historical ``strict`` batch-vs-interactive flag was retired in the
+    lexer R2 refactor: the two configs had been identical since the lexer lost
+    its error-recovery mode, so the flag selected nothing.)
     """
-    if strict:
-        config = LexerConfig.create_batch_config()
-    else:
-        config = LexerConfig.create_interactive_config()
+    config = LexerConfig()
     if shell_options:
         if shell_options.get('extglob', False):
             config.enable_extglob = True
@@ -82,7 +79,7 @@ def _post_lex(tokens: List[Token],
     return KeywordNormalizer().normalize(tokens)
 
 
-def tokenize(input_string: str, strict: bool = True, shell_options: Optional[Mapping[str, Any]] = None) -> List[Token]:
+def tokenize(input_string: str, shell_options: Optional[Mapping[str, Any]] = None) -> List[Token]:
     """
     Tokenize a shell command string using the unified lexer implementation.
 
@@ -92,17 +89,16 @@ def tokenize(input_string: str, strict: bool = True, shell_options: Optional[Map
 
     Args:
         input_string: The shell command string to tokenize
-        strict: If True, use strict mode (batch); if False, use interactive mode
-        shell_options: Optional shell options dict to configure extglob etc.
+        shell_options: Optional shell options dict to configure extglob/posix
 
     Returns:
         List of tokens representing the parsed command
     """
-    lexer = ModularLexer(input_string, config=_make_config(strict, shell_options))
+    lexer = ModularLexer(input_string, config=_make_config(shell_options))
     return _post_lex(lexer.tokenize(), shell_options)
 
 
-def tokenize_with_heredocs(input_string: str, strict: bool = True,
+def tokenize_with_heredocs(input_string: str,
                            shell_options: Optional[Mapping[str, Any]] = None,
                            source_name: Optional[str] = None,
                            base_line: int = 1,
@@ -117,8 +113,7 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True,
 
     Args:
         input_string: The shell command string to tokenize
-        strict: If True, use strict mode (batch); if False, use interactive mode
-        shell_options: Optional shell options dict to configure extglob etc.
+        shell_options: Optional shell options dict to configure extglob/posix
         source_name: Name prefixing the unterminated-heredoc warning (script
             path; None → "psh", matching bash's "bash:" for -c/stdin)
         base_line: Absolute source line of input_string's first line, so the
@@ -131,7 +126,7 @@ def tokenize_with_heredocs(input_string: str, strict: bool = True,
     """
     from .heredoc_lexer import HeredocLexer
 
-    lexer = HeredocLexer(input_string, config=_make_config(strict, shell_options),
+    lexer = HeredocLexer(input_string, config=_make_config(shell_options),
                          source_name=source_name, base_line=base_line,
                          warn_unterminated=warn_unterminated)
     tokens, heredoc_map = lexer.tokenize_with_heredocs()

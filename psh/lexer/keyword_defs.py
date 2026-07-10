@@ -34,7 +34,12 @@ def keyword_from_type(token_type: TokenType) -> Optional[str]:
 
 
 def matches_keyword_type(token: Token, expected_type: TokenType) -> bool:
-    """Check whether the token represents the given keyword token type."""
+    """Check whether the token represents the given keyword token type.
+
+    Pure predicate: it never mutates the token. (The recursive-descent path
+    gets ``is_keyword`` stamped at lex time by ``KeywordNormalizer``; the
+    combinator only needs the yes/no answer here.)
+    """
     if token.type == expected_type:
         return True
 
@@ -46,11 +51,7 @@ def matches_keyword_type(token: Token, expected_type: TokenType) -> bool:
 
     # Keyword matching is case-sensitive, as in bash: only the exact
     # lowercase spelling counts as a reserved word.
-    if (token.value or '') == keyword:
-        token.is_keyword = True
-        return True
-
-    return False
+    return (token.value or '') == keyword
 
 
 def matches_keyword(token: Token, keyword: str) -> bool:

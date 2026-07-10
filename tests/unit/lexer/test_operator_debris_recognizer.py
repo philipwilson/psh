@@ -14,7 +14,6 @@ refactor: byte-identical token streams before and after.
 
 from psh.lexer import tokenize
 from psh.lexer.recognizers import OperatorDebrisWordRecognizer
-from psh.lexer.recognizers.literal import LiteralRecognizer
 from psh.lexer.state_context import LexerContext
 
 
@@ -226,10 +225,15 @@ class TestRecognizeTerminators:
         assert new_pos == 5
 
 
-class TestPriorityOrdering:
-    """Debris must carry the lowest priority of any recognizer."""
+class TestDispatchOrdering:
+    """Debris must be tried strictly LAST of any recognizer."""
 
-    def test_lower_than_literal_comment_whitespace(self):
-        debris = OperatorDebrisWordRecognizer().priority
-        assert debris < LiteralRecognizer().priority  # 70
-        assert debris == 10
+    def test_debris_is_last_in_dispatch_order(self):
+        from psh.lexer import ModularLexer
+
+        recognizers = ModularLexer('').registry.get_recognizers()
+        assert isinstance(recognizers[-1], OperatorDebrisWordRecognizer)
+        # It comes after the literal recognizer, which otherwise claims words.
+        types = [type(r).__name__ for r in recognizers]
+        assert types.index('OperatorDebrisWordRecognizer') > \
+            types.index('LiteralRecognizer')

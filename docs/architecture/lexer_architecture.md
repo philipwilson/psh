@@ -10,7 +10,7 @@ The PSH lexer is a modular tokenization system designed to handle the complex sy
 2. **Extensibility**: New token types and recognizers can be added without modifying core logic
 3. **Context Awareness**: Rich metadata and state tracking throughout tokenization
 4. **Error Recovery**: Graceful handling of malformed input with detailed error context
-5. **Performance**: Efficient token recognition with priority-based dispatch
+5. **Performance**: Efficient token recognition with ordered recognizer dispatch
 6. **Clarity**: Clean separation of concerns with modular architecture
 
 ## Architecture Diagram
@@ -31,11 +31,11 @@ The PSH lexer is a modular tokenization system designed to handle the complex sy
                                       ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    State Management Layer                        │
-│  ┌─────────────────┐  ┌──────────────┐  ┌─────────────────┐   │
-│  │  LexerContext   │  │ StateManager │  │ TransitionTable │   │
-│  │  - Unified state│  │ - History    │  │ - State rules   │   │
-│  │  - Nesting info │  │ - Transitions│  │ - Priorities    │   │
-│  └─────────────────┘  └──────────────┘  └─────────────────┘   │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  LexicalState (state_context.py; alias LexerContext)      │  │
+│  │  - role (command-position axis) + case FSM + depths       │  │
+│  │  - single mutator: command_position.advance_lexical_state │  │
+│  └──────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────┬───────────────────────────┘
                                       │
                                       ▼
@@ -54,20 +54,19 @@ The PSH lexer is a modular tokenization system designed to handle the complex sy
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │            Modular Token Recognizers                     │   │
+│  │       Modular Token Recognizers (dispatch order)         │   │
 │  │  ┌────────────────┐  ┌────────────────┐  ┌────────────┐│   │
-│  │  │Process Sub Rec │  │  Operator Rec  │  │Keyword Rec ││   │
-│  │  │ Priority: 160  │  │ Priority: 100  │  │Priority: 80││   │
+│  │  │1 Process Sub   │→ │2 Operator Rec  │→ │3 Literal   ││   │
 │  │  └────────────────┘  └────────────────┘  └────────────┘│   │
-│  │  ┌────────────────┐  ┌────────────────┐  ┌────────────┐│   │
-│  │  │ Literal Rec    │  │ Comment Rec    │  │Whitespace  ││   │
-│  │  │ Priority: 70   │  │ Priority: 60   │  │Priority: 30││   │
-│  │  └────────────────┘  └────────────────┘  └────────────┘│   │
+│  │  ┌────────────────┐  ┌───────────────────────────────┐ │   │
+│  │  │4 Comment Rec   │→ │5 OperatorDebris (tried last)  │ │   │
+│  │  └────────────────┘  └───────────────────────────────┘ │   │
+│  │  (keywords are a post-pass; whitespace is skipped early)│   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │              Recognizer Registry                         │   │
-│  │  - Priority-based dispatch                               │   │
+│  │  - Ordered dispatch (registration order = first match)   │   │
 │  │  - Dynamic registration                                  │   │
 │  │  - Error handling                                        │   │
 │  └─────────────────────────────────────────────────────────┘   │
@@ -105,58 +104,55 @@ class ModularLexer:
         self.quote_parser = UnifiedQuoteParser(self.expansion_parser)
 ```
 
-#### LexerContext (`state_context.py`)
-Unified state representation that replaced scattered boolean flags:
-- Tracks nesting depth for various constructs
-- Manages command position and test context
-- Supports context stacking for nested structures
+#### LexicalState (`state_context.py`)
+Explicit cross-token state the recognizers consult. Its single mutator is
+`command_position.advance_lexical_state` (the one lexer-stage command-position /
+case transition function). `LexerContext` remains a backward-compatible alias of
+`LexicalState`.
 
 ```python
-@dataclass
-class LexerContext:
-    """Unified state representation for the lexer"""
-    bracket_depth: int = 0          # Tracks [ ] nesting
-    paren_depth: int = 0           # Tracks ( ) nesting
-    brace_depth: int = 0           # Tracks { } nesting
-    double_bracket_depth: int = 0  # Tracks [[ ]] nesting
-    in_quote: Optional[str] = None
-    in_expansion: bool = False
-    is_command_position: bool = True
-    in_test_expr: bool = False
-    in_regex_context: bool = False
+class LexicalState:
+    """Explicit lexer state (replaced the ad-hoc boolean cluster in R1)."""
+    role: LexicalRole                # command-position axis (COMMAND_POSITION / ARGUMENT)
+    bracket_depth: int = 0           # [[ ]] nesting
+    arithmetic_depth: int = 0        # $((...)) / (( )) nesting
+    case_depth: int = 0              # case..esac nesting
+    case_expecting_in: bool = False  # between `case` and `in`
+    in_case_pattern: bool = False    # collecting case patterns
+    posix_mode: bool = False
+    # command_position (bool) and case_phase (CasePhase view) are derived
+    # read-properties; recognizers read context.command_position unchanged.
 ```
+
+Quote state is NOT tracked here: quotes are consumed whole by
+`UnifiedQuoteParser` within one token, so no cross-token quote state exists.
 
 ### 2. Token Recognition System
 
 #### Recognizer Framework (`recognizers/`)
-Implements a pluggable, priority-based token recognition system:
+A pluggable token recognition system. Recognizers are tried in **registration
+order** — the first to match wins (no priority sorting):
 
 ```python
 class TokenRecognizer(ABC):
     """Base class for all token recognizers"""
-    @property
     @abstractmethod
-    def priority(self) -> int:
-        """Recognition priority (higher = checked first)"""
+    def can_recognize(self, input_text: str, pos: int, context) -> bool:
+        """Fast check: might this recognizer handle the current position?"""
         pass
-    
+
     @abstractmethod
-    def can_recognize(self, char: str, context: LexerContext) -> bool:
-        """Check if this recognizer can handle the current character"""
-        pass
-    
-    @abstractmethod
-    def recognize(self, lexer: 'ModularLexer', char: str) -> Optional[Token]:
-        """Attempt to recognize and return a token"""
+    def recognize(self, input_text: str, pos: int, context) -> Optional[Tuple[Optional[Token], int]]:
+        """Attempt to recognize a token; return (token, new_pos) or None."""
         pass
 ```
 
 #### RecognizerRegistry (`recognizers/registry.py`)
 Manages recognizer registration and dispatch:
-- Priority-based ordering (process substitution: 160, operators: 100, keywords: 80)
-- Context-aware selection
-- Efficient lookup mechanisms
-- Error recovery strategies
+- Dispatch in registration order (declared once in `ModularLexer._setup_recognizers`:
+  ProcessSub → Operator → Literal → Comment → OperatorDebris; whitespace is
+  skipped by the main loop before dispatch, not a recognizer)
+- First match wins; a raised exception is a recognizer defect (surfaced with context)
 
 ### 3. Quote and Expansion Parsing
 
@@ -230,10 +226,13 @@ Provides character classification functions:
 The unified token system represents the culmination of the Enhanced Lexer Deprecation Plan:
 
 ### Token Class Unification
+Tokens are **immutable** (`frozen=True`): once emitted they are never mutated —
+stages that need a changed token build a new one with `dataclasses.replace`.
+
 ```python
-@dataclass
+@dataclass(frozen=True)
 class Token:
-    """Unified token class with metadata and context information"""
+    """Unified, immutable token for the lexer and parser."""
     type: TokenType
     value: str
     position: int
@@ -241,23 +240,32 @@ class Token:
     quote_type: Optional[str] = None
     line: Optional[int] = None
     column: Optional[int] = None
-    metadata: Optional['TokenMetadata'] = field(default=None)
-    parts: Optional[List['TokenPart']] = field(default=None)
+    adjacent_to_previous: bool = False
+    is_keyword: bool = False
+    parts: List['TokenPart'] = field(default_factory=list)
+    fd: Optional[int] = None
+    var_fd: Optional[str] = None
+    combined_redirect: bool = False
+    heredoc_key: Optional[str] = None   # collected-heredoc-body link (None = none)
+    array_init: Optional[Any] = None    # combinator `name=(...)` payload
+
+    @property
+    def span(self) -> SourceSpan:       # derived view over position/end_position
+        return SourceSpan(self.position, self.end_position)
 ```
 
 ### Enhanced Features as Standard
-- **Built-in Metadata**: Every token includes rich metadata by default
-- **Context Tracking**: Semantic information available for all tokens
-- **Position Information**: Line/column/offset tracking standard
-- **Token Parts**: Composite token support built-in
-- **No Compatibility Overhead**: Single implementation path
+- **Immutable**: frozen dataclass; classification/heredoc-key/retypes use `replace`
+- **Source-faithful**: `span` (a `SourceSpan`) reconstructs the lexeme from source
+- **Position Information**: line/column stored; `SourceMap` (`position.py`) is the
+  one offset → (line, column) + line-text service (lexer + parser error path)
+- **Token Parts**: composite token support built-in (`RichToken`, also frozen)
 
 ## Token Generation Flow
 
 ```mermaid
 graph TD
-    A[Input String] --> B[Brace Expansion]
-    B --> C[ModularLexer]
+    A[Input String] --> C[ModularLexer]
     C --> D{Skip Whitespace}
     D --> E{Try Quote/Expansion}
     E -->|Success| F[Quote/Expansion Token]
@@ -275,39 +283,39 @@ graph TD
 ## Key Design Patterns
 
 ### 1. Registry Pattern
-The `RecognizerRegistry` implements dynamic registration with priority-based dispatch:
+The `RecognizerRegistry` dispatches in registration order — the sequence below
+IS the dispatch order (first match wins):
 ```python
 registry = RecognizerRegistry()
-registry.register(ProcessSubstitutionRecognizer())  # Priority: 160
-registry.register(OperatorRecognizer())            # Priority: 150
-registry.register(LiteralRecognizer())             # Priority: 70
-registry.register(CommentRecognizer())             # Priority: 60
-registry.register(WhitespaceRecognizer())          # Priority: 30
+registry.register(ProcessSubstitutionRecognizer())  # 1. before operators (`<(` ≠ `<`)
+registry.register(OperatorRecognizer())             # 2.
+registry.register(LiteralRecognizer())              # 3.
+registry.register(CommentRecognizer())              # 4.
+registry.register(OperatorDebrisWordRecognizer())   # 5. tried strictly last
+# (whitespace is skipped by the main loop before dispatch, not a recognizer)
 ```
 
 ### 2. Strategy Pattern
 Quote parsing uses configurable rules for different quote types, allowing easy extension.
 
 ### 3. Context Object Pattern
-`LexerContext` consolidates state to avoid parameter explosion and enable clean APIs.
+`LexicalState` (aliased `LexerContext`) consolidates cross-token state to avoid
+parameter explosion and enable clean APIs.
 
 
 ## Configuration System
 
-The lexer supports comprehensive configuration through `LexerConfig`:
+The lexer is configured through `LexerConfig` (`position.py`). Most historical
+feature flags were removed once no caller disabled them; only extglob and posix
+are genuinely toggled. The former `strict` (batch/interactive) entry-point flag
+was retired in R2 — the two configs had become identical.
 ```python
 @dataclass
 class LexerConfig:
     """Configuration for lexer behavior"""
-    enable_history_expansion: bool = True
-    enable_process_substitution: bool = True
-    enable_extended_globbing: bool = False
-    enable_bash_specific: bool = True
-    posix_mode: bool = False
-    interactive_mode: bool = False
-    strict_mode: bool = False
-    max_nesting_depth: int = 100
-    unicode_identifiers: bool = True
+    enable_extglob: bool = False   # `shopt -s extglob`
+    posix_mode: bool = False       # `set -o posix` (from shell options)
+    case_sensitive: bool = True
 ```
 
 ## Error Handling
@@ -331,7 +339,8 @@ Every token includes comprehensive metadata through the unified system:
 
 ## Performance Optimizations
 
-1. **Priority-based dispatch**: Most common tokens checked first
+1. **Ordered dispatch**: recognizers tried in a fixed registration order (the most
+   discriminating scanners first), first match wins
 2. **Character-based early exit**: Quick rejection of impossible tokens
 3. **Minimal state copying**: Efficient context management
 4. **Lazy metadata creation**: Only populated when needed
@@ -368,18 +377,17 @@ The architecture provides clear extension points:
 # Add to TokenType enum
 NEW_TOKEN = auto()
 
-# Create recognizer
+# Create recognizer (no priority — dispatch is registration order)
 class NewTokenRecognizer(TokenRecognizer):
-    priority = 85
-    
-    def can_recognize(self, char, context):
-        return char == '@' and context.is_special_mode
-    
-    def recognize(self, lexer, char):
-        # Recognition logic
-        return Token(TokenType.NEW_TOKEN, value, position)
+    def can_recognize(self, input_text, pos, context):
+        return input_text[pos] == '@' and context.is_special_mode
 
-# Register
+    def recognize(self, input_text, pos, context):
+        # Return (token, new_pos) or None
+        return Token(TokenType.NEW_TOKEN, value, pos), new_pos
+
+# Register at the right point in ModularLexer._setup_recognizers
+# (before anything it must pre-empt, after anything that should win over it)
 registry.register(NewTokenRecognizer())
 ```
 

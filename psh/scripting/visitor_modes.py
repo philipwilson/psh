@@ -39,8 +39,7 @@ def _parse_for_analysis(shell: 'Shell', content: str,
         from ..lexer import tokenize_with_heredocs
         from ..parser import parse_with_heredocs
         tokens, heredoc_map = tokenize_with_heredocs(
-            content, strict=shell.state.options.get('posix', False),
-            shell_options=shell.state.options)
+            content, shell_options=shell.state.options)
         return parse_with_heredocs(tokens, heredoc_map)
     from ..lexer import tokenize
     from ..parser import parse

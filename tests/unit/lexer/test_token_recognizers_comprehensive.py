@@ -2,7 +2,7 @@
 Comprehensive token recognizer unit tests.
 
 Tests for the modular lexer recognizer system including individual recognizers,
-priority-based recognition, context-sensitive tokenization, and registry management.
+ordered dispatch, context-sensitive tokenization, and registry management.
 """
 
 import pytest
@@ -14,7 +14,6 @@ from psh.lexer.recognizers import (
     OperatorRecognizer,
     RecognizerRegistry,
     TokenRecognizer,
-    WhitespaceRecognizer,
 )
 from psh.lexer.state_context import LexerContext
 from psh.lexer.token_types import TokenType
@@ -250,37 +249,24 @@ class TestLiteralRecognizer:
             assert result is None
 
 
-class TestWhitespaceRecognizer:
-    """Test whitespace recognition functionality."""
+class TestWhitespaceSkipping:
+    """Whitespace is skipped by the main loop, not a registered recognizer.
 
-    @pytest.fixture
-    def recognizer(self):
-        return WhitespaceRecognizer()
+    There is no WhitespaceRecognizer: ``ModularLexer.tokenize`` calls
+    ``_skip_whitespace()`` directly before dispatch, so whitespace never
+    reaches the registry. These tests pin the skipping behavior through the
+    full lexer instead of an isolated recognizer object.
+    """
 
-    @pytest.fixture
-    def context(self):
-        return LexerContext()
+    def test_spaces_and_tabs_between_words(self):
+        toks = tokenize('a  \t  b')
+        vals = [t.value for t in toks if t.type == TokenType.WORD]
+        assert vals == ['a', 'b']
 
-    def test_space_recognition(self, recognizer, context):
-        """Test recognition of spaces."""
-        result = recognizer.recognize(' ', 0, context)
-        assert result == (None, 1)  # Whitespace skipped, position advanced
-
-        result = recognizer.recognize('   ', 0, context)
-        assert result == (None, 3)
-
-    def test_tab_recognition(self, recognizer, context):
-        """Test recognition of tabs."""
-        result = recognizer.recognize('\t', 0, context)
-        assert result == (None, 1)  # Whitespace skipped, position advanced
-
-        result = recognizer.recognize('\t\t\t', 0, context)
-        assert result == (None, 3)
-
-    def test_mixed_whitespace(self, recognizer, context):
-        """Test recognition of mixed whitespace."""
-        result = recognizer.recognize(' \t ', 0, context)
-        assert result == (None, 3)  # Whitespace skipped, position advanced
+    def test_leading_and_trailing_whitespace(self):
+        toks = tokenize('   x\t')
+        vals = [t.value for t in toks if t.type == TokenType.WORD]
+        assert vals == ['x']
 
 
 class TestCommentRecognizer:
@@ -341,18 +327,18 @@ class TestRecognizerRegistry:
         # Should be in registry
         assert recognizer in registry.get_recognizers()
 
-    def test_priority_ordering(self, registry):
-        """Test that recognizers are ordered by priority."""
-        low_priority = LiteralRecognizer()  # Priority 70
-        high_priority = OperatorRecognizer()  # Priority 150
+    def test_registration_order_is_dispatch_order(self, registry):
+        """Recognizers are tried in registration order (no priority sort)."""
+        first = OperatorRecognizer()
+        second = LiteralRecognizer()
 
-        registry.register(low_priority)
-        registry.register(high_priority)
+        registry.register(first)
+        registry.register(second)
 
-        # Should be ordered by priority (high to low)
+        # Dispatch order == registration order, unchanged.
         ordered = registry.get_recognizers()
-        assert ordered[0] == high_priority
-        assert ordered[1] == low_priority
+        assert ordered[0] is first
+        assert ordered[1] is second
 
     def test_clear_registry(self, registry):
         """Test clearing all recognizers."""
@@ -365,23 +351,22 @@ class TestRecognizerRegistry:
         assert len(registry) == 0
 
     def test_default_recognizers(self):
-        """Test that the production registry has the standard recognizers."""
+        """The production registry lists recognizers in exact dispatch order."""
         registry = ModularLexer('').registry
 
         recognizers = registry.get_recognizers()
-
-        # Should have all standard recognizers
         recognizer_types = [type(r).__name__ for r in recognizers]
-        expected_types = [
+
+        # Exact dispatch order (registration order), single source of truth in
+        # ModularLexer._setup_recognizers. Whitespace is NOT here — the main
+        # loop skips it before dispatch.
+        assert recognizer_types == [
             'ProcessSubstitutionRecognizer',
             'OperatorRecognizer',
             'LiteralRecognizer',
-            'WhitespaceRecognizer',
-            'CommentRecognizer'
+            'CommentRecognizer',
+            'OperatorDebrisWordRecognizer',
         ]
-
-        for expected_type in expected_types:
-            assert expected_type in recognizer_types
 
     def test_registry_context_handling(self, registry):
         """Test registry properly handles context in recognition."""

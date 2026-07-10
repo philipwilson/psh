@@ -47,11 +47,6 @@ def is_comment_start(input_text: str, pos: int) -> bool:
 class CommentRecognizer(ContextualRecognizer):
     """Recognizes shell comments."""
 
-    @property
-    def priority(self) -> int:
-        """Medium priority for comments."""
-        return 60
-
     def can_recognize(
         self,
         input_text: str,

@@ -95,14 +95,18 @@ class TestRecognizerRegistry:
         recognizer_types = [type(r).__name__ for r in recognizers]
         assert 'OperatorRecognizer' in recognizer_types
 
-    def test_priority_ordering(self):
-        """Test that recognizers are ordered by priority."""
+    def test_dispatch_order(self):
+        """Recognizers dispatch in registration order (no priority sort)."""
         registry = production_registry()
         recognizers = registry.get_recognizers()
 
-        # Should be sorted by priority (highest first)
-        priorities = [r.priority for r in recognizers]
-        assert priorities == sorted(priorities, reverse=True)
+        # ProcessSub before Operator (so <(…)/>(…) win over the leading </>),
+        # OperatorDebris strictly last.
+        recognizer_types = [type(r).__name__ for r in recognizers]
+        assert recognizer_types[0] == 'ProcessSubstitutionRecognizer'
+        assert recognizer_types[-1] == 'OperatorDebrisWordRecognizer'
+        assert recognizer_types.index('OperatorRecognizer') < \
+            recognizer_types.index('LiteralRecognizer')
 
     def test_registry_recognition(self):
         """Test registry recognition with context."""

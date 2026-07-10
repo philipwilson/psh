@@ -45,10 +45,9 @@ retired.
 | `operator.py` | Shell operators (`|`, `&&`, `>>`, etc.) |
 | `literal.py` | Words, identifiers, assignments — collect loop with forward `WordShape` state (~330 lines) |
 | `word_scanners.py` | Pure mini-scanners (`scan_glob_bracket`, `scan_assignment_prefix`, `scan_extglob_group`, `scan_inline_ansi_c`) + `WordShapeTracker` + the assignment-prefix map |
-| `whitespace.py` | Spaces, tabs |
 | `comment.py` | `# comments` |
 | `process_sub.py` | Process substitution `<()` and `>()` |
-| `registry.py` | Recognizer registration and priority |
+| `registry.py` | Recognizer registration + ordered dispatch (registration order = dispatch order) |
 
 ### Support Modules
 
@@ -59,28 +58,33 @@ retired.
 | `pure_helpers.py` | Stateless char-level helpers (`QuoteState`, delimiter matching, escape decoding) |
 | `heredoc_lexer.py` | Heredoc tokenization |
 | `heredoc_collector.py` | `HeredocCollector` - gathers pending heredoc bodies line-by-line |
-| `token_parts.py` | `RichToken` with expansion metadata |
+| `token_parts.py` | `RichToken` (frozen) with expansion metadata |
 | `unicode_support.py` | Unicode identifier handling |
 
 ## Core Patterns
 
 ### 1. Modular Recognizer Pattern
 
-Recognizers are registered with priorities and tried in order:
+Recognizers are tried in **registration order** — the first to match wins.
+There is no priority sorting; the dispatch sequence is declared once, in
+`ModularLexer._setup_recognizers`:
 
 ```python
 # In recognizers/registry.py
 class RecognizerRegistry:
-    def register(self, recognizer): ...   # priority comes from the recognizer
-    def recognize(self, input_text, pos, context): ...
+    def register(self, recognizer): ...   # appended to the dispatch order
+    def recognize(self, input_text, pos, context): ...  # tries in that order
 
-# Each recognizer exposes a `priority` @property (higher = tried first):
-# - ProcessSubstitutionRecognizer: 160 (before operators, so `<(` isn't `<`)
-# - OperatorRecognizer: 150 (greedy matching for multi-char operators)
-# - LiteralRecognizer: 70 (fallback for words)
-# - CommentRecognizer: 60
-# - WhitespaceRecognizer: 30
-# - OperatorDebrisWordRecognizer: 10 (tried last; operator-debris words ], +=, =, [)
+# Dispatch order (ModularLexer._setup_recognizers), the single declaration:
+# 1. ProcessSubstitutionRecognizer  (before operators, so `<(` isn't `<`)
+# 2. OperatorRecognizer             (greedy matching for multi-char operators)
+# 3. LiteralRecognizer              (words, identifiers, assignments)
+# 4. CommentRecognizer              (`#` to end of line)
+# 5. OperatorDebrisWordRecognizer   (tried last; debris words ], +=, =, [)
+#
+# Whitespace is NOT a recognizer: the main loop skips it directly via
+# _skip_whitespace() before dispatch (the old WhitespaceRecognizer was dead
+# code and was removed).
 ```
 
 ### 2. LexicalState
@@ -123,13 +127,13 @@ def tokenize(self):
     while ...:
         if self._skip_whitespace(): continue           # 1. Whitespace
         if self._try_quotes_and_expansions(): continue # 2. Quotes / $, ` → quote_parser / expansion_parser
-        if self._try_recognizers(): continue           # 3. Recognizers in priority order
+        if self._try_recognizers(): continue           # 3. Recognizers in dispatch order
         raise RuntimeError(...)                        # 4. Unreachable (census-verified) — fail loudly
 ```
 
 The recognizer pipeline (step 3) is uniform — there is no special
-"fallback" step. Its lowest-priority member,
-`OperatorDebrisWordRecognizer` (priority 10, in
+"fallback" step. Its last member,
+`OperatorDebrisWordRecognizer` (registered last, in
 `recognizers/operator_debris.py`), is tried strictly last and collects
 operator-debris words (`], +=, =, [...`) that the literal recognizer
 rejects as word starts. (This was historically a separate step-4
@@ -176,10 +180,6 @@ OPERATORS = {
 ```python
 # In recognizers/my_recognizer.py
 class MyRecognizer(TokenRecognizer):
-    @property
-    def priority(self) -> int:
-        return 75  # Between operators (150) and literals (70)
-
     def can_recognize(self, input_text, pos, context) -> bool:
         # Quick check if this recognizer applies
         return input_text[pos] == '@'
@@ -188,12 +188,26 @@ class MyRecognizer(TokenRecognizer):
         # Return (token, new_position) or None
         ...
 ```
-(There is no keyword recognizer — keywords are normalized from WORD tokens
-by the `KeywordNormalizer` post-pass.)
+(There is no `priority` — dispatch order is registration order. There is no
+keyword recognizer either: keywords are normalized from WORD tokens by the
+`KeywordNormalizer` post-pass.)
 
-2. Register it in `ModularLexer._setup_recognizers()` (in `modular_lexer.py`).
+2. Register it in `ModularLexer._setup_recognizers()` (in `modular_lexer.py`)
+   **at the position in the list where it should be tried** — before any
+   recognizer it must pre-empt, after any that should win over it.
    `recognizers/__init__.py` only re-exports classes; adding one there does
    not activate it. Optionally add the re-export for discoverability.
+
+### Tokens are immutable
+
+`Token` (and its `RichToken` subclass) are `@dataclass(frozen=True)`: once the
+lexer emits a token it is never mutated. Stages that need a changed token build
+a new one with `dataclasses.replace` — the `KeywordNormalizer` (WORD → keyword
+type), the heredoc lexer (attaching `heredoc_key`), and in-parser retypes all
+do this. `position`/`end_position` are the canonical stored offsets; `span`
+(a `SourceSpan`) is a derived read-only view. `SourceMap` (`position.py`) is the
+one offset → (line, column) + line-text service (the lexer's `PositionTracker`
+and the parser's error context both read it).
 
 ## Key Implementation Details
 

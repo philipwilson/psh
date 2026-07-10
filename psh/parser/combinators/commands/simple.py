@@ -97,8 +97,8 @@ class SimpleCommandMixin(_Base):
                             type=TokenType.WORD,
                             value=flat_text,
                             position=getattr(tokens[pos], 'position', 0),
+                            array_init=array_init,
                         )
-                        setattr(array_token, 'array_init', array_init)
                         word_tokens.append(array_token)
                         pos = init_result.position
                         parsed_regular_arg = True
@@ -203,7 +203,7 @@ class SimpleCommandMixin(_Base):
                 word = self.expansions.build_word_from_token(group[0])
             else:
                 word = WordBuilder.build_composite_word(group)
-            group_array_init = getattr(group[0], 'array_init', None)
+            group_array_init = group[0].array_init
             if group_array_init is not None:
                 word.array_init = group_array_init
             cmd.words.append(word)

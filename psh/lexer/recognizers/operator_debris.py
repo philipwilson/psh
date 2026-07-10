@@ -56,11 +56,6 @@ _QUOTE_EXPANSION_STARTERS = frozenset('$`"\'')
 class OperatorDebrisWordRecognizer(TokenRecognizer):
     """Recognizes operator-debris words (``]``, ``+``, ``=``, ``[`` starts)."""
 
-    @property
-    def priority(self) -> int:
-        """Lowest priority — tried strictly last, after every recognizer."""
-        return 10
-
     def can_recognize(
         self,
         input_text: str,

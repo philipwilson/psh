@@ -3,7 +3,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 if TYPE_CHECKING:
     from .token_parts import TokenPart
@@ -88,9 +88,30 @@ class TokenType(Enum):
     COMPOSITE = auto()         # Merged adjacent tokens
 
 
-@dataclass
+@dataclass(frozen=True)
+class SourceSpan:
+    """Half-open ``[start, end)`` byte range of a token in its source text.
+
+    ``start``/``end`` are absolute offsets into the string the token was lexed
+    from (the same values carried by ``Token.position``/``Token.end_position``).
+    Slicing ``source[start:end]`` reconstructs the token's lexeme.
+    """
+    start: int
+    end: int
+
+
+@dataclass(frozen=True)
 class Token:
-    """Unified token class for the shell lexer and parser."""
+    """Unified, immutable token for the shell lexer and parser.
+
+    Tokens are ``frozen``: once produced by the lexer they are never mutated.
+    Stages that need a changed token (keyword classification, heredoc-key
+    attachment, in-parser retypes) build a new one with
+    :func:`dataclasses.replace`. ``position``/``end_position`` remain the
+    canonical stored offsets; :pyattr:`span` is a derived read-only view over
+    them. (``frozen`` guards the attributes, not the contents of the mutable
+    ``parts`` list — but ``parts`` is never mutated after construction.)
+    """
     type: TokenType
     value: str
     position: int
@@ -100,13 +121,24 @@ class Token:
     column: Optional[int] = None  # Column number (1-based)
     adjacent_to_previous: bool = False  # True if no whitespace between this and previous token
     is_keyword: bool = False  # True when keyword normalizer marks this as a keyword
-    parts: Optional[List['TokenPart']] = field(default=None)  # Token parts (imported from lexer.token_parts)
+    parts: List['TokenPart'] = field(default_factory=list)  # Token parts (imported from lexer.token_parts)
     fd: Optional[int] = None  # File descriptor prefix (e.g., 2 in 2>file)
     var_fd: Optional[str] = None  # Named-fd prefix var (e.g. 'fd' in {fd}>file)
     combined_redirect: bool = False  # True for &> and &>> (stdout+stderr)
+    # Heredoc collector key, attached by the heredoc lexer to a `<<`/`<<-`
+    # operator token once its body has been collected. None means "no body was
+    # collected for this token" — the *declared* signal replaces the old
+    # dynamic-setattr-plus-hasattr convention. repr=False keeps Token's repr
+    # byte-identical to when this was a dynamic attribute (invisible in repr).
+    heredoc_key: Optional[str] = field(default=None, repr=False)
+    # Structured `name=(...)` array initializer, stashed by the combinator on a
+    # synthetic WORD token so `_build_simple_command` can recover it. None for
+    # ordinary words. (Lexer-internal payload; retired with WordToken in a
+    # later phase.) repr=False for the same repr-stability reason as heredoc_key.
+    array_init: Optional[Any] = field(default=None, repr=False)
 
-    def __post_init__(self) -> None:
-        """Initialize parts if not provided."""
-        if self.parts is None:
-            self.parts = []
+    @property
+    def span(self) -> SourceSpan:
+        """The token's source range as a :class:`SourceSpan` (derived view)."""
+        return SourceSpan(self.position, self.end_position)
 

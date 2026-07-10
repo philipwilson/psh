@@ -453,7 +453,7 @@ class SourceProcessor(ScriptComponent):
             from ..lexer import tokenize_with_heredocs
             name = input_source.get_name()
             tokens, heredoc_map = tokenize_with_heredocs(
-                command_string, strict=self.state.options.get('posix', False),
+                command_string,
                 shell_options=self.state.options,
                 source_name=None if name.startswith(('<', '-')) else name,
                 base_line=start_line if start_line > 0 else 1)
