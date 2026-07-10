@@ -251,10 +251,9 @@ The lexer uses a unified, modular architecture with enhanced features as standar
   - `operator.py` - Shell operators with context awareness
   - `literal.py` - Words, identifiers, and assignments (forward WordShape state)
   - `word_scanners.py` - Pure mini-scanners (glob brackets, assignment prefixes, extglob groups, inline ANSI-C) + WordShapeTracker
-  - `whitespace.py` - Whitespace handling
   - `comment.py` - Comment recognition
   - `process_sub.py` - Process substitution (`<(...)`, `>(...)`)
-  - `registry.py` - Priority-based recognizer dispatch
+  - `registry.py` - Recognizer registration + ordered dispatch (registration order = dispatch order; whitespace is skipped by the main loop, not a recognizer)
 
 Keyword recognition is a normalization pass over the token stream (`psh/lexer/keyword_normalizer.py`, with shared definitions in `psh/lexer/keyword_defs.py`).
 
@@ -265,7 +264,7 @@ class ModularLexer:
     def __init__(self, input_string: str, config: Optional[LexerConfig] = None):
         self.position_tracker = PositionTracker(input_string)
         self.context = LexicalState()          # cross-token lexer state
-        self.registry = RecognizerRegistry()   # priority-ordered recognizers
+        self.registry = RecognizerRegistry()   # recognizers in dispatch order
         self.expansion_parser = ExpansionParser(self.config)
         self.quote_parser = UnifiedQuoteParser(self.expansion_parser)
 ```
