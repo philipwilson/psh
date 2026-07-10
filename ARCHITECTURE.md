@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.680.0
+**Current Version**: 0.681.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -26,7 +26,7 @@ lives here and in those documents.)
   - **Educational Value**: Compare imperative vs. functional parsing approaches
 - **Unified Lexer Architecture**: Recognizer-based modular lexer
   - **Single Token System**: Unified Token dataclass with position, quote and part metadata
-  - **Modular Recognition**: Priority-based token recognizer system
+  - **Modular Recognition**: Token recognizers dispatched in explicit registration order
   - **Dedicated Quote/Expansion Parsers**: Quotes and `$`-expansions consumed whole by `UnifiedQuoteParser`/`ExpansionParser`
   - **Clean API**: Simplified interface with no compatibility overhead
 - **Enhanced Parser System**: Comprehensive configuration and validation
@@ -219,7 +219,7 @@ This happens early because it can create multiple tokens from a single pattern.
 
 ## Phase 2: Lexical Analysis (Tokenization)
 
-The lexer converts character streams into meaningful tokens by dispatching to priority-ordered token recognizers, with dedicated parsers consuming quotes and expansions whole.
+The lexer converts character streams into meaningful tokens by dispatching to token recognizers in a single explicit order, with dedicated parsers consuming quotes and expansions whole.
 
 ### 2.1 Unified Lexer Package Architecture
 **Package**: `psh/lexer/`
@@ -253,6 +253,7 @@ The lexer uses a unified, modular architecture with enhanced features as standar
   - `word_scanners.py` - Pure mini-scanners (glob brackets, assignment prefixes, extglob groups, inline ANSI-C) + WordShapeTracker
   - `comment.py` - Comment recognition
   - `process_sub.py` - Process substitution (`<(...)`, `>(...)`)
+  - `operator_debris.py` - Fail-loud catch-all for unrecognized operator characters
   - `registry.py` - Recognizer registration + ordered dispatch (registration order = dispatch order; whitespace is skipped by the main loop, not a recognizer)
 
 Keyword recognition is a normalization pass over the token stream (`psh/lexer/keyword_normalizer.py`, with shared definitions in `psh/lexer/keyword_defs.py`).
@@ -1160,7 +1161,7 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 - **Visitor Pattern**: Extensible AST traversal for execution and analysis
 
 ### Unified Lexer System
-- **Recognizer Dispatch**: Robust tokenization via priority-ordered recognizers
+- **Recognizer Dispatch**: Robust tokenization via explicitly ordered recognizers
 - **Unified Tokens**: Built-in position tracking, quote metadata, and part decomposition
 - **Dedicated Sub-Parsers**: Quotes and expansions consumed whole, preserving structure
 - **Context Awareness**: `LexerContext` tracks command position, `[[ ]]`/case/arithmetic nesting
