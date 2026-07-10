@@ -11,6 +11,10 @@ from ...ast_nodes import (
     WordPart,
 )
 from ...lexer.token_types import Token, TokenType
+from ..recursive_descent.parsers.arrays import (
+    _NAME_START_RE,
+    _unquoted_leading_literal,
+)
 from ..recursive_descent.support.word_builder import WordBuilder
 from .core import ParseResult
 from .diagnostics import raise_committed_error
@@ -57,7 +61,12 @@ class ArrayParsers:
         # to the assignment head — bash only treats a glued `(` as an array
         # initializer; `a= (x)`, `a =(x)`, `a = (x)`, `a += (x)` are syntax
         # errors, not inits (finding 5b). Mirrors the recursive descent parser.
-        value = tokens[pos].value
+        # The name= head must also be a valid identifier in the word's UNQUOTED
+        # LEADING LITERAL, so a fused quoted/expansion prefix (`"q"a=(1 2)`) is
+        # NOT an init (bash syntax-errors it) — mirrors _normalize_assignment_head.
+        value = _unquoted_leading_literal(tokens[pos])
+        if not _NAME_START_RE.match(value):
+            return False
         if value.endswith('=') or value.endswith('+='):
             return (pos + 1 < len(tokens)
                     and tokens[pos + 1].type.name == 'LPAREN'
@@ -78,7 +87,13 @@ class ArrayParsers:
         if pos >= len(tokens) or tokens[pos].type.name != 'WORD':
             return False
 
-        value = tokens[pos].value
+        # Classify off the UNQUOTED LEADING LITERAL with a valid identifier, so a
+        # fused quoted/expansion prefix (`"q"a[0]=v`, `${v}a[0]=v`, `a[0]$x=y`)
+        # is NOT an element assignment (bash runs it as a command) — mirrors
+        # _normalize_assignment_head.
+        value = _unquoted_leading_literal(tokens[pos])
+        if not _NAME_START_RE.match(value):
+            return False
         if '[' in value and ']' in value:
             if '=' in value:
                 equals_pos = value.index('+=') if '+=' in value else value.index('=')

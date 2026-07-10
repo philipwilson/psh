@@ -162,21 +162,36 @@ class AliasManager:
         return self.expand_aliases(alias_tokens, effective, shell_options)
 
     @staticmethod
-    def _alias_value_from_parts(tok: Token) -> str:
-        """Quote-processed value of a word-fused ``name=value`` definition.
+    def _part_source(part) -> str:
+        """Source-faithful text of one value part for the alias overlay.
+
+        A quote-stripped literal and the delimited expansions (parameter
+        ``${...}``, command ``$(...)``, arithmetic ``$((...))``, backtick) already
+        carry their full source in ``value``. A SIMPLE variable part, though,
+        stores only the bare NAME (``v`` / ``{v}``) — the lexer stripped the
+        ``$`` — so re-prefix it, or the absorbed alias value would drop the ``$``
+        (``alias e="echo pre$v"`` -> ``echo prev`` instead of ``echo pre$v``).
+        """
+        if part.expansion_type == 'variable':
+            return '$' + part.value
+        return part.value
+
+    @classmethod
+    def _alias_value_from_parts(cls, tok: Token) -> str:
+        """Source-faithful value of a word-fused ``name=value`` definition.
 
         The fused WORD's first part is the literal ``name=`` head; the value is
-        the head part's text after the ``=`` plus the values of the following
-        parts (a quoted part's value is already quote-stripped, an expansion
-        part's value is its source name/text — matching what the pre-fusion
-        separate value token exposed).
+        that part's text after the ``=`` plus each following part rendered
+        source-faithfully (see :meth:`_part_source`), so a later same-stream use
+        re-tokenizes and expands the value exactly as the pre-fusion separate
+        value token did.
         """
         parts = tok.parts
         first = parts[0].value
         eq = first.find('=')
         value = first[eq + 1:] if eq != -1 else ''
         for part in parts[1:]:
-            value += part.value
+            value += cls._part_source(part)
         return value
 
     def _absorb_alias_command(self, tokens: List[Token], start: int,
