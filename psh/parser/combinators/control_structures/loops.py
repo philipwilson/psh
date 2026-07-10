@@ -79,9 +79,12 @@ class LoopParserMixin(_Base):
         items: List[str] = []
         item_words: List[Word] = []
         for tok in item_tokens:
-            items.append(self.commands.expansions.format_token_value(tok))
-            item_words.append(
-                self.commands.expansions.build_word_from_token(tok))
+            word = self.commands.expansions.build_word_from_token(tok)
+            # Match the recursive-descent parser: the legacy string view is the
+            # word's DISPLAY text (quotes processed, `a"b"c` -> `abc`), not the
+            # fused token's source lexeme.
+            items.append(word.display_text())
+            item_words.append(word)
         return items, item_words
 
     def _collect_loop_items(
