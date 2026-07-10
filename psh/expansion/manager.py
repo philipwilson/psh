@@ -290,15 +290,19 @@ class ExpansionManager:
                 out.append(ve.glob_escape(expanded) if part.quoted else expanded)
         return ''.join(out)
 
-    def expand_string_variables(self, text: str, quote_ctx=None) -> str:
+    def expand_string_variables(self, text: str, quote_ctx=None,
+                                lexed: bool = False) -> str:
         """
         Expand variables and arithmetic in a string.
         Used for here strings and double-quoted strings. ``quote_ctx``
         (expansion.operands) tells nested ``${x:-word}`` operands what
         quoting context encloses them (heredoc bodies pass DQ_STRING).
+        ``lexed=True`` (``[[ ]]`` string operands) single-decodes backslashes
+        — the text was already escape-decoded by the lexer, so only ``\\$`` is
+        stripped and a ``\\``-run is not collapsed a second time.
         """
         return self.variable_expander.expand_string_variables(
-            text, quote_ctx=quote_ctx)
+            text, quote_ctx=quote_ctx, lexed=lexed)
 
     def expand_ps4(self) -> str:
         """Expand the ``PS4`` xtrace prefix like bash.

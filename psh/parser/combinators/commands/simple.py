@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, List, Optional
 from ....ast_nodes import ArrayAssignment, Redirect, SimpleCommand
 from ....lexer.token_types import Token, TokenType
 from ....parser.recursive_descent.helpers import ParseError
+from ...array_flat_text import process_unquoted_element_escapes
 from ..core import Parser, ParseResult
 from ..diagnostics import error_context_for_token
 
@@ -84,7 +85,11 @@ class SimpleCommandMixin(_Base):
                             )
                         array_init = init_result.value
                         assert array_init is not None
-                        flat_text = (
+                        # Collapse unquoted escapes so this flat text (the
+                        # declaration builtin's lookup key) equals the
+                        # escape-processed argv — see array_flat_text (shared
+                        # with the recursive-descent path so both keys match).
+                        flat_text = process_unquoted_element_escapes(
                             array_init.name
                             + ('+=' if array_init.is_append else '=')
                             + '('

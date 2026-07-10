@@ -92,8 +92,11 @@ class TestExpressionEvaluator:
             # escapes (\$ \\ \" \`); a backslash before anything else stays
             # literal (so "a\.c" keeps its backslash — bash).
             from ..expansion.operands import DQ_STRING
+            # ``text`` is a lexer-decoded double-quoted LiteralPart (escapes
+            # resolved, but $var kept raw): expand vars with SINGLE-decode
+            # (lexed=True) so a `\\`-run is not collapsed a second time.
             expanded = self.expansion_manager.expand_string_variables(
-                text, quote_ctx=DQ_STRING)
+                text, quote_ctx=DQ_STRING, lexed=True)
             return WordExpander.process_dquote_escapes(expanded)
         # unquoted literal: no embedded $ (expansions are separate
         # ExpansionParts); tilde on a leading literal, then escape removal.
@@ -226,7 +229,7 @@ class TestExpressionEvaluator:
                     from ..expansion.operands import DQ_STRING
                     expanded = WordExpander.process_dquote_escapes(
                         self.expansion_manager.expand_string_variables(
-                            part.text, quote_ctx=DQ_STRING))
+                            part.text, quote_ctx=DQ_STRING, lexed=True))
                     out.append(ve.glob_escape(expanded))
                 else:
                     # unquoted literal: no embedded $; keep raw text so the
@@ -262,7 +265,7 @@ class TestExpressionEvaluator:
                     from ..expansion.operands import DQ_STRING
                     expanded = WordExpander.process_dquote_escapes(
                         self.expansion_manager.expand_string_variables(
-                            part.text, quote_ctx=DQ_STRING))
+                            part.text, quote_ctx=DQ_STRING, lexed=True))
                     out.append(re.escape(expanded))
                 else:
                     # unquoted literal: no embedded $; live regex source. A

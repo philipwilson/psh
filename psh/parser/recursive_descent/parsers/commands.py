@@ -18,6 +18,7 @@ from ....ast_nodes import (
     Word,
 )
 from ....lexer.token_types import Token, TokenType
+from ...array_flat_text import process_unquoted_element_escapes
 from ..helpers import ParseError, TokenGroups, unexpected_token_message
 from ..support.word_builder import WordBuilder
 from .base import ParserSubcomponent
@@ -293,7 +294,13 @@ class CommandParser(ParserSubcomponent):
         # the argument keeps verbatim source quoting in its flat Word text.
         element_words, element_strings = self.parse_array_init_elements()
 
-        flat_string = name + ('+=' if is_append else '=') + '(' + ' '.join(element_strings) + ')'
+        # The flat string is the declaration builtin's LOOKUP KEY; it must equal
+        # the escape-processed argv the builtin receives (a single unquoted
+        # literal), so collapse unquoted backslash escapes here — otherwise a
+        # ``\$`` key misses the ``$`` argv and declare treats the array as a
+        # scalar. Element VALUES come from element_words, not this text.
+        flat_string = process_unquoted_element_escapes(
+            name + ('+=' if is_append else '=') + '(' + ' '.join(element_strings) + ')')
         array_init = ArrayInitialization(
             name=name,
             elements=[w.display_text() for w in element_words],

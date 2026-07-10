@@ -8790,6 +8790,156 @@
   stderr: ""
   exit_code: 0
 
+# =============================================================================
+# LITERAL-PATTERN CLUSTER (task #6 + #16) — brackets, declare arrays,
+# double-quote backslash runs, escaped-$ brace. Values pinned to bash 5.2.
+# =============================================================================
+
+# --- literal-pattern cluster (task #6): case/glob brackets, #18 v=[ ---
+
+- name: case_pattern_escaped_bracket_literal
+  command: "case \"a[b\" in a\\[b) echo yes;; *) echo no;; esac"
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0
+
+- name: case_pattern_unclosed_bracket_literal
+  command: "case \"a[b\" in a[b) echo yes;; *) echo no;; esac"
+  stdout: "yes\n"
+  stderr: ""
+  exit_code: 0
+
+- name: case_pattern_bracket_class_still_matches
+  command: "case \"5\" in [0-9]) echo digit;; *) echo no;; esac"
+  stdout: "digit\n"
+  stderr: ""
+  exit_code: 0
+
+- name: bracket_whitespace_splits_word
+  command: "printf \"<%s>\" x[y z]w"
+  stdout: "<x[y><z]w>"
+  stderr: ""
+  exit_code: 0
+
+- name: bracket_closed_class_stays_one_word
+  command: "printf \"<%s>\" x[yz]w"
+  stdout: "<x[yz]w>"
+  stderr: ""
+  exit_code: 0
+
+- name: assign_value_bare_open_bracket
+  command: "v=[; echo \"<$v>\""
+  stdout: "<[>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: assign_value_bracket_then_command
+  command: "v=[; echo done"
+  stdout: "done\n"
+  stderr: ""
+  exit_code: 0
+
+- name: assign_value_prefixed_open_bracket
+  command: "v=a[; echo \"<$v>\""
+  stdout: "<a[>\n"
+  stderr: ""
+  exit_code: 0
+
+- name: array_subscript_arith_spaces_lhs
+  command: "a[0 + 1]=v; declare -p a"
+  stdout: "declare -a a=([1]=\"v\")\n"
+  stderr: ""
+  exit_code: 0
+
+# --- declare array-init escaped-$ round-trip (task #6 (ii)) ---
+
+- name: declare_array_escaped_dollar
+  command: "declare -a arr=(a\\$b c); declare -p arr"
+  stdout: "declare -a arr=([0]=\"a\\$b\" [1]=\"c\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: declare_array_escaped_dollar_roundtrip
+  command: "declare -a arr=(a\\$b c); s=$(declare -p arr); unset arr; eval \"$s\"; printf \"[%s]\" \"${arr[@]}\""
+  stdout: "[a$b][c]"
+  stderr: ""
+  exit_code: 0
+
+- name: declare_array_escaped_tab
+  command: "declare -a arr=(a\\tb c); declare -p arr"
+  stdout: "declare -a arr=([0]=\"atb\" [1]=\"c\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: declare_array_dquoted_escaped_dollar
+  command: "declare -a arr=(\"a\\$b\" c); declare -p arr"
+  stdout: "declare -a arr=([0]=\"a\\$b\" [1]=\"c\")\n"
+  stderr: ""
+  exit_code: 0
+
+# --- double-quote adjacent-backslash runs (task #6 (iii)) ---
+
+- name: dquote_three_backslashes
+  command: "echo \"a\\\\\\b\""
+  stdout: "a\\\\b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dquote_four_backslashes
+  command: "echo \"a\\\\\\\\b\""
+  stdout: "a\\\\b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dquote_five_backslashes
+  command: "echo \"a\\\\\\\\\\b\""
+  stdout: "a\\\\\\b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: dquote_backslash_run_before_dollar
+  command: "x=Q; echo \"a\\\\\\\\$x\""
+  stdout: "a\\\\Q\n"
+  stderr: ""
+  exit_code: 0
+
+- name: test_bracket_backslash_run_inequal
+  command: "[[ \"a\\\\\\b\" == \"a\\b\" ]] && echo EQ || echo NE"
+  stdout: "NE\n"
+  stderr: ""
+  exit_code: 0
+
+- name: herestring_backslash_run
+  command: "cat <<< \"a\\\\\\b\""
+  stdout: "a\\\\b\n"
+  stderr: ""
+  exit_code: 0
+
+# --- escaped-$ before a brace group (task #16) ---
+
+- name: escaped_dollar_before_brace_group
+  command: "a=1;b=2; echo \\${a,b}"
+  stdout: "$a $b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: escaped_dollar_before_brace_seq
+  command: "echo \\${1..3}"
+  stdout: "$1 $2 $3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: escaped_dollar_before_brace_nested
+  command: "echo x\\${a,b}y"
+  stdout: "x$ay x$by\n"
+  stderr: ""
+  exit_code: 0
+
+- name: double_backslash_dollar_brace_is_param
+  command: "a=1;b=2; echo \\\\${a,b}"
+  stdout: "\\1\n"
+  stderr: ""
+  exit_code: 0
 # ---------------------------------------------------------------------------
 # CORE-STATE POLISH (#15/#34): hashall rename + option-reflection enumeration
 # + posix plain-assignment readonly exit. All match bash 5.2 EXACTLY on

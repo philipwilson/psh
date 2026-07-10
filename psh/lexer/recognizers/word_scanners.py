@@ -257,23 +257,32 @@ class UnmatchedBracketTracker:
     """
 
     __slots__ = ('_bracket_count', '_has_opening_bracket',
-                 '_in_single', '_in_double')
+                 '_in_single', '_in_double', '_escaped')
 
     def __init__(self) -> None:
         self._bracket_count = 0
         self._has_opening_bracket = False
         self._in_single = False
         self._in_double = False
+        self._escaped = False
 
     def feed(self, appended: str) -> None:
         """Advance the state over text just appended to the word."""
         for char in appended:
+            if self._escaped:
+                # Previous (unquoted) char was a backslash: this char is
+                # literal, so an escaped '[' or ']' is NOT a bracket
+                # delimiter (`a\[b)` must not count the '[' as open).
+                self._escaped = False
+                continue
             if char == "'" and not self._in_double:
                 self._in_single = not self._in_single
             elif char == '"' and not self._in_single:
                 self._in_double = not self._in_double
             elif not self._in_single and not self._in_double:
-                if char == '[':
+                if char == '\\':
+                    self._escaped = True
+                elif char == '[':
                     self._bracket_count += 1
                     self._has_opening_bracket = True
                 elif char == ']':
@@ -306,25 +315,54 @@ def can_start_expansion(text: str, pos: int, posix_mode: bool = False) -> bool:
     return is_identifier_start(next_char, posix_mode)
 
 
-def scan_glob_bracket(text: str, pos: int,
-                      posix_mode: bool = False) -> Tuple[str, int, bool]:
-    """Consume a glob bracket segment starting at the ``[`` at ``pos``.
+#: Unquoted characters that end a glob bracket class at LEX time. bash never
+#: lets a ``[...]`` class cross a word boundary: unquoted whitespace and the
+#: shell metacharacters below always split the word (or are operators), so a
+#: ``[`` with no matching ``]`` before one of them is a LITERAL ``[`` — bash:
+#: ``a[b c`` -> words ``a[b`` ``c``; ``x[y z]w`` -> ``x[y`` ``z]w``;
+#: ``case x in a[b)`` -> the ``)`` closes the pattern; ``v=[`` -> value ``[``.
+#: Quotes/expansions are handled separately (they end the literal TOKEN, not
+#: just the class). A closed class with none of these inside (``[a-z]``,
+#: ``[[:upper:]]``) is collected whole, unchanged.
+_GLOB_BRACKET_TERMINATORS = frozenset(' \t\n|&;()<>')
 
-    Inside a non-assignment ``[...]`` word, quotes and expansions keep
-    their normal meaning (bash: ``echo x["ok"]`` prints ``x[ok]``,
-    ``echo x[$USER]`` expands, and ``echo x["oops`` is an
-    unterminated-quote error), so the segment ends — and with it the
-    literal token — at any quote, backtick, or valid ``$`` expansion; the
-    parser later re-joins adjacent parts into one composite word.
-    Everything else, including whitespace and escaped pairs, is collected
-    literally until the closing ``]`` (or end of input, leaving the
-    bracket unclosed — the word simply ends there).
 
-    Returns ``(segment, new_pos, ended_by_quote)``; *ended_by_quote* means
-    the whole literal token must end here so the quote/expansion machinery
-    takes over.
+#: scan_glob_bracket outcomes.
+GLOB_CLOSED = 'closed'    #: a real ``[...]`` class (segment includes the ``]``)
+GLOB_QUOTE = 'quote'      #: a quote/expansion inside ends the literal token
+GLOB_LITERAL = 'literal'  #: no valid class — the ``[`` is a plain literal char
+
+
+def scan_glob_bracket(text: str, pos: int, posix_mode: bool = False,
+                      assignment_subscript: bool = False) -> Tuple[str, int, str]:
+    """Consume a glob bracket class starting at the ``[`` at ``pos``.
+
+    Inside a ``[...]`` class, quotes and expansions keep their normal meaning
+    (bash: ``echo x["ok"]`` prints ``x[ok]``, ``echo x[$USER]`` expands, and
+    ``echo x["oops`` is an unterminated-quote error), so the segment ends — and
+    with it the literal token — at any quote, backtick, or valid ``$``
+    expansion; the parser later re-joins adjacent parts into one composite word.
+    Escaped pairs (``x[\\"]``, ``[\\]]``) are collected literally.
+
+    The class closes at the first unquoted ``]``. If a word terminator
+    (whitespace or a shell metacharacter — see ``_GLOB_BRACKET_TERMINATORS``)
+    or end of input is reached FIRST, the ``[`` never validly opened a class:
+    bash treats it as a literal ``[`` and resumes ordinary word scanning.
+
+    ``assignment_subscript`` (set by the recognizer when a NAME precedes the
+    ``[`` and the bracket closes as ``]=``/``]+=`` — an array-subscript LHS)
+    suppresses the terminator stop: bash allows unquoted whitespace inside an
+    arithmetic subscript (``a[0 + 1]=v``), so the class is collected whole to
+    its ``]``, exactly as a spaceless subscript would be.
+
+    Returns ``(segment, new_pos, outcome)`` with *outcome* one of
+    :data:`GLOB_CLOSED`, :data:`GLOB_QUOTE`, :data:`GLOB_LITERAL`. On
+    ``GLOB_LITERAL`` the segment is just ``'['`` and *new_pos* is ``pos + 1``,
+    so the caller takes the lone ``[`` as an ordinary character (it must NOT be
+    counted as a bracket opener) and rescans the rest.
     """
     assert text[pos] == '['
+    start = pos
     segment = '['
     pos += 1
     n = len(text)
@@ -336,12 +374,20 @@ def scan_glob_bracket(text: str, pos: int,
             continue
         if ch in ('"', "'", '`') or (
                 ch == '$' and can_start_expansion(text, pos, posix_mode)):
-            return segment, pos, True
+            return segment, pos, GLOB_QUOTE
+        if ch == ']':
+            segment += ch
+            return segment, pos + 1, GLOB_CLOSED
+        if ch in _GLOB_BRACKET_TERMINATORS and not assignment_subscript:
+            break  # no ']' before a word terminator: '[' is literal
         segment += ch
         pos += 1
-        if ch == ']':
-            return segment, pos, False
-    return segment, pos, False
+    # An assignment subscript whose ']' was swallowed by an expansion still
+    # returns what it collected (the word continues); a plain unclosed '[' is a
+    # literal character the caller takes and then resumes normal scanning.
+    if assignment_subscript:
+        return segment, pos, GLOB_CLOSED
+    return '[', start + 1, GLOB_LITERAL
 
 
 def scan_extglob_group(text: str, pos: int) -> Optional[Tuple[str, int]]:
@@ -377,12 +423,25 @@ def scan_extglob_group(text: str, pos: int) -> Optional[Tuple[str, int]]:
     return segment, i
 
 
-def _subscript_confirms_assignment(text: str, pos: int) -> bool:
+def _subscript_confirms_assignment(text: str, pos: int,
+                                   allow_whitespace: bool = False) -> bool:
     """Local lookahead: does the ``[`` at ``pos`` close as ``]=``/``]+=``?
 
     Quote-aware (``arr["key"]=v`` works), escape-aware (``a[\\[x]=v``),
     and expansion-opaque (the space in ``a[$(echo 1 + 1)]=v`` does not
-    break the word). Unquoted whitespace breaks the pattern.
+    break the word).
+
+    ``allow_whitespace`` selects the caller's contract:
+
+    * ``False`` (the assignment-map / confirmed-subscript path): unquoted
+      whitespace breaks the pattern — a spaced subscript is NOT a confirmed
+      ``NAME[...]=`` assignment for the map's quote-literality purposes.
+    * ``True`` (the glob-bracket recognizer): bash allows unquoted whitespace
+      inside an array-subscript arithmetic LHS (``a[0 + 1]=v`` -> ``a[1]=v``),
+      so a spaced ``[...]`` that still closes as ``]=`` IS an assignment
+      subscript and must be collected whole (only a NEWLINE — a hard command
+      break — ends it). This lets the recognizer keep such words intact while
+      a plain glob ``x[y z]w`` splits at the space.
     """
     remaining = text[pos:]
     bracket_count = 0
@@ -407,8 +466,10 @@ def _subscript_confirms_assignment(text: str, pos: int) -> bool:
                     if remaining[i + 1:i + 2] == '=':
                         return True
                     return remaining[i + 1:i + 3] == '+='
-            elif char in (' ', '\t', '\n', '\r'):
-                return False  # whitespace outside quotes breaks the pattern
+            elif char in ('\n', '\r'):
+                return False  # a hard line break always ends the subscript
+            elif char in (' ', '\t') and not allow_whitespace:
+                return False  # blank outside quotes breaks the pattern
         i += 1
     return False
 

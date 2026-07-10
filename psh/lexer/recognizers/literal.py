@@ -33,8 +33,11 @@ from ..unicode_support import is_whitespace
 from .base import ContextualRecognizer
 from .comment import is_comment_start
 from .word_scanners import (
+    GLOB_LITERAL,
+    GLOB_QUOTE,
     UnmatchedBracketTracker,
     WordShapeTracker,
+    _subscript_confirms_assignment,
     cached_assignment_prefix_map,
     can_start_expansion,
     scan_assignment_prefix,
@@ -218,10 +221,30 @@ class LiteralRecognizer(ContextualRecognizer):
                 # the parser re-joins adjacent parts into one composite
                 # word. Only confirmed assignment subscripts collect their
                 # quotes literally (scan_assignment_prefix above).
-                segment, new_pos, ended_by_quote = scan_glob_bracket(
-                    input_text, pos, posix_mode)
+                #
+                # A '[' with no matching ']' before a word terminator is a
+                # LITERAL '[' (bash: `a[b c` -> `a[b` `c`; `v=[` -> value `[`;
+                # `case x in a[b)` -> the ')' closes the pattern). The one
+                # exception is a whitespace-containing array-subscript LHS
+                # (`a[0 + 1]=v`): bash keeps it whole, so when a NAME precedes
+                # the '[' and it still closes as ']='/']+=', collect the class
+                # across the spaces (assignment_subscript below).
+                subscript = (shape.is_identifier
+                             and _subscript_confirms_assignment(
+                                 input_text, pos, allow_whitespace=True))
+                segment, new_pos, outcome = scan_glob_bracket(
+                    input_text, pos, posix_mode,
+                    assignment_subscript=subscript)
+                if outcome == GLOB_LITERAL:
+                    # The '[' never opened a class: take it as a plain literal
+                    # char WITHOUT counting it as a bracket opener (so a later
+                    # ')' / ']' is not pulled into the word), then rescan.
+                    value += segment
+                    shape.feed(segment)
+                    pos = new_pos
+                    continue
                 take(segment, new_pos)
-                if ended_by_quote:
+                if outcome == GLOB_QUOTE:
                     break
                 continue
 

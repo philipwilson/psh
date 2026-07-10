@@ -498,7 +498,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         return is_valid_name(name, self.state.options.get('posix', False))
 
     def expand_string_variables(self, text: str,
-                                quote_ctx: Optional[str] = None) -> str:
+                                quote_ctx: Optional[str] = None,
+                                lexed: bool = False) -> str:
         """Expand variables, command substitution, and arithmetic in a string
         (here strings/documents, double-quoted content, redirect targets).
 
@@ -523,7 +524,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 result.append(str(expanded))
                 continue
             elif text[i] == '\\' and i + 1 < len(text):
-                piece, i = self._process_double_quote_escape(text, i)
+                piece, i = self._process_double_quote_escape(text, i, lexed=lexed)
                 result.append(piece)
                 continue
 
@@ -532,24 +533,33 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
 
         return ''.join(result)
 
-    def _process_double_quote_escape(self, text: str, i: int) -> Tuple[str, int]:
+    def _process_double_quote_escape(self, text: str, i: int,
+                                     lexed: bool = False) -> Tuple[str, int]:
         """Apply double-quote backslash-escape rules at ``text[i] == '\\'``.
 
-        In double-quoted contexts (here-strings/documents, redirect targets,
-        ``[[ ]]`` operands, ``${...}`` operands) only a backslash before a
-        shell-special character (``\\``, ``"``, ``$``, `````) is processed,
-        and there the backslash is always removed — ``\\$`` becomes a literal
-        ``$`` regardless of what follows (the following text is NOT re-scanned
-        as an expansion). This matches bash and the command-argument Word path
-        (``WordExpander.process_dquote_escapes``). C escapes like
-        ``\\n``/``\\t`` stay literal; an unrecognized following character keeps
-        its backslash verbatim. (``\\<newline>`` line continuation is handled
-        upstream by the lexer, so it is intentionally not processed here.)
+        Two input contracts, selected by ``lexed``:
+
+        * ``lexed=False`` (default — RAW dquote-like data: here-string/heredoc
+          bodies, redirect targets, ``$(( ))`` and ``${...}`` operands): a
+          backslash before a shell-special character (``\\``, ``"``, ``$``,
+          `````) is removed — ``\\$`` becomes a literal ``$`` (the following
+          text is NOT re-scanned as an expansion). C escapes like ``\\n`` stay
+          literal; any other ``\\X`` keeps its backslash.
+        * ``lexed=True`` (text the LEXER already escape-decoded — ``[[ ]]``
+          string operands, whose LiteralPart carries decoded escapes but still
+          RAW ``$var`` to expand): only ``\\$`` is stripped (the one escape the
+          lexer defers, to protect the ``$``); every other backslash is already
+          final and is kept verbatim, so a run like ``a\\\\b`` is NOT collapsed
+          a second time. Mirrors ``WordExpander.process_dquote_escapes``.
 
         Returns ``(piece, new_i)`` — the text to append and the index to
         resume scanning from.
         """
         next_char = text[i + 1]
+        if lexed:
+            if next_char == '$':
+                return '$', i + 2
+            return text[i], i + 1
         if next_char in '\\"$`':
             return next_char, i + 2
 

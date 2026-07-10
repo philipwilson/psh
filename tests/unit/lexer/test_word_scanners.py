@@ -211,29 +211,43 @@ def test_word_shape_enum_progression():
 
 class TestScanGlobBracket:
     def test_simple_class_closes(self):
-        assert scan_glob_bracket('[ab]c', 0) == ('[ab]', 4, False)
+        assert scan_glob_bracket('[ab]c', 0) == ('[ab]', 4, 'closed')
 
-    def test_collects_whitespace_literally(self):
-        # Legacy-pinned: a space does not end a glob bracket segment.
-        assert scan_glob_bracket('[a b]', 0) == ('[a b]', 5, False)
+    def test_whitespace_before_close_makes_literal_bracket(self):
+        # bash never lets a glob class cross a word boundary: `[a b]` is two
+        # words `[a` `b]`, so the '[' is a literal char (verified vs bash 5.2:
+        # `printf "<%s>" [a b]` -> `<[a><b]>`). The scanner reports the class
+        # never opened; the recognizer takes the lone '[' and rescans.
+        assert scan_glob_bracket('[a b]', 0) == ('[', 1, 'literal')
 
-    def test_unclosed_runs_to_end(self):
-        assert scan_glob_bracket('[ab', 0) == ('[ab', 3, False)
+    def test_unclosed_at_eof_is_literal_bracket(self):
+        # `[ab` with no ']' before end of input: literal '[' (bash keeps `a[b`
+        # as one word only because whitespace, not the '[', would split it).
+        assert scan_glob_bracket('[ab', 0) == ('[', 1, 'literal')
+
+    def test_metachar_before_close_makes_literal_bracket(self):
+        # A shell metacharacter before ']' also ends the word (bash splits
+        # `x[y;z]` at the ';'): the '[' is literal.
+        assert scan_glob_bracket('[y;z]', 0) == ('[', 1, 'literal')
+
+    def test_assignment_subscript_collects_whitespace(self):
+        # An array-subscript LHS (']' followed by '=') keeps unquoted
+        # whitespace (bash: `a[0 + 1]=v` -> a[1]=v). The recognizer sets
+        # assignment_subscript when a NAME precedes the '['.
+        assert scan_glob_bracket('[0 + 1]=v', 0,
+                                 assignment_subscript=True) == ('[0 + 1]', 7, 'closed')
 
     def test_quote_ends_segment(self):
-        seg, pos, by_quote = scan_glob_bracket('["ok"]', 0)
-        assert (seg, pos, by_quote) == ('[', 1, True)
+        assert scan_glob_bracket('["ok"]', 0) == ('[', 1, 'quote')
 
     def test_valid_expansion_ends_segment(self):
-        seg, pos, by_quote = scan_glob_bracket('[$v]', 0)
-        assert (seg, pos, by_quote) == ('[', 1, True)
+        assert scan_glob_bracket('[$v]', 0) == ('[', 1, 'quote')
 
     def test_invalid_dollar_is_literal(self):
-        seg, pos, by_quote = scan_glob_bracket('[$]', 0)
-        assert (seg, pos, by_quote) == ('[$]', 3, False)
+        assert scan_glob_bracket('[$]', 0) == ('[$]', 3, 'closed')
 
     def test_escaped_pair_collected(self):
-        assert scan_glob_bracket('[\\]]', 0) == ('[\\]]', 4, False)
+        assert scan_glob_bracket('[\\]]', 0) == ('[\\]]', 4, 'closed')
 
 
 class TestScanExtglobGroup:
@@ -342,3 +356,17 @@ class TestUnmatchedBracketTracker:
         t = UnmatchedBracketTracker()
         t.feed('*[[:upper:]]*')
         assert not t.inside
+
+    def test_escaped_open_bracket_not_counted(self):
+        # An escaped '\[' is a literal '[', not a subscript/class opener, so
+        # the tracker must stay "outside" (else a following ')' in a case
+        # pattern `a\[b)` gets wrongly pulled into the word).
+        t = UnmatchedBracketTracker()
+        t.feed('a\\[b')
+        assert not t.inside
+
+    def test_escaped_close_bracket_not_counted(self):
+        # Symmetric: an escaped '\]' does not close an open class.
+        t = UnmatchedBracketTracker()
+        t.feed('[a\\]')
+        assert t.inside  # the '\]' is literal, class still open
