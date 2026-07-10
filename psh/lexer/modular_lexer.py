@@ -10,7 +10,7 @@ from .quote_parser import UnifiedQuoteParser
 from .recognizers import RecognizerRegistry
 from .recognizers.word_scanners import cached_assignment_prefix_map
 from .state_context import LexicalState
-from .token_parts import RichToken, TokenPart
+from .token_parts import TokenPart
 from .token_types import Token, TokenType
 from .unicode_support import is_whitespace
 
@@ -182,16 +182,12 @@ class ModularLexer:
             prev = self.tokens[-1]
             adjacent = (start_offset == prev.end_position)
 
+        # A token carries its parts directly (the base Token has a parts field);
+        # RichToken was retired with the WordToken refactor.
         token = Token(token_type, value, start_offset, end_offset, quote_type,
-                      line, column, adjacent)
-
-        # Convert to RichToken if we have parts
-        if self.current_parts:
-            rich_token = RichToken.from_token(token, self.current_parts)
-            self.current_parts = []  # Clear parts after use
-            self.tokens.append(rich_token)
-        else:
-            self.tokens.append(token)
+                      line, column, adjacent, parts=self.current_parts)
+        self.current_parts = []  # Clear parts after use
+        self.tokens.append(token)
 
         # Update command position context
         self._update_command_position_context(token_type, value)
@@ -388,9 +384,8 @@ class ModularLexer:
             # `param_parser`). The lexer used to guess VARIABLE-vs-PARAM_EXPANSION
             # by scanning the whole `${...}` text for operator substrings — a
             # heuristic with false positives (`${x:-a/b}` matched `/`) that the
-            # WordBuilder re-classified anyway. (`PARAM_EXPANSION` is now an
-            # emit-dead token type, kept for the parser's acceptance lists; a
-            # follow-up could retire it.)
+            # WordBuilder re-classified anyway. (`PARAM_EXPANSION` was retired
+            # with WordToken — every `${...}` is a VARIABLE token.)
             value = expansion_part.value
             if expansion_part.expansion_type == 'parameter' and value.startswith('$'):
                 # Braced `${...}`: strip the leading `$` to the `{...}` shape

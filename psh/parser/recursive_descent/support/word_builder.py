@@ -5,7 +5,7 @@ represent expansions within command arguments.
 """
 
 import re
-from typing import List, Optional
+from typing import Optional
 
 from ....ast_nodes import (
     ArithmeticExpansion,
@@ -33,7 +33,6 @@ _SPECIAL_VAR_RE = re.compile(r'^[0-9$?!@*#-]$')
 EXPANSION_TYPES = frozenset({
     TokenType.VARIABLE, TokenType.COMMAND_SUB,
     TokenType.COMMAND_SUB_BACKTICK, TokenType.ARITH_EXPANSION,
-    TokenType.PARAM_EXPANSION,
     TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT,
 })
 
@@ -115,25 +114,10 @@ class WordBuilder:
         value = token.value
 
         if token_type == TokenType.VARIABLE:
-            # Simple variable like $USER or ${USER}
-            # Lexer already stripped the leading $, so value is just the name
-            # (e.g. 'USER', '$' for $$, '?' for $?, '{HOME}' for ${HOME})
-            name = value
-            if name.startswith('{') and name.endswith('}'):
-                inner = name[1:-1]
-                # Check if this is a simple variable name or a parameter expansion
-                # with operators. Simple names: alphanumeric/underscores, or special
-                # single-char vars ($, ?, #, !, @, *, 0-9).
-                # Array subscripts (arr[@], arr[0]) are also simple.
-                if _SIMPLE_VAR_RE.match(inner) or \
-                   _SPECIAL_VAR_RE.match(inner):
-                    # Brace-DELIMITED ${name}: does not fuse with a following
-                    # name-char run under brace expansion (see braced field).
-                    return VariableExpansion(inner, braced=True)
-                else:
-                    # Contains operators — delegate to parameter expansion parser
-                    return WordBuilder._parse_parameter_expansion(f"${{{inner}}}")
-            return VariableExpansion(name)
+            # Simple variable like $USER or ${USER}. Lexer already stripped the
+            # leading $, so value is just the name (e.g. 'USER', '$' for $$,
+            # '?' for $?, '{HOME}' for ${HOME}).
+            return WordBuilder._variable_name_to_expansion(value)
 
         elif token_type == TokenType.COMMAND_SUB:
             # Command substitution $(...): parse the body NOW so invalid nested
@@ -153,10 +137,6 @@ class WordBuilder:
         elif token_type == TokenType.ARITH_EXPANSION:
             # Arithmetic expansion $((...))
             return ArithmeticExpansion(strip_arithmetic(value))
-
-        elif token_type == TokenType.PARAM_EXPANSION:
-            # Complex parameter expansion ${var:-default} etc.
-            return WordBuilder._parse_parameter_expansion(value)
 
         elif token_type in (TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT):
             # Process substitution <(cmd) or >(cmd) — may stand alone as a
@@ -195,6 +175,31 @@ class WordBuilder:
         return parsed
 
     @staticmethod
+    def _variable_name_to_expansion(name: str) -> Expansion:
+        """Classify a ``VARIABLE``-token name into its Expansion node.
+
+        ``name`` is the lexer's stripped form: a bare name (``USER``, ``?``,
+        ``1``) or a brace-delimited body (``{HOME}``, ``{arr[@]}``, ``{x:-d}``).
+        A simple brace-delimited name becomes a brace-flagged
+        :class:`VariableExpansion`; an operator form delegates to the parameter
+        parser. Shared by ``parse_expansion_token`` (standalone/composite
+        tokens) and ``_parse_token_part_expansion`` (fused-word ``variable``
+        parts) so both build the identical node.
+        """
+        if name.startswith('{') and name.endswith('}'):
+            inner = name[1:-1]
+            # Simple names: alphanumeric/underscores, or special single-char
+            # vars ($, ?, #, !, @, *, 0-9); array subscripts (arr[@], arr[0])
+            # count as simple too.
+            if _SIMPLE_VAR_RE.match(inner) or _SPECIAL_VAR_RE.match(inner):
+                # Brace-DELIMITED ${name}: does not fuse with a following
+                # name-char run under brace expansion (see braced field).
+                return VariableExpansion(inner, braced=True)
+            # Contains operators — delegate to the parameter expansion parser.
+            return WordBuilder._parse_parameter_expansion(f"${{{inner}}}")
+        return VariableExpansion(name)
+
+    @staticmethod
     def token_part_to_word_part(tp, containing_token=None, ctx=None) -> WordPart:
         """Convert a lexer TokenPart into a Word AST WordPart node.
 
@@ -222,18 +227,25 @@ class WordBuilder:
         """Convert a TokenPart's expansion metadata into an Expansion AST node.
 
         The TokenPart has ``expansion_type`` (variable, parameter, command,
-        arithmetic, backtick) and ``value`` with varying conventions:
+        arithmetic, backtick, process_in, process_out) and ``value`` with
+        varying conventions:
         - variable: value is just the var name (e.g. ``HOME``)
         - parameter: value is the full ``${...}`` syntax
         - command: value is the full ``$(...)`` syntax
         - arithmetic: value is the full ``$((...))`` syntax
         - backtick: value is the full `` `...` `` syntax
+        - process_in/process_out: value is the full ``<(...)`` / ``>(...)`` syntax
         """
         etype = tp.expansion_type
 
         if etype == 'variable':
-            # TokenPart.value is the bare variable name (no $)
-            return VariableExpansion(tp.value)
+            # TokenPart.value is the VARIABLE-token name form: a bare name
+            # (``x``) from a quote-embedded ``$x``, or a brace body (``{v}``,
+            # ``{v:-d}``) from a fused ``${...}``. The shared classifier maps
+            # a simple braced name to VariableExpansion(braced=True) — matching
+            # the standalone/composite path — and operator forms to the
+            # parameter parser.
+            return WordBuilder._variable_name_to_expansion(tp.value)
 
         elif etype == 'parameter':
             # Value is the full ${...} syntax
@@ -254,6 +266,20 @@ class WordBuilder:
                                        source=strip_backtick(tp.value),
                                        backtick_style=True)
 
+        elif etype in ('process_in', 'process_out'):
+            # Process substitution <(...) / >(...) carried as a fused-word
+            # part. Same eager nested parse + node representation as
+            # parse_expansion_token, so a composite like ``pre<(cmd)`` builds
+            # the identical ProcessSubstitution. (No ``"..."`` inline form
+            # exists for process substitution; these parts only ever arise
+            # from word fusion — see lexer/word_fusion.py.)
+            direction = 'in' if etype == 'process_in' else 'out'
+            src = strip_process_sub(tp.value)
+            return ProcessSubstitution(
+                direction=direction,
+                program=_nested_program(src, containing_token, ctx),
+                source=src)
+
         else:
             # Unknown expansion type — treat as variable
             return VariableExpansion(tp.value)
@@ -265,10 +291,9 @@ class WordBuilder:
         Public (with token_part_to_word_part) so the combinator parser can build
         the same Word AST without reaching into private helpers.
 
-        Returns True when the token is a RichToken (or at least has a
-        non-empty ``parts`` list) whose parts contain expansion information
-        that the WordBuilder should decompose rather than treating the token
-        value as a single opaque literal.
+        Returns True when the token has a non-empty ``parts`` list whose parts
+        contain expansion information that the WordBuilder should decompose
+        rather than treating the token value as a single opaque literal.
         """
         parts = getattr(token, 'parts', None)
         if not parts:
@@ -284,9 +309,18 @@ class WordBuilder:
         ``ctx`` (the active ParserContext, when a parser drives the build)
         binds embedded substitutions to the enclosing parse.
         """
+        # A fused WORD (word_fusion) carries the whole shell word's parts —
+        # one per constituent piece, already in the right per-part quote
+        # context. Map them straight through; this is the primary path now that
+        # the lexer emits one WORD per multi-piece word. (A plain single-piece
+        # WORD has no parts and falls through to the literal branch below.)
+        if token.type == TokenType.WORD and token.parts:
+            return Word(parts=[WordBuilder.token_part_to_word_part(tp, token, ctx)
+                               for tp in token.parts])
+
         is_quoted = quote_type is not None
 
-        # Check if token has decomposable parts from the lexer (RichToken)
+        # Check if token has decomposable parts from the lexer
         if WordBuilder.has_decomposable_parts(token) and quote_type == '"':
             # Decompose double-quoted string using lexer's TokenPart data.
             # The parts carry the per-part quote context; the whole-word
@@ -304,33 +338,3 @@ class WordBuilder:
         else:
             # This is a literal token. The part carries the quote context.
             return Word(parts=[LiteralPart(token.value, quoted=is_quoted, quote_char=quote_type)])
-
-    @staticmethod
-    def build_composite_word(tokens: List[Token], quote_type: Optional[str] = None,
-                             ctx=None) -> Word:
-        """Build a Word from multiple tokens (for composite words).
-
-        Each part carries its own quote context derived from the token's
-        quote_type.  Composites don't have a single quote_type — each
-        part carries its own. ``ctx`` binds embedded substitutions to the
-        enclosing parse.
-        """
-        parts: List[WordPart] = []
-
-        for token in tokens:
-            qt = getattr(token, 'quote_type', None)
-
-            # Check if this STRING token has decomposable parts
-            if WordBuilder.has_decomposable_parts(token) and qt == '"':
-                # Flatten decomposed parts into composite
-                for tp in (token.parts or []):
-                    parts.append(WordBuilder.token_part_to_word_part(tp, token, ctx))
-            elif token.type in EXPANSION_TYPES:
-                is_quoted = qt is not None
-                expansion = WordBuilder.parse_expansion_token(token, ctx)
-                parts.append(ExpansionPart(expansion, quoted=is_quoted, quote_char=qt))
-            else:
-                is_quoted = qt is not None
-                parts.append(LiteralPart(token.value, quoted=is_quoted, quote_char=qt))
-
-        return Word(parts=parts)

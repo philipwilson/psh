@@ -16,7 +16,10 @@ import pytest
 PSH_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(PSH_ROOT))
 
-from psh.lexer import tokenize
+# Recognizer-level characterization (how a bracket word SPLITS at quotes /
+# expansions); assert on the pre-fusion stream. Word fusion re-joins those
+# adjacent tokens in the public tokenize(), which the frozen corpus covers.
+from lexer_test_helpers import tokenize_unfused as tokenize
 
 
 class TestUnterminatedQuoteInBracketWord:

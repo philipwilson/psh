@@ -526,7 +526,7 @@ class PipelineExecutor:
         """Convert command to string representation."""
         from ..ast_nodes import SimpleCommand
         if isinstance(cmd, SimpleCommand):
-            # Convert args to strings (in case they're RichToken objects)
+            # Convert args to strings
             str_args = [str(arg) for arg in cmd.args]
             return " ".join(str_args)
         else:

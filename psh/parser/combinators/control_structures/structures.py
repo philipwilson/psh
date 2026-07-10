@@ -15,7 +15,6 @@ from ....ast_nodes import (
 from ....core.assignment_utils import ASSIGNMENT_WORD_RE
 from ....lexer.constants import KEYWORDS
 from ....lexer.keyword_defs import matches_keyword
-from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import Token
 from ...recursive_descent.helpers import ParseError
 from ..core import Parser, ParseResult, many
@@ -44,21 +43,17 @@ def _peek_function_name(tokens: List[Token], pos: int) -> Optional[Tuple[str, in
     """Peek a (possibly multi-token) function name at ``pos``.
 
     Mirrors the recursive descent parser's ``FunctionParser._peek_name_tokens``:
-    the lexer splits some plain words at assignment-operator candidates
-    (``foo+bar`` lexes as WORD ``foo`` + WORD ``+bar``; ``2=b`` as ``2`` +
-    ``=b``) and ``[foo]`` spans LBRACKET/WORD/RBRACKET, so adjacent name-able
-    tokens are rejoined here. Composites carrying expansions or quoted parts
-    are rejected (psh does not expand function names). Returns
-    ``(name, token_count)`` or None.
+    word fusion already merged an adjacent name run (``foo+bar``, ``[foo]``) into
+    one WORD. A name carrying an expansion or quoted piece (``foo$x``,
+    ``foo"bar"``) has those as parts and is rejected (psh does not expand
+    function names). Returns ``(name, token_count)`` or None.
     """
     if pos >= len(tokens) or tokens[pos].type.name not in _NAME_TOKEN_TYPES:
         return None
-    composite = TokenStream(tokens, pos).peek_composite_sequence()
-    if composite:
-        if not all(t.type.name in _NAME_TOKEN_TYPES for t in composite):
-            return None
-        return ''.join(t.value for t in composite), len(composite)
-    return tokens[pos].value, 1
+    token = tokens[pos]
+    if any(p.is_expansion or p.quote_type is not None for p in token.parts):
+        return None
+    return token.value, 1
 
 
 class StructureParserMixin(_Base):

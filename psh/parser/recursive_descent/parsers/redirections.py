@@ -90,8 +90,7 @@ class RedirectionParser(ParserSubcomponent):
         if not self.parser.match(TokenType.WORD, TokenType.STRING,
                                  TokenType.VARIABLE, TokenType.COMMAND_SUB,
                                  TokenType.COMMAND_SUB_BACKTICK,
-                                 TokenType.ARITH_EXPANSION,
-                                 TokenType.PARAM_EXPANSION):
+                                 TokenType.ARITH_EXPANSION):
             raise self.parser.error("Expected delimiter after here document operator")
 
         delimiter_token = self.parser.advance()

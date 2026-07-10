@@ -39,7 +39,8 @@ class TokenType(Enum):
     COMMAND_SUB = auto()
     COMMAND_SUB_BACKTICK = auto()
     ARITH_EXPANSION = auto()
-    PARAM_EXPANSION = auto()       # ${var:-default} style expansions
+    # (PARAM_EXPANSION retired with WordToken: the lexer emits VARIABLE for every
+    #  ${...} form; the WordBuilder classifies simple-name vs operator.)
     PROCESS_SUB_IN = auto()    # <(...)
     PROCESS_SUB_OUT = auto()   # >(...)
 
@@ -83,9 +84,8 @@ class TokenType(Enum):
     REGEX_MATCH = auto()       # =~
     EQUAL = auto()             # ==
     NOT_EQUAL = auto()         # !=
-
-    # Composite tokens
-    COMPOSITE = auto()         # Merged adjacent tokens
+    # (COMPOSITE retired with WordToken: adjacent word pieces are fused into one
+    #  WORD carrying `parts` by word_fusion, not merged into a COMPOSITE token.)
 
 
 @dataclass(frozen=True)

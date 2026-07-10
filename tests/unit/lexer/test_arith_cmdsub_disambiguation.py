@@ -84,8 +84,14 @@ class TestLexerTokenClassification:
     """The lexer emits ARITH_EXPANSION vs COMMAND_SUB per the rule."""
 
     def one_token(self, source, token_type):
-        tokens = [t for t in tokenize(source) if t.type == token_type]
-        assert len(tokens) == 1, [(t.type, t.value) for t in tokenize(source)]
+        # Recognizer-level: the ARITH_EXPANSION-vs-COMMAND_SUB classification is
+        # a pre-fusion property (word fusion would composite a mid-word
+        # expansion like `pre$((..))post` into one WORD). Assert on the
+        # pre-fusion stream.
+        from lexer_test_helpers import tokenize_unfused
+        tokens = [t for t in tokenize_unfused(source) if t.type == token_type]
+        assert len(tokens) == 1, [
+            (t.type, t.value) for t in tokenize_unfused(source)]
         return tokens[0]
 
     def test_arithmetic_stays_arithmetic(self):

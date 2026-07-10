@@ -12,7 +12,10 @@ adjacency) for every census case so the promotion is a zero-behavior
 refactor: byte-identical token streams before and after.
 """
 
-from psh.lexer import tokenize
+# Recognizer-level characterization: assert on the pre-fusion stream (word
+# fusion composites these debris words in the public tokenize()).
+from lexer_test_helpers import tokenize_unfused as tokenize  # noqa: E402
+
 from psh.lexer.recognizers import OperatorDebrisWordRecognizer
 from psh.lexer.state_context import LexerContext
 

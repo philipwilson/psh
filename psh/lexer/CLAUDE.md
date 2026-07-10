@@ -58,7 +58,7 @@ retired.
 | `pure_helpers.py` | Stateless char-level helpers (`QuoteState`, delimiter matching, escape decoding) |
 | `heredoc_lexer.py` | Heredoc tokenization |
 | `heredoc_collector.py` | `HeredocCollector` - gathers pending heredoc bodies line-by-line |
-| `token_parts.py` | `RichToken` (frozen) with expansion metadata |
+| `token_parts.py` | `TokenPart` (per-part word metadata; RichToken retired) |
 | `unicode_support.py` | Unicode identifier handling |
 
 ## Core Patterns
@@ -200,7 +200,7 @@ keyword recognizer either: keywords are normalized from WORD tokens by the
 
 ### Tokens are immutable
 
-`Token` (and its `RichToken` subclass) are `@dataclass(frozen=True)`: once the
+`Token` is `@dataclass(frozen=True)`: once the
 lexer emits a token it is never mutated. Stages that need a changed token build
 a new one with `dataclasses.replace` — the `KeywordNormalizer` (WORD → keyword
 type), the heredoc lexer (attaching `heredoc_key`), and in-parser retypes all

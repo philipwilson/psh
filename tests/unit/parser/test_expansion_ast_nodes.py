@@ -157,9 +157,10 @@ class TestWordBuilder:
         assert expansion.expression == "10 + 5"
 
     def test_parse_param_expansion_token(self):
-        """Test parsing PARAM_EXPANSION tokens."""
+        """Parameter expansions arrive as VARIABLE tokens (value ``{...}``); the
+        WordBuilder classifies operator forms into ParameterExpansion."""
         # Default value
-        token = Token(TokenType.PARAM_EXPANSION, "${USER:-nobody}", 0)
+        token = Token(TokenType.VARIABLE, "{USER:-nobody}", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, ParameterExpansion)
         assert expansion.parameter == "USER"
@@ -167,7 +168,7 @@ class TestWordBuilder:
         assert expansion.word == "nobody"
 
         # Pattern removal
-        token2 = Token(TokenType.PARAM_EXPANSION, "${PATH##*/}", 0)
+        token2 = Token(TokenType.VARIABLE, "{PATH##*/}", 0)
         expansion2 = WordBuilder.parse_expansion_token(token2)
         assert isinstance(expansion2, ParameterExpansion)
         assert expansion2.parameter == "PATH"
@@ -175,7 +176,7 @@ class TestWordBuilder:
         assert expansion2.word == "*/"
 
         # Length
-        token3 = Token(TokenType.PARAM_EXPANSION, "${#VAR}", 0)
+        token3 = Token(TokenType.VARIABLE, "{#VAR}", 0)
         expansion3 = WordBuilder.parse_expansion_token(token3)
         assert isinstance(expansion3, ParameterExpansion)
         assert expansion3.parameter == "VAR"
@@ -184,7 +185,7 @@ class TestWordBuilder:
 
     def test_parse_prefix_substitution(self):
         """Test ${var/#pat/repl} produces operator='/#'."""
-        token = Token(TokenType.PARAM_EXPANSION, "${path/#\\/usr/\\/opt}", 0)
+        token = Token(TokenType.VARIABLE, "{path/#\\/usr/\\/opt}", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, ParameterExpansion)
         assert expansion.parameter == "path"
@@ -193,7 +194,7 @@ class TestWordBuilder:
 
     def test_parse_suffix_substitution(self):
         """Test ${var/%pat/repl} produces operator='/%'."""
-        token = Token(TokenType.PARAM_EXPANSION, "${path/%bin/sbin}", 0)
+        token = Token(TokenType.VARIABLE, "{path/%bin/sbin}", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, ParameterExpansion)
         assert expansion.parameter == "path"
@@ -202,7 +203,7 @@ class TestWordBuilder:
 
     def test_parse_substring_extraction(self):
         """Test ${var:offset:length} produces operator=':'."""
-        token = Token(TokenType.PARAM_EXPANSION, "${str:0:-1}", 0)
+        token = Token(TokenType.VARIABLE, "{str:0:-1}", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, ParameterExpansion)
         assert expansion.parameter == "str"
@@ -211,7 +212,7 @@ class TestWordBuilder:
 
     def test_parse_substring_offset_only(self):
         """Test ${var:offset} produces operator=':'."""
-        token = Token(TokenType.PARAM_EXPANSION, "${str:3}", 0)
+        token = Token(TokenType.VARIABLE, "{str:3}", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, ParameterExpansion)
         assert expansion.parameter == "str"
@@ -220,7 +221,7 @@ class TestWordBuilder:
 
     def test_parse_first_substitution(self):
         """Test ${var/pat/repl} still works correctly."""
-        token = Token(TokenType.PARAM_EXPANSION, "${var/foo/bar}", 0)
+        token = Token(TokenType.VARIABLE, "{var/foo/bar}", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, ParameterExpansion)
         assert expansion.parameter == "var"
@@ -229,7 +230,7 @@ class TestWordBuilder:
 
     def test_parse_global_substitution(self):
         """Test ${var//pat/repl} still works correctly."""
-        token = Token(TokenType.PARAM_EXPANSION, "${var//foo/bar}", 0)
+        token = Token(TokenType.VARIABLE, "{var//foo/bar}", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, ParameterExpansion)
         assert expansion.parameter == "var"
@@ -238,7 +239,7 @@ class TestWordBuilder:
 
     def test_parse_default_value_still_works(self):
         """Test ${var:-default} is not affected by new : operator."""
-        token = Token(TokenType.PARAM_EXPANSION, "${x:-fallback}", 0)
+        token = Token(TokenType.VARIABLE, "{x:-fallback}", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, ParameterExpansion)
         assert expansion.parameter == "x"
@@ -247,7 +248,7 @@ class TestWordBuilder:
 
     def test_parse_shortest_prefix_removal(self):
         """Test ${var#pat} is not confused with /#."""
-        token = Token(TokenType.PARAM_EXPANSION, "${file#*.}", 0)
+        token = Token(TokenType.VARIABLE, "{file#*.}", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, ParameterExpansion)
         assert expansion.parameter == "file"
@@ -256,7 +257,7 @@ class TestWordBuilder:
 
     def test_parse_shortest_suffix_removal(self):
         """Test ${var%pat} is not confused with /%."""
-        token = Token(TokenType.PARAM_EXPANSION, "${file%.txt}", 0)
+        token = Token(TokenType.VARIABLE, "{file%.txt}", 0)
         expansion = WordBuilder.parse_expansion_token(token)
         assert isinstance(expansion, ParameterExpansion)
         assert expansion.parameter == "file"
@@ -267,7 +268,8 @@ class TestWordBuilder:
         """${!prefix@}/${!prefix*} parse then re-render to the same source (r16 H4)."""
         for src, param, op in (("${!ab_@}", "ab_", "!@"),
                                ("${!ab_*}", "ab_", "!*")):
-            token = Token(TokenType.PARAM_EXPANSION, src, 0)
+            # The lexer emits a VARIABLE token with the leading $ stripped.
+            token = Token(TokenType.VARIABLE, src[1:], 0)
             expansion = WordBuilder.parse_expansion_token(token)
             assert isinstance(expansion, ParameterExpansion)
             assert expansion.parameter == param
@@ -292,14 +294,13 @@ class TestWordBuilder:
         assert isinstance(word2.parts[0], ExpansionPart)
         assert isinstance(word2.parts[0].expansion, VariableExpansion)
 
-    def test_build_composite_word(self):
-        """Test building Word from multiple tokens."""
-        tokens = [
-            Token(TokenType.WORD, "Hello-", 0),
-            Token(TokenType.VARIABLE, "USER", 6),
-            Token(TokenType.WORD, "-world", 11)
-        ]
-        word = WordBuilder.build_composite_word(tokens)
+    def test_fused_word_decomposes_into_parts(self):
+        """A multi-piece word fuses into ONE WORD whose Word AST keeps per-piece
+        parts (word fusion retired the parser-side composite building)."""
+        from psh.lexer import tokenize
+        toks = [t for t in tokenize("Hello-$USER-world") if t.type != TokenType.EOF]
+        assert len(toks) == 1  # the whole word is one fused WORD token
+        word = WordBuilder.build_word_from_token(toks[0])
         assert str(word) == "Hello-$USER-world"
         assert len(word.parts) == 3
         assert isinstance(word.parts[0], LiteralPart)

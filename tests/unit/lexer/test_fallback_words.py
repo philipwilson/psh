@@ -20,7 +20,12 @@ tokenize loop's tail:
 
 import pytest
 
-from psh.lexer import tokenize
+# These pins characterize RECOGNIZER splitting (the fallback/operator-debris
+# words that the parser later re-joins). Word fusion composites those adjacent
+# tokens in the public tokenize(); assert on the pre-fusion stream — the layer
+# under test. The fused public shape is frozen by the corpus separately.
+from lexer_test_helpers import tokenize_unfused as tokenize  # noqa: E402
+
 from psh.lexer.modular_lexer import ModularLexer
 
 

@@ -1,10 +1,14 @@
-"""Token part classes for composite tokens."""
+"""Token part metadata for words that carry expansions / per-part quoting.
+
+A :class:`~psh.lexer.token_types.Token` carries a ``parts`` list of these; the
+old ``RichToken`` Token subclass was retired with the WordToken refactor (the
+base Token already has the ``parts`` field, so no subclass is needed).
+"""
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Optional
 
 from .position import Position
-from .token_types import Token
 
 
 @dataclass
@@ -18,30 +22,3 @@ class TokenPart:
     error_message: Optional[str] = None  # Error message for invalid expansions
     start_pos: Position = field(default_factory=lambda: Position(0, 1, 1))
     end_pos: Position = field(default_factory=lambda: Position(0, 1, 1))
-
-
-@dataclass(frozen=True)
-class RichToken(Token):
-    """Enhanced token with metadata about its parts.
-
-    ``frozen`` is required to match the (frozen) ``Token`` base — Python forbids
-    a non-frozen dataclass inheriting a frozen one.
-    """
-    parts: List[TokenPart] = field(default_factory=list)
-    is_composite: bool = False
-
-    @classmethod
-    def from_token(cls, token: Token, parts: Optional[List[TokenPart]] = None) -> 'RichToken':
-        """Create RichToken from regular Token."""
-        return cls(
-            type=token.type,
-            value=token.value,
-            position=token.position,
-            end_position=token.end_position,
-            quote_type=token.quote_type,
-            adjacent_to_previous=token.adjacent_to_previous,
-            line=token.line,
-            column=token.column,
-            parts=parts or [],
-            is_composite=bool(parts and len(parts) > 1)
-        )

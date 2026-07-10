@@ -2,7 +2,7 @@
 the declared-field sentinel conventions that replaced dynamic setattr+hasattr.
 
 Locks the source-faithful-token contract:
-- Token / RichToken are frozen (never mutated after the lexer produces them).
+- Token is frozen (never mutated after the lexer produces them).
 - SourceSpan derives from the token offsets and reconstructs the lexeme.
 - SourceMap is the one offset -> (line, column) + line-text service.
 - heredoc_key / array_init absence is signalled by None (a declared field),
@@ -17,17 +17,13 @@ import pytest
 from psh.lexer import tokenize, tokenize_with_heredocs
 from psh.lexer.keyword_normalizer import KeywordNormalizer
 from psh.lexer.position import SourceMap
-from psh.lexer.token_parts import RichToken, TokenPart
+from psh.lexer.token_parts import TokenPart
 from psh.lexer.token_types import SourceSpan, Token, TokenType
 
 
 class TestFrozenTokens:
     def test_token_is_frozen(self):
         assert Token.__dataclass_params__.frozen is True
-
-    def test_richtoken_is_frozen(self):
-        # Forced: Python forbids a non-frozen dataclass inheriting a frozen one.
-        assert RichToken.__dataclass_params__.frozen is True
 
     def test_token_cannot_be_mutated(self):
         t = Token(TokenType.WORD, "x", 0, 1)
@@ -45,12 +41,10 @@ class TestFrozenTokens:
         assert t2.type is TokenType.IF and t2.is_keyword is True
         assert t2 is not t
 
-    def test_replace_preserves_richtoken_subclass(self):
-        rt = RichToken.from_token(Token(TokenType.WORD, "x", 0, 1),
-                                  [TokenPart(value="x")])
-        rt2 = dataclasses.replace(rt, line=9)
-        assert type(rt2) is RichToken
-        assert rt2.line == 9 and rt2.parts == rt.parts
+    def test_replace_preserves_token_parts(self):
+        t = Token(TokenType.WORD, "x", 0, 1, parts=[TokenPart(value="x")])
+        t2 = dataclasses.replace(t, line=9)
+        assert t2.line == 9 and t2.parts == t.parts
 
     def test_tokenize_output_is_immutable(self):
         for tok in tokenize("echo hi | cat && for x in a; do :; done"):

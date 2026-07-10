@@ -16,7 +16,11 @@ psh's own posix-vs-nonposix contract at the token level.
 
 import pytest
 
-from psh.lexer import _make_config, tokenize
+# POSIX name-truncation is a RECOGNIZER behavior; assert on the pre-fusion
+# stream (word fusion composites adjacent word-like tokens in public tokenize()).
+from lexer_test_helpers import tokenize_unfused as tokenize  # noqa: E402
+
+from psh.lexer import _make_config
 from psh.lexer.token_types import TokenType
 
 

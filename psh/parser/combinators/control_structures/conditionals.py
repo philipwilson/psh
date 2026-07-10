@@ -227,7 +227,7 @@ class ConditionalParserMixin(_Base):
             # Parse expression (usually a variable or word)
             _CASE_EXPR_TYPES = {
                 'WORD', 'VARIABLE', 'STRING', 'COMMAND_SUB',
-                'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION', 'PARAM_EXPANSION',
+                'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION',
             }
             if pos >= len(tokens) or tokens[pos].type.name not in _CASE_EXPR_TYPES:
                 raise_committed_error(tokens, pos, "Expected expression after 'case'")
@@ -266,7 +266,7 @@ class ConditionalParserMixin(_Base):
 
             # Parse case items until 'esac'
             _CASE_PATTERN_TYPES = {
-                'WORD', 'STRING', 'VARIABLE', 'PARAM_EXPANSION',
+                'WORD', 'STRING', 'VARIABLE',
                 'COMMAND_SUB', 'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION',
             }
             items = []

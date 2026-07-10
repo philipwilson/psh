@@ -21,7 +21,7 @@ from .position import (
     UnclosedQuoteError,
 )
 from .state_context import LexerContext
-from .token_parts import RichToken, TokenPart
+from .token_parts import TokenPart
 from .token_types import Token
 from .unicode_support import (
     is_identifier_char,
@@ -59,9 +59,18 @@ def _make_config(shell_options: Optional[Mapping[str, Any]] = None) -> LexerConf
     return config
 
 
-def _post_lex(tokens: List[Token],
+def _post_lex(tokens: List[Token], source: str,
               shell_options: Optional[Mapping[str, Any]] = None) -> List[Token]:
-    """The shared post-lex pipeline: keyword normalization.
+    """The shared post-lex pipeline: keyword normalization, then word fusion.
+
+    Word fusion (``word_fusion.fuse_words``) runs AFTER keyword normalization:
+    a maximal run of adjacent word-like tokens becomes ONE WORD token carrying
+    the run's parts, so the parser sees one token per shell word and never
+    re-assembles a composite. Running it after normalization means reserved
+    words are already retyped (and excluded from the word-like set), so a
+    keyword adjacent to an expansion (``then$x``) fuses or not exactly as the
+    old parser-side ``peek_composite_sequence`` decided. ``source`` supplies the
+    fused token's span-faithful lexeme.
 
     Brace expansion is NO LONGER a lexer pass — it moved to the Word stage
     (``ExpansionManager.brace_expand_word``, driven by
@@ -76,7 +85,8 @@ def _post_lex(tokens: List[Token],
     Note: misplaced case terminators (`;;` outside case, etc.) are rejected
     by the parser (see parsers/statements.py), not by a lexer pass.
     """
-    return KeywordNormalizer().normalize(tokens)
+    from .word_fusion import fuse_words
+    return fuse_words(KeywordNormalizer().normalize(tokens), source)
 
 
 def tokenize(input_string: str, shell_options: Optional[Mapping[str, Any]] = None) -> List[Token]:
@@ -95,7 +105,7 @@ def tokenize(input_string: str, shell_options: Optional[Mapping[str, Any]] = Non
         List of tokens representing the parsed command
     """
     lexer = ModularLexer(input_string, config=_make_config(shell_options))
-    return _post_lex(lexer.tokenize(), shell_options)
+    return _post_lex(lexer.tokenize(), input_string, shell_options)
 
 
 def tokenize_with_heredocs(input_string: str,
@@ -130,7 +140,7 @@ def tokenize_with_heredocs(input_string: str,
                          source_name=source_name, base_line=base_line,
                          warn_unterminated=warn_unterminated)
     tokens, heredoc_map = lexer.tokenize_with_heredocs()
-    return _post_lex(tokens, shell_options), heredoc_map
+    return _post_lex(tokens, input_string, shell_options), heredoc_map
 
 
 __all__ = [

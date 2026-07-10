@@ -29,7 +29,6 @@ from .base import ParserSubcomponent
 #: live glob/regex, a quoted "$x" is literal).
 _EXPANSION_TOKENS = frozenset({
     TokenType.VARIABLE,
-    TokenType.PARAM_EXPANSION,
     TokenType.COMMAND_SUB,
     TokenType.COMMAND_SUB_BACKTICK,
     TokenType.ARITH_EXPANSION,
@@ -180,6 +179,19 @@ class TestParser(ParserSubcomponent):
                 quoted=quoted, quote_char=quote_char)
         return LiteralPart(token.value, quoted=quoted, quote_char=quote_char)
 
+    def _operand_parts(self, token) -> List[WordPart]:
+        """The WordPart(s) one operand token contributes, per-part quoting kept.
+
+        Word fusion merges an adjacent operand run (``a"b"*``, ``ab"?"``) into a
+        single WORD carrying one part per piece; decompose that into its parts
+        so ``ab`` stays unquoted and ``?`` stays a quoted literal. A single
+        (un-fused, e.g. hand-built) token yields one part via ``_token_part``.
+        """
+        if token.type == TokenType.WORD and token.parts:
+            return WordBuilder.build_word_from_token(
+                token, ctx=self.parser.ctx).parts
+        return [self._token_part(token)]
+
     def _parse_test_operand(self) -> Word:
         """Parse a test operand into a multi-part :class:`Word`.
 
@@ -192,10 +204,11 @@ class TestParser(ParserSubcomponent):
         if not self.parser.match_any(TokenGroups.WORD_LIKE):
             raise self.parser.error("Expected test operand")
 
-        parts: List[WordPart] = [self._token_part(self.parser.advance())]
+        parts: List[WordPart] = list(self._operand_parts(self.parser.advance()))
 
         # Concatenate immediately-adjacent word-like tokens (no whitespace),
-        # stopping at operators / boundaries.
+        # stopping at operators / boundaries. (Word fusion usually merges an
+        # adjacent run already; this loop still handles un-fused streams.)
         while (self.parser.current < len(self.parser.tokens) and
                self.parser.match_any(TokenGroups.WORD_LIKE)):
 
@@ -216,7 +229,7 @@ class TestParser(ParserSubcomponent):
                                  TokenType.DOUBLE_RBRACKET, TokenType.RPAREN):
                 break
 
-            parts.append(self._token_part(self.parser.advance()))
+            parts.extend(self._operand_parts(self.parser.advance()))
 
         return Word(parts=parts)
 
@@ -314,7 +327,7 @@ class TestParser(ParserSubcomponent):
                         "unexpected token ')'", tok)
                 paren_depth -= 1
             self.parser.advance()
-            parts.append(self._token_part(tok))
+            parts.extend(self._operand_parts(tok))
             first = False
 
         if paren_depth > 0:

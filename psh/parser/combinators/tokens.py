@@ -128,10 +128,12 @@ class TokenParsers:
         self.time_kw = keyword('time')
 
     def _initialize_expansions(self):
-        """Initialize expansion token parsers."""
-        # Variable and parameter expansion
+        """Initialize expansion token parsers.
+
+        (PARAM_EXPANSION was retired with WordToken — the lexer emits VARIABLE
+        for every ``${...}``; the WordBuilder classifies it.)
+        """
         self.variable = token('VARIABLE')
-        self.param_expansion = token('PARAM_EXPANSION')
 
         # Command substitution
         self.command_sub = token('COMMAND_SUB')
@@ -147,7 +149,6 @@ class TokenParsers:
         # Combined expansion parser
         self.expansion = (
             self.variable
-            .or_else(self.param_expansion)
             .or_else(self.command_sub)
             .or_else(self.command_sub_backtick)
             .or_else(self.arith_expansion)
@@ -244,7 +245,6 @@ class TokenParsers:
             Parser that matches any expansion token
         """
         return (token('VARIABLE')
-                .or_else(token('PARAM_EXPANSION'))
                 .or_else(token('COMMAND_SUB'))
                 .or_else(token('COMMAND_SUB_BACKTICK'))
                 .or_else(token('ARITH_EXPANSION'))
@@ -302,7 +302,7 @@ class TokenParsers:
             True if token is an expansion
         """
         expansion_types = {
-            'VARIABLE', 'PARAM_EXPANSION', 'COMMAND_SUB',
+            'VARIABLE', 'COMMAND_SUB',
             'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION',
             'PROCESS_SUB_IN', 'PROCESS_SUB_OUT'
         }
