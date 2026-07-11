@@ -103,12 +103,12 @@ class JobsBuiltin(Builtin):
             # status changes again (bash: `jobs; jobs -n` -> second is empty).
             job.notified = True
 
-        # bash reaps a completed job when `jobs` runs: its Done/Exit-N line is
-        # shown once (above, for an unfiltered listing) and the job is then
-        # removed, its per-pid status retained for a later `wait <pid>`
-        # (`(exit 7)& p=$!; sleep .3; jobs; wait $p` -> 7). This happens for
-        # every finished job on any `jobs` invocation, even one hidden by an
-        # -r/-s filter (`jobs -r` still reaps the Done job it did not print).
+        # bash reaps a completed job when `jobs` runs — silently (it is never
+        # part of the listing above; a completion is reported through the async
+        # stderr notice, not `jobs` stdout). The job is removed and its per-pid
+        # status retained for a later `wait <pid>`
+        # (`(exit 7)& p=$!; sleep .3; jobs; wait $p` -> 7). This happens on any
+        # `jobs` invocation, in every shell mode.
         for job in list(manager.jobs.values()):
             if job.state == JobState.DONE:
                 job.notified = True
