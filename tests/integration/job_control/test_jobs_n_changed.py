@@ -35,20 +35,23 @@ def test_jobs_n_first_shows_all_then_empty():
     assert second.strip() == ''
 
 
-def test_jobs_n_reshows_after_status_change():
-    """A completion re-arms the flag: `jobs -n` shows the newly-Done job once,
-    then nothing (the still-running job stays notified)."""
+def test_jobs_n_completion_not_relisted():
+    """After the first `jobs -n` marks both jobs notified, a later `jobs -n`
+    lists neither the still-running (already notified) job nor the finished one
+    (a completed job is never listed by `jobs`; it is reaped silently and — in
+    bash — reported via the async notice, which psh defers). Matches bash 5.2
+    stdout exactly (tmp/probes: streams separated)."""
     r = _psh('set -m; sleep 5 & sleep 0.2 & '
              'echo "A:"; jobs -n; sleep 0.5; '
              'echo "B:"; jobs -n; echo "C:"; jobs -n; echo "end"; '
              'kill %1 2>/dev/null')
     first = _block(r.stdout, 'A:', 'B:')
-    changed = _block(r.stdout, 'B:', 'C:')
-    third = _block(r.stdout, 'C:', 'end')
+    b = _block(r.stdout, 'B:', 'C:')
+    c = _block(r.stdout, 'C:', 'end')
     assert first.count('Running') == 2      # both un-notified initially
-    assert 'Done' in changed                # the finished job, once
-    assert 'Running' not in changed         # the live job stays notified
-    assert third.strip() == ''              # nothing left to report
+    assert b.strip() == ''                  # nothing new to report
+    assert c.strip() == ''
+    assert 'Done' not in r.stdout           # a completion is never in the listing
 
 
 def test_plain_jobs_marks_notified_too():

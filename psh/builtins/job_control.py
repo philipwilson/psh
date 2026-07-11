@@ -43,13 +43,16 @@ class JobsBuiltin(Builtin):
 
         manager = shell.job_manager
 
-        # Refresh job state before listing so an external `kill -STOP`/`-CONT`
-        # and a background completion are reflected (macOS raises no SIGCHLD on
-        # continue, and a non-interactive shell has no SIGCHLD reaper at all).
-        # Safe in every mode: refresh_job_states waits per job process group, so
-        # it can never steal a command/process-substitution child out from under
-        # a later `wait` (see its docstring).
-        manager.refresh_job_states()
+        # Refresh job state before listing. Under job control (`set -m` / an
+        # interactive shell) an external `kill -STOP`/`-CONT` and a completion
+        # are reflected; without monitor, bash notices neither (an
+        # externally-stopped job still lists as Running) but DOES reap a
+        # finished job silently — so we always reap completions, but only track
+        # stops under monitor. Safe in every mode: refresh_job_states waits per
+        # job process group, so it can never steal a command/process-substitution
+        # child out from under a later `wait` (see its docstring).
+        monitor = bool(shell.state.options.get('monitor'))
+        manager.refresh_job_states(track_stops=monitor)
 
         # With operands, list ONLY the named jobs and diagnose any that do not
         # resolve (bash: "no such job" / "ambiguous job spec", rc=1). Without
@@ -77,6 +80,15 @@ class JobsBuiltin(Builtin):
         if state_filter is not None:
             jobs_to_list = [job for job in jobs_to_list
                             if job.state == state_filter]
+
+        # A COMPLETED job is never listed by `jobs` (verified vs bash 5.2 with
+        # stdout/stderr separated): a completion is reported through the async
+        # notice, on stderr — under monitor at the command boundary, deferred in
+        # psh (the -c+monitor boundary notice; see the jobsnx ledger) — not by
+        # the `jobs` builtin's stdout listing. `jobs` shows Running/Stopped and
+        # reaps finished jobs silently (removal below is unconditional).
+        jobs_to_list = [job for job in jobs_to_list
+                        if job.state != JobState.DONE]
 
         # -n: only jobs whose status changed since the user was last notified of
         # it (bash). `notified` is the shared J_NOTIFIED predicate — cleared on
@@ -254,7 +266,8 @@ class FgBuiltin(Builtin):
         # waitpid it, reap the pending stop, and return 128+SIGSTOP with the job
         # left stopped. Refreshing lets fg see STOPPED, send SIGCONT, and resume
         # it to completion (bash: rc 0). Safe per-group (see refresh_job_states).
-        jm.refresh_one_job(job)
+        # fg is reached only under monitor, so tracking the stop is correct.
+        jm.refresh_one_job(job, track_stops=True)
 
         # Print the command being resumed
         self.write_line(job.command, shell)

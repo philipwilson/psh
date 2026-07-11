@@ -323,15 +323,11 @@ class Job:
         bash's ``jobs -l`` format: ``[N]+ 12345 Running    command &``.
         """
         marker = '+' if is_current else '-' if is_previous else ' '
-        if self.state == JobState.DONE:
-            # A completed job's listing word is bash's Done/Exit N/signal
-            # label (matching the async notice), not a bare "Done" — a
-            # non-interactive `jobs` that reaps a finished job shows
-            # `[1]+ Exit 7` for a nonzero exit.
-            status = self.processes[-1].status if self.processes else None
-            state_str = background_completion_label(status)
-        else:
-            state_str = "Running" if self.state == JobState.RUNNING else "Stopped"
+        state_str = {
+            JobState.RUNNING: "Running",
+            JobState.STOPPED: "Stopped",
+            JobState.DONE: "Done"
+        }[self.state]
 
         # Match bash format: [N]+  State                 command &
         suffix = " &" if self.state == JobState.RUNNING and not self.foreground else ""
@@ -750,15 +746,15 @@ class JobManager:
                       file=self._notification_stream())
                 job.notified = True
 
-    def refresh_job_states(self) -> None:
+    def refresh_job_states(self, *, track_stops: bool) -> None:
         """Non-blocking refresh of tracked job states, SAFE IN ANY SHELL MODE.
 
         macOS does NOT raise SIGCHLD when a child is *continued* (verified on
         10.x/14.x — SIGCHLD fires on stop and exit only), so the interactive
         SIGCHLD handler never learns of an external ``kill -CONT``; and a
         NON-interactive shell has no SIGCHLD reaper at all. bash refreshes job
-        state before ``jobs``/``fg`` in every mode, so this reaps pending
-        stop/continue/exit transitions on demand.
+        state before ``jobs``/``fg``, so this reaps pending transitions on
+        demand.
 
         The key safety property (why this is callable non-interactively, unlike
         the old ``waitpid(-1)`` poll) is that it waits on each tracked job's OWN
@@ -769,23 +765,28 @@ class JobManager:
         child out from under its own ``waitpid``. The shell is single-threaded,
         so ``jobs``/``fg`` never runs concurrently with a blocking ``wait``.
 
+        ``track_stops`` mirrors bash's monitor gate: only under job control
+        (``set -m`` / an interactive shell) does bash notice a stop/continue
+        (``WUNTRACED``/``WCONTINUED``) — a plain ``-c``/script without monitor
+        shows an externally-stopped job as still Running. Completed children are
+        always reaped (so ``wait`` keeps working), regardless of ``track_stops``.
+
         Only job *state* is updated (and ``notified`` re-armed on a
-        stop/continue transition); completion notices and job removal stay with
-        the caller (:meth:`notify_completed_jobs` / the ``jobs`` builtin), so
-        this does not double-report.
+        transition); completion notices and job removal stay with the caller.
         """
         for job in list(self.jobs.values()):
-            self.refresh_one_job(job)
+            self.refresh_one_job(job, track_stops=track_stops)
 
-    def refresh_one_job(self, job: 'Job') -> None:
+    def refresh_one_job(self, job: 'Job', *, track_stops: bool = True) -> None:
         """Per-group non-blocking state refresh for a single job (see
         :meth:`refresh_job_states`). Waits only on ``-job.pgid``. A real
-        stop/continue/exit transition re-arms ``notified`` via
-        :meth:`Job.update_state` (F4), so this need not touch it."""
+        transition re-arms ``notified`` via :meth:`Job.update_state` (F4), so
+        this need not touch it. With ``track_stops`` false, stop/continue
+        reports are not requested (bash's non-monitor behavior)."""
         flags = os.WNOHANG
-        if hasattr(os, "WUNTRACED"):
+        if track_stops and hasattr(os, "WUNTRACED"):
             flags |= os.WUNTRACED
-        if hasattr(os, "WCONTINUED"):
+        if track_stops and hasattr(os, "WCONTINUED"):
             flags |= os.WCONTINUED
         while True:
             try:

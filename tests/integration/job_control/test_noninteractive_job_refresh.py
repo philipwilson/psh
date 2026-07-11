@@ -65,17 +65,30 @@ def test_jobs_reflects_external_continue():
     assert 'Stopped' not in cont_block
 
 
-def test_jobs_shows_completion_once_then_removes():
-    """A finished bg job shows Done/Exit-N once, then `jobs` is empty."""
-    r = _psh('false & sleep 0.3; echo "A:"; jobs; echo "B:"; jobs; echo end')
-    # First listing shows the completed job as Exit 1 (nonzero); second is empty.
-    assert 'Exit 1' in r.stdout
-    lines = r.stdout.splitlines()
-    a_idx = lines.index('A:')
-    b_idx = lines.index('B:')
-    end_idx = lines.index('end')
-    assert any('Exit 1' in ln for ln in lines[a_idx + 1:b_idx])
-    assert lines[b_idx + 1:end_idx] == []  # nothing between B: and end
+def test_jobs_never_lists_completed_job_on_stdout():
+    """`jobs` never lists a COMPLETED job on stdout — in either mode.
+
+    Verified vs bash 5.2 with stdout/stderr separated: a completion is reported
+    through the async notice on STDERR (under monitor, at the command boundary),
+    not by the `jobs` builtin's stdout listing. psh defers that -c+monitor
+    stderr notice (see ledger), so for BOTH `set -m` and plain runs the `jobs`
+    stdout is empty for a finished job, matching bash's stdout. The job is still
+    reaped either way (below).
+    """
+    for prefix in ('set -m; ', ''):
+        r = _psh(prefix + 'false & sleep 0.3; echo "A:"; jobs; echo "B:"')
+        lines = r.stdout.splitlines()
+        between = lines[lines.index('A:') + 1:lines.index('B:')]
+        assert between == [], (prefix, r.stdout)
+        assert 'Exit' not in r.stdout and 'Done' not in r.stdout, (prefix, r.stdout)
+
+
+def test_jobs_reaps_completion_for_later_wait():
+    """Although unlisted, a finished job IS reaped by `jobs`: it does not linger
+    as a stale Running entry and `wait` still returns its status."""
+    r = _psh('false & p=$!; sleep 0.3; jobs >/dev/null; '
+             'wait "$p"; echo "w=$?"')
+    assert 'w=1' in r.stdout
 
 
 def test_jobs_reap_remembers_status_for_later_wait():
