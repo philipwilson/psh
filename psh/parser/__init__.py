@@ -7,12 +7,10 @@ context-aware parsing, semantic analysis, and enhanced error recovery.
 """
 
 from .config import ParserConfig
-from .recursive_descent.context import ParserContext
-from .recursive_descent.helpers import ErrorContext, ParseError
+from .recursive_descent.helpers import ParseError
 
 # Import from final locations
 from .recursive_descent.parser import Parser
-from .recursive_descent.support.context_factory import create_context
 from .recursive_descent.support.utils import parse_with_heredocs as utils_parse_with_heredocs
 
 # Public API
