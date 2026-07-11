@@ -113,8 +113,8 @@ class VariableStore:
     # Append — one transaction, target-scope aware.
     # ------------------------------------------------------------------ #
 
-    def compute_append_value(self, base_var: Optional["Variable"],
-                             value: str) -> object:
+    def compute_append_value(self, base_var: Optional["Variable"], value: str, *,
+                             extra_attrs: VarAttributes = VarAttributes.NONE) -> object:
         """Compute ``NAME+=value``'s new value from the append BASE (PURE).
 
         This is the ONE append-computation formula (appraisal H8). It is shared
@@ -126,32 +126,45 @@ class VariableStore:
         append text:
 
         - **array base**: return a COPY of the container with element 0 updated
-          (integer-add on an ``-i`` array, else concat + the base's ``-u``/``-l``
-          case-fold), leaving the LIVE container untouched (so a rejected commit
-          or a rollback snapshot sees the original — the deliberate ``copy()``
-          choice: array elements are immutable ``str``, so ``copy()`` and
-          ``deepcopy`` are identical, and ``copy()`` is the cheaper one);
-        - **INTEGER base** (non-empty value): the arithmetic EXPRESSION
-          ``(base or 0)+(value)`` — the caller's INTEGER commit transform
-          evaluates it (empty value = no-op, matching bash);
-        - **otherwise**: textual ``base + value``.
+          (integer-add on an ``-i`` array, else concat + the effective ``-u``/
+          ``-l`` case-fold), leaving the LIVE container untouched (so a rejected
+          commit or a rollback snapshot sees the original — the deliberate
+          ``copy()`` choice: array elements are immutable ``str``, so ``copy()``
+          and ``deepcopy`` are identical, and ``copy()`` is the cheaper one);
+        - **INTEGER effective**: the arithmetic ``(base or 0)+(value)`` is
+          EVALUATED here to its number (empty value = no-op). Eager evaluation
+          (rather than deferring the expression to a commit-side INTEGER
+          transform) is what makes the ONE formula correct for EVERY commit
+          path — including the temp-env prefix (`declare -ix n=5; n+=3 cmd`),
+          which does not re-transform, and the arithmetic side-effect timing
+          (`y='z=7'; declare -i n=1; n+=y cmd` assigns z during prefix setup,
+          bash-verified). Idempotent for the paths that also apply an INTEGER
+          transform at commit (``8`` -> ``8``);
+        - **otherwise**: textual ``base + value`` (the effective ``-u``/``-l``
+          case-fold is applied by the SCALAR commit's attribute transform).
+
+        ``extra_attrs`` are the attributes being ADDED in the SAME operation
+        (``declare -i n+=3`` / ``local -i n+=3``): the EFFECTIVE attribute set is
+        ``base | extra_attrs``, so a fresh ``-i`` makes the append arithmetic
+        even though the base variable is not yet integer (bash).
         """
         container = base_var.value if base_var is not None else None
         base_attrs = (base_var.attributes if base_var is not None
                       else VarAttributes.NONE)
+        effective = base_attrs | extra_attrs
         if isinstance(container, (IndexedArray, AssociativeArray)):
             new_container = container.copy()
             key: Union[int, str] = 0 if isinstance(new_container, IndexedArray) else '0'
             old0 = new_container.get(key) or ''  # type: ignore[arg-type]
-            if base_attrs & VarAttributes.INTEGER and value.strip():
+            if effective & VarAttributes.INTEGER and value.strip():
                 new0: object = self._sm._evaluate_integer(f"({old0 or 0})+({value})")
             else:
-                new0 = self._sm._apply_attributes(str(old0) + value, base_attrs)
+                new0 = self._sm._apply_attributes(str(old0) + value, effective)
             new_container.set(key, str(new0))  # type: ignore[arg-type]
             return new_container
         old = '' if base_var is None or base_var.value is None else str(base_var.value)
-        if base_attrs & VarAttributes.INTEGER and value.strip():
-            return f"({old or 0})+({value})"
+        if effective & VarAttributes.INTEGER and value.strip():
+            return str(self._sm._evaluate_integer(f"({old or 0})+({value})"))
         return old + value
 
     def append(self, name: str, value: str, *,
@@ -172,7 +185,10 @@ class VariableStore:
         target = self._sm.resolve_nameref_name(name)
         base_var = self._instance_in_write_target(
             target, global_scope=global_scope, skip_temp_env=skip_temp_env)
-        new_value = self.compute_append_value(base_var, value)
+        # ``attributes`` are the declaration's being-added flags (``declare -i
+        # n+=3`` marks n integer in this same op), so they count toward the
+        # effective integer decision even when the base is not yet integer.
+        new_value = self.compute_append_value(base_var, value, extra_attrs=attributes)
         self.assign(name, new_value, attributes=attributes, local=local,
                     global_scope=global_scope, skip_temp_env=skip_temp_env)
 

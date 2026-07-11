@@ -92,7 +92,8 @@ def is_valid_assignment(arg: str, posix_mode: bool = False) -> bool:
     return is_valid_name(var_name, posix_mode)
 
 
-def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str, object]:
+def resolve_append_assignment(scope_manager, var: str, value: str,
+                              extra_attrs=None) -> Tuple[str, object]:
     """Resolve ``NAME+=value`` appends to (name, final_value) — the PURE path.
 
     ``var`` is the text left of '=' (so ``NAME+`` for appends; anything else is
@@ -102,10 +103,15 @@ def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str,
     installing it (a prefix append must restore the untouched original after the
     command). The actual computation is the ONE shared formula,
     :meth:`VariableStore.compute_append_value` (appraisal H8) — plain variables
-    append textually, ``-i`` variables append arithmetically, and a scalar
-    append to an array updates a COPY's element 0 (integer-add / concat +
-    case-fold), never mutating the live container.
+    append textually, ``-i`` variables append arithmetically (evaluated eagerly),
+    and a scalar append to an array updates a COPY's element 0 (integer-add /
+    concat + case-fold), never mutating the live container.
+
+    ``extra_attrs`` are the attributes being ADDED in the same operation
+    (``local -i n+=3``): they join the base's attributes for the effective
+    integer/case decision, so a fresh ``-i`` makes the append arithmetic.
     """
+    from .variables import VarAttributes
     if not var.endswith('+'):
         return var, value
     name = var[:-1]
@@ -117,4 +123,5 @@ def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str,
     # (set_variable, below) re-resolves the nameref, so we still return `name`.
     target = scope_manager.resolve_nameref_name(name)
     var_obj = scope_manager.get_variable_object(target)
-    return name, scope_manager.store.compute_append_value(var_obj, value)
+    return name, scope_manager.store.compute_append_value(
+        var_obj, value, extra_attrs=extra_attrs or VarAttributes.NONE)

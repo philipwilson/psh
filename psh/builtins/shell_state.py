@@ -407,8 +407,12 @@ class LocalBuiltin(Builtin):
                     cur = shell.state.scope_manager.current_scope.variables.get(var_name)
                     if cur is not None and not cur.is_unset:
                         from ..core import resolve_append_assignment
+                        # Pass the local's being-added flags (``local -i n+=3``)
+                        # so a fresh -i makes the append arithmetic (bash), even
+                        # when the existing local is not yet integer.
                         _, value_to_set = resolve_append_assignment(
-                            shell.state.scope_manager, var_name + '+', var_value)
+                            shell.state.scope_manager, var_name + '+', var_value,
+                            extra_attrs=attributes)
                     # else: fresh local — the raw RHS IS the value (an -i
                     # flag, if any, is applied by create_local's transform).
 

@@ -8,12 +8,11 @@ cosmetically drifted (`container.copy()` vs `copy.deepcopy`). These tests pin
 the observable append matrix across ALL caller families so the convergence onto
 one shared computation helper is proven behavior-preserving.
 
-Every value here was verified against bash 5.2 EXCEPT the two cases explicitly
-marked KNOWN-DIVERGENCE (pre-existing integer-append bugs declared as riders):
-- a temp-env prefix integer append leaves the arithmetic EXPRESSION unevaluated,
-- `n=2; declare -i n+=3` appends textually because the base is read before -i.
-Those are pinned to psh's CURRENT output so the refactor is provably identical;
-they are NOT bash-conformance claims.
+Every value here is verified against bash 5.2. The convergence (commit A) was a
+pure refactor; the eager integer-append rider (commit B) then fixed three
+pre-existing integer-append divergences (temp-env prefix, `declare -i n+=3`,
+`local -i n+=3`) by evaluating the arithmetic eagerly with the EFFECTIVE integer
+attribute (base | being-added) — see :class:`TestIntegerAppendEagerEval`.
 """
 
 import subprocess
@@ -110,22 +109,44 @@ class TestTempEnvPrefixAppend:
         assert _psh('x=a; x+=b printenv x; echo "after=$x"') == ("ab\nafter=a\n", 0)
 
 
-class TestKnownIntegerAppendDivergences:
-    """Two PRE-EXISTING integer-append bugs pinned to psh's CURRENT (buggy)
-    output so the H8 pure refactor (commit A) is provably byte-identical. These
-    are NOT bash-conformance claims — bash gives 8 and 5 respectively. The
-    eager-integer-append rider (commit B) FLIPS both with bash-probe evidence.
+class TestIntegerAppendEagerEval:
+    """The eager integer-append rider (commit B): the ONE append formula
+    EVALUATES the integer arithmetic to its number using the EFFECTIVE integer
+    attribute (base | being-added), so it is correct for EVERY commit path.
+    These two cases were the pre-existing bugs (commit A pinned them to psh's
+    then-buggy `(5)+(3)` / `23`); commit B flips them to bash's values with the
+    probes below. All verified against bash 5.2.
     """
 
-    def test_tempenv_integer_prefix_current(self):
-        # bash: 8. psh currently leaves the arithmetic expression unevaluated
-        # because the temp-env commit does not apply the INTEGER transform.
-        assert _psh("declare -ix n=5; n+=3 printenv n") == ("(5)+(3)\n", 0)
+    def test_tempenv_integer_prefix(self):
+        # bash: 8 (was `(5)+(3)` — the temp-env commit didn't evaluate it).
+        assert _psh("declare -ix n=5; n+=3 printenv n") == ("8\n", 0)
 
-    def test_declare_adds_integer_and_appends_current(self):
-        # bash: 5 (integer 2+3). psh currently appends textually because the
-        # base is read before the -i being added in the same declare is applied.
-        assert _psh('n=2; declare -i n+=3; echo "$n"') == ("23\n", 0)
+    def test_declare_adds_integer_and_appends(self):
+        # bash: 5 (integer 2+3; was `23` — the base was read before -i applied).
+        assert _psh('n=2; declare -i n+=3; echo "$n"') == ("5\n", 0)
+
+    def test_local_adds_integer_and_appends(self):
+        # bash: 8 (local -i n+=3 makes the append arithmetic even though the
+        # existing local is not yet integer; was `53`).
+        assert _psh('f(){ local n=5; local -i n+=3; echo "$n"; }; f') == ("8\n", 0)
+
+    def test_tempenv_integer_seen_by_child(self):
+        # bash: 15 (the child sees the EVALUATED value in its env; was `(10)+(5)`).
+        assert _psh("declare -i n=10; n+=5 sh -c 'echo $n'") == ("15\n", 0)
+
+    def test_arithmetic_side_effect_timing_tempenv(self):
+        # bash: `z=7 n=1` — the append arithmetic `(1)+(z=7)` runs during prefix
+        # SETUP, so its side-effect z=7 PERSISTS while n reverts after the
+        # command (was `z= n=1` — the arithmetic never ran). Timing pinned.
+        assert _psh('y="z=7"; declare -i n=1; n+=y true; echo "z=$z n=$n"'
+                    ) == ("z=7 n=1\n", 0)
+
+    def test_arithmetic_side_effect_timing_permanent(self):
+        # bash: `z=7 n=8` — the permanent path already evaluated at commit; the
+        # eager formula gives the same observable.
+        assert _psh('y="z=7"; declare -i n=1; n+=y; echo "z=$z n=$n"'
+                    ) == ("z=7 n=8\n", 0)
 
 
 class TestAppendComputationIsPure:
@@ -149,11 +170,20 @@ class TestAppendComputationIsPure:
         assert base.value.get(0) == "1"        # original element 0 unchanged
         assert result is not base.value
 
-    def test_compute_append_scalar_integer_returns_expression(self, captured_shell):
-        """Deliberately pinned: the INTEGER scalar append returns the arithmetic
-        EXPRESSION for the commit's INTEGER transform to evaluate (the shared
-        formula's documented contract)."""
+    def test_compute_append_scalar_integer_eager_evaluates(self, captured_shell):
+        """The INTEGER scalar append EVALUATES eagerly to its number (commit B):
+        the shared formula returns "8", not the expression "(5)+(3)", so every
+        commit path (incl. temp-env, which does not re-transform) is correct."""
         sm = captured_shell.state.scope_manager
         sm.set_variable("n", "5", attributes=VarAttributes.INTEGER)
         base = sm.get_variable_object("n")
-        assert sm.store.compute_append_value(base, "3") == "(5)+(3)"
+        assert sm.store.compute_append_value(base, "3") == "8"
+
+    def test_compute_append_effective_integer_from_extra_attrs(self, captured_shell):
+        """A fresh -i (extra_attrs) makes the append arithmetic even when the
+        base is a plain string (the `declare -i n+=3` / `local -i n+=3` fix)."""
+        sm = captured_shell.state.scope_manager
+        sm.set_variable("n", "2")  # plain string, no integer attr
+        base = sm.get_variable_object("n")
+        assert sm.store.compute_append_value(
+            base, "3", extra_attrs=VarAttributes.INTEGER) == "5"

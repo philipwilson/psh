@@ -6345,6 +6345,42 @@
   stdout: "8\n"
   stderr: ""
   exit_code: 0
+
+# H8 eager integer-append (appraisal H8 rider): the ONE append formula evaluates
+# the integer arithmetic eagerly with the EFFECTIVE integer attribute
+# (base | being-added), so EVERY commit path is correct — including the temp-env
+# prefix commit (which does not re-transform) and a fresh -i added in the same op.
+- name: h8_tempenv_integer_prefix_append
+  command: 'declare -ix n=5; n+=3 printenv n'
+  stdout: "8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h8_declare_adds_integer_and_appends
+  command: 'n=2; declare -i n+=3; echo "$n"'
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h8_local_adds_integer_and_appends
+  command: 'f(){ local n=5; local -i n+=3; echo "$n"; }; f'
+  stdout: "8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h8_tempenv_integer_seen_by_child
+  command: "declare -i n=10; n+=5 sh -c 'echo $n'"
+  stdout: "15\n"
+  stderr: ""
+  exit_code: 0
+
+# The append arithmetic side-effect runs during prefix SETUP: `(1)+(z=7)` assigns
+# z (which PERSISTS) while n reverts after the temp-env command (bash timing).
+- name: h8_integer_append_arith_side_effect_timing
+  command: 'y="z=7"; declare -i n=1; n+=y true; echo "z=$z n=$n"'
+  stdout: "z=7 n=1\n"
+  stderr: ""
+  exit_code: 0
 # BUILTINS FEATURE GAPS (reappraisal #18 Tier-2 T2-G)
 # =============================================================================
 
