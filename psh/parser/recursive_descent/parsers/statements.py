@@ -5,8 +5,6 @@ This module handles parsing of statement-level constructs including command list
 and/or lists, and statement sequencing.
 """
 
-from typing import Optional
-
 from ....ast_nodes import AndOrList, Statement, StatementList
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups, unexpected_token_message
@@ -17,7 +15,7 @@ class StatementParser(ParserSubcomponent):
     """Parser for statement-level constructs."""
 
 
-    def parse_statement(self) -> Optional[Statement]:
+    def parse_statement(self) -> Statement:
         """Parse a statement.
 
         Stamps the parsed node with the (buffer-relative) line of its first
@@ -30,12 +28,12 @@ class StatementParser(ParserSubcomponent):
 
         # Check for function definition first
         if self.parser.functions.is_function_def():
-            stmt: Optional[Statement] = self.parser.functions.parse_function_def()
+            stmt: Statement = self.parser.functions.parse_function_def()
         else:
             # Otherwise parse an and_or_list
             stmt = self.parse_and_or_list()
 
-        if stmt is not None and stmt.line is None:
+        if stmt.line is None:
             stmt.line = start_line
         return stmt
 

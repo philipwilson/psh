@@ -50,15 +50,19 @@ class ArithmeticParser(ParserSubcomponent):
         self.parser.current = stream.pos
         return expr_string
 
-    def parse_arithmetic_section(self, terminator: str) -> Optional[str]:
-        """Parse one ``for``-header arithmetic section up to its ``;`` terminator."""
+    def parse_arithmetic_section(self) -> str:
+        """Parse one ``for``-header arithmetic section up to its ``;`` terminator.
+
+        Returns the section text ('' for an empty section); callers map '' to
+        None where an absent section is meaningful.
+        """
         stream = TokenStream(self.parser.tokens, self.parser.current)
         _tokens, expr_string = stream.collect_arithmetic_expression(
-            stop_at_semicolon=(terminator == ';'),
+            stop_at_semicolon=True,
             transform_redirects=True,
         )
         self.parser.current = stream.pos
-        return expr_string if expr_string else ""
+        return expr_string
 
     def parse_arithmetic_section_until_double_rparen(self) -> Optional[str]:
         """Parse the ``for``-header update section, ending at the enclosing )).

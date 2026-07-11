@@ -246,7 +246,7 @@ class ControlStructureParser(ParserSubcomponent):
     def _parse_c_style_for(self) -> CStyleForLoop:
         """Parse C-style for loop without setting execution context."""
         # Parse initialization
-        init = self.parser.arithmetic.parse_arithmetic_section(";")
+        init = self.parser.arithmetic.parse_arithmetic_section()
         if init == "":
             init = None
 
@@ -254,7 +254,7 @@ class ControlStructureParser(ParserSubcomponent):
         if self.parser.match(TokenType.SEMICOLON):
             self.parser.advance()  # consume ;
             # Parse condition normally
-            condition = self.parser.arithmetic.parse_arithmetic_section(";")
+            condition = self.parser.arithmetic.parse_arithmetic_section()
             if condition == "":
                 condition = None
             # The second ';' is mandatory: a C-style for header has exactly two
