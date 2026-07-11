@@ -323,11 +323,14 @@ class Job:
         bash's ``jobs -l`` format: ``[N]+ 12345 Running    command &``.
         """
         marker = '+' if is_current else '-' if is_previous else ' '
-        state_str = {
-            JobState.RUNNING: "Running",
-            JobState.STOPPED: "Stopped",
-            JobState.DONE: "Done"
-        }[self.state]
+        if self.state == JobState.DONE:
+            # A completed job listed by `jobs` (script/stdin modes) shows bash's
+            # Done/Exit-N/signal label, matching the async notice — `[1]+ Exit 1`
+            # for a nonzero exit, `[1]+ Done` for 0.
+            status = self.processes[-1].status if self.processes else None
+            state_str = background_completion_label(status)
+        else:
+            state_str = "Running" if self.state == JobState.RUNNING else "Stopped"
 
         # Match bash format: [N]+  State                 command &
         suffix = " &" if self.state == JobState.RUNNING and not self.foreground else ""

@@ -81,14 +81,19 @@ class JobsBuiltin(Builtin):
             jobs_to_list = [job for job in jobs_to_list
                             if job.state == state_filter]
 
-        # A COMPLETED job is never listed by `jobs` (verified vs bash 5.2 with
-        # stdout/stderr separated): a completion is reported through the async
-        # notice, on stderr — under monitor at the command boundary, deferred in
-        # psh (the -c+monitor boundary notice; see the jobsnx ledger) — not by
-        # the `jobs` builtin's stdout listing. `jobs` shows Running/Stopped and
-        # reaps finished jobs silently (removal below is unconditional).
-        jobs_to_list = [job for job in jobs_to_list
-                        if job.state != JobState.DONE]
+        # A completed job is listed by `jobs` exactly ONCE, then reaped —
+        # EXCEPT in `-c` mode. Verified vs bash 5.2 (stdout/stderr separated,
+        # all four read paths): script-file and stdin `jobs` list the finished
+        # job (`[1]+ Exit 1 false` / `Done`) on stdout; `-c` reaps it eagerly so
+        # `jobs` stdout is empty (bash announces it on stderr instead — the
+        # deferred -c+monitor boundary notice; see the jobsnx ledger); an
+        # interactive shell's prompt notice reaps it before `jobs` too (psh's
+        # REPL removes it, so nothing is left to list). So suppress the
+        # completed entry only under command_mode (the 'c' in $-); removal below
+        # is unconditional either way.
+        if shell.state.options.get('command_mode'):
+            jobs_to_list = [job for job in jobs_to_list
+                            if job.state != JobState.DONE]
 
         # -n: only jobs whose status changed since the user was last notified of
         # it (bash). `notified` is the shared J_NOTIFIED predicate — cleared on

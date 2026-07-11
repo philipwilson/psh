@@ -65,15 +65,14 @@ def test_jobs_reflects_external_continue():
     assert 'Stopped' not in cont_block
 
 
-def test_jobs_never_lists_completed_job_on_stdout():
-    """`jobs` never lists a COMPLETED job on stdout — in either mode.
+def test_jobs_suppresses_completed_job_in_c_mode():
+    """In `-c` mode `jobs` does NOT list a completed job on stdout.
 
-    Verified vs bash 5.2 with stdout/stderr separated: a completion is reported
-    through the async notice on STDERR (under monitor, at the command boundary),
-    not by the `jobs` builtin's stdout listing. psh defers that -c+monitor
-    stderr notice (see ledger), so for BOTH `set -m` and plain runs the `jobs`
-    stdout is empty for a finished job, matching bash's stdout. The job is still
-    reaped either way (below).
+    bash reaps a finished job eagerly in `-c` (announcing it on stderr under
+    monitor — the deferred -c+monitor boundary notice), so `jobs` stdout is
+    empty. In script/stdin modes it IS listed once — see the mode matrix in
+    test_jobs_completed_listing_modes.py. Both `set -m` and plain -c runs match
+    bash's empty -c stdout here; the job is still reaped (next test).
     """
     for prefix in ('set -m; ', ''):
         r = _psh(prefix + 'false & sleep 0.3; echo "A:"; jobs; echo "B:"')
