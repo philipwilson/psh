@@ -624,8 +624,8 @@ class IOManager:
         frame.snapshot.note_stdout()
         frame.snapshot.note_stderr()
         is_append = redirect.type.endswith('>>')
-        if not is_append and self.file_redirector.noclobber_blocks(target):
-            raise OSError(f"{target}: cannot overwrite existing file")
+        if not is_append:
+            self.file_redirector.check_noclobber(target)
         f = self._open_output_off_low_fds(target, 'a' if is_append else 'w')
         frame.opened_streams.append(f)
         sys.stdout = f

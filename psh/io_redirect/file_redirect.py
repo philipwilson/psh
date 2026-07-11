@@ -29,6 +29,28 @@ def _dup2_preserve_target(opened_fd: int, target_fd: int):
     os.close(opened_fd)
 
 
+# The open(2) flags for each filename redirect type, in ONE place. Every path
+# that opens a redirect target — the per-type `_redirect_*` helpers, the
+# combined `&>`/`&>>` opener (which reuses the `>`/`>>` entries: a combined
+# redirect truncates or appends exactly like plain output, and its type may be
+# spelled `&>`/`&>>` or csh-style `>&`), and the named-fd `{v}>file` allocator
+# (`apply_var_fd_redirect`) — reads flags from here, so changing a mode is a
+# single edit. noclobber is orthogonal (a `>`/`&>` precondition), checked via
+# `check_noclobber`, never encoded in these flags.
+REDIRECT_OPEN_FLAGS: dict[str, int] = {
+    '<':   os.O_RDONLY,
+    '<>':  os.O_RDWR | os.O_CREAT,
+    '>':   os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+    '>|':  os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+    '>>':  os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+}
+
+# The named-fd allocator (`{v}>file`) accepts only these simple filename forms
+# (a combined `{v}&>file` is not a thing); kept explicit so it rejects the
+# combined keys the shared flags table also carries.
+_NAMED_FD_OPEN_TYPES = ('>', '>|', '>>', '<', '<>')
+
+
 class FileRedirector:
     """Handles file-based I/O redirections.
 
@@ -183,7 +205,7 @@ class FileRedirector:
         not clobber stdin. Returns the target fd.
         """
         target_fd = redirect.fd if redirect.fd is not None else 0
-        fd = os.open(target, os.O_RDONLY)
+        fd = os.open(target, REDIRECT_OPEN_FLAGS['<'], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
@@ -273,9 +295,7 @@ class FileRedirector:
         target_fd = redirect.fd if redirect.fd is not None else 1
         if redirect.type == '>':
             self.check_noclobber(target)
-        flags = os.O_WRONLY | os.O_CREAT
-        flags |= os.O_TRUNC if redirect.type == '>' else os.O_APPEND
-        fd = os.open(target, flags, 0o644)
+        fd = os.open(target, REDIRECT_OPEN_FLAGS[redirect.type], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
@@ -346,22 +366,12 @@ class FileRedirector:
             return
 
         # Open-a-file forms: allocate the lowest free fd >= 10 (F_DUPFD).
+        if rtype not in _NAMED_FD_OPEN_TYPES:
+            raise OSError(f"{rtype}: unsupported named-fd redirect")
         target = self.expand_redirect_target(redirect)
         if rtype == '>':
             self.check_noclobber(target)
-            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        elif rtype == '>|':
-            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        elif rtype == '>>':
-            flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
-        elif rtype == '<':
-            flags = os.O_RDONLY
-        elif rtype == '<>':
-            flags = os.O_RDWR | os.O_CREAT
-        else:
-            raise OSError(f"{rtype}: unsupported named-fd redirect")
-
-        opened = os.open(target, flags, 0o644)
+        opened = os.open(target, REDIRECT_OPEN_FLAGS[rtype], 0o644)
         try:
             newfd = fcntl.fcntl(opened, fcntl.F_DUPFD, 10)
         finally:
@@ -393,28 +403,29 @@ class FileRedirector:
         Shared redirect primitive (fd backend and builtin stream backend).
         """
         target_fd = redirect.fd if redirect.fd is not None else 0
-        fd = os.open(target, os.O_RDWR | os.O_CREAT, 0o644)
+        fd = os.open(target, REDIRECT_OPEN_FLAGS['<>'], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
     def _redirect_clobber(self, target, redirect):
         """Force overwrite (>|), ignoring noclobber."""
         target_fd = redirect.fd if redirect.fd is not None else 1
-        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        fd = os.open(target, REDIRECT_OPEN_FLAGS['>|'], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
     def _redirect_combined(self, target, redirect):
-        """Redirect both stdout and stderr to file (&> or &>>)."""
-        flags = os.O_WRONLY | os.O_CREAT
+        """Redirect both stdout and stderr to file (&>, &>>, or csh-style >&).
+
+        The type may be spelled `&>`/`&>>` or `>&` (csh `>&word`); only the
+        `>>` suffix distinguishes append from truncate, so map onto the plain
+        `>`/`>>` open flags.
+        """
         is_append = redirect.type.endswith('>>')
-        if is_append:
-            flags |= os.O_APPEND
-        else:
-            if self.noclobber_blocks(target):
-                raise OSError(f"{target}: cannot overwrite existing file")
-            flags |= os.O_TRUNC
-        fd = os.open(target, flags, 0o644)
+        if not is_append:
+            self.check_noclobber(target)
+        fd = os.open(target, REDIRECT_OPEN_FLAGS['>>' if is_append else '>'],
+                     0o644)
         _dup2_preserve_target(fd, 1)   # stdout
         os.dup2(1, 2)                  # stderr → stdout
 
