@@ -3919,6 +3919,51 @@
   stderr: "readonly variable"
   exit_code: 0
 
+# `local` same-scope redeclare with a VALUE onto an already-readonly local is
+# rejected (appraisal H7 — create_local used to overwrite it unguarded). bash
+# prints "local: NAME: readonly variable", KEEPS the old value, local returns
+# 1, and the function CONTINUES. (--compare-bash checks stdout+exit; the
+# stderr $0 prefix `psh:`/`environment:` differs harmlessly.)
+- name: local_readonly_value_redeclare_rejected
+  command: "f(){ local -r x=1; local x=2; echo val=$x; }; f"
+  stdout: "val=1\n"
+  stderr: "local: x: readonly variable"
+  exit_code: 0
+
+- name: local_readonly_r_on_r_rejected
+  command: "f(){ local -r x=1; local -r x=2; echo val=$x; }; f"
+  stdout: "val=1\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: local_readonly_append_rejected
+  command: "f(){ local -r x=1; local x+=y; echo val=$x; }; f"
+  stdout: "val=1\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: local_readonly_function_continues
+  command: "f(){ local -r x=1; local x=2; echo AFTER; }; f"
+  stdout: "AFTER\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+# `local` returns 1 on the readonly-redeclare failure (bash), reflected in $?.
+- name: local_readonly_returns_1
+  command: 'f(){ local -r x=1; local x=2; echo "rc=$?"; }; f'
+  stdout: "rc=1\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+# An ATTRIBUTE-ONLY redeclare (no value) is NOT rejected — bash lets you merge
+# attributes onto a readonly local (readonly stays; -i is added). Both branches
+# of the symmetric H7 fix are pinned: value path rejects, attrs-only path allows.
+- name: local_readonly_attrs_only_add_integer_ok
+  command: "f(){ local -r x=1; local -i x; declare -p x; }; f"
+  stdout: "declare -ir x=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
 # trap '' (ignore) is inherited across exec by external children (POSIX).
 - name: trap_ignore_inherited_across_exec
   command: 'trap "" INT; bash -c "trap -p INT"'
