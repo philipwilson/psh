@@ -4007,6 +4007,119 @@
   stderr: "readonly variable"
   exit_code: 0
 
+# `local` same-scope redeclare with a VALUE onto an already-readonly local is
+# rejected (appraisal H7 — create_local used to overwrite it unguarded). bash
+# prints "local: NAME: readonly variable", KEEPS the old value, local returns
+# 1, and the function CONTINUES. (--compare-bash checks stdout+exit; the
+# stderr $0 prefix `psh:`/`environment:` differs harmlessly.)
+- name: local_readonly_value_redeclare_rejected
+  command: "f(){ local -r x=1; local x=2; echo val=$x; }; f"
+  stdout: "val=1\n"
+  stderr: "local: x: readonly variable"
+  exit_code: 0
+
+- name: local_readonly_r_on_r_rejected
+  command: "f(){ local -r x=1; local -r x=2; echo val=$x; }; f"
+  stdout: "val=1\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: local_readonly_append_rejected
+  command: "f(){ local -r x=1; local x+=y; echo val=$x; }; f"
+  stdout: "val=1\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: local_readonly_function_continues
+  command: "f(){ local -r x=1; local x=2; echo AFTER; }; f"
+  stdout: "AFTER\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+# `local` returns 1 on the readonly-redeclare failure (bash), reflected in $?.
+- name: local_readonly_returns_1
+  command: 'f(){ local -r x=1; local x=2; echo "rc=$?"; }; f'
+  stdout: "rc=1\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+# An ATTRIBUTE-ONLY redeclare (no value) is NOT rejected — bash lets you merge
+# attributes onto a readonly local (readonly stays; -i is added). Both branches
+# of the symmetric H7 fix are pinned: value path rejects, attrs-only path allows.
+- name: local_readonly_attrs_only_add_integer_ok
+  command: "f(){ local -r x=1; local -i x; declare -p x; }; f"
+  stdout: "declare -ir x=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
+# The attrs-only merge can never CLEAR readonly (create_local ORs attributes),
+# so `local +r x` leaves x readonly (R1-extra safety). stdout + exit match bash
+# (--compare-bash checks those). The stderr message diverges — psh does not yet
+# parse `+r` as attribute-removal and reports it as an invalid identifier where
+# bash reports "x: readonly variable"; that +attr-parse gap is a documented
+# carry to T2 (declaration family), so the stderr check is skipped here.
+- name: local_plus_r_cannot_strip_readonly
+  command: "f(){ local -r x=1; local +r x; declare -p x; }; f"
+  stdout: "declare -r x=\"1\"\n"
+  stderr: null
+  exit_code: 0
+
+# `local`'s arg loop is CONTINUE-ON-ERROR (appraisal-H7 rider): a readonly-value
+# redeclare on `x` reports the error but the good arg `y=3` is still set, and
+# `local` returns 1 (reflected in the FUNCTION continuing to run `echo`). Also
+# holds for the outer-scope readonly case.
+- name: local_multiarg_continues_after_readonly
+  command: 'f(){ local -r x=1; local x=2 y=3; echo "x=$x y=$y"; }; f'
+  stdout: "x=1 y=3\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: local_multiarg_outer_scope_continues
+  command: 'x=1; readonly x; f(){ local x=2 y=3; echo "y=$y"; }; f'
+  stdout: "y=3\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+# A per-arg INVALID IDENTIFIER is likewise reported-and-skipped, not fatal to
+# the rest of the `local` command (bash).
+- name: local_multiarg_continues_after_invalid_id
+  command: 'f(){ local 1bad x=2; echo "x=${x-unset}"; }; f'
+  stdout: "x=2\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
+# The ONE inherited-traps rule (appraisal H9): a DEBUG trap under `set -T`
+# (functrace) stays live in a BACKGROUNDED COMPOUND that reuses the parent Shell
+# ({ ...; } &) — the enter_subshell_trap_environment path used to drop DEBUG,
+# disagreeing with the ( ) subshell (clone_for_child) path. Both branches of the
+# symmetric fix are pinned: with -T the trap fires in the child (3 DBG),
+# without -T it does not (2 DBG, both from the parent).
+- name: h9_debug_functrace_inherited_into_bg_brace
+  command: 'set -T; trap "echo DBG" DEBUG; { true; } & wait; echo done'
+  stdout: "DBG\nDBG\nDBG\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h9_debug_no_functrace_not_inherited_into_bg_brace
+  command: 'trap "echo DBG" DEBUG; { true; } & wait; echo done'
+  stdout: "DBG\nDBG\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+# ERR under `set -E` (errtrace) is likewise inherited into the bg compound; it is
+# NOT inherited without errtrace (the already-agreeing branch, pinned for symmetry).
+- name: h9_err_errtrace_inherited_into_bg_brace
+  command: 'set -E; trap "echo ET" ERR; { false; } & wait; echo done'
+  stdout: "ET\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h9_err_no_errtrace_not_inherited_into_bg_brace
+  command: 'trap "echo ET" ERR; { false; } & wait; echo done'
+  stdout: "done\n"
+  stderr: ""
+  exit_code: 0
+
 # trap '' (ignore) is inherited across exec by external children (POSIX).
 - name: trap_ignore_inherited_across_exec
   command: 'trap "" INT; bash -c "trap -p INT"'
@@ -6350,6 +6463,59 @@
 - name: r18t2_corestate_integer_array_elem0_append
   command: 'declare -ai a=(5 6); a+=3; echo "${a[0]}"'
   stdout: "8\n"
+  stderr: ""
+  exit_code: 0
+
+# H8 eager integer-append (appraisal H8 rider): the ONE append formula evaluates
+# the integer arithmetic eagerly with the EFFECTIVE integer attribute
+# (base | being-added), so EVERY commit path is correct — including the temp-env
+# prefix commit (which does not re-transform) and a fresh -i added in the same op.
+- name: h8_tempenv_integer_prefix_append
+  command: 'declare -ix n=5; n+=3 printenv n'
+  stdout: "8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h8_declare_adds_integer_and_appends
+  command: 'n=2; declare -i n+=3; echo "$n"'
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h8_local_adds_integer_and_appends
+  command: 'f(){ local n=5; local -i n+=3; echo "$n"; }; f'
+  stdout: "8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h8_tempenv_integer_seen_by_child
+  command: "declare -i n=10; n+=5 sh -c 'echo $n'"
+  stdout: "15\n"
+  stderr: ""
+  exit_code: 0
+
+# The append arithmetic side-effect runs during prefix SETUP: `(1)+(z=7)` assigns
+# z (which PERSISTS) while n reverts after the temp-env command (bash timing).
+- name: h8_integer_append_arith_side_effect_timing
+  command: 'y="z=7"; declare -i n=1; n+=y true; echo "z=$z n=$n"'
+  stdout: "z=7 n=1\n"
+  stderr: ""
+  exit_code: 0
+
+# The effective-attrs rule covers the ARRAY branch too: a fresh -i / -u added in
+# the SAME declare makes a scalar append onto a plain array base arithmetic /
+# case-folded on element 0 (bash: a[0] '11' not '110'; 'ABX' not 'abx'), with
+# the rest of the array intact. (The `declare -ai`/`-au` spellings — with an
+# explicit -a — hit a separate pre-existing array-init path bug, carried to T2.)
+- name: h8_declare_adds_integer_appends_onto_array
+  command: 'a=(1 2); declare -i a+=10; echo "${a[0]}|${a[1]}"'
+  stdout: "11|2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h8_declare_adds_uppercase_appends_onto_array
+  command: 'a=(ab cd); declare -u a+=x; echo "${a[0]}|${a[1]}"'
+  stdout: "ABX|cd\n"
   stderr: ""
   exit_code: 0
 # BUILTINS FEATURE GAPS (reappraisal #18 Tier-2 T2-G)

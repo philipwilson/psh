@@ -22,8 +22,14 @@ parent.
   over the manager's existing authoritative methods.
 - :meth:`append` is a first-class transaction: it resolves the nameref, reads
   the append base from the *target* scope (``-g`` reads the global instance,
-  not a local shadow), computes the new value with the target's attributes
-  (integer arithmetic vs textual concat vs array-element-0), and commits once.
+  not a local shadow), computes the new value via :meth:`compute_append_value`,
+  and commits once. That computation formula (integer arithmetic vs textual
+  concat vs array-element-0 + case-fold) lives in EXACTLY ONE place (appraisal
+  H8): the compute-only ``assignment_utils.resolve_append_assignment``, which
+  the command-prefix / ``local`` / rollback callers use to obtain the appended
+  value WITHOUT committing (they install it into a temp-env layer or with a
+  restore snapshot), delegates to the SAME :meth:`compute_append_value`. So
+  there is one append engine, whether or not the write commits here.
 - :meth:`set_element` / :meth:`unset_element` are the guarded element-commit
   primitives: they resolve the nameref, validate readonly BEFORE mutating,
   resolve a negative subscript exactly ONCE, create the array if absent, mutate
@@ -46,6 +52,7 @@ from .variables import AssociativeArray, IndexedArray, VarAttributes
 
 if TYPE_CHECKING:
     from .scope import ScopeManager
+    from .variables import Variable
 
 
 class TargetScope(Enum):
@@ -106,6 +113,60 @@ class VariableStore:
     # Append — one transaction, target-scope aware.
     # ------------------------------------------------------------------ #
 
+    def compute_append_value(self, base_var: Optional["Variable"], value: str, *,
+                             extra_attrs: VarAttributes = VarAttributes.NONE) -> object:
+        """Compute ``NAME+=value``'s new value from the append BASE (PURE).
+
+        This is the ONE append-computation formula (appraisal H8). It is shared
+        by the commit path (:meth:`append`) and the PURE path
+        (:func:`~psh.core.assignment_utils.resolve_append_assignment`, which the
+        command-prefix / local / rollback callers need WITHOUT a commit so they
+        can snapshot the original before installing the result). Given the base
+        :class:`Variable` (or ``None`` when the name is unset) and the scalar
+        append text:
+
+        - **array base**: return a COPY of the container with element 0 updated
+          (integer-add on an ``-i`` array, else concat + the effective ``-u``/
+          ``-l`` case-fold), leaving the LIVE container untouched (so a rejected
+          commit or a rollback snapshot sees the original — the deliberate
+          ``copy()`` choice: array elements are immutable ``str``, so ``copy()``
+          and ``deepcopy`` are identical, and ``copy()`` is the cheaper one);
+        - **INTEGER effective**: the arithmetic ``(base or 0)+(value)`` is
+          EVALUATED here to its number (empty value = no-op). Eager evaluation
+          (rather than deferring the expression to a commit-side INTEGER
+          transform) is what makes the ONE formula correct for EVERY commit
+          path — including the temp-env prefix (`declare -ix n=5; n+=3 cmd`),
+          which does not re-transform, and the arithmetic side-effect timing
+          (`y='z=7'; declare -i n=1; n+=y cmd` assigns z during prefix setup,
+          bash-verified). Idempotent for the paths that also apply an INTEGER
+          transform at commit (``8`` -> ``8``);
+        - **otherwise**: textual ``base + value`` (the effective ``-u``/``-l``
+          case-fold is applied by the SCALAR commit's attribute transform).
+
+        ``extra_attrs`` are the attributes being ADDED in the SAME operation
+        (``declare -i n+=3`` / ``local -i n+=3``): the EFFECTIVE attribute set is
+        ``base | extra_attrs``, so a fresh ``-i`` makes the append arithmetic
+        even though the base variable is not yet integer (bash).
+        """
+        container = base_var.value if base_var is not None else None
+        base_attrs = (base_var.attributes if base_var is not None
+                      else VarAttributes.NONE)
+        effective = base_attrs | extra_attrs
+        if isinstance(container, (IndexedArray, AssociativeArray)):
+            new_container = container.copy()
+            key: Union[int, str] = 0 if isinstance(new_container, IndexedArray) else '0'
+            old0 = new_container.get(key) or ''  # type: ignore[arg-type]
+            if effective & VarAttributes.INTEGER and value.strip():
+                new0: object = self._sm._evaluate_integer(f"({old0 or 0})+({value})")
+            else:
+                new0 = self._sm._apply_attributes(str(old0) + value, effective)
+            new_container.set(key, str(new0))  # type: ignore[arg-type]
+            return new_container
+        old = '' if base_var is None or base_var.value is None else str(base_var.value)
+        if effective & VarAttributes.INTEGER and value.strip():
+            return str(self._sm._evaluate_integer(f"({old or 0})+({value})"))
+        return old + value
+
     def append(self, name: str, value: str, *,
                attributes: VarAttributes = VarAttributes.NONE,
                local: bool = False, global_scope: bool = False,
@@ -115,48 +176,19 @@ class VariableStore:
         The append BASE is read from the scope the write will target — so
         ``declare -g x+=A`` reads (and updates) the GLOBAL ``x`` even under a
         local shadow (bash), and ``export -i n; export n+=3`` appends
-        arithmetically because the base's INTEGER attribute is honored. The
-        computation:
-
-        - INTEGER target: arithmetic ``(base)+(value)`` (empty value = +0);
-        - array target: update element 0 in place (integer-add or concat +
-          case-fold), preserving the container;
-        - otherwise: textual concat, then the target's ``-u``/``-l`` case-fold.
-
-        The result is committed through :meth:`assign` (so readonly enforcement
-        and the observers still apply). A cyclic nameref raises
+        arithmetically because the base's INTEGER attribute is honored. The new
+        value is computed by the ONE shared formula (:meth:`compute_append_value`)
+        and committed through :meth:`assign` (so readonly enforcement and the
+        observers still apply). A cyclic nameref raises
         :class:`NamerefCycleError`, like a direct write.
         """
         target = self._sm.resolve_nameref_name(name)
         base_var = self._instance_in_write_target(
             target, global_scope=global_scope, skip_temp_env=skip_temp_env)
-        container = base_var.value if base_var is not None else None
-
-        if isinstance(container, (IndexedArray, AssociativeArray)):
-            # Scalar append to an array updates element 0 (bash), preserving the
-            # container. Work on a copy so a rejected commit never leaves a
-            # half-mutated live array.
-            new_container = container.copy()
-            key: Union[int, str] = 0 if isinstance(new_container, IndexedArray) else '0'
-            old0 = new_container.get(key) or ''  # type: ignore[arg-type]
-            base_attrs = base_var.attributes if base_var is not None else VarAttributes.NONE
-            if base_attrs & VarAttributes.INTEGER and value.strip():
-                new0: object = self._sm._evaluate_integer(f"({old0 or 0})+({value})")
-            else:
-                new0 = self._sm._apply_attributes(str(old0) + value, base_attrs)
-            new_container.set(key, str(new0))  # type: ignore[arg-type]
-            self.assign(name, new_container, attributes=attributes, local=local,
-                        global_scope=global_scope, skip_temp_env=skip_temp_env)
-            return
-
-        old = '' if base_var is None or base_var.value is None else str(base_var.value)
-        base_attrs = base_var.attributes if base_var is not None else VarAttributes.NONE
-        if base_attrs & VarAttributes.INTEGER and value.strip():
-            # Hand set_variable's INTEGER transform the arithmetic expression so
-            # the append evaluates numerically (matches bash `declare -i`).
-            new_value: object = f"({old or 0})+({value})"
-        else:
-            new_value = old + value
+        # ``attributes`` are the declaration's being-added flags (``declare -i
+        # n+=3`` marks n integer in this same op), so they count toward the
+        # effective integer decision even when the base is not yet integer.
+        new_value = self.compute_append_value(base_var, value, extra_attrs=attributes)
         self.assign(name, new_value, attributes=attributes, local=local,
                     global_scope=global_scope, skip_temp_env=skip_temp_env)
 

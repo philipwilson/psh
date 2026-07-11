@@ -641,6 +641,20 @@ class ScopeManager:
         redeclare = existing_local is not None and not existing_local.is_unset
         if redeclare:
             assert existing_local is not None  # narrow for type-checker
+            # A same-scope redeclare that ASSIGNS A VALUE to an already-readonly
+            # local is rejected — matching bash, which prints "local: NAME:
+            # readonly variable", keeps the old value, and returns 1 while the
+            # function CONTINUES (probe: f(){ local -r x=1; local x=2; }; f
+            # prints the error, keeps x=1, local rc 1). An ATTRIBUTE-ONLY
+            # redeclare (value is None: ``local x``, ``local -i x``, ``local -x
+            # x``) is NOT rejected — bash lets you MERGE attributes onto a
+            # readonly local (``local -r x=1; local -i x`` -> ``declare -ir
+            # x="1"``, rc 0), so the guard is gated on ``value is not None``,
+            # NOT on the redeclare alone. The outer-scope readonly check above
+            # (a name readonly in an ENCLOSING scope) already rejects
+            # unconditionally, exactly like any prefix assignment.
+            if value is not None and existing_local.is_readonly:
+                raise ReadonlyVariableError(name)
             attributes = existing_local.attributes | attributes
         else:
             # New local: inherit ONLY the EXPORT attribute of the variable it
