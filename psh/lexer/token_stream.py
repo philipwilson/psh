@@ -1,15 +1,17 @@
-"""Enhanced token stream with utility methods for parser."""
+"""Token cursor with the shared arithmetic-expression collector."""
 
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Tuple
 
 from .token_types import Token, TokenType
 
 
 class TokenStream:
-    """Enhanced token stream with utility methods.
+    """A positioned token cursor.
 
-    This class provides utilities for collecting balanced token sequences,
-    handling quotes and nesting, and looking ahead for composite tokens.
+    Its callers use ``peek``/``advance``/``pos`` for lookahead and
+    ``collect_arithmetic_expression`` — the depth-tracked ``(( ))`` interior
+    collector shared by the arithmetic parser paths. It is not a general
+    balanced-delimiter scanner.
     """
 
     def __init__(self, tokens: List[Token], pos: int = 0):
@@ -58,109 +60,6 @@ class TokenStream:
             self.pos < len(self.tokens) and
             self.tokens[self.pos].type == TokenType.EOF
         )
-
-    def collect_until_balanced(self,
-                               open_type: TokenType,
-                               close_type: TokenType,
-                               respect_quotes: bool = True,
-                               include_delimiters: bool = False) -> List[Token]:
-        """Collect tokens until balanced close token found.
-
-        This method handles nested delimiters and optionally respects quotes.
-        For example, collecting until balanced RPAREN will handle nested
-        parentheses correctly.
-
-        Args:
-            open_type: Token type that opens a nested context
-            close_type: Token type that closes the context
-            respect_quotes: If True, ignore delimiters inside quotes
-            include_delimiters: If True, include the closing delimiter
-
-        Returns:
-            List of collected tokens (not including the closing delimiter
-            unless include_delimiters is True)
-        """
-        tokens: List[Token] = []
-        depth = 1  # Assume we've already seen one open delimiter
-        in_quotes = False
-
-        while not self.at_end() and depth > 0:
-            token = self.peek()
-            if not token:
-                break
-
-            # Handle quote tracking if requested
-            # In shell, STRING tokens are already the content inside quotes,
-            # so if we see a STRING token, its content should be treated as quoted
-            if respect_quotes and token.type == TokenType.STRING:
-                in_quotes = True
-            else:
-                in_quotes = False
-
-            # Track depth only if not in quotes
-            if not (respect_quotes and in_quotes):
-                if token.type == open_type:
-                    depth += 1
-                elif token.type == close_type:
-                    depth -= 1
-                    if depth == 0:
-                        if include_delimiters:
-                            tokens.append(token)
-                        self.advance()  # consume (token already captured above)
-                        break
-
-            tokens.append(token)
-            self.advance()
-
-        return tokens
-
-    def collect_until(self,
-                      stop_types: Set[TokenType],
-                      respect_quotes: bool = True,
-                      include_stop: bool = False) -> List[Token]:
-        """Collect tokens until one of stop types is encountered.
-
-        Args:
-            stop_types: Set of token types to stop at
-            respect_quotes: If True, ignore stop tokens inside quotes
-            include_stop: If True, include the stop token
-
-        Returns:
-            List of collected tokens
-        """
-        tokens: List[Token] = []
-
-        while not self.at_end():
-            token = self.peek()
-            if not token:
-                break
-
-            # Check if current token is quoted content
-            in_quotes = respect_quotes and token.type == TokenType.STRING
-
-            # Check for stop token only if not in quotes
-            if not in_quotes and token.type in stop_types:
-                if include_stop:
-                    tokens.append(token)
-                    self.advance()
-                break
-
-            tokens.append(token)
-            self.advance()
-
-        return tokens
-
-    def save_position(self) -> int:
-        """Save current position for later restoration."""
-        return self.pos
-
-    def restore_position(self, pos: int) -> None:
-        """Restore to a previously saved position."""
-        self.pos = pos
-
-    def remaining_tokens(self) -> List[Token]:
-        """Get all remaining tokens from current position."""
-        return self.tokens[self.pos:] if self.pos < len(self.tokens) else []
 
     def _split_double_rparen(self) -> None:
         """Split the ``DOUBLE_RPAREN`` at the current position into two ``RPAREN``.

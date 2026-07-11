@@ -101,7 +101,7 @@ class TestLexerFunctionality:
 
     def test_modular_lexer_direct(self):
         """Test ModularLexer directly."""
-        config = LexerConfig.create_batch_config()
+        config = LexerConfig()
         lexer = ModularLexer("echo test", config=config)
         tokens = lexer.tokenize()
 
@@ -195,7 +195,7 @@ class TestAPIStability:
         assert len(tokens) > 0
 
         # Should accept config
-        config = LexerConfig.create_interactive_config()
+        config = LexerConfig()
         lexer_with_config = ModularLexer("echo test", config=config)
         tokens_with_config = lexer_with_config.tokenize()
         assert len(tokens_with_config) > 0

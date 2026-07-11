@@ -17,7 +17,6 @@ from .keyword_normalizer import KeywordNormalizer
 from .modular_lexer import ModularLexer
 from .position import (
     LexerConfig,
-    LexerError,
     UnclosedQuoteError,
 )
 from .state_context import LexerContext
@@ -149,5 +148,5 @@ __all__ = [
     # Configuration
     'LexerConfig',
     # Errors
-    'LexerError', 'UnclosedQuoteError',
+    'UnclosedQuoteError',
 ]

@@ -51,8 +51,8 @@ class BraceExpansionError(PshError, SyntaxError):
     Since v0.678 brace expansion runs at the Word-expansion stage (not tokenize
     time), so this surfaces as a RUNTIME word-expansion error — a diagnostic on
     stderr and exit status 1 — rather than the parse-time syntax-error class
-    (exit 2) it once was. It stays a ``SyntaxError`` subclass (like
-    ``LexerError``) for the shared PshError plumbing, but the important
+    (exit 2) it once was. It stays a ``SyntaxError`` subclass for the shared
+    PshError plumbing, but the important
     invariant is that it fails LOUDLY, never the old silent
     restore-the-literal. DELIBERATE bash divergence: bash imposes no
     brace-expansion limit; psh keeps a generous one (see ``MAX_EXPANSION_ITEMS``)

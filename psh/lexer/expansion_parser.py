@@ -286,7 +286,6 @@ class ExpansionParser:
             var_name = normalize_identifier(
                 var_name,
                 posix_mode=self.config.posix_mode,
-                case_sensitive=self.config.case_sensitive
             )
 
         return TokenPart(

@@ -83,14 +83,13 @@ def is_whitespace(char: str, posix_mode: bool = False) -> bool:
     return char in SHELL_WHITESPACE
 
 
-def normalize_identifier(name: str, posix_mode: bool = False, case_sensitive: bool = True) -> str:
+def normalize_identifier(name: str, posix_mode: bool = False) -> str:
     """
     Normalize an identifier name according to configuration.
 
     Args:
         name: Identifier name to normalize
         posix_mode: If True, don't apply Unicode normalization
-        case_sensitive: If False, convert to lowercase
 
     Returns:
         Normalized identifier name
@@ -98,9 +97,6 @@ def normalize_identifier(name: str, posix_mode: bool = False, case_sensitive: bo
     if not posix_mode:
         # Apply Unicode normalization (NFC - Canonical Composition)
         name = unicodedata.normalize('NFC', name)
-
-    if not case_sensitive:
-        name = name.lower()
 
     return name
 
