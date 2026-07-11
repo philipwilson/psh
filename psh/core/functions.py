@@ -68,11 +68,13 @@ class FunctionManager:
         if existing and existing.readonly:
             raise FunctionDefinitionError(f"{name}: readonly function")
 
-        # Preserve readonly/export/trace status if redefining
-        readonly = existing.readonly if existing else False
+        # Preserve export/trace status if redefining. A readonly existing
+        # function already raised above (68-69), so a redefinition here is
+        # never readonly.
         exported = existing.exported if existing else False
         trace = existing.trace if existing else False
-        self.functions[name] = Function(name, body, readonly, redirects,
+        self.functions[name] = Function(name, body, readonly=False,
+                                        redirects=redirects,
                                         exported=exported, trace=trace)
 
     def get_function(self, name: str) -> Optional[Function]:

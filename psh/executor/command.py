@@ -975,6 +975,20 @@ class CommandExecutor:
         else:
             return 0
 
+    def _report_exec_redirect_error(self, e: OSError) -> None:
+        """Print an exec permanent-redirection failure in bash's shape.
+
+        errno-less OSErrors carry psh's own complete message
+        (noclobber/ambiguous/bad-fd) — print it verbatim rather than
+        "exec: None" (mirrors setup_child_redirections). Otherwise use bash's
+        "psh: FILE: STRERROR" (e.g. "bash: FILE: No such file or directory").
+        """
+        if e.errno is None:
+            print(f"psh: {e}", file=self.state.stderr)
+        else:
+            print(f"psh: {e.filename or 'exec'}: {e.strerror}",
+                  file=self.state.stderr)
+
     def _handle_exec_builtin(self, node: 'SimpleCommand', command_args: List[str],
                             assignments: List[tuple]) -> int:
         """Handle exec builtin with access to redirections."""
@@ -1004,15 +1018,7 @@ class CommandExecutor:
                     self.io_manager.apply_permanent_redirections(node.redirects)
                     return 0
                 except OSError as e:
-                    # bash format: "bash: FILE: No such file or directory".
-                    # errno-less OSErrors carry psh's own complete message
-                    # (noclobber/ambiguous/bad-fd) — print it verbatim rather
-                    # than "exec: None" (mirrors setup_child_redirections).
-                    if e.errno is None:
-                        print(f"psh: {e}", file=self.state.stderr)
-                    else:
-                        print(f"psh: {e.filename or 'exec'}: {e.strerror}",
-                              file=self.state.stderr)
+                    self._report_exec_redirect_error(e)
                     return 1
             else:
                 # No redirections, just succeed
@@ -1027,15 +1033,7 @@ class CommandExecutor:
                 try:
                     self.io_manager.apply_permanent_redirections(node.redirects)
                 except OSError as e:
-                    # bash format: "bash: FILE: No such file or directory".
-                    # errno-less OSErrors carry psh's own complete message
-                    # (noclobber/ambiguous/bad-fd) — print it verbatim rather
-                    # than "exec: None" (mirrors setup_child_redirections).
-                    if e.errno is None:
-                        print(f"psh: {e}", file=self.state.stderr)
-                    else:
-                        print(f"psh: {e.filename or 'exec'}: {e.strerror}",
-                              file=self.state.stderr)
+                    self._report_exec_redirect_error(e)
                     return 1
             try:
                 return exec_builtin.execute(['exec'] + args, self.shell)

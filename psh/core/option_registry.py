@@ -218,28 +218,6 @@ class ShellOptions(MutableMapping):
     def __repr__(self) -> str:
         return f"ShellOptions({self._values!r})"
 
-    # Typed convenience accessors for the hottest internal reads. Additive —
-    # the dict-style API above remains the general interface.
-    @property
-    def errexit(self) -> bool:
-        return bool(self._values["errexit"])
-
-    @property
-    def nounset(self) -> bool:
-        return bool(self._values["nounset"])
-
-    @property
-    def xtrace(self) -> bool:
-        return bool(self._values["xtrace"])
-
-    @property
-    def pipefail(self) -> bool:
-        return bool(self._values["pipefail"])
-
-    @property
-    def interactive(self) -> bool:
-        return bool(self._values["interactive"])
-
     def option_string(self) -> str:
         """The ``$-`` flag string: set single-letter options in bash's order.
 

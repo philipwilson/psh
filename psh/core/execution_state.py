@@ -5,7 +5,7 @@
 ``last_cmdsub_status`` / ``in_forked_child`` as properties that delegate here.
 These are the values the executor reads and writes as it runs each command —
 grouping them turns eight loose ShellState fields into one named type that
-``ShellState.adopt()`` can copy as a unit (the v0.453 ``$!``-in-subshell bug was
+``ShellState.clone_for_child()`` can copy as a unit (the v0.453 ``$!``-in-subshell bug was
 a missed field in that copy; ``copy_into()`` makes such omissions structurally
 hard).
 
