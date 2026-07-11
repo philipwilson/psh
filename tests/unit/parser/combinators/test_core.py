@@ -5,25 +5,16 @@ import pytest
 
 from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.core import (
-    ForwardParser,
     ParseFailure,
     Parser,
     ParseResult,
     ParseSuccess,
-    between,
     fail_with,
     keyword,
-    lazy,
-    literal,
     many,
     many1,
     optional,
-    separated_by,
-    sequence,
-    skip,
     token,
-    try_parse,
-    with_error_context,
 )
 
 
@@ -90,7 +81,7 @@ class TestDiscriminatedConstructors:
 
 
 class TestCommitment:
-    """or_else / many / separated_by honour the cut (committed) flag."""
+    """or_else / many honour the cut (committed) flag."""
 
     def test_or_else_retries_recoverable_failure(self):
         """A plain (recoverable) failure lets or_else try the alternative."""
@@ -218,8 +209,7 @@ class TestParser:
         assert result.error == "Failed"
 
     def test_then_second_fails_resets_position(self):
-        """A failed then() is atomic: position resets to the start (same
-        backtracking discipline as sequence())."""
+        """A failed then() is atomic: position resets to the start."""
         def parse_ok(tokens, pos):
             return ParseResult(success=True, value="ok", position=pos + 1)
 
@@ -358,115 +348,9 @@ class TestBasicCombinators:
         assert result.value is None
         assert result.position == 0
 
-    def test_sequence(self):
-        """Test sequence combinator."""
-        tokens = [
-            make_token(TokenType.WORD, "echo"),
-            make_token(TokenType.WORD, "hello"),
-            make_token(TokenType.SEMICOLON, ";")
-        ]
-        parser = sequence(token("WORD"), token("WORD"), token("SEMICOLON"))
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-        assert len(result.value) == 3
-        assert result.value[0].value == "echo"
-        assert result.value[1].value == "hello"
-        assert result.value[2].value == ";"
-        assert result.position == 3
-
-    def test_sequence_failure(self):
-        """Test sequence when one parser fails."""
-        tokens = [
-            make_token(TokenType.WORD, "echo"),
-            make_token(TokenType.SEMICOLON, ";")
-        ]
-        parser = sequence(token("WORD"), token("WORD"), token("SEMICOLON"))
-        result = parser.parse(tokens, 0)
-        assert result.success is False
-
-    def test_separated_by(self):
-        """Test separated_by combinator."""
-        tokens = [
-            make_token(TokenType.WORD, "a"),
-            make_token(TokenType.PIPE, "|"),
-            make_token(TokenType.WORD, "b"),
-            make_token(TokenType.PIPE, "|"),
-            make_token(TokenType.WORD, "c"),
-            make_token(TokenType.SEMICOLON, ";")
-        ]
-        parser = separated_by(token("WORD"), token("PIPE"))
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-        assert len(result.value) == 3
-        assert result.value[0].value == "a"
-        assert result.value[1].value == "b"
-        assert result.value[2].value == "c"
-        assert result.position == 5
-
-    def test_separated_by_single(self):
-        """Test separated_by with single item."""
-        tokens = [make_token(TokenType.WORD, "test"), make_token(TokenType.SEMICOLON, ";")]
-        parser = separated_by(token("WORD"), token("PIPE"))
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-        assert len(result.value) == 1
-        assert result.value[0].value == "test"
-
-    def test_separated_by_failure(self):
-        """Test separated_by with no items."""
-        tokens = [make_token(TokenType.SEMICOLON, ";")]
-        parser = separated_by(token("WORD"), token("PIPE"))
-        result = parser.parse(tokens, 0)
-        assert result.success is False
-
 
 class TestEnhancedCombinators:
     """Test enhanced combinator functions."""
-
-    def test_lazy(self):
-        """Test lazy evaluation."""
-        # Simulate recursive grammar
-        def create_parser():
-            return token("WORD")
-
-        parser = lazy(create_parser)
-        tokens = [make_token(TokenType.WORD, "test")]
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.value == "test"
-
-    def test_between(self):
-        """Test between combinator."""
-        tokens = [
-            make_token(TokenType.LPAREN, "("),
-            make_token(TokenType.WORD, "content"),
-            make_token(TokenType.RPAREN, ")")
-        ]
-        parser = between(token("LPAREN"), token("RPAREN"), token("WORD"))
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.value == "content"
-        assert result.position == 3
-
-    def test_between_missing_close(self):
-        """Test between with missing closing delimiter."""
-        tokens = [
-            make_token(TokenType.LPAREN, "("),
-            make_token(TokenType.WORD, "content")
-        ]
-        parser = between(token("LPAREN"), token("RPAREN"), token("WORD"))
-        result = parser.parse(tokens, 0)
-        assert result.success is False
-        assert "closing delimiter" in result.error
-
-    def test_skip(self):
-        """Test skip combinator."""
-        tokens = [make_token(TokenType.WORD, "test")]
-        parser = skip(token("WORD"))
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-        assert result.value is None
-        assert result.position == 1
 
     def test_fail_with(self):
         """Test fail_with combinator."""
@@ -474,24 +358,6 @@ class TestEnhancedCombinators:
         result = parser.parse([], 0)
         assert result.success is False
         assert result.error == "Custom error message"
-
-    def test_try_parse_success(self):
-        """Test try_parse with successful parse."""
-        tokens = [make_token(TokenType.WORD, "test")]
-        parser = try_parse(token("WORD"))
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.value == "test"
-        assert result.position == 1
-
-    def test_try_parse_failure(self):
-        """Test try_parse with failed parse (backtracking)."""
-        tokens = [make_token(TokenType.SEMICOLON, ";")]
-        parser = try_parse(token("WORD"))
-        result = parser.parse(tokens, 0)
-        assert result.success is True  # Still succeeds
-        assert result.value is None  # But with None value
-        assert result.position == 0  # And original position (backtracked)
 
     def test_keyword(self):
         """Test keyword parser."""
@@ -516,78 +382,3 @@ class TestEnhancedCombinators:
         result = parser.parse(tokens, 0)
         assert result.success is False
         assert "Expected keyword 'if'" in result.error
-
-    def test_literal(self):
-        """Test literal parser."""
-        tokens = [make_token(TokenType.SEMICOLON, ";")]
-        parser = literal(";")
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.value == ";"
-
-    def test_literal_wrong(self):
-        """Test literal with wrong value."""
-        tokens = [make_token(TokenType.PIPE, "|")]
-        parser = literal(";")
-        result = parser.parse(tokens, 0)
-        assert result.success is False
-        assert "Expected ';'" in result.error
-
-    def test_with_error_context(self):
-        """Test error context wrapper."""
-        parser = with_error_context(token("WORD"), "parsing command")
-        tokens = [make_token(TokenType.SEMICOLON, ";")]
-        result = parser.parse(tokens, 0)
-        assert result.success is False
-        assert result.error.startswith("parsing command:")
-
-
-class TestForwardParser:
-    """Test the ForwardParser class."""
-
-    def test_forward_definition(self):
-        """Test defining a forward parser."""
-        forward = ForwardParser()
-        forward.define(token("WORD"))
-
-        tokens = [make_token(TokenType.WORD, "test")]
-        result = forward.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.value == "test"
-
-    def test_forward_undefined(self):
-        """Test using forward parser before definition."""
-        forward = ForwardParser()
-
-        with pytest.raises(RuntimeError, match="ForwardParser used before being defined"):
-            forward.parse([], 0)
-
-    def test_forward_recursive(self):
-        """Test forward parser for recursive grammar."""
-        # Simple recursive structure: item = word | "(" item ")"
-        item_parser = ForwardParser()
-
-        word_parser = token("WORD")
-        paren_parser = between(
-            token("LPAREN"),
-            token("RPAREN"),
-            item_parser
-        )
-
-        item_parser.define(word_parser.or_else(paren_parser))
-
-        # Test simple case
-        tokens1 = [make_token(TokenType.WORD, "test")]
-        result1 = item_parser.parse(tokens1, 0)
-        assert result1.success is True
-        assert result1.value.value == "test"
-
-        # Test nested case
-        tokens2 = [
-            make_token(TokenType.LPAREN, "("),
-            make_token(TokenType.WORD, "nested"),
-            make_token(TokenType.RPAREN, ")")
-        ]
-        result2 = item_parser.parse(tokens2, 0)
-        assert result2.success is True
-        assert result2.value.value == "nested"

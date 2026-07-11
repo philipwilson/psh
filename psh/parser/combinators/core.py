@@ -1,7 +1,9 @@
 """Core parser combinator framework.
 
 This module provides the fundamental building blocks for parser combinators,
-including the Parser class and basic combinators like many, optional, sequence, etc.
+including the Parser class and the live grammar algebra: ``token``, ``keyword``,
+``many``, ``many1``, ``optional``, ``fail_with``, and the ``Parser.or_else`` /
+``.map`` / ``.then`` methods.
 
 ## The result type: a discriminated success/failure union
 
@@ -324,157 +326,6 @@ def optional(parser: Parser[T]) -> Parser[Optional[T]]:
     return Parser(parse_optional)
 
 
-def sequence(*parsers: Parser) -> Parser[tuple]:
-    """Parse a sequence of parsers.
-
-    Args:
-        *parsers: Parsers to run in sequence
-
-    Returns:
-        Parser that returns tuple of all results
-    """
-    def parse_sequence(tokens: List[Token], pos: int) -> ParseResult[tuple]:
-        results = []
-        current_pos = pos
-
-        for parser in parsers:
-            result = parser.parse(tokens, current_pos)
-            if not result.success:
-                return ParseFailure(pos, result.error,
-                                    expected=result.expected,
-                                    committed=result.committed)
-            results.append(result.value)
-            current_pos = result.position
-
-        return ParseSuccess(tuple(results), current_pos)
-
-    return Parser(parse_sequence)
-
-
-def separated_by(parser: Parser[T], separator: Parser) -> Parser[List[T]]:
-    """Parse items separated by a separator.
-
-    Args:
-        parser: Parser for items
-        separator: Parser for separators
-
-    Returns:
-        Parser that returns list of items
-    """
-    def parse_separated(tokens: List[Token], pos: int) -> ParseResult[List[T]]:
-        # Parse first item
-        first = parser.parse(tokens, pos)
-        if not first.success:
-            # If we can't parse even one item, fail instead of returning empty list
-            return ParseFailure(pos, first.error, expected=first.expected,
-                                committed=first.committed)
-
-        items: List[T] = [cast(T, first.value)]
-        current_pos = first.position
-
-        # Parse remaining items
-        while True:
-            sep_result = separator.parse(tokens, current_pos)
-            if not sep_result.success:
-                if sep_result.committed:
-                    return cast(ParseResult[List[T]], sep_result)
-                break
-
-            item_result = parser.parse(tokens, sep_result.position)
-            if not item_result.success:
-                if item_result.committed:
-                    return cast(ParseResult[List[T]], item_result)
-                break
-
-            items.append(cast(T, item_result.value))
-            current_pos = item_result.position
-
-        return ParseSuccess(items, current_pos)
-
-    return Parser(parse_separated)
-
-
-# Enhanced combinators for control structures
-def lazy(parser_factory: Callable[[], Parser[T]]) -> Parser[T]:
-    """Lazy evaluation for recursive grammars.
-
-    Args:
-        parser_factory: Function that creates the parser when needed
-
-    Returns:
-        Parser that delays creation until first use
-    """
-    cache: List[Optional[Parser[T]]] = [None]  # Use list for mutability
-
-    def parse_lazy(tokens: List[Token], pos: int) -> ParseResult[T]:
-        parser = cache[0]
-        if parser is None:
-            parser = parser_factory()
-            cache[0] = parser
-        return parser.parse(tokens, pos)
-
-    return Parser(parse_lazy)
-
-
-def between(open_p: Parser, close_p: Parser, content_p: Parser[T]) -> Parser[T]:
-    """Parse content between delimiters.
-
-    Args:
-        open_p: Parser for opening delimiter
-        close_p: Parser for closing delimiter
-        content_p: Parser for content
-
-    Returns:
-        Parser that returns the content value
-    """
-    def parse_between(tokens: List[Token], pos: int) -> ParseResult[T]:
-        # Parse opening delimiter
-        open_result = open_p.parse(tokens, pos)
-        if not open_result.success:
-            return ParseFailure(pos, f"Expected opening delimiter: {open_result.error}",
-                                expected=open_result.expected,
-                                committed=open_result.committed)
-
-        # Parse content
-        content_result = content_p.parse(tokens, open_result.position)
-        if not content_result.success:
-            return ParseFailure(open_result.position,
-                                f"Expected content: {content_result.error}",
-                                expected=content_result.expected,
-                                committed=content_result.committed)
-
-        # Parse closing delimiter
-        close_result = close_p.parse(tokens, content_result.position)
-        if not close_result.success:
-            return ParseFailure(content_result.position,
-                                f"Expected closing delimiter: {close_result.error}",
-                                expected=close_result.expected,
-                                committed=close_result.committed)
-
-        return ParseSuccess(cast(T, content_result.value), close_result.position)
-
-    return Parser(parse_between)
-
-
-def skip(parser: Parser) -> Parser[None]:
-    """Parse but discard result.
-
-    Args:
-        parser: Parser to run
-
-    Returns:
-        Parser that returns None
-    """
-    def parse_skip(tokens: List[Token], pos: int) -> ParseResult[None]:
-        result = parser.parse(tokens, pos)
-        if result.success:
-            return ParseSuccess(None, result.position)
-        return ParseFailure(pos, result.error, expected=result.expected,
-                            committed=result.committed)
-
-    return Parser(parse_skip)
-
-
 def fail_with(msg: str) -> Parser[None]:
     """Parser that always fails with custom message.
 
@@ -488,25 +339,6 @@ def fail_with(msg: str) -> Parser[None]:
         return ParseFailure(pos, msg)
 
     return Parser(parse_fail)
-
-
-def try_parse(parser: Parser[T]) -> Parser[Optional[T]]:
-    """Backtracking support - try parser without consuming on failure.
-
-    Args:
-        parser: Parser to try
-
-    Returns:
-        Parser that returns value or None without consuming tokens on failure
-    """
-    def parse_try(tokens: List[Token], pos: int) -> ParseResult[Optional[T]]:
-        result = parser.parse(tokens, pos)
-        if result.success:
-            return ParseSuccess(result.value, result.position)
-        # Return success with None, keeping original position
-        return ParseSuccess(None, pos)
-
-    return Parser(parse_try)
 
 
 def keyword(kw: str) -> Parser[Token]:
@@ -531,74 +363,3 @@ def keyword(kw: str) -> Parser[Token]:
                             expected=(kw,))
 
     return Parser(parse_keyword)
-
-
-def literal(lit: str) -> Parser[Token]:
-    """Parse specific literal value.
-
-    Args:
-        lit: Literal value to match
-
-    Returns:
-        Parser that matches the literal
-    """
-    def parse_literal(tokens: List[Token], pos: int) -> ParseResult[Token]:
-        if pos >= len(tokens):
-            return ParseFailure(pos, f"Expected '{lit}' but reached end of input",
-                                expected=(lit,))
-
-        token = tokens[pos]
-        if token.value == lit:
-            return ParseSuccess(token, pos + 1)
-
-        return ParseFailure(pos, f"Expected '{lit}', got {token.value}",
-                            expected=(lit,))
-
-    return Parser(parse_literal)
-
-
-# Forward declaration support
-class ForwardParser(Parser[T], Generic[T]):
-    """Parser that can be defined later for handling circular references.
-
-    This is useful for recursive grammars where a parser needs to reference
-    itself or create mutual recursion between parsers.
-    """
-
-    def __init__(self):
-        """Initialize without a parser implementation."""
-        self._parser: Optional[Parser[T]] = None
-        super().__init__(self._parse_forward)
-
-    def _parse_forward(self, tokens: List[Token], pos: int) -> ParseResult[T]:
-        """Parse using the defined parser."""
-        if self._parser is None:
-            raise RuntimeError("ForwardParser used before being defined")
-        return self._parser.parse(tokens, pos)
-
-    def define(self, parser: Parser[T]) -> None:
-        """Define the actual parser implementation.
-
-        Args:
-            parser: The parser to use for this forward reference
-        """
-        self._parser = parser
-
-
-def with_error_context(parser: Parser[T], context: str) -> Parser[T]:
-    """Add context to parser errors for better debugging.
-
-    Args:
-        parser: Parser to wrap
-        context: Context string to prepend to errors
-
-    Returns:
-        Parser with contextualized error messages
-    """
-    def contextualized_parse(tokens: List[Token], pos: int) -> ParseResult[T]:
-        result = parser.parse(tokens, pos)
-        if not result.success and result.error:
-            result.error = f"{context}: {result.error}"
-        return result
-
-    return Parser(contextualized_parse)
