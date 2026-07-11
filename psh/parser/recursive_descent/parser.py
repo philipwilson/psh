@@ -11,7 +11,6 @@ from ...ast_nodes import Program
 from ...lexer.token_types import Token
 from ..config import ParserConfig
 from .base_context import ContextBaseParser
-from .context import ParserContext
 from .parsers.arithmetic import ArithmeticParser
 from .parsers.arrays import ArrayParser
 from .parsers.commands import CommandParser
@@ -28,35 +27,28 @@ class Parser(ContextBaseParser):
 
     def __init__(self, tokens: List[Token],
                  source_text: Optional[str] = None,
-                 config: Optional[ParserConfig] = None, ctx: Optional[ParserContext] = None,
+                 config: Optional[ParserConfig] = None,
                  line_offset: int = 0,
                  heredoc_map: Optional[Mapping[str, object]] = None,
                  lexer_options: Optional[Mapping[str, object]] = None):
-        # Create or use provided context
-        if ctx is not None:
-            # Use provided context directly
-            super().__init__(ctx)
-        else:
-            # Configuration (create default if not provided)
-            config = config or ParserConfig()
+        # Configuration (create default if not provided)
+        config = config or ParserConfig()
 
-            # Create context. line_offset carries the number of source lines
-            # before this fragment, so error messages report absolute lines.
-            # heredoc_map (when given) lets RedirectionParser attach here-doc
-            # bodies as each Redirect is constructed. lexer_options carries the
-            # shell option dict so a nested substitution body is re-lexed with
-            # the same option-sensitive lexing (extglob) as the outer command.
-            ctx = create_context(
-                tokens=tokens,
-                config=config,
-                source_text=source_text,
-                line_offset=line_offset,
-                heredoc_map=heredoc_map,
-                lexer_options=lexer_options,
-            )
-            super().__init__(ctx)
-
-        self.config = self.ctx.config
+        # Create context. line_offset carries the number of source lines
+        # before this fragment, so error messages report absolute lines.
+        # heredoc_map (when given) lets RedirectionParser attach here-doc
+        # bodies as each Redirect is constructed. lexer_options carries the
+        # shell option dict so a nested substitution body is re-lexed with
+        # the same option-sensitive lexing (extglob) as the outer command.
+        ctx = create_context(
+            tokens=tokens,
+            config=config,
+            source_text=source_text,
+            line_offset=line_offset,
+            heredoc_map=heredoc_map,
+            lexer_options=lexer_options,
+        )
+        super().__init__(ctx)
 
         # Initialize specialized parsers
         self.statements = StatementParser(self)

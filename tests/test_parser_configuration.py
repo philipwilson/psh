@@ -45,8 +45,9 @@ class TestConfigurationIntegration:
         config = ParserConfig()
         parser = Parser(tokens, config=config)
 
-        # Main parser should hold the config
-        assert parser.config is config
+        # The config lives on the one shared context (parser.ctx.config); the
+        # sub-parsers all reach it through the main parser.
+        assert parser.ctx.config is config
 
         # Sub-parsers should reference the main parser (and thus its config)
         assert parser.control_structures.parser is parser
