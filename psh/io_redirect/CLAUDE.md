@@ -282,7 +282,7 @@ Helpers used only within `file_redirect.py` stay private.
 
 | Helper | Used For |
 |--------|----------|
-| `redirect_input_from_file(target, redirect=None)` | `<` — open + dup2 to the redirect's fd (default 0). Pass `redirect` so explicit fds like `5<file` reach the named fd, not stdin |
+| `redirect_input_from_file(target, redirect)` | `<` — open + dup2 to the redirect's fd (`redirect.fd`, default 0) so explicit fds like `5<file` reach the named fd, not stdin |
 | `redirect_readwrite(target, redirect)` | `<>` — open O_RDWR + dup2; returns target_fd |
 | `redirect_heredoc(redirect)` | `<<`/`<<-` — expand + unlinked temp file + dup2; returns content |
 | `redirect_herestring(redirect)` | `<<<` — expand + unlinked temp file + dup2; returns content |

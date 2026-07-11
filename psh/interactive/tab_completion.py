@@ -69,9 +69,6 @@ class CompletionEngine:
 
         return 0
 
-    # Backwards-compatible alias for the pre-v0.283.0 private name.
-    _find_word_start = find_word_start
-
     def _get_path_completions(self, partial_path: str) -> List[str]:
         """Get file/directory completions for a partial path."""
         # Remember if we started with ~

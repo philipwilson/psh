@@ -2,7 +2,7 @@
 
 Pins the registry against the values that were previously scattered across
 state.py (defaults + $- letters), SetBuiltin.short_to_long, and
-ShoptBuiltin.SHOPT_OPTIONS, plus the new ShellOptions container behavior
+the former ShoptBuiltin.SHOPT_OPTIONS (deleted; shopt uses SHOPT_OPTION_NAMES), plus the new ShellOptions container behavior
 (dict-compatible, rejects unknown names). A drift-lock test enumerates the
 known option set so adding/removing an option is a deliberate registry edit.
 """

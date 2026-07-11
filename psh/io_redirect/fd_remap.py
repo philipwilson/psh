@@ -37,7 +37,7 @@ remap in a doomed child leaks nothing.
 
 import fcntl
 import os
-from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, List, Mapping, Set, Tuple, Union
 
 # F_DUPFD_CLOEXEC is present on Linux and macOS; fall back defensively.
 _F_DUPFD_CLOEXEC = getattr(fcntl, 'F_DUPFD_CLOEXEC', None)
@@ -77,8 +77,7 @@ def _dup_high(fd: int, base: int) -> int:
 
 
 def remap_fds(mappings: FdPairs, *,
-              owned: Iterable[int] = (),
-              protected: Optional[Iterable[int]] = None) -> None:
+              owned: Iterable[int] = ()) -> None:
     """Install ``mappings`` onto their destinations collision-safely.
 
     Args:
@@ -89,9 +88,6 @@ def remap_fds(mappings: FdPairs, *,
         owned: internal descriptors the caller owns (pipe endpoints). Each is
             closed exactly once after the remap, EXCEPT any that is a
             destination (a live endpoint now serving one of the mappings).
-        protected: descriptors that must never be closed, in addition to the
-            destinations (which are always protected). Defaults to just the
-            destinations.
 
     The destinations are left inheritable (``dup2`` clears close-on-exec) so
     an exec'd program receives them. On failure, all temporaries and owned
@@ -104,9 +100,6 @@ def remap_fds(mappings: FdPairs, *,
         pairs = list(mappings)
 
     dests: Set[int] = {dst for _src, dst in pairs}
-    protected_set: Set[int] = set(dests)
-    if protected is not None:
-        protected_set |= set(protected)
 
     # Relocate every distinct source above all destinations (and above fd 2)
     # so no dup2 onto a destination can clobber a source still to be placed.
@@ -139,6 +132,6 @@ def remap_fds(mappings: FdPairs, *,
     for temp in created:
         _close_quiet(temp)
     for fd in _dedupe(owned):
-        if fd in protected_set:
+        if fd in dests:
             continue
         _close_quiet(fd)

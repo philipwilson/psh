@@ -312,11 +312,8 @@ class PushdBuiltin(Builtin):
         # Update the exported PWD/OLDPWD shell variables (bash's declare -x
         # PWD/OLDPWD); export_variable's observer keeps shell.env in sync — the
         # single env interface, no direct poke (appraisal H3).
-        try:
-            shell.state.export_variable('OLDPWD', old_pwd)
-            shell.state.export_variable('PWD', directory)
-        except (AttributeError, TypeError):
-            pass
+        shell.state.export_variable('OLDPWD', old_pwd)
+        shell.state.export_variable('PWD', directory)
 
     def _print_stack(self, stack: DirectoryStack, shell: 'Shell'):
         """Print current directory stack."""
@@ -470,11 +467,8 @@ class PopdBuiltin(Builtin):
         # Update the exported PWD/OLDPWD shell variables (bash's declare -x
         # PWD/OLDPWD); export_variable's observer keeps shell.env in sync — the
         # single env interface, no direct poke (appraisal H3).
-        try:
-            shell.state.export_variable('OLDPWD', old_pwd)
-            shell.state.export_variable('PWD', directory)
-        except (AttributeError, TypeError):
-            pass
+        shell.state.export_variable('OLDPWD', old_pwd)
+        shell.state.export_variable('PWD', directory)
 
     def _print_stack(self, stack: DirectoryStack, shell: 'Shell'):
         """Print current directory stack."""

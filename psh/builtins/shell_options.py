@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 _SET_O_NAMES = frozenset(SET_O_OPTION_NAMES)
+_SHOPT_NAMES = frozenset(SHOPT_OPTION_NAMES)
 
 _USAGE = "shopt: usage: shopt [-pqsu] [-o] [optname ...]"
 
@@ -22,11 +23,6 @@ class ShoptBuiltin(Builtin):
     @property
     def name(self) -> str:
         return "shopt"
-
-    # shopt option name -> state.options key (identity), derived from the
-    # option registry (the single source of truth; see
-    # psh/core/option_registry.py — including the `expand_aliases` no-op note).
-    SHOPT_OPTIONS = {name: name for name in SHOPT_OPTION_NAMES}
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         # Flag grammar, probe-pinned against bash 5.2 (internal_getopt over
@@ -110,8 +106,8 @@ class ShoptBuiltin(Builtin):
                     apply_set_o_option(shell, name, enable)
                 else:
                     self.error(f"{name}: invalid option name", shell)
-            elif name in self.SHOPT_OPTIONS:
-                shell.state.options[self.SHOPT_OPTIONS[name]] = enable
+            elif name in _SHOPT_NAMES:
+                shell.state.options[name] = enable
             else:
                 self.error(f"{name}: invalid shell option name", shell)
                 status = 1
@@ -132,8 +128,8 @@ class ShoptBuiltin(Builtin):
                 known = name in _SET_O_NAMES
                 key = name
             else:
-                known = name in self.SHOPT_OPTIONS
-                key = self.SHOPT_OPTIONS.get(name, name)
+                known = name in _SHOPT_NAMES
+                key = name
             if not known:
                 kind = ("invalid option name" if o_mode
                         else "invalid shell option name")
@@ -150,9 +146,9 @@ class ShoptBuiltin(Builtin):
     def _list(self, shell: 'Shell', o_mode: bool, reusable: bool,
               state_filter: Optional[bool]) -> None:
         """List options (all, or only the enabled/disabled subset)."""
-        names = SET_O_OPTION_NAMES if o_mode else tuple(sorted(self.SHOPT_OPTIONS))
+        names = SET_O_OPTION_NAMES if o_mode else tuple(sorted(SHOPT_OPTION_NAMES))
         for name in names:
-            key = name if o_mode else self.SHOPT_OPTIONS[name]
+            key = name
             enabled = bool(shell.state.options.get(key, False))
             if state_filter is not None and enabled is not state_filter:
                 continue

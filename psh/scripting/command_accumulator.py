@@ -180,7 +180,7 @@ class CommandAccumulator:
         if self._open_heredocs:
             self._close_heredocs_matching(line)
             if self._open_heredocs:
-                return self._need_more(
+                return NeedMore(
                     Hint(HintKind.HEREDOC, detail=self._open_heredocs[0][0]))
             # Every body delimited — fall through to the full trial.
 
@@ -199,14 +199,14 @@ class CommandAccumulator:
 
         # 1. Trailing backslash: the next physical line continues this one.
         if _ends_with_line_continuation(preview):
-            return self._need_more(Hint(HintKind.LINE_CONTINUATION))
+            return NeedMore(Hint(HintKind.LINE_CONTINUATION))
 
         # 2. Open heredoc: following lines are body text for the pending
         #    delimiters, NOT command text — don't show them to the parser.
         if contains_heredoc(preview):
             self._open_heredocs = open_heredoc_delimiters(preview)
             if self._open_heredocs:
-                return self._need_more(
+                return NeedMore(
                     Hint(HintKind.HEREDOC, detail=self._open_heredocs[0][0]))
 
         # 3. A failed/unexpanded history reference: complete, unparsed.
@@ -220,7 +220,7 @@ class CommandAccumulator:
         try:
             ast, tokens = self._trial_parse(preview)
         except UnclosedQuoteError as e:
-            return self._need_more(
+            return NeedMore(
                 Hint(HintKind.UNCLOSED_QUOTE, detail=e.quote_char))
         except ParseError as e:
             if e.at_eof:
@@ -232,7 +232,7 @@ class CommandAccumulator:
                     kind, detail = HintKind.UNCLOSED_EXPANSION, e.unclosed_expansion
                 else:
                     kind, detail = HintKind.INCOMPLETE_STRUCTURE, None
-                return self._need_more(
+                return NeedMore(
                     Hint(kind, detail=detail,
                          constructs=tuple(self._open_constructs)))
             # A real syntax error: the command is complete but invalid.
@@ -294,9 +294,6 @@ class CommandAccumulator:
             self._open_constructs = parser.ctx.open_constructs
             ast = parser.parse()
         return ast, tokens
-
-    def _need_more(self, hint: Hint) -> NeedMore:
-        return NeedMore(hint)
 
     def _complete(self, raw: str, preview: str, ast=None, tokens=None,
                   error=None) -> Complete:

@@ -434,8 +434,8 @@ def main():
 
         # Use StringInput with script mode to process line-by-line like bash -c
         from .scripting.input_sources import StringInput
-        input_source = StringInput(command, "-c")
-        exit_code = shell.script_manager.source_processor.execute_as_main(
+        input_source = StringInput(command, "-c", split_lines=True)
+        exit_code = shell.script_manager.execute_as_main(
             input_source, add_to_history=False)
         sys.exit(exit_code)
     elif operands and not stdin_mode:
@@ -502,7 +502,7 @@ def main():
             # so a no-op there).
             from .scripting.input_sources import StdinInput
             stdin_source = StdinInput(fd=0, name="<stdin>")
-            exit_code = shell.script_manager.source_processor.execute_as_main(
+            exit_code = shell.script_manager.execute_as_main(
                 stdin_source, add_to_history=False)
             sys.exit(exit_code)
 

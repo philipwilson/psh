@@ -10,7 +10,6 @@ from .title import idle_title, set_terminal_title
 
 if TYPE_CHECKING:
     from .history_manager import HistoryManager
-    from .prompt_manager import PromptManager
 
 
 class REPLLoop(InteractiveComponent):
@@ -18,10 +17,9 @@ class REPLLoop(InteractiveComponent):
 
     def __init__(self, shell):
         super().__init__(shell)
-        # history_manager/prompt_manager are wired by InteractiveManager;
+        # history_manager is wired by InteractiveManager;
         # line_editor/multi_line_handler are built by setup() before run().
         self.history_manager: Optional["HistoryManager"] = None
-        self.prompt_manager: Optional["PromptManager"] = None
         self.line_editor: Optional[LineEditor] = None
         self.multi_line_handler: Optional[MultiLineInputHandler] = None
         # Consecutive Ctrl-D presses at the prompt, for ignoreeof/

@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 def create_process_substitution(
         cmd_str: str, direction: str,
         shell: 'Shell') -> Tuple[Optional[int], str, int, Optional[str]]:
-    """Create a process substitution, returning (parent_fd, fd_path, child_pid).
+    """Create a process substitution, returning
+    ``(parent_fd, path, child_pid, cleanup_path)``.
 
     Args:
         cmd_str: The command string to execute (without the <()/>()} wrapper).
