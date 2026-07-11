@@ -4000,6 +4000,38 @@
   stderr: "not a valid identifier"
   exit_code: 0
 
+# The ONE inherited-traps rule (appraisal H9): a DEBUG trap under `set -T`
+# (functrace) stays live in a BACKGROUNDED COMPOUND that reuses the parent Shell
+# ({ ...; } &) — the enter_subshell_trap_environment path used to drop DEBUG,
+# disagreeing with the ( ) subshell (clone_for_child) path. Both branches of the
+# symmetric fix are pinned: with -T the trap fires in the child (3 DBG),
+# without -T it does not (2 DBG, both from the parent).
+- name: h9_debug_functrace_inherited_into_bg_brace
+  command: 'set -T; trap "echo DBG" DEBUG; { true; } & wait; echo done'
+  stdout: "DBG\nDBG\nDBG\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h9_debug_no_functrace_not_inherited_into_bg_brace
+  command: 'trap "echo DBG" DEBUG; { true; } & wait; echo done'
+  stdout: "DBG\nDBG\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+# ERR under `set -E` (errtrace) is likewise inherited into the bg compound; it is
+# NOT inherited without errtrace (the already-agreeing branch, pinned for symmetry).
+- name: h9_err_errtrace_inherited_into_bg_brace
+  command: 'set -E; trap "echo ET" ERR; { false; } & wait; echo done'
+  stdout: "ET\ndone\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h9_err_no_errtrace_not_inherited_into_bg_brace
+  command: 'trap "echo ET" ERR; { false; } & wait; echo done'
+  stdout: "done\n"
+  stderr: ""
+  exit_code: 0
+
 # trap '' (ignore) is inherited across exec by external children (POSIX).
 - name: trap_ignore_inherited_across_exec
   command: 'trap "" INT; bash -c "trap -p INT"'

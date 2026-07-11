@@ -1,7 +1,7 @@
 """Trap management for PSH shell."""
 import signal
 from collections import deque
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple
 
 from ..utils.escapes import single_quote
 from ..utils.signal_utils import (
@@ -275,6 +275,34 @@ class TrapManager:
             except (OSError, ValueError):
                 pass  # uncatchable (KILL/STOP) or not in main thread
 
+    @staticmethod
+    def compute_inherited_traps(options: Mapping[str, Any],
+                               trap_handlers: Mapping[str, str]) -> Set[str]:
+        """The ONE rule for which parent traps a subshell-style child keeps for
+        LISTING ONLY (they never fire there; the POSIX ``saved=$(trap)`` idiom).
+
+        bash RESETS every non-ignored inherited trap on entry to a subshell
+        environment, with two exemptions that keep the trap LIVE:
+
+        - ``ERR`` stays live under ``set -E`` (``errtrace``),
+        - ``DEBUG`` (and ``RETURN`` when psh supports it) stays live under
+          ``set -T`` (``functrace``).
+
+        Ignored (``''``) traps stay in effect (not listed-only). This is the
+        single home for the exemption set, called by BOTH
+        :meth:`ShellState.clone_for_child` (fresh child shells) and
+        :meth:`enter_subshell_trap_environment` (backgrounded compounds that
+        reuse the parent Shell) — they used to compute it twice and DISAGREED on
+        the DEBUG-under-functrace exemption (appraisal H9).
+        """
+        live: Set[str] = set()
+        if options.get('errtrace'):
+            live.add('ERR')
+        if options.get('functrace'):
+            live.add('DEBUG')
+        return {name for name, action in trap_handlers.items()
+                if action != '' and name not in live}
+
     def enter_subshell_trap_environment(self) -> None:
         """Establish subshell-environment trap semantics after a fork.
 
@@ -287,16 +315,12 @@ class TrapManager:
         already computed (idempotent). For a backgrounded compound that
         REUSES the parent Shell object in the fork (bg brace group /
         function), ``clone_for_child`` never ran, so this is what stops a PARENT trap
-        from firing in the child. Uses the same errtrace/ERR exemption
-        clone_for_child does, then re-aligns the OS dispositions.
+        from firing in the child. Uses the ONE exemption rule
+        (:meth:`compute_inherited_traps`, shared with ``clone_for_child``), then
+        re-aligns the OS dispositions.
         """
-        live = set()
-        if self.state.options.get('errtrace'):
-            live.add('ERR')
-        self.state.inherited_traps = {
-            name for name, action in self.state.trap_handlers.items()
-            if action != '' and name not in live
-        }
+        self.state.inherited_traps = self.compute_inherited_traps(
+            self.state.options, self.state.trap_handlers)
         self.sync_forked_child_dispositions()
 
     def get_handler(self, signal_spec: str) -> Optional[str]:
