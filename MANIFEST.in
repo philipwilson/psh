@@ -1,7 +1,5 @@
 include README.md
 include LICENSE
-include requirements-dev.txt
 include pytest.ini
 recursive-include tests *.py
 recursive-include docs *.md
-include demo.py
