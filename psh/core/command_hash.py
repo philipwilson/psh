@@ -10,7 +10,7 @@ mirroring bash 5.2's table (probe-verified 2026-06-13):
 - Any assignment to (or unset of) PATH empties the whole table — wired
   via :attr:`ScopeManager.path_changed` (see ``ShellState.__init__``).
 - ``cd`` does NOT clear the table (bash keeps absolute paths).
-- Subshell-style children inherit a copy (``ShellState.adopt``).
+- Subshell-style children inherit a copy (``ShellState.clone_for_child``).
 
 The table lives on ``shell.state`` (``state.command_hash``), never on a
 builtin instance — builtins are process-wide singletons (the

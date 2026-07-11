@@ -55,7 +55,7 @@ class FieldExpansionMixin(_Base):
         if operator == '!':
             if param.isidentifier():
                 target = self.state.get_variable(param)
-                if (target is not None and target.endswith('[@]')
+                if (target.endswith('[@]')
                         and not target.startswith(('!', '#'))):
                     return self.expand_array_to_list('${' + target + '}')
             return None

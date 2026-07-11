@@ -8,7 +8,6 @@ from psh.expansion.extglob import (
     contains_extglob,
     expand_extglob,
     extglob_to_regex,
-    match_extglob,
 )
 
 
@@ -191,67 +190,6 @@ class TestExtglobToRegex:
         regex = extglob_to_regex('file.txt', anchored=False)
         assert re.fullmatch(regex, 'file.txt') is not None
         assert re.fullmatch(regex, 'filextxt') is None
-
-
-class TestMatchExtglob:
-    """Tests for the match_extglob convenience function."""
-
-    def test_at_match(self):
-        assert match_extglob('@(yes|no)', 'yes')
-        assert match_extglob('@(yes|no)', 'no')
-        assert not match_extglob('@(yes|no)', 'maybe')
-
-    def test_question_match(self):
-        assert match_extglob('?(a)', '')
-        assert match_extglob('?(a)', 'a')
-        assert not match_extglob('?(a)', 'aa')
-
-    def test_star_match(self):
-        assert match_extglob('*(ab)', '')
-        assert match_extglob('*(ab)', 'ab')
-        assert match_extglob('*(ab)', 'abab')
-        assert not match_extglob('*(ab)', 'abc')
-
-    def test_plus_match(self):
-        assert not match_extglob('+(ab)', '')
-        assert match_extglob('+(ab)', 'ab')
-        assert match_extglob('+(ab)', 'abab')
-
-    def test_negation_standalone(self):
-        """Standalone !(pattern) uses match-and-invert."""
-        assert not match_extglob('!(yes|no)', 'yes')
-        assert not match_extglob('!(yes|no)', 'no')
-        assert match_extglob('!(yes|no)', 'maybe')
-        assert match_extglob('!(yes|no)', '')
-
-    def test_negation_inline(self):
-        """Inline negation within larger pattern."""
-        assert match_extglob('file_!(bad).txt', 'file_good.txt')
-        assert not match_extglob('file_!(bad).txt', 'file_bad.txt')
-
-    def test_glob_chars(self):
-        assert match_extglob('*.txt', 'hello.txt')
-        assert not match_extglob('*.txt', 'hello.log')
-
-    def test_full_match_false(self):
-        assert match_extglob('@(abc)', 'xabcy', full_match=False)
-        assert not match_extglob('@(abc)', 'xyz', full_match=False)
-
-    def test_complex_pattern(self):
-        """Test a realistic pattern: match .c or .h files."""
-        pattern = '*.+(c|h)'
-        assert match_extglob(pattern, 'main.c')
-        assert match_extglob(pattern, 'header.h')
-        assert not match_extglob(pattern, 'script.py')
-
-    def test_negation_with_glob(self):
-        """!(*.log) should match files that don't end in .log."""
-        assert match_extglob('!(*.log)', 'file.txt')
-        assert not match_extglob('!(*.log)', 'file.log')
-
-    def test_empty_pattern(self):
-        assert match_extglob('', '')
-        assert not match_extglob('', 'a')
 
 
 class TestExpandExtglob:

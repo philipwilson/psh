@@ -81,12 +81,12 @@ class TildeExpander:
         ``cd``; psh's stack does not, so we force index 0 to the current
         ``$PWD`` to match bash for the dir-stack tilde forms.
         """
-        pwd = self.state.get_variable('PWD') or os.getcwd()
+        pwd_dir = self.state.get_variable('PWD') or os.getcwd()
         stack_obj = getattr(self.state, 'directory_stack', None)
         if stack_obj is None or stack_obj.size() == 0:
-            return [pwd]
+            return [pwd_dir]
         stack = list(stack_obj.stack)
-        stack[0] = pwd
+        stack[0] = pwd_dir
         return stack
 
     def _expand_dirstack_prefix(self, prefix: str):
