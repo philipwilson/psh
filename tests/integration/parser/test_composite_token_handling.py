@@ -12,7 +12,7 @@ from pathlib import Path
 PSH_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PSH_ROOT))
 
-from psh.ast_nodes import SimpleCommand
+from psh.ast_nodes import AndOrList, SimpleCommand
 from psh.lexer import tokenize
 from psh.parser import Parser
 
@@ -155,8 +155,12 @@ class TestCompositeTokensInComplexStructures:
 
         # Navigate to the subshell command
         subshell = ast.statements[0].pipelines[0].commands[0]
-        # The subshell contains statements
-        inner_cmd = subshell.statements.and_or_lists[0].pipelines[0].commands[0]
+        # The subshell contains statements; pick out the AndOrList statements
+        and_or_lists = [
+            s for s in subshell.statements.statements
+            if isinstance(s, AndOrList)
+        ]
+        inner_cmd = and_or_lists[0].pipelines[0].commands[0]
 
         assert inner_cmd.args[0] == 'echo'
         assert inner_cmd.args[1] == 'subshell'

@@ -6,7 +6,7 @@ These appear as the ``array_assignments`` prefix of a SimpleCommand (and
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Union
 
 from .base import ASTNode
 from .words import Word
@@ -54,18 +54,13 @@ class ArrayInitialization(ArrayAssignment):
     words: List[Word] = field(default_factory=list)
 
     # Legacy string-list metadata, now DERIVED from `words` rather than
-    # stored. Sole consumers: formatter_visitor / validator_visitor
+    # stored. Sole consumer: validator_visitor's mixed-element-type advisory
     # (the executor uses `words` exclusively). A2 dropped the parallel
     # stored fields so a node can no longer "claim two truths at once".
     @property
     def element_types(self) -> List[str]:
         """Per-element legacy type string (WORD/STRING/COMPOSITE/…)."""
         return [_word_element_type(w) for w in self.words]
-
-    @property
-    def element_quote_types(self) -> List[Optional[str]]:
-        """Per-element dominant quote char, derived from each Word."""
-        return [w.effective_quote_char for w in self.words]
 
 
 @dataclass
@@ -80,15 +75,3 @@ class ArrayElementAssignment(ArrayAssignment):
     # tilde after '='/':'). The A1 invariant tests enforce population.
     value_word: Word
     is_append: bool = False  # True for += assignment
-
-    # Legacy string metadata, now DERIVED from `value_word` rather than
-    # stored. Sole consumer: formatter_visitor (re-quotes the value).
-    @property
-    def value_type(self) -> str:
-        """'STRING' if the value Word is quoted, else 'WORD' (derived)."""
-        return 'STRING' if self.value_word.is_quoted else 'WORD'
-
-    @property
-    def value_quote_type(self) -> Optional[str]:
-        """The value Word's dominant quote char (derived)."""
-        return self.value_word.effective_quote_char

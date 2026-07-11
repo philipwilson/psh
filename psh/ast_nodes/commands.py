@@ -95,11 +95,6 @@ class StatementList(ASTNode):
     """Container for statements (control structures, AndOrLists, etc)."""
     statements: List[Statement] = field(default_factory=list)
 
-    @property
-    def and_or_lists(self):
-        """Extract AndOrList nodes from statements."""
-        return [s for s in self.statements if isinstance(s, AndOrList)]
-
 
 @dataclass
 class Program(ASTNode):

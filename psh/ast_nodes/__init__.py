@@ -22,18 +22,10 @@ introspection that filters on the module name (e.g. the AST coverage-matrix
 meta-test) sees the package as a single module, exactly as before the split.
 """
 
-# Re-export the typing/stdlib names that were importable from the original
-# flat module (it did ``from typing import ...`` at top level). No code
-# relies on them today, but keeping them preserves drop-in parity.
-from abc import ABC
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
-
 from .arrays import (
     ArrayAssignment,
     ArrayElementAssignment,
     ArrayInitialization,
-    _word_element_type,
 )
 from .base import (
     ASTNode,
@@ -84,7 +76,6 @@ from .words import (
     VariableExpansion,
     Word,
     WordPart,
-    _expansion_literal_text,
 )
 
 
@@ -162,7 +153,4 @@ __all__ = [
     'CaseConditional',
     'SelectLoop',
     'ArithmeticEvaluation',
-    # module-level helpers (were public in the flat module)
-    '_expansion_literal_text',
-    '_word_element_type',
 ]

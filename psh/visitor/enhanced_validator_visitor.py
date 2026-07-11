@@ -17,7 +17,6 @@ from ..ast_nodes import (
     ExpansionPart,
     ForLoop,
     FunctionDef,
-    Program,
     SimpleCommand,
     VariableExpansion,
 )
@@ -73,7 +72,7 @@ class VariableTracker:
             'TERM', 'COLUMNS', 'LINES'
         }
 
-    def enter_scope(self, context: str = "function"):
+    def enter_scope(self):
         """Enter a new variable scope (e.g., function)."""
         self.scopes.append({})
 
@@ -188,12 +187,6 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
 
     # Override parent visit methods to add enhanced checks
 
-    def visit_Program(self, node: Program) -> None:
-        """Visit a program with enhanced validation."""
-        # Initialize any global variables from environment
-        # In a real implementation, we might parse .bashrc or similar
-        super().visit_Program(node)
-
     def visit_SimpleCommand(self, node: SimpleCommand) -> None:
         """Enhanced simple command validation."""
         # Call parent validation first
@@ -238,7 +231,7 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
     def visit_FunctionDef(self, node: FunctionDef) -> None:
         """Enhanced function definition handling."""
         # Enter new scope for local variables
-        self.var_tracker.enter_scope(f"function {node.name}")
+        self.var_tracker.enter_scope()
         self._current_function = node.name
 
         # Define positional parameters in function scope
@@ -764,11 +757,3 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                             node
                         )
 
-    def get_detailed_summary(self) -> str:
-        """Get a detailed summary including variable usage information."""
-        lines = [super().get_summary()]
-
-        # Add information about defined but unused variables
-        # (This would require tracking variable usage, not just definition)
-
-        return '\n'.join(lines)

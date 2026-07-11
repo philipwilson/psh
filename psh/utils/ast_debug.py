@@ -66,10 +66,13 @@ def print_ast_debug(ast, ast_format, shell) -> None:
             )
             print(output, file=sys.stderr)
 
-        else:  # default - use tree format as the new default
-            from ..parser.visualization import AsciiTreeRenderer
-            output = AsciiTreeRenderer.render(ast, show_positions=False, compact_mode=False)
-            print(output, file=sys.stderr)
+        else:
+            # An unknown format is explicit, not silently rendered as tree.
+            # 'tree' is already the default when no format is requested
+            # (see the PSH_AST_FORMAT fallback above); the only way to reach
+            # here is an out-of-vocabulary value, which the except below turns
+            # into a warning + the DebugASTVisitor fallback.
+            raise ValueError(f"unknown AST format {format_type!r}")
 
     except (ValueError, TypeError, AttributeError) as e:
         # Fallback to default format if new formatters fail
