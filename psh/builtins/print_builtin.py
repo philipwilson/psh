@@ -32,9 +32,9 @@ import sys
 from typing import TYPE_CHECKING, List, Tuple
 
 from ..core.exceptions import PshError
+from ..utils.escapes import process_echo_escapes
 from ..utils.printf_formatter import format_printf
 from .base import Builtin
-from .io import process_escapes
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -100,10 +100,7 @@ class PrintBuiltin(Builtin):
         # -s: append to history instead of printing.
         if opts['history']:
             command = ' '.join(rest)
-            try:
-                shell.add_history(command)
-            except AttributeError:
-                shell.state.history.append(command)
+            shell.add_history(command)
             return 0
 
         # Escape processing (default on, unless raw).
@@ -111,7 +108,7 @@ class PrintBuiltin(Builtin):
         if opts['escapes']:
             processed = []
             for a in rest:
-                text, term = process_escapes(a)
+                text, term = process_echo_escapes(a)
                 processed.append(text)
                 if term:
                     terminate = True
@@ -163,7 +160,6 @@ class PrintBuiltin(Builtin):
                     break
 
             j = 0
-            consumed_whole = True
             while j < len(flags):
                 c = flags[j]
                 if c == 'n':
@@ -206,7 +202,6 @@ class PrintBuiltin(Builtin):
                         opts['fd'] = int(fd_str)
                     except ValueError:
                         raise PrintOptionError(f"-u: {fd_str}: invalid file descriptor") from None
-                    consumed_whole = False
                     break
                 elif c == 'f':
                     # -f takes a format string: attached (-f'%s') or separate.
@@ -218,7 +213,6 @@ class PrintBuiltin(Builtin):
                             raise PrintOptionError("-f: option requires an argument")
                         i += 1
                         opts['format'] = args[i]
-                    consumed_whole = False
                     break
                 elif c in 'zcCDxXap':
                     raise PrintOptionError(f"-{c}: unsupported option")
@@ -227,8 +221,6 @@ class PrintBuiltin(Builtin):
                 j += 1
 
             i += 1
-            if not consumed_whole:
-                continue
 
         return opts, args[i:]
 

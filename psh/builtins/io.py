@@ -12,15 +12,6 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
-def process_escapes(text: str) -> Tuple[str, bool]:
-    """Process echo-dialect backslash escapes; see psh/utils/escapes.py.
-
-    Kept as a thin alias because the print builtin and echo both import
-    it from here.
-    """
-    return process_echo_escapes(text)
-
-
 @builtin
 class EchoBuiltin(Builtin):
     """Echo arguments to stdout."""
@@ -48,7 +39,7 @@ class EchoBuiltin(Builtin):
 
         # Process escape sequences if needed
         if interpret_escapes:
-            output, terminate = self._process_escapes(output)
+            output, terminate = process_echo_escapes(output)
             if terminate:
                 suppress_newline = True
 
@@ -90,21 +81,11 @@ class EchoBuiltin(Builtin):
 
         return suppress_newline, interpret_escapes, arg_index
 
-    def _process_escapes(self, text: str) -> Tuple[str, bool]:
-        """Process escape sequences. Returns (processed_text, terminate_output)."""
-        return process_escapes(text)
-
     def _write_output(self, text: str, suppress_newline: bool, shell: 'Shell'):
         """Write output to appropriate file descriptor."""
         # Add newline if not suppressed
         if not suppress_newline:
             text += '\n'
-
-        if shell.state.options.get('debug-exec'):
-            self.write_error_line(
-                f"DEBUG EchoBuiltin: in_forked_child={shell.state.in_forked_child}", shell)
-            self.write_error_line(
-                f"DEBUG EchoBuiltin: Writing text: {repr(text[:50])}", shell)
 
         self.write(text, shell)
 

@@ -13,8 +13,8 @@ Canonical (Word-based) vs legacy fields covered:
 | Node                    | Canonical          | Legacy                                          |
 |-------------------------|--------------------|-------------------------------------------------|
 | SimpleCommand           | words              | args (now a derived property)                   |
-| ArrayInitialization     | words              | elements (element_types/element_quote_types now derived props) |
-| ArrayElementAssignment  | value_word         | value (value_type/value_quote_type now derived props)         |
+| ArrayInitialization     | words              | elements (element_types derived; element_quote_types removed r19) |
+| ArrayElementAssignment  | value_word         | value (value_type/value_quote_type removed in reappraisal #19)   |
 | ForLoop                 | item_words         | items (item_quote_types removed in A2)          |
 | SelectLoop              | item_words         | items (item_quote_types removed in A2)          |
 | CasePattern             | word               | pattern                                         |

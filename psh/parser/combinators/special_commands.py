@@ -28,6 +28,7 @@ from ..recursive_descent.support.word_builder import WordBuilder
 from .commands import CommandParsers
 from .core import Parser, ParseResult
 from .diagnostics import raise_committed_error
+from .expansions import ExpansionParsers
 from .tokens import TokenParsers
 
 
@@ -68,10 +69,15 @@ class SpecialCommandParsers:
         self.tokens = token_parsers or TokenParsers()
         self.commands = command_parsers  # May be None initially
 
-        # Word AST builder for array initializer elements (shares the same
-        # token→Word logic command arguments use).
-        from .expansions import create_expansion_parsers
-        self.expansions = create_expansion_parsers(self.config)
+        # Word AST builder for test operands / array-initializer elements. Reuse
+        # the command parser's shared ExpansionParsers when wired (the
+        # production path always constructs this module WITH command_parsers, so
+        # no second instance is created); fall back to a private builder only
+        # for standalone/unit construction. build_word_from_token is stateless,
+        # so the two are observationally identical.
+        self.expansions = (command_parsers.expansions
+                           if command_parsers is not None
+                           else ExpansionParsers(self.config))
 
         self._initialize_parsers()
 
@@ -84,6 +90,8 @@ class SpecialCommandParsers:
             command_parsers: Command parsers to use
         """
         self.commands = command_parsers
+        # Adopt the shared word builder now that the command parser exists.
+        self.expansions = command_parsers.expansions
 
     def _initialize_parsers(self):
         """Initialize all special command parsers."""
@@ -299,7 +307,12 @@ class SpecialCommandParsers:
         return None
 
     def _operand_word_from_token(self, token: Token) -> Word:
-        """Build a test operand Word from its source token."""
+        """Build a test operand Word from its source token.
+
+        ``self.expansions`` is the command parser's shared ExpansionParsers on
+        the wired (production) path, so this module and the command path build
+        words through the SAME builder.
+        """
         return self.expansions.build_word_from_token(token)
 
     def _build_process_substitution(self) -> Parser[ProcessSubstitution]:

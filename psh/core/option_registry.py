@@ -3,8 +3,9 @@
 Before this module, "what options exist and how each behaves" was duplicated
 across four places: the defaults dict in ``state.py``, the ``$-`` letter map in
 ``ShellState.get_option_string()``, ``SetBuiltin.short_to_long``, and
-``ShoptBuiltin.SHOPT_OPTIONS``. ``OPTION_REGISTRY`` here is now the one
-declaration; those maps are derived from it.
+``ShoptBuiltin.SHOPT_OPTIONS`` (since deleted outright — shopt derives its
+name set from ``SHOPT_OPTION_NAMES``). ``OPTION_REGISTRY`` here is now the one
+declaration; the surviving maps are derived from it.
 
 Shell options are a *dynamic, string-keyed* surface — ``set -o $name``,
 ``shopt $name`` and ``$-`` index options by a runtime name, and several names
@@ -217,28 +218,6 @@ class ShellOptions(MutableMapping):
 
     def __repr__(self) -> str:
         return f"ShellOptions({self._values!r})"
-
-    # Typed convenience accessors for the hottest internal reads. Additive —
-    # the dict-style API above remains the general interface.
-    @property
-    def errexit(self) -> bool:
-        return bool(self._values["errexit"])
-
-    @property
-    def nounset(self) -> bool:
-        return bool(self._values["nounset"])
-
-    @property
-    def xtrace(self) -> bool:
-        return bool(self._values["xtrace"])
-
-    @property
-    def pipefail(self) -> bool:
-        return bool(self._values["pipefail"])
-
-    @property
-    def interactive(self) -> bool:
-        return bool(self._values["interactive"])
 
     def option_string(self) -> str:
         """The ``$-`` flag string: set single-letter options in bash's order.

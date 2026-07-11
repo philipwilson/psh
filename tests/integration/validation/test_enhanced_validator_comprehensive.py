@@ -89,7 +89,7 @@ class TestVariableTracker:
         tracker.define_variable('GLOBAL', VariableInfo(name='GLOBAL', defined_at='global'))
 
         # Enter new scope
-        tracker.enter_scope('function')
+        tracker.enter_scope()
 
         # Define local variable
         tracker.define_variable('LOCAL', VariableInfo(

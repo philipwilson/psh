@@ -15,7 +15,7 @@ class ScriptExecutor(ScriptComponent):
             script_args = []
 
         # Validate the script file first
-        validation_result = self.shell.script_manager.script_validator.validate_script_file(script_path)
+        validation_result = self.shell.script_manager.validate_script_file(script_path)
         if validation_result != 0:
             return validation_result
 
@@ -49,7 +49,7 @@ class ScriptExecutor(ScriptComponent):
                 # an explicit `exit`. (A sourced file does NOT run this path;
                 # `source` goes straight through execute_from_source, so its
                 # EXIT trap is deferred to the main shell's exit, like bash.)
-                return self.shell.script_manager.source_processor.execute_as_main(
+                return self.shell.script_manager.execute_as_main(
                     input_source, add_to_history=False)
         except OSError as e:
             print(f"psh: {script_path}: {e}", file=sys.stderr)

@@ -226,35 +226,6 @@ def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,
     return ''.join(result)
 
 
-def match_extglob(pattern: str, string: str,
-                  full_match: bool = True) -> bool:
-    """Match a string against an extglob pattern.
-
-    Negation (``!(...)``, standalone or embedded) goes through the
-    backtracking matcher; everything else converts to a regex.
-
-    Args:
-        pattern: Shell pattern with extglob operators.
-        string: The string to match.
-        full_match: If True, pattern must match the entire string.
-    """
-    # Negation (standalone OR embedded) is not expressible as a Python regex
-    # (see _extglob_consume); use the backtracking matcher.
-    if _contains_negation(pattern):
-        if full_match:
-            return extglob_fullmatch(pattern, string)
-        return any(extglob_match_at(pattern, string, pos) is not None
-                   for pos in range(len(string) + 1))
-
-    regex_str = extglob_to_regex(pattern, anchored=full_match,
-                                 from_start=True)
-    try:
-        return bool(re.fullmatch(regex_str, string) if full_match
-                     else re.search(regex_str, string))
-    except re.error:
-        return False
-
-
 # ---------------------------------------------------------------------------
 # Recursive matcher for negation patterns
 #

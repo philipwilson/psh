@@ -14,7 +14,7 @@ import time
 
 import pytest
 
-from psh.executor.job_control import JobManager, JobState
+from psh.executor.job_control import JobManager, JobState, ProcessState
 
 
 @pytest.mark.serial
@@ -46,7 +46,7 @@ def test_wifcontinued_marks_job_running():
     job.update_process_status(pid, status)
     job.update_state()
     assert job.state is JobState.STOPPED
-    assert job.processes[0].stopped is True
+    assert job.processes[0].state is ProcessState.STOPPED
 
     # Continue it and observe RUNNING again (WIFCONTINUED).
     os.killpg(pid, signal.SIGCONT)
@@ -55,8 +55,8 @@ def test_wifcontinued_marks_job_running():
     job.update_process_status(pid, status)
     job.update_state()
     assert job.state is JobState.RUNNING
-    assert job.processes[0].stopped is False
-    assert job.processes[0].completed is False
+    assert job.processes[0].state is ProcessState.RUNNING
+    assert job.processes[0].state is not ProcessState.COMPLETED
 
     # Cleanup: SIGKILL (the continued child would otherwise run 30s) and reap.
     try:

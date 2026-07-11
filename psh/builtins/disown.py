@@ -105,16 +105,16 @@ class DisownBuiltin(Builtin):
                 return 1
 
     def _disown_job(self, job, mark_no_hup: bool, job_manager, shell: 'Shell') -> int:
-        """Disown a specific job."""
-        if mark_no_hup:
-            # Mark job to not receive SIGHUP, but keep in job table
-            job.no_hup = True
-            # In a real implementation, this would set a flag that prevents
-            # SIGHUP from being sent to the job when the shell exits
-        else:
-            # Remove job from job table completely
-            job_manager.remove_job(job.job_id)
+        """Disown a specific job.
 
+        With ``-h`` (``mark_no_hup``) bash marks the job to not receive SIGHUP
+        when the shell exits but keeps it in the job table. psh has no
+        huponexit path (see docs/missing_features.md), so ``-h`` is accepted for
+        compatibility and simply leaves the job in the table; without ``-h`` the
+        job is removed.
+        """
+        if not mark_no_hup:
+            job_manager.remove_job(job.job_id)
         return 0
 
     @property
@@ -124,7 +124,7 @@ class DisownBuiltin(Builtin):
 
     Options:
         -a      Remove all jobs from job table
-        -h      Mark jobs to not receive SIGHUP when shell exits
+        -h      Accepted for compatibility; psh does not send SIGHUP on exit
         -r      Remove only running jobs from job table
 
     Arguments:
@@ -134,8 +134,9 @@ class DisownBuiltin(Builtin):
     Without options or arguments, removes the current job from the
     active job table.
 
-    When -h is used, jobs are marked to not receive SIGHUP but remain
-    in the job table. Otherwise, jobs are completely removed.
+    The -h option is accepted for compatibility but has no effect: psh does
+    not send SIGHUP to jobs when the shell exits, so -h simply leaves the job
+    in the table. Otherwise, jobs are completely removed.
 
     Exit Status:
     Returns 0 unless an invalid option or job specification is given."""

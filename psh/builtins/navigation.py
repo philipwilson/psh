@@ -20,14 +20,10 @@ class CdBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Change the current working directory."""
-        # Store current directory as the old directory (use logical path if available)
-        try:
-            pwd = shell.state.get_variable('PWD')
-            # Check if PWD is a valid string (not None or mock)
-            current_dir = pwd if isinstance(pwd, str) and pwd else os.getcwd()
-        except (AttributeError, TypeError):
-            # Handle case where shell.state is a mock or doesn't exist
-            current_dir = os.getcwd()
+        # Store current directory as the old directory (use the logical PWD
+        # when set, else the physical cwd).
+        pwd = shell.state.get_variable('PWD')
+        current_dir = pwd if isinstance(pwd, str) and pwd else os.getcwd()
 
         # Parse the -L (logical, default) / -P (physical) options. A bare '-'
         # is NOT an option — it is the "previous directory" operand — and '--'
@@ -78,10 +74,6 @@ class CdBuiltin(Builtin):
                 return 1
             print_new_dir = False
 
-        # Expand tilde if shell supports it
-        if hasattr(shell, '_expand_tilde'):
-            path = shell._expand_tilde(path)
-
         # For relative paths, check CDPATH for directory search
         actual_path = path
         found_in_cdpath = False
@@ -119,11 +111,8 @@ class CdBuiltin(Builtin):
                 logical_new_dir = actual_path
             else:
                 # Relative path - resolve logically from current PWD
-                try:
-                    pwd = shell.state.get_variable('PWD')
-                    logical_current = pwd if isinstance(pwd, str) and pwd else os.getcwd()
-                except (AttributeError, TypeError):
-                    logical_current = os.getcwd()
+                pwd = shell.state.get_variable('PWD')
+                logical_current = pwd if isinstance(pwd, str) and pwd else os.getcwd()
                 logical_new_dir = os.path.normpath(os.path.join(logical_current, actual_path))
 
             # Change to the actual directory
@@ -160,9 +149,6 @@ class CdBuiltin(Builtin):
                     shell.state.export_variable(vname, vval)
                 except ReadonlyVariableError as e:
                     readonly_name = e.name
-                except (AttributeError, TypeError):
-                    # Handle case where shell.state is a mock
-                    pass
             if readonly_name is not None:
                 # bash reports `NAME: readonly variable` (no `cd:` prefix),
                 # rc 1, but the directory change stands.

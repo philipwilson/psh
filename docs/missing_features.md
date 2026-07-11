@@ -349,6 +349,11 @@ smaller than the two projects above but were still left for later:
   method treats the error-prefix as an intentional difference. Low value-to-risk.
 - **`mapfile -C callback` / `-c quantum`** — documented gap in the `mapfile`
   builtin; the callback-every-N-lines feature is unimplemented.
+- **SIGHUP-on-exit / `huponexit` (and `disown -h`)** — psh does not send
+  SIGHUP to its jobs when the shell exits, so there is no `huponexit` shopt
+  and `disown -h` is accepted only for compatibility (it leaves the job in
+  the table but marks nothing). Implementing this needs an exit-time hangup
+  pass over the job table plus the per-job no-hup flag.
 - **Tier-1 follow-ups deferred during v0.540–547** (see CHANGELOG and
   `memory/psh-reappraisal-14.md`):
   - `trap ... RETURN` pseudo-signal + exact `functrace=on` DEBUG fire-counts (H2c).

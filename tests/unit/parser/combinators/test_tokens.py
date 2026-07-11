@@ -3,14 +3,7 @@
 from psh.lexer.token_types import Token, TokenType
 from psh.parser.combinators.tokens import (
     TokenParsers,
-    background_operator,
     create_token_parsers,
-    logical_and,
-    logical_or,
-    newline_separator,
-    pipe_separator,
-    semicolon_separator,
-    statement_terminator,
 )
 
 
@@ -179,22 +172,13 @@ class TestTokenParsers:
         assert result.success is True
 
     def test_helper_methods(self):
-        """Test helper/utility methods."""
+        """Test helper/utility methods.
+
+        (Only ``is_redirect_operator`` remains a live predicate — used by the
+        simple-command parser; the is_terminator/is_keyword/is_expansion
+        predicates were test-only and were removed.)
+        """
         parsers = TokenParsers()
-
-        # Test is_terminator
-        term_token = make_token(TokenType.SEMICOLON, ";")
-        assert parsers.is_terminator(term_token) is True
-
-        word_token = make_token(TokenType.WORD, "hello")
-        assert parsers.is_terminator(word_token) is False
-
-        # Test is_keyword
-        kw_token = make_token(TokenType.WORD, "if")
-        assert parsers.is_keyword(kw_token) is True
-
-        regular_token = make_token(TokenType.WORD, "hello")
-        assert parsers.is_keyword(regular_token) is False
 
         # Test is_redirect_operator
         redirect_token = make_token(TokenType.REDIRECT_OUT, ">")
@@ -202,13 +186,6 @@ class TestTokenParsers:
 
         word_token = make_token(TokenType.WORD, "hello")
         assert parsers.is_redirect_operator(word_token) is False
-
-        # Test is_expansion
-        var_token = make_token(TokenType.VARIABLE, "$VAR")
-        assert parsers.is_expansion(var_token) is True
-
-        word_token = make_token(TokenType.WORD, "hello")
-        assert parsers.is_expansion(word_token) is False
 
 
 class TestFactoryMethods:
@@ -219,121 +196,3 @@ class TestFactoryMethods:
         parsers = create_token_parsers()
         assert isinstance(parsers, TokenParsers)
         assert parsers.word is not None
-
-    def test_create_separator_parser(self):
-        """Test separator parser factory method."""
-        sep_parser = TokenParsers.create_separator_parser()
-
-        # Should accept semicolon
-        tokens = [make_token(TokenType.SEMICOLON, ";")]
-        result = sep_parser.parse(tokens, 0)
-        assert result.success is True
-
-        # Should accept newline
-        tokens = [make_token(TokenType.NEWLINE, "\n")]
-        result = sep_parser.parse(tokens, 0)
-        assert result.success is True
-
-    def test_create_logical_operator_parser(self):
-        """Test logical operator parser factory method."""
-        logic_parser = TokenParsers.create_logical_operator_parser()
-
-        # Should accept &&
-        tokens = [make_token(TokenType.AND_AND, "&&")]
-        result = logic_parser.parse(tokens, 0)
-        assert result.success is True
-
-        # Should accept ||
-        tokens = [make_token(TokenType.OR_OR, "||")]
-        result = logic_parser.parse(tokens, 0)
-        assert result.success is True
-
-    def test_create_redirect_operator_parser(self):
-        """Test redirect operator parser factory method."""
-        redirect_parser = TokenParsers.create_redirect_operator_parser()
-
-        # Should accept various redirect operators
-        tokens = [make_token(TokenType.REDIRECT_OUT, ">")]
-        result = redirect_parser.parse(tokens, 0)
-        assert result.success is True
-
-        tokens = [make_token(TokenType.REDIRECT_IN, "<")]
-        result = redirect_parser.parse(tokens, 0)
-        assert result.success is True
-
-        tokens = [make_token(TokenType.REDIRECT_APPEND, ">>")]
-        result = redirect_parser.parse(tokens, 0)
-        assert result.success is True
-
-    def test_create_expansion_parser(self):
-        """Test expansion parser factory method."""
-        exp_parser = TokenParsers.create_expansion_parser()
-
-        # Should accept various expansion types
-        tokens = [make_token(TokenType.VARIABLE, "$VAR")]
-        result = exp_parser.parse(tokens, 0)
-        assert result.success is True
-
-        tokens = [make_token(TokenType.COMMAND_SUB, "$(cmd)")]
-        result = exp_parser.parse(tokens, 0)
-        assert result.success is True
-
-
-class TestConvenienceFunctions:
-    """Test convenience functions for common token parsers."""
-
-    def test_pipe_separator(self):
-        """Test pipe_separator function."""
-        parser = pipe_separator()
-        tokens = [make_token(TokenType.PIPE, "|")]
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-
-    def test_semicolon_separator(self):
-        """Test semicolon_separator function."""
-        parser = semicolon_separator()
-        tokens = [make_token(TokenType.SEMICOLON, ";")]
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-
-    def test_newline_separator(self):
-        """Test newline_separator function."""
-        parser = newline_separator()
-        tokens = [make_token(TokenType.NEWLINE, "\n")]
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-
-    def test_statement_terminator(self):
-        """Test statement_terminator function."""
-        parser = statement_terminator()
-
-        # Accept semicolon
-        tokens = [make_token(TokenType.SEMICOLON, ";")]
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-
-        # Accept newline
-        tokens = [make_token(TokenType.NEWLINE, "\n")]
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-
-    def test_logical_and(self):
-        """Test logical_and function."""
-        parser = logical_and()
-        tokens = [make_token(TokenType.AND_AND, "&&")]
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-
-    def test_logical_or(self):
-        """Test logical_or function."""
-        parser = logical_or()
-        tokens = [make_token(TokenType.OR_OR, "||")]
-        result = parser.parse(tokens, 0)
-        assert result.success is True
-
-    def test_background_operator(self):
-        """Test background_operator function."""
-        parser = background_operator()
-        tokens = [make_token(TokenType.AMPERSAND, "&")]
-        result = parser.parse(tokens, 0)
-        assert result.success is True
