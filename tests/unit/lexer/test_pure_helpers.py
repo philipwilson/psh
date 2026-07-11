@@ -53,18 +53,6 @@ class TestDelimiterMatching:
         assert found is True
         assert pos == 10
 
-    def test_find_balanced_parentheses_simple(self):
-        """Test simple balanced parentheses."""
-        pos, found = pure_helpers.find_balanced_parentheses("echo hello)", 0)
-        assert found is True
-        assert pos == 11
-
-    def test_find_balanced_parentheses_nested(self):
-        """Test nested balanced parentheses."""
-        pos, found = pure_helpers.find_balanced_parentheses("echo (nested) command)", 0)
-        assert found is True
-        assert pos == 22
-
     def test_find_balanced_double_parentheses(self):
         """Test double parentheses for arithmetic expansion."""
         pos, found = pure_helpers.find_balanced_double_parentheses("2 + (3 * 4)))", 0)
@@ -197,51 +185,8 @@ class TestOperatorRecognition:
     """Test operator recognition functions."""
 
 
-class TestExpansionDetection:
-    """Test expansion context detection functions."""
-
-    def test_is_inside_expansion_arithmetic(self):
-        """Test position detection inside arithmetic expansion."""
-        # Position 5 is inside $((2+3))
-        assert pure_helpers.is_inside_expansion("$((2+3))", 5) is True
-        assert pure_helpers.is_inside_expansion("$((2+3))", 8) is False
-
-    def test_is_inside_expansion_command_substitution(self):
-        """Test position detection inside command substitution."""
-        # Position 3 is inside $(echo)
-        assert pure_helpers.is_inside_expansion("$(echo)", 3) is True
-        assert pure_helpers.is_inside_expansion("$(echo)", 7) is False
-
-    def test_is_inside_expansion_backticks(self):
-        """Test position detection inside backtick substitution."""
-        # Position 2 is inside `cmd`
-        assert pure_helpers.is_inside_expansion("`cmd`", 2) is True
-        assert pure_helpers.is_inside_expansion("`cmd`", 5) is False
-
-    def test_is_inside_expansion_outside(self):
-        """Test position detection outside any expansions."""
-        assert pure_helpers.is_inside_expansion("echo hello", 5) is False
-        assert pure_helpers.is_inside_expansion("$var", 2) is False
-
-
 class TestPureFunctionIntegration:
     """Integration tests for pure functions working together."""
-
-    def test_nested_structures_parsing(self):
-        """Test parsing of nested expansion structures."""
-        input_text = "$((2 + $(echo 3)))"
-
-        # Should detect we're inside expansions at various positions
-        assert pure_helpers.is_inside_expansion(input_text, 5) is True   # Inside arithmetic
-        assert pure_helpers.is_inside_expansion(input_text, 12) is True  # Inside command sub
-        assert pure_helpers.is_inside_expansion(input_text, 18) is False # After everything
-
-    def test_error_recovery_scenarios(self):
-        """Test error recovery with unclosed structures."""
-        # Test unclosed parentheses
-        pos, found = pure_helpers.find_balanced_parentheses("echo (hello", 5)
-        assert found is False
-        assert pos == 11
 
     def test_variable_name_boundary_detection(self):
         """Test variable name extraction with boundary detection."""

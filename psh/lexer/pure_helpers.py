@@ -131,27 +131,6 @@ def find_closing_delimiter(
     return pos, False
 
 
-def find_balanced_parentheses(
-    input_text: str,
-    start_pos: int,
-    track_quotes: bool = True
-) -> Tuple[int, bool]:
-    """
-    Find balanced parentheses starting from given position.
-
-    Args:
-        input_text: The input string
-        start_pos: Starting position (after opening paren)
-        track_quotes: Whether to ignore parens inside quotes
-
-    Returns:
-        Tuple of (position_after_close_paren, found_closing)
-    """
-    return find_closing_delimiter(
-        input_text, start_pos, '(', ')', track_quotes, True
-    )
-
-
 class ArithParenScan(Enum):
     """Outcome of :func:`scan_double_paren_arithmetic`."""
 
@@ -593,58 +572,3 @@ def validate_brace_expansion(
     return input_text[start_pos:min(pos, n)], min(pos, n), False
 
 
-def is_inside_expansion(
-    input_text: str,
-    position: int
-) -> bool:
-    """
-    Check if the position is inside an arithmetic expression or command substitution.
-
-    Args:
-        input_text: The input string
-        position: Position to check
-
-    Returns:
-        True if position is inside an expansion
-    """
-    if position >= len(input_text):
-        return False
-
-    # Simple approach: scan from beginning and track expansion boundaries
-    i = 0
-    while i <= position and i < len(input_text):
-        # Check for arithmetic expansion $((
-        if i + 2 < len(input_text) and input_text[i:i+3] == '$((':
-            # Find the closing ))
-            end_pos, found = find_balanced_double_parentheses(input_text, i + 3)
-            if found and i <= position < end_pos:
-                return True
-            i = end_pos if found else i + 3
-            continue
-
-        # Check for command substitution $(
-        if i + 1 < len(input_text) and input_text[i:i+2] == '$(':
-            # Find the closing )
-            end_pos, found = find_balanced_parentheses(input_text, i + 2)
-            if found and i <= position < end_pos:
-                return True
-            i = end_pos if found else i + 2
-            continue
-
-        # Check for backtick command substitution
-        if input_text[i] == '`':
-            # Find the closing backtick
-            j = i + 1
-            while j < len(input_text) and input_text[j] != '`':
-                j += 1
-            if j < len(input_text):  # Found closing backtick
-                if i < position < j:  # Position is inside backticks
-                    return True
-                i = j + 1
-            else:
-                i += 1
-            continue
-
-        i += 1
-
-    return False
