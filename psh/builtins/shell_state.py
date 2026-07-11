@@ -7,6 +7,7 @@ from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .registry import builtin
 
 if TYPE_CHECKING:
+    from ..core import VarAttributes
     from ..interactive.history_manager import HistoryManager
     from ..shell import Shell
 
@@ -284,117 +285,155 @@ class LocalBuiltin(Builtin):
             # builtin's _attributes_from_options.
             attributes &= ~(VarAttributes.LOWERCASE | VarAttributes.UPPERCASE)
 
-        # Process each argument
+        # Process each argument. bash's `local` arg loop is CONTINUE-ON-ERROR:
+        # every argument is processed even after one fails. A per-arg failure —
+        # an invalid identifier OR a value redeclare onto a readonly local —
+        # is reported and that argument is skipped, but the good arguments are
+        # still created and `local` returns 1 (probes: `local -r x=1; local x=2
+        # y=3` -> error on x, y=3 still set, rc 1; `local 1bad x=2` -> error on
+        # 1bad, x=2 still set, rc 1). Only an OPTION-parse error (handled above)
+        # aborts the whole builtin.
+        from ..core import ReadonlyVariableError
+        failed = False
+        for arg in positional:
+            try:
+                if not self._declare_one_local(arg, shell, context,
+                                               attributes, options):
+                    failed = True
+            except ReadonlyVariableError as e:
+                # A value redeclare onto a readonly local: create_local raises,
+                # we report in bash's shape and keep going. self.error() renders
+                # the SAME `<$0>: line N: local: NAME: readonly variable` line
+                # the last-resort builtin guard printed when this used to
+                # propagate, so the single-arg output is byte-identical.
+                self.error(str(e), shell)
+                failed = True
+        return 1 if failed else 0
+
+    def _declare_one_local(self, arg: str, shell: 'Shell',
+                           context: BuiltinContext, attributes: 'VarAttributes',
+                           options: dict) -> bool:
+        """Create ONE ``local`` binding for *arg*.
+
+        Returns True on success, False if a per-arg error was already reported
+        (invalid identifier / nameref self-reference — the caller then makes
+        the builtin return 1). Raises :class:`ReadonlyVariableError` for a value
+        redeclare onto a readonly local, which the CALLER catches so it can
+        report and continue with the remaining arguments (bash's
+        continue-on-error arg loop).
+        """
+        from ..core import VarAttributes
         from ..lexer.unicode_support import is_valid_name
         posix_mode = shell.state.options.get('posix', False)
-        for arg in positional:
-            if arg == '-':
-                # `local -`: save the shell's `set` options so they revert on
-                # function return (bash). It is NOT a variable named '-'.
-                self._save_dash_options(shell)
-                continue
-            # Validate the target NAME (bash: "not a valid identifier",
-            # status 1). Same single identifier policy as declare — posix mode
-            # restricts to ASCII; otherwise psh's lenient Unicode default
-            # applies. A subscripted / append LHS validates its base name.
-            name_part = arg.split('=', 1)[0]
-            if name_part.endswith('+') and not options['nameref']:
-                name_part = name_part[:-1]
-            if not is_valid_name(name_part.split('[', 1)[0], posix_mode):
-                self.error(f"`{arg}': not a valid identifier", shell)
-                return 1
-            if '=' in arg:
-                # Variable with assignment: local var=value / var+=value
-                var_name, var_value = arg.split('=', 1)
-                append = var_name.endswith('+') and not options['nameref']
-                if append:
-                    var_name = var_name[:-1]
+        if arg == '-':
+            # `local -`: save the shell's `set` options so they revert on
+            # function return (bash). It is NOT a variable named '-'.
+            self._save_dash_options(shell)
+            return True
+        # Validate the target NAME (bash: "not a valid identifier",
+        # status 1). Same single identifier policy as declare — posix mode
+        # restricts to ASCII; otherwise psh's lenient Unicode default
+        # applies. A subscripted / append LHS validates its base name.
+        name_part = arg.split('=', 1)[0]
+        if name_part.endswith('+') and not options['nameref']:
+            name_part = name_part[:-1]
+        if not is_valid_name(name_part.split('[', 1)[0], posix_mode):
+            self.error(f"`{arg}': not a valid identifier", shell)
+            return False
+        if '=' in arg:
+            # Variable with assignment: local var=value / var+=value
+            var_name, var_value = arg.split('=', 1)
+            append = var_name.endswith('+') and not options['nameref']
+            if append:
+                var_name = var_name[:-1]
 
-                # Name reference: store the target name verbatim (no expansion,
-                # no array parsing) with the NAMEREF attribute.
-                if options['nameref']:
-                    if var_name == var_value:
-                        self.error(f"{var_name}: nameref variable self references not allowed", shell)
-                        return 1
-                    shell.state.scope_manager.create_local(var_name, var_value, attributes)
-                    continue
+            # Name reference: store the target name verbatim (no expansion,
+            # no array parsing) with the NAMEREF attribute.
+            if options['nameref']:
+                if var_name == var_value:
+                    self.error(f"{var_name}: nameref variable self references not allowed", shell)
+                    return False
+                shell.state.scope_manager.create_local(var_name, var_value, attributes)
+                return True
 
-                # Array initialization is keyed STRICTLY on the parser having
-                # seen literal ``var=(...)`` syntax: it attaches a structured
-                # ArrayInitialization to the arg Word, delivered via the
-                # shell's explicit pending-array-init handoff. We expand it
-                # through the SAME structured path the bare ``a=(...)`` form uses (no
-                # shlex reparse). A merely paren-shaped VALUE that did NOT
-                # come from array syntax (``local "a=(1 2)"``) is a scalar in
-                # bash, so it is NOT array-ified.
-                array_init = context.array_init(arg)
-                if array_init is not None:
-                    # Parse array initialization; += appends to/merges with
-                    # an existing array of the same kind (bash).
-                    from ..core import AssociativeArray, IndexedArray
-                    existing = (shell.state.scope_manager.get_variable_object(var_name)
-                                if append else None)
-                    into: object
-                    # Build += into a COPY, not the live array: if the target
-                    # is readonly, create_local rejects the assignment and the
-                    # live array must stay untouched (C2/P1.2 — a failed
-                    # operation does not mutate a readonly value).
-                    if attributes & VarAttributes.ASSOC_ARRAY:
-                        into = (existing.value.copy()
-                                if existing is not None
-                                and isinstance(existing.value, AssociativeArray)
-                                else None)
-                        array = self._build_assoc_array(array_init, into, shell)
-                        shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ASSOC_ARRAY)
-                    else:
-                        into = (existing.value.copy()
-                                if existing is not None
-                                and isinstance(existing.value, IndexedArray)
-                                else None)
-                        array = self._build_indexed_array(array_init, into, shell)
-                        shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ARRAY)
+            # Array initialization is keyed STRICTLY on the parser having
+            # seen literal ``var=(...)`` syntax: it attaches a structured
+            # ArrayInitialization to the arg Word, delivered via the
+            # shell's explicit pending-array-init handoff. We expand it
+            # through the SAME structured path the bare ``a=(...)`` form uses (no
+            # shlex reparse). A merely paren-shaped VALUE that did NOT
+            # come from array syntax (``local "a=(1 2)"``) is a scalar in
+            # bash, so it is NOT array-ified.
+            array_init = context.array_init(arg)
+            if array_init is not None:
+                # Parse array initialization; += appends to/merges with
+                # an existing array of the same kind (bash).
+                from ..core import AssociativeArray, IndexedArray
+                existing = (shell.state.scope_manager.get_variable_object(var_name)
+                            if append else None)
+                into: object
+                # Build += into a COPY, not the live array: if the target
+                # is readonly, create_local rejects the assignment and the
+                # live array must stay untouched (C2/P1.2 — a failed
+                # operation does not mutate a readonly value).
+                if attributes & VarAttributes.ASSOC_ARRAY:
+                    into = (existing.value.copy()
+                            if existing is not None
+                            and isinstance(existing.value, AssociativeArray)
+                            else None)
+                    array = self._build_assoc_array(array_init, into, shell)
+                    shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ASSOC_ARRAY)
                 else:
-                    # Regular variable assignment. The executor has already
-                    # expanded this argument; expanding again here would run
-                    # single-quoted text like '$(cmd)' a second time.
-                    if append:
-                        # ``local x+=v`` appends only to an x ALREADY local in
-                        # THIS scope; a fresh local starts from empty even when
-                        # an outer scope has x (bash: g(){ local x+=INNER;}
-                        # called under f's ``local x=out`` yields ``INNER``, not
-                        # ``outINNER``). resolve_append_assignment reads the
-                        # innermost instance, so gate it on the current scope.
-                        cur = shell.state.scope_manager.current_scope.variables.get(var_name)
-                        if cur is not None and not cur.is_unset:
-                            from ..core import resolve_append_assignment
-                            _, var_value = resolve_append_assignment(
-                                shell.state.scope_manager, var_name + '+', var_value)
-                        # else: fresh local — the raw RHS IS the value (an -i
-                        # flag, if any, is applied by create_local's transform).
-
-                    # Attribute transforms (-u/-l/-i) are applied by the single
-                    # chokepoint in create_local -> ScopeManager._apply_attributes,
-                    # NOT here: a second, divergent copy used to run first and
-                    # mishandled -ul (it uppercased instead of applying neither).
-                    shell.state.scope_manager.create_local(var_name, var_value, attributes)
+                    into = (existing.value.copy()
+                            if existing is not None
+                            and isinstance(existing.value, IndexedArray)
+                            else None)
+                    array = self._build_indexed_array(array_init, into, shell)
+                    shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ARRAY)
             else:
-                # Variable without assignment: local var
-                if attributes & VarAttributes.ARRAY:
-                    # Create empty indexed array
-                    from ..core import IndexedArray
-                    shell.state.scope_manager.create_local(arg, IndexedArray(), attributes)
-                elif attributes & VarAttributes.ASSOC_ARRAY:
-                    # Create empty associative array
-                    from ..core import AssociativeArray
-                    shell.state.scope_manager.create_local(arg, AssociativeArray(), attributes)
-                else:
-                    # Declared-but-unset local: shadows any outer variable
-                    # but reads as unset (bash: ``local v; echo ${v-u}``
-                    # prints ``u``). create_local(value=None) plants the
-                    # UNSET-attributed variable.
-                    shell.state.scope_manager.create_local(arg, None, attributes)
+                # Regular variable assignment. The executor has already
+                # expanded this argument; expanding again here would run
+                # single-quoted text like '$(cmd)' a second time.
+                value_to_set: object = var_value
+                if append:
+                    # ``local x+=v`` appends only to an x ALREADY local in
+                    # THIS scope; a fresh local starts from empty even when
+                    # an outer scope has x (bash: g(){ local x+=INNER;}
+                    # called under f's ``local x=out`` yields ``INNER``, not
+                    # ``outINNER``). resolve_append_assignment reads the
+                    # innermost instance, so gate it on the current scope. It
+                    # may return an array object (scalar += onto an array), so
+                    # the value handed to create_local is wider than str.
+                    cur = shell.state.scope_manager.current_scope.variables.get(var_name)
+                    if cur is not None and not cur.is_unset:
+                        from ..core import resolve_append_assignment
+                        _, value_to_set = resolve_append_assignment(
+                            shell.state.scope_manager, var_name + '+', var_value)
+                    # else: fresh local — the raw RHS IS the value (an -i
+                    # flag, if any, is applied by create_local's transform).
 
-        return 0
+                # Attribute transforms (-u/-l/-i) are applied by the single
+                # chokepoint in create_local -> ScopeManager._apply_attributes,
+                # NOT here: a second, divergent copy used to run first and
+                # mishandled -ul (it uppercased instead of applying neither).
+                shell.state.scope_manager.create_local(var_name, value_to_set, attributes)
+        else:
+            # Variable without assignment: local var
+            if attributes & VarAttributes.ARRAY:
+                # Create empty indexed array
+                from ..core import IndexedArray
+                shell.state.scope_manager.create_local(arg, IndexedArray(), attributes)
+            elif attributes & VarAttributes.ASSOC_ARRAY:
+                # Create empty associative array
+                from ..core import AssociativeArray
+                shell.state.scope_manager.create_local(arg, AssociativeArray(), attributes)
+            else:
+                # Declared-but-unset local: shadows any outer variable
+                # but reads as unset (bash: ``local v; echo ${v-u}``
+                # prints ``u``). create_local(value=None) plants the
+                # UNSET-attributed variable.
+                shell.state.scope_manager.create_local(arg, None, attributes)
+        return True
 
     def _save_dash_options(self, shell: 'Shell') -> None:
         """Record the current `set` options for `local -` restore-on-return.

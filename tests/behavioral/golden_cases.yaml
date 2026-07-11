@@ -3964,6 +3964,42 @@
   stderr: ""
   exit_code: 0
 
+# The attrs-only merge can never CLEAR readonly (create_local ORs attributes),
+# so `local +r x` leaves x readonly (R1-extra safety). stdout + exit match bash
+# (--compare-bash checks those). The stderr message diverges — psh does not yet
+# parse `+r` as attribute-removal and reports it as an invalid identifier where
+# bash reports "x: readonly variable"; that +attr-parse gap is a documented
+# carry to T2 (declaration family), so the stderr check is skipped here.
+- name: local_plus_r_cannot_strip_readonly
+  command: "f(){ local -r x=1; local +r x; declare -p x; }; f"
+  stdout: "declare -r x=\"1\"\n"
+  stderr: null
+  exit_code: 0
+
+# `local`'s arg loop is CONTINUE-ON-ERROR (appraisal-H7 rider): a readonly-value
+# redeclare on `x` reports the error but the good arg `y=3` is still set, and
+# `local` returns 1 (reflected in the FUNCTION continuing to run `echo`). Also
+# holds for the outer-scope readonly case.
+- name: local_multiarg_continues_after_readonly
+  command: 'f(){ local -r x=1; local x=2 y=3; echo "x=$x y=$y"; }; f'
+  stdout: "x=1 y=3\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: local_multiarg_outer_scope_continues
+  command: 'x=1; readonly x; f(){ local x=2 y=3; echo "y=$y"; }; f'
+  stdout: "y=3\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+# A per-arg INVALID IDENTIFIER is likewise reported-and-skipped, not fatal to
+# the rest of the `local` command (bash).
+- name: local_multiarg_continues_after_invalid_id
+  command: 'f(){ local 1bad x=2; echo "x=${x-unset}"; }; f'
+  stdout: "x=2\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
 # trap '' (ignore) is inherited across exec by external children (POSIX).
 - name: trap_ignore_inherited_across_exec
   command: 'trap "" INT; bash -c "trap -p INT"'

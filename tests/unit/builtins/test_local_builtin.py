@@ -223,3 +223,64 @@ class TestLocalReadonlyRedeclare:
         assert result == 0
         assert captured_shell.get_stdout() == "SURVIVED\n"
         assert "readonly variable" in captured_shell.get_stderr()
+
+    def test_attrs_only_cannot_strip_readonly(self, captured_shell):
+        """The attrs-only merge can NEVER clear readonly (create_local ORs
+        attributes). `local +r x` leaves x readonly (R1-extra safety pin).
+        psh reports the `+r`-parse gap differently from bash (carry to T2),
+        but the OBSERVABLE result — x still readonly — matches bash."""
+        result = captured_shell.run_command(
+            'f(){ local -r x=1; local +r x; declare -p x; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == 'declare -r x="1"\n'
+
+
+class TestLocalMultiArgContinueOnError:
+    """bash's `local` arg loop is CONTINUE-ON-ERROR: a per-arg failure
+    (readonly-value redeclare OR invalid identifier) is reported and skipped,
+    but the good args are still created and `local` returns 1 (appraisal-H7
+    rider R2). Also fixes the pre-existing outer-scope multi-arg abort.
+    All expectations verified against bash 5.2.
+    """
+
+    def test_later_arg_still_set_after_readonly(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ local -r x=1; local x=2 y=3; echo "x=$x y=$y"; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "x=1 y=3\n"
+        assert "local: x: readonly variable" in captured_shell.get_stderr()
+
+    def test_multi_arg_local_returns_1(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ local -r x=1; local x=2 y=3; echo "rc=$?"; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "rc=1\n"
+
+    def test_outer_scope_multi_arg_continues(self, captured_shell):
+        result = captured_shell.run_command(
+            'x=1; readonly x; f(){ local x=2 y=3; echo "y=${y-unset}"; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "y=3\n"
+        assert "readonly variable" in captured_shell.get_stderr()
+
+    def test_invalid_identifier_continues(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ local 1bad x=2; echo "x=${x-unset}"; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "x=2\n"
+        assert "not a valid identifier" in captured_shell.get_stderr()
+
+    def test_readonly_then_invalid_both_reported(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ local -r x=1; local x=2 1bad y=3; echo "x=$x y=$y"; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "x=1 y=3\n"
+        err = captured_shell.get_stderr()
+        assert "local: x: readonly variable" in err
+        assert "`1bad': not a valid identifier" in err
+
+    def test_good_args_all_set_after_fail(self, captured_shell):
+        result = captured_shell.run_command(
+            'f(){ local -r x=1; local x=2 a=7 b=8; echo "a=$a b=$b"; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == "a=7 b=8\n"
