@@ -295,13 +295,25 @@ class Job:
         STOPPED; else RUNNING (F10). The DONE check comes first so the STOPPED
         predicate is only consulted when at least one process is still live.
         An empty process list counts as DONE (COMPLETED == 0 == len).
+
+        A real state transition CLEARS ``notified`` — the single source of truth
+        for bash's per-job J_NOTIFIED flag (F4). ``notified`` means "the user has
+        seen the job's CURRENT status": it is SET when a job is displayed by
+        ``jobs`` or reported by an async notice, and re-armed here the moment the
+        status changes, so a stop/continue/completion is announced (or shown by
+        ``jobs -n``) exactly once. Every state-updating path (the SIGCHLD reaper,
+        refresh_one_job, wait_for_job) routes through here, so none needs to
+        clear ``notified`` itself.
         """
         if self.all_processes_completed():
-            self.state = JobState.DONE
+            new_state = JobState.DONE
         elif self.all_processes_stopped():
-            self.state = JobState.STOPPED
+            new_state = JobState.STOPPED
         else:
-            self.state = JobState.RUNNING
+            new_state = JobState.RUNNING
+        if new_state != self.state:
+            self.state = new_state
+            self.notified = False
 
     def format_status(self, is_current: bool, is_previous: bool,
                       pid: Optional[int] = None) -> str:
@@ -767,13 +779,14 @@ class JobManager:
 
     def refresh_one_job(self, job: 'Job') -> None:
         """Per-group non-blocking state refresh for a single job (see
-        :meth:`refresh_job_states`). Waits only on ``-job.pgid``."""
+        :meth:`refresh_job_states`). Waits only on ``-job.pgid``. A real
+        stop/continue/exit transition re-arms ``notified`` via
+        :meth:`Job.update_state` (F4), so this need not touch it."""
         flags = os.WNOHANG
         if hasattr(os, "WUNTRACED"):
             flags |= os.WUNTRACED
         if hasattr(os, "WCONTINUED"):
             flags |= os.WCONTINUED
-        saw_continue = False
         while True:
             try:
                 pid, status = os.waitpid(-job.pgid, flags)
@@ -782,11 +795,7 @@ class JobManager:
             if pid == 0:
                 break  # nothing in this group changed state
             job.update_process_status(pid, status)
-            if hasattr(os, "WIFCONTINUED") and os.WIFCONTINUED(status):
-                saw_continue = True
         job.update_state()
-        if saw_continue or job.state == JobState.STOPPED:
-            job.notified = False
 
     def list_jobs(self) -> List[str]:
         """Get formatted list of all jobs."""

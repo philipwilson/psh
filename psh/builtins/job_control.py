@@ -37,7 +37,7 @@ class JobsBuiltin(Builtin):
         if x_words is not None:
             return self._run_x_command(x_words, shell)
 
-        opts, operands = self.parse_flags(args, shell, flags='lprs')
+        opts, operands = self.parse_flags(args, shell, flags='lnprs')
         if opts is None:
             return 2  # bash: invalid option is a usage error
 
@@ -78,8 +78,18 @@ class JobsBuiltin(Builtin):
             jobs_to_list = [job for job in jobs_to_list
                             if job.state == state_filter]
 
+        # -n: only jobs whose status changed since the user was last notified of
+        # it (bash). `notified` is the shared J_NOTIFIED predicate — cleared on
+        # any transition (Job.update_state), set below when a job is displayed.
+        if opts['n']:
+            jobs_to_list = [job for job in jobs_to_list if not job.notified]
+
         for job in jobs_to_list:
             self._render_job(job, opts, manager, shell)
+            # Displaying a job (with or without -n) marks the user notified of
+            # its current status, so a following `jobs -n` omits it until the
+            # status changes again (bash: `jobs; jobs -n` -> second is empty).
+            job.notified = True
 
         # bash reaps a completed job when `jobs` runs: its Done/Exit-N line is
         # shown once (above, for an unfiltered listing) and the job is then
