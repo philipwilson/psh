@@ -9,7 +9,6 @@ regex family (see below), so the ``NAME=value`` / ``NAME[sub]=value`` /
 lexer-adjacent, parser, expansion and printf modules that recognise them.
 """
 
-import copy
 import re
 from typing import Tuple
 
@@ -94,19 +93,19 @@ def is_valid_assignment(arg: str, posix_mode: bool = False) -> bool:
 
 
 def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str, object]:
-    """Resolve ``NAME+=value`` appends to (name, final_value).
+    """Resolve ``NAME+=value`` appends to (name, final_value) — the PURE path.
 
-    ``var`` is the text left of '=' (so ``NAME+`` for appends; anything
-    else is returned unchanged). Plain variables append textually;
-    integer (-i) variables append arithmetically — achieved by handing
-    the INTEGER transform the expression "(old)+(value)" to evaluate,
-    matching bash. A scalar append to an array variable updates element
-    0 in place and returns the array (bash: ``a=(1 2); a+=x`` makes
-    a[0] "1x"); on an INTEGER array it arithmetic-adds to element 0
-    (``declare -ai a=(1 2 3); a+=10`` -> a[0]=11), and a -u/-l array
-    case-folds the new element 0.
+    ``var`` is the text left of '=' (so ``NAME+`` for appends; anything else is
+    returned unchanged). This is the compute-only entry point the command-prefix
+    (``a+=z cmd``), ``local x+=v``, and rollback callers use: they need the
+    resolved value WITHOUT a commit so they can snapshot the original before
+    installing it (a prefix append must restore the untouched original after the
+    command). The actual computation is the ONE shared formula,
+    :meth:`VariableStore.compute_append_value` (appraisal H8) — plain variables
+    append textually, ``-i`` variables append arithmetically, and a scalar
+    append to an array updates a COPY's element 0 (integer-add / concat +
+    case-fold), never mutating the live container.
     """
-    from .variables import AssociativeArray, IndexedArray, VarAttributes
     if not var.endswith('+'):
         return var, value
     name = var[:-1]
@@ -118,29 +117,4 @@ def resolve_append_assignment(scope_manager, var: str, value: str) -> Tuple[str,
     # (set_variable, below) re-resolves the nameref, so we still return `name`.
     target = scope_manager.resolve_nameref_name(name)
     var_obj = scope_manager.get_variable_object(target)
-    container = var_obj.value if var_obj is not None else None
-    if isinstance(container, (IndexedArray, AssociativeArray)):
-        # Append PURELY: work on a COPY so resolution never mutates the live
-        # array (F8). The caller decides whether to install the result
-        # permanently (bare `a+=z`) or temporarily with rollback (prefix
-        # `a+=z cmd`) — and a prefix append must be able to snapshot the
-        # ORIGINAL array for restore, which a pre-snapshot in-place mutation
-        # (the prior bug) destroyed, leaving `a` mutated after the command.
-        container = copy.deepcopy(container)
-        key: object = 0 if isinstance(container, IndexedArray) else '0'
-        old0 = container.get(key) or ''  # type: ignore[arg-type]
-        if var_obj.attributes & VarAttributes.INTEGER and value.strip():
-            new0: object = scope_manager._evaluate_integer(
-                f"({old0 or 0})+({value})")
-        else:
-            # string concat, then the variable's -u/-l case attribute (bash
-            # applies the case fold to array elements too)
-            new0 = scope_manager._apply_attributes(
-                str(old0) + value, var_obj.attributes)
-        container.set(key, str(new0))  # type: ignore[arg-type]
-        return name, container
-    old = '' if var_obj is None or var_obj.value is None else str(var_obj.value)
-    if (var_obj is not None and var_obj.attributes & VarAttributes.INTEGER
-            and value.strip()):
-        return name, f"({old or 0})+({value})"
-    return name, old + value
+    return name, scope_manager.store.compute_append_value(var_obj, value)
