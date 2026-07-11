@@ -131,14 +131,15 @@ pytest tests -m serial
 
 ### For Test Runners
 
-1. **Normal parallel execution**:
+1. **Normal parallel execution** (always exclude `serial`-marked tests, or xdist
+   workers crash — see CLAUDE.md "Known Test Issues"):
 ```bash
-pytest tests -n auto
+pytest tests -n auto -m "not serial"
 ```
 
-2. **Debugging isolation issues**:
+2. **Serial pass** (the process/signal/fd tests that cannot run under xdist):
 ```bash
-pytest tests -n auto --strict-isolation -v
+pytest tests -m serial
 ```
 
 3. **Maximum speed (skip problematic tests)**:

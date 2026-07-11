@@ -2,8 +2,9 @@
 """
 PSH Test Runner
 
-This script runs the full PSH test suite with proper handling for tests that
-require special pytest configuration (e.g., subshell tests that need capture disabled).
+This script runs the full PSH test suite in phases, with per-phase process-group
+timeouts and failure-safety guarantees (see below), plus an opt-in bash-comparison
+phase for the golden behavioral cases.
 
 Usage:
     python run_tests.py                    # Run all tests with smart handling
@@ -354,7 +355,6 @@ Examples:
   python run_tests.py --all-nocapture    # All tests with -s (simpler but noisy)
   python run_tests.py --quick            # Curated fast smoke subset (parallel)
   python run_tests.py --verbose          # Verbose output
-  python run_tests.py --subshells-only   # Just subshell tests
         """
     )
 
@@ -375,18 +375,6 @@ Examples:
         '--verbose', '-v',
         action='store_true',
         help='Verbose output (show each test)'
-    )
-
-    parser.add_argument(
-        '--subshells-only',
-        action='store_true',
-        help='Run only subshell tests (with -s flag)'
-    )
-
-    parser.add_argument(
-        '--no-subshells',
-        action='store_true',
-        help='Skip subshell tests entirely'
     )
 
     parser.add_argument(
@@ -545,18 +533,6 @@ def _run(args, results_path):
         exit_codes.append(exit_code)
         phase_outputs.append(output)
 
-    elif args.subshells_only:
-        # Just run subshell tests
-        emit("\n" + "=" * 80)
-        emit(f"MODE: Running subshell tests only [parser: {parser_label}]")
-        emit("=" * 80)
-
-        cmd = base_cmd + ['tests/integration/subshells/', '-s']
-        exit_code, output = run_command(cmd, "Subshell tests (with -s)",
-                                        env=env, timeout=timeout)
-        exit_codes.append(exit_code)
-        phase_outputs.append(output)
-
     else:
         # Smart mode: Run tests in phases
         parallel_label = ""
@@ -567,19 +543,16 @@ def _run(args, results_path):
         emit("  - Phase 1: Regular tests with normal capture")
         if args.parallel:
             emit(f"             (parallelized with {args.parallel} workers)")
-        emit("  - Phase 2: Subshell tests with capture disabled (-s, serial)")
         emit("=" * 80)
-
-        # Shared ignore: the subshell tests run in their own -s phase below.
-        non_subshell_ignores = [
-            '--ignore=tests/integration/subshells/',
-        ]
 
         # Phase 1: Regular tests. When parallel, exclude `serial`-marked tests
         # (process/signal/job-control and in-process forked-fd tests that can't
         # run concurrently under xdist); they run in Phase 1b. In serial mode
-        # they run here inline.
-        cmd = base_cmd + ['tests/'] + non_subshell_ignores
+        # they run here inline. Subshell tests (tests/integration/subshells/) are
+        # ordinary Phase-1 tests: they pass under normal pytest capture — the -s
+        # flag has been unnecessary since v0.195.0, as forked children do
+        # fd-level I/O (see tests/integration/subshells/README.md).
+        cmd = base_cmd + ['tests/']
         phase1_markers = []
         if args.parallel:
             phase1_markers.append('not serial')
@@ -602,7 +575,7 @@ def _run(args, results_path):
         # Phase 1b: serial-marked tests (process/signal/forked-fd). Only needed
         # in parallel mode — they were excluded from Phase 1. Run without xdist.
         if args.parallel:
-            cmd = base_cmd + ['tests/'] + non_subshell_ignores
+            cmd = base_cmd + ['tests/']
             cmd.extend(['-m', 'serial'])
             exit_code, output = run_command(
                 cmd, "Phase 1b: serial tests (process/signal/forked-fd, no xdist)",
@@ -610,19 +583,7 @@ def _run(args, results_path):
             exit_codes.append(exit_code)
             phase_outputs.append(output)
 
-        if not args.no_subshells:
-            # Phase 2: Run subshell tests with -s
-            cmd = base_cmd + [
-                'tests/integration/subshells/',
-                '-s'
-            ]
-
-            exit_code, output = run_command(cmd, "Phase 2: Subshell tests (with -s)",
-                                            env=env, timeout=timeout)
-            exit_codes.append(exit_code)
-            phase_outputs.append(output)
-
-        # Phase 3 (opt-in): golden behavioral cases compared against bash.
+        # Phase 2 (opt-in): golden behavioral cases compared against bash.
         # Gated behind --compare-bash because it requires bash on PATH; the
         # comparison itself is locale-pinned (LC_ALL=C) so it is deterministic.
         #
@@ -657,7 +618,7 @@ def _run(args, results_path):
                 '-k', 'test_golden_bash_comparison',
                 '--compare-bash',
             ]
-            desc = "Phase 3: Golden behavioral comparison vs bash (comparison-only"
+            desc = "Phase 2: Golden behavioral comparison vs bash (comparison-only"
             if args.parallel:
                 cmd.extend(['-n', args.parallel])
                 desc += f", parallel={args.parallel})"
