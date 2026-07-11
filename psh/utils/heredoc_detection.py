@@ -43,7 +43,7 @@ def heredoc_delimiter_word(match: 're.Match') -> str:
     Normalizes the raw delimiter (group 2) the way the body terminator is
     written: each ``\\x`` becomes ``x`` and quoted segments contribute their
     contents — so ``\\EOF``/``EO\\F``/``E"O"F`` all yield ``EOF`` and ``"E F"``
-    yields ``E F`` (mirrors the lexer's normalize_heredoc_delimiter).
+    yields ``E F`` (mirrors the lexer's ``HeredocLexer._delimiter_from_source``).
     """
     raw = match.group(2)
     out: list = []

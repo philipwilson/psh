@@ -29,37 +29,6 @@ _DELIMITER_PART_TYPES = frozenset({
 })
 
 
-def normalize_heredoc_delimiter(parts: List[Token]) -> Tuple[str, bool]:
-    """Recover a heredoc's literal delimiter text and whether it was quoted.
-
-    The body terminator line must equal this literal exactly, and any quoting
-    or backslash in the delimiter makes the body literal (no expansion). The
-    delimiter may arrive as one token or several adjacent ones:
-
-      ``<<EOF``      -> ("EOF",  False)   plain word, body expands
-      ``<<\\EOF``    -> ("EOF",  True)    backslash-quoted word
-      ``<<EO\\F``    -> ("EOF",  True)    backslash mid-word
-      ``<<'EOF'``    -> ("EOF",  True)    fully quoted (already a STRING token)
-      ``<<"E F"``    -> ("E F",  True)    quoted, may contain non-word chars
-      ``<<E"O"F``    -> ("EOF",  True)    composite of adjacent WORD/STRING
-
-    A STRING part is already unquoted by the lexer; a WORD part with a
-    backslash is unescaped here. Any quoted/escaped part sets ``quoted``.
-    """
-    literal_parts: List[str] = []
-    quoted = False
-    for part in parts:
-        if part.type == TokenType.STRING:
-            literal_parts.append(part.value)
-            quoted = True
-        elif '\\' in part.value:
-            literal_parts.append(part.value.replace('\\', ''))
-            quoted = True
-        else:
-            literal_parts.append(part.value)
-    return ''.join(literal_parts), quoted
-
-
 class HeredocLexer:
     """Lexer with heredoc collection support.
 
@@ -196,15 +165,6 @@ class HeredocLexer:
                 }
         return tokens, heredoc_map
 
-    # Backwards-compatible two-step API
-    def tokenize(self) -> List[Token]:
-        tokens, heredoc_map = self.tokenize_with_heredocs()
-        self._collected = heredoc_map
-        return tokens
-
-    def get_heredoc_map(self) -> Dict[str, Dict[str, Any]]:
-        return getattr(self, '_collected', {}).copy()
-
     # === Heredoc operator discovery ===
 
     @staticmethod
@@ -318,13 +278,3 @@ class HeredocLexer:
                 if idx < len(keys):
                     tokens[i] = replace(token, heredoc_key=keys[idx])
                     idx += 1
-
-
-def tokenize_with_heredocs(source: str, config: "Optional[LexerConfig]" = None,
-                           source_name: str | None = None,
-                           base_line: int = 1
-                           ) -> Tuple[List[Token], Dict[str, Dict[str, Any]]]:
-    """Convenience function to tokenize source with heredoc support."""
-    lexer = HeredocLexer(source, config=config, source_name=source_name,
-                         base_line=base_line)
-    return lexer.tokenize_with_heredocs()

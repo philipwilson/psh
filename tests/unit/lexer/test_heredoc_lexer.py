@@ -12,7 +12,17 @@ once. These are the first unit tests for the heredoc modules (previously
 import subprocess
 import sys
 
-from psh.lexer.heredoc_lexer import tokenize_with_heredocs
+from psh.lexer.heredoc_lexer import HeredocLexer
+
+
+def tokenize_with_heredocs(source):
+    """Drive ``HeredocLexer`` directly (raw tokens, no post-lex pipeline).
+
+    The retired module-level ``heredoc_lexer.tokenize_with_heredocs`` was a
+    thin wrapper around exactly this; these tests want the raw (un-fused,
+    un-normalized) token stream, so they construct the lexer here.
+    """
+    return HeredocLexer(source).tokenize_with_heredocs()
 
 
 def run_psh_script(script, cwd=None):

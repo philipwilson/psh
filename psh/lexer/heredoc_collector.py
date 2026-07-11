@@ -153,20 +153,3 @@ class HeredocCollector:
                 return content
         return None
 
-    def get_heredoc_info(self, key: str) -> Optional[Dict[str, Any]]:
-        """Get complete information about a heredoc."""
-        if key in self.collected:
-            info = self.collected[key].copy()
-            info['content'] = self.get_content(key)
-            return info
-        return None
-
-    def clear(self) -> None:
-        """Clear all heredoc state."""
-        self.pending.clear()
-        self.collected.clear()
-        self._counter = 0
-
-    def get_incomplete_heredocs(self) -> List[str]:
-        """Get list of delimiters for incomplete heredocs."""
-        return [h.delimiter for h in self.pending]
