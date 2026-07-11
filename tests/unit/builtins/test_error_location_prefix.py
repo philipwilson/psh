@@ -108,6 +108,34 @@ class TestGetoptsSpecialForm:
             'psh: option requires an argument -- a'
 
 
+class TestTrapInvalidSignalParity:
+    """trap's SET path and its -p path both location-prefix identically.
+
+    Regression pin for the F1 bounce: the set-trap invalid-signal diagnostic
+    (trap_manager.py) bypassed Builtin.error, so it stayed bare while the -p
+    sibling was prefixed — a same-builtin inconsistency.
+    """
+
+    def test_set_path_is_prefixed(self, captured_shell):
+        captured_shell.run_command('trap "echo hi" NOPE')
+        assert captured_shell.get_stderr().splitlines()[0] == \
+            'psh: line 1: trap: NOPE: invalid signal specification'
+
+    def test_ignore_set_path_is_prefixed(self, captured_shell):
+        captured_shell.run_command('trap "" NOPE')
+        assert captured_shell.get_stderr().splitlines()[0] == \
+            'psh: line 1: trap: NOPE: invalid signal specification'
+
+    def test_set_and_p_paths_are_identical(self, captured_shell):
+        captured_shell.run_command('trap "echo hi" NOPE')
+        set_line = captured_shell.get_stderr().splitlines()[0]
+        captured_shell.clear_output()
+        captured_shell.run_command('trap -p NOPE')
+        p_line = captured_shell.get_stderr().splitlines()[0]
+        assert set_line == p_line == \
+            'psh: line 1: trap: NOPE: invalid signal specification'
+
+
 class TestInteractiveDropsLineNumber:
     """Interactive shells prefix with `<$0>: ` but omit `line N:` (bash -i)."""
 

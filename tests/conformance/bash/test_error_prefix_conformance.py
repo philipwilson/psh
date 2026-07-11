@@ -49,6 +49,8 @@ PREFIX_CELLS = [
     "readonly r=1; (( r=2 ))",               # arithmetic-command readonly
     "readonly r=1; export r=2",              # readonly via builtin (no name)
     "echo ${!x*bad}",                        # bad substitution
+    'trap "echo hi" NOPE',                   # trap SET-path invalid signal (F1)
+    "trap -p NOPE",                          # trap -p-path invalid signal (sibling)
 ]
 
 
