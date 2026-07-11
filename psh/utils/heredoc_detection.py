@@ -125,17 +125,24 @@ def heredoc_terminator_matches(line: str, delimiter: str, strip_tabs: bool) -> b
     return check == delimiter
 
 
-def _scan_arith_or_cmdsub(line: str, position: int, opener: str, open_len: int) -> bool:
+def _scan_arith_or_cmdsub(line: str, position: int, opener: str, open_len: int,
+                          flags: list) -> bool:
     """True if *position* falls within a ``opener … )`` region on *line*.
 
-    ``opener`` is ``'$(('`` / ``'$('`` / ``'(('``; ``open_len`` is how many
-    parens it contributes to the nesting depth (2 for the arithmetic forms,
-    1 for command substitution).
+    ``opener`` is ``'$(('`` / ``'((''``; ``open_len`` is how many parens it
+    contributes to the nesting depth (2 for the arithmetic forms). *flags* are
+    the per-char in-quote flags from ``_quote_flags`` — a QUOTED ``opener`` (or
+    a quoted paren) is text, so it can neither open a region nor change its
+    depth (H2: ``echo '((' ; cat <<EOF`` must not read the ``<<`` as a shift).
     """
     start = -1
     depth = 0
     i = 0
-    while i < len(line):
+    n = len(line)
+    while i < n:
+        if i < len(flags) and flags[i]:
+            i += 1  # quoted char: not an opener, and does not affect depth
+            continue
         if line[i:i + len(opener)] == opener and start < 0:
             # For bare '((' don't re-trigger on the '((' inside a '$(('.
             if opener == '((' and i > 0 and line[i - 1] == '$':
@@ -160,18 +167,22 @@ def _scan_arith_or_cmdsub(line: str, position: int, opener: str, open_len: int) 
     return False
 
 
-def _inside_closed_cmdsub(line: str, position: int) -> bool:
+def _inside_closed_cmdsub(line: str, position: int, flags: list) -> bool:
     """True if *position* falls within a ``$( … )`` region that CLOSES on
     *line*, using the grammar-aware extent scanner (so a case pattern's bare
     ``)`` inside the substitution does not end the region early). An
     unclosed ``$(`` returns False: a ``<<`` inside it is then treated as a
     pending heredoc so the line gatherer keeps reading — matching how the
-    full lexer will see it once the substitution is complete.
+    full lexer will see it once the substitution is complete. A QUOTED ``$(``
+    (*flags*) is text, not a substitution opener.
     """
     from ..lexer.cmdsub_scanner import find_command_substitution_end
     i = 0
     n = len(line)
     while i < n and i <= position:
+        if i < len(flags) and flags[i]:
+            i += 1  # quoted char: not a substitution opener
+            continue
         if line.startswith('$((', i):
             i += 3  # arithmetic; handled by _scan_arith_or_cmdsub
             continue
@@ -187,14 +198,18 @@ def _inside_closed_cmdsub(line: str, position: int) -> bool:
     return False
 
 
-def _inside_param_expansion(line: str, position: int) -> bool:
+def _inside_param_expansion(line: str, position: int, flags: list) -> bool:
     """True if *position* is inside a ``${…}`` parameter expansion (where a
     ``<<`` is an arithmetic left-shift in a subscript, e.g. ``${arr[1<<1]}``,
     not a heredoc). Tracks brace nesting (``${a${b}}``). An unclosed ``${``
     returns False so the line gatherer keeps reading, mirroring the cmdsub case.
+    A QUOTED ``${`` (*flags*) is text, not an expansion opener.
     """
     i, n = 0, len(line)
     while i < n and i <= position:
+        if i < len(flags) and flags[i]:
+            i += 1  # quoted char: not an expansion opener
+            continue
         if line.startswith('${', i):
             depth, j = 0, i + 1
             while j < n:
@@ -215,21 +230,32 @@ def _inside_param_expansion(line: str, position: int) -> bool:
     return False
 
 
-def is_inside_expansion(line: str, position: int) -> bool:
+def is_inside_expansion(line: str, position: int,
+                        flags: "list | None" = None) -> bool:
     """True if *position* on *line* is inside an expansion where ``<<`` is not
     a heredoc: ``$((…))`` / bare ``((…))`` arithmetic, ``$(…)`` command
     substitution, ``${…}`` parameter expansion, or ``` `…` ``` backticks.
+
+    *flags* are the per-char in-quote flags from ``_quote_flags`` (computed
+    here when omitted). Quote-awareness is the H2 fix: a QUOTED opener
+    (``'(('``, ``"$("``, a quoted backtick) is ordinary text and can never open
+    a region — so a following bare ``<<WORD`` is still recognised as a heredoc.
     """
-    if _scan_arith_or_cmdsub(line, position, '$((', 2):
+    if flags is None:
+        flags, _ = _quote_flags(line, None)
+    if _scan_arith_or_cmdsub(line, position, '$((', 2, flags):
         return True
-    if _inside_closed_cmdsub(line, position):
+    if _inside_closed_cmdsub(line, position, flags):
         return True
-    if _scan_arith_or_cmdsub(line, position, '((', 2):
+    if _scan_arith_or_cmdsub(line, position, '((', 2, flags):
         return True
-    if _inside_param_expansion(line, position):
+    if _inside_param_expansion(line, position, flags):
         return True
 
-    # Backtick command substitution
+    # Backtick command substitution. This stays quote-BLIND: `_quote_flags`
+    # marks a bare `...` interior as protected too, so a flags-guard here would
+    # hide real backtick regions. A `<<` inside a QUOTED backtick is already
+    # dropped by the `flags[match.start()]` guard in scan_line_heredoc_markers.
     backtick_start = -1
     i = 0
     while i < len(line):
@@ -327,12 +353,19 @@ def scan_line_heredoc_markers(line: str, quote=None):
     a comment are not heredocs; comment text is also excluded from the
     carried quote state (an apostrophe in ``# don't`` is not a quote).
     """
-    flags, _ = _quote_flags(line, quote)
+    flags, quote_after = _quote_flags(line, quote)
     comment_at = _comment_start(line, flags)
-    _, quote_after = _quote_flags(line[:comment_at], quote)
+    if comment_at < len(line):
+        # A comment: recompute the carried quote state up to it so comment
+        # text (e.g. an apostrophe in `# don't`) is excluded. With no comment
+        # the full-line scan above already gives quote_after (runs once).
+        _, quote_after = _quote_flags(line[:comment_at], quote)
     markers = []
     for match in HEREDOC_MARKER_RE.finditer(line, 0, comment_at):
-        if is_inside_expansion(line, match.start()):
+        # `flags` (computed once) makes both the quoted-`<<` check and the
+        # quote-aware expansion scan share one pass — a quoted `((`/`$(`/backtick
+        # cannot open a region and swallow this marker (H2).
+        if is_inside_expansion(line, match.start(), flags):
             continue
         if match.start() < len(flags) and flags[match.start()]:
             continue  # quoted "<<WORD" is not a heredoc
@@ -372,8 +405,8 @@ def open_heredoc_delimiters(command: str) -> list:
     incremental body tracking from this (checking each subsequent line
     against the pending delimiters, without re-scanning the whole buffer).
     """
-    # Fast path / arithmetic-only exclusion: if every '<<' is bit-shift inside
-    # arithmetic, there is no heredoc at all.
+    # Cheap gate: no '<<' anywhere means no heredoc. Everything else (quotes,
+    # arithmetic '<<', backticks) is decided accurately below, per line.
     if not contains_heredoc(command):
         return []
 
@@ -403,58 +436,20 @@ def open_heredoc_delimiters(command: str) -> list:
 
 
 def contains_heredoc(command_string: str) -> bool:
-    """Check if command contains heredoc operators (not bit-shift in arithmetic).
+    """A cheap OVER-APPROXIMATION: does the command contain a ``<<`` at all?
 
-    Returns True if the command contains << that's likely a heredoc,
-    False if << only appears inside arithmetic expressions.
+    This is only a gate that decides whether to run the accurate, quote- and
+    grammar-aware scanner (``open_heredoc_delimiters`` /
+    ``scan_line_heredoc_markers``) — never the final answer. It must NEVER
+    return False for a real heredoc, so it deliberately does no arithmetic /
+    quote analysis here: a false True just runs the accurate path (which
+    returns no markers for ``echo $((1<<2))`` or ``echo '<<EOF'``); a false
+    False would silently drop a heredoc.
+
+    The previous version tried to exclude arithmetic ``<<`` by pairing ``((``
+    with ``))`` by index, quote-blind — so ``echo '((' ; cat <<EOF … echo '))'``
+    (quoted parens flanking a real heredoc) wrongly short-circuited to False and
+    the body ran as commands (H2). Deferring the decision to the accurate path
+    removes that whole class of bug.
     """
-    if '<<' not in command_string:
-        return False
-
-    # Quick check: if we have arithmetic expressions, check if << is inside them
-    # This is a simple heuristic that handles the common case
-    if '((' in command_string:
-        # Find all arithmetic expression boundaries
-        arith_start = []
-        arith_end = []
-        i = 0
-        while i < len(command_string) - 1:
-            if command_string[i:i+2] == '((':
-                arith_start.append(i)
-                i += 2
-            elif command_string[i:i+2] == '))':
-                arith_end.append(i + 2)
-                i += 2
-            else:
-                i += 1
-
-        # Find all << positions
-        heredoc_positions = []
-        i = 0
-        while i < len(command_string) - 1:
-            if command_string[i:i+2] == '<<':
-                heredoc_positions.append(i)
-                i += 2
-            else:
-                i += 1
-
-        # Check if all << are inside arithmetic expressions
-        if heredoc_positions and arith_start and arith_end:
-            all_inside_arithmetic = True
-            for pos in heredoc_positions:
-                inside = False
-                # Check if this << is inside any arithmetic expression
-                for j in range(min(len(arith_start), len(arith_end))):
-                    if arith_start[j] < pos < arith_end[j]:
-                        inside = True
-                        break
-                if not inside:
-                    all_inside_arithmetic = False
-                    break
-
-            # If all << are inside arithmetic expressions, no heredoc
-            if all_inside_arithmetic:
-                return False
-
-    # Default: assume << is a heredoc
-    return True
+    return '<<' in command_string

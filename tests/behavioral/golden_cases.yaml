@@ -1723,6 +1723,56 @@
   stderr: ""
   exit_code: 0
 
+# H2 (reappraisal #19): quote-aware heredoc detection. A heredoc flanked by
+# QUOTED parens must not be mistaken for a bit-shift inside arithmetic. The
+# old quote-blind `((`/`))` index-pairing dropped the heredoc entirely.
+- name: heredoc_flanked_by_quoted_parens
+  command: |
+    echo '(('
+    cat <<EOF
+    hello
+    EOF
+    echo '))'
+  stdout: "((\nhello\n))\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_after_quoted_dollar_arith
+  command: |
+    echo '$(('
+    cat <<EOF
+    body
+    EOF
+    echo '))'
+  stdout: "$((\nbody\n))\n"
+  stderr: ""
+  exit_code: 0
+
+- name: quoted_heredoc_operator_squote_not_heredoc
+  # `<<EOF` inside single quotes is literal text, not a heredoc opener.
+  command: |
+    echo '<<EOF'
+    echo after
+  stdout: "<<EOF\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: quoted_heredoc_operator_dquote_not_heredoc
+  command: |
+    echo "<<EOF"
+    echo after
+  stdout: "<<EOF\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_left_shift_not_heredoc_still
+  # contains_heredoc now over-approximates (sees '<<'), but the accurate path
+  # correctly treats `<<` inside $(( )) as a left shift, not a heredoc.
+  command: "echo $(( 1 << 3 ))"
+  stdout: "8\n"
+  stderr: ""
+  exit_code: 0
+
 # An unterminated heredoc is delimited by end-of-file: gathered lines are the
 # body, a warning goes to stderr, and the command RUNS (bash). psh used to
 # silently drop the whole command (no output, no warning, rc 0).

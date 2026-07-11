@@ -9,6 +9,8 @@ from psh.utils.heredoc_detection import (
     contains_heredoc,
     has_unclosed_heredoc,
     is_inside_expansion,
+    open_heredoc_delimiters,
+    scan_line_heredoc_markers,
 )
 
 
@@ -54,6 +56,18 @@ class TestHasUnclosedHeredoc:
     def test_multiple_heredocs_all_closed(self):
         assert has_unclosed_heredoc("cat <<A; cat <<B\nfoo\nA\nbar\nB") is False
 
+    def test_quoted_parens_flanking_open_heredoc(self):
+        # H2 regression: quote-blind `((`/`))` index-pairing in contains_heredoc
+        # made a real heredoc flanked by quoted parens look arithmetic-only, so
+        # the oracle wrongly reported "no open heredoc" (the accumulator then
+        # ran the body as commands). The `))` here is heredoc BODY.
+        assert has_unclosed_heredoc("echo '(('\ncat <<EOF\n))") is True
+        assert open_heredoc_delimiters("echo '(('\ncat <<EOF\n))") == [("EOF", False)]
+
+    def test_quoted_arith_open_then_bare_heredoc(self):
+        # A quoted `$((` before a bare heredoc must not open an arithmetic region.
+        assert has_unclosed_heredoc("echo '$(('\ncat <<END\nbody") is True
+
 
 class TestIsInsideExpansion:
     def test_inside_arithmetic(self):
@@ -76,13 +90,65 @@ class TestIsInsideExpansion:
         line = "cat <<EOF"
         assert is_inside_expansion(line, line.index("<<")) is False
 
+    def test_quoted_paren_does_not_open_region(self):
+        # H2: a QUOTED `((` is text and cannot open an arithmetic region, so a
+        # bare `<<` after it is NOT "inside an expansion".
+        line = "echo '((' <<EOF '))'"
+        assert is_inside_expansion(line, line.index("<<")) is False
+
+    def test_quoted_dollar_paren_does_not_open_region(self):
+        line = "echo '$((' <<EOF '))'"
+        assert is_inside_expansion(line, line.index("<<")) is False
+
+    def test_real_arith_still_inside(self):
+        # The unquoted arithmetic case must still be detected (no over-fix).
+        line = "echo $(( 1 << 2 ))"
+        assert is_inside_expansion(line, line.index("<<")) is True
+
+
+class TestScanLineHeredocMarkers:
+    def test_quoted_paren_line_still_finds_heredoc(self):
+        markers, _ = scan_line_heredoc_markers("echo '((' <<EOF '))'")
+        assert markers == [("EOF", False, False)]
+
+    def test_quoted_heredoc_operator_is_not_marker(self):
+        # `<<EOF` inside quotes must not open a heredoc (both spellings).
+        assert scan_line_heredoc_markers("echo '<<EOF'")[0] == []
+        assert scan_line_heredoc_markers('echo "<<EOF"')[0] == []
+
 
 class TestContainsHeredoc:
+    # contains_heredoc is a cheap OVER-APPROXIMATION ('<<' present?): it only
+    # gates the accurate scanner and must never be False for a real heredoc.
+    # The accurate arithmetic/quote exclusion lives in has_unclosed_heredoc /
+    # open_heredoc_delimiters (see TestHasUnclosedHeredoc).
     def test_plain_heredoc(self):
         assert contains_heredoc("cat <<EOF") is True
 
-    def test_arithmetic_only(self):
-        assert contains_heredoc("echo $((1<<2))") is False
+    def test_arithmetic_shift_over_approximates_true(self):
+        # '<<' present -> True (over-approx); the accurate path returns no
+        # heredoc for pure arithmetic (has_unclosed_heredoc is False).
+        assert contains_heredoc("echo $((1<<2))") is True
+        assert has_unclosed_heredoc("echo $((1<<2))") is False
 
     def test_none(self):
         assert contains_heredoc("echo hi") is False
+
+
+class TestQuoteAwareHeredocExecution:
+    """End-to-end pin on the full-buffer run_command path (the path the H2 bug
+    broke; `-c`/script/stdin use the incremental accumulator and masked it)."""
+
+    def test_quoted_parens_flanking_heredoc_execute(self, captured_shell):
+        # The `read` builtin must consume the heredoc body; `captured_body`,
+        # `EOF`, and `))` must NOT be run as commands.
+        rc = captured_shell.run_command(
+            "echo '(('\n"
+            "read line <<EOF\n"
+            "captured_body\n"
+            "EOF\n"
+            'echo "[$line]"\n'
+            "echo '))'")
+        assert rc == 0
+        assert captured_shell.get_stdout() == "((\n[captured_body]\n))\n"
+        assert "not found" not in captured_shell.get_stderr()
