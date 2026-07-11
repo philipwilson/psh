@@ -38,8 +38,8 @@ class TokenParsers:
 
         # Pipeline and logical operators
         self.pipe = token('PIPE')
-        self.and_if = token('AND_IF').or_else(token('AND_AND'))
-        self.or_if = token('OR_IF').or_else(token('OR_OR'))
+        self.and_if = token('AND_AND')  # && (the lexer emits AND_AND, not POSIX AND_IF)
+        self.or_if = token('OR_OR')     # || (the lexer emits OR_OR, not POSIX OR_IF)
 
         # Background job
         self.ampersand = token('AMPERSAND')
@@ -154,18 +154,6 @@ class TokenParsers:
 
     def _initialize_special_tokens(self):
         """Initialize special token parsers."""
-        # Assignment operator
-        self.equals = token('EQUALS')
-
-        # Glob patterns
-        self.glob = token('GLOB')
-
-        # Assignment-related
-        self.assignment = token('ASSIGNMENT')
-
-        # Here-document delimiter
-        self.heredoc_delimiter = token('HEREDOC_DELIMITER')
-
         # Pipeline negation
         self.exclamation = token('EXCLAMATION')
 

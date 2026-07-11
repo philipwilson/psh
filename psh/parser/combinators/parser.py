@@ -137,16 +137,16 @@ class ParserCombinatorShellParser:
         self.top_level = self.commands.statement_list
 
     def _prepare_tokens(self, tokens: List[Token]) -> Tuple[List[Token], int]:
-        """Normalize keywords and skip leading whitespace.
+        """Normalize keywords and skip leading newlines.
 
         Returns:
             (normalized_tokens, start_pos).  start_pos == len(tokens)
-            when input is empty/whitespace-only.
+            when input is empty/newline-only.
         """
         normalizer = KeywordNormalizer()
         tokens = normalizer.normalize(list(tokens))
         start_pos = 0
-        while start_pos < len(tokens) and tokens[start_pos].type.name in ['WHITESPACE', 'NEWLINE']:
+        while start_pos < len(tokens) and tokens[start_pos].type.name == 'NEWLINE':
             start_pos += 1
         return tokens, start_pos
 
@@ -194,9 +194,9 @@ class ParserCombinatorShellParser:
         ast = result.value
         assert ast is not None
 
-        # Ensure we consumed all tokens (allowing trailing whitespace/newlines and EOF)
+        # Ensure we consumed all tokens (allowing trailing newlines and EOF)
         pos = result.position
-        while pos < len(tokens) and tokens[pos].type.name in ['WHITESPACE', 'NEWLINE', 'EOF']:
+        while pos < len(tokens) and tokens[pos].type.name in ['NEWLINE', 'EOF']:
             pos += 1
 
         if pos < len(tokens):
@@ -287,9 +287,9 @@ class ParserCombinatorShellParser:
             if not result.success:
                 return False
 
-            # Check if we consumed all tokens (allowing trailing whitespace)
+            # Check if we consumed all tokens (allowing trailing newlines)
             pos = result.position
-            while pos < len(tokens) and tokens[pos].type.name in ['WHITESPACE', 'NEWLINE', 'EOF']:
+            while pos < len(tokens) and tokens[pos].type.name in ['NEWLINE', 'EOF']:
                 pos += 1
 
             return pos == len(tokens)
