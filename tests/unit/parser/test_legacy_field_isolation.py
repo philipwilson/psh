@@ -10,17 +10,20 @@ legacy quote/type sidecars.
 This static-source meta-test scans ``psh/executor/`` and ``psh/expansion/``
 and asserts that NONE of the legacy quote/type attribute accesses appear
 there. A2 (2026-06-13) carried out the cleanup: four sidecars became
-DERIVED ``@property`` on the AST nodes (still read only by the two
-visitors) and ``item_quote_types`` was DELETED outright (no readers).
-The lock remains valid -- the runtime must read none of these names,
-whether they resolve to a property or no longer exist:
+DERIVED ``@property`` on the AST nodes and ``item_quote_types`` was DELETED
+outright. Reappraisal #19 (D5) then deleted the three derived properties
+that had lost their last reader — only ``element_types`` (read by the
+validator's mixed-element-type advisory) survives. The lock is unchanged:
+it FORBIDS the runtime from reading any of these names and does NOT require
+the properties to exist, so it stays valid whether a name resolves to a
+property or no longer exists:
 
-| Locked attribute        | Status after A2 / only legitimate readers      |
+| Locked attribute        | Status / only legitimate readers               |
 |-------------------------|------------------------------------------------|
-| .element_types          | derived property; formatter / validator        |
-| .element_quote_types    | derived property; formatter / validator        |
-| .value_type             | derived property; formatter                    |
-| .value_quote_type       | derived property; formatter                    |
+| .element_types          | derived property; validator advisory only      |
+| .element_quote_types    | DELETED (no readers anywhere)                   |
+| .value_type             | DELETED (no readers anywhere)                   |
+| .value_quote_type       | DELETED (no readers anywhere)                   |
 | .item_quote_types       | DELETED (no readers anywhere)                   |
 
 Why only these five (and not ``.elements`` / ``.items`` / ``.value`` /

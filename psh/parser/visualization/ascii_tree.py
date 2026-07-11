@@ -110,11 +110,10 @@ class AsciiTreeRenderer:
         return fields
 
     def _get_statement_list_fields(self, node) -> List[Tuple[str, Any]]:
-        """Get fields for StatementList without duplication from compatibility properties."""
+        """Get fields for StatementList (only the canonical 'statements' list)."""
         fields = []
 
-        # Only show the main 'statements' field, skip the backward compatibility properties
-        # that are derived from it (and_or_lists, pipelines)
+        # StatementList's only data is the 'statements' list.
         statements = getattr(node, 'statements', [])
         if statements or self.show_empty_fields:
             fields.append(('statements', statements))

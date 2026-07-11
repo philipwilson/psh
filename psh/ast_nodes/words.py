@@ -14,6 +14,9 @@ from typing import TYPE_CHECKING, List, Optional
 from .base import ASTNode
 
 if TYPE_CHECKING:
+    # ArrayInitialization is referenced by Word.array_init as a string forward
+    # reference; a runtime import would create a cycle (arrays.py imports Word).
+    from .arrays import ArrayInitialization  # noqa: F401
     from .commands import Program
 
 # A name renderable as a bare ``$name``: a plain identifier, a single special
@@ -171,36 +174,19 @@ class ExpansionPart(WordPart):
 def _expansion_literal_text(expansion: Expansion) -> str:
     """Render an Expansion as the literal ``$``-source text it came from.
 
-    Helper for :meth:`Word.to_literal_string` (quote removal of words
-    whose expansions were never live, e.g. inside single quotes). NOT the
-    same as the nodes' ``__str__``: ``ParameterExpansion.__str__`` formats
-    a word-less operator as a prefix (``${#var}``), while this historical
-    rule appends it (``${var#}``) — kept verbatim from the expansion
-    manager (zero-behavior-change; the branch is unreachable for words
-    built by the parsers, which make single-quoted content literal).
+    Helper for :meth:`Word.to_literal_string` (quote removal of words whose
+    expansions were never live, e.g. inside single quotes). Every expansion
+    renders through its own ``__str__`` source-repr, except a bare
+    ``VariableExpansion`` which is emitted unbraced (``$name``) to match the
+    literal source it stood in for. (The former hand-rolled
+    CommandSubstitution/ArithmeticExpansion arms duplicated ``__str__``
+    byte-for-byte, and the ParameterExpansion arm carried a historically-broken
+    operator-suffix rule — ``${var#}`` where ``__str__`` correctly emits
+    ``${#var}`` — that was unreachable for parser-built words; both removed.)
     """
     if isinstance(expansion, VariableExpansion):
         return f"${expansion.name}"
-    elif isinstance(expansion, CommandSubstitution):
-        if expansion.backtick_style:
-            return f"`{expansion.source}`"
-        else:
-            return f"$({expansion.source})"
-    elif isinstance(expansion, ParameterExpansion):
-        # Reconstruct parameter expansion syntax
-        result = f"${{{expansion.parameter}"
-        if expansion.operator:
-            result += expansion.operator
-            if expansion.word:
-                result += expansion.word
-        result += "}"
-        return result
-    elif isinstance(expansion, ArithmeticExpansion):
-        return f"$(({expansion.expression}))"
-    else:
-        # ProcessSubstitution and any future expansion types render via
-        # their __str__ (e.g. '<(cmd)')
-        return str(expansion)
+    return str(expansion)
 
 
 @dataclass
@@ -388,10 +374,3 @@ class Word(ASTNode):
         """
         return cls(parts=[LiteralPart(text, quoted=bool(quote_type),
                                       quote_char=quote_type)])
-
-
-# ArrayInitialization is referenced by Word.array_init as a forward reference;
-# importing it at module load time would create a cycle (arrays.py imports
-# Word). The annotation is a string, so no runtime import is needed here.
-if False:  # pragma: no cover - typing aid only
-    from .arrays import ArrayInitialization  # noqa: F401
