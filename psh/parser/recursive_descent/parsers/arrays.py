@@ -24,10 +24,13 @@ The LIVE token shapes the current lexer actually produces (verified by a
 * Element, single token -- WORD ``a[i]=v`` / ``a[i]+=v`` / ``a[i]=``
   (subscript and operator inside one token, plus adjacent expansion /
   quoted continuation tokens).
-* Element, split -- WORD ``a[i]`` (no ``=``) + a separate WORD starting
-  with ``=``/``+=`` (only reachable via the space-separated ``a[0] =v``,
-  a pre-existing divergence from bash where bash treats ``a[0]`` as a
-  command).
+
+There is no live "split element" shape: the lexer fuses an adjacent
+``a[i]`` + ``=v`` into ONE WORD, and the space-separated ``a[0] =v`` form
+is a simple command (bash treats ``a[0]`` as a command word), so the two
+tokens are never adjacent. (An earlier ``_candidate_split_element`` handler
+was unreachable from the live lexer — and misparsed when hand-fed — and was
+removed.)
 
 The space-separated ``a [ 0 ] = v`` form (a space BEFORE the bracket) is
 NOT an array assignment: bash parses it as a simple command (``a`` plus
@@ -91,11 +94,8 @@ class AssignmentCandidate:
     is_initializer: bool
     #: True when a ``[subscript]`` is present -- an element assignment.
     is_element: bool
-    #: Subscript text for the single-token / split element shapes.
+    #: Subscript text for the single-token element shape.
     subscript: Optional[str] = None
-    #: Literal value text carried in the same token after the operator
-    #: (e.g. ``v`` in WORD ``a[0]=v``, ``pre`` in WORD ``a[0]=pre``).
-    inline_tail: str = ""
     #: How many leading tokens the head occupies (name [+ operator]).
     head_token_count: int = 1
     #: Char length of the ``name[subscript]operator`` prefix within the head
@@ -142,10 +142,6 @@ class ArrayParser(ParserSubcomponent):
             cand = self._candidate_single_token_element(value)
             if cand is not None:
                 return cand
-            # Split: WORD "arr[i]" (no '=') + separate WORD "=value"/"+="
-            cand = self._candidate_split_element(value)
-            if cand is not None:
-                return cand
 
         # --- Array initialization: name=( / name+=( / name + =/+= + ( ---
         cand = self._candidate_initializer()
@@ -167,39 +163,14 @@ class ArrayParser(ParserSubcomponent):
         close_bracket_pos = value.index(']')
         subscript = value[bracket_pos + 1:close_bracket_pos]
         head_len = equals_pos + (2 if is_append else 1)
-        tail = value[head_len:]
         return AssignmentCandidate(
             name=value[:bracket_pos],
             operator='+=' if is_append else '=',
             is_initializer=False,
             is_element=True,
             subscript=subscript,
-            inline_tail=tail,
             head_token_count=1,
             head_len=head_len,
-        )
-
-    def _candidate_split_element(self, value: str) -> Optional[AssignmentCandidate]:
-        """``arr[i]`` (no ``=``) + a following ``=value``/``+=`` token."""
-        if not self._peek_is_assignment_operator(1):
-            return None
-        # The operator token must be lexically ADJACENT to the ``arr[i]`` token.
-        # A space before it (`a[0] =v`) means `a[0]` is a command word and `=v`
-        # an argument, not an element assignment — matching bash (finding 5c).
-        if not self.parser.peek(1).adjacent_to_previous:
-            return None
-        bracket_pos = value.index('[')
-        close_bracket_pos = value.index(']')
-        op_token = self.parser.peek(1)
-        is_append = op_token.value == '+=' or op_token.value.startswith('+=')
-        return AssignmentCandidate(
-            name=value[:bracket_pos],
-            operator='+=' if is_append else '=',
-            is_initializer=False,
-            is_element=True,
-            subscript=value[bracket_pos + 1:close_bracket_pos],
-            inline_tail='',  # resolved from the operator token at parse time
-            head_token_count=2,
         )
 
     def _candidate_initializer(self) -> Optional[AssignmentCandidate]:
@@ -248,12 +219,6 @@ class ArrayParser(ParserSubcomponent):
             )
 
         return None
-
-    def _peek_is_assignment_operator(self, offset: int) -> bool:
-        """Check if token at offset is '=…' or '+='."""
-        t = self.parser.peek(offset)
-        return (t.type == TokenType.WORD and
-                (t.value.startswith('=') or t.value == '+='))
 
     # ------------------------------------------------------------------ #
     # Detection (thin wrapper over the normalizer).

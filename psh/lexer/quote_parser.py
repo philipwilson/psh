@@ -8,7 +8,6 @@ from .token_parts import TokenPart
 
 if TYPE_CHECKING:
     from .expansion_parser import ExpansionParser
-    from .position import PositionTracker
 
 
 class QuoteRules:
@@ -84,7 +83,6 @@ class UnifiedQuoteParser:
         input_text: str,
         start_pos: int,
         rules: QuoteRules,
-        position_tracker: Optional['PositionTracker'] = None,
         quote_type: Optional[str] = None
     ) -> Tuple[List[TokenPart], int, bool]:
         """
@@ -94,7 +92,6 @@ class UnifiedQuoteParser:
             input_text: The input string
             start_pos: Starting position (after opening quote)
             rules: Quote parsing rules
-            position_tracker: Optional position tracker for rich position info
             quote_type: Optional quote type override (e.g., "$'" for ANSI-C)
 
         Returns:
@@ -202,7 +199,9 @@ class UnifiedQuoteParser:
             quote_type=quote_type,
             is_variable=False,
             is_expansion=False,
-            start_pos=Position(start_pos, 0, 0),  # Line/col will be filled by tracker
+            # TokenParts carry offsets only; line/col are resolved later from
+            # the SourceMap when a token's span is needed.
+            start_pos=Position(start_pos, 0, 0),
             end_pos=Position(end_pos, 0, 0)
         )
 

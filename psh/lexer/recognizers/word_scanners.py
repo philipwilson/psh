@@ -590,7 +590,7 @@ def scan_inline_ansi_c(text: str, pos: int) -> Optional[Tuple[str, int]]:
 
     from ..quote_parser import QUOTE_RULES, UnifiedQuoteParser
     parts, new_pos, closed = UnifiedQuoteParser().parse_quoted_string(
-        text, pos + 2, QUOTE_RULES["$'"], None, quote_type="$'")
+        text, pos + 2, QUOTE_RULES["$'"], quote_type="$'")
     if not closed:
         return None
     return ''.join(part.value for part in parts), new_pos

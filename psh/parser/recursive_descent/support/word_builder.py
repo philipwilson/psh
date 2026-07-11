@@ -163,16 +163,14 @@ class WordBuilder:
         ParameterExpansion('arr[@]', ':', '1:2') at parse time, not a
         deferred opaque parameter string.
         """
+        # parse_parameter_expansion always returns a ParameterExpansion (even
+        # for an operator-less ${name}), so nothing to brace-flag here. The
+        # brace-delimited flagging for a simple ${name} that keeps ${v}{1,2}
+        # from fusing lives in _variable_name_to_expansion (VariableExpansion
+        # branch); this path only handles operator forms.
         if value.startswith('${') and value.endswith('}'):
             value = value[2:-1]
-        parsed = parse_parameter_expansion(value)
-        # A ${name} / ${name[idx]} with no operator parses to a plain
-        # VariableExpansion; flag it as brace-delimited so WordBraceExpander
-        # does NOT fuse a following name-char run into it (${v}{1,2} stays
-        # ${v}1/${v}2, unlike bare $v{1,2} -> v1/v2).
-        if isinstance(parsed, VariableExpansion):
-            parsed.braced = True
-        return parsed
+        return parse_parameter_expansion(value)
 
     @staticmethod
     def _variable_name_to_expansion(name: str) -> Expansion:

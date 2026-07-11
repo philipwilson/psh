@@ -340,16 +340,6 @@ class TestRecognizerRegistry:
         assert ordered[0] is first
         assert ordered[1] is second
 
-    def test_clear_registry(self, registry):
-        """Test clearing all recognizers."""
-        registry.register(OperatorRecognizer())
-        registry.register(LiteralRecognizer())
-
-        assert len(registry) == 2
-
-        registry.clear()
-        assert len(registry) == 0
-
     def test_default_recognizers(self):
         """The production registry lists recognizers in exact dispatch order."""
         registry = ModularLexer('').registry

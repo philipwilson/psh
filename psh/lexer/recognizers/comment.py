@@ -17,9 +17,9 @@ from .base import ContextualRecognizer
 # a word character is never preceded by a bare '<'/'>' (base-N arithmetic
 # `16#ff` follows a digit; extglob `a@(b)#c` follows ')').
 # This is the single comment-start definition shared by
-# CommentRecognizer and LiteralRecognizer: because LiteralRecognizer runs
-# at higher priority and collects any '#' this predicate rejects into the
-# current word, both recognizers must agree — a wider set here would be
+# CommentRecognizer and LiteralRecognizer: because LiteralRecognizer is
+# registered ahead of CommentRecognizer and collects any '#' this predicate
+# rejects into the current word, both recognizers must agree — a wider set here would be
 # unreachable (the literal recognizer would have consumed the '#' first)
 # and a wider set in the literal recognizer would split words like the
 # extglob pattern a@(b)#c.

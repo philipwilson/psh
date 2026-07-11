@@ -26,12 +26,12 @@ literal collect loop would split ``]=x`` and ``+=`` differently. The
 collection rule: read until whitespace, a hard operator (``<>&|;(){}!``),
 or a quote/expansion starter (``$ ` " '``).
 
-The recognizer carries the LOWEST priority of any recognizer (literal=70,
-comment=60, whitespace=30, debris=10) so it is tried strictly LAST —
-preserving the historical "fallback step" ordering in which this collector
-ran only after every other recognizer declined. Because it runs last, a
-plain ``[`` or ``[[`` handled by the operator/literal recognizers is never
-stolen by this recognizer.
+This recognizer is registered LAST (dispatch order == registration order;
+see ``ModularLexer._setup_recognizers``), so it is tried strictly after
+every other recognizer — preserving the historical "fallback step" ordering
+in which this collector ran only once every other recognizer declined.
+Because it runs last, a plain ``[`` or ``[[`` handled by the
+operator/literal recognizers is never stolen by this recognizer.
 """
 
 from typing import Optional, Tuple

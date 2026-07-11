@@ -10,7 +10,7 @@ Two visitor findings from the 2026-06-21 appraisal:
 * H11 — every analysis mode (``--validate``/``--format``/``--metrics``/
   ``--security``/``--lint``) crashed with an uncaught Python traceback on a
   syntax error, because the handler caught only ``(ValueError, TypeError)`` while
-  ``ParseError``/``LexerError`` derive from ``PshError``/``SyntaxError``.
+  ``ParseError``/``UnclosedQuoteError`` derive from ``PshError``/``SyntaxError``.
 
 The fixes route every word-bearing case node through the quote-preserving
 ``_format_word`` (with brace-disambiguation + double-quote re-escaping) and catch

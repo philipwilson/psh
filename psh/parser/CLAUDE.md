@@ -187,7 +187,7 @@ class TokenGroups:
     WORD_LIKE = frozenset({WORD, STRING, VARIABLE, ...})
     REDIRECTS = frozenset({REDIRECT_IN, REDIRECT_OUT, ...})
     STATEMENT_SEPARATORS = frozenset({SEMICOLON, NEWLINE, ...})
-    CONTROL_KEYWORDS = frozenset({IF, WHILE, FOR, ...})
+    CASE_PATTERN_KEYWORDS = frozenset({IF, THEN, ELSE, ...})
 ```
 
 ## Parsing Flow
@@ -286,7 +286,10 @@ Keywords are only recognized at command position:
 - `if echo` → IF keyword, WORD "echo"
 - `echo if` → WORD "echo", WORD "if"
 
-The parser uses `TokenGroups.CONTROL_KEYWORDS` to identify keywords.
+The distinction is made in the lexer: `KeywordNormalizer` converts a
+command-position WORD into its keyword token type (`TokenType.IF`, ...). The
+parser then dispatches on those explicit token types (`match(TokenType.IF)`),
+not on a keyword-set membership test.
 
 ### Compound Command Handling
 

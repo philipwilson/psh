@@ -295,8 +295,6 @@ class ParserContext:
 
         error_context.context_before = context_before
         error_context.context_after = context_after
-        # Flat list retained for backward compatibility (before + after).
-        error_context.context_tokens = context_before + context_after
 
         # Add a contextual suggestion keyed on the expected token type.
         if expected_type is not None:

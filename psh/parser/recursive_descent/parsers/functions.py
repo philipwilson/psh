@@ -4,7 +4,7 @@ Function parsing for PSH shell.
 This module handles parsing of function definitions.
 """
 
-from typing import Optional, Tuple, cast
+from typing import Optional, cast
 
 from ....ast_nodes import FunctionDef, Statement, StatementList
 from ....core.assignment_utils import ASSIGNMENT_WORD_RE
@@ -29,28 +29,21 @@ class FunctionParser(ParserSubcomponent):
     # even `[` and `]`).
     NAME_TOKENS = (TokenType.WORD, TokenType.LBRACKET, TokenType.RBRACKET)
 
-    def _peek_name_tokens(self) -> Optional[Tuple[str, int]]:
-        """Peek the function-name word at the current position.
+    def _peek_name_token(self) -> Optional[str]:
+        """Peek the function-name word at the current position, or None.
 
-        Returns ``(name, token_count)`` or None. The lexer splits some
-        plain words at assignment-operator candidates (`foo+bar` lexes as
-        WORD `foo` + WORD `+bar`; `2=b` as `2` + `=b`), and `[foo]` spans
-        LBRACKET/WORD/RBRACKET — everywhere else the composite machinery
-        rejoins them, so the name check must join adjacent name-able
-        tokens too. Composites containing expansions or quoted parts stay
-        rejected (psh does not expand function names; bash errors on them
-        at execution time).
+        Word fusion already merged an adjacent name run — `foo+bar`, `2=b`,
+        `[foo]` — into ONE WORD by the time the parser sees it, so a function
+        name is always a single token. A name that carries an expansion or a
+        quoted part (`foo$x`, `foo"bar"`) is rejected (psh does not expand
+        function names; bash errors on them at execution time).
         """
         if not self.parser.match(*self.NAME_TOKENS):
             return None
-        # Word fusion already merged an adjacent name run (``foo``, ``[foo]``)
-        # into this one WORD. A name with an expansion or quoted piece
-        # (``foo$x``, ``foo"bar"``) carries those as parts — reject it (psh does
-        # not expand function names; bash errors on them at execution time).
         token = self.parser.peek()
         if any(p.is_expansion or p.quote_type is not None for p in token.parts):
             return None
-        return token.value, 1
+        return token.value
 
     def is_function_def(self) -> bool:
         """Check if current position starts a function definition."""
@@ -58,10 +51,9 @@ class FunctionParser(ParserSubcomponent):
             return True
 
         # Check for name() pattern
-        candidate = self._peek_name_tokens()
-        if candidate is None:
+        name = self._peek_name_token()
+        if name is None:
             return False
-        name, count = candidate
 
         # An assignment word is never a function name (bash: `a=b()` is a
         # syntax error near '('; `arr=(...)` is an array initialization).
@@ -77,17 +69,15 @@ class FunctionParser(ParserSubcomponent):
         if name in KEYWORDS:
             return False
 
-        return (self.parser.peek(count).type == TokenType.LPAREN and
-                self.parser.peek(count + 1).type == TokenType.RPAREN)
+        return (self.parser.peek(1).type == TokenType.LPAREN and
+                self.parser.peek(2).type == TokenType.RPAREN)
 
-    def _consume_name_tokens(self) -> str:
-        """Consume the (possibly multi-token) function name, returning it."""
-        candidate = self._peek_name_tokens()
-        if candidate is None:
+    def _consume_name_token(self) -> str:
+        """Consume the single function-name token, returning its text."""
+        name = self._peek_name_token()
+        if name is None:
             raise self.parser.error("Expected function name")
-        name, count = candidate
-        for _ in range(count):
-            self.parser.advance()
+        self.parser.advance()
         return name
 
     def parse_function_def(self) -> FunctionDef:
@@ -103,7 +93,7 @@ class FunctionParser(ParserSubcomponent):
             # form rejects (`function a=b { :; }` is valid bash).
             if not self.parser.match(*self.NAME_TOKENS):
                 self.parser.expect(TokenType.WORD)  # raise the usual error
-            name = self._consume_name_tokens()
+            name = self._consume_name_token()
 
             # Optional EMPTY parentheses `()` after the name. Only an immediate
             # `( )` is the marker; a `(` with content is a subshell BODY
@@ -114,7 +104,7 @@ class FunctionParser(ParserSubcomponent):
                 self.parser.advance()  # )
         else:
             # POSIX style: name()
-            name = self._consume_name_tokens()
+            name = self._consume_name_token()
             self.parser.expect(TokenType.LPAREN)
             self.parser.expect(TokenType.RPAREN)
 

@@ -14,7 +14,6 @@ sys.path.insert(0, str(PSH_ROOT))
 
 from psh.lexer import (
     LexerConfig,
-    LexerError,
     ModularLexer,
     tokenize,
     tokenize_with_heredocs,
@@ -30,7 +29,7 @@ class TestLexerPublicAPI:
         expected = {
             'ModularLexer', 'tokenize', 'tokenize_with_heredocs',
             'LexerConfig',
-            'LexerError', 'UnclosedQuoteError',
+            'UnclosedQuoteError',
         }
         assert set(lexer_pkg.__all__) == expected
 
@@ -39,7 +38,6 @@ class TestLexerPublicAPI:
         assert tokenize is not None
         assert tokenize_with_heredocs is not None
         assert LexerConfig is not None
-        assert LexerError is not None
         assert ModularLexer is not None
 
     def test_tokenize_function_basic(self):
@@ -108,10 +106,6 @@ class TestLexerPublicAPI:
         # Both should tokenize successfully
         assert len(tokens_default) >= 2
         assert len(tokens_posix) >= 2
-
-    def test_lexer_error(self):
-        """Test that LexerError is a proper exception class."""
-        assert issubclass(LexerError, Exception)
 
 
 class TestDemotedImports:

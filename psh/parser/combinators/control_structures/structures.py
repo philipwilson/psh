@@ -42,7 +42,7 @@ _NAME_TOKEN_TYPES = frozenset({'WORD', 'LBRACKET', 'RBRACKET'})
 def _peek_function_name(tokens: List[Token], pos: int) -> Optional[Tuple[str, int]]:
     """Peek a (possibly multi-token) function name at ``pos``.
 
-    Mirrors the recursive descent parser's ``FunctionParser._peek_name_tokens``:
+    Mirrors the recursive descent parser's ``FunctionParser._peek_name_token``:
     word fusion already merged an adjacent name run (``foo+bar``, ``[foo]``) into
     one WORD. A name carrying an expansion or quoted piece (``foo$x``,
     ``foo"bar"``) has those as parts and is rejected (psh does not expand
@@ -89,7 +89,7 @@ class StructureParserMixin(_Base):
         gate in :meth:`_build_function_def` is where assignment words and
         reserved words are rejected (bash rejects those only in the POSIX form;
         the ``function`` keyword form accepts ``function a=b { ...; }``).
-        Mirrors the recursive descent parser's ``_consume_name_tokens``.
+        Mirrors the recursive descent parser's ``_consume_name_token``.
         """
         def parse_function_name(tokens: List[Token], pos: int) -> ParseResult[str]:
             candidate = _peek_function_name(tokens, pos)

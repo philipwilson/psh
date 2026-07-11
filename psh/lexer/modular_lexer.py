@@ -21,8 +21,9 @@ class ModularLexer:
 
     Quotes and expansions are consumed whole by dedicated parsers
     (UnifiedQuoteParser, ExpansionParser); everything else is dispatched
-    to pluggable recognizers tried in priority order (operators,
-    process substitution, comments, literals/words).
+    to pluggable recognizers tried in registration order (process
+    substitution, operators, literals/words, comments, operator debris) —
+    the single declaration is ``_setup_recognizers``.
     """
 
     def __init__(self, input_string: str, config: Optional[LexerConfig] = None,
@@ -68,7 +69,7 @@ class ModularLexer:
 
         # Parsing contexts
         self.expansion_context = ExpansionContext(
-            input_string, self.config, self.position_tracker
+            input_string, self.config
         )
 
         # Current token parts for composite tokens
@@ -123,14 +124,19 @@ class ModularLexer:
 
     @position.setter
     def position(self, value: int) -> None:
-        """Set absolute position."""
+        """Set absolute position (forward-only; the cursor never seeks backward)."""
         diff = value - self.position_tracker.position
-        if diff > 0:
+        if diff < 0:
+            # Fail loudly, matching the census-verified guard in tokenize():
+            # every position write in the tree is a forward-scanning parser
+            # result (r19-D1 audit, 2026-07-11); a backward seek means a new
+            # recognizer broke that contract.
+            raise RuntimeError(
+                f"lexer cursor seeked backward ({self.position_tracker.position} -> {value}); "
+                "position writes must be forward-only"
+            )
+        if diff:
             self.position_tracker.advance(diff)
-        elif diff < 0:
-            # Reset and advance to target
-            self.position_tracker = PositionTracker(self.input)
-            self.position_tracker.advance(value)
 
     def current_char(self) -> Optional[str]:
         """Get character at current position."""
@@ -168,13 +174,12 @@ class ModularLexer:
         if end_pos is None:
             end_pos = self.get_current_position()
 
-        # Create token
-        start_offset = start_pos.offset if isinstance(start_pos, Position) else start_pos
-        end_offset = end_pos.offset if isinstance(end_pos, Position) else end_pos
-
-        # Extract line/column information if we have Position objects
-        line = start_pos.line if isinstance(start_pos, Position) else None
-        column = start_pos.column if isinstance(start_pos, Position) else None
+        # Create token (start_pos/end_pos are always Position objects here —
+        # either passed by the caller or defaulted above).
+        start_offset = start_pos.offset
+        end_offset = end_pos.offset
+        line = start_pos.line
+        column = start_pos.column
 
         # Compute adjacency: this token is adjacent if it starts where the previous token ended
         adjacent = False
@@ -241,8 +246,8 @@ class ModularLexer:
             if self._try_quotes_and_expansions():
                 continue
 
-            # Try modular recognizers (in priority order). The lowest-
-            # priority recognizer is OperatorDebrisWordRecognizer, which
+            # Try modular recognizers (in registration order). The last one
+            # registered is OperatorDebrisWordRecognizer, which
             # collects operator-debris words (`echo ]`, `set +x`) that the
             # literal recognizer rejects as word starts — see
             # recognizers/operator_debris.py.
@@ -436,7 +441,6 @@ class ModularLexer:
             self.input,
             self.position,  # Current position (after opening quote)
             rules,
-            self.position_tracker
         )
 
         # Check if quote was closed
@@ -479,7 +483,6 @@ class ModularLexer:
             self.input,
             self.position,  # Current position (after $")
             rules,
-            self.position_tracker
         )
 
         if not found_closing:
@@ -511,7 +514,6 @@ class ModularLexer:
             self.input,
             self.position,  # Current position (after $')
             rules,
-            self.position_tracker,
             quote_type="$'"  # Pass quote type for proper escape handling
         )
 

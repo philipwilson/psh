@@ -84,8 +84,8 @@ def handle_visitor_mode_for_content(shell: 'Shell', content: str,
                                   drop_dangling_at_eof=drop_dangling_at_eof)
         return apply_visitor_mode(shell, ast)
     except (PshError, SyntaxError) as e:
-        # ParseError (PshError), LexerError (PshError+SyntaxError), and
-        # UnclosedQuoteError (SyntaxError) are all expected syntax errors.
+        # ParseError (PshError) and UnclosedQuoteError (SyntaxError) are all
+        # expected syntax errors.
         return _report_syntax_error(location, e)
     except (ValueError, TypeError) as e:
         print(f"Error parsing command: {e}", file=sys.stderr)

@@ -9,7 +9,7 @@ from .position import Position
 from .token_parts import TokenPart
 
 if TYPE_CHECKING:
-    from .position import LexerConfig, PositionTracker
+    from .position import LexerConfig
 
 
 class ExpansionParser:
@@ -286,7 +286,6 @@ class ExpansionParser:
             var_name = normalize_identifier(
                 var_name,
                 posix_mode=self.config.posix_mode,
-                case_sensitive=self.config.case_sensitive
             )
 
         return TokenPart(
@@ -392,7 +391,6 @@ class ExpansionContext:
         self,
         input_text: str,
         config: Optional['LexerConfig'] = None,
-        position_tracker: Optional['PositionTracker'] = None
     ):
         """
         Initialize expansion context.
@@ -400,11 +398,9 @@ class ExpansionContext:
         Args:
             input_text: The input string being parsed
             config: Optional lexer configuration
-            position_tracker: Optional position tracker
         """
         self.input_text = input_text
         self.config = config
-        self.position_tracker = position_tracker
         self.parser = ExpansionParser(config)
 
     def parse_expansion_at_position(
