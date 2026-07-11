@@ -104,26 +104,52 @@ class FileRedirector:
     def _word_is_process_sub(word) -> bool:
         """True if the Word is a process-substitution target (`<(cmd)`/`>(cmd)`).
 
-        Such a target is resolved to a `/dev/fd/N` path by the
-        ProcessSubstitutionHandler (downstream in the planner), not by
-        field expansion, and is always a single fd path — never ambiguous.
+        Such a target is resolved to a `/dev/fd/N` path from its AST node by the
+        ProcessSubstitutionHandler (via the planner), not by field expansion,
+        and is always a single fd path — never ambiguous.
         """
         from ..ast_nodes import ExpansionPart, ProcessSubstitution
         return (len(word.parts) == 1
                 and isinstance(word.parts[0], ExpansionPart)
                 and isinstance(word.parts[0].expansion, ProcessSubstitution))
 
-    def expand_redirect_target(self, redirect):
-        """Expand a redirect target, enforcing bash's "ambiguous redirect" rule.
+    def redirect_procsub_node(self, redirect):
+        """Return the `ProcessSubstitution` node when this redirect's target is
+        a WHOLE-WORD process substitution (`< <(cmd)`, `> >(cmd)`), else None.
 
-        Shared redirect primitive: the planner calls this for every backend.
+        Shared redirect primitive: the planner calls this to decide procsub-ness
+        STRUCTURALLY, from the Word AST the parser already built — it never
+        re-sniffs the expanded string. That layering fixed two bugs: a quoted
+        literal `'<(echo x)'` was executed as a command (the sniff matched the
+        post-expansion text), and a `<(echo $x)` body was variable-expanded
+        once in the parent and again in the child. A redirect whose Word is not
+        a whole-word procsub is a filename, full stop. Only filename-target
+        redirects can carry one (heredoc/dup/close targets mean something else).
+        """
+        if not self._is_filename_redirect(redirect):
+            return None
+        word = getattr(redirect, 'target_word', None)
+        if word is not None and self._word_is_process_sub(word):
+            return word.parts[0].expansion
+        return None
+
+    def expand_redirect_target(self, redirect):
+        """Expand a FILENAME redirect target, enforcing bash's "ambiguous
+        redirect" rule.
+
+        Shared redirect primitive: the planner calls this for every NON-procsub
+        filename redirect, and ``apply_var_fd_redirect`` for ``{fd}>file``.
+        Process-substitution targets never reach here — the planner detects them
+        structurally (``redirect_procsub_node``) and resolves them from their
+        AST node, so nothing re-sniffs the expanded string.
 
         For filename-target redirects (`<`/`>`/`>>`/`<>`/`>|`/`&>`/`&>>`) with
         a parsed Word, expand through the full command-argument pipeline
         (variable/command/arithmetic expansion, IFS word-splitting of unquoted
-        expansions, and globbing). bash requires the result to be EXACTLY one
-        word: zero words (unset/empty unquoted target) or more than one word
-        (`$v` with v="a b", a glob matching ≥2 files) is an "ambiguous
+        expansions, and globbing — an EMBEDDED procsub like ``pre<(cmd)post``
+        resolves to its ``/dev/fd/N`` path here). bash requires the result to be
+        EXACTLY one word: zero words (unset/empty unquoted target) or more than
+        one word (`$v` with v="a b", a glob matching ≥2 files) is an "ambiguous
         redirect" error — and NOTHING is opened. A quoted target suppresses
         splitting/globbing, so it always yields one field and is never
         ambiguous.
@@ -137,24 +163,17 @@ class FileRedirector:
             return target
 
         word = getattr(redirect, 'target_word', None)
-        if word is not None and not self._word_is_process_sub(word):
-            from ..expansion.word_expansion_types import COMMAND_ARGUMENT
-            fields = self.shell.expansion_manager.expand_word_to_fields(
-                word, COMMAND_ARGUMENT)
-            if len(fields) != 1:
-                # bash names the original (pre-expansion) target word.
-                raise OSError(f"{word.source_text()}: ambiguous redirect")
-            return fields[0]
-
-        # Fallback for synthesized redirects without a parsed Word
-        # (e.g. constructed programmatically): legacy string expansion.
-        if not target:
+        if word is None:
+            # Synthesized redirect with no parsed Word (both parsers always
+            # attach one for a real filename redirect): use the literal target.
             return target
-        if not (hasattr(redirect, 'quote_type') and redirect.quote_type == "'"):
-            target = self.shell.expansion_manager.expand_string_variables(target)
-        if target.startswith('~'):
-            target = self.shell.expansion_manager.expand_tilde(target)
-        return target
+        from ..expansion.word_expansion_types import COMMAND_ARGUMENT
+        fields = self.shell.expansion_manager.expand_word_to_fields(
+            word, COMMAND_ARGUMENT)
+        if len(fields) != 1:
+            # bash names the original (pre-expansion) target word.
+            raise OSError(f"{word.source_text()}: ambiguous redirect")
+        return fields[0]
 
     def redirect_input_from_file(self, target, redirect):
         """Open file for input and dup2 to the redirect's fd (default 0).
