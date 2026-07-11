@@ -1685,6 +1685,44 @@
   stderr: ""
   exit_code: 0
 
+# Delimiter-unquoting rule (reappraisal #19 M2): the terminator text was
+# computed by three drifted copies. Inside DOUBLE quotes bash keeps a
+# backslash literal unless it precedes a double-quote special ($ ` " \); two
+# of the three copies dropped it, so `<<"A\B"` terminated at `AB` (wrong).
+- name: heredoc_delimiter_backslash_literal_in_dquote
+  command: |
+    cat <<"A\B"
+    hello $HOME
+    A\B
+    echo after
+  stdout: "hello $HOME\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_escaped_dquote_in_dquote
+  # `\"` inside the double-quoted delimiter IS an escape -> terminator `A"B`
+  command: |
+    cat <<"A\"B"
+    hi
+    A"B
+    echo after
+  stdout: "hi\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_backslash_in_dquote_inside_cmdsub
+  # Same rule on the $(...) extent-scanner path (cmdsub_scanner): the scanner
+  # must find the SAME terminator or the substitution looks unclosed.
+  command: |
+    x=$(cat <<"A\B"
+    inner $HOME
+    A\B
+    )
+    echo "[$x]"
+  stdout: "[inner $HOME]\n"
+  stderr: ""
+  exit_code: 0
+
 # An unterminated heredoc is delimited by end-of-file: gathered lines are the
 # body, a warning goes to stderr, and the command RUNS (bash). psh used to
 # silently drop the whole command (no output, no warning, rc 0).

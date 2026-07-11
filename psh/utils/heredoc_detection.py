@@ -29,40 +29,73 @@ import re
 #             begins a comment (``cat << #foo`` and ``cat <<#foo`` are both
 #             syntax errors in bash) — but is an ordinary character
 #             mid-word (``<<E#F``).
-# Use heredoc_delimiter_word(match) for the literal terminator text. This MUST
-# agree with HeredocLexer._delimiter_from_source and the parser's _parse_heredoc.
+# Call unquote_heredoc_delimiter(group(2)) for the literal terminator text.
+# That is THE delimiter-word rule; every layer that recovers a heredoc
+# terminator (this scanner, HeredocLexer._delimiter_from_source, the $(...)
+# extent scanner's _read_heredoc_delimiter) routes through it so they cannot
+# drift. (The parser computes body-is-quoted from token TYPES instead, keyed
+# by heredoc_key — a separate, token-level concern.)
 HEREDOC_MARKER_RE = re.compile(
     r'(?<!<)<<(?!<)(-?)[ \t]*'
     r'((?:\\.|"[^"]*"|\'[^\']*\'|[^ \t\n\r"\'\\|&;()<>#])'
     r'(?:\\.|"[^"]*"|\'[^\']*\'|[^ \t\n\r"\'\\|&;()<>])*)')
 
 
-def heredoc_delimiter_word(match: 're.Match') -> str:
-    """The literal terminator text for a HEREDOC_MARKER_RE match.
+def unquote_heredoc_delimiter(raw: str) -> tuple[str, bool]:
+    """Remove one level of quoting from a raw heredoc delimiter WORD.
 
-    Normalizes the raw delimiter (group 2) the way the body terminator is
-    written: each ``\\x`` becomes ``x`` and quoted segments contribute their
-    contents — so ``\\EOF``/``EO\\F``/``E"O"F`` all yield ``EOF`` and ``"E F"``
-    yields ``E F`` (mirrors the lexer's ``HeredocLexer._delimiter_from_source``).
+    Returns ``(literal_terminator, quoted)``. The body terminator line must
+    equal ``literal_terminator`` EXACTLY (see ``heredoc_terminator_matches``,
+    the body-side twin of this rule). ANY quote or backslash anywhere in the
+    delimiter makes the body literal — no expansion — which is what ``quoted``
+    reports; an unquoted ``$`` is an ordinary terminator character
+    (``<<E$X`` terminates at ``E$X`` and the body still expands).
+
+    This is THE delimiter-word rule. It replaces three drifted copies (the M2
+    finding): the copies disagreed on backslash-inside-double-quotes, and bash
+    sided against two of them. Do not fork it.
+
+    Bash 5.2 rules (probed in tmp/r19-ledgers/T4-probes/battery1_*):
+      * unquoted ``\\X`` -> ``X`` for ANY X (``\\EOF``->``EOF``,
+        ``EO\\ F``->``EO F``);
+      * single quotes: contents VERBATIM (``'A\\B'``->``A\\B``);
+      * double quotes: backslash escapes ONLY the double-quote specials
+        ``$``, `` ` ``, ``"``, ``\\`` (``"A\\"B"``->``A"B``, ``"A\\\\B"``->``A\\B``,
+        ``"A\\$B"``->``A$B``) and is LITERAL before anything else
+        (``"A\\B"``->``A\\B`` — the case the retired copies got wrong).
     """
-    raw = match.group(2)
-    out: list = []
+    literal: list[str] = []
+    quoted = False
     i, n = 0, len(raw)
     while i < n:
         c = raw[i]
         if c == '\\' and i + 1 < n:
-            out.append(raw[i + 1])
+            quoted = True
+            literal.append(raw[i + 1])
             i += 2
-        elif c in ('"', "'"):
-            j = raw.find(c, i + 1)
-            if j < 0:
-                j = n
-            out.append(raw[i + 1:j])
-            i = j + 1
-        else:
-            out.append(c)
+        elif c == "'":
+            quoted = True
             i += 1
-    return ''.join(out)
+            while i < n and raw[i] != "'":
+                literal.append(raw[i])
+                i += 1
+            i += 1  # skip the closing quote
+        elif c == '"':
+            quoted = True
+            i += 1
+            while i < n and raw[i] != '"':
+                if (raw[i] == '\\' and i + 1 < n
+                        and raw[i + 1] in '$`"\\'):
+                    literal.append(raw[i + 1])
+                    i += 2
+                else:
+                    literal.append(raw[i])
+                    i += 1
+            i += 1  # skip the closing quote
+        else:
+            literal.append(c)
+            i += 1
+    return ''.join(literal), quoted
 
 
 def heredoc_terminator_matches(line: str, delimiter: str, strip_tabs: bool) -> bool:
@@ -303,9 +336,8 @@ def scan_line_heredoc_markers(line: str, quote=None):
             continue
         if match.start() < len(flags) and flags[match.start()]:
             continue  # quoted "<<WORD" is not a heredoc
-        raw = match.group(2)
-        markers.append((heredoc_delimiter_word(match), bool(match.group(1)),
-                        any(c in raw for c in '\'"\\')))
+        literal, quoted = unquote_heredoc_delimiter(match.group(2))
+        markers.append((literal, bool(match.group(1)), quoted))
     return markers, quote_after
 
 
