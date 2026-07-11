@@ -33,9 +33,15 @@ def _psh(script: str) -> subprocess.CompletedProcess:
 # ---------------------------------------------------------------------------
 
 def test_jobs_reflects_external_stop():
-    """`kill -STOP` on a bg job → non-interactive `jobs` shows Stopped."""
-    r = _psh('set -m; sleep 3 & p=$!; kill -STOP "$p"; sleep 0.3; jobs; '
-             'kill "$p" 2>/dev/null')
+    """`kill -STOP` on a bg job → non-interactive `jobs` shows Stopped.
+
+    A short settle lets the job finish setpgid before the STOP: a signal that
+    lands mid-launch freezes the child in the shell's process group, where the
+    per-pgid refresh can't see it (a launch-window race, not a steady-state
+    one — a job running for more than a few ms is always in its own pgid).
+    """
+    r = _psh('set -m; sleep 3 & p=$!; sleep 0.15; kill -STOP "$p"; sleep 0.3; '
+             'jobs; kill "$p" 2>/dev/null')
     assert 'Stopped' in r.stdout
     assert 'Running' not in r.stdout
 
@@ -49,7 +55,7 @@ def test_jobs_reflects_external_continue():
     refresh, not the coincidence that a continued job's real state is Running.
     macOS raises no SIGCHLD on continue, so only the WCONTINUED refresh sees it.
     """
-    r = _psh('set -m; sleep 3 & p=$!; kill -STOP "$p"; sleep 0.2; '
+    r = _psh('set -m; sleep 3 & p=$!; sleep 0.15; kill -STOP "$p"; sleep 0.2; '
              'echo "S:"; jobs; kill -CONT "$p"; sleep 0.2; '
              'echo "C:"; jobs; kill "$p" 2>/dev/null')
     stopped_block = r.stdout.split('S:', 1)[1].split('C:', 1)[0]
@@ -132,7 +138,7 @@ def test_refresh_does_not_steal_process_substitution_children():
 def test_stopped_fg_no_tty_resumes_to_completion():
     """`fg` on an externally-stopped job (monitor on, no tty) resumes it to
     completion and returns 0 — not 128+SIGSTOP with the job left stopped."""
-    r = _psh('set -m; sleep 0.4 & kill -STOP %1; sleep 0.2; '
+    r = _psh('set -m; sleep 1 & sleep 0.15; kill -STOP %1; sleep 0.2; '
              'fg %1; echo "fg-rc=$?"; echo "after:"; jobs')
     assert 'fg-rc=0' in r.stdout
     # Job resumed and completed → gone from the table.
@@ -161,7 +167,7 @@ def test_fg_double_dash_alone_uses_current():
 
 def test_bg_double_dash_jobspec():
     """`bg -- %1` treats `--` as end-of-options."""
-    r = _psh('set -m; sleep 0.4 & kill -STOP %1; sleep 0.1; bg -- %1; '
+    r = _psh('set -m; sleep 1 & sleep 0.15; kill -STOP %1; sleep 0.1; bg -- %1; '
              'echo "rc=$?"; wait')
     assert 'rc=0' in r.stdout
     assert 'no such job' not in r.stderr
