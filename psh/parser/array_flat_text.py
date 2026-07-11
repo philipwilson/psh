@@ -51,3 +51,34 @@ def process_unquoted_element_escapes(text: str) -> str:
         i += 1
     collapsed = ''.join(out)
     return collapsed if '\\' not in collapsed else text
+
+
+def array_init_argv_key(flat_text: str) -> str:
+    """The argv element a declaration builtin looks a ``name=(...)`` arg up by.
+
+    The parser stores the array-init argument as one UNQUOTED literal Word whose
+    text is ``flat_text``. Argument expansion runs a single unquoted-escape
+    collapse over it before the builtin sees it, so the builtin's lookup argv is
+    that collapse of ``flat_text`` — NOT ``flat_text`` verbatim. Keying the
+    delivery map (``CommandExecutor._collect_array_inits``) by the verbatim text
+    misses whenever an element's decoded value keeps a residual backslash
+    (``arr=(a\\b)`` → flat text ``arr=(a\\b c)`` but argv ``arr=(a\b c)``), so
+    declare mistook the compound assignment for a scalar (task #38 residual (i)).
+
+    The flat text plays a DOUBLE role — it is BOTH this Word's literal (→ argv
+    via one collapse) AND, via ``display_text()``, the lookup key — so key==argv
+    demands ``flat_text`` be a FIXED POINT of the collapse, which a residual-
+    backslash value can never be (``process_unquoted_element_escapes`` guards
+    exactly that case to keep the LiteralPart correct). Computing the key AS the
+    collapse resolves the double-role by construction and is idempotent on
+    escape-free text, so ordinary arrays are byte-identical. This reopens the
+    wave-3 (v0.687) "serializer-unfixable" ruling: the obstacle was the double
+    role, breakable at the key rather than the flat text.
+
+    Delegates to the ONE canonical unquoted-escape transform the expansion path
+    is defined by (``WordExpander._process_unquoted_escapes``) so the key cannot
+    drift from the real argv; the boolean it also returns (all-globs-escaped) is
+    irrelevant to the string key.
+    """
+    from ..expansion.word_expander import WordExpander
+    return WordExpander._process_unquoted_escapes(flat_text)[0]

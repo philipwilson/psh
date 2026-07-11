@@ -949,12 +949,15 @@ class CommandExecutor:
         """
         if not self.expansion_manager.is_declaration_builtin_command(command_node):
             return None
+        from ..parser.array_flat_text import array_init_argv_key
         inits = {}
         for word in command_node.words:
             if word.array_init is not None:
-                # The flat literal text is exactly the argv element the
-                # builtin sees (declaration values are not word-split).
-                inits[word.display_text()] = word.array_init
+                # Key by the argv element the builtin actually receives (the
+                # runtime unquoted-escape collapse of the flat text), not the
+                # verbatim display text — see array_init_argv_key for the
+                # residual-backslash double-role analysis (task #38).
+                inits[array_init_argv_key(word.display_text())] = word.array_init
         return inits or None
 
     def _handle_array_assignment(self, assignment):
