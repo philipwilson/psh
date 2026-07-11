@@ -4,7 +4,7 @@ import fcntl
 import os
 import stat
 import sys
-from typing import TYPE_CHECKING, List, TextIO, Tuple
+from typing import TYPE_CHECKING, List, TextIO, Tuple, cast
 
 from ..ast_nodes import Redirect
 from .planner import RedirectPlan, RedirectPlanner
@@ -582,27 +582,34 @@ class FileRedirector:
                 os.dup2(saved_fd, fd)
                 os.close(saved_fd)
 
-    def _stream_sharing_fd(self, target_fd: int):
-        """Build a Python text stream that shares target_fd's open file description.
+    def dup_sharing_stream(self, fd: int, mode: str, *,
+                           buffering: int = -1) -> TextIO:
+        """A Python text stream that SHARES ``fd``'s open file description.
 
-        Used after a *permanent* fd-level redirect (os.open + dup2): builtins
-        write through the Python stream (sys.stdout/state.stdout) while
-        external children inherit the raw fd, so both views MUST share one
-        file offset. A second independent ``open(target, mode)`` would have
-        its own offset (and re-truncate in 'w' mode), making the two writers
-        overwrite each other. ``os.dup()`` shares the open file description
-        (offset and O_APPEND), so dup + fdopen gives both universes a single
-        file position. Line-buffered so builtin output reaches the file as
-        each line completes, interleaving with external commands like bash's
-        unbuffered writes. The dup also means the stream object never owns
-        target_fd itself — replacing it later (a second ``exec >file``)
-        closes only the dup.
+        Shared redirect primitive — the ONE dup+fdopen recipe for both
+        universes. A builtin acts through the Python stream object while an
+        external child (and any fd-level redirect) inherits the raw fd, so the
+        two views MUST share one file offset. A second independent
+        ``open(target, mode)`` would have its OWN offset (and would re-truncate
+        in 'w' mode), making the writers/readers overwrite or restart each
+        other. ``os.dup(fd)`` shares the open file description (offset and
+        O_APPEND); the stream never owns ``fd`` itself, so replacing it later
+        (a second ``exec >file``) closes only the dup.
+
+        * OUTPUT (``mode='w'``, ``buffering=1``): after a permanent ``exec
+          >file`` (``_rebind_output_stream``) or a builtin's ``n>&m`` dup —
+          line-buffered so builtin writes interleave with fd-level writers like
+          bash's unbuffered output.
+        * INPUT (``mode='r'``/``'r+'``): a builtin's ``read`` and a child it
+          spawns share ONE stdin position, so ``{ read a; read b; } < f`` and a
+          mid-builtin child advance the same offset (a second open would
+          restart at 0).
+
+        surrogateescape keeps non-UTF-8 shell bytes transparent, matching the
+        sys.std* byte policy set at psh's entry point.
         """
-        # surrogateescape so builtin writes of shell values carrying non-UTF-8
-        # bytes (surrogate escapes) round-trip to the file, matching bash and
-        # the sys.stdout/stderr byte policy set at psh's entry point.
-        return os.fdopen(os.dup(target_fd), 'w', buffering=1,
-                         errors='surrogateescape')
+        return cast(TextIO, os.fdopen(os.dup(fd), mode, buffering=buffering,
+                                      errors='surrogateescape'))
 
     def _rebind_output_stream(self, target_fd: int):
         """Point the shell's Python-level stdout/stderr at a redirected fd.
@@ -617,11 +624,11 @@ class FileRedirector:
         block writes for the reopened stream.
         """
         if target_fd == 1:
-            sys.stdout = self._stream_sharing_fd(1)
+            sys.stdout = self.dup_sharing_stream(1, 'w', buffering=1)
             self.shell.stdout = sys.stdout
             self.state.stdout = sys.stdout
         elif target_fd == 2:
-            sys.stderr = self._stream_sharing_fd(2)
+            sys.stderr = self.dup_sharing_stream(2, 'w', buffering=1)
             self.shell.stderr = sys.stderr
             self.state.stderr = sys.stderr
 

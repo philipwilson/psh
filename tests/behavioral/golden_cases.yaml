@@ -9275,3 +9275,110 @@
     declare -a s=([2]="x" [5]="y" [6]="z")
   stderr: ''
   exit_code: 0
+
+# =============================================================================
+# T5 (io_redirect audit): process-substitution node-carry (H1), fd-behavior
+# trio, child-redirect error shape. See docs/reviews reappraisal #19.
+# =============================================================================
+
+# H1: a redirect target is decided procsub-or-filename STRUCTURALLY from the
+# Word AST, never by re-sniffing the expanded string. A QUOTED literal that
+# merely looks like a procsub is a filename (bash opens it -> ENOENT), not a
+# command to run.
+- name: procsub_quoted_literal_is_filename
+  command: "cat < '<(echo x)'"
+  stdout: ""
+  stderr: "No such file or directory"
+  exit_code: 1
+
+- name: procsub_input_whole_word
+  command: 'cat < <(echo hi)'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# A $var that word-splits to !=1 field is an ambiguous redirect (not a procsub).
+- name: procsub_lookalike_var_is_ambiguous
+  command: "x='<(echo hi)'; cat < $x"
+  stdout: ""
+  stderr: "ambiguous redirect"
+  exit_code: 1
+
+# The substitution body is expanded exactly ONCE, by its own child: `$x` (which
+# holds the literal `$y`) must print `$y`, not the parent's y=secret.
+- name: procsub_body_expanded_once
+  command: "x='$y'; y=secret; cat < <(echo $x)"
+  stdout: "$y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: procsub_nested_input
+  command: 'cat <(cat <(echo a))'
+  stdout: "a\n"
+  stderr: ""
+  exit_code: 0
+
+# Trio (a): a builtin `<` after `exec 0<&-` must back fd 0 up to a HIGH slot
+# (tolerant of the closed fd) and read the file, not crash EBADF.
+- name: redirect_stdin_after_exec_close_builtin
+  command: 'f=$(mktemp); printf hello > "$f"; exec 0<&-; read x < "$f"; echo "got:$x"; rm -f "$f"'
+  stdout: "got:hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: redirect_stdin_after_exec_close_external
+  command: 'f=$(mktemp); printf hello > "$f"; exec 0<&-; cat < "$f"; rm -f "$f"'
+  stdout: "hello"
+  stderr: ""
+  exit_code: 0
+
+# Trio (b): `n<&-` closes fd n exactly like `n>&-` (direction only picks the
+# default fd). `echo hi 1<&-` must fail EBADF with NO leaked `hi`.
+- name: redirect_close_stdout_input_spelling
+  command: 'echo hi 1<&-'
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+- name: redirect_close_stdout_input_spelling_compound
+  command: '{ echo a; } 1<&-'
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+- name: redirect_close_stdout_input_spelling_printf
+  command: 'printf x 1<&-'
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+# ...but closing fd 2 (`2<&-`) leaves stdout untouched.
+- name: redirect_close_stderr_input_spelling
+  command: 'echo hi 2<&-'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# Trio (c): a builtin `<` shares fd 0's offset, so two reads consume
+# consecutive lines (one stdin position across the redirected region).
+- name: redirect_stdin_shared_offset_two_reads
+  command: 'f=$(mktemp); printf "one\ntwo\nthree\n" > "$f"; { read a; read b; } < "$f"; echo "$a-$b"; rm -f "$f"'
+  stdout: "one-two\n"
+  stderr: ""
+  exit_code: 0
+
+# M1: a forked child's redirect-open failure prints bash's `psh: TARGET:
+# STRERROR`, not a raw `[Errno N] ...` repr (here a named-fd `{v}>` open).
+- name: redirect_child_var_fd_open_error_shape
+  command: 'ls {v}>/nonexistent/dir/x'
+  stdout: ""
+  stderr: "/nonexistent/dir/x: No such file or directory"
+  exit_code: 1
+
+# M3: noclobber never blocks a non-regular target (device) — the open-flags
+# table + check_noclobber leave /dev/null writable under `set -C`.
+- name: noclobber_allows_devnull
+  command: 'set -C; echo ok > /dev/null; echo done'
+  stdout: "done\n"
+  stderr: ""
+  exit_code: 0

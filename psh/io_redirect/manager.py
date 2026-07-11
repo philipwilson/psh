@@ -225,7 +225,17 @@ class _BuiltinStreamSnapshot:
     def note_stdin(self):
         if self.stdin is None:
             self.stdin = sys.stdin
-            self.stdin_fd = os.dup(0)
+            # Back fd 0 up to a HIGH slot (>= 10), tolerantly — exactly like
+            # FileRedirector._save_fd_high. A plain os.dup(0) crashes EBADF when
+            # fd 0 is closed (`exec 0<&-; read x < f`), and even when it
+            # succeeds it takes the lowest free slot — fd 0 itself right after
+            # such a close — which a stale sys.stdin still names. None records
+            # "fd 0 was closed"; restore then closes fd 0 again rather than
+            # dup2'ing a backup onto it.
+            try:
+                self.stdin_fd = fcntl.fcntl(0, fcntl.F_DUPFD, 10)
+            except OSError:
+                self.stdin_fd = None
 
     def note_stdout(self):
         if self.stdout is None:
@@ -336,21 +346,30 @@ class IOManager:
 
     @staticmethod
     def output_close_fd(redirect: Redirect) -> Optional[int]:
-        """The OUTPUT fd (1 or 2) a redirect closes with ``>&-``, else ``None``.
+        """The OUTPUT fd (1 or 2) a redirect closes with ``>&-``/``<&-``, else
+        ``None``.
 
         Shared classifier for the three sites that must reach the stream
         universe when a builtin-visible output fd is closed
         (``_swap_closed_output_streams``, ``_builtin_redirect_close``, and the
-        permanent-exec close branch). Returns ``None`` for an input close
-        (``<&-``), a close of fd >= 3 (no Python stream counterpart), a
-        ``{v}>&-`` named-fd close (acts on the variable's fd, not stdout/
-        stderr), or any redirect that is not a ``>&-`` close.
+        permanent-exec close branch). bash closes fd n for ``n<&-`` and ``n>&-``
+        alike — the operator DIRECTION only picks the default fd (bare ``>&-`` →
+        1, bare ``<&-`` → 0). So ``1<&-`` closes fd 1 and the builtin's own
+        stdout stream must fail too, else ``echo hi 1<&-`` leaks ``hi``.
+
+        Returns ``None`` for a bare ``<&-`` (default fd 0, no output stream), a
+        close of fd >= 3 (no Python stream counterpart), a ``{v}>&-`` named-fd
+        close (acts on the variable's fd, not stdout/stderr), or any redirect
+        that is not a ``>&-``/``<&-`` close.
         """
         if redirect.var_fd:
             return None
-        if redirect.type != '>&-':
+        if redirect.type not in ('>&-', '<&-'):
             return None
-        target_fd = redirect.fd if redirect.fd is not None else 1
+        if redirect.fd is not None:
+            target_fd = redirect.fd
+        else:
+            target_fd = 0 if redirect.type == '<&-' else 1
         return target_fd if target_fd in (1, 2) else None
 
     @staticmethod
@@ -551,12 +570,17 @@ class IOManager:
             # target_fd is 0 here (the non-zero case returned above); pass the
             # redirect anyway so the fd source stays consistent across paths.
             self.file_redirector.redirect_input_from_file(target, redirect)
-            f = open(target, 'r')
+            # Point sys.stdin at a DUP of fd 0 (which the line above just made
+            # the file), not a second independent open(): one open file
+            # description, one offset — so the builtin's read and a child
+            # reading fd 0 advance together (also avoids re-opening a procsub's
+            # /dev/fd/N by path). Input twin of dup_sharing_stream's output use.
+            f = self.file_redirector.dup_sharing_stream(0, 'r')
             frame.opened_streams.append(f)
             sys.stdin = f
         elif redirect.type == '<>':
             self.file_redirector.redirect_readwrite(target, redirect)
-            f = open(target, 'r+')
+            f = self.file_redirector.dup_sharing_stream(0, 'r+')
             frame.opened_streams.append(f)
             sys.stdin = f
         elif redirect.type in ('<<', '<<-'):
@@ -687,8 +711,8 @@ class IOManager:
           builtin's output lands in the file instead of on the old fd-2
           target (bash keeps it on the old target). ``os.dup`` shares m's
           offset/O_APPEND; line buffering interleaves with fd-level writers
-          — same pattern as ``FileRedirector._stream_sharing_fd`` for
-          ``exec``. It also covers ``1>&m``/``2>&m`` with m >= 3
+          — the shared ``FileRedirector.dup_sharing_stream`` recipe (also used
+          by ``exec``). It also covers ``1>&m``/``2>&m`` with m >= 3
           (``eval "echo x >&3" >/dev/null``), where the dup2 alone would be
           invisible because sys.stdout may be a swapped object not backed by
           fd 1.
@@ -700,8 +724,8 @@ class IOManager:
             # Validates dup_fd and dup2's m onto fd n (independent of a later
             # reassignment of m); fd n's target is now a snapshot of m's.
             self._builtin_redirect_fd_level(redirect, frame)
-            f = os.fdopen(os.dup(redirect.dup_fd), 'w', buffering=1,
-                          errors='surrogateescape')
+            f = self.file_redirector.dup_sharing_stream(
+                redirect.dup_fd, 'w', buffering=1)
             frame.opened_streams.append(f)
             if redirect.fd == 1:
                 frame.snapshot.note_stdout()
@@ -822,11 +846,21 @@ class IOManager:
                 pass
         frame.opened_streams = []
 
-        # Restore stdin file descriptor if it was saved
-        if snapshot.stdin_fd is not None:
-            os.dup2(snapshot.stdin_fd, 0)
-            os.close(snapshot.stdin_fd)
-            snapshot.stdin_fd = None
+        # Restore fd 0. note_stdin backed it up to a HIGH slot, or recorded
+        # None when fd 0 was already closed (`exec 0<&-`). Mirror _save_fd_high
+        # / restore_redirections: dup2 a real backup back, else close fd 0 so it
+        # returns to the closed state the redirect found (`snapshot.stdin is not
+        # None` marks that stdin was redirected in this frame at all).
+        if snapshot.stdin is not None:
+            if snapshot.stdin_fd is not None:
+                os.dup2(snapshot.stdin_fd, 0)
+                os.close(snapshot.stdin_fd)
+                snapshot.stdin_fd = None
+            else:
+                try:
+                    os.close(0)
+                except OSError:
+                    pass
 
         # Process substitution resources are NOT cleaned up here: they are
         # owned by the enclosing process_sub_scope() (see CommandExecutor),
