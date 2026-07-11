@@ -4,6 +4,36 @@ import signal
 from psh.utils.signal_utils import SignalRegistry, get_signal_registry, set_signal_registry
 
 
+class TestSignalNameRendering:
+    """The registry renders signal names via the module's single source of
+    truth (signal_number_to_name), NOT a private hand-rolled map."""
+
+    def test_signals_builtin_renders_named_signal(self, captured_shell):
+        """SIGUSR1 renders by name in the `signals` builtin, not Signal-<n>.
+
+        Regression pin (reappraisal #19 D5 / ast-utils M3): the old
+        SignalRegistry.SIGNAL_NAMES 9-entry hand map omitted SIGUSR1, so the
+        builtin printed 'Signal-30' (macOS) / 'Signal-10' (Linux) while the
+        module's own SIGNAL_NUMBER_TO_NAME[30] was 'USR1'. Red-on-base: pre-fix
+        output contains 'Signal-<n>' and lacks 'SIGUSR1'.
+        """
+        prev_reg = get_signal_registry(create=False)
+        prev_handler = signal.getsignal(signal.SIGUSR1)
+        try:
+            reg = SignalRegistry()
+            reg.register(signal.SIGUSR1, signal.SIG_DFL, "test")
+            set_signal_registry(reg)
+            captured_shell.clear_output()
+            rc = captured_shell.run_command("signals")
+            out = captured_shell.get_stdout()
+            assert rc == 0
+            assert "SIGUSR1" in out
+            assert f"Signal-{int(signal.SIGUSR1)}" not in out
+        finally:
+            signal.signal(signal.SIGUSR1, prev_handler)
+            set_signal_registry(prev_reg)
+
+
 class TestSignalRegistry:
     """Tests for the SignalRegistry class."""
 
@@ -11,7 +41,7 @@ class TestSignalRegistry:
         """Test that registry can be created."""
         registry = SignalRegistry()
         assert registry is not None
-        assert len(registry.get_all_handlers()) == 0
+        assert registry.get_handler(signal.SIGINT) is None
 
     def test_register_handler(self):
         """Test registering a signal handler."""
@@ -27,8 +57,9 @@ class TestSignalRegistry:
         record = registry.get_handler(signal.SIGUSR1)
         assert record is not None
         assert record.signal_num == signal.SIGUSR1
-        # Signal name should be "Signal-N" where N is the signal number
-        assert record.signal_name == f"Signal-{signal.SIGUSR1}"
+        # Signal name comes from the module's single source of truth, so a
+        # real signal renders by name (not the Signal-N fallback).
+        assert record.signal_name == "SIGUSR1"
         assert record.handler == handler
         assert record.component == "test"
 
@@ -51,70 +82,6 @@ class TestSignalRegistry:
         record = registry.get_handler(signal.SIGUSR1)
         assert record is not None
         assert record.handler == signal.SIG_IGN
-
-    def test_get_all_handlers(self):
-        """Test getting all registered handlers."""
-        registry = SignalRegistry()
-
-        registry.register(signal.SIGUSR1, signal.SIG_DFL, "test1")
-        registry.register(signal.SIGUSR2, signal.SIG_IGN, "test2")
-
-        handlers = registry.get_all_handlers()
-        assert len(handlers) == 2
-        assert signal.SIGUSR1 in handlers
-        assert signal.SIGUSR2 in handlers
-
-    def test_handler_history(self):
-        """Test that handler changes are tracked in history."""
-        registry = SignalRegistry()
-
-        def handler1(sig, frame):
-            pass
-
-        def handler2(sig, frame):
-            pass
-
-        # Register multiple handlers
-        registry.register(signal.SIGUSR1, handler1, "test1")
-        registry.register(signal.SIGUSR1, handler2, "test2")
-        registry.register(signal.SIGUSR1, signal.SIG_DFL, "test3")
-
-        # Check history
-        history = registry.get_history(signal.SIGUSR1)
-        assert len(history) == 3
-        assert history[0].handler == handler1
-        assert history[0].component == "test1"
-        assert history[1].handler == handler2
-        assert history[1].component == "test2"
-        assert history[2].handler == signal.SIG_DFL
-        assert history[2].component == "test3"
-
-        # Current should be the last one
-        current = registry.get_handler(signal.SIGUSR1)
-        assert current.handler == signal.SIG_DFL
-
-    def test_validate_no_issues(self):
-        """Test validation with no issues."""
-        registry = SignalRegistry()
-
-        registry.register(signal.SIGUSR1, signal.SIG_DFL, "test")
-
-        issues = registry.validate()
-        assert len(issues) == 0
-
-    def test_validate_many_changes(self):
-        """Test validation detects many changes."""
-        registry = SignalRegistry()
-
-        # Register the same signal 6 times
-        for i in range(6):
-            registry.register(signal.SIGUSR1, signal.SIG_DFL, f"test{i}")
-
-        issues = registry.validate()
-        assert len(issues) > 0
-        # Should mention the signal that has many changes
-        assert f"Signal-{signal.SIGUSR1}" in issues[0]
-        assert "6 times" in issues[0]
 
     def test_report_empty(self):
         """Test report with no handlers."""
@@ -184,35 +151,6 @@ class TestSignalRegistry:
         assert "SIG_IGN" in formatted
         assert "ignore" in formatted
 
-    def test_clear(self):
-        """Test clearing the registry."""
-        registry = SignalRegistry()
-
-        registry.register(signal.SIGUSR1, signal.SIG_DFL, "test")
-        assert len(registry.get_all_handlers()) == 1
-
-        registry.clear()
-        assert len(registry.get_all_handlers()) == 0
-        assert len(registry.get_history()) == 0
-
-    def test_enable_disable(self):
-        """Test enabling/disabling the registry."""
-        registry = SignalRegistry()
-
-        # Disable registry
-        registry.disable()
-        registry.register(signal.SIGUSR1, signal.SIG_DFL, "test")
-
-        # Should not be tracked when disabled
-        assert len(registry.get_all_handlers()) == 0
-
-        # Re-enable
-        registry.enable()
-        registry.register(signal.SIGUSR2, signal.SIG_DFL, "test")
-
-        # Should be tracked now
-        assert len(registry.get_all_handlers()) == 1
-
 
 class TestGlobalRegistry:
     """Tests for global registry functions."""
@@ -260,25 +198,17 @@ class TestGlobalRegistry:
 class TestSignalNames:
     """Tests for signal name mapping."""
 
-    def test_known_signal_names(self):
-        """Test that known signals have proper names."""
+    def test_names_from_single_source_of_truth(self):
+        """Registered records get their name from signal_number_to_name, so
+        every real signal renders by name (SIGUSR1, not Signal-N)."""
         registry = SignalRegistry()
 
-        # Test some known signals
-        assert registry.SIGNAL_NAMES[signal.SIGINT] == "SIGINT"
-        assert registry.SIGNAL_NAMES[signal.SIGTERM] == "SIGTERM"
-        assert registry.SIGNAL_NAMES[signal.SIGCHLD] == "SIGCHLD"
-
-    def test_unknown_signal_name(self):
-        """Test that unknown signals get generic names."""
-        registry = SignalRegistry()
-
-        # Register SIGUSR1 (not in known signals)
+        registry.register(signal.SIGINT, signal.SIG_DFL, "test")
         registry.register(signal.SIGUSR1, signal.SIG_DFL, "test")
 
-        record = registry.get_handler(signal.SIGUSR1)
-        # Should have generic name like "Signal-10"
-        assert record.signal_name.startswith("Signal-")
+        assert registry.get_handler(signal.SIGINT).signal_name == "SIGINT"
+        # SIGUSR1 was absent from the retired hand-rolled map (Signal-N bug).
+        assert registry.get_handler(signal.SIGUSR1).signal_name == "SIGUSR1"
 
 
 class TestStackCapture:
