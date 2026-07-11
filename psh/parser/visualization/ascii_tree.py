@@ -227,8 +227,8 @@ class AsciiTreeRenderer:
 
             fields.append(('arguments', compact_args))
 
-        # Add other fields (skip raw args/words and removed fields)
-        skip_fields = {'args', 'arg_types', 'quote_types', 'words'}
+        # Add other fields (skip the raw args/words already rendered above)
+        skip_fields = {'args', 'words'}
         for attr_name in dir(node):
             if (not attr_name.startswith('_') and
                 not callable(getattr(node, attr_name)) and

@@ -24,7 +24,7 @@ def _open_fd_count():
 def test_parent_holds_o1_descriptors_across_long_pipeline():
     """Across an N-command pipeline the parent never holds more than one
     boundary's descriptors, and leaks none at the end."""
-    ctx = PipelineContext(job_manager=None)
+    ctx = PipelineContext()
     n = 200
     baseline = _open_fd_count()
     peak = 0
@@ -42,7 +42,7 @@ def test_parent_holds_o1_descriptors_across_long_pipeline():
 
 def test_open_boundary_returns_expected_endpoints():
     """First command has no stdin; last command has no stdout."""
-    ctx = PipelineContext(job_manager=None)
+    ctx = PipelineContext()
     try:
         # Leader (has a successor): no stdin, a fresh stdout pipe end.
         stdin_fd, stdout_fd, owned = ctx.open_boundary(has_next=True)
@@ -62,7 +62,7 @@ def test_open_boundary_returns_expected_endpoints():
 
 def test_close_open_fds_releases_partial_boundary():
     """Descriptors opened but not yet advanced past are fully released."""
-    ctx = PipelineContext(job_manager=None)
+    ctx = PipelineContext()
     baseline = _open_fd_count()
     ctx.open_boundary(has_next=True)   # one pipe (2 fds)
     ctx.advance()                      # carry the read end (1 fd held)
@@ -75,7 +75,7 @@ def test_close_open_fds_releases_partial_boundary():
 def test_pipe_failure_midway_leaks_nothing(monkeypatch):
     """If os.pipe fails at the k-th boundary, close_open_fds releases the
     descriptors opened so far — bounded error cleanup, no leak."""
-    ctx = PipelineContext(job_manager=None)
+    ctx = PipelineContext()
     baseline = _open_fd_count()
     real_pipe = os.pipe
     calls = {'n': 0}

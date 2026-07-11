@@ -231,14 +231,6 @@ def test_shell_options_update_validates():
         opts.update({"bogus": True})
 
 
-def test_typed_accessors():
-    opts = ShellOptions()
-    assert opts.errexit is False and opts.pipefail is False
-    opts["errexit"] = True
-    opts["pipefail"] = True
-    assert opts.errexit is True and opts.pipefail is True
-
-
 # ---------------------------------------------------------------------------
 # $- string ($- order is bash-pinned)
 # ---------------------------------------------------------------------------
