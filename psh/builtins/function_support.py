@@ -72,8 +72,7 @@ class DeclareBuiltin(Builtin):
             # This handles cases like "declare -r" (list readonly vars)
             return self._print_variables(options, positional, shell)
         else:
-            # Pass original args for mutually exclusive attribute handling
-            return self._declare_variables(options, positional, shell, context, args[1:])
+            return self._declare_variables(options, positional, shell, context)
 
     # Flag char → option key (set with `-c`; `+c` sets 'remove_' + key for
     # the chars in _REMOVABLE_FLAGS). declare cannot use Builtin.parse_flags
@@ -286,7 +285,7 @@ class DeclareBuiltin(Builtin):
         return removed
 
     def _declare_variables(self, options: dict, args: List[str], shell: 'Shell',
-                           context: BuiltinContext, _original_args=None) -> int:
+                           context: BuiltinContext) -> int:
         """Handle variable declarations (list, assignment, or bare-name forms)."""
         attributes = self._attributes_from_options(options)
         remove_attrs = self._removed_attributes_from_options(options)

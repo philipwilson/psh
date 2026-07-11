@@ -34,7 +34,7 @@ Design goals (why this replaced the old hand-rolled runner):
 What this runner does NOT change: how conformance tests are *written*. They
 still subclass :class:`ConformanceTest` and call
 ``assert_identical_behavior`` / ``assert_documented_difference`` /
-``assert_psh_extension`` / ``assert_bash_specific``. Those assertions already
+``assert_psh_extension``. Those assertions already
 encode the policy that "a psh != bash divergence that is not a documented
 difference is a defect" -- when they fail, pytest fails, and this runner gates
 on it. The runner only changes how the suite is *run* and *reported*.

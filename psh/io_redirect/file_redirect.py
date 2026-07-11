@@ -74,7 +74,8 @@ class FileRedirector:
     def dup_fd_valid(self, dup_fd: int) -> bool:
         """True when dup_fd is currently an open file descriptor (for >&/<&).
 
-        Shared redirect primitive (used by the builtin backend's fd-dup path).
+        Shared redirect predicate on the file-redirector's public surface,
+        used to validate a ``>&``/``<&`` dup target.
         """
         try:
             fcntl.fcntl(dup_fd, fcntl.F_GETFD)
@@ -155,15 +156,14 @@ class FileRedirector:
             target = self.shell.expansion_manager.expand_tilde(target)
         return target
 
-    def redirect_input_from_file(self, target, redirect=None):
+    def redirect_input_from_file(self, target, redirect):
         """Open file for input and dup2 to the redirect's fd (default 0).
 
         Shared redirect primitive (fd backend and builtin stream backend).
         Honors an explicit source fd — ``exec 5<file`` must open fd 5,
         not clobber stdin. Returns the target fd.
         """
-        target_fd = (redirect.fd if redirect is not None and
-                     redirect.fd is not None else 0)
+        target_fd = redirect.fd if redirect.fd is not None else 0
         fd = os.open(target, os.O_RDONLY)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
@@ -249,10 +249,10 @@ class FileRedirector:
         self._content_to_fd(content, self._heredoc_fd(redirect))
         return content
 
-    def _redirect_output_to_file(self, target, redirect, check_noclobber=True):
+    def _redirect_output_to_file(self, target, redirect):
         """Open file for output and dup2 to target fd. Returns target_fd."""
         target_fd = redirect.fd if redirect.fd is not None else 1
-        if redirect.type == '>' and check_noclobber:
+        if redirect.type == '>':
             self.check_noclobber(target)
         flags = os.O_WRONLY | os.O_CREAT
         flags |= os.O_TRUNC if redirect.type == '>' else os.O_APPEND
@@ -471,8 +471,7 @@ class FileRedirector:
             return [(redirect.fd, self._save_fd_high(redirect.fd))]
         return []
 
-    def apply_fd_plan(self, plan: RedirectPlan, *,
-                      check_noclobber: bool = True) -> None:
+    def apply_fd_plan(self, plan: RedirectPlan) -> None:
         """Apply one resolved redirect plan in the fd universe."""
         redirect = plan.redirect
         target = plan.target
@@ -490,8 +489,7 @@ class FileRedirector:
         elif redirect.type == '>|':
             self._redirect_clobber(target, redirect)
         elif redirect.type in ('>', '>>'):
-            self._redirect_output_to_file(
-                target, redirect, check_noclobber=check_noclobber)
+            self._redirect_output_to_file(target, redirect)
         elif redirect.type in ('>&', '<&'):
             self._validate_dup_source(redirect)
             self._redirect_dup_fd(redirect)

@@ -237,38 +237,6 @@ def isolated_shell_with_temp_dir(temp_dir):
     os.environ['PWD'] = original_pwd
 
 
-class MockStdout:
-    """Mock stdout that captures output for testing."""
-
-    def __init__(self):
-        self.content = StringIO()
-
-    def write(self, text):
-        self.content.write(text)
-
-    def flush(self):
-        pass
-
-    def getvalue(self):
-        return self.content.getvalue()
-
-
-class MockStderr:
-    """Mock stderr that captures error output for testing."""
-
-    def __init__(self):
-        self.content = StringIO()
-
-    def write(self, text):
-        self.content.write(text)
-
-    def flush(self):
-        pass
-
-    def getvalue(self):
-        return self.content.getvalue()
-
-
 @pytest.fixture
 def captured_shell():
     """Shell with output capture for testing.
@@ -360,79 +328,6 @@ def reset_environment():
     original_cwd = os.getcwd()
     yield
     os.chdir(original_cwd)
-
-
-@pytest.fixture
-def isolated_subprocess_env():
-    """Provide an isolated environment for subprocess tests.
-
-    This fixture is specifically designed for tests that spawn
-    PSH as a subprocess to ensure proper isolation in parallel execution.
-    """
-    import tempfile
-
-    # Create a unique temp directory for this test
-    temp_dir = tempfile.mkdtemp(prefix=f'psh_test_{os.getpid()}_')
-
-    # Create clean environment
-    env = {
-        'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
-        'HOME': os.environ.get('HOME', '/tmp'),
-        'USER': os.environ.get('USER', 'test'),
-        'SHELL': os.environ.get('SHELL', '/bin/sh'),
-        'TMPDIR': temp_dir,
-        'TEMP': temp_dir,
-        'TMP': temp_dir,
-        'PYTHONPATH': str(PSH_ROOT),
-        'PYTHONUNBUFFERED': '1',
-    }
-
-    yield {'env': env, 'cwd': temp_dir}
-
-    # Cleanup
-    import shutil
-    try:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-    except:
-        pass
-
-
-# Test markers for categorizing tests
-pytest_configure_node_id_parts = ["suite", "category", "component"]
-
-
-def pytest_configure(config):
-    """Configure pytest with custom markers."""
-    config.addinivalue_line(
-        "markers", "unit: Unit tests that test isolated components"
-    )
-    config.addinivalue_line(
-        "markers", "integration: Integration tests that test component interactions"
-    )
-    config.addinivalue_line(
-        "markers", "system: System tests that test end-to-end functionality"
-    )
-    config.addinivalue_line(
-        "markers", "conformance: Tests that verify bash compatibility"
-    )
-    config.addinivalue_line(
-        "markers", "performance: Performance and benchmark tests"
-    )
-    config.addinivalue_line(
-        "markers", "interactive: Tests that require interactive shell features"
-    )
-    config.addinivalue_line(
-        "markers", "slow: Tests that take more than 1 second to run"
-    )
-    config.addinivalue_line(
-        "markers", "serial: Tests that must run serially (no parallel execution)"
-    )
-    config.addinivalue_line(
-        "markers", "isolated: Tests that need extra isolation"
-    )
-    config.addinivalue_line(
-        "markers", "flaky: Tests that are known to be flaky in parallel execution"
-    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -546,11 +441,6 @@ def pytest_collection_modifyitems(config, items):
         # Mark tests that need serial execution
         if any(test_name in item.name for test_name in serial_tests):
             item.add_marker(pytest.mark.serial)
-            item.add_marker(pytest.mark.isolated)
-
-        # Mark error recovery tests as needing isolation
-        if "test_error_recovery" in str(item.fspath):
-            item.add_marker(pytest.mark.isolated)
 
 
 # Skip interactive tests by default unless explicitly requested
@@ -582,18 +472,6 @@ def pytest_addoption(parser):
         action="store_true",
         default=False,
         help="Run interactive tests (requires pexpect and terminal)"
-    )
-    parser.addoption(
-        "--run-slow",
-        action="store_true",
-        default=False,
-        help="Run slow tests (performance benchmarks)"
-    )
-    parser.addoption(
-        "--strict-isolation",
-        action="store_true",
-        default=False,
-        help="Run with strict test isolation (slower but more reliable)"
     )
     # Must live in the ROOT conftest: pytest only honours pytest_addoption from
     # the rootdir conftest (a copy in tests/behavioral/conftest.py was silently

@@ -126,9 +126,6 @@ self.assert_documented_difference('version', 'VERSION_BUILTIN')
 # Test PSH extension
 self.assert_psh_extension('psh --debug-ast script.sh')
 
-# Test bash-specific feature
-self.assert_bash_specific('[[ "hello" == "hello" ]]')
-
 # Investigate difference
 result = self.check_behavior('complex_command')
 ```

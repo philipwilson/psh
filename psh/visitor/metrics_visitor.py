@@ -43,15 +43,12 @@ class CodeMetrics:
 
     def __init__(self):
         # Basic counts
-        self.total_lines = 0
         self.total_commands = 0
         self.total_pipelines = 0
         self.total_functions = 0
         self.total_loops = 0
         self.total_conditionals = 0
         self.total_redirections = 0
-        self.total_variables = 0
-        self.total_arrays = 0
 
         # Command usage
         self.command_frequency = defaultdict(int)
@@ -148,7 +145,6 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self.metrics = CodeMetrics()
         self.current_nesting_depth = 0
         self.current_function = None
-        self.in_command_substitution = False
 
     # Program / StatementList carry no metrics of their own; the
     # generic_visit -> visit_children default descends into their children.

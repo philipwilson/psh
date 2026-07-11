@@ -288,29 +288,3 @@ class SExpressionRenderer:
                 return value
         else:
             return str(value)
-
-
-# Convenience functions
-def render_ast_sexp(ast: ASTNode, **kwargs) -> str:
-    """Render AST as S-expression.
-
-    Args:
-        ast: The AST node to render
-        **kwargs: Arguments passed to SExpressionRenderer
-
-    Returns:
-        S-expression string
-    """
-    return SExpressionRenderer.render(ast, **kwargs)
-
-
-def render_compact_sexp(ast: ASTNode) -> str:
-    """Render AST as compact S-expression.
-
-    Args:
-        ast: The AST node to render
-
-    Returns:
-        Compact S-expression string
-    """
-    return SExpressionRenderer.render(ast, compact_mode=True, max_width=120)

@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from ..shell import Shell
     from .context import ExecutionContext
     from .core import ExecutorVisitor
-    from .job_control import Job, JobManager
+    from .job_control import Job
 
 
 def _close_quiet(fd: Optional[int]) -> None:
@@ -45,10 +45,8 @@ class PipelineContext:
     RLIMIT_NOFILE.
     """
 
-    def __init__(self, job_manager: 'JobManager'):
-        self.job_manager = job_manager
+    def __init__(self):
         self.processes: List[int] = []
-        self.job: Optional['Job'] = None
         # Rolling state: the read end carried from the previous boundary, and
         # the pipe (read end / write end) created for the current command's
         # outgoing boundary.
@@ -160,7 +158,7 @@ class PipelineExecutor:
         # Multi-command pipeline. Pipes are created incrementally during the
         # fork loop below (rolling construction), so the parent never holds
         # more than one boundary's descriptors at a time.
-        pipeline_ctx = PipelineContext(self.job_manager)
+        pipeline_ctx = PipelineContext()
 
         # Check if pipeline runs in background (last command determines)
         is_background = node.commands[-1].background if node.commands else False
@@ -318,7 +316,7 @@ class PipelineExecutor:
                 # Background pipeline: register the job and print the
                 # interactive "[N] PID" notice (bash prints the pid of the
                 # LAST process — the same value $! receives)
-                pipeline_ctx.job = self.job_manager.launch_background(
+                self.job_manager.launch_background(
                     pgid, command_string, proc_entries)
                 return 0
 
@@ -326,7 +324,6 @@ class PipelineExecutor:
             job = self.job_manager.create_job(pgid, command_string)
             for pid, cmd_str in proc_entries:
                 job.add_process(pid, cmd_str)
-            pipeline_ctx.job = job
 
             # Hand the terminal to the pipeline's process group immediately;
             # this prevents SIGTTOU in children before the wait starts

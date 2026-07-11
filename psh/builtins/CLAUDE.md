@@ -27,7 +27,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 **I/O Operations**
 | File | Commands |
 |------|----------|
-| `io.py` | `echo`, `printf`, `pwd`. The shared `process_escapes()` helper is a thin wrapper over `process_echo_escapes()` in `psh/utils/escapes.py`; printf's FORMAT/argument engine is NOT here either — it was extracted to `psh/utils/printf_formatter.py` (`format_printf()`, pure, no shell dependency; also used by `print -f`) |
+| `io.py` | `echo`, `printf`, `pwd`. Echo-dialect backslash escapes come straight from `process_echo_escapes()` in `psh/utils/escapes.py` (shared with `print`); printf's FORMAT/argument engine is NOT here either — it was extracted to `psh/utils/printf_formatter.py` (`format_printf()`, pure, no shell dependency; also used by `print -f`) |
 | `print_builtin.py` | `print` (zsh-compatible) |
 | `read_builtin.py` | `read` |
 | `mapfile_builtin.py` | `mapfile` (alias `readarray`) |

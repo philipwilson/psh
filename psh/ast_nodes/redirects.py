@@ -29,8 +29,9 @@ class Redirect(ASTNode):
     # the command) and parent-side; `{varname}>&-` closes the fd in the var.
     var_fd: Optional[str] = None
     # The parsed Word for a filename-target redirect (`<`/`>`/`>>`/`<>`/`>|`/
-    # `&>`/`&>>`). Carries per-part quote context so the executor can apply
-    # bash's "ambiguous redirect" rule: an unquoted target that expands +
-    # word-splits + globs to ≠1 word is an error. None for fd-dup/close,
-    # heredoc, and here-string forms (their targets are handled differently).
+    # `&>`/`&>>`) — and for a here-string (`<<<`), which both parsers also set
+    # and `redirect_herestring` consumes. Carries per-part quote context so the
+    # executor can apply bash's "ambiguous redirect" rule: an unquoted target
+    # that expands + word-splits + globs to ≠1 word is an error. None for
+    # fd-dup/close and heredoc forms (their targets are handled differently).
     target_word: Optional['Word'] = None

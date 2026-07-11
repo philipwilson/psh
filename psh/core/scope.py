@@ -16,9 +16,8 @@ from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 class VariableScope:
     """Represents a single variable scope with attribute-aware variables."""
 
-    def __init__(self, parent: Optional['VariableScope'] = None, name: Optional[str] = None):
+    def __init__(self, name: Optional[str] = None):
         self.variables: Dict[str, Variable] = {}
-        self.parent = parent
         self.name = name or 'anonymous'
         # True for a command's temp-env prefix layer (``X=1 func``). A plain
         # body assignment updates this layer (discarded on return), but the
@@ -40,7 +39,7 @@ class VariableScope:
         ``(set-options dict, edit_mode)`` — deep-copied so a child restoring
         it cannot mutate the parent's saved options) alongside every variable.
         """
-        new_scope = VariableScope(parent=None, name=self.name)
+        new_scope = VariableScope(name=self.name)
         new_scope.is_temp_env = self.is_temp_env
         if self.dash_snapshot is not None:
             opts, edit_mode = self.dash_snapshot
@@ -165,7 +164,7 @@ class ScopeManager:
 
     def push_scope(self, name: Optional[str] = None) -> VariableScope:
         """Create new scope for function entry."""
-        new_scope = VariableScope(parent=self.current_scope, name=name)
+        new_scope = VariableScope(name=name)
         self.scope_stack.append(new_scope)
         self._debug_print(f"Pushing scope for function: {name or 'anonymous'}")
         return new_scope
@@ -929,13 +928,6 @@ class ScopeManager:
             for name, var in scope.variables.items():
                 effective[name] = var
         return [v for v in effective.values() if v.is_exported and not v.is_array]
-
-    def has_variable(self, name: str) -> bool:
-        """Check if a variable exists in any scope."""
-        for scope in reversed(self.scope_stack):
-            if name in scope.variables:
-                return True
-        return False
 
     def find_exported_instance(self, name: str) -> Optional[Variable]:
         """Innermost EXPORTED, non-array, non-unset instance of *name*, else None.

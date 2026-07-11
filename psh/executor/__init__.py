@@ -20,27 +20,16 @@ The package is organized into focused modules:
 - enhanced_test_evaluator: [[ ]] test expression evaluation
 """
 
-from .array import ArrayOperationExecutor
 from .child_policy import (
     apply_child_signal_policy,
     flush_child_streams,
     fork_with_signal_window,
     run_child_shell,
 )
-from .command import CommandExecutor
 from .context import ExecutionContext
-from .control_flow import ControlFlowExecutor
 from .core import ExecutorVisitor
 from .enhanced_test_evaluator import TestExpressionEvaluator
-from .function import FunctionOperationExecutor
-from .pipeline import PipelineContext, PipelineExecutor
-from .strategies import (
-    BuiltinExecutionStrategy,
-    ExecutionStrategy,
-    ExternalExecutionStrategy,
-    FunctionExecutionStrategy,
-)
-from .subshell import SubshellExecutor
+from .strategies import ExternalExecutionStrategy
 
 __all__ = [
     'ExecutorVisitor',

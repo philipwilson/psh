@@ -67,7 +67,7 @@ try it interactively.
 
 | File | Purpose |
 |------|---------|
-| `core.py` | Combinator primitives (`token`, `many`, `sequence`, etc.) |
+| `core.py` | Combinator primitives (`token`, `keyword`, `many`, `or_else`, etc.) |
 | `tokens.py` | Token-level matchers |
 | `expansions.py` | Expansion parsers and Word AST building |
 | `arrays.py` | `ArrayParsers` — THE array assignment/initialization parser (used by the live command path in `commands.py`) |

@@ -15,9 +15,8 @@ Module layout:
                   execute_arithmetic_expansion entry points
 """
 
-from .errors import ArithmeticError, ShellArithmeticError, _to_signed64
+from .errors import ArithmeticError, ShellArithmeticError
 from .evaluator import (
-    _PLAIN_DECIMAL_RE,
     ArithmeticEvaluator,
     evaluate_arithmetic,
     execute_arithmetic_expansion,
@@ -26,6 +25,8 @@ from .nodes import (
     ArithNode,
     ArrayAssignmentNode,
     ArrayElementNode,
+    ArrayPostIncrementNode,
+    ArrayPreIncrementNode,
     AssignmentNode,
     BinaryOpNode,
     NumberNode,
@@ -65,7 +66,6 @@ __all__ = [
     "PostIncrementNode",
     "ArrayElementNode",
     "ArrayAssignmentNode",
-    # Internal helpers re-exported for backward compatibility
-    "_to_signed64",
-    "_PLAIN_DECIMAL_RE",
+    "ArrayPreIncrementNode",
+    "ArrayPostIncrementNode",
 ]

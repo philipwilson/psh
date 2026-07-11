@@ -250,10 +250,6 @@ class ConformanceTestFramework:
         if self._is_psh_extension(command, psh_result, bash_result):
             return ConformanceResult.PSH_EXTENSION
 
-        # Check if this is bash-specific behavior
-        if self._is_bash_specific(command, psh_result, bash_result):
-            return ConformanceResult.BASH_SPECIFIC
-
         # Check for command not found errors (after checking extensions)
         if psh_result.exit_code == 127 or bash_result.exit_code == 127:
             return ConformanceResult.TEST_ERROR
@@ -274,14 +270,6 @@ class ConformanceTestFramework:
         return (psh_result.exit_code == 0 and
                 bash_result.exit_code != 0 and
                 "command not found" in bash_result.stderr)
-
-    def _is_bash_specific(self, command: str, psh_result: CommandResult,
-                         bash_result: CommandResult) -> bool:
-        """Check if this is bash-specific behavior."""
-        # Bash-specific: bash works, PSH doesn't, and it's known bash extension
-        return (bash_result.exit_code == 0 and
-                psh_result.exit_code != 0 and
-                any(pattern in command for pattern in ["[[", "((", "declare -", "local "]))
 
     def _get_difference_id(self, command: str, conformance: ConformanceResult) -> Optional[str]:
         """Get difference ID from catalog."""
@@ -343,133 +331,8 @@ class ConformanceTest:
             f"Actual conformance: {result.conformance}"
         )
 
-    def assert_bash_specific(self, command: str, env: Dict[str, str] = None):
-        """Assert this is bash-specific behavior (bash supports, PSH doesn't)."""
-        result = self.framework.compare_behavior(command, env)
-        self.results.append(result)
-
-        assert result.conformance == ConformanceResult.BASH_SPECIFIC, (
-            f"Expected bash-specific behavior for: {command}\n"
-            f"Actual conformance: {result.conformance}"
-        )
-
     def check_behavior(self, command: str, env: Dict[str, str] = None) -> ComparisonResult:
         """Check behavior without assertion (for investigation)."""
         result = self.framework.compare_behavior(command, env)
         self.results.append(result)
         return result
-
-    def get_results_summary(self) -> Dict[str, int]:
-        """Get summary of conformance test results."""
-        summary = {}
-        for result_type in ConformanceResult:
-            summary[result_type.value] = sum(
-                1 for r in self.results if r.conformance == result_type
-            )
-        return summary
-
-    def save_results(self, filepath: str):
-        """Save results to JSON file for analysis."""
-        data = {
-            "summary": self.get_results_summary(),
-            "results": [
-                {
-                    "command": r.command,
-                    "conformance": r.conformance.value,
-                    "difference_id": r.difference_id,
-                    "psh": {
-                        "stdout": r.psh_result.stdout,
-                        "stderr": r.psh_result.stderr,
-                        "exit_code": r.psh_result.exit_code,
-                        "execution_time": r.psh_result.execution_time
-                    },
-                    "bash": {
-                        "stdout": r.bash_result.stdout,
-                        "stderr": r.bash_result.stderr,
-                        "exit_code": r.bash_result.exit_code,
-                        "execution_time": r.bash_result.execution_time
-                    }
-                }
-                for r in self.results
-            ]
-        }
-
-        with open(filepath, 'w') as f:
-            json.dump(data, f, indent=2)
-
-
-# POSIX compliance helper functions
-def is_posix_required(feature: str) -> bool:
-    """Check if feature is required by POSIX."""
-    posix_required = {
-        "parameter_expansion", "command_substitution", "arithmetic_expansion",
-        "tilde_expansion", "pathname_expansion", "quote_removal",
-        "simple_commands", "pipelines", "lists", "compound_commands",
-        "if_constructs", "while_loops", "for_loops", "case_constructs",
-        "function_definitions", "shell_functions", "shell_parameters",
-        "special_parameters", "shell_variables", "shell_expansions"
-    }
-    return feature in posix_required
-
-
-def get_posix_test_commands() -> List[str]:
-    """Get list of commands for POSIX compliance testing."""
-    return [
-        # Parameter expansion
-        'x=hello; echo ${x}',
-        'x=hello; echo ${x:-default}',
-        'x=; echo ${x:-default}',
-        'unset x; echo ${x:-default}',
-        'x=hello; echo ${x:+set}',
-        'x=; echo ${x:+set}',
-
-        # Command substitution
-        'echo $(echo hello)',
-        'echo `echo hello`',
-        'echo $(echo $(echo nested))',
-
-        # Arithmetic expansion
-        'echo $((2 + 3))',
-        'echo $((10 - 4))',
-        'echo $((3 * 4))',
-        'echo $((15 / 3))',
-        'echo $((17 % 5))',
-
-        # Tilde expansion
-        'echo ~',
-        'echo ~/test',
-
-        # Pathname expansion
-        'echo *',
-        'echo *.txt',
-        'echo [abc]*',
-
-        # Quote removal
-        'echo "hello world"',
-        "echo 'hello world'",
-        'echo hello\\ world',
-
-        # Simple commands
-        'echo hello',
-        'true',
-        'false',
-
-        # Pipelines
-        'echo hello | cat',
-        'echo -e "line1\\nline2" | wc -l',
-
-        # Lists
-        'true && echo success',
-        'false || echo failure',
-        'true; echo done',
-
-        # Compound commands
-        'if true; then echo yes; fi',
-        'while false; do echo never; done',
-        'for i in 1 2 3; do echo $i; done',
-        'case hello in hello) echo match;; esac',
-
-        # Function definitions
-        'f() { echo function; }; f',
-        'function f { echo function; }; f',
-    ]

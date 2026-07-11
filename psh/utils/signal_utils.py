@@ -274,8 +274,9 @@ class SignalHandlerRecord:
 class SignalRegistry:
     """Central registry for tracking signal handler changes.
 
-    This provides visibility into which components are managing signals,
-    helps detect conflicts, and enables debugging of signal-related issues.
+    This provides visibility into which components are managing signals, for
+    debugging of signal-related issues. It backs the `signals` builtin
+    (``debug_control.py``), which prints :meth:`report`.
 
     The registry tracks every signal.signal() call, recording:
     - Which signal was modified
@@ -283,6 +284,10 @@ class SignalRegistry:
     - Which component made the change
     - When the change was made
     - Stack trace (for debugging)
+
+    Signal names in the report come from the module-level
+    :func:`signal_number_to_name` (the single source of truth), so they can
+    never drift from ``kill -l`` / ``trap -l``.
 
     Example:
         registry = SignalRegistry()
@@ -292,25 +297,7 @@ class SignalRegistry:
 
         # Get report
         print(registry.report())
-
-        # Validate configuration
-        issues = registry.validate()
-        if issues:
-            print("Signal configuration issues:", issues)
     """
-
-    # Well-known signal names for better reporting
-    SIGNAL_NAMES: Dict[int, str] = {
-        signal.SIGINT: "SIGINT",
-        signal.SIGTERM: "SIGTERM",
-        signal.SIGHUP: "SIGHUP",
-        signal.SIGQUIT: "SIGQUIT",
-        signal.SIGTSTP: "SIGTSTP",
-        signal.SIGTTOU: "SIGTTOU",
-        signal.SIGTTIN: "SIGTTIN",
-        signal.SIGCHLD: "SIGCHLD",
-        signal.SIGPIPE: "SIGPIPE",
-    }
 
     def __init__(self, capture_stack: bool = False):
         """Initialize signal registry.
@@ -326,7 +313,6 @@ class SignalRegistry:
         self._current: Dict[int, SignalHandlerRecord] = {}
 
         self._capture_stack = capture_stack
-        self._enabled = True
 
     def register(self, sig: int, handler: Any, component: str) -> Any:
         """Register a signal handler change and set it.
@@ -341,17 +327,14 @@ class SignalRegistry:
         Returns:
             Previous handler (same as signal.signal())
         """
-        if not self._enabled:
-            return signal.signal(sig, handler)
-
         # Capture stack if enabled
         call_stack = None
         if self._capture_stack:
             # Skip the first two frames (this function and signal.signal)
             call_stack = ''.join(traceback.format_stack()[:-2])
 
-        # Get signal name
-        signal_name = self.SIGNAL_NAMES.get(sig, f"Signal-{sig}")
+        # Get signal name (single source of truth: signal_number_to_name)
+        signal_name = signal_number_to_name(sig, with_prefix=True) or f"Signal-{sig}"
 
         # Create record
         record = SignalHandlerRecord(
@@ -396,70 +379,6 @@ class SignalRegistry:
         """
         return self._current.get(sig)
 
-    def get_all_handlers(self) -> Dict[int, SignalHandlerRecord]:
-        """Get all currently registered handlers.
-
-        Returns:
-            Dictionary mapping signal number to current record
-        """
-        return self._current.copy()
-
-    def get_history(self, sig: Optional[int] = None) -> List[SignalHandlerRecord]:
-        """Get history of signal handler changes.
-
-        Args:
-            sig: Signal number, or None for all signals
-
-        Returns:
-            List of records in chronological order
-        """
-        if sig is not None:
-            return self._history.get(sig, []).copy()
-
-        # Return all records sorted by timestamp
-        all_records = []
-        for records in self._history.values():
-            all_records.extend(records)
-        return sorted(all_records, key=lambda r: r.timestamp)
-
-    def validate(self) -> List[str]:
-        """Validate signal configuration and detect issues.
-
-        Returns:
-            List of issue descriptions (empty if no issues)
-        """
-        issues = []
-
-        # Check for signals that changed multiple times
-        for sig, records in self._history.items():
-            if len(records) > 5:
-                signal_name = self.SIGNAL_NAMES.get(sig, f"Signal-{sig}")
-                issues.append(
-                    f"{signal_name} has been modified {len(records)} times - "
-                    "this may indicate a configuration issue"
-                )
-
-        # Check for rapid changes (multiple changes in short time)
-        for sig, records in self._history.items():
-            if len(records) < 2:
-                continue
-
-            # Look for multiple changes within 1 second
-            rapid_changes = []
-            for i in range(1, len(records)):
-                time_diff = (records[i].timestamp - records[i-1].timestamp).total_seconds()
-                if time_diff < 1.0:
-                    rapid_changes.append((i-1, i))
-
-            if rapid_changes:
-                signal_name = self.SIGNAL_NAMES.get(sig, f"Signal-{sig}")
-                issues.append(
-                    f"{signal_name} had {len(rapid_changes)} rapid changes - "
-                    "this may indicate signal handler conflicts"
-                )
-
-        return issues
-
     def report(self, verbose: bool = False) -> str:
         """Generate human-readable report of signal state.
 
@@ -495,22 +414,13 @@ class SignalRegistry:
 
             lines.append("")
 
-        # Validation
-        issues = self.validate()
-        if issues:
-            lines.append("Validation Issues:")
-            lines.append("-" * 50)
-            for issue in issues:
-                lines.append(f"⚠️  {issue}")
-            lines.append("")
-
         # History summary if verbose
         if verbose:
             lines.append("Signal Handler History:")
             lines.append("-" * 50)
 
             for sig in sorted(self._history.keys()):
-                signal_name = self.SIGNAL_NAMES.get(sig, f"Signal-{sig}")
+                signal_name = signal_number_to_name(sig, with_prefix=True) or f"Signal-{sig}"
                 records = self._history[sig]
 
                 lines.append(f"{signal_name}: {len(records)} changes")
@@ -549,19 +459,6 @@ class SignalRegistry:
                 return f"<handler at {hex(id(handler))}>"
         else:
             return str(handler)
-
-    def clear(self):
-        """Clear all records (for testing)."""
-        self._history.clear()
-        self._current.clear()
-
-    def enable(self):
-        """Enable registry tracking."""
-        self._enabled = True
-
-    def disable(self):
-        """Disable registry tracking (for performance)."""
-        self._enabled = False
 
 
 # Global signal registry instance

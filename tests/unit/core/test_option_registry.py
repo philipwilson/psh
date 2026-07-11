@@ -2,7 +2,7 @@
 
 Pins the registry against the values that were previously scattered across
 state.py (defaults + $- letters), SetBuiltin.short_to_long, and
-ShoptBuiltin.SHOPT_OPTIONS, plus the new ShellOptions container behavior
+the former ShoptBuiltin.SHOPT_OPTIONS (deleted; shopt uses SHOPT_OPTION_NAMES), plus the new ShellOptions container behavior
 (dict-compatible, rejects unknown names). A drift-lock test enumerates the
 known option set so adding/removing an option is a deliberate registry edit.
 """
@@ -229,14 +229,6 @@ def test_shell_options_update_validates():
     assert opts["errexit"] and opts["nounset"]
     with pytest.raises(KeyError):
         opts.update({"bogus": True})
-
-
-def test_typed_accessors():
-    opts = ShellOptions()
-    assert opts.errexit is False and opts.pipefail is False
-    opts["errexit"] = True
-    opts["pipefail"] = True
-    assert opts.errexit is True and opts.pipefail is True
 
 
 # ---------------------------------------------------------------------------

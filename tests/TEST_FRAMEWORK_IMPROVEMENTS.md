@@ -19,8 +19,6 @@ The PSH test framework had isolation issues when running tests in parallel with 
 Added new pytest markers to categorize tests by isolation needs:
 
 - `@pytest.mark.serial` - Tests that must run on a single worker
-- `@pytest.mark.isolated` - Tests needing extra isolation
-- `@pytest.mark.flaky` - Known flaky tests in parallel execution
 
 ### 2. Serial Test Execution
 
@@ -66,22 +64,19 @@ test_file = f'tmp/fd_test_{uuid.uuid4().hex[:8]}'
 
 New fixtures for better isolation:
 
-- `isolated_subprocess_env` - Clean environment for subprocess tests
-- `error_tolerant_shell` - Shell configured for error testing
-- `exclusive_resource` - Lock-based resource access
+- `isolated_shell_with_temp_dir` - Fresh shell with a real `os.chdir` into a
+  per-test temp directory
+- `temp_dir` - Per-test temporary directory with automatic cleanup
 
 ### 6. Command Line Options
 
-New options for debugging and control:
+New options for debugging and control (the serial-split invocation):
 
 ```bash
-# Run with extra isolation (slower but more reliable)
-pytest tests -n auto --strict-isolation
-
-# Skip serial tests for faster parallel runs
+# Parallel phase: skip serial-marked tests (they crash xdist workers)
 pytest tests -m 'not serial' -n auto
 
-# Run only serial tests separately
+# Serial phase: run the serial-marked tests separately, without -n
 pytest tests -m serial
 ```
 
@@ -107,10 +102,6 @@ pytest tests -m serial
    @pytest.mark.serial
    def test_that_needs_exclusive_access():
        # This test will only run on one worker
-   
-   @pytest.mark.isolated
-   def test_that_needs_clean_environment():
-       # This test gets extra cleanup
    ```
 
 2. **Use unique paths**:
@@ -124,21 +115,22 @@ pytest tests -m serial
 
 3. **Use isolation fixtures**:
    ```python
-   def test_subprocess_isolation(isolated_subprocess_env):
-       # Use the provided clean environment
-       subprocess.run(..., env=isolated_subprocess_env['env'])
+   def test_file_output(isolated_shell_with_temp_dir):
+       shell = isolated_shell_with_temp_dir  # fresh shell, per-test cwd
+       shell.run_command("echo test > file.txt")
    ```
 
 ### For Test Runners
 
-1. **Normal parallel execution**:
+1. **Normal parallel execution** (always exclude `serial`-marked tests, or xdist
+   workers crash — see CLAUDE.md "Known Test Issues"):
 ```bash
-pytest tests -n auto
+pytest tests -n auto -m "not serial"
 ```
 
-2. **Debugging isolation issues**:
+2. **Serial pass** (the process/signal/fd tests that cannot run under xdist):
 ```bash
-pytest tests -n auto --strict-isolation -v
+pytest tests -m serial
 ```
 
 3. **Maximum speed (skip problematic tests)**:

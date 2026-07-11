@@ -12,11 +12,10 @@ The ControlStructureParsers class inherits from three mixin classes:
 from typing import List, Optional, Tuple, cast
 
 from ....ast_nodes import Redirect
-from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ...config import ParserConfig
 from ..commands import CommandParsers
-from ..core import Parser, ParseResult, fail_with, keyword, many
+from ..core import Parser, fail_with, many
 from ..tokens import TokenParsers
 from .conditionals import ConditionalParserMixin
 from .loops import LoopParserMixin
@@ -82,33 +81,10 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
 
     def _initialize_parsers(self):
         """Initialize parsers that don't depend on command parsers."""
-        # Keywords
-        self.if_kw = keyword('if')
-        self.then_kw = keyword('then')
-        self.elif_kw = keyword('elif')
-        self.else_kw = keyword('else')
-        self.fi_kw = keyword('fi')
-        self.while_kw = keyword('while')
-        self.for_kw = keyword('for')
-        self.in_kw = keyword('in')
-        self.do_kw = keyword('do')
-        self.done_kw = keyword('done')
-        self.case_kw = keyword('case')
-        self.esac_kw = keyword('esac')
-        self.select_kw = keyword('select')
-        self.function_kw = keyword('function')
-
-        # Statement terminators
-        self.statement_terminator = self.tokens.semicolon.or_else(self.tokens.newline)
-
         # Recursion slot for non-brace function bodies (any compound command,
         # including the sibling module's `(( ))`); filled once during wiring
         # by set_special_command_parser, read at parse time.
         self._compound_body = fail_with("expected a compound command")
-
-        # Helper parsers for control structures
-        self.do_separator = Parser(lambda tokens, pos: self._parse_do_separator(tokens, pos))
-        self.then_separator = Parser(lambda tokens, pos: self._parse_then_separator(tokens, pos))
 
     def _initialize_dependent_parsers(self):
         """Initialize parsers that depend on command parsers."""
@@ -163,30 +139,6 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
         result = many(self.commands.redirection).parse(tokens, pos)
         redirects: List[Redirect] = list(result.value or [])
         return redirects, result.position
-
-    def _parse_do_separator(self, tokens: List[Token], pos: int) -> ParseResult[None]:
-        """Parse separator followed by 'do' keyword."""
-        # Skip optional separator
-        if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
-            pos += 1
-
-        # Expect 'do'
-        if pos >= len(tokens) or not matches_keyword(tokens[pos], 'do'):
-            return ParseResult(success=False, error="Expected 'do'", position=pos)
-
-        return ParseResult(success=True, value=None, position=pos + 1)
-
-    def _parse_then_separator(self, tokens: List[Token], pos: int) -> ParseResult[None]:
-        """Parse separator followed by 'then' keyword."""
-        # Skip optional separator
-        if pos < len(tokens) and tokens[pos].type.name in ['SEMICOLON', 'NEWLINE']:
-            pos += 1
-
-        # Expect 'then'
-        if pos >= len(tokens) or not matches_keyword(tokens[pos], 'then'):
-            return ParseResult(success=False, error="Expected 'then'", position=pos)
-
-        return ParseResult(success=True, value=None, position=pos + 1)
 
 
 # Convenience function

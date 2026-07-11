@@ -11,6 +11,7 @@ backend on negation-free patterns (surfacing any pre-existing inconsistency
 between the two old backends before the flip).
 """
 import random
+import re
 
 import pytest
 
@@ -19,7 +20,7 @@ from psh.expansion.extglob import (
     _extglob_consume,
     contains_extglob,
     extglob_fullmatch,
-    match_extglob,
+    extglob_to_regex,
 )
 from psh.expansion.pattern_engine import (
     compile_pattern,
@@ -135,22 +136,26 @@ def test_reachable_ends_equal_legacy_matcher_nocase():
         f"{len(mismatches)} ic divergences, first 10: {mismatches[:10]}")
 
 
-def test_new_fullmatch_agrees_with_legacy_regex_on_nonneg():
-    """New full-match == legacy REGEX backend for negation-free patterns.
+def test_new_fullmatch_agrees_with_regex_converter_on_nonneg():
+    """New full-match == the regex converter for negation-free extglob.
 
-    The legacy regex path (match_extglob) is what case / [[ == ]] / non-negation
-    removal use today; the flip routes them through the matcher instead. Any
-    disagreement here is a pre-existing inconsistency between the two old
-    backends and must be understood (vs bash) before the flip. Expected: none.
+    ``pattern_engine`` (the production matcher for case / [[ == ]] / removal /
+    substitution) and ``extglob_to_regex`` (the production glob→regex converter
+    still used by ``pattern.py``'s regex path) must agree on every non-negation
+    extglob pattern — a standing consistency check between the two live
+    backends. Negation is not expressible as a Python regex, so it is excluded;
+    plain globs are compared elsewhere.
     """
     mismatches = []
     for pat, subj in _cases(seed=555, count=6000):
         if _contains_negation(pat) or not contains_extglob(pat):
-            # match_extglob routes negation to the matcher (would be circular);
-            # plain globs are compared elsewhere. Focus on non-neg extglob.
             continue
         new = fullmatch(compile_pattern(pat), subj)
-        old = match_extglob(pat, subj, full_match=True)
+        regex_str = extglob_to_regex(pat, anchored=True, from_start=True)
+        try:
+            old = bool(re.fullmatch(regex_str, subj))
+        except re.error:
+            old = False
         if new != old:
             mismatches.append((pat, subj, new, old))
     assert not mismatches, (

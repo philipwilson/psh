@@ -5,6 +5,7 @@ This visitor analyzes AST for potential security vulnerabilities and
 dangerous patterns in shell scripts.
 """
 
+from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from ..ast_nodes import (
@@ -21,19 +22,22 @@ from ..ast_nodes import (
 )
 from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
-from .constants import DANGEROUS_COMMANDS, SENSITIVE_COMMANDS
+from .constants import (
+    DANGEROUS_COMMANDS,
+    SENSITIVE_COMMANDS,
+    is_world_writable_permission,
+)
 from .traversal import visit_children, visit_word_substitution_bodies
 from .word_analysis import has_command_substitution
 
 
+@dataclass
 class SecurityIssue:
     """Represents a security issue found in the AST."""
-
-    def __init__(self, severity: str, issue_type: str, message: str, node: ASTNode):
-        self.severity = severity  # 'HIGH', 'MEDIUM', 'LOW'
-        self.issue_type = issue_type
-        self.message = message
-        self.node = node
+    severity: str  # 'HIGH', 'MEDIUM', 'LOW'
+    issue_type: str
+    message: str
+    node: ASTNode
 
     def __str__(self):
         return f"[{self.severity}] {self.issue_type}: {self.message}"
@@ -55,8 +59,6 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         """Initialize the security visitor."""
         super().__init__()
         self.issues: List[SecurityIssue] = []
-        self.in_function = False
-        self.function_stack = []
 
         # Dangerous commands that should be flagged
         self.dangerous_commands = DANGEROUS_COMMANDS
@@ -181,11 +183,7 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
     def visit_FunctionDef(self, node: FunctionDef) -> None:
         """Analyze function definitions."""
-        self.in_function = True
-        self.function_stack.append(node.name)
         self.visit(node.body)
-        self.function_stack.pop()
-        self.in_function = bool(self.function_stack)
         self._visit_redirects(node)
 
     def visit_ForLoop(self, node: ForLoop) -> None:
@@ -280,7 +278,6 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     def _is_world_writable_permission(self, perm: str) -> bool:
         """Check if a permission string makes files world-writable
         (delegates to the shared, single-sourced helper in constants.py)."""
-        from .constants import is_world_writable_permission
         return is_world_writable_permission(perm)
 
     def get_report(self) -> Dict[str, Any]:

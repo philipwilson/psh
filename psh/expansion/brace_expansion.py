@@ -628,39 +628,3 @@ class BraceExpander:
             return -len(end_digits)
 
         return max(len(start_digits), len(end_digits))
-
-    # ------------------------------------------------------------------ #
-    # Misc
-    # ------------------------------------------------------------------ #
-
-    def _contains_expandable_dollar(self, content: str) -> bool:
-        """Check if ``content`` contains a real ``$`` expansion pattern.
-
-        True for ``$var``/``${var}`` (variables), ``$(cmd)`` (command sub),
-        ``$((expr))`` (arithmetic), and special variables (``$1``, ``$@`` ...).
-        False for a bare ``$`` (at end of string, or before a comma/other
-        non-variable character, as in ``{$,#,@}``).
-        """
-        i = 0
-        n = len(content)
-        while i < n:
-            if content[i] != '$':
-                i += 1
-                continue
-            if i + 1 >= n:
-                # Trailing '$': not an expansion.
-                i += 1
-                continue
-            next_char = content[i + 1]
-            if next_char in '{(':
-                return True
-            if next_char.isalpha() or next_char == '_':
-                return True
-            if next_char == ',':
-                # '$' before a comma is literal, e.g. {$,#,@}.
-                i += 1
-                continue
-            if next_char.isdigit() or next_char in '@*#?-!$':
-                return True
-            i += 1
-        return False

@@ -23,7 +23,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 try:
     import pexpect
@@ -103,14 +103,14 @@ class PTYTestFramework:
                     # Try graceful exit
                     self.shell.sendline('exit')
                     self.shell.expect(pexpect.EOF, timeout=1)
-            except:
+            except Exception:
                 pass
 
             try:
                 if self.shell.isalive():
                     self.shell.terminate(force=True)
                 self.shell.wait()
-            except:
+            except Exception:
                 pass
 
             self.shell = None
@@ -118,7 +118,7 @@ class PTYTestFramework:
         if self.logfile:
             try:
                 self.logfile.close()
-            except:
+            except Exception:
                 pass
             self.logfile = None
 
@@ -204,14 +204,9 @@ class PTYTestFramework:
         except (pexpect.TIMEOUT, pexpect.EOF):
             pass
 
-    def _wait_for_prompt(self, initial: bool = False, timeout: Optional[int] = None):
+    def _wait_for_prompt(self, timeout: Optional[int] = None):
         """Wait for prompt with better error handling."""
         timeout = timeout or self.config.timeout
-
-        if initial:
-            # For initial prompt, PSH might need a nudge
-            time.sleep(0.1)
-            self.shell.send('\r')
 
         try:
             index = self.shell.expect([
@@ -318,35 +313,6 @@ class PTYTestFramework:
 
         return '\n'.join(lines).strip()
 
-    def get_cursor_position(self) -> Tuple[int, int]:
-        """Get current cursor position using ANSI escape sequence."""
-        # Send cursor position request
-        self.shell.send('\033[6n')
-
-        # Expect response in format ESC[row;colR
-        try:
-            self.shell.expect(r'\033\[(\d+);(\d+)R', timeout=1)
-            match = self.shell.match
-            if match:
-                row = int(match.group(1))
-                col = int(match.group(2))
-                return (row, col)
-        except:
-            pass
-
-        return (-1, -1)
-
-    def assert_cursor_at_column(self, expected_col: int):
-        """Assert cursor is at expected column."""
-        _, col = self.get_cursor_position()
-        assert col == expected_col, f"Expected cursor at column {expected_col}, got {col}"
-
-    def capture_screen_content(self) -> str:
-        """Capture current screen content."""
-        # This is a simplified version - real implementation would need
-        # to track all output and cursor movements
-        return self.shell.before or ""
-
 
 class PTYTest:
     """Base class for PTY-based tests."""
@@ -376,46 +342,3 @@ def interactive_shell(config: Optional[PTYTestConfig] = None):
         yield framework
     finally:
         framework.cleanup()
-
-
-def validate_line_editing_sequence(framework: PTYTestFramework,
-                              initial_text: str,
-                              edit_sequence: List[Tuple[str, str]],
-                              expected_result: str):
-    """Test a sequence of line editing operations.
-
-    Args:
-        framework: PTY test framework
-        initial_text: Initial text to type
-        edit_sequence: List of (action, argument) tuples
-        expected_result: Expected final result
-    """
-    # Type initial text
-    framework.send_text(initial_text)
-
-    # Apply edit sequence
-    for action, arg in edit_sequence:
-        if action == 'left':
-            for _ in range(int(arg)):
-                framework.send_arrow_key('left')
-        elif action == 'right':
-            for _ in range(int(arg)):
-                framework.send_arrow_key('right')
-        elif action == 'home':
-            framework.send_ctrl('a')
-        elif action == 'end':
-            framework.send_ctrl('e')
-        elif action == 'insert':
-            framework.send_text(arg)
-        elif action == 'delete':
-            framework.send_key_sequence('\033[3~')
-        elif action == 'backspace':
-            framework.send_text('\177')
-        time.sleep(0.05)  # Small delay between operations
-
-    # Execute and check result
-    framework.send_text('\r')
-    output = framework.expect_output(expected_result)
-    framework._wait_for_prompt()
-
-    return output

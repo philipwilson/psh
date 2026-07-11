@@ -116,8 +116,6 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         }
 
         # Track context
-        self._in_function = False
-        self._in_subshell = False
         self._has_error_handling = False
 
     def add_issue(self, level: LintLevel, message: str,
@@ -278,11 +276,8 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                     suggestion="Use lowercase with underscores (e.g., my_function)"
                 )
 
-        # Visit body in function context
-        old_in_function = self._in_function
-        self._in_function = True
+        # Visit the function body
         self.visit(node.body)
-        self._in_function = old_in_function
 
         # A function definition can carry redirects (`f() { ...; } > log`).
         self._visit_redirects(node)
