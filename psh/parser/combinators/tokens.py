@@ -4,9 +4,8 @@ This module provides parsers for individual tokens and token combinations
 used throughout the shell grammar.
 """
 
-from ...lexer.keyword_defs import KEYWORD_TYPE_MAP, matches_keyword
 from ...lexer.token_types import Token
-from .core import Parser, keyword, sequence, skip, token
+from .core import keyword, token
 
 
 class TokenParsers:
@@ -15,9 +14,6 @@ class TokenParsers:
     This class provides a centralized location for all token-level parsers,
     organized by category for easy access and maintenance.
     """
-
-    _KEYWORD_STRINGS = tuple(KEYWORD_TYPE_MAP.keys())
-    _KEYWORD_TYPES = set(KEYWORD_TYPE_MAP.values())
 
     def __init__(self):
         """Initialize all token parsers."""
@@ -188,94 +184,6 @@ class TokenParsers:
             .or_else(self.process_sub_out)
         )
 
-        # Helper parsers for control structures
-        self.do_separator = sequence(
-            self.statement_terminator,
-            skip(self.do_kw)
-        ).map(lambda _: None)
-
-        self.then_separator = sequence(
-            self.statement_terminator,
-            skip(self.then_kw)
-        ).map(lambda _: None)
-
-    # Factory methods for creating common token patterns
-
-    @staticmethod
-    def create_separator_parser() -> Parser[Token]:
-        """Create parser for command separators.
-
-        Returns:
-            Parser that matches semicolon or newline
-        """
-        return token('SEMICOLON').or_else(token('NEWLINE'))
-
-    @staticmethod
-    def create_logical_operator_parser() -> Parser[Token]:
-        """Create parser for logical operators.
-
-        Returns:
-            Parser that matches && or ||
-        """
-        return (token('AND_IF').or_else(token('AND_AND'))
-                .or_else(token('OR_IF')).or_else(token('OR_OR')))
-
-    @staticmethod
-    def create_redirect_operator_parser() -> Parser[Token]:
-        """Create parser for all redirection operators.
-
-        Returns:
-            Parser that matches any redirection operator
-        """
-        return (token('REDIRECT_OUT')
-                .or_else(token('REDIRECT_APPEND'))
-                .or_else(token('REDIRECT_IN'))
-                .or_else(token('REDIRECT_DUP'))
-                .or_else(token('REDIRECT_READWRITE'))
-                .or_else(token('REDIRECT_CLOBBER'))
-                .or_else(token('HEREDOC'))
-                .or_else(token('HEREDOC_STRIP'))
-                .or_else(token('HERE_STRING')))
-
-    @staticmethod
-    def create_expansion_parser() -> Parser[Token]:
-        """Create parser for all expansion types.
-
-        Returns:
-            Parser that matches any expansion token
-        """
-        return (token('VARIABLE')
-                .or_else(token('COMMAND_SUB'))
-                .or_else(token('COMMAND_SUB_BACKTICK'))
-                .or_else(token('ARITH_EXPANSION'))
-                .or_else(token('PROCESS_SUB_IN'))
-                .or_else(token('PROCESS_SUB_OUT')))
-
-    def is_terminator(self, token: Token) -> bool:
-        """Check if a token is a statement terminator.
-
-        Args:
-            token: Token to check
-
-        Returns:
-            True if token is a terminator
-        """
-        return token.type.name in ['SEMICOLON', 'NEWLINE', 'EOF']
-
-    def is_keyword(self, token: Token) -> bool:
-        """Check if a token is a shell keyword.
-
-        Args:
-            token: Token to check
-
-        Returns:
-            True if token is a keyword
-        """
-        if token.type in self._KEYWORD_TYPES:
-            return True
-
-        return any(matches_keyword(token, kw) for kw in self._KEYWORD_STRINGS)
-
     def is_redirect_operator(self, token: Token) -> bool:
         """Check if a token is a redirection operator.
 
@@ -292,22 +200,6 @@ class TokenParsers:
         }
         return token.type.name in redirect_types
 
-    def is_expansion(self, token: Token) -> bool:
-        """Check if a token is an expansion.
-
-        Args:
-            token: Token to check
-
-        Returns:
-            True if token is an expansion
-        """
-        expansion_types = {
-            'VARIABLE', 'COMMAND_SUB',
-            'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION',
-            'PROCESS_SUB_IN', 'PROCESS_SUB_OUT'
-        }
-        return token.type.name in expansion_types
-
 
 # Convenience functions for creating token parsers
 
@@ -318,66 +210,3 @@ def create_token_parsers() -> TokenParsers:
         Initialized TokenParsers object
     """
     return TokenParsers()
-
-
-def pipe_separator() -> Parser[Token]:
-    """Create parser for pipe operator.
-
-    Returns:
-        Parser that matches pipe token
-    """
-    return token('PIPE')
-
-
-def semicolon_separator() -> Parser[Token]:
-    """Create parser for semicolon.
-
-    Returns:
-        Parser that matches semicolon token
-    """
-    return token('SEMICOLON')
-
-
-def newline_separator() -> Parser[Token]:
-    """Create parser for newline.
-
-    Returns:
-        Parser that matches newline token
-    """
-    return token('NEWLINE')
-
-
-def statement_terminator() -> Parser[Token]:
-    """Create parser for statement terminators.
-
-    Returns:
-        Parser that matches semicolon or newline
-    """
-    return semicolon_separator().or_else(newline_separator())
-
-
-def logical_and() -> Parser[Token]:
-    """Create parser for logical AND operator.
-
-    Returns:
-        Parser that matches && operator
-    """
-    return token('AND_IF').or_else(token('AND_AND'))
-
-
-def logical_or() -> Parser[Token]:
-    """Create parser for logical OR operator.
-
-    Returns:
-        Parser that matches || operator
-    """
-    return token('OR_IF').or_else(token('OR_OR'))
-
-
-def background_operator() -> Parser[Token]:
-    """Create parser for background operator.
-
-    Returns:
-        Parser that matches & operator
-    """
-    return token('AMPERSAND')

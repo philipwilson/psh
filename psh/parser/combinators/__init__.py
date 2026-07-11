@@ -62,15 +62,7 @@ from .expansions import (
 )
 from .tokens import (
     TokenParsers,
-    background_operator,
     create_token_parsers,
-    logical_and,
-    logical_or,
-    newline_separator,
-    # Convenience functions
-    pipe_separator,
-    semicolon_separator,
-    statement_terminator,
 )
 
 __all__ = [
@@ -97,13 +89,6 @@ __all__ = [
     # Token parsers
     'TokenParsers',
     'create_token_parsers',
-    'pipe_separator',
-    'semicolon_separator',
-    'newline_separator',
-    'statement_terminator',
-    'logical_and',
-    'logical_or',
-    'background_operator',
     # Expansion parsers
     'ExpansionParsers',
     'create_expansion_parsers',
