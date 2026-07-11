@@ -67,7 +67,7 @@ import fcntl
 import os
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, List, Optional, TextIO, Tuple, cast
+from typing import TYPE_CHECKING, List, NoReturn, Optional, TextIO, Tuple, cast
 
 from ..ast_nodes import Command, Redirect
 from .file_redirect import FileRedirector
@@ -833,6 +833,22 @@ class IOManager:
         # so a builtin running inside a function called with a <(...)
         # argument cannot close the caller's still-needed fd.
 
+    @staticmethod
+    def _child_redirect_error(error: OSError,
+                              target: Optional[str] = None) -> NoReturn:
+        """Emit a child redirect-setup failure through the ONE message shape and
+        exit 1 — the forked-child counterpart of ``format_redirect_error``.
+
+        Every failure site in ``setup_child_redirections`` routes here so a
+        forked child never leaks a raw ``[Errno N] ...`` OSError repr where the
+        parent (and bash) print ``psh: TARGET: STRERROR``. It cannot ``raise``
+        (it runs after fork, past the point a normal exception can unwind), so
+        it writes the formatted message with ``os.write`` and ``os._exit(1)``.
+        """
+        os.write(2, (format_redirect_error(error, target) + "\n")
+                 .encode('utf-8'))
+        os._exit(1)
+
     def setup_child_redirections(self, command: Command):
         """Set up redirections in child process (after fork) using dup2."""
         for redirect in command.redirects:
@@ -844,14 +860,12 @@ class IOManager:
                 try:
                     self.file_redirector.apply_var_fd_redirect(redirect)
                 except OSError as e:
-                    os.write(2, f"psh: {e}\n".encode('utf-8'))
-                    os._exit(1)
+                    self._child_redirect_error(e)
                 continue
             try:
                 plan = self.file_redirector.planner.plan(redirect)
             except OSError as e:
-                os.write(2, f"psh: {e}\n".encode('utf-8'))
-                os._exit(1)
+                self._child_redirect_error(e)
             redirect = plan.redirect
             target = plan.target
             applied = False
@@ -861,20 +875,10 @@ class IOManager:
                 applied = True
             except OSError as e:
                 # A real syscall failure opening/duping the redirect target
-                # (ENOENT/EISDIR/EACCES). Emit bash's `psh: TARGET: STRERROR`
-                # shape rather than letting the raw OSError repr escape to the
-                # generic child error handler (`psh: error: [Errno N] ...`).
-                # OSErrors with no errno are psh's own custom-message
-                # redirect errors (noclobber/ambiguous/bad-fd).
-                if e.errno is None:
-                    os.write(2, f"psh: {e}\n".encode('utf-8'))
-                else:
-                    name = _redirect_error_name(e, target)
-                    os.write(
-                        2,
-                        f"psh: {name}: {os.strerror(e.errno)}\n"
-                        .encode('utf-8'))
-                os._exit(1)
+                # (ENOENT/EISDIR/EACCES) becomes bash's `psh: TARGET: STRERROR`;
+                # an errno-None OSError (noclobber/ambiguous/bad-fd) keeps its
+                # own message — both via the shared format_redirect_error shape.
+                self._child_redirect_error(e, target)
             finally:
                 plan.close_procsub(applied=applied)
 
