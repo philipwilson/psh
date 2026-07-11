@@ -146,13 +146,11 @@ class TestAbsentBashFeatures:
     # fixed). Positive coverage lives in
     # tests/conformance/bash/test_extglob_parameter_expansion_conformance.py.
 
-    @pytest.mark.xfail(strict=True, reason="jobs -x is not implemented")
-    def test_jobs_dash_x(self):
-        """bash: `jobs -x command args` runs the command with job specs in
-        the args replaced by process-group IDs; with no jobspec args it
-        simply runs the command (probe: rc=0). psh: 'jobs: -x: invalid
-        option', exit 2."""
-        assert_bash_parity('jobs -x true; echo rc=$?')
+    # `jobs -x command args` IS now implemented (task #22 [#36], v0.69x): it
+    # replaces whole-word %jobspecs in the command line with their pgid and runs
+    # the command. Positive coverage lives in
+    # tests/integration/job_control/test_jobs_x_substitution.py and the
+    # jobsnx_jobs_x_* golden cases.
 
     @pytest.mark.xfail(strict=True, reason="suspend builtin is not implemented")
     def test_suspend_builtin_exists(self):

@@ -788,6 +788,7 @@ class JobManager:
             flags |= os.WUNTRACED
         if track_stops and hasattr(os, "WCONTINUED"):
             flags |= os.WCONTINUED
+        reaped = False
         while True:
             try:
                 pid, status = os.waitpid(-job.pgid, flags)
@@ -796,7 +797,14 @@ class JobManager:
             if pid == 0:
                 break  # nothing in this group changed state
             job.update_process_status(pid, status)
-        job.update_state()
+            reaped = True
+        # Only recompute the job state when a status was actually reaped. An
+        # unconditional update_state() would flip a job with no live members to
+        # DONE (an empty/all-completed process list reads as DONE) — wrongly
+        # reaping a job whose group has no waitable child right now, e.g. a job
+        # planted in the table without a real process.
+        if reaped:
+            job.update_state()
 
     def list_jobs(self) -> List[str]:
         """Get formatted list of all jobs."""
