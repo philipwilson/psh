@@ -23,7 +23,9 @@ The few documents worth reading as current truth:
 
 | Document | Why it's live |
 |----------|---------------|
-| [ground_up_reappraisal_18_2026-07-04](ground_up_reappraisal_18_2026-07-04.md) | The **latest** whole-repo ground-up audit (@ v0.617.0) — the newest of the reappraisal series and the current canonical whole-repo appraisal. |
+| [ground_up_reappraisal_19_textbook_2026-07-10](ground_up_reappraisal_19_textbook_2026-07-10.md) | The **latest** whole-repo audit (@ v0.687.0) — textbook-quality edition grading elegance/clarity/efficiency (not bash compatibility); 16 auditors + 16 adversarial verifiers, 362 findings, cross-package twin ledger. |
+| [reappraisal_19_campaign_briefs_2026-07-11](reappraisal_19_campaign_briefs_2026-07-11.md) | The **active campaign plan** for the #19 findings: dev briefs for every HIGH/MED cluster (dead-code sweep first, then twin convergence), standing dev rules, wave sequencing, ledger template. |
+| [ground_up_reappraisal_18_2026-07-04](ground_up_reappraisal_18_2026-07-04.md) | The latest **correctness-focused** ground-up audit (@ v0.617.0) — canonical for bash-compatibility standing; #19 covers code health. |
 | [core_state_subsystem_appraisal_2026-07-06](core_state_subsystem_appraisal_2026-07-06.md) | Canonical core-state appraisal; Phases 1–3 shipped (v0.656–0.657, v0.665.0), Phase 4+ is the open roadmap. |
 | [interactive_subsystem_appraisal_2026-07-07](interactive_subsystem_appraisal_2026-07-07.md) | Canonical interactive-subsystem appraisal (B+, PTY-verified); drives the open notify/history-UX campaign. |
 | [io_redirect_subsystem_appraisal_2026-07-07](io_redirect_subsystem_appraisal_2026-07-07.md) | Canonical I/O-redirect appraisal (A−); supersedes the 2026-06-13 review; drives the open exec-close-reopen campaign. |
