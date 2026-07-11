@@ -523,3 +523,36 @@ class TestEnhancedTestCompoundRejected:
 
     def test_negated_simple_still_accepted(self):
         assert_three_way('[[ ! a == b ]]; echo $?')
+
+
+class TestArrayEscapeResidualParity:
+    """Array-element escape residuals (task #38) must agree across bash, rd, and
+    combinator: both parsers feed the same shared array-init paths, and the key
+    fix + debris-escape fix must land identically under each."""
+
+    def test_residual_backslash_indexed(self):
+        assert_three_way(r'declare -a arr=(a\\b c); declare -p arr')
+
+    def test_residual_backslash_assoc(self):
+        assert_three_way(r'declare -A a=([k]=a\\b); declare -p a')
+
+    def test_assoc_value_escaped_dollar(self):
+        assert_three_way(r'declare -A a=([k]=a\$b); declare -p a; echo "<${a[k]}>"')
+
+    def test_assoc_value_escaped_dquote(self):
+        assert_three_way(r'declare -A a=([k]=a\"b); declare -p a')
+
+    def test_assoc_value_escaped_squote(self):
+        assert_three_way(r"declare -A a=([k]=a\'b); declare -p a")
+
+    def test_bracket_word_argument(self):
+        assert_three_way(r'echo [k]=a\$b')
+
+    def test_subscript_expansion_preserved(self):
+        assert_three_way(r'k=key; declare -A a=([$k]=v); declare -p a')
+
+    def test_subscript_quoted_key_preserved(self):
+        assert_three_way(r'declare -A a=(["a b"]=v); declare -p a')
+
+    def test_ordinary_array_idempotent(self):
+        assert_three_way(r'declare -a n=(1 2 3); declare -p n')
