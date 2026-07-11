@@ -6,11 +6,10 @@ from ...lexer.token_types import Token
 from ..recursive_descent.helpers import ErrorContext, ParseError
 
 
-def error_context_for_token(token: Token, message: str, *, expected: list[str] | None = None) -> ErrorContext:
+def error_context_for_token(token: Token, message: str) -> ErrorContext:
     """Build an ErrorContext using source-position metadata from a token."""
     return ErrorContext(
         token=token,
-        expected=expected or [],
         message=message,
         position=token.position,
         line=token.line,

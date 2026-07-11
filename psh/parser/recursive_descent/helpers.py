@@ -1,20 +1,10 @@
 """Helper classes for the parser module."""
 
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Dict, FrozenSet, List, Optional
 
 from ...core.exceptions import PshError
 from ...lexer.token_types import Token, TokenType
-
-
-class ErrorSeverity(Enum):
-    """Severity levels for parse errors."""
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
-    FATAL = "fatal"
-
 
 # Human-readable spellings for token types in parse-error messages.
 # This is the ONE map every error path shares: the default expect()
@@ -107,13 +97,6 @@ class TokenGroups:
         TokenType.REDIRECT_CLOBBER,
     })
 
-    # Control structure keywords
-    CONTROL_KEYWORDS: FrozenSet[TokenType] = frozenset({
-        TokenType.IF, TokenType.WHILE, TokenType.UNTIL, TokenType.FOR,
-        TokenType.CASE, TokenType.SELECT,
-        TokenType.DOUBLE_LBRACKET, TokenType.DOUBLE_LPAREN
-    })
-
     # Statement separators
     STATEMENT_SEPARATORS: FrozenSet[TokenType] = frozenset({
         TokenType.SEMICOLON, TokenType.NEWLINE
@@ -134,16 +117,11 @@ class TokenGroups:
     })
 
 
-# Note: ParseContext has been removed. Use ParserContext from context.py instead.
-# All state tracking is now centralized in ParserContext.
-
-
 @dataclass
 class ErrorContext:
     """Enhanced error context for better error messages."""
 
     token: Token
-    expected: List[str] = field(default_factory=list)
     message: str = ""
     position: int = 0
     line: Optional[int] = None
@@ -152,8 +130,6 @@ class ErrorContext:
 
     # Enhanced error information (populated by ParserContext._enhance_error_context)
     suggestions: List[str] = field(default_factory=list)
-    severity: ErrorSeverity = ErrorSeverity.ERROR
-    context_tokens: List[str] = field(default_factory=list)  # Surrounding tokens for context
     # Tokens immediately before / after the error point, kept separate so
     # the "Context:" line renders them on the correct side of -> HERE <-.
     context_before: List[str] = field(default_factory=list)
@@ -166,17 +142,9 @@ class ErrorContext:
         input"). :meth:`format_error` prefixes it with position/line/column and
         appends the caret, suggestions, and token context.
         """
-        if self.expected:
-            if len(self.expected) == 1:
-                reason = f"Expected {self.expected[0]}"
-            else:
-                expected_str = ", ".join(self.expected[:-1]) + f" or {self.expected[-1]}"
-                reason = f"Expected {expected_str}"
-            return f"{reason}, got {self._token_description(self.token)}"
-        elif self.message:
+        if self.message:
             return self.message
-        else:
-            return f"Unexpected {self._token_description(self.token)}"
+        return f"Unexpected {self._token_description(self.token)}"
 
     def format_error(self) -> str:
         """Format a detailed error message (position, caret, suggestions)."""
