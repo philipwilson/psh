@@ -29,7 +29,6 @@ class ASTDotGenerator(ASTVisitor[str]):
         self.node_counter = 0
         self.nodes: List[str] = []
         self.edges: List[str] = []
-        self.node_ids: Dict[int, str] = {}  # Use id() instead of object as key
 
         # Color scheme for different node types
         self.type_colors = {
@@ -47,13 +46,10 @@ class ASTDotGenerator(ASTVisitor[str]):
             'Redirect': '#FFF8E1',           # Light yellow
         }
 
-    def _make_node_id(self, node: Optional[ASTNode] = None) -> str:
+    def _make_node_id(self) -> str:
         """Generate unique node ID."""
         self.node_counter += 1
-        node_id = f"node{self.node_counter}"
-        if node:
-            self.node_ids[id(node)] = node_id
-        return node_id
+        return f"node{self.node_counter}"
 
     def _escape_label(self, text: str) -> str:
         """Escape text for DOT labels."""
@@ -88,7 +84,7 @@ class ASTDotGenerator(ASTVisitor[str]):
     def _add_node(self, node: ASTNode, label: str, shape: str = "box",
                   style: str = "filled") -> str:
         """Add a node to the graph."""
-        node_id = self._make_node_id(node)
+        node_id = self._make_node_id()
         color = self._get_node_color(node.__class__.__name__)
 
         escaped_label = self._escape_label(label)
@@ -319,7 +315,6 @@ class ASTDotGenerator(ASTVisitor[str]):
         self.node_counter = 0
         self.nodes.clear()
         self.edges.clear()
-        self.node_ids.clear()
 
         # Visit the AST
         self.visit(ast)

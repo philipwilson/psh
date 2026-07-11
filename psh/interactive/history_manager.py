@@ -206,10 +206,6 @@ class HistoryManager(InteractiveComponent):
             # Silently ignore history file errors
             pass
 
-    def get_history(self) -> List[str]:
-        """Get the command history."""
-        return self.state.history.copy()
-
     def clear_history(self) -> None:
         """Clear command history (in-memory)."""
         self.state.history.clear()
@@ -315,13 +311,11 @@ class HistoryManager(InteractiveComponent):
         Callers validate the range. Deletions before the sync/read cursors
         shift them so the append/read slices still start at the right place."""
         lo, hi = first - 1, last  # 0-based half-open slice
-        removed = hi - lo
         del self.state.history[lo:hi]
         before_sync = max(0, min(hi, self._file_synced_len) - lo)
         before_read = max(0, min(hi, self._file_read_len) - lo)
         self._file_synced_len = max(0, self._file_synced_len - before_sync)
         self._file_read_len = max(0, self._file_read_len - before_read)
-        _ = removed  # documents intent; slice already applied
 
     def _read_file_lines(self, path: str) -> Optional[List[str]]:
         """Non-empty, newline-stripped lines of *path*; None on OSError."""

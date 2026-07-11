@@ -234,8 +234,8 @@ assoc.keys()         # ['key1']
 
 `psh/core/option_registry.py` is the SINGLE source of truth for every option's
 default, value type, category, short flag, and `$-` letter. The defaults dict,
-`SetBuiltin.short_to_long`, `ShoptBuiltin.SHOPT_OPTIONS`, and the `$-` string
-are all derived from it — do NOT re-add a parallel map.
+`SetBuiltin.short_to_long`, the shopt name set (`SHOPT_OPTION_NAMES`), and the
+`$-` string are all derived from it — do NOT re-add a parallel map.
 
 1. Add one `_spec(...)` to `_SPECS` in `option_registry.py`:
 ```python

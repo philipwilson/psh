@@ -4,7 +4,7 @@ This module provides parsers for shell expansions (variable, command substitutio
 arithmetic, process substitution) and Word AST node construction.
 """
 
-from typing import List, Optional
+from typing import Optional
 
 from ...ast_nodes import (
     ArithmeticExpansion,
@@ -18,14 +18,17 @@ from ..recursive_descent.support.word_builder import (
     WordBuilder,
     strip_arithmetic,
 )
-from .core import Parser, ParseResult, token
+from .core import Parser, token
 
 
 class ExpansionParsers:
     """Parsers for shell expansions and word building.
 
-    This class handles all expansion types and Word AST node construction
-    for the parser combinator implementation.
+    The live content of this class is :meth:`build_word_from_token` — the
+    shared token→Word AST builder used by the command, loop, conditional, and
+    special-command parsers. (The formatting/word/expansion-chain helpers that
+    used to live here were dead duplicates of ``utils.format_token_value`` and
+    ``TokenParsers``' expansion chain, and were removed.)
     """
 
     def __init__(self, config: Optional[ParserConfig] = None):
@@ -35,49 +38,7 @@ class ExpansionParsers:
             config: Parser configuration for controlling features
         """
         self.config = config or ParserConfig()
-        # WordBuilder uses static methods, no need to instantiate
-        self._initialize_parsers()
-
-    def _initialize_parsers(self):
-        """Initialize all expansion parsers."""
-        # Token parsers for different expansion types. (PARAM_EXPANSION was
-        # retired with WordToken — the lexer emits VARIABLE for all ${...}.)
-        self.variable = token('VARIABLE')
-        self.command_sub = token('COMMAND_SUB')
-        self.command_sub_backtick = token('COMMAND_SUB_BACKTICK')
-        self.arith_expansion = token('ARITH_EXPANSION')
-        self.process_sub_in = token('PROCESS_SUB_IN')
-        self.process_sub_out = token('PROCESS_SUB_OUT')
-
-        # Combined expansion parser
-        self.expansion = (
-            self.variable
-            .or_else(self.command_sub)
-            .or_else(self.command_sub_backtick)
-            .or_else(self.arith_expansion)
-            .or_else(self.process_sub_in)
-            .or_else(self.process_sub_out)
-        )
-
-    def format_token_value(self, token: Token) -> str:
-        """Format token value appropriately based on token type.
-
-        Args:
-            token: Token to format
-
-        Returns:
-            Formatted string value
-        """
-        if token.type.name == 'VARIABLE':
-            # Variables need the $ prefix
-            return f"${token.value}"
-        elif token.type.name in ['COMMAND_SUB', 'COMMAND_SUB_BACKTICK',
-                                 'ARITH_EXPANSION']:
-            # These already include their delimiters
-            return token.value
-        else:
-            # Everything else uses raw value
-            return token.value
+        # WordBuilder uses static methods, no need to instantiate.
 
     def build_word_from_token(self, token: Token) -> Word:
         """Build a Word AST node from a token.
@@ -140,73 +101,6 @@ class ExpansionParsers:
         else:
             # Regular word token
             return Word(parts=[LiteralPart(text=token.value, quoted=is_quoted, quote_char=qt)])
-
-    def create_expansion_parser(self) -> Parser[Word]:
-        """Create combined expansion parser that returns Word nodes.
-
-        Returns:
-            Parser that converts expansion tokens to Word AST nodes
-        """
-        def parse_expansion_to_word(tokens: List[Token], pos: int) -> ParseResult[Word]:
-            """Parse an expansion token and convert to Word."""
-            result = self.expansion.parse(tokens, pos)
-            if result.success:
-                assert result.value is not None
-                word = self.build_word_from_token(result.value)
-                return ParseResult(
-                    success=True,
-                    value=word,
-                    position=result.position
-                )
-            return ParseResult(success=False, error=result.error, position=pos)
-
-        return Parser(parse_expansion_to_word)
-
-    def create_word_parser(self) -> Parser[Word]:
-        """Create parser for complete words including literals and expansions.
-
-        Returns:
-            Parser that handles all word types
-        """
-        def parse_word(token_list: List[Token], pos: int) -> ParseResult[Word]:
-            """Parse any word-like token into a Word AST node."""
-            if pos >= len(token_list):
-                return ParseResult(success=False, error="Expected word", position=pos)
-
-            token = token_list[pos]
-
-            # Check if it's a word-like token
-            if token.type.name in ['WORD', 'STRING'] or self.is_expansion_token(token):
-                word = self.build_word_from_token(token)
-                return ParseResult(
-                    success=True,
-                    value=word,
-                    position=pos + 1
-                )
-
-            return ParseResult(
-                success=False,
-                error=f"Expected word, got {token.type.name}",
-                position=pos
-            )
-
-        return Parser(parse_word)
-
-    def is_expansion_token(self, token: Token) -> bool:
-        """Check if a token is an expansion type.
-
-        Args:
-            token: Token to check
-
-        Returns:
-            True if token is an expansion
-        """
-        expansion_types = {
-            'VARIABLE', 'COMMAND_SUB',
-            'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION',
-            'PROCESS_SUB_IN', 'PROCESS_SUB_OUT'
-        }
-        return token.type.name in expansion_types
 
 
 # Convenience functions

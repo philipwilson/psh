@@ -6,7 +6,7 @@ references like !!, !n, !-n, and !string before commands are tokenized.
 
 import re
 import sys
-from typing import List, Optional
+from typing import Optional
 
 # A line containing one of these history references (!!, !n, !-n, !word,
 # !?word?) must be passed straight to execution rather than parse-tested for
@@ -634,17 +634,3 @@ class HistoryExpander:
             i += 1
         # i is at delim (consume it) or at end
         return ''.join(out), (i + 1 if i < n else i)
-
-    def is_history_expansion_char(self, char: str) -> bool:
-        """Check if a character might start a history expansion."""
-        return char == '!'
-
-    def get_history_list(self) -> List[str]:
-        """Get the current history list."""
-        return self.state.history.copy()
-
-    def get_history_item(self, index: int) -> Optional[str]:
-        """Get a specific history item by index (1-based)."""
-        if 1 <= index <= len(self.state.history):
-            return self.state.history[index - 1]
-        return None

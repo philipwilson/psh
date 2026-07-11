@@ -78,11 +78,6 @@ EXIT STATUS
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the trap builtin."""
-        if not hasattr(shell, 'trap_manager'):
-            # Initialize trap manager if not already done
-            from ..core import TrapManager
-            shell.trap_manager = TrapManager(shell)
-
         # Options come first (bash grammar `trap [-lp] ...`), parsed getopt-
         # style over the flag set "lp": they CLUSTER (`-lp`, `-pl`) and may be
         # split across words (`-p -l`), stopping at `--`, at a bare `-` (which

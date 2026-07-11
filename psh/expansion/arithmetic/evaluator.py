@@ -3,6 +3,17 @@
 import re
 from typing import Optional, Union
 
+from ...core import (
+    ArraySubscriptError,
+    AssociativeArray,
+    ExpansionError,
+    IndexedArray,
+    NamerefCycleError,
+    OptionHandler,
+    ReadonlyVariableError,
+    TopLevelAbort,
+)
+from ..operands import DQ_STRING
 from .errors import ShellArithmeticError, _to_signed64
 from .nodes import (
     ArithNode,
@@ -67,7 +78,6 @@ class ArithmeticEvaluator:
         honoured. A cycle guard / recursion limit prevents infinite loops from
         circular references.
         """
-        from ...core import OptionHandler
         seen: set = set()
         var = name
         while True:
@@ -90,7 +100,19 @@ class ArithmeticEvaluator:
                 return _to_signed64(int(value))
 
             # Bare identifier: follow the reference chain with a cycle guard.
-            if value.isidentifier() and not value.startswith('_' * 2):
+            # Double-underscore names are the one exception: they are resolved
+            # via the evaluate_arithmetic() fallback below, NOT this direct
+            # follow. Probed (r19/D3, 2026-07-11): acyclic chains converge to
+            # the same value either way, but a CIRCULAR reference through a
+            # ``__`` name is then caught by the arithmetic recursion-depth guard
+            # rather than the local ``seen`` guard, which changes the variable
+            # name in the "expression recursion level exceeded" message (neither
+            # spelling is uniformly bash-correct — bash reports a different token
+            # per cycle shape). Kept to preserve current output; a deliberate
+            # unification of the two cycle guards is deferred. (Introduced by
+            # 48634a99 with no recorded rationale; this note replaces the
+            # cryptic ``'_' * 2`` spelling with an explanation.)
+            if value.isidentifier() and not value.startswith('__'):
                 if value in seen:
                     raise ShellArithmeticError(
                         f"{value}: expression recursion level exceeded")
@@ -105,7 +127,6 @@ class ArithmeticEvaluator:
 
     def set_variable(self, name: str, value: int) -> None:
         """Set variable value"""
-        from ...core import NamerefCycleError
         # Use state's set_variable which handles scopes
         # When in a function and assigning to a local variable,
         # this should update the local, not create a new global
@@ -139,7 +160,6 @@ class ArithmeticEvaluator:
         target's type and name. A non-nameref name is returned unchanged; a
         cyclic nameref is left as-is (the store's write path emits the warning).
         """
-        from ...core import NamerefCycleError
         try:
             return self.shell.state.scope_manager.resolve_nameref_name(name)
         except NamerefCycleError:
@@ -154,7 +174,6 @@ class ArithmeticEvaluator:
         not-yet-created array) the subscript is arithmetic-evaluated to an
         int.
         """
-        from ...core import AssociativeArray
         var = self.shell.state.scope_manager.get_variable_object(
             self._nameref_target(name))
         if var is not None and isinstance(var.value, AssociativeArray):
@@ -167,7 +186,6 @@ class ArithmeticEvaluator:
         ``key`` is a str for associative arrays and an int for indexed
         arrays / scalars (see :meth:`_array_key`).
         """
-        from ...core import AssociativeArray, IndexedArray, OptionHandler
         name = self._nameref_target(name)
         var = self.shell.state.scope_manager.get_variable_object(name)
         if var is None:
@@ -188,8 +206,6 @@ class ArithmeticEvaluator:
         ``key`` is a str for associative arrays and an int for indexed
         arrays / a freshly created indexed array.
         """
-        from ...core import ArraySubscriptError, NamerefCycleError
-        from .errors import ShellArithmeticError
         # The store owns the readonly guard (aborts, unchanged, exactly like the
         # SimpleCommand `a[0]=9` path), nameref resolution (so `declare -n r=arr;
         # (( r[0]=9 ))` sets arr[0] IN PLACE instead of replacing arr), negative-
@@ -453,7 +469,6 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
         # Arithmetic is a dquote-like context for nested ${x:-word}
         # operands (bash: $(( ${u:-"5"} )) is 5+..., but $(( ${u:-'5'} ))
         # keeps the single quotes and is a syntax error).
-        from ..operands import DQ_STRING
         expanded_expr = (shell.expansion_manager.expand_string_variables(
                              expr, quote_ctx=DQ_STRING)
                          if expand else expr)
@@ -504,8 +519,6 @@ def execute_arithmetic_expansion(expr: str, shell) -> int:
     (x='$y' makes $(($x)) a syntax error, not the value of y).
     """
     import sys
-
-    from ...core import ExpansionError, ReadonlyVariableError, TopLevelAbort
 
     # Remove $(( and ))
     if expr.startswith('$((') and expr.endswith('))'):

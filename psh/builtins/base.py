@@ -227,7 +227,6 @@ class Builtin(ABC):
                 break
             if not arg.startswith('-') or len(arg) == 1:
                 break
-            consumed_value = False
             for pos, ch in enumerate(arg[1:]):
                 if ch in value_flags:
                     rest = arg[pos + 2:]
@@ -239,7 +238,6 @@ class Builtin(ABC):
                     else:
                         self.error(f"-{ch}: option requires an argument", shell)
                         return None, args
-                    consumed_value = True
                     break
                 elif ch in flags:
                     opts[ch] = True
@@ -248,6 +246,4 @@ class Builtin(ABC):
                     self.usage(f"usage: {self.synopsis}", shell)
                     return None, args
             i += 1
-            if consumed_value:
-                continue
         return opts, args[i:]

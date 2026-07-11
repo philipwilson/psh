@@ -154,11 +154,11 @@ def jobspec_error_messages(result: JobSpecResult, spec: str,
 class ProcessState(Enum):
     """A single process's lifecycle state.
 
-    Replaces the former ``stopped``/``completed`` boolean pair (kept as
-    read-only properties on :class:`Process` for existing readers). The enum
+    Replaces the former ``stopped``/``completed`` boolean pair: the enum
     removes the awkward "a completed process has ``stopped=False``" case that
     the job-state predicates had to special-case, and lets :class:`Job`
-    maintain O(1) per-state counters.
+    maintain O(1) per-state counters. Readers compare against the enum members
+    directly (``proc.state is ProcessState.COMPLETED``).
     """
     RUNNING = "running"
     STOPPED = "stopped"
@@ -172,14 +172,6 @@ class Process:
         self.command = command
         self.status: Optional[int] = None  # Will be set by waitpid
         self.state = ProcessState.RUNNING
-
-    @property
-    def stopped(self) -> bool:
-        return self.state is ProcessState.STOPPED
-
-    @property
-    def completed(self) -> bool:
-        return self.state is ProcessState.COMPLETED
 
     @staticmethod
     def classify(status: int) -> Tuple[ProcessState, bool]:
@@ -1116,7 +1108,7 @@ class JobManager:
         if not job.any_process_running() and job.processes:
             last_recorded_status = None
             for i, proc in enumerate(job.processes):
-                if proc.completed and proc.status is not None:
+                if proc.state is ProcessState.COMPLETED and proc.status is not None:
                     proc_exit_status = exit_status_from_wait_status(proc.status)
                     last_recorded_status = proc_exit_status
 

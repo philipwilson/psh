@@ -24,8 +24,8 @@ are unified here. ``local``'s scalar path deliberately stays on
 exported-shadow inheritance, and same-scope tombstone semantics are not the
 generic store contract); folding ``create_local`` into the store is Phase 4
 work. Full array-initialization and print-listing migration onto the request
-model is likewise incremental — those paths reference the shared
-:class:`ArrayKind`/:class:`PrintMode` vocabulary but keep their existing,
+model is likewise incremental — the array-conversion check references the
+shared :class:`ArrayKind` vocabulary, but those paths keep their existing,
 expansion-coupled builtin logic for now.
 """
 
@@ -49,11 +49,6 @@ class ArrayKind(Enum):
     ASSOC = auto()
 
 
-class PrintMode(Enum):
-    """How a declaration lists rather than mutates (``-p`` reusable form)."""
-    REUSABLE = auto()
-
-
 @dataclass(frozen=True)
 class DeclarationAssignment:
     """One ``NAME[=value]`` / ``NAME+=value`` operand of a declaration."""
@@ -69,15 +64,11 @@ class DeclarationRequest:
     ``target_scope`` is the declare-family scope selector (DEFAULT is local
     inside a function, global at top level; GLOBAL is ``-g``; LOCAL is the
     ``local`` builtin). ``skip_temp_env`` steps past a command's temp-env prefix
-    layer to the variable's real home (``export``/``cd``). ``array_kind`` /
-    ``print_mode`` name the requested array shape / listing mode for the paths
-    that consume them.
+    layer to the variable's real home (``export``/``cd``).
     """
     target_scope: TargetScope = TargetScope.DEFAULT
     add_attributes: VarAttributes = VarAttributes.NONE
     remove_attributes: VarAttributes = VarAttributes.NONE
-    array_kind: Optional[ArrayKind] = None
-    print_mode: Optional[PrintMode] = None
     skip_temp_env: bool = False
 
     def write_flags(self, in_function: bool) -> tuple[bool, bool]:

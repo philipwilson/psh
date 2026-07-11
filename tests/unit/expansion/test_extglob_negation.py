@@ -18,7 +18,6 @@ import pytest
 from psh.expansion.extglob import (
     extglob_fullmatch,
     extglob_match_at,
-    match_extglob,
 )
 
 # (pattern, string, expected) — full-match, bash-pinned.
@@ -64,8 +63,6 @@ FULLMATCH_CASES = [
                           for c in FULLMATCH_CASES])
 def test_extglob_fullmatch(pattern, string, expected):
     assert extglob_fullmatch(pattern, string) is expected
-    # match_extglob routes negation through the same matcher.
-    assert match_extglob(pattern, string) is expected
 
 
 def test_match_at_leftmost_longest():

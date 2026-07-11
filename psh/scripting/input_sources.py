@@ -89,8 +89,6 @@ class FileInput(InputSource):
         self.eof_drops_dangling_continuation = eof_drops_dangling_continuation
         self.line_number = 0
         self.lines: List[str] = []
-        self.current_line = 0
-        self.loaded = False
 
     def __enter__(self):
         # Read the WHOLE script eagerly, then close the descriptor before any
@@ -139,13 +137,12 @@ class FileInput(InputSource):
         """
         self.lines = [line[:-1] if line.endswith('\r') else line
                       for line in content.split('\n')]
-        self.loaded = True
 
     def read_line(self) -> Optional[str]:
-        """Read the next physical line from the file."""
-        if self.current_line < len(self.lines):
-            line = self.lines[self.current_line]
-            self.current_line += 1
+        """Read the next physical line from the file. ``line_number`` doubles as
+        the read cursor (index of the next physical line)."""
+        if self.line_number < len(self.lines):
+            line = self.lines[self.line_number]
             self.line_number += 1
             return line
         return None
@@ -164,21 +161,19 @@ class StringInput(InputSource):
     """Input source for reading commands from a string."""
 
     def __init__(self, command: str, name: str = "<command>",
-                 split_lines: Optional[bool] = None):
+                 split_lines: bool = False):
         # Do NOT pre-join line continuations here: the command accumulator
         # joins them while gathering a logical command, and pre-joining shifted
         # $LINENO down by the count of preceding continuations (each joined-away
         # newline lost a physical line number).
         #
-        # ``split_lines`` selects the read granularity; when None it defaults
-        # from the source name. Line-by-line reading (True) lets the buffered
-        # boundary CONTAIN a discard-line error (a word-arithmetic failure,
-        # readonly-in-$(( )) ...) to just the offending line and resume at the
-        # next — which is why ``-c``/stdin/script and line-oriented ``eval``
-        # use it. Single-chunk reading (False) feeds the whole string as one
-        # logical unit (the historical run_command default).
-        if split_lines is None:
-            split_lines = (name != "<command>")
+        # ``split_lines`` selects the read granularity. Line-by-line reading
+        # (True) lets the buffered boundary CONTAIN a discard-line error (a
+        # word-arithmetic failure, readonly-in-$(( )) ...) to just the offending
+        # line and resume at the next — which is why ``-c``/stdin/script and
+        # line-oriented ``eval`` pass it explicitly. Single-chunk reading
+        # (False, the default) feeds the whole string as one logical unit (the
+        # historical run_command default).
         if not split_lines:
             self.lines = [command] if command else []
         else:

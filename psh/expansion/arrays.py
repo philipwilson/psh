@@ -86,8 +86,7 @@ class ArrayOpsMixin(_Base):
                                 check_nounset: bool = False) -> str:
         """Handle ${arr[index]}, ${arr[@]}, ${arr[*]}.
 
-        Returns the result string, or None if this is not a subscript
-        expansion (so the caller can fall through).
+        Always returns a result string (empty for an absent element).
 
         ``check_nounset`` is True only for the BARE ``${arr[i]}`` form (so an
         absent element errors under ``set -u``); the operator path

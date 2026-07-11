@@ -45,75 +45,108 @@ Child shells inherit the active parser from their parent.
 
 ### Parser\[T\]
 
-A parser is a function `(tokens, position) -> ParseResult[T]`.  It either
-succeeds (returning a value and a new position) or fails (returning an
+A parser is a function `(tokens, position) -> ParseResult[T]` wrapped in a
+`Parser` object.  It either succeeds (returning a value and a new position)
+or fails (returning the position where the failure was observed plus an
 error message).
 
 ```python
 @dataclass
 class ParseResult(Generic[T]):
-    success: bool
-    value: Optional[T]
-    remaining: List[Token]
-    position: int
-    error: Optional[str]
+    success: bool               # the discriminant
+    value: Optional[T]          # the parsed value (on success)
+    position: int               # position reached / where the failure was seen
+    error: Optional[str]        # message (on failure)
+    committed: bool             # cut flag — a committed failure is not retried by or_else
+    expected: Tuple[str, ...]   # labels of what would have allowed progress
 ```
 
-### Combinators
+Prefer the `ParseSuccess(value, position)` / `ParseFailure(position, error, ...)`
+constructors in new code and branch on `result.success`.
 
-Small functions that build complex parsers from simple ones:
+### The live algebra
 
-| Combinator | Purpose |
-|---|---|
-| `token(type)` | Match a single token by type |
-| `keyword(kw)` | Match a keyword token |
-| `literal(lit)` | Match a token with a specific value |
-| `many(p)` | Zero or more |
-| `many1(p)` | One or more |
-| `optional(p)` | Zero or one |
-| `sequence(p1, p2, ...)` | All in order |
-| `separated_by(p, sep)` | Items with separator between |
-| `between(open, close, p)` | Content between delimiters |
-| `try_parse(p)` | Backtracking on failure |
-| `lazy(factory)` | Deferred construction for recursion |
-| `fail_with(msg)` | Always fail with message |
+The grammar is built from a deliberately small set of primitives.  A few are
+*functions* that return a `Parser`; the rest are *methods* on `Parser`:
+
+| Primitive | Kind | Purpose |
+|---|---|---|
+| `token(type)` | function | Match a single token by `TokenType` name |
+| `keyword(kw)` | function | Match a keyword token |
+| `many(p)` | function | Zero or more |
+| `many1(p)` | function | One or more |
+| `optional(p)` | function | Zero or one |
+| `fail_with(msg)` | function | Always fail with a message (used to seed recursion slots) |
+| `p.or_else(q)` | method | Ordered choice with a cut (a *committed* failure is not retried) |
+| `p.map(f)` | method | Transform the successful value |
+| `p.then(q)` | method | Sequence `p` then `q`, returning a `(a, b)` tuple |
+
+That is the whole toolkit.  There is **no** `sequence`/`separated_by`/`between`/
+`lazy`/`try_parse`/`ForwardParser` layer — the shell grammar is context-sensitive
+enough that most productions are written as explicit closures (see below), so a
+generic applicative/monadic combinator library would only get in the way.  Longer
+sequences and separator-delimited lists are hand-rolled `while` loops over
+`position` inside a `def parse_x(tokens, pos)` closure wrapped in `Parser(...)`.
 
 ### Composition
 
-Parsers compose through methods:
+Parsers compose through the `Parser` methods and through hand-written closures:
 
 ```python
 # Transform the result
 word_parser = token("WORD").map(lambda t: t.value)
 
-# Sequence: parse A then B
-assignment = variable.then(equals).then(value)
-
-# Alternative: try A, fall back to B
+# Ordered choice: try A, fall back to B (this is the workhorse)
 command = control_structure.or_else(simple_command)
+
+# A production that needs real bookkeeping is a closure over `position`:
+def parse_pipeline(tokens, pos):
+    result = element.parse(tokens, pos)
+    if not result.success:
+        return result
+    commands = [result.value]
+    pos = result.position
+    while pos < len(tokens) and tokens[pos].type.name in ('PIPE', 'PIPE_AND'):
+        ...  # consume the operator, parse the next element, extend `commands`
+    return ParseSuccess(Pipeline(commands), pos)
+
+pipeline = Parser(parse_pipeline)
 ```
 
-### ForwardParser
+### Recursion via mutable slots
 
-Handles circular dependencies between grammar rules. Declare first,
-define later:
+Grammar rules are mutually recursive (a command body contains statements which
+contain commands).  Rather than a forward-declaration wrapper, the combinator
+parser holds the recursive references in mutable **slots** that the parse
+closures read *at parse time*:
 
 ```python
-statement = ForwardParser()        # placeholder
-command_list = many(statement)     # uses placeholder
-statement.set(and_or_list)         # resolve after all parsers exist
+# built once, reads self._pipeline_element inside its closure
+self.pipeline = self._build_pipeline_parser()
+self._pipeline_element = self.simple_command          # placeholder
+...
+# during the wiring phase, once every module exists:
+self.set_command_parser(control_structure
+                        .or_else(special_command)
+                        .or_else(simple_command))     # fills the slot
 ```
+
+Because the closure reads the slot when it runs, filling it later takes effect
+without rebuilding `pipeline` (see `commands/__init__.py::_initialize_parsers`
+and `parser.py::_build_complete_parser`).
 
 ## Module Structure
 
 ```
 combinators/
-  core.py               - Parser[T], ParseResult, combinator primitives
+  core.py               - Parser[T], ParseResult, the live algebra primitives
   tokens.py             - Token matchers (word, keyword, operator, etc.)
   expansions.py         - $var, ${...}, $(...), $(()), Word AST building
-  commands.py           - Simple commands, pipelines, and-or lists
-  control_structures.py - if, while, for, case, select, functions, groups
-  special_commands.py   - (( )), [[ ]], arrays, process substitution
+  arrays.py             - array assignment / initialization parsing
+  commands/             - simple commands, pipelines, and-or lists, statement lists
+  control_structures/   - if/case (conditionals.py), loops (loops.py),
+                          functions & groups (structures.py)
+  special_commands.py   - (( )), [[ ]], process substitution
   heredoc_processor.py  - Post-parse heredoc content population
   parser.py             - ParserCombinatorShellParser integration class
 ```
@@ -160,26 +193,30 @@ combinators/
 
 **Recommended reading order:**
 
-1. **core.py** -- Start here. Read `ParseResult`, `Parser`, then the
-   combinator functions (`token`, `many`, `sequence`, `optional`,
-   `or_else`). This is the foundation everything else builds on.
+1. **core.py** -- Start here. Read `ParseResult`, `Parser`, then the live
+   algebra (`token`, `many`, `many1`, `optional`, `fail_with`, and the
+   `Parser.or_else` / `.map` / `.then` methods). This is the whole foundation
+   everything else builds on.
 
 2. **tokens.py** -- Token-level matchers built from `core.token()`.
    Notice how keywords, operators, and delimiters are each just a
    `token(TYPE)` call.
 
-3. **commands.py** -- See how simple commands are built by composing
-   token parsers with `many()` and `optional()`.  Then see how
-   pipelines chain commands with `separated_by()`.
+3. **commands/** -- See how simple commands are built by composing token
+   parsers with `many()` and `optional()`.  Then see how the pipeline parser
+   (`commands/pipelines.py`) chains commands with a hand-rolled `while` loop
+   over `position` — not a generic separator combinator.
 
-4. **control_structures.py** -- The largest module. See how `if_statement`
-   uses `sequence()` to parse `if COND; then BODY; fi` by composing
-   keyword parsers with statement list parsers.
+4. **control_structures/** -- The largest area. See how the `if`/`while`/`for`
+   parsers are written as `def parse_x(tokens, pos)` closures that consume the
+   keyword, parse the condition/body via the shared `build_statement_list`
+   engine, and expect the closing keyword — imperative bookkeeping inside a
+   composable `Parser`.
 
 5. **special_commands.py** -- Arithmetic and test expressions.
 
 6. **parser.py** -- The integration class that wires all modules together
-   and exposes `parse()`.
+   (filling the recursion slots) and exposes `parse()`.
 
 ## Key Differences from Recursive Descent
 
@@ -188,8 +225,8 @@ combinators/
 | State | Mutable `ParserContext` | Immutable position passing |
 | Control flow | Imperative methods | Functional composition |
 | Error handling | Rich `ErrorContext` with suggestions | Simple error strings |
-| Backtracking | Limited (manual save/restore) | Full (via `or_else` / `try_parse`) |
-| Circular deps | Direct method calls | `ForwardParser` + wiring phase |
+| Backtracking | Limited (manual save/restore) | Ordered choice via `or_else` (position is re-passed, so a failed alternative naturally backtracks) |
+| Circular deps | Direct method calls | Mutable recursion slots filled in a wiring phase |
 | Code style | Classes with methods | Functions returning `Parser[T]` |
 | Performance | Single pass, no backtracking overhead | May re-parse on alternatives |
 | Debugging | `--debug-ast`, `--debug-tokens` | `explain_parse()` method |
