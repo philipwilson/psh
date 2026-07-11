@@ -68,7 +68,7 @@ class ModularLexer:
 
         # Parsing contexts
         self.expansion_context = ExpansionContext(
-            input_string, self.config, self.position_tracker
+            input_string, self.config
         )
 
         # Current token parts for composite tokens
@@ -436,7 +436,6 @@ class ModularLexer:
             self.input,
             self.position,  # Current position (after opening quote)
             rules,
-            self.position_tracker
         )
 
         # Check if quote was closed
@@ -479,7 +478,6 @@ class ModularLexer:
             self.input,
             self.position,  # Current position (after $")
             rules,
-            self.position_tracker
         )
 
         if not found_closing:
@@ -511,7 +509,6 @@ class ModularLexer:
             self.input,
             self.position,  # Current position (after $')
             rules,
-            self.position_tracker,
             quote_type="$'"  # Pass quote type for proper escape handling
         )
 

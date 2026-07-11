@@ -149,7 +149,7 @@ class KeywordNormalizer:
 
             # Update command position based on (possibly converted) token
             command_position = self._next_command_position(
-                token, command_position, pending_in
+                token, pending_in
             )
 
             # The token just processed was the `function NAME` name — its body
@@ -176,7 +176,6 @@ class KeywordNormalizer:
     def _next_command_position(
         self,
         token: Token,
-        _current_command_position: bool,
         pending_in: Optional[str],
     ) -> bool:
         """Determine whether the next token should be treated as command position."""
@@ -196,9 +195,6 @@ class KeywordNormalizer:
 
         if token_type in {TokenType.IF, TokenType.WHILE, TokenType.UNTIL}:
             # Conditions are parsed as command lists
-            return True
-
-        if token_type in {TokenType.FI, TokenType.DONE, TokenType.ESAC}:
             return True
 
         if token_type in {TokenType.LPAREN, TokenType.LBRACE}:
