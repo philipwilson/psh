@@ -17,7 +17,7 @@ This guide captures the end-to-end flow for keyword handling in PSH and provides
    - Both are pure predicates (they never mutate the token). The recursive-descent path additionally reads the lex-time `token.is_keyword` stamp; the combinator parser calls `matches_keyword` directly (see `parser/combinators/`).
 
 3. **Diagnostics & Tooling**
-   - `keyword_from_type(token_type)` recovers the canonical keyword string for a token type (used by error rendering).
+   - `keyword_from_type(token_type)` recovers the canonical keyword string for a token type (exercised by the command-position consistency tests).
    - Golden tests (`tests/unit/lexer/test_keyword_normalizer_golden.py`) ensure normalization stays stable across edge cases (heredocs, case patterns, for…in loops).
    - Static guardrails in `tests/unit/tooling/test_keyword_comparisons.py` fail CI when new `token.value == 'keyword'` checks are introduced outside allowlisted legacy examples.
 

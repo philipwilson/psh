@@ -315,15 +315,13 @@ class LexerConfig:
     """Configuration for lexer behavior"""
     enable_extglob: bool = False   # `shopt -s extglob`
     posix_mode: bool = False       # `set -o posix` (from shell options)
-    case_sensitive: bool = True
 ```
 
 ## Error Handling
 
-The lexer implements sophisticated error handling:
-- `LexerError`: Unrecoverable errors requiring termination
-- `RecoverableLexerError`: Errors that can be recovered in interactive mode
-- Rich error context with position information
+The lexer fails loudly rather than recovering:
+- `UnclosedQuoteError` for unterminated quotes (rendered by the source processor)
+- `RuntimeError` with census citations for can't-happen states (no character is ever silently dropped)
 - Clear error messages for common issues
 - Synchronization points for error recovery
 

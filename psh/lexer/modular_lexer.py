@@ -126,7 +126,15 @@ class ModularLexer:
     def position(self, value: int) -> None:
         """Set absolute position (forward-only; the cursor never seeks backward)."""
         diff = value - self.position_tracker.position
-        assert diff >= 0, "lexer cursor never seeks backward"
+        if diff < 0:
+            # Fail loudly, matching the census-verified guard in tokenize():
+            # every position write in the tree is a forward-scanning parser
+            # result (r19-D1 audit, 2026-07-11); a backward seek means a new
+            # recognizer broke that contract.
+            raise RuntimeError(
+                f"lexer cursor seeked backward ({self.position_tracker.position} -> {value}); "
+                "position writes must be forward-only"
+            )
         if diff:
             self.position_tracker.advance(diff)
 
