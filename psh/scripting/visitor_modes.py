@@ -112,7 +112,7 @@ def handle_visitor_mode_for_script(shell: 'Shell', script_path: str) -> int:
 
     # Pre-flight file checks (missing 127, directory/unreadable/binary 126)
     # via the SAME validator the execution path uses.
-    validation_result = shell.script_manager.script_validator.validate_script_file(
+    validation_result = shell.script_manager.validate_script_file(
         script_path)
     if validation_result != 0:
         return validation_result
