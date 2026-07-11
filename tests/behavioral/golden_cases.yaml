@@ -7571,6 +7571,59 @@
   stderr: ""
   exit_code: 0
 
+# jobs -n/-x + fg/bg end-of-options (task #22 [#36]). Only stdout+exit are
+# compared to bash; the byte-different `psh:`/`bash: line N:` diagnostic prefix
+# lives on stderr and is matched here as a substring against psh's own output.
+- name: jobsnx_jobs_n_empty
+  command: "jobs -n; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+# `jobs -x command`: substitute %jobspecs (none here) and run the command in
+# the current shell, returning its status.
+- name: jobsnx_jobs_x_runs_command
+  command: "jobs -x echo hi; echo rc=$?"
+  stdout: "hi\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
+# A bare `jobs -x` with no command is a no-op returning 0.
+- name: jobsnx_jobs_x_bare_noop
+  command: "jobs -x; echo rc=$?"
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+# An unresolved %jobspec in `jobs -x` is left literal (not an error).
+- name: jobsnx_jobs_x_missing_literal
+  command: "jobs -x echo %5; echo rc=$?"
+  stdout: "%5\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
+# `-x` combined with any other option is an error (rc 1).
+- name: jobsnx_jobs_x_reject_combo
+  command: "jobs -lx echo; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "no other options allowed with `-x'"
+  exit_code: 0
+
+# `fg --` treats `--` as end-of-options; with no jobspec it falls back to the
+# (missing) current job.
+- name: jobsnx_fg_double_dash_current
+  command: "set -m; fg --; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "current: no such job"
+  exit_code: 0
+
+# `fg -- %1` consumes `--`, foregrounds %1, and waits (real stdout vs bash).
+- name: jobsnx_fg_double_dash_foregrounds
+  command: "set -m; sleep 0.3 & fg -- %1; echo rc=$?"
+  stdout: "sleep 0.3\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 # STREAMING INPUT SERVICE (read / mapfile)
 # ASCII-only I/O so the LC_ALL=C golden harness stays bash-faithful; the
