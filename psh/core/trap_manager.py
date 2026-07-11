@@ -234,7 +234,7 @@ class TrapManager:
         return self.set_trap('-', signals)
 
     def drop_inherited_traps(self) -> None:
-        """Discard parent traps kept only for listing (see ShellState.adopt).
+        """Discard parent traps kept only for listing (see ShellState.clone_for_child).
 
         Called by set_trap (bash: a subshell's first trap modification drops
         them all) and for process-substitution children, which never list
@@ -283,12 +283,12 @@ class TrapManager:
         ``trap`` (listing) until the first ``trap`` modification, then is
         dropped. Ignored ('') traps stay ignored.
 
-        For a fresh child ``Shell`` this repeats what ``ShellState.adopt``
+        For a fresh child ``Shell`` this repeats what ``ShellState.clone_for_child``
         already computed (idempotent). For a backgrounded compound that
         REUSES the parent Shell object in the fork (bg brace group /
-        function), ``adopt`` never ran, so this is what stops a PARENT trap
+        function), ``clone_for_child`` never ran, so this is what stops a PARENT trap
         from firing in the child. Uses the same errtrace/ERR exemption
-        adopt does, then re-aligns the OS dispositions.
+        clone_for_child does, then re-aligns the OS dispositions.
         """
         live = set()
         if self.state.options.get('errtrace'):

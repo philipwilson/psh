@@ -26,7 +26,7 @@ class HistoryState:
         self.max_size: int = 1000
 
     def copy(self) -> "HistoryState":
-        """Independent copy for a subshell-style child (ShellState.adopt):
+        """Independent copy for a subshell-style child (ShellState.clone_for_child):
         the child sees the parent's entries, but appends must not leak back.
         """
         new = HistoryState()

@@ -133,7 +133,7 @@ class ShellState:
         # scope manager fires the observer below for every PATH
         # assignment/local/unset (bash 5.2, probe-verified: even
         # ``PATH=$PATH`` and ``local PATH=...`` clear; ``cd`` does not).
-        # The lambda reads self.command_hash at call time so adopt()'s
+        # The lambda reads self.command_hash at call time so clone_for_child()'s
         # table replacement stays wired.
         self.command_hash = CommandHashTable()
         self.scope_manager.path_changed = lambda: self.command_hash.clear()
@@ -307,7 +307,7 @@ class ShellState:
         # as real variables (rather than computing them on read) makes
         # assignment and `unset` fail like bash, and lists them in `declare -p`
         # / `readonly -p`. PPID uses the startup parent pid (kept stable across
-        # subshells because adopt() copies the whole global scope); a subshell's
+        # subshells because clone_for_child() copies the whole global scope); a subshell's
         # own $$/BASHPID differ but PPID does not (bash).
         for _pid_name, _pid_value in (('UID', os.getuid()),
                                       ('EUID', os.geteuid()),
@@ -357,7 +357,7 @@ class ShellState:
         # Names in trap_handlers that came from a parent shell and are kept
         # for LISTING only (the POSIX ``saved=$(trap)`` idiom): they never
         # fire in this shell, and the first trap modification drops them.
-        # Populated by adopt(); semantics live in TrapManager.
+        # Populated by clone_for_child(); semantics live in TrapManager.
         self.inherited_traps: Set[str] = set()
 
         # Detect terminal capabilities after initialization
@@ -1027,8 +1027,7 @@ class ShellState:
             # units (adjacent/leading/trailing colons) reach the unknown-name
             # branch and WARN for SHELLOPTS (": invalid option name") while
             # BASHOPTS' unknown-silent rule swallows them (v0.674 fixlet F2).
-            for opt in _colon_units(raw):
-                name = opt
+            for name in _colon_units(raw):
                 if name in table:
                     if name in ('vi', 'emacs'):
                         # Keep edit_mode coupled exactly like `set -o vi`.
@@ -1041,12 +1040,12 @@ class ShellState:
                         self.options['ignoreeof'] = True
                     else:
                         self.options[name] = True
-                elif env_name == 'SHELLOPTS' and opt not in self._BASH_ONLY_SET_O:
+                elif env_name == 'SHELLOPTS' and name not in self._BASH_ONLY_SET_O:
                     # bash prefixes this env-import diagnostic `<$0>: line 0:`
                     # — a startup sentinel (LINENO 0, no command has run) using
                     # argv0 even in script mode, so NOT error_location_prefix()
                     # (which is script_name + the running line). Match its shape.
-                    print(f"psh: line 0: {opt}: invalid option name",
+                    print(f"psh: line 0: {name}: invalid option name",
                           file=self.stderr)
             # Exported because it arrived via the environment; recorded on the
             # special's persistent attribute overlay (the value itself stays
