@@ -86,6 +86,20 @@ class OperatorDebrisWordRecognizer(TokenRecognizer):
         while pos < len(input_text):
             char = input_text[pos]
 
+            # A backslash escapes the next character: consume the pair AS-IS
+            # (keeping the backslash, exactly like the literal recognizer — the
+            # backslash is removed later, at expansion). This keeps an escaped
+            # quote/expansion starter from ending the word: an explicit-index
+            # array element value ``[k]=a\$b`` reaches this recognizer as the
+            # ``]=a\$b`` piece, and without honouring the ``\`` the ``$`` would
+            # split off ``$b`` as an expansion, stranding the backslash (bash:
+            # ``[k]=a\$b`` -> value ``a$b``). A trailing lone backslash is an
+            # ordinary character.
+            if char == '\\' and pos + 1 < len(input_text):
+                value += char + input_text[pos + 1]
+                pos += 2
+                continue
+
             # Stop at whitespace
             if is_whitespace(char, posix_mode=context.posix_mode):
                 break

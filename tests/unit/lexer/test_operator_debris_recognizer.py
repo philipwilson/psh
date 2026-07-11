@@ -228,6 +228,48 @@ class TestRecognizeTerminators:
         assert new_pos == 5
 
 
+class TestEscapePairs:
+    """A backslash escapes the next char, keeping an escaped quote/expansion
+    starter from ending the word (task #38): an explicit-index array element
+    value ``[k]=a\\$b`` reaches this recognizer as the ``]=a\\$b`` piece, and
+    without honouring the ``\\`` the ``$`` splits off ``$b`` as an expansion."""
+
+    def setup_method(self):
+        self.rec = OperatorDebrisWordRecognizer()
+        self.ctx = LexerContext()
+
+    def _recognize(self, text, pos=0):
+        return self.rec.recognize(text, pos, self.ctx)
+
+    def test_escaped_dollar_does_not_terminate(self):
+        token, new_pos = self._recognize(']=a\\$b')
+        assert token.value == ']=a\\$b'
+        assert new_pos == 6
+
+    def test_escaped_quote_and_backtick_and_squote(self):
+        for q in '"`\'':
+            token, new_pos = self._recognize(']=a\\' + q + 'b')
+            assert token.value == ']=a\\' + q + 'b', q
+            assert new_pos == 6, q
+
+    def test_escape_is_the_backslash_pair_only_then_stops(self):
+        # `\$` is consumed, then an UNescaped `$` still terminates.
+        token, new_pos = self._recognize(']a\\$b$c')
+        assert token.value == ']a\\$b'
+        assert new_pos == 5
+
+    def test_lone_trailing_backslash_is_ordinary_char(self):
+        token, new_pos = self._recognize(']x\\')
+        assert token.value == ']x\\'
+        assert new_pos == 3
+
+    def test_escaped_hard_operator_kept(self):
+        # `\)` is escaped, so it does NOT end the word (bash escapes it too).
+        token, new_pos = self._recognize(']=a\\)')
+        assert token.value == ']=a\\)'
+        assert new_pos == 5
+
+
 class TestDispatchOrdering:
     """Debris must be tried strictly LAST of any recognizer."""
 

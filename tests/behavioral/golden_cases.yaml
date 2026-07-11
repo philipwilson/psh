@@ -9166,3 +9166,112 @@
   stdout: "yes\n"
   stderr: ""
   exit_code: 0
+
+# ============================================================
+# ARRAY-ELEMENT ESCAPE RESIDUALS (task #38)
+# ============================================================
+- name: array_escape_residual_backslash_indexed
+  command: declare -a arr=(a\\b c); declare -p arr
+  stdout: |
+    declare -a arr=([0]="a\\b" [1]="c")
+  stderr: ''
+  exit_code: 0
+
+- name: array_escape_residual_backslash_assoc
+  command: declare -A a=([k]=a\\b); declare -p a
+  stdout: |
+    declare -A a=([k]="a\\b" )
+  stderr: ''
+  exit_code: 0
+
+- name: array_escape_residual_backslash_value
+  command: declare -a arr=(a\\b c); printf '<%s>' "${arr[0]}" "${arr[1]}"; echo
+  stdout: |
+    <a\b><c>
+  stderr: ''
+  exit_code: 0
+
+- name: array_escape_residual_roundtrip
+  command: declare -a arr=(a\\b c); b=$(declare -p arr); unset arr; eval "$b"; a=$(declare -p arr); [ "$b" = "$a" ] && echo ROUNDTRIP_OK
+  stdout: |
+    ROUNDTRIP_OK
+  stderr: ''
+  exit_code: 0
+
+- name: array_escape_assoc_value_dollar
+  command: declare -A a=([k]=a\$b); declare -p a; printf '<%s>\n' "${a[k]}"
+  stdout: |
+    declare -A a=([k]="a\$b" )
+    <a$b>
+  stderr: ''
+  exit_code: 0
+
+- name: array_escape_assoc_value_dquote
+  command: declare -A a=([k]=a\"b); declare -p a
+  stdout: |
+    declare -A a=([k]="a\"b" )
+  stderr: ''
+  exit_code: 0
+
+- name: array_escape_assoc_value_squote
+  command: declare -A a=([k]=a\'b); declare -p a
+  stdout: |
+    declare -A a=([k]="a'b" )
+  stderr: ''
+  exit_code: 0
+
+- name: array_escape_assoc_value_backtick
+  command: declare -A a=([k]=a\`b); declare -p a
+  stdout: |
+    declare -A a=([k]="a\`b" )
+  stderr: ''
+  exit_code: 0
+
+- name: array_escape_bracket_word_argument
+  command: echo [k]=a\$b
+  stdout: |
+    [k]=a$b
+  stderr: ''
+  exit_code: 0
+
+- name: array_escape_subscript_expansion_preserved
+  command: k=key; declare -A a=([$k]=v); declare -p a
+  stdout: |
+    declare -A a=([key]="v" )
+  stderr: ''
+  exit_code: 0
+
+- name: array_escape_subscript_quoted_key_preserved
+  command: declare -A a=(["a b"]=v); declare -p a
+  stdout: |
+    declare -A a=(["a b"]="v" )
+  stderr: ''
+  exit_code: 0
+
+- name: array_key_idempotent_indexed_plain
+  command: declare -a nums=(1 2 3 4); declare -p nums
+  stdout: |
+    declare -a nums=([0]="1" [1]="2" [2]="3" [3]="4")
+  stderr: ''
+  exit_code: 0
+
+- name: array_key_idempotent_indexed_quoted
+  command: x=hi; declare -a w=("$x" world); declare -p w
+  stdout: |
+    declare -a w=([0]="hi" [1]="world")
+  stderr: ''
+  exit_code: 0
+
+- name: array_key_idempotent_assoc_single
+  command: declare -A single=([only]=1); declare -p single
+  stdout: |
+    declare -A single=([only]="1" )
+  stderr: ''
+  exit_code: 0
+
+- name: array_key_idempotent_explicit_index
+  command: declare -a s=([2]=x [5]=y z); declare -p s
+  stdout: |
+    declare -a s=([2]="x" [5]="y" [6]="z")
+  stderr: ''
+  exit_code: 0
