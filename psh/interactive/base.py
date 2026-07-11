@@ -35,7 +35,6 @@ class InteractiveManager:
 
         # Cross-component dependencies
         self.repl_loop.history_manager = self.history_manager
-        self.repl_loop.prompt_manager = self.prompt_manager
 
     def run_interactive_loop(self):
         """Run the interactive shell loop.
