@@ -128,7 +128,7 @@ class TestKeywordCaseSensitivity:
 
 
 class TestKeywordDefsCaseSensitivity:
-    """matches_keyword / KeywordGuard are case-sensitive on token text."""
+    """matches_keyword is case-sensitive on token text."""
 
     def test_matches_keyword_rejects_uppercase_token(self):
         from psh.lexer.keyword_defs import matches_keyword
@@ -143,11 +143,6 @@ class TestKeywordDefsCaseSensitivity:
         # matches_keyword is a PURE predicate: it does not stamp is_keyword
         # (the RD path gets is_keyword from the normalizer at lex time).
         assert token.is_keyword is False
-
-    def test_keyword_guard_rejects_uppercase_token(self):
-        from psh.lexer.keyword_defs import KeywordGuard
-        assert KeywordGuard(make_word("DONE")).matches("done") is False
-        assert KeywordGuard(make_word("done")).matches("done") is True
 
 
 class TestTokenizeKeywordCase:

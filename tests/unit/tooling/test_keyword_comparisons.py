@@ -37,6 +37,7 @@ def test_no_raw_keyword_comparisons():
     if offending:
         formatted = "\n".join(f"{path}: {snippet}" for path, snippet in offending)
         pytest.fail(
-            "Found direct keyword comparisons; use matches_keyword or KeywordGuard instead:\n"
+            "Found direct keyword comparisons; use matches_keyword or "
+            "matches_keyword_type instead:\n"
             f"{formatted}"
         )
