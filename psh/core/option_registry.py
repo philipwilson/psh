@@ -3,8 +3,9 @@
 Before this module, "what options exist and how each behaves" was duplicated
 across four places: the defaults dict in ``state.py``, the ``$-`` letter map in
 ``ShellState.get_option_string()``, ``SetBuiltin.short_to_long``, and
-``ShoptBuiltin.SHOPT_OPTIONS``. ``OPTION_REGISTRY`` here is now the one
-declaration; those maps are derived from it.
+``ShoptBuiltin.SHOPT_OPTIONS`` (since deleted outright — shopt derives its
+name set from ``SHOPT_OPTION_NAMES``). ``OPTION_REGISTRY`` here is now the one
+declaration; the surviving maps are derived from it.
 
 Shell options are a *dynamic, string-keyed* surface — ``set -o $name``,
 ``shopt $name`` and ``$-`` index options by a runtime name, and several names

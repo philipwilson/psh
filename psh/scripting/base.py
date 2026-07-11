@@ -22,7 +22,8 @@ class ScriptComponent:
 class ScriptManager:
     """Facade over the script-handling components.
 
-    Every external caller should route through this facade rather than
+    Callers of the routed operations (execute_as_main, validate_script_file)
+    should go through this facade rather than
     reaching into ``.source_processor``/``.script_validator`` directly — it
     exposes the full public API (``run_script``, ``execute_from_source``,
     ``execute_as_main``, ``validate_script_file``).
