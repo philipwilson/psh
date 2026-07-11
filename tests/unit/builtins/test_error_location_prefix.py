@@ -175,6 +175,16 @@ class TestBareRowResweepFinds:
         assert r.stderr.splitlines()[0] == \
             f'{script}: line 2: undef_zz: unbound variable'
 
+    def test_set_u_boundary_fallback_paths_are_prefixed(self):
+        # F5: the set -u BOUNDARY fallback (source_processor.py) — distinct from
+        # the SimpleCommand primary path (report_unbound_variable) — fires for a
+        # case subject and for-loop words. Both must carry the location prefix.
+        want = 'psh: line 1: undef_zz: unbound variable'
+        case_r = _psh_c('set -u; case $undef_zz in x) :;; esac')
+        assert case_r.stderr.splitlines()[0] == want
+        for_r = _psh_c('set -u; for w in $undef_zz; do :; done')
+        assert for_r.stderr.splitlines()[0] == want
+
 
 class TestInteractiveDropsLineNumber:
     """Interactive shells prefix with `<$0>: ` but omit `line N:` (bash -i)."""
