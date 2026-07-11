@@ -1,7 +1,7 @@
 """Job control builtin commands."""
 import os
 import signal
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ..executor.job_control import (
     JobSpecOutcome,
@@ -25,12 +25,18 @@ class JobsBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        # Only the flags psh implements are advertised; bash's full form
-        # (jobs [-lnprs] ... or jobs -x command [args]) awaits task #22 [#36].
-        return "jobs [-lprs] [jobspec ...]"
+        return "jobs [-lprs] [jobspec ...] or jobs -x command [args]"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the jobs builtin."""
+        # `-x command [args]`: substitute whole-word %jobspecs with their pgid
+        # and run the command (bash). -x must appear alone.
+        x_words, x_error = self._extract_x_command(args, shell)
+        if x_error:
+            return 1
+        if x_words is not None:
+            return self._run_x_command(x_words, shell)
+
         opts, operands = self.parse_flags(args, shell, flags='lprs')
         if opts is None:
             return 2  # bash: invalid option is a usage error
@@ -87,6 +93,67 @@ class JobsBuiltin(Builtin):
                 manager.remember_job_statuses(job)
                 manager.remove_job(job.job_id)
         return exit_status
+
+    def _extract_x_command(self, args: List[str],
+                           shell: 'Shell') -> 'Tuple[Optional[List[str]], bool]':
+        """Recognise the `-x` form of `jobs`.
+
+        Returns ``(command_words, error)``. ``command_words`` is the argument
+        list following a lone ``-x`` (possibly empty, for a bare ``jobs -x``),
+        or ``None`` when no ``-x`` option is present. ``error`` is True — after
+        printing bash's diagnostic — when ``-x`` was combined with any other
+        option (``jobs -lx``, ``jobs -l -x``): bash allows no other options
+        with ``-x``.
+        """
+        seen_other = False
+        i = 1
+        while i < len(args):
+            arg = args[i]
+            if arg == '--' or not arg.startswith('-') or len(arg) == 1:
+                break
+            if 'x' in arg[1:]:
+                # -x found. It must be the only option, uncombined.
+                if seen_other or arg[1:].replace('x', '', 1):
+                    self.error("no other options allowed with `-x'", shell)
+                    return None, True
+                return list(args[i + 1:]), False
+            seen_other = True
+            i += 1
+        return None, False
+
+    def _run_x_command(self, words: List[str], shell: 'Shell') -> int:
+        """Substitute %jobspecs in ``words`` with their pgid and run the result.
+
+        A bare ``jobs -x`` (no command) is a no-op with rc 0 (bash). The
+        substituted argv is re-quoted and run through the shell so the command
+        goes through the normal resolution order (functions, builtins,
+        externals) and executes in the current shell — `jobs -x cd /tmp`
+        changes the shell's cwd, matching bash.
+        """
+        if not words:
+            return 0
+        import shlex
+
+        manager = shell.job_manager
+        substituted = [self._substitute_jobspec(w, manager) for w in words]
+        cmdline = ' '.join(shlex.quote(w) for w in substituted)
+        return shell.run_command(cmdline, add_to_history=False)
+
+    @staticmethod
+    def _substitute_jobspec(word: str, manager) -> str:
+        """Replace a whole-word ``%jobspec`` with the job's pgid (bash `jobs -x`).
+
+        Only a word that is itself a resolvable jobspec is substituted. A plain
+        word, a substring like ``pre%1``, an adjacent pair like ``%1%2``, or an
+        unresolved ``%99`` is passed through unchanged (bash leaves it literal;
+        `jobs -x echo %99` prints ``%99`` with rc 0).
+        """
+        if not word.startswith('%'):
+            return word
+        result = manager.resolve_job_spec(word)
+        if result.outcome is JobSpecOutcome.FOUND and result.job is not None:
+            return str(result.job.pgid)
+        return word
 
     @staticmethod
     def _state_filter(args: List[str]) -> 'Optional[JobState]':
